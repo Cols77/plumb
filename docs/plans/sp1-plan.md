@@ -13,6 +13,12 @@ work on `main` runs through plumb's grounding loop as loop steps, with evidence 
 ran (4.5). The 9 hours end at an absolute time, 2026-10-06 08:00 local, and every cutoff is
 anchored to it (sections 1 and 12).
 
+The owner also asked to "plan for ... the kind of pi-agent-factory fork that is about to
+happen" (D10), and decision D9 requires a fork plan. That plan is `docs/plans/fork-plan.md`.
+It is written before phase 0, alongside this plan, by the coordinator and outside the lanes;
+no lane builds any of its later steps. Task F0 (section 11.4) keeps it current, and the
+handoff links it.
+
 ## 1. Shape of the work
 
 | Phase | What | Who | Agent time | Gate before the next phase |
@@ -235,7 +241,7 @@ where the files reach `main`):
 | SR-017 | FEAT-003 | Covering-test selection: docs select nothing, infrastructure sets full pending, unknown coverage samples, a budget caps the turn | INT-002, INT-003 | `tests/verify/test_select.py` |
 | SR-018 | FEAT-003 | Evidence is pinned to tree, closure, test source and environment identity, and reused only on an exact match | INT-006 | `tests/verify/test_evidence.py`, `test_envid.py`, `test_runner.py` |
 | SR-019 | FEAT-003 | A failure that passes on a same-tree rerun is recorded as flaky with both attempts | INT-006 | `tests/verify/test_policy.py` |
-| SR-020 | FEAT-003 | A regression is a previously passing test with unchanged source that now fails; a new red test never interrupts | INT-008 | `tests/verify/test_policy.py`, `tests/host/test_stop.py` |
+| SR-020 | FEAT-003 | A regression is a test node that passed with recorded evidence and now fails, even if its source changed since (then noted, never suppressed); only a new test that starts red is not a regression and never interrupts | INT-008 | `tests/verify/test_policy.py`, `tests/host/test_stop.py` |
 | SR-021 | FEAT-004 | Judgment is optional: heuristic by default, JEV when a key exists, fallback on failure, advisory only | INT-011 | `tests/trust/test_heuristic.py`, `test_jev.py`, `test_tiers.py` |
 | SR-022 | FEAT-004 | Fidelity packets let the host agent judge a requirement without JEV | INT-011, INT-004 | `tests/trust/test_fidelity.py` |
 | SR-023 | FEAT-004 | The importer reads pi-agent-factory records read-only and never manufactures a confirmation | INT-005, INT-010 | `tests/trust/test_import_*.py` |
@@ -599,7 +605,9 @@ Tests (`tests/verify/`):
 - `test_evidence.py`: `test_fresh_pass_requires_matching_closure_test_and_env_key`,
   `test_reuse_miss_names_differing_part`, `test_index_rebuilt_from_log_after_cache_delete`;
   1b V9: `test_unknown_identity_never_reused`
-- `test_policy.py`: `test_regression_requires_prior_pass_and_same_test_hash`,
+- `test_policy.py`: `test_regression_requires_prior_pass_of_same_node`,
+  `test_edited_test_that_passed_then_fails_is_regression` (its `test_hash` differs from the
+  pass and `regression` is still true), `test_regression_notes_test_source_changed`,
   `test_new_red_test_is_not_regression`, `test_run_prints_regression_instruction`; 1b V10:
   `test_flaky_rerun_same_tree_records_both_attempts`, `test_no_rerun_when_tree_changed`;
   stretch V13: `test_waiver_refused_under_marker`, `test_waiver_event_pinned_to_diff_digest`
@@ -723,6 +731,18 @@ the hooks on plumb's own repository, each step as a loop step (4.5).
   `commit-msg` hook with `SR:` trailers; and appends medium and low findings to
   `docs/followups.md` under `## SP1 review (2026-10-06)`.
 
+### 11.4 Task F0: the fork plan (coordinator, outside the lanes)
+
+`docs/plans/fork-plan.md` answers D9 and D10. It already exists when phase 0 starts, so it
+costs no lane time. During the build the coordinator keeps it current in one place only, its
+"State at handoff" section: which extraction rows of spec 13 landed, whether the importer
+(T10) was built, and the extraction source commit actually used. This is done at most 10 min,
+before the 07:45 handoff and after the clock rule's merges, and is committed with `SR:
+SR-023`. The handoff lists `docs/plans/fork-plan.md` under "Plans for the owner" with its
+first owner decision (confirming that pi-agent-factory's current integration batch has
+landed). F0 is never dropped; if the clock leaves no time for the update, the handoff says
+the "State at handoff" section is as of the plan's commit.
+
 ## 12. Time box, drop order and the morning minimum
 
 **The morning minimum** is: phase 0; CORE C1 to C8; TRUST T1 to T6; VERIFY V1 to V8; HOST H1
@@ -737,8 +757,9 @@ must items fit in 150 min of its 3 hours (section 6).
 
 **Never dropped**, whatever the clock says: the R1 merge-boundary confirmation rule (T3), the
 `SR:` trailer check (T1), the approval guard (T2's marker refusal and relay checks, H6's deny
-rules and marker), the dogfood checkpoints D0 to D3, and running the coordinator's work as
-loop steps from D2 on (4.5; driven mode is the floor when host mode fails).
+rules and marker), the dogfood checkpoints D0 to D3, running the coordinator's work as loop
+steps from D2 on (4.5; driven mode is the floor when host mode fails), and the fork plan with
+its handoff link (F0, 11.4).
 
 **Order of protection** (highest first):
 
@@ -800,6 +821,8 @@ Spec section 14.2, checked by the coordinator after phase 3 and reported in the 
       local stub;
 - [ ] dogfood checks of 4.4 pass;
 - [ ] unfinished items, medium and low findings in `docs/followups.md`; no HIGH finding open;
+- [ ] `docs/plans/fork-plan.md` exists on `main` (D9, D10) and the handoff links it (F0,
+      11.4);
 - [ ] the handoff is committed on `main` by 07:45 local on 2026-10-06.
 
 ## 14. Risks

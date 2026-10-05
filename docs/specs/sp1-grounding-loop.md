@@ -56,7 +56,7 @@ after it).
 | D6: dogfood "as soon as possible and build with it" | Dogfood checkpoints D0 to D3 (14.1): own records from the first hour, `SR:` trailers on every commit from the contract phase, the trailer check on from D1, each hook installed in plumb's repository as it lands, and from then on the build's own work on `main` run as loop steps through those hooks, with evidence that the loop ran (14.1; plan 4.5); dogfooding is never cut for review or later items (plan 12) |
 | D7: reuse SR, FEAT, NC formats and IDs | Same ID formats and `SR:` trailers; importer (8.1, a plan stretch item) |
 | D8: JEV optional, cascade, works without it | `JudgmentBackend` with heuristic default and JEV adapter (8.2) |
-| D9: pi-agent-factory into maintenance mode, fork plan | Out of scope here: the fork plan is a separate document (15) |
+| D9: pi-agent-factory into maintenance mode, fork plan | Not built by sub-project 1's lanes: the fork plan is `docs/plans/fork-plan.md`, written with the SP1 plan and linked from the morning handoff (15; plan 13) |
 | D10, D11: concept plus plans; owner does not review; implementation by the morning | This spec and the plan; verifier agents; a 6-hour schedule anchored to the owner's absolute deadline (2026-10-06 08:00 local; clock rule at 07:15, handoff by 07:45), must items of at most 150 min per lane, and a drop order that protects the dogfoodable core (plan 1, 6, 12) |
 | D12: the name plumb | Package, CLI and `.plumb/` directory |
 | R1: read-back and examples non-blocking; touched requirements confirmed at merge | `proposed` lines in the summary (6.4); `validate --merge` (5.11) |
@@ -81,7 +81,7 @@ Each refinement keeps the concept's guarantee and changes only its mechanism. Ea
 | F7 | Commands `plumb check`, `plumb map`, `plumb verify`, `plumb install claude-code`, `plumb status --line` | `plumb validate`, `plumb tests map`, `plumb tests run`, `plumb hooks install`, `plumb statusline`; the concept names stay as aliases | The sub-project 1 command set given to the lanes; aliases keep the concept readable |
 | F8 | Session brief of at most about 60 lines (6.1) | About 30 lines, hard cap 40 | Shorter context, same content; TDAD favours short context |
 | F9 | `verify.turn_budget_s` 30 s, hard limit 2x (7.2) | 15 s, hard limit 1.5x | "Per-turn overhead is seconds, not minutes" (followups round 4) |
-| F10 | Regression: a test that previously passed now fails (6.6) | Same, and only when the test's own source hash is unchanged since that pass | A rewritten test that starts red is a test-first step (R3), not a regression |
+| F10 | Regression: a test that previously passed, with recorded evidence, now fails (6.6) | Same rule, keyed by the test's node id: a node with an earlier `passed` or `flaky` `test-run` entry that now fails is a regression whatever happened to its source since that pass. When its `test_hash` differs from the one of that pass, the regression instruction adds the note `test source changed since the pass`; the note never suppresses the trigger. Only a node id with no earlier passing evidence is `not yet passing` | R3 exempts only a new test that starts red. Editing an existing test must not turn a regression into `not yet passing`, or an agent could edit a test until its failure stops counting; the note tells the owner that the test itself changed |
 | F11 | Imported records with an upstream approval get `by: import` (10) | The minimal importer imports every record as proposed; `by: import` approvals wait for the full importer (sub-project 5) | Never manufactures a confirmation; safe lower bound of the concept rule |
 | F12 | Links live in their source record (4.5) | Unchanged; "link" is a first-class data type (`Link`, `LinkState`) and command (`plumb link`), not a separate file | A link file per link would double the files a hook reads and split a requirement from its evidence chain |
 | F13 | Slice 1a is built in the listed order, one step after another; plumb's own `SR` records and `SR:` trailers start at step 3, and each hook is installed in plumb's repository as soon as it lands (11) | Slice 1a is built by four parallel lanes, with dogfood checkpoints (14.1). plumb's own records are written at D0, while the lanes start, which is earlier than step 3, and every commit from the contract phase on carries an `SR:` trailer. The `commit-msg` check turns on at D1, as soon as the record core and the approval, trailer and merge-boundary items (concept steps 1, 2 and 4) merge. Each hook is installed in plumb's repository at D2, as soon as its lane merge point lands, and from then on the coordinator's work on `main` runs as loop steps through the installed hooks (a headless Claude Code session rooted in plumb's repository, or the real hook entry points driven around the work item), because the building workflow's own sessions are not rooted in plumb's repository and would not fire the hooks. The map and verification join at D3. Dogfooding comes before review. The JEV live client and the minimal importer are stretch items here (the concept puts them in sub-projects 2 and 5). The judgment interface with its heuristic backend moves up from 1b into the must items, because the prompt hook's intent-change flag (trigger 1) uses it; the owner waiver (concept 1b) is a stretch item, since using it in place of a full rerun belongs to sub-project 3 (15) | The 9-hour box (D11) needs parallel lanes. The checkpoints keep "as soon as possible and build with it" (D6): the records and trailers start earlier than in the concept, and no checkpoint waits for a whole lane or for review |
@@ -509,7 +509,9 @@ Registered with `"async": true` so it adds no blocking latency; on a host that i
      B also fits. Which one?"`.
    - **Trigger 3 (regression).** Known at stop time from earlier evidence: block with
      `plumb: regression: <node> passed in run <id> and now fails. Tell the owner, with a
-     read-back, and ask how to proceed.` A regression found by the agent's own
+     read-back, and ask how to proceed.`, with ` (test source changed since the pass)`
+     appended after `now fails` when the node's `test_changed_since_pass` is set (7.5). A
+     regression found by the agent's own
      `plumb tests run` is printed by that command with the same instruction.
 5. Otherwise answer `{"systemMessage": "<summary>"}`, at most five lines plus at most three
    `proposed` lines and a `+N more (plumb status)` line:
@@ -701,10 +703,14 @@ deleted cache loses nothing.
   rerun once, only if the tree identity (`head_tree` plus `dirty`) and `env_key` are
   unchanged. A fail then pass is outcome `flaky` with both attempts recorded; it counts as a
   pass and is reported as flaky.
-- **Regression (R3, F10).** A node regresses when it now fails, an earlier `test-run` entry
-  recorded it `passed` or `flaky`, and its `test_hash` equals the one of that pass. A new test,
-  or a rewritten one, that starts red is `not yet passing`, never a regression, and never
-  interrupts.
+- **Regression (R3, F10).** A node regresses when it now fails and an earlier `test-run`
+  entry recorded the same node id `passed` or `flaky`. Edits to the test since that pass do
+  not change this: the `test_hash` is not part of the regression rule. When the node's current
+  `test_hash` differs from the one of its last pass (or either is unknown), its `NodeEvidence`
+  has `test_changed_since_pass` set and the regression instruction carries the note `test
+  source changed since the pass` (6.4), but the trigger fires all the same. Only a node id with
+  no earlier `passed` or `flaky` entry, that is a new test that starts red (the test-first
+  step), is `not yet passing`, never a regression, and never interrupts.
 - **Owner waiver** (stretch item, plan lane VERIFY). `plumb tests waive --diff-digest <d>
   --reason "..."`, owner only (refused under the marker and by deny rule), appends a `waiver`
   event pinned to that diff digest. It is listed by `validate --merge`; using it in place of
@@ -1019,7 +1025,8 @@ class Selection:
 class NodeEvidence:
     node_id: str
     state: EvidenceState
-    regression: bool = False
+    regression: bool = False              # failing now, passed or flaky earlier (7.5)
+    test_changed_since_pass: bool = False # regression note only; never clears `regression`
     last_run: str | None = None           # run_id
     reuse_miss: Literal["closure", "test", "env", "identity"] | None = None
 
@@ -1348,7 +1355,9 @@ sessions affirmed them (R2). The morning handoff gives the owner one line to con
 - The merge-boundary full-suite run, evidence promotion, waivers in place of full reruns, the
   claims audit as a gate and a CI entry point (sub-project 3).
 - Codex, Pi, Hermes adapters and an MCP server (sub-project 4).
-- `by: import` approvals, a complete import and pi-agent-factory's migration (sub-project 5);
-  the fork plan (a separate document, decision D9).
+- `by: import` approvals, a complete import and pi-agent-factory's migration (sub-project 5).
+  The fork plan for these steps (decisions D9 and D10) is `docs/plans/fork-plan.md`; it is
+  written alongside this spec and the SP1 plan, and its steps after sub-project 1 run outside
+  this sub-project's lanes.
 - Any run state machine, phases, consent phrases, manifests, handoff hashes, review swarms or
   governed execution (concept non-goals).

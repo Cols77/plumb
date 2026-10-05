@@ -795,8 +795,8 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
   approval marked `by: import` that cites that upstream entry. Every other imported record
   arrives as proposed. Importing never manufactures a confirmation the owner did not give.
 - **Maintenance mode.** Once the current integration batch lands, pi-agent-factory takes
-  fixes only, and new feature work moves to plumb. The fork plan (a separate document)
-  sequences the extraction, the import and the switch.
+  fixes only, and new feature work moves to plumb. The fork plan, `docs/plans/fork-plan.md`,
+  sequences the maintenance mode, the extraction, the import and the switch.
 
 ## 11. Roadmap
 
