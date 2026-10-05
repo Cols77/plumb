@@ -23,6 +23,7 @@ from plumb.normalize import canonical_json, file_digest, sha256_bytes
 INDEX_VERSION = 1
 PASS_OUTCOMES = frozenset({"passed", "flaky"})
 GOOD_OUTCOMES = frozenset({"passed", "flaky", "skipped", "xfailed"})
+_CACHE_PARTS = frozenset({"__pycache__", ".pytest_cache"})
 
 
 def new_run_id() -> str:
@@ -77,7 +78,7 @@ def tree_identity(root: Path) -> dict[str, Any]:
             head, tree = lines[0], lines[1]
     pairs = []
     for rel in sorted(set(changed_paths_from_git(root))):
-        if rel.startswith(".plumb/"):
+        if rel.startswith(".plumb/") or _CACHE_PARTS & set(rel.split("/")):
             continue
         try:
             digest = file_digest(root / rel)

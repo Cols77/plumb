@@ -233,6 +233,8 @@ class Verify:
         files = {p: i["hash"] for p, i in tmap.files.items()} if full else None
         outcome = run_selection(core, args, full=full, timeout_s=timeout, tmap=tmap)
         result = outcome.result
+        if vcfg.flaky_rerun and not outcome.discarded and not result.timed_out:
+            self._flaky_rerun(outcome, tree=tree, key=key, timeout=timeout)
         payload = self._payload(outcome, tree=tree, key=key, full=full, budget=budget,
                                 selection=report.selection, infra=infra, files=files)
         entry = core.log_append("evidence", "test-run", payload)
@@ -257,8 +259,54 @@ class Verify:
                         "test_changed_since_pass": evid.test_changed_since_pass})
                 else:
                     report.not_yet_passing.append(node)
+        ran_files = {n.split("::", 1)[0] for n in report.outcomes}
+        report.removed_after_passing = [n for n in self.removed_after_passing()
+                                        if full or n.split("::", 1)[0] in ran_files]
         report.full_pending = self.full_pending()
         return report
+
+    def _flaky_rerun(self, outcome: Any, *, tree: Mapping[str, Any], key: str,
+                     timeout: float | None) -> None:
+        """Rerun failed nodes once when the tree and env key are unchanged (spec 7.5)."""
+        from plumb.verify.envid import env_key
+        from plumb.verify.evidence import tree_identity
+        from plumb.verify.policy import same_tree
+        from plumb.verify.runner import run_selection
+
+        result = outcome.result
+        failed = sorted(n for n, d in result.nodes.items() if d.get("outcome") == "failed")
+        if not failed:
+            return
+        if not same_tree(tree, tree_identity(self.root), key, env_key(self.root)):
+            return
+        again = run_selection(self.core, failed, timeout_s=timeout, tmap=self.test_map())
+        if again.discarded or again.result.timed_out:
+            return
+        for node in failed:
+            second = again.result.nodes.get(node, {}).get("outcome")
+            if second is None:
+                continue
+            data = result.nodes[node]
+            data["attempts"] = ["failed", str(second)]
+            if second == "passed":
+                data["outcome"] = "flaky"
+
+    def removed_after_passing(self) -> list[str]:
+        """Nodes that passed with recorded evidence and are no longer in their existing
+        file (VS1): shown, never an interruption."""
+        from plumb.verify.markers import strip_param
+
+        tmap = self.test_map()
+        out = []
+        for node_id, entry in sorted(self.index().get("nodes", {}).items()):
+            if not entry.get("last_pass") or "::" not in node_id:
+                continue
+            test_file = node_id.split("::", 1)[0]
+            if test_file not in tmap.files or not (self.root / test_file).is_file():
+                continue
+            if strip_param(node_id) not in tmap.files[test_file].get("nodes", {}):
+                out.append(node_id)
+        return out
 
     def _payload(self, outcome: Any, *, tree: Mapping[str, Any], key: str, full: bool,
                  budget: float, selection: Selection | None, infra: Mapping[str, str] | None,
