@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,7 @@ class RunReport:
     removed_after_passing: list[str] = field(default_factory=list)
     collection_errors: list[str] = field(default_factory=list)
     discarded: str | None = None
+    aborted: str | None = None
     timed_out: bool = False
     timeout_s: float | None = None
     exit_status: int | None = None
@@ -37,7 +38,7 @@ class RunReport:
     @property
     def ok(self) -> bool:
         return (not self.failed and not self.collection_errors and not self.discarded
-                and not self.timed_out)
+                and not self.aborted and not self.timed_out)
 
     def as_dict(self) -> dict[str, Any]:
         sel = self.selection
@@ -47,7 +48,7 @@ class RunReport:
             "not_yet_passing": self.not_yet_passing, "flaky": self.flaky,
             "removed_after_passing": self.removed_after_passing,
             "collection_errors": self.collection_errors, "discarded": self.discarded,
-            "timed_out": self.timed_out, "exit_status": self.exit_status,
+            "aborted": self.aborted, "timed_out": self.timed_out, "exit_status": self.exit_status,
             "elapsed_s": self.elapsed_s,
             "selection": None if sel is None else {
                 "nodes": list(sel.nodes), "deferred": list(sel.deferred),
@@ -263,14 +264,23 @@ class Verify:
             args: list[str] = []
             timeout = None if budget_s is None else budget * float(vcfg.hard_limit_factor)
         elif nodes:
-            args = list(dict.fromkeys(nodes))
+            args = self.runnable_targets(nodes)
             report.selection = Selection(changed=(), nodes=tuple(args),
                                          reasons=dict.fromkeys(args, "literal"))
             timeout = budget * float(vcfg.hard_limit_factor)
         else:
-            report.selection = self.select(changed if changed is not None
-                                           else self.changed_paths(), budget_s=budget)
-            args = list(report.selection.nodes)
+            selection = self.select(changed if changed is not None
+                                    else self.changed_paths(), budget_s=budget)
+            args = self.runnable_targets(selection.nodes)
+            if tuple(args) != selection.nodes:
+                reasons = dict(selection.reasons)
+                for target in args:
+                    if target not in reasons:
+                        first = next(n for n in selection.nodes
+                                     if n.split("::", 1)[0] == target)
+                        reasons[target] = selection.reasons[first]
+                selection = replace(selection, nodes=tuple(args), reasons=reasons)
+            report.selection = selection
             timeout = budget * float(vcfg.hard_limit_factor)
         report.timeout_s = timeout
         if not full and not args:
@@ -282,16 +292,21 @@ class Verify:
         files = {p: i["hash"] for p, i in tmap.files.items()} if full else None
         outcome = run_selection(core, args, full=full, timeout_s=timeout, tmap=tmap)
         result = outcome.result
-        if vcfg.flaky_rerun and not outcome.discarded and not result.timed_out:
+        targets = tmap.test_files if full else args
+        aborted = None
+        if not outcome.discarded and not result.timed_out:
+            aborted = self._abort_reason(result, targets, full=full)
+        if vcfg.flaky_rerun and not outcome.discarded and not result.timed_out and not aborted:
             self._flaky_rerun(outcome, tree=tree, key=key, timeout=timeout)
         if not outcome.discarded and not result.timed_out:
-            self._collection_failures(result, tmap.test_files if full else args)
+            self._collection_failures(result, targets, aborted=aborted is not None)
         payload = self._payload(outcome, tree=tree, key=key, full=full, budget=budget,
                                 selection=report.selection, infra=infra, files=files,
-                                identity=self.identity(compute=True))
+                                identity=self.identity(compute=True), aborted=aborted)
         entry = core.log_append("evidence", "test-run", payload)
         report.run_id = payload["run_id"]
         report.discarded = outcome.discarded
+        report.aborted = aborted
         report.timed_out = result.timed_out
         report.exit_status = result.exit_status
         report.elapsed_s = result.elapsed_s
@@ -344,12 +359,54 @@ class Verify:
             if second == "passed":
                 data["outcome"] = "flaky"
 
-    def _collection_failures(self, result: Any, targets: Sequence[str]) -> None:
-        """Known nodes of selected files that failed to collect count as failed (R3)."""
+    def runnable_targets(self, targets: Iterable[str]) -> list[str]:
+        """Selection targets pytest can resolve: a node id the map does not know in its
+        (mapped) file falls back to the file, because one unknown id (a test renamed under a
+        ``verified_by`` link) makes pytest abort the whole selection. A file absorbs its
+        node ids."""
+        from plumb.verify.markers import strip_param
+
+        tmap = self.test_map()
+        out: list[str] = []
+        for target in targets:
+            test_file, sep, _ = target.partition("::")
+            if sep and test_file in tmap.files:
+                base = strip_param(target)
+                known = tmap.nodes_of(test_file)
+                if base not in known and not any(k.startswith(base + "::") for k in known):
+                    target = test_file
+            if target not in out:
+                out.append(target)
+        files = {t for t in out if "::" not in t}
+        return [t for t in out if "::" not in t or t.split("::", 1)[0] not in files]
+
+    def _abort_reason(self, result: Any, targets: Sequence[str], *, full: bool) -> str | None:
+        """Why a pytest run that did not time out is still no clean run, or None.
+
+        No plugin report, an unfinished session, or an exit status other than 0 (passed) or
+        1 (tests failed) means pytest stopped before running the selection (a broken
+        ``conftest.py``, a usage error, an internal error). Exit 5 (nothing collected) counts
+        only when the selection had known test nodes."""
+        status = result.exit_status
+        if not result.finished:
+            return f"pytest stopped before the session finished (exit status {status})"
+        if status in (0, 1):
+            return None
+        if status == 5:
+            tmap = self.test_map()
+            if full or not any(tmap.nodes_of(t.split("::", 1)[0]) for t in targets):
+                return None
+            return "pytest collected no tests from a selection with known tests (exit status 5)"
+        return f"pytest exit status {status}"
+
+    def _collection_failures(self, result: Any, targets: Sequence[str], *,
+                             aborted: bool = False) -> None:
+        """Known nodes of selected files that failed to collect count as failed (R3); in an
+        aborted run, every selected file failed to collect."""
         from plumb.verify.markers import strip_param
         from plumb.verify.runner import mark_collection_failures
 
-        if not result.collection_errors:
+        if not result.collection_errors and not aborted:
             return
         tmap = self.test_map()
         recorded: dict[str, list[str]] = {}
@@ -364,7 +421,7 @@ class Verify:
             ids = sorted(recorded.get(test_file, []))
             covered = {strip_param(n) for n in ids}
             known[test_file] = ids + [n for n in tmap.nodes_of(test_file) if n not in covered]
-        mark_collection_failures(result, targets, known)
+        mark_collection_failures(result, targets, known, everything=aborted)
 
     def removed_after_passing(self) -> list[str]:
         """Nodes that passed with recorded evidence and are no longer in their existing
@@ -385,7 +442,8 @@ class Verify:
 
     def _payload(self, outcome: Any, *, tree: Mapping[str, Any], key: str, full: bool,
                  budget: float, selection: Selection | None, infra: Mapping[str, str] | None,
-                 files: Mapping[str, str] | None, identity: str | None) -> dict[str, Any]:
+                 files: Mapping[str, str] | None, identity: str | None,
+                 aborted: str | None = None) -> dict[str, Any]:
         from plumb.verify.evidence import closure_digest, new_run_id, payload_checksum
 
         tmap = self.test_map()
@@ -425,5 +483,7 @@ class Verify:
             payload["timeout"] = True
         if outcome.discarded:
             payload["discarded"] = outcome.discarded
+        if aborted:
+            payload["aborted"] = aborted
         payload["self"] = payload_checksum(payload)
         return payload

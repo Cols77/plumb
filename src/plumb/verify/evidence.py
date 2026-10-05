@@ -4,7 +4,10 @@ A ``test-run`` entry in ``evidence.jsonl`` pins every node to its import closure
 own normalized source hash and the cheap environment key, and the run to the tree identity.
 A node's evidence is fresh only when all three match now. The reuse index
 (``.plumb/cache/evidence_index.json``) is derived from the log by byte offset, so deleting it
-loses nothing. The regression rule (R3) reads the same index (``policy.py``).
+loses nothing. The index also keeps a digest of the log bytes just before its offset (the
+first and last ``_GUARD_BYTES``): a rebase, branch switch or pull that rewrites the log under
+the offset fails that check, and the index is rebuilt from byte 0. The regression rule (R3)
+reads the same index (``policy.py``).
 """
 
 from __future__ import annotations
@@ -20,7 +23,8 @@ from typing import Any
 from plumb.contracts import NodeEvidence
 from plumb.normalize import canonical_json, file_digest, sha256_bytes
 
-INDEX_VERSION = 1
+INDEX_VERSION = 2
+_GUARD_BYTES = 65536
 PASS_OUTCOMES = frozenset({"passed", "flaky"})
 GOOD_OUTCOMES = frozenset({"passed", "flaky", "skipped", "xfailed"})
 _CACHE_PARTS = frozenset({"__pycache__", ".pytest_cache"})
@@ -96,7 +100,27 @@ def payload_checksum(payload: Mapping[str, Any]) -> str:
 
 
 def _empty_index() -> dict[str, Any]:
-    return {"v": INDEX_VERSION, "offset": 0, "nodes": {}, "full": None, "removed": {}}
+    return {"v": INDEX_VERSION, "offset": 0, "prefix": None, "nodes": {}, "full": None,
+            "removed": {}}
+
+
+def prefix_digest(path: Path, offset: int) -> str | None:
+    """A digest of the log's first and last ``_GUARD_BYTES`` before ``offset`` (bounded read,
+    so the per-turn cost does not grow with the log)."""
+    if offset <= 0:
+        return None
+    head_len = min(offset, _GUARD_BYTES)
+    tail_start = max(head_len, offset - _GUARD_BYTES)
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(head_len)
+            handle.seek(tail_start)
+            tail = handle.read(offset - tail_start)
+    except OSError:
+        return None
+    if len(head) != head_len or len(tail) != offset - tail_start:
+        return None
+    return sha256_bytes(b"%d:" % offset + head + b":" + tail)
 
 
 def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "") -> None:
@@ -119,7 +143,8 @@ def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "")
         entry["last"] = rec
         if rec["outcome"] in PASS_OUTCOMES:
             entry["last_pass"] = rec
-    if payload.get("full") and not payload.get("timeout"):
+    if (payload.get("full") and not payload.get("timeout") and not payload.get("aborted")
+            and payload.get("exit_status") in (None, 0, 1, 5)):
         index["full"] = {"run_id": run_id, "infra": dict(payload.get("infra") or {}),
                          "files": dict(payload.get("files") or {})}
 
@@ -139,9 +164,10 @@ def load_index(core: Any) -> dict[str, Any]:
             raise ValueError
     except (OSError, ValueError):
         index = _empty_index()
-    if int(index.get("offset", 0)) > size:
-        index = _empty_index()
     start = int(index.get("offset", 0))
+    if start > size or (start > 0 and index.get("prefix") != prefix_digest(log_path, start)):
+        index = _empty_index()  # the log under the offset was rewritten: rebuild from 0
+        start = 0
     if start == size:
         return index
     for entry in core.log_read("evidence", kinds=["test-run"], since_offset=start):
@@ -149,6 +175,7 @@ def load_index(core: Any) -> dict[str, Any]:
             break
         apply_entry(index, entry.payload, entry.at)
     index["offset"] = size
+    index["prefix"] = prefix_digest(log_path, size)
     try:
         paths.cache.mkdir(parents=True, exist_ok=True)
         paths.evidence_index.write_text(json.dumps(index), encoding="utf-8")

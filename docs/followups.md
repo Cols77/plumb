@@ -455,10 +455,31 @@ the SHOULD items follow on the same branch.
 - [LOW] (VERIFY) The VERIFY lane's own tests start about 25 real pytest subprocesses. On this
   machine `tests/verify` takes about 50 to 70 s; the temporary projects turn the flaky rerun
   off except in `test_flaky.py`.
-- [LOW] (VERIFY, collection-error regression fix) Only collection errors mark a selected file's
-  known nodes `failed` (phase `collect`). A session that ends early for another reason (a crash
-  of pytest itself, a conftest import failure that pytest reports as a usage error) still
-  leaves those nodes without an outcome, so their evidence goes `stale` rather than failing.
-  The runner now passes `--continue-on-collection-errors`, so pytest's exit status for a
-  collection error is 1, not 2; plumb reads collection errors from the plugin report, never
-  from the status.
+- [LOW] (VERIFY, collection-error regression fix) The runner passes
+  `--continue-on-collection-errors`, so pytest's exit status for a collection error is 1, not
+  2; plumb reads collection errors from the plugin report, never from the status. (Resolved by
+  the aborted-run fix below: a session that ends early for another reason no longer leaves the
+  selected nodes `stale`.)
+- [RESOLVED, was HIGH] (VERIFY, aborted-run fix) A pytest run with no plugin report, an
+  unfinished session, or an exit status other than 0 or 1 (or 5 on a selection with known
+  tests) is `aborted`: every known node of the selected files counts as `failed` in phase
+  `collect` (so earlier passes are regressions), `RunReport.ok` is false, `plumb tests run`
+  exits non-zero, and an aborted full run never satisfies `full verification pending`. A
+  selected node id the map does not know in its file (a renamed `verified_by` end) falls back
+  to the file, so one stale id no longer aborts the whole selection.
+- [RESOLVED, was HIGH] (VERIFY, evidence index) The reuse index keeps a digest of the first and
+  last 64 KiB of `evidence.jsonl` before its offset; when a rebase, pull or branch switch
+  rewrites those bytes, the index is rebuilt from byte 0 instead of resuming mid-file.
+  Remaining gap (LOW): a rewrite that changes only bytes outside both windows of a log larger
+  than 128 KiB, with the offset landing on identical bytes, is not detected; deleting
+  `.plumb/cache/evidence_index.json` always rebuilds.
+- [MEDIUM] (VERIFY, `src/plumb/verify/api.py`) The same-tree flaky rerun uses the full
+  hard-limit timeout again, so one Stop-hook run can take about 2 x 1.5 x budget (about 45 s at
+  the defaults), and a test-first red test is rerun on every turn. Scenario: a selection with a
+  hanging or slow failing test uses its 22.5 s, then the rerun uses another 22.5 s, so the
+  per-turn budget is exceeded. Recorded, not fixed.
+- [LOW] (VERIFY, `src/plumb/verify/api.py`) `full_pending()` and `uncovered_sources()` look
+  only at `.py` files in the test map. A changed non-Python source file that triggered the
+  unknown-coverage sample (spec 7.2 `is_source`, for example `src/pkg/data.json` with no
+  covering test) does not keep full verification pending. Separately, `removed_after_passing`
+  lists a deliberately renamed passing test indefinitely. Recorded, not fixed.

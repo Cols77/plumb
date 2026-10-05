@@ -96,21 +96,23 @@ def _collect_error_hits(errors: Sequence[str], test_file: str) -> bool:
 
 
 def mark_collection_failures(result: RunResult, targets: Sequence[str],
-                             known: Mapping[str, Iterable[str]]) -> list[str]:
+                             known: Mapping[str, Iterable[str]], *,
+                             everything: bool = False) -> list[str]:
     """Record the known nodes of every target that failed to collect as ``failed``.
 
     ``targets`` are the selection's arguments (test files or node ids); ``known`` maps a test
     file to its known node ids (recorded ids and the ids its source defines). A node id target
-    marks only its own nodes. Nodes the run reported stay as they are. Returns the marked ids.
+    marks only its own nodes. Nodes the run reported stay as they are. ``everything`` (an
+    aborted session) treats every target as failed to collect. Returns the marked ids.
     """
     from plumb.verify.markers import strip_param
 
-    if not result.collection_errors:
+    if not result.collection_errors and not everything:
         return []
     marked: list[str] = []
     for target in targets:
         test_file, _, rest = target.partition("::")
-        if not _collect_error_hits(result.collection_errors, test_file):
+        if not everything and not _collect_error_hits(result.collection_errors, test_file):
             continue
         for node in known.get(test_file, ()):
             if rest and not (node == target or strip_param(node) == target

@@ -123,6 +123,9 @@ def report_lines(report: Any) -> list[str]:
     if report.timed_out:
         lines.append(f"plumb: timeout after {report.timeout_s:g} s: the run gives no fresh "
                      "evidence; narrow it with --nodes or raise --budget")
+    if report.aborted:
+        lines.append(f"plumb: run aborted ({report.aborted}): the selected tests did not run "
+                     "and count as failed; fix the cause and run again")
     if report.discarded:
         lines.append(f"plumb: run discarded ({report.discarded} during the run): no fresh "
                      "evidence; run it again")
