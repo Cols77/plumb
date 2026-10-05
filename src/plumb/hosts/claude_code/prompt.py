@@ -122,8 +122,10 @@ def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
     data = read_json(stated_path)
     if not isinstance(data, dict):
         return None
-    wanted = [str(item.get("id")) for item in data.get("records") or []
-              if isinstance(item, dict) and item.get("id")]
+    items = [item for item in data.get("records") or []
+             if isinstance(item, dict) and item.get("id")]
+    wanted = [str(item["id"]) for item in items]
+    hidden = {str(item["id"]) for item in items if item.get("shown") is False}
     if not wanted:
         return None
     current = core.status([i for i in wanted if i in core.index()])
@@ -131,10 +133,18 @@ def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
     if not pending:
         return None
     short = digest.removeprefix("sha256:")[:12]
-    ids = " ".join(pending)
-    return (f"plumb: awaiting confirmation: {', '.join(pending)} | prompt sha256:{short} | "
-            f"if this prompt affirms them, run plumb relay {ids} --prompt {short} --quote "
-            "\"<owner's exact words>\"; otherwise leave them proposed.")
+    shown = [i for i in pending if i not in hidden]
+    unshown = [i for i in pending if i in hidden]
+    line = f"plumb: awaiting confirmation: {', '.join(pending)} | prompt sha256:{short} | "
+    if shown:
+        line += (f"if this prompt affirms them, run plumb relay {' '.join(shown)} --prompt "
+                 f"{short} --quote \"<owner's exact words>\"; ")
+    if unshown:
+        verb = "was" if len(unshown) == 1 else "were"
+        pronoun = "it" if len(unshown) == 1 else "them"
+        line += (f"{', '.join(unshown)} {verb} not shown in full: relay {pronoun} only if the "
+                 f"owner's words name {pronoun}; ")
+    return line + "otherwise leave them proposed."
 
 
 def escalation_lines(ctx: HookContext) -> list[str]:

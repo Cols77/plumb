@@ -181,6 +181,23 @@ def test_awaiting_confirmation_lists_stated_set_with_digest(records: Path,
             "words>\"; otherwise leave them proposed.") in out
 
 
+def test_awaiting_confirmation_separates_records_not_shown(records: Path,
+                                                           hook_input) -> None:
+    index = open_core(records).index()
+    stated = {"at": "2026-10-06T03:00:00Z", "session": "s1", "reply_after_prompt": None,
+              "records": [{"id": "SR-009", "hash": index["SR-009"].hash, "shown": True},
+                          {"id": "SR-004", "hash": index["SR-004"].hash, "shown": False}]}
+    (records / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
+    (records / ".plumb" / "session" / "stated.json").write_text(json.dumps(stated), "utf-8")
+    text = "ok, go on"
+    out = _run(records, hook_input, text)
+    short = approvals.prompt_digest(text).removeprefix("sha256:")[:12]
+    assert (f"plumb: awaiting confirmation: SR-009, SR-004 | prompt sha256:{short} | if this "
+            f"prompt affirms them, run plumb relay SR-009 --prompt {short} --quote \"<owner's "
+            "exact words>\"; SR-004 was not shown in full: relay it only if the owner's "
+            "words name it; otherwise leave them proposed.") in out
+
+
 def test_backend_unavailable_degrades(records: Path, hook_input) -> None:
     _confirm(records, "SR-004")
     out = _run(records, hook_input, "SR-004 should now change", backend=None)

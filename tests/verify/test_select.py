@@ -95,10 +95,23 @@ def test_budget_defers_overflow(project: Path) -> None:
 def test_unknown_duration_counts_one_second(project: Path) -> None:
     for i in range(5):
         write(project, f"tests/test_m{i}.py", "import pkg.mod\n\n\ndef test_x():\n    pass\n")
+    # the selection fills 65 % of the budget (verify.fill_fraction): 2.6 s of 4 s
     sel = _select(project, ["src/pkg/mod.py"], budget_s=4)
-    assert len(sel.nodes) == 4
-    assert sel.expected_s == 4.0
-    assert len(sel.deferred) == 3
+    assert len(sel.nodes) == 2
+    assert sel.expected_s == 2.0
+    assert len(sel.deferred) == 5
+
+
+@pytest.mark.sr("SR-017")
+def test_selection_fills_a_fraction_of_the_budget_scaled_by_observed_time(
+        project: Path) -> None:
+    """A run slower than its estimate must not fill the whole budget (hard limit 1.5x)."""
+    for i in range(5):
+        write(project, f"tests/test_m{i}.py", "import pkg.mod\n\n\ndef test_x():\n    pass\n")
+    sel = _select(project, ["src/pkg/mod.py"], budget_s=10)
+    assert len(sel.nodes) == 6 and sel.expected_s == 6.0
+    slow = _select(project, ["src/pkg/mod.py"], budget_s=10, scale=2.0)
+    assert len(slow.nodes) == 3 and slow.expected_s == 6.0
 
 
 @pytest.mark.sr("SR-017")

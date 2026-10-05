@@ -147,6 +147,28 @@ def test_relay_rejects_record_outside_stated_set_unless_named(setup: Path) -> No
     assert _confirmation(setup, "SR-002") == "confirmed"
 
 
+def test_relay_requires_naming_records_the_reply_did_not_show(setup: Path) -> None:
+    """A record cut from the summary (``shown: false``) is confirmed only when named."""
+    index = open_core(setup).index()
+    stated = setup / ".plumb" / "session" / "stated.json"
+    stated.parent.mkdir(parents=True, exist_ok=True)
+    stated.write_text(json.dumps({"at": "2026-10-06T02:59:00Z", "session": "s1",
+                                  "reply_after_prompt": None, "records": [
+                                      {"id": "SR-001", "hash": index["SR-001"].hash,
+                                       "shown": True},
+                                      {"id": "SR-002", "hash": index["SR-002"].hash,
+                                       "shown": False}]}), encoding="utf-8")
+    digest = log_prompt(setup, "ok")
+    with pytest.raises(approvals.Refused, match="SR-002 was not shown in full"):
+        approvals.relay(open_core(setup), ["SR-001", "SR-002"], prompt=digest, quote="ok")
+    assert _confirmation(setup, "SR-001") == "proposed"  # nothing was written
+    approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="ok")
+    assert _confirmation(setup, "SR-001") == "confirmed"
+    digest = log_prompt(setup, "SR-002 ok too", at="2026-10-06T03:00:01Z")
+    approvals.relay(open_core(setup), ["SR-002"], prompt=digest, quote="SR-002 ok")
+    assert _confirmation(setup, "SR-002") == "confirmed"
+
+
 def test_relay_rejects_stated_set_written_after_prompt(setup: Path) -> None:
     digest = log_prompt(setup, "ok", at="2026-10-06T03:00:00Z")
     state_set(setup, ["SR-001"], at="2026-10-06T03:05:00Z")

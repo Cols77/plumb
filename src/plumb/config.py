@@ -23,6 +23,7 @@ DEFAULT_AFFIRMATIONS = ("ok", "okay", "yes", "approve", "approved", "confirm", "
 class VerifyConfig:
     turn_budget_s: float = 15
     hard_limit_factor: float = 1.5
+    fill_fraction: float = 0.65  # a selection's estimate fills this share of the budget
     sample_size: int = 10
     default_test_s: float = 1.0
     workers: int = 0

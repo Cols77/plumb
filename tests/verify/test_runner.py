@@ -38,6 +38,22 @@ def test_hard_limit_terminates_own_child(tmp_path: Path) -> None:
 
 
 @pytest.mark.sr("SR-018")
+def test_timeout_keeps_the_tests_that_finished_before_it(tmp_path: Path) -> None:
+    """A timed-out run still reports every test that completed (setup, call, teardown)."""
+    root = tmp_path / "partial"
+    write(root, "pytest.ini", "[pytest]\n")
+    write(root, "tests/test_mix.py",
+          "import time\n\n\ndef test_a():\n    pass\n\n\ndef test_b():\n    assert 0\n\n\n"
+          "def test_c():\n    time.sleep(60)\n")
+    result = run_pytest(root, ["tests/test_mix.py"], timeout_s=12)
+    assert result.timed_out is True and result.finished is False
+    assert result.nodes["tests/test_mix.py::test_a"]["outcome"] == "passed"
+    assert result.nodes["tests/test_mix.py::test_b"]["outcome"] == "failed"
+    assert "tests/test_mix.py::test_c" not in result.nodes  # never finished
+    assert result.exit_status is None
+
+
+@pytest.mark.sr("SR-018")
 def test_run_discarded_when_inputs_change(repo: Path) -> None:
     make_project(repo)
     write(repo, "tests/test_mutates.py",

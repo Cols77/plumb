@@ -37,6 +37,7 @@ Keep agent work aligned with the owner's intent.
 
 records and integrity:
   init         adopt this repository (.plumb/)
+  show         print records in full (read-back, examples, assumptions, alternatives)
   link         add a hash-pinned link between a record and a record, file or test
   repin        refresh link pins (never confirms)
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
@@ -45,7 +46,8 @@ records and integrity:
   approve      owner approval of records at their current content (owner's terminal only)
   relay        record an owner approval the agent relays, with the owner's quote
   revoke       owner revocation
-  new, show, drift, why, log
+  drift        drift signals only
+  new, why, log  (not available in this build)
 
 verification:  tests (map | select | run), map, verify, impact
 host:          hook, hooks, install, statusline

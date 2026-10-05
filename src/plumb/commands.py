@@ -1,4 +1,4 @@
-"""CORE commands: init, link, repin, validate, status, brief, approve, relay, revoke."""
+"""CORE commands: init, show, link, repin, validate, status, brief, approve, relay, revoke."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ CONFIG_TEMPLATE = """\
 # verify:
 #   turn_budget_s: 15
 #   hard_limit_factor: 1.5
+#   fill_fraction: 0.65        # estimates (scaled by observed pace) fill 65 % of the budget
 #   sample_size: 10
 #   default_test_s: 1.0
 #   workers: 0                 # 0 = no -n; at most 2
@@ -26,7 +27,7 @@ CONFIG_TEMPLATE = """\
 #   budget_ms: {session_start: 900, prompt: 600, stop: 800, post_edit: 300}
 #   brief_lines: 30
 #   prompt_lines: 20
-#   summary_proposed_cap: 3
+#   summary_proposed_cap: 3    # records shown in full per summary
 # approve:
 #   affirmations: [ok, okay, yes, approve, approved, confirm, confirmed, agreed, lgtm,
 #                  go ahead, sounds good]
@@ -500,6 +501,20 @@ def cmd_drift(command: str, argv: list[str]) -> int:
     return code
 
 
+def cmd_show(command: str, argv: list[str]) -> int:
+    from plumb.readback import show_lines
+
+    parser = _parser(command, "Print records in full: the read-back, will/won't, labelled "
+                     "assumptions, every example, the alternatives and the body.")
+    parser.add_argument("ids", nargs="+", metavar="ID")
+    args = parser.parse_args(argv)
+    lines, missing = show_lines(_core(args), args.ids)
+    for record_id in missing:
+        print(f"plumb: no record {record_id}", file=sys.stderr)
+    emit({"lines": lines, "missing": missing} if args.as_json else lines, args.as_json)
+    return 1 if missing else 0
+
+
 def _not_built(command: str, argv: list[str]) -> int:
     print(f"plumb: '{command}' is not available in this build", file=sys.stderr)
     return EXIT_USAGE
@@ -507,6 +522,7 @@ def _not_built(command: str, argv: list[str]) -> int:
 
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "init": cmd_init,
+    "show": cmd_show,
     "link": cmd_link,
     "repin": cmd_repin,
     "approve": cmd_approve,

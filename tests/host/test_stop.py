@@ -168,7 +168,13 @@ def test_summary_shows_stale_link(project: Path, hook_input) -> None:
     assert "stale: SR-001#0 -> src/calc.py (target moved)" in summary.splitlines()[0]
 
 
-def test_summary_caps_proposed_lines(project: Path, hook_input, write_record) -> None:
+def _stated(repo: Path) -> dict[str, bool]:
+    data = json.loads((repo / ".plumb" / "session" / "stated.json").read_text("utf-8"))
+    return {r["id"]: r["shown"] for r in data["records"]}
+
+
+def test_summary_caps_proposed_records_and_names_the_rest(project: Path, hook_input,
+                                                          write_record) -> None:
     start_turn(project)
     for i in range(2, 7):
         text = (f"---\nid: SR-00{i}\ntitle: Rule {i}\nstatement: rule {i} holds\nexamples:\n"
@@ -177,12 +183,104 @@ def test_summary_caps_proposed_lines(project: Path, hook_input, write_record) ->
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
     lines = summary.splitlines()
     proposed = [line for line in lines if line.startswith("plumb: proposed")]
-    assert len(proposed) == 3
-    assert proposed[0] == "plumb: proposed SR-002: rule 2 holds"
-    assert "plumb: proposed SR-002/EX-1: given g2, when w2, then t2" in proposed
-    assert lines[-1].startswith("plumb: +") and lines[-1].endswith("more (plumb status)")
-    assert len(lines) <= 5 + 3 + 1
+    # the cap counts records, and a shown record shows its statement and every example
+    assert proposed == [
+        "plumb: proposed SR-002: rule 2 holds",
+        "plumb: proposed SR-002/EX-1: given g2, when w2, then t2",
+        "plumb: proposed SR-003: rule 3 holds",
+        "plumb: proposed SR-003/EX-1: given g3, when w3, then t3",
+        "plumb: proposed SR-004: rule 4 holds",
+        "plumb: proposed SR-004/EX-1: given g4, when w4, then t4",
+    ]
+    assert lines[-1] == ("plumb: +2 more not shown: SR-005, SR-006 (plumb show SR-005 SR-006); "
+                         "a confirmation must name them")
+    # only what the owner saw is relayable by a bare affirmation
+    assert _stated(project) == {"SR-002": True, "SR-003": True, "SR-004": True,
+                                "SR-005": False, "SR-006": False}
     assert _block(json.dumps({"systemMessage": summary})) is None
+
+
+INT_DIV = """---
+id: INT-001
+title: Divide numbers
+quote: add a divide function
+readback: You want a divide function for two numbers.
+will:
+- add divide(a, b)
+wont:
+- handle complex numbers
+assumptions:
+- id: A-1
+  text: division by zero raises ValueError
+---
+"""
+SR_DIV = """---
+id: SR-002
+title: Divide
+statement: divide returns a / b.
+examples:
+- id: EX-1
+  given: 6 and 3
+  when: divide runs
+  then: it returns 2
+- id: EX-2
+  given: 1/0
+  when: divide runs
+  then: it returns 0
+- id: EX-3
+  given: -6 and 3
+  when: divide runs
+  then: it returns -2
+---
+"""
+DEC_DIV = """---
+id: DEC-002
+title: Division kind
+chosen: integer floor division
+alternatives:
+- true float division
+matters: false
+---
+"""
+
+
+@pytest.mark.sr("SR-005")
+def test_summary_shows_every_example_assumption_and_wont(project: Path, hook_input) -> None:
+    """The owner's "ok" can only confirm what the summary displayed (R1, R2)."""
+    start_turn(project)
+    edit(project, ".plumb/intents/INT-001.md", INT_DIV)
+    edit(project, ".plumb/requirements/SR-002.md", SR_DIV)
+    edit(project, ".plumb/decisions/DEC-002.md", DEC_DIV)
+    summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
+    for expected in (
+            "plumb: proposed INT-001: You want a divide function for two numbers.",
+            "plumb: proposed INT-001 won't: handle complex numbers",
+            "plumb: proposed INT-001/A-1 assumption: division by zero raises ValueError",
+            "plumb: proposed SR-002/EX-2: given 1/0, when divide runs, then it returns 0",
+            "plumb: proposed SR-002/EX-3: given -6 and 3, when divide runs, then it returns -2",
+            "plumb: proposed DEC-002 alternatives: true float division"):
+        assert expected in summary.splitlines()
+    assert "more" not in summary.splitlines()[-1]
+    assert _stated(project) == {"DEC-002": True, "INT-001": True, "SR-002": True}
+
+
+def test_a_line_too_long_to_show_leaves_the_record_unshown(project: Path,
+                                                          hook_input) -> None:
+    start_turn(project)
+    long = "x" * 600
+    edit(project, ".plumb/requirements/SR-002.md",
+         SR_DIV.replace("it returns 0", "it returns " + long))
+    summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
+    assert "SR-002" in summary.splitlines()[-1]
+    assert _stated(project) == {"SR-002": False}
+
+
+def test_a_blocked_stop_shows_the_owner_nothing(project: Path, hook_input) -> None:
+    start_turn(project)
+    edit(project, ".plumb/requirements/SR-002.md", SR_DIV)
+    edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
+    assert _block(run_stop(project, hook_input, verify=FakeVerify(nodes=(NODE,)))) is not None
+    assert _stated(project) == {"SR-002": False}
 
 
 def test_regression_blocks_with_owner_instruction(project: Path, hook_input) -> None:
@@ -269,7 +367,8 @@ def test_writes_stated_set(project: Path, hook_input) -> None:
     run_stop(project, hook_input, verify=FakeVerify(), active=True)
     stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
     index = open_core(project).index()
-    assert stated["records"] == [{"id": "SR-002", "hash": index["SR-002"].hash}]
+    assert stated["records"] == [{"id": "SR-002", "hash": index["SR-002"].hash,
+                                  "shown": True}]
     assert stated["session"] == "s1" and stated["reply_after_prompt"] == "sha256:" + "a" * 64
     # the stated set is what plumb relay accepts on the owner's next "ok"
     text = "ok, sounds right"

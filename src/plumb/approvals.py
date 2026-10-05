@@ -8,7 +8,7 @@ Only two sources confirm a record:
    cited prompt must be in the prompt log and hash to its digest, the quote must be a verbatim
    part of it and contain an affirmation that no negation before it in its sentence turns
    into an objection and that is not in a question, and every record must be in the stated
-   set of the reply before that prompt or be named in the quote.
+   set of the reply before that prompt, shown there in full, or be named in the quote.
 
 Silence, or a prompt that neither affirms nor objects, confirms nothing.
 """
@@ -151,8 +151,13 @@ def find_prompt(core: Core, given: str) -> Mapping[str, Any]:
     return {**entry, "digest": digest}
 
 
-def _stated(core: Core, prompt_at: str) -> tuple[dict[str, str], list[str]]:
-    """The stated set ``{id: hash}`` of the reply before the prompt, and its ids."""
+def _stated(core: Core, prompt_at: str) -> tuple[dict[str, tuple[str, bool]], list[str]]:
+    """The stated set ``{id: (hash, shown)}`` of the reply before the prompt, and its ids.
+
+    ``shown`` is false for a record the reply did not display in full (cut by the summary
+    cap, too long, or a blocked stop); a stated set written before ``shown`` existed counts
+    every record as shown.
+    """
     try:
         data = json.loads(core.paths.stated.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -162,10 +167,10 @@ def _stated(core: Core, prompt_at: str) -> tuple[dict[str, str], list[str]]:
     stated_at = str(data.get("at") or "")
     if stated_at and prompt_at and stated_at > prompt_at:
         return {}, []  # written after the prompt: not the reply the owner answered
-    records = {}
+    records: dict[str, tuple[str, bool]] = {}
     for item in data.get("records") or []:
         if isinstance(item, Mapping) and isinstance(item.get("id"), str):
-            records[item["id"]] = str(item.get("hash") or "")
+            records[item["id"]] = (str(item.get("hash") or ""), item.get("shown") is not False)
     return records, list(records)
 
 
@@ -269,10 +274,15 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
     index = core.index()
     for item in records:
         record_id = item["id"]
-        in_set = record_id in stated and stated[record_id] in ("", index[record_id].hash)
-        if not in_set and not _named(record_id, normalized_quote):
+        if _named(record_id, normalized_quote):
+            continue
+        stated_hash, shown = stated.get(record_id, (None, False))
+        if stated_hash is None or stated_hash not in ("", index[record_id].hash):
             raise Refused(f"{record_id} is not in the stated set of the reply before that "
                           "prompt and the quote does not name it")
+        if not shown:
+            raise Refused(f"{record_id} was not shown in full in the reply before that "
+                          "prompt (plumb show prints it); the quote must name it")
     digest = str(entry["digest"])
     known = {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}
     if digest not in known:

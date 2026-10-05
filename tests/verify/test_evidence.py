@@ -81,6 +81,31 @@ def test_reuse_miss_names_differing_part() -> None:
                            env_key="E").state == "fresh-pass"
 
 
+@pytest.mark.sr("SR-017")
+def test_observed_run_time_scales_the_estimates() -> None:
+    """Each run's wall clock against its estimate adapts the budget fill (VS2)."""
+    index = {"v": 1, "offset": 0, "prefix": None, "nodes": {}, "full": None, "removed": {}}
+    apply_entry(index, {"run_id": "r1", "nodes": [],
+                        "timing": {"expected_s": 10.0, "elapsed_s": 15.0}})
+    assert index["scale"] == 1.25  # halfway from 1.0 to the observed 1.5
+    # a timeout is a lower bound: the scale rises to it at once
+    apply_entry(index, {"run_id": "r2", "nodes": [], "timeout": True,
+                        "timing": {"expected_s": 14.6, "elapsed_s": 22.5}})
+    assert index["scale"] == pytest.approx(22.5 / 14.6, abs=1e-3)
+    # a short run is mostly start-up time: it teaches nothing
+    before = index["scale"]
+    apply_entry(index, {"run_id": "r3", "nodes": [],
+                        "timing": {"expected_s": 0.5, "elapsed_s": 3.0}})
+    assert index["scale"] == before
+    # a discarded run teaches nothing; the scale is capped
+    apply_entry(index, {"run_id": "r4", "nodes": [], "discarded": "inputs changed",
+                        "timing": {"expected_s": 10.0, "elapsed_s": 100.0}})
+    assert index["scale"] == before
+    apply_entry(index, {"run_id": "r5", "nodes": [], "timeout": True,
+                        "timing": {"expected_s": 0.05, "elapsed_s": 8.0}})
+    assert index["scale"] == 3.0
+
+
 @pytest.mark.sr("SR-018")
 def test_index_rebuilt_from_log_after_cache_delete(repo: Path) -> None:
     core = open_core(repo)

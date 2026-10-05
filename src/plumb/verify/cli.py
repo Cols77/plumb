@@ -121,8 +121,10 @@ def report_lines(report: Any) -> list[str]:
         head += f" | deferred {len(sel.deferred)} (budget)"
     lines = [head]
     if report.timed_out:
-        lines.append(f"plumb: timeout after {report.timeout_s:g} s: the run gives no fresh "
-                     "evidence; narrow it with --nodes or raise --budget")
+        lines.append(f"plumb: timeout after {report.timeout_s:g} s: "
+                     f"{len(report.outcomes)} finished and were recorded; the rest gives no "
+                     "evidence (the next selection allows for this pace); run again, or "
+                     "narrow it with --nodes")
     if report.aborted:
         lines.append(f"plumb: run aborted ({report.aborted}): the selected tests did not run "
                      "and count as failed; fix the cause and run again")

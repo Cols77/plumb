@@ -819,3 +819,145 @@ the source; 85 SR, 24 FEAT, 22 NC, 550 links):
 - [LOW] (importer) 8 `relation-skipped` findings are `relates_to spec:SPEC-*` relations;
   sub-project 5 decides whether they become `relates_to` path links (fork plan F3, owner
   decision 4).
+
+## Delivered-repository intent review (2026-10-06)
+
+An intent review of the whole delivered repository, with plumb's own `validate`, `drift`,
+`brief` and hooks run for real on plumb itself and on scratch repositories.
+
+Fixed (HIGH):
+- [HIGH, fixed] (stop summary, relay) A one-line "ok" could confirm content the owner was
+  never shown. The summary cap counted lines (3). A turn that wrote INT-001, SR-002 (3
+  examples, one a contradictory edge case) and DEC-001 showed only three head lines and
+  "+3 more (plumb status)". The stated set still held all three records, so `plumb relay ...
+  --quote ok` confirmed them, including the unseen assumption and edge case. Now the cap
+  counts records (`hooks.summary_proposed_cap`). A shown record shows every line of its
+  read-back (`plumb.readback.record_lines`: an INT's read-back, will, won't and labelled
+  assumptions; an SR's statement and every given/when/then; a DEC's chosen option and
+  alternatives). Each stated record carries `shown`. A record is `shown: false` when the cap
+  cut it, when it has a line over 400 characters, or when the stop blocked; `plumb relay`
+  refuses such a record unless the quote names its ID. The "+N more not shown" line names
+  those records and the new `plumb show <IDs>` command, which prints them in full. The
+  prompt hook's awaiting line lists the two groups separately.
+- [HIGH, fixed] (verify runner, dogfooding) On plumb's own repository, a one-line edit to
+  `src/plumb/hashing.py` selected 6 covering files estimated at 14.6 s. On this loaded
+  2-core machine they take 22.7 s, so the run hit the 22.5 s hard limit. The runner dropped
+  every result ("ran 0 tests ... no fresh evidence") and learned no duration, so every such
+  turn waited 23 s for nothing. The `--paths` fix of the integration round did not cover
+  this. Now the plugin streams each phase to `$PLUMB_REPORT.stream`, and a timed-out run
+  keeps every test that finished through teardown. Each test-run entry carries
+  `timing: {expected_s, elapsed_s}`, and the evidence index folds it into a pace scale: half
+  way toward the observed ratio for a finished run of 2 s or more, at once for a timeout,
+  within [1, 3]. The selection fills `verify.fill_fraction` (0.65) of the budget with the
+  scaled estimates. Regression test: `tests/verify/test_budget_overrun.py`.
+
+Recorded (MEDIUM and LOW, not fixed in this round):
+- [MEDIUM] (dogfooding) All 54 of plumb's own records are proposed (`SR 0/25 ok | proposed
+  54`). Trigger 1 fires only on confirmed records. A prompt that contradicts R5 ("always run
+  the full test suite every turn") surfaced DEC-006 and SR-017 but raised no flag, and every
+  merge boundary waits on 21+ records. This is correct under R1. Fix: in the README and the
+  hand-off, point the owner to one `uv run plumb approve --proposed` (or the INT and SR set)
+  in their own terminal. Optionally, add a brief line saying intent-change detection is idle
+  until records are confirmed.
+- [MEDIUM] (`/plumb` command) `.claude/commands/plumb.md` advertises `why <ID|path>`, but
+  `plumb why` exits 2 ("not available in this build"). With no `plumb new`, the agent
+  hand-writes YAML frontmatter. Fix: drop `why` from the hint and allowed-tools, or alias it
+  to `impact`; record `plumb new`. (`plumb show` now exists.)
+- [LOW] (merge boundary) `plumb validate --merge <base>` prints every pending requirement in
+  full (the statement and every example, across 21+ records), against R2's "quick owner
+  glance". Fix: one line per record by default (ID, title, example count), with the full
+  text behind `--verbose` (or `plumb show`).
+- [LOW] (README ~290) The README links `docs/plans/fork-plan.md`, but the fork plan is at
+  `docs/fork-plan.md`. Fix: change the link.
+- [LOW] (docs weight) The docs come to about 4.3k lines for a light tool: concept 887, sp1
+  spec 1405, plan 772, fork-plan 446, followups 821. The runtime is light (0.3 to 1.2 s per
+  hook and command). Optional: once sub-project 1 settles, condense the sp1 spec into the
+  concept and keep this file pruned.
+- [MEDIUM] (`plumb --help`, concept 6.6) `plumb log`, `plumb new` and `plumb why` are
+  reserved and answer "not available in this build". `show` is now built, and the help text
+  marks the rest as not available. Concept 6.6 names `plumb log` as the way to read logged
+  items on demand; today the owner reads `.plumb/log/*.jsonl` or uses
+  `status`/`drift`/`validate`. Fix: implement at least `plumb log` (a filtered, readable
+  view of events.jsonl, evidence.jsonl and session errors).
+- [MEDIUM] (importer, SR-023, concept 10) Concept 10 says an imported record whose upstream
+  owner approval pins its current content gets an approval `by: import`. The importer and
+  SR-023 import everything as proposed instead, so a migration loses every owner approval
+  (about 100 SRs to re-confirm). This is safe, since it never manufactures a confirmation,
+  but it contradicts the concept without a recorded decision. Fix: carry pinned upstream
+  approvals over as `by: import` entries citing the upstream record, or record a DEC and
+  update concept 10.
+- [LOW] (hook latency, SR-014) Measured hook times: session-start 1194 ms against 900 ms,
+  with two "watchdog: hard limit 1.9s reached" entries; prompt 616 to 697 ms against 600 ms;
+  stop 510 to 876 ms against 800 ms; statusline about 290 ms. The per-turn total stays under
+  2 s and the hooks degrade gracefully. Fix: re-baseline the SR-014 budgets, or trim
+  session-start (reuse the cached snapshot instead of recomputing freshness for 373 tests).
+- [LOW] (dogfooding bootstrap) `plumb validate --merge` exits 4 on plumb itself until the
+  owner confirms the seeded records. Fix: state prominently, in the README's dogfooding
+  section and the hand-off, that one `plumb approve --proposed` in the owner's terminal
+  confirms the seeded INT/SR/DEC records, and that trigger 1 cannot fire until then.
+- [LOW] (DEC-004 vs concept 4.6, 4.7) DEC-004 keeps prompt digests in gitignored session
+  state and commits a digest only when an approval cites it, while concept 4.6 commits every
+  prompt digest. R2 still holds: a relay produced an agent-relayed entry with the quote and
+  digest, and a mismatched quote exited 3. Fix: update concept 4.6 and 4.7 to cite DEC-004
+  and the events.jsonl single-file layout.
+- [MEDIUM] (relay, trigger 2) A trigger-2 question is phrased as a choice ("I assumed
+  integer floor division; true float division also fits. Which one?"), yet a bare "ok"
+  passes the affirmation check and confirms the chosen option. Fix: for a DEC asked as a
+  choice, require the quote to name the chosen option (or a term from it) or the DEC ID, and
+  refuse a bare affirmation.
+- [MEDIUM] (merge boundary, dogfooding) plumb's lanes were merged into `main` with every
+  touched requirement unconfirmed, and `plumb validate --merge HEAD~5` exits 4. This was
+  unavoidable without the owner and is reported honestly. But the README never says that
+  the owner's first act is to confirm or revise plumb's own 15 INT, 25 SR and 13 DEC
+  records, or that the bootstrap merges predate any confirmation. Fix: a short "first
+  morning" note in the README and the fork plan (`plumb validate --merge <root>`, then
+  `plumb approve --proposed` or per record).
+- [MEDIUM] (intent-change detection) (a) In a scratch repository, the first prompt hook call
+  printed only "check skipped (budget)" (cold start over 600 ms). (b) "make add return a
+  minus b instead of the sum" was not flagged against confirmed SR-001; only the generic
+  compare nudge appeared, while naming "SR-001:" did flag. (c) In plumb's own repository,
+  "let approvals stay confirmed after a record is edited" did not surface SR-004. (d) An
+  edit of a confirmed record showed as plain "proposed" in the summary and the status line.
+  Fix: warm or trim the prompt hook's cold path; add lexical contradiction cues ("instead
+  of", "no longer", "stop", negation of a statement term); label edits of confirmed records
+  "unconfirmed edit".
+- [MEDIUM] (merge boundary, examples to tests) `plumb validate --merge` exits 0 while it
+  reports "confirmed but not covered" and "full verification pending", so the example-to-test
+  chain is only advisory. The spec defers this gating to sub-project 3. Fix: a non-zero exit
+  (1) when touched confirmed examples are uncovered or full verification is pending, or list
+  it as the first sub-project 3 item in the fork plan.
+- [MEDIUM] (record authoring) There is no `plumb new` or `why` (`show` is now built), so the
+  agent hand-writes INT/SR/DEC YAML for every read-back, example and decision. Fix:
+  prioritize `plumb new intent|requirement|decision` as the first sub-project 2 item.
+- [LOW] (README, last paragraph) The same broken fork-plan link as above
+  (`docs/plans/fork-plan.md` -> `docs/fork-plan.md`).
+- [MEDIUM] (SessionStart cold start) In a fresh clone with a newly synced `.venv`, the first
+  two SessionStart runs printed only "check skipped (budget)" (2.4 s, 2.1 s), so the agent
+  gets no intent brief in the first sessions after a clone or a venv rebuild. The third run
+  worked (0.9 s). Fix: when the budget runs out, print the brief from records alone and skip
+  only the test-map and evidence part, or warm the caches on `plumb init` /
+  `plumb hooks install`.
+- [MEDIUM] (dogfooding activation) With 0 confirmed records, "drop the hash staleness check"
+  raised no flag on plumb itself. In a clone, after SR-003 and INT-006 were approved, the
+  same prompt was flagged. Nothing in the session names the one command that switches
+  dogfooding on. Fix: have the brief or the status line name the next step ("run plumb
+  approve --proposed ... to activate intent-change checks"), and add it to the README
+  quickstart.
+- [MEDIUM] (stop block launcher) The Stop block tells the agent to run a bare
+  `plumb tests run --paths ...`. The installed hooks, SKILL.md and the CLAUDE.md block use
+  `.venv/Scripts/python.exe -m plumb`, `plumb` is not on PATH in the dogfood repository, and
+  the settings have no allow rule for the command. Fix: render the instruction with the
+  installer's `--launcher`; optionally add a `permissions.allow` entry for it.
+- [LOW] (NC authoring) The NC kind is parsed, validated and imported, but no command creates
+  an NC or any other record (CORE SHOULD, scheduled above). Fix: build `plumb new`, NC
+  included.
+- [LOW] (trailer history) Several lane commits made after 4c08b64 (1e7916a, c48bf33,
+  2277cc5, 95e4df3, 51f9c0c, 11feb57 and others) carry no `SR:` trailer. The 36 undeclared
+  (commit, path) pairs are listed in this file rather than in an NC-backed baseline.
+  Integration commits since 553e843 are clean and the commit-msg hook is installed. Fix:
+  leave the history; optionally open an NC so the `claims.yaml` baseline exercises the KEEP
+  item.
+- [LOW] (status wording) `plumb status` says "25 total, 0 confirmed, 0 covered" while brief
+  and drift say "uncovered examples 0": "covered" there means confirmed and covered. The
+  verifier's hook runs also wrote `.plumb/session/verifier-deliv` (gitignored, harmless).
+  Fix: label the figure "confirmed and covered", or show both counts.

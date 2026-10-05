@@ -5,7 +5,10 @@ changed; tests that mention a changed path literally; tests whose import closure
 changed file, nearest first; tests matched by naming. Documentation selects nothing; shared
 test infrastructure adds nothing (it makes a full run pending); a changed source file with no
 covering test adds a bounded, deterministic sample of the nearest tests; the turn budget
-defers the overflow. A selection never names a directory, so it never runs the whole suite.
+defers the overflow. Estimates are recorded test durations times ``scale``, the pace observed
+in earlier runs (wall clock over estimate, from the evidence index), and they fill only
+``verify.fill_fraction`` of the budget, so a selection slower than its estimate still ends
+well before the hard limit. A selection never names a directory, so it never runs the whole suite.
 
 The infrastructure matcher and documentation rule are extracted from pi-agent-factory's
 ``coherence/integration/failure_policy.py`` (``InfrastructureMatcher``,
@@ -148,11 +151,14 @@ def expected_duration(entry: str, nodes_of: Callable[[str], list[str]],
 
 def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
                  budget_s: float | None = None,
-                 durations: Mapping[str, float] | None = None) -> Selection:
+                 durations: Mapping[str, float] | None = None,
+                 scale: float = 1.0) -> Selection:
     """The covering selection of ``changed`` (spec 7.2)."""
     config = core.config
     vcfg = config.verify
     budget = float(vcfg.turn_budget_s if budget_s is None else budget_s)
+    fill = budget * min(max(float(getattr(vcfg, "fill_fraction", 1.0)), 0.05), 1.0)
+    scale = max(float(scale or 1.0), 1.0)
     durations = dict(durations or {})
     family: dict[str, float] = {}
     for key, value in durations.items():  # parametrized ids also count for their node
@@ -218,8 +224,8 @@ def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
     deferred: list[str] = []
     total = 0.0
     for entry in ordered.items:
-        cost = expected_duration(entry, tmap.nodes_of, durations, vcfg.default_test_s)
-        if deferred or (chosen and total + cost > budget + 1e-9):
+        cost = scale * expected_duration(entry, tmap.nodes_of, durations, vcfg.default_test_s)
+        if deferred or (chosen and total + cost > fill + 1e-9):
             deferred.append(entry)
             continue
         chosen.append(entry)

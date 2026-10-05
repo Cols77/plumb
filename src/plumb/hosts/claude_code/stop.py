@@ -4,14 +4,19 @@
    ``git status`` call whose mtime is at or after the turn start.
 2. Their records (``CoreAPI.records_for_paths``), the link states of those records only, the
    covering selection (``VerifyAPI.select``) and its evidence.
-3. Write ``status.json`` and the stated set (``stated.json``).
+3. Write ``status.json`` and the stated set (``stated.json``). Each stated record carries
+   ``shown``: true only when the summary displayed its whole read-back (statement, every
+   example, will/won't, labelled assumptions, alternatives). A bare affirmation relays only
+   shown records; a record cut by ``hooks.summary_proposed_cap`` (counted in records) or too
+   long to show, or any record of a blocked stop, must be named in the owner's words.
 4. At most one block per turn, never when the host says ``stop_hook_active``: covering tests
    without fresh evidence (the agent runs ``plumb tests run --paths <this turn's paths>`` in
    its turn; the hook never runs pytest), an unconfirmed decision that matters (trigger 2,
    once per hash) and a regression (trigger 3, R3: a node that passed with recorded
    evidence and now fails; once per failing run). A new test that starts red is "not yet
    passing" and never asks.
-5. Otherwise a short ``systemMessage`` summary; proposed records are shown, never asked.
+5. Otherwise a short ``systemMessage`` summary; proposed records are shown, never asked,
+   and the ones not shown are named with the ``plumb show`` command that prints them.
 
 The deadline is checked before a step starts, never after it ends (spec 10): a step that
 would start past the soft budget is skipped and named in a ``check skipped (budget)`` notice,
@@ -44,6 +49,7 @@ IGNORED_FILES = (".plumb/test_map.txt",)
 SUMMARY_LINES = 5
 GIT_TIMEOUT_S = 0.6
 MAX_INSTRUCTION_PATHS = 8
+MAX_PROPOSED_LINE = 400
 
 
 def _clip(text: str, width: int = 120) -> str:
@@ -147,24 +153,45 @@ def _regression_line(node: str, evidence: Any) -> str:
             "Tell the owner, with a read-back, and ask how to proceed.")
 
 
-def _proposed_lines(record: Any) -> list[str]:
-    fields = record.fields
-    if record.kind == "intent":
-        text = fields.get("readback") or fields.get("quote") or record.title
-    elif record.kind == "requirement":
-        text = fields.get("statement") or record.title
-    elif record.kind == "decision":
-        text = f"{record.title}: {fields.get('chosen') or ''}".rstrip(": ")
-    else:
-        text = record.title
-    if isinstance(text, list):
-        text = " / ".join(map(str, text))
-    lines = [_clip(f"plumb: proposed {record.id}: {text}")]
-    for example in record.examples:
-        body = (f"given {example.given}, when {example.when}, then {example.then}"
-                if example.given or example.when or example.then else example.criterion)
-        lines.append(_clip(f"plumb: proposed {record.id}/{example.id}: {body}"))
-    return lines
+def proposed_lines(index: Mapping[str, Any], stated_ids: Sequence[str],
+                   cap: int) -> tuple[list[str], list[str]]:
+    """The ``proposed`` lines of the summary and the ids shown in full.
+
+    ``cap`` counts records, never lines: a shown record shows every line of its read-back
+    (``plumb.readback.record_lines``). A record past the cap, or with a line longer than
+    ``MAX_PROPOSED_LINE``, is not shown at all; the last line names it with the ``plumb
+    show`` command that prints it, and a confirmation must name it.
+    """
+    from plumb.readback import record_lines
+
+    lines: list[str] = []
+    shown: list[str] = []
+    cut: list[str] = []
+    for record_id in stated_ids:
+        rendered = [f"plumb: proposed {line}" for line in record_lines(index[record_id])]
+        if len(shown) >= max(cap, 0) or any(len(line) > MAX_PROPOSED_LINE
+                                            for line in rendered):
+            cut.append(record_id)
+            continue
+        lines.extend(rendered)
+        shown.append(record_id)
+    if cut:
+        lines.append(f"plumb: +{len(cut)} more not shown: {', '.join(cut)} "
+                     f"(plumb show {' '.join(cut)}); a confirmation must name them")
+    return lines, shown
+
+
+def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
+                 stated_ids: Sequence[str], shown: Iterable[str] = ()) -> None:
+    """The stated set of this reply: what a bare affirmation of the owner may confirm."""
+    from plumb.normalize import utc_now
+
+    shown = set(shown)
+    write_json_atomic(ctx.session_dir / "stated.json",
+                      {"at": utc_now(), "session": ctx.session_id,
+                       "reply_after_prompt": turn.get("prompt_digest"),
+                       "records": [{"id": i, "hash": index[i].hash, "shown": i in shown}
+                                   for i in stated_ids]})
 
 
 def _confirmations(core: Any, since: float) -> list[str]:
@@ -199,13 +226,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                             min(GIT_TIMEOUT_S, max(ctx.deadline.remaining_s(), 0.05)))
     from plumb.api import open_core
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
-    from plumb.normalize import utc_now
 
     core = open_core(ctx.root)
     if not changed:
-        write_json_atomic(ctx.session_dir / "stated.json",
-                          {"at": utc_now(), "session": ctx.session_id,
-                           "reply_after_prompt": turn.get("prompt_digest"), "records": []})
+        write_stated(ctx, turn, {}, [])
         return None
     skipped: list[str] = []
     ctx.deadline.check("record states")  # nothing below can run without them
@@ -241,10 +265,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     for d in decisions:
         if d not in stated_ids:
             stated_ids.append(d)
-    write_json_atomic(ctx.session_dir / "stated.json",
-                      {"at": utc_now(), "session": ctx.session_id,
-                       "reply_after_prompt": turn.get("prompt_digest"),
-                       "records": [{"id": i, "hash": index[i].hash} for i in stated_ids]})
+    # nothing is shown yet: a blocked stop (or a hook cut short) shows the owner nothing
+    write_stated(ctx, turn, index, stated_ids)
 
     unjudged = unjudged_fn(unjudged)
     requirement_ids = [i for i in touched_ids if index[i].kind == "requirement"]
@@ -282,9 +304,12 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     if ctx.deadline.expired():
         skipped.append("confirmations")
         turn_start = 0.0  # _confirmations reads no log without a turn start
-    return HookOutput(system_message=summary(
+    text, shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
-        pending, questions, fidelity, turn_start, verify is not None, skipped))
+        pending, questions, fidelity, turn_start, verify is not None, skipped)
+    if shown:
+        write_stated(ctx, turn, index, stated_ids, shown)
+    return HookOutput(system_message=text)
 
 
 def _quote(path: str) -> str:
@@ -312,7 +337,8 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
             changed: Sequence[str], touched_ids: Sequence[str], stated_ids: Sequence[str],
             selection: Any, evidence: Mapping[str, Any] | None, pending: Any,
             questions: Sequence[str], fidelity: Sequence[str], turn_start: float,
-            verify_available: bool, skipped: Sequence[str] = ()) -> str:
+            verify_available: bool, skipped: Sequence[str] = ()) -> tuple[str, list[str]]:
+    """The summary text and the stated ids it showed in full."""
     records_edited = any(index[i].path in set(changed) for i in touched_ids)
     doc_only = (selection.doc_only if selection is not None else
                 all(p.endswith(".md") or p.startswith("docs/") for p in changed))
@@ -327,7 +353,7 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
         if len(stale) > 1:
             touched += f" +{len(stale) - 1} more"
     if doc_only and not records_edited:
-        return touched + " | docs only, no tests selected"
+        return touched + " | docs only, no tests selected", []
     lines = [touched]
     if not verify_available:
         lines.append("plumb: verification unavailable")
@@ -359,16 +385,10 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
         lines.append(_clip("plumb: " + " | ".join(extra), 200))
     lines.append("plumb: questions: " + ("; ".join(questions) if questions else "none"))
     lines = lines[:SUMMARY_LINES]
-    proposed: list[str] = []
-    for record_id in stated_ids:
-        proposed.extend(_proposed_lines(index[record_id]))
-    cap = int(core.config.hooks.summary_proposed_cap)
-    if len(proposed) > cap:
-        lines.extend(proposed[:cap])
-        lines.append(f"plumb: +{len(proposed) - cap} more (plumb status)")
-    else:
-        lines.extend(proposed)
-    return "\n".join(lines)
+    proposed, shown = proposed_lines(index, stated_ids,
+                                     int(core.config.hooks.summary_proposed_cap))
+    lines.extend(proposed)
+    return "\n".join(lines), shown
 
 
 def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,

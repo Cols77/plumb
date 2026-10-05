@@ -123,10 +123,41 @@ def prefix_digest(path: Path, offset: int) -> str | None:
     return sha256_bytes(b"%d:" % offset + head + b":" + tail)
 
 
+MAX_SCALE = 3.0
+MIN_LEARN_S = 2.0  # a shorter run is mostly start-up time: its pace teaches nothing
+
+
+def learn_scale(index: dict[str, Any], payload: Mapping[str, Any]) -> None:
+    """Fold a run's pace (wall clock over the estimate of what it was asked to run) into
+    ``index["scale"]``: halfway toward a finished run's pace, and at once up to a timed-out
+    run's pace (a lower bound), within [1, ``MAX_SCALE``]."""
+    timing = payload.get("timing")
+    run_id = str(payload.get("run_id", ""))
+    if not isinstance(timing, Mapping) or payload.get("aborted"):
+        return
+    if run_id and index.get("scale_run") == run_id:
+        return  # the same entry folded twice
+    try:
+        expected = float(timing.get("expected_s") or 0)
+        elapsed = float(timing.get("elapsed_s") or 0)
+    except (TypeError, ValueError):
+        return
+    timed_out = bool(payload.get("timeout"))
+    if expected <= 0 or elapsed <= 0 or (expected < MIN_LEARN_S and not timed_out):
+        return
+    current = float(index.get("scale") or 1.0)
+    pace = min(max(elapsed / expected, 1.0), MAX_SCALE)
+    scale = max(current, pace) if timed_out else (current + pace) / 2
+    index["scale"] = round(min(max(scale, 1.0), MAX_SCALE), 4)
+    index["scale_run"] = run_id
+
+
 def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "") -> None:
     """Fold one ``test-run`` payload into the index (idempotent for a repeated entry)."""
     if payload.get("discarded"):
         return
+    if not payload.get("full"):
+        learn_scale(index, payload)
     run_id = str(payload.get("run_id", ""))
     env = payload.get("env") or {}
     nodes = index["nodes"]

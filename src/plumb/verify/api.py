@@ -97,8 +97,20 @@ class Verify:
         from plumb.verify.evidence import durations
         from plumb.verify.select import select_tests
 
+        index = self.index()
         return select_tests(self.core, self.test_map(), changed, budget_s=budget_s,
-                            durations=durations(self.index()))
+                            durations=durations(index), scale=float(index.get("scale") or 1.0))
+
+    def expected_s(self, targets: Iterable[str]) -> float:
+        """The unscaled estimate of ``targets`` (recorded durations, defaults otherwise)."""
+        from plumb.verify.evidence import durations
+        from plumb.verify.select import expected_duration
+
+        known = durations(self.index())
+        default = float(self.core.config.verify.default_test_s)
+        tmap = self.test_map()
+        return round(sum(expected_duration(t, tmap.nodes_of, known, default)
+                         for t in targets), 6)
 
     def evidence(self, nodes: Iterable[str]) -> Mapping[str, NodeEvidence]:
         from plumb.verify.evidence import node_evidence
@@ -290,6 +302,7 @@ class Verify:
         tree = ev.tree_identity(self.root)
         infra = self.infra_hashes() if full else None
         files = {p: i["hash"] for p, i in tmap.files.items()} if full else None
+        expected = None if full else self.expected_s(args)
         outcome = run_selection(core, args, full=full, timeout_s=timeout, tmap=tmap)
         result = outcome.result
         targets = tmap.test_files if full else args
@@ -302,7 +315,8 @@ class Verify:
             self._collection_failures(result, targets, aborted=aborted is not None)
         payload = self._payload(outcome, tree=tree, key=key, full=full, budget=budget,
                                 selection=report.selection, infra=infra, files=files,
-                                identity=self.identity(compute=True), aborted=aborted)
+                                identity=self.identity(compute=True), aborted=aborted,
+                                expected=expected)
         entry = core.log_append("evidence", "test-run", payload)
         report.run_id = payload["run_id"]
         report.discarded = outcome.discarded
@@ -443,7 +457,8 @@ class Verify:
     def _payload(self, outcome: Any, *, tree: Mapping[str, Any], key: str, full: bool,
                  budget: float, selection: Selection | None, infra: Mapping[str, str] | None,
                  files: Mapping[str, str] | None, identity: str | None,
-                 aborted: str | None = None) -> dict[str, Any]:
+                 aborted: str | None = None,
+                 expected: float | None = None) -> dict[str, Any]:
         from plumb.verify.evidence import closure_digest, new_run_id, payload_checksum
 
         tmap = self.test_map()
@@ -479,6 +494,8 @@ class Verify:
             payload["infra"] = dict(infra)
         if files is not None:
             payload["files"] = dict(files)
+        if expected is not None:
+            payload["timing"] = {"expected_s": expected, "elapsed_s": result.elapsed_s}
         if result.timed_out:
             payload["timeout"] = True
         if outcome.discarded:

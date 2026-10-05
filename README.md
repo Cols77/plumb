@@ -176,6 +176,20 @@ plumb: fidelity unjudged: SR-001
 plumb: questions: none
 ```
 
+When the turn proposed records, the summary then shows each one in full (at most three
+records): an intent's read-back, what will and won't be done and its labelled assumptions; a
+requirement's statement and every given/when/then example; a decision and its alternatives.
+Records past that cap are named, never hidden behind a count:
+
+```
+plumb: proposed SR-002: divide returns a / b.
+plumb: proposed SR-002/EX-1: given 6 and 3, when divide runs, then it returns 2
+plumb: proposed SR-002/EX-2: given 1 and 0, when divide runs, then it returns 0
+plumb: +1 more not shown: SR-005 (plumb show SR-005); a confirmation must name them
+```
+
+Your "ok" on the next prompt confirms only what was shown; SR-005 needs words naming it.
+
 The status line reads:
 
 ```
@@ -213,13 +227,14 @@ your confirmation.
 | `plumb repin [SELECTOR] [--all-stale] [--note]` | Refresh link pins (`SR-003#2` or a record ID). It never confirms anything. |
 | `plumb validate [--merge BASE]` (alias `check`) | Check records, links, logs and approvals. `--merge BASE` adds the merge-boundary checks: touched requirements confirmed, agent-relayed approvals listed, fidelity, full verification and log integrity. |
 | `plumb status` | Counts, drift and the records awaiting your confirmation. |
+| `plumb show IDS...` | A record in full: the read-back, will and won't, labelled assumptions, every example, the alternatives and the body. The end-of-turn summary names the records it could not show with this command; a bare "ok" never confirms them, only words that name their IDs do. |
 | `plumb drift` | Drift signals only: stale and dangling links, unconfirmed edits, uncovered examples, and fidelity that a judgment no longer covers. |
 | `plumb brief [--all] [--max-lines N]` | The short intent brief (about 30 lines). |
 | `plumb approve IDS... [--proposed] [--yes] [--note]` | Owner approval of records at their current content. It is refused under the agent session marker. |
 | `plumb relay IDS... --prompt DIGEST --quote "..." [--revoke]` | Record an approval or a revocation that you gave in a prompt, with your exact words. |
 | `plumb revoke IDS... [--note]` | Owner revocation of the latest approval. |
 
-`plumb new`, `show`, `why` and `log` are reserved and answer `not available in this build`.
+`plumb new`, `why` and `log` are reserved and answer `not available in this build`.
 
 ### Verification
 
@@ -259,8 +274,9 @@ during the turn.
 ## Configuration
 
 `.plumb/config.yaml` lists every key with its default in comments. The main keys are
-`source_dirs` and `test_dirs`; `verify` (`turn_budget_s`, `sample_size`, `workers` of 2 at
-most, `flaky_rerun`, `infra_globs`); `hooks` (per-hook budgets in ms and brief length); the
+`source_dirs` and `test_dirs`; `verify` (`turn_budget_s`, `fill_fraction`: the share of the
+budget a selection's estimate fills, scaled by the pace observed in earlier runs,
+`sample_size`, `workers` of 2 at most, `flaky_rerun`, `infra_globs`); `hooks` (per-hook budgets in ms and brief length); the
 `judgment` backend; and the `escalation` thresholds that make plumb suggest an up-front spec
 for large or cross-cutting work.
 

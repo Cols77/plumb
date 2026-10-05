@@ -312,7 +312,10 @@ Sources of approval, and only these:
      cannot, a `n't` word and the like; idioms such as "no objections" excepted). A question
      or an objection confirms nothing (R2);
    - every approved record is in the stated set (`.plumb/session/stated.json`, written by the
-     stop hook of the reply just before that prompt) or is named by ID in the quote.
+     stop hook of the reply just before that prompt) **and was shown there in full**
+     (`shown: true`), or is named by ID in the quote. A record the summary cut (cap, a line
+     too long) or a record of a blocked stop is `shown: false`: a bare "ok" never confirms
+     content the owner was not shown.
 
    A failed check exits 3 and writes nothing. On success plumb appends a `prompt` event
    `{digest, session, at}` (if that digest is not yet in `events.jsonl`; `at` is the time
@@ -526,7 +529,12 @@ Registered with `"async": true` so it adds no blocking latency; on a host that i
    state (`VerifyAPI.evidence`).
 3. Write `.plumb/session/status.json` and `.plumb/session/stated.json` (every record created
    or edited this turn that is proposed or an unconfirmed edit, plus every record named in a
-   trigger-2 instruction of this stop).
+   trigger-2 instruction of this stop). Each record carries `shown`: true only when the
+   summary displayed its whole read-back (`plumb.readback.record_lines`: an INT's read-back,
+   will, won't and every labelled assumption; an SR's statement and every example; a DEC's
+   chosen option and alternatives). The set is first written with `shown: false` and
+   rewritten after the summary is composed, so a blocked stop or a hook cut short shows the
+   owner nothing relayable.
 4. Decide, at most one block per turn and never when the host says `stop_hook_active`:
    - **Covering tests not run.** If the selection has nodes without fresh evidence, answer
      `{"decision": "block", "reason": "plumb: run 'plumb tests run --changed' (covering
@@ -542,8 +550,12 @@ Registered with `"async": true` so it adds no blocking latency; on a host that i
      appended after `now fails` when the node's `test_changed_since_pass` is set (7.5). A
      regression found by the agent's own
      `plumb tests run` is printed by that command with the same instruction.
-5. Otherwise answer `{"systemMessage": "<summary>"}`, at most five lines plus at most three
-   `proposed` lines and a `+N more (plumb status)` line:
+5. Otherwise answer `{"systemMessage": "<summary>"}`, at most five lines, then the full
+   read-back of at most `hooks.summary_proposed_cap` (3) proposed **records** (the cap counts
+   records, never lines: a shown record shows every one of its lines), then, when records
+   were cut, one line naming them with the command that prints them:
+   `plumb: +2 more not shown: SR-005, SR-006 (plumb show SR-005 SR-006); a confirmation must
+   name them`. A record with a line over 400 characters is cut the same way:
 
 ```
 plumb: touched SR-004, SR-007 | stale: SR-007#2 -> src/plumb/links.py (target moved)
@@ -661,8 +673,13 @@ Rules (R5):
   parent), deterministically, at most `verify.sample_size` (10), and sets
   `full verification pending`.
 - **The per-turn budget caps the selection.** Tests are taken in priority order until their
-  expected duration reaches `verify.turn_budget_s` (15 s); expected duration comes from
-  earlier evidence, 1 s when unknown. The rest are `deferred (budget)`: not run, previous
+  expected duration reaches `verify.fill_fraction` (0.65) of `verify.turn_budget_s` (15 s);
+  expected duration comes from earlier evidence, 1 s when unknown, times the **pace scale**
+  of the evidence index: each test-run entry carries `timing: {expected_s, elapsed_s}`, a
+  finished run of 2 s or more moves the scale halfway to its elapsed/expected ratio, a
+  timed-out run raises it at once to that ratio (a lower bound), within [1, 3]. Interpreter
+  start-up and collection time are not in the per-test durations; the scale and the fill
+  fraction keep a selection well inside the hard limit. The rest are `deferred (budget)`: not run, previous
   evidence state kept, listed at the merge boundary.
 
 `full verification pending` is derived, never stored: it holds while an infrastructure file's
@@ -681,7 +698,9 @@ requests it.
   is 1 or 2 and `pytest-xdist` is installed;
 - hard wall-clock limit `verify.hard_limit_factor` x budget (1.5 x 15 s); on timeout plumb
   terminates the pytest process it started (and only that one) and records the run as
-  `timeout`;
+  `timeout`. The plugin streams every phase, flushed as it completes, to
+  `$PLUMB_REPORT.stream`, so the tests that finished (through teardown) before the limit
+  are recorded as evidence; the test that was running and the ones after it give none;
 - the plugin reports collection errors, per-phase outcomes and the exit status; a setup or
   teardown failure outranks a pass;
 - appends one `test-run` entry to `evidence.jsonl` and prints a short result, including any
@@ -837,7 +856,7 @@ the first directory holding `.plumb/`, else `.git`), `--json` where noted. Exit 
 |---|---|---|
 | `plumb init` | CORE (MUST) | Create `.plumb/` (dirs, `config.yaml`, `claims.yaml`, `.gitignore`, `.gitattributes`, empty logs); idempotent |
 | `plumb new <kind> ...` | CORE (SHOULD) | New record with the next ID (5.8) |
-| `plumb show <ID> [--json]` | CORE (SHOULD) | Record, hash, state, links with states, approvals |
+| `plumb show <ID>... [--json]` | CORE (built) | The full read-back (`record_lines`), confirmation state, path and body of each record; what the summary's "not shown" line points to |
 | `plumb link <ID> <kind> <target> [--example EX-n]` | CORE (MUST) | Add a pinned link; target `ID` or `path`; `path::Qual.name` (implemented_by) and `path::test_name` (verified_by) with the SHOULD symbol hashing |
 | `plumb repin <link-id> \| <ID> \| --all-stale` | CORE (MUST) | Refresh pins, log `repin` |
 | `plumb approve <ID>... \| --proposed [--yes]` | CORE (MUST) | Owner approval (refused under the marker) |
@@ -908,6 +927,7 @@ test_dirs: [tests]
 verify:
   turn_budget_s: 15
   hard_limit_factor: 1.5
+  fill_fraction: 0.65        # the selection's scaled estimate fills this share of the budget
   sample_size: 10
   default_test_s: 1.0
   workers: 0                 # 0 = no -n; at most 2
@@ -917,7 +937,7 @@ hooks:
   budget_ms: {session_start: 900, prompt: 600, stop: 800, post_edit: 300}
   brief_lines: 30
   prompt_lines: 20
-  summary_proposed_cap: 3
+  summary_proposed_cap: 3    # proposed records shown in full per summary
 approve:
   affirmations: [ok, okay, yes, approve, approved, confirm, confirmed, agreed, lgtm, go ahead, sounds good]
 judgment:
@@ -1268,7 +1288,7 @@ Path`, `emit(obj: Any, as_json: bool) -> None`. A missing module prints
 |---|---|---|---|
 | `.plumb/log/events.jsonl`, `evidence.jsonl` | `plumb/log.py` (CORE), called through CoreAPI `log_append` by every lane | all | 5.7; `approval` and `revocation` payloads 5.6; `test-run` payload 7.4; `judgment` payload `{subject, action, verdict, confidence, tier, backend, fingerprint, requirement_hash?, end_hashes?, note?}` |
 | `.plumb/session/prompts.jsonl` | HOST prompt hook | CORE `relay` | one line `{"digest", "session", "at", "text"}` |
-| `.plumb/session/stated.json` | HOST stop hook | CORE `relay`, HOST prompt hook | `{"at", "session", "reply_after_prompt": digest\|null, "records": [{"id", "hash"}]}` |
+| `.plumb/session/stated.json` | HOST stop hook | CORE `relay`, HOST prompt hook | `{"at", "session", "reply_after_prompt": digest\|null, "records": [{"id", "hash", "shown"}]}` |
 | `.plumb/session/status.json` | HOST (stop, session-start) | HOST `statusline` | `StatusSnapshot` as JSON plus `"v": 1` |
 | `.plumb/session/<sid>/touched.txt` | HOST post-edit | HOST stop, VERIFY `--changed` | one repository-relative POSIX path per line |
 | `.plumb/session/<sid>/turn.json` | HOST prompt hook | HOST stop | `{"turn_start": epoch_seconds, "prompt_digest", "asked": {record_id: hash}}` |

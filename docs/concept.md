@@ -292,8 +292,9 @@ with three cheap, deterministic checks, none of which calls a model:
    terms (`approve.affirmations` in `config.yaml`; default ok, okay, yes, approve, approved,
    confirm, confirmed, agreed, lgtm, go ahead, sounds good). Finally it checks the targets:
    each approved record must have been stated in the agent reply just before that prompt
-   (the stated set, section 6.6) or be named by ID in the quote, so an "ok" about one thing
-   cannot approve unrelated records. An approval that fails any check is rejected with a
+   (the stated set, section 6.6) and shown there in full, or be named by ID in the quote,
+   so an "ok" about one thing cannot approve unrelated records or content the owner was
+   never shown. An approval that fails any check is rejected with a
    non-zero exit and is not stored. The stored entry records the prompt digest, the quote,
    the digest of the quote, the matched affirmation term and the stated set, so the result
    of the check stays inspectable after the session state is deleted.
@@ -557,7 +558,10 @@ only by the owner's own explicit words:
    wrong.") and proceeds. The records are written as proposed and appear in the end-of-turn
    summary with status `proposed`. The stop hook records the **stated set** in session
    state: every proposed record created or edited during the turn, plus every record listed
-   in a trigger-2 question in that reply. This is deterministic; no model decides it.
+   in a trigger-2 question in that reply. This is deterministic; no model decides it. Each
+   record is marked shown only when the summary displayed all of it (an INT's will, won't
+   and labelled assumptions; every given/when/then of an SR); a record the summary had to
+   cut is named with `plumb show <ID>` and is confirmed only when the owner's words name it.
 2. On the owner's next prompt, the prompt hook lists the records of the stated set that are
    still proposed. The agent reads the prompt:
    - an explicit affirmation ("ok", "yes", "approve") is recorded as an `agent-relayed`

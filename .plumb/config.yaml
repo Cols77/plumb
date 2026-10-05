@@ -5,6 +5,7 @@
 # verify:
 #   turn_budget_s: 15
 #   hard_limit_factor: 1.5
+#   fill_fraction: 0.65        # estimates (scaled by observed pace) fill 65 % of the budget
 #   sample_size: 10
 #   default_test_s: 1.0
 #   workers: 0                 # 0 = no -n; at most 2
@@ -14,7 +15,7 @@
 #   budget_ms: {session_start: 900, prompt: 600, stop: 800, post_edit: 300}
 #   brief_lines: 30
 #   prompt_lines: 20
-#   summary_proposed_cap: 3
+#   summary_proposed_cap: 3    # records shown in full per summary
 # approve:
 #   affirmations: [ok, okay, yes, approve, approved, confirm, confirmed, agreed, lgtm,
 #                  go ahead, sounds good]

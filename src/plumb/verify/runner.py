@@ -3,8 +3,11 @@
 ``sys.executable -m pytest -p plumb.verify.pytest_plugin -q <nodes>`` from the repository
 root, with the report path in ``PLUMB_REPORT``. Never ``-n`` unless ``verify.workers`` is 1
 or 2 and pytest-xdist is installed. On the hard wall-clock limit plumb terminates the pytest
-process it started, and only that one. When a file of the selection's import closure
-changes during the run, the run is discarded (``inputs changed``): it gives no evidence.
+process it started, and only that one. A run stopped at the hard limit keeps the tests that
+finished before it (every phase through teardown, read from the plugin's phase stream); the
+test that was running and the ones after it give no evidence. When a file of the selection's
+import closure changes during the run, the run is discarded (``inputs changed``): it gives no
+evidence.
 
 A collection error (an import or syntax error in a test module) does not stop the session:
 ``--continue-on-collection-errors`` lets the other selected files run, and every known node of
@@ -25,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 PLUGIN = "plumb.verify.pytest_plugin"
+STREAM_SUFFIX = ".stream"  # the plugin's phase stream, next to its report
 _FAIL_RANK = {"setup": 0, "call": 1, "teardown": 2}
 
 
@@ -126,6 +130,30 @@ def mark_collection_failures(result: RunResult, targets: Sequence[str],
     return marked
 
 
+def _read_stream(path: str) -> list[dict[str, Any]]:
+    """The streamed phases of a run (a torn last line is dropped)."""
+    phases: list[dict[str, Any]] = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                try:
+                    phase = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(phase, dict) and phase.get("nodeid") and phase.get("when"):
+                    phases.append(phase)
+    except OSError:
+        pass
+    return phases
+
+
+def finished_nodes(phases: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Outcomes of the nodes whose teardown was reported: a node cut off by the hard limit
+    mid-setup or mid-call is left out, never counted as passed."""
+    done = {str(p["nodeid"]) for p in phases if p.get("when") == "teardown"}
+    return _node_outcomes([p for p in phases if str(p["nodeid"]) in done])
+
+
 def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = None,
                workers: int = 0) -> RunResult:
     """Run pytest once in ``root`` and read the plugin's report."""
@@ -155,6 +183,7 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
             out, _ = proc.communicate()
     result.elapsed_s = round(time.monotonic() - start, 3)
     result.output = (out or b"").decode("utf-8", errors="replace")[-4000:]
+    stream_path = report_path + STREAM_SUFFIX
     try:
         report = json.loads(Path(report_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -164,6 +193,12 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
             os.remove(report_path)
         except OSError:
             pass
+    if result.timed_out:
+        result.nodes = finished_nodes(_read_stream(stream_path))
+    try:
+        os.remove(stream_path)
+    except OSError:
+        pass
     if report and not result.timed_out:
         result.finished = bool(report.get("finished"))
         result.collected = list(report.get("collected") or [])

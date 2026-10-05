@@ -19,8 +19,10 @@ Run plumb as `{plumb}`. Context lives in files; read it before acting.
   unconfirmed decision that matters, or a regression. Everything else goes in the summary.
 - Only the owner's own affirming words confirm. Relay them with
   `{plumb} relay <IDs> --prompt <digest> --quote "<owner's exact words>"`.
-  A prompt that does not object is not a confirmation. Never run `plumb approve` or
-  `plumb revoke`: they belong to the owner's own terminal.
+  A prompt that does not object is not a confirmation. A bare "ok" covers only the
+  records the summary showed in full; one listed as "not shown" is relayed only when the
+  owner's words name its ID (`{plumb} show <ID>` prints it in full). Never run
+  `plumb approve` or `plumb revoke`: they belong to the owner's own terminal.
 - After a requirement's code changed, `{plumb} fidelity <SR>` builds an advisory packet to
   judge it.
 - Commits carry an `SR: SR-###` trailer naming the requirements they serve.

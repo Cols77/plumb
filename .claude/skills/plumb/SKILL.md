@@ -19,8 +19,10 @@ Run plumb as `.venv/Scripts/python.exe -m plumb`. Context lives in files; read i
   unconfirmed decision that matters, or a regression. Everything else goes in the summary.
 - Only the owner's own affirming words confirm. Relay them with
   `.venv/Scripts/python.exe -m plumb relay <IDs> --prompt <digest> --quote "<owner's exact words>"`.
-  A prompt that does not object is not a confirmation. Never run `plumb approve` or
-  `plumb revoke`: they belong to the owner's own terminal.
+  A prompt that does not object is not a confirmation. A bare "ok" covers only the
+  records the summary showed in full; one listed as "not shown" is relayed only when the
+  owner's words name its ID (`.venv/Scripts/python.exe -m plumb show <ID>` prints it in full). Never run
+  `plumb approve` or `plumb revoke`: they belong to the owner's own terminal.
 - After a requirement's code changed, `.venv/Scripts/python.exe -m plumb fidelity <SR>` builds an advisory packet to
   judge it.
 - Commits carry an `SR: SR-###` trailer naming the requirements they serve.
