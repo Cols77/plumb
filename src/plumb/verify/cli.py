@@ -172,6 +172,27 @@ def cmd_run(prog: str, argv: list[str]) -> int:
     return EXIT_OK if report.ok else EXIT_FINDINGS
 
 
+def cmd_impact(prog: str, argv: list[str]) -> int:
+    parser = _parser(prog, "Downstream of a record or path: records and covering tests "
+                     "with their evidence state.")
+    parser.add_argument("ref", help="a record ID or a repository path")
+    args = parser.parse_args(argv)
+    data = _verify(args).impact(args.ref)
+    if args.as_json:
+        emit(data, True)
+        return EXIT_OK
+    lines = [f"plumb impact {data['ref']}",
+             "records: " + (", ".join(data["records"]) or "none")]
+    if data["paths"]:
+        lines.append("code: " + ", ".join(data["paths"]))
+    lines.append(f"tests ({len(data['tests'])}):")
+    for test in data["tests"]:
+        flag = "  regression" if test["regression"] else ""
+        lines.append(f"  {test['test']}  {test['state']}{flag}")
+    emit(lines, False)
+    return EXIT_OK
+
+
 _TESTS_HELP = """usage: plumb tests {map,select,run} [options]
 
   map      build the code-to-test map; writes .plumb/test_map.txt (alias: plumb map)
@@ -187,8 +208,7 @@ def run(command: str, argv: list[str]) -> int:
     if command == "verify":
         return cmd_run("plumb verify", argv)
     if command == "impact":
-        print("plumb: 'impact' is not available in this build", file=sys.stderr)
-        return EXIT_USAGE
+        return cmd_impact("plumb impact", argv)
     if not argv or argv[0] in ("-h", "--help", "help"):
         sys.stdout.write(_TESTS_HELP)
         return EXIT_OK if argv else EXIT_USAGE

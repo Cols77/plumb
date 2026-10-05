@@ -148,6 +148,48 @@ class Verify:
             out[ref] = tuple(tests)
         return out
 
+    def impact(self, ref: str) -> dict[str, Any]:
+        """Downstream of a record or a path: records, code ends, covering tests (VS4)."""
+        from plumb.hashing import clean_rel_path, target_path
+        from plumb.model import ID_PATTERN
+
+        index = self.core.index()
+        if ID_PATTERN.match(ref):
+            seen = {ref}
+            frontier = [ref]
+            while frontier:
+                nxt = []
+                for record in index.values():
+                    if record.id in seen:
+                        continue
+                    if any(link.target.record in frontier for link in record.links):
+                        seen.add(record.id)
+                        nxt.append(record.id)
+                frontier = nxt
+            records = sorted(seen - {ref})
+            refs = [ref, *records]
+        else:
+            ref = clean_rel_path(ref) or ref
+            records = list(self.core.records_for_paths([ref]).get(ref, ()))
+            refs = [ref]
+        paths: list[str] = []
+        for rid in ([ref, *records] if ID_PATTERN.match(ref) else []):
+            record = index.get(rid)
+            for link in record.links if record else ():
+                if link.kind == "implemented_by":
+                    path = target_path(link.target)
+                    if path and path not in paths:
+                        paths.append(path)
+        tests: list[str] = []
+        for group in self.tests_for([*refs, *paths]).values():
+            for test in group:
+                if test not in tests:
+                    tests.append(test)
+        evidence = self.evidence(tests)
+        return {"ref": ref, "records": records, "paths": paths,
+                "tests": [{"test": t, "state": evidence[t].state,
+                           "regression": evidence[t].regression} for t in tests]}
+
     # -- helpers
     def infra_hashes(self) -> dict[str, str]:
         """Current hashes of every shared test infrastructure file present."""
