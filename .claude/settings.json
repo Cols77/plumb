@@ -1,0 +1,73 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" -m plumb hook session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" -m plumb hook prompt"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" -m plumb hook post-edit",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" -m plumb hook stop"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" -m plumb statusline"
+  },
+  "env": {
+    "PLUMB_AGENT_SESSION": "claude-code"
+  },
+  "permissions": {
+    "deny": [
+      "Bash(plumb approve:*)",
+      "Bash(uv run plumb approve:*)",
+      "Bash(python -m plumb approve:*)",
+      "Bash(.venv/Scripts/python.exe -m plumb approve:*)",
+      "Bash(plumb revoke:*)",
+      "Bash(uv run plumb revoke:*)",
+      "Bash(python -m plumb revoke:*)",
+      "Bash(.venv/Scripts/python.exe -m plumb revoke:*)",
+      "Bash(plumb tests waive:*)",
+      "Bash(uv run plumb tests waive:*)",
+      "Bash(python -m plumb tests waive:*)",
+      "Bash(.venv/Scripts/python.exe -m plumb tests waive:*)",
+      "Bash(*PLUMB_AGENT_SESSION*)",
+      "Edit(.plumb/log/**)",
+      "Write(.plumb/log/**)",
+      "MultiEdit(.plumb/log/**)"
+    ]
+  }
+}

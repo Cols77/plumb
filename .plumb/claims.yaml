@@ -1,5 +1,5 @@
 # SR: trailer policy (plumb trailers check-msg, plumb claims check).
-require_trailer: false
+require_trailer: true
 # Extra exempt globs (the defaults .plumb/**, docs/**, .claude/**, uv.lock, .gitignore and
 # .gitattributes always apply).
 exempt: []

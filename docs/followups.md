@@ -708,3 +708,91 @@ each finding can be traced.
   cost grows with the log. Scenario: after months of use `events.jsonl` holds many thousands of
   entries and every Stop hook scans all of them to compute `fidelity_unjudged`, slowly eating
   into the 800 ms stop budget. Fix: an offset-indexed cache of the latest judgment per subject.
+
+## SP1 integration (2026-10-06)
+
+Merges of lane/verify, lane/host and lane/bridge onto the bootstrapped `main`, the dogfood
+steps, and the end-to-end session check (`tests/integration/test_session_e2e.py`,
+`scripts/drive_session.py`).
+
+Fixed during integration (found by the driven session on plumb's own repository):
+- [HIGH, fixed] (driven session, stop hook) The Stop block asked for
+  `plumb tests run --changed`, which selects the covering tests of every uncommitted path plus
+  every session's touched list. With other uncommitted work in the tree, the budget deferred
+  the turn's own covering tests (plumb's repository: 0 of 77 run, 22.5 s timeout), and the
+  second Stop summarized them as `not run` with no further ask. The block now names
+  `plumb tests run --paths <this turn's paths>` (up to 8 paths, else `--changed`), so the
+  turn's own covering tests run within its budget.
+- [HIGH, fixed] (driven session, SessionStart latency) Adding or removing one Python file made
+  the test map re-resolve every import edge with stat and `resolve()` calls: about 1.7 s on
+  plumb's repository, so SessionStart hit the 1.9 s watchdog and printed only
+  `check skipped (budget)`. Edges now resolve on repository-relative strings against the
+  scanned file set (`imports.resolve_edge_rel`, `known_files`): 0.13 s after adding a file.
+- `plumb drift` (CORE KS3) built: stale and dangling links with the moved end, unconfirmed
+  edits, uncovered examples of any requirement, and fidelity a judgment no longer covers.
+
+Design choices and open items:
+- [MEDIUM] (drift) A requirement never judged for fidelity is not a drift signal: `plumb drift`
+  prints it as one advisory line, and the merge boundary lists it (R4: fidelity is on demand or
+  at the merge boundary, scoped to changed requirements). Only a `drifts` or `unsure` verdict,
+  or a judgment whose hashes moved, counts as drift. Spec 5.10 lists "unjudged fidelity" among
+  drift signals without this distinction; align the spec.
+- [MEDIUM] (latency) A fully cold test map (no `.plumb/cache/test_map.json`, for example right
+  after a clone) still costs about 0.9 s of parsing in the first SessionStart on plumb's
+  repository; the hook stays under 2 s (measured 0.9 to 1.1 s) but exceeds its 900 ms soft
+  budget on that first run. KS1 (index and hash caches) is still unbuilt.
+- [MEDIUM] (dogfood) Every plumb record is still `proposed` (no agent may approve, R2), so on
+  plumb's own repository the prompt hook never raises the intent-change flag: the heuristic
+  flags only confirmed records. The flag is exercised end to end in the temporary repository of
+  `test_session_e2e.py`, where the owner's approval is simulated in the owner's terminal. It
+  starts working on plumb itself once the owner runs `plumb approve --proposed`.
+- [LOW] (stop hook) The stop summary counts selected nodes (a whole test file can be one node),
+  while `plumb tests run` counts executed tests, so a turn can read "covering tests 1" after
+  "ran 7 tests".
+- [LOW] (plan 9.4) `scripts/bench_hooks.py` (20 runs per hook, p50/p95) was not written; the
+  timings come from `scripts/drive_session.py` (one run per hook) and the e2e test asserts each
+  hook under 2 s.
+- [LOW] (CORE SHOULD) `plumb new`, `show`, `why` and `log` still answer `not available in this
+  build`; KS1, KS4 and KS5 remain unbuilt.
+- [LOW] (dogfood, plan 4.6) `plumb claims check --range 4c08b64..HEAD` reports the following
+  undeclared (commit, path) pairs from the lane commits, recorded here instead of an NC-backed
+  baseline: each lane commit claims the SRs of its task row, while the dogfood links attach the
+  file to a sibling SR (or the file is a test helper or fake). Integration commits since
+  553e843 report none.
+  - 721008197f78 src/plumb/verify/cli.py (claims SR-020, SR-018, SR-017)
+  - 721008197f78 tests/verify/test_aborted.py (claims SR-020, SR-018, SR-017)
+  - ac958f4e49e3 src/plumb/verify/api.py (claims SR-020, SR-018)
+  - ac958f4e49e3 tests/verify/test_plugin.py (claims SR-020, SR-018)
+  - 51f9c0c89204 src/plumb/hosts/claude_code/statusline.py (claims SR-014, SR-005)
+  - 51f9c0c89204 tests/host/test_encoding.py (claims SR-014, SR-005)
+  - ad4cda487083 tests/bridge/conftest.py (claims SR-023)
+  - ad4cda487083 tests/bridge/pi_source_fixture.py (claims SR-023)
+  - ad4cda487083 tests/bridge/test_import_feat_nc.py (claims SR-023)
+  - 3acc463d3bd4 tests/bridge/fixtures/intent_prompts.json (claims SR-010, SR-021)
+  - 3acc463d3bd4 tests/bridge/test_precision.py (claims SR-010, SR-021)
+  - 22c41bca1cd8 src/plumb/judgment/cli.py (claims SR-021)
+  - 22c41bca1cd8 src/plumb/judgment/fidelity.py (claims SR-021)
+  - 6fa612db7e13 tests/bridge/conftest.py (claims SR-023)
+  - 6fa612db7e13 tests/bridge/fixtures/pi_factory/bundles/FEAT-001.json (claims SR-023)
+  - 6fa612db7e13 tests/bridge/fixtures/pi_factory/docs/features/FEAT-001.md (claims SR-023)
+  - 6fa612db7e13 tests/bridge/fixtures/pi_factory/docs/nonconformances/NC-0002-empty-planning-brief.md (claims SR-023)
+  - 6fa612db7e13 tests/bridge/fixtures/pi_factory/requirements/SR-003.md (claims SR-023)
+  - 6fa612db7e13 tests/bridge/fixtures/pi_factory/requirements/SR-077.md (claims SR-023)
+  - 6fa612db7e13 tests/bridge/test_import_feat_nc.py (claims SR-023)
+  - a0313483e958 tests/bridge/test_tiers.py (claims SR-021, SR-010, SR-022)
+  - 72a366e7c90b tests/verify/verify_helpers.py (claims SR-019)
+  - 62242709fc55 src/plumb/verify/cli.py (claims SR-019)
+  - 62242709fc55 tests/verify/test_waive.py (claims SR-019)
+  - b2cd821fba0f src/plumb/verify/api.py (claims SR-018)
+  - b2cd821fba0f tests/verify/test_envid.py (claims SR-018)
+  - d53b484e04b5 src/plumb/verify/api.py (claims SR-016)
+  - d53b484e04b5 tests/verify/test_impact.py (claims SR-016)
+  - 9bb16c96c62e src/plumb/verify/api.py (claims SR-019, SR-020)
+  - 9bb16c96c62e src/plumb/verify/evidence.py (claims SR-019, SR-020)
+  - d6503c34e09e tests/verify/test_cli_verify.py (claims SR-020, SR-016, SR-017)
+  - a8e8281491fb src/plumb/verify/policy.py (claims SR-018, SR-017)
+  - a8e8281491fb src/plumb/verify/testmap.py (claims SR-018, SR-017)
+  - 510694fdc6ac tests/verify/test_plugin.py (claims SR-018)
+  - 89f17dfb9528 src/plumb/hosts/claude_code/providers.py (claims SR-009)
+  - 9530f19ed380 tests/verify/verify_helpers.py (claims SR-016)
+  - 2277cc573c31 tests/host/fakes.py (claims SR-014, SR-011)
