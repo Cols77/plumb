@@ -6,10 +6,11 @@
    covering selection (``VerifyAPI.select``) and its evidence.
 3. Write ``status.json`` and the stated set (``stated.json``).
 4. At most one block per turn, never when the host says ``stop_hook_active``: covering tests
-   without fresh evidence (the agent runs ``plumb tests run --changed`` in its turn; the hook
-   never runs pytest), an unconfirmed decision that matters (trigger 2, once per hash) and a
-   regression (trigger 3, R3: a node that passed with recorded evidence and now fails; once
-   per failing run). A new test that starts red is "not yet passing" and never asks.
+   without fresh evidence (the agent runs ``plumb tests run --paths <this turn's paths>`` in
+   its turn; the hook never runs pytest), an unconfirmed decision that matters (trigger 2,
+   once per hash) and a regression (trigger 3, R3: a node that passed with recorded
+   evidence and now fails; once per failing run). A new test that starts red is "not yet
+   passing" and never asks.
 5. Otherwise a short ``systemMessage`` summary; proposed records are shown, never asked.
 
 The deadline is checked before a step starts, never after it ends (spec 10): a step that
@@ -42,6 +43,7 @@ IGNORED_PREFIXES = (".plumb/session/", ".plumb/cache/", ".plumb/log/", ".git/")
 IGNORED_FILES = (".plumb/test_map.txt",)
 SUMMARY_LINES = 5
 GIT_TIMEOUT_S = 0.6
+MAX_INSTRUCTION_PATHS = 8
 
 
 def _clip(text: str, width: int = 120) -> str:
@@ -264,9 +266,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     if not active:
         reasons: list[str] = []
         if not_run:
-            budget = float(core.config.verify.turn_budget_s)
-            reasons.append(f"plumb: run 'plumb tests run --changed' (covering tests, budget "
-                           f"{budget:g} s), then finish your reply.")
+            reasons.append(tests_instruction(changed, float(core.config.verify.turn_budget_s)))
         for d in open_decisions:
             reasons.append(_dec_question(index[d]))
             asked[d] = index[d].hash
@@ -285,6 +285,22 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     return HookOutput(system_message=summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
         pending, questions, fidelity, turn_start, verify is not None, skipped))
+
+
+def _quote(path: str) -> str:
+    return f'"{path}"' if any(c.isspace() for c in path) else path
+
+
+def tests_instruction(changed: Sequence[str], budget: float) -> str:
+    """The test command for this turn: ``--paths`` names the turn's own changed paths, so
+    other uncommitted work in the tree cannot crowd its covering tests out of the budget
+    (``--changed`` covers every uncommitted path); ``--changed`` only for a long list."""
+    if 0 < len(changed) <= MAX_INSTRUCTION_PATHS:
+        command = "plumb tests run --paths " + " ".join(_quote(p) for p in changed)
+        scope = "covering tests of this turn"
+    else:
+        command, scope = "plumb tests run --changed", "covering tests"
+    return f"plumb: run '{command}' ({scope}, budget {budget:g} s), then finish your reply."
 
 
 def skip_notice(skipped: Sequence[str]) -> str:

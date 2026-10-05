@@ -10,7 +10,8 @@ Run plumb as `{plumb}`. Context lives in files; read it before acting.
   examples), DEC (decisions), FEAT (features) and NC (nonconformances).
   `{plumb} brief` prints the current intent; `{plumb} status` lists what awaits the owner.
 - Before editing a file, grep `.plumb/test_map.txt` for it: the tests listed cover it.
-- When the stop hook asks, run `{plumb} tests run --changed` inside your turn.
+- When the stop hook asks, run the test command it names inside your turn
+  (`{plumb} tests run --paths <files>`, or `{plumb} tests run --changed`).
 - State your read-back and examples as plain statements in your reply and record them as
   records under `.plumb/`; they stay `proposed` and never block the work.
 - When two readings fit, write a DEC record: "I assumed A; B also fits".

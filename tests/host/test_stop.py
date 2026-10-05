@@ -112,9 +112,28 @@ def test_blocks_once_when_covering_tests_not_fresh(project: Path, hook_input) ->
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
     verify = FakeVerify(nodes=(NODE, NODE2), evidence_map=fresh(NODE))
     reason = _block(run_stop(project, hook_input, verify=verify))
-    assert reason == ("plumb: run 'plumb tests run --changed' (covering tests, budget 15 s), "
-                      "then finish your reply.")
+    # the command names this turn's paths, so other uncommitted work cannot crowd the
+    # turn's own covering tests out of the budget
+    assert reason == ("plumb: run 'plumb tests run --paths src/calc.py' (covering tests of "
+                      "this turn, budget 15 s), then finish your reply.")
     assert verify.select_calls == [("src/calc.py",)]
+
+
+def test_block_falls_back_to_changed_for_many_paths(project: Path, hook_input) -> None:
+    start_turn(project)
+    for i in range(9):
+        edit(project, f"src/m{i}.py", f"X = {i}\n")
+    verify = FakeVerify(nodes=(NODE,))
+    reason = _block(run_stop(project, hook_input, verify=verify))
+    assert reason.startswith("plumb: run 'plumb tests run --changed' (covering tests")
+
+
+def test_block_quotes_paths_with_spaces(project: Path, hook_input) -> None:
+    start_turn(project)
+    edit(project, "src/my calc.py", "X = 1\n")
+    verify = FakeVerify(nodes=(NODE,))
+    reason = _block(run_stop(project, hook_input, verify=verify))
+    assert "plumb tests run --paths \"src/my calc.py\"" in reason
 
 
 def test_no_block_when_stop_hook_active(project: Path, hook_input) -> None:
@@ -363,7 +382,7 @@ def test_results_finished_past_the_budget_are_used(project: Path, hook_input, wr
     verify.clock = clock
     reason = _block(run_stop(project, hook_input, verify=verify))
     assert reason is not None
-    assert "plumb: run 'plumb tests run --changed'" in reason
+    assert "plumb: run 'plumb tests run --paths " in reason
     assert "DEC-001 is unconfirmed" in reason
     assert f"plumb: regression: {NODE2}" in reason
     stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
