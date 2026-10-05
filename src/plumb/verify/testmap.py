@@ -77,7 +77,8 @@ def _parse_file(root: Path, rel: str, fp: str, test: bool) -> dict[str, Any]:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         return {"fp": fp, "hash": sha256_bytes(raw), "edges": [], "test": test}
-    info: dict[str, Any] = {"fp": fp, "hash": sha256_text(text), "test": test}
+    digest = sha256_bytes(raw) if "\x00" in text else sha256_text(text)  # as file_digest
+    info: dict[str, Any] = {"fp": fp, "hash": digest, "test": test}
     tree = markers.parse(text)
     info["edges"] = [[m, lvl, list(names)] for m, lvl, names in edges_of(tree)] if tree else []
     if test:
