@@ -453,4 +453,5 @@ the SHOULD items follow on the same branch.
 - [LOW] (VERIFY) `src/plumb/__init__.py` maps to nearly every test in `test_map.txt`, because
   every import of `plumb.x` runs it. This is correct but noisy.
 - [LOW] (VERIFY) The VERIFY lane's own tests start about 25 real pytest subprocesses. On this
-  machine `tests/verify` takes about 35 s.
+  machine `tests/verify` takes about 50 to 70 s; the temporary projects turn the flaky rerun
+  off except in `test_flaky.py`.

@@ -15,6 +15,7 @@ from plumb.verify import open_verify
 @pytest.fixture
 def project(repo: Path) -> Path:
     make_project(repo)
+    write(repo, ".plumb/config.yaml", "verify:\n  flaky_rerun: true\n")
     write(repo, ".gitignore", "__pycache__/\n")
     commit_all(repo)
     return repo
