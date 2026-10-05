@@ -1,0 +1,489 @@
+"""``Verify``: the VerifyAPI (spec 12.1) plus the run flow behind ``plumb tests run``."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from typing import Any
+
+from plumb.contracts import FullPending, NodeEvidence, Selection
+
+
+@dataclass
+class RunReport:
+    """What one ``plumb tests run`` did, for printing and for ``--json``."""
+
+    run_id: str | None = None
+    full: bool = False
+    selection: Selection | None = None
+    outcomes: dict[str, str] = field(default_factory=dict)
+    regressions: list[dict[str, Any]] = field(default_factory=list)
+    not_yet_passing: list[str] = field(default_factory=list)
+    flaky: list[str] = field(default_factory=list)
+    removed_after_passing: list[str] = field(default_factory=list)
+    collection_errors: list[str] = field(default_factory=list)
+    discarded: str | None = None
+    aborted: str | None = None
+    timed_out: bool = False
+    timeout_s: float | None = None
+    exit_status: int | None = None
+    elapsed_s: float = 0.0
+    full_pending: FullPending | None = None
+
+    @property
+    def failed(self) -> list[str]:
+        return sorted(n for n, o in self.outcomes.items() if o == "failed")
+
+    @property
+    def ok(self) -> bool:
+        return (not self.failed and not self.collection_errors and not self.discarded
+                and not self.aborted and not self.timed_out)
+
+    def as_dict(self) -> dict[str, Any]:
+        sel = self.selection
+        return {
+            "run_id": self.run_id, "full": self.full, "outcomes": self.outcomes,
+            "failed": self.failed, "regressions": self.regressions,
+            "not_yet_passing": self.not_yet_passing, "flaky": self.flaky,
+            "removed_after_passing": self.removed_after_passing,
+            "collection_errors": self.collection_errors, "discarded": self.discarded,
+            "aborted": self.aborted, "timed_out": self.timed_out, "exit_status": self.exit_status,
+            "elapsed_s": self.elapsed_s,
+            "selection": None if sel is None else {
+                "nodes": list(sel.nodes), "deferred": list(sel.deferred),
+                "sampled": list(sel.sampled), "unknown_coverage": list(sel.unknown_coverage),
+                "infra_changed": list(sel.infra_changed), "doc_only": sel.doc_only},
+            "full_pending": None if self.full_pending is None else {
+                "pending": self.full_pending.pending,
+                "reasons": list(self.full_pending.reasons)},
+        }
+
+
+class Verify:
+    """VerifyAPI over one CoreAPI. Map, index and env key are cached per instance."""
+
+    def __init__(self, core: Any) -> None:
+        self.core = core
+        self.root = Path(core.root)
+        self._map: Any = None
+        self._index: dict[str, Any] | None = None
+        self._env_key: str | None = None
+
+    # -- cached state
+    def test_map(self) -> Any:
+        if self._map is None:
+            from plumb.verify.testmap import build_map
+
+            self._map = build_map(self.core)
+        return self._map
+
+    def index(self) -> dict[str, Any]:
+        if self._index is None:
+            from plumb.verify.evidence import load_index
+
+            self._index = load_index(self.core)
+        return self._index
+
+    def env_key(self) -> str:
+        if self._env_key is None:
+            from plumb.verify.envid import env_key
+
+            self._env_key = env_key(self.root)
+        return self._env_key
+
+    # -- VerifyAPI
+    def select(self, changed: Sequence[str], *, budget_s: float | None = None) -> Selection:
+        from plumb.verify.evidence import durations
+        from plumb.verify.select import select_tests
+
+        return select_tests(self.core, self.test_map(), changed, budget_s=budget_s,
+                            durations=durations(self.index()))
+
+    def evidence(self, nodes: Iterable[str]) -> Mapping[str, NodeEvidence]:
+        from plumb.verify.evidence import node_evidence
+
+        index, tmap, key = self.index(), self.test_map(), self.env_key()
+        identity = self.identity()
+        return {n: node_evidence(index, tmap, n, key, identity) for n in nodes}
+
+    def identity(self, *, compute: bool = False) -> str | None:
+        """The content identity cached under the env key (VS3); computed only on record."""
+        from plumb.verify.envid import cached_identity
+
+        return cached_identity(self.core, self.env_key(), compute=compute)
+
+    def full_pending(self) -> FullPending:
+        from plumb.verify.select import matches_infra
+
+        tmap = self.test_map()
+        full = self.index().get("full")
+        if not full:
+            return FullPending(pending=True, reasons=("no full run recorded",))
+        reasons: list[str] = []
+        current = self.infra_hashes()
+        recorded = full.get("infra") or {}
+        for path in sorted(set(current) | set(recorded)):
+            if current.get(path) != recorded.get(path):
+                reasons.append(f"{path} changed")
+        files = full.get("files") or {}
+        globs = self.core.config.verify.infra_globs
+        for path in self.uncovered_sources():
+            if matches_infra(path, globs):
+                continue
+            if tmap.files.get(path, {}).get("hash") != files.get(path):
+                reasons.append(f"{path} has no covering test")
+        return FullPending(pending=bool(reasons), reasons=tuple(reasons))
+
+    def tests_for(self, refs: Iterable[str]) -> Mapping[str, tuple[str, ...]]:
+        from plumb.model import ID_PATTERN
+        from plumb.verify.select import normalize_path
+
+        tmap = self.test_map()
+        out: dict[str, tuple[str, ...]] = {}
+        for ref in refs:
+            if ID_PATTERN.match(ref):
+                out[ref] = tuple(tmap.records.get(ref, ()))
+                continue
+            rel = normalize_path(ref) or ref
+            if rel in tmap.test_files:
+                out[ref] = (rel,)
+                continue
+            tests: list[str] = []
+            for test in [*tmap.verified_tests(rel), *tmap.mentions(rel), *tmap.covering(rel)]:
+                if test not in tests:
+                    tests.append(test)
+            out[ref] = tuple(tests)
+        return out
+
+    def impact(self, ref: str) -> dict[str, Any]:
+        """Downstream of a record or a path: records, code ends, covering tests (VS4)."""
+        from plumb.hashing import clean_rel_path, target_path
+        from plumb.model import ID_PATTERN
+
+        index = self.core.index()
+        if ID_PATTERN.match(ref):
+            seen = {ref}
+            frontier = [ref]
+            while frontier:
+                nxt = []
+                for record in index.values():
+                    if record.id in seen:
+                        continue
+                    if any(link.target.record in frontier for link in record.links):
+                        seen.add(record.id)
+                        nxt.append(record.id)
+                frontier = nxt
+            records = sorted(seen - {ref})
+            refs = [ref, *records]
+        else:
+            ref = clean_rel_path(ref) or ref
+            records = list(self.core.records_for_paths([ref]).get(ref, ()))
+            refs = [ref]
+        paths: list[str] = []
+        for rid in ([ref, *records] if ID_PATTERN.match(ref) else []):
+            record = index.get(rid)
+            for link in record.links if record else ():
+                if link.kind == "implemented_by":
+                    path = target_path(link.target)
+                    if path and path not in paths:
+                        paths.append(path)
+        tests: list[str] = []
+        for group in self.tests_for([*refs, *paths]).values():
+            for test in group:
+                if test not in tests:
+                    tests.append(test)
+        evidence = self.evidence(tests)
+        return {"ref": ref, "records": records, "paths": paths,
+                "tests": [{"test": t, "state": evidence[t].state,
+                           "regression": evidence[t].regression} for t in tests]}
+
+    # -- helpers
+    def infra_hashes(self) -> dict[str, str]:
+        """Current hashes of every shared test infrastructure file present."""
+        from plumb.normalize import file_digest
+        from plumb.verify.select import matches_infra
+
+        globs = tuple(self.core.config.verify.infra_globs)
+        candidates = {p for p in self.test_map().files if matches_infra(p, globs)}
+        for pattern in globs:
+            if not any(ch in pattern for ch in "*?[") and (self.root / pattern).is_file():
+                candidates.add(pattern)
+        out: dict[str, str] = {}
+        for rel in sorted(candidates):
+            try:
+                out[rel] = file_digest(self.root / rel)
+            except OSError:
+                continue
+        return out
+
+    def uncovered_sources(self) -> list[str]:
+        """Non-test Python files no test covers by any rule of the map."""
+        tmap = self.test_map()
+        out = []
+        for path, info in sorted(tmap.files.items()):
+            if info.get("test"):
+                continue
+            if tmap.importers.get(path) or tmap.naming.get(path) or tmap.verified_tests(path):
+                continue
+            if tmap.mentions(path):
+                continue
+            out.append(path)
+        return out
+
+    def changed_paths(self) -> list[str]:
+        """``git status`` paths plus every session's touched list (spec 12.5)."""
+        from plumb.verify.evidence import changed_paths_from_git
+
+        paths = list(changed_paths_from_git(self.root))
+        session = self.core.paths.session
+        try:
+            dirs = [d for d in session.iterdir() if d.is_dir()]
+        except OSError:
+            dirs = []
+        for d in dirs:
+            try:
+                lines = (d / "touched.txt").read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            paths.extend(line.strip() for line in lines if line.strip())
+        return list(dict.fromkeys(paths))
+
+    # -- the run flow
+    def run(self, *, changed: Sequence[str] | None = None, nodes: Sequence[str] | None = None,
+            full: bool = False, budget_s: float | None = None) -> RunReport:
+        from plumb.verify import evidence as ev
+        from plumb.verify.runner import run_selection
+
+        core = self.core
+        vcfg = core.config.verify
+        tmap = self.test_map()
+        report = RunReport(full=full)
+        budget = float(vcfg.turn_budget_s if budget_s is None else budget_s)
+        if full:
+            args: list[str] = []
+            timeout = None if budget_s is None else budget * float(vcfg.hard_limit_factor)
+        elif nodes:
+            args = self.runnable_targets(nodes)
+            report.selection = Selection(changed=(), nodes=tuple(args),
+                                         reasons=dict.fromkeys(args, "literal"))
+            timeout = budget * float(vcfg.hard_limit_factor)
+        else:
+            selection = self.select(changed if changed is not None
+                                    else self.changed_paths(), budget_s=budget)
+            args = self.runnable_targets(selection.nodes)
+            if tuple(args) != selection.nodes:
+                reasons = dict(selection.reasons)
+                for target in args:
+                    if target not in reasons:
+                        first = next(n for n in selection.nodes
+                                     if n.split("::", 1)[0] == target)
+                        reasons[target] = selection.reasons[first]
+                selection = replace(selection, nodes=tuple(args), reasons=reasons)
+            report.selection = selection
+            timeout = budget * float(vcfg.hard_limit_factor)
+        report.timeout_s = timeout
+        if not full and not args:
+            report.full_pending = self.full_pending()
+            return report
+        key = self.env_key()
+        tree = ev.tree_identity(self.root)
+        infra = self.infra_hashes() if full else None
+        files = {p: i["hash"] for p, i in tmap.files.items()} if full else None
+        outcome = run_selection(core, args, full=full, timeout_s=timeout, tmap=tmap)
+        result = outcome.result
+        targets = tmap.test_files if full else args
+        aborted = None
+        if not outcome.discarded and not result.timed_out:
+            aborted = self._abort_reason(result, targets, full=full)
+        if vcfg.flaky_rerun and not outcome.discarded and not result.timed_out and not aborted:
+            self._flaky_rerun(outcome, tree=tree, key=key, timeout=timeout)
+        if not outcome.discarded and not result.timed_out:
+            self._collection_failures(result, targets, aborted=aborted is not None)
+        payload = self._payload(outcome, tree=tree, key=key, full=full, budget=budget,
+                                selection=report.selection, infra=infra, files=files,
+                                identity=self.identity(compute=True), aborted=aborted)
+        entry = core.log_append("evidence", "test-run", payload)
+        report.run_id = payload["run_id"]
+        report.discarded = outcome.discarded
+        report.aborted = aborted
+        report.timed_out = result.timed_out
+        report.exit_status = result.exit_status
+        report.elapsed_s = result.elapsed_s
+        report.collection_errors = list(result.collection_errors)
+        report.outcomes = {n: str(d.get("outcome")) for n, d in result.nodes.items()}
+        report.flaky = sorted(n for n, o in report.outcomes.items() if o == "flaky")
+        self._index = None
+        index = self.index()
+        if not outcome.discarded and entry is not None:
+            from plumb.verify.policy import pass_run
+
+            for node in report.failed:
+                evid = ev.node_evidence(index, tmap, node, key, payload["env"]["identity"])
+                if evid.regression:
+                    report.regressions.append({
+                        "node": node, "passed_in": pass_run(index, node),
+                        "test_changed_since_pass": evid.test_changed_since_pass})
+                else:
+                    report.not_yet_passing.append(node)
+        ran_files = {n.split("::", 1)[0] for n in report.outcomes}
+        report.removed_after_passing = [n for n in self.removed_after_passing()
+                                        if (full or n.split("::", 1)[0] in ran_files)
+                                        and n not in report.outcomes]
+        report.full_pending = self.full_pending()
+        return report
+
+    def _flaky_rerun(self, outcome: Any, *, tree: Mapping[str, Any], key: str,
+                     timeout: float | None) -> None:
+        """Rerun failed nodes once when the tree and env key are unchanged (spec 7.5)."""
+        from plumb.verify.envid import env_key
+        from plumb.verify.evidence import tree_identity
+        from plumb.verify.policy import same_tree
+        from plumb.verify.runner import run_selection
+
+        result = outcome.result
+        failed = sorted(n for n, d in result.nodes.items() if d.get("outcome") == "failed")
+        if not failed:
+            return
+        if not same_tree(tree, tree_identity(self.root), key, env_key(self.root)):
+            return
+        again = run_selection(self.core, failed, timeout_s=timeout, tmap=self.test_map())
+        if again.discarded or again.result.timed_out:
+            return
+        for node in failed:
+            second = again.result.nodes.get(node, {}).get("outcome")
+            if second is None:
+                continue
+            data = result.nodes[node]
+            data["attempts"] = ["failed", str(second)]
+            if second == "passed":
+                data["outcome"] = "flaky"
+
+    def runnable_targets(self, targets: Iterable[str]) -> list[str]:
+        """Selection targets pytest can resolve: a node id the map does not know in its
+        (mapped) file falls back to the file, because one unknown id (a test renamed under a
+        ``verified_by`` link) makes pytest abort the whole selection. A file absorbs its
+        node ids."""
+        from plumb.verify.markers import strip_param
+
+        tmap = self.test_map()
+        out: list[str] = []
+        for target in targets:
+            test_file, sep, _ = target.partition("::")
+            if sep and test_file in tmap.files:
+                base = strip_param(target)
+                known = tmap.nodes_of(test_file)
+                if base not in known and not any(k.startswith(base + "::") for k in known):
+                    target = test_file
+            if target not in out:
+                out.append(target)
+        files = {t for t in out if "::" not in t}
+        return [t for t in out if "::" not in t or t.split("::", 1)[0] not in files]
+
+    def _abort_reason(self, result: Any, targets: Sequence[str], *, full: bool) -> str | None:
+        """Why a pytest run that did not time out is still no clean run, or None.
+
+        No plugin report, an unfinished session, or an exit status other than 0 (passed) or
+        1 (tests failed) means pytest stopped before running the selection (a broken
+        ``conftest.py``, a usage error, an internal error). Exit 5 (nothing collected) counts
+        only when the selection had known test nodes."""
+        status = result.exit_status
+        if not result.finished:
+            return f"pytest stopped before the session finished (exit status {status})"
+        if status in (0, 1):
+            return None
+        if status == 5:
+            tmap = self.test_map()
+            if full or not any(tmap.nodes_of(t.split("::", 1)[0]) for t in targets):
+                return None
+            return "pytest collected no tests from a selection with known tests (exit status 5)"
+        return f"pytest exit status {status}"
+
+    def _collection_failures(self, result: Any, targets: Sequence[str], *,
+                             aborted: bool = False) -> None:
+        """Known nodes of selected files that failed to collect count as failed (R3); in an
+        aborted run, every selected file failed to collect."""
+        from plumb.verify.markers import strip_param
+        from plumb.verify.runner import mark_collection_failures
+
+        if not result.collection_errors and not aborted:
+            return
+        tmap = self.test_map()
+        recorded: dict[str, list[str]] = {}
+        for node_id in self.index().get("nodes", {}):
+            if "::" in node_id:
+                recorded.setdefault(node_id.split("::", 1)[0], []).append(node_id)
+        known: dict[str, list[str]] = {}
+        for target in targets:
+            test_file = target.split("::", 1)[0]
+            if test_file in known:
+                continue
+            ids = sorted(recorded.get(test_file, []))
+            covered = {strip_param(n) for n in ids}
+            known[test_file] = ids + [n for n in tmap.nodes_of(test_file) if n not in covered]
+        mark_collection_failures(result, targets, known, everything=aborted)
+
+    def removed_after_passing(self) -> list[str]:
+        """Nodes that passed with recorded evidence and are no longer in their existing
+        file (VS1): shown, never an interruption."""
+        from plumb.verify.markers import strip_param
+
+        tmap = self.test_map()
+        out = []
+        for node_id, entry in sorted(self.index().get("nodes", {}).items()):
+            if not entry.get("last_pass") or "::" not in node_id:
+                continue
+            test_file = node_id.split("::", 1)[0]
+            if test_file not in tmap.files or not (self.root / test_file).is_file():
+                continue
+            if strip_param(node_id) not in tmap.files[test_file].get("nodes", {}):
+                out.append(node_id)
+        return out
+
+    def _payload(self, outcome: Any, *, tree: Mapping[str, Any], key: str, full: bool,
+                 budget: float, selection: Selection | None, infra: Mapping[str, str] | None,
+                 files: Mapping[str, str] | None, identity: str | None,
+                 aborted: str | None = None) -> dict[str, Any]:
+        from plumb.verify.evidence import closure_digest, new_run_id, payload_checksum
+
+        tmap = self.test_map()
+        result = outcome.result
+        inputs = outcome.inputs
+        nodes = []
+        for node_id, data in sorted(result.nodes.items()):
+            test_file = node_id.split("::", 1)[0]
+            depths = tmap.closures.get(test_file)
+            closure = None
+            if depths is not None:
+                closure = closure_digest((p, inputs.get(p, "missing")) for p in depths
+                                         if p in tmap.files)
+            nodes.append({"id": node_id, "outcome": data.get("outcome"),
+                          "duration_s": data.get("duration_s"), "closure": closure,
+                          "test_hash": tmap.node_hash(node_id),
+                          **({"failed_phase": data["failed_phase"]}
+                             if data.get("failed_phase") == "collect" else {}),
+                          "attempts": list(data.get("attempts") or [data.get("outcome")])})
+        payload: dict[str, Any] = {
+            "run_id": new_run_id(), "full": full, "tree": dict(tree),
+            "env": {"env_key": key, "identity": identity},
+            "selection": {
+                "changed": list(selection.changed) if selection else [],
+                "deferred": list(selection.deferred) if selection else [],
+                "sampled": list(selection.sampled) if selection else [],
+                "unknown_coverage": list(selection.unknown_coverage) if selection else [],
+                "budget_s": budget},
+            "nodes": nodes, "exit_status": result.exit_status,
+            "collection_errors": list(result.collection_errors),
+        }
+        if infra is not None:
+            payload["infra"] = dict(infra)
+        if files is not None:
+            payload["files"] = dict(files)
+        if result.timed_out:
+            payload["timeout"] = True
+        if outcome.discarded:
+            payload["discarded"] = outcome.discarded
+        if aborted:
+            payload["aborted"] = aborted
+        payload["self"] = payload_checksum(payload)
+        return payload

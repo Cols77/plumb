@@ -1,0 +1,82 @@
+"""Failure policy (spec 7.5): the regression rule, exactly as ruling R3.
+
+A failing node is a regression when an earlier ``test-run`` entry recorded the same node id
+``passed`` or ``flaky``, whatever happened to its source since. A changed ``test_hash`` adds
+the note ``test source changed since the pass`` and never clears the flag. Only a new test
+that starts red (a node id with no recorded pass) is exempt: it is ``not yet passing``, never
+a regression, and never interrupts.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+from plumb.contracts import NodeEvidence
+
+NOTE_CHANGED = "test source changed since the pass"
+
+
+def is_regression(index: Mapping[str, Any], node_id: str) -> bool:
+    entry = index.get("nodes", {}).get(node_id) or {}
+    last = entry.get("last") or {}
+    return last.get("outcome") == "failed" and entry.get("last_pass") is not None
+
+
+def pass_run(index: Mapping[str, Any], node_id: str) -> str | None:
+    entry = index.get("nodes", {}).get(node_id) or {}
+    last_pass = entry.get("last_pass") or {}
+    return last_pass.get("run_id")
+
+
+def regression_instruction(node_id: str, run_id: str | None, test_changed: bool) -> str:
+    """The trigger-3 instruction (spec 6.4), with the note when the test source changed."""
+    note = f" ({NOTE_CHANGED})" if test_changed else ""
+    return (f"plumb: regression: {node_id} passed in run {run_id or '?'} and now fails{note}. "
+            "Tell the owner, with a read-back, and ask how to proceed.")
+
+
+def classify_failure(evidence: NodeEvidence) -> str:
+    """``regression`` or ``not yet passing`` for a failing node (R3)."""
+    return "regression" if evidence.regression else "not yet passing"
+
+
+def same_tree(before: Mapping[str, Any], after: Mapping[str, Any], env_before: str,
+              env_after: str) -> bool:
+    """Whether a flaky rerun may run: tree identity and env key unchanged (spec 7.5)."""
+    return (before.get("head_tree") == after.get("head_tree")
+            and before.get("dirty") == after.get("dirty") and env_before == env_after)
+
+
+# -- owner waiver (VS6) -------------------------------------------------------------------
+
+DIGEST_RE = r"^sha256:[0-9a-f]{64}$"
+
+
+class WaiverRefused(PermissionError):
+    """A waiver attempted under the agent session marker (exit 3)."""
+
+
+def current_diff_digest(root: Any) -> str:
+    """sha256 of ``git diff HEAD`` (the working tree's change against the last commit)."""
+    import subprocess
+
+    from plumb.normalize import sha256_bytes
+
+    out = subprocess.run(["git", "diff", "HEAD", "--no-color", "--no-ext-diff"], cwd=root,
+                         capture_output=True, timeout=30, stdin=subprocess.DEVNULL)
+    return sha256_bytes(out.stdout.replace(b"\r\n", b"\n"))
+
+
+def waive(core: Any, diff_digest: str, reason: str) -> Any:
+    """Append the owner's ``waiver`` event pinned to ``diff_digest``; refused under the
+    agent session marker. Using it in place of a full rerun belongs to sub-project 3."""
+    from plumb.approvals import marker
+
+    value = marker()
+    if value:
+        raise WaiverRefused(f"plumb tests waive refused: the agent session marker is set "
+                            f"(PLUMB_AGENT_SESSION={value}); only the owner waives, in their "
+                            "own terminal")
+    return core.log_append("events", "waiver", {"diff_digest": diff_digest, "reason": reason,
+                                               "by": "owner"})
