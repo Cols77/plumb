@@ -411,3 +411,51 @@ so.
 - [LOW] (bootstrap) The records were written with plumb's own library (`Core.write_record`,
   `Core.add_link`) because `plumb new` is not built. Every link was pinned when it was added,
   so `plumb repin` had nothing to do.
+
+## SP1 lane HOST (2026-10-06)
+
+All HOST MUST items (H1 to H7) and SHOULD items (HS1 to HS5) are built. Merge points: H5 at
+`1e7916a`, H7 at `f098b2a`, lane end with HS3 at `b54d9d8` (plus this note).
+
+- [MEDIUM] (host, stop.py) The regression instruction reads `<node> passed in an earlier run
+  and now fails (last run <id>)` instead of spec 6.4's `passed in run <id>`: `NodeEvidence`
+  (spec 12.1) carries only `last_run`, which for a regression is the failing run, not the run
+  that passed. Fix: add `last_pass_run` to `NodeEvidence` (contract change, coordinator).
+- [MEDIUM] (host, stop.py) Trigger 3 blocks once per failing run (`asked["regression:<node>"]
+  = last_run` in `turn.json`), and trigger 2 once per decision hash; later stops list them under
+  `questions:` without blocking. `asked` lives in the session's `turn.json`, so a new session
+  asks again once.
+- [MEDIUM] (host, stop.py) The stop hook combines every reason of a turn (covering tests,
+  trigger 2, trigger 3) into its single block, so "at most one block per turn" holds without
+  dropping a trigger when the tests block comes first.
+- [MEDIUM] (host, prompt.py) The prompt hook deletes the session's `touched.txt` at each turn
+  start, so `touched.txt` holds the current turn's edits only. VERIFY's `tests run --changed`
+  (which reads the touched lists of every session) therefore sees this turn's edits plus
+  `git status`, not the whole session's history.
+- [MEDIUM] (host, install.py) The skill and slash command are rendered with an agent prefix
+  that differs from the hook prefix for the venv launcher: hooks run
+  `"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe" -m plumb`, the skill names
+  `.venv/Scripts/python.exe -m plumb` (relative, because `CLAUDE_PROJECT_DIR` is not
+  guaranteed in the agent's shell). Deny rules cover both the three standard prefixes and the
+  agent prefix.
+- [MEDIUM] (host, install.py) A foreign `statusLine` is kept and reported, never replaced, so
+  plumb's status line does not show in a project that already has one.
+- [LOW] (host, install.py) Deny rules follow spec 5.6 literally: `Bash(*PLUMB_AGENT_SESSION*)`
+  depends on the host reading a leading `*`; `Edit(.plumb/log/**)` is resolved by Claude Code
+  relative to the working directory; `MultiEdit` may no longer be a tool name in current
+  Claude Code (inert). Layer 1 (the marker) holds regardless.
+- [LOW] (host, stop.py) The stop hook computes the state of every record for the snapshot
+  counts (about 550 ms end to end on plumb's own repository with `python -m plumb hook stop`,
+  under the 800 ms budget). CORE's index cache (KS1) or an incremental snapshot would cut it.
+- [LOW] (host, prompt.py) The escalation hint counts only strongly matched records (named by
+  ID, or term overlap of at least 1.0); the threshold is a guess, not measured.
+- [LOW] (host, prompt.py) Intent-change flags are logged to `.plumb/session/intent_flags.jsonl`
+  (gitignored), a file name spec 12.5 does not list.
+- [LOW] (host, hookio.py) A watchdog thread ends a hook process with `os._exit(0)` after
+  1.9 s (the 2-second rule), after printing the budget notice; an atomic JSON write in flight
+  at that moment leaves only a temporary file behind. The watchdog runs only from the CLI.
+- [LOW] (host, install.py) `hooks uninstall` removes the git `commit-msg` hook only when it
+  contains `plumb trailers check-msg` (BRIDGE writes it); a foreign hook is left alone.
+- [LOW] (host, tests) HS3's in-process latency test was written after the hooks it measures,
+  so it was green on its first run (no red step); the end-to-end subprocess latency test and
+  the benchmark belong to phase 4.
