@@ -415,6 +415,91 @@ def cmd_brief(command: str, argv: list[str]) -> int:
     return 0
 
 
+def _target_label(target) -> str:
+    return target.record or target.test or target.path or target.symbol or "?"
+
+
+def drift_data(core) -> dict:
+    """The drift signals (spec 5.10): stale and dangling links with the moved end,
+    unconfirmed edits, uncovered examples, and fidelity that a judgment no longer covers.
+
+    A requirement never judged is advisory only (R4: fidelity is on demand or listed at the
+    merge boundary); it is returned under ``never_judged`` and is not a drift signal.
+    """
+    index = core.index()
+    statuses = core.status()
+    stale: list[dict] = []
+    dangling: list[dict] = []
+    for record_id in sorted(statuses):
+        for state in statuses[record_id].links:
+            label = _target_label(state.link.target)
+            if state.state == "stale":
+                stale.append({"link": state.link.id, "moved": state.moved, "target": label})
+            elif state.state == "dangling":
+                dangling.append({"link": state.link.id, "target": label})
+    unconfirmed = sorted(i for i, s in statuses.items() if s.confirmation == "unconfirmed-edit")
+    uncovered = {i: list(s.uncovered_examples) for i, s in sorted(statuses.items())
+                 if index[i].kind == "requirement" and s.uncovered_examples}
+    fidelity: list[dict] | str
+    never_judged: list[str] = []
+    try:
+        from plumb.judgment.fidelity import fidelity_state, latest_judgments
+    except ImportError:
+        fidelity = "unavailable"
+    else:
+        fidelity = []
+        latest = latest_judgments(core)
+        for record_id in sorted(index):
+            record = index[record_id]
+            if record.kind != "requirement":
+                continue
+            state = fidelity_state(core, record, latest)
+            if state is None or state == "fits":
+                continue
+            if record_id not in latest:
+                never_judged.append(record_id)
+            else:
+                fidelity.append({"requirement": record_id, "state": state})
+    fidelity_signals = fidelity if isinstance(fidelity, list) else []
+    clean = not (stale or dangling or unconfirmed or uncovered or fidelity_signals)
+    return {"clean": clean, "stale": stale, "dangling": dangling,
+            "unconfirmed_edits": unconfirmed, "uncovered_examples": uncovered,
+            "fidelity": fidelity, "never_judged": never_judged}
+
+
+def cmd_drift(command: str, argv: list[str]) -> int:
+    parser = _parser(command, "Drift signals only: stale and dangling links, unconfirmed "
+                     "edits, uncovered examples, fidelity a judgment no longer covers.")
+    args = parser.parse_args(argv)
+    data = drift_data(_core(args))
+    code = 0 if data["clean"] else 1
+    if args.as_json:
+        emit(data, True)
+        return code
+    lines: list[str] = []
+    for item in data["stale"]:
+        lines.append(f"{item['link']} stale ({item['moved']} moved: {item['target']})")
+    for item in data["dangling"]:
+        lines.append(f"{item['link']} dangling (missing: {item['target']})")
+    for record_id in data["unconfirmed_edits"]:
+        lines.append(f"{record_id} unconfirmed edit (approved content changed)")
+    for record_id, examples in data["uncovered_examples"].items():
+        lines.append(f"{record_id} uncovered examples: {', '.join(examples)}")
+    if data["fidelity"] == "unavailable":
+        lines.append("fidelity: unavailable")
+    else:
+        for item in data["fidelity"]:
+            lines.append(f"{item['requirement']} fidelity {item['state']} "
+                         f"(plumb fidelity {item['requirement']})")
+    if not lines:
+        lines.append("drift: none")
+    if data["never_judged"]:
+        lines.append(f"advisory: fidelity never judged for {len(data['never_judged'])} "
+                     "requirements (listed at the merge boundary; plumb fidelity <SR>)")
+    emit(lines, False)
+    return code
+
+
 def _not_built(command: str, argv: list[str]) -> int:
     print(f"plumb: '{command}' is not available in this build", file=sys.stderr)
     return EXIT_USAGE
@@ -431,6 +516,7 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "check": cmd_validate,
     "status": cmd_status,
     "brief": cmd_brief,
+    "drift": cmd_drift,
 }
 
 
