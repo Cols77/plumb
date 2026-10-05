@@ -178,8 +178,12 @@ def _state_of(rec: Mapping[str, Any]) -> str:
     return "fresh-fail"
 
 
+_NO_CHECK: Any = object()
+
+
 def single_evidence(index: Mapping[str, Any], node_id: str, *, closure: str | None,
-                    test_hash: str | None, env_key: str) -> NodeEvidence:
+                    test_hash: str | None, env_key: str,
+                    identity: Any = _NO_CHECK) -> NodeEvidence:
     """Evidence of one recorded node id against the current closure, source and env key."""
     entry = index.get("nodes", {}).get(node_id)
     if not entry or not entry.get("last"):
@@ -198,6 +202,8 @@ def single_evidence(index: Mapping[str, Any], node_id: str, *, closure: str | No
         miss = "closure"
     elif last.get("env_key") != env_key:
         miss = "env"
+    elif identity is not _NO_CHECK and (identity is None or last.get("identity") != identity):
+        miss = "identity"  # an unknown identity is never reused (VS3)
     state = "stale" if miss else _state_of(last)
     return NodeEvidence(node_id=node_id, state=state, regression=regression,  # type: ignore[arg-type]
                         test_changed_since_pass=changed, last_run=last.get("run_id"),
@@ -222,7 +228,7 @@ def aggregate(node_id: str, parts: list[NodeEvidence]) -> NodeEvidence:
 
 
 def node_evidence(index: Mapping[str, Any], tmap: Any, node_id: str,
-                  env_key: str) -> NodeEvidence:
+                  env_key: str, identity: Any = _NO_CHECK) -> NodeEvidence:
     """Evidence for a node id, a parametrized family, or a whole test file."""
     from plumb.verify.markers import strip_param
 
@@ -232,18 +238,20 @@ def node_evidence(index: Mapping[str, Any], tmap: Any, node_id: str,
     if "::" in node_id:
         if node_id in recorded:
             return single_evidence(index, node_id, closure=closure,
-                                   test_hash=tmap.node_hash(node_id), env_key=env_key)
+                                   test_hash=tmap.node_hash(node_id), env_key=env_key,
+                                   identity=identity)
         family = [n for n in recorded if strip_param(n) == node_id]
         if not family:
             return NodeEvidence(node_id=node_id, state="none")
         return aggregate(node_id, [single_evidence(index, n, closure=closure,
                                                    test_hash=tmap.node_hash(n),
-                                                   env_key=env_key) for n in family])
+                                                   env_key=env_key, identity=identity)
+                                   for n in family])
     prefix = test_file + "::"
     members = {n for n in recorded if n.startswith(prefix)}
     known = {strip_param(n) for n in members}
     parts = [single_evidence(index, n, closure=closure, test_hash=tmap.node_hash(n),
-                             env_key=env_key) for n in sorted(members)]
+                             env_key=env_key, identity=identity) for n in sorted(members)]
     for node in tmap.nodes_of(test_file):
         if node not in known:
             parts.append(NodeEvidence(node_id=node, state="none"))

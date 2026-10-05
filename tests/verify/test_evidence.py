@@ -38,7 +38,7 @@ def test_run_appends_test_run_entry_with_tree_and_env(project: Path) -> None:
     assert payload["tree"]["head_tree"] == git(project, "rev-parse", "HEAD^{tree}").strip()
     assert payload["tree"]["dirty"].startswith("sha256:")
     assert payload["env"]["env_key"] == envid.env_key(project)
-    assert "identity" not in payload["env"]
+    assert "identity" in payload["env"]  # VS3: null when the environment is unknown
     ids = {n["id"]: n for n in payload["nodes"]}
     assert set(ids) == {"tests/test_mod.py::test_add", "tests/test_mod.py::test_add_zero"}
     node = ids["tests/test_mod.py::test_add"]

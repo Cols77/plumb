@@ -103,7 +103,14 @@ class Verify:
         from plumb.verify.evidence import node_evidence
 
         index, tmap, key = self.index(), self.test_map(), self.env_key()
-        return {n: node_evidence(index, tmap, n, key) for n in nodes}
+        identity = self.identity()
+        return {n: node_evidence(index, tmap, n, key, identity) for n in nodes}
+
+    def identity(self, *, compute: bool = False) -> str | None:
+        """The content identity cached under the env key (VS3); computed only on record."""
+        from plumb.verify.envid import cached_identity
+
+        return cached_identity(self.core, self.env_key(), compute=compute)
 
     def full_pending(self) -> FullPending:
         from plumb.verify.select import matches_infra
@@ -278,7 +285,8 @@ class Verify:
         if vcfg.flaky_rerun and not outcome.discarded and not result.timed_out:
             self._flaky_rerun(outcome, tree=tree, key=key, timeout=timeout)
         payload = self._payload(outcome, tree=tree, key=key, full=full, budget=budget,
-                                selection=report.selection, infra=infra, files=files)
+                                selection=report.selection, infra=infra, files=files,
+                                identity=self.identity(compute=True))
         entry = core.log_append("evidence", "test-run", payload)
         report.run_id = payload["run_id"]
         report.discarded = outcome.discarded
@@ -294,7 +302,7 @@ class Verify:
             from plumb.verify.policy import pass_run
 
             for node in report.failed:
-                evid = ev.node_evidence(index, tmap, node, key)
+                evid = ev.node_evidence(index, tmap, node, key, payload["env"]["identity"])
                 if evid.regression:
                     report.regressions.append({
                         "node": node, "passed_in": pass_run(index, node),
@@ -352,7 +360,7 @@ class Verify:
 
     def _payload(self, outcome: Any, *, tree: Mapping[str, Any], key: str, full: bool,
                  budget: float, selection: Selection | None, infra: Mapping[str, str] | None,
-                 files: Mapping[str, str] | None) -> dict[str, Any]:
+                 files: Mapping[str, str] | None, identity: str | None) -> dict[str, Any]:
         from plumb.verify.evidence import closure_digest, new_run_id, payload_checksum
 
         tmap = self.test_map()
@@ -372,7 +380,7 @@ class Verify:
                           "attempts": list(data.get("attempts") or [data.get("outcome")])})
         payload: dict[str, Any] = {
             "run_id": new_run_id(), "full": full, "tree": dict(tree),
-            "env": {"env_key": key},
+            "env": {"env_key": key, "identity": identity},
             "selection": {
                 "changed": list(selection.changed) if selection else [],
                 "deferred": list(selection.deferred) if selection else [],
