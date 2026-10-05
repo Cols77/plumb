@@ -11,6 +11,12 @@
    regression (trigger 3, R3: a node that passed with recorded evidence and now fails; once
    per failing run). A new test that starts red is "not yet passing" and never asks.
 5. Otherwise a short ``systemMessage`` summary; proposed records are shown, never asked.
+
+The deadline is checked before a step starts, never after it ends (spec 10): a step that
+would start past the soft budget is skipped and named in a ``check skipped (budget)`` notice,
+and results already computed are always used (the stated set, the snapshot, the block and the
+summary). Only when the record states themselves cannot start does the hook fall back to the
+bare budget notice. The watchdog's hard limit still bounds the whole hook.
 """
 
 from __future__ import annotations
@@ -199,22 +205,25 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                           {"at": utc_now(), "session": ctx.session_id,
                            "reply_after_prompt": turn.get("prompt_digest"), "records": []})
         return None
-    ctx.deadline.check("changed paths")
+    skipped: list[str] = []
+    ctx.deadline.check("record states")  # nothing below can run without them
     index = core.index()
     by_path = core.records_for_paths(changed)
     touched_ids = sorted({i for ids in by_path.values() for i in ids if i in index})
     changed_set = set(changed)
     edited_ids = [i for i in touched_ids if index[i].path in changed_set]
     all_statuses = core.status()
-    ctx.deadline.check("record states")
 
     verify = verify_api(core, verify)
     selection = evidence = pending = None
     if verify is not None:
-        selection = verify.select(changed, budget_s=float(core.config.verify.turn_budget_s))
-        evidence = dict(verify.evidence(selection.nodes)) if selection.nodes else {}
-        pending = verify.full_pending()
-    ctx.deadline.check("covering tests")
+        if ctx.deadline.expired():
+            skipped.append("covering tests")
+        else:
+            selection = verify.select(changed,
+                                      budget_s=float(core.config.verify.turn_budget_s))
+            evidence = dict(verify.evidence(selection.nodes)) if selection.nodes else {}
+            pending = verify.full_pending()
 
     # trigger 2: decisions that matter, unconfirmed, touched this turn
     decisions = matters_decisions(index, all_statuses, touched_ids)
@@ -238,16 +247,19 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     unjudged = unjudged_fn(unjudged)
     requirement_ids = [i for i in touched_ids if index[i].kind == "requirement"]
     fidelity = ()
-    if unjudged is not None and requirement_ids and not ctx.deadline.expired():
-        try:
-            fidelity = tuple(unjudged(core, requirement_ids))
-        except Exception:  # noqa: BLE001 - advisory only
-            fidelity = ()
+    if unjudged is not None and requirement_ids:
+        if ctx.deadline.expired():
+            skipped.append("fidelity")
+        else:
+            try:
+                fidelity = tuple(unjudged(core, requirement_ids))
+            except Exception:  # noqa: BLE001 - advisory only
+                fidelity = ()
     questions = [f"regression {n}" for n in regressions] + decisions
     write_snapshot(ctx.root, build_snapshot(
         core, evidence=evidence, full_pending=pending, statuses=all_statuses,
         deferred=len(selection.deferred) if selection else 0, fidelity_unjudged=fidelity,
-        ask=len(questions)))
+        ask=len(questions), skipped=", ".join(skipped) or None))
 
     if not active:
         reasons: list[str] = []
@@ -262,19 +274,29 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
             reasons.append(_regression_line(n, evidence[n]))
             asked[f"regression:{n}"] = evidence[n].last_run or "?"
         if reasons:
+            if skipped:
+                reasons.append(skip_notice(skipped))
             write_json_atomic(turn_path, {**turn, "asked": asked})
             return HookOutput(block_reason="\n".join(reasons))
 
+    if ctx.deadline.expired():
+        skipped.append("confirmations")
+        turn_start = 0.0  # _confirmations reads no log without a turn start
     return HookOutput(system_message=summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
-        pending, questions, fidelity, turn_start, verify is not None))
+        pending, questions, fidelity, turn_start, verify is not None, skipped))
+
+
+def skip_notice(skipped: Sequence[str]) -> str:
+    """The notice naming the steps that would have started past the deadline (spec 10)."""
+    return "plumb: check skipped (budget): " + ", ".join(skipped)
 
 
 def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
             changed: Sequence[str], touched_ids: Sequence[str], stated_ids: Sequence[str],
             selection: Any, evidence: Mapping[str, Any] | None, pending: Any,
             questions: Sequence[str], fidelity: Sequence[str], turn_start: float,
-            verify_available: bool) -> str:
+            verify_available: bool, skipped: Sequence[str] = ()) -> str:
     records_edited = any(index[i].path in set(changed) for i in touched_ids)
     doc_only = (selection.doc_only if selection is not None else
                 all(p.endswith(".md") or p.startswith("docs/") for p in changed))
@@ -315,6 +337,8 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
         extra.append("; ".join(confirmed))
     if fidelity:
         extra.append("fidelity unjudged: " + ", ".join(fidelity))
+    if skipped:
+        extra.append(skip_notice(skipped).removeprefix("plumb: "))
     if extra:
         lines.append(_clip("plumb: " + " | ".join(extra), 200))
     lines.append("plumb: questions: " + ("; ".join(questions) if questions else "none"))

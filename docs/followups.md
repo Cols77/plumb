@@ -487,3 +487,42 @@ UTF-8, and a failed first write suppressing the skip notice) were fixed in the s
 - [LOW] (host review, templates/SKILL.md) The skill tells the agent to record read-backs and
   examples as records under `.plumb/` instead of naming `plumb new` as spec 6.7 says, so
   agents may hand-write frontmatter with malformed IDs or unpinned links.
+
+## HOST lane review, stop-deadline round (2026-10-06)
+
+The HIGH finding of this review (the stop hook checked its deadline after the covering-tests
+step had finished and then discarded every computed result) was fixed in the same change: the
+deadline is now checked before a step starts, a skipped step is named in a
+`check skipped (budget): <steps>` notice, and the stated set, snapshot, block and summary are
+always produced from the results already computed.
+
+- [MEDIUM] (host review, stop.py) The stop hook rebuilds `status.json` from this turn's
+  covering selection only. When that selection is empty or doc-only (or the covering-tests
+  step was skipped for the budget), the evidence is `{}` and `tests_state` returns `unknown`,
+  overwriting the earlier snapshot's ok/failing/regression state: after a docs-only turn the
+  status line shows `tests ?` (or loses a `regression N` it was showing).
+- [LOW] (host review, statusline.py) Measured end to end, `plumb statusline` takes about
+  500 ms here (`python -m plumb statusline --root <repo>` 504 ms against 355 ms for a bare
+  `python -c pass`), above spec 10's 350 ms budget. Most of it is interpreter start-up plus
+  routing through `plumb.cli`.
+- [MEDIUM] (host review, CORE-owned approvals.py) `find_prompt()` keys `prompts.jsonl` entries
+  by digest with `setdefault`, so when the owner repeats the same affirming prompt text
+  ("ok, go on", "yes"), relay resolves the first, oldest entry. Its `at` predates the current
+  `stated.json`, so `_stated()` discards the stated set and the relay is refused
+  ("DEC-002 is not in the stated set of the reply before that prompt", exit 3), while the
+  prompt hook's awaiting-confirmation line still prints the 12-hex prefix. Fails safe (no
+  false confirmation), but the most common one-word confirmations break after first use. Fix
+  in CORE: keep the latest entry per digest (or the latest whose `at` follows `stated.at`).
+- [MEDIUM] (host review, stop.py, prompt.py) Commands the hooks print for the agent hard-code
+  the bare `plumb` launcher (the stop block's "run 'plumb tests run --changed'", the prompt
+  hook's "run plumb relay ..."), while the skill and slash command are rendered with the
+  installed launcher's agent prefix (spec 6.7). With `plumb hooks install --launcher venv`
+  and no `plumb` on PATH, the agent gets command-not-found and wastes a turn, or skips the
+  covering tests and the relay. Fix: store the agent prefix at install time (config or an
+  env var in settings.json) and render these lines with it.
+- [LOW] (host review, hookio.py) The watchdog hard limit (1.9 s) and the per-hook deadline are
+  measured from `start`, taken in `cli._hook` after interpreter start-up and the plumb import;
+  process start-up (about 225-500 ms here) is not counted, so on a loaded 2-core machine with
+  a cold cache the host can see about 2.3 s for one hook before the watchdog fires. Measured
+  on the lane tree without VERIFY: session-start 794 ms, prompt 762 ms, stop 852-1018 ms,
+  statusline 419 ms end to end. Partly recorded above under the latency item.

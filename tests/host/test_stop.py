@@ -313,3 +313,107 @@ def test_writes_status_snapshot(project: Path, hook_input) -> None:
     run_stop(project, hook_input, verify=verify)
     data = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert data["tests"] == "regression" and data["ask"] == 1
+
+
+class _Clock:
+    """A ``time`` stand-in for the hook deadline: frozen until a step advances it."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def __getattr__(self, name: str):
+        return getattr(time, name)
+
+
+@pytest.fixture
+def clock(monkeypatch) -> _Clock:
+    from plumb.hosts.claude_code import hookio
+
+    fake = _Clock()
+    monkeypatch.setattr(hookio, "time", fake)
+    return fake
+
+
+class _SlowVerify(FakeVerify):
+    """Covering selection that finishes after the stop hook's soft budget has passed."""
+
+    clock: _Clock | None = None
+
+    def select(self, changed, *, budget_s=None):
+        result = super().select(changed, budget_s=budget_s)
+        assert self.clock is not None
+        self.clock.now += 5.0
+        return result
+
+
+def test_results_finished_past_the_budget_are_used(project: Path, hook_input, write_record,
+                                                   clock: _Clock) -> None:
+    write_record(project, DEC1)
+    _git(project, "add", "-A")
+    _git(project, "commit", "-q", "-m", "dec")
+    start_turn(project)
+    edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
+    edit(project, ".plumb/requirements/SR-001.md",
+         SR1.replace("add returns the sum.", "add returns the integer sum."))
+    verify = _SlowVerify(nodes=(NODE, NODE2), evidence_map=fresh(
+        NODE2, state="fresh-fail", regression=True, last_run="r9"))
+    verify.clock = clock
+    reason = _block(run_stop(project, hook_input, verify=verify))
+    assert reason is not None
+    assert "plumb: run 'plumb tests run --changed'" in reason
+    assert "DEC-001 is unconfirmed" in reason
+    assert f"plumb: regression: {NODE2}" in reason
+    stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
+    assert {"SR-001", "DEC-001"} <= {r["id"] for r in stated["records"]}
+    status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert status["tests"] == "regression"
+    log = project / ".plumb" / "session" / "errors.log"
+    assert not log.exists() or "budget exceeded" not in log.read_text("utf-8")
+
+
+class _SlowCore:
+    """A CoreAPI whose record states finish after the soft budget has passed."""
+
+    def __init__(self, core, clock: _Clock) -> None:
+        self._core, self._clock = core, clock
+
+    def status(self, *args, **kwargs):
+        result = self._core.status(*args, **kwargs)
+        self._clock.now += 5.0
+        return result
+
+    def __getattr__(self, name: str):
+        return getattr(self._core, name)
+
+
+def test_a_step_starting_past_the_budget_is_skipped_and_reported(
+        project: Path, hook_input, write_record, clock: _Clock, monkeypatch) -> None:
+    import plumb.api
+
+    write_record(project, DEC1)
+    _git(project, "add", "-A")
+    _git(project, "commit", "-q", "-m", "dec")
+    real_open = plumb.api.open_core
+    monkeypatch.setattr(plumb.api, "open_core", lambda root: _SlowCore(real_open(root), clock))
+    start_turn(project)
+    edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
+    verify = FakeVerify(nodes=(NODE,))
+    out = run_stop(project, hook_input, verify=verify)
+    assert verify.select_calls == []  # the covering-tests step would start past the deadline
+    reason = _block(out)
+    assert reason is not None and "DEC-001 is unconfirmed" in reason
+    assert "plumb: check skipped (budget): covering tests" in reason
+    stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
+    assert "DEC-001" in {r["id"] for r in stated["records"]}
+    status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert status["skipped"] == "covering tests"
+    # the next stop (the DEC already asked) prints the summary with the skip notice
+    start_turn(project, asked=json.loads(
+        (project / ".plumb" / "session" / "s1" / "turn.json").read_text("utf-8"))["asked"])
+    edit(project, "src/calc.py", "def add(a, b):\n    return int(b) + int(a)\n")
+    summary = _summary(run_stop(project, hook_input, verify=verify))
+    assert "check skipped (budget): covering tests" in summary
+    assert "plumb: questions: DEC-001" in summary
