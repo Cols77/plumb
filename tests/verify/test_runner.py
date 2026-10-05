@@ -48,3 +48,14 @@ def test_run_discarded_when_inputs_change(repo: Path) -> None:
     clean = run_selection(open_core(repo), ["tests/test_helper.py"])
     assert clean.discarded is None
     assert clean.result.nodes["tests/test_helper.py::test_twice"]["outcome"] == "passed"
+
+
+@pytest.mark.sr("SR-018")
+def test_collection_error_does_not_stop_other_files(repo: Path) -> None:
+    assert "--continue-on-collection-errors" in build_command(["tests/test_a.py"])
+    make_project(repo)
+    write(repo, "tests/test_broken.py", "import nowhere_to_be_found\n\n\ndef test_x():\n"
+          "    pass\n")
+    result = run_pytest(repo, ["tests/test_broken.py", "tests/test_helper.py"], timeout_s=60)
+    assert result.collection_errors == ["tests/test_broken.py"]
+    assert result.nodes["tests/test_helper.py::test_twice"]["outcome"] == "passed"

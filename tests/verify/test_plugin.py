@@ -43,4 +43,5 @@ def test_collection_error_reported(proj: Path) -> None:
     write(proj, "tests/test_broken.py", "def test_x(:\n    pass\n")
     result = run_pytest(proj, ["tests/test_broken.py"])
     assert result.collection_errors == ["tests/test_broken.py"]
-    assert result.exit_status == 2
+    # pytest's own status: 1 under --continue-on-collection-errors (2 without it)
+    assert result.exit_status == 1

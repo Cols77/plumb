@@ -5,6 +5,11 @@ root, with the report path in ``PLUMB_REPORT``. Never ``-n`` unless ``verify.wor
 or 2 and pytest-xdist is installed. On the hard wall-clock limit plumb terminates the pytest
 process it started, and only that one. When a file of the selection's import closure
 changes during the run, the run is discarded (``inputs changed``): it gives no evidence.
+
+A collection error (an import or syntax error in a test module) does not stop the session:
+``--continue-on-collection-errors`` lets the other selected files run, and every known node of
+a selected file that failed to collect counts as ``failed`` in phase ``collect``, so a test
+that passed before and can no longer even be imported is a regression (R3), never ``stale``.
 """
 
 from __future__ import annotations
@@ -50,7 +55,8 @@ def xdist_available() -> bool:
 
 def build_command(args: Sequence[str], *, workers: int = 0,
                   xdist: bool | None = None) -> list[str]:
-    cmd = [sys.executable, "-m", "pytest", "-p", PLUGIN, "-p", "no:cacheprovider", "-q"]
+    cmd = [sys.executable, "-m", "pytest", "-p", PLUGIN, "-p", "no:cacheprovider", "-q",
+           "--continue-on-collection-errors"]
     if workers in (1, 2):
         if xdist is None:
             xdist = xdist_available()
@@ -78,6 +84,44 @@ def _node_outcomes(phases: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, A
     for node in nodes.values():
         node.pop("_seen", None)
     return nodes
+
+
+def _collect_error_hits(errors: Sequence[str], test_file: str) -> bool:
+    """Whether a collection error id (a module, or a directory above it) covers the file."""
+    for err in errors:
+        err = err.split("::", 1)[0].rstrip("/")
+        if err in ("", ".") or test_file == err or test_file.startswith(err + "/"):
+            return True
+    return False
+
+
+def mark_collection_failures(result: RunResult, targets: Sequence[str],
+                             known: Mapping[str, Iterable[str]]) -> list[str]:
+    """Record the known nodes of every target that failed to collect as ``failed``.
+
+    ``targets`` are the selection's arguments (test files or node ids); ``known`` maps a test
+    file to its known node ids (recorded ids and the ids its source defines). A node id target
+    marks only its own nodes. Nodes the run reported stay as they are. Returns the marked ids.
+    """
+    from plumb.verify.markers import strip_param
+
+    if not result.collection_errors:
+        return []
+    marked: list[str] = []
+    for target in targets:
+        test_file, _, rest = target.partition("::")
+        if not _collect_error_hits(result.collection_errors, test_file):
+            continue
+        for node in known.get(test_file, ()):
+            if rest and not (node == target or strip_param(node) == target
+                             or node.startswith(target + "::")):
+                continue
+            if node in result.nodes or node in marked:
+                continue
+            result.nodes[node] = {"outcome": "failed", "failed_phase": "collect",
+                                  "duration_s": 0.0}
+            marked.append(node)
+    return marked
 
 
 def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = None,

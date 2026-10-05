@@ -98,3 +98,33 @@ def test_new_red_test_is_not_regression(project: Path) -> None:
     assert report.not_yet_passing == ["tests/test_new.py::test_red"]
     ev = open_verify(open_core(project)).evidence(["tests/test_new.py::test_red"])
     assert ev["tests/test_new.py::test_red"].regression is False
+
+
+@pytest.mark.sr("SR-020")
+def test_collection_error_of_passing_test_is_regression(project: Path) -> None:
+    first = open_verify(open_core(project)).run(nodes=["tests/test_mod.py"])
+    assert first.ok
+    write(project, "src/pkg/mod.py", "def plus(a, b):\n    return a + b\n")
+    second = open_verify(open_core(project)).run(changed=["src/pkg/mod.py"])
+    assert "tests/test_mod.py" in second.collection_errors
+    assert second.outcomes["tests/test_mod.py::test_add"] == "failed"
+    assert second.outcomes["tests/test_mod.py::test_add_zero"] == "failed"
+    assert [r["node"] for r in second.regressions] == ["tests/test_mod.py::test_add",
+                                                       "tests/test_mod.py::test_add_zero"]
+    assert all(r["passed_in"] == first.run_id for r in second.regressions)
+    # test_twice never passed: a collection error there is not yet passing, not a regression
+    assert second.not_yet_passing == ["tests/test_helper.py::test_twice"]
+    node = "tests/test_mod.py::test_add"
+    ev = open_verify(open_core(project)).evidence([node, "tests/test_mod.py"])
+    assert ev[node].state == "fresh-fail" and ev[node].regression is True
+    assert ev["tests/test_mod.py"].regression is True
+
+
+@pytest.mark.sr("SR-020")
+def test_collection_error_marks_only_selected_nodes(project: Path) -> None:
+    first = open_verify(open_core(project)).run(nodes=["tests/test_mod.py"])
+    assert first.ok
+    write(project, "src/pkg/mod.py", "def plus(a, b):\n    return a + b\n")
+    second = open_verify(open_core(project)).run(nodes=["tests/test_mod.py::test_add"])
+    assert second.outcomes == {"tests/test_mod.py::test_add": "failed"}
+    assert [r["node"] for r in second.regressions] == ["tests/test_mod.py::test_add"]

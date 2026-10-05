@@ -455,3 +455,10 @@ the SHOULD items follow on the same branch.
 - [LOW] (VERIFY) The VERIFY lane's own tests start about 25 real pytest subprocesses. On this
   machine `tests/verify` takes about 50 to 70 s; the temporary projects turn the flaky rerun
   off except in `test_flaky.py`.
+- [LOW] (VERIFY, collection-error regression fix) Only collection errors mark a selected file's
+  known nodes `failed` (phase `collect`). A session that ends early for another reason (a crash
+  of pytest itself, a conftest import failure that pytest reports as a usage error) still
+  leaves those nodes without an outcome, so their evidence goes `stale` rather than failing.
+  The runner now passes `--continue-on-collection-errors`, so pytest's exit status for a
+  collection error is 1, not 2; plumb reads collection errors from the plugin report, never
+  from the status.

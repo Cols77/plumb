@@ -284,6 +284,8 @@ class Verify:
         result = outcome.result
         if vcfg.flaky_rerun and not outcome.discarded and not result.timed_out:
             self._flaky_rerun(outcome, tree=tree, key=key, timeout=timeout)
+        if not outcome.discarded and not result.timed_out:
+            self._collection_failures(result, tmap.test_files if full else args)
         payload = self._payload(outcome, tree=tree, key=key, full=full, budget=budget,
                                 selection=report.selection, infra=infra, files=files,
                                 identity=self.identity(compute=True))
@@ -311,7 +313,8 @@ class Verify:
                     report.not_yet_passing.append(node)
         ran_files = {n.split("::", 1)[0] for n in report.outcomes}
         report.removed_after_passing = [n for n in self.removed_after_passing()
-                                        if full or n.split("::", 1)[0] in ran_files]
+                                        if (full or n.split("::", 1)[0] in ran_files)
+                                        and n not in report.outcomes]
         report.full_pending = self.full_pending()
         return report
 
@@ -340,6 +343,28 @@ class Verify:
             data["attempts"] = ["failed", str(second)]
             if second == "passed":
                 data["outcome"] = "flaky"
+
+    def _collection_failures(self, result: Any, targets: Sequence[str]) -> None:
+        """Known nodes of selected files that failed to collect count as failed (R3)."""
+        from plumb.verify.markers import strip_param
+        from plumb.verify.runner import mark_collection_failures
+
+        if not result.collection_errors:
+            return
+        tmap = self.test_map()
+        recorded: dict[str, list[str]] = {}
+        for node_id in self.index().get("nodes", {}):
+            if "::" in node_id:
+                recorded.setdefault(node_id.split("::", 1)[0], []).append(node_id)
+        known: dict[str, list[str]] = {}
+        for target in targets:
+            test_file = target.split("::", 1)[0]
+            if test_file in known:
+                continue
+            ids = sorted(recorded.get(test_file, []))
+            covered = {strip_param(n) for n in ids}
+            known[test_file] = ids + [n for n in tmap.nodes_of(test_file) if n not in covered]
+        mark_collection_failures(result, targets, known)
 
     def removed_after_passing(self) -> list[str]:
         """Nodes that passed with recorded evidence and are no longer in their existing
@@ -377,6 +402,8 @@ class Verify:
             nodes.append({"id": node_id, "outcome": data.get("outcome"),
                           "duration_s": data.get("duration_s"), "closure": closure,
                           "test_hash": tmap.node_hash(node_id),
+                          **({"failed_phase": data["failed_phase"]}
+                             if data.get("failed_phase") == "collect" else {}),
                           "attempts": list(data.get("attempts") or [data.get("outcome")])})
         payload: dict[str, Any] = {
             "run_id": new_run_id(), "full": full, "tree": dict(tree),
