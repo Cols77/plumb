@@ -115,6 +115,65 @@ def cmd_init(command: str, argv: list[str]) -> int:
     return 0
 
 
+def _core(args: argparse.Namespace):
+    from plumb.api import open_core
+
+    return open_core(resolve_root(args.root))
+
+
+def cmd_link(command: str, argv: list[str]) -> int:
+    from plumb.links import LinkError, LinkUsageError, parse_cli_target
+
+    parser = _parser(command, "Add a hash-pinned link from a record to a record or file.")
+    parser.add_argument("source", help="source record ID")
+    parser.add_argument("kind", help="derives_from, decides, upstream, relates_to, "
+                        "implemented_by, verified_by, corrects, supersedes")
+    parser.add_argument("target", help="record ID or repository-relative path")
+    parser.add_argument("--example", default=None, help="EX-n or AC-n (verified_by)")
+    args = parser.parse_args(argv)
+    core = _core(args)
+    try:
+        target = parse_cli_target(args.target)
+        link = core.add_link(args.source, args.kind, target, args.example)
+    except LinkUsageError as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    except LinkError as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return 1
+    pin = link.pin
+    data = {"link": link.id, "kind": link.kind, "target": args.target,
+            "pin": None if pin is None else {"from": pin.source, "to": pin.target}}
+    emit(data if args.as_json else f"plumb: linked {link.id} {link.kind} {args.target}",
+         args.as_json)
+    return 0
+
+
+def cmd_repin(command: str, argv: list[str]) -> int:
+    from plumb.links import LinkError, repin
+
+    parser = _parser(command, "Refresh link pins (and pin unpinned links). Never confirms.")
+    parser.add_argument("selector", nargs="?", help="link id (SR-003#2) or record ID")
+    parser.add_argument("--all-stale", action="store_true", help="every stale or unpinned link")
+    parser.add_argument("--note", default="")
+    args = parser.parse_args(argv)
+    if not args.selector and not args.all_stale:
+        parser.error("name a link id, a record ID, or --all-stale")
+    core = _core(args)
+    try:
+        changes = repin(core, args.selector, all_stale=args.all_stale, note=args.note)
+    except LinkError as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        emit({"repinned": changes}, True)
+    elif changes:
+        emit([f"plumb: repinned {c['link']}" for c in changes], False)
+    else:
+        print("plumb: nothing to repin")
+    return 0
+
+
 def _not_built(command: str, argv: list[str]) -> int:
     print(f"plumb: '{command}' is not available in this build", file=sys.stderr)
     return EXIT_USAGE
@@ -122,6 +181,8 @@ def _not_built(command: str, argv: list[str]) -> int:
 
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "init": cmd_init,
+    "link": cmd_link,
+    "repin": cmd_repin,
 }
 
 
