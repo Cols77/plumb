@@ -118,7 +118,7 @@ are allowed and are checked like links.
 | Kind | ID | Purpose | Key fields |
 |---|---|---|---|
 | Intent | `INT-###` | What the owner wants, in the owner's words. | `quote` (verbatim owner words), `readback` (restatement in the owner's terms), `will`, `wont`, `assumptions` (each labelled), `mode: incremental \| escalated` |
-| Requirement | `SR-###` | A testable statement of required behavior. | `statement`, `feature`, `examples` (confirmed given/when/then cases, ids `EX-n`), `links` |
+| Requirement | `SR-###` | A testable statement of required behavior. | `statement`, `feature`, `examples` (given/when/then cases, ids `EX-n`), `links` |
 | Decision | `DEC-###` | An ambiguity made explicit. | `question`, `chosen`, `alternatives`, `rationale`, `matters: true \| false` |
 | Feature | `FEAT-###` | Groups requirements (replaces bundles). | `description`, `requirements` |
 | Nonconformance | `NC-####` | A known defect against a requirement, first-class. | `status: open \| corrected \| waived`, `detected_by`, `corrected_by`, `external_ref` |
@@ -161,6 +161,10 @@ Requirement states are derived and never stored:
 - **verified:** covered, and every covering test has passing evidence for its current
   identity;
 - **stale:** an approval or link pin no longer matches.
+
+Work never waits for a record to leave the proposed state. The agent builds on proposed
+records; the end-of-turn summary and the status line show how many records are still awaiting
+confirmation, and the passive confirmation path (section 6.6) moves them to confirmed.
 
 ### 4.3 IDs
 
@@ -223,11 +227,17 @@ confirmed exactly when its latest approval pins its current hash, so any later e
 unconfirmed until approved again. There are no consent phrases. An approval comes from one of
 two sources:
 
-- the owner running `plumb approve SR-004`;
+- the owner running `plumb approve SR-004`, or `plumb approve --proposed` to approve every
+  record still proposed (the batch form; it lists the records and their hashes in the entry);
 - the agent recording a confirmation the owner gave in conversation. Such an entry is marked
   `by: agent-for-owner` and carries the owner's words verbatim plus the digest of the prompt
   that contained them. The prompt hook recorded that digest when the prompt arrived, so the
-  quote can be checked.
+  quote can be checked. The entry also records its `basis`: `explicit` (the owner affirmed,
+  for example "ok", "yes", or "approve all proposed") or `no-objection` (the owner's next
+  prompt did not object to a statement shown in the previous reply; section 6.6).
+
+Silence never counts as confirmation: an `agent-for-owner` entry always cites a real owner
+prompt by digest, and with no owner prompt there is no approval.
 
 An escalated plan (section 5.2) is approved as a set: one approval pins a set hash over the
 sorted member hashes.
@@ -258,12 +268,17 @@ sr_ids, changed_files, exempted}]}` from a single `git log` call per range.
 These five mechanisms, agreed with the owner, turn what the owner says into records that can
 be checked:
 
-1. **Read-back in the owner's terms.** Before building, the agent restates the request: what
-   will be done, what will not be done, and every assumption, labelled as an assumption. A
-   confirmed read-back becomes an `INT` record with the owner's quote beside it.
+1. **Read-back in the owner's terms.** Before building, the agent restates the request in its
+   reply: what will be done, what will not be done, and every assumption, labelled as an
+   assumption. The read-back is a statement, not a question ("Building X, not Y; assuming Z.
+   Say so if wrong."), and the agent goes on working. It is recorded at once as a proposed
+   `INT` record with the owner's quote beside it, and becomes confirmed through the passive
+   confirmation path (section 6.6).
 2. **Requirements anchored in confirmed examples.** Each requirement carries concrete
-   given/when/then examples, including edge cases, which the owner confirms. Each example
-   becomes an acceptance test linked by `verified_by`.
+   given/when/then examples, including edge cases. The agent states the examples in the same
+   non-blocking way, records them as a proposed `SR`, and the owner confirms them through the
+   passive confirmation path. Each example becomes an acceptance test linked by
+   `verified_by`.
 3. **Ambiguity as explicit decisions.** When two readings fit, the agent writes a `DEC`
    ("I assumed A; B also fits") instead of choosing silently.
 4. **Traceable links.** Intent to requirement to examples and tests to code, each link pinned
@@ -271,11 +286,18 @@ be checked:
 5. **A living record kept honest by drift signals.** Stale pins, unconfirmed edits and failing
    covering tests show up on the next turn, not at release time.
 
+In this document, "the owner confirms" never means a blocking question. Confirmation always
+rests on something the owner did (a command, or a prompt sent after the statement was shown),
+never on silence, and it never interrupts the owner. Only the three triggers of section 6.6
+can make the agent stop and ask.
+
 ### 5.2 Incremental and escalated planning
 
 **Incremental mode is the default.** Intent is captured as work happens: a read-back, one or
-a few requirements with examples, and decisions as they arise. Each piece is confirmed in the
-flow of conversation. No spec document is required.
+a few requirements with examples, and decisions as they arise. Each piece is stated in the
+agent's reply, recorded as proposed, and the agent proceeds on it without waiting. The owner
+confirms it in the flow of conversation through the passive confirmation path (section 6.6),
+never by answering a blocking question. No spec document is required.
 
 **Escalated mode** is for large, risky or cross-cutting work. Before code is written, the agent
 drafts the full set of intents, requirements, examples and decisions, plus a short Markdown
@@ -314,7 +336,8 @@ The session-start hook outputs a compact brief of at most about 60 lines:
 - the active features;
 - confirmed intents in one line each;
 - open decisions that matter;
-- stale links, unconfirmed edits, failing or missing evidence, and open NCs;
+- stale links, unconfirmed edits, records still proposed, failing or missing evidence, and
+  open NCs;
 - the location of the test map (`plumb map`).
 
 It is context, not procedure.
@@ -355,7 +378,8 @@ then:
 
 ```
 plumb: touched SR-004, SR-007 | stale: SR-007 -> src/plumb/links.py:repin (code end)
-plumb: covering tests 6 selected: 4 fresh pass, 2 not yet run
+plumb: covering tests 6 selected: 4 fresh pass, 1 not yet passing, 1 not yet run
+plumb: proposed 2 (SR-009, INT-004) | confirmed SR-004 on your prompt "ok, go on"
 plumb: questions: none
 ```
 
@@ -367,7 +391,7 @@ latency budget.
 ### 6.5 Status line
 
 `plumb status --line` reads `session/status.json` and recomputes nothing. It prints one
-plain-ASCII line, for example `plumb | SR 12/14 ok | stale 1 | tests ok | ask 0`.
+plain-ASCII line, for example `plumb | SR 12/14 ok | proposed 2 | stale 1 | tests ok | ask 0`.
 
 ### 6.6 Interruption triggers (exhaustive)
 
@@ -379,12 +403,43 @@ plumb asks the owner a question in exactly three cases:
 2. **An unconfirmed decision that matters.** A `DEC` with `matters: true` that is not
    confirmed and is linked to a record or file touched this turn. Each decision is asked once
    per hash. The question is phrased "I assumed A; B also fits. Which one?"
-3. **Regression.** A test with passing evidence for an earlier identity now fails, or a test
-   verifying a confirmed example fails.
+3. **Regression.** A test that has passing evidence for an earlier identity now fails. This
+   includes a covering test of a confirmed example that passed before and now fails. A test
+   with no prior passing evidence is not a regression: during a test-first red step, a new
+   test is expected to fail. It is shown as "not yet passing" in the summary and the status
+   line and is never a question to the owner.
 
 The agent asks in its reply, with a read-back. Nothing else interrupts. Stale links, proposed
-records, escalation suggestions and skipped checks are logged and shown in the summary, the
-status line, and `plumb status` / `plumb log`.
+records, not-yet-passing tests, escalation suggestions and skipped checks are logged and shown
+in the summary, the status line, and `plumb status` / `plumb log`.
+
+**Passive confirmation path.** New read-backs and examples are confirmed without a question:
+
+1. The agent states the read-back and the proposed examples in its reply as a non-blocking
+   statement ("Building X, not Y; assuming Z. Examples: EX-1 ..., EX-2 .... Say so if
+   wrong.") and proceeds. The records are written as proposed and marked as stated in this
+   turn in session state.
+2. On the owner's next prompt, the prompt hook lists the records stated in the previous reply
+   that are still proposed. The agent reads the prompt:
+   - an explicit affirmation ("ok", "yes", "approve all proposed") is recorded as an
+     `agent-for-owner` approval with `basis: explicit`, the owner's words and the prompt
+     digest;
+   - a prompt that does not object is recorded the same way with `basis: no-objection`;
+   - an objection is not an approval: the agent revises the records, states them again, and
+     asks only if the objection also meets one of the three triggers above.
+3. Each approval made this way appears as one line in the end-of-turn summary (for example
+   `plumb: confirmed SR-004 on your prompt "ok, go on"`), so the owner sees it and can revoke
+   it, by saying so or with `plumb revoke SR-004` (a new log entry), without being
+   interrupted.
+4. Records stated in a reply that the owner never answered stay proposed: silence is not
+   confirmation. The owner can confirm them at any time with `plumb approve SR-004` or
+   `plumb approve --proposed`.
+
+Only a decision with `matters: true` can block work, and only through trigger 2.
+
+Escalated mode is the one case where the owner reviews up front, and only because the owner
+accepted an escalation suggestion (section 5.2) and so asked for that review. Presenting the
+set for its set-hash approval is then the work the owner requested, not an interruption.
 
 ## 7. Verification
 
@@ -491,8 +546,9 @@ Code comes first**: `plumb install claude-code` writes four things.
   intent check), `PostToolUse` on edit tools (tracking) and `Stop` (summary and verification
   nudge).
 - **The status line command**.
-- **A short `plumb` skill** of about 20 lines. It explains how to read back, how to record
-  examples and decisions, and when to run `plumb verify`.
+- **A short `plumb` skill** of about 20 lines. It explains how to state a read-back and
+  examples as non-blocking statements, how to record them and decisions, how to record an
+  owner's confirmation (section 6.6), and when to run `plumb verify`.
 - **A short CLAUDE.md block** naming `.plumb/` and `plumb map`.
 
 It also installs the `commit-msg` hook for `SR:` trailers. Later adapters (Codex, Pi, Hermes,
@@ -536,7 +592,8 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
 ## 11. Roadmap
 
 1. **Core, grounding loop and verification, dogfooded.** This covers:
-   - the record model, hashing, links and pins, approvals, logs and `plumb check`;
+   - the record model, hashing, links and pins, approvals (including the passive
+     confirmation path of section 6.6), logs and `plumb check`;
    - `SR:` claims and the commit-msg hook;
    - the code-to-test map, covering-test selection, `plumb verify` with identity-pinned
      evidence, and the failure policy;
@@ -567,7 +624,9 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
 - No full test suite and no environment scan per turn.
 - No hidden state: no database, no required service, and no network call on the default path.
 - No model that decides freshness or confirms intent. Hashes decide staleness, and only the
-  owner confirms.
+  owner confirms: by a command, or by a prompt the agent records as an `agent-for-owner`
+  approval (section 6.6). Silence never confirms.
 - No forking of pi-agent-factory, and no runtime dependency on it.
 - No dependencies beyond the standard library and PyYAML at runtime.
-- No questions to the owner outside the three interruption triggers.
+- No questions to the owner outside the three interruption triggers. Confirming a read-back
+  or an example is never a question (section 6.6).
