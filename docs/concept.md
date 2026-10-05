@@ -290,8 +290,8 @@ Approvals, revocations, prompt digests, repins, test evidence promoted at merge 
 judgments, claim ingestions and owner waivers are written as one JSON file per entry under
 `.plumb/log/<kind>/`. Each entry is created with a no-replace link (`os.link` with a uuid
 suffix, so two writers in the same second never collide) and is never edited. Each entry
-carries its own digest. Corrections are new entries that reference the old one. At merge boundaries, plumb checks that no committed log
-entry was modified or deleted.
+carries its own digest. Corrections are new entries that reference the old one. At merge
+boundaries, plumb checks that no committed log entry was modified or deleted.
 
 ### 4.8 Claims: `SR:` trailers
 
