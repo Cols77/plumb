@@ -120,6 +120,13 @@ class FakeBackend(_FixedBackend):
         return self.answers.get((action, subject), ("unsure", 0.5))
 
 
+def get_cascade(core: Any) -> Any:
+    """The ``LLMCascade`` (spec 12.2): the host agent, through the escalation queue."""
+    from plumb.judgment.cascade import HostAgentCascade
+
+    return HostAgentCascade(Path(core.root))
+
+
 def get_backend(core: Any, *, hook: bool) -> Any:
     """The configured ``JudgmentBackend`` (spec 12.2). Never raises for configuration."""
     from plumb.judgment.heuristic import HeuristicBackend
