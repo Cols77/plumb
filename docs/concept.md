@@ -32,7 +32,8 @@ On planning:
 > "Don't you think that we'd need planning features still? how do you ensure that people defining
 > their system will have their intent succesfully translated?"
 
-The owner's decisions that shape plumb:
+The owner's decisions that shape plumb. The numbers follow the owner intent brief (decisions
+1 to 12):
 
 | # | Decision | Owner's words |
 |---|---|---|
@@ -45,7 +46,9 @@ The owner's decisions that shape plumb:
 | D7 | Reuse existing artifacts: SR, FEAT and NC formats and IDs stay compatible. | "think of re-using the existing artifacts no? SRs FEATs..? It's up to you." |
 | D8 | JEV is an optional judgment backend with an LLM cascade; plumb works without it. | "I think it might be usefull to integrate it in this new version too?" |
 | D9 | pi-agent-factory goes into maintenance mode after the current integration batch lands; a fork plan is required. | "consider stopping developments on pi-agent-factory if it takes too much RAM" |
-| D10 | The name is plumb, because "coherence is a bit confusing because it's a usefull word to use." | |
+| D10 | Capture the intent in this concept spec as the future reference, then plan the dogfooding work and the pi-agent-factory fork. | "Consider spawning a workflow ... to capture this intent in a concept spec that we will then be able to refer to in the future, and then also plan for the work needed for dogfooding and the kind of pi-agent-factory fork that is about to happen." |
+| D11 | The owner reviews neither this spec nor any plan; independent verifier agents check every artifact against the owner's words. The implementation must be usable within 9 hours, so sub-project 1 has a time-boxed slice that must be dogfoodable by then (section 11). | "I wont review the concept spec or any plan. use agents that verify that my intent based on that conversation is respected. I want to have the implementation available by tomorrow morning (in 9 hours)." |
+| D12 | The repository and CLI are named plumb (a plumb line checks true alignment). | "coherence is a bit confusing because it's a usefull word to use." |
 
 ## 2. Problem
 
@@ -101,7 +104,7 @@ Everything plumb owns lives under `.plumb/` at the repository root:
   decisions/DEC-001.md
   features/FEAT-001.md
   ncs/NC-0001.md
-  log/<kind>/<UTC-stamp>-<uuid8>.json   # append-only, committed
+  log/<kind>/<UTC-stamp>-<uuid8>.json   # append-only, committed (approval, prompt, judgment, ...)
   cache/                   # gitignored, derivable (import map, evidence reuse, env identity)
   session/                 # gitignored, per-session turn state for the hooks
 ```
@@ -228,27 +231,66 @@ unconfirmed until approved again. There are no consent phrases. An approval come
 two sources:
 
 - the owner running `plumb approve SR-004`, or `plumb approve --proposed` to approve every
-  record still proposed (the batch form; it lists the records and their hashes in the entry);
-- the agent recording a confirmation the owner gave in conversation. Such an entry is marked
-  `by: agent-for-owner` and carries the owner's words verbatim plus the digest of the prompt
-  that contained them. The prompt hook recorded that digest when the prompt arrived, so the
-  quote can be checked. The entry also records its `basis`: `explicit` (the owner affirmed,
-  for example "ok", "yes", or "approve all proposed") or `no-objection` (the owner's next
-  prompt did not object to a statement shown in the previous reply; section 6.6).
+  record still proposed (the batch form; it lists the records and their hashes in the entry),
+  in the owner's own terminal, outside any agent session (see the guard below). Such an entry
+  is marked `by: owner`;
+- the agent recording a confirmation the owner gave in conversation, with
+  `plumb approve SR-004 --prompt <digest> --quote "<owner's words>" --basis explicit`. Such
+  an entry is marked `by: agent-for-owner` and carries the owner's words verbatim plus the
+  digest of the prompt that contained them. It also records its `basis`: `explicit` (the
+  owner affirmed, for example "ok", "yes", or "approve all proposed") or `no-objection` (the
+  owner's next prompt did not object to a statement shown in the previous reply; section 6.6).
 
 Silence never counts as confirmation: an `agent-for-owner` entry always cites a real owner
 prompt by digest, and with no owner prompt there is no approval.
+
+**Prompt-digest log.** On every owner prompt, the prompt hook appends a committed log entry
+under `.plumb/log/prompt/` holding only `{digest, session, at}`: the `sha256` of the prompt
+text, never the text itself. The text stays in gitignored session state for the rest of the
+session, which is enough for the write-time check below.
+
+**Guard against self-approval.** The agent has shell access, so without a guard it could run
+`plumb approve` itself and produce an entry that looks like the owner's. plumb prevents this
+with three cheap, deterministic checks, none of which calls a model:
+
+1. **Session marker.** `plumb install claude-code` sets `PLUMB_AGENT_SESSION=claude-code` in
+   the host's session environment (`.claude/settings.json` `env`). The variable reaches every
+   shell command the agent runs, but not the owner's own terminal. When the marker is set,
+   `plumb approve` and `plumb revoke` refuse to write a `by: owner` entry and accept only the
+   `agent-for-owner` form, which must cite `--prompt <digest>` and `--quote`.
+2. **Tool guard.** A `PreToolUse` hook on the shell tool denies any command that runs
+   `plumb approve` or `plumb revoke` without `--prompt`, or that unsets or overrides
+   `PLUMB_AGENT_SESSION`. The same hook on the edit tools denies writes under `.plumb/log/`,
+   so log entries can only be created through plumb. This is a string match on the command
+   and the path, well within the hook budget.
+3. **Write-time quote check.** `plumb approve --prompt <digest>` checks, before writing
+   anything, that the digest exists in the prompt-digest log, that the prompt text held in
+   session state hashes to that digest, and that the quote is a verbatim substring of that
+   text (after the body normalization of section 4.4). An approval that fails any check is
+   rejected with a non-zero exit and is not stored. The stored entry records the prompt
+   digest, the quote, and the digest of the quote, so the result of the check stays
+   inspectable after the session state is deleted.
+
+`plumb check` re-checks every committed approval: each `agent-for-owner` entry must cite a
+prompt digest present in the prompt-digest log and recorded before the approval. Every
+approval entry also records the session marker in force when it was written (or `none`), and
+a `by: owner` entry written under a marker is reported as an error. The guard does not make
+the agent's shell a sandbox: an agent determined to bypass it can still do so. What it does is
+make self-approval impossible by accident, refuse it on the normal path, and leave any bypass
+visible in git history and in `plumb check`. The owner, inside an agent session, confirms by
+saying so in a prompt (the passive path of section 6.6); in their own terminal, they use
+`plumb approve`.
 
 An escalated plan (section 5.2) is approved as a set: one approval pins a set hash over the
 sorted member hashes.
 
 ### 4.7 Append-only logs
 
-Approvals, repins, test evidence promoted at merge boundaries, judgments, claim ingestions and
-owner waivers are written as one JSON file per entry under `.plumb/log/<kind>/`. Each entry is
-created with a no-replace link (`os.link` with a uuid suffix, so two writers in the same second
-never collide) and is never edited. Each entry carries its own digest. Corrections are new
-entries that reference the old one. At merge boundaries, plumb checks that no committed log
+Approvals, revocations, prompt digests, repins, test evidence promoted at merge boundaries,
+judgments, claim ingestions and owner waivers are written as one JSON file per entry under
+`.plumb/log/<kind>/`. Each entry is created with a no-replace link (`os.link` with a uuid
+suffix, so two writers in the same second never collide) and is never edited. Each entry
+carries its own digest. Corrections are new entries that reference the old one. At merge boundaries, plumb checks that no committed log
 entry was modified or deleted.
 
 ### 4.8 Claims: `SR:` trailers
@@ -322,7 +364,8 @@ the same intent.
 
 ## 6. The grounding loop
 
-The loop is four hooks plus a status line. Each hook is a single `plumb hook <event>` process
+The loop is four hooks plus a status line, with one more hook that guards approvals
+(section 4.6). Each hook is a single `plumb hook <event>` process
 that starts with minimal imports, reads only `.plumb/` and the files named in records, uses
 caches keyed by file fingerprints (size and mtime first, hash when those change), never runs
 tests, never scans `site-packages`, and never starts one subprocess per file. If a hook cannot
@@ -346,8 +389,9 @@ It is context, not procedure.
 
 On each prompt, the prompt hook:
 
-1. records the prompt's digest (and, in gitignored session state, its text) so approvals can
-   quote it;
+1. appends the prompt's digest to the committed prompt-digest log and keeps its text in
+   gitignored session state, so an approval can quote it and the quote can be checked
+   (section 4.6);
 2. selects the relevant records, either named by ID or matched by term overlap with titles,
    statements and examples, and injects them with their confirmed examples and the tests
    that cover them, in about 20 lines at most;
@@ -388,6 +432,21 @@ If the turn changed code whose covering tests have no fresh evidence, the hook a
 and records evidence. Test execution belongs to the agent's turn and never to the hook's
 latency budget.
 
+**Fidelity request (default, no JEV needed).** In the same single request, for each
+requirement whose `implemented_by` or `verified_by` ends changed this turn, the hook asks the
+agent to judge the changed code and tests against that requirement's statement and examples.
+The request names the requirement, its examples and the changed ends; it does not carry a
+procedure. The agent, which is already running, is the cascade's LLM tier (as in section
+6.2), so this costs no extra model call. It answers with
+`plumb judge SR-004 --verdict fits|drifts|unsure --note "<one line>"`, which appends a
+`judgment` log entry holding the verdict, `backend: host-agent`, the requirement's hash and
+the hashes of the changed ends. A requirement is judged at most once per set of hashes. The
+verdict is advisory: `drifts` and `unsure` appear in the summary and the status line as drift
+signals, never confirm or freshen anything, and reach the owner only when they also meet an
+interruption trigger (section 6.6). When JEV is enabled, it scores these requirements first
+and only low-confidence ones are passed to the agent (section 8): JEV accelerates this path
+but is not needed for it.
+
 ### 6.5 Status line
 
 `plumb status --line` reads `session/status.json` and recomputes nothing. It prints one
@@ -423,7 +482,8 @@ in the summary, the status line, and `plumb status` / `plumb log`.
    that are still proposed. The agent reads the prompt:
    - an explicit affirmation ("ok", "yes", "approve all proposed") is recorded as an
      `agent-for-owner` approval with `basis: explicit`, the owner's words and the prompt
-     digest;
+     digest, through `plumb approve --prompt <digest> --quote "..."`, which checks the quote
+     against the logged prompt before writing (section 4.6);
    - a prompt that does not object is recorded the same way with `basis: no-objection`;
    - an objection is not an approval: the agent revises the records, states them again, and
      asks only if the objection also meets one of the three triggers above.
@@ -519,7 +579,10 @@ repository). It is used for:
 
 - intent-change detection on candidate prompts;
 - drift triage (cosmetic or material) on stale links;
-- a cheap advisory fidelity score scoped to the requirements changed in the turn.
+- a cheap advisory fidelity score scoped to the requirements changed in the turn. This
+  accelerates the default fidelity path of section 6.4: JEV answers the clear cases, and only
+  low-confidence ones go to the host agent. Without JEV, every changed requirement goes to
+  the host agent, and fidelity judging still happens.
 
 The cascade is the one already validated in pi-agent-factory:
 
@@ -542,9 +605,11 @@ never confirm a record or mark something fresh.
 The core is a CLI with JSON output and a Python library. Hosts are thin adapters. **Claude
 Code comes first**: `plumb install claude-code` writes four things.
 
-- **Hooks** in `.claude/settings.json`: `SessionStart` (brief), `UserPromptSubmit` (context and
-  intent check), `PostToolUse` on edit tools (tracking) and `Stop` (summary and verification
-  nudge).
+- **Hooks** in `.claude/settings.json`: `SessionStart` (brief), `UserPromptSubmit` (prompt
+  digest, context and intent check), `PostToolUse` on edit tools (tracking), `Stop` (summary,
+  verification nudge and fidelity request), and `PreToolUse` on the shell and edit tools (the
+  approval guard of section 4.6). The same file sets the `PLUMB_AGENT_SESSION` session
+  marker in its `env`.
 - **The status line command**.
 - **A short `plumb` skill** of about 20 lines. It explains how to state a read-back and
   examples as non-blocking statements, how to record them and decisions, how to record an
@@ -591,14 +656,40 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
 
 ## 11. Roadmap
 
-1. **Core, grounding loop and verification, dogfooded.** This covers:
-   - the record model, hashing, links and pins, approvals (including the passive
-     confirmation path of section 6.6), logs and `plumb check`;
-   - `SR:` claims and the commit-msg hook;
-   - the code-to-test map, covering-test selection, `plumb verify` with identity-pinned
-     evidence, and the failure policy;
-   - the four hooks, the status line and the Claude Code adapter;
-   - the judgment interface with the heuristic, disabled and fake backends.
+1. **Core, grounding loop and verification, dogfooded.** The owner wants the implementation
+   usable within 9 hours of 2026-10-05 (decision D11). Sub-project 1 is therefore built in two
+   parts, in this order.
+
+   **1a. Time-boxed slice: must be dogfoodable within the 9 hours.** Built in the order listed,
+   so that plumb is used on plumb as early as possible:
+   1. the record model (INT, SR, DEC, FEAT, NC; IDs; frontmatter), content hashing and
+      normalization with whole-file link ends, links, pins, staleness, `plumb repin`, and
+      `plumb check` (dangling links, duplicate IDs, stale pins, unconfirmed edits);
+   2. the append-only log, pinned approvals (`plumb approve`, `plumb revoke`), the
+      prompt-digest log, and the CLI side of the approval guard (session marker and
+      write-time quote check, section 4.6);
+   3. plumb's own requirements written as `SR` records in `.plumb/`, the `SR:` trailer and
+      the commit-msg hook that checks it. From this step on, plumb's commits carry `SR:`
+      trailers;
+   4. the session-start, prompt, edit-tracking and stop hooks, the guard hook, the status line,
+      the passive confirmation path, and `plumb install claude-code`. Each hook is installed
+      in plumb's own repository as soon as it lands;
+   5. `plumb map` (`verified_by` links, `sr` markers and the AST import closure), covering-test
+      selection, and `plumb verify` with evidence keyed by `node_id`, `closure_digest` and the
+      cheap `env_key` only.
+
+   **1b. Rest of sub-project 1**, built after 1a:
+   - the default fidelity request and `plumb judge` (section 6.4);
+   - the judgment interface with the heuristic, disabled and fake backends;
+   - AST symbol-level hashing of link ends (1a hashes whole files);
+   - the full environment identity of section 7.3;
+   - the failure policy: flaky rerun, owner waivers and the full-rerun rule;
+   - `plumb claims check` (claimed against declared paths) and `.plumb/claims.yaml`.
+
+   If time runs out, every item of 1a or 1b that is not finished is recorded in
+   `docs/followups.md` with its state, and is built next in the order above. Items are dropped
+   from the end of the list first, so the slice that exists in the morning is always the
+   dogfoodable core: records, hashes, approvals, check, trailers, hooks and status line.
 
    Exit criteria: plumb's own requirements are `SR` records in `.plumb/`, its commits carry
    `SR:` trailers, plumb's hooks are installed in its own repository, and the hooks stay under
@@ -607,7 +698,8 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
    - the read-back, example and decision helpers (`plumb intent`, `plumb example`,
      `plumb decide`);
    - the escalation triggers and set approvals;
-   - the live JEV client (standard-library HTTP) and advisory fidelity scoring.
+   - the live JEV client (standard-library HTTP), used as an accelerator of the fidelity
+     path that sub-project 1 already provides.
 3. **Merge boundary.** This adds the full-suite run, evidence promotion, the claims audit over
    a range, log integrity, and a pre-merge or CI entry point.
 4. **More adapters and MCP.** Codex, Pi, Hermes, and a read-only MCP server.
@@ -624,8 +716,9 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
 - No full test suite and no environment scan per turn.
 - No hidden state: no database, no required service, and no network call on the default path.
 - No model that decides freshness or confirms intent. Hashes decide staleness, and only the
-  owner confirms: by a command, or by a prompt the agent records as an `agent-for-owner`
-  approval (section 6.6). Silence never confirms.
+  owner confirms: by a command in the owner's own terminal, or by a prompt the agent records as
+  a guarded, quote-checked `agent-for-owner` approval (sections 4.6 and 6.6). Silence never
+  confirms, and the agent cannot record an approval without citing a logged owner prompt.
 - No forking of pi-agent-factory, and no runtime dependency on it.
 - No dependencies beyond the standard library and PyYAML at runtime.
 - No questions to the owner outside the three interruption triggers. Confirming a read-back
