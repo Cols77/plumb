@@ -260,3 +260,52 @@ than once; each one is kept so that every review can be traced.
 - [LOW] (SP1 intent review 3, spec 10 hook budgets vs concept 3 principle 3) The concept sets a per-hook p95 target under 500 ms; the spec's budgets are 600 ms (prompt), 800 ms (stop) and 900 ms (session start), with a 1.5 s per-turn total. This still meets "Per-turn overhead is seconds, not minutes" and "well under 2 seconds", but spec section 3 does not list it as a refinement, so the spec and the concept disagree silently. Fix: add an F14 row recording the change from the 500 ms target to per-hook budgets, with the reason (about 225 ms of interpreter start on this machine), or state the 500 ms figure as an aspiration the benchmark reports against. (Also raised in round 2.)
 - [LOW] (SP1 intent review 3, plan 3.3, 4.4, 11.1) Lane merges into `main` use plain `git merge --no-ff` without `plumb validate --merge`. That is necessary overnight, since every record stays proposed, but the plan never says these internal merges are not merge boundaries in R1's sense, and phase 3 calls the full run "the owner's merge boundary for sub-project 1". A verifier or the owner could read this as R1 being bypassed. Fix: state once in the plan that lane-to-main merges are internal integration and that the sub-project 1 merge boundary is the owner's morning `plumb validate --merge <phase-0 commit>` (expected to exit 4 until the owner confirms); optionally run `validate --merge` at each loop-step merge in report-only mode and log its exit code in `docs/sp1-loop-log.md`. (Also raised in round 2.)
 - [LOW] (SP1 round 3 fixer's note, spec 7.5) With the regression rule keyed by node id, a passing test that is renamed or deleted is not a failure, so it is not a regression under R3; its passing evidence simply stops being matched. That is R3's literal scope, but renaming or deleting a failing test leaves no visible signal. Fix: have `plumb tests run` or `plumb drift` list previously passing node ids that are no longer collected (`removed after passing N`) as a logged drift line, never as an interruption.
+
+## SP1 lane CORE (2026-10-06)
+
+Lane CORE built K1 to K7 (MUST) on branch `lane/core`; no SHOULD item was built in phase 1.
+
+Unfinished (SHOULD, for `core-rest` in phase 3, in the plan's drop order):
+- KS1 index and hash caches (`.plumb/cache/index.json`, `hashes.json`): not built. Measured on
+  a scratch repository with 41 records: `plumb brief`, `status` and `validate` each take about
+  420 ms end to end (bare interpreter about 160 ms), because every call parses every record
+  and hashes every link end. HOST's hooks will pay this until KS1 lands.
+- KS2 `plumb new`, `plumb show`; KS3 `plumb drift`, `plumb why`, `plumb log`: routed to
+  `plumb.commands`, which answers `plumb: '<command>' is not available in this build` (exit 2).
+- KS4 symbol and test-node ends: `plumb link` rejects a `path::name` target (exit 2). A
+  hand-written `test: path::name` end hashes the whole file before `::` (stricter: any edit of
+  that file moves the end) and is dangling only when the file is missing.
+- KS5 wikilink checks and untranslated-intent warnings: not built.
+
+Design choices made inside the spec (MEDIUM at most):
+- [MEDIUM] Coverage is per named example: a `verified_by` link without `example` covers no
+  specific example, so a requirement with examples is `covered` only when each example is named
+  by a link. A requirement without examples is covered by any non-dangling `verified_by` link.
+  Bootstrap links that name only test files will show uncovered examples until examples are
+  named (`plumb link SR-001 verified_by tests/x.py --example EX-1`).
+- [MEDIUM] Revocation removes the latest valid approval of the record (the revocation entry
+  pins that approval's hash), so revoking a newer approval returns the record to its older
+  approval, which reads as `unconfirmed edit`; with no older approval it returns to `proposed`.
+- [MEDIUM] Approvals that fail their re-check never confirm: an owner approval written under
+  the session marker, an agent-relayed approval without an earlier `prompt` event, affirming
+  quote or matching quote digest, an entry whose digest no longer matches, and any `by: import`
+  approval (F11: none are accepted in sub-project 1). `plumb validate` reports each as an
+  error.
+- [LOW] `plumb relay` accepts a record from the stated set only when the stated hash equals the
+  record's current hash, and ignores a stated set written after the cited prompt; otherwise the
+  quote must name the record.
+- [LOW] `plumb relay` accepts a logged prompt whose text hashes to its digest either as raw
+  UTF-8 (`approvals.prompt_digest`, the form the prompt hook should write) or normalized
+  (`sha256_text`).
+- [LOW] `plumb approve --proposed` outside a terminal requires `--yes` (exit 2 otherwise)
+  instead of approving silently.
+- [LOW] `plumb validate` adds one aggregated `proposed` warning listing records awaiting the
+  owner (plan 4.1 step 4 expects it); spec 5.10 does not list it.
+- [LOW] `plumb validate --merge` prints the validation findings, then the merge report; the exit
+  is 1 when validation or log integrity fails, else 4 when confirmation is awaited, else 0. With
+  `--json` both parts are one document `{validate, merge}`.
+- [LOW] A list in `.plumb/config.yaml` replaces the default list (for example
+  `verify.infra_globs` must repeat the defaults it keeps); a malformed `config.yaml` falls back
+  to the defaults silently.
+- [LOW] The merge report lists the deferred-by-budget tests only once VERIFY's API exposes
+  them; CORE prints `verification: unavailable` until `plumb.verify.open_verify` imports.
