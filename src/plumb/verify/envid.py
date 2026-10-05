@@ -20,8 +20,29 @@ def python_version() -> str:
     return f"{platform.python_implementation()} {platform.python_version()}"
 
 
-def platform_name() -> str:
-    return f"{sys.platform} {platform.machine()}"
+def platform_name(root: Path | None = None) -> str:
+    """``"<sys.platform> <machine>"``. ``platform.machine()`` runs a WMI query on Windows
+    (about 0.2 s), so the answer is cached in ``.plumb/cache/platform.json`` per interpreter
+    when ``root`` is an adopted repository."""
+    import json
+
+    key = f"{sys.executable}|{sys.version}"
+    cache = Path(root) / ".plumb" / "cache" / "platform.json" if root is not None else None
+    if cache is not None:
+        try:
+            data = json.loads(cache.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and data.get("key") == key and data.get("name"):
+                return str(data["name"])
+        except (OSError, ValueError):
+            pass
+    name = f"{sys.platform} {platform.machine()}"
+    if cache is not None and cache.parent.parent.is_dir():
+        try:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps({"key": key, "name": name}), encoding="utf-8")
+        except OSError:
+            pass
+    return name
 
 
 def venv_home(prefix: str | None = None) -> str:
@@ -42,7 +63,7 @@ def env_parts(root: Path) -> dict[str, Any]:
         lock_hash = sha256_text(lock.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError):
         lock_hash = "no-lock"
-    return {"lock": lock_hash, "python": python_version(), "platform": platform_name(),
+    return {"lock": lock_hash, "python": python_version(), "platform": platform_name(root),
             "home": venv_home()}
 
 

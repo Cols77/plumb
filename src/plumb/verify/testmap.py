@@ -290,6 +290,19 @@ def _write_if_changed(path: Path, text: str) -> None:
         pass
 
 
+def scan_files(root: Path, config: Any) -> dict[str, str]:
+    """``{rel: "size:mtime_ns"}`` of every Python file the map reads (about 10 ms)."""
+    dirs = tuple(dict.fromkeys([*config.source_dirs, *config.test_dirs]))
+    scanned = _scan(root, dirs)
+    for rel in ("conftest.py",):
+        try:
+            st = (root / rel).stat()
+            scanned[rel] = f"{st.st_size}:{st.st_mtime_ns}"
+        except OSError:
+            pass
+    return scanned
+
+
 def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True) -> TestMap:
     """Build (or refresh from the cache) the test map of ``core``'s repository."""
     from plumb.verify.imports import known_files, resolve_edge_rel
@@ -300,13 +313,7 @@ def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True) -> T
     source_dirs = tuple(config.source_dirs)
     test_dirs = tuple(config.test_dirs)
     dirs = tuple(dict.fromkeys([*source_dirs, *test_dirs]))
-    scanned = _scan(root, dirs)
-    for rel in ("conftest.py",):
-        try:
-            st = (root / rel).stat()
-            scanned[rel] = f"{st.st_size}:{st.st_mtime_ns}"
-        except OSError:
-            pass
+    scanned = scan_files(root, config)
     cache = {} if rebuild else _load_cache(paths.test_map_json)
     cached_files: Mapping[str, Any] = cache.get("files", {})
     files: dict[str, dict[str, Any]] = {}

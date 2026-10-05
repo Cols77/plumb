@@ -2,13 +2,17 @@
 
 1. Log the prompt (digest, session, time, text) to ``.plumb/session/prompts.jsonl`` and
    start the turn (``turn.json``). This comes first: ``plumb relay`` relies on it.
-2. Print the relevant records (named IDs first), their examples and covering tests, in at
-   most ``hooks.prompt_lines`` lines.
-3. Flag a possible intent change on a confirmed record (``JudgmentBackend``), and ask the
-   agent to compare the request with the confirmed examples it was given.
-4. List the stated records of the previous reply still awaiting the owner, with the relay
+2. List the stated records of the previous reply still awaiting the owner, with the relay
    form for this prompt's digest.
+3. Print the relevant records (named IDs first) and their examples, in at most
+   ``hooks.prompt_lines`` lines.
+4. Flag a possible intent change on a confirmed record (``JudgmentBackend``), and ask the
+   agent to compare the request with the confirmed examples it was given.
 5. Print queued escalations and the escalation hint (SHOULD items).
+6. Add each record's covering tests (``VerifyAPI.tests_for``).
+
+Steps 2 to 5 are the intent-translation lines: they are kept through a budget cut, so a
+loaded machine loses at most the covering-test detail of step 6 (spec 10).
 
 Output is plain text, added to the agent's context. Questions to the owner are left to the
 agent, and only on the three triggers.
@@ -198,60 +202,77 @@ def escalation_hint(core: Any, index: Mapping[str, Any], strong: Sequence[str],
             "the owner decides.")
 
 
+def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
+                 statuses: Mapping[str, Any], ids: Sequence[str], text: str, digest: str,
+                 backend: Any) -> tuple[list[str], list[str]]:
+    """``(lines, flagged)``: the trigger-1 flags and the compare line for confirmed records."""
+    confirmed = [index[i] for i in ids if statuses[i].confirmation == "confirmed"]
+    out: list[str] = []
+    flagged: list[str] = []
+    if not confirmed:
+        return out, flagged
+    backend = judgment_backend(core, backend)
+    if backend is None:
+        out.append("plumb: intent check unavailable")
+    else:
+        for judgment in backend.intent_change(text, confirmed):
+            if judgment.verdict != "change":
+                continue
+            flagged.append(judgment.subject)
+            out.append(f"plumb: this may change {judgment.subject} (confirmed). If it "
+                       "does, read back the change and ask before editing; if not, "
+                       "proceed.")
+            _append_jsonl(ctx.session_dir / "intent_flags.jsonl",
+                          {"at": _utc_now(), "session": ctx.session_id,
+                           "prompt_digest": digest, "subject": judgment.subject,
+                           "confidence": judgment.confidence,
+                           "backend": judgment.backend, "tier": judgment.tier})
+    out.append("plumb: compare this request with the confirmed examples of "
+               + ", ".join(r.id for r in confirmed)
+               + "; if it contradicts or extends them, read back the change and ask "
+               "before editing.")
+    return out, flagged
+
+
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
+    """Intent translation first, evidence detail last (spec 10).
+
+    The relay line, the relevant records with their examples, the intent-change flags, the
+    compare line and the escalation hint are computed from the records alone and kept
+    (``HookContext.keep``); a budget cut, an error or the watchdog prints them. Only then
+    are the covering tests added to the record lines."""
     text = ctx.data.get("prompt")
     text = text if isinstance(text, str) else ""
     digest = log_prompt(ctx, text)
     from plumb.api import open_core
 
-    out: list[str] = []
+    escalations: list[str] = []
     try:
-        out.extend(escalation_lines(ctx))
+        escalations = escalation_lines(ctx)
     except OSError:
         pass
     core = open_core(ctx.root)
-    ctx.deadline.check("open core")
+    awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json")
+    tail = [awaiting] if awaiting else []
+    ctx.keep([*escalations, *tail])
+    # no soft-budget check before the intent lines: only the watchdog bounds them
     ids, strong = _relevant_ids(core, text) if text.strip() else ([], [])
     index = core.index()
     statuses = core.status(ids) if ids else {}
-    ctx.deadline.check("relevant records")
+    cap = int(core.config.hooks.prompt_lines)
+    intent, flagged = intent_lines(ctx, core, index, statuses, ids, text, digest, backend)
+    hint = escalation_hint(core, index, strong, flagged) if strong else None
+    middle = [*intent, *([hint] if hint else [])]
+    ctx.keep([*record_lines(index, statuses, ids, None, cap), *escalations, *middle, *tail])
+    out = [*escalations]
     if ids:
+        ctx.deadline.check("covering tests")
         verify = verify_api(core, verify)
         tests = verify.tests_for(ids) if verify is not None else None
-        out[:0] = record_lines(index, statuses, ids, tests, int(core.config.hooks.prompt_lines))
+        out[:0] = record_lines(index, statuses, ids, tests, cap)
         if verify is None:
             out.append("plumb: verification unavailable")
-    confirmed = [index[i] for i in ids if statuses[i].confirmation == "confirmed"]
-    flagged: list[str] = []
-    if confirmed:
-        ctx.deadline.check("intent check")
-        backend = judgment_backend(core, backend)
-        if backend is None:
-            out.append("plumb: intent check unavailable")
-        else:
-            for judgment in backend.intent_change(text, confirmed):
-                if judgment.verdict != "change":
-                    continue
-                flagged.append(judgment.subject)
-                out.append(f"plumb: this may change {judgment.subject} (confirmed). If it "
-                           "does, read back the change and ask before editing; if not, "
-                           "proceed.")
-                _append_jsonl(ctx.session_dir / "intent_flags.jsonl",
-                              {"at": _utc_now(), "session": ctx.session_id,
-                               "prompt_digest": digest, "subject": judgment.subject,
-                               "confidence": judgment.confidence,
-                               "backend": judgment.backend, "tier": judgment.tier})
-        out.append("plumb: compare this request with the confirmed examples of "
-                   + ", ".join(r.id for r in confirmed)
-                   + "; if it contradicts or extends them, read back the change and ask "
-                   "before editing.")
-    hint = escalation_hint(core, index, strong, flagged) if strong else None
-    if hint:
-        out.append(hint)
-    awaiting = awaiting_line(core, statuses, digest, ctx.session_dir / "stated.json")
-    if awaiting:
-        out.append(awaiting)
-    return HookOutput(text="\n".join(out))
+    return HookOutput(text="\n".join([*out, *middle, *tail]))
 
 
 def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,

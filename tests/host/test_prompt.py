@@ -235,3 +235,61 @@ def test_escalation_hint_on_many_features(records: Path, hook_input) -> None:
     assert ("plumb: consider escalating to an up-front spec (2 features: FEAT-001, FEAT-002);"
             " the owner decides.") in out
     assert "consider escalating" not in _run(records, hook_input, "SR-003 stale links")
+
+
+# --- the intent lines survive a budget cut (spec 10) ---------------------------------------
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def __getattr__(self, name: str):
+        import time
+
+        return getattr(time, name)
+
+
+class _SlowBackend(FakeBackend):
+    """An intent check that finishes after the prompt hook's soft budget has passed."""
+
+    clock: _Clock | None = None
+
+    def intent_change(self, prompt_text, records):
+        assert self.clock is not None
+        self.clock.now += 5.0
+        return super().intent_change(prompt_text, records)
+
+
+def test_intent_lines_survive_a_budget_cut(records: Path, hook_input, monkeypatch) -> None:
+    """Records, the intent-change flag, the compare line and the relay line are kept; only
+    the covering-test detail is cut and named."""
+    from plumb.hosts.claude_code import hookio
+
+    clock = _Clock()
+    monkeypatch.setattr(hookio, "time", clock)
+    _confirm(records, "SR-003")
+    index = open_core(records).index()
+    (records / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
+    (records / ".plumb" / "session" / "stated.json").write_text(json.dumps(
+        {"records": [{"id": "SR-009", "hash": index["SR-009"].hash, "shown": True}]}), "utf-8")
+    backend = _SlowBackend()
+    backend.clock = clock
+    verify = FakeVerify(tests={"SR-003": ("tests/test_links.py::test_pin",)})
+    calls: list[tuple] = []
+    real_tests_for = verify.tests_for
+    monkeypatch.setattr(verify, "tests_for", lambda refs: calls.append(tuple(refs))
+                        or real_tests_for(refs))
+    out = _run(records, hook_input, "SR-003 should now stop pinning both ends",
+               backend=backend, verify=verify)
+    lines = out.splitlines()
+    assert lines[0] == "plumb: relevant records (state; examples; covering tests):"
+    assert lines[1].startswith("SR-003 [confirmed]")
+    assert "plumb: this may change SR-003 (confirmed)." in out
+    assert "plumb: compare this request with the confirmed examples of SR-003" in out
+    assert "plumb: awaiting confirmation: SR-009" in out and "plumb relay SR-009" in out
+    assert lines[-1] == "plumb: check skipped (budget): covering tests"
+    assert calls == []

@@ -4,6 +4,11 @@ Every hook is one process that reads the host's JSON on stdin, writes its answer
 and always exits 0. On an internal error or an exhausted budget it prints a one-line notice
 and the turn continues: plumb never blocks work because of its own failure.
 
+A handler computes its intent-translation lines first (the read-back, the confirmed records,
+the relay line) and hands them to ``HookContext.keep``. A budget cut, an internal error or
+the watchdog then prints those kept lines followed by the notice naming the skipped step,
+so a loaded machine drops evidence detail, never the read-back (spec 10).
+
 Standard library only, so the post-edit fast path stays cheap.
 """
 
@@ -69,6 +74,16 @@ class HookOutput:
         return self.text
 
 
+class Kept:
+    """The lines a handler has already computed and that must survive a cut."""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def snapshot(self) -> list[str]:
+        return list(self.lines)
+
+
 @dataclass
 class HookContext:
     name: str
@@ -77,6 +92,11 @@ class HookContext:
     session_id: str
     deadline: Deadline
     extra: dict[str, Any] = field(default_factory=dict)
+    kept: Kept = field(default_factory=Kept)
+
+    def keep(self, lines: list[str]) -> None:
+        """Replace the output printed if a later step is cut (budget, error, watchdog)."""
+        self.kept.lines = [line for line in lines if line]
 
     @property
     def plumb_dir(self) -> Path:
@@ -167,7 +187,18 @@ def log_error(root: Path | None, name: str, detail: str) -> None:
 
 
 def _notice(text: str, json_output: bool) -> str:
-    return json.dumps({"systemMessage": text}) if json_output else text
+    return json.dumps({"systemMessage": text}, ensure_ascii=False) if json_output else text
+
+
+def skip_line(step: str = "") -> str:
+    """``plumb: check skipped (budget)``, naming the step when one is known."""
+    return f"{SKIP_BUDGET}: {step}" if step else SKIP_BUDGET
+
+
+def _cut_output(kept: Kept, notice: str, json_output: bool) -> str:
+    """The kept lines plus the notice; the bare notice when nothing was kept."""
+    lines = kept.snapshot()
+    return _notice("\n".join([*lines, notice]), json_output)
 
 
 class _Writer:
@@ -205,6 +236,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     stdin = sys.stdin if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
     writer = _Writer(stdout)
+    kept = Kept()
     found: Path | None = None
     timer: threading.Timer | None = None
     try:
@@ -215,7 +247,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
         budget = budget_ms(found) if callable(budget_ms) else budget_ms
         if watchdog:
             def fire() -> None:
-                if writer.write(_notice(SKIP_BUDGET, json_output)):
+                if writer.write(_cut_output(kept, SKIP_BUDGET, json_output)):
                     log_error(found, name, f"watchdog: hard limit {HARD_LIMIT_S}s reached")
                     os._exit(0)
 
@@ -225,16 +257,18 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
             timer.start()
         ctx = HookContext(name=name, data=data, root=found,
                           session_id=safe_session_id(data.get("session_id")),
-                          deadline=Deadline(budget, start))
+                          deadline=Deadline(budget, start), kept=kept)
         result = handler(ctx)
         writer.write(result.render() if result is not None else "")
     except BudgetExceeded as exc:
         log_error(found, name, f"budget exceeded at step: {exc}")
-        writer.write(_notice(SKIP_BUDGET, json_output))
+        step = str(exc)
+        writer.write(_cut_output(kept, skip_line(step) if kept.lines else SKIP_BUDGET,
+                                 json_output))
     except Exception:  # noqa: BLE001 - plumb never blocks work on its own failure
         log_error(found, name, traceback.format_exc())
         try:
-            writer.write(_notice(SKIP_ERROR, json_output))
+            writer.write(_cut_output(kept, SKIP_ERROR, json_output))
         except Exception:  # noqa: BLE001 - nothing more can be said on a broken stdout
             pass
     finally:
@@ -263,9 +297,9 @@ def hook_budget(name: str) -> Callable[[Path], float]:
     """The configured budget of one hook (``hooks.budget_ms``)."""
 
     def budget(root: Path) -> float:
+        from plumb.config import DEFAULT_HOOK_BUDGET_MS as defaults
         from plumb.config import load_config
 
-        defaults = {"session_start": 900, "prompt": 600, "stop": 800, "post_edit": 300}
         try:
             return float(load_config(root).hooks.budget_ms.get(name, defaults.get(name, 800)))
         except Exception:  # noqa: BLE001 - a broken config must not break the hook

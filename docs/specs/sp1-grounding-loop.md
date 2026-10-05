@@ -893,12 +893,26 @@ Budgets, measured on this 2-core Windows machine where a bare `python -c pass` t
 | Path | Budget (p95, end to end) | How |
 |---|---|---|
 | `post-edit` hook | async; under 300 ms if run synchronously | stdlib only; append one line |
-| `prompt` hook | under 600 ms | JSON caches; no YAML import on a warm cache; at most 5 records |
-| `stop` hook | under 800 ms | one `git status`; hashes only for touched records; map from cache; never runs tests |
-| `session-start` hook | under 900 ms | once per session |
+| `prompt` hook | soft budget 1200 ms (typically 0.45 to 0.6 s warm) | JSON caches; no YAML import on a warm cache; at most 5 records; record tests from the derived cache |
+| `stop` hook | soft budget 1400 ms (typically 0.65 to 1.2 s with changes) | one `git status`; hashes only for touched records; map from cache; never runs tests |
+| `session-start` hook | soft budget 1400 ms (typically 0.55 to 0.8 s warm) | once per session; tests line from the derived cache |
 | `statusline` | under 350 ms | reads one JSON file |
-| Per-turn synchronous hook total (prompt + stop) | under 1.5 s | well under the 2 s rule |
+| Every hook | hard limit 1.9 s from the hook's start (watchdog) | the 2 s rule |
 | `plumb tests run` in a turn | `verify.turn_budget_s` 15 s, hard limit 22.5 s | in the agent's turn, not in a hook |
+
+The soft budgets sit near the 2-second ceiling on purpose. Measured on this 2-core machine
+under load (CPU at 90 to 100 %), the earlier 600/800/900 ms budgets cut the prompt and stop
+hooks on most turns, and the cut dropped the read-back first. A soft budget is a ceiling,
+not the typical cost.
+
+What a cut keeps (R1, decision 5): each hook computes its intent-translation lines first and
+hands them to `HookContext.keep`: the prompt hook its relay line, relevant records with their
+examples, intent-change flags, compare line and escalation hint; the stop hook its touched
+line, the decisions that matter and the proposed read-back; the session-start hook the
+records brief. A budget cut, an internal error or the watchdog prints those kept lines plus
+`plumb: check skipped (budget): <step>`. Only evidence detail (covering tests, fidelity, the
+tests line) can be lost, and a skipped regression check reads `questions: regressions not
+checked (budget)`, never `none`.
 
 Rules every lane follows:
 
@@ -906,9 +920,16 @@ Rules every lane follows:
   command; `plumb hook` and `plumb statusline` never import `argparse` handlers of other
   commands, YAML, `subprocess` (except the stop hook's single git call) or `ast` unless a
   cache is cold.
-- The record index is cached in `.plumb/cache/index.json` (parsed records and hashes) keyed by
-  each record file's `(size, mtime_ns)`; a warm hook re-parses only changed files. File hashes
-  are cached the same way. Config is cached as JSON keyed by `config.yaml`'s fingerprint.
+- The record index is cached in `.plumb/cache/index.json` (each file's parsed frontmatter)
+  keyed by the record file's content digest, so an approval never pins a stale parse; a warm
+  hook imports no YAML and re-parses only changed files. Values JSON cannot keep exactly
+  (dates) are never cached. Config is cached as JSON keyed by `config.yaml`'s fingerprint.
+- Map-derived answers (`full_pending`, the record-to-test map, the session-start tests line)
+  are cached in `.plumb/cache/derived.json` under the verify fingerprint: the scanned Python
+  files' `(size, mtime_ns)`, the records and their links, the evidence log, the config, the
+  environment key and identity, and the shared test infrastructure. A warm session start or
+  prompt builds no test map. `platform.machine()` (a WMI query of about 0.2 s on Windows) is
+  cached per interpreter in `.plumb/cache/platform.json`.
   These caches are CORE's SHOULD item KS1, the last one its drop order cuts; without them a
   hook parses plumb's few dozen records on each call, and the benchmark measures the cost.
 - Log reads are incremental: derived indexes store the byte offset they have read up to.
@@ -934,7 +955,7 @@ verify:
   flaky_rerun: true
   infra_globs: ["**/conftest.py", pyproject.toml, uv.lock, pytest.ini, tox.ini, setup.cfg]
 hooks:
-  budget_ms: {session_start: 900, prompt: 600, stop: 800, post_edit: 300}
+  budget_ms: {session_start: 1400, prompt: 1200, stop: 1400, post_edit: 300}
   brief_lines: 30
   prompt_lines: 20
   summary_proposed_cap: 3    # proposed records shown in full per summary

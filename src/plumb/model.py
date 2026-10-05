@@ -114,10 +114,14 @@ def parse_examples(record_id: str, raw: Any) -> tuple[Example, ...]:
     return tuple(out)
 
 
-def parse_record(text: str, path: str) -> Record:
-    """Parse one record file's text. Raises RecordError on any malformed part."""
+def parse_record(text: str, path: str, data: Any = None) -> Record:
+    """Parse one record file's text. Raises RecordError on any malformed part.
+
+    ``data`` is the already parsed frontmatter (the store's index cache); YAML is parsed
+    only when it is None."""
     yaml_text, body = split_frontmatter(text)
-    data = load_yaml(yaml_text)
+    if data is None:
+        data = load_yaml(yaml_text)
     if not isinstance(data, dict):
         raise RecordError("frontmatter must be a mapping")
     record_id = data.get("id")

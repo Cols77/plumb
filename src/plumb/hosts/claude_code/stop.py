@@ -4,7 +4,10 @@
    ``git status`` call whose mtime is at or after the turn start.
 2. Their records (``CoreAPI.records_for_paths``), the link states of those records only, the
    covering selection (``VerifyAPI.select``) and its evidence.
-3. Write ``status.json`` and the stated set (``stated.json``). Each stated record carries
+3. The read-back comes first (R1): the summary from the record states alone, with the
+   proposed records, is kept (``HookContext.keep``) before any evidence step, so a budget
+   cut, an error or the watchdog still prints it. Then the covering tests and fidelity.
+   Write ``status.json`` and the stated set (``stated.json``). Each stated record carries
    ``shown``: true only when the summary displayed its whole read-back (statement, every
    example, will/won't, labelled assumptions, alternatives). A bare affirmation relays only
    shown records; a record cut by ``hooks.summary_proposed_cap`` (counted in records) or too
@@ -21,8 +24,8 @@
 The deadline is checked before a step starts, never after it ends (spec 10): a step that
 would start past the soft budget is skipped and named in a ``check skipped (budget)`` notice,
 and results already computed are always used (the stated set, the snapshot, the block and the
-summary). Only when the record states themselves cannot start does the hook fall back to the
-bare budget notice. The watchdog's hard limit still bounds the whole hook.
+summary). The record states and the read-back are never skipped by the soft budget: only the
+watchdog's hard limit bounds them, and it prints whatever was kept.
 """
 
 from __future__ import annotations
@@ -47,7 +50,8 @@ from plumb.hosts.claude_code.providers import LAZY, unjudged_fn, verify_api
 IGNORED_PREFIXES = (".plumb/session/", ".plumb/cache/", ".plumb/log/", ".git/")
 IGNORED_FILES = (".plumb/test_map.txt",)
 SUMMARY_LINES = 5
-GIT_TIMEOUT_S = 0.6
+GIT_TIMEOUT_S = 1.0  # most of the soft budget: under load git status alone can take 0.6 s
+GIT_SKIPPED = "change detection (git status)"
 MAX_INSTRUCTION_PATHS = 8
 MAX_PROPOSED_LINE = 400
 
@@ -71,10 +75,17 @@ def _touched(path: Path) -> list[str]:
 
 def git_changed(root: Path, timeout: float = GIT_TIMEOUT_S) -> list[str]:
     """Paths of one ``git status --porcelain -z --untracked-files=all`` call."""
+    return _git_status(root, timeout) or []
+
+
+def _git_status(root: Path, timeout: float) -> list[str] | None:
+    """Like ``git_changed``; None when the call timed out (a loaded machine)."""
     try:
         result = subprocess.run(["git", "status", "--porcelain", "-z", "--untracked-files=all"],
                                 cwd=root, capture_output=True, timeout=max(timeout, 0.05),
                                 check=False)
+    except subprocess.TimeoutExpired:
+        return None
     except (OSError, subprocess.SubprocessError):
         return []
     if result.returncode != 0:
@@ -96,13 +107,18 @@ def git_changed(root: Path, timeout: float = GIT_TIMEOUT_S) -> list[str]:
 
 
 def changed_paths(root: Path, touched_file: Path, turn_start: float,
-                  timeout: float = GIT_TIMEOUT_S) -> list[str]:
+                  timeout: float = GIT_TIMEOUT_S,
+                  skipped: list[str] | None = None) -> list[str]:
+    """This turn's paths. A ``git status`` that timed out is named in ``skipped``."""
     seen: dict[str, None] = {}
     for rel in _touched(touched_file):
         if not _ignored(rel):
             seen.setdefault(rel, None)
     if turn_start > 0:
-        for rel in git_changed(root, timeout):
+        status = _git_status(root, timeout)
+        if status is None and skipped is not None:
+            skipped.append(GIT_SKIPPED)
+        for rel in status or ():
             if rel in seen or _ignored(rel):
                 continue
             try:
@@ -222,23 +238,41 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     except (TypeError, ValueError):
         turn_start = 0.0
     asked = turn.get("asked") if isinstance(turn.get("asked"), dict) else {}
+    skipped: list[str] = []
     changed = changed_paths(ctx.root, session_dir / "touched.txt", turn_start,
-                            min(GIT_TIMEOUT_S, max(ctx.deadline.remaining_s(), 0.05)))
+                            min(GIT_TIMEOUT_S, max(ctx.deadline.remaining_s(), 0.05)),
+                            skipped)
     from plumb.api import open_core
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
 
     core = open_core(ctx.root)
     if not changed:
         write_stated(ctx, turn, {}, [])
-        return None
-    skipped: list[str] = []
-    ctx.deadline.check("record states")  # nothing below can run without them
+        # a timed-out git status is no evidence of a turn without changes
+        return HookOutput(system_message=skip_notice(skipped)) if skipped else None
+    # no soft-budget check before the read-back (R1): only the watchdog bounds it
     index = core.index()
     by_path = core.records_for_paths(changed)
     touched_ids = sorted({i for ids in by_path.values() for i in ids if i in index})
     changed_set = set(changed)
     edited_ids = [i for i in touched_ids if index[i].path in changed_set]
     all_statuses = core.status()
+
+    # trigger 2: decisions that matter, unconfirmed, touched this turn
+    decisions = matters_decisions(index, all_statuses, touched_ids)
+    open_decisions = [d for d in decisions if asked.get(d) != index[d].hash]
+    stated_ids = [i for i in edited_ids
+                  if all_statuses[i].confirmation != "confirmed"]
+    for d in decisions:
+        if d not in stated_ids:
+            stated_ids.append(d)
+    # R1 first: the read-back is kept before any evidence step, so a cut (budget, error,
+    # watchdog) still shows it; kept before the stated set says "shown", never after
+    early, early_shown = summary(
+        core, index, all_statuses, changed, touched_ids, stated_ids, None, None, None,
+        decisions, (), 0.0, True, tests_checked=False)
+    ctx.keep(early.splitlines())
+    write_stated(ctx, turn, index, stated_ids, early_shown)
 
     verify = verify_api(core, verify)
     selection = evidence = pending = None
@@ -251,22 +285,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
             evidence = dict(verify.evidence(selection.nodes)) if selection.nodes else {}
             pending = verify.full_pending()
 
-    # trigger 2: decisions that matter, unconfirmed, touched this turn
-    decisions = matters_decisions(index, all_statuses, touched_ids)
-    open_decisions = [d for d in decisions if asked.get(d) != index[d].hash]
     # trigger 3: regressions (R3), asked once per failing run
     regressions = sorted(n for n, e in (evidence or {}).items() if e.regression)
     open_regressions = [n for n in regressions
                         if asked.get(f"regression:{n}") != (evidence[n].last_run or "?")]
     not_run = [n for n, e in (evidence or {}).items() if e.state in ("none", "stale")]
-
-    stated_ids = [i for i in edited_ids
-                  if all_statuses[i].confirmation != "confirmed"]
-    for d in decisions:
-        if d not in stated_ids:
-            stated_ids.append(d)
-    # nothing is shown yet: a blocked stop (or a hook cut short) shows the owner nothing
-    write_stated(ctx, turn, index, stated_ids)
 
     unjudged = unjudged_fn(unjudged)
     requirement_ids = [i for i in touched_ids if index[i].kind == "requirement"]
@@ -298,6 +321,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         if reasons:
             if skipped:
                 reasons.append(skip_notice(skipped))
+            # a blocked stop shows the owner nothing: a bare "ok" relays no record
+            write_stated(ctx, turn, index, stated_ids)
             write_json_atomic(turn_path, {**turn, "asked": asked})
             return HookOutput(block_reason="\n".join(reasons))
 
@@ -306,8 +331,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         turn_start = 0.0  # _confirmations reads no log without a turn start
     text, shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
-        pending, questions, fidelity, turn_start, verify is not None, skipped)
-    if shown:
+        pending, questions, fidelity, turn_start, verify is not None, skipped,
+        tests_checked="covering tests" not in skipped)
+    if shown != early_shown:
         write_stated(ctx, turn, index, stated_ids, shown)
     return HookOutput(system_message=text)
 
@@ -337,8 +363,12 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
             changed: Sequence[str], touched_ids: Sequence[str], stated_ids: Sequence[str],
             selection: Any, evidence: Mapping[str, Any] | None, pending: Any,
             questions: Sequence[str], fidelity: Sequence[str], turn_start: float,
-            verify_available: bool, skipped: Sequence[str] = ()) -> tuple[str, list[str]]:
-    """The summary text and the stated ids it showed in full."""
+            verify_available: bool, skipped: Sequence[str] = (), *,
+            tests_checked: bool = True) -> tuple[str, list[str]]:
+    """The summary text and the stated ids it showed in full.
+
+    ``tests_checked`` False (the covering tests were not evaluated, or not yet): the
+    questions line says the regression check did not run, never "none"."""
     records_edited = any(index[i].path in set(changed) for i in touched_ids)
     doc_only = (selection.doc_only if selection is not None else
                 all(p.endswith(".md") or p.startswith("docs/") for p in changed))
@@ -383,7 +413,10 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
         extra.append(skip_notice(skipped).removeprefix("plumb: "))
     if extra:
         lines.append(_clip("plumb: " + " | ".join(extra), 200))
-    lines.append("plumb: questions: " + ("; ".join(questions) if questions else "none"))
+    asks = list(questions)
+    if not tests_checked and verify_available:
+        asks.append("regressions not checked (budget)")
+    lines.append("plumb: questions: " + ("; ".join(asks) if asks else "none"))
     lines = lines[:SUMMARY_LINES]
     proposed, shown = proposed_lines(index, stated_ids,
                                      int(core.config.hooks.summary_proposed_cap))

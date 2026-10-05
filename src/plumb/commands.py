@@ -24,7 +24,7 @@ CONFIG_TEMPLATE = """\
 #   flaky_rerun: true
 #   infra_globs: ["**/conftest.py", pyproject.toml, uv.lock, pytest.ini, tox.ini, setup.cfg]
 # hooks:
-#   budget_ms: {session_start: 900, prompt: 600, stop: 800, post_edit: 300}
+#   budget_ms: {session_start: 1400, prompt: 1200, stop: 1400, post_edit: 300}
 #   brief_lines: 30
 #   prompt_lines: 20
 #   summary_proposed_cap: 3    # records shown in full per summary

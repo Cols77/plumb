@@ -535,3 +535,66 @@ def test_a_step_starting_past_the_budget_is_skipped_and_reported(
     summary = _summary(run_stop(project, hook_input, verify=verify))
     assert "check skipped (budget): covering tests" in summary
     assert "plumb: questions: DEC-001" in summary
+
+
+class _CutVerify(FakeVerify):
+    """Covering selection cut by the budget while it runs (a loaded machine)."""
+
+    def select(self, changed, *, budget_s=None):
+        from plumb.hosts.claude_code.hookio import BudgetExceeded
+
+        raise BudgetExceeded("covering tests")
+
+
+def test_read_back_survives_a_cut_in_the_covering_tests(project: Path, hook_input) -> None:
+    """R1: the proposed read-back is computed before the covering tests and kept, so a
+    budget cut drops evidence detail, never the read-back; the shown set matches."""
+    start_turn(project)
+    edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
+    edit(project, ".plumb/requirements/SR-001.md",
+         SR1.replace("add returns the sum.", "add returns the integer sum."))
+    summary = _summary(run_stop(project, hook_input, verify=_CutVerify(nodes=(NODE,))))
+    lines = summary.splitlines()
+    assert lines[0].startswith("plumb: touched SR-001")
+    assert "plumb: proposed SR-001: add returns the integer sum." in lines
+    assert "plumb: proposed SR-001/EX-1: given 1 and 2, when add runs, then it returns 3" in lines
+    assert "plumb: questions: regressions not checked (budget)" in lines
+    assert lines[-1] == "plumb: check skipped (budget): covering tests"
+    stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
+    assert stated["records"] == [{"id": "SR-001", "hash": open_core(project).index()[
+        "SR-001"].hash, "shown": True}]
+
+
+def test_skipped_covering_tests_never_read_as_no_questions(project: Path, hook_input,
+                                                          clock: _Clock,
+                                                          monkeypatch) -> None:
+    import plumb.api
+
+    real_open = plumb.api.open_core
+    monkeypatch.setattr(plumb.api, "open_core", lambda root: _SlowCore(real_open(root), clock))
+    start_turn(project)
+    edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
+    out = run_stop(project, hook_input, active=True, verify=FakeVerify(nodes=(NODE,)))
+    summary = _summary(out)
+    assert "plumb: questions: none" not in summary
+    assert "plumb: questions: regressions not checked (budget)" in summary
+
+
+def test_a_slow_git_status_is_reported_not_read_as_no_changes(project: Path, hook_input,
+                                                              monkeypatch) -> None:
+    """Under load `git status` can outlast its timeout: the stop hook says the change check
+    was skipped instead of printing nothing, which would read as a turn without changes."""
+    start_turn(project)
+    # an edit made through a shell command: no touched list, only git sees it
+    (project / "src" / "calc.py").write_text("def add(a, b):\n    return a - -b\n", "utf-8")
+
+    def slow_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="git status", timeout=kwargs.get("timeout", 0))
+
+    monkeypatch.setattr(stop.subprocess, "run", slow_run)
+    summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
+    assert summary == "plumb: check skipped (budget): change detection (git status)"
+
+
+def test_git_status_gets_most_of_the_remaining_budget() -> None:
+    assert stop.GIT_TIMEOUT_S >= 1.0

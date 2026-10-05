@@ -9,6 +9,12 @@ from typing import Any
 
 from plumb.contracts import FullPending, NodeEvidence, Selection
 
+DERIVED_VERSION = 1
+
+
+def _pending_dict(pending: FullPending) -> dict[str, Any]:
+    return {"pending": pending.pending, "reasons": list(pending.reasons)}
+
 
 @dataclass
 class RunReport:
@@ -125,7 +131,69 @@ class Verify:
 
         return cached_identity(self.core, self.env_key(), compute=compute)
 
+    def fingerprint(self) -> str:
+        """A digest of everything the map-derived answers come from: the scanned Python
+        files (size and mtime, as the map's own cache), the records and their links, the
+        evidence log, the config, the environment key and the shared test infrastructure
+        outside the scanned directories. Never memoized: a run appends evidence."""
+        import json
+        import os
+
+        from plumb.model import link_to_dict
+        from plumb.normalize import sha256_text
+        from plumb.verify.testmap import scan_files
+
+        def stat(path: Path) -> str:
+            try:
+                st = os.stat(path)
+            except OSError:
+                return "-"
+            return f"{st.st_size}:{st.st_mtime_ns}"
+
+        core = self.core
+        records = [[r.id, r.path, r.hash, [link_to_dict(link) for link in r.links]]
+                   for _, r in sorted(core.index().items())]
+        infra = {p: stat(self.root / p) for p in core.config.verify.infra_globs
+                 if not any(ch in p for ch in "*?[")}
+        parts = {"v": DERIVED_VERSION, "scan": scan_files(self.root, core.config),
+                 "records": records, "evidence": stat(core.paths.log_evidence),
+                 "config": stat(core.paths.config), "env": self.env_key(),
+                 "identity": stat(core.paths.env_identity), "infra": infra}
+        return sha256_text(json.dumps(parts, sort_keys=True, default=str))
+
+    def derived(self, name: str, compute: Any) -> Any:
+        """``compute()``, cached in ``.plumb/cache/derived.json`` under ``fingerprint()``."""
+        import json
+        import os
+
+        path = self.core.paths.cache / "derived.json"
+        fp = self.fingerprint()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = None
+        values = data.get("values") if isinstance(data, dict) and data.get("fp") == fp \
+            else None
+        values = values if isinstance(values, dict) else {}
+        if name in values:
+            return values[name]
+        value = compute()
+        values[name] = value
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+            tmp.write_text(json.dumps({"fp": fp, "values": values}), encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError:
+            pass
+        return value
+
     def full_pending(self) -> FullPending:
+        """Whether a full run is due (R5), cached by ``fingerprint()`` for the hooks."""
+        data = self.derived("full_pending", lambda: _pending_dict(self._full_pending()))
+        return FullPending(pending=bool(data["pending"]), reasons=tuple(data["reasons"]))
+
+    def _full_pending(self) -> FullPending:
         from plumb.verify.select import matches_infra
 
         tmap = self.test_map()
@@ -151,6 +219,12 @@ class Verify:
         from plumb.model import ID_PATTERN
         from plumb.verify.select import normalize_path
 
+        refs = list(refs)
+        if refs and all(ID_PATTERN.match(ref) for ref in refs):
+            # record ids only (the prompt hook, the brief): no map build on a warm call
+            records = self.derived("record_tests", lambda: {
+                k: list(v) for k, v in self.test_map().records.items()})
+            return {ref: tuple(records.get(ref, ())) for ref in refs}
         tmap = self.test_map()
         out: dict[str, tuple[str, ...]] = {}
         for ref in refs:

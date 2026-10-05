@@ -114,3 +114,70 @@ def test_root_found_from_input_cwd(repo: Path, hook_input,
                     stdin=io.StringIO(hook_input("Stop", cwd=str(sub))), stdout=io.StringIO(),
                     budget_ms=500)
     assert seen == [repo]
+
+
+def test_kept_lines_survive_a_budget_cut(repo: Path, hook_input) -> None:
+    """The intent-translation lines a handler keeps are printed even when a later step is
+    cut by the deadline; only the skipped step is named."""
+
+    def partly_slow(ctx):
+        ctx.keep(["plumb: relevant records", "plumb: relay line"])
+        time.sleep(0.05)
+        ctx.deadline.check("covering tests")
+        return hookio.HookOutput(text="never printed")
+
+    code, out = _run(partly_slow, repo, hook_input("UserPromptSubmit"), budget_ms=10)
+    assert code == 0
+    assert out.splitlines() == ["plumb: relevant records", "plumb: relay line",
+                                "plumb: check skipped (budget): covering tests"]
+
+
+def test_kept_lines_survive_in_a_json_hook(repo: Path, hook_input) -> None:
+    def partly_slow(ctx):
+        ctx.keep(["plumb: proposed SR-001 read-back"])
+        time.sleep(0.05)
+        ctx.deadline.check("fidelity")
+
+    code, out = _run(partly_slow, repo, hook_input("Stop"), budget_ms=10, json_output=True)
+    assert json.loads(out) == {"systemMessage": "plumb: proposed SR-001 read-back\n"
+                                                "plumb: check skipped (budget): fidelity"}
+
+
+def test_kept_lines_survive_an_internal_error(repo: Path, hook_input) -> None:
+    def broken_late(ctx):
+        ctx.keep(["plumb: relay line"])
+        raise RuntimeError("late failure")
+
+    code, out = _run(broken_late, repo, hook_input("UserPromptSubmit"), budget_ms=500)
+    assert out.splitlines() == ["plumb: relay line", hookio.SKIP_ERROR]
+
+
+def test_watchdog_prints_the_kept_lines(repo: Path, hook_input, tmp_path: Path) -> None:
+    """The hard-limit watchdog prints what the handler kept, not a bare notice."""
+    import subprocess
+    import sys
+
+    script = tmp_path / "wd.py"
+    script.write_text(
+        "import io, sys, time\n"
+        "from plumb.hosts.claude_code import hookio\n"
+        "def h(ctx):\n"
+        "    ctx.keep(['plumb: relay line'])\n"
+        "    time.sleep(5)\n"
+        f"hookio.run_hook('t', h, stdin=io.StringIO('{{}}'), stdout=sys.stdout, root=r'{repo}',\n"
+        "                 budget_ms=100, watchdog=True, start=time.monotonic() - 1.7)\n",
+        encoding="utf-8")
+    result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
+                            timeout=30, check=False)
+    assert result.stdout.splitlines() == ["plumb: relay line", hookio.SKIP_BUDGET]
+
+
+def test_default_budgets_sit_just_under_the_hard_limit(repo: Path) -> None:
+    """Soft budgets near the 2-second ceiling (spec 10): a loaded 2-core machine must not cut
+    the read-back on a routine turn; the watchdog still bounds the hook."""
+    from plumb.config import HooksConfig
+
+    budgets = HooksConfig().budget_ms
+    for name in ("session_start", "prompt", "stop"):
+        assert 1200 <= budgets[name] < hookio.HARD_LIMIT_S * 1000, name
+        assert hookio.hook_budget(name)(repo) == budgets[name]

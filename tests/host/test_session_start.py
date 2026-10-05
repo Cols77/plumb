@@ -82,3 +82,68 @@ def test_context_not_procedure(repo: Path, write_record, hook_input) -> None:
     out = _run(repo, hook_input, verify=FakeVerify())
     assert not json.dumps(out).startswith("{\"decision")
     assert "you must" not in out.lower() and "step 1" not in out.lower()
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def __getattr__(self, name: str):
+        import time
+
+        return getattr(time, name)
+
+
+def test_brief_survives_a_budget_cut(repo: Path, write_record, hook_input,
+                                     monkeypatch) -> None:
+    """On a loaded machine the records brief is printed and only the tests line is cut."""
+    import plumb.api
+    from plumb.hosts.claude_code import hookio
+
+    clock = _Clock()
+    monkeypatch.setattr(hookio, "time", clock)
+    write_record(repo, "---\nid: SR-001\ntitle: Links pin both ends\nstatement: s\n---\n")
+    real_open = plumb.api.open_core
+
+    class SlowCore:
+        def __init__(self, core) -> None:
+            self._core = core
+
+        def brief_lines(self, *args, **kwargs):
+            clock.now += 5.0
+            return self._core.brief_lines(*args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._core, name)
+
+    monkeypatch.setattr(plumb.api, "open_core", lambda root: SlowCore(real_open(root)))
+    verify = FakeVerify()
+    out = _run(repo, hook_input, verify=verify).splitlines()
+    assert out[0].startswith("plumb brief")
+    assert "awaiting your confirmation: 1 proposed (SR-001)" in out
+    assert "tests: not checked (budget)" in out
+    assert out[-1] == "plumb: check skipped (budget): tests"
+
+
+def test_warm_brief_skips_the_test_map(repo: Path, write_record, hook_input,
+                                       monkeypatch) -> None:
+    """The tests line is cached by the verify fingerprint: a warm session start builds no
+    test map (it used to cost 0.65 s of 1.37 s on plumb itself)."""
+    import plumb.verify.testmap as testmap
+
+    write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_one.py").write_text(
+        "import pytest\n\n\n@pytest.mark.sr('SR-001')\ndef test_one():\n    pass\n", "utf-8")
+    cold = _run(repo, hook_input)
+
+    def no_build(*args, **kwargs):
+        raise AssertionError("test map built on a warm session start")
+
+    monkeypatch.setattr(testmap, "build_map", no_build)
+    warm = _run(repo, hook_input)
+    assert warm == cold
+    assert "tests: 0/1 mapped tests with fresh passing evidence" in warm

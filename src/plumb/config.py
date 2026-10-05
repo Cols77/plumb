@@ -31,10 +31,16 @@ class VerifyConfig:
     infra_globs: tuple[str, ...] = DEFAULT_INFRA_GLOBS
 
 
+# Soft budgets per hook, from process start. Near the 2-second ceiling on purpose: on a
+# loaded 2-core machine a tighter budget cut the read-back first. The watchdog (1.9 s) is
+# the hard bound, and a cut keeps the intent-translation lines (hookio.HookContext.keep).
+DEFAULT_HOOK_BUDGET_MS: Mapping[str, int] = {
+    "session_start": 1400, "prompt": 1200, "stop": 1400, "post_edit": 300}
+
+
 @dataclass(frozen=True)
 class HooksConfig:
-    budget_ms: Mapping[str, int] = field(default_factory=lambda: {
-        "session_start": 900, "prompt": 600, "stop": 800, "post_edit": 300})
+    budget_ms: Mapping[str, int] = field(default_factory=lambda: dict(DEFAULT_HOOK_BUDGET_MS))
     brief_lines: int = 30
     prompt_lines: int = 20
     summary_proposed_cap: int = 3

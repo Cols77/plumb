@@ -111,3 +111,65 @@ def test_cli_drives_the_hooks(busy_repo: Path, hook_input) -> None:
     assert "SR-002" in (stop_out.get("reason") or stop_out.get("systemMessage"))
     assert call("statusline").startswith("plumb | SR 0/25 ok")
     assert call("hook", "--help").startswith("usage: plumb hook")
+
+
+class _CpuContention:
+    """One busy-loop process per core (simulated load); stops only its own processes."""
+
+    def __enter__(self) -> _CpuContention:
+        import os
+
+        self.burners = [subprocess.Popen([sys.executable, "-c", "while True: pass"])
+                        for _ in range(max(os.cpu_count() or 2, 2))]
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        for proc in self.burners:
+            proc.terminate()
+        for proc in self.burners:
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+
+def test_intent_lines_survive_cpu_contention(busy_repo: Path, hook_input) -> None:
+    """Under full CPU contention the hooks may cut evidence detail, never the brief, the
+    relevant records, the relay line or the proposed read-back (spec 10, R1). The caches are
+    warm, as on every turn after the first (a cold first hook is in docs/followups.md)."""
+    root = str(busy_repo)
+
+    def call(*args: str, payload: str = "") -> tuple[str, float]:
+        start = time.perf_counter()
+        result = subprocess.run([sys.executable, "-m", "plumb", *args, "--root", root],
+                                input=payload, capture_output=True, text=True,
+                                encoding="utf-8", check=False, timeout=60)
+        assert result.returncode == 0, result.stderr
+        return result.stdout, time.perf_counter() - start
+
+    call("hook", "session-start", payload=hook_input("SessionStart"))  # an earlier session
+    with _CpuContention():
+        _contended_turn(busy_repo, hook_input, call)
+
+
+def _contended_turn(busy_repo: Path, hook_input, call) -> None:
+    brief, _ = call("hook", "session-start", payload=hook_input("SessionStart"))
+    assert brief.startswith("plumb brief")
+    assert "awaiting your confirmation: 53 proposed" in brief
+    index = open_core(busy_repo).index()
+    stated = busy_repo / ".plumb" / "session" / "stated.json"
+    stated.write_text(json.dumps({"records": [
+        {"id": "SR-002", "hash": index["SR-002"].hash, "shown": True}]}), "utf-8")
+    out, _ = call("hook", "prompt", payload=hook_input("UserPromptSubmit",
+                                                       prompt="ok, and SR-002 needs work"))
+    assert "SR-002 [proposed]" in out
+    assert "plumb relay SR-002 --prompt" in out
+    record = busy_repo / ".plumb" / "requirements" / "SR-002.md"
+    record.write_text(record.read_text("utf-8").replace("statement 2", "statement two"),
+                      "utf-8")
+    call("hook", "post-edit", payload=hook_input(  # the Edit tool's PostToolUse
+        "PostToolUse", tool_name="Edit", tool_input={"file_path": str(record)}))
+    raw, wall = call("hook", "stop", payload=hook_input("Stop", stop_hook_active=True))
+    message = json.loads(raw)["systemMessage"]
+    assert "plumb: proposed SR-002: statement two on stale links" in message
+    assert wall < 6.0, f"stop hook took {wall:.1f} s under contention"

@@ -46,7 +46,11 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
                    full_pending: FullPending | None = None,
                    statuses: Mapping[str, RecordStatus] | None = None,
                    deferred: int = 0, fidelity_unjudged: Sequence[str] = (), ask: int = 0,
-                   skipped: str | None = None) -> StatusSnapshot:
+                   skipped: str | None = None,
+                   tests_summary: tuple[str, tuple[str, ...], tuple[str, ...]] | None = None
+                   ) -> StatusSnapshot:
+    """``tests_summary`` is a precomputed ``tests_state`` (the cached brief) used in place
+    of ``evidence``."""
     index = core.index()
     statuses = core.status() if statuses is None else statuses
     requirements = [s for i, s in statuses.items()
@@ -54,7 +58,8 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
     links = [state for status in statuses.values() for state in status.links]
     if full_pending is None and verify is not None:
         full_pending = verify.full_pending()
-    tests, failing, regressions = tests_state(evidence)
+    tests, failing, regressions = (tests_summary if tests_summary is not None
+                                   else tests_state(evidence))
     return StatusSnapshot(
         at=utc_now(),
         requirements_total=len(requirements),

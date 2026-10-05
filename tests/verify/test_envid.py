@@ -61,3 +61,17 @@ def test_unknown_identity_never_reused() -> None:
                                    "test_hash": "T"}]})
     got = single_evidence(index, "t.py::a", identity="I", **same)
     assert (got.state, got.reuse_miss) == ("stale", "identity")
+
+
+@pytest.mark.sr("SR-018")
+def test_env_key_reuses_the_cached_platform(tmp_path: Path, monkeypatch) -> None:
+    """``platform.machine()`` costs a WMI query (about 0.2 s) on Windows: the env key caches
+    it under .plumb/cache, keyed by the interpreter, and the key itself is unchanged."""
+    (tmp_path / ".plumb").mkdir()
+    first = envid.env_key(tmp_path)
+
+    def no_wmi():
+        raise AssertionError("platform.machine() called on a warm env key")
+
+    monkeypatch.setattr(envid.platform, "machine", no_wmi)
+    assert envid.env_key(tmp_path) == first

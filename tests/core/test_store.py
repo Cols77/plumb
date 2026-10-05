@@ -67,3 +67,44 @@ def test_update_links_keeps_body_and_hash(repo: Path, write_record) -> None:
     assert after.links[0].target.record == "INT-001"
     raw = (repo / ".plumb" / "requirements" / "SR-001.md").read_bytes()
     assert raw.endswith(b"---\nexact  body\r\n")
+
+
+SR_TEXT = ("---\nid: SR-001\ntitle: Cached\nstatement: s\nexamples:\n- id: EX-1\n  given: g\n"
+           "  when: w\n  then: t\nlinks:\n- kind: implemented_by\n  path: src/a.py\n---\nBody\n")
+
+
+def test_index_cache_skips_yaml_and_keeps_hashes(repo: Path, write_record,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """A warm index reads the parsed frontmatter from .plumb/cache/index.json, keyed by
+    each file's content digest: same records, same hashes, no YAML parse (spec 10)."""
+    import plumb.model
+    import plumb.store
+
+    write_record(repo, SR_TEXT)
+    write_record(repo, "---\nid: DEC-001\ntitle: D\nmatters: true\nalternatives: [b]\n---\n")
+    cold = Store(PlumbPaths(repo)).index()
+    assert (repo / ".plumb" / "cache" / "index.json").is_file()
+
+    def no_yaml(text):
+        raise AssertionError("YAML parsed on a warm index")
+
+    monkeypatch.setattr(plumb.model, "load_yaml", no_yaml)
+    monkeypatch.setattr(plumb.store, "load_yaml", no_yaml)
+    warm = Store(PlumbPaths(repo)).index()
+    assert warm == cold
+
+
+def test_index_cache_reparses_a_changed_file_of_the_same_size(repo: Path,
+                                                              write_record) -> None:
+    write_record(repo, SR_TEXT)
+    Store(PlumbPaths(repo)).index()
+    write_record(repo, SR_TEXT.replace("statement: s", "statement: x"))
+    record = Store(PlumbPaths(repo)).index()["SR-001"]
+    assert record.fields["statement"] == "x"
+
+
+def test_index_cache_never_stores_values_json_cannot_keep(repo: Path, write_record) -> None:
+    write_record(repo, "---\nid: INT-001\ntitle: Dated\nquote: q\nwhen: 2026-10-05\n---\n")
+    cold = Store(PlumbPaths(repo)).index()["INT-001"]
+    warm = Store(PlumbPaths(repo)).index()["INT-001"]
+    assert warm == cold and warm.hash == cold.hash

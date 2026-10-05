@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import re
 from collections.abc import Mapping
 from typing import Any
 
 from plumb.contracts import KIND_DIR, KIND_PREFIX, Record
-from plumb.model import RecordError, parse_record, split_frontmatter
+from plumb.model import RecordError, load_yaml, parse_record, split_frontmatter
 from plumb.paths import PlumbPaths
+
+INDEX_CACHE_VERSION = 1
 
 FIELD_ORDER: Mapping[str, tuple[str, ...]] = {
     "intent": ("quote", "readback", "will", "wont", "assumptions", "mode", "source"),
@@ -69,6 +74,8 @@ class Store:
         index: dict[str, Record] = {}
         problems: list[str] = []
         root = self.paths.root
+        cached = _read_index_cache(self.paths.index_cache)
+        fresh: dict[str, dict[str, object]] = {}
         for dirname, kind in sorted(DIR_KIND.items()):
             directory = self.paths.plumb / dirname
             if not directory.is_dir():
@@ -76,10 +83,19 @@ class Store:
             for file in sorted(directory.glob("*.md")):
                 rel = file.relative_to(root).as_posix()
                 try:
-                    record = parse_record(file.read_text(encoding="utf-8"), rel)
+                    text = file.read_text(encoding="utf-8")
+                    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                    entry = cached.get(rel)
+                    hit = isinstance(entry, dict) and entry.get("digest") == digest
+                    data = entry.get("data") if hit else None  # type: ignore[union-attr]
+                    if not isinstance(data, dict):
+                        data = load_yaml(split_frontmatter(text)[0])
+                    record = parse_record(text, rel, data)
                 except (RecordError, UnicodeDecodeError, OSError) as exc:
                     problems.append(f"{rel}: {exc}")
                     continue
+                if _json_safe(data):
+                    fresh[rel] = {"digest": digest, "data": data}
                 if record.kind != kind:
                     problems.append(f"{rel}: {record.id} is a {record.kind} record but sits in "
                                     f"{dirname}/ (expected {KIND_DIR[record.kind]}/)")
@@ -90,6 +106,8 @@ class Store:
                 index[record.id] = record
         self._index = index
         self._problems = problems
+        if fresh != cached:
+            _write_index_cache(self.paths.index_cache, fresh)
 
     def next_id(self, kind: str) -> str:
         prefix = KIND_PREFIX[kind]
@@ -131,3 +149,52 @@ class Store:
         path.write_bytes(new_text.encode("utf-8"))
         self.invalidate()
         return self.index()[record_id]
+
+
+# -- the index cache (spec 10): parsed frontmatter keyed by each file's content digest, so a
+# warm hook never imports or runs YAML. Plain JSON in .plumb/cache/, rebuilt on any change.
+
+
+def _json_safe(data: object) -> bool:
+    """True when JSON keeps ``data`` exactly, types included (dates, for one, it does not)."""
+    try:
+        back = json.loads(json.dumps(data, ensure_ascii=False))
+    except (TypeError, ValueError):
+        return False
+    return back == data and _same_types(back, data)
+
+
+def _same_types(a: Any, b: Any) -> bool:
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(_same_types(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(_same_types(x, y) for x, y in zip(a, b, strict=True))
+    return True
+
+
+def _read_index_cache(path: os.PathLike[str]) -> dict[str, object]:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or data.get("v") != INDEX_CACHE_VERSION:
+        return {}
+    files = data.get("files")
+    return files if isinstance(files, dict) else {}
+
+
+def _write_index_cache(path: os.PathLike[str], files: Mapping[str, object]) -> None:
+    from pathlib import Path
+
+    target = Path(path)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"v": INDEX_CACHE_VERSION, "files": files},
+                                  ensure_ascii=False), encoding="utf-8", newline="\n")
+        os.replace(tmp, target)
+    except OSError:
+        pass

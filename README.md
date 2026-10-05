@@ -200,7 +200,15 @@ Read-backs and proposed examples appear in the summary as `proposed` and never b
 To confirm them, reply in the session in your own words, for example "ok, SR-009 is right".
 The agent then records your words with `plumb relay`, and the approval is marked
 `agent-relayed` with your quote and the digest of your prompt. A prompt that does not object
-does not count as a confirmation. In the simulated session, each hook took 0.2 to 0.6 s.
+does not count as a confirmation.
+
+Hook timing on the 2-core development machine, warm caches: session start 0.55 to 0.8 s,
+prompt 0.45 to 0.6 s, stop 0.65 to 1.2 s on a turn with changes (the first call after a code
+change rebuilds the test map and can take about 1.4 s). Each hook has a soft budget near the
+2-second ceiling and a 1.9 s watchdog. When a loaded machine cuts a hook short, it still
+prints the read-back, the relevant records and the relay line, and names the skipped step
+(`plumb: check skipped (budget): covering tests`): evidence detail is dropped first, never
+the intent lines.
 
 At a merge boundary, run:
 

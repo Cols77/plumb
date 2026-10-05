@@ -961,3 +961,115 @@ Recorded (MEDIUM and LOW, not fixed in this round):
   and drift say "uncovered examples 0": "covered" there means confirmed and covered. The
   verifier's hook runs also wrote `.plumb/session/verifier-deliv` (gitignored, harmless).
   Fix: label the figure "confirmed and covered", or show both counts.
+
+## Delivered-repository intent review, round 2 (2026-10-06)
+
+The round's HIGH finding (under load, the hooks dropped the read-back, confirmation and
+relay lines first) is fixed in the same change. Intent lines are now computed first and kept
+through any cut. Budgets sit near the 2 s ceiling. The record index, the platform name and
+the map-derived answers are cached (spec 10). The medium and low findings below were not
+fixed, except where the HIGH fix covers them, as noted.
+
+- [MEDIUM] (Stop budget, stop.py) With `src/plumb/text.py` touched, Stop hit its 800 ms
+  budget repeatedly (0.96 to 1.33 s). It printed "check skipped (budget): covering tests,
+  confirmations" and then "questions: none", so the summary read as all clear although the
+  covering-test check and the regression trigger (R3) had not run. The paths stay in
+  touched.txt, so a later turn retries. Partly covered by the HIGH fix: the stop budget is now
+  1400 ms, and a skipped covering-test step prints "questions: regressions not checked
+  (budget)", never "none". Still open: carry a pending flag into the status line
+  (status.json already records `skipped`, but the status line does not show it).
+- [MEDIUM] (merge.py, merge-boundary wording) The merge boundary says "merge waits for your
+  confirmation: `plumb approve ...`, or say ok in the session". But `plumb relay` accepts a
+  bare "ok" only for records in the stop hook's stated set that were shown in full (cap 3).
+  The merge listing (35 records on plumb itself) writes no stated set, so a bare "ok" after it
+  is refused for nearly every record. Fix: have `validate --merge` write a stated set of the
+  records it printed in full, or drop "or say ok in the session" from that message.
+- [MEDIUM] (dogfooding activation, repeat) All 54 of plumb's records are proposed (status
+  line "SR 0/25 ok | proposed 54"). Trigger 1 cannot fire on plumb itself, and neither the
+  brief nor the status line names the step that turns it on. Fix: name `plumb approve
+  --proposed` (run in the owner's terminal) in the brief or the status line, and put a
+  "first morning" note at the top of the README.
+- [MEDIUM] (importer, SR-023, DEC-011 vs concept 10) A dry-run import of pi-agent-factory
+  (read-only, 1.6 s) imports every record as proposed. That drops every pinned upstream
+  approval (about 100 SRs to re-confirm). It also reports 936 missing-end findings for links
+  whose files are absent. This is safe under R2, but the B migration loses the KEEP item
+  "approvals pinned to exact content" at migration time. Fix: carry pinned upstream approvals
+  over as `by: import` entries that cite the upstream record and hash, so only changed
+  content needs re-confirmation. Otherwise record the decision in the concept.
+- [LOW] (`plumb log`, `plumb new`) `plumb --help` lists "new, why, log (not available in this
+  build)". `plumb log` is the concept's on-demand reader for "everything else is logged".
+  Without `plumb new`, the agent hand-writes YAML records with pins. Fix: build `plumb log`
+  (a readable view of events.jsonl, evidence.jsonl and errors.log) and `plumb new` as the
+  first sub-project 2 items.
+- [LOW] (README, last paragraph; raised twice this round) The README links the fork plan at
+  `docs/plans/fork-plan.md`, but the file is `docs/fork-plan.md`. Fix: change the link.
+- [MEDIUM] (prompt hook, hookio SKIP_BUDGET path) On a scratch clone with SR-005 confirmed, a
+  prompt that contradicts it went over the 600 ms budget at the "intent check" step. This
+  happened in 1 of 3 warm runs and in every cold run. The hook printed only "plumb: check
+  skipped (budget)" and discarded the records and the trigger-1 flag it had already computed.
+  The first prompt hook in a fresh clone took about 2.2 s. Covered by the HIGH fix: the
+  prompt hook now computes the relay line, the records, the intent check and the compare line
+  before the covering tests, and keeps them through any cut. A cut names only the skipped
+  step. Still open: the first hook in a fresh clone (no caches yet) can still reach the 1.9 s
+  watchdog. Warming the caches on `plumb init` / `plumb hooks install` would remove that.
+- [MEDIUM] (verify/policy.py `waive()`) `plumb tests waive` records a waiver pinned to a diff
+  digest, but nothing reads that waiver to let a targeted rerun replace a full rerun. The
+  docstring says "Using it in place of a full rerun belongs to sub-project 3", so this is
+  already a recorded deferral. Fix in sub-project 3: the merge-boundary check accepts a
+  waiver whose digest matches the diff in place of the full rerun.
+- [LOW] (stop.py, no-change turns) On a turn with no file changes, the Stop hook prints
+  nothing: no summary and no "questions: none". That is reasonable, but neither the README
+  nor the concept says the summary appears only on turns that change files. Fix: say so in
+  both, or print one line such as "plumb: no changes | questions: none".
+- [LOW] (.plumb/.gitignore: session/, cache/, test_map.txt) Three things are readable locally
+  but not in git: the prompt-digest log (session/prompts.jsonl) that agent-relayed approvals
+  cite, the stated set, and the grep-able test map. So a relayed approval's prompt digest
+  cannot be checked from a fresh clone unless that digest was committed. DEC-004 covers the
+  digests. Fix: have `plumb relay` commit the cited prompt-log entry next to the approval, as
+  DEC-004 intends, with a test. Say in the README that test_map.txt is generated by
+  `plumb map`.
+- [MEDIUM] (validate.py, merge.py; examples become acceptance tests) A requirement with no
+  examples (SR-099 in a scratch clone) raises no warning in `plumb validate` or `plumb
+  drift`. `validate --merge` neither lists nor gates touched examples that have no
+  `verified_by` test. So "which become acceptance tests" is never checked where it counts.
+  Fix: add a validate warning for a requirement with zero examples, and have `validate
+  --merge` list touched requirements whose examples are uncovered (as an advisory or a gate).
+- [MEDIUM] (judgment/heuristic.py `intent_change`) With SR-003 confirmed ("dangling links are
+  errors"), two prompts were not flagged: "Make dangling links warnings, not errors." and
+  "Links should no longer pin the hash of both ends; only pin the target end instead." Term
+  overlap fell below STRONG_OVERLAP although change words were present. The generic compare
+  line still reaches the agent, so trigger 1 rests on the agent tier. Fix: flag a prompt when
+  a matched confirmed record is in the injected top-N and the prompt carries change words, or
+  lower the threshold for confirmed records. Add both prompts to the precision fixture.
+- [MEDIUM] (escalated mode, spec section deferred to sub-project 2) Escalated mode exists only
+  as a prompt-hook hint. There is no set-hash approval of an escalated record set, no `plumb
+  decline`, and nothing holds code until the set is approved. The README and the brief do not
+  say that escalated specs cannot be approved yet. Fix: add one README line stating the
+  deferral, and list it first among the sub-project 2 items.
+- [LOW] (dogfooding, `/plumb` slash command) No plumb record is confirmed yet, so trigger 1
+  cannot fire on plumb's own work. The lane merges were declared non-boundaries (sp1-plan).
+  Separately, the `/plumb` slash command advertises `why`, which answers "not available in
+  this build". Fix: have the morning brief point to `plumb validate --merge <base>`, and drop
+  `why` from the slash command's argument hint until it exists.
+- [MEDIUM] (merge.py `merge_check`, full verification pending) The delivered repository showed
+  "full verification pending (src/plumb/verify/pytest_plugin.py changed)" in the brief, the
+  status line and the stop summary. `plumb validate --merge main` exits 0 while it is
+  pending, so nothing makes the full run happen at the boundary. Fix: make `validate --merge`
+  exit non-zero, or print a one-line "run --full before merging" action, while full
+  verification is pending (already scheduled above). This change ran `plumb tests run --full`
+  once, so the delivered state has recorded full-run evidence.
+- [MEDIUM] (R1 gate never exercised on plumb) All 25 of plumb's SRs are merged on main as
+  proposed. With HEAD on main, `plumb validate --merge main` checks an empty range and reports
+  "touched requirements: none", so the R1 gate has never run on plumb itself. Fix: add a short
+  "Tomorrow morning: activate dogfooding" line to the README and the session brief (`plumb
+  show INT-001..`, then `plumb approve <ids>` for the KEEP-critical SRs and INTs). Do future
+  work on branches, so `validate --merge main` covers a real range.
+- [LOW] (session-start latency) Measured: prompt 0.83 s, stop 0.55 to 1.06 s, statusline
+  0.59 s, session-start 1.31 s warm, with two watchdog hits in errors.log. Covered by the HIGH
+  fix: the session-start tests line is cached under the verify fingerprint (0.7 to 0.8 s warm,
+  measured after the fix), and a cut prints the records brief with "tests: not checked
+  (budget)".
+- [LOW] (NCs and the claims baseline not exercised) `.plumb/ncs/` is empty and the claims
+  baseline is `[]`, while this file lists 36 undeclared (commit, path) pairs from trailerless
+  lane commits. Fix: open NC-0001 for the trailerless lane commits and reference it from the
+  claims.yaml baseline, so both KEEP items are exercised on plumb itself.
