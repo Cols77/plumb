@@ -193,3 +193,26 @@ def test_relay_cli(setup: Path, monkeypatch: pytest.MonkeyPatch,
     assert cli.main(["relay", "SR-001", "--prompt", digest, "--quote", "nope", *root]) == 3
     assert cli.main(["relay", "SR-001", "--prompt", digest, "--quote", "lgtm", *root]) == 0
     assert _confirmation(setup, "SR-001") == "confirmed"
+
+
+@pytest.mark.parametrize("prompt, quote", [
+    ("the build looks broken, please fix SR-001 tests", "ok"),
+    ("I saw that yesterday, fix it", "yes"),
+    ("SR-001 is still unconfirmed", "confirm"),
+    ("the build looks broken", "oks bro"),
+])
+def test_relay_rejects_quote_cut_from_inside_a_word(setup: Path, prompt: str,
+                                                    quote: str) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, prompt)
+    with pytest.raises(approvals.Refused, match="verbatim"):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote=quote)
+    assert list(open_core(setup).log_read("events")) == []
+    assert _confirmation(setup, "SR-001") != "confirmed"
+
+
+def test_relay_accepts_whole_word_quote_with_edge_punctuation(setup: Path) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, "Fine. ok, go ahead!")
+    approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="ok,")
+    assert _confirmation(setup, "SR-001") == "confirmed"

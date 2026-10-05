@@ -8,7 +8,8 @@ Over ``<base>..HEAD`` plus uncommitted changes:
    the prompt digest they cite;
 3. fidelity (advisory) and 4. verification state, from the BRIDGE and VERIFY lanes when they
    are built, otherwise ``unavailable``;
-5. every log line present at ``<base>`` must still be present, unchanged (exit 1 otherwise).
+5. every log line present at the merge base of ``<base>`` and HEAD must still be present,
+   unchanged (exit 1 otherwise).
 """
 
 from __future__ import annotations
@@ -96,9 +97,9 @@ def required_records(core: Core, touched: Sequence[str]) -> list[str]:
     return required
 
 
-def _base_lines(core: Core, base: str, stream: str) -> list[str]:
+def _base_lines(core: Core, commit: str, stream: str) -> list[str]:
     rel = f"./.plumb/log/{stream}.jsonl"
-    result = subprocess.run(["git", "show", f"{base}:{rel}"], cwd=core.root,
+    result = subprocess.run(["git", "show", f"{commit}:{rel}"], cwd=core.root,
                             capture_output=True)
     if result.returncode != 0:
         return []
@@ -107,7 +108,13 @@ def _base_lines(core: Core, base: str, stream: str) -> list[str]:
 
 
 def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]]:
-    """Problems (base lines missing or changed) and the digests present at base."""
+    """Problems (merge-base lines missing or changed) and the digests present there.
+
+    Lines are read at ``git merge-base <base> HEAD``, not at the tip of ``base``: entries the
+    base appended after the branch diverged are not part of this branch's history, so their
+    absence is not tampering.
+    """
+    fork = _git(core, "merge-base", base, "HEAD").strip()
     problems: list[str] = []
     base_digests: dict[str, set[str]] = {}
     for stream in ("events", "evidence"):
@@ -117,14 +124,14 @@ def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]
         except OSError:
             current = set()
         digests: set[str] = set()
-        for number, line in enumerate(_base_lines(core, base, stream), start=1):
+        for number, line in enumerate(_base_lines(core, fork, stream), start=1):
             try:
                 digests.add(str(json.loads(line).get("digest")))
             except ValueError:
                 pass
             if line not in current:
-                problems.append(f"{path.name}: line {number} at {base[:12]} is missing or "
-                                "changed")
+                problems.append(f"{path.name}: line {number} at merge-base {fork[:12]} is "
+                                "missing or changed")
         base_digests[stream] = digests
     return problems, base_digests
 

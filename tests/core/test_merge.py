@@ -169,3 +169,38 @@ def test_validate_merge_json_is_one_document(base, capsys) -> None:
     data = json.loads(capsys.readouterr().out)
     assert data["merge"]["awaiting"][0]["id"] == "SR-001"
     assert data["validate"]["errors"] == []
+
+
+def test_merge_log_integrity_reads_merge_base_not_base_tip(base, capsys) -> None:
+    root, _ = base
+    git(root, "branch", "trunk")
+    git(root, "checkout", "-q", "-b", "feat")
+    (root / "src" / "mod.py").write_text("x = 2\n", encoding="utf-8")
+    _commit(root, "feat change")
+    git(root, "checkout", "-q", "trunk")
+    approvals.approve(open_core(root), ["SR-002"])  # main receives a log entry meanwhile
+    _commit(root, "approval on trunk")
+    git(root, "checkout", "-q", "feat")
+    code, out = _check(root, "trunk", capsys)
+    assert "log integrity: ok" in out, out
+    assert code == 4  # SR-001 touched and unconfirmed, but no false tamper alarm
+    assert "SR-002" not in out[out.index("approvals in range"):]
+
+
+def test_merge_log_integrity_still_catches_edit_of_merge_base_line(base, capsys) -> None:
+    root, _ = base
+    approvals.approve(open_core(root), ["INT-001"])
+    _commit(root, "approval")
+    git(root, "branch", "trunk")
+    git(root, "checkout", "-q", "-b", "feat")
+    events = root / ".plumb" / "log" / "events.jsonl"
+    events.write_text(events.read_text(encoding="utf-8").replace("INT-001", "SR-002"),
+                      encoding="utf-8")
+    _commit(root, "tamper")
+    git(root, "checkout", "-q", "trunk")
+    (root / "notes.txt").write_text("n\n", encoding="utf-8")
+    _commit(root, "trunk moves on")
+    git(root, "checkout", "-q", "feat")
+    code, out = _check(root, "trunk", capsys)
+    assert code == 1
+    assert "log integrity: FAILED" in out

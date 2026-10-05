@@ -172,14 +172,28 @@ def _named(record_id: str, quote: str) -> bool:
     return re.search(rf"(?<![A-Za-z0-9-]){re.escape(record_id)}(?![0-9])", quote) is not None
 
 
+def quote_in_prompt(quote: str, text: str) -> bool:
+    """Whether ``quote`` occurs verbatim in ``text`` on whole-word boundaries.
+
+    A quote whose first (last) character is a word character must not be preceded (followed)
+    by a word character in the prompt, so a fragment cut from inside a word ("ok" from
+    "looks", "yes" from "yesterday") is not the owner's words.
+    """
+    if not quote:
+        return False
+    head = r"(?<!\w)" if re.match(r"\w", quote[0]) else ""
+    tail = r"(?!\w)" if re.match(r"\w", quote[-1]) else ""
+    return re.search(head + re.escape(quote) + tail, text) is not None
+
+
 def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bool = False,
           note: str = "") -> LogEntry:
     """Record an approval (or revocation) the agent relays from the owner's own words."""
     entry = find_prompt(core, prompt)
     text = str(entry["text"])
     normalized_quote = normalize_text(quote)
-    if not normalized_quote or normalized_quote not in normalize_text(text):
-        raise Refused("the quote is not a verbatim part of that prompt")
+    if not normalized_quote or not quote_in_prompt(normalized_quote, normalize_text(text)):
+        raise Refused("the quote is not a verbatim part of that prompt (whole words)")
     affirmation = None
     if not revoke:
         affirmation = affirmation_in(normalized_quote, core.config.approve.affirmations)

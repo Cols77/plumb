@@ -309,3 +309,27 @@ Design choices made inside the spec (MEDIUM at most):
   to the defaults silently.
 - [LOW] The merge report lists the deferred-by-budget tests only once VERIFY's API exposes
   them; CORE prints `verification: unavailable` until `plumb.verify.open_verify` imports.
+
+## CORE lane review (2026-10-06)
+
+The two HIGH findings of this review (merge-boundary log integrity read at the base tip instead
+of the merge base; `plumb relay` accepting a quote cut from inside a word) were fixed in the
+same change.
+
+- [MEDIUM] (core review, src/plumb/commands.py) `cmd_validate` returns `code or merge_code`, so
+  any validate error (exit 1) masks the merge boundary's exit 4 ("waits for your
+  confirmation"), and a merge waiting for the owner is reported as plain findings. Scenario: one
+  dangling link plus a touched unconfirmed SR makes `plumb validate --merge main` exit 1, not 4;
+  plan section 12 expects exit 4 on plumb's own records, and a host adapter keying on exit 4 to
+  ask the owner (R1) would miss the question.
+- [LOW] (core review, src/plumb/approvals.py) `_stated` only rejects a stated.json written after
+  the prompt; it does not check that the file belongs to the reply just before that prompt
+  (spec 5.6), for example via `reply_after_prompt` or the session. Scenario: stated.json written
+  by the stop hook in session A; in a later session the agent relays an affirming quote for a
+  record in that old stated set without the quote naming it, and the stated-set check passes
+  although the owner never saw that set in the reply they answered.
+- [LOW] (core review, src/plumb/log.py) `_Lock.__enter__` retries with `continue` on any OSError
+  from `stat()` or `remove()` of a stale lock without checking the deadline, so a persistent
+  OSError other than FileNotFoundError (for example PermissionError from antivirus or ACLs)
+  makes `append()` busy-loop past the 2 s budget without raising `LogLockTimeout`, and the hook
+  hangs.
