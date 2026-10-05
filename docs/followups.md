@@ -483,3 +483,118 @@ the SHOULD items follow on the same branch.
   unknown-coverage sample (spec 7.2 `is_source`, for example `src/pkg/data.json` with no
   covering test) does not keep full verification pending. Separately, `removed_after_passing`
   lists a deliberately renamed passing test indefinitely. Recorded, not fixed.
+
+## SP1 lane HOST (2026-10-06)
+
+All HOST MUST items (H1 to H7) and SHOULD items (HS1 to HS5) are built. Merge points: H5 at
+`1e7916a`, H7 at `f098b2a`, lane end with HS3 at `b54d9d8` (plus this note).
+
+- [MEDIUM] (host, stop.py) The regression instruction reads `<node> passed in an earlier run
+  and now fails (last run <id>)` instead of spec 6.4's `passed in run <id>`: `NodeEvidence`
+  (spec 12.1) carries only `last_run`, which for a regression is the failing run, not the run
+  that passed. Fix: add `last_pass_run` to `NodeEvidence` (contract change, coordinator).
+- [MEDIUM] (host, stop.py) Trigger 3 blocks once per failing run (`asked["regression:<node>"]
+  = last_run` in `turn.json`), and trigger 2 once per decision hash; later stops list them under
+  `questions:` without blocking. `asked` lives in the session's `turn.json`, so a new session
+  asks again once.
+- [MEDIUM] (host, stop.py) The stop hook combines every reason of a turn (covering tests,
+  trigger 2, trigger 3) into its single block, so "at most one block per turn" holds without
+  dropping a trigger when the tests block comes first.
+- [MEDIUM] (host, prompt.py) The prompt hook deletes the session's `touched.txt` at each turn
+  start, so `touched.txt` holds the current turn's edits only. VERIFY's `tests run --changed`
+  (which reads the touched lists of every session) therefore sees this turn's edits plus
+  `git status`, not the whole session's history.
+- [MEDIUM] (host, install.py) The skill and slash command are rendered with an agent prefix
+  that differs from the hook prefix for the venv launcher: hooks run
+  `"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe" -m plumb`, the skill names
+  `.venv/Scripts/python.exe -m plumb` (relative, because `CLAUDE_PROJECT_DIR` is not
+  guaranteed in the agent's shell). Deny rules cover both the three standard prefixes and the
+  agent prefix.
+- [MEDIUM] (host, install.py) A foreign `statusLine` is kept and reported, never replaced, so
+  plumb's status line does not show in a project that already has one.
+- [LOW] (host, install.py) Deny rules follow spec 5.6 literally: `Bash(*PLUMB_AGENT_SESSION*)`
+  depends on the host reading a leading `*`; `Edit(.plumb/log/**)` is resolved by Claude Code
+  relative to the working directory; `MultiEdit` may no longer be a tool name in current
+  Claude Code (inert). Layer 1 (the marker) holds regardless.
+- [LOW] (host, stop.py) The stop hook computes the state of every record for the snapshot
+  counts (about 550 ms end to end on plumb's own repository with `python -m plumb hook stop`,
+  under the 800 ms budget). CORE's index cache (KS1) or an incremental snapshot would cut it.
+- [LOW] (host, prompt.py) The escalation hint counts only strongly matched records (named by
+  ID, or term overlap of at least 1.0); the threshold is a guess, not measured.
+- [LOW] (host, prompt.py) Intent-change flags are logged to `.plumb/session/intent_flags.jsonl`
+  (gitignored), a file name spec 12.5 does not list.
+- [LOW] (host, hookio.py) A watchdog thread ends a hook process with `os._exit(0)` after
+  1.9 s (the 2-second rule), after printing the budget notice; an atomic JSON write in flight
+  at that moment leaves only a temporary file behind. The watchdog runs only from the CLI.
+- [LOW] (host, install.py) `hooks uninstall` removes the git `commit-msg` hook only when it
+  contains `plumb trailers check-msg` (BRIDGE writes it); a foreign hook is left alone.
+- [LOW] (host, tests) HS3's in-process latency test was written after the hooks it measures,
+  so it was green on its first run (no red step); the end-to-end subprocess latency test and
+  the benchmark belong to phase 4.
+
+## HOST lane review, UTF-8 round (2026-10-06)
+
+The two HIGH findings of this review (hook stdin/stdout in the locale code page instead of
+UTF-8, and a failed first write suppressing the skip notice) were fixed in the same change.
+
+- [MEDIUM] (host review, stop.py) A regression found by the agent's own `plumb tests run`
+  inside the stop-block cycle is never recorded as asked: on the second stop
+  `stop_hook_active` is true and the asked map is not updated, so the next turn that touches
+  the same covering selection blocks again with the same regression for the same failing run,
+  and the owner can be interrupted twice for one regression.
+- [MEDIUM] (host review, stop.py) Stop #1 of a blocking turn rewrites `stated.json` with a new
+  `at` before the agent may run `plumb relay`. CORE's `_stated()` ignores a stated set written
+  after the prompt, so a relay made after the first block loses the previous reply's stated
+  set (records are refused unless the quote names their IDs).
+- [MEDIUM] (host review, prompt.py) Per-turn hook latency on plumb's own repository, measured
+  end to end without VERIFY, is about 800 ms for prompt (budget 600 ms) and about 900 ms for
+  stop (budget 800 ms): about 1.7 s together, above spec 10's 1.5 s per-turn target though
+  under 2 s. VERIFY's select/evidence will add to it; the phase-4 benchmark is likely to fail
+  until CORE's KS1 caches land or the stop hook stops calling `core.status()` over all records.
+- [MEDIUM] (host review, stop.py) A file deleted during the turn is dropped from the changed
+  paths (the `os.stat` failure is skipped) unless the deletion went through a tracked edit, so
+  deleting a linked implementation file (for example `git rm src/foo.py` through Bash) is not
+  reported as touched or dangling and no covering tests are asked for. Also, `git status` has
+  a hard 0.6 s timeout that silently returns no paths on a slow or large repository.
+- [LOW] (host review, templates/SKILL.md) The skill tells the agent to record read-backs and
+  examples as records under `.plumb/` instead of naming `plumb new` as spec 6.7 says, so
+  agents may hand-write frontmatter with malformed IDs or unpinned links.
+
+## HOST lane review, stop-deadline round (2026-10-06)
+
+The HIGH finding of this review (the stop hook checked its deadline after the covering-tests
+step had finished and then discarded every computed result) was fixed in the same change: the
+deadline is now checked before a step starts, a skipped step is named in a
+`check skipped (budget): <steps>` notice, and the stated set, snapshot, block and summary are
+always produced from the results already computed.
+
+- [MEDIUM] (host review, stop.py) The stop hook rebuilds `status.json` from this turn's
+  covering selection only. When that selection is empty or doc-only (or the covering-tests
+  step was skipped for the budget), the evidence is `{}` and `tests_state` returns `unknown`,
+  overwriting the earlier snapshot's ok/failing/regression state: after a docs-only turn the
+  status line shows `tests ?` (or loses a `regression N` it was showing).
+- [LOW] (host review, statusline.py) Measured end to end, `plumb statusline` takes about
+  500 ms here (`python -m plumb statusline --root <repo>` 504 ms against 355 ms for a bare
+  `python -c pass`), above spec 10's 350 ms budget. Most of it is interpreter start-up plus
+  routing through `plumb.cli`.
+- [MEDIUM] (host review, CORE-owned approvals.py) `find_prompt()` keys `prompts.jsonl` entries
+  by digest with `setdefault`, so when the owner repeats the same affirming prompt text
+  ("ok, go on", "yes"), relay resolves the first, oldest entry. Its `at` predates the current
+  `stated.json`, so `_stated()` discards the stated set and the relay is refused
+  ("DEC-002 is not in the stated set of the reply before that prompt", exit 3), while the
+  prompt hook's awaiting-confirmation line still prints the 12-hex prefix. Fails safe (no
+  false confirmation), but the most common one-word confirmations break after first use. Fix
+  in CORE: keep the latest entry per digest (or the latest whose `at` follows `stated.at`).
+- [MEDIUM] (host review, stop.py, prompt.py) Commands the hooks print for the agent hard-code
+  the bare `plumb` launcher (the stop block's "run 'plumb tests run --changed'", the prompt
+  hook's "run plumb relay ..."), while the skill and slash command are rendered with the
+  installed launcher's agent prefix (spec 6.7). With `plumb hooks install --launcher venv`
+  and no `plumb` on PATH, the agent gets command-not-found and wastes a turn, or skips the
+  covering tests and the relay. Fix: store the agent prefix at install time (config or an
+  env var in settings.json) and render these lines with it.
+- [LOW] (host review, hookio.py) The watchdog hard limit (1.9 s) and the per-hook deadline are
+  measured from `start`, taken in `cli._hook` after interpreter start-up and the plumb import;
+  process start-up (about 225-500 ms here) is not counted, so on a loaded 2-core machine with
+  a cold cache the host can see about 2.3 s for one hook before the watchdog fires. Measured
+  on the lane tree without VERIFY: session-start 794 ms, prompt 762 ms, stop 852-1018 ms,
+  statusline 419 ms end to end. Partly recorded above under the latency item.
