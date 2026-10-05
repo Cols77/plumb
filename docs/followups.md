@@ -411,3 +411,42 @@ so.
 - [LOW] (bootstrap) The records were written with plumb's own library (`Core.write_record`,
   `Core.add_link`) because `plumb new` is not built. Every link was pinned when it was added,
   so `plumb repin` had nothing to do.
+
+## SP1 lane BRIDGE (2026-10-06)
+
+Built: B1 to B4 (MUST) and BS1 to BS4 (SHOULD); nothing of the lane is left unbuilt.
+
+- [MEDIUM] (BS4) Intent-change heuristic on the 20 labelled prompts of
+  `tests/bridge/fixtures/intent_prompts.json`: precision 1.0, recall 0.5 (tp 5, fp 0, fn 5).
+  Every miss is a prompt that changes a requirement without naming its ID and whose term
+  overlap stays under the prompt hook's strong-match threshold (1.0). The threshold was not
+  tuned to the fixture; the prompt hook's "compare with the confirmed examples" line is the
+  designed backstop for these (spec 6.2 step 3). Measure on real prompts from
+  `.plumb/session/intent_flags.jsonl` before changing the threshold.
+- [MEDIUM] (B1) With `require_trailer: true`, git's default messages for `git revert`,
+  `git merge` and `git commit --fixup` carry no `SR:` trailer and are rejected; the author
+  must add one (or use `--no-verify`, which bypasses the hook by design). A later revision
+  could exempt messages whose changed paths are all exempt, as pi-agent-factory's
+  `check_commit` does; the spec (5.9) does not ask for it, so it was not built.
+- [MEDIUM] (B2, BS3) "One notice per session" is kept as one notice per 12-hour window in the
+  gitignored `.plumb/session/judgment_notices.json`, because `get_backend` receives no
+  session ID. The notices are exposed as `backend.notices` and printed by `plumb fidelity` and
+  `plumb judgment status`; the prompt hook does not print them.
+- [MEDIUM] (BS3) The JEV backend logs every judgment as a committed `judgment` event, as spec
+  8.2 asks, so a JEV-enabled prompt hook appends to `events.jsonl` on each flagged turn. Not
+  measured against the hook budget on the live service (the tests use a local stub).
+- [LOW] (B3) A fidelity judgment covers a requirement only at tier `accept` (the host agent's
+  `plumb judge`, or a JEV score accepted at a validated version); an escalated JEV score is
+  logged but leaves the requirement `unjudged`, so the host agent still judges it.
+- [LOW] (BS2) Symbol ends of pi-agent-factory bindings (`path` + `symbol`) are linked as whole
+  files and reported as `symbol-narrowed` findings, because symbol hashing (CORE KS4) is not
+  on `main`; relinking them to symbols is a follow-up once KS4 lands. A dry run of
+  `C:/coding/pi-agent-factory` (HEAD 341e2a08) reads 85 SR, 24 FEAT and 22 NC records with
+  958 findings (789 missing ends, 148 narrowed symbols, 8 skipped non-SR relations, 7
+  verified legacy checksums, 6 membership differences); a real import into a scratch
+  repository validates with no errors.
+- [LOW] (B4) `plumb claims check` skips merge commits (`--no-merges`) and lists commits
+  without a trailer that change non-exempt paths as `no SR: trailer`, without failing on them;
+  the exit code reflects undeclared paths only.
+- [LOW] (lane) The B1 and B4 code was written in one module before its tests were run red;
+  later items (B2, B3, BS1 to BS3) were run red first. BS4 measures existing code.
