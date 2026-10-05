@@ -32,10 +32,14 @@ At the end of sub-project 1, plumb is a working tool that develops itself:
 plumb is used on plumb from the first hour, following concept section 11, slice 1a: plumb's
 own records are written while the lanes start, every commit carries an `SR:` trailer, the
 trailer check turns on as soon as the record and approval core merges, and each hook is
-installed in plumb's own repository as soon as it lands (14.1). The work is about 6 hours of
-agent time: a contract phase, four parallel lanes with dogfood checkpoints, an integration
-phase, a short dogfood completion and a review of the dogfooded result
-(`docs/plans/sp1-plan.md`).
+installed in plumb's own repository as soon as it lands (14.1). From then on, the build's own
+work on `main` runs through those hooks as loop steps, with evidence that the loop ran on each
+one (14.1). The work is about 6 hours of agent time: a contract phase, four parallel lanes with
+dogfood checkpoints, an integration phase, a short dogfood completion and a review of the
+dogfooded result (`docs/plans/sp1-plan.md`). It is time-boxed to the owner's deadline, an
+absolute time: 2026-10-06 08:00 local, the earliest reading of 9 hours from the owner's
+request on the evening of 2026-10-05 (the repository was initialized at 23:25 +11:00, shortly
+after it).
 
 ## 2. Owner intent served
 
@@ -49,11 +53,11 @@ phase, a short dogfood completion and a review of the dogfooded result
 | D3 "B": host-neutral core, Claude Code first, reuse by extraction | CLI and library core; `plumb/hosts/claude_code` adapter (6); extraction table (13) |
 | D4 "B" and the KEEP list ("Keep list looks fine") | Hashes and staleness (5.4, 5.5), pinned approvals (5.6), append-only logs (5.7), `SR:` trailers and claims (5.9), relation validation (5.10), NCs (5.2), features (5.2), identity-pinned evidence and failure policy (7.4, 7.5), advisory fidelity (8.3) |
 | D5 "A": background, three triggers only | Stop hook summary and the exhaustive trigger list (6.4, 6.5) |
-| D6: dogfood "as soon as possible and build with it" | Dogfood checkpoints D0 to D3 (14.1): own records from the first hour, `SR:` trailers on every commit from the contract phase, the trailer check on from D1, each hook installed in plumb's repository as it lands; dogfooding is never cut for review or later items (plan 12) |
+| D6: dogfood "as soon as possible and build with it" | Dogfood checkpoints D0 to D3 (14.1): own records from the first hour, `SR:` trailers on every commit from the contract phase, the trailer check on from D1, each hook installed in plumb's repository as it lands, and from then on the build's own work on `main` run as loop steps through those hooks, with evidence that the loop ran (14.1; plan 4.5); dogfooding is never cut for review or later items (plan 12) |
 | D7: reuse SR, FEAT, NC formats and IDs | Same ID formats and `SR:` trailers; importer (8.1, a plan stretch item) |
 | D8: JEV optional, cascade, works without it | `JudgmentBackend` with heuristic default and JEV adapter (8.2) |
 | D9: pi-agent-factory into maintenance mode, fork plan | Out of scope here: the fork plan is a separate document (15) |
-| D10, D11: concept plus plans; owner does not review; implementation by the morning | This spec and the plan; verifier agents; the 6-hour schedule, must items of at most 150 min per lane, and a drop order that protects the dogfoodable core (plan 6, 12) |
+| D10, D11: concept plus plans; owner does not review; implementation by the morning | This spec and the plan; verifier agents; a 6-hour schedule anchored to the owner's absolute deadline (2026-10-06 08:00 local; clock rule at 07:15, handoff by 07:45), must items of at most 150 min per lane, and a drop order that protects the dogfoodable core (plan 1, 6, 12) |
 | D12: the name plumb | Package, CLI and `.plumb/` directory |
 | R1: read-back and examples non-blocking; touched requirements confirmed at merge | `proposed` lines in the summary (6.4); `validate --merge` (5.11) |
 | R2: no no-objection approval; `agent-relayed` with verbatim quote and prompt digest; honest trust model | `plumb relay` checks (5.6); merge-boundary approval list (5.11); trust model (5.6) |
@@ -80,7 +84,7 @@ Each refinement keeps the concept's guarantee and changes only its mechanism. Ea
 | F10 | Regression: a test that previously passed now fails (6.6) | Same, and only when the test's own source hash is unchanged since that pass | A rewritten test that starts red is a test-first step (R3), not a regression |
 | F11 | Imported records with an upstream approval get `by: import` (10) | The minimal importer imports every record as proposed; `by: import` approvals wait for the full importer (sub-project 5) | Never manufactures a confirmation; safe lower bound of the concept rule |
 | F12 | Links live in their source record (4.5) | Unchanged; "link" is a first-class data type (`Link`, `LinkState`) and command (`plumb link`), not a separate file | A link file per link would double the files a hook reads and split a requirement from its evidence chain |
-| F13 | Slice 1a is built in the listed order, one step after another; plumb's own `SR` records and `SR:` trailers start at step 3, and each hook is installed in plumb's repository as soon as it lands (11) | Slice 1a is built by four parallel lanes, with dogfood checkpoints (14.1). plumb's own records are written at D0, while the lanes start, which is earlier than step 3, and every commit from the contract phase on carries an `SR:` trailer. The `commit-msg` check turns on at D1, as soon as the record core and the approval, trailer and merge-boundary items (concept steps 1, 2 and 4) merge. Each hook is installed in plumb's repository at D2, as soon as its lane merge point lands. The map and verification join at D3. Dogfooding comes before review. The JEV live client and the minimal importer are stretch items here (the concept puts them in sub-projects 2 and 5). The judgment interface with its heuristic backend moves up from 1b into the must items, because the prompt hook's intent-change flag (trigger 1) uses it; the owner waiver (concept 1b) is a stretch item, since using it in place of a full rerun belongs to sub-project 3 (15) | The 9-hour box (D11) needs parallel lanes. The checkpoints keep "as soon as possible and build with it" (D6): the records and trailers start earlier than in the concept, and no checkpoint waits for a whole lane or for review |
+| F13 | Slice 1a is built in the listed order, one step after another; plumb's own `SR` records and `SR:` trailers start at step 3, and each hook is installed in plumb's repository as soon as it lands (11) | Slice 1a is built by four parallel lanes, with dogfood checkpoints (14.1). plumb's own records are written at D0, while the lanes start, which is earlier than step 3, and every commit from the contract phase on carries an `SR:` trailer. The `commit-msg` check turns on at D1, as soon as the record core and the approval, trailer and merge-boundary items (concept steps 1, 2 and 4) merge. Each hook is installed in plumb's repository at D2, as soon as its lane merge point lands, and from then on the coordinator's work on `main` runs as loop steps through the installed hooks (a headless Claude Code session rooted in plumb's repository, or the real hook entry points driven around the work item), because the building workflow's own sessions are not rooted in plumb's repository and would not fire the hooks. The map and verification join at D3. Dogfooding comes before review. The JEV live client and the minimal importer are stretch items here (the concept puts them in sub-projects 2 and 5). The judgment interface with its heuristic backend moves up from 1b into the must items, because the prompt hook's intent-change flag (trigger 1) uses it; the owner waiver (concept 1b) is a stretch item, since using it in place of a full rerun belongs to sub-project 3 (15) | The 9-hour box (D11) needs parallel lanes. The checkpoints keep "as soon as possible and build with it" (D6): the records and trailers start earlier than in the concept, and no checkpoint waits for a whole lane or for review |
 
 ### 3.1 Work-order wording reconciled with the rulings
 
@@ -1272,13 +1276,30 @@ conditions, steps and gates, and protects the checkpoints from every cut.
 - **D2, hooks installed as they land** (concept 1a step 5): `plumb hooks install` (with the
   `venv` launcher) runs again each time a HOST merge point lands, and registers the hooks
   present in that build: session start, edit tracking and the status line first, then the
-  prompt hook, then the stop hook. From D2 on, Claude Code sessions on `C:/coding/plumb` run
-  plumb's own hooks.
+  prompt hook, then the stop hook. Claude Code sessions on `C:/coding/plumb` then run
+  plumb's own hooks. Installation alone does not put the build in the loop: the coordinating
+  workflow session is not rooted in `C:/coding/plumb`, and its subagents do not receive the
+  prompt and stop events.
+- **Loop steps, from D2 on** (plan 4.5): every unit of the coordinator's work on `main` after
+  the first hook install (later lane merges and checkpoints, the integration items, the
+  completion steps and the review fixes) runs as a loop step. In host mode it is a headless
+  Claude Code session whose project directory is `C:/coding/plumb`, so the installed hooks
+  fire. In driven mode, the fallback, the coordinator calls the real entry points around the
+  work item: `plumb hook session-start`, `plumb hook prompt` with the work item text,
+  `plumb hook post-edit` per written file, `plumb hook stop` (running
+  `plumb tests run --changed` when it blocks, then stop again), and `plumb statusline`. Each
+  step must leave evidence that the loop ran: its prompt in `.plumb/session/prompts.jsonl`,
+  `status.json` rewritten by the step, a `test-run` entry in `.plumb/log/evidence.jsonl` after
+  each stop block that asked for the covering tests, and a line in `docs/sp1-loop-log.md`.
+  Overnight, a trigger becomes a proposed `DEC` with `matters: true` for the morning merge
+  boundary instead of a live question. Lane work inside the worktrees is built by workflow
+  subagents outside the loop, and the handoff says so.
 - **D3, map and covering tests** (concept 1a step 6): `plumb tests map` on plumb's own tests
   once the verification lane's must items merge.
-- **Completion**, before review: the links for code merged later, the first
+- **Completion**, before review, as loop steps: the links for code merged later, the first
   `plumb tests run --full`, and the hook benchmark on plumb's own repository. Review then
-  runs on the dogfooded result, and its fixes are committed through plumb's hooks.
+  runs on the dogfooded result, and each of its fixes is made as a loop step and committed
+  through plumb's `commit-msg` hook.
 
 All records stay **proposed**: no agent writes an approval, because no owner prompt in these
 sessions affirmed them (R2). The morning handoff gives the owner one line to confirm them
@@ -1310,9 +1331,15 @@ sessions affirmed them (R2). The morning handoff gives the owner one line to con
    reports no errors on plumb's own records (warnings for proposed records are expected), the
    hooks are installed in `C:/coding/plumb/.claude/settings.json`, every commit since the
    contract phase carries an `SR:` trailer, the `commit-msg` hook has checked every commit
-   since D1, and `plumb claims check` accepts the latest commits.
+   since D1, and `plumb claims check` accepts the latest commits. Every loop step since D2
+   left the evidence listed in 14.1, and the handoff states honestly, from
+   `docs/sp1-loop-log.md`, which parts of the loop ran during the build, in which mode, and
+   which work was built outside it.
 10. Every unfinished item is recorded in `docs/followups.md` with its state; medium and low
     review findings are recorded there; no HIGH finding is open.
+11. The morning minimum (plan 12) is on `main` and dogfooded by the clock rule, 2026-10-06
+    07:15 local, and the handoff is committed by 07:45, before the owner's 08:00 deadline;
+    any part of the minimum still missing is listed first in the handoff.
 
 ## 15. Out of scope for sub-project 1
 

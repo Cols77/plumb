@@ -8,7 +8,10 @@ The plan follows the build order of concept section 11, slice 1a: plumb is used 
 early as possible. The owner asked to "dogfood the version to itself as soon as possible and
 build with it" (D6) and to have the implementation "by tomorrow morning (in 9 hours)" (D11).
 So dogfooding is not a last phase here. It starts while the lanes start, and it grows at a
-checkpoint each time a lane's must items merge (section 4).
+checkpoint each time a lane's must items merge (section 4). From D2 on, the coordinator's own
+work on `main` runs through plumb's grounding loop as loop steps, with evidence that the loop
+ran (4.5). The 9 hours end at an absolute time, 2026-10-06 08:00 local, and every cutoff is
+anchored to it (sections 1 and 12).
 
 ## 1. Shape of the work
 
@@ -16,27 +19,47 @@ checkpoint each time a lane's must items merge (section 4).
 |---|---|---|---|---|
 | 0. Contracts | Package skeleton, frozen contracts, shared primitives (including the hash-chained log), fakes, dispatcher | coordinator, on `main` | 55 min | `uv run pytest -q` and `uv run ruff check src tests` pass; contract tests green; committed with an `SR:` trailer |
 | 1. Lanes and dogfood checkpoints | CORE, TRUST, VERIFY, HOST in parallel, each in its own worktree. Each lane hands over a merge-ready commit at each of its merge points; the coordinator merges it into `main` at once and runs every dogfood checkpoint (D0 to D3, section 4) that the merge unlocks | four lane agents; coordinator | 3 h per lane; must items 150 min or less | lane gate (3.3) on each merge point; whole suite and ruff green on `main` after each merge; each checkpoint's gate (4.3) |
-| 2. Integration | Merge the lanes' remaining 1b and stretch work, end-to-end and conformance tests, hook benchmark | coordinator | 45 min | whole suite and ruff green on `main`; benchmark recorded |
-| 3. Dogfood completion | Finish plumb's links to the code and tests that landed after D3, the first full run, the benchmark on plumb's own repository | coordinator | 30 min | dogfood checks (4.4) pass |
-| 4. Review | One review agent per lane diff plus one intent verifier, all on the dogfooded `main` | review agents; fixes by coordinator | 30 min | no HIGH finding open; medium and low in `docs/followups.md` |
+| 2. Integration | Merge the lanes' remaining 1b and stretch work, end-to-end and conformance tests, hook benchmark; every item runs as a loop step (4.5) | coordinator, through loop steps | 45 min | whole suite and ruff green on `main`; benchmark recorded; every loop step of the phase passed gate L (4.5) |
+| 3. Dogfood completion | Finish plumb's links to the code and tests that landed after D3, the first full run, the benchmark on plumb's own repository; every step runs as a loop step | coordinator, through loop steps | 30 min | dogfood checks (4.4) pass, including gate L for every loop step so far |
+| 4. Review | One review agent per lane diff plus one intent verifier, all on the dogfooded `main`; each HIGH fix runs as a loop step | review agents; fixes by coordinator through loop steps | 30 min | no HIGH finding open; medium and low in `docs/followups.md`; every fix's loop step passed gate L |
 
-Wall-clock schedule (elapsed time from the start of phase 0):
+**The deadline is an absolute time.** The owner set the box on the evening of 2026-10-05: "I
+want to have the implementation available by tomorrow morning (in 9 hours)." plumb's
+repository was initialized at 2026-10-05 23:25 (+11:00, local time), shortly after the request,
+so the 9 hours end between about 08:00 and 08:25 local. This plan takes the earlier time,
+**2026-10-06 08:00 local**, as the deadline. The concept, the spec and this plan already used
+about 1 h 20 min of them (the last plan commit before this revision was at 00:40). Every cutoff
+in this plan is therefore an absolute local time on 2026-10-06, never an elapsed time from
+phase 0:
 
-| Time | Event |
+| Local time | Rule |
 |---|---|
-| 0:00 to 0:55 | Phase 0. Its commit is the first to carry an `SR:` trailer (IDs from 4.2) |
-| 0:55 | Lanes start |
-| about 1:00 to 1:40 | D0: the coordinator writes plumb's own records by hand under `.plumb/` |
-| about 2:40 | TRUST merge point T4 merged (trailer check, approvals with the guard, merge boundary) |
-| about 3:15 | CORE C1 to C7 merged; D1 runs: `plumb init`, plumb's records validated and pinned, `commit-msg` check on |
-| about 3:30 to 3:55 | CORE C8 and the HOST merge points merged; D2 installs each hook in plumb's repository as it lands |
-| about 3:55 | VERIFY must items merged; D3 builds plumb's test map |
-| 3:55 to 4:40 | Phase 2 |
-| 4:40 to 5:10 | Phase 3 |
-| 5:10 to 5:40 | Phase 4 |
+| 06:30 | Latest merge of any lane's must items (lane stop rule, section 12), so the coordinator can still run the checkpoints they unlock |
+| 07:15 | **Clock rule** (section 12): deadline minus 45 min. The morning minimum must be on `main` and dogfooded (D0 to D3 passed, loop steps passing gate L) by this time |
+| 07:45 | Handoff and `docs/followups.md` committed on `main` |
+| 08:00 | The owner's deadline |
 
-That leaves about 3 h 20 min of slack inside the 9 hours. Section 12 says what the slack
-protects and what is dropped first.
+Wall-clock schedule. It assumes phase 0 starts at 01:00 local; the coordinator writes the real
+start time in the phase-0 commit message and shifts the planned times by the difference. The
+four times above never move.
+
+| Elapsed from phase 0 | Local time (start 01:00) | Event |
+|---|---|---|
+| 0:00 to 0:55 | 01:00 to 01:55 | Phase 0. Its commit is the first to carry an `SR:` trailer (IDs from 4.2) |
+| 0:55 | 01:55 | Lanes start |
+| about 1:00 to 1:40 | about 02:00 to 02:40 | D0: the coordinator writes plumb's own records by hand under `.plumb/` |
+| about 2:40 | about 03:40 | TRUST merge point T4 merged (trailer check, approvals with the guard, merge boundary) |
+| about 3:15 | about 04:15 | CORE C1 to C7 merged; D1 runs: `plumb init`, plumb's records validated and pinned, `commit-msg` check on |
+| about 3:30 to 3:55 | about 04:30 to 04:55 | CORE C8 and the HOST merge points merged; D2 installs each hook in plumb's repository as it lands, and from the first hook on, the coordinator's work on `main` runs as loop steps (4.5) |
+| about 3:55 | about 04:55 | VERIFY must items merged; D3 builds plumb's test map (as a loop step) |
+| 3:55 to 4:40 | 04:55 to 05:40 | Phase 2 |
+| 4:40 to 5:10 | 05:40 to 06:10 | Phase 3 |
+| 5:10 to 5:40 | 06:10 to 06:40 | Phase 4 |
+
+The nominal end is 06:40, which leaves about **35 min of slack** before the clock rule at
+07:15 and about 65 min before the 07:45 handoff. That is the real slack: it is measured from
+the real start of phase 0 against the owner's deadline, and each minute phase 0 starts after
+01:00 comes off it. Section 12 says what the slack protects and what is dropped first.
 
 Orchestration uses the host's native mechanism: in Claude Code, the `Workflow` tool. Phase 0
 is one `agent()` step. Phase 1 is a `parallel()` of four lane pipelines plus the D0 step;
@@ -45,6 +68,19 @@ each segment the script runs a merge step on `main`. Merge steps run one at a ti
 `main` checkout), and each ends by running the checkpoints its merge unlocks. Phases 2 to 4
 follow, each carrying its gate. Starting that workflow needs the owner's opt-in where Claude
 Code asks for it; this plan does not grant it.
+
+**What runs under plumb's loop, and how.** Hooks registered in
+`C:/coding/plumb/.claude/settings.json` fire only for a Claude Code session whose project
+directory is `C:/coding/plumb`. The coordinating Workflow session is rooted elsewhere, and its
+`agent()` subagents do not receive the `UserPromptSubmit` or `Stop` events that drive the
+loop. Installing the hooks (D2) therefore does not by itself put plumb in the loop. So, from
+D2 on, the coordinator's own work on `main` (each later lane merge and checkpoint, each
+phase-2 item, the phase-3 steps and each phase-4 fix) runs as a **loop step** (4.5): either a
+headless Claude Code session rooted in `C:/coding/plumb` (host mode, where the installed hooks
+fire), or the coordinator driving the real hook entry points around the work item (driven
+mode). Each loop step must pass gate L, which checks that the loop actually ran. Lane work
+inside the worktrees stays in workflow subagents and runs without the loop; the handoff says
+so (4.5).
 
 ## 2. Conventions for every agent
 
@@ -94,7 +130,7 @@ Code asks for it; this plan does not grant it.
 | TRUST | `src/plumb/claims.py` (trailers, `commit-msg` hook installer, claims check), `approvals.py`, `merge.py`, `trust_cli.py`; `src/plumb/judgment/**` (`__init__.py`, `model.py`, `heuristic.py`, `tiers.py`, `cascade.py`, `fidelity.py`, `jev.py`, `state.py`, `cli.py`); `src/plumb/importer/**` (`__init__.py`, `pi_factory.py`, `cli.py`); `tests/trust/**` including `tests/trust/fixtures/pi_factory/**` |
 | VERIFY | `src/plumb/verify/**` (`__init__.py`, `imports.py`, `markers.py`, `testmap.py`, `select.py`, `pytest_plugin.py`, `runner.py`, `evidence.py`, `policy.py`, `envid.py`, `cli.py`); `tests/verify/**` |
 | HOST | `src/plumb/hosts/__init__.py`, `src/plumb/hosts/claude_code/**` (`__init__.py`, `cli.py`, `hookio.py`, `session_start.py`, `prompt.py`, `post_edit.py`, `stop.py`, `snapshot.py`, `statusline.py`, `install.py`, `templates/SKILL.md`, `templates/plumb-command.md`, `templates/claude-md-block.md`); `tests/host/**` |
-| Dogfood (coordinator, D0 to D3 and phase 3) | `.plumb/**`, `.claude/**`, `CLAUDE.md`, `README.md` (usage section); the untracked `.git/hooks/commit-msg` |
+| Dogfood (coordinator, D0 to D3, loop steps and phase 3) | `.plumb/**`, `.claude/**`, `CLAUDE.md`, `README.md` (usage section), `docs/sp1-loop-log.md` (loop step log, 4.5); the untracked `.git/hooks/commit-msg` |
 | Phase 2 | `tests/integration/**`, `scripts/bench_hooks.py` |
 | Any lane, append only | `docs/followups.md` (own heading) |
 
@@ -137,14 +173,17 @@ on `main`, and runs the checkpoints the merge unlocks (4.1).
 |---|---|---|
 | D0. Own records | Right after phase 0, in parallel with the lanes (needs no lane) | Write plumb's records of 4.2 by hand as Markdown with frontmatter (spec 5.2) under `.plumb/intents/`, `requirements/`, `decisions/`, `features/`: quotes verbatim from the brief, read-backs in the owner's terms, requirements with given/when/then examples, `derives_from` and `decides` links without pins. Commit `dogfood: plumb's own intent records` with `SR: SR-001` |
 | D1. Records checked, trailers enforced | CORE merge point C7 and TRUST merge point T4 are both on `main` (concept 11, 1a steps 1 to 4) | `uv run plumb init` (idempotent; adds `config.yaml`, `claims.yaml`, `.gitignore`, `.gitattributes`, empty logs around the D0 records); set `verify.infra_globs` to add `src/plumb/verify/pytest_plugin.py`; `uv run plumb repin <ID>` on every record to pin its links; add `implemented_by` and `verified_by` links (whole files) for the modules and test files already on `main`; `uv run plumb validate` (no errors); `uv run plumb trailers install-hook`; set `require_trailer: true` in `.plumb/claims.yaml`; `uv run plumb validate --merge <phase-0 commit>` (exits 4, listing the records awaiting the owner); commit with `SR: SR-001, SR-003, SR-007` through the new hook |
-| D2. Hooks installed as they land | Each HOST merge point (H6, H7, H8), once D1 and CORE merge point C8 are on `main` | `uv run plumb hooks install --launcher venv` after each merge: the installer registers only the hooks whose modules are present (section 10, H6), so session start, edit tracking and the status line are installed at H6, the prompt hook at H7 and the stop hook at H8. Add the links for the new modules and tests; `uv run plumb validate`; commit with `SR: SR-015` plus the hook's SR |
-| D3. Map and covering tests | VERIFY merge point V8 is on `main` | `uv run plumb tests map`; add the `verified_by` links still missing for files on `main`; `uv run plumb tests select --changed` as a sanity run; commit with `SR: SR-016, SR-017` |
+| D2. Hooks installed as they land | Each HOST merge point (H6, H7, H8), once D1 and CORE merge point C8 are on `main` | `uv run plumb hooks install --launcher venv` after each merge: the installer registers only the hooks whose modules are present (section 10, H6), so session start, edit tracking and the status line are installed at H6, the prompt hook at H7 and the stop hook at H8. Add the links for the new modules and tests; `uv run plumb validate`; commit with `SR: SR-015` plus the hook's SR. From the H6 install on, every later merge, checkpoint and coordinator work item on `main` runs as a loop step (4.5) with the hooks installed so far |
+| D3. Map and covering tests | VERIFY merge point V8 is on `main` | As a loop step (4.5): `uv run plumb tests map`; add the `verified_by` links still missing for files on `main`; `uv run plumb tests select --changed` as a sanity run; commit with `SR: SR-016, SR-017` |
 
-From D1 on, plumb's `commit-msg` hook checks every commit and merge on `main`. From D2 on,
-the Claude Code sessions opened on `C:/coding/plumb` run plumb's own hooks, so the
-integration, dogfood completion and review fixes are made with plumb in the loop. If a hook
-misbehaves before `plumb hooks uninstall` lands (HOST 1b), `git revert` of the install commit
-removes it; the failure is recorded in `docs/followups.md`.
+From D1 on, plumb's `commit-msg` hook checks every commit and merge on `main`. Installing the
+hooks at D2 is not enough to put plumb in the loop: the coordinating Workflow session and its
+subagents are not Claude Code sessions on `C:/coding/plumb`, so the hooks would not fire for
+them (section 1). From D2 on, the merges, checkpoints, integration, dogfood completion and
+review fixes are therefore made as loop steps (4.5), and gate L checks for each one that the
+loop ran on it. If a hook misbehaves before `plumb hooks uninstall` lands (HOST 1b), `git
+revert` of the install commit removes it; the failure is recorded in `docs/followups.md`, and
+the loop steps continue in driven mode with the hooks that still work.
 
 A checkpoint whose condition is not met by the 3-hour lane mark waits for the morning-minimum
 rule of section 12; it is never skipped.
@@ -219,8 +258,12 @@ about it and the handoff lists it.
   `SR-999` and accepts one naming `SR-001`; `validate --merge <phase-0 commit>` exits 4.
 - D2: `.claude/settings.json` holds the hooks installed so far, the status line, the marker
   and the deny rules; one manual `uv run plumb hook session-start` (and, once installed,
-  `hook prompt` and `hook stop`) on plumb's repository exits 0 within its budget.
-- D3: `plumb tests map` lists every SR whose test files are on `main`.
+  `hook prompt` and `hook stop`) on plumb's repository exits 0 within its budget; and the
+  first loop step after each install (4.5) passes gate L for the hooks installed so far. At
+  H8 (stop hook installed) that loop step must show the whole loop: a prompt entry, a stop
+  block asking for the covering tests, the `test-run` entry it caused, and the summary.
+- D3: `plumb tests map` lists every SR whose test files are on `main`; the D3 loop step
+  passes gate L.
 
 ### 4.4 Dogfood checks (phase 3 gate)
 
@@ -240,10 +283,105 @@ Checks:
 - Every commit since phase 0 carries an `SR:` trailer, and `plumb claims check` reports no
   undeclared path (or records each one in `docs/followups.md`).
 - `scripts/bench_hooks.py` on plumb's own repository: prompt + stop p95 under 1.5 s.
+- The loop ran on plumb's own work: `docs/sp1-loop-log.md` has a line for every loop step
+  since D2, every one of them passed gate L (4.5), and the phase-2 and phase-3 steps include
+  at least one stop block that asked for the covering tests, the `test-run` entry it caused
+  in `.plumb/log/evidence.jsonl`, and the summary that followed. The phase-3 steps themselves
+  run as loop steps.
 - `plumb validate --merge <phase-0 commit>` exits 4 and lists every record awaiting the owner's
   confirmation: the expected morning question. The handoff tells the owner the one line that
   confirms everything they agree with: `plumb approve --proposed` in their own terminal, or
   "ok" in a session (relayed with the quote check).
+
+### 4.5 Loop steps: plumb's loop on plumb's own work
+
+The owner asked to "dogfood the version to itself as soon as possible and build with it"
+(D6). The grounding loop (session brief, prompt context with the intent-change flag, edit
+tracking, the stop hook's covering-test request and summary, and the status line) is the
+central deliverable of sub-project 1, so it must run on plumb's own changes during the build,
+not only be installed. A loop step is how it runs.
+
+**Which work runs as a loop step.** From the H6 install (D2) on, every unit of work the
+coordinator does on `main`: each later lane merge with the checkpoint it unlocks, D3, each
+phase-2 item (each lane's final merge, the conformance fixes, each integration test file, the
+benchmark script), each phase-3 step, and each phase-4 HIGH fix. A loop step uses the hooks
+installed so far; once the stop hook is installed (H8), every loop step runs the whole loop.
+Lane work in the worktrees stays in workflow subagents and runs without the loop.
+
+**Host mode (preferred).** The coordinator runs the work item as a headless Claude Code
+session whose project directory is plumb's repository, so Claude Code loads
+`C:/coding/plumb/.claude/settings.json` and the installed hooks fire as they would for the
+owner:
+
+```
+cd C:/coding/plumb && claude -p "<work item text, naming the plan section it implements>" \
+  --permission-mode acceptEdits --output-format json
+```
+
+The session id comes from the JSON result. The session's own agent acts on the hook output
+(it runs `plumb tests run --changed` when the stop hook blocks). Claude Code does not render
+the status line in headless mode, so after the session the coordinator runs
+`uv run plumb statusline` and keeps its output.
+
+**Driven mode (fallback, always available).** When host mode is not possible, the coordinator
+drives the work item through the real hook entry points against plumb's repository, with
+`PLUMB_AGENT_SESSION=1` set and a session id `sp1-driven-<n>`. Each payload is the JSON
+Claude Code would send (`session_id`, `cwd` = `C:/coding/plumb`, `hook_event_name`, and the
+event's fields):
+
+1. `uv run plumb hook session-start` once per driven session (`"source": "startup"`);
+2. `uv run plumb hook prompt` with the work item text as `prompt`; read its output (named
+   records, examples, tests, the intent-change flag) before changing anything;
+3. make the change; after each file written, `uv run plumb hook post-edit` with a
+   `PostToolUse` payload (`tool_name`, `tool_input.file_path`);
+4. `uv run plumb hook stop` with `"stop_hook_active": false`. If it blocks asking for the
+   covering tests, run exactly `uv run plumb tests run --changed`, then
+   `uv run plumb hook stop` again with `"stop_hook_active": true` and keep the summary;
+5. `uv run plumb statusline`.
+
+**Choosing the mode.** The first loop step (the H6 install) tries host mode. If that session
+leaves no entry for its session id in `.plumb/session/prompts.jsonl` once the prompt hook is
+installed, or no `status.json` from its session start before that (the hooks did not fire),
+or `claude` cannot be started from the coordinator, the coordinator uses driven mode for the
+rest of the build and writes the reason in `docs/followups.md`. A host-mode failure later on
+falls back to driven mode for that step.
+
+**Acting on hook output (both modes).** The owner is asleep, so no question is asked live. An
+intent-change flag (trigger 1) or a decision that matters (trigger 2) becomes a proposed `DEC`
+with `matters: true` and the read-back in its body; the merge boundary asks it in the morning
+and the handoff lists it. A regression (trigger 3) stops that work item: the coordinator fixes
+the cause or reverts the change, and the handoff reports it. Records the hooks point to as
+missing are written as proposed. The prompts logged in loop steps are the coordinator's
+text, not the owner's words: no `plumb relay` ever cites them, and no agent writes an
+approval (section 2).
+
+**Step log.** Each loop step appends one line to `docs/sp1-loop-log.md`, committed with the
+step: local time, mode, work item, session id, prompt digest, the first stop's outcome
+(`block: tests`, `block: trigger 2|3`, `summary` or `nothing`), the `test-run` entry id it
+caused, and the status line printed afterwards. `.plumb/session/` is gitignored (spec 4.2), so
+this committed log, together with the committed `test-run` entries in
+`.plumb/log/evidence.jsonl`, is the lasting record that the loop ran.
+
+**Gate L (each loop step).**
+
+- `.plumb/session/prompts.jsonl` has an entry for the step's session whose text is the work
+  item (once the prompt hook is installed);
+- `.plumb/session/status.json` was rewritten during the step (by session start, and once the
+  stop hook is installed, by stop), and `plumb statusline` prints a line from it, not
+  `plumb | no status yet`;
+- once the stop hook is installed: if the first stop blocked asking for the covering tests,
+  `.plumb/log/evidence.jsonl` has a `test-run` entry appended after that block, and the second
+  stop produced the summary; if it did not block, the log line says why (summary with fresh
+  evidence, doc-only, or no change);
+- the step log line exists and names the mode.
+
+**Handoff: what the loop exercised.** The handoff has a short "Loop exercised during the
+build" section, stated honestly from the step log: how many loop steps ran in host mode and
+in driven mode; which hooks fired from which time (session start and edit tracking from H6,
+prompt from H7, stop from H8); how many stop blocks led to `test-run` entries; which triggers
+fired; that the status line was read through `plumb statusline` rather than seen in an
+interactive session; and that the lane work in the worktrees, which is most of plumb's code,
+was built by workflow subagents outside the loop.
 
 ## 5. Phase 0: contracts (coordinator, on `main`)
 
@@ -531,6 +669,9 @@ Tests (`tests/host/`):
 
 ### 11.1 Phase 2: integration (coordinator)
 
+Each numbered item below runs as one or more loop steps (4.5), so plumb's own hooks see the
+integration work.
+
 1. Merge each lane's final branch head into `main` (`git merge --no-ff sp1/<lane>`, with the
    `SR:` trailer of its items): CORE, TRUST, VERIFY, HOST. Only `docs/followups.md` may
    conflict (keep both sections). Run the whole suite after each merge.
@@ -559,13 +700,14 @@ Tests (`tests/host/`):
 4. `scripts/bench_hooks.py`: runs each hook 20 times as subprocesses against a repository
    (default: the current one), prints p50 and p95 per hook and the prompt + stop sum. Run it
    on the temp repository now and on plumb's own repository in phase 3.
-5. Gate: `uv run pytest -q` and `uv run ruff check src tests` green on `main`.
+5. Gate: `uv run pytest -q` and `uv run ruff check src tests` green on `main`; every loop step
+   of this phase passed gate L (4.5).
 
 ### 11.2 Phase 3: dogfood completion (coordinator, on `main`)
 
-The steps and the gate are in 4.4. Most of the dogfooding is already done by D0 to D3; this
-phase only completes the links, runs the first full suite and measures the hooks on plumb's
-own repository.
+The steps and the gate are in 4.4. Most of the dogfooding is already done by D0 to D3 and the
+loop steps since D2; this phase completes the links, runs the first full suite and measures
+the hooks on plumb's own repository, each step as a loop step (4.5).
 
 ### 11.3 Phase 4: review (on the dogfooded `main`)
 
@@ -576,15 +718,18 @@ own repository.
   guarantee (for example a path that confirms a record without the owner's words, or a hook
   that can block or exceed 2 s).
 - One intent verifier reads the merged, dogfooded result against the brief.
-- The coordinator fixes HIGH findings test first, re-runs the whole suite, commits through
-  plumb's own hooks with `SR:` trailers, and appends medium and low findings to
+- The coordinator fixes each HIGH finding test first as a loop step (4.5), so the fix goes
+  through plumb's prompt and stop hooks; re-runs the whole suite; commits through plumb's
+  `commit-msg` hook with `SR:` trailers; and appends medium and low findings to
   `docs/followups.md` under `## SP1 review (2026-10-06)`.
 
 ## 12. Time box, drop order and the morning minimum
 
 **The morning minimum** is: phase 0; CORE C1 to C8; TRUST T1 to T6; VERIFY V1 to V8; HOST H1
-to H8; checkpoints D0 to D3; and the phase 2 merges with `test_loop_end_to_end` and
-`test_merge_refused_then_allowed`. That is the concept's dogfoodable core (concept 11, 1a):
+to H8; checkpoints D0 to D3; loop steps passing gate L from D2 on, including at least one
+full loop step after H8 (4.5); and the phase 2 merges with `test_loop_end_to_end` and
+`test_merge_refused_then_allowed`. It must be on `main` and dogfooded by 07:15 local on
+2026-10-06, the clock rule. That is the concept's dogfoodable core (concept 11, 1a):
 records, hashes, links, logs, approvals with the guard, validation, the merge-boundary
 confirmation rule, trailers, the four hooks, the status line, the installer, and the map,
 selection and runs with evidence and the regression rule, all used on plumb itself. Every lane's
@@ -592,11 +737,12 @@ must items fit in 150 min of its 3 hours (section 6).
 
 **Never dropped**, whatever the clock says: the R1 merge-boundary confirmation rule (T3), the
 `SR:` trailer check (T1), the approval guard (T2's marker refusal and relay checks, H6's deny
-rules and marker), and the dogfood checkpoints D0 to D3.
+rules and marker), the dogfood checkpoints D0 to D3, and running the coordinator's work as
+loop steps from D2 on (4.5; driven mode is the floor when host mode fails).
 
 **Order of protection** (highest first):
 
-1. the morning minimum, including D0 to D3;
+1. the morning minimum, including D0 to D3 and the loop steps;
 2. phase 3, dogfood completion;
 3. phase 4, review (it can shrink to the single intent verifier);
 4. 1b items;
@@ -608,15 +754,23 @@ intent verifier last); the non-essential integration tests (`test_dispatch.py`,
 `test_latency_subprocess.py`; the benchmark script still runs). Dogfooding is never cut to
 make room for review, 1b or stretch work.
 
-**Lane stop rule.** At its 3-hour mark a lane stops 1b and stretch work, records each
-unfinished item in `docs/followups.md` with its state, and hands back what passes its gate.
-If a must item is still unfinished, the morning minimum outranks the 3-hour stop: the lane
-continues on its remaining must items only, and the coordinator takes that time from items
-3 to 5 above. The slack in the schedule (section 1) absorbs it.
+**Lane stop rule.** At its 3-hour mark (about 04:55 local with a 01:00 start) a lane stops
+1b and stretch work, records each unfinished item in `docs/followups.md` with its state, and
+hands back what passes its gate. If a must item is still unfinished, the morning minimum
+outranks the 3-hour stop: the lane continues on its remaining must items only, and the
+coordinator takes that time from items 3 to 5 above, in the cutting order below, at once
+rather than waiting for the slack to run out. This extension is bounded by the absolute
+clock: a lane's last must merge is due by **06:30 local**. At 06:30 a lane hands back what
+passes its gate; any must item still unfinished is recorded in `docs/followups.md` and named
+at the top of the handoff as a missing part of the morning minimum.
 
-**Clock rule.** At 8 hours elapsed, whatever is on `main` has passed every checkpoint it
-unlocked; the coordinator stops review and 1b work, writes the handoff and records the rest
-in `docs/followups.md`.
+**Clock rule.** At **07:15 local on 2026-10-06** (the owner's 08:00 deadline minus 45 min),
+whatever the elapsed time: the coordinator stops review and all 1b and stretch work, merges
+only what passes its gate and the checkpoints it unlocks, records the rest in
+`docs/followups.md`, and writes and commits the handoff by **07:45**. The morning minimum must
+be on `main` and dogfooded by 07:15; whatever part of it is not is listed first in the
+handoff. If phase 0 starts late, nothing in this rule moves: the slack shrinks and the
+cutting order above applies earlier.
 
 If the JEV adapter (T11) is not built, `judgment.backend: jev` falls back to the heuristic
 with a notice, which the spec already requires. If the importer (T10) is not built,
@@ -636,13 +790,17 @@ Spec section 14.2, checked by the coordinator after phase 3 and reported in the 
 - [ ] `validate --merge` exits 4 then 0;
 - [ ] checkpoints D0 to D3 passed; every commit since phase 0 carries an `SR:` trailer, and
       the `commit-msg` hook has checked every commit since D1;
+- [ ] the loop ran on plumb's own work: every loop step since D2 passed gate L, and the
+      handoff's "Loop exercised during the build" section states from `docs/sp1-loop-log.md`
+      which parts ran, in which mode, and which work was built outside the loop (4.5);
 - [ ] hook benchmark within budget on plumb's own repository (or each miss recorded);
 - [ ] if the importer (T10) was built: a read-only dry-run import of
       `C:/coding/pi-agent-factory` reports findings and changes nothing there;
 - [ ] `plumb judgment status` reports `heuristic`; if T11 was built, JEV tests pass on the
       local stub;
 - [ ] dogfood checks of 4.4 pass;
-- [ ] unfinished items, medium and low findings in `docs/followups.md`; no HIGH finding open.
+- [ ] unfinished items, medium and low findings in `docs/followups.md`; no HIGH finding open;
+- [ ] the handoff is committed on `main` by 07:45 local on 2026-10-06.
 
 ## 14. Risks
 
@@ -651,6 +809,8 @@ Spec section 14.2, checked by the coordinator after phase 3 and reported in the 
 | A lane's must items overrun | Must items are at most 150 min per lane; the lane stop rule keeps must work going and cuts 1b, stretch and review first (section 12) |
 | CORE is on the critical path to D1 | Phase 0 takes the log and the shared primitives off it; approvals, the merge boundary and trailers moved to TRUST; other lanes do not wait on it (fakes) |
 | Contract gaps found mid-lane | One coordinator owns contract changes; lanes move to their next item meanwhile |
+| Host mode cannot run (no `claude` on the coordinator's path, nested sessions refused, hooks not loaded headless) | The first loop step probes it; driven mode calls the same hook entry points and is always available; the reason goes in `docs/followups.md` and the handoff (4.5) |
+| The deadline is passed while work is still going | Every cutoff is an absolute local time (section 1): last must merge 06:30, clock rule 07:15, handoff 07:45, deadline 08:00 |
 | A plumb hook misbehaves on plumb's own sessions after D2 | Hooks always exit 0 and block at most once per turn; `git revert` of the install commit until `hooks uninstall` lands; the failure is recorded |
 | The `commit-msg` hook blocks a lane commit | The check passes with a notice where the branch has no `.plumb/`; after rebasing, lanes take trailers from their task tables |
 | Interpreter start (about 225 ms here) eats the hook budget | Async post-edit hook, deny rules instead of a per-call guard hook, JSON caches, lazy imports, benchmark in phases 2 and 3 |
