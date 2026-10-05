@@ -129,6 +129,7 @@ class NodeEvidence:
     test_changed_since_pass: bool = False # regression note only; never clears `regression`
     last_run: str | None = None           # run_id
     reuse_miss: Literal["closure", "test", "env", "identity"] | None = None
+    last_failed: bool = False             # its last recorded run failed, whatever changed since
 
 
 @dataclass(frozen=True)

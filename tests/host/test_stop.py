@@ -640,3 +640,16 @@ def test_linked_change_is_not_untraced(project: Path, hook_input) -> None:
     out = run_stop(project, hook_input, verify=FakeVerify())
     assert "untraced" not in _summary(out)
     assert _note(project) is None
+
+
+@pytest.mark.sr("SR-029")
+def test_flat_layout_and_root_files_are_untraced_at_the_stop(project: Path,
+                                                              hook_input) -> None:
+    """No source_dirs configured: a flat package module and a root script are named."""
+    start_turn(project)
+    edit(project, "mypkg/power.py", "def power(a):\n    return a ** 2\n")
+    edit(project, "tool.py", "print('tool')\n")
+    out = run_stop(project, hook_input, verify=FakeVerify())
+    assert _block(out) is None
+    assert "untraced: mypkg/power.py, tool.py" in _summary(out).splitlines()[0]
+    assert _note(project)["paths"] == ["mypkg/power.py", "tool.py"]

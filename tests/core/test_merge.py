@@ -230,7 +230,113 @@ def test_merge_untraced_change_cleared_by_a_link_or_an_exemption(base, capsys) -
     (root / "src" / "gen.py").write_text("x = 1\n", "utf-8")
     (root / ".plumb" / "config.yaml").write_text("trace:\n  exempt: [src/gen.py]\n", "utf-8")
     open_core(root).add_link("SR-002", "implemented_by", Target(path="src/mul.py"))
-    approvals.approve(open_core(root), ["SR-002", "INT-001"])
+    approvals.approve(open_core(root), ["SR-002", "INT-001"], exempt=True)
     code, out = _check(root, sha, capsys)
     assert code == 0, out
     assert "untraced" not in out
+    assert "trace.exempt src/gen.py" in out[out.index("approvals in range"):]
+
+
+
+
+# -- a requirement widened by a link, or a path exempted, in the range (SR-028) -----------
+
+
+@pytest.fixture
+def confirmed_base(base) -> tuple[Path, str]:
+    """SR-001 and INT-001 confirmed at the merge base, which also holds src/z.py; z.py then
+    changes with no requirement owning it."""
+    root, _ = base
+    (root / "src" / "z.py").write_text("def wipe():\n    return None\n", "utf-8")
+    approvals.approve(open_core(root), ["SR-001", "INT-001"])
+    sha = _commit(root, "confirmed base")
+    (root / "src" / "z.py").write_text("def wipe():\n    return 'all user data'\n", "utf-8")
+    return root, sha
+
+
+def _untraced_waits(root: Path, sha: str, capsys) -> None:
+    code, out = _check(root, sha, capsys)
+    assert code == 4, out
+    assert "untraced changes (no requirement owns them): src/z.py" in out
+
+
+@pytest.mark.sr("SR-028")
+def test_link_command_widening_a_confirmed_requirement_waits_for_the_owner(
+        confirmed_base, capsys, monkeypatch) -> None:
+    root, sha = confirmed_base
+    _untraced_waits(root, sha, capsys)
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    assert cli.main(["link", "SR-001", "implemented_by", "src/z.py", "--root",
+                     str(root)]) == 0
+    capsys.readouterr()
+    assert open_core(root).status(["SR-001"])["SR-001"].confirmation == "confirmed"
+    code, out = _check(root, sha, capsys)
+    assert code == 4, out
+    assert "untraced" not in out
+    assert "SR-001 (extended)" in out
+    assert "new link in this range: implemented_by src/z.py (now owned by SR-001)" in out
+    assert "confirmation: every touched requirement is confirmed" not in out
+    assert merge_check(open_core(root), sha, as_json=True) == 4
+    data = json.loads(capsys.readouterr().out)
+    assert {"id": "SR-001", "state": "extended",
+            "new_ends": ["implemented_by src/z.py"]} in data["awaiting"]
+    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    approvals.approve(open_core(root), ["SR-001"])  # the owner confirms the wider scope
+    code, out = _check(root, sha, capsys)
+    assert code == 0, out
+
+
+@pytest.mark.sr("SR-028")
+def test_frontmatter_edit_adding_a_link_waits_for_the_owner(confirmed_base, capsys) -> None:
+    root, sha = confirmed_base
+    path = root / ".plumb" / "requirements" / "SR-001.md"
+    text = path.read_text(encoding="utf-8")
+    head, _, rest = text.partition("links:\n")
+    path.write_text(head + "links:\n- kind: implemented_by\n  path: src/z.py\n" + rest,
+                    encoding="utf-8")
+    assert open_core(root).status(["SR-001"])["SR-001"].confirmation == "confirmed"
+    code, out = _check(root, sha, capsys)
+    assert code == 4, out
+    assert "new link in this range: implemented_by src/z.py (now owned by SR-001)" in out
+
+
+@pytest.mark.sr("SR-028")
+def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
+                                                         monkeypatch) -> None:
+    root, sha = confirmed_base
+    (root / ".plumb" / "config.yaml").write_text('trace:\n  exempt: ["src/**"]\n', "utf-8")
+    code, out = _check(root, sha, capsys)
+    assert code == 4, out
+    assert "untraced changes (no requirement owns them): src/z.py" in out
+    assert "trace.exempt src/**: added in this range" in out
+    assert merge_check(open_core(root), sha, as_json=True) == 4
+    assert json.loads(capsys.readouterr().out)["new_exempt"] == ["src/**"]
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    assert cli.main(["approve", "--exempt", "--root", str(root)]) == 3  # owner only
+    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    assert cli.main(["approve", "--exempt", "--root", str(root)]) == 0
+    capsys.readouterr()
+    code, out = _check(root, sha, capsys)
+    assert code == 0, out
+    assert "approval owner trace.exempt src/**" in out
+
+
+@pytest.mark.sr("SR-028")
+def test_narrowing_the_layout_in_the_range_hides_no_change(confirmed_base, capsys) -> None:
+    root, sha = confirmed_base
+    (root / ".plumb" / "config.yaml").write_text("test_dirs: [src, tests]\n", "utf-8")
+    _untraced_waits(root, sha, capsys)
+
+
+@pytest.mark.sr("SR-029")
+def test_merge_puts_untraced_flat_layout_and_root_files_to_the_owner(repo, capsys) -> None:
+    """No source_dirs configured: a flat package and a root module are source too."""
+    (repo / "mypkg").mkdir()
+    (repo / "mypkg" / "core.py").write_text("x = 1\n", "utf-8")
+    sha = _commit(repo, "flat base")
+    (repo / "mypkg" / "extra.py").write_text("def power(a):\n    return a ** 2\n", "utf-8")
+    (repo / "tool.py").write_text("print('tool')\n", "utf-8")
+    (repo / "NOTES.txt").write_text("notes\n", "utf-8")
+    code, out = _check(repo, sha, capsys)
+    assert code == 4, out
+    assert "untraced changes (no requirement owns them): mypkg/extra.py, tool.py" in out

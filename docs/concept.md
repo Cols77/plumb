@@ -246,8 +246,10 @@ changed does not confirm the record; only an approval does that.
 
 An approval is an append-only log entry: `{record, hash, by, at, evidence}`. A record is
 confirmed exactly when its latest approval pins its current hash, so any later edit leaves it
-unconfirmed until approved again. There are no consent phrases. An approval comes from one of
-two sources:
+unconfirmed until approved again. Links are outside that hash, so an approval of a requirement
+also lists the code and test ends it owns at that moment; an end added later is put to the
+owner at the merge boundary (section 7.5). There are no consent phrases. An approval comes
+from one of two sources:
 
 - the owner running `plumb approve SR-004`, or `plumb approve --proposed` to approve every
   record still proposed (the batch form; it lists the records and their hashes in the entry),
@@ -690,7 +692,11 @@ the change from `<base>`:
   decisions it derives from, must be confirmed at its current hash. Those still proposed
   (never confirmed, or edited since their approval) are put to the owner as one trigger-2
   question listing their read-back and examples (section 6.6); the owner answers in one line.
-  The merge waits for that answer. Changed source paths that no requirement owns (untraced
+  The merge waits for that answer. A requirement that gained an `implemented_by` or
+  `verified_by` end in the range (links are outside the record hash) is an extension of it
+  and is put to the owner the same way, with its new ends, until an approval lists them; a
+  `trace.exempt` glob added in the range is listed too and is not honoured until the owner
+  confirms it. Changed source paths that no requirement owns (untraced
   changes: work that skipped the read-back) are listed in the same question; they need a
   requirement, recorded by the agent and confirmed by the owner, or the owner's explicit
   exemption.
@@ -701,8 +707,10 @@ the change from `<base>`:
   with a `drifts` or `unsure` verdict, are listed with the `plumb fidelity` command for each.
 - **Verification state.** `full verification pending` and tests deferred by the per-turn
   budget are listed, with every touched requirement whose acceptance tests fail, named by
-  example. An unresolved regression holds the merge until a run passes it again; a full run
-  that collected nothing or hit a collection error never counts as full verification.
+  example. A failing touched acceptance test (kept until a run passes it, whatever changed
+  since), one with no passing evidence on the current code, or an unresolved regression holds
+  the merge until a run passes it; a full run that collected nothing, hit a collection error
+  or failed a test that has not passed since never counts as full verification.
 
 Sub-project 3 completes the boundary: plumb runs the full suite (which satisfies
 `full verification pending` by recording the current hashes of the shared test

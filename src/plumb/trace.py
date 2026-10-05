@@ -6,17 +6,28 @@ translation chain: no read-back, no examples, nothing for the owner to confirm. 
 tells the agent to read it back and record it as a proposed SR; the merge boundary puts it to
 the owner with the unconfirmed touched requirements.
 
-Source paths are files under ``source_dirs`` outside ``test_dirs``, minus shared test
-infrastructure (``verify.infra_globs``) and the owner's ``trace.exempt`` globs. With a source
-directory of ``.``, documentation (``*.md``, ``*.rst``, ``*.txt``, ``docs/``) and dot
-directories are left out too, and generated files (``__pycache__``, ``*.pyc``, tool caches,
-build output) always. Pure string work over the record index: cheap enough per turn.
+``is_code_path`` is the one definition of "source" that the trace (stop hook, prompt hook,
+merge boundary) and the verify lane's covering-test selection share:
+
+- a file under a ``source_dirs`` entry that is not a test directory. With a source directory
+  of ``.``, documentation (``*.md``, ``*.rst``, ``*.txt``, ``docs/``) and dot directories are
+  left out;
+- when ``.plumb/config.yaml`` does not name ``source_dirs`` (the default), also any code file
+  (by suffix) anywhere outside the test directories, ``docs/`` and dot directories, so a flat
+  layout (``mypkg/``) or a root-level module is never invisible.
+
+Test directories, plumb's own state (``.plumb/``, ``.git/``, ``.claude/``) and generated files
+(``__pycache__``, ``*.pyc``, tool caches, build output) are never source. For the trace, shared
+test infrastructure (``verify.infra_globs``) and the owner's ``trace.exempt`` globs are left
+out too. Pure string work over the record index: cheap enough per turn.
 """
 
 from __future__ import annotations
 
 import fnmatch
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from pathlib import PurePosixPath
+from typing import Any
 
 from plumb.hashing import clean_rel_path, target_path
 
@@ -24,11 +35,39 @@ OWNING_KINDS = ("implemented_by", "verified_by")
 _DOC_SUFFIXES = (".md", ".rst", ".txt")
 _NEVER = (".plumb/", ".git/", ".claude/")
 _GENERATED_PARTS = frozenset({"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-                              "node_modules", ".venv", "build", "dist"})
+                              "node_modules", ".venv", "venv", "build", "dist"})
 _GENERATED_SUFFIXES = (".pyc", ".pyo")
+# code files that count as source outside ``source_dirs`` when the layout is not configured
+CODE_SUFFIXES = frozenset({
+    ".py", ".pyi", ".pyx", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".go", ".rs",
+    ".java", ".kt", ".scala", ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".rb", ".php",
+    ".swift", ".lua", ".sh", ".ps1", ".sql"})
 
 
-def owned_paths(core) -> set[str]:
+def owning_end(link: Any) -> str | None:
+    """``implemented_by src/x.py``: the key of an owning link's end, or None for other links.
+
+    A symbol or test-node end keeps its name, so a new symbol in an owned file is a new end."""
+    if link.kind not in OWNING_KINDS:
+        return None
+    target = link.target
+    end = target.test or target_path(target)
+    rel = clean_rel_path(end) if end else None
+    if not rel:
+        return None
+    if target.symbol and not target.test:
+        rel = f"{rel}#{target.symbol}"
+    return f"{link.kind} {rel}"
+
+
+def owning_ends(record: Any) -> list[str]:
+    """The sorted owning ends of a requirement (empty for other kinds)."""
+    if record.kind != "requirement":
+        return []
+    return sorted({e for e in (owning_end(link) for link in record.links) if e})
+
+
+def owned_paths(core: Any) -> set[str]:
     """Every path a requirement's ``implemented_by`` or ``verified_by`` end names."""
     out: set[str] = set()
     for record in core.index().values():
@@ -62,36 +101,63 @@ def _matches(rel: str, globs: Iterable[str]) -> bool:
     return False
 
 
-def is_source(core, rel: str) -> bool:
-    """Whether ``rel`` is a source path whose change needs a requirement."""
-    config = core.config
+def _doc_or_dot(rel: str) -> bool:
+    return (rel.endswith(_DOC_SUFFIXES) or rel.startswith("docs/")
+            or any(part.startswith(".") for part in rel.split("/")))
+
+
+def is_code_path(config: Any, rel: str) -> bool:
+    """Whether ``rel`` is source code by the repository layout (no infra or exemptions)."""
     if rel.startswith(_NEVER) or rel.endswith(_GENERATED_SUFFIXES):
         return False
     if _GENERATED_PARTS & set(rel.split("/")) or ".egg-info/" in rel:
         return False  # generated, never authored: an unignored cache is not a change
-    if any(_under(rel, d) for d in config.test_dirs if d.strip("/") not in ("", ".")):
+    tests = {t.strip("/") for t in config.test_dirs}
+    if any(_under(rel, d) for d in tests if d not in ("", ".")):
         return False
-    homes = [d for d in config.source_dirs if _under(rel, d)
-             and d.strip("/") not in {t.strip("/") for t in config.test_dirs}]
-    if not homes:
-        return False
-    if all(d.strip("/") in ("", ".") for d in homes):
-        if rel.endswith(_DOC_SUFFIXES) or rel.startswith("docs/") or rel.startswith("."):
+    homes = [d for d in config.source_dirs if _under(rel, d) and d.strip("/") not in tests]
+    if homes:
+        if all(d.strip("/") in ("", ".") for d in homes) and _doc_or_dot(rel):
             return False
+        return True
+    if getattr(config, "source_dirs_set", True):
+        return False
+    # no configured layout: a code file anywhere outside tests, docs and dot directories
+    return PurePosixPath(rel).suffix.lower() in CODE_SUFFIXES and not _doc_or_dot(rel)
+
+
+def is_source_path(config: Any, rel: str, *, exempt: Sequence[str] | None = None) -> bool:
+    """Whether a change to ``rel`` needs a requirement under ``config``.
+
+    ``exempt`` replaces ``config.trace.exempt`` (the merge boundary honours only the
+    exemptions the owner has seen)."""
+    if not is_code_path(config, rel):
+        return False
     if _matches(rel, config.verify.infra_globs):
         return False
-    return not _matches(rel, config.trace.exempt)
+    return not _matches(rel, config.trace.exempt if exempt is None else exempt)
 
 
-def untraced_paths(core, paths: Iterable[str]) -> list[str]:
-    """The changed source paths of ``paths`` that no requirement owns, in input order."""
+def is_source(core: Any, rel: str) -> bool:
+    """Whether ``rel`` is a source path whose change needs a requirement."""
+    return is_source_path(core.config, rel)
+
+
+def untraced_paths(core: Any, paths: Iterable[str], *, configs: Sequence[Any] | None = None,
+                   exempt: Sequence[str] | None = None) -> list[str]:
+    """The changed source paths of ``paths`` that no requirement owns, in input order.
+
+    A path counts as source when it is source under any of ``configs`` (default: the current
+    config), so a config edit that narrows the layout cannot hide a change at the merge
+    boundary; ``exempt`` replaces each config's ``trace.exempt``."""
     owned = owned_paths(core)
+    configs = list(configs) if configs else [core.config]
     out: list[str] = []
     for raw in paths:
         rel = clean_rel_path(raw)
         if not rel or rel in out or rel in owned:
             continue
-        if is_source(core, rel):
+        if any(is_source_path(c, rel, exempt=exempt) for c in configs):
             out.append(rel)
     return out
 

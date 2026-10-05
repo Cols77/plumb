@@ -446,10 +446,25 @@ Over the range `<base>..HEAD` plus uncommitted changes:
    as `untraced changes (no requirement owns them)` in the same trigger-2 question, and the
    merge waits (exit 4) until a requirement owns them (the agent records a proposed SR with
    examples and links it, then the owner confirms it) or the owner lists them under
-   `trace.exempt` in `.plumb/config.yaml`. Source paths are files under `source_dirs` outside
-   `test_dirs`, minus shared test infrastructure, generated files (`__pycache__`, `*.pyc`, tool
-   caches, build output) and `trace.exempt`; with a source directory of `.`, documentation and
-   dot directories are left out too.
+   `trace.exempt` in `.plumb/config.yaml` and confirms that. Source paths are files under
+   `source_dirs` outside `test_dirs`, minus shared test infrastructure, generated files
+   (`__pycache__`, `*.pyc`, tool caches, build output) and `trace.exempt`; with a source
+   directory of `.`, documentation and dot directories are left out too. When
+   `.plumb/config.yaml` does not name `source_dirs`, a code file (by suffix) anywhere outside
+   the test directories, `docs/` and dot directories is source as well, so a flat layout
+   (`mypkg/`) or a root module is traced. The covering-test selection uses the same definition
+   (`plumb.trace.is_code_path`).
+   **Widening and exempting go in the same question.** Links are left out of a record's hash
+   (4.4), so `plumb link` or a frontmatter edit could make a confirmed requirement own new code
+   without unconfirming it. An approval therefore lists the requirement's owning ends
+   (`implemented_by src/x.py`), and a requirement that gained an owning end in the range that
+   no approval of it at its current hash lists is shown as `SR-001 (extended)` with
+   `new link in this range: implemented_by src/z.py`, and the merge waits (exit 4) until the
+   owner approves it again. A `trace.exempt` glob added in the range is listed
+   (`trace.exempt src/**: added in this range`) and not honoured until the owner confirms it
+   with `plumb approve --exempt` (or the agent relays an affirmation that names the exemption,
+   `plumb relay --exempt`); a path that was source under the merge base's config stays
+   source, so narrowing `source_dirs`, `test_dirs` or the infrastructure globs hides nothing.
 2. **Approvals in the range, for a glance.** Every approval and revocation event added in the
    range, owner and agent-relayed, with its record and quote; agent-relayed entries are marked
    and also show the prompt digest they cite (R2).
@@ -460,17 +475,23 @@ Over the range `<base>..HEAD` plus uncommitted changes:
    the per-turn budget, touched requirements that are confirmed but not covered, and touched
    requirements whose acceptance tests (their `verified_by` ends, and the tests the map ties
    to them by marker) failed in their last recorded run, each with its example ids:
-   `failing acceptance tests: SR-001 EX-1 tests/test_calc.py (regression)`. While any
-   recorded regression (R3: a node that passed and has not passed since) is unresolved, the
-   report names it and exits 5; a passing run of that node resolves it. A full run satisfies
-   `full verification pending` only when it collected cleanly and ran tests: pytest exit 5
-   (nothing collected), a collection error or an empty run never clears it, and exit 5 on a
-   suite with known tests is an aborted run. If the verify lane is not importable, the line
-   says `verification: unavailable`.
+   `failing acceptance tests: SR-001 EX-1 tests/test_calc.py (regression)`. A failure is kept
+   until a run passes the test, whatever changed since; one recorded on another identity reads
+   `(failing, stale: not rerun since the change)`. Touched acceptance tests with no passing
+   evidence on the current identity (never run, or stale since their last pass) are listed as
+   `unverified acceptance tests`. While any touched acceptance test fails or is unverified, or
+   any recorded regression (R3: a node that passed and has not passed since) is unresolved,
+   the report exits 5 ("verification holds the merge"); a passing run of those tests resolves
+   it. These lines appear only at the merge boundary, never per turn (R3). A full run
+   satisfies `full verification pending` only when it collected cleanly, ran tests and every
+   test it failed has passed since: pytest exit 5 (nothing collected), a collection error or
+   an empty run never clears it, and exit 5 on a suite with known tests is an aborted run. If
+   the verify lane is not importable, the line says `verification: unavailable`.
 5. **Log integrity** against `<base>` (5.7).
 
-Exit precedence: 1 (log integrity) before 5 (an unresolved regression) before 4 (the merge
-waits for the owner's confirmation). `plumb drift` lists the same failing acceptance tests
+Exit precedence: 1 (log integrity) before 5 (verification holds the merge: a failing or
+unverified touched acceptance test, or an unresolved regression) before 4 (the merge waits for
+the owner's confirmation). `plumb drift` lists the same failing acceptance tests
 as drift signals (exit 1), and `plumb status` counts the failing requirements and names their
 examples.
 

@@ -23,7 +23,7 @@ from typing import Any
 from plumb.contracts import NodeEvidence
 from plumb.normalize import canonical_json, file_digest, sha256_bytes
 
-INDEX_VERSION = 3  # 3: a full run must collect cleanly to count
+INDEX_VERSION = 4  # 3: a full run must collect cleanly to count; 4: its failures are kept
 _GUARD_BYTES = 65536
 PASS_OUTCOMES = frozenset({"passed", "flaky"})
 GOOD_OUTCOMES = frozenset({"passed", "flaky", "skipped", "xfailed"})
@@ -174,13 +174,16 @@ def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "")
         entry["last"] = rec
         if rec["outcome"] in PASS_OUTCOMES:
             entry["last_pass"] = rec
-    # only a full run that collected cleanly and ran tests satisfies ``full pending`` (R5): no
-    # tests collected (exit 5), a collection error or an empty run is no full verification
+    # only a full run that collected cleanly and ran tests counts as a full run (R5): no
+    # tests collected (exit 5), a collection error or an empty run is no full verification.
+    # Its failing nodes are kept: full verification stays pending until a run passes them.
     if (payload.get("full") and not payload.get("timeout") and not payload.get("aborted")
             and payload.get("exit_status") in (0, 1) and not payload.get("collection_errors")
             and payload.get("nodes")):
+        failed = sorted(str(n.get("id")) for n in payload.get("nodes") or []
+                        if n.get("id") and n.get("outcome") not in GOOD_OUTCOMES)
         index["full"] = {"run_id": run_id, "infra": dict(payload.get("infra") or {}),
-                         "files": dict(payload.get("files") or {})}
+                         "files": dict(payload.get("files") or {}), "failed": failed}
 
 
 def load_index(core: Any) -> dict[str, Any]:
@@ -268,16 +271,27 @@ def single_evidence(index: Mapping[str, Any], node_id: str, *, closure: str | No
     state = "stale" if miss else _state_of(last)
     return NodeEvidence(node_id=node_id, state=state, regression=regression,  # type: ignore[arg-type]
                         test_changed_since_pass=changed, last_run=last.get("run_id"),
-                        reuse_miss=miss)  # type: ignore[arg-type]
+                        reuse_miss=miss,  # type: ignore[arg-type]
+                        last_failed=last.get("outcome") not in GOOD_OUTCOMES)
 
 
 _RANK = {"none": 0, "stale": 1, "fresh-fail": 2, "flaky-pass": 3, "fresh-pass": 4}
 
 
-def aggregate(node_id: str, parts: list[NodeEvidence]) -> NodeEvidence:
-    """One file's (or parametrized node's) evidence: the weakest part decides the state."""
+def aggregate(node_id: str, parts: list[NodeEvidence],
+              live: set[str] | None = None) -> NodeEvidence:
+    """One file's (or parametrized node's) evidence: the weakest part decides the state.
+
+    With ``live`` (the nodes still in the file, when the map knows it), recorded nodes
+    deleted from the source are left out, so a removed node does not keep its file stale
+    or failing for good (it stays reported as removed after passing)."""
+    if live is not None:
+        from plumb.verify.markers import strip_param
+
+        parts = [e for e in parts if strip_param(e.node_id) in live] or parts
     if not parts:
         return NodeEvidence(node_id=node_id, state="none")
+    failed = any(e.last_failed for e in parts)
     worst = min(parts, key=lambda e: _RANK[e.state])
     state = worst.state
     runs = sorted((e.last_run for e in parts if e.last_run), reverse=True)
@@ -285,7 +299,8 @@ def aggregate(node_id: str, parts: list[NodeEvidence]) -> NodeEvidence:
                         regression=any(e.regression for e in parts),
                         test_changed_since_pass=any(e.test_changed_since_pass for e in parts
                                                     if e.regression),
-                        last_run=runs[0] if runs else None, reuse_miss=worst.reuse_miss)
+                        last_run=runs[0] if runs else None, reuse_miss=worst.reuse_miss,
+                        last_failed=failed)
 
 
 def node_evidence(index: Mapping[str, Any], tmap: Any, node_id: str,
@@ -313,7 +328,8 @@ def node_evidence(index: Mapping[str, Any], tmap: Any, node_id: str,
     known = {strip_param(n) for n in members}
     parts = [single_evidence(index, n, closure=closure, test_hash=tmap.node_hash(n),
                              env_key=env_key, identity=identity) for n in sorted(members)]
-    for node in tmap.nodes_of(test_file):
+    live = tmap.nodes_of(test_file)
+    for node in live:
         if node not in known:
             parts.append(NodeEvidence(node_id=node, state="none"))
-    return aggregate(node_id, parts)
+    return aggregate(node_id, parts, set(live) if test_file in tmap.files else None)

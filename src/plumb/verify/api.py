@@ -206,6 +206,11 @@ class Verify:
         for path in sorted(set(current) | set(recorded)):
             if current.get(path) != recorded.get(path):
                 reasons.append(f"{path} changed")
+        still_failing = self._full_failures(full)
+        if still_failing:
+            reasons.append(f"{len(still_failing)} test(s) failed in the last full run and "
+                           f"have not passed since ({', '.join(still_failing[:3])}"
+                           + (" ..." if len(still_failing) > 3 else "") + ")")
         files = full.get("files") or {}
         globs = self.core.config.verify.infra_globs
         for path in self.uncovered_sources():
@@ -214,6 +219,24 @@ class Verify:
             if tmap.files.get(path, {}).get("hash") != files.get(path):
                 reasons.append(f"{path} has no covering test")
         return FullPending(pending=bool(reasons), reasons=tuple(reasons))
+
+    def _full_failures(self, full: Mapping[str, Any]) -> list[str]:
+        """Nodes that failed in the last full run, still exist, and have not passed since:
+        a full run with a failing test is no full verification (R5)."""
+        from plumb.verify.evidence import GOOD_OUTCOMES
+        from plumb.verify.markers import strip_param
+
+        tmap = self.test_map()
+        nodes = self.index().get("nodes", {})
+        out = []
+        for node_id in full.get("failed") or []:
+            test_file = node_id.split("::", 1)[0]
+            if test_file in tmap.files and strip_param(node_id) not in tmap.nodes_of(test_file):
+                continue  # deleted from the source since: nothing left to pass
+            last = (nodes.get(node_id) or {}).get("last") or {}
+            if last.get("outcome") not in GOOD_OUTCOMES:
+                out.append(node_id)
+        return out
 
     def tests_for(self, refs: Iterable[str]) -> Mapping[str, tuple[str, ...]]:
         from plumb.model import ID_PATTERN
@@ -245,12 +268,31 @@ class Verify:
     def requirement_failures(self, ids: Iterable[str] | None = None,
                              ) -> dict[str, list[dict[str, Any]]]:
         """Requirements whose acceptance tests fail: ``{SR: [{test, examples, state,
-        regression, last_run}]}``.
+        regression, stale, last_run}]}``.
 
         A requirement's tests are its ``verified_by`` ends (with the example ids each link
         names) plus the tests the map ties to it by marker. A test fails when its last
-        recorded run failed: ``fresh-fail`` on the current identity, or a regression (R3)
-        still unresolved because no run has passed since, whatever changed after it."""
+        recorded run failed, whatever changed after it, until a run passes it: a test that
+        never passed (not yet passing) as much as a regression (R3). ``stale`` marks a
+        failure recorded on another identity (code, test or environment changed since)."""
+        return {record_id: [item for item in items if item["failing"]]
+                for record_id, items in self.acceptance(ids).items()
+                if any(item["failing"] for item in items)}
+
+    def unverified_acceptance(self, ids: Iterable[str] | None = None,
+                              ) -> dict[str, list[dict[str, Any]]]:
+        """Acceptance tests with no recorded failure and no passing evidence on the current
+        identity (never run, or stale since their last pass): ``{SR: [items]}``."""
+        return {record_id: [item for item in items if item["unverified"]]
+                for record_id, items in self.acceptance(ids).items()
+                if any(item["unverified"] for item in items)}
+
+    def acceptance(self, ids: Iterable[str] | None = None,
+                   ) -> dict[str, list[dict[str, Any]]]:
+        """Every acceptance test of the requirements ``ids`` (default: all) with its state:
+        ``{SR: [{test, examples, state, regression, stale, failing, unverified,
+        last_run}]}``; ``failing`` and ``unverified`` are exclusive, both false only for a
+        test passing on the current identity."""
         index = self.core.index()
         wanted = list(ids) if ids is not None else sorted(
             i for i, r in index.items() if r.kind == "requirement")
@@ -281,10 +323,13 @@ class Verify:
             items = []
             for ref, examples in tests.items():
                 ev = evidence[ref]
-                if not ev.regression and ev.state != "fresh-fail":
-                    continue
+                failing = ev.state == "fresh-fail" or ev.last_failed or ev.regression
+                passing = ev.state in ("fresh-pass", "flaky-pass")
                 items.append({"test": ref, "examples": examples, "state": ev.state,
-                              "regression": ev.regression, "last_run": ev.last_run})
+                              "regression": ev.regression,
+                              "stale": ev.state in ("stale", "none"), "failing": failing,
+                              "unverified": not failing and not passing,
+                              "last_run": ev.last_run})
             if items:
                 out[record_id] = items
         return out

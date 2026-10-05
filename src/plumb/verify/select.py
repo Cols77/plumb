@@ -181,10 +181,10 @@ def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
     source_dirs = tuple(config.source_dirs)
 
     def is_source(path: str) -> bool:
-        if path.startswith(".plumb/"):
-            return False
-        return path.endswith(".py") or any(path.startswith(d.rstrip("/") + "/")
-                                           for d in source_dirs)
+        # the one source definition the trace shares (flat layouts and root files included)
+        from plumb.trace import is_code_path
+
+        return is_code_path(config, path)
 
     candidates: list[tuple[int, int, str, str, SelectionReason]] = []
     covered: dict[str, bool] = {p: False for p in rest}

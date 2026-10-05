@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from plumb.confirm import affirmation_in, confirmation_of, remaining_approvals
 from plumb.contracts import LogEntry
 from plumb.normalize import normalize_text, sha256_bytes, sha256_text
+from plumb.trace import owning_ends
 
 if TYPE_CHECKING:
     from plumb.api import Core
@@ -57,15 +58,19 @@ def refuse_under_marker(command: str) -> None:
                       "terminal; relay the owner's words with plumb relay instead.")
 
 
-def _records(core: Core, ids: Iterable[str]) -> list[dict[str, str]]:
+def _records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
     index = core.index()
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for record_id in ids:
         record = index.get(record_id)
         if record is None:
             raise ApprovalError(f"no record {record_id}")
         if all(r["id"] != record_id for r in out):
-            out.append({"id": record_id, "hash": record.hash})
+            item: dict[str, Any] = {"id": record_id, "hash": record.hash}
+            ends = owning_ends(record)
+            if ends:  # what the requirement owns as approved: the merge boundary asks
+                item["ends"] = ends  # again for an end added later (a widened requirement)
+            out.append(item)
     if not out:
         raise ApprovalError("name at least one record")
     return out
@@ -83,16 +88,46 @@ def pending(core: Core) -> list[tuple[str, str, str]]:
     return out
 
 
-def approve(core: Core, ids: Iterable[str], *, note: str = "") -> LogEntry:
-    """Owner approval of records at their current hashes."""
+def current_exempt(core: Core) -> list[str]:
+    """The ``trace.exempt`` globs of the current config, sorted."""
+    return sorted({str(g) for g in core.config.trace.exempt})
+
+
+def approved_exempt(core: Core) -> set[str]:
+    """Every ``trace.exempt`` glob a valid approval entry confirmed (spec 7.5)."""
+    from plumb.confirm import checked_entries
+
+    out: set[str] = set()
+    for entry, problem in checked_entries(core.events(), core.config.approve.affirmations):
+        if problem is None and entry.kind == "approval":
+            out.update(str(g) for g in entry.payload.get("exempt") or [])
+    return out
+
+
+def _exempt_payload(core: Core, exempt: bool) -> dict[str, Any]:
+    if not exempt:
+        return {}
+    globs = current_exempt(core)
+    if not globs:
+        raise ApprovalError("trace.exempt in .plumb/config.yaml lists no globs to confirm")
+    return {"exempt": globs}
+
+
+def approve(core: Core, ids: Iterable[str], *, note: str = "",
+            exempt: bool = False) -> LogEntry:
+    """Owner approval of records at their current hashes; with ``exempt``, also of the
+    current ``trace.exempt`` globs (paths the owner says need no requirement)."""
     refuse_under_marker("approve")
-    records = _records(core, ids)
+    ids = list(ids)
+    extra = _exempt_payload(core, exempt)
+    records = _records(core, ids) if ids or not extra else []
     payload = {"records": records, "by": "owner", "prompt_digest": None, "quote": None,
-               "quote_digest": None, "affirmation": None, "stated_set": None, "note": note}
+               "quote_digest": None, "affirmation": None, "stated_set": None, "note": note,
+               **extra}
     return core.log_append("events", "approval", payload)
 
 
-def _revoked_records(core: Core, ids: Iterable[str]) -> list[dict[str, str]]:
+def _revoked_records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
     """Each record with the hash of the approval being revoked (its latest one)."""
     approvals = remaining_approvals(core.events(), core.config.approve.affirmations)
     out = []
@@ -251,8 +286,11 @@ def affirmation_context_problem(quote: str, text: str,
 
 
 def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bool = False,
-          note: str = "") -> LogEntry:
-    """Record an approval (or revocation) the agent relays from the owner's own words."""
+          note: str = "", exempt: bool = False) -> LogEntry:
+    """Record an approval (or revocation) the agent relays from the owner's own words.
+
+    With ``exempt``, the approval also confirms the current ``trace.exempt`` globs; the quote
+    must then name the exemption (the word "exempt" or one of the globs)."""
     entry = find_prompt(core, prompt)
     text = str(entry["text"])
     normalized_quote = normalize_text(quote)
@@ -269,7 +307,14 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
                                               core.config.approve.affirmations)
         if problem is not None:
             raise Refused(problem)
-    records = _revoked_records(core, ids) if revoke else _records(core, ids)
+    extra = _exempt_payload(core, exempt and not revoke)
+    if extra and not (re.search(r"(?<!\w)exempt", normalized_quote, re.IGNORECASE)
+                      or any(g in normalized_quote for g in extra["exempt"])):
+        raise Refused("the quote does not name the exemption (the word exempt or a glob); "
+                      "an ok about something else confirms no trace.exempt change")
+    records: list[dict[str, Any]] = []
+    if ids or not extra:
+        records = _revoked_records(core, ids) if revoke else _records(core, ids)
     stated, stated_ids = _stated(core, str(entry.get("at") or ""))
     index = core.index()
     for item in records:
@@ -296,5 +341,5 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
         payload["note"] = note
         return core.log_append("events", "revocation", payload)
     payload.update({"affirmation": affirmation, "stated_set": stated_ids or None,
-                    "note": note})
+                    "note": note, **extra})
     return core.log_append("events", "approval", payload)

@@ -1214,3 +1214,62 @@ report exit 5, and a full run that collected nothing or hit a collection error n
   exempt them on the owner's behalf. Fix: link `validate.py` to SR-003 and the CoreAPI modules
   to SR-001 when they next change, or let the owner list the glue modules under
   `trace.exempt`.
+
+## Delivered-repository verification, round 4 (2026-10-06, commit 0680662)
+
+Raised by the verification of the round-3 fixes. Its four HIGH findings were fixed in the same
+change: a requirement widened by a new `implemented_by`/`verified_by` link (through
+`plumb link` or a frontmatter edit), or a `trace.exempt` glob added in the range, now goes to
+the owner at the merge boundary (SR-028); a failing acceptance test of a touched requirement
+is kept until a run passes it, an acceptance test with no passing evidence on the current
+identity holds the merge (exit 5), and a full run with a failing test no longer clears
+`full verification pending` (SR-027 EX-4..EX-7); the trace and the covering-test selection
+share one source definition, and with `source_dirs` unset a code file anywhere outside the
+test directories, `docs/` and dot directories is source, so flat layouts are traced (SR-029).
+The round-3 LOW entry above that suggests linking unowned modules to existing SRs stays
+valid: such a link now shows the requirement as extended at the merge, for the owner to
+confirm. The MEDIUM entry above on removed nodes keeping a file stale was resolved in the
+same change (the file aggregate leaves out nodes no longer in the source).
+
+- [MEDIUM] (verification round 4; merge.py exit code; sp1 spec 5, full-suite gate deferred to
+  sub-project 3) With full verification pending (src/app/y.py has no covering test),
+  `validate --merge main` printed the pending line and exited 0. Nothing at the boundary
+  enforces R5's "satisfied at the next merge boundary"; the spec defers that gate to
+  sub-project 3, so it is a known gap rather than a contradiction. Reproduced again this round:
+  a full run that failed a test of a requirement the range did not touch leaves
+  "full verification pending (1 test(s) failed in the last full run ...)" and exit 0. Fix:
+  until sub-project 3 lands, give a distinct non-zero exit while full verification is pending.
+  The README merge section now says that exit 0 does not by itself mean the full suite ran.
+- [MEDIUM] (verification round 4; trace.py `is_source`, source_dirs default) Untraced
+  detection only looked at `source_dirs`, so a changed `lib/x.py` in a project not laid out as
+  src/ was never reported. Largely resolved by the SR-029 fix (an unset `source_dirs` traces any
+  code file outside tests, docs and dot directories). Remaining: once the owner sets
+  `source_dirs`, code outside it is invisible again. Fix: let `plumb init` infer `source_dirs`
+  from the layout (pyproject packages, top-level packages), or print the configured
+  `source_dirs` in the brief so the owner can see the gap.
+- [MEDIUM] (verification round 4; trace.py owned paths are never untraced; merge.py stale links
+  and fidelity are advisory) New behaviour added inside a file a confirmed requirement already
+  owns is not untraced: appending `delete_all_user_data` to src/app/calc.py, owned by SR-001,
+  gave only a stale-link warning and "fidelity unjudged", the merge exited 0, and
+  `plumb repin --all-stale` cleared the staleness without any confirmation. Consistent with R4
+  (fidelity is advisory), but a second way around the read-back. Fix: at the merge boundary,
+  list the requirements whose `implemented_by` ends changed in the range and were repinned
+  without a fidelity judgment; consider showing repins in the range in the approvals glance.
+- [MEDIUM] (verification round 4; merge.py, trace.py `trace.exempt`; .claude/settings.json deny
+  list) Appending `trace: {exempt: ["src/**"]}` to .plumb/config.yaml, which the agent may edit
+  (the guard denies only .plumb/log/**), removed every untraced path and the merge exited 0, and
+  the report did not say the exemption list changed. Resolved by the SR-028 fix: a glob added in
+  the range is listed for the owner, is not honoured until `plumb approve --exempt` (refused
+  under the agent session marker) or a relayed affirmation that names the exemption, and
+  confirmed exemptions appear among the approvals in range. Remaining suggestion: also put
+  .plumb/config.yaml under the agent guard's deny rules for edits to `trace`.
+- [LOW] (observed while fixing this round; merge.py `extended_requirements`) Approvals recorded
+  before this change carry no `ends`, so a confirmed requirement whose links changed in a range
+  is shown as extended with all its new ends even when the owner approved it after linking; the
+  owner re-approves once and the new approval lists the ends. Fix: none needed beyond a note in
+  the brief, or treat ends present at the approval's commit as listed.
+- [LOW] (observed while fixing this round; merge.py exit precedence) When an agent widens a
+  confirmed requirement, the merge may exit 5 rather than 4 because the touched requirement's
+  other acceptance tests have no passing evidence on the current code; the extension is still
+  listed in the same report. Fix: none needed; the sp1 spec states the precedence (1, then 5,
+  then 4).

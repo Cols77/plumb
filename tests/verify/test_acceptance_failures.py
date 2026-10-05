@@ -87,3 +87,68 @@ def test_drift_and_status_show_the_failing_acceptance_test(confirmed, capsys) ->
     out = capsys.readouterr().out
     assert "1 failing (SR-001)" in out
     assert "failing acceptance tests: SR-001 EX-1 tests/test_mod.py (regression)" in out
+
+
+# -- a failing or unverified acceptance test holds the merge, whatever changed since -------
+
+
+def _merge(root: Path, base: str, capsys) -> tuple[int, str]:
+    code = merge_check(open_core(root), base, as_json=False)
+    return code, capsys.readouterr().out
+
+
+def test_failing_test_that_never_passed_holds_the_merge(confirmed, capsys) -> None:
+    root, base = confirmed
+    write(root, "tests/test_mod.py", "from pkg.mod import add\n\n\ndef test_add():\n"
+          "    assert add(1, 2) == 3\n\n\ndef test_add_neg():\n    assert add(-1, -1) == -3\n")
+    report = open_verify(open_core(root)).run(nodes=["tests/test_mod.py"])
+    assert report.not_yet_passing == ["tests/test_mod.py::test_add_neg"]
+    assert not report.regressions
+    code, out = _merge(root, base, capsys)
+    assert code == 5, out
+    assert "failing acceptance tests: SR-001 EX-1 tests/test_mod.py (failing)" in out
+    assert "verification holds the merge" in out
+
+
+def test_failure_survives_an_edit_until_a_run_passes(confirmed, capsys) -> None:
+    root, base = confirmed
+    _regress(root)
+    write(root, "src/pkg/mod.py", BROKEN + "# unrelated comment\n")  # no rerun
+    code, out = _merge(root, base, capsys)
+    assert code == 5, out
+    assert ("failing acceptance tests: SR-001 EX-1 tests/test_mod.py (regression, stale: "
+            "not rerun since the change)") in out
+    assert cli.main(["drift", "--root", str(root)]) == 1
+    assert "SR-001 failing acceptance test: EX-1 tests/test_mod.py" in capsys.readouterr().out
+    write(root, "src/pkg/mod.py", "def add(a, b):\n    return a + b\n")
+    assert open_verify(open_core(root)).run(nodes=["tests/test_mod.py"]).ok
+    assert _merge(root, base, capsys)[0] == 0
+
+
+def test_acceptance_test_without_passing_evidence_on_current_code_holds_the_merge(
+        confirmed, capsys) -> None:
+    root, base = confirmed
+    write(root, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")  # not rerun
+    code, out = _merge(root, base, capsys)
+    assert code == 5, out
+    assert "unverified acceptance tests: SR-001 EX-1 tests/test_mod.py (stale since its " \
+           "last pass)" in out
+    assert open_verify(open_core(root)).run(nodes=["tests/test_mod.py"]).ok
+    assert _merge(root, base, capsys)[0] == 0
+
+
+def test_full_run_with_a_failing_test_keeps_full_verification_pending(confirmed) -> None:
+    root, _ = confirmed
+    write(root, "src/pkg/mod.py", BROKEN)
+    report = open_verify(open_core(root)).run(full=True)
+    assert report.failed
+    pending = open_verify(open_core(root)).full_pending()
+    assert pending.pending
+    assert any("failed in the last full run" in r for r in pending.reasons), pending
+    write(root, "src/pkg/mod.py", "def add(a, b):\n    return a + b\n")
+    assert open_verify(open_core(root)).run(nodes=["tests/test_mod.py"]).ok
+    pending = open_verify(open_core(root)).full_pending()  # test_twice still failed last
+    assert pending.reasons == ("1 test(s) failed in the last full run and have not passed "
+                               "since (tests/test_helper.py::test_twice)",)
+    assert open_verify(open_core(root)).run(nodes=["tests/test_helper.py"]).ok
+    assert not open_verify(open_core(root)).full_pending().pending

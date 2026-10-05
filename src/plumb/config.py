@@ -78,6 +78,9 @@ class TraceConfig:
 @dataclass(frozen=True)
 class Config:
     source_dirs: tuple[str, ...] = ("src", "tests")
+    # whether config.yaml names source_dirs; when it does not, plumb.trace also counts a code
+    # file anywhere outside tests, docs and dot directories as source (a flat layout)
+    source_dirs_set: bool = False
     test_dirs: tuple[str, ...] = ("tests",)
     verify: VerifyConfig = field(default_factory=VerifyConfig)
     hooks: HooksConfig = field(default_factory=HooksConfig)
@@ -113,7 +116,8 @@ def _build(cls: type, data: Mapping[str, Any]) -> Any:
 
 
 def config_from_mapping(data: Mapping[str, Any] | None) -> Config:
-    return _build(Config, data or {})
+    data = {k: v for k, v in (data or {}).items() if k != "source_dirs_set"}
+    return dataclasses.replace(_build(Config, data), source_dirs_set="source_dirs" in data)
 
 
 def load_config(root: Path) -> Config:

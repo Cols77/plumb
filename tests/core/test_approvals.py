@@ -293,3 +293,32 @@ def test_relay_revoke_accepts_negated_quote(setup: Path) -> None:
     approvals.relay(open_core(setup), ["SR-001"], prompt=digest,
                     quote="do not approve SR-001", revoke=True)
     assert _confirmation(setup, "SR-001") != "confirmed"
+
+
+@pytest.mark.sr("SR-028")
+def test_relay_confirms_trace_exempt_only_when_the_quote_names_it(setup: Path) -> None:
+    (setup / ".plumb" / "config.yaml").write_text('trace:\n  exempt: ["src/gen/*"]\n', "utf-8")
+    core = open_core(setup)
+    digest = log_prompt(setup, "ok, go on")
+    with pytest.raises(approvals.Refused, match="does not name the exemption"):
+        approvals.relay(core, [], prompt=digest, quote="ok", exempt=True)
+    assert approvals.approved_exempt(open_core(setup)) == set()
+    digest = log_prompt(setup, "ok, exempt src/gen/* from requirements",
+                        at="2026-10-06T03:01:00Z")
+    entry = approvals.relay(open_core(setup), [], prompt=digest,
+                            quote="ok, exempt src/gen/*", exempt=True)
+    assert entry.payload["exempt"] == ["src/gen/*"] and entry.payload["records"] == []
+    assert approvals.approved_exempt(open_core(setup)) == {"src/gen/*"}
+
+
+@pytest.mark.sr("SR-028")
+def test_approval_records_the_ends_a_requirement_owns(setup: Path) -> None:
+    from plumb.contracts import Target
+
+    (setup / "src").mkdir()
+    (setup / "src" / "a.py").write_text("x = 1\n", "utf-8")
+    open_core(setup).add_link("SR-001", "implemented_by", Target(path="src/a.py"))
+    entry = approvals.approve(open_core(setup), ["SR-001", "INT-001"])
+    items = {r["id"]: r for r in entry.payload["records"]}
+    assert items["SR-001"]["ends"] == ["implemented_by src/a.py"]
+    assert "ends" not in items["INT-001"]

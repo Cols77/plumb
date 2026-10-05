@@ -6,13 +6,14 @@ import argparse
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from plumb.cliutil import EXIT_USAGE, add_common, emit, resolve_root
 
 CONFIG_TEMPLATE = """\
 # plumb configuration. Every key is optional; the defaults are shown commented out.
 # A list given here replaces the default list.
-# source_dirs: [src, tests]
+# source_dirs: [src, tests]      # unset: also any code file outside tests, docs and dot dirs
 # test_dirs: [tests]
 # verify:
 #   turn_budget_s: 15
@@ -36,7 +37,8 @@ CONFIG_TEMPLATE = """\
 #   hook_timeout_ms: 800
 # escalation: {max_requirements: 3, max_features: 1, diff_lines: 400, diff_files: 10}
 # trace:
-#   exempt: []                 # source globs that need no requirement (untraced changes)
+#   exempt: []                 # source globs that need no requirement (untraced changes);
+#                              # a glob added on a branch waits for plumb approve --exempt
 """
 
 CLAIMS_TEMPLATE = """\
@@ -191,6 +193,14 @@ def _guarded(action: Callable[[], object]) -> int:
     return 0
 
 
+def _approved_names(entry: Any) -> str:
+    """``SR-001, trace.exempt src/gen/*``: what an approval entry confirmed."""
+    names = [str(r["id"]) for r in entry.payload["records"]]
+    if entry.payload.get("exempt"):
+        names.append("trace.exempt " + " ".join(entry.payload["exempt"]))
+    return ", ".join(names)
+
+
 def cmd_approve(command: str, argv: list[str]) -> int:
     from plumb import approvals
 
@@ -200,10 +210,12 @@ def cmd_approve(command: str, argv: list[str]) -> int:
     parser.add_argument("--proposed", action="store_true",
                         help="every proposed or unconfirmed-edit record")
     parser.add_argument("--yes", action="store_true", help="do not ask y/N")
+    parser.add_argument("--exempt", action="store_true",
+                        help="also confirm the trace.exempt globs of .plumb/config.yaml")
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
-    if not args.ids and not args.proposed:
-        parser.error("name record IDs or pass --proposed")
+    if not args.ids and not args.proposed and not args.exempt:
+        parser.error("name record IDs or pass --proposed or --exempt")
     core = _core(args)
 
     def act() -> None:
@@ -211,7 +223,7 @@ def cmd_approve(command: str, argv: list[str]) -> int:
         ids = list(args.ids)
         if args.proposed:
             listed = approvals.pending(core)
-            if not listed and not ids:
+            if not listed and not ids and not args.exempt:
                 print("plumb: nothing awaits your confirmation")
                 return
             for record_id, record_hash, state in listed:
@@ -225,9 +237,8 @@ def cmd_approve(command: str, argv: list[str]) -> int:
                     print("plumb: nothing approved")
                     return
             ids += [r[0] for r in listed if r[0] not in ids]
-        entry = approvals.approve(core, ids, note=args.note)
-        names = ", ".join(r["id"] for r in entry.payload["records"])
-        print(f"plumb: approved {names}")
+        entry = approvals.approve(core, ids, note=args.note, exempt=args.exempt)
+        print(f"plumb: approved {_approved_names(entry)}")
 
     try:
         return _guarded(act)
@@ -258,19 +269,23 @@ def cmd_relay(command: str, argv: list[str]) -> int:
 
     parser = _parser(command, "Record an approval (or revocation) the owner gave in a prompt, "
                      "with the owner's exact words.")
-    parser.add_argument("ids", nargs="+")
+    parser.add_argument("ids", nargs="*")
     parser.add_argument("--prompt", required=True, help="prompt digest (12+ hex digits)")
     parser.add_argument("--quote", required=True, help="the owner's exact words")
     parser.add_argument("--revoke", action="store_true")
+    parser.add_argument("--exempt", action="store_true",
+                        help="also confirm the trace.exempt globs (the quote names them)")
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
+    if not args.ids and not args.exempt:
+        parser.error("name record IDs or pass --exempt")
     core = _core(args)
 
     def act() -> None:
         entry = approvals.relay(core, args.ids, prompt=args.prompt, quote=args.quote,
-                                revoke=args.revoke, note=args.note)
+                                revoke=args.revoke, note=args.note, exempt=args.exempt)
         verb = "revoked" if args.revoke else "confirmed"
-        names = ", ".join(r["id"] for r in entry.payload["records"])
+        names = _approved_names(entry)
         print(f"plumb: {verb} {names} (agent-relayed) on the owner's words \"{args.quote}\"")
 
     return _guarded(act)
