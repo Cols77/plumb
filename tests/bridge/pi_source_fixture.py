@@ -1,17 +1,18 @@
-"""Fixtures of the BRIDGE lane: a copy of the pi-agent-factory register fixtures."""
+"""A copy of the pi-agent-factory register fixtures for the importer tests.
+
+Not a ``conftest.py``: the suite imports the top-level ``tests/conftest.py`` as the module
+``conftest`` (``from conftest import git``), which a second conftest would shadow.
+"""
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
-import pytest
-
 FIXTURES = Path(__file__).parent / "fixtures" / "pi_factory"
 
 
-@pytest.fixture
-def pi_source(tmp_path: Path) -> Path:
+def make_pi_source(tmp_path: Path) -> Path:
     """A pi-agent-factory-shaped source tree (copies of real records, read once)."""
     source = tmp_path / "pi-src"
     shutil.copytree(FIXTURES, source)

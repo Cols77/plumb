@@ -5,11 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pi_source_fixture import make_pi_source
 
 from plumb.api import open_core
 from plumb.importer.pi_factory import import_pi_factory
 
 pytestmark = pytest.mark.sr("SR-023")
+
+
+@pytest.fixture
+def pi_source(tmp_path: Path) -> Path:
+    return make_pi_source(tmp_path)
 
 
 def test_feature_membership_is_union_of_feat_and_bundle(repo: Path, pi_source: Path) -> None:

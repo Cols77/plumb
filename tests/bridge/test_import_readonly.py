@@ -7,12 +7,18 @@ import json
 from pathlib import Path
 
 import pytest
+from pi_source_fixture import make_pi_source
 
 from plumb import cli
 from plumb.api import open_core
 from plumb.importer.pi_factory import import_pi_factory, read_head
 
 pytestmark = pytest.mark.sr("SR-023")
+
+
+@pytest.fixture
+def pi_source(tmp_path: Path) -> Path:
+    return make_pi_source(tmp_path)
 
 
 def _snapshot(root: Path) -> dict[str, tuple[str, int]]:
