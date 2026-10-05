@@ -292,7 +292,7 @@ def _write_if_changed(path: Path, text: str) -> None:
 
 def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True) -> TestMap:
     """Build (or refresh from the cache) the test map of ``core``'s repository."""
-    from plumb.verify.imports import resolve_edge
+    from plumb.verify.imports import known_files, resolve_edge_rel
 
     root = Path(core.root)
     paths = core.paths
@@ -325,6 +325,9 @@ def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True) -> T
     same_set = set(cached_files) == set(files)
     old_direct: Mapping[str, list[str]] = cache.get("direct", {}) if same_set else {}
     direct: dict[str, list[str]] = {}
+    # existence answers come from the scanned set: a changed file set re-resolves every
+    # edge, and a stat per candidate costs seconds on Windows (spec 10)
+    exists = known_files(root, scanned, dirs)
     for rel, info in files.items():
         old_info = cached_files.get(rel)
         if rel in old_direct and old_info is info:
@@ -332,7 +335,8 @@ def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True) -> T
             continue
         found: set[str] = set()
         for edge in info.get("edges", ()):
-            found |= resolve_edge(root, rel, (edge[0], edge[1], tuple(edge[2])), source_dirs)
+            found |= resolve_edge_rel(rel, (edge[0], edge[1], tuple(edge[2])), source_dirs,
+                                      exists)
         direct[rel] = sorted(found)
     if parsed or not same_set or rebuild or not paths.test_map_json.exists():
         try:

@@ -99,6 +99,79 @@ def resolve_edge(root: Path, origin: str, edge: Edge,
     return out
 
 
+def known_files(root: Path, known: Iterable[str],
+                scanned_dirs: Sequence[str]) -> Callable[[str], bool]:
+    """A memoized ``exists(rel)``: answers from ``known`` (repository-relative ``.py`` paths)
+    for every path under ``scanned_dirs``, and from the filesystem elsewhere."""
+    known_set = frozenset(known)
+    prefixes = tuple(d.strip("/") + "/" for d in scanned_dirs if d.strip("/") not in ("", "."))
+    memo: dict[str, bool] = {}
+
+    def exists(rel: str) -> bool:
+        hit = memo.get(rel)
+        if hit is None:
+            if rel in known_set or rel.startswith(prefixes):
+                hit = rel in known_set
+            else:
+                hit = _is_file(root / rel)
+            memo[rel] = hit
+        return hit
+
+    return exists
+
+
+def _join(*parts: str) -> str:
+    return "/".join(p for p in parts if p)
+
+
+def _module_rel(anchor: str, parts: Sequence[str], exists: Callable[[str], bool]) -> str | None:
+    if not parts:
+        init = _join(anchor, "__init__.py")
+        return init if exists(init) else None
+    base = _join(anchor, *parts)
+    for cand in (base + ".py", base + "/__init__.py"):
+        if exists(cand):
+            return cand
+    return None
+
+
+def resolve_edge_rel(origin: str, edge: Edge, source_dirs: Sequence[str],
+                     exists: Callable[[str], bool]) -> set[str]:
+    """``resolve_edge`` on repository-relative POSIX strings, with ``exists`` (see
+    ``known_files``) answering existence: no path objects, no stat calls for scanned files.
+    Used by the test map, whose re-resolution of every edge must stay cheap (spec 10)."""
+    module, level, names = edge
+    parts = [p for p in module.split(".") if p] if module else []
+    if level > 0:
+        anchor_parts = origin.split("/")[:-1]
+        if level - 1 > len(anchor_parts):
+            return set()
+        anchors = ["/".join(anchor_parts[: len(anchor_parts) - (level - 1)])]
+    else:
+        anchors = ["", *(d.strip("/") for d in source_dirs if d.strip("/") not in ("", "."))]
+    found: set[str] = set()
+    for anchor in anchors:
+        target = _module_rel(anchor, parts, exists)
+        hit = False
+        if target is not None:
+            found.add(target)
+            hit = True
+            if level == 0:  # importing a.b.c also runs a/__init__ and a/b/__init__
+                for i in range(1, len(parts)):
+                    init = _join(anchor, *parts[:i], "__init__.py")
+                    if exists(init):
+                        found.add(init)
+        for name in names:
+            sub = _module_rel(anchor, [*parts, name], exists)
+            if sub is not None:
+                found.add(sub)
+                hit = True
+        if hit:
+            break
+    found.discard(origin)
+    return found
+
+
 def direct_imports(root: Path, rel: str, source_dirs: Sequence[str],
                    edges: Iterable[Edge] | None = None) -> set[str]:
     """Files ``rel`` imports directly (repository-relative POSIX paths)."""
