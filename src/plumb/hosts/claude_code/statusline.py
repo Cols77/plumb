@@ -83,6 +83,10 @@ def find_root(root: Path | str | None, data: dict[str, Any]) -> Path | None:
 
 def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
          stdout: TextIO | None = None) -> int:
+    if stdin is None or stdout is None:
+        from plumb.hosts.claude_code.hookio import use_utf8_stdio
+
+        use_utf8_stdio()
     stdin = sys.stdin if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
     try:
@@ -97,5 +101,8 @@ def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
         line = render(data)
     except Exception:  # noqa: BLE001 - the status line never fails
         line = NO_STATUS
-    stdout.write(line + "\n")
+    try:
+        stdout.write(line + "\n")
+    except (OSError, ValueError):  # UnicodeEncodeError included: fall back to plain ASCII
+        stdout.write(NO_STATUS + "\n")
     return 0

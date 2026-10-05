@@ -87,6 +87,22 @@ class HookContext:
         return self.root / ".plumb" / "session"
 
 
+def use_utf8_stdio() -> None:
+    """Make the process's stdin and stdout UTF-8, as Claude Code sends and reads them.
+
+    Python's default stdio encoding is the locale code page (cp1252 on Windows). Input bytes
+    that are not UTF-8 are replaced rather than raised; output is strict UTF-8.
+    """
+    for stream, errors in ((sys.stdin, "replace"), (sys.stdout, "strict")):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors=errors)
+        except (OSError, ValueError):
+            pass
+
+
 def read_input(stream: TextIO) -> dict[str, Any]:
     """The host's JSON, or ``{}`` when it is missing or unreadable."""
     try:
@@ -163,12 +179,14 @@ class _Writer:
         self.done = False
 
     def write(self, text: str) -> bool:
+        """Write ``text`` once. A failed write raises and leaves the writer open, so the
+        catch-all can still print its skip notice."""
         with self.lock:
             if self.done:
                 return False
-            self.done = True
             if text:
                 self.stdout.write(text if text.endswith("\n") else text + "\n")
+            self.done = True
             try:
                 self.stdout.flush()
             except (OSError, ValueError):
@@ -182,6 +200,8 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
              json_output: bool = False, watchdog: bool = False,
              start: float | None = None) -> int:
     """Run one hook handler with the deadline and the catch-all. Always returns 0."""
+    if stdin is None or stdout is None:
+        use_utf8_stdio()
     stdin = sys.stdin if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
     writer = _Writer(stdout)
@@ -213,7 +233,10 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
         writer.write(_notice(SKIP_BUDGET, json_output))
     except Exception:  # noqa: BLE001 - plumb never blocks work on its own failure
         log_error(found, name, traceback.format_exc())
-        writer.write(_notice(SKIP_ERROR, json_output))
+        try:
+            writer.write(_notice(SKIP_ERROR, json_output))
+        except Exception:  # noqa: BLE001 - nothing more can be said on a broken stdout
+            pass
     finally:
         if timer is not None:
             timer.cancel()

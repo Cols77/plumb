@@ -459,3 +459,31 @@ All HOST MUST items (H1 to H7) and SHOULD items (HS1 to HS5) are built. Merge po
 - [LOW] (host, tests) HS3's in-process latency test was written after the hooks it measures,
   so it was green on its first run (no red step); the end-to-end subprocess latency test and
   the benchmark belong to phase 4.
+
+## HOST lane review, UTF-8 round (2026-10-06)
+
+The two HIGH findings of this review (hook stdin/stdout in the locale code page instead of
+UTF-8, and a failed first write suppressing the skip notice) were fixed in the same change.
+
+- [MEDIUM] (host review, stop.py) A regression found by the agent's own `plumb tests run`
+  inside the stop-block cycle is never recorded as asked: on the second stop
+  `stop_hook_active` is true and the asked map is not updated, so the next turn that touches
+  the same covering selection blocks again with the same regression for the same failing run,
+  and the owner can be interrupted twice for one regression.
+- [MEDIUM] (host review, stop.py) Stop #1 of a blocking turn rewrites `stated.json` with a new
+  `at` before the agent may run `plumb relay`. CORE's `_stated()` ignores a stated set written
+  after the prompt, so a relay made after the first block loses the previous reply's stated
+  set (records are refused unless the quote names their IDs).
+- [MEDIUM] (host review, prompt.py) Per-turn hook latency on plumb's own repository, measured
+  end to end without VERIFY, is about 800 ms for prompt (budget 600 ms) and about 900 ms for
+  stop (budget 800 ms): about 1.7 s together, above spec 10's 1.5 s per-turn target though
+  under 2 s. VERIFY's select/evidence will add to it; the phase-4 benchmark is likely to fail
+  until CORE's KS1 caches land or the stop hook stops calling `core.status()` over all records.
+- [MEDIUM] (host review, stop.py) A file deleted during the turn is dropped from the changed
+  paths (the `os.stat` failure is skipped) unless the deletion went through a tracked edit, so
+  deleting a linked implementation file (for example `git rm src/foo.py` through Bash) is not
+  reported as touched or dangling and no covering tests are asked for. Also, `git status` has
+  a hard 0.6 s timeout that silently returns no paths on a slow or large repository.
+- [LOW] (host review, templates/SKILL.md) The skill tells the agent to record read-backs and
+  examples as records under `.plumb/` instead of naming `plumb new` as spec 6.7 says, so
+  agents may hand-write frontmatter with malformed IDs or unpinned links.
