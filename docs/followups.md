@@ -411,3 +411,46 @@ so.
 - [LOW] (bootstrap) The records were written with plumb's own library (`Core.write_record`,
   `Core.add_link`) because `plumb new` is not built. Every link was pinned when it was added,
   so `plumb repin` had nothing to do.
+
+## SP1 lane VERIFY (2026-10-06)
+
+State: every MUST item (V1 to V6) and every SHOULD item (VS1 to VS6) is built on
+`lane/verify`, test first, with `sr` markers. Merge point V6 (unlocks L-V) is commit `d6503c3`;
+the SHOULD items follow on the same branch.
+
+- [MEDIUM] (VERIFY) `plumb status` and `validate --merge` (CORE files) only show
+  `full verification pending`. They do not yet show what VERIFY now knows: removed-after-passing
+  nodes (`Verify.removed_after_passing()`, VS1), owner waivers (`waiver` events, VS6), deferred
+  tests and the `tests ok|failing|regression` state. Wiring them in belongs to CORE or the
+  coordinator (spec 7.5 asks `status` to list removed-after-passing nodes and `validate --merge`
+  to list waivers).
+- [MEDIUM] (VERIFY) The runner uses `sys.executable` as spec 7.3 says. In a repository where
+  plumb is installed as a separate tool (not in the project's own environment), that interpreter
+  lacks the project's dependencies, so its tests fail at import. Running the project's own
+  interpreter with plumb's plugin on its path is a later decision.
+- [LOW] (VERIFY) Selection works at test-file granularity, plus node ids named by `verified_by`
+  links and `sr` markers. A file's expected duration is the sum of its known node durations
+  (parametrized ids summed under their node), plus `default_test_s` once if any node is unknown.
+- [LOW] (VERIFY) `full verification pending` for unknown coverage is derived from the map, not
+  from the run log: a non-test Python file that no rule of the map covers is pending while its
+  hash differs from the hash the latest full run recorded for it (full runs record every mapped
+  file's hash). A non-Python file under a source directory with no covering test is sampled and
+  flagged by `plumb tests select` and `run`, but `full_pending()` does not list it.
+- [LOW] (VERIFY) The content identity (VS3) is cached under the env key plus the
+  site-packages directory mtime. Without the mtime, installing a package without changing
+  `uv.lock` would keep reusing a stale identity. On Windows the base interpreter hash covers
+  `python.exe` and the `python3*.dll` runtime.
+- [LOW] (VERIFY) Removed-after-passing nodes stay listed while their file exists, including
+  tests renamed or deleted on purpose. There is no acknowledgement yet.
+- [LOW] (VERIFY) The `ast` scan only knows pytest's default naming (`test*` functions, `Test*`
+  classes, `test_*.py` and `*_test.py` files). Custom `python_functions`, `python_classes` and
+  `python_files` settings are ignored. Literal mentions only consider string constants that
+  contain `/` or `.`.
+- [LOW] (VERIFY) The tree identity's `dirty` digest ignores `.plumb/`, `__pycache__` and
+  `.pytest_cache`, so recording evidence or importing modules does not block the flaky rerun.
+  The runner passes `-p no:cacheprovider` so runs do not write `.pytest_cache` into the
+  repository.
+- [LOW] (VERIFY) `src/plumb/__init__.py` maps to nearly every test in `test_map.txt`, because
+  every import of `plumb.x` runs it. This is correct but noisy.
+- [LOW] (VERIFY) The VERIFY lane's own tests start about 25 real pytest subprocesses. On this
+  machine `tests/verify` takes about 35 s.

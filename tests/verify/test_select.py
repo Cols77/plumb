@@ -108,3 +108,26 @@ def test_selection_never_contains_whole_suite_marker(project: Path) -> None:
     for node in (*sel.nodes, *sel.deferred):
         assert node not in ("", ".", "tests", "tests/")
         assert node.split("::", 1)[0].endswith(".py")
+
+
+@pytest.mark.sr("SR-017")
+def test_parametrized_durations_count_for_their_node() -> None:
+    from plumb.verify.select import expected_duration
+
+    def nodes_of(_: str) -> list[str]:
+        return ["tests/t.py::test_p", "tests/t.py::test_q"]
+
+    durations = {"tests/t.py::test_p[1]": 0.5, "tests/t.py::test_p[2]": 0.25,
+                 "tests/t.py::test_q": 0.25}
+    assert expected_duration("tests/t.py", nodes_of, durations, 1.0) == 1.0
+    assert expected_duration("tests/t.py::test_p", nodes_of, durations, 1.0) == 0.75
+    del durations["tests/t.py::test_q"]
+    assert expected_duration("tests/t.py", nodes_of, durations, 1.0) == 1.75
+
+
+@pytest.mark.sr("SR-017")
+def test_verify_is_a_verify_api(project: Path) -> None:
+    from plumb.contracts import VerifyAPI
+    from plumb.verify import open_verify
+
+    assert isinstance(open_verify(open_core(project)), VerifyAPI)

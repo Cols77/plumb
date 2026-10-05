@@ -120,19 +120,27 @@ class _Ordered:
 
 def expected_duration(entry: str, nodes_of: Callable[[str], list[str]],
                       durations: Mapping[str, float], default_s: float) -> float:
-    """Expected seconds: known node durations, ``default_s`` for each unknown remainder."""
+    """Expected seconds: known node durations (parametrized ids summed under their node),
+    ``default_s`` once for any unknown remainder."""
+
+    def known(node: str) -> float | None:
+        if node in durations:
+            return float(durations[node])
+        family = [float(v) for k, v in durations.items() if k.startswith(node + "[")]
+        return sum(family) if family else None
+
     if "::" in entry:
-        known = durations.get(entry)
-        return float(known) if known is not None else default_s
+        value = known(entry)
+        return round(value, 6) if value is not None else default_s
     total = 0.0
     unknown = False
     nodes = nodes_of(entry)
     for node in nodes:
-        known = durations.get(node)
-        if known is None:
+        value = known(node)
+        if value is None:
             unknown = True
         else:
-            total += float(known)
+            total += value
     if unknown or not nodes:
         total += default_s
     return round(total, 6)
@@ -145,7 +153,14 @@ def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
     config = core.config
     vcfg = config.verify
     budget = float(vcfg.turn_budget_s if budget_s is None else budget_s)
-    durations = durations or {}
+    durations = dict(durations or {})
+    family: dict[str, float] = {}
+    for key, value in durations.items():  # parametrized ids also count for their node
+        cut = key.find("[", key.find("::"))
+        if "::" in key and cut > 0:
+            family[key[:cut]] = family.get(key[:cut], 0.0) + float(value)
+    for base, total in family.items():
+        durations.setdefault(base, total)
     root = core.root
     norm = []
     for raw in changed:
