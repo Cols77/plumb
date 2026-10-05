@@ -309,6 +309,112 @@ def cmd_validate(command: str, argv: list[str]) -> int:
     return code or merge_code
 
 
+def verification_state(core) -> dict | str:
+    """VERIFY's state when that lane is built, else ``unavailable`` (spec 12.2)."""
+    try:
+        from plumb.verify import open_verify
+    except ImportError:
+        return "unavailable"
+    try:
+        pending = open_verify(core).full_pending()
+    except Exception as exc:  # a missing or failing lane degrades, never fails status
+        return {"available": False, "error": str(exc)}
+    return {"available": True, "full_pending": pending.pending,
+            "full_pending_reasons": list(pending.reasons)}
+
+
+def status_data(core) -> dict:
+    from plumb.contracts import KIND_PREFIX
+
+    index = core.index()
+    statuses = core.status()
+    records = dict.fromkeys(KIND_PREFIX, 0)
+    for record in index.values():
+        records[record.kind] += 1
+    requirements = [s for i, s in statuses.items() if index[i].kind == "requirement"]
+    confirmation = {"proposed": 0, "confirmed": 0, "unconfirmed-edit": 0}
+    for status in statuses.values():
+        confirmation[status.confirmation] += 1
+    links = {"current": 0, "stale": 0, "dangling": 0, "unpinned": 0}
+    for status in statuses.values():
+        for state in status.links:
+            links[state.state] += 1
+    return {
+        "records": records,
+        "requirements": {"total": len(requirements),
+                         "confirmed": sum(s.confirmation == "confirmed" for s in requirements),
+                         "covered": sum(s.covered for s in requirements)},
+        "confirmation": confirmation,
+        "links": links,
+        "stale": [s.link.id for st in statuses.values() for s in st.links if s.state == "stale"],
+        "uncovered_examples": {i: list(s.uncovered_examples) for i, s in statuses.items()
+                               if s.uncovered_examples and s.confirmation == "confirmed"},
+        "awaiting": sorted(i for i, s in statuses.items() if s.confirmation != "confirmed"),
+        "verification": verification_state(core),
+    }
+
+
+def cmd_status(command: str, argv: list[str]) -> int:
+    parser = _parser(command, "Counts, drift and records awaiting your confirmation.")
+    args = parser.parse_args(argv)
+    data = status_data(_core(args))
+    if args.as_json:
+        emit(data, True)
+        return 0
+    kinds = ", ".join(f"{k} {v}" for k, v in data["records"].items())
+    req = data["requirements"]
+    conf = data["confirmation"]
+    links = data["links"]
+    lines = [
+        f"records: {kinds}",
+        f"requirements: {req['total']} total, {req['confirmed']} confirmed, "
+        f"{req['covered']} covered",
+        f"confirmation: proposed {conf['proposed']}, confirmed {conf['confirmed']}, "
+        f"unconfirmed edit {conf['unconfirmed-edit']}",
+        f"links: current {links['current']}, stale {links['stale']}, dangling "
+        f"{links['dangling']}, unpinned {links['unpinned']}",
+        "awaiting your confirmation: " + (", ".join(data["awaiting"]) or "none"),
+    ]
+    if data["stale"]:
+        lines.append("stale links: " + ", ".join(data["stale"]))
+    verification = data["verification"]
+    if verification == "unavailable" or not verification.get("available"):
+        lines.append("verification: unavailable")
+    elif verification.get("full_pending"):
+        lines.append("verification: full verification pending ("
+                     + ", ".join(verification["full_pending_reasons"]) + ")")
+    else:
+        lines.append("verification: no full verification pending")
+    emit(lines, False)
+    return 0
+
+
+def cmd_brief(command: str, argv: list[str]) -> int:
+    from plumb.query import HARD_CAP, brief_lines
+
+    parser = _parser(command, "The short intent brief (about 30 lines, cap 40).")
+    parser.add_argument("--max-lines", type=int, default=None)
+    parser.add_argument("--all", action="store_true", dest="show_all")
+    args = parser.parse_args(argv)
+    core = _core(args)
+    max_lines = args.max_lines or core.config.hooks.brief_lines
+    if args.show_all:
+        max_lines = 10**6
+    lines = brief_lines(core, max_lines, show_all=args.show_all)
+    verification = verification_state(core)
+    if verification == "unavailable":
+        tests = "tests: verification unavailable in this build"
+    elif verification.get("full_pending"):
+        tests = "tests: full verification pending (" + ", ".join(
+            verification.get("full_pending_reasons") or []) + ")"
+    else:
+        tests = None
+    if tests and (args.show_all or len(lines) < min(max_lines, HARD_CAP)):
+        lines.insert(len(lines) - 1 if lines[-1].startswith("open NCs") else len(lines), tests)
+    emit({"lines": lines} if args.as_json else lines, args.as_json)
+    return 0
+
+
 def _not_built(command: str, argv: list[str]) -> int:
     print(f"plumb: '{command}' is not available in this build", file=sys.stderr)
     return EXIT_USAGE
@@ -323,6 +429,8 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "relay": cmd_relay,
     "validate": cmd_validate,
     "check": cmd_validate,
+    "status": cmd_status,
+    "brief": cmd_brief,
 }
 
 
