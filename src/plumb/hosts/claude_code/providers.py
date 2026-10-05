@@ -1,0 +1,52 @@
+"""Lazy access to the other lanes through their factory functions (spec 12.2).
+
+A provider whose module is missing from this build, or that fails to open, degrades to
+``None``; the hook then prints ``plumb: <part> unavailable`` and continues. Tests pass fakes
+instead of the ``LAZY`` default.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from typing import Any
+
+LAZY: Any = object()
+
+
+def verify_api(core: Any, given: Any = LAZY) -> Any:
+    """``plumb.verify.open_verify(core)``, or None when VERIFY is unavailable."""
+    if given is not LAZY:
+        return given
+    try:
+        from plumb.verify import open_verify
+    except ImportError:
+        return None
+    try:
+        return open_verify(core)
+    except Exception:  # noqa: BLE001 - a failing lane degrades, never breaks a hook
+        return None
+
+
+def judgment_backend(core: Any, given: Any = LAZY) -> Any:
+    """``plumb.judgment.get_backend(core, hook=True)``, or None when unavailable."""
+    if given is not LAZY:
+        return given
+    try:
+        from plumb.judgment import get_backend
+    except ImportError:
+        return None
+    try:
+        return get_backend(core, hook=True)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def unjudged_fn(given: Any = LAZY) -> Callable[[Any, Iterable[str] | None], tuple[str, ...]] | None:
+    """``plumb.judgment.fidelity.unjudged``, or None when unavailable."""
+    if given is not LAZY:
+        return given
+    try:
+        from plumb.judgment.fidelity import unjudged
+    except ImportError:
+        return None
+    return unjudged
