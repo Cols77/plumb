@@ -1,0 +1,34 @@
+[project]
+name = "plumb"
+version = "0.1.0"
+description = "Keep a coding agent's work aligned with the owner's intent, grounded in the project's own records."
+readme = "README.md"
+authors = [
+    { name = "Colin AUBE", email = "col1.aube@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+plumb = "plumb.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.8,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]

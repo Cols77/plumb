@@ -1,0 +1,3 @@
+# plumb
+
+plumb keeps a coding agent's work aligned with what the owner actually intends to build. It records intent as small, plain-markdown records in git (features `FEAT-###`, requirements `SR-###`, nonconformances `NC-####`), anchors each requirement in examples the owner confirms, links requirements to the tests and code that satisfy them with content hashes so any change on either end shows up as drift, and pins approvals and test evidence to exact content. It runs mostly in the background through a host-neutral CLI and library with thin adapters (Claude Code first), asking the owner a question only when intent really changes, an unconfirmed decision matters, or something regresses.
