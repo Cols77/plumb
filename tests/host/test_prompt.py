@@ -97,6 +97,14 @@ def test_turn_keeps_asked_decisions_of_the_session(records: Path, hook_input) ->
     assert json.loads(turn.read_text("utf-8"))["asked"] == {"DEC-001": "sha256:abc"}
 
 
+def test_new_turn_clears_touched_list(records: Path, hook_input) -> None:
+    touched = records / ".plumb" / "session" / "s1" / "touched.txt"
+    touched.parent.mkdir(parents=True, exist_ok=True)
+    touched.write_text("src/old.py\n", encoding="utf-8")
+    _run(records, hook_input, "next request")
+    assert not touched.exists()
+
+
 def test_injects_named_records_first(records: Path, hook_input) -> None:
     out = _run(records, hook_input, "the status line counts look wrong; also check SR-004")
     record_lines = [line for line in out.splitlines() if line[:3] in ("SR-", "INT", "DEC")]

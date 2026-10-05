@@ -59,6 +59,10 @@ def log_prompt(ctx: HookContext, text: str) -> str:
                   {"digest": digest, "session": ctx.session_id, "at": _utc_now(),
                    "text": text})
     turn_path = ctx.session_dir / ctx.session_id / "turn.json"
+    try:  # a new turn: the touched list holds this turn's edits only
+        (turn_path.parent / "touched.txt").unlink()
+    except OSError:
+        pass
     previous = read_json(turn_path)
     asked = previous.get("asked") if isinstance(previous, dict) else None
     write_json_atomic(turn_path, {"turn_start": time.time(), "prompt_digest": digest,
