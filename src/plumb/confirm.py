@@ -19,6 +19,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from plumb.contracts import LogEntry, Record, RecordStatus
+from plumb.log import entry_digest
 from plumb.normalize import sha256_text
 
 if TYPE_CHECKING:
@@ -42,6 +43,10 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
                   affirmations: Sequence[str]) -> str | None:
     """Why an approval or revocation entry fails its re-check, or None (spec 5.6)."""
     payload: Mapping[str, Any] = entry.payload
+    if entry.digest != entry_digest({"v": 1, "kind": entry.kind, "at": entry.at,
+                                     "marker": entry.marker, "payload": dict(payload),
+                                     "prev": entry.prev}):
+        return f"{entry.kind} entry does not match its digest (modified)"
     by = payload.get("by")
     if by == "owner":
         if entry.marker != "none":
@@ -61,7 +66,7 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
             return "agent-relayed approval quote contains no affirmation"
         return None
     if by == "import":
-        return None
+        return "import approvals are not accepted in this build (spec F11)"
     return f"{entry.kind} has an unknown source by={by!r}"
 
 

@@ -273,6 +273,42 @@ def cmd_relay(command: str, argv: list[str]) -> int:
     return _guarded(act)
 
 
+def cmd_validate(command: str, argv: list[str]) -> int:
+    from plumb.merge import merge_check
+    from plumb.validate import report
+
+    parser = _parser(command, "Check records, links, logs and approvals. --merge BASE also "
+                     "runs the merge-boundary checks (exit 4: waits for your confirmation).")
+    parser.add_argument("--merge", metavar="BASE", default=None)
+    args = parser.parse_args(argv)
+    core = _core(args)
+    if args.merge is not None and args.as_json:  # one JSON document for both parts
+        import contextlib
+        import io
+        import json
+
+        parts = []
+        for step in (lambda: report(core, True)[0],
+                     lambda: merge_check(core, args.merge, as_json=True)):
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                parts.append((step(), buffer.getvalue()))
+        (code, validate_out), (merge_code, merge_out) = parts
+        try:
+            merge_data = json.loads(merge_out)
+        except ValueError:
+            merge_data = {"error": merge_out.strip()}
+        emit({"validate": json.loads(validate_out), "merge": merge_data}, True)
+    else:
+        code, _ = report(core, args.as_json)
+        if args.merge is None:
+            return code
+        merge_code = merge_check(core, args.merge, as_json=args.as_json)
+    if merge_code == EXIT_USAGE:
+        return EXIT_USAGE
+    return code or merge_code
+
+
 def _not_built(command: str, argv: list[str]) -> int:
     print(f"plumb: '{command}' is not available in this build", file=sys.stderr)
     return EXIT_USAGE
@@ -285,6 +321,8 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "approve": cmd_approve,
     "revoke": cmd_revoke,
     "relay": cmd_relay,
+    "validate": cmd_validate,
+    "check": cmd_validate,
 }
 
 
