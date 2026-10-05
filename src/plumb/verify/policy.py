@@ -46,3 +46,37 @@ def same_tree(before: Mapping[str, Any], after: Mapping[str, Any], env_before: s
     """Whether a flaky rerun may run: tree identity and env key unchanged (spec 7.5)."""
     return (before.get("head_tree") == after.get("head_tree")
             and before.get("dirty") == after.get("dirty") and env_before == env_after)
+
+
+# -- owner waiver (VS6) -------------------------------------------------------------------
+
+DIGEST_RE = r"^sha256:[0-9a-f]{64}$"
+
+
+class WaiverRefused(PermissionError):
+    """A waiver attempted under the agent session marker (exit 3)."""
+
+
+def current_diff_digest(root: Any) -> str:
+    """sha256 of ``git diff HEAD`` (the working tree's change against the last commit)."""
+    import subprocess
+
+    from plumb.normalize import sha256_bytes
+
+    out = subprocess.run(["git", "diff", "HEAD", "--no-color", "--no-ext-diff"], cwd=root,
+                         capture_output=True, timeout=30, stdin=subprocess.DEVNULL)
+    return sha256_bytes(out.stdout.replace(b"\r\n", b"\n"))
+
+
+def waive(core: Any, diff_digest: str, reason: str) -> Any:
+    """Append the owner's ``waiver`` event pinned to ``diff_digest``; refused under the
+    agent session marker. Using it in place of a full rerun belongs to sub-project 3."""
+    from plumb.approvals import marker
+
+    value = marker()
+    if value:
+        raise WaiverRefused(f"plumb tests waive refused: the agent session marker is set "
+                            f"(PLUMB_AGENT_SESSION={value}); only the owner waives, in their "
+                            "own terminal")
+    return core.log_append("events", "waiver", {"diff_digest": diff_digest, "reason": reason,
+                                               "by": "owner"})

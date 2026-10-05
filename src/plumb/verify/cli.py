@@ -193,12 +193,47 @@ def cmd_impact(prog: str, argv: list[str]) -> int:
     return EXIT_OK
 
 
+def cmd_waive(prog: str, argv: list[str]) -> int:
+    import re
+
+    parser = _parser(prog, "Owner waiver pinned to a diff digest (owner only; refused under "
+                     "the agent session marker).")
+    parser.add_argument("--diff-digest", default=None,
+                        help="sha256:<hex> (default: the digest of git diff HEAD)")
+    parser.add_argument("--reason", required=True)
+    args = parser.parse_args(argv)
+    from plumb.api import open_core
+    from plumb.verify.policy import DIGEST_RE, WaiverRefused, current_diff_digest, waive
+
+    core = open_core(resolve_root(args.root))
+    digest = args.diff_digest
+    if digest is not None and not re.match(DIGEST_RE, digest):
+        print("plumb: --diff-digest must be sha256:<64 lowercase hex>", file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        if digest is None:
+            from plumb.approvals import marker
+
+            if marker():
+                raise WaiverRefused("plumb tests waive refused: the agent session marker is "
+                                    "set; only the owner waives, in their own terminal")
+            digest = current_diff_digest(core.root)
+        entry = waive(core, digest, args.reason)
+    except WaiverRefused as exc:
+        print(f"plumb: refused: {exc}", file=sys.stderr)
+        return 3
+    emit({"waiver": digest, "reason": args.reason, "digest": entry.digest} if args.as_json
+         else f"plumb: waiver recorded for diff {digest}", args.as_json)
+    return EXIT_OK
+
+
 _TESTS_HELP = """usage: plumb tests {map,select,run} [options]
 
   map      build the code-to-test map; writes .plumb/test_map.txt (alias: plumb map)
   select   the covering tests of changed paths, in priority order
   run      run covering tests (--changed, --paths, --nodes) or --full; records evidence
            (alias: plumb verify)
+  waive    owner waiver pinned to a diff digest (owner only)
 """
 
 
@@ -219,5 +254,7 @@ def run(command: str, argv: list[str]) -> int:
         return cmd_select("plumb tests select", rest)
     if sub == "run":
         return cmd_run("plumb tests run", rest)
+    if sub == "waive":
+        return cmd_waive("plumb tests waive", rest)
     print(f"plumb: unknown tests command '{sub}' (map, select, run)", file=sys.stderr)
     return EXIT_USAGE
