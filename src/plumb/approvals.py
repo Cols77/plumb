@@ -6,8 +6,9 @@ Only two sources confirm a record:
    marker ``PLUMB_AGENT_SESSION`` is set);
 2. an agent-relayed approval, ``plumb relay``, which carries the owner's verbatim words: the
    cited prompt must be in the prompt log and hash to its digest, the quote must be a verbatim
-   part of it and contain an affirmation, and every record must be in the stated set of the
-   reply before that prompt or be named in the quote.
+   part of it and contain an affirmation that no negation before it in its sentence turns
+   into an objection and that is not in a question, and every record must be in the stated
+   set of the reply before that prompt or be named in the quote.
 
 Silence, or a prompt that neither affirms nor objects, confirms nothing.
 """
@@ -172,6 +173,12 @@ def _named(record_id: str, quote: str) -> bool:
     return re.search(rf"(?<![A-Za-z0-9-]){re.escape(record_id)}(?![0-9])", quote) is not None
 
 
+def _quote_pattern(quote: str) -> re.Pattern[str]:
+    head = r"(?<!\w)" if re.match(r"\w", quote[0]) else ""
+    tail = r"(?!\w)" if re.match(r"\w", quote[-1]) else ""
+    return re.compile(head + re.escape(quote) + tail)
+
+
 def quote_in_prompt(quote: str, text: str) -> bool:
     """Whether ``quote`` occurs verbatim in ``text`` on whole-word boundaries.
 
@@ -181,9 +188,61 @@ def quote_in_prompt(quote: str, text: str) -> bool:
     """
     if not quote:
         return False
-    head = r"(?<!\w)" if re.match(r"\w", quote[0]) else ""
-    tail = r"(?!\w)" if re.match(r"\w", quote[-1]) else ""
-    return re.search(head + re.escape(quote) + tail, text) is not None
+    return _quote_pattern(quote).search(text) is not None
+
+
+# A sentence ends at ., !, ? or ; followed by whitespace or the end, or at a line break, so
+# "a.py" or "v1.2" do not split a sentence.
+_SENTENCE_END = re.compile(r"[.!?;]+(?=\s|$)|\n")
+# Words that turn an affirmation after them (in the same sentence) into a refusal or a delay.
+_NEGATION = re.compile(
+    r"(?<!\w)(?:no|not|never|nope|nah|nor|neither|wait|hold|stop|cannot|dont|cant|wont"
+    r"|isnt|arent|shouldnt|wouldnt|doesnt|didnt|without)(?!\w)|\w+n['’]t(?!\w)",
+    re.IGNORECASE)
+# Idioms that contain a negation word but affirm.
+_NOT_NEGATING = re.compile(
+    r"(?<!\w)(?:no\s+(?:objections?|problems?|issues?|concerns?|complaints?)"
+    r"|not\s+a\s+problem|no\s+worries)(?!\w)", re.IGNORECASE)
+
+
+def _affirmation_offsets(quote: str, affirmations: Sequence[str]) -> list[int]:
+    """Start offsets in ``quote`` of every configured affirmation term (whole words)."""
+    offsets: list[int] = []
+    for term in affirmations:
+        words = [re.escape(w) for w in term.split()]
+        if words:
+            pattern = r"(?<![\w])" + r"\s+".join(words) + r"(?![\w])"
+            offsets.extend(m.start() for m in re.finditer(pattern, quote, re.IGNORECASE))
+    return sorted(set(offsets))
+
+
+def affirmation_context_problem(quote: str, text: str,
+                                affirmations: Sequence[str]) -> str | None:
+    """Why the affirmation in ``quote`` does not affirm in its place in ``text``, or None.
+
+    Each affirmation term of the quote, at each place the quote occurs in the prompt, is read
+    in its sentence: a negation word before it in that sentence ("no, do not approve
+    SR-001", "SR-001 is not ok") makes it an objection, and a sentence ending in ``?`` makes
+    it a question. Either confirms nothing (R2). Words after the affirmation ("ok, but do
+    not touch the docs") and other sentences of the prompt do not count.
+    """
+    offsets = _affirmation_offsets(quote, affirmations)
+    for occurrence in _quote_pattern(quote).finditer(text):
+        for offset in offsets:
+            at = occurrence.start() + offset
+            begin = 0
+            for end in _SENTENCE_END.finditer(text, 0, at):
+                begin = end.end()
+            following = _SENTENCE_END.search(text, at)
+            if following is not None and "?" in following.group():
+                return ("the quote's affirmation sits in a question; a question confirms "
+                        "nothing")
+            before = _NOT_NEGATING.sub(" ", text[begin:at])
+            word = _NEGATION.search(before)
+            if word is not None:
+                return (f"the quote's affirmation is negated by '{word.group()}' before it "
+                        "in the prompt; an objection confirms nothing")
+    return None
 
 
 def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bool = False,
@@ -201,6 +260,10 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
             raise Refused("the quote does not affirm (no affirmation term such as ok, yes, "
                           "approve, lgtm, go ahead); a prompt that does not object is not a "
                           "confirmation")
+        problem = affirmation_context_problem(normalized_quote, normalize_text(text),
+                                              core.config.approve.affirmations)
+        if problem is not None:
+            raise Refused(problem)
     records = _revoked_records(core, ids) if revoke else _records(core, ids)
     stated, stated_ids = _stated(core, str(entry.get("at") or ""))
     index = core.index()

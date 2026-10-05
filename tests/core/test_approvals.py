@@ -216,3 +216,58 @@ def test_relay_accepts_whole_word_quote_with_edge_punctuation(setup: Path) -> No
     digest = log_prompt(setup, "Fine. ok, go ahead!")
     approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="ok,")
     assert _confirmation(setup, "SR-001") == "confirmed"
+
+
+@pytest.mark.parametrize("prompt, quote", [
+    ("no, do not approve SR-001 yet", "approve SR-001"),
+    ("SR-001 is not ok yet", "SR-001 is not ok"),
+    ("SR-001 is not ok yet", "ok"),
+    ("Don't approve SR-001 until the tests pass.", "approve SR-001"),
+    ("wait, SR-001 ok later", "SR-001 ok"),
+    ("I never said SR-001 was approved", "approved"),
+    ("I don’t think SR-001 is ok", "SR-001 is ok"),
+])
+def test_relay_rejects_negated_affirmation(setup: Path, prompt: str, quote: str) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, prompt)
+    with pytest.raises(approvals.Refused, match="negat"):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote=quote)
+    assert list(open_core(setup).log_read("events")) == []
+    assert _confirmation(setup, "SR-001") != "confirmed"
+
+
+@pytest.mark.parametrize("prompt, quote", [
+    ("is SR-001 ok?", "SR-001 ok"),
+    ("Thanks. Should I approve SR-001? Let me think.", "approve SR-001"),
+])
+def test_relay_rejects_question(setup: Path, prompt: str, quote: str) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, prompt)
+    with pytest.raises(approvals.Refused, match="question"):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote=quote)
+    assert list(open_core(setup).log_read("events")) == []
+
+
+@pytest.mark.parametrize("prompt, quote", [
+    ("Is the build green? Yes, approve SR-001.", "approve SR-001"),
+    ("No objections, approve SR-001.", "approve SR-001"),
+    ("Not that one. ok for SR-001", "ok for SR-001"),
+    ("ok for SR-001, but do not touch the docs", "ok for SR-001"),
+])
+def test_relay_accepts_affirmation_outside_negation_and_question(setup: Path, prompt: str,
+                                                                 quote: str) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, prompt)
+    approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote=quote)
+    assert _confirmation(setup, "SR-001") == "confirmed"
+
+
+def test_relay_revoke_accepts_negated_quote(setup: Path) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, "yes, approve SR-001")
+    approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="approve SR-001")
+    digest = log_prompt(setup, "no, do not approve SR-001 after all",
+                        at="2026-10-06T03:05:00Z")
+    approvals.relay(open_core(setup), ["SR-001"], prompt=digest,
+                    quote="do not approve SR-001", revoke=True)
+    assert _confirmation(setup, "SR-001") != "confirmed"

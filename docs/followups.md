@@ -333,3 +333,50 @@ same change.
   OSError other than FileNotFoundError (for example PermissionError from antivirus or ACLs)
   makes `append()` busy-loop past the 2 s budget without raising `LogLockTimeout`, and the hook
   hangs.
+
+## CORE lane review, round 2 (2026-10-06)
+
+The HIGH finding of this review (`plumb relay` recorded an approval from a quote cut out of a
+negation or a question, such as "approve SR-001" from "no, do not approve SR-001 yet") was
+fixed in the same change: the affirmation is now read in its sentence of the prompt, and a
+negation before it or a closing `?` refuses the relay (exit 3). The spec 5.6 check list says
+so.
+
+- [MEDIUM] (core review, src/plumb/query.py) `relevant()` drops superseded records from term
+  matching but still returns a superseded record whose ID the prompt names; spec 5.2 says
+  superseded records are left out of the prompt context. Scenario: DEC-002 supersedes DEC-001;
+  the prompt mentions "DEC-001" and `relevant()` returns DEC-001 first with score 100, so the
+  prompt hook injects a superseded decision as current context. The brief also counts
+  superseded records as 'unconfirmed edit', because `edited` is not filtered by `superseded`.
+- [MEDIUM] (core review, src/plumb/approvals.py) The relay quote check accepted an affirmation
+  term even when negated or inside an objection ("SR-003 is not ok" contains "ok" and names
+  SR-003). Resolved by the HIGH fix above (negation before the affirmation in its sentence now
+  refuses); kept here for the record. The merge-boundary glance list of quotes stays the R2
+  backstop for phrasings the word list does not catch.
+- [LOW] (core review, src/plumb/merge.py) `required_records` requires confirmation only for
+  DECs with `matters: true`. Spec 5.10 says a DEC with `matters: false` that decides a
+  confirmed record is 'reported as mattering anyway', but the merge boundary does not treat it
+  so (partly tracked already as intent review 2/3/4). Scenario: an agent marks DEC-004 (which
+  decides the touched SR-003) `matters: false` and never gets it confirmed; `validate --merge`
+  exits 0 without listing DEC-004, and validate only warns `dec-matters` once SR-003 is
+  confirmed.
+- [LOW] (core review, src/plumb/merge.py) `changed_paths` uses `git diff --name-only`, whose
+  default rename detection reports only the new path of a renamed file, so renaming an
+  `implemented_by` or `verified_by` end does not mark its requirement as touched. Scenario:
+  src/a.py (implemented_by of SR-001) is `git mv`'d to src/b.py; the diff lists only src/b.py,
+  so SR-001 is not asked at the merge boundary (plain validate still reports the dangling link
+  as an error). Fix: pass `--no-renames`.
+- [LOW] (core review, src/plumb/validate.py) validate does not flag a `verified_by` link whose
+  `example` names an example the requirement lacks (only `add_link` checks it), so a
+  hand-edited link like this is silently ignored for coverage. Scenario: an SR has
+  `{kind: verified_by, path: tests/x.py, example: EX-9}` but no EX-9; validate reports nothing
+  and the link counts toward no example.
+- [LOW] (core review, src/plumb/log.py) `append()` sets `prev` to null when the last line is
+  not valid JSON, silently starting a new chain root after a corrupt line (verify_chain still
+  reports the corrupt line). Scenario: a truncated last line in events.jsonl gives the next
+  append `prev=null`; later readers see two chain roots and the new entry does not record why.
+- [LOW] (core lane, tests/core/test_log.py) `test_concurrent_appends_do_not_interleave` failed
+  once in a full-suite run on this 2-core machine under other load, then passed in the next
+  full run and in 5 isolated runs. The assertion detail was not captured. It is probably the
+  2 s lock budget (`LogLockTimeout`) or a Windows lock-file race when 4 threads contend. If it
+  recurs, capture the traceback and check `_Lock` timing.
