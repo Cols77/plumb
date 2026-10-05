@@ -1,0 +1,195 @@
+"""K5: owner approvals, agent-relayed approvals and the self-approval guard (spec 5.6)."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from plumb import approvals, cli
+from plumb.api import open_core
+from plumb.normalize import sha256_text
+
+pytestmark = pytest.mark.sr("SR-005")
+
+SR1 = "---\nid: SR-001\ntitle: Links pin both ends\nstatement: s1\n---\n"
+SR2 = "---\nid: SR-002\ntitle: Hashes ignore format\nstatement: s2\n---\n"
+INT = "---\nid: INT-001\ntitle: Grounded\nquote: q\n---\n"
+
+
+@pytest.fixture
+def setup(repo: Path, write_record) -> Path:
+    for text in (SR1, SR2, INT):
+        write_record(repo, text)
+    return repo
+
+
+def log_prompt(root: Path, text: str, at: str = "2026-10-06T03:00:00Z",
+               session: str = "s1") -> str:
+    digest = approvals.prompt_digest(text)
+    prompts = root / ".plumb" / "session" / "prompts.jsonl"
+    prompts.parent.mkdir(parents=True, exist_ok=True)
+    with prompts.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"digest": digest, "session": session, "at": at,
+                                 "text": text}) + "\n")
+    return digest
+
+
+def state_set(root: Path, ids: list[str], at: str = "2026-10-06T02:59:00Z") -> None:
+    index = open_core(root).index()
+    stated = root / ".plumb" / "session" / "stated.json"
+    stated.parent.mkdir(parents=True, exist_ok=True)
+    stated.write_text(json.dumps({"at": at, "session": "s1", "reply_after_prompt": None,
+                                  "records": [{"id": i, "hash": index[i].hash} for i in ids]}),
+                      encoding="utf-8")
+
+
+def _confirmation(root: Path, record_id: str) -> str:
+    return open_core(root).status([record_id])[record_id].confirmation
+
+
+def test_approve_refused_under_marker(setup: Path, monkeypatch: pytest.MonkeyPatch,
+                                      capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    with pytest.raises(approvals.Refused):
+        approvals.approve(open_core(setup), ["SR-001"])
+    with pytest.raises(approvals.Refused):
+        approvals.revoke(open_core(setup), ["SR-001"])
+    root = ["--root", str(setup)]
+    assert cli.main(["approve", "SR-001", *root]) == 3
+    assert cli.main(["approve", "--proposed", "--yes", *root]) == 3
+    assert cli.main(["revoke", "SR-001", *root]) == 3
+    assert "refused" in capsys.readouterr().err
+    assert list(open_core(setup).log_read("events")) == []
+
+
+def test_approve_proposed_pins_all_listed(setup: Path,
+                                          capsys: pytest.CaptureFixture[str]) -> None:
+    root = ["--root", str(setup)]
+    assert cli.main(["approve", "--proposed", *root]) == 2  # not a TTY and no --yes
+    assert cli.main(["approve", "--proposed", "--yes", *root]) == 0
+    out = capsys.readouterr().out
+    assert "SR-001" in out and "INT-001" in out
+    entries = list(open_core(setup).log_read("events", kinds=["approval"]))
+    assert len(entries) == 1
+    pinned = {r["id"]: r["hash"] for r in entries[0].payload["records"]}
+    index = open_core(setup).index()
+    assert pinned == {i: index[i].hash for i in ("INT-001", "SR-001", "SR-002")}
+    assert entries[0].payload["by"] == "owner" and entries[0].marker == "none"
+    assert all(_confirmation(setup, i) == "confirmed" for i in pinned)
+    assert cli.main(["approve", "SR-404", *root]) == 1
+
+
+def test_relay_accepts_affirming_quote_from_logged_prompt(
+        setup: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    state_set(setup, ["SR-001", "INT-001"])
+    digest = log_prompt(setup, "Looks right to me, ok go on with the links.")
+    approvals.relay(open_core(setup), ["SR-001", "INT-001"], prompt=digest[7:19],
+                    quote="ok go on")
+    assert _confirmation(setup, "SR-001") == "confirmed"
+    assert _confirmation(setup, "INT-001") == "confirmed"
+    assert open_core(setup).status(["SR-001"])["SR-001"].approved_by == "agent-relayed"
+
+
+def test_relay_records_quote_and_prompt_digest(setup: Path) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, "yes, that read-back is right")
+    approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="yes, that read-back")
+    entry = list(open_core(setup).log_read("events", kinds=["approval"]))[0]
+    payload = entry.payload
+    assert payload["by"] == "agent-relayed"
+    assert payload["prompt_digest"] == digest
+    assert payload["quote"] == "yes, that read-back"
+    assert payload["quote_digest"] == sha256_text("yes, that read-back")
+    assert payload["affirmation"] == "yes"
+    assert payload["stated_set"] == ["SR-001"]
+    assert payload["records"] == [{"id": "SR-001",
+                                   "hash": open_core(setup).index()["SR-001"].hash}]
+
+
+def test_relay_rejects_quote_not_in_prompt(setup: Path) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, "hmm, not sure yet")
+    with pytest.raises(approvals.Refused, match="verbatim"):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="ok")
+    assert list(open_core(setup).log_read("events")) == []
+
+
+def test_relay_rejects_unknown_or_short_digest(setup: Path) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, "ok")
+    with pytest.raises(approvals.Refused):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest[7:15], quote="ok")
+    with pytest.raises(approvals.Refused):
+        approvals.relay(open_core(setup), ["SR-001"], prompt="sha256:" + "0" * 64, quote="ok")
+
+
+def test_relay_rejects_quote_without_affirmation(setup: Path) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, "please book a meeting tomorrow")
+    with pytest.raises(approvals.Refused, match="affirm"):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="book a meeting")
+    # a substring of a longer word is not an affirmation ("token" holds "ok")
+    digest = log_prompt(setup, "the token expired")
+    with pytest.raises(approvals.Refused, match="affirm"):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="the token")
+
+
+def test_relay_rejects_record_outside_stated_set_unless_named(setup: Path) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, "ok, go on")
+    with pytest.raises(approvals.Refused, match="SR-002"):
+        approvals.relay(open_core(setup), ["SR-002"], prompt=digest, quote="ok, go on")
+    digest = log_prompt(setup, "SR-002 is approved too")
+    approvals.relay(open_core(setup), ["SR-002"], prompt=digest, quote="SR-002 is approved")
+    assert _confirmation(setup, "SR-002") == "confirmed"
+
+
+def test_relay_rejects_stated_set_written_after_prompt(setup: Path) -> None:
+    digest = log_prompt(setup, "ok", at="2026-10-06T03:00:00Z")
+    state_set(setup, ["SR-001"], at="2026-10-06T03:05:00Z")
+    with pytest.raises(approvals.Refused):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="ok")
+
+
+def test_relay_writes_prompt_event_before_approval(setup: Path) -> None:
+    state_set(setup, ["SR-001", "SR-002"])
+    digest = log_prompt(setup, "ok, both fine", at="2026-10-06T03:01:02Z")
+    approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="ok")
+    approvals.relay(open_core(setup), ["SR-002"], prompt=digest, quote="ok")
+    entries = list(open_core(setup).log_read("events"))
+    assert [e.kind for e in entries] == ["prompt", "approval", "approval"]
+    assert entries[0].payload == {"digest": digest, "session": "s1",
+                                  "at": "2026-10-06T03:01:02Z"}
+    assert "text" not in entries[0].payload
+
+
+def test_no_approval_from_non_affirming_prompt(setup: Path) -> None:
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, "carry on with the tests")
+    with pytest.raises(approvals.Refused):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="carry on")
+    assert _confirmation(setup, "SR-001") == "proposed"
+
+
+def test_relay_revoke_needs_quote_but_no_affirmation(setup: Path) -> None:
+    approvals.approve(open_core(setup), ["SR-001"])
+    digest = log_prompt(setup, "actually SR-001 is wrong, take it back")
+    approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="SR-001 is wrong",
+                    revoke=True)
+    assert _confirmation(setup, "SR-001") == "proposed"
+    entry = list(open_core(setup).log_read("events", kinds=["revocation"]))[0]
+    assert entry.payload["by"] == "agent-relayed"
+
+
+def test_relay_cli(setup: Path, monkeypatch: pytest.MonkeyPatch,
+                   capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, "lgtm")
+    root = ["--root", str(setup)]
+    assert cli.main(["relay", "SR-001", "--prompt", digest, "--quote", "nope", *root]) == 3
+    assert cli.main(["relay", "SR-001", "--prompt", digest, "--quote", "lgtm", *root]) == 0
+    assert _confirmation(setup, "SR-001") == "confirmed"

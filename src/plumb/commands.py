@@ -174,6 +174,105 @@ def cmd_repin(command: str, argv: list[str]) -> int:
     return 0
 
 
+def _guarded(action: Callable[[], object]) -> int:
+    from plumb.approvals import ApprovalError, Refused
+
+    try:
+        action()
+    except Refused as exc:
+        print(f"plumb: refused: {exc}", file=sys.stderr)
+        return 3
+    except ApprovalError as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_approve(command: str, argv: list[str]) -> int:
+    from plumb import approvals
+
+    parser = _parser(command, "Owner approval of records at their current content. Refused "
+                     "while the agent session marker is set.")
+    parser.add_argument("ids", nargs="*", help="record IDs")
+    parser.add_argument("--proposed", action="store_true",
+                        help="every proposed or unconfirmed-edit record")
+    parser.add_argument("--yes", action="store_true", help="do not ask y/N")
+    parser.add_argument("--note", default="")
+    args = parser.parse_args(argv)
+    if not args.ids and not args.proposed:
+        parser.error("name record IDs or pass --proposed")
+    core = _core(args)
+
+    def act() -> None:
+        approvals.refuse_under_marker("approve")
+        ids = list(args.ids)
+        if args.proposed:
+            listed = approvals.pending(core)
+            if not listed and not ids:
+                print("plumb: nothing awaits your confirmation")
+                return
+            for record_id, record_hash, state in listed:
+                title = core.index()[record_id].title
+                print(f"  {record_id} {state} {record_hash[:19]}  {title}")
+            if not args.yes:
+                if not sys.stdin.isatty():
+                    raise SystemExit(EXIT_USAGE)
+                answer = input(f"approve these {len(listed)} records? [y/N] ")
+                if answer.strip().lower() not in ("y", "yes"):
+                    print("plumb: nothing approved")
+                    return
+            ids += [r[0] for r in listed if r[0] not in ids]
+        entry = approvals.approve(core, ids, note=args.note)
+        names = ", ".join(r["id"] for r in entry.payload["records"])
+        print(f"plumb: approved {names}")
+
+    try:
+        return _guarded(act)
+    except SystemExit:
+        print("plumb: not a terminal; pass --yes to approve the listed records",
+              file=sys.stderr)
+        return EXIT_USAGE
+
+
+def cmd_revoke(command: str, argv: list[str]) -> int:
+    from plumb import approvals
+
+    parser = _parser(command, "Owner revocation of the latest approval of records.")
+    parser.add_argument("ids", nargs="+")
+    parser.add_argument("--note", default="")
+    args = parser.parse_args(argv)
+    core = _core(args)
+
+    def act() -> None:
+        entry = approvals.revoke(core, args.ids, note=args.note)
+        print("plumb: revoked " + ", ".join(r["id"] for r in entry.payload["records"]))
+
+    return _guarded(act)
+
+
+def cmd_relay(command: str, argv: list[str]) -> int:
+    from plumb import approvals
+
+    parser = _parser(command, "Record an approval (or revocation) the owner gave in a prompt, "
+                     "with the owner's exact words.")
+    parser.add_argument("ids", nargs="+")
+    parser.add_argument("--prompt", required=True, help="prompt digest (12+ hex digits)")
+    parser.add_argument("--quote", required=True, help="the owner's exact words")
+    parser.add_argument("--revoke", action="store_true")
+    parser.add_argument("--note", default="")
+    args = parser.parse_args(argv)
+    core = _core(args)
+
+    def act() -> None:
+        entry = approvals.relay(core, args.ids, prompt=args.prompt, quote=args.quote,
+                                revoke=args.revoke, note=args.note)
+        verb = "revoked" if args.revoke else "confirmed"
+        names = ", ".join(r["id"] for r in entry.payload["records"])
+        print(f"plumb: {verb} {names} (agent-relayed) on the owner's words \"{args.quote}\"")
+
+    return _guarded(act)
+
+
 def _not_built(command: str, argv: list[str]) -> int:
     print(f"plumb: '{command}' is not available in this build", file=sys.stderr)
     return EXIT_USAGE
@@ -183,6 +282,9 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "init": cmd_init,
     "link": cmd_link,
     "repin": cmd_repin,
+    "approve": cmd_approve,
+    "revoke": cmd_revoke,
+    "relay": cmd_relay,
 }
 
 
