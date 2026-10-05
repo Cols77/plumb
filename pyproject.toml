@@ -7,7 +7,9 @@ authors = [
     { name = "Colin AUBE", email = "col1.aube@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pyyaml>=6",
+]
 
 [project.scripts]
 plumb = "plumb.cli:main"
@@ -19,6 +21,7 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = ["sr(id): links a test to a plumb requirement"]
 
 [tool.ruff]
 line-length = 100

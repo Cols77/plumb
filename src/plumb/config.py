@@ -1,0 +1,135 @@
+"""``.plumb/config.yaml`` (spec 11, 12.4).
+
+YAML is imported only on a cache miss: the parsed config is cached as JSON in
+``.plumb/cache/config.json`` keyed by the YAML file's size and mtime.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+DEFAULT_INFRA_GLOBS = ("**/conftest.py", "pyproject.toml", "uv.lock", "pytest.ini", "tox.ini",
+                       "setup.cfg")
+DEFAULT_AFFIRMATIONS = ("ok", "okay", "yes", "approve", "approved", "confirm", "confirmed",
+                        "agreed", "lgtm", "go ahead", "sounds good")
+
+
+@dataclass(frozen=True)
+class VerifyConfig:
+    turn_budget_s: float = 15
+    hard_limit_factor: float = 1.5
+    sample_size: int = 10
+    default_test_s: float = 1.0
+    workers: int = 0
+    flaky_rerun: bool = True
+    infra_globs: tuple[str, ...] = DEFAULT_INFRA_GLOBS
+
+
+@dataclass(frozen=True)
+class HooksConfig:
+    budget_ms: Mapping[str, int] = field(default_factory=lambda: {
+        "session_start": 900, "prompt": 600, "stop": 800, "post_edit": 300})
+    brief_lines: int = 30
+    prompt_lines: int = 20
+    summary_proposed_cap: int = 3
+
+
+@dataclass(frozen=True)
+class ApproveConfig:
+    affirmations: tuple[str, ...] = DEFAULT_AFFIRMATIONS
+
+
+@dataclass(frozen=True)
+class JudgmentConfig:
+    backend: str = "heuristic"
+    hook_timeout_ms: int = 800
+    jev: Mapping[str, Any] = field(default_factory=lambda: {
+        "model": "jev-latest", "validated_against": "jev-1.13.0",
+        "base_url": "https://api.typesafe.ai",
+        "thresholds": {"accept": 0.9, "escalate_llm": 0.5}})
+
+
+@dataclass(frozen=True)
+class EscalationConfig:
+    max_requirements: int = 3
+    max_features: int = 1
+    diff_lines: int = 400
+    diff_files: int = 10
+
+
+@dataclass(frozen=True)
+class Config:
+    source_dirs: tuple[str, ...] = ("src", "tests")
+    test_dirs: tuple[str, ...] = ("tests",)
+    verify: VerifyConfig = field(default_factory=VerifyConfig)
+    hooks: HooksConfig = field(default_factory=HooksConfig)
+    approve: ApproveConfig = field(default_factory=ApproveConfig)
+    judgment: JudgmentConfig = field(default_factory=JudgmentConfig)
+    escalation: EscalationConfig = field(default_factory=EscalationConfig)
+
+
+_NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
+           "judgment": JudgmentConfig, "escalation": EscalationConfig}
+
+
+def _build(cls: type, data: Mapping[str, Any]) -> Any:
+    kwargs: dict[str, Any] = {}
+    for f in dataclasses.fields(cls):
+        if f.name not in data:
+            continue
+        value = data[f.name]
+        nested = _NESTED.get(f.name) if cls is Config else None
+        if nested is not None and isinstance(value, Mapping):
+            value = _build(nested, value)
+        elif isinstance(value, list):
+            value = tuple(value)
+        elif isinstance(f.default, tuple) and isinstance(value, str):
+            value = (value,)
+        elif isinstance(value, Mapping) and f.default_factory is not dataclasses.MISSING:
+            merged = dict(f.default_factory())  # type: ignore[misc]
+            merged.update(value)
+            value = merged
+        kwargs[f.name] = value
+    return cls(**kwargs)
+
+
+def config_from_mapping(data: Mapping[str, Any] | None) -> Config:
+    return _build(Config, data or {})
+
+
+def load_config(root: Path) -> Config:
+    """Config for ``root``; defaults when ``.plumb/config.yaml`` is absent."""
+    plumb_dir = Path(root) / ".plumb"
+    path = plumb_dir / "config.yaml"
+    try:
+        stat = path.stat()
+    except OSError:
+        return Config()
+    key = f"{stat.st_size}:{stat.st_mtime_ns}"
+    cache = plumb_dir / "cache" / "config.json"
+    try:
+        cached = json.loads(cache.read_text(encoding="utf-8"))
+        if cached.get("key") == key:
+            return config_from_mapping(cached.get("data"))
+    except (OSError, ValueError):
+        pass
+    import yaml
+
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    try:
+        data = yaml.load(path.read_text(encoding="utf-8"), Loader=loader) or {}
+    except yaml.YAMLError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"key": key, "data": data}, default=str), encoding="utf-8")
+    except OSError:
+        pass
+    return config_from_mapping(data)

@@ -306,7 +306,11 @@ Sources of approval, and only these:
    - the quote, after body normalization, is a verbatim substring of that prompt text;
    - the quote contains a configured affirmation term as a whole word or phrase
      (`approve.affirmations`; default ok, okay, yes, approve, approved, confirm, confirmed,
-     agreed, lgtm, go ahead, sounds good);
+     agreed, lgtm, go ahead, sounds good), and that affirmation affirms where it stands in the
+     prompt: its sentence (ended by `.`, `!`, `?` or `;` before whitespace, or a line break)
+     does not end in `?`, and has no negation before it (no, not, never, wait, hold, stop,
+     cannot, a `n't` word and the like; idioms such as "no objections" excepted). A question
+     or an objection confirms nothing (R2);
    - every approved record is in the stated set (`.plumb/session/stated.json`, written by the
      stop hook of the reply just before that prompt) or is named by ID in the quote.
 
