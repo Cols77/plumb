@@ -16,7 +16,8 @@ At the end of sub-project 1, plumb is a working tool that develops itself:
 
 - plumb's own intent lives in `.plumb/` as `INT`, `SR`, `DEC` and `FEAT` records derived from
   `docs/concept.md`, each with a content hash, pinned links and a derived state;
-- every commit after the dogfood step carries an `SR:` trailer, checked by a `commit-msg` hook;
+- every commit from the contract phase on carries an `SR:` trailer, checked by a `commit-msg`
+  hook from dogfood checkpoint D1 on (14.1);
 - Claude Code sessions on `C:/coding/plumb` run plumb's hooks: a short intent brief at session
   start, the relevant requirements and tests on every prompt with an intent-change flag, edit
   tracking, and an end-of-turn alignment summary that gets the covering tests run within a
@@ -24,12 +25,17 @@ At the end of sub-project 1, plumb is a working tool that develops itself:
 - `plumb tests run` runs the covering tests of a change and appends identity-pinned evidence;
 - `plumb validate --merge <base>` refuses a merge whose touched requirements are not all
   confirmed by the owner's own words;
-- a read-only importer reads pi-agent-factory's SR, FEAT, bundle and NC records into plumb
-  records, and a judgment backend interface carries a heuristic default and an optional JEV
-  adapter.
+- a judgment backend interface carries a heuristic default; with time left (plan stretch
+  items), a read-only importer reads pi-agent-factory's SR, FEAT, bundle and NC records into
+  plumb records and an optional JEV adapter plugs into the interface.
 
-The work is about 6 hours of agent time, split into a contract phase, four parallel lanes,
-an integration phase and a dogfood phase (`docs/plans/sp1-plan.md`).
+plumb is used on plumb from the first hour, following concept section 11, slice 1a: plumb's
+own records are written while the lanes start, every commit carries an `SR:` trailer, the
+trailer check turns on as soon as the record and approval core merges, and each hook is
+installed in plumb's own repository as soon as it lands (14.1). The work is about 6 hours of
+agent time: a contract phase, four parallel lanes with dogfood checkpoints, an integration
+phase, a short dogfood completion and a review of the dogfooded result
+(`docs/plans/sp1-plan.md`).
 
 ## 2. Owner intent served
 
@@ -37,17 +43,17 @@ an integration phase and a dogfood phase (`docs/plans/sp1-plan.md`).
 |---|---|
 | Purpose: "make vibe coding grounded on the projects artifacts in an efficient, reliable and trustable manner" | Records (5), grounding loop (6), evidence (7), latency (10) |
 | "a lighter, more elegant and interactive way to leverage coherence" | No run state machine, no phases; four hooks and a status line (6); non-goals (15) |
-| D1 "A / B": standalone, pi-agent-factory can migrate | Installable in any repository (`plumb init`, `plumb hooks install`); importer (8.1) |
+| D1 "A / B": standalone, pi-agent-factory can migrate | Installable in any repository (`plumb init`, `plumb hooks install`); importer (8.1, a plan stretch item) |
 | D2 "C": incremental capture by default, escalation suggested | Records written as work happens (5.8); escalation hint in the prompt hook (6.2, stretch item) |
 | Intent translation: read-back, confirmed examples, explicit decisions, traceable links, drift signals | `INT` read-backs, `SR` examples, `DEC` records, pinned links, drift (5, 6) |
 | D3 "B": host-neutral core, Claude Code first, reuse by extraction | CLI and library core; `plumb/hosts/claude_code` adapter (6); extraction table (13) |
 | D4 "B" and the KEEP list ("Keep list looks fine") | Hashes and staleness (5.4, 5.5), pinned approvals (5.6), append-only logs (5.7), `SR:` trailers and claims (5.9), relation validation (5.10), NCs (5.2), features (5.2), identity-pinned evidence and failure policy (7.4, 7.5), advisory fidelity (8.3) |
 | D5 "A": background, three triggers only | Stop hook summary and the exhaustive trigger list (6.4, 6.5) |
-| D6: dogfood "as soon as possible" | Dogfood phase (12); hooks installed in plumb's own repository |
-| D7: reuse SR, FEAT, NC formats and IDs | Same ID formats and `SR:` trailers; importer (8.1) |
+| D6: dogfood "as soon as possible and build with it" | Dogfood checkpoints D0 to D3 (14.1): own records from the first hour, `SR:` trailers on every commit from the contract phase, the trailer check on from D1, each hook installed in plumb's repository as it lands; dogfooding is never cut for review or later items (plan 12) |
+| D7: reuse SR, FEAT, NC formats and IDs | Same ID formats and `SR:` trailers; importer (8.1, a plan stretch item) |
 | D8: JEV optional, cascade, works without it | `JudgmentBackend` with heuristic default and JEV adapter (8.2) |
 | D9: pi-agent-factory into maintenance mode, fork plan | Out of scope here: the fork plan is a separate document (15) |
-| D10, D11: concept plus plans; owner does not review; implementation by the morning | This spec and the plan; verifier agents; the 6-hour schedule and drop order (plan) |
+| D10, D11: concept plus plans; owner does not review; implementation by the morning | This spec and the plan; verifier agents; the 6-hour schedule, must items of at most 150 min per lane, and a drop order that protects the dogfoodable core (plan 6, 12) |
 | D12: the name plumb | Package, CLI and `.plumb/` directory |
 | R1: read-back and examples non-blocking; touched requirements confirmed at merge | `proposed` lines in the summary (6.4); `validate --merge` (5.11) |
 | R2: no no-objection approval; `agent-relayed` with verbatim quote and prompt digest; honest trust model | `plumb relay` checks (5.6); merge-boundary approval list (5.11); trust model (5.6) |
@@ -58,7 +64,7 @@ an integration phase and a dogfood phase (`docs/plans/sp1-plan.md`).
 ## 3. Refinements of the concept, with reasons
 
 Each refinement keeps the concept's guarantee and changes only its mechanism. Each becomes a
-`DEC` record in the dogfood phase, so the owner sees it among the proposed records.
+`DEC` record at dogfood checkpoint D0, so the owner sees it among the proposed records.
 
 | # | Concept text | This spec | Reason |
 |---|---|---|---|
@@ -74,6 +80,7 @@ Each refinement keeps the concept's guarantee and changes only its mechanism. Ea
 | F10 | Regression: a test that previously passed now fails (6.6) | Same, and only when the test's own source hash is unchanged since that pass | A rewritten test that starts red is a test-first step (R3), not a regression |
 | F11 | Imported records with an upstream approval get `by: import` (10) | The minimal importer imports every record as proposed; `by: import` approvals wait for the full importer (sub-project 5) | Never manufactures a confirmation; safe lower bound of the concept rule |
 | F12 | Links live in their source record (4.5) | Unchanged; "link" is a first-class data type (`Link`, `LinkState`) and command (`plumb link`), not a separate file | A link file per link would double the files a hook reads and split a requirement from its evidence chain |
+| F13 | Slice 1a is built in the listed order, one step after another; plumb's own `SR` records and `SR:` trailers start at step 3, and each hook is installed in plumb's repository as soon as it lands (11) | Slice 1a is built by four parallel lanes, with dogfood checkpoints (14.1). plumb's own records are written at D0, while the lanes start, which is earlier than step 3, and every commit from the contract phase on carries an `SR:` trailer. The `commit-msg` check turns on at D1, as soon as the record core and the approval, trailer and merge-boundary items (concept steps 1, 2 and 4) merge. Each hook is installed in plumb's repository at D2, as soon as its lane merge point lands. The map and verification join at D3. Dogfooding comes before review. The JEV live client and the minimal importer are stretch items here (the concept puts them in sub-projects 2 and 5). The judgment interface with its heuristic backend moves up from 1b into the must items, because the prompt hook's intent-change flag (trigger 1) uses it; the owner waiver (concept 1b) is a stretch item, since using it in place of a full rerun belongs to sub-project 3 (15) | The 9-hour box (D11) needs parallel lanes. The checkpoints keep "as soon as possible and build with it" (D6): the records and trailers start earlier than in the concept, and no checkpoint waits for a whole lane or for review |
 
 ### 3.1 Work-order wording reconciled with the rulings
 
@@ -239,10 +246,10 @@ pinned.
 Link states: **current** (both pins equal both current hashes), **stale** (either differs;
 the report says `source`, `target` or `both` moved), **dangling** (the target does not exist;
 an error), **unpinned** (no pin yet; a warning). `plumb link` adds a link with fresh pins;
-`plumb repin <link-id>|<record>|--all-stale` refreshes pins and appends a `repin` event naming
-the old and new pins. Repinning never confirms a record. A repin whose target end is code or
-a test marks that requirement `fidelity unjudged` until a judgment exists for the new hashes
-(8.3).
+`plumb repin <link-id>|<record>|--all-stale` refreshes pins (and pins unpinned links) and
+appends a `repin` event naming the old and new pins. Repinning never confirms a record. A
+repin whose target end is code or a test marks that requirement `fidelity unjudged` until a
+judgment exists for the new hashes (8.3).
 
 ### 5.6 Approvals and the self-approval guard
 
@@ -356,8 +363,15 @@ A commit declares the requirements it serves with a trailer line `SR: SR-003, SR
 
 - `plumb trailers check-msg <file>` (run by the `commit-msg` hook) rejects a message whose
   `SR:` trailer names a malformed or unknown ID. A message without the trailer passes unless
-  `claims.require_trailer: true` in `.plumb/claims.yaml` (plumb's own repository sets it
-  after the dogfood step).
+  `claims.require_trailer: true` in `.plumb/claims.yaml` (plumb's own repository sets it at
+  dogfood checkpoint D1). In a checkout with no `.plumb/` directory (a repository that has not
+  adopted plumb, or a worktree whose branch predates `plumb init`), the check passes with the
+  notice `plumb: not initialized here, trailer not checked`.
+- `plumb trailers install-hook` writes the git `commit-msg` hook, which runs
+  `<interpreter> -m plumb trailers check-msg "$1"` with the interpreter that installed it.
+  The hook lives in the shared git directory, so it serves every worktree. An existing
+  non-plumb `commit-msg` hook is left untouched and reported. `plumb hooks install` calls
+  the same function (6.7).
 - `plumb claims check [--range <base>..<head>] [--json]` reads the range with one
   `git log --format=... --name-only -z` call, takes each commit's `SR:` IDs and changed
   paths, and reports **undeclared** paths: changed by a commit that claims SRs, not a
@@ -540,7 +554,9 @@ claude-code`) merges, idempotently and preserving every non-plumb entry:
   `UserPromptSubmit` (`plumb hook prompt`), `PostToolUse` with matcher
   `Edit|Write|MultiEdit|NotebookEdit` and `"async": true` (`plumb hook post-edit`), `Stop`
   (`plumb hook stop`); `statusLine` (`plumb statusline`); `env.PLUMB_AGENT_SESSION`; the
-  `permissions.deny` rules of 5.6. The launcher prefix is `plumb` when it is on `PATH`,
+  `permissions.deny` rules of 5.6. Only the hooks whose modules exist in the installed build
+  are registered, so running install again after a new hook lands adds it (dogfood
+  checkpoint D2, 14.1). The launcher prefix is `plumb` when it is on `PATH`,
   otherwise `"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe" -m plumb` (POSIX
   `.venv/bin/python`), otherwise `uv run --no-sync plumb`. plumb entries are recognised by
   the ` plumb hook ` / ` plumb statusline` command suffix.
@@ -559,7 +575,8 @@ claude-code`) merges, idempotently and preserving every non-plumb entry:
 - A block between `<!-- plumb:begin -->` and `<!-- plumb:end -->` in `CLAUDE.md`: records live
   in `.plumb/`, the test map is `.plumb/test_map.txt`, `plumb brief` for the current intent.
 - The git `commit-msg` hook (path from `git rev-parse --git-path hooks`) running
-  `plumb trailers check-msg "$1"`. An existing non-plumb hook is left untouched and reported.
+  `plumb trailers check-msg "$1"`, written by TRUST's `install_commit_msg_hook` (5.9, 12.2).
+  An existing non-plumb hook is left untouched and reported.
 
 `plumb hooks uninstall` removes exactly what install added. `plumb hooks status` reports what
 is installed.
@@ -665,17 +682,21 @@ A `test-run` payload:
   `"discarded": "inputs changed"` and gives no fresh evidence.
 
 Freshness of one node: its latest `test-run` entry has the same `closure`, `test_hash` and
-`env_key` as now, and a non-null `identity`. Then the node is `fresh-pass`, `flaky-pass` or
-`fresh-fail` by its outcome; otherwise `stale` (with `reuse_miss` naming the part that
-differed) or `none`. Unknown identity means no reuse. The reuse index
+`env_key` as now. Then the node is `fresh-pass`, `flaky-pass` or `fresh-fail` by its outcome;
+otherwise `stale` (with `reuse_miss` naming the part that differed) or `none`. This is the
+concept's 1a rule (evidence keyed by node, closure and the cheap `env_key`). The content
+`identity` is a 1b item (plan V9): a build without it omits the `identity` key from the
+payload; once it is built, freshness also requires a non-null `identity` equal to the current
+one, and an unknown identity means no reuse. The reuse index
 (`.plumb/cache/evidence_index.json`) is derived from `evidence.jsonl` by byte offset, so a
 deleted cache loses nothing.
 
 ### 7.5 Failure policy
 
-- **Flaky rerun on the same tree.** After a run, failed nodes are rerun once, only if the
-  tree identity (`head_tree` plus `dirty`) and `env_key` are unchanged. A fail then pass is
-  outcome `flaky` with both attempts recorded; it counts as a pass and is reported as flaky.
+- **Flaky rerun on the same tree** (plan VERIFY 1b item). After a run, failed nodes are
+  rerun once, only if the tree identity (`head_tree` plus `dirty`) and `env_key` are
+  unchanged. A fail then pass is outcome `flaky` with both attempts recorded; it counts as a
+  pass and is reported as flaky.
 - **Regression (R3, F10).** A node regresses when it now fails, an earlier `test-run` entry
   recorded it `passed` or `flaky`, and its `test_hash` equals the one of that pass. A new test,
   or a rewritten one, that starts red is `not yet passing`, never a regression, and never
@@ -690,6 +711,10 @@ deleted cache loses nothing.
 ## 8. Bridge: importer and judgment
 
 ### 8.1 Minimal pi-agent-factory importer
+
+A plan stretch item (TRUST T10), built only with time left after the dogfoodable core; the
+concept places the importer in sub-project 5 (F13). Without it, `plumb import` reports
+`not available in this build` (12.3).
 
 `plumb import pi-agent-factory <source> [--dry-run] [--only SR,FEAT,NC] [--json]` reads the
 source repository and never writes to it (files are opened read-only; no git command is run
@@ -720,8 +745,9 @@ Every imported record is proposed (F11). One `import` event records the source p
     comments, docstrings and whitespace (Python: equal `ast.dump`), otherwise `material`;
   - `fidelity`: always `unsure` with tier `escalate-llm`, so the packet goes to the host
     agent (R4).
-- `jev`: the JEV adapter, active only when a key exists in `TYPESAFE_API_KEY` or the user
-  store `~/.config/plumb/jev` (never inside the repository). It sends `POST
+- `jev`: the JEV adapter (a plan stretch item, TRUST T11; without it, `jev` falls back to
+  the heuristic with one notice), active only when a key exists in `TYPESAFE_API_KEY` or the
+  user store `~/.config/plumb/jev` (never inside the repository). It sends `POST
   {base_url}/v1/systemone` with `Authorization: Bearer <key>` and the pinned body
   `{state, model, questions}` using `urllib.request`, hard timeout 800 ms in hooks
   (`judgment.hook_timeout_ms`), 10 s on the command line, no retries in hooks. Questions are
@@ -770,25 +796,26 @@ the first directory holding `.plumb/`, else `.git`), `--json` where noted. Exit 
 | `plumb show <ID> [--json]` | CORE | Record, hash, state, links with states, approvals |
 | `plumb link <ID> <kind> <target> [--example EX-n]` | CORE | Add a pinned link; target `ID`, `path`, `path::Qual.name` (implemented_by) or `path::test_name` (verified_by) |
 | `plumb repin <link-id> \| <ID> \| --all-stale` | CORE | Refresh pins, log `repin` |
-| `plumb approve <ID>... \| --proposed [--yes]` | CORE | Owner approval (refused under the marker) |
-| `plumb relay <ID>... --prompt D --quote Q [--revoke]` | CORE | Agent-relayed approval or revocation, quote-checked |
-| `plumb revoke <ID>...` | CORE | Owner revocation |
-| `plumb validate [--merge BASE] [--json]` (alias `check`) | CORE | 5.10, 5.11 |
+| `plumb approve <ID>... \| --proposed [--yes]` | TRUST | Owner approval (refused under the marker) |
+| `plumb relay <ID>... --prompt D --quote Q [--revoke]` | TRUST | Agent-relayed approval or revocation, quote-checked |
+| `plumb revoke <ID>...` | TRUST | Owner revocation |
+| `plumb validate [--merge BASE] [--json]` (alias `check`) | CORE (`--merge` runs TRUST's `merge_check`) | 5.10, 5.11 |
 | `plumb status [--json]` | CORE | Counts, drift, awaiting confirmation, tests (via VerifyAPI when present) |
 | `plumb drift [--json]` | CORE | Drift signals only |
 | `plumb brief [--max-lines N] [--all]` | CORE | The session brief text (6.1) |
 | `plumb why <ID\|path>` | CORE | Upward chain: path -> SRs -> INT quotes and deciding DECs |
 | `plumb log [--stream events\|evidence] [--kind K] [-n N]` | CORE | Read the logs |
-| `plumb trailers check-msg <file>` | CORE | `commit-msg` check (5.9) |
-| `plumb claims check [--range R] [--json]` | CORE | Claimed vs declared paths (5.9) |
+| `plumb trailers check-msg <file>` | TRUST | `commit-msg` check (5.9) |
+| `plumb trailers install-hook` | TRUST | Write the git `commit-msg` hook (5.9) |
+| `plumb claims check [--range R] [--json]` | TRUST | Claimed vs declared paths (5.9) |
 | `plumb tests map\|select\|run\|waive` (aliases `map`, `verify`) | VERIFY | 7.1 to 7.5 |
 | `plumb impact <ID\|path> [--json]` | VERIFY | Downstream: records and covering tests with evidence state |
 | `plumb hook session-start\|prompt\|post-edit\|stop` | HOST | Hook entry points (6.1 to 6.4) |
 | `plumb hooks install\|uninstall\|status` (alias `install claude-code`) | HOST | 6.7 |
 | `plumb statusline` | HOST | 6.6 |
-| `plumb import pi-agent-factory <src> [--dry-run]` | BRIDGE | 8.1 |
-| `plumb fidelity <SR>`, `plumb judge <SR> --verdict V --note N` | BRIDGE | 8.3 |
-| `plumb judgment status` | BRIDGE | Backend in use, key state (never prints the key) |
+| `plumb import pi-agent-factory <src> [--dry-run]` | TRUST (stretch) | 8.1 |
+| `plumb fidelity <SR>`, `plumb judge <SR> --verdict V --note N` | TRUST | 8.3 |
+| `plumb judgment status` | TRUST | Backend in use, key state (never prints the key) |
 
 ## 10. Performance design
 
@@ -1101,13 +1128,17 @@ class LLMCascade(Protocol):
 |---|---|---|
 | `open_core` | `plumb.api` (CORE) | `def open_core(root: Path) -> CoreAPI` |
 | `open_verify` | `plumb.verify` (VERIFY) | `def open_verify(core: CoreAPI) -> VerifyAPI` |
-| `get_backend` | `plumb.judgment` (BRIDGE) | `def get_backend(core: CoreAPI, *, hook: bool) -> JudgmentBackend` |
-| `get_cascade` | `plumb.judgment` (BRIDGE) | `def get_cascade(core: CoreAPI) -> LLMCascade` |
-| `build_packet` | `plumb.judgment.fidelity` (BRIDGE) | `def build_packet(core: CoreAPI, verify: VerifyAPI \| None, sr: str) -> FidelityPacket` |
+| `merge_check` | `plumb.merge` (TRUST) | `def merge_check(core: CoreAPI, base: str, *, as_json: bool) -> int` (exit code of 5.11) |
+| `install_commit_msg_hook` | `plumb.claims` (TRUST) | `def install_commit_msg_hook(root: Path, interpreter: str) -> Path` |
+| `get_backend` | `plumb.judgment` (TRUST) | `def get_backend(core: CoreAPI, *, hook: bool) -> JudgmentBackend` |
+| `get_cascade` | `plumb.judgment` (TRUST) | `def get_cascade(core: CoreAPI) -> LLMCascade` |
+| `build_packet` | `plumb.judgment.fidelity` (TRUST) | `def build_packet(core: CoreAPI, verify: VerifyAPI \| None, sr: str) -> FidelityPacket` |
 
 A consumer whose provider is missing (import error) degrades: HOST prints the line
-`plumb: <part> unavailable` and continues; CORE's `validate --merge` and `status` print
-`verification: unavailable`.
+`plumb: <part> unavailable` and continues; `validate --merge` and `status` print
+`verification: unavailable` (or `fidelity: unavailable`); `validate --merge` without
+`plumb.merge` prints `merge boundary: unavailable` and exits 2; `hooks install` without
+`plumb.claims` skips the `commit-msg` hook with a notice.
 
 ### 12.3 CLI dispatcher contract (`src/plumb/cli.py`, contract phase)
 
@@ -1115,18 +1146,19 @@ A consumer whose provider is missing (import error) degrades: HOST prints the li
 ROUTES: dict[str, str] = {
     # CORE
     "init": "plumb.commands", "new": "plumb.commands", "show": "plumb.commands",
-    "link": "plumb.commands", "repin": "plumb.commands", "approve": "plumb.commands",
-    "relay": "plumb.commands", "revoke": "plumb.commands", "validate": "plumb.commands",
+    "link": "plumb.commands", "repin": "plumb.commands", "validate": "plumb.commands",
     "check": "plumb.commands", "status": "plumb.commands", "drift": "plumb.commands",
     "brief": "plumb.commands", "why": "plumb.commands", "log": "plumb.commands",
-    "trailers": "plumb.commands", "claims": "plumb.commands",
+    # TRUST
+    "approve": "plumb.trust_cli", "relay": "plumb.trust_cli", "revoke": "plumb.trust_cli",
+    "trailers": "plumb.trust_cli", "claims": "plumb.trust_cli",
     # VERIFY
     "tests": "plumb.verify.cli", "map": "plumb.verify.cli", "verify": "plumb.verify.cli",
     "impact": "plumb.verify.cli",
     # HOST
     "hook": "plumb.hosts.claude_code.cli", "hooks": "plumb.hosts.claude_code.cli",
     "install": "plumb.hosts.claude_code.cli", "statusline": "plumb.hosts.claude_code.cli",
-    # BRIDGE
+    # TRUST (judgment and importer)
     "import": "plumb.importer.cli", "fidelity": "plumb.judgment.cli",
     "judge": "plumb.judgment.cli", "judgment": "plumb.judgment.cli",
 }
@@ -1156,6 +1188,12 @@ Path`, `emit(obj: Any, as_json: bool) -> None`. A missing module prints
   frozen dataclasses `VerifyConfig`, `HooksConfig`, `ApproveConfig`, `JudgmentConfig`,
   `EscalationConfig`) and `load_config(root: Path) -> Config` (JSON cache keyed by
   `config.yaml`'s fingerprint; YAML imported only on a cache miss; defaults when absent).
+- `plumb/log.py` (5.7): `append(paths: PlumbPaths, stream: LogStream, kind: str,
+  payload: Mapping[str, Any]) -> LogEntry` (lock, `prev`, `digest`, one `write`),
+  `read(paths, stream, kinds=None, since_offset=0) -> Iterator[LogEntry]`,
+  `verify_chain(paths, stream) -> list[str]` (problems found). CoreAPI's `log_append` and
+  `log_read` delegate to it, and `FakeCore` uses it too, so every lane writes the same
+  format.
 - `plumb/text.py`: `terms(s: str) -> frozenset[str]` (lowercase words of 3 or more letters,
   minus a fixed stopword list), `overlap(a: frozenset[str], b: frozenset[str]) -> float`
   (`|a & b| / sqrt(|b|)`, 0 when empty), `CHANGE_WORDS: frozenset[str]`.
@@ -1172,13 +1210,13 @@ Path`, `emit(obj: Any, as_json: bool) -> None`. A missing module prints
 
 | File | Writer | Readers | Shape |
 |---|---|---|---|
-| `.plumb/log/events.jsonl`, `evidence.jsonl` | CORE (`log_append`; VERIFY and BRIDGE write through it) | all | 5.7; `test-run` payload 7.4; `judgment` payload `{subject, action, verdict, confidence, tier, backend, fingerprint, requirement_hash?, end_hashes?, note?}` |
-| `.plumb/session/prompts.jsonl` | HOST prompt hook | CORE `relay` | one line `{"digest", "session", "at", "text"}` |
-| `.plumb/session/stated.json` | HOST stop hook | CORE `relay`, HOST prompt hook | `{"at", "session", "reply_after_prompt": digest\|null, "records": [{"id", "hash"}]}` |
+| `.plumb/log/events.jsonl`, `evidence.jsonl` | `plumb/log.py` (contract phase), called through CoreAPI `log_append` by every lane | all | 5.7; `test-run` payload 7.4; `judgment` payload `{subject, action, verdict, confidence, tier, backend, fingerprint, requirement_hash?, end_hashes?, note?}` |
+| `.plumb/session/prompts.jsonl` | HOST prompt hook | TRUST `relay` | one line `{"digest", "session", "at", "text"}` |
+| `.plumb/session/stated.json` | HOST stop hook | TRUST `relay`, HOST prompt hook | `{"at", "session", "reply_after_prompt": digest\|null, "records": [{"id", "hash"}]}` |
 | `.plumb/session/status.json` | HOST (stop, session-start) | HOST `statusline` | `StatusSnapshot` as JSON plus `"v": 1` |
 | `.plumb/session/<sid>/touched.txt` | HOST post-edit | HOST stop, VERIFY `--changed` | one repository-relative POSIX path per line |
 | `.plumb/session/<sid>/turn.json` | HOST prompt hook | HOST stop | `{"turn_start": epoch_seconds, "prompt_digest", "asked": {record_id: hash}}` |
-| `.plumb/session/escalations.jsonl` | BRIDGE `HostAgentCascade` | HOST prompt and stop hooks | `{"at", "subject", "instruction"}` |
+| `.plumb/session/escalations.jsonl` | TRUST `HostAgentCascade` | HOST prompt and stop hooks | `{"at", "subject", "instruction"}` |
 | `.plumb/cache/test_map.json`, `.plumb/test_map.txt` | VERIFY | VERIFY, HOST (path only) | 7.1 |
 | `.plumb/cache/index.json`, `hashes.json` | CORE | CORE | private to CORE |
 
@@ -1210,30 +1248,48 @@ shapes come from `C:/coding/pi-agent-factory/docs/coherence/records/2026-09-28-j
 
 ## 14. Dogfooding and definition of done
 
-### 14.1 Dogfood step (after the lanes merge)
+### 14.1 Dogfood checkpoints (from the first hour)
 
-1. `plumb init` in `C:/coding/plumb`; `.plumb/config.yaml` adds
-   `src/plumb/verify/pytest_plugin.py` to `verify.infra_globs`.
-2. Record plumb's concept-level intent from `docs/concept.md` and the brief: `INT` records
-   with the owner's verbatim quotes (purpose, decisions D1 to D12), `FEAT-001` to `FEAT-004`,
-   requirements `SR-001` onward with given/when/then examples taken from the tests of each
-   lane, and `DEC` records for refinements F1 to F12. Every `SR` has a pinned
-   `derives_from` link to an `INT`, `implemented_by` links to its modules and `verified_by`
-   links (or `sr` markers) to its tests.
-3. All of them stay **proposed**: no agent writes an approval, because no owner prompt in this
-   session affirmed them (R2). The morning handoff gives the owner one line to confirm them
-   (`plumb approve --proposed`, or "ok" in a session, relayed).
-4. `plumb hooks install` in `C:/coding/plumb` (`.claude/settings.json`, skill, slash command,
-   CLAUDE.md block, `commit-msg` hook) with the `venv` launcher; `claims.yaml` sets
-   `require_trailer: true`.
-5. From the dogfood commit on, every plumb commit carries an `SR:` trailer naming the
-   requirements it serves.
+plumb is used on plumb as early as possible (D6; concept 11, slice 1a). Dogfooding is not a
+final phase: it starts while the lanes start and grows at a checkpoint each time a lane's
+must items merge. The plan (`docs/plans/sp1-plan.md`, sections 4 and 12) gives the
+conditions, steps and gates, and protects the checkpoints from every cut.
+
+- **Trailers from the first commit.** Every commit from the contract phase on carries an
+  `SR:` trailer naming the plumb requirements it serves; the IDs are fixed by the plan, so a
+  trailer is valid before the record files exist.
+- **D0, own records.** While the lanes start, plumb's concept-level intent is written by hand
+  under `.plumb/`: `INT` records with the owner's verbatim quotes (purpose, decisions D1 to
+  D12), `FEAT-001` to `FEAT-004`, requirements `SR-001` onward with given/when/then examples
+  taken from the lanes' tests, and `DEC` records for refinements F1 to F13.
+- **D1, records checked and trailers enforced**, as soon as the record core and the
+  approval, trailer and merge-boundary items merge (concept 1a steps 1 to 4): `plumb init`
+  in `C:/coding/plumb` (`.plumb/config.yaml` adds `src/plumb/verify/pytest_plugin.py` to
+  `verify.infra_globs`); every record's links pinned; `implemented_by` and `verified_by` links
+  for the files already merged; `plumb validate` without errors; the `commit-msg` hook
+  installed and `claims.yaml` set to `require_trailer: true`. From D1 on, every commit and
+  merge on `main` is checked.
+- **D2, hooks installed as they land** (concept 1a step 5): `plumb hooks install` (with the
+  `venv` launcher) runs again each time a HOST merge point lands, and registers the hooks
+  present in that build: session start, edit tracking and the status line first, then the
+  prompt hook, then the stop hook. From D2 on, Claude Code sessions on `C:/coding/plumb` run
+  plumb's own hooks.
+- **D3, map and covering tests** (concept 1a step 6): `plumb tests map` on plumb's own tests
+  once the verification lane's must items merge.
+- **Completion**, before review: the links for code merged later, the first
+  `plumb tests run --full`, and the hook benchmark on plumb's own repository. Review then
+  runs on the dogfooded result, and its fixes are committed through plumb's hooks.
+
+All records stay **proposed**: no agent writes an approval, because no owner prompt in these
+sessions affirmed them (R2). The morning handoff gives the owner one line to confirm them
+(`plumb approve --proposed`, or "ok" in a session, relayed).
 
 ### 14.2 Definition of done
 
 1. `uv run pytest` passes on `main` (all lanes plus integration tests) and `uv run ruff check
    src tests` is clean.
-2. Every command of section 9 exists and has at least one test; `plumb --help` lists them.
+2. Every command of section 9 that was built exists and has at least one test; `plumb --help`
+   lists them. Unbuilt 1b and stretch commands are listed in `docs/followups.md`.
 3. The integration test of the full loop passes: `init`, `new`, `link`, session-start, prompt,
    post-edit, stop (blocks once asking for the covering tests), `tests run --changed` (appends
    evidence), stop again (summary, no block), `statusline`.
@@ -1245,14 +1301,16 @@ shapes come from `C:/coding/pi-agent-factory/docs/coherence/records/2026-09-28-j
 6. Latency: `scripts/bench_hooks.py` (integration phase) on plumb's own repository reports
    p95 prompt + stop under 1.5 s and each hook within its section 10 budget; the result is
    recorded in `docs/followups.md` if any budget is missed.
-7. `plumb import pi-agent-factory C:/coding/pi-agent-factory --dry-run` runs read-only against
-   the real register and reports findings; the unit tests import fixture copies of real SR,
-   FEAT, bundle and NC files.
-8. `plumb judgment status` reports `heuristic` without a key; JEV adapter tests pass against a
-   local stub HTTP server; no test calls the network.
-9. Dogfood done (14.1): `plumb validate` reports no errors on plumb's own records (warnings for
-   proposed records are expected), hooks are installed in `C:/coding/plumb/.claude/settings.json`,
-   and the latest commits carry `SR:` trailers that `plumb claims check` accepts.
+7. If the importer (stretch) was built: `plumb import pi-agent-factory
+   C:/coding/pi-agent-factory --dry-run` runs read-only against the real register and reports
+   findings; the unit tests import fixture copies of real SR, FEAT, bundle and NC files.
+8. `plumb judgment status` reports `heuristic` without a key; if the JEV adapter (stretch) was
+   built, its tests pass against a local stub HTTP server; no test calls the network.
+9. Dogfood done (14.1): checkpoints D0 to D3 and the completion step passed; `plumb validate`
+   reports no errors on plumb's own records (warnings for proposed records are expected), the
+   hooks are installed in `C:/coding/plumb/.claude/settings.json`, every commit since the
+   contract phase carries an `SR:` trailer, the `commit-msg` hook has checked every commit
+   since D1, and `plumb claims check` accepts the latest commits.
 10. Every unfinished item is recorded in `docs/followups.md` with its state; medium and low
     review findings are recorded there; no HIGH finding is open.
 
