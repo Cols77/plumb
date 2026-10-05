@@ -2,6 +2,6 @@
 require_trailer: true
 # Extra exempt globs (the defaults .plumb/**, docs/**, .claude/**, uv.lock, .gitignore and
 # .gitattributes always apply).
-exempt: []
+exempt: [CLAUDE.md]   # written by plumb hooks install, like .claude/**
 # NC-backed baseline of undeclared paths; it may only shrink: [{commit, path, nc}]
 baseline: []
