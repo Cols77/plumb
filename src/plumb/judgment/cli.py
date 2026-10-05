@@ -67,8 +67,7 @@ def cmd_fidelity(argv: list[str]) -> int:
     backend = get_backend(core, hook=False)
     scored = None
     if backend.name not in ("heuristic", "disabled"):
-        scored = backend.fidelity(packet)
-        _log_scored(core, packet, scored)
+        scored = backend.fidelity(packet)  # a JEV score logs its own judgment event
     if args.as_json:
         data = dataclasses.asdict(packet)
         if scored is not None:
@@ -85,20 +84,6 @@ def cmd_fidelity(argv: list[str]) -> int:
                  f'--note "<one line>"')
     emit(lines, False)
     return 0
-
-
-def _log_scored(core: Any, packet: Any, scored: Any) -> None:
-    """A backend score of a packet is a ``judgment`` event with its fingerprint (spec 8.2)."""
-    from plumb.judgment.fidelity import end_hashes
-
-    if scored.verdict not in ("fits", "drifts", "unsure"):
-        return
-    record = core.index()[packet.requirement]
-    core.log_append("events", "judgment", {
-        "subject": packet.requirement, "action": "fidelity", "verdict": scored.verdict,
-        "confidence": scored.confidence, "tier": scored.tier, "backend": scored.backend,
-        "fingerprint": scored.fingerprint, "requirement_hash": record.hash,
-        "end_hashes": end_hashes(core, record), "note": "; ".join(scored.reasons)})
 
 
 def cmd_judge(argv: list[str]) -> int:
@@ -140,7 +125,7 @@ def judgment_status(core: Any) -> dict[str, Any]:
     except ImportError:
         out["jev"] = "not available in this build"
     else:
-        source = key_source()
+        source = key_source(core.root)
         out["jev_key"] = "present" if source else "absent"
         if source:
             out["jev_key_source"] = source

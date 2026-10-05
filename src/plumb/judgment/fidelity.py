@@ -115,7 +115,7 @@ def judge(core: Any, sr: str, verdict: str, note: str, *, backend: str = "host-a
 
 
 def latest_judgments(core: Any) -> dict[str, Mapping[str, Any]]:
-    """The latest fidelity judgment payload per requirement, in log order."""
+    """The latest accepted fidelity judgment payload per requirement, in log order."""
     events = core.events() if hasattr(core, "events") else core.log_read("events",
                                                                           ["judgment"])
     latest: dict[str, Mapping[str, Any]] = {}
@@ -123,7 +123,9 @@ def latest_judgments(core: Any) -> dict[str, Mapping[str, Any]]:
         if entry.kind != "judgment":
             continue
         payload = entry.payload
-        if payload.get("action") == "fidelity" and isinstance(payload.get("subject"), str):
+        # only an accepted judgment covers: the host agent's, or a backend's at tier accept
+        if (payload.get("action") == "fidelity" and isinstance(payload.get("subject"), str)
+                and payload.get("tier") == "accept"):
             latest[payload["subject"]] = payload
     return latest
 
