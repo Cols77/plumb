@@ -380,3 +380,34 @@ so.
   full run and in 5 isolated runs. The assertion detail was not captured. It is probably the
   2 s lock budget (`LogLockTimeout`) or a Windows lock-file race when 4 threads contend. If it
   recurs, capture the traceback and check `_Lock` timing.
+
+## SP1 dogfood bootstrap (2026-10-06)
+
+- [MEDIUM] (bootstrap, approvals) The coordinator asked for the owner decisions quoted in the
+  owner intent brief to be recorded as agent-relayed approvals, citing the brief's sha256
+  (`sha256:ecd163d535b42ea9248f062649598607646a0102544cea7c179ac0140fbfb4fd`) as the prompt
+  digest. The brief was logged as that prompt in `.plumb/session/prompts.jsonl` (gitignored;
+  the HOST prompt hook is not built, so it was written in the hook's shape by hand), and
+  `plumb relay` was tried for INT-004, INT-005, INT-006, INT-007, INT-008 and INT-009 with the
+  owner's verbatim words. plumb's guard refused every attempt with exit 3 and wrote nothing.
+  The reason: none of the owner's quoted words contains an affirmation term ("A / B", "C",
+  "A", "Keep list looks fine", "can be the way to go", "Would be nice to ..."). Even with an
+  affirmation, every record would still fail the stated-set check, because the records did not
+  exist when the owner spoke and the quotes do not name them. The guard was not bypassed: no
+  hand-written approval entries, no fabricated `stated.json`, and no affirmation terms added
+  to the config to make the quotes pass. This follows R2 ("A confirmation requires the
+  owner's explicit words"), the plan's rule that no agent writes an approval in sub-project 1,
+  and the concept's "the owner's own affirming words in a prompt". All 54 records stay
+  `proposed`. The owner can confirm them in one line (`plumb approve --proposed` in their own
+  terminal), and `plumb validate --merge 598b079` exits 4 listing them, which is the expected
+  morning question.
+- [LOW] (bootstrap) The plan's INT table stops at INT-012. INT-013 (decision 9: maintenance
+  mode and fork plan), INT-014 (decision 10: concept spec and plans) and INT-015 (decision 12:
+  the name plumb) were added so every owner decision has an intent record.
+- [LOW] (bootstrap) Links to test ends name whole test files (`verified_by` with `path`),
+  because `::` symbol and test-node ends are a SHOULD item (KS4) that is not built yet. SR-010
+  to SR-024 have no `implemented_by` or `verified_by` links until their lanes land on `main`.
+  SR-007 links only the CORE trailer parser (`src/plumb/trailers.py`, EX-1).
+- [LOW] (bootstrap) The records were written with plumb's own library (`Core.write_record`,
+  `Core.add_link`) because `plumb new` is not built. Every link was pinned when it was added,
+  so `plumb repin` had nothing to do.
