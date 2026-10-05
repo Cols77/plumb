@@ -1,0 +1,28 @@
+{
+  "records": {
+    "SR-003": "---\nid: SR-003\ntitle: Links pin both ends\nstatement: Every link records the content hash of both of its ends, and plumb reports the link as stale when either end's current hash differs from its pin.\nexamples:\n- id: EX-1\n  given: a link whose pins are current\n  when: the test function body changes\n  then: plumb drift reports the link stale and names the target end\n---\n",
+    "SR-004": "---\nid: SR-004\ntitle: Approvals pin exact content\nstatement: An approval pins the record hash; an edit after the approval leaves the record unconfirmed until the owner approves again.\nexamples:\n- id: EX-1\n  given: an approved requirement\n  when: its statement is edited\n  then: the requirement is an unconfirmed edit\n---\n"
+  },
+  "prompts": [
+    {"text": "SR-004 should now keep approvals valid after small edits", "change": ["SR-004"]},
+    {"text": "Instead of pinning both ends, links should only pin the target (SR-003)", "change": ["SR-003"]},
+    {"text": "Stop reporting a link as stale when only the source end moves", "change": ["SR-003"]},
+    {"text": "Approvals should no longer be invalidated by an edit of the statement", "change": ["SR-004"]},
+    {"text": "Remove the hash pin from links entirely, stale links are noise", "change": ["SR-003"]},
+    {"text": "Don't leave an approved record unconfirmed after an edit; keep the approval", "change": ["SR-004"]},
+    {"text": "Rename SR-003 to 'Links pin their target' and drop the source pin", "change": ["SR-003"]},
+    {"text": "Replace the record hash in approvals with a version counter", "change": ["SR-004"]},
+    {"text": "SR-003 also needs to pin the line numbers of each end", "change": ["SR-003"]},
+    {"text": "Change approvals so the agent can approve records itself", "change": ["SR-004"]},
+    {"text": "Implement SR-003 in links.py with tests", "change": []},
+    {"text": "Add tests for SR-004 covering EX-1", "change": []},
+    {"text": "Fix the typo in the README", "change": []},
+    {"text": "Why is the link from SR-003 to tests/test_links.py stale?", "change": []},
+    {"text": "Run the test suite and tell me what fails", "change": []},
+    {"text": "Also update the changelog for the release", "change": []},
+    {"text": "Remove the debug print in the CLI dispatcher", "change": []},
+    {"text": "Instead of argparse, should the CLI use click? Just asking, no change yet", "change": []},
+    {"text": "Show me the approval events for SR-004", "change": []},
+    {"text": "Replace tabs with spaces in the YAML templates", "change": []}
+  ]
+}

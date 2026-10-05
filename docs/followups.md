@@ -598,3 +598,113 @@ always produced from the results already computed.
   a cold cache the host can see about 2.3 s for one hook before the watchdog fires. Measured
   on the lane tree without VERIFY: session-start 794 ms, prompt 762 ms, stop 852-1018 ms,
   statusline 419 ms end to end. Partly recorded above under the latency item.
+
+## SP1 lane BRIDGE (2026-10-06)
+
+Built: B1 to B4 (MUST) and BS1 to BS4 (SHOULD); nothing of the lane is left unbuilt.
+
+- [MEDIUM] (BS4) Intent-change heuristic on the 20 labelled prompts of
+  `tests/bridge/fixtures/intent_prompts.json`: precision 1.0, recall 0.5 (tp 5, fp 0, fn 5).
+  Every miss is a prompt that changes a requirement without naming its ID and whose term
+  overlap stays under the prompt hook's strong-match threshold (1.0). The threshold was not
+  tuned to the fixture; the prompt hook's "compare with the confirmed examples" line is the
+  designed backstop for these (spec 6.2 step 3). Measure on real prompts from
+  `.plumb/session/intent_flags.jsonl` before changing the threshold.
+- [MEDIUM] (B1) With `require_trailer: true`, git's default messages for `git revert`,
+  `git merge` and `git commit --fixup` carry no `SR:` trailer and are rejected; the author
+  must add one (or use `--no-verify`, which bypasses the hook by design). A later revision
+  could exempt messages whose changed paths are all exempt, as pi-agent-factory's
+  `check_commit` does; the spec (5.9) does not ask for it, so it was not built.
+- [MEDIUM] (B2, BS3) "One notice per session" is kept as one notice per 12-hour window in the
+  gitignored `.plumb/session/judgment_notices.json`, because `get_backend` receives no
+  session ID. The notices are exposed as `backend.notices` and printed by `plumb fidelity` and
+  `plumb judgment status`; the prompt hook does not print them.
+- [MEDIUM] (BS3) The JEV backend logs every judgment as a committed `judgment` event, as spec
+  8.2 asks, so a JEV-enabled prompt hook appends to `events.jsonl` on each flagged turn. Not
+  measured against the hook budget on the live service (the tests use a local stub).
+- [LOW] (B3) A fidelity judgment covers a requirement only at tier `accept` (the host agent's
+  `plumb judge`, or a JEV score accepted at a validated version); an escalated JEV score is
+  logged but leaves the requirement `unjudged`, so the host agent still judges it.
+- [LOW] (BS2) Symbol ends of pi-agent-factory bindings (`path` + `symbol`) are linked as whole
+  files and reported as `symbol-narrowed` findings, because symbol hashing (CORE KS4) is not
+  on `main`; relinking them to symbols is a follow-up once KS4 lands. A dry run of
+  `C:/coding/pi-agent-factory` (HEAD 341e2a08) reads 85 SR, 24 FEAT and 22 NC records with
+  958 findings (789 missing ends, 148 narrowed symbols, 8 skipped non-SR relations, 7
+  verified legacy checksums, 6 membership differences); a real import into a scratch
+  repository validates with no errors.
+- [LOW] (B4) `plumb claims check` skips merge commits (`--no-merges`) and lists commits
+  without a trailer that change non-exempt paths as `no SR: trailer`, without failing on them;
+  the exit code reflects undeclared paths only.
+- [LOW] (lane) The B1 and B4 code was written in one module before its tests were run red;
+  later items (B2, B3, BS1 to BS3) were run red first. BS4 measures existing code.
+
+## BRIDGE lane review (2026-10-06)
+
+The review raised no HIGH findings. Some entries below repeat each other (the claims baseline
+and the JEV hook timeout were each raised twice, at different severities); both are kept so
+each finding can be traced.
+
+- [MEDIUM] (bridge review, src/plumb/judgment/fidelity.py) `unjudged()` and `fidelity_state()`
+  report every requirement with `implemented_by`/`verified_by` ends and no judgment at all as
+  `unjudged`, whereas spec 8.3 defines unjudged as "an end changed and no judgment covers the
+  current hashes". Scoped callers (`merge.py` passes the touched IDs) are fine, but an unscoped
+  caller (`ids=None`, for example a status snapshot's `fidelity_unjudged`) lists every
+  never-judged linked requirement, against the owner's "advisory fidelity judging, scoped to
+  changed requirements". Scenario: 20 linked, confirmed requirements and no judgment events;
+  `unjudged(core)` returns all 20 although no end changed since linking, so a status line or
+  summary using `ids=None` shows 20 "fidelity unjudged" drift signals.
+- [MEDIUM] (bridge review, src/plumb/claims.py) Spec 5.9 says the NC-backed baseline in
+  `claims.yaml` "may only shrink", but `load_policy`/`claims_check` never enforce it, so a
+  commit can add baseline entries that silently waive undeclared paths. Scenario: an agent adds
+  `baseline: [{commit: <sha>, path: src/x.py, nc: NC-0001}]` to `.plumb/claims.yaml` in the same
+  range; `claims check` reports `src/x.py` under "baseline" and exits 0, and nothing flags that
+  the baseline grew.
+- [LOW] (bridge review, src/plumb/judgment/jev.py) The hook timeout
+  (`judgment.hook_timeout_ms`, 800 ms) is passed to `urllib.urlopen`, which bounds connect and
+  read but not `getaddrinfo`; each hook is also a new process, so the in-process `_down` flag
+  does not stop the next turn from retrying. With a key set and DNS stalling, a prompt hook can
+  exceed the 2 s per-turn budget on every turn. Scenario: `backend: jev`, `TYPESAFE_API_KEY`
+  set, offline laptop with a slow resolver; each prompt hook blocks for the DNS timeout (often
+  several seconds) before falling back to the heuristic, and the notice is printed only once per
+  12 h window, so the slowdown is silent.
+- [LOW] (bridge review, src/plumb/judgment/tiers.py) `route()` skips the version-drift check
+  when `validated_against` is None, so if a config drops `judgment.jev.validated_against`, JEV
+  answers can reach `accept` with no validated version, whereas spec 8.2 suspends accept
+  whenever the resolved version differs from the validated one. Scenario: `config.yaml` sets
+  `judgment.jev` without `validated_against`; JEV returns confidence 0.95 from an unvalidated
+  model version; the judgment is tier `accept` and its fidelity verdict covers the requirement in
+  `latest_judgments`.
+- [MEDIUM] (bridge review, src/plumb/importer/pi_factory.py) An imported ID that collides with
+  an existing one is skipped as spec 8.1 says, but links, feature membership and the `feature:`
+  field of the other imported records still point at that ID, so they attach to an unrelated
+  local record. Scenario: importing pi-agent-factory into a repository that has its own
+  SR-001..SR-025 and FEAT-001 (plumb itself); source FEAT-001 is skipped as a collision, but its
+  imported SRs get `feature: FEAT-001` (plumb's own), `upstream` and `relates_to` links to SR-005
+  are pinned to plumb's SR-005, and imported features list local SRs as members; validate
+  reports no error. Fix: drop or report links and membership whose end is a colliding ID.
+- [MEDIUM] (bridge review, src/plumb/importer/pi_factory.py) An imported feature's
+  `requirements` field is the union of the feature file and the bundle, with no filter for SRs
+  that exist in the target, so `--only FEAT`, or a source SR skipped as malformed or colliding,
+  leaves `plumb validate` errors ("requirement X does not exist"). Scenario:
+  `plumb import pi-agent-factory <src> --only FEAT` writes FEAT records naming SR-0xx that were
+  not imported; `plumb validate` then exits 1 with feature errors in a repository that was clean
+  before the import.
+- [MEDIUM] (bridge review, src/plumb/judgment/jev.py) The 800 ms hook timeout is only urllib's
+  per-socket timeout: DNS resolution and a slowly trickled response are not bounded, and `_down`
+  lasts only for the current process, so every prompt-hook process tries JEV again and pays the
+  timeout each turn while the service is down; the notice is still shown only once. Scenario:
+  `judgment.backend: jev`, a key present and a degraded network (slow DNS, or a server that sends
+  bytes slowly); each UserPromptSubmit hook can block for 800 ms to several seconds per turn,
+  exceeding the per-turn latency goal and the 600 ms prompt budget on every turn. Fix: a
+  persisted short circuit-breaker in `.plumb/session`, and/or running the call under a
+  wall-clock deadline in a thread.
+- [LOW] (bridge review, src/plumb/claims.py) `claims.yaml` baseline entries are loaded and used,
+  but nothing enforces spec 5.9's "may only shrink": there is no comparison against the
+  baseline at the merge base. Scenario: an agent adds a new baseline entry `{commit, path, nc}`
+  to silence an undeclared path; `plumb claims check` passes and nothing flags that the
+  baseline grew.
+- [LOW] (bridge review, src/plumb/judgment/fidelity.py) `unjudged` (called by HOST's stop hook
+  every turn) re-reads and scans the whole events log for judgment entries on every call, so its
+  cost grows with the log. Scenario: after months of use `events.jsonl` holds many thousands of
+  entries and every Stop hook scans all of them to compute `fidelity_unjudged`, slowly eating
+  into the 800 ms stop budget. Fix: an offset-indexed cache of the latest judgment per subject.
