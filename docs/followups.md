@@ -796,3 +796,26 @@ Design choices and open items:
   - 89f17dfb9528 src/plumb/hosts/claude_code/providers.py (claims SR-009)
   - 9530f19ed380 tests/verify/verify_helpers.py (claims SR-016)
   - 2277cc573c31 tests/host/fakes.py (claims SR-014, SR-011)
+
+## Fork plan (2026-10-06, docs/fork-plan.md)
+
+The draft `docs/plans/fork-plan.md` moved to `docs/fork-plan.md` (the path the SP1 spec and
+plan name) and was completed with the extraction status, the remaining extraction
+candidates, importer usage, the FEAT-022 and FEAT-023 task mapping and the risks. concept 10
+and INT-013 W-1 now name the new path; the historical entries above keep the old one.
+
+Measured on an exported copy of pi-agent-factory `main` 341e2a08 (`git archive`, read-only on
+the source; 85 SR, 24 FEAT, 22 NC, 550 links):
+- [MEDIUM] (fork plan K3; KS1) `plumb status` and `plumb brief` take about 5.9 s warm at that
+  scale (`validate` 1.2 s, `drift` 1.6 s), over the 2 s hook budget. The KS1 index and hash
+  caches, and a hook benchmark on that copy, are prerequisites of the F4 switch.
+- [MEDIUM] (fork plan K4; importer) A real import into the copy takes 2 min 14 s, while the
+  dry run into an empty target takes about 1 s; not profiled (likely the writes and the
+  pinning of about 550 links).
+  Acceptable for a one-off command; profile it in sub-project 5 (pin in one pass).
+- [LOW] (importer) 50 `missing-end` findings remain in the copy: `verified_by` tests that
+  pi-agent-factory requirements name before they are written (SR-077, SR-078, SR-091 and
+  others). They are real gaps upstream, reported correctly.
+- [LOW] (importer) 8 `relation-skipped` findings are `relates_to spec:SPEC-*` relations;
+  sub-project 5 decides whether they become `relates_to` path links (fork plan F3, owner
+  decision 4).
