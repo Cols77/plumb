@@ -75,3 +75,45 @@ entries above keep the old name.
 - [MEDIUM] (intent review 3, concept 6.2 step 3) Intent-change detection needs both term overlap with a confirmed record and a change word, so a contradicting or extending request phrased without those words ("make the summary ten lines" when a confirmed SR says five) is not flagged, and the agent is not told to compare the request with the injected records. Fix: whenever relevant confirmed records are injected (step 2), add a one-line instruction to compare the request with them regardless of change words; keep the change-word heuristic only to raise priority; note the false-negative risk and a measurement plan here.
 - [LOW] (intent review 3, concept 6.1, 6.2) The session brief and per-prompt context do not say that records superseded through `supersedes` links are excluded, so superseded intents or decisions could be injected as current intent. Fix: state that the brief and prompt context include only non-superseded records, reachable otherwise only through `plumb log` / `plumb status`.
 - [LOW] (intent review 3, concept 4.2 DEC `matters`, 6.6 trigger 2) The agent sets `matters` on its own DEC records and can keep a decision out of trigger 2 by marking it `matters: false`, with no check or visibility. Fix: list new `matters: false` decisions in the end-of-turn summary (for example "assumed: DEC-003 (minor)") so the owner can see and promote them without being interrupted.
+
+## Owner-proxy rulings R1-R7 integrated (2026-10-05, docs/concept.md)
+
+The brief's binding rulings were applied to the concept spec. No `[HIGH]` entry was open in
+this file. The rulings settle these recorded entries, which need no further action:
+
+- R1 (non-blocking read-back and examples; trigger 2 at the merge boundary, for an escalated
+  spec or on a contradiction; every touched requirement confirmed at merge): settles the
+  trigger-1 backstop entries (round 2 "Any hash change to a confirmed record", round 2
+  "The backstop turns the agent's own edit", round 3 "The deterministic backstop asks the
+  owner"). An unrequested edit of a confirmed record is now an "unconfirmed edit" drift signal
+  that the merge boundary asks about (concept 6.6, 7.5). Also settles the round-2 LOW
+  "Only a decision with `matters: true` can block work" (sentence removed; concept 3, 4.2,
+  6.6) and part of the round-2 LOW on what sub-project 1 guarantees (`plumb check --merge`
+  is now 1a item 4).
+- R2 (`agent-relayed` approvals with quote and prompt digest; no no-objection approval;
+  merge-boundary glance list; honest trust model): confirms the round-2 and round-3
+  no-objection resolutions. The log is now hash-chained (`prev` digests) and the trust model
+  says tamper-evident, not tamper-proof (concept 3, 4.6, 4.7).
+- R3 (regression = previously passed with recorded evidence): confirms the round-1 red-step
+  resolution (concept 6.6 trigger 3).
+- R4 (`plumb fidelity <SR>` packets for the host agent, on demand or listed at merge,
+  advisory; JEV only accelerates): settles the round-3 MEDIUM "The stop hook hands the agent
+  extra work every coding turn" (the per-turn fidelity request is gone) and refines the
+  round-1 and round-2 no-JEV fidelity entries (concept 6.4, 8, 7.5). It also partly answers
+  the round-3 MEDIUM on unjudged repins: a repinned code or test end shows as
+  `fidelity unjudged` until judged; a distinct "repinned" summary line remains open.
+- R5 (`full verification pending`, bounded sample on unknown coverage): renames the round-3
+  "full rerun due at merge" state and adds the unknown-coverage sample (concept 7.2, 7.4).
+- R6: the decision table rows D10 and D11 now carry "owner does not review; agents verify"
+  and "implementation available by tomorrow morning (9 hours)" (concept 1, 11).
+
+Still open after the rulings (unchanged severity): append-only test evidence before
+sub-project 3, change-language heuristic precision, bootstrap INT/DEC records for plumb's
+own SRs, prompt-digest commit policy and noise, escalation hint in 1a, per-turn total hook
+budget, importer dry-run, the fork and dogfooding plan documents, superseded records in
+context, `matters: false` visibility.
+
+- [LOW] (rulings integration, concept 4.7) The log head pointer lives in the gitignored cache,
+  so two concurrent sessions can write entries with the same `prev`; `plumb check` accepts
+  such forks like branch merges, which weakens ordering evidence slightly. Fix if needed: take
+  a short file lock on the head pointer when appending.
