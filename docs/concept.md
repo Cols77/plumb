@@ -78,7 +78,10 @@ only when the answer really changes what gets built.
 3. **Cheap checks every turn, heavy guarantees only at merge boundaries.** Per-turn hooks are
    deterministic, read files plumb already knows, and finish well under 2 seconds (target:
    p95 under 500 ms). The full test suite, claims audit and log-integrity audit run only when
-   work merges.
+   work merges. No per-turn path ever selects or requests the full suite: the tests the agent
+   is asked to run in a turn are a targeted set, capped by a time budget of seconds
+   (section 7.2), and anything that needs a full rerun is marked as due at the merge boundary
+   instead.
 4. **Inspectable artifacts.** All committed state is Markdown with YAML frontmatter, or JSON, in
    git. Caches and session state are plain JSON too, are gitignored, and can be deleted at any
    time without losing information. Nothing hides in a database or a service.
@@ -158,7 +161,10 @@ is exactly the drift signal the approval pin is there to catch.
 Requirement states are derived and never stored:
 
 - **proposed:** no approval pins the current hash;
-- **confirmed:** an approval pins the current hash;
+- **confirmed:** an approval pins the current hash. Only an owner act creates such an
+  approval: `plumb approve` in the owner's terminal, or the owner's own affirming words in a
+  prompt, recorded and quote-checked (section 4.6). A prompt that merely does not object never
+  confirms anything;
 - **covered:** confirmed, and every example has at least one `verified_by` link to an
   existing test;
 - **verified:** covered, and every covering test has passing evidence for its current
@@ -166,8 +172,12 @@ Requirement states are derived and never stored:
 - **stale:** an approval or link pin no longer matches.
 
 Work never waits for a record to leave the proposed state. The agent builds on proposed
-records; the end-of-turn summary and the status line show how many records are still awaiting
-confirmation, and the passive confirmation path (section 6.6) moves them to confirmed.
+records; the end-of-turn summary, the status line and the session brief show how many records
+are still awaiting confirmation. They move to confirmed only when the owner affirms them, in
+conversation or by command (the in-flow confirmation path, section 6.6). Records the owner
+never affirmed stay proposed, however long work goes on around them. The interruption triggers
+that protect confirmed intent (section 6.6: trigger 1, and the confirmed-example part of
+trigger 3) therefore rest only on intent the owner actually affirmed.
 
 ### 4.3 IDs
 
@@ -234,15 +244,17 @@ two sources:
   record still proposed (the batch form; it lists the records and their hashes in the entry),
   in the owner's own terminal, outside any agent session (see the guard below). Such an entry
   is marked `by: owner`;
-- the agent recording a confirmation the owner gave in conversation, with
-  `plumb approve SR-004 --prompt <digest> --quote "<owner's words>" --basis explicit`. Such
-  an entry is marked `by: agent-for-owner` and carries the owner's words verbatim plus the
-  digest of the prompt that contained them. It also records its `basis`: `explicit` (the
-  owner affirmed, for example "ok", "yes", or "approve all proposed") or `no-objection` (the
-  owner's next prompt did not object to a statement shown in the previous reply; section 6.6).
+- the agent recording an explicit confirmation the owner gave in conversation, with
+  `plumb approve SR-004 --prompt <digest> --quote "<owner's words>"`. Such an entry is marked
+  `by: agent-for-owner` and carries the owner's affirming words verbatim plus the digest of
+  the prompt that contained them. The quote must itself affirm (for example "ok", "yes",
+  "approve", "go ahead"); see check 3 below.
 
-Silence never counts as confirmation: an `agent-for-owner` entry always cites a real owner
-prompt by digest, and with no owner prompt there is no approval.
+Neither silence nor the absence of an objection counts as confirmation. There is no
+"no-objection" approval: a prompt that does not object to a stated record, or that is about
+something else, leaves the record proposed. An `agent-for-owner` entry always cites a real
+owner prompt by digest and quotes the owner's own affirming words, and with no such words
+there is no approval.
 
 **Prompt-digest log.** On every owner prompt, the prompt hook appends a committed log entry
 under `.plumb/log/prompt/` holding only `{digest, session, at}`: the `sha256` of the prompt
@@ -266,19 +278,26 @@ with three cheap, deterministic checks, none of which calls a model:
 3. **Write-time quote check.** `plumb approve --prompt <digest>` checks, before writing
    anything, that the digest exists in the prompt-digest log, that the prompt text held in
    session state hashes to that digest, and that the quote is a verbatim substring of that
-   text (after the body normalization of section 4.4). An approval that fails any check is
-   rejected with a non-zero exit and is not stored. The stored entry records the prompt
-   digest, the quote, and the digest of the quote, so the result of the check stays
-   inspectable after the session state is deleted.
+   text (after the body normalization of section 4.4). It then checks that the quote
+   affirms: it must contain, as a whole word or phrase, one of the configured affirmation
+   terms (`approve.affirmations` in `config.yaml`; default ok, okay, yes, approve, approved,
+   confirm, confirmed, agreed, lgtm, go ahead, sounds good). Finally it checks the targets:
+   each approved record must have been stated in the agent reply just before that prompt
+   (the stated set, section 6.6) or be named by ID in the quote, so an "ok" about one thing
+   cannot approve unrelated records. An approval that fails any check is rejected with a
+   non-zero exit and is not stored. The stored entry records the prompt digest, the quote,
+   the digest of the quote, the matched affirmation term and the stated set, so the result
+   of the check stays inspectable after the session state is deleted.
 
 `plumb check` re-checks every committed approval: each `agent-for-owner` entry must cite a
-prompt digest present in the prompt-digest log and recorded before the approval. Every
+prompt digest present in the prompt-digest log and recorded before the approval, and its
+stored quote must contain an affirmation term and match its stored quote digest. Every
 approval entry also records the session marker in force when it was written (or `none`), and
 a `by: owner` entry written under a marker is reported as an error. The guard does not make
 the agent's shell a sandbox: an agent determined to bypass it can still do so. What it does is
 make self-approval impossible by accident, refuse it on the normal path, and leave any bypass
 visible in git history and in `plumb check`. The owner, inside an agent session, confirms by
-saying so in a prompt (the passive path of section 6.6); in their own terminal, they use
+saying so in a prompt (the in-flow path of section 6.6); in their own terminal, they use
 `plumb approve`.
 
 An escalated plan (section 5.2) is approved as a set: one approval pins a set hash over the
@@ -314,13 +333,13 @@ be checked:
    reply: what will be done, what will not be done, and every assumption, labelled as an
    assumption. The read-back is a statement, not a question ("Building X, not Y; assuming Z.
    Say so if wrong."), and the agent goes on working. It is recorded at once as a proposed
-   `INT` record with the owner's quote beside it, and becomes confirmed through the passive
-   confirmation path (section 6.6).
+   `INT` record with the owner's quote beside it, and becomes confirmed only when the owner
+   affirms it (the in-flow confirmation path, section 6.6).
 2. **Requirements anchored in confirmed examples.** Each requirement carries concrete
    given/when/then examples, including edge cases. The agent states the examples in the same
-   non-blocking way, records them as a proposed `SR`, and the owner confirms them through the
-   passive confirmation path. Each example becomes an acceptance test linked by
-   `verified_by`.
+   non-blocking way and records them as a proposed `SR`; they become confirmed only when the
+   owner affirms them, in conversation or by command. Each example becomes an acceptance test
+   linked by `verified_by`.
 3. **Ambiguity as explicit decisions.** When two readings fit, the agent writes a `DEC`
    ("I assumed A; B also fits") instead of choosing silently.
 4. **Traceable links.** Intent to requirement to examples and tests to code, each link pinned
@@ -329,17 +348,19 @@ be checked:
    covering tests show up on the next turn, not at release time.
 
 In this document, "the owner confirms" never means a blocking question. Confirmation always
-rests on something the owner did (a command, or a prompt sent after the statement was shown),
-never on silence, and it never interrupts the owner. Only the three triggers of section 6.6
-can make the agent stop and ask.
+rests on an affirmation the owner made (a command, or the owner's own affirming words in a
+prompt sent after the statement was shown), never on silence or on a prompt that merely does
+not object, and it never interrupts the owner. Only the three triggers of section 6.6 can make
+the agent stop and ask.
 
 ### 5.2 Incremental and escalated planning
 
 **Incremental mode is the default.** Intent is captured as work happens: a read-back, one or
 a few requirements with examples, and decisions as they arise. Each piece is stated in the
 agent's reply, recorded as proposed, and the agent proceeds on it without waiting. The owner
-confirms it in the flow of conversation through the passive confirmation path (section 6.6),
-never by answering a blocking question. No spec document is required.
+confirms it by affirming it in the flow of conversation or by command (the in-flow
+confirmation path, section 6.6), never by answering a blocking question. No spec document is
+required.
 
 **Escalated mode** is for large, risky or cross-cutting work. Before code is written, the agent
 drafts the full set of intents, requirements, examples and decisions, plus a short Markdown
@@ -423,14 +444,19 @@ then:
 ```
 plumb: touched SR-004, SR-007 | stale: SR-007 -> src/plumb/links.py:repin (code end)
 plumb: covering tests 6 selected: 4 fresh pass, 1 not yet passing, 1 not yet run
+plumb: full rerun due at merge (tests/conftest.py changed) | 3 tests deferred (budget)
 plumb: proposed 2 (SR-009, INT-004) | confirmed SR-004 on your prompt "ok, go on"
 plumb: questions: none
 ```
 
 If the turn changed code whose covering tests have no fresh evidence, the hook asks the
-*agent* (not the owner) once per turn to run `plumb verify`, which runs exactly those tests
-and records evidence. Test execution belongs to the agent's turn and never to the hook's
-latency budget.
+*agent* (not the owner) once per turn to run `plumb verify`, which runs the per-turn
+selection of section 7.2 (targeted tests only, within the per-turn time budget) and records
+evidence. Test execution belongs to the agent's turn and never to the hook's latency budget,
+and the request never names the full suite. When the turn changed shared test
+infrastructure, the hook does not ask for a full run: it reports "full rerun due at merge"
+in the summary and the status line (section 7.2), and the full rerun happens at the merge
+boundary (section 7.5).
 
 **Fidelity request (default, no JEV needed).** In the same single request, for each
 requirement whose `implemented_by` or `verified_by` ends changed this turn, the hook asks the
@@ -450,7 +476,9 @@ but is not needed for it.
 ### 6.5 Status line
 
 `plumb status --line` reads `session/status.json` and recomputes nothing. It prints one
-plain-ASCII line, for example `plumb | SR 12/14 ok | proposed 2 | stale 1 | tests ok | ask 0`.
+plain-ASCII line, for example
+`plumb | SR 12/14 ok | proposed 2 | stale 1 | tests ok | full@merge | ask 0`. The `full@merge`
+field appears only while a full rerun is due (section 7.2).
 
 ### 6.6 Interruption triggers (exhaustive)
 
@@ -472,28 +500,35 @@ The agent asks in its reply, with a read-back. Nothing else interrupts. Stale li
 records, not-yet-passing tests, escalation suggestions and skipped checks are logged and shown
 in the summary, the status line, and `plumb status` / `plumb log`.
 
-**Passive confirmation path.** New read-backs and examples are confirmed without a question:
+**In-flow confirmation path.** New read-backs and examples are confirmed without a question,
+but only by the owner's own affirmation:
 
 1. The agent states the read-back and the proposed examples in its reply as a non-blocking
    statement ("Building X, not Y; assuming Z. Examples: EX-1 ..., EX-2 .... Say so if
-   wrong.") and proceeds. The records are written as proposed and marked as stated in this
-   turn in session state.
-2. On the owner's next prompt, the prompt hook lists the records stated in the previous reply
-   that are still proposed. The agent reads the prompt:
-   - an explicit affirmation ("ok", "yes", "approve all proposed") is recorded as an
-     `agent-for-owner` approval with `basis: explicit`, the owner's words and the prompt
-     digest, through `plumb approve --prompt <digest> --quote "..."`, which checks the quote
-     against the logged prompt before writing (section 4.6);
-   - a prompt that does not object is recorded the same way with `basis: no-objection`;
+   wrong.") and proceeds. The records are written as proposed. The stop hook records the
+   **stated set** in session state: every proposed record created or edited during the turn.
+   This is deterministic; no model decides it.
+2. On the owner's next prompt, the prompt hook lists the records of the stated set that are
+   still proposed. The agent reads the prompt:
+   - an explicit affirmation ("ok", "yes", "approve") is recorded as an `agent-for-owner`
+     approval with the owner's affirming words and the prompt digest, through
+     `plumb approve --prompt <digest> --quote "..."`. Before writing, plumb checks that the
+     quote is verbatim in the logged prompt, that it contains an affirmation term, and that
+     every approved record is in the stated set or named by ID in the quote (section 4.6);
+   - a prompt that neither affirms nor objects (for example one that moves on to other work)
+     confirms nothing: the records stay proposed, and nothing is recorded;
    - an objection is not an approval: the agent revises the records, states them again, and
      asks only if the objection also meets one of the three triggers above.
 3. Each approval made this way appears as one line in the end-of-turn summary (for example
    `plumb: confirmed SR-004 on your prompt "ok, go on"`), so the owner sees it and can revoke
    it, by saying so or with `plumb revoke SR-004` (a new log entry), without being
    interrupted.
-4. Records stated in a reply that the owner never answered stay proposed: silence is not
-   confirmation. The owner can confirm them at any time with `plumb approve SR-004` or
-   `plumb approve --proposed`.
+4. Records the owner never affirmed stay proposed: neither silence nor a prompt that does not
+   object is confirmation. They keep being counted as proposed in the summary, the status
+   line and the session brief, and the owner can confirm them at any time with
+   `plumb approve SR-004` or `plumb approve --proposed`. A proposed record does not unlock
+   the covered or verified states, does not feed trigger 1, and does not make its examples
+   "confirmed examples" for trigger 3.
 
 Only a decision with `matters: true` can block work, and only through trigger 2.
 
@@ -523,10 +558,33 @@ The covering tests for a set of changed files are the union of:
 - tests linked by `verified_by` to requirements whose `implemented_by` ends changed;
 - tests that mention a changed path literally.
 
-Documentation-only changes select nothing. A change to shared test infrastructure selects
-the full suite. The default infrastructure globs are `**/conftest.py`, plumb's pytest plugin,
-`pyproject.toml`, `pytest.ini`, `tox.ini`, `setup.cfg` and `uv.lock`, and they are
-configurable.
+Documentation-only changes select nothing.
+
+**Per-turn selection never includes the full suite.** Two rules keep the tests run inside a
+turn to seconds:
+
+- **Shared test infrastructure marks a full rerun as due; it does not select it.** The
+  default infrastructure globs are `**/conftest.py`, plumb's pytest plugin, `pyproject.toml`,
+  `pytest.ini`, `tox.ini`, `setup.cfg` and `uv.lock`, and they are configurable. A change to
+  one of them adds nothing extra to the per-turn selection. Instead plumb reports
+  **full rerun due at merge**. The state is derived, not stored: it holds while the current
+  hashes of the infrastructure files differ from the hashes recorded with the latest
+  full-suite evidence, or when no full-suite evidence exists. It is shown in the end-of-turn
+  summary (in the turn it first appears) and in the status line (while it holds), and it is
+  cleared only by a full-suite run at the merge boundary (section 7.5). Until then, the
+  per-turn evidence for the affected tests is reported as resting on changed infrastructure,
+  never as verified for the merge.
+- **A per-turn time budget caps the selection.** `plumb verify` in a turn runs the selected
+  tests in priority order (tests linked by `verified_by` to the changed requirements, then
+  tests that mention a changed path literally, then import-closure tests, nearest importers
+  first) until their expected duration reaches the budget: `verify.turn_budget_s`, 30 s by
+  default, configurable. Expected durations come from earlier evidence; a test with no
+  recorded duration counts as 1 s. pytest runs with a hard wall-clock limit of twice the
+  budget. Selected tests left out are reported as "deferred (budget)": they are not run, keep
+  their previous evidence state, and are run at the merge boundary.
+
+`plumb verify --full` runs the whole suite. It belongs to the merge boundary or to an
+explicit request by the owner; no hook ever asks for it.
 
 ### 7.3 Identity-pinned evidence
 
@@ -548,21 +606,27 @@ key differed.
 
 ### 7.4 Failure policy
 
-This is the owner's rule, carried over from pi-agent-factory:
+This is the owner's rule, carried over from pi-agent-factory. It governs reruns after a
+failure; it never moves a full run into a turn:
 
 - **Flaky rerun on the same tree.** When a test fails and then passes on a rerun with an
   identical tree and environment, it counts as a pass and is recorded as flaky with both
-  attempts.
-- **Owner-waiver targeted rerun.** An owner waiver lets a targeted rerun stand in for a full
-  rerun. The waiver is an immutable log entry pinned to the diff digest it covers.
-- **Full rerun only for shared test infrastructure.** A change to shared test infrastructure
-  requires a full rerun. Any other change requires only the covering tests.
+  attempts. Within a turn this reruns only the failed tests.
+- **Owner-waiver targeted rerun.** At the merge boundary, an owner waiver lets a targeted
+  rerun stand in for a full rerun. The waiver is an immutable log entry pinned to the diff
+  digest it covers.
+- **Full rerun only for shared test infrastructure, and only at the merge boundary.** A
+  change to shared test infrastructure makes a full rerun due (section 7.2). Within a turn
+  it is reported, never run. At the merge boundary it is required unless an owner waiver
+  covers it. Any other change requires only the covering tests.
 
 ### 7.5 Merge-boundary verification (later)
 
 At a merge boundary (sub-project 3), plumb runs the full suite, `plumb check` (no dangling
 links, no duplicate IDs, no unconfirmed edits of confirmed records), the claims check, and the
-log-integrity check. It then promotes the resulting evidence into the committed log. This is
+log-integrity check. It then promotes the resulting evidence into the committed log. A
+passing full-suite run records the hashes of the shared test infrastructure, which clears
+"full rerun due" (section 7.2), and runs every test deferred by the per-turn budget. This is
 the only place where heavy guarantees are paid for.
 
 ## 8. Optional judgment backend (JEV) and the heuristic default
@@ -613,7 +677,8 @@ Code comes first**: `plumb install claude-code` writes four things.
 - **The status line command**.
 - **A short `plumb` skill** of about 20 lines. It explains how to state a read-back and
   examples as non-blocking statements, how to record them and decisions, how to record an
-  owner's confirmation (section 6.6), and when to run `plumb verify`.
+  owner's explicit confirmation with the owner's affirming words (and that a prompt that does
+  not object is not a confirmation, section 6.6), and when to run `plumb verify`.
 - **A short CLAUDE.md block** naming `.plumb/` and `plumb map`.
 
 It also installs the `commit-msg` hook for `SR:` trailers. Later adapters (Codex, Pi, Hermes,
@@ -648,8 +713,10 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
   - `.factory/trace-claims.yaml` becomes `.plumb/claims.yaml`;
   - the `commits[]` of `evidence/runs/ingest-*.json` become the claims checkpoint.
 
-  The register was owner-approved upstream, so imported records receive approvals marked
-  `by: import`.
+  An imported record is confirmed only when the owner confirmed it upstream: a record that
+  carries an upstream owner approval or consent pinning its current content receives an
+  approval marked `by: import` that cites that upstream entry. Every other imported record
+  arrives as proposed. Importing never manufactures a confirmation the owner did not give.
 - **Maintenance mode.** Once the current integration batch lands, pi-agent-factory takes
   fixes only, and new feature work moves to plumb. The fork plan (a separate document)
   sequences the extraction, the import and the switch.
@@ -672,18 +739,22 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
       the commit-msg hook that checks it. From this step on, plumb's commits carry `SR:`
       trailers;
    4. the session-start, prompt, edit-tracking and stop hooks, the guard hook, the status line,
-      the passive confirmation path, and `plumb install claude-code`. Each hook is installed
-      in plumb's own repository as soon as it lands;
+      the in-flow confirmation path (explicit affirmations only), and
+      `plumb install claude-code`. Each hook is installed in plumb's own repository as soon
+      as it lands;
    5. `plumb map` (`verified_by` links, `sr` markers and the AST import closure), covering-test
-      selection, and `plumb verify` with evidence keyed by `node_id`, `closure_digest` and the
-      cheap `env_key` only.
+      selection with the per-turn time budget and the derived "full rerun due at merge" state
+      (an infrastructure change never selects the full suite in a turn, section 7.2), and
+      `plumb verify` with evidence keyed by `node_id`, `closure_digest` and the cheap
+      `env_key` only.
 
    **1b. Rest of sub-project 1**, built after 1a:
    - the default fidelity request and `plumb judge` (section 6.4);
    - the judgment interface with the heuristic, disabled and fake backends;
    - AST symbol-level hashing of link ends (1a hashes whole files);
    - the full environment identity of section 7.3;
-   - the failure policy: flaky rerun, owner waivers and the full-rerun rule;
+   - the failure policy: flaky rerun of failed tests within a turn, and owner waivers for the
+     merge-boundary full rerun;
    - `plumb claims check` (claimed against declared paths) and `.plumb/claims.yaml`.
 
    If time runs out, every item of 1a or 1b that is not finished is recorded in
@@ -713,12 +784,17 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
 - No run state machine, no phases, no planning runs, no handoff hashes, no consent phrases, no
   review swarms, and no governed execution by default.
 - No orchestration of agents. plumb informs and checks; the host agent does the work.
-- No full test suite and no environment scan per turn.
+- No full test suite and no environment scan per turn. A shared-infrastructure change makes a
+  full rerun due at the merge boundary; it never selects the full suite inside a turn, and the
+  tests run in a turn stay within the per-turn time budget (section 7.2).
 - No hidden state: no database, no required service, and no network call on the default path.
 - No model that decides freshness or confirms intent. Hashes decide staleness, and only the
-  owner confirms: by a command in the owner's own terminal, or by a prompt the agent records as
-  a guarded, quote-checked `agent-for-owner` approval (sections 4.6 and 6.6). Silence never
-  confirms, and the agent cannot record an approval without citing a logged owner prompt.
+  owner confirms: by a command in the owner's own terminal, or by the owner's own affirming
+  words in a prompt, which the agent records as a guarded `agent-for-owner` approval that
+  plumb checks deterministically (verbatim quote of a logged prompt, an affirmation term,
+  targets limited to the records just stated; sections 4.6 and 6.6). Neither silence nor a
+  prompt that merely does not object confirms anything, so the agent's reading of an
+  unrelated or neutral prompt can never turn a record into confirmed intent.
 - No forking of pi-agent-factory, and no runtime dependency on it.
 - No dependencies beyond the standard library and PyYAML at runtime.
 - No questions to the owner outside the three interruption triggers. Confirming a read-back
