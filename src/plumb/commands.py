@@ -35,6 +35,8 @@ CONFIG_TEMPLATE = """\
 #   backend: heuristic         # heuristic | jev | disabled
 #   hook_timeout_ms: 800
 # escalation: {max_requirements: 3, max_features: 1, diff_lines: 400, diff_files: 10}
+# trace:
+#   exempt: []                 # source globs that need no requirement (untraced changes)
 """
 
 CLAIMS_TEMPLATE = """\
@@ -324,6 +326,24 @@ def verification_state(core) -> dict | str:
             "full_pending_reasons": list(pending.reasons)}
 
 
+def acceptance_failures(core) -> dict:
+    """Requirements whose acceptance tests fail (VERIFY), ``{}`` without that lane."""
+    try:
+        from plumb.verify import open_verify
+    except ImportError:
+        return {}
+    try:
+        return open_verify(core).requirement_failures()
+    except Exception:  # a missing or failing lane degrades, never fails the command
+        return {}
+
+
+def _failing_text(record_id: str, item: dict) -> str:
+    from plumb.merge import failing_line
+
+    return failing_line(record_id, item)
+
+
 def status_data(core) -> dict:
     from plumb.contracts import KIND_PREFIX
 
@@ -340,11 +360,14 @@ def status_data(core) -> dict:
     for status in statuses.values():
         for state in status.links:
             links[state.state] += 1
+    failing = acceptance_failures(core)
     return {
         "records": records,
         "requirements": {"total": len(requirements),
                          "confirmed": sum(s.confirmation == "confirmed" for s in requirements),
-                         "covered": sum(s.covered for s in requirements)},
+                         "covered": sum(s.covered for s in requirements),
+                         "failing": len(failing)},
+        "failing": failing,
         "confirmation": confirmation,
         "links": links,
         "stale": [s.link.id for st in statuses.values() for s in st.links if s.state == "stale"],
@@ -369,7 +392,9 @@ def cmd_status(command: str, argv: list[str]) -> int:
     lines = [
         f"records: {kinds}",
         f"requirements: {req['total']} total, {req['confirmed']} confirmed, "
-        f"{req['covered']} covered",
+        f"{req['covered']} covered"
+        + (f", {req['failing']} failing ({', '.join(data['failing'])})"
+           if req["failing"] else ""),
         f"confirmation: proposed {conf['proposed']}, confirmed {conf['confirmed']}, "
         f"unconfirmed edit {conf['unconfirmed-edit']}",
         f"links: current {links['current']}, stale {links['stale']}, dangling "
@@ -378,6 +403,9 @@ def cmd_status(command: str, argv: list[str]) -> int:
     ]
     if data["stale"]:
         lines.append("stale links: " + ", ".join(data["stale"]))
+    for record_id, items in data["failing"].items():
+        lines.extend("failing acceptance tests: " + _failing_text(record_id, item)
+                     for item in items)
     verification = data["verification"]
     if verification == "unavailable" or not verification.get("available"):
         lines.append("verification: unavailable")
@@ -422,7 +450,9 @@ def _target_label(target) -> str:
 
 def drift_data(core) -> dict:
     """The drift signals (spec 5.10): stale and dangling links with the moved end,
-    unconfirmed edits, uncovered examples, and fidelity that a judgment no longer covers.
+    unconfirmed edits, uncovered examples, failing acceptance tests (a requirement's tests
+    whose last run failed, regressions included), and fidelity that a judgment no longer
+    covers.
 
     A requirement never judged is advisory only (R4: fidelity is on demand or listed at the
     merge boundary); it is returned under ``never_judged`` and is not a drift signal.
@@ -462,8 +492,9 @@ def drift_data(core) -> dict:
             else:
                 fidelity.append({"requirement": record_id, "state": state})
     fidelity_signals = fidelity if isinstance(fidelity, list) else []
-    clean = not (stale or dangling or unconfirmed or uncovered or fidelity_signals)
-    return {"clean": clean, "stale": stale, "dangling": dangling,
+    failing = acceptance_failures(core)
+    clean = not (stale or dangling or unconfirmed or uncovered or fidelity_signals or failing)
+    return {"clean": clean, "stale": stale, "dangling": dangling, "failing": failing,
             "unconfirmed_edits": unconfirmed, "uncovered_examples": uncovered,
             "fidelity": fidelity, "never_judged": never_judged}
 
@@ -486,6 +517,10 @@ def cmd_drift(command: str, argv: list[str]) -> int:
         lines.append(f"{record_id} unconfirmed edit (approved content changed)")
     for record_id, examples in data["uncovered_examples"].items():
         lines.append(f"{record_id} uncovered examples: {', '.join(examples)}")
+    for record_id, items in data["failing"].items():
+        for item in items:
+            text = _failing_text(record_id, item).removeprefix(record_id + " ")
+            lines.append(f"{record_id} failing acceptance test: {text}")
     if data["fidelity"] == "unavailable":
         lines.append("fidelity: unavailable")
     else:

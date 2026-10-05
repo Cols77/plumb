@@ -264,3 +264,13 @@ def test_slash_command_brief_why_impact(repo: Path, no_claims) -> None:
     assert "$ARGUMENTS" in text
     for name in ("brief", "why", "impact"):
         assert f"Bash(uv run --no-sync plumb {name}:*)" in text
+
+
+@pytest.mark.sr("SR-026")
+def test_claude_md_block_asks_for_a_read_back_of_each_request(repo: Path, no_claims) -> None:
+    """The always-loaded block carries the read-back rule, not only the on-demand skill."""
+    _install(repo)
+    text = " ".join((repo / "CLAUDE.md").read_text(encoding="utf-8").split())
+    assert "Read back each request and record it as proposed" in text
+    assert "what will and won't be done" in text and "assumptions labelled" in text
+    assert "implemented_by" in text

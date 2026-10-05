@@ -8,7 +8,9 @@
    ``hooks.prompt_lines`` lines.
 4. Flag a possible intent change on a confirmed record (``JudgmentBackend``), and ask the
    agent to compare the request with the confirmed examples it was given.
-5. Print queued escalations and the escalation hint (SHOULD items).
+5. Print queued escalations and the escalation hint (SHOULD items), and the untraced change
+   the stop hook queued (a changed source path no requirement owns: read it back and record
+   a proposed SR).
 6. Add each record's covering tests (``VerifyAPI.tests_for``).
 
 Steps 2 to 5 are the intent-translation lines: they are kept through a budget cut, so a
@@ -151,6 +153,26 @@ def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
     return line + "otherwise leave them proposed."
 
 
+def untraced_line(ctx: HookContext, core: Any) -> str | None:
+    """The stop hook's queued untraced change (spec 6.4), delivered once: paths a requirement
+    has linked since are dropped, and the note is removed whatever remains."""
+    from plumb.trace import trace_instruction, untraced_paths
+
+    note = ctx.session_dir / ctx.session_id / "untraced.json"
+    data = read_json(note)
+    if data is None:
+        return None
+    try:
+        note.unlink()
+    except OSError:
+        pass
+    paths = data.get("paths") if isinstance(data, dict) else None
+    if not isinstance(paths, list):
+        return None
+    remaining = untraced_paths(core, [str(p) for p in paths])
+    return trace_instruction(remaining) if remaining else None
+
+
 def escalation_lines(ctx: HookContext) -> list[str]:
     """Escalations queued by the cascade since the last print (printed once each)."""
     queue = ctx.session_dir / "escalations.jsonl"
@@ -253,7 +275,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
         pass
     core = open_core(ctx.root)
     awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json")
-    tail = [awaiting] if awaiting else []
+    trace = untraced_line(ctx, core)
+    tail = [line for line in (trace, awaiting) if line]
     ctx.keep([*escalations, *tail])
     # no soft-budget check before the intent lines: only the watchdog bounds them
     ids, strong = _relevant_ids(core, text) if text.strip() else ([], [])

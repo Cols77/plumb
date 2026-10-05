@@ -23,7 +23,7 @@ from typing import Any
 from plumb.contracts import NodeEvidence
 from plumb.normalize import canonical_json, file_digest, sha256_bytes
 
-INDEX_VERSION = 2
+INDEX_VERSION = 3  # 3: a full run must collect cleanly to count
 _GUARD_BYTES = 65536
 PASS_OUTCOMES = frozenset({"passed", "flaky"})
 GOOD_OUTCOMES = frozenset({"passed", "flaky", "skipped", "xfailed"})
@@ -174,8 +174,11 @@ def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "")
         entry["last"] = rec
         if rec["outcome"] in PASS_OUTCOMES:
             entry["last_pass"] = rec
+    # only a full run that collected cleanly and ran tests satisfies ``full pending`` (R5): no
+    # tests collected (exit 5), a collection error or an empty run is no full verification
     if (payload.get("full") and not payload.get("timeout") and not payload.get("aborted")
-            and payload.get("exit_status") in (None, 0, 1, 5)):
+            and payload.get("exit_status") in (0, 1) and not payload.get("collection_errors")
+            and payload.get("nodes")):
         index["full"] = {"run_id": run_id, "infra": dict(payload.get("infra") or {}),
                          "files": dict(payload.get("files") or {})}
 

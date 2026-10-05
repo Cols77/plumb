@@ -293,3 +293,38 @@ def test_intent_lines_survive_a_budget_cut(records: Path, hook_input, monkeypatc
     assert "plumb: awaiting confirmation: SR-009" in out and "plumb relay SR-009" in out
     assert lines[-1] == "plumb: check skipped (budget): covering tests"
     assert calls == []
+
+
+# -- untraced changes queued by the stop hook (spec 6.2, 6.4) ----------------------------
+
+
+def _queue_untraced(repo: Path, paths: list[str], session: str = "s1") -> Path:
+    note = repo / ".plumb" / "session" / session / "untraced.json"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(json.dumps({"paths": paths}), "utf-8")
+    return note
+
+
+@pytest.mark.sr("SR-026")
+def test_next_prompt_tells_the_agent_to_trace_the_untraced_change(records: Path,
+                                                                  hook_input) -> None:
+    (records / "src").mkdir()
+    (records / "src" / "mul.py").write_text("x = 1\n", "utf-8")
+    note = _queue_untraced(records, ["src/mul.py"])
+    out = _run(records, hook_input, "thanks, now add division")
+    assert ("plumb: untraced change: src/mul.py changed with no requirement owning it. "
+            "Read the change back to the owner") in out
+    assert "record it as a proposed SR" in out
+    assert not note.exists()  # delivered once; the merge boundary still lists it
+    assert "untraced change" not in _run(records, hook_input, "and modulo")
+
+
+@pytest.mark.sr("SR-026")
+def test_queued_path_linked_since_is_not_repeated(records: Path, hook_input) -> None:
+    from plumb.contracts import Target
+
+    (records / "src").mkdir()
+    (records / "src" / "mul.py").write_text("x = 1\n", "utf-8")
+    open_core(records).add_link("SR-009", "implemented_by", Target(path="src/mul.py"))
+    _queue_untraced(records, ["src/mul.py"])
+    assert "untraced change" not in _run(records, hook_input, "thanks")

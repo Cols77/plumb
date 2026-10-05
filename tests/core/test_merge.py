@@ -204,3 +204,33 @@ def test_merge_log_integrity_still_catches_edit_of_merge_base_line(base, capsys)
     code, out = _check(root, "trunk", capsys)
     assert code == 1
     assert "log integrity: FAILED" in out
+
+
+@pytest.mark.sr("SR-026")
+def test_merge_puts_untraced_changes_to_the_owner(base, capsys) -> None:
+    """A changed source path no requirement owns escaped the read-back: the merge waits."""
+    root, sha = base
+    (root / "src" / "mul.py").write_text("def mul(a, b):\n    return a * b\n", "utf-8")
+    _commit(root, "add mul")
+    code, out = _check(root, sha, capsys)
+    assert code == 4, out
+    assert "touched requirements: none" in out
+    assert "untraced changes (no requirement owns them): src/mul.py" in out
+    assert "confirmation: every touched requirement is confirmed" not in out
+    waits = out[out.index("merge waits for your confirmation:"):]
+    assert "untraced src/mul.py" in waits and "trace.exempt" in waits
+    assert merge_check(open_core(root), sha, as_json=True) == 4
+    assert json.loads(capsys.readouterr().out)["untraced"] == ["src/mul.py"]
+
+
+@pytest.mark.sr("SR-026")
+def test_merge_untraced_change_cleared_by_a_link_or_an_exemption(base, capsys) -> None:
+    root, sha = base
+    (root / "src" / "mul.py").write_text("x = 1\n", "utf-8")
+    (root / "src" / "gen.py").write_text("x = 1\n", "utf-8")
+    (root / ".plumb" / "config.yaml").write_text("trace:\n  exempt: [src/gen.py]\n", "utf-8")
+    open_core(root).add_link("SR-002", "implemented_by", Target(path="src/mul.py"))
+    approvals.approve(open_core(root), ["SR-002", "INT-001"])
+    code, out = _check(root, sha, capsys)
+    assert code == 0, out
+    assert "untraced" not in out

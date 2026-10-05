@@ -70,6 +70,12 @@ class EscalationConfig:
 
 
 @dataclass(frozen=True)
+class TraceConfig:
+    # source paths (fnmatch globs, ``*`` crosses ``/``) the owner says need no requirement
+    exempt: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Config:
     source_dirs: tuple[str, ...] = ("src", "tests")
     test_dirs: tuple[str, ...] = ("tests",)
@@ -78,10 +84,11 @@ class Config:
     approve: ApproveConfig = field(default_factory=ApproveConfig)
     judgment: JudgmentConfig = field(default_factory=JudgmentConfig)
     escalation: EscalationConfig = field(default_factory=EscalationConfig)
+    trace: TraceConfig = field(default_factory=TraceConfig)
 
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
-           "judgment": JudgmentConfig, "escalation": EscalationConfig}
+           "judgment": JudgmentConfig, "escalation": EscalationConfig, "trace": TraceConfig}
 
 
 def _build(cls: type, data: Mapping[str, Any]) -> Any:

@@ -12,8 +12,9 @@ Run plumb as `{plumb}`. Context lives in files; read it before acting.
 - Before editing a file, grep `.plumb/test_map.txt` for it: the tests listed cover it.
 - When the stop hook asks, run the test command it names inside your turn
   (`{plumb} tests run --paths <files>`, or `{plumb} tests run --changed`).
-- State your read-back and examples as plain statements in your reply and record them as
-  records under `.plumb/`; they stay `proposed` and never block the work.
+- Read back each request in your reply (what will and won't be done, assumptions labelled)
+  and record it as a proposed SR with examples, linked `implemented_by` the code it changes;
+  it never blocks. "plumb: untraced change" names changed files no SR owns yet.
 - When two readings fit, write a DEC record: "I assumed A; B also fits".
 - Ask the owner only on: a request that contradicts or extends a confirmed record, an
   unconfirmed decision that matters, or a regression. Everything else goes in the summary.

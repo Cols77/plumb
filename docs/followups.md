@@ -1073,3 +1073,144 @@ fixed, except where the HIGH fix covers them, as noted.
   baseline is `[]`, while this file lists 36 undeclared (commit, path) pairs from trailerless
   lane commits. Fix: open NC-0001 for the trailerless lane commits and reference it from the
   claims.yaml baseline, so both KEEP items are exercised on plumb itself.
+
+## Intent verification round (2026-10-06): medium and low findings
+
+The two HIGH findings of this round were fixed in the same change: untraced changes (a changed
+source path no requirement owns) are now named by the stop hook, delivered to the agent as a
+read-back instruction, and put to the owner at the merge boundary (SR-026); failing acceptance
+tests show in `validate --merge`, `drift` and `status`, an unresolved regression makes the merge
+report exit 5, and a full run that collected nothing or hit a collection error no longer clears
+`full verification pending` (SR-027).
+
+- [MEDIUM] (prompt.py `awaiting_line`; approvals.py `find_prompt`) The prompt digest that
+  `plumb relay --prompt` needs is printed only in the "awaiting confirmation" line, and only
+  for records in the previous reply's stated set. A prompt such as "ok, SR-002 is right" naming
+  a proposed record outside that set got neither a digest nor a relay instruction, so the
+  one-line confirmation path needs the agent to dig through `.plumb/session/prompts.jsonl`.
+  Fix: when a prompt names proposed record IDs and carries an affirmation term, print the
+  digest and the relay command whatever the stated set holds, or let `plumb relay --prompt
+  latest` resolve the session's latest logged prompt.
+- [MEDIUM] (prompt.py `intent_lines`; plumb's own `.plumb/` state) Every plumb record is still
+  proposed, so trigger 1 never fires on plumb's own work. Concept 6.6 counts "a contradiction
+  involving a proposed record" under trigger 2, but the hook does not detect one: "stop hashing
+  link targets, just compare file mtimes" (against SR-002 and INT-006) printed no flag and no
+  compare line, and "drop content hashes from links" did not retrieve INT-006 or SR-002. Fix:
+  emit the compare line (or a low-confidence flag) when a strongly matched proposed record is
+  relied on, seed relevance so KEEP-list terms (hash, staleness, pinned, trailer) retrieve
+  INT-006 and its SRs, and say in the README that intent-change detection on plumb waits for
+  the owner to confirm the INT and SR set.
+- [MEDIUM] (stop.py summary; verify select budget) "covering tests 3: 3 fresh pass, ... 51
+  deferred (budget)" ends with "questions: none" and the status line reads "tests ok", although
+  about 95 % of the covering tests did not run this turn and nothing says whether they still
+  have fresh evidence. Fix: separate deferred tests with fresh evidence for the current closure
+  from deferred tests with stale evidence, show "tests partial" instead of "tests ok" while
+  stale deferred tests remain, and carry them to the merge boundary as pending.
+- [LOW] (repository weight) `src/plumb` is about 10.3k lines; the sp1 spec, the plan and this
+  file add about 3.4k lines for one sub-project. Per-turn behaviour is light (hooks 0.4 to
+  0.7 s), but the artifact surface works against the "lighter, more elegant" framing. Fix:
+  prune resolved or duplicated follow-ups in a later sub-project, add a one-page "how it works"
+  section and keep the long spec as reference only.
+- [LOW] (README.md, last paragraph) The README points to `docs/plans/fork-plan.md`; the fork
+  plan is at `docs/fork-plan.md`. Fix: correct the path.
+- [LOW] (statusline after a session with no edits) A fresh session with no edits shows "tests
+  not run" while the session brief reports "410/411 mapped tests with fresh passing evidence".
+  Fix: have the session-start snapshot seed the status line's tests field from the brief's
+  evidence summary.
+- [MEDIUM] (links.py lines 81-86; importer/pi_factory.py; concept 4.4) Link pins and staleness
+  work for whole files only. Symbol ends (`path` + `module:name`) and test-node ends
+  (`path::name`) are refused ("wait for symbol hashing"), and the importer turns every
+  pi-agent-factory symbol link into a whole-file link. Any edit anywhere in a linked file makes
+  every link to it stale, which adds drift noise and weakens staleness on imported records.
+  The KEEP item holds at file level (a missing refinement, R7). Fix: hash symbol and test-node
+  ends with `ast` as concept 4.4 describes and let the importer keep symbol links; until then,
+  say in the concept or the spec that links are file-level in sub-project 1.
+- [MEDIUM] (docs/concept.md 4.1, 4.6, 4.7 vs sp1 spec deviations F1 to F11) The concept spec
+  still describes one JSON file per log entry under `.plumb/log/<kind>/` (the code uses
+  `events.jsonl` and `evidence.jsonl`), a PreToolUse shell guard (the code uses
+  `permissions.deny` rules), a prompt digest committed on every prompt (the code commits it
+  only when cited) and `plumb approve --prompt` for relays (the code uses `plumb relay`). The
+  sp1 spec's F table justifies each change, but a reader of the concept gets the wrong picture
+  of the trust mechanisms. Fix: add a short "as built in sub-project 1" note to concept 4.1,
+  4.6 and 4.7 pointing to F1 to F4, or update the text.
+- [LOW] (stop.py lines 249-252) A turn with no changed files prints nothing (0.36 s, empty
+  output), so the "summary at the end of each turn" appears only on turns that change files;
+  the status line still carries the counts. Fix: print a one-line "no changes; N proposed
+  awaiting you" summary, or document that the status line is the summary on such turns.
+- [LOW] (dogfood state; `plumb validate --merge`) A prompt contradicting SR-003 ("drop content
+  hashes from links; staleness by mtime is enough") raised no intent-change flag because
+  trigger 1 protects only confirmed intent (consistent with R1), and the first merge boundary
+  will ask the owner to approve about 40 records in one command. Trigger 1 is not yet
+  exercised by the dogfood records. Fix: point the owner early to `plumb approve --proposed`
+  or the one-line in-session "ok".
+- [LOW] (cli.py help text) `plumb --help` lists `new, why, log (not available in this build)`.
+  Nothing creates a record or reads the log; the agent writes Markdown records directly. Fix:
+  hide the commands that are not available, or keep tracking them here.
+- [MEDIUM] (`plumb link` test-node ends) `verified_by` links can point only at whole test files
+  ("symbol and test-node ends (path::name) are not available in this build"). Concept 4.4 and
+  4.5 promise per-example acceptance tests pinned to the test function; with file-level links
+  every example of a requirement links the same file, and an edit to an unrelated test in it
+  makes every link stale. Fix: implement test-node (`path::name`) ends as concept 4.4
+  specifies, or make it the first sub-project 2 item.
+- [MEDIUM] (plumb's `.plumb/`, status line "SR 0/27 ok | proposed 56") No plumb record is
+  confirmed, so trigger 1 cannot fire on plumb itself: "let the agent approve records when
+  nobody objects" (against SR-005) produced no flag, only the record list. Consistent with R1
+  and the owner not reviewing, but it should be stated. Fix: say in the README and the fork
+  plan that dogfood protection becomes active once the owner confirms the INT records, with a
+  one-line `plumb approve --proposed` step in the owner's own terminal for the 15 INT records
+  that quote the owner verbatim.
+- [LOW] (git log of plumb) Since the record model landed, most commits carry no `SR:` trailer,
+  which thins code-to-requirement traceability in the dogfood repository. Fix: add trailers to
+  future commits, or have the commit-msg hook warn when a commit changes paths an SR declares
+  without naming it.
+- [MEDIUM] (README.md first-morning step; brief and status line on plumb) All of plumb's records
+  are proposed, and a contradicting prompt ("Drop the hash staleness check on links, it is too
+  slow") surfaced SR-003 and SR-002 without an intent-change flag: trigger 1 idles until the
+  owner confirms records (correct under R1 and R2). The README, the brief and the status line
+  still do not name the one step that turns dogfooding on; three earlier rounds recorded this.
+  Fix: a three-line "Tomorrow morning" note at the top of the README (`uv run plumb show
+  INT-001..`, then `uv run plumb approve <ids>` in your own terminal) and one brief and
+  status-line hint while confirmed == 0.
+- [MEDIUM] (stop.py block reason) The Stop hook's block tells the agent to run a bare `plumb
+  tests run --paths ...`, but `plumb` is not on PATH on this machine; the installed hooks,
+  SKILL.md and the CLAUDE.md block use `.venv/Scripts/python.exe -m plumb`. Each blocked turn
+  starts with a failing command (recorded earlier, still open). Fix: render the block
+  instruction with the installer's launcher (the string the settings.json hooks use), and
+  optionally add a `permissions.allow` entry for `tests run`. The new untraced-change line of
+  SR-026 names no command, so it does not add to this.
+- [MEDIUM] (verify/policy.py `waive`; merge.py) `plumb tests waive` records a waiver pinned to
+  a diff digest, but nothing uses it: no targeted rerun replaces the full rerun at the merge
+  boundary, and `validate --merge` exits 0 while "full verification pending" shows (a recorded
+  regression now exits 5, SR-027, but pending alone does not). Scheduled for sub-project 3.
+  Fix: keep it the first sub-project 3 item; make `validate --merge` exit non-zero, or print an
+  explicit "run --full or waive" action, while full verification is pending.
+- [MEDIUM] (importer/pi_factory.py; concept 10; DEC-011) The importer brings every
+  pi-agent-factory record in as proposed, dropping every pinned upstream owner approval (about
+  100 SRs would need re-confirmation), against decision 1B. Safe under R2, but concept 10
+  promises `by: import` approvals. Fix: carry pinned upstream approvals whose hash matches as
+  `by: import` entries citing the upstream record and hash, or align concept 10 with DEC-011.
+- [LOW] (verify/runner.py covering-test budget) In a scratch clone, a deliberate regression in
+  `src/plumb/hashing.py` made `plumb tests run --paths` run 8 tests in 21.6 s against the 15 s
+  budget (25 tests in 3.9 s without it); the hooks stayed fast and the regression was caught
+  and asked about. Fix: stop at the soft budget, not the 22.5 s hard limit, when failures make
+  the run slower than estimated, or treat it as a pace-scale case.
+- [LOW] (`.plumb/claims.yaml` baseline `[]`; no `.plumb/ncs/` records) The NC kind is parsed,
+  validated and imported, but plumb has no NC, and the claims baseline is empty while this
+  file lists 36 undeclared (commit, path) pairs from trailerless lane commits. Nothing creates
+  an NC (`plumb new` is reserved for sub-project 2). Fix: open NC-0001 for the trailerless lane
+  commits, reference it from the claims baseline, and build `plumb new` (NC included) first in
+  sub-project 2.
+- [MEDIUM] (observed while fixing this round; verify/evidence.py `node_evidence`) A
+  whole-file selection aggregates every recorded node of the file, including nodes removed
+  from the source since they passed (`removed after passing`). Their `test_hash` is now None,
+  so the file's evidence stays `stale` (miss `test`) for good: on plumb, every turn that
+  touches `stop.py` selects `tests/host/test_stop.py`, blocks with "run the covering tests",
+  and after a passing run the summary still says "1 not run" (the removed node
+  `test_summary_caps_proposed_lines`). Fix: leave recorded nodes that no longer exist in a
+  mapped file out of the file aggregate (they stay reported as removed after passing).
+- [LOW] (trace.py, this round) Eight of plumb's own modules (`__init__`, `__main__`, `api`,
+  `cliutil`, `contracts`, `paths`, `text`, `validate`) are owned by no requirement, so their
+  next change will be reported as untraced. That is the intended behaviour; the agent did not
+  exempt them on the owner's behalf. Fix: link `validate.py` to SR-003 and the CoreAPI modules
+  to SR-001 when they next change, or let the owner list the glue modules under
+  `trace.exempt`.

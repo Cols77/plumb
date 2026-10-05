@@ -71,7 +71,7 @@ def test_status_json_counts(repo: Path, write_record, capsys: pytest.CaptureFixt
     data = json.loads(capsys.readouterr().out)
     assert data["records"] == {"intent": 1, "requirement": 1, "decision": 0, "feature": 1,
                                "nc": 0}
-    assert data["requirements"] == {"total": 1, "confirmed": 0, "covered": 0}
+    assert data["requirements"] == {"total": 1, "confirmed": 0, "covered": 0, "failing": 0}
     assert data["confirmation"]["proposed"] == 3
     assert data["links"]["current"] == 1
     assert sorted(data["awaiting"]) == ["FEAT-001", "INT-001", "SR-001"]

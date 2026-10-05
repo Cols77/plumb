@@ -257,6 +257,13 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     changed_set = set(changed)
     edited_ids = [i for i in touched_ids if index[i].path in changed_set]
     all_statuses = core.status()
+    from plumb.trace import trace_instruction, untraced_paths
+
+    # work no requirement owns escaped the translation chain: the owner sees it named, the
+    # agent is told to read it back and record a proposed SR (non-blocking, R1)
+    untraced = untraced_paths(core, changed)
+    told_raw = turn.get("untraced_told")
+    told = {str(p) for p in told_raw} if isinstance(told_raw, list) else set()
 
     # trigger 2: decisions that matter, unconfirmed, touched this turn
     decisions = matters_decisions(index, all_statuses, touched_ids)
@@ -270,9 +277,14 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     # watchdog) still shows it; kept before the stated set says "shown", never after
     early, early_shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, None, None, None,
-        decisions, (), 0.0, True, tests_checked=False)
+        decisions, (), 0.0, True, tests_checked=False, untraced=untraced)
     ctx.keep(early.splitlines())
     write_stated(ctx, turn, index, stated_ids, early_shown)
+    note_path = session_dir / "untraced.json"
+    queued = [p for p in untraced if p not in told]
+    if queued:  # delivered by the next prompt hook, so a cut after this still tells the agent
+        write_json_atomic(note_path, {"paths": queued,
+                                      "prompt_digest": turn.get("prompt_digest")})
 
     verify = verify_api(core, verify)
     selection = evidence = pending = None
@@ -319,11 +331,18 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
             reasons.append(_regression_line(n, evidence[n]))
             asked[f"regression:{n}"] = evidence[n].last_run or "?"
         if reasons:
+            if queued:  # the block tells the agent now; the next prompt need not repeat it
+                reasons.append(trace_instruction(queued))
+                try:
+                    note_path.unlink()
+                except OSError:
+                    pass
             if skipped:
                 reasons.append(skip_notice(skipped))
             # a blocked stop shows the owner nothing: a bare "ok" relays no record
             write_stated(ctx, turn, index, stated_ids)
-            write_json_atomic(turn_path, {**turn, "asked": asked})
+            write_json_atomic(turn_path, {**turn, "asked": asked,
+                                          "untraced_told": sorted(told | set(queued))})
             return HookOutput(block_reason="\n".join(reasons))
 
     if ctx.deadline.expired():
@@ -332,7 +351,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     text, shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
         pending, questions, fidelity, turn_start, verify is not None, skipped,
-        tests_checked="covering tests" not in skipped)
+        tests_checked="covering tests" not in skipped, untraced=untraced)
     if shown != early_shown:
         write_stated(ctx, turn, index, stated_ids, shown)
     return HookOutput(system_message=text)
@@ -364,7 +383,8 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
             selection: Any, evidence: Mapping[str, Any] | None, pending: Any,
             questions: Sequence[str], fidelity: Sequence[str], turn_start: float,
             verify_available: bool, skipped: Sequence[str] = (), *,
-            tests_checked: bool = True) -> tuple[str, list[str]]:
+            tests_checked: bool = True,
+            untraced: Sequence[str] = ()) -> tuple[str, list[str]]:
     """The summary text and the stated ids it showed in full.
 
     ``tests_checked`` False (the covering tests were not evaluated, or not yet): the
@@ -382,6 +402,10 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
         touched += f" | stale: {first.link.id} -> {end} ({first.moved} moved)"
         if len(stale) > 1:
             touched += f" +{len(stale) - 1} more"
+    if untraced:
+        names = ", ".join(untraced[:3]) + (f" +{len(untraced) - 3} more"
+                                           if len(untraced) > 3 else "")
+        touched += f" | untraced: {names} (read-back and a proposed SR requested)"
     if doc_only and not records_edited:
         return touched + " | docs only, no tests selected", []
     lines = [touched]

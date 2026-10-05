@@ -242,6 +242,72 @@ class Verify:
             out[ref] = tuple(tests)
         return out
 
+    def requirement_failures(self, ids: Iterable[str] | None = None,
+                             ) -> dict[str, list[dict[str, Any]]]:
+        """Requirements whose acceptance tests fail: ``{SR: [{test, examples, state,
+        regression, last_run}]}``.
+
+        A requirement's tests are its ``verified_by`` ends (with the example ids each link
+        names) plus the tests the map ties to it by marker. A test fails when its last
+        recorded run failed: ``fresh-fail`` on the current identity, or a regression (R3)
+        still unresolved because no run has passed since, whatever changed after it."""
+        index = self.core.index()
+        wanted = list(ids) if ids is not None else sorted(
+            i for i, r in index.items() if r.kind == "requirement")
+        wanted = [i for i in wanted if i in index and index[i].kind == "requirement"]
+        per_record: dict[str, dict[str, list[str]]] = {}
+        for record_id in wanted:
+            tests: dict[str, list[str]] = {}
+            for link in index[record_id].links:
+                if link.kind != "verified_by":
+                    continue
+                ref = link.target.test or link.target.path
+                if not ref:
+                    continue
+                examples = tests.setdefault(ref, [])
+                if link.example and link.example not in examples:
+                    examples.append(link.example)
+            per_record[record_id] = tests
+        if wanted:
+            for record_id, mapped in self.tests_for(wanted).items():
+                tests = per_record.setdefault(record_id, {})
+                for test in mapped:
+                    if test not in tests and test.split("::", 1)[0] not in tests:
+                        tests[test] = []
+        refs = list(dict.fromkeys(t for tests in per_record.values() for t in tests))
+        evidence = self.evidence(refs) if refs else {}
+        out: dict[str, list[dict[str, Any]]] = {}
+        for record_id, tests in per_record.items():
+            items = []
+            for ref, examples in tests.items():
+                ev = evidence[ref]
+                if not ev.regression and ev.state != "fresh-fail":
+                    continue
+                items.append({"test": ref, "examples": examples, "state": ev.state,
+                              "regression": ev.regression, "last_run": ev.last_run})
+            if items:
+                out[record_id] = items
+        return out
+
+    def unresolved_regressions(self) -> list[str]:
+        """Test nodes that passed with recorded evidence, failed in their last run, and still
+        exist (R3): no later run has passed them."""
+        from plumb.verify.markers import strip_param
+        from plumb.verify.policy import is_regression
+
+        tmap = self.test_map()
+        index = self.index()
+        out = []
+        for node_id in sorted(index.get("nodes", {})):
+            if "::" not in node_id or not is_regression(index, node_id):
+                continue
+            test_file = node_id.split("::", 1)[0]
+            info = tmap.files.get(test_file)
+            if info is None or strip_param(node_id) not in info.get("nodes", {}):
+                continue
+            out.append(node_id)
+        return out
+
     def impact(self, ref: str) -> dict[str, Any]:
         """Downstream of a record or a path: records, code ends, covering tests (VS4)."""
         from plumb.hashing import clean_rel_path, target_path
@@ -474,7 +540,7 @@ class Verify:
         No plugin report, an unfinished session, or an exit status other than 0 (passed) or
         1 (tests failed) means pytest stopped before running the selection (a broken
         ``conftest.py``, a usage error, an internal error). Exit 5 (nothing collected) counts
-        only when the selection had known test nodes."""
+        only when the selection, or the full suite, had known test nodes."""
         status = result.exit_status
         if not result.finished:
             return f"pytest stopped before the session finished (exit status {status})"
@@ -482,9 +548,10 @@ class Verify:
             return None
         if status == 5:
             tmap = self.test_map()
-            if full or not any(tmap.nodes_of(t.split("::", 1)[0]) for t in targets):
-                return None
-            return "pytest collected no tests from a selection with known tests (exit status 5)"
+            if not any(tmap.nodes_of(t.split("::", 1)[0]) for t in targets):
+                return None  # nothing known to collect: no evidence, never full verification
+            what = "the full suite" if full else "a selection"
+            return f"pytest collected no tests from {what} with known tests (exit status 5)"
         return f"pytest exit status {status}"
 
     def _collection_failures(self, result: Any, targets: Sequence[str], *,

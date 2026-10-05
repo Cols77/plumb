@@ -690,14 +690,19 @@ the change from `<base>`:
   decisions it derives from, must be confirmed at its current hash. Those still proposed
   (never confirmed, or edited since their approval) are put to the owner as one trigger-2
   question listing their read-back and examples (section 6.6); the owner answers in one line.
-  The merge waits for that answer.
+  The merge waits for that answer. Changed source paths that no requirement owns (untraced
+  changes: work that skipped the read-back) are listed in the same question; they need a
+  requirement, recorded by the agent and confirmed by the owner, or the owner's explicit
+  exemption.
 - **Agent-relayed approvals, for a glance.** Every `agent-relayed` approval made in the range
   is listed with its record and the owner's quote. This is not a question; the owner can
   revoke any of them.
 - **Fidelity, advisory.** Touched requirements with no judgment for their current hashes, or
   with a `drifts` or `unsure` verdict, are listed with the `plumb fidelity` command for each.
 - **Verification state.** `full verification pending` and tests deferred by the per-turn
-  budget are listed.
+  budget are listed, with every touched requirement whose acceptance tests fail, named by
+  example. An unresolved regression holds the merge until a run passes it again; a full run
+  that collected nothing or hit a collection error never counts as full verification.
 
 Sub-project 3 completes the boundary: plumb runs the full suite (which satisfies
 `full verification pending` by recording the current hashes of the shared test

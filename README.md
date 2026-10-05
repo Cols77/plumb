@@ -213,7 +213,8 @@ the intent lines.
 At a merge boundary, run:
 
 ```bash
-uv run plumb validate --merge main   # exit 4: a touched requirement waits for your confirmation
+uv run plumb validate --merge main   # exit 4: a touched requirement or an untraced change
+                                     # waits for you; exit 5: a regression is unresolved
 uv run plumb tests run --full        # if "full verification pending"
 ```
 
@@ -224,7 +225,8 @@ holds `.plumb/`, else `.git`). Most commands accept `--json`. Run `plumb <comman
 the full options.
 
 Exit codes: `0` ok, `1` findings, `2` usage, `3` refused by the guard, `4` the merge waits for
-your confirmation.
+your confirmation (a touched requirement, or an untraced change no requirement owns), `5` the
+merge waits on an unresolved regression.
 
 ### Records and integrity
 

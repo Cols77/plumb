@@ -3,11 +3,15 @@
 Over ``<base>..HEAD`` plus uncommitted changes:
 
 1. every touched requirement, the INT records it derives from, and each matters-true DEC that
-   decides it must be confirmed at its current hash, or the merge waits (exit 4);
+   decides it must be confirmed at its current hash, and every changed source path must be
+   owned by a requirement (``plumb.trace``: an untraced change skipped the read-back), or the
+   merge waits (exit 4): one trigger-2 question lists both;
 2. the approvals and revocations added in the range are listed, agent-relayed ones marked with
    the prompt digest they cite;
 3. fidelity (advisory) and 4. verification state, from the BRIDGE and VERIFY lanes when they
-   are built, otherwise ``unavailable``;
+   are built, otherwise ``unavailable``: full verification pending, touched requirements
+   whose acceptance tests fail (with their example ids), and unresolved regressions (R3),
+   which make the merge exit 5 until a run passes them again;
 5. every log line present at the merge base of ``<base>`` and HEAD must still be present,
    unchanged (exit 1 otherwise).
 """
@@ -26,6 +30,7 @@ if TYPE_CHECKING:
     from plumb.api import Core
 
 EXIT_MERGE_WAITS = 4
+EXIT_REGRESSION = 5
 
 
 class GitError(RuntimeError):
@@ -190,12 +195,22 @@ def _verification(core: Core, touched: Sequence[str]) -> dict[str, Any]:
         out["available"] = False
         return out
     try:
-        pending = open_verify(core).full_pending()
+        verify = open_verify(core)
+        pending = verify.full_pending()
         out.update({"available": True, "full_pending": pending.pending,
-                    "full_pending_reasons": list(pending.reasons)})
+                    "full_pending_reasons": list(pending.reasons),
+                    "failing": verify.requirement_failures(touched),
+                    "regressions": verify.unresolved_regressions()})
     except Exception as exc:  # a lane failure degrades, never blocks the boundary
         out.update({"available": False, "error": str(exc)})
     return out
+
+
+def failing_line(record_id: str, item: Mapping[str, Any]) -> str:
+    """``SR-001 EX-1 tests/test_x.py (regression)``: one failing acceptance test."""
+    examples = " ".join(item.get("examples") or ())
+    kind = "regression" if item.get("regression") else "failing"
+    return " ".join(p for p in (record_id, examples, str(item.get("test")), f"({kind})") if p)
 
 
 def merge_check(core: Core, base: str, *, as_json: bool) -> int:
@@ -206,21 +221,32 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
     except (GitError, OSError) as exc:
         print(f"plumb: cannot read the range {base}..HEAD: {exc}")
         return 2
+    from plumb.trace import untraced_paths
+
     touched = touched_requirements(core, paths, messages)
     required = required_records(core, touched)
     statuses = core.status(required)
     awaiting = [(i, statuses[i].confirmation) for i in required
                 if statuses[i].confirmation != "confirmed"]
+    untraced = untraced_paths(core, paths)
     integrity, base_digests = log_integrity(core, base)
     approvals = _approval_rows(core, base_digests.get("events", set()))
     fidelity = _fidelity(core, touched)
     verification = _verification(core, touched)
-    code = 1 if integrity else (EXIT_MERGE_WAITS if awaiting else 0)
+    regressions = verification.get("regressions") or []
+    failing = verification.get("failing") or {}
+    if integrity:
+        code = 1
+    elif regressions:
+        code = EXIT_REGRESSION
+    else:
+        code = EXIT_MERGE_WAITS if awaiting or untraced else 0
 
     if as_json:
         print(json.dumps({
             "base": base, "changed": paths, "touched": touched, "required": required,
             "awaiting": [{"id": i, "state": s} for i, s in awaiting],
+            "untraced": untraced,
             "approvals": approvals,
             "fidelity": "unavailable" if fidelity is None else fidelity,
             "verification": verification, "log_integrity": integrity, "exit": code,
@@ -229,14 +255,23 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
 
     print(f"plumb merge boundary: {base}..HEAD plus uncommitted changes")
     print("touched requirements: " + (", ".join(touched) if touched else "none"))
-    if awaiting:
+    if untraced:
+        print("untraced changes (no requirement owns them): " + ", ".join(untraced))
+    if awaiting or untraced:
         print("merge waits for your confirmation:")
         for record_id, state in awaiting:
             for line in _describe(core, record_id, state):
                 print(line)
-        ids = " ".join(i for i, _ in awaiting)
-        print(f"plumb: merge waits for your confirmation: `plumb approve {ids}`, or say ok in "
-              "the session")
+        for path in untraced:
+            print(f"  untraced {path}: no read-back or example covers this change")
+        if awaiting:
+            ids = " ".join(i for i, _ in awaiting)
+            print(f"plumb: merge waits for your confirmation: `plumb approve {ids}`, or say ok "
+                  "in the session")
+        if untraced:
+            print("plumb: for the untraced changes, ask the agent to read them back and record "
+                  "a proposed SR linked implemented_by them, then confirm it; or, if they need "
+                  "no requirement, list them under trace.exempt in .plumb/config.yaml")
     else:
         print("confirmation: every touched requirement is confirmed")
     if approvals:
@@ -266,6 +301,14 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
         print("verification: no full verification pending")
     if verification["confirmed_not_covered"]:
         print("confirmed but not covered: " + ", ".join(verification["confirmed_not_covered"]))
+    for record_id, items in failing.items():
+        for item in items:
+            print("failing acceptance tests: " + failing_line(record_id, item))
+    if regressions:
+        shown = ", ".join(regressions[:5]) + (f" +{len(regressions) - 5} more"
+                                              if len(regressions) > 5 else "")
+        print(f"regression: {shown} passed in an earlier run and now fails; the merge waits "
+              "until a run passes them (plumb tests run --nodes <id>), or the owner decides")
     if integrity:
         print("log integrity: FAILED")
         for problem in integrity:

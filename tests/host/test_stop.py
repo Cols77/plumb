@@ -598,3 +598,45 @@ def test_a_slow_git_status_is_reported_not_read_as_no_changes(project: Path, hoo
 
 def test_git_status_gets_most_of_the_remaining_budget() -> None:
     assert stop.GIT_TIMEOUT_S >= 1.0
+
+
+# -- untraced changes: work no requirement owns (spec 6.4, R1) -------------------------
+
+
+def _note(repo: Path, session: str = "s1") -> dict | None:
+    path = repo / ".plumb" / "session" / session / "untraced.json"
+    return json.loads(path.read_text("utf-8")) if path.is_file() else None
+
+
+@pytest.mark.sr("SR-026")
+def test_untraced_change_is_named_to_owner_and_queued_for_the_agent(project: Path,
+                                                                    hook_input) -> None:
+    start_turn(project)
+    edit(project, "src/mul.py", "def mul(a, b):\n    return a * b\n")
+    out = run_stop(project, hook_input, verify=FakeVerify())
+    assert _block(out) is None  # non-blocking (R1)
+    first = _summary(out).splitlines()[0]
+    assert "untraced: src/mul.py" in first
+    assert "read-back and a proposed SR requested" in first
+    assert _note(project)["paths"] == ["src/mul.py"]
+
+
+@pytest.mark.sr("SR-026")
+def test_untraced_change_rides_along_an_existing_block(project: Path, hook_input) -> None:
+    start_turn(project)
+    edit(project, "src/mul.py", "def mul(a, b):\n    return a * b\n")
+    reason = _block(run_stop(project, hook_input, verify=FakeVerify(nodes=(NODE,))))
+    lines = reason.splitlines()
+    assert lines[0].startswith("plumb: run 'plumb tests run --paths src/mul.py'")
+    assert any(line.startswith("plumb: untraced change: src/mul.py changed with no "
+                               "requirement owning it. Read the change back") for line in lines)
+    assert _note(project) is None  # already told in this turn
+
+
+@pytest.mark.sr("SR-026")
+def test_linked_change_is_not_untraced(project: Path, hook_input) -> None:
+    start_turn(project)
+    edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
+    out = run_stop(project, hook_input, verify=FakeVerify())
+    assert "untraced" not in _summary(out)
+    assert _note(project) is None

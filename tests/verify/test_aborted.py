@@ -104,3 +104,28 @@ def test_runnable_targets_keep_known_ids_and_absorb_into_file(project: Path) -> 
     assert verify.runnable_targets(["tests/test_mod.py::test_add[1]",
                                     "tests/test_mod.py::test_old",
                                     "tests/test_mod.py::test_add_zero"]) == ["tests/test_mod.py"]
+
+
+@pytest.mark.sr("SR-027")
+@pytest.mark.parametrize("payload", [
+    {"exit_status": 5, "nodes": []},  # nothing collected
+    {"exit_status": 1, "collection_errors": ["tests/test_x.py"],
+     "nodes": [{"id": "tests/test_a.py::test_a", "outcome": "passed"}]},
+    {"exit_status": 0, "nodes": []},  # nothing ran
+], ids=["exit-5", "collection-error", "no-nodes"])
+def test_full_run_without_a_clean_collection_never_clears_full_pending(payload) -> None:
+    from plumb.verify.evidence import apply_entry
+
+    index = {"nodes": {}, "full": None}
+    apply_entry(index, {"run_id": "r1", "full": True, "env": {"env_key": "E"},
+                        "infra": {}, "files": {}, **payload})
+    assert index["full"] is None
+
+
+@pytest.mark.sr("SR-027")
+def test_full_run_that_collects_nothing_from_known_tests_is_aborted(project: Path) -> None:
+    write(project, "pytest.ini", "[pytest]\ntestpaths = nowhere\npython_files = nope_*.py\n")
+    report = open_verify(open_core(project)).run(full=True)
+    assert report.exit_status == 5
+    assert report.ok is False
+    assert open_verify(open_core(project)).full_pending().pending is True

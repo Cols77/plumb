@@ -23,6 +23,8 @@
 #   backend: heuristic         # heuristic | jev | disabled
 #   hook_timeout_ms: 800
 # escalation: {max_requirements: 3, max_features: 1, diff_lines: 400, diff_files: 10}
+# trace:
+#   exempt: []                 # source globs that need no requirement (untraced changes)
 
 # plumb's own repository: its pytest plugin is shared test infrastructure too (plan 4.1).
 verify:

@@ -440,6 +440,16 @@ Over the range `<base>..HEAD` plus uncommitted changes:
    current hash. Otherwise the command prints one trigger-2 question listing those records
    with their read-back or statement and examples, and exits 4 ("merge waits for your
    confirmation: `plumb approve SR-003 SR-007`, or say ok in the session").
+   **Untraced changes go in the same question.** A changed source path that no requirement
+   owns (no `implemented_by` or `verified_by` end names it; `plumb.trace`) skipped the
+   read-back: no statement, no example, nothing the owner could confirm. Such paths are listed
+   as `untraced changes (no requirement owns them)` in the same trigger-2 question, and the
+   merge waits (exit 4) until a requirement owns them (the agent records a proposed SR with
+   examples and links it, then the owner confirms it) or the owner lists them under
+   `trace.exempt` in `.plumb/config.yaml`. Source paths are files under `source_dirs` outside
+   `test_dirs`, minus shared test infrastructure, generated files (`__pycache__`, `*.pyc`, tool
+   caches, build output) and `trace.exempt`; with a source directory of `.`, documentation and
+   dot directories are left out too.
 2. **Approvals in the range, for a glance.** Every approval and revocation event added in the
    range, owner and agent-relayed, with its record and quote; agent-relayed entries are marked
    and also show the prompt digest they cite (R2).
@@ -447,9 +457,22 @@ Over the range `<base>..HEAD` plus uncommitted changes:
    whose latest judgment is `drifts` or `unsure`, each with its `plumb fidelity` command
    (from BRIDGE's `unjudged`, 12.2; `fidelity: unavailable` without it).
 4. **Verification state.** `full verification pending` with its reasons, tests deferred by
-   the per-turn budget, and touched requirements that are confirmed but not covered. If the
-   verify lane is not importable, the line says `verification: unavailable`.
+   the per-turn budget, touched requirements that are confirmed but not covered, and touched
+   requirements whose acceptance tests (their `verified_by` ends, and the tests the map ties
+   to them by marker) failed in their last recorded run, each with its example ids:
+   `failing acceptance tests: SR-001 EX-1 tests/test_calc.py (regression)`. While any
+   recorded regression (R3: a node that passed and has not passed since) is unresolved, the
+   report names it and exits 5; a passing run of that node resolves it. A full run satisfies
+   `full verification pending` only when it collected cleanly and ran tests: pytest exit 5
+   (nothing collected), a collection error or an empty run never clears it, and exit 5 on a
+   suite with known tests is an aborted run. If the verify lane is not importable, the line
+   says `verification: unavailable`.
 5. **Log integrity** against `<base>` (5.7).
+
+Exit precedence: 1 (log integrity) before 5 (an unresolved regression) before 4 (the merge
+waits for the owner's confirmation). `plumb drift` lists the same failing acceptance tests
+as drift signals (exit 1), and `plumb status` counts the failing requirements and names their
+examples.
 
 The full-suite run, evidence promotion and the claims audit as a gate belong to sub-project 3.
 
@@ -505,7 +528,15 @@ from the first turn.
    `plumb: awaiting confirmation: SR-009, INT-004 | prompt sha256:3f2a9c01b7de | if this
    prompt affirms them, run plumb relay <IDs> --prompt 3f2a9c01b7de --quote "<owner's exact
    words>"; otherwise leave them proposed.`
-5. Escalation hint (a SHOULD item, plan HS5): when the matched records span more than
+5. Untraced change: when the previous stop named a changed source path that no
+   requirement owns (6.4), the agent is told, once and only while the path is still untraced:
+   `plumb: untraced change: src/app/mul.py changed with no requirement owning it. Read the
+   change back to the owner in their terms (what will and won't be done, assumptions
+   labelled), record it as a proposed SR with given/when/then examples (edge cases too)
+   deriving from an INT, and link it implemented_by those paths.` The Stop hook's own
+   output reaches only the owner unless it blocks, so this prompt line is how a non-blocking
+   instruction reaches the agent (R1).
+6. Escalation hint (a SHOULD item, plan HS5): when the matched records span more than
    `escalation.max_features` features or more than `escalation.max_requirements`
    requirements, or a confirmed record is flagged in step 3, print
    `plumb: consider escalating to an up-front spec (reason); the owner decides.`
@@ -550,6 +581,13 @@ Registered with `"async": true` so it adds no blocking latency; on a host that i
      appended after `now fails` when the node's `test_changed_since_pass` is set (7.5). A
      regression found by the agent's own
      `plumb tests run` is printed by that command with the same instruction.
+   - **Untraced change (never a block of its own, R1).** Changed source paths that no
+     requirement owns (5.11) are named on the summary's first line,
+     `| untraced: src/app/mul.py (read-back and a proposed SR requested)`. When the stop
+     blocks anyway, the block reason carries the agent instruction of 6.2 step 5; otherwise
+     it is queued in `.plumb/session/<session_id>/untraced.json` for the next prompt. The
+     always-loaded CLAUDE.md block (6.7) tells the agent to read back each request and record
+     it as proposed, so the hooks only catch what slipped through.
 5. Otherwise answer `{"systemMessage": "<summary>"}`, at most five lines, then the full
    read-back of at most `hooks.summary_proposed_cap` (3) proposed **records** (the cap counts
    records, never lines: a shown record shows every one of its lines), then, when records
