@@ -1568,3 +1568,46 @@ only add what round 2 found new.
   only raw-ID commands; the plain-language path (say it in chat, the agent relays it) exists
   but is not offered. Fix: after each glance and escalation line, also offer "or say 'revoke
   <title>'" or `/plumb confirm ...`.
+
+## Next lane HOSTS (2026-10-06)
+
+Lane HOSTS (sp4) built H1 to H6 and HS1, HS2 on `lane/hosts`; nothing is left unbuilt.
+Integration notes for the coordinator (there was no phase 0, so the lane wrote the parts of
+the phase-0 contract it consumes):
+
+- [INTEGRATE] `src/plumb/contracts.py` gains `TurnEvent` and `TurnOutput` (sp4 3.1) at the
+  end of the file; CAPTURE also appends there: keep both sections.
+- [INTEGRATE] `src/plumb/hosts/neutral.py` is the phase-0 delegation (PRESENT owns it from
+  then on): `handle_event(event, *, deadline, kept, verify, backend, unjudged)` over the
+  Claude Code handlers. If PRESENT adds its own `neutral.py`, keep its rendering and keep
+  `via(event)`: a `host == "cli"` event (`plumb turn start`) logs its prompt `via: turn`.
+- [INTEGRATE] `src/plumb/hosts/claude_code/prompt.py` `log_prompt` writes
+  `"via": ctx.extra.get("via") or "hook"`; CAPTURE's branch writes `"via": "hook"` on the same
+  line. Take this lane's line: with CAPTURE's, a `plumb turn start` prompt (recorded by the
+  agent itself) would be logged as hook-recorded and lose the "self-recorded message" label
+  (R13 Q4).
+- [INTEGRATE] `src/plumb/hosts/claude_code/cli.py` `_hook` hands `--host`/`--format` to
+  `plumb.hosts.cli.hook_main` (four lines); `src/plumb/cli.py` routes `hosts`, `turn`, `mcp`.
+- [INTEGRATE] My edits to shared files leave links of other lanes' SRs stale (SR-010, SR-012,
+  SR-014, SR-026, SR-027 among them); the lane repinned only SR-053 to SR-057.
+- [MEDIUM] (sp4 4.1, R2) Codex feeds a Stop hook's `reason` back to the model; whether it
+  also fires `UserPromptSubmit` for that continuation is not documented. If it does, plumb's
+  own block text would be logged as an owner prompt `via: hook`. Pi's follow-up and Hermes'
+  `pre_verify` never reach the prompt hook. Fix: the stop event records the digest of the
+  block it emitted per session, and the prompt event logs a prompt equal to it as
+  `via: plumb`, which relay refuses as a quote source. Check with a live Codex session first.
+- [MEDIUM] (sp4 4.1) The Codex rows rest on the 0.160 binary's embedded hook schemas and
+  strings (`.codex/hooks.json`, `hooks.state.<key>.trusted_hash`), not on a live run: run one
+  Codex session in a trusted project to confirm the hooks fire and the JSON output is read.
+- [LOW] (sp4 6.4) Hermes keeps MCP servers in the user's `config.yaml`
+  (`HERMES_HOME`, `%LOCALAPPDATA%\hermes` on Windows), not in the project: `plumb mcp install
+  hermes` writes there, with the project as `cwd`; when the file already has `mcp_servers`
+  it prints the entry instead of editing the owner's YAML.
+- [LOW] (sp4 6.2) `plumb_impact` resolves plain words through `plumb.present.api.resolve`
+  when PRESENT's resolver is in the build (its result's `best` or `ref`); until then the
+  reference is passed as given. Align the attribute name when PRESENT lands.
+- [LOW] (sp4 6.3) Inside a tool call the MCP server swaps `plumb.verify.testmap.build_map` for
+  a non-writing wrapper so the derived `.plumb/test_map.txt` is not refreshed. A
+  `write_text=False` option on `open_verify` (VERIFY's file) would make that a parameter.
+- [LOW] (sp4 4.3) Hermes' `/plumb` falls back to returning the words for the owner to send
+  when `ctx.inject_message` is unavailable (gateway sessions without the injection grant).
