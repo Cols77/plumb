@@ -267,6 +267,12 @@ class IntentCardData:
     examples: tuple[tuple[str, str, str], ...] = ()   # (SR, EX-n, text)
     tests: tuple[tuple[str, str], ...] = ()           # (test end, state)
     decisions: tuple[str, ...] = ()        # DEC ids deciding it
+    # sp5 4.2: a card shows its record in full (the stated-set "shown" form), so PRESENT
+    # also carries the record's kind, an SR's statement or an INT's read-back, and a DEC's
+    # alternatives; CAPTURE's data leaves them empty
+    kind: str = ""
+    statement: str = ""
+    alternatives: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,5 @@
-"""``plumb statusline``: one line from ``.plumb/session/status.json`` (spec 6.6).
+"""``plumb statusline``: the status card from ``.plumb/session/status.json`` (spec 6.6,
+sp5 4.1).
 
 Reads one JSON file and recomputes nothing. Standard library only.
 """
@@ -14,35 +15,22 @@ from typing import Any, TextIO
 NO_STATUS = "plumb | no status yet"
 
 
-def render(data: Any) -> str:
-    """The status line for a snapshot mapping, or the no-status line."""
+def render(data: Any, *, ascii: bool | None = None) -> str:
+    """The status card (sp5 4.1, ``plumb.present.render.status_card``) for a snapshot
+    mapping, or the no-status line. ``present.ascii`` in the snapshot asks for ASCII."""
     if not isinstance(data, dict):
         return NO_STATUS
     try:
-        total = int(data["requirements_total"])
-        confirmed = int(data["requirements_confirmed"])
-        proposed = int(data.get("proposed", 0))
-        stale = int(data.get("stale_links", 0))
-        ask = int(data.get("ask", 0))
+        int(data["requirements_total"])
+        int(data["requirements_confirmed"])
     except (KeyError, TypeError, ValueError):
         return NO_STATUS
-    tests = data.get("tests")
-    if tests == "ok":
-        tests_text = "ok"
-    elif tests == "failing":
-        tests_text = f"failing {len(data.get('failing') or ())}"
-    elif tests == "regression":
-        tests_text = f"regression {len(data.get('regressions') or ())}"
-    elif tests == "not-run":
-        tests_text = "not run"
-    else:
-        tests_text = "?"
-    parts = ["plumb", f"SR {confirmed}/{total} ok", f"proposed {proposed}", f"stale {stale}",
-             f"tests {tests_text}"]
-    if data.get("full_pending"):
-        parts.append("full pending")
-    parts.append(f"ask {ask}")
-    return " | ".join(parts)
+    from plumb.present.render import status_card
+
+    if ascii is None:
+        prefs = data.get("present") if isinstance(data.get("present"), dict) else {}
+        ascii = bool(prefs.get("ascii"))
+    return status_card(data, ascii=ascii)
 
 
 def _plumb_root(start: str | None) -> Path | None:
@@ -100,9 +88,12 @@ def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
                 data = None
         line = render(data)
     except Exception:  # noqa: BLE001 - the status line never fails
-        line = NO_STATUS
+        data, line = None, NO_STATUS
     try:
         stdout.write(line + "\n")
-    except (OSError, ValueError):  # UnicodeEncodeError included: fall back to plain ASCII
-        stdout.write(NO_STATUS + "\n")
+    except (OSError, ValueError):  # UnicodeEncodeError included: the ASCII card
+        try:
+            stdout.write(render(data, ascii=True) + "\n")
+        except Exception:  # noqa: BLE001
+            stdout.write(NO_STATUS + "\n")
     return 0

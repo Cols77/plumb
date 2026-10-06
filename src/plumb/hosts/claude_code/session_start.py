@@ -119,7 +119,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
                                                            tuple(summary["reasons"]))
         tests = None if summary is None else (summary["state"], tuple(summary["failing"]),
                                               tuple(summary["regressions"]))
-        write_snapshot(ctx.root, build_snapshot(core, full_pending=pending, tests_summary=tests))
+        write_snapshot(ctx.root, build_snapshot(core, full_pending=pending, tests_summary=tests),
+                       present=getattr(core.config, "present", None))
     return HookOutput(text="\n".join(lines))
 
 

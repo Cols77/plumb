@@ -35,19 +35,18 @@ def _line(repo: Path, snap: StatusSnapshot | None) -> str:
 
 
 def test_renders_line_from_snapshot(repo: Path) -> None:
-    assert _line(repo, _snap()) == (
-        "plumb | SR 12/14 ok | proposed 2 | stale 1 | tests ok | ask 0")
+    """The status line is the status card (sp5 4.1, SR-061)."""
+    assert _line(repo, _snap()) == "plumb ● awaits you · SR 12/14 ok · 2 awaits you · 1 stale"
     assert _line(repo, _snap(tests="regression", regressions=("t::a",), ask=1)) == (
-        "plumb | SR 12/14 ok | proposed 2 | stale 1 | tests regression 1 | ask 1")
-    assert "tests failing 2" in _line(repo, _snap(tests="failing", failing=("a", "b")))
-    assert "tests not run" in _line(repo, _snap(tests="not-run"))
-    assert "tests ?" in _line(repo, _snap(tests="unknown"))
+        "plumb ✗ regression · SR 12/14 ok · 2 awaits you · 1 stale · 1 question")
+    assert "✗ failing" in _line(repo, _snap(tests="failing", failing=("a", "b")))
+    assert "2 failing" in _line(repo, _snap(tests="failing", failing=("a", "b")))
 
 
 def test_full_pending_shown_only_when_pending(repo: Path) -> None:
     assert "full pending" not in _line(repo, _snap(full_pending=False))
     assert _line(repo, _snap(full_pending=True, full_pending_reasons=("uv.lock",))) == (
-        "plumb | SR 12/14 ok | proposed 2 | stale 1 | tests ok | full pending | ask 0")
+        "plumb ● awaits you · SR 12/14 ok · 2 awaits you · 1 stale · full pending")
 
 
 def test_missing_snapshot(repo: Path) -> None:
@@ -63,7 +62,7 @@ def test_root_from_status_line_input(repo: Path, monkeypatch: pytest.MonkeyPatch
     out = io.StringIO()
     stdin = io.StringIO(json.dumps({"workspace": {"project_dir": str(repo)}}))
     statusline.main(stdin=stdin, stdout=out)
-    assert out.getvalue().startswith("plumb | SR 12/14 ok")
+    assert out.getvalue().startswith("plumb ● awaits you · SR 12/14 ok")
 
 
 def test_snapshot_written_with_version(repo: Path) -> None:

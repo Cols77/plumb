@@ -151,21 +151,32 @@ def test_summary_when_evidence_fresh(project: Path, hook_input) -> None:
     verify = FakeVerify(nodes=(NODE, NODE2), deferred=("tests/test_z.py::test_z",),
                         evidence_map={**fresh(NODE), **fresh(NODE2, state="fresh-fail")},
                         pending=FullPending(True, ("tests/conftest.py changed",)))
+    (project / ".plumb" / "config.yaml").write_text("present:\n  card: full\n", "utf-8")
     summary = _summary(run_stop(project, hook_input, verify=verify))
     lines = summary.splitlines()
-    assert lines[0].startswith("plumb: touched SR-001")
+    assert lines[0].startswith("plumb ✗ failing")  # the status card first (sp5 4.1)
+    assert lines[1].startswith("plumb: touched SR-001")
     assert ("plumb: covering tests 2: 1 fresh pass, 1 not yet passing, 1 deferred (budget)"
             in lines)
     assert "plumb: full verification pending (tests/conftest.py changed)" in lines
     assert "plumb: questions: none" in lines
-    assert len(lines) <= 5
+    assert len([line for line in lines if line.startswith("plumb: ")]) <= 5
+    # compact (the default): at most two summary lines under the card
+    start_turn(project)
+    (project / ".plumb" / "config.yaml").write_text("present:\n  card: compact\n", "utf-8")
+    edit(project, "src/calc.py", "def add(a, b):\n    return a + b\n")
+    lines = _summary(run_stop(project, hook_input, verify=verify)).splitlines()
+    assert lines[1].startswith("plumb: touched SR-001")
+    assert lines[2].startswith("plumb: covering tests 2: 1 fresh pass")
+    assert lines[2].endswith("| questions: none")
+    assert len(lines) == 3
 
 
 def test_summary_shows_stale_link(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return a - b\n")
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
-    assert "stale: SR-001#0 -> src/calc.py (target moved)" in summary.splitlines()[0]
+    assert "stale: SR-001#0 -> src/calc.py (target moved)" in summary.splitlines()[1]
 
 
 def _stated(repo: Path) -> dict[str, bool]:
@@ -182,15 +193,18 @@ def test_summary_caps_proposed_records_and_names_the_rest(project: Path, hook_in
         edit(project, f".plumb/requirements/SR-00{i}.md", text)
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
     lines = summary.splitlines()
-    proposed = [line for line in lines if line.startswith("plumb: proposed")]
-    # the cap counts records, and a shown record shows its statement and every example
-    assert proposed == [
-        "plumb: proposed SR-002: rule 2 holds",
-        "plumb: proposed SR-002/EX-1: given g2, when w2, then t2",
-        "plumb: proposed SR-003: rule 3 holds",
-        "plumb: proposed SR-003/EX-1: given g3, when w3, then t3",
-        "plumb: proposed SR-004: rule 4 holds",
-        "plumb: proposed SR-004/EX-1: given g4, when w4, then t4",
+    cards = [line for line in lines if line.startswith(("▸", "  "))]
+    # the cap counts records, and a card shows its statement and every example (sp5 4.2)
+    assert cards == [
+        '▸ Requirement  SR-002 "Rule 2"   (proposed — say "ok" to confirm)',
+        "  rule 2 holds",
+        "  Examples  EX-1 given g2, when w2, then t2   (proposed)",
+        '▸ Requirement  SR-003 "Rule 3"   (proposed — say "ok" to confirm)',
+        "  rule 3 holds",
+        "  Examples  EX-1 given g3, when w3, then t3   (proposed)",
+        '▸ Requirement  SR-004 "Rule 4"   (proposed — say "ok" to confirm)',
+        "  rule 4 holds",
+        "  Examples  EX-1 given g4, when w4, then t4   (proposed)",
     ]
     assert lines[-1] == ("plumb: +2 more not shown: SR-005, SR-006 (plumb show SR-005 SR-006); "
                          "a confirmation must name them")
@@ -253,13 +267,13 @@ def test_summary_shows_every_example_assumption_and_wont(project: Path, hook_inp
     edit(project, ".plumb/decisions/DEC-002.md", DEC_DIV)
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
     for expected in (
-            "plumb: proposed INT-001: You want a divide function for two numbers.",
-            "plumb: proposed INT-001 won't: handle complex numbers",
-            "plumb: proposed INT-001/A-1 assumption: division by zero raises ValueError",
-            "plumb: proposed SR-002/EX-2: given 1/0, when divide runs, then it returns 0",
-            "plumb: proposed SR-002/EX-3: given -6 and 3, when divide runs, then it returns -2",
-            "plumb: proposed DEC-002 alternatives: true float division"):
-        assert expected in summary.splitlines()
+            "You want a divide function for two numbers.",
+            "Won't: handle complex numbers",
+            "Assumed: division by zero raises ValueError",
+            "EX-2 given 1/0, when divide runs, then it returns 0",
+            "EX-3 given -6 and 3, when divide runs, then it returns -2",
+            "Also fits: true float division"):
+        assert expected in summary
     assert "more" not in summary.splitlines()[-1]
     assert _stated(project) == {"DEC-002": True, "INT-001": True, "SR-002": True}
 
@@ -297,7 +311,8 @@ def test_regression_blocks_with_owner_instruction(project: Path, hook_input) -> 
                                           "turn.json").read_text("utf-8"))["asked"])
     out = run_stop(project, hook_input, verify=verify)
     assert _block(out) is None
-    assert f"plumb: questions: regression {NODE}" in _summary(out)
+    assert f"questions: regression {NODE}" in _summary(out)
+    assert f"▸ Regression  {NODE}" in _summary(out)  # no requirement verifies it here
 
 
 @pytest.mark.sr("SR-020")
@@ -347,7 +362,7 @@ def test_new_red_test_never_asks(project: Path, hook_input) -> None:
     assert _block(out) is None
     summary = _summary(out)
     assert "1 not yet passing" in summary
-    assert "plumb: questions: none" in summary
+    assert "questions: none" in summary
 
 
 def test_doc_only_turn_prints_at_most_one_line(project: Path, hook_input) -> None:
@@ -356,7 +371,7 @@ def test_doc_only_turn_prints_at_most_one_line(project: Path, hook_input) -> Non
     verify = FakeVerify(nodes=(NODE,))
     out = run_stop(project, hook_input, verify=verify)
     assert _block(out) is None
-    assert len(_summary(out).splitlines()) <= 1
+    assert len(_summary(out).splitlines()) <= 2  # the status card and one line
 
 
 def test_writes_stated_set(project: Path, hook_input) -> None:
@@ -420,7 +435,7 @@ def test_confirmation_and_unjudged_fidelity_in_summary(project: Path, hook_input
     out = run_stop(project, hook_input, verify=FakeVerify(),
                    unjudged=lambda core, ids: tuple(i for i in ids or () if i == "SR-001"))
     summary = _summary(out)
-    assert "plumb: confirmed SR-001 by the owner | fidelity unjudged: SR-001" in summary
+    assert "confirmed SR-001 by the owner | fidelity unjudged: SR-001" in summary
 
 
 def test_writes_status_snapshot(project: Path, hook_input) -> None:
@@ -534,7 +549,7 @@ def test_a_step_starting_past_the_budget_is_skipped_and_reported(
     edit(project, "src/calc.py", "def add(a, b):\n    return int(b) + int(a)\n")
     summary = _summary(run_stop(project, hook_input, verify=verify))
     assert "check skipped (budget): covering tests" in summary
-    assert "plumb: questions: DEC-001" in summary
+    assert "questions: DEC-001" in summary
 
 
 class _CutVerify(FakeVerify):
@@ -555,10 +570,11 @@ def test_read_back_survives_a_cut_in_the_covering_tests(project: Path, hook_inpu
          SR1.replace("add returns the sum.", "add returns the integer sum."))
     summary = _summary(run_stop(project, hook_input, verify=_CutVerify(nodes=(NODE,))))
     lines = summary.splitlines()
-    assert lines[0].startswith("plumb: touched SR-001")
-    assert "plumb: proposed SR-001: add returns the integer sum." in lines
-    assert "plumb: proposed SR-001/EX-1: given 1 and 2, when add runs, then it returns 3" in lines
-    assert "plumb: questions: regressions not checked (budget)" in lines
+    assert lines[1].startswith("plumb: touched SR-001")
+    assert "  add returns the integer sum." in lines
+    assert ("  Examples  EX-1 given 1 and 2, when add runs, then it returns 3   (proposed)"
+            in lines)
+    assert "questions: regressions not checked (budget)" in summary
     assert lines[-1] == "plumb: check skipped (budget): covering tests"
     stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
     assert stated["records"] == [{"id": "SR-001", "hash": open_core(project).index()[
@@ -577,7 +593,7 @@ def test_skipped_covering_tests_never_read_as_no_questions(project: Path, hook_i
     out = run_stop(project, hook_input, active=True, verify=FakeVerify(nodes=(NODE,)))
     summary = _summary(out)
     assert "plumb: questions: none" not in summary
-    assert "plumb: questions: regressions not checked (budget)" in summary
+    assert "questions: regressions not checked (budget)" in summary
 
 
 def test_a_slow_git_status_is_reported_not_read_as_no_changes(project: Path, hook_input,
@@ -615,7 +631,7 @@ def test_untraced_change_is_named_to_owner_and_queued_for_the_agent(project: Pat
     edit(project, "src/mul.py", "def mul(a, b):\n    return a * b\n")
     out = run_stop(project, hook_input, verify=FakeVerify())
     assert _block(out) is None  # non-blocking (R1)
-    first = _summary(out).splitlines()[0]
+    first = _summary(out).splitlines()[1]
     assert "untraced: src/mul.py" in first
     assert "read-back and a proposed SR requested" in first
     assert _note(project)["paths"] == ["src/mul.py"]
@@ -651,5 +667,5 @@ def test_flat_layout_and_root_files_are_untraced_at_the_stop(project: Path,
     edit(project, "tool.py", "print('tool')\n")
     out = run_stop(project, hook_input, verify=FakeVerify())
     assert _block(out) is None
-    assert "untraced: mypkg/power.py, tool.py" in _summary(out).splitlines()[0]
+    assert "untraced: mypkg/power.py, tool.py" in _summary(out).splitlines()[1]
     assert _note(project)["paths"] == ["mypkg/power.py", "tool.py"]

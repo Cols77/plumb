@@ -109,7 +109,7 @@ def test_cli_drives_the_hooks(busy_repo: Path, hook_input) -> None:
                                                                        "mod2.py")}))
     stop_out = json.loads(call("hook", "stop", payload=hook_input("Stop")))
     assert "SR-002" in (stop_out.get("reason") or stop_out.get("systemMessage"))
-    assert call("statusline").startswith("plumb | SR 0/25 ok")
+    assert call("statusline").startswith("plumb ● awaits you")
     assert call("hook", "--help").startswith("usage: plumb hook")
 
 
@@ -171,5 +171,5 @@ def _contended_turn(busy_repo: Path, hook_input, call) -> None:
         "PostToolUse", tool_name="Edit", tool_input={"file_path": str(record)}))
     raw, wall = call("hook", "stop", payload=hook_input("Stop", stop_hook_active=True))
     message = json.loads(raw)["systemMessage"]
-    assert "plumb: proposed SR-002: statement two on stale links" in message
+    assert "  statement two on stale links" in message.splitlines()  # SR-002's card
     assert wall < 6.0, f"stop hook took {wall:.1f} s under contention"

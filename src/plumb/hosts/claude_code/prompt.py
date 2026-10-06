@@ -314,6 +314,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     ctx.keep([*records, *emitter.add([*queued, *tail], commit=False)])
     intent, flagged = intent_lines(ctx, core, index, statuses, ids, text, digest, backend,
                                    injected)
+    if flagged:  # the stop hook shows the owner an intent-change card (sp5 4.2, trigger 1)
+        turn_path = ctx.session_dir / ctx.session_id / "turn.json"
+        turn = read_json(turn_path)
+        if isinstance(turn, dict):
+            write_json_atomic(turn_path, {**turn, "flagged": flagged})
     hint = escalation_hint(core, index, strong, flagged) if strong else None
     rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []), *tail])
     out = [*records, *rest]

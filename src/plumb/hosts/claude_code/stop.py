@@ -8,8 +8,9 @@
    proposed records, is kept (``HookContext.keep``) before any evidence step, so a budget
    cut, an error or the watchdog still prints it. Then the covering tests and fidelity.
    Write ``status.json`` and the stated set (``stated.json``). Each stated record carries
-   ``shown``: true only when the summary displayed its whole read-back (statement, every
-   example, will/won't, labelled assumptions, alternatives). A bare affirmation relays only
+   ``shown``: true only when the summary displayed its intent card (sp5 4.2), which shows
+   the whole read-back (statement, every example, will/won't, labelled assumptions,
+   alternatives). A bare affirmation relays only
    shown records; a record cut by ``hooks.summary_proposed_cap`` (counted in records) or too
    long to show, or any record of a blocked stop, must be named in the owner's words.
 4. At most one block per turn, never when the host says ``stop_hook_active``: covering tests
@@ -17,9 +18,14 @@
    its turn; the hook never runs pytest), an unconfirmed decision that matters (trigger 2,
    once per hash) and a regression (trigger 3, R3: a node that passed with recorded
    evidence and now fails; once per failing run). A new test that starts red is "not yet
-   passing" and never asks.
-5. Otherwise a short ``systemMessage`` summary; proposed records are shown, never asked,
-   and the ones not shown are named with the ``plumb show`` command that prints them.
+   passing" and never asks. The block's lines go through the one emitter
+   (``plumb.present.delta``): each once per session per state, within
+   ``hooks.stop_tokens``.
+5. Otherwise the owner-facing ``systemMessage``: the status card, the summary lines for
+   ``present.card`` (full | compact | off) and the intent cards of the records that matter
+   (sp5 4); proposed records are shown, never asked, and the ones not shown are named with
+   the ``plumb show`` command that prints them. The triage offer (R8 A) pins its group in
+   the stated set.
 
 The deadline is checked before a step starts, never after it ends (spec 10): a step that
 would start past the soft budget is skipped and named in a ``check skipped (budget)`` notice,
@@ -230,45 +236,39 @@ def _regression_line(node: str, evidence: Any) -> str:
             "Tell the owner, with a read-back, and ask how to proceed.")
 
 
-def proposed_lines(index: Mapping[str, Any], stated_ids: Sequence[str],
-                   cap: int) -> tuple[list[str], list[str]]:
-    """The ``proposed`` lines of the summary and the ids shown in full.
-
-    ``cap`` counts records, never lines: a shown record shows every line of its read-back
-    (``plumb.readback.record_lines``). A record past the cap, or with a line longer than
-    ``MAX_PROPOSED_LINE``, is not shown at all; the last line names it with the ``plumb
-    show`` command that prints it, and a confirmation must name it.
-    """
-    from plumb.readback import record_lines
-
-    lines: list[str] = []
-    shown: list[str] = []
-    cut: list[str] = []
-    for record_id in stated_ids:
-        rendered = [f"plumb: proposed {line}" for line in record_lines(index[record_id])]
-        if len(shown) >= max(cap, 0) or any(len(line) > MAX_PROPOSED_LINE
-                                            for line in rendered):
-            cut.append(record_id)
-            continue
-        lines.extend(rendered)
-        shown.append(record_id)
-    if cut:
-        lines.append(f"plumb: +{len(cut)} more not shown: {', '.join(cut)} "
-                     f"(plumb show {' '.join(cut)}); a confirmation must name them")
-    return lines, shown
-
-
 def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
-                 stated_ids: Sequence[str], shown: Iterable[str] = ()) -> None:
-    """The stated set of this reply: what a bare affirmation of the owner may confirm."""
+                 stated_ids: Sequence[str], shown: Iterable[str] = (), *,
+                 group: Mapping[str, Any] | None = None) -> None:
+    """The stated set of this reply: what a bare affirmation of the owner may confirm.
+
+    Records ``plumb confirm`` showed as cards during this turn (each ``via: confirm``, sp5 6.3)
+    stay in it; ``group`` is the triage offer's pinned group (``plumb relay --group``)."""
     from plumb.normalize import utc_now
 
     shown = set(shown)
-    write_json_atomic(ctx.session_dir / "stated.json",
-                      {"at": utc_now(), "session": ctx.session_id,
-                       "reply_after_prompt": turn.get("prompt_digest"),
-                       "records": [{"id": i, "hash": index[i].hash, "shown": i in shown}
-                                   for i in stated_ids]})
+    records = [{"id": i, "hash": index[i].hash, "shown": i in shown} for i in stated_ids]
+    records += confirmed_this_turn(ctx, turn, {r["id"] for r in records})
+    data: dict[str, Any] = {"at": utc_now(), "session": ctx.session_id,
+                            "reply_after_prompt": turn.get("prompt_digest"),
+                            "records": records}
+    if group is not None:
+        data["groups"] = [dict(group)]
+    write_json_atomic(ctx.session_dir / "stated.json", data)
+
+
+def confirmed_this_turn(ctx: HookContext, turn: Mapping[str, Any],
+                        skip: Iterable[str] = ()) -> list[dict[str, Any]]:
+    """The records ``plumb confirm`` put in the stated set during this turn."""
+    previous = read_json(ctx.session_dir / "stated.json")
+    if not isinstance(previous, dict):
+        return []
+    start = _iso(float(turn.get("turn_start") or 0)) if turn.get("turn_start") else ""
+    if not start or str(previous.get("at") or "") < start:
+        return []
+    skip = set(skip)
+    return [dict(item) for item in previous.get("records") or []
+            if isinstance(item, dict) and item.get("via") == "confirm"
+            and item.get("id") not in skip]
 
 
 def _confirmations(core: Any, since: float) -> list[str]:
@@ -334,12 +334,24 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     for d in decisions:
         if d not in stated_ids:
             stated_ids.append(d)
+    # the cards' triggers known from the records alone (sp5 4.2): this turn's intent-change
+    # flags (trigger 1, from the prompt hook) and escalated sets awaiting approval
+    flagged = [str(i) for i in turn.get("flagged") or [] if str(i) in index]
+    escalated, waiting = escalated_sets(core, touched_ids)
+    from plumb.present.cards import session_intent
+
+    intent_summary = session_intent(core, index, touched_ids, session_dir)
     # R1 first: the read-back is kept before any evidence step, so a cut (budget, error,
     # watchdog) still shows it; kept before the stated set says "shown", never after
+    early_snapshot = build_snapshot(core, statuses=all_statuses, auto_approve="off",
+                                    tests_summary=("unknown", (), ()),
+                                    intent_summary=intent_summary)
     early, early_shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, None, None, None,
         decisions, (), 0.0, True, tests_checked=False, untraced=untraced,
-        changed_tests=changed_acceptance(index, all_statuses, touched_ids))
+        changed_tests=changed_acceptance(index, all_statuses, touched_ids),
+        snapshot=early_snapshot, decisions=decisions, flagged=flagged, escalated=escalated,
+        extra_lines=waiting)
     ctx.keep(early.splitlines())
     write_stated(ctx, turn, index, stated_ids, early_shown)
     note_path = session_dir / "untraced.json"
@@ -383,10 +395,12 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     questions = ([f"regression {n}" for n in regressions]
                  + [f"regression hidden by a test change {m['node']}" for m in masked]
                  + decisions)
-    write_snapshot(ctx.root, build_snapshot(
+    snapshot = build_snapshot(
         core, evidence=evidence, full_pending=pending, statuses=all_statuses,
         deferred=len(selection.deferred) if selection else 0, fidelity_unjudged=fidelity,
-        ask=len(questions), skipped=", ".join(skipped) or None))
+        ask=len(questions), skipped=", ".join(skipped) or None,
+        intent_summary=intent_summary)
+    write_snapshot(ctx.root, snapshot, present=getattr(core.config, "present", None))
 
     if not active:
         from plumb.present.delta import Line, open_emitter
@@ -436,14 +450,53 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     if ctx.deadline.expired():
         skipped.append("confirmations")
         turn_start = 0.0  # _confirmations reads no log without a turn start
+    offer, group = ([], None) if ctx.deadline.expired() else triage_offer(
+        core, [i for i in stated_ids if all_statuses[i].confirmation != "confirmed"])
     text, shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
         pending, questions, fidelity, turn_start, verify is not None, skipped,
         tests_checked="covering tests" not in skipped, untraced=untraced,
-        changed_tests=changed_acceptance(index, all_statuses, touched_ids))
-    if shown != early_shown:
-        write_stated(ctx, turn, index, stated_ids, shown)
+        changed_tests=changed_acceptance(index, all_statuses, touched_ids),
+        snapshot=snapshot, decisions=decisions,
+        regressions=[*regressions, *(m["node"] for m in masked)], flagged=flagged,
+        escalated=escalated, extra_lines=[*waiting, *offer])
+    if shown != early_shown or group is not None:
+        write_stated(ctx, turn, index, stated_ids, shown, group=group)
     return HookOutput(system_message=text)
+
+
+def escalated_sets(core: Any, touched_ids: Sequence[str]) -> tuple[list[str], list[str]]:
+    """``(anchors, lines)``: escalated sets (CAPTURE, sp2 6.2) a touched record belongs to
+    that await the owner's set approval; a question card each (trigger 2)."""
+    try:
+        from plumb.capture import spec
+    except ImportError:
+        return [], []
+    try:
+        members = spec.set_of(core)
+        anchors = sorted({members[i] for i in touched_ids if i in members})
+        lines = [line for line in (spec.waiting_line(core, a) for a in anchors) if line]
+        waiting = [a for a in anchors if spec.set_state(core, a) != "approved"]
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        return [], []
+    return waiting, lines
+
+
+def triage_offer(core: Any, ids: Sequence[str]) -> tuple[list[str], Any]:
+    """R8 A: the one-line offer for this turn's proposed records rated faithful to the
+    owner's words (CAPTURE's triage) and the group it pins in the stated set (DEC-017)."""
+    if not ids:
+        return [], None
+    try:
+        from plumb.capture import api
+    except ImportError:
+        return [], None
+    try:
+        view = api.triage(core, ids)
+        group = api.stated_group(view) if view.offer else None
+    except Exception:  # noqa: BLE001
+        return [], None
+    return ([str(view.offer)] if view.offer else []), group
 
 
 def _quote(path: str) -> str:
@@ -474,11 +527,76 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
             verify_available: bool, skipped: Sequence[str] = (), *,
             tests_checked: bool = True,
             untraced: Sequence[str] = (),
-            changed_tests: Sequence[str] = ()) -> tuple[str, list[str]]:
-    """The summary text and the stated ids it showed in full.
+            changed_tests: Sequence[str] = (),
+            snapshot: Any = None, decisions: Sequence[str] = (),
+            regressions: Sequence[str] = (), flagged: Sequence[str] = (),
+            escalated: Sequence[str] = (), extra_lines: Sequence[str] = ()
+            ) -> tuple[str, list[str]]:
+    """The owner-facing summary and the stated ids it showed in full (sp5 4).
+
+    The status card comes first; then the sp1 summary lines (``present.card: full``), at
+    most two of them (``compact``, the default) or none (``off``); then the intent cards of
+    ``plumb.present.cards``: trigger cards always, the proposed records of the turn (and,
+    in ``full``, every record it touched) up to ``hooks.summary_proposed_cap``. A carded
+    record is shown in full; the rest are named with ``plumb show``.
 
     ``tests_checked`` False (the covering tests were not evaluated, or not yet): the
     questions line says the regression check did not run, never "none"."""
+    from plumb.present.cards import card_data, card_mode, plan_cards
+    from plumb.present.render import intent_card, status_card, to_ascii
+
+    present = getattr(core.config, "present", None)
+    mode = card_mode(core.config)
+    ascii_only = bool(getattr(present, "ascii", False))
+    lines = sp1_lines(core, index, statuses, changed, touched_ids, selection, evidence,
+                      pending, questions, fidelity, turn_start, verify_available, skipped,
+                      tests_checked=tests_checked, untraced=untraced,
+                      changed_tests=changed_tests)
+    if mode == "compact" and len(lines) > 2:
+        rest = [line.removeprefix("plumb: ") for line in lines[1:]]
+        lines = [lines[0], "plumb: " + " | ".join(rest)]
+    elif mode == "off":
+        lines = []
+    head = [status_card(snapshot, ascii=ascii_only)] if snapshot is not None and \
+        mode != "off" else []
+    plan = plan_cards(mode=mode, index=index, statuses=statuses, stated=stated_ids,
+                      decisions=decisions, regressions=regressions, flagged=flagged,
+                      escalated=escalated, touched=touched_ids,
+                      cap=int(core.config.hooks.summary_proposed_cap))
+    why = dict(plan.cards)
+    cards: list[str] = []
+    too_long: list[str] = []
+    for data in card_data(core, plan.shown, evidence=evidence if evidence else None):
+        if why.get(data.id) is None and _too_long(data):
+            too_long.append(data.id)  # not shown at all: a confirmation must name it
+            continue
+        cards.extend(intent_card(data, mode=mode, why=why.get(data.id), ascii=ascii_only))
+    plan.cards = [(i, w) for i, w in plan.cards if i not in too_long]
+    cards.extend(to_ascii(line) if ascii_only else line for line in plan.loose)
+    cut = [i for i in stated_ids if i not in plan.shown]
+    if cut and mode != "off":
+        cards.append(f"plumb: +{len(cut)} more not shown: {', '.join(cut)} "
+                     f"(plumb show {' '.join(cut)}); a confirmation must name them")
+    out = [*head, *lines, *cards, *(line for line in extra_lines if mode != "off"
+                                     or "escalated" in line)]
+    return "\n".join(out), [i for i in plan.shown if i in stated_ids]
+
+
+def _too_long(data: Any) -> bool:
+    """A card part too long to show whole (``MAX_PROPOSED_LINE``): the record is not shown."""
+    parts = [data.statement, data.quote, *data.will, *data.wont, *data.assumed,
+             *data.alternatives, *(text for _, _, text in data.examples)]
+    return any(len(part) > MAX_PROPOSED_LINE for part in parts)
+
+
+def sp1_lines(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
+              changed: Sequence[str], touched_ids: Sequence[str], selection: Any,
+              evidence: Mapping[str, Any] | None, pending: Any, questions: Sequence[str],
+              fidelity: Sequence[str], turn_start: float, verify_available: bool,
+              skipped: Sequence[str] = (), *, tests_checked: bool = True,
+              untraced: Sequence[str] = (), changed_tests: Sequence[str] = ()) -> list[str]:
+    """The sp1 summary lines (at most five): touched records, covering tests, full
+    verification, confirmations and notes, questions."""
     records_edited = any(index[i].path in set(changed) for i in touched_ids)
     doc_only = (selection.doc_only if selection is not None else
                 all(p.endswith(".md") or p.startswith("docs/") for p in changed))
@@ -497,7 +615,7 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
                                            if len(untraced) > 3 else "")
         touched += f" | untraced: {names} (read-back and a proposed SR requested)"
     if doc_only and not records_edited:
-        return touched + " | docs only, no tests selected", []
+        return [touched + " | docs only, no tests selected"]
     lines = [touched]
     if not verify_available:
         lines.append("plumb: verification unavailable")
@@ -531,11 +649,7 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
     if not tests_checked and verify_available:
         asks.append("regressions not checked (budget)")
     lines.append("plumb: questions: " + ("; ".join(asks) if asks else "none"))
-    lines = lines[:SUMMARY_LINES]
-    proposed, shown = proposed_lines(index, stated_ids,
-                                     int(core.config.hooks.summary_proposed_cap))
-    lines.extend(proposed)
-    return "\n".join(lines), shown
+    return lines[:SUMMARY_LINES]
 
 
 def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,
