@@ -6,25 +6,24 @@ description: Ground work in this repository's plumb records (owner intent, requi
 
 Run plumb as `.venv/Scripts/python.exe -m plumb`. Context lives in files; read it before acting.
 
-- Records: `.plumb/` holds INT (the owner's words), SR (requirements with given/when/then
-  examples), DEC (decisions), FEAT (features) and NC (nonconformances).
-  `.venv/Scripts/python.exe -m plumb brief` prints the current intent; `.venv/Scripts/python.exe -m plumb status` lists what awaits the owner.
-- Hook lines name a relevant record once per session (ID, state, title); `.venv/Scripts/python.exe -m plumb show <ID>`
-  prints its examples and tests, `.venv/Scripts/python.exe -m plumb explain <words>` why something exists.
-- Before editing a file, grep `.plumb/test_map.txt` for it: the tests listed cover it.
-- Never rewrite a confirmed example's acceptance test to make it pass; the owner sees it.
-- When the stop hook asks, run the command it names (`.venv/Scripts/python.exe -m plumb tests run --changed`).
-- Read back each request in your reply (what will and won't be done, assumptions labelled)
-  and record it as a proposed SR with examples, linked `implemented_by` the code it changes;
-  it never blocks. "plumb: untraced change" names changed files no SR owns yet.
-- When two readings fit, write a DEC record: "I assumed A; B also fits".
-- Ask the owner only on: a request that contradicts or extends a confirmed record, an
-  unconfirmed decision that matters, or a regression. Everything else goes in the summary.
-- Only the owner's own affirming words confirm. Relay them with
-  `.venv/Scripts/python.exe -m plumb relay <IDs> --prompt <digest> --quote "<owner's exact words>"`.
-  A prompt that does not object is not a confirmation. A bare "ok" covers only the
-  records the summary showed in full; one listed as "not shown" is relayed only when the
-  owner's words name its ID (`.venv/Scripts/python.exe -m plumb show <ID>` prints it in full). Never run
-  `plumb approve` or `plumb revoke`: they belong to the owner's own terminal.
-- After a requirement's code changed, `.venv/Scripts/python.exe -m plumb fidelity <SR>` builds an advisory packet.
+- `.plumb/` holds INT (the owner's words), SR (requirements with given/when/then examples),
+  DEC (decisions), FEAT and NC. `.venv/Scripts/python.exe -m plumb brief` is the current intent; `.venv/Scripts/python.exe -m plumb show <ID>`
+  a record's examples and tests; `.venv/Scripts/python.exe -m plumb explain <words>` why something exists.
+- Before editing a file, grep `.plumb/test_map.txt` for it: the tests listed cover it. Never
+  rewrite a confirmed example's acceptance test to make it pass. When the stop hook asks,
+  run the command it names (`.venv/Scripts/python.exe -m plumb tests run --changed`).
+- When a request starts or changes intent, load the plumb-clarify skill
+  (`.venv/Scripts/python.exe -m plumb clarify "<request>"` gives the depth and the questions that matter).
+- Read back each request in the owner's terms and record it in one call:
+  `.venv/Scripts/python.exe -m plumb capture --prompt <digest> --file <doc.json>` (verbatim quote, will, won't,
+  labelled assumptions, examples with edge cases, implemented_by paths); put the intent card
+  it prints in your reply. All proposed; it never blocks. Two readings fit:
+  `.venv/Scripts/python.exe -m plumb decide --question Q --chosen A --alt B [--matters]`.
+- Ask the owner only on a contradiction or extension of a confirmed record, an unconfirmed
+  decision that matters (one per message), or a regression.
+- Only the owner's own affirming words confirm; silence is not a confirmation. Relay them:
+  `.venv/Scripts/python.exe -m plumb relay <IDs> --prompt <digest> --quote "<exact words>"`, `--group low-risk` for
+  the triage offer (`.venv/Scripts/python.exe -m plumb triage` lists it), `--set INT-###` for an escalated spec.
+- Never run `plumb approve`, `revoke`, `triage --approve`, `spec approve` or
+  `config auto-approve`: they belong to the owner's own terminal.
 - Commits carry an `SR: SR-###` trailer naming the requirements they serve.

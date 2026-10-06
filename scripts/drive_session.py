@@ -20,6 +20,12 @@ The session it simulates:
 Usage: ``python scripts/drive_session.py --root . --edit src/plumb/text.py
 --prompt-change "..." --prompt "..." [--json]``. The edit appends one comment line and
 ``--restore`` puts the file back afterwards.
+
+``--capture`` drives the capture flow instead (``drive_capture``): the owner's new intent,
+``plumb capture`` (an INT read-back, an SR with proposed examples, a DEC that matters), the
+decision asked once, the read-back shown as an intent card, and the owner's "ok" relayed for
+exactly what was shown. It writes records and an approval, so run it on a scratch copy.
+``--merge-check BASE`` runs ``plumb merge-check BASE --no-run --json`` (never the full run).
 """
 
 from __future__ import annotations
@@ -144,18 +150,132 @@ def drive(root: Path, *, edit: str, prompt_change: str, prompt: str,
     return steps
 
 
+CAPTURE_PROMPT = ("Add a subtract helper next to add; 5 minus 3 is 2. Negative results are "
+                  "fine.")
+CAPTURE_DOC: dict = {
+    "intent": {"quote": "Add a subtract helper next to add",
+               "readback": "Add sub(a, b) beside add, returning a - b",
+               "will": ["sub(a, b) returns a - b"], "wont": ["no change to add or mul"],
+               "assumptions": ["integers, like add"]},
+    "requirements": [{"title": "sub returns the difference of two numbers",
+                      "statement": "pkg.mod.sub(a, b) returns the difference a - b.",
+                      "examples": [{"given": "the numbers 5 and 3", "when": "sub is called",
+                                    "then": "it returns 2", "quote": "5 minus 3 is 2"},
+                                   {"given": "the numbers 3 and 5", "when": "sub is called",
+                                    "then": "it returns -2"}],
+                      "implemented_by": ["src/pkg/mod.py"]}],
+    "decisions": [{"question": "Floats too, or integers only?", "chosen": "integers only",
+                   "alternatives": ["floats too"], "matters": True,
+                   "recommended": "integers only", "decides": ["#1"]}],
+}
+
+
+def relay_command(prompt_stdout: str) -> list[str]:
+    """The ``plumb relay ...`` arguments (after ``plumb``) that the prompt hook's
+    "awaiting confirmation" line names for the records the owner was shown, with the
+    owner's words left for the agent to quote."""
+    marker = "run plumb relay "
+    for line in prompt_stdout.splitlines():
+        if marker in line:
+            words = line.split(marker, 1)[1].split(" --quote", 1)[0]
+            return ["relay", *shlex.split(words, posix=True)]
+    return []
+
+
+def drive_capture(root: Path, *, prompt: str = CAPTURE_PROMPT, doc: dict | None = None,
+                  affirm: str = "ok", session_id: str = "plumb-driven-capture") -> list[Step]:
+    """The capture flow through the installed hooks (sp2, R1, R2, R11):
+
+    1. ``SessionStart``, then the owner's new intent (``UserPromptSubmit``, logged by the
+       prompt hook);
+    2. the agent records the read-back in one call (``plumb capture --prompt <digest>``):
+       an INT, an SR with a proposed example, a DEC that matters, all proposed;
+    3. ``Stop``: the decision that matters is asked (one per message);
+    4. ``Stop`` with ``stop_hook_active``: the end-of-turn summary shows the read-back as an
+       intent card with its proposed examples;
+    5. ``Stop`` again in the same turn: the decision is not asked a second time;
+    6. the owner answers ``affirm`` (``UserPromptSubmit``): the prompt hook names the shown
+       records and the relay command;
+    7. the agent relays exactly those (``plumb relay ... --quote <the owner's words>``);
+    8. the status line.
+    """
+    import hashlib
+
+    root = Path(root).resolve()
+    hooks, status_argv, env = installed_commands(root)
+    missing = [e for e in EVENTS if e not in hooks]
+    if missing:
+        raise SystemExit(f"plumb hooks not installed for: {', '.join(missing)}")
+    base = {"session_id": session_id, "transcript_path": "", "cwd": str(root)}
+    prefix = hooks["Stop"][: hooks["Stop"].index("hook")]
+    steps: list[Step] = []
+
+    def hook(name: str, event: str, **fields: object) -> Step:
+        step = _run(name, hooks[event], root, env, {**base, "hook_event_name": event, **fields})
+        steps.append(step)
+        return step
+
+    def plumb(name: str, *args: str) -> Step:
+        step = _run(name, [*prefix, *args], root, env, None)
+        steps.append(step)
+        return step
+
+    hook("SessionStart (capture)", "SessionStart", source="startup")
+    hook("UserPromptSubmit (new intent)", "UserPromptSubmit", prompt=prompt)
+    digest = "sha256:" + hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    doc_path = root / ".plumb" / "session" / session_id / "capture.json"
+    doc_path.parent.mkdir(parents=True, exist_ok=True)
+    doc_path.write_text(json.dumps(CAPTURE_DOC if doc is None else doc), encoding="utf-8")
+    plumb("plumb capture", "capture", "--prompt", digest, "--file", str(doc_path))
+    hook("Stop (asks the decision)", "Stop", stop_hook_active=False)
+    hook("Stop (read-back shown)", "Stop", stop_hook_active=True)
+    hook("Stop (not asked again)", "Stop", stop_hook_active=False)
+    hook("Stop (summary again)", "Stop", stop_hook_active=True)
+    answer = hook("UserPromptSubmit (owner ok)", "UserPromptSubmit", prompt=affirm)
+    relay = relay_command(answer.stdout)
+    if relay:
+        plumb("plumb relay", *relay, "--quote", affirm)
+    steps.append(_run("statusline", status_argv, root, env,
+                      {**base, "hook_event_name": "Status"}))
+    return steps
+
+
+def merge_check(root: Path, base: str = "main") -> Step:
+    """``plumb merge-check BASE --no-run --json`` on ``root``: the merge boundary report,
+    without the full run (that belongs to the Integrate phase alone)."""
+    root = Path(root).resolve()
+    hooks, _, env = installed_commands(root)
+    prefix = hooks["Stop"][: hooks["Stop"].index("hook")]
+    return _run("merge-check", [*prefix, "merge-check", base, "--no-run", "--json"], root,
+                env, None, timeout=600)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", default=".")
-    parser.add_argument("--edit", required=True, help="repository-relative source file")
-    parser.add_argument("--prompt-change", required=True,
+    parser.add_argument("--edit", help="repository-relative source file")
+    parser.add_argument("--prompt-change",
                         help="a prompt contradicting a confirmed requirement")
-    parser.add_argument("--prompt", required=True, help="a prompt naming a requirement")
+    parser.add_argument("--prompt", help="a prompt naming a requirement")
     parser.add_argument("--restore", action="store_true", help="undo the edit afterwards")
+    parser.add_argument("--capture", action="store_true",
+                        help="drive the capture flow instead (writes proposed records and "
+                             "relays the owner's 'ok': use a scratch copy)")
+    parser.add_argument("--merge-check", metavar="BASE", default=None,
+                        help="also run plumb merge-check BASE --no-run --json")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
-    steps = drive(Path(args.root), edit=args.edit, prompt_change=args.prompt_change,
-                  prompt=args.prompt, restore=args.restore)
+    if args.capture:
+        steps = drive_capture(Path(args.root))
+    elif args.edit and args.prompt_change and args.prompt:
+        steps = drive(Path(args.root), edit=args.edit, prompt_change=args.prompt_change,
+                      prompt=args.prompt, restore=args.restore)
+    elif args.merge_check:
+        steps = []
+    else:
+        parser.error("--edit, --prompt-change and --prompt are required without --capture")
+    if args.merge_check:
+        steps.append(merge_check(Path(args.root), args.merge_check))
     if args.json:
         print(json.dumps([asdict(s) for s in steps], indent=2))
         return 0

@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -184,3 +185,92 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
         if step.name != "covering tests":
             assert step.ms < HOOK_LIMIT_MS, (step.name, step.ms)
     assert run.ms < 120_000
+
+
+
+@pytest.mark.sr("SR-034")
+@pytest.mark.sr("SR-043")
+@pytest.mark.sr("SR-062")
+def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
+    """The capture flow (sp2, R1, R2, R11): a read-back shown as an intent card, a proposed
+    example, the decision that matters asked once, and the owner's "ok" relayed for exactly
+    what the summary showed."""
+    from plumb.api import open_core
+
+    driver = _driver()
+    steps = driver.drive_capture(adopted)
+    by_name = {s.name: s for s in steps}
+    print("\n" + json.dumps({s.name: s.ms for s in steps}, indent=2))  # visible with -s
+    assert all(s.code == 0 for s in steps), [(s.name, s.code, s.stderr) for s in steps]
+
+    # the agent records the read-back in one call; everything stays proposed (R1)
+    captured = by_name["plumb capture"].stdout
+    for line in ("INT-002 proposed", "SR-003 proposed", "DEC-001 proposed"):
+        assert line in captured
+
+    # the decision that matters is asked, alone, in the next message (R11)
+    asked = json.loads(by_name["Stop (asks the decision)"].stdout)
+    assert asked["decision"] == "block"
+    assert re.findall(r"plumb: (DEC-\d+) is unconfirmed", asked["reason"]) == ["DEC-001"]
+    assert "I assumed integers only; floats too also fits" in asked["reason"]
+
+    # the end-of-turn summary shows the read-back and its examples, proposed
+    shown = json.loads(by_name["Stop (read-back shown)"].stdout)["systemMessage"]
+    assert '▸ Intent  INT-002 "Add sub(a, b) beside add, returning a - b"' in shown
+    assert "Will: sub(a, b) returns a - b" in shown and "Won't: no change to add or mul" in shown
+    assert "Assumed: integers, like add" in shown
+    assert ("EX-1 given the numbers 5 and 3, when sub is called, then it returns 2"
+            in shown)
+    assert "it returns -2   (proposed)" in shown
+
+    # a later stop in the same turn does not ask the decision again
+    again = json.loads(by_name["Stop (not asked again)"].stdout)
+    assert again.get("decision") != "block"
+    assert "is unconfirmed" not in json.dumps(again)
+
+    # the owner's "ok": the prompt hook names exactly the records the summary showed
+    stated = json.loads((adopted / ".plumb" / "session" / "stated.json").read_text("utf-8"))
+    shown_ids = [r["id"] for r in stated["records"] if r.get("shown")]
+    assert shown_ids == ["DEC-001", "INT-002", "SR-003"]
+    answer = by_name["UserPromptSubmit (owner ok)"].stdout
+    assert f"run plumb relay {' '.join(shown_ids)} --prompt" in answer
+
+    # the relay confirms exactly those, at the hashes shown, on the owner's words
+    assert "confirmed DEC-001, INT-002, SR-003 (agent-relayed)" in by_name["plumb relay"].stdout
+    core = open_core(adopted)
+    [relayed] = [e for e in core.events()
+                 if e.kind == "approval" and e.payload.get("by") == "agent-relayed"]
+    assert relayed.payload["quote"] == "ok"
+    assert relayed.payload["self_recorded"] is False  # logged by the prompt hook (R13 Q4)
+    assert {(r["id"], r["hash"]) for r in relayed.payload["records"]} == {
+        (r["id"], r["hash"]) for r in stated["records"] if r.get("shown")}
+    statuses = core.status(shown_ids)
+    assert {statuses[i].confirmation for i in shown_ids} == {"confirmed"}
+
+    hooks = [s for s in steps if s.name.startswith(("SessionStart", "UserPromptSubmit",
+                                                     "Stop", "statusline"))]
+    slow = {s.name: s.ms for s in hooks if s.ms > HOOK_LIMIT_MS}
+    assert not slow, slow
+
+
+# the batch's base: the merge boundary of sub-projects 2 to 5 on plumb itself
+BATCH_BASE = "9dd86c6"
+
+
+@pytest.mark.sr("SR-047")
+def test_merge_check_on_plumb_reports_the_owners_pending_confirmations() -> None:
+    """plumb merge-check on plumb's own repository (report only, --no-run): plumb's records
+    await the owner (no agent approves them), so the boundary is not green and lists them."""
+    if not (ROOT / ".claude" / "settings.json").is_file():
+        pytest.skip("plumb's hooks are not installed in this checkout")
+    known = subprocess.run(["git", "cat-file", "-e", f"{BATCH_BASE}^{{commit}}"], cwd=ROOT,
+                           capture_output=True, check=False)
+    if known.returncode != 0:
+        pytest.skip(f"{BATCH_BASE} is not in this clone's history")
+    step = _driver().merge_check(ROOT, BATCH_BASE)
+    assert step.code != 0, step.stdout[-2000:]
+    report = json.loads(step.stdout)
+    assert report["error"] is None and not report["integrity"]
+    assert report["exit"] == step.code
+    assert report["awaiting"], "the owner's pending confirmations are listed"
+    assert {"SR-034", "SR-047", "SR-053", "SR-061"} <= {a["id"] for a in report["awaiting"]}
