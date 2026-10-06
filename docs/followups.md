@@ -3100,3 +3100,53 @@ EX-12, `tests/capture/test_plain_change.py`). The findings below were recorded, 
   message remain the owner's backstop. Fix: when a judgment backend is configured, ask it
   whether each content clause beside the ok changes a shown record (Noul), and treat a clause
   with distinctive words the heuristic cannot place as a change.
+
+## Delivered-repository verification, round 6 (2026-10-06, commits 32c3db8 and 6fa3228)
+
+The HIGH finding of this round (exclusion, scoping and deferral replies such as "yes, apart
+from the zero example", "go ahead, skip the zero example", "ok for the intent; I'll look at
+the examples later", "ok for the examples only" and "would that be ok if I sleep on it"
+confirmed the requirement the owner held back) was fixed in the same change: beside an
+affirmation, any clause with a word beyond the closed vocabulary of assent is a reservation
+(`approvals.owner_scope` / `change_clauses`, SR-005 EX-13). The residual named in the previous
+round ("ok, negative exponents are supported" read as a plain ok) is closed by the same rule.
+
+- [MEDIUM] (R13 Q4, R2) `plumb review` section 2 ("approvals you did not type",
+  `present/review.py` `_glance`) prints `relayed from your words "ok, go"` with no
+  "self-recorded message" label for a relay of a message `plumb turn start` logged (via:
+  turn), and flags an objection only from the stored `prompt_objects`, never re-reading the
+  message as `boundary/glance.py` does. `plumb show`, the merge-boundary glance and
+  `plumb hosts status` do label it, so the three surfaces R13 Q4 names are covered (already
+  recorded earlier). Fix: render review._glance rows through `boundary.glance.glance_rows`,
+  `self_recorded` and `_message`, so every approval glance shares one labeller.
+- [MEDIUM] (R2) The prompt hook tells the agent to relay with `--quote "<owner's whole
+  sentence>"` beside an objection, but when the objection names a different record ("ok, but
+  SR-002 should also accept floats", relaying SR-001) the whole sentence is refused (exit 3,
+  "the owner's words name SR-002, not SR-001") while `--quote "ok"` succeeds, storing "ok" with
+  `prompt_objects: true`. The whole message survives only in the gitignored per-worktree
+  `prompts.jsonl` (DEC-004), so after merging from another checkout the merge-check glance
+  and `plumb review` show only the bare "ok" (still flagged and revocable). Fix: beside any
+  objection, require and accept the owner's whole statement as the stored quote and copy it
+  into the committed approval event, so every glance shows it from any checkout; one test per
+  entry point (relay by IDs, --group, --set, the prompt hook line, turn start) where the
+  objection names a different record, and one two-worktree test whose glance runs in a
+  checkout without the prompt log.
+- [LOW] (R9) In a repository whose only records are SR-001 and SR-002, `plumb confirm SR-001
+  SR-002` prints `the owner's own "ok" (or "ok SR-034") ...`, a hard-coded ID that does not
+  exist there (`confirm.py` header). Fix: use one of the records shown (or a title) in the
+  example phrase.
+- [LOW] (quality bar: no hidden state) `plumb turn start --help` runs a real turn instead of
+  printing help (reproduced again; already recorded): it appended an empty-text prompt entry
+  (digest sha256:e3b0c442..., via: turn) to the gitignored `.plumb/session/prompts.jsonl` and
+  rewrote `.plumb/session/cli/turn.json`. Fix: handle `--help` after the turn subcommand
+  before any logging.
+- [LOW] (this round's fix, trade-offs) The reservation rule errs towards refusing: beside an
+  affirmation, a word outside the vocabulary of assent ("ok, see you tomorrow", "hmm, ok",
+  "yes, exactly as discussed") holds back every shown record it cannot place, a false refusal
+  that leaves records proposed (non-blocking under R1). Sentences before the affirmation's
+  sentence count only through objection and change words ("Is the build green? Yes, approve
+  SR-001" confirms). A reservation that refers to a kind ("the examples") holds back the
+  records of that kind, not the intent. An ok scoped to "the intent and the examples" is not
+  read as scoped. Fix: when a judgment backend is configured, ask it whether each clause beside
+  the ok holds something back (Noul), and widen the vocabulary of assent from the owner's
+  confirmed replies.

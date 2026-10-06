@@ -374,7 +374,17 @@ with four cheap, deterministic checks, none of which calls a model:
    clause objects to the records it names; when none of the prompt's change clauses names a
    record by ID or in plain words among the records the owner was shown, it objects to every
    one: "ok, except 3 minus 5 should return 0" confirms nothing, since the correction may be
-   about any of them. When the prompt objects to something else, the quote must be the
+   about any of them. Beside an affirmation the burden is inverted, since no list of
+   objection words is complete: the ok confirms only what the owner affirms without
+   reservation. From the sentence holding the affirmation on, any clause that holds a word
+   beyond the closed vocabulary of assent (affirmations, praise, carry-on words, function
+   words, words for the shown records in general, record IDs) is a reservation: "yes, apart
+   from the zero example", "lgtm, minus the zero example", "go ahead, skip the zero
+   example", "ok, will check the examples tomorrow", "would that be ok if I sleep on it". A
+   reservation holds back the records it names, by ID, in plain words or by kind ("the
+   examples" are the requirements'), and every record shown when it names none. An ok
+   scoped to one kind ("ok for the intent", "ok for the examples only") keeps only the whole
+   records of that kind, none for the examples. When the prompt objects to something else, the quote must be the
    owner's whole statement ("Ok, carry on with the tests", never a bare "Ok" cut from it),
    the approval records `prompt_objects`, and the merge-boundary glance flags it and prints
    the owner's whole logged message beside the quote. The prompt hook's relay

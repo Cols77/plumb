@@ -541,16 +541,19 @@ def _naming_stems(record: Any) -> frozenset[str]:
     return found
 
 
-def _restating(record: Any) -> tuple[frozenset[str], frozenset[str]]:
+def _restating(record: Any,
+               every_word: bool = False) -> tuple[frozenset[str], frozenset[str]]:
     """``(chosen, restating)``: the words of a decision's chosen option, and the words that
     restate ``record`` (its title and chosen option), each without the words only its
     alternatives or won't list hold (DEC "Floats too?" chose "integers only": "floats"
-    names it but never restates it)."""
+    names it but never restates it). With ``every_word``, short and common words count too
+    (``_tokens``: the "only" of "integers only"), as a reservation's residue holds them."""
+    read = _tokens if every_word else _words
     fields = getattr(record, "fields", {}) or {}
-    chosen = _words(" ".join(_texts(fields.get("chosen"))))
-    contrast = _words(" ".join(t for name in _CONTRAST_FIELDS
-                               for t in _texts(fields.get(name)))) - chosen
-    title = _words(str(getattr(record, "title", "") or ""))
+    chosen = read(" ".join(_texts(fields.get("chosen"))))
+    contrast = read(" ".join(t for name in _CONTRAST_FIELDS
+                             for t in _texts(fields.get(name)))) - chosen
+    title = read(str(getattr(record, "title", "") or ""))
     return chosen - contrast, (title | chosen) - contrast
 
 
@@ -574,6 +577,136 @@ _FILLER = ("please", "thanks", "thank", "great", "perfect", "nice", "cool", "awe
 # looks good"): such a clause restates nothing and asks for nothing.
 _POSITIVE = re.compile(r"(?<!\w)(?:good|fine|great|perfect|right|correct|nice|works?"
                        r"|sounds|looks|ok|okay|yes|lgtm)(?!\w)", re.IGNORECASE)
+
+
+# ------------------------------------------------- reservations beside an affirmation
+#
+# Guarantee (R1, R2, decision 2): a relay pins only the records, and only the examples, that
+# the owner's words affirm WITHOUT RESERVATION. A list of objection words can never be
+# complete (audit round 5: "apart from", "aside from", "other than", "minus", "skip", "is
+# off", "later", "tomorrow", "only", "if" all passed it), so in a message that holds an
+# affirmation the burden is inverted: a clause that holds ANY word beyond the closed
+# vocabulary of assent below (affirmations, praise, carry-on words, function words, words
+# that refer to the shown records in general, record IDs) is a reservation, unless its extra
+# words only restate or praise a shown record by its own title or chosen option. A
+# reservation objects to the records it names (by ID, in plain words, or by kind: "the
+# examples" are the requirements' examples) and, naming none, to every record the owner
+# was asked about. A clause that scopes the ok to one kind of record ("ok for the intent",
+# "ok for the examples only") keeps only the whole records of that kind.
+
+# The closed vocabulary of assent: words that add nothing to "ok" beside it.
+_ASSENT = frozenset("""
+a an the and or so to of on in at as by for with from into it its is are was were be been am
+this that these those them they their there here i me my mine we us our you your yours do
+does did doing done go goes going went get got let lets now then all both each every
+everything anything one ones same well very really much lot lots also too again please
+thanks thank thx cheers ty yes yeah yep yup sure ok okay alright fine good great perfect nice
+cool awesome excellent brilliant neat super wonderful fantastic lovely right correct exactly
+indeed absolutely definitely totally certainly course agree agreed approve approved approval
+confirm confirmed confirmation lgtm sgtm sound sounds look looks looking seem seems meant mean
+said described proposed suggested shown written listed above stated works work worked job
+proceed continue carry ahead start begin implement implementation build write writing ship
+merge commit push next step steps rest task tasks plan link links trace test tests example
+examples requirement requirements record records intent intents decision decisions readback
+read back spec card cards statement love like happy glad satisfied sense makes make add use
+keep want think thing things way code file files function functions what plumb s ll d
+ve re m
+""".split())
+# A word of a clause: letters, or a number ("#0": numbers carry behaviour).
+_TOKEN = re.compile(r"[a-z]+|\d+(?:\.\d+)?")
+
+
+def _tokens(text: str) -> frozenset[str]:
+    """Every word of ``text`` (stemmed, short and common words included) and its numbers
+    (``#0``), record IDs left out."""
+    from plumb.present.resolve import stem
+
+    found: set[str] = set()
+    for token in _TOKEN.findall(_RECORD_ID.sub(" ", text).lower()):
+        found.add("#" + token if token[0].isdigit() else stem(token))
+    return frozenset(found)
+
+
+_ASSENT_STEMS = _tokens(" ".join(_ASSENT))
+
+
+def _residue(clause: str, affirmations: Sequence[str] = ()) -> frozenset[str]:
+    """The words of ``clause`` beyond the vocabulary of assent and the affirmation terms:
+    what makes the clause more than an affirmation."""
+    clause = _NOT_NEGATING.sub(" ", clause)  # "no objections" is assent
+    return _tokens(clause) - _ASSENT_STEMS - _tokens(" ".join(affirmations))
+
+
+# Words that refer to one kind of record in general. "example", "test", ... name a part of a
+# requirement (``EX``): a reservation about "the examples" places on the requirements (and
+# any record with examples); an ok scoped to "the examples" confirms no whole record.
+_KIND_WORDS = {
+    "intent": "INT", "intents": "INT", "readback": "INT", "read-back": "INT",
+    "read back": "INT", "decision": "DEC", "decisions": "DEC", "option": "DEC",
+    "options": "DEC", "choice": "DEC", "choices": "DEC", "feature": "FEAT",
+    "features": "FEAT", "requirement": "SR", "requirements": "SR", "example": "EX",
+    "examples": "EX", "test": "EX", "tests": "EX", "case": "EX", "cases": "EX",
+    "edge case": "EX", "edge cases": "EX", "behaviour": "EX", "behavior": "EX",
+    "result": "EX", "results": "EX",
+}
+_KIND = "|".join(sorted((re.escape(k).replace(r"\ ", r"\s+") for k in _KIND_WORDS),
+                        key=len, reverse=True))
+_KIND_RE = re.compile(rf"(?<![\w-])(?:{_KIND})(?![\w-])", re.IGNORECASE)
+# An ok scoped to one kind of record: "ok for the intent", "yes to the decisions", "ok for
+# the examples only", "just the intent".
+_NARROW = re.compile(
+    rf"(?<!\w)(?:(?:for|on|about|to)\s+(?:(?:the|this|that|these|those|your|my|its)\s+)?"
+    rf"(?:{_KIND})(?![\w-])(?!\s*(?:and|&|,|\+)\s*(?:the\s+)?(?:{_KIND}))"
+    rf"|(?:only|just)\s+(?:(?:for|on|to)\s+)?(?:(?:the|this|that|these|those)\s+)?"
+    rf"(?:{_KIND})(?![\w-])"
+    rf"|(?:{_KIND})\s+only(?!\w))", re.IGNORECASE)
+
+
+def _kinds(text: str) -> set[str]:
+    """The record kinds ``text`` refers to in general ("the examples": ``EX``)."""
+    return {_KIND_WORDS[" ".join(m.group().lower().split())]
+            for m in _KIND_RE.finditer(text)}
+
+
+def _of_kinds(kinds: set[str], records: Mapping[str, Any] | None,
+              pool: Iterable[str]) -> set[str]:
+    """The records of ``pool`` that ``kinds`` refer to: by ID prefix, and for ``EX`` every
+    requirement and every record with examples."""
+    out: set[str] = set()
+    for record_id in pool:
+        prefix = record_id.split("-", 1)[0]
+        record = (records or {}).get(record_id)
+        if prefix in kinds or ("EX" in kinds and (
+                prefix == "SR" or getattr(record, "examples", None))):
+            out.add(record_id)
+    return out
+
+
+def _narrowed(clause: str, pool: Iterable[str]) -> set[str] | None:
+    """The records an ok scoped to a kind keeps ("ok for the intent": the intents of
+    ``pool``; "ok for the examples only": none, an example is part of a record), or None
+    when ``clause`` does not scope its ok. A clause naming record IDs is scoped by them."""
+    if _RECORD_ID.search(clause):
+        return None
+    kinds = {kind for m in _NARROW.finditer(clause) for kind in _kinds(m.group())}
+    if not kinds:
+        return None
+    return {i for i in pool if i.split("-", 1)[0] in kinds}
+
+
+def _reserving_from(text: str, affirmations: Sequence[str]) -> int | None:
+    """Where reservations start counting in ``text``: the start of the sentence holding its
+    first affirmation, or None when it holds none. Words in that sentence and after it
+    qualify the ok ("ok, apart from the zero example", "ok. I'll check the examples
+    later"); a sentence before it is what the ok answers ("Is the build green? Yes, approve
+    SR-001") and counts only through objection and change words."""
+    offsets = _affirmation_offsets(text, affirmations) if affirmations else []
+    if not offsets:
+        return None
+    begin = 0
+    for end in _SENTENCE_END.finditer(text, 0, offsets[0]):
+        begin = end.end()
+    return begin
 
 
 def _distinctive(clause: str, affirmations: Sequence[str] = ()) -> frozenset[str]:
@@ -614,8 +747,9 @@ def _objects(clause: str) -> bool:
 
 
 def _asks_change(clause: str, records: Mapping[str, Any] | None, wanted: Iterable[str],
-                 affirmations: Sequence[str] = ()) -> bool:
-    """Whether ``clause`` objects to something or asks for different behaviour (R2: "an
+                 affirmations: Sequence[str] = (), reserving: bool = False) -> bool:
+    """Whether ``clause`` objects to something, asks for different behaviour or, with
+    ``reserving`` (the message holds an affirmation), holds the affirmation back (R2: "an
     objection is not an approval"; decision 2: the owner's corrections are explicit
     decisions, never confirmed by the ok beside them).
 
@@ -627,26 +761,39 @@ def _asks_change(clause: str, records: Mapping[str, Any] | None, wanted: Iterabl
     assumptions, won't list or a decision's alternatives ("Actually multiply by 0 gives 1",
     "abs of a negative is negative for us"); numbers count as words, and a clause naming no
     shown record still asks for a change when it holds a directive or a number ("3 minus 5 is
-    0 for us"). Only a clause repeating
-    a decision's chosen option ("orders only"), or praising a record by the words of its
-    title ("the multiply looks good"), does not. A clause holding only the affirmation,
-    record IDs or filler ("ok", "thanks, carry on with the tests") never does."""
+    0 for us").
+
+    With ``reserving``, the burden is inverted (see ``_ASSENT``): ANY word beyond the
+    vocabulary of assent makes the clause a reservation ("apart from the zero example", "I'll
+    look at the examples later", "would that be ok if I sleep on it"), and so does an ok
+    scoped to one kind of record ("ok for the intent", ``_NARROW``).
+
+    Only a clause repeating a decision's chosen option ("orders only"), or praising a record
+    by the words of its title ("the multiply looks good"), does not. A clause holding only
+    the affirmation, record IDs or filler ("ok", "thanks, carry on with the tests") never
+    does."""
     if _objects(clause):
         return True
-    words = _distinctive(clause, affirmations)
+    if reserving and _NARROW.search(_RECORD_ID.sub(" ", clause)) and \
+            _narrowed(clause, ()) is not None:
+        return True
+    words = (_residue(clause, affirmations) if reserving
+             else _distinctive(clause, affirmations))
     if not words:
         return False
     keep = set(wanted or ())
-    pool = ({i: r for i, r in records.items() if i in keep} if keep else records) or {}
+    pool = {i: r for i, r in (records or {}).items() if not keep or i in keep}
     named = [r for r in pool.values() if words & _naming_stems(r)]
     if named:
-        restated = [_restating(r) for r in named]
+        restated = [_restating(r, reserving) for r in named]
         if words <= frozenset().union(*(c for c, _ in restated)):
             return False  # the owner repeats the chosen option ("ok, orders only")
         praising = bool(_POSITIVE.search(clause) or _affirmation_offsets(clause, affirmations))
         if praising and words <= frozenset().union(*(r for _, r in restated)):
             return False  # praise by the title's words ("ok, the multiply looks good")
         return True
+    if reserving:
+        return True  # more than assent, about nothing the agent can place: a reservation
     # naming no shown record: a directive ("and also add a divide function") or a number
     # ("3 minus 5 is 0 for us") still states behaviour the agent cannot place
     return bool(_DIRECTIVE.search(_RECORD_ID.sub(" ", clause))
@@ -655,14 +802,17 @@ def _asks_change(clause: str, records: Mapping[str, Any] | None, wanted: Iterabl
 
 def change_clauses(text: str, records: Mapping[str, Any] | None = None,
                    scope: Iterable[str] = (), affirmations: Sequence[str] = ()) -> list[str]:
-    """The clauses of ``text`` that object to something or ask for different behaviour
-    (``_asks_change``), read against ``records`` and the records the owner was asked about
-    (``scope``). The one reader behind ``owner_scope``, the relay's whole-statement quote,
-    the approval's ``prompt_objects`` flag, the prompt hook's relay line and the
-    merge-boundary glance."""
+    """The clauses of ``text`` that object to something, ask for different behaviour or,
+    beside an affirmation, hold it back (``_asks_change``), read against ``records`` and the
+    records the owner was asked about (``scope``). The one reader behind ``owner_scope``,
+    the relay's whole-statement quote, the approval's ``prompt_objects`` flag, the prompt
+    hook's relay line and the merge-boundary glance: a message that is more than the
+    affirmation always yields a clause here."""
     wanted = list(scope or ())
+    origin = _reserving_from(text, affirmations)
     return [text[a:b].strip() for a, b in _clauses(text)
-            if _asks_change(text[a:b], records, wanted, affirmations)]
+            if _asks_change(text[a:b], records, wanted, affirmations,
+                            origin is not None and b > origin)]
 
 
 def objection_clauses(text: str) -> list[str]:
@@ -675,7 +825,8 @@ def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
                 records: Mapping[str, Any] | None = None,
                 scope: Iterable[str] | None = None) -> tuple[set[str], set[str]]:
     """``(named, objected)``: the record IDs the owner's affirming words name, and every
-    record the prompt names in a clause that objects to it or asks to change it.
+    record the prompt names in a clause that objects to it, asks to change it or holds the
+    affirmation back from it.
 
     The one place that reads which records a prompt confirms (R2), for ``plumb relay``
     (IDs, ``--group``, ``--set``) and the relay line the prompt hook suggests. The
@@ -697,24 +848,49 @@ def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
     prompt's change clauses names a record by ID or resolves in plain words to a record of
     ``scope``, the prompt objects to every record of ``scope``: the owner corrected
     something the agent cannot place ("ok, except 3 minus 5 should return 0"), so the ok
-    confirms nothing rather than the record the correction is about."""
+    confirms nothing rather than the record the correction is about.
+
+    Beside an affirmation, a clause holding any word beyond assent is a reservation
+    (``_ASSENT``): "apart from the zero example", "skip the zero example", "I'll look at
+    the examples later". A reservation that names no record by ID or in plain words but
+    refers to a kind of record ("the examples") holds back the records of that kind
+    (``_of_kinds``: the requirements); naming nothing at all, it holds back every record of
+    ``scope`` ("would that be ok if I sleep on it"). An ok scoped to one kind ("ok for the
+    intent", "ok for the examples only") holds back every record of ``scope`` outside it
+    (``_narrowed``: for "the examples", every one, an example being part of a record)."""
     clauses = _clauses(text)
     objected: set[str] = set()
     wanted = set(scope or ())
+    origin = _reserving_from(text, affirmations)
     objecting = False
     placed = False
     for start, end in clauses:
         clause = text[start:end]
+        reserving = origin is not None and end > origin
         ids = set(_RECORD_ID.findall(clause))
-        if not _asks_change(clause, records, wanted, affirmations):
+        if reserving:
+            kept = _narrowed(clause, wanted)
+            if kept is not None:  # "ok for the intent": everything else is held back
+                objected |= wanted - kept
+                clause = _NARROW.sub(" ", clause)
+        if not _asks_change(clause, records, wanted, affirmations, reserving):
             continue
         objecting = True
         named_here = set(ids)
         if records:
             plain = _plain_named(clause, records, affirmations)
             named_here |= plain
-            if not ids and not plain and _refers_generally(clause):
-                plain = set(records)
+            if not ids and not plain:
+                if reserving and not _asks_change(clause, records, wanted, affirmations):
+                    # a reservation, not a correction: "I'll check the examples later"
+                    # holds back the records of the kind it refers to
+                    kinds = _kinds(clause)
+                    plain = _of_kinds(kinds, records, wanted or records)
+                    named_here |= plain
+                    if kinds and not plain:
+                        placed = True  # about a kind none of the records asked about is
+                elif _refers_generally(clause):
+                    plain = set(records)
             objected |= plain
         objected |= ids
         if ids or named_here & wanted:  # an ID the owner wrote places the objection
