@@ -325,5 +325,8 @@ plumb has been dogfooded from day one: this repository is developed with plumb.
   findings go to `docs/followups.md`.
 
 Design documents: `docs/concept.md` (the concept spec), `docs/specs/sp1-grounding-loop.md`
-(sub-project 1), `docs/plans/sp1-plan.md` and `docs/plans/fork-plan.md` (moving work from
-pi-agent-factory to plumb).
+(sub-project 1), `docs/plans/sp1-plan.md` and `docs/fork-plan.md` (moving work from
+pi-agent-factory to plumb). The next batch: `docs/specs/sp2-intent-capture.md`,
+`docs/specs/sp3-merge-boundary.md`, `docs/specs/sp4-hosts-mcp.md`,
+`docs/specs/sp5-presentation.md` and their one combined plan, `docs/plans/next-plan.md`
+(five lanes, including the pi-agent-factory importer completion).

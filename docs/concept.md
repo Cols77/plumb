@@ -7,6 +7,11 @@ quoted words disagree, the quotes win and this document is corrected. The brief'
 owner-proxy rulings R1 to R7 are binding and are applied here: R1 in sections 4.2, 5 and 6.6,
 R2 in 4.6 and 4.7, R3 in 6.6, R4 in 6.4 and 8, R5 in 7.2, R6 in section 1 and 11, and R1, R2,
 R4 and R5 together at the merge boundary (7.5). R7 governs how verifiers grade this document.
+The owner's decisions of 2026-10-06, rulings R8 to R12, are newer than the first version of
+this document and supersede it where they differ: R8 (JEV-assisted confirmation and its
+commands) in 4.2, 4.6, 6.5, 8 and 12; R9 (presentation and context economy) in D13, 6.1,
+6.2 and 6.5; R10 (parallel work) in section 11, item 6; R11 (brainstorming-grade
+clarification) in 5.2 and 9; R12 (the JEV pieces ported from pi-agent-factory) in 8.
 
 A plumb line hangs straight under its own weight and shows whether a wall is true. plumb does
 the same for a codebase. It shows, cheaply and on every turn, whether the system being built
@@ -36,7 +41,7 @@ On planning:
 > their system will have their intent succesfully translated?"
 
 The owner's decisions that shape plumb. The numbers follow the owner intent brief (decisions
-1 to 12); D13 is the owner's ruling R9 of 2026-10-06:
+1 to 12); D13 to D17 are the owner's rulings R9, R8, R10, R11 and R12 of 2026-10-06:
 
 | # | Decision | Owner's words |
 |---|---|---|
@@ -53,6 +58,10 @@ The owner's decisions that shape plumb. The numbers follow the owner intent brie
 | D11 | Owner does not review; agents verify: the owner reviews neither this spec nor any plan, and independent verifier agents check every artifact against the owner's words. Implementation available by tomorrow morning (9 hours): sub-project 1 has a time-boxed slice that must be dogfoodable by then (section 11). | "I wont review the concept spec or any plan. use agents that verify that my intent based on that conversation is respected. I want to have the implementation available by tomorrow morning (in 9 hours)." |
 | D12 | The repository and CLI are named plumb (a plumb line checks true alignment). | "coherence is a bit confusing because it's a usefull word to use." |
 | D13 | Presentation and context economy (ruling R9). Hooks inject a compact, deduplicated delta: one line per record (ID, title, state), only when it is newly relevant in the session or changed, within a per-turn token budget, nothing when nothing is new; details by `plumb show`; a session brief of a few lines and a pointer. The owner sees a one-line status card by default and the full intent card only when it matters, configurable `full`, `compact` or `off`. Owner commands take plain language and answer in the owner's terms (`/plumb explain <anything>` replaces `plumb why <file\|ID>`). `plumb view` writes a generated Obsidian vault of the records for deep review; editing it never approves. | "isnt there a smarter way to do this? Isnt the risk to bloat the context way too fast with redundant tokens?" / "a proper way to present the relevant information to the user, but only when it is important. Otherwise it should only be small card ... collapsible or configured to be disabled." / "the user don't necessarily know the code ... All the commands should be designed to handle this properly" / "use obsidian as the frontend perhaps?" |
+| D14 | JEV-assisted confirmation (ruling R8). A: triage, always available: the judgment backend rates each proposed record's faithfulness to the owner's words and groups the low-risk ones, which the owner confirms in one line with explicit words; it never approves by itself. B: a narrow auto-approval, opt-in and off by default, only for records derived directly from the owner's own words, only with JEV and a passing calibration (D17), recorded `by: auto-jev`, labelled everywhere, revocable and listed at the merge boundary; never for a decision that matters, an escalated spec set or an edit of an owner-confirmed record. Commands `plumb triage`, `plumb config auto-approve on\|off`, `plumb config show`, `plumb jev status`, `plumb jev setup` (sections 4.6 and 8). | "Ok for A+B" / "there should be a command for that" |
+| D15 | Parallel work by awareness instead of locks: git is the coordinator and plumb holds no shared mutable runtime state; collision-free IDs, logs that never conflict, a frontmatter-aware merge driver, cross-worktree awareness, and `plumb check --merge` on the merge result (ruling R10; sub-project 6, section 11). | "yes" |
+| D16 | Brainstorming-grade intent clarification: a `plumb-clarify` skill, written for plumb, that scales its depth to the request (trivial, incremental, escalated), asks only the questions whose answer changes what gets built, one per message, multiple choice with a recommendation, each recorded as a `DEC` that matters (ruling R11; sections 5.2 and 9). | "during the intent clarification, claude code should use some kind of brainstorming skill to improve intent capture capability" |
+| D17 | Port the missing JEV pieces from pi-agent-factory: calibration on the owner's own confirmed and revoked records, a prerequisite for D14 B; edge alignment (`plumb align`); ownership proposals for untraced changes; a hidden-dependency scan as drift hints. All work in a degraded form with the heuristic, all are logged and advisory (ruling R12; section 8). | "Ok adopt the missing pieces you're mentionning" |
 
 ## 2. Problem
 
@@ -171,7 +180,11 @@ Requirement states are derived and never stored:
 - **confirmed:** an approval pins the current hash. Only the owner's explicit words create
   such an approval: `plumb approve` in the owner's terminal (`by: owner`), or the owner's own
   affirming words in a prompt, recorded by the agent and quote-checked (`by: agent-relayed`,
-  section 4.6). There is no "no-objection" approval;
+  section 4.6). There is no "no-objection" approval. The one exception is the owner's own
+  choice (D14 B): when the owner has turned auto-approval on, a record derived directly from
+  the owner's words may be confirmed `by: auto-jev` under the conditions of section 8; it is
+  labelled "confirmed by JEV" everywhere, so the owner always tells it from "confirmed by
+  you";
 - **covered:** confirmed, and every example has at least one `verified_by` link to an
   existing test;
 - **verified:** covered, and every covering test has passing evidence for its current
@@ -268,6 +281,26 @@ leaves the record proposed. With no affirming words from the owner there is no a
 Every merge boundary lists the `agent-relayed` approvals made since the merge base, each with
 its quote, for a quick owner glance (section 7.5).
 
+Two forms the owner chose on 2026-10-06 (D14) sit beside these:
+
+- **Triage group (D14 A).** `plumb triage` groups proposed records by the judgment backend's
+  faithfulness rating. The owner confirms the low-risk group in one step, either
+  `plumb triage --approve low-risk` in the owner's terminal (`by: owner`, exactly the listed
+  hashes) or by affirming the one-line offer in a prompt, which the agent relays as above
+  (`by: agent-relayed`). The offer names every record of the group by ID; the rating never
+  approves anything by itself.
+- **Auto-approval (D14 B).** Off by default. Only the owner turns it on, in the owner's
+  terminal (`plumb config auto-approve on`, logged as an event; editing `config.yaml` alone
+  does not turn it on), and only after a passing calibration for the current JEV model
+  version (section 8). Then a record derived directly from the owner's own words (an `INT`
+  read-back whose quote is verbatim in the logged prompt, an example restating the owner's
+  given/when/then) that JEV judges entailed by that prompt is approved `by: auto-jev`, with
+  the score, confidence, prompt digest and backend version, hash-pinned like any approval.
+  Never for a `DEC` with `matters: true`, an escalated spec set, an edit of a record the owner
+  confirmed, or any record when JEV is unavailable; the heuristic never auto-approves. Such
+  approvals are labelled everywhere, revocable with `plumb revoke`, and listed at the merge
+  boundary beside the agent-relayed ones.
+
 **Prompt-digest log.** On every owner prompt, the prompt hook appends a committed log entry
 under `.plumb/log/prompt/` holding only `{digest, session, at}`: the `sha256` of the prompt
 text, never the text itself. The text stays in gitignored session state for the rest of the
@@ -320,7 +353,9 @@ committed entry shows up in `plumb check` and in git history. The merge-boundary
 against a relayed approval the owner never gave.
 
 An escalated plan (section 5.2) is approved as a set: one approval pins a set hash over the
-sorted member hashes.
+sorted member hashes. The set is anchored on an `INT` with `mode: escalated` and a `members`
+list (`plumb spec approve INT-###` in the owner's terminal, or the owner's affirming words
+relayed with `plumb relay --set`).
 
 ### 4.7 Append-only logs
 
@@ -397,6 +432,22 @@ spec in `docs/specs/` that links them. The owner approves the set once (a set-ha
 presenting the set for that approval is a trigger-2 question (section 6.6), and code for the
 escalated work waits for it.
 Both modes use the same records, so escalated work simply produces more of them up front.
+
+**Clarification depth (D16).** Whenever a request creates or changes intent, the agent loads
+the `plumb-clarify` skill, which scales the clarification to the request: a trivial or clear
+request (it maps to confirmed intent, or is a small unambiguous change) gets no questions and
+a compact read-back; an incremental one gets the read-back with "you said" apart from "I
+assume", proposed examples with edge cases, and only the questions whose answer changes what
+gets built, one per message, multiple choice with a recommended option, each recorded as a
+`DEC` with `matters: true`; an escalated one gets a short structured session (purpose and
+success first, then two or three approaches with trade-offs and a recommendation, then the
+set of records presented for the set-hash approval). The skill never asks what the
+repository, the records or sensible defaults already answer, drops what the owner did not ask
+for, restates in the owner's terms, and stops asking once the owner says "go" or "ok": the
+remaining unknowns become labelled assumptions. Clarifying questions are trigger 2 of section
+6.6, so they occur only when the owner starts or changes intent, never mid-implementation
+unless a contradiction appears. The agent records the result with `plumb capture`, which
+writes the whole read-back (INT, SR with examples, DEC) in one call, all proposed.
 
 plumb suggests escalation, and the owner decides. The prompt hook and `plumb status` raise
 the suggestion when any of these triggers fires:
@@ -522,6 +573,15 @@ for fidelity.
 plain-ASCII line, for example
 `plumb | SR 12/14 ok | proposed 2 | stale 1 | tests ok | full pending | ask 0`. The
 `full pending` field appears only while `full verification pending` holds (section 7.2).
+
+With D13 the line becomes the owner's one-line status card: a state, a plain-language
+summary of the intent being worked on, and the counts, for example
+`plumb ✓ aligned · "add multiply next to add" · SR 12/14 ok (2 by JEV) · 1 awaits you`.
+It distinguishes "confirmed by you" from "confirmed by JEV" (D14) and says
+`auto-approve suspended` when a model change suspended it. The full intent card appears in
+the end-of-turn summary only when it matters (a new or changed intent awaiting the owner, one
+of the three triggers, a regression, or the owner's own request); the card's verbosity is
+configurable, `full`, `compact` or `off` (`docs/specs/sp5-presentation.md`).
 
 ### 6.6 Interruption triggers (exhaustive)
 
@@ -707,9 +767,10 @@ the change from `<base>`:
   changes: work that skipped the read-back) are listed in the same question; they need a
   requirement, recorded by the agent and confirmed by the owner, or the owner's explicit
   exemption.
-- **Agent-relayed approvals, for a glance.** Every `agent-relayed` approval made in the range
-  is listed with its record and the owner's quote. This is not a question; the owner can
-  revoke any of them.
+- **Agent-relayed and auto-JEV approvals, for a glance.** Every `agent-relayed` approval
+  made in the range is listed with its record and the owner's quote, and every `auto-jev`
+  approval (D14 B) with its score, confidence and model version. This is not a question; the
+  owner can revoke any of them. `plumb merge-check` (sub-project 3) is the command.
 - **Fidelity, advisory.** Touched requirements with no judgment for their current hashes, or
   with a `drifts` or `unsure` verdict, are listed with the `plumb fidelity` command for each.
 - **Verification state.** The merge is never green unless every acceptance test the change
@@ -745,8 +806,9 @@ fully reproducible.
 
 JEV (TypeSafe's typed-judgment model, which answers with `Choice`, `Score` or `Noul` in about
 70 to 500 ms) can be enabled as an **optional** backend through `.plumb/config.yaml`, with the
-key in `TYPESAFE_API_KEY` or the user store `~/.config/plumb/jev` (never inside the
-repository). It is used for:
+key in the environment variable named by `judgment.jev.credential_env` (default
+`TYPESAFE_API_KEY`; `plumb jev setup` records only that name, never the secret) or the user
+store `~/.config/plumb/jev` (never inside the repository). It is used for:
 
 - intent-change detection on candidate prompts;
 - drift triage (cosmetic or material) on stale links;
@@ -771,7 +833,47 @@ about 800 ms; a timeout, missing key or error falls back to the heuristic with o
 notice. State sent to the service is assembled only from tracked files, with secret-bearing
 paths excluded and deterministic truncation. Every judgment is an append-only log entry with
 its request fingerprint. Judgments are advisory: they order, filter and annotate, and they
-never confirm a record or mark something fresh.
+never mark something fresh. They never confirm a record, with one exception the owner chose
+(D14 B, ruling R8): the narrow auto-approval of section 4.6, off by default, which only the
+owner turns on, only with JEV (never the heuristic), and only while a passing calibration
+(below) exists for the resolved model version.
+
+**JEV-assisted confirmation (D14, ruling R8).**
+
+- `plumb triage` scores each proposed record for faithfulness to the owner's words (JEV when
+  configured, otherwise the heuristic) and groups the low-risk ones; the end-of-turn summary
+  and `plumb brief` offer one line ("approve the N records rated faithful to your words? see
+  plumb triage") that the owner confirms with explicit words; riskier records are shown
+  individually. `plumb triage --approve low-risk` confirms the group from the owner's
+  terminal, recorded as an owner approval of exactly the listed hashes.
+- `plumb config auto-approve on|off [--backend jev] [--min-probability 0.9]
+  [--min-confidence high]` and `plumb config show` run in the owner's terminal only and are
+  logged in the event log; `on` refuses when JEV is not configured or not calibrated.
+- `plumb jev status` (configured? reachable? backend version) and `plumb jev setup`, which
+  records only the NAME of the environment variable that holds the credential and never
+  stores the secret.
+
+**Ported from pi-agent-factory's FEAT-022 (D17, ruling R12).** All four work with the
+heuristic in a degraded form, or report "no judgments available"; with JEV they are cheaper
+and sharper; all judgments are logged and advisory.
+
+1. **Calibration.** `plumb jev calibrate` measures the backend's accuracy on the owner's own
+   confirmed and revoked records (a labelled set built from the log) and records thresholds
+   per claim kind with the resolved model version. `plumb config auto-approve on` refuses
+   without a passing calibration for the current model version, and a version change
+   suspends auto-approval until it is recalibrated.
+2. **Edge alignment.** `plumb align [scope]` collects the scope deterministically (intent ->
+   feature -> requirement -> example -> test -> code -> evidence) with a fingerprint, reports
+   empty families as named gaps, and judges each edge with one question phrased for its edge
+   class, weakest edge first. Whether an edge exists stays deterministic; judgments never
+   create or remove edges. It is shown in `/plumb review` and in the Obsidian view.
+3. **Ownership proposals.** For an untraced change, the backend proposes the owning
+   requirement (a choice over candidates narrowed by the code map), and "does this diff serve
+   its claimed SRs?" becomes a non-blocking commit-hook warning. A bare test-file reference
+   gets a proposed test node. These feed the agent's read-back; they never write links.
+4. **Hidden-dependency scan.** When a confirmed record or an authoritative document changes,
+   a bounded scan proposes records or documents that silently depend on it, shown as drift
+   hints only, never as staleness marks or edges.
 
 ## 9. Host adapters
 
@@ -792,8 +894,17 @@ Code comes first**: `plumb install claude-code` writes four things.
   when to run `plumb verify` and `plumb fidelity`.
 - **A short CLAUDE.md block** naming `.plumb/` and `plumb map`.
 
-It also installs the `commit-msg` hook for `SR:` trailers. Later adapters (Codex, Pi, Hermes,
-and an MCP server exposing read-only record and map tools) reuse the same CLI commands.
+It also installs the `commit-msg` hook for `SR:` trailers, and the `plumb-clarify` skill
+(D16) beside the `plumb` skill. The owner-facing `/plumb` command takes plain-language
+arguments (`/plumb explain`, `/plumb status`, `/plumb review`, `/plumb confirm`); the agent
+resolves them to records, files and tests and answers in the owner's terms, while the raw CLI
+stays the agent's interface (D13).
+
+Later adapters (Codex, Pi, Hermes) are thin layers over one host-neutral turn API, mirroring
+these hooks where the host supports them, with a CLI-only fallback (an instruction file plus
+`plumb turn start` and `plumb turn end`) where it does not; a read-only MCP server on stdio
+exposes the brief, the relevant records, why and impact, and drift
+(`docs/specs/sp4-hosts-mcp.md`).
 
 ## 10. Relationship to pi-agent-factory
 
@@ -881,26 +992,58 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
    `SR:` trailers, plumb's hooks are installed in its own repository, the hooks stay under
    budget, and `plumb check --merge` refuses a merge whose touched requirements are not all
    confirmed.
-2. **Intent capture and escalation.** This adds:
-   - the read-back, example and decision helpers (`plumb intent`, `plumb example`,
-     `plumb decide`);
-   - the escalation triggers and set approvals;
-   - the live JEV client (standard-library HTTP), used as an accelerator of the fidelity
-     path that sub-project 1 already provides;
-   - presentation (D13), beyond what sub-project 1 already ships (the per-session prompt
-     delta, the compact session brief and `plumb explain`): the one-line status card and the
-     full intent card, configurable `full`, `compact` or `off`; plain-language arguments for
-     every owner command; and `plumb view`, a generated Obsidian vault of the records (one
-     note per record with state and hash, wikilinks from INT to SR, examples, tests and code,
-     index notes and a canvas intent map) that never approves anything.
-3. **Merge boundary.** This completes section 7.5: the full-suite run that satisfies
-   `full verification pending`, evidence promotion, the claims audit over a range, log
-   integrity against git, and a pre-merge or CI entry point.
-4. **More adapters and MCP.** Codex, Pi, Hermes, and a read-only MCP server.
-5. **Full importer and migration.** This covers:
-   - a complete pi-agent-factory import with findings;
-   - moving pi-agent-factory onto plumb;
-   - retiring the duplicated modules there.
+Sub-projects 2 to 5 and the importer completion are built as one batch of five parallel
+lanes after a short contracts phase (`docs/plans/next-plan.md`); each has its spec.
+
+2. **Intent capture and escalation** (`docs/specs/sp2-intent-capture.md`, lane CAPTURE).
+   This adds:
+   - `plumb capture`, which records a whole read-back in one call, and the helpers
+     `plumb new`, `plumb intent`, `plumb example` and `plumb decide` (decisions with
+     alternatives, "I assumed A; B also fits");
+   - the escalation triggers and the up-front spec mode, a set of records approved by
+     set-hash;
+   - intent-change and contradiction scoring through the judgment backend, the heuristic by
+     default and the live JEV client only behind the protocol, its credential read from the
+     environment;
+   - the R8 commands (D14): `plumb triage`, `plumb config auto-approve on|off`,
+     `plumb config show`, `plumb jev status`, `plumb jev setup`; the narrow auto-approval,
+     gated by calibration (`plumb jev calibrate`, D17 item 1);
+   - the `plumb-clarify` skill and `plumb clarify` (D16), with the `plumb` skill updated to
+     drive the capture helpers;
+   - ownership proposals and the hidden-dependency scan as drift hints (D17 items 3 and 4).
+3. **Merge boundary** (`docs/specs/sp3-merge-boundary.md`, lane MERGE). `plumb merge-check`
+   completes section 7.5: every touched requirement confirmed; agent-relayed and auto-JEV
+   approvals listed for a glance; `full verification pending` cleared by exactly one
+   full-suite run with evidence pinned to identity; claims, stale and dangling links and
+   failing confirmed-example tests hold the merge; fidelity packets listed (advisory); an
+   optional git pre-push hook. No transaction machinery.
+4. **More adapters and MCP** (`docs/specs/sp4-hosts-mcp.md`, lane HOSTS). Thin adapters for
+   Codex, Pi and Hermes over one host-neutral turn API, with a CLI-only fallback, and a
+   read-only MCP server on stdio.
+5. **Presentation** (`docs/specs/sp5-presentation.md`, lane PRESENT). D13 beyond what
+   sub-project 1 already ships (the per-session prompt delta, the compact session brief and
+   `plumb explain`): one deduplicated delta for every hook output; the one-line status card
+   and the full intent card only when it matters, configurable `full`, `compact` or `off`;
+   plain-language owner slash commands executed through the agent (`/plumb explain`,
+   `/plumb status`, `/plumb review`, `/plumb confirm`); the R8 commands as the owner sees
+   them ("confirmed by you" or "by JEV"); `plumb align` (D17 item 2); and `plumb view`, a
+   generated Obsidian vault of the records with a Canvas intent map, which never approves
+   anything.
+   **Importer completion** (lane IMPORT, specified in `docs/plans/next-plan.md` section 9):
+   the full pi-agent-factory register import (SR relations to code and tests, bundles to
+   features, NCs, `by: import` approvals only where an upstream human consent pins the
+   current content), idempotent, with a dry-run diff. Moving pi-agent-factory onto plumb and
+   retiring the duplicated modules there follow the fork plan (`docs/fork-plan.md`, F3 and F4).
+6. **Parallel work** (D15, ruling R10), built after the batch above: collision-free IDs
+   reserved through the shared ref `refs/plumb/ids` with git's compare-and-swap
+   (`plumb merge-fix` renumbers collisions from other clones); one file per log entry under
+   `.plumb/log/<kind>/` as section 4.7 says, with a migration of the current JSONL streams
+   that keeps the hash chain; a frontmatter-aware git merge driver whose content conflicts
+   become intent conflicts shown as one card with both versions; cross-worktree awareness in
+   the brief and the status line, read-only, with no leases and no admission; and
+   `plumb check --merge` on the merge result as a pre-merge or pre-push hook. The batch
+   above avoids designs that conflict with it: IDs come from one allocation function, every
+   log write goes through one append function, and no shared mutable runtime state is added.
 
 ## 12. Non-goals
 
@@ -912,14 +1055,18 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
   full run inside a turn, and the tests run in a turn stay within the per-turn time budget
   (section 7.2).
 - No hidden state: no database, no required service, and no network call on the default path.
-- No model that decides freshness or confirms intent. Hashes decide staleness, and only the
-  owner confirms: by a command in the owner's own terminal, or by the owner's own affirming
-  words in a prompt, which the agent records as a guarded `agent-relayed` approval that
-  plumb checks deterministically (verbatim quote of a logged prompt, an affirmation term,
-  targets limited to the records just stated or named by ID; sections 4.6 and 6.6). There is
-  no "no-objection" approval: neither silence nor a prompt that merely does not object
-  confirms anything, so the agent's reading of an unrelated or neutral prompt can never turn
-  a record into confirmed intent.
+- No model that decides freshness, and no model that confirms intent except where the owner
+  chose it. Hashes decide staleness, and only the owner confirms: by a command in the
+  owner's own terminal, or by the owner's own affirming words in a prompt, which the agent
+  records as a guarded `agent-relayed` approval that plumb checks deterministically (verbatim
+  quote of a logged prompt, an affirmation term, targets limited to the records just stated,
+  the triage group just offered, or records named by ID; sections 4.6 and 6.6). There is no
+  "no-objection" approval: neither silence nor a prompt that merely does not object confirms
+  anything, so the agent's reading of an unrelated or neutral prompt can never turn a record
+  into confirmed intent. The single exception is the owner's own decision D14 B: the narrow
+  JEV auto-approval, off by default, turned on only by the owner, gated by calibration,
+  limited to records derived directly from the owner's words, labelled "confirmed by JEV"
+  everywhere and listed at the merge boundary (sections 4.6 and 8).
 - No forking of pi-agent-factory, and no runtime dependency on it.
 - No dependencies beyond the standard library and PyYAML at runtime.
 - No questions to the owner outside the three interruption triggers. Confirming a read-back

@@ -1341,3 +1341,26 @@ section 11 item 2.
 - [LOW] (.plumb/features/FEAT-001.md) The feature's `requirements` list stops at SR-025.
   SR-026 to SR-033 name FEAT-001 only in their own frontmatter. Fix: list them when the owner
   next confirms FEAT-001, so its hash moves only once.
+
+## Next batch planning (2026-10-06, docs/specs/sp2-sp5, docs/plans/next-plan.md)
+
+Written while drafting the specs for sub-projects 2 to 5 and the importer completion. No
+review has run on them yet; these are the planner's own notes.
+
+- [LOW] (records FEAT-002 to FEAT-005, SR-034 to SR-068, INT-017 to INT-020, DEC-014 to
+  DEC-019) plumb has no record-creation command yet (`plumb new` and `plumb capture` are
+  SR-035 and SR-034), so the records were written through plumb's library write path
+  (`Core.write_record`, IDs checked against `Store.next_id`) and every link was added with the
+  `plumb link` CLI. Fix: none; lane CAPTURE builds the commands.
+- [MEDIUM] (docs/specs/sp4-hosts-mcp.md section 4) The Codex, Pi and Hermes event mappings are
+  a design taken from the hosts' documented extension models and pi-agent-factory's Pi and
+  Hermes adapters; they were not checked against the versions installed here. Fix: task H1
+  records each installed host's surface in `docs/hosts.md` first; missing rows use the
+  CLI-only fallback.
+- [MEDIUM] (docs/specs/sp2-intent-capture.md 8.3, DEC-018) The calibration pass criteria (20
+  items, 5 negatives with synthetic ones counting up to half, zero false accepts) are the
+  planner's proposal, recorded as a decision that matters for the owner to confirm or change.
+- [LOW] (docs/plans/next-plan.md 7) The Obsidian vault (`plumb view`) is a SHOULD item of lane
+  PRESENT, dropped last; if it is dropped, it leads the next batch.
+- [LOW] (FEAT-004) The importer completion shares FEAT-004 with the host adapters (DEC-015)
+  because the work order names FEAT-002 to FEAT-005.
