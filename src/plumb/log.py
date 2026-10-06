@@ -241,32 +241,64 @@ def _entry_files(directory: str) -> Iterator[os.DirEntry[str]]:
         return
 
 
+class _Scan:
+    """One listing of a stream's entry files through its pack cache."""
+
+    __slots__ = ("files", "fresh", "changed", "order")
+
+    def __init__(self, files: dict[str, dict[str, Any]], fresh: dict[str, Any],
+                 changed: bool, order: list[str] | None) -> None:
+        self.files = files          # kind/file -> parsed entry (parsable files only)
+        self.fresh = fresh          # the pack's file table for this listing
+        self.changed = changed      # the table differs from the cached one
+        self.order = order          # the cached read order, valid while nothing changed
+
+
 def _load_files(paths: PlumbPaths, stream: LogStream) -> dict[str, dict[str, Any]]:
-    """Every parsable entry file of ``stream``, keyed ``kind/file``, through the pack cache:
-    a file whose size and mtime are unchanged is not read again; a vanished name is dropped."""
-    pack_path = paths.log_pack(stream)
-    pack = _read_json(pack_path)
+    """Every parsable entry file of ``stream``, keyed ``kind/file``."""
+    scan = _scan(paths, stream)
+    if scan.changed:
+        _write_pack(paths, stream, scan.fresh, None)
+    return scan.files
+
+
+def _write_pack(paths: PlumbPaths, stream: LogStream, fresh: dict[str, Any],
+                order: list[str] | None) -> None:
+    pack: dict[str, Any] = {"v": PACK_VERSION, "files": fresh}
+    if order is not None:
+        pack["order"] = order
+    _write_json_atomic(paths.log_pack(stream), pack)
+
+
+def _scan(paths: PlumbPaths, stream: LogStream) -> _Scan:
+    """Every entry file of ``stream`` through the pack cache: a file whose size and mtime
+    are unchanged is not read again; a vanished name is dropped."""
+    pack = _read_json(paths.log_pack(stream))
     cached: dict[str, Any] = {}
+    order: list[str] | None = None
     if isinstance(pack, dict) and pack.get("v") == PACK_VERSION \
             and isinstance(pack.get("files"), dict):
         cached = pack["files"]
+        if isinstance(pack.get("order"), list):
+            order = pack["order"]
     fresh: dict[str, Any] = {}
     changed = False
     out: dict[str, dict[str, Any]] = {}
     for kind, directory in _kind_dirs(paths, stream):
+        prefix = kind + "/"
         for item in _entry_files(directory):
-            if parse_name(item.name) is None:
-                continue
-            name = f"{kind}/{item.name}"
+            name = prefix + item.name
             try:
-                st = item.stat()
+                st = item.stat()  # free on Windows: it comes with the directory listing
             except OSError:
                 continue
-            key = [st.st_size, st.st_mtime_ns]
+            size, mtime = st.st_size, st.st_mtime_ns
             hit = cached.get(name)
-            if isinstance(hit, list) and len(hit) == 3 and hit[:2] == key:
-                raw = hit[2]
+            if type(hit) is list and len(hit) == 3 and hit[0] == size and hit[1] == mtime:
+                raw = hit[2]  # immutable entry, unchanged on disk: never read again
             else:
+                if parse_name(item.name) is None:
+                    continue
                 changed = True
                 try:
                     raw = json.loads(Path(item.path).read_bytes())
@@ -274,12 +306,11 @@ def _load_files(paths: PlumbPaths, stream: LogStream) -> dict[str, dict[str, Any
                     raw = None
                 if not isinstance(raw, dict):
                     raw = None
-            fresh[name] = [key[0], key[1], raw]
+            fresh[name] = [size, mtime, raw]
             if raw is not None:
                 out[name] = raw
-    if changed or len(fresh) != len(cached):
-        _write_json_atomic(pack_path, {"v": PACK_VERSION, "files": fresh})
-    return out
+    changed = changed or len(fresh) != len(cached)
+    return _Scan(out, fresh, changed, None if changed else order)
 
 
 def _legacy_lines(paths: PlumbPaths, stream: LogStream,
@@ -301,10 +332,10 @@ def _legacy_lines(paths: PlumbPaths, stream: LogStream,
 
 
 def _to_entry(stream: LogStream, raw: Mapping[str, Any], offset: int, name: str) -> LogEntry:
-    return LogEntry(stream=stream, kind=str(raw.get("kind", "")), at=str(raw.get("at", "")),
-                    marker=str(raw.get("marker", "none")), payload=raw.get("payload") or {},
-                    prev=raw.get("prev"), digest=str(raw.get("digest", "")), offset=offset,
-                    name=name)
+    get = raw.get
+    return LogEntry(stream, str(get("kind", "")), str(get("at", "")),
+                    str(get("marker", "none")), get("payload") or {}, get("prev"),
+                    str(get("digest", "")), offset, name)
 
 
 def _ordered(items: list[tuple[tuple[Any, ...], LogEntry]]) -> list[LogEntry]:
@@ -337,9 +368,18 @@ def _ordered(items: list[tuple[tuple[Any, ...], LogEntry]]) -> list[LogEntry]:
 
 def _all_entries(paths: PlumbPaths, stream: LogStream,
                  since_offset: int = 0) -> list[LogEntry]:
+    scan = _scan(paths, stream)
+    try:
+        legacy_present = paths.log_path(stream).stat().st_size > 0
+    except OSError:
+        legacy_present = False
+    if scan.order is not None and not legacy_present:
+        files = scan.files  # warm: nothing changed since the order was computed
+        if all(name in files for name in scan.order):
+            return [_to_entry(stream, files[name], -1, name) for name in scan.order]
     items: list[tuple[tuple[Any, ...], LogEntry]] = []
     seen: set[str] = set()
-    for name, raw in _load_files(paths, stream).items():
+    for name, raw in scan.files.items():
         digest = str(raw.get("digest", ""))
         if digest in seen:
             continue
@@ -362,7 +402,12 @@ def _all_entries(paths: PlumbPaths, stream: LogStream,
         seen.add(digest)
         entry = _to_entry(stream, raw, offset, f"{legacy}:{number}")
         items.append(((entry.at, 0, "", "", offset), entry))
-    return _ordered(items)
+    result = _ordered(items)
+    if not legacy_present:  # the order depends on the entry files alone: cache it
+        _write_pack(paths, stream, scan.fresh, [e.name for e in result])
+    elif scan.changed:
+        _write_pack(paths, stream, scan.fresh, None)
+    return result
 
 
 # --------------------------------------------------------------------------- head
@@ -459,15 +504,22 @@ def legacy_count(paths: PlumbPaths) -> int:
 
 
 def stream_stamp(paths: PlumbPaths, stream: LogStream) -> str:
-    """A cheap token that changes whenever an entry of ``stream`` is added or removed (the
-    kind directories' and the legacy file's size and mtime): for derived caches."""
+    """A cheap token that changes whenever an entry of ``stream`` is added, removed or
+    rewritten (per kind directory: its mtime, the number of entries and the last name; the
+    legacy file's size and mtime), for derived caches. One listing per kind, no file read."""
     parts: list[str] = []
-    for target in [paths.log_path(stream), *(Path(d) for _, d in _kind_dirs(paths, stream))]:
+    try:
+        st = os.stat(paths.log_path(stream))
+        parts.append(f"legacy:{st.st_size}:{st.st_mtime_ns}")
+    except OSError:
+        pass
+    for kind, directory in _kind_dirs(paths, stream):
+        names = [item.name for item in _entry_files(directory)]
         try:
-            st = os.stat(target)
+            mtime = os.stat(directory).st_mtime_ns
         except OSError:
-            continue
-        parts.append(f"{target.name}:{st.st_size}:{st.st_mtime_ns}")
+            mtime = 0
+        parts.append(f"{kind}:{mtime}:{len(names)}:{max(names, default='')}")
     return ";".join(parts) or "-"
 
 

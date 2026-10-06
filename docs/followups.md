@@ -3345,3 +3345,58 @@ or extends that entry.
   ambiguous for lane agents. Same as the round-1 coordinator-row entry. Fix: remove the
   duplicate and spell out the full paths for `prompt.py`, `stop.py`, `post_edit.py`,
   `snapshot.py` and `install.py`.
+
+## SP6 lane LOGS (2026-10-07)
+
+State: L1 to L7 done on branch `lane/logs` (worktree `C:/coding/plumb-logs`); SR-073 and
+SR-074 linked to their modules and tests and still proposed (no agent approved them);
+SR-006's statement and EX-2 restated for per-entry files through `plumb capture` (proposed).
+plumb's own logs are NOT migrated here: that is Integrate (plan 8.1), and it must run
+`plumb log migrate` after merging this lane.
+
+- [MEDIUM] (coordination) Phase 0 had not run when the lane started (no `tests/logutil.py`,
+  no `present/owner_text.py`, no `log` route). The lane wrote the minimum it needed in
+  coordinator files: `LogEntry.name`, `MigrationReport` (`contracts.py`), `since` on
+  `CoreAPI.log_read` (`contracts.py`, `api.py`), the `log` route and help line (`cli.py`),
+  `present/owner_text.py` with only `LEGACY_LOG` and `bare_cli_verbs`, the legacy-log warning
+  in `validate.py`, `MergeReport.legacy_log_lines` and its render line (`boundary/report.py`),
+  `tests/logutil.py` and the rewiring of the ten test files. Fix at Integrate: merge LOGS
+  first, then reconcile the other lanes' copies of `owner_text.py` (an add/add) and of the
+  contract classes.
+- [MEDIUM] (outside the lane's row, fixed because it broke a guarantee) `verify/api.py`'s
+  derived-cache fingerprint used the size and mtime of `evidence.jsonl`; with one file per
+  entry that file never changes again, so the cached verify views would never see new
+  evidence. It now uses `log.stream_stamp(paths, "evidence")` (per kind directory: mtime,
+  entry count, last name). `load_index` uses the same stamp to skip reading when nothing
+  changed.
+- [MEDIUM] (spec 6.5 step 3 wording) "with `merge=union`, base lines removed on one side and
+  lines appended on the other leave exactly the appended lines" is not what git does: the
+  emptied base lines and the appended lines form one adjacent hunk, and union keeps both
+  sides, so the old lines come back next to the new ones. Nothing breaks: readers dedupe by
+  digest, `verify_chain` accepts them, and the next migration skips the lines that already
+  have files and writes only the new ones (`tests/logs/test_migrate.py::
+  test_pre_migration_branch_merges_then_migrates`). Fix: correct the spec sentence.
+- [LOW] (design notes, deviations from the spec's letter, not its contract) The temporary
+  file of an append lives in the gitignored `.plumb/cache/`, not in the kind directory, so a
+  crash never leaves a committable stray file; new entries never use the `.000000`
+  microsecond stamp, which marks a migrated name; reads order entries with a heap-ordered
+  walk of the chain, so a skewed clock never puts an entry before the entry it chains to;
+  the evidence index cursor is the list of applied digests, because a legacy line's name
+  (`evidence.jsonl:<line>`) is reused when the file is rewritten.
+- [LOW] (latency, owner rule "Hook latency stays in seconds") A warm read of 2000 events
+  costs about 35 to 45 ms on this machine when it is quiet, and up to about 75 ms while other
+  lanes run tests on the two cores; `tests/logs/test_read_cost.py` takes the best of five.
+  The first open of a freshly written file costs about 7 ms on this Windows machine (on-access
+  scanning), once per file: migrating plumb's ~530 legacy entries costs a few seconds once.
+  The evidence pack cache keeps every test-run payload (about 50 KB each); if evidence grows
+  to hundreds of runs, slim the cache to the fields readers use.
+- [LOW] (test layout) `tests/logs/` has an `__init__.py`, so its modules import as
+  `logs.test_owner_text` and `logs.test_two_worktrees`. The plan gives the same basenames to
+  other lanes (`test_owner_text.py` in ids, mergedriver, awareness and present;
+  `test_two_worktrees.py` in awareness; `test_install.py` in mergedriver and host); in
+  pytest's default import mode, two test files with one basename and no package collide at
+  collection. Fix: each new test directory gets an `__init__.py`, or the files are renamed.
+- [LOW] (drift) Editing shared files left links of other requirements stale (SR-003, SR-008,
+  SR-010, SR-017, SR-018, SR-025, SR-027, SR-030, SR-034, SR-047 to SR-049 among them); the
+  lane repinned only its own SR-006, SR-073 and SR-074. Fix: the coordinator reviews and
+  repins them at Integrate.

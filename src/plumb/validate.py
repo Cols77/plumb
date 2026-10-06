@@ -118,7 +118,12 @@ def validate(core: Core) -> list[Finding]:
     # logs and approvals
     for stream in ("events", "evidence"):
         for problem in log.verify_chain(core.paths, stream):
-            add("error", "log", f"{stream}.jsonl", problem)
+            add("error", "log", f".plumb/log ({stream})", problem)
+    legacy = log.legacy_count(core.paths)
+    if legacy:  # SP6 6.5: a warning, never a hold
+        from plumb.present.owner_text import LEGACY_LOG
+
+        add("warning", "legacy-log", ".plumb/log", LEGACY_LOG.format(n=legacy))
     for entry, problem in checked(core):
         if problem:
             ids = ", ".join(str(r.get("id")) for r in entry.payload.get("records") or []
