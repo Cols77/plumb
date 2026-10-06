@@ -78,17 +78,33 @@ def kind_problem(link: Link, source: Record) -> str | None:
 
 
 def parse_cli_target(text: str) -> Target:
-    """``ID`` or a repository-relative ``path``; ``::`` ends wait for symbol hashing."""
+    """``ID``, a repository-relative ``path``, or ``path::Qual.name`` (a symbol end; a
+    ``verified_by`` link turns it into the test node ``path::name``, see ``end_for``)."""
     text = text.strip()
     if ID_PATTERN.match(text):
         return Target(record=text)
-    if "::" in text:
-        raise LinkUsageError(f"'{text}': symbol and test-node ends (path::name) are not "
-                             "available in this build; link the file instead")
-    rel = clean_rel_path(text)
+    raw_path, sep, name = text.partition("::")
+    rel = clean_rel_path(raw_path)
     if rel is None:
         raise LinkUsageError(f"'{text}': a link end must be a repository-relative path")
-    return Target(path=rel)
+    if not sep:
+        return Target(path=rel)
+    qualname = ".".join(p.strip() for p in name.split("::"))
+    if not qualname or any(not p for p in qualname.split(".")):
+        raise LinkUsageError(f"'{text}': name a definition after '::' (path::Qual.name)")
+    return Target(path=rel, symbol=qualname)
+
+
+def end_for(kind: str, target: Target) -> Target:
+    """The stored form of a link end: a ``verified_by`` symbol end is a test node
+    (``path::Class::name``, parametrize ids dropped); every other end is unchanged."""
+    if kind != "verified_by" or not target.symbol or target.test or not target.path:
+        return target
+    from plumb.hashing import split_test_node, symbol_qualname
+
+    node = f"{target.path}::" + "::".join(symbol_qualname(target.symbol).split("."))
+    path, qualname = split_test_node(node)
+    return Target(test=f"{path}::" + "::".join(qualname.split(".")))
 
 
 def _state_of(link: Link, source_hash: str, target_hash: str | None) -> LinkState:
@@ -119,6 +135,7 @@ def link_states(core: Core, ids: Iterable[str] | None = None) -> list[LinkState]
 def add_link(core: Core, source: str, kind: str, target: Target,
              example: str | None = None) -> Link:
     """Add a link with fresh pins on both ends; an identical existing link is returned."""
+    target = end_for(kind, target)
     index = core.index()
     record = index.get(source)
     if record is None:
@@ -144,6 +161,10 @@ def add_link(core: Core, source: str, kind: str, target: Target,
 
 
 def _describe(target: Target) -> str:
+    if target.path and target.symbol and not target.test:
+        from plumb.hashing import symbol_qualname
+
+        return f"{target.path}::{symbol_qualname(target.symbol)}"
     return target.record or target.test or target.path or "?"
 
 
