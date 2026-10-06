@@ -1463,3 +1463,108 @@ into one entry.
   itself. This is a deliberate bypass inside the stated trust model (tamper-evident, not
   tamper-proof), not the normal path. Fix (optional, later): record in each `by: owner` entry
   that the answer came from a terminal, so the glance can show it.
+
+## Next batch spec review, round 2 (2026-10-06): medium and low findings
+
+Second review of `docs/specs/sp2-intent-capture.md`, `sp3-merge-boundary.md`,
+`sp4-hosts-mcp.md` and `docs/plans/next-plan.md` (after c0bd18f) against the brief and the
+concept. No HIGH finding; nothing below is fixed. Findings that verifiers reported more than
+once are merged. Entries marked "repeat" restate a round 1 finding that is still open and
+only add what round 2 found new.
+
+- [MEDIUM] (sp2 8.2 Eligible, `.plumb/requirements/SR-041.md` statement; repeat, reported
+  three times) R8 B: "eligible: ONLY records derived directly from the owner's own words (INT
+  read-backs, and examples restating the owner's given/when/then)". An SR whose every example
+  quotes the prompt is eligible as a whole, and its `by: auto-jev` approval pins the agent's
+  title, statement and `implemented_by` ends too. New in round 2: SR-041's own statement
+  carries the same widening, and the spec does not say whether link ends are outside the
+  claim. Fix: a sp2 3 refinement row (examples have no record of their own, so an SR
+  qualifies only when JEV judges its statement and every example entailed by the logged
+  prompt), or limit eligibility to SRs whose statement is a verbatim span of the prompt;
+  update SR-041 to match; a "never" test for an SR whose statement adds behaviour absent from
+  the prompt.
+- [MEDIUM] (sp2 5.1 quote rule and 8.1 step 2 premise; repeat, reported twice) R8 A: "scores
+  each proposed record for faithfulness to the owner's words". Without `--prompt` an
+  `intent.quote` is never checked, yet triage uses it as the owner's words, so a paraphrased
+  or invented quote can rate a record "faithful to your words" and put it in the group the
+  owner approves with one "ok". The owner still confirms, so no approval path opens; the trust
+  claim of the rating breaks. Fix: treat a quote with no verified prompt digest as an empty
+  premise (out of the low-risk group, shown individually as "quote not verified"), or require
+  `--prompt` whenever the prompt hook logged a prompt this turn; one test per entry point
+  (`capture`, `intent`, `example --quote`).
+- [MEDIUM] (sp4 3.2 `plumb turn start --prompt-file`, R2) On the CLI-only fallback, which
+  every host without prompt hooks uses, the agent itself supplies the prompt text that is
+  logged, so `plumb relay`'s verbatim check compares the quote with what the agent wrote. R2's
+  provenance ("logged by the prompt hook") drops to self-attested, and neither the record nor
+  the sp3 3.2 glance shows it. Fix: tag prompt events with their source (`hook` or
+  `agent-turn-start`); label relays resting on agent-logged prompts in `plumb show` and the
+  merge-check glance; say so in the trust-model line of `plumb hosts status`.
+- [MEDIUM] (plan 2, 3.4 and 10 step 4, R1) Every lane merges into `main` and the integrate
+  step expects `plumb merge-check main` to exit 4 because all records are proposed. The sp1
+  plan stated "Internal merges are not merge boundaries ... the merge boundary in R1's sense
+  is the owner's ... validate --merge"; next-plan drops that, so the dogfooding plan reads as
+  merging through plumb's own unconfirmed-requirement gate. Fix: restore the statement
+  (lane-to-main merges are internal integration; the R1 boundary is the owner's merge-check
+  after confirming the FEAT-002 to FEAT-005 records) and record each internal merge's exit
+  code in its merge commit.
+- [MEDIUM] (sp2 7.1, concept 6.6 trigger 2, R1) `intent_flags` scores confirmed records
+  only. R1 makes a proposed record a question "because of a contradiction", but no reviewed
+  spec owns detecting a request that contradicts a proposed read-back the work relies on.
+  Fix: state in sp2 7.1 which component does it (the same `contradiction` judgment over
+  proposed records, routed to trigger 2 rather than trigger 1), or declare the gap there.
+- [MEDIUM] (sp2 11.2 last paragraph, sp2 3, R12, concept 8) A `judgment` event is logged
+  only "when it comes from JEV". Heuristic intent flags, ownership choices, `diff_serves`
+  warnings, hidden-dependency confirmations and clarify rankings are not logged, so
+  calibration (8.3) and the owner's audit cannot see them. This narrows R12's "All judgments
+  are logged" and the concept's "Every judgment is an append-only log entry" without a sp2 3
+  refinement row. Fix: add the row with its reason (log size, hook budget), or log heuristic
+  judgments compactly (one entry per turn or per command).
+- [MEDIUM] (sp2 8.1 triage offer and 6.2, R9; partly repeat) Every turn while the low-risk
+  group is non-empty, the offer is repeated naming every record by ID (35+ proposed SRs in
+  this batch), and the unapproved escalated set is restated as a question each turn; neither
+  section says the line is deduplicated. New in round 2: tie the repeat to the sp5 delta.
+  Fix: show the offer again only when the group's hash set changes; above a small N, name the
+  count and `plumb triage`, keeping the full ID list in `stated.json` so the exact-set
+  guarantee holds.
+- [MEDIUM] (sp2 8.3, R12.1; repeat) Synthetic perturbations count up to half of
+  `min_negatives`, so a calibration can pass with 3 real owner negatives and turn R8 B on
+  with less owner signal than "the owner's own confirmed and revoked records"; sp2 3 does not
+  list it. New in round 2: show the real/synthetic split in `plumb jev status` too. Fix: list
+  the refinement with its reason, or require a minimum of real negatives per claim kind
+  before `passing`; record the split in the `calibration` event and `jev status`.
+- [MEDIUM] (plan 4 CS1-CS6 and drop order, 7 PS2; repeat, reported twice) R8 B auto-approval
+  (CS4), calibration (CS3), the R8 `jev status`/`jev setup` commands the owner asked for by
+  name (CS2), the R11 e2e measurement (CS1) and R12.2 to R12.4 (PS2, CS5, CS6) are all
+  droppable SHOULD items, and `plumb align` is the first PRESENT item dropped. Dropping is
+  recorded, so this is prioritisation under D11, not a contradiction. New in round 2: rank
+  CS2 above CS5 and CS6. Fix: the handoff opens with every dropped owner-requested item,
+  quoting the owner's words; consider making CS1 a MUST, since the plumb-clarify skill (C7)
+  cannot be verified without it.
+- [MEDIUM] (sp2 3 C6 and 7.1, D5; repeat, raised from LOW) The precision fixture requires
+  every `contradicts` prompt flagged and no `benign` one, but sets no recall target for
+  `extends`; since change words alone never flag, a heuristic missing extensions passes and
+  trigger 1 for extensions rests on the agent comparing the request with injected examples.
+  Fix: a recall floor for `extends` (for example 80%) in the fixture assertion, or keep the
+  sp1 "compare with examples" line whenever a confirmed record matches with no flag; print
+  the measured recall in the test output.
+- [LOW] (sp2 8.2 against plan 3.2 item 5; reported twice) sp2 says `plumb config show` is
+  "denied by the installed deny rules", but the phase-0 installer adds deny rules only for
+  `triage --approve`, `spec approve` and `config auto-approve`, and no guard test covers
+  `config show`. R8 also says it is "logged in the event log", which sp2 does not state.
+  Fix: add `plumb config show` to the deny rules and guard tests, or record in sp2 why a
+  read-only command needs only the marker check; state whether it appends an event.
+- [LOW] (sp2 6.2 last bullet, D5; repeat, now reported four times) An unapproved escalated
+  set is named "once per turn" as the open trigger-2 question while a `matters: true` DEC is
+  asked once per hash. Fix: ask once per set hash; afterwards show it in the status card and
+  the brief as "awaiting your approval: INT-###", and keep the agent's "do not write its
+  code" instruction.
+- [LOW] (sp3 1, 2 and 9, concept 7.5 and D15, R10.5) R10.5 names `plumb check --merge`;
+  sp3 introduces `plumb merge-check` and `validate --merge` and says "Same entry point"
+  without defining the alias, and the concept uses both names. Related to round 1's
+  `check --merge` entry. Fix: make `plumb check --merge BASE` an alias of `merge-check`, or
+  document the rename with its reason, and use one name in the concept.
+- [LOW] (sp3 3.2 glance lines ending `plumb revoke SR-034`; sp2 6.1 and 6.2
+  `spec approve INT-###`, `escalate decline --intent INT-###`; R9) The owner-facing lines offer
+  only raw-ID commands; the plain-language path (say it in chat, the agent relays it) exists
+  but is not offered. Fix: after each glance and escalation line, also offer "or say 'revoke
+  <title>'" or `/plumb confirm ...`.
