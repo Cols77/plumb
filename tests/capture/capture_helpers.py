@@ -53,7 +53,8 @@ def tree_bytes(repo: Path) -> dict[str, bytes]:
     out = {}
     for path in sorted((repo / ".plumb").rglob("*")):
         rel = path.relative_to(repo).as_posix()
-        if path.is_file() and "/session/" not in rel and "/cache/" not in rel:
+        generated = "/session/" in rel or "/cache/" in rel or rel.endswith("test_map.txt")
+        if path.is_file() and not generated:
             out[rel] = path.read_bytes()
     return out
 

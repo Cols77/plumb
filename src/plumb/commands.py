@@ -527,7 +527,18 @@ def drift_data(core) -> dict:
     return {"clean": clean, "stale": stale, "dangling": dangling, "failing": failing,
             "unconfirmed_edits": unconfirmed, "changed_tests": changed_tests,
             "uncovered_examples": uncovered,
-            "fidelity": fidelity, "never_judged": never_judged}
+            "fidelity": fidelity, "never_judged": never_judged, "hints": drift_hint_lines(core)}
+
+
+def drift_hint_lines(core) -> list[str]:
+    """Hints only (sp2 10): hidden dependencies and proposed test nodes. Never drift
+    signals: they change neither ``clean`` nor the exit code."""
+    try:
+        from plumb.capture.hints import changed_paths, drift_hints
+
+        return drift_hints(core, changed_paths(core), all_nodes=True)
+    except Exception:  # noqa: BLE001 - advisory; a missing lane never fails drift
+        return []
 
 
 def cmd_drift(command: str, argv: list[str]) -> int:
@@ -565,6 +576,7 @@ def cmd_drift(command: str, argv: list[str]) -> int:
                          f"(plumb fidelity {item['requirement']})")
     if not lines:
         lines.append("drift: none")
+    lines.extend(data.get("hints") or [])
     if data["never_judged"]:
         lines.append(f"advisory: fidelity never judged for {len(data['never_judged'])} "
                      "requirements (listed at the merge boundary; plumb fidelity <SR>)")
