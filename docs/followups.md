@@ -3400,3 +3400,13 @@ plumb's own logs are NOT migrated here: that is Integrate (plan 8.1), and it mus
   SR-010, SR-017, SR-018, SR-025, SR-027, SR-030, SR-034, SR-047 to SR-049 among them); the
   lane repinned only its own SR-006, SR-073 and SR-074. Fix: the coordinator reviews and
   repins them at Integrate.
+- [LOW] (pre-existing, not this lane) `tests/host/test_latency.py::
+  test_intent_lines_survive_cpu_contention` fails on `main` (89f499b) as on this branch: the
+  prompt "ok, and SR-002 needs work" is now read as an objection to SR-002, so the relay line
+  the test expects is not offered. It comes from the audit-round-5 objection scoping, not from
+  the log format.
+- [LOW] (ordering edge) `importer/recheck.py` checks that an import approval's import event is
+  "the log entry right before it" in read order. Reads now order by `at`, then the chain, then
+  the name: the approval always follows its import event, but an entry merged from another
+  branch with a stamp between the two could sit in between. Fix: compare the approval's
+  `prev` with the cited import event instead of the read-order neighbour.
