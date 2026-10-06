@@ -77,3 +77,17 @@ def test_usage_errors(repo: Path, capsys) -> None:
     assert cli.main(["merge-check", "no-such-ref", "--no-run", "--root", str(repo)]) == 2
     assert "cannot read the range" in capsys.readouterr().out
     assert cli.main(["merge-check", "--bogus", "--root", str(repo)]) == 2
+
+
+def test_approve_line_capped(repo: Path) -> None:
+    from plumb.boundary import merge_report, render
+
+    base = _head(repo)
+    for n in range(1, 13):
+        write(repo, f".plumb/requirements/SR-{n:03d}.md",
+              f"---\nid: SR-{n:03d}\ntitle: R{n}\nstatement: s{n}.\n---\n")
+    report = merge_report(open_core(repo), base, run_full=False)
+    assert len(report.awaiting) == 12 and report.exit == 4
+    line = next(x for x in render(report) if x.startswith("plumb: merge waits"))
+    assert "SR-010`" in line and "SR-011" not in line
+    assert "+2 more (plumb merge-check --json) to confirm too" in line

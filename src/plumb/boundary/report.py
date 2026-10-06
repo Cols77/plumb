@@ -323,9 +323,11 @@ def render(report: MergeReport) -> list[str]:
                             "any requirement and is not honoured until you confirm it"
                             for g in report.new_exempt]))
         if report.awaiting:
-            ids = " ".join(str(a["id"]) for a in report.awaiting)
-            out.append(f"plumb: merge waits for your confirmation: `plumb approve {ids}`, or "
-                       "say ok in the session")
+            ids = [str(a["id"]) for a in report.awaiting]
+            more = (f" ({MORE.format(n=len(ids) - CAP)} to confirm too)"
+                    if len(ids) > CAP else "")
+            out.append(f"plumb: merge waits for your confirmation: `plumb approve "
+                       f"{' '.join(ids[:CAP])}`{more}, or say ok in the session")
         if report.new_exempt:
             out.append("plumb: to keep the new trace.exempt globs, `plumb approve --exempt`, or "
                        "say ok to the exemption in the session; otherwise remove them")

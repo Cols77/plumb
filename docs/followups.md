@@ -1568,3 +1568,56 @@ only add what round 2 found new.
   only raw-ID commands; the plain-language path (say it in chat, the agent relays it) exists
   but is not offered. Fix: after each glance and escalation line, also offer "or say 'revoke
   <title>'" or `/plumb confirm ...`.
+
+## Next lane MERGE (2026-10-06)
+
+Built on branch `lane/merge` (worktree `C:/coding/plumb-merge`): M1 to M6 (MUST) and MS1 to
+MS3 (SHOULD; MS2 is R12.3 and so MUST under R13 Q5). Nothing of the lane is left unbuilt.
+`plumb merge-check main --no-run` on plumb itself takes about 3.6 s and exits 1 only on the
+three `src/plumb/cli.py` stale links named below; after their repin it exits 5 (full
+verification pending, unverified acceptance tests), and after its one full run, 4 (the
+records await the owner), as the plan expects.
+
+Notes for the coordinator (phase 0 had not run when the lane started from `work`):
+
+- [MEDIUM] (contracts) `MergeReport` lives in `plumb/boundary/report.py` (re-exported by
+  `plumb.boundary`), not in `contracts.py`; move it there when the contracts are frozen. The
+  lane added one route (`merge-check` -> `plumb.boundary.cli`) and one help line to the
+  coordinator's `cli.py`, and reads `merge.default_base` and `merge.prepush_run_full` from
+  `core.config.merge` when it exists, else straight from `.plumb/config.yaml`.
+- [MEDIUM] (records) `src/plumb/cli.py` links SR-012#8, SR-031#6 and SR-033#2 are left stale
+  for the coordinator to repin after every lane's route is merged (a stale link of a touched
+  requirement now holds the merge with exit 1). SR-044 (CAPTURE) is not linked to
+  `src/plumb/claims.py` or `tests/bridge/test_trailers.py::test_diff_serves_warning_never_blocks`;
+  link it at integration (the MS2 commit claims SR-049 and SR-007 instead).
+- [MEDIUM] (R13 Q4 convention) The glance labels a relay "self-recorded message" when the
+  approval payload, its committed `prompt` event or its `.plumb/session/prompts.jsonl` line
+  carries `self_recorded: true`, `via: turn|turn-start|cli|agent|self` or `host: cli`. Nothing
+  writes these fields yet: HOSTS (`plumb turn start`) and CAPTURE (`plumb relay`) should set
+  `self_recorded: true` on prompts the agent logs itself, so `plumb show` and the host status
+  read the same field.
+- [MEDIUM] (pre-existing, CAPTURE file) `tests/bridge/test_fidelity.py::test_merge_lists_unjudged_fidelity`
+  fails on `work` before this lane (it expects exit 4; the fixture has a test file and no full
+  run, so full verification is pending and the exit is 5). Fix the test (record a full run, or
+  expect 5); the merge boundary is right.
+- [LOW] (sp3 4) The full run starts whenever it is needed, even when exit-1 findings (claims,
+  links, integrity) already hold the merge, as the spec says. Skipping it then would save a
+  suite run that cannot turn the report green; it would also mean a second merge-check runs it
+  after the fix, which is still one run per invocation.
+- [LOW] (SR-052 EX-1) `--no-run` may rebuild the gitignored, derived `.plumb/test_map.txt` (the
+  test map); the lane's test counts it with `.plumb/cache/` as a cache, not state.
+- [LOW] (sp3 6, MS1) The 5 s JEV budget is checked between packets; one slow JEV call can
+  overrun it by the client timeout. The pre-score runs through a no-write view of the core, so
+  no `judgment` event is logged; JEV's own notice file under `.plumb/session/` may be written.
+- [LOW] (sp3 8) Hook mode checks only pushed refs that point at the checked-out HEAD (the
+  report covers the working tree); other refs are skipped with a message, and uncommitted
+  changes count in the report although they are not pushed.
+- [LOW] (sp3 5) Validation errors anywhere in the repository (not only on touched records)
+  hold merge-check with exit 1, so `plumb validate --merge` (whose validate part already did)
+  and `plumb merge-check --no-run` give the same exit (SR-047 EX-3). An `auto-jev` approval in
+  the range is an approval error until CAPTURE's CS4 teaches `confirm.entry_problem` the new
+  source, so it holds with exit 1 meanwhile.
+- [LOW] (claims) `tests/merge/merge_helpers.py` is declared as an `implemented_by` end of
+  SR-047 so the claims check accepts it; a `verified_by` link would make the helper an
+  acceptance test with no evidence. A `support` link kind, or a claims exemption for
+  `tests/**/*_helpers.py`, would say this better.

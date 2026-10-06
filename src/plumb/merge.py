@@ -103,6 +103,33 @@ def _show(core: Core, commit: str, rel: str) -> str | None:
     return result.stdout.decode("utf-8", "replace")
 
 
+def show_many(core: Core, commit: str, rels: Sequence[str]) -> dict[str, str | None]:
+    """Each of ``rels`` as it was at ``commit`` (None when absent), with ONE ``git cat-file
+    --batch`` process instead of one ``git show`` per path."""
+    rels = list(dict.fromkeys(rels))
+    if not rels:
+        return {}
+    prefix = _git(core, "rev-parse", "--show-prefix", check=False).strip()
+    request = "".join(f"{commit}:{prefix}{rel}\n" for rel in rels).encode("utf-8")
+    result = subprocess.run(["git", "cat-file", "--batch"], cwd=core.root, input=request,
+                            capture_output=True)
+    if result.returncode != 0:
+        return {rel: _show(core, commit, rel) for rel in rels}
+    out: dict[str, str | None] = {}
+    data, pos = result.stdout, 0
+    for rel in rels:
+        end = data.index(b"\n", pos)
+        header = data[pos:end].split()
+        pos = end + 1
+        if len(header) != 3 or header[1] in (b"missing", b"ambiguous"):
+            out[rel] = None
+            continue
+        size = int(header[2])
+        out[rel] = data[pos:pos + size].decode("utf-8", "replace")
+        pos += size + 1
+    return out
+
+
 def base_config(core: Core, fork: str) -> Any:
     """The config at the merge base (defaults when it had no ``.plumb/config.yaml``)."""
     from plumb.config import Config, config_from_mapping
@@ -152,14 +179,13 @@ def extended_requirements(core: Core, fork: str,
     changed = {clean_rel_path(p) or p for p in paths}
     approved: dict[str, set[str]] | None = None
     out: dict[str, list[str]] = {}
-    for record in core.index().values():
-        if record.kind != "requirement" or record.path not in changed:
-            continue
+    candidates = [r for r in core.index().values()
+                  if r.kind == "requirement" and r.path in changed and owning_ends(r)]
+    texts = show_many(core, fork, [r.path for r in candidates])
+    for record in candidates:
         now = owning_ends(record)
-        if not now:
-            continue
         before: list[str] = []
-        text = _show(core, fork, record.path)
+        text = texts.get(record.path)
         if text is not None:
             try:
                 before = owning_ends(parse_record(text, record.path))
