@@ -169,7 +169,7 @@ def _config_text(current: str, argv: Sequence[str]) -> tuple[str, list[str]]:
     try:
         parsed = tomllib.loads(foreign)
     except ValueError as exc:
-        raise InstallError(f".codex/config.toml is not valid TOML; fix it first ({exc})")
+        raise InstallError(f".codex/config.toml is not valid TOML; fix it first ({exc})") from exc
     lines: list[str] = []
     body: list[str] = []
     if "notify" in parsed or "notify" in _user_config():
@@ -190,7 +190,7 @@ def _config_text(current: str, argv: Sequence[str]) -> tuple[str, list[str]]:
     try:
         tomllib.loads(text)
     except ValueError as exc:  # never write a configuration Codex cannot read
-        raise InstallError(f"plumb's block would make .codex/config.toml invalid ({exc})")
+        raise InstallError(f"plumb's block would make .codex/config.toml invalid ({exc})") from exc
     return text, lines
 
 
