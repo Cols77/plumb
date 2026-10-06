@@ -49,6 +49,8 @@ class HooksConfig:
     # the session-start brief: a few lines plus a pointer (compact), or the long brief (full)
     session_brief: str = "compact"
     summary_proposed_cap: int = 3
+    # sp5 3: the most the stop hook's agent instructions inject (4 characters per token)
+    stop_tokens: int = 150
 
 
 @dataclass(frozen=True)
@@ -129,6 +131,21 @@ class TraceConfig:
 
 
 @dataclass(frozen=True)
+class PresentConfig:
+    # sp5 4.3: the intent card's verbosity, full | compact | off (a display preference)
+    card: str = "compact"
+    ascii: bool = False          # the status card without glyphs
+
+
+@dataclass(frozen=True)
+class ResolveConfig:
+    # sp5 5: the owner's words resolve to one thing only when its score is at least
+    # min_score and more than margin ahead of the next candidate; otherwise plumb asks
+    min_score: float = 0.34
+    margin: float = 0.1
+
+
+@dataclass(frozen=True)
 class Config:
     source_dirs: tuple[str, ...] = ("src", "tests")
     # whether config.yaml names source_dirs; when it does not, plumb.trace also counts a code
@@ -146,12 +163,15 @@ class Config:
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     clarify: ClarifyConfig = field(default_factory=ClarifyConfig)
     hints: HintsConfig = field(default_factory=HintsConfig)
+    present: PresentConfig = field(default_factory=PresentConfig)
+    resolve: ResolveConfig = field(default_factory=ResolveConfig)
 
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
            "judgment": JudgmentConfig, "escalation": EscalationConfig, "trace": TraceConfig,
            "triage": TriageConfig, "auto_approve": AutoApproveConfig,
-           "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig}
+           "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig,
+           "present": PresentConfig, "resolve": ResolveConfig}
 
 
 def _build(cls: type, data: Mapping[str, Any]) -> Any:

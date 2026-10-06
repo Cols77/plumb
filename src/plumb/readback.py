@@ -81,16 +81,12 @@ def record_lines(record: Any) -> list[str]:
 
 def show_lines(core: Any, ids: Iterable[str]) -> tuple[list[str], list[str]]:
     """``plumb show``: the header, read-back and body of each record; and the unknown ids."""
+    from plumb.present.cards import confirmed_label
+
     index = core.index()
     wanted = [i for i in ids]
     known = [i for i in wanted if i in index]
     statuses = core.status(known) if known else {}
-    try:  # R8 B and R13 Q4: who confirmed is labelled everywhere it is shown
-        from plumb.capture.confirmations import labels_for
-
-        labels = labels_for(core, known) if known else {}
-    except Exception:  # noqa: BLE001 - a missing lane never fails plumb show
-        labels = {}
     lines: list[str] = []
     missing: list[str] = []
     for record_id in wanted:
@@ -100,11 +96,10 @@ def show_lines(core: Any, ids: Iterable[str]) -> tuple[list[str], list[str]]:
             continue
         if lines:
             lines.append("")
-        state = statuses[record_id].confirmation if record_id in statuses else "?"
-        if state == "confirmed" and statuses[record_id].approved_by == "auto-jev":
-            state = "confirmed by JEV"
-        if record_id in labels:
-            state += f", {labels[record_id]}"
+        status = statuses.get(record_id)
+        # who confirmed it, labelled like every other surface (R8 B, R13 Q4)
+        state = (confirmed_label(core, record_id, status)
+                 or (status.confirmation if status is not None else "?"))
         lines.append(f"{record_id} ({record.kind}, {state}) {record.path}")
         lines.extend("  " + line for line in record_lines(record))
         body = record.body.strip()

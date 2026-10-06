@@ -18,7 +18,6 @@ agent runs it for ``/plumb explain`` and restates the answer for the owner.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from pathlib import Path
 from typing import Any
 
 MAX_MATCHES = 3
@@ -32,41 +31,49 @@ def _clip(text: Any, width: int = 160) -> str:
     return text if len(text) <= width else text[: width - 3] + "..."
 
 
-def _state(status: Any) -> str:
+def _state(core: Any, record_id: str, status: Any) -> str:
+    """The record's state; a confirmed one says who confirmed it, labelled like every other
+    surface (``present.cards.confirmed_label``, R8 B, R13 Q4)."""
+    from plumb.present.cards import confirmed_label
+
     if status is None:
         return "?"
-    state = _STATE.get(status.confirmation, status.confirmation)
-    if status.confirmation == "confirmed":
-        by = getattr(status, "approved_by", None)
-        state += {"owner": " by you", "agent-relayed": " by you (relayed from chat)"}.get(
-            str(by), f" ({by})" if by else "")
-    return state
+    return confirmed_label(core, record_id, status) or _STATE.get(status.confirmation,
+                                                                  status.confirmation)
 
 
 def resolve(core: Any, query: str) -> tuple[list[str], str, str | None]:
-    """``(record ids, how, path)``: what ``query`` names. ``how`` is ``id``, ``path``,
-    ``words`` or ``none``; ``path`` is the repository path when the query is one."""
-    from plumb.hashing import clean_rel_path
-    from plumb.query import _ID_IN_TEXT, relevant
+    """``(record ids, how, path)``: what ``query`` names, through ``plumb.present.resolve``
+    (sp5 5). ``how`` is ``id``, ``path``, ``test``, ``words``, ``ambiguous`` or ``none``;
+    ``path`` is the repository path when the query (or its clear best match) is one."""
+    resolution = resolve_words(core, query)
+    ids, how, path = _from_resolution(core, resolution)
+    return ids, how, path
 
-    index = core.index()
-    text = " ".join(query.split())
-    named = [i for i in dict.fromkeys(_ID_IN_TEXT.findall(text)) if i in index]
-    if named:
-        return named, "id", None
-    rel = clean_rel_path(text.strip("'\"")) if text and " " not in text else None
-    if rel is not None:
-        owners = list(core.records_for_paths([rel]).get(rel, ()))
-        if owners or (Path(core.root) / rel).exists():
-            requirements = [i for i in owners if index[i].kind == "requirement"]
-            return sorted(requirements or owners), "path", rel
-    scored = [(i, score) for i, score in relevant(core, text, limit=MAX_MATCHES * 3)
-              if score > 0]
-    if not scored:
+
+def resolve_words(core: Any, query: str) -> Any:
+    from plumb.present.resolve import resolve as present_resolve
+
+    return present_resolve(core, query)
+
+
+def _from_resolution(core: Any, resolution: Any) -> tuple[list[str], str, str | None]:
+    if resolution.how == "none":
         return [], "none", None
-    best = scored[0][1]
-    picked = [i for i, score in scored if score >= best * 0.5][:MAX_MATCHES]
-    return picked, "words", None
+    if resolution.ambiguous:
+        return [], "ambiguous", None
+    items = list(resolution.items)
+    records = [i.ref for i in items if i.kind == "record"]
+    paths = [i.ref for i in items if i.kind == "path"]
+    if resolution.how == "path" or (not records and paths):
+        path = paths[0] if paths else resolution.query.strip("'\"")
+        if not records and paths:
+            index = core.index()
+            owners = list(core.records_for_paths([path]).get(path, ()))
+            requirements = [i for i in owners if index[i].kind == "requirement"]
+            records = sorted(requirements or owners)
+        return records[:MAX_MATCHES], "path", path
+    return records[:MAX_MATCHES], resolution.how, None
 
 
 def _tests(core: Any, record_id: str) -> list[str]:
@@ -107,7 +114,8 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
     index = core.index()
     record = index[record_id]
     fields = record.fields
-    lines = [f"{record_id} \"{record.title}\" ({_state(statuses.get(record_id))})"]
+    state = _state(core, record_id, statuses.get(record_id))
+    lines = [f"{record_id} \"{record.title}\" ({state})"]
     what = (fields.get("statement") or fields.get("readback") or fields.get("description")
             or fields.get("question"))
     if what:
@@ -129,7 +137,8 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
             parent = index[target]
             quote = parent.fields.get("quote")
             quote = " / ".join(map(str, quote)) if isinstance(quote, list) else quote
-            lines.append(f"  why: {target} \"{parent.title}\" ({_state(statuses.get(target))})"
+            target_state = _state(core, target, statuses.get(target))
+            lines.append(f"  why: {target} \"{parent.title}\" ({target_state})"
                          + (f", your words: \"{_clip(quote, 120)}\"" if quote else ""))
     for other in index.values():
         if other.kind != "decision":
@@ -139,7 +148,7 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
             chosen = other.fields.get("chosen")
             lines.append(f"  decided: {other.id} \"{other.title}\""
                          + (f", chosen: {_clip(chosen, 80)}" if chosen else "")
-                         + f" ({_state(statuses.get(other.id))})")
+                         + f" ({_state(core, other.id, statuses.get(other.id))})")
     feature = fields.get("feature")
     if feature and feature in index:
         lines.append(f"  feature: {feature} \"{index[feature].title}\"")
@@ -169,10 +178,19 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
 
 
 def explain_lines(core: Any, query: str) -> tuple[list[str], dict[str, Any]]:
-    """The answer lines and ``{query, how, path, records}``."""
-    ids, how, path = resolve(core, query)
+    """The answer lines and ``{query, how, path, records, candidates}``. When the words do
+    not clearly name one thing, the candidates are listed in the owner's terms with the
+    question (sp5 5), and nothing is explained."""
+    resolution = resolve_words(core, query)
+    ids, how, path = _from_resolution(core, resolution)
     statuses = core.status()
-    data: dict[str, Any] = {"query": query, "how": how, "path": path, "records": ids}
+    data: dict[str, Any] = {"query": query, "how": how, "path": path, "records": ids,
+                            "candidates": [i.ref for i in resolution.items]
+                            if resolution.ambiguous else []}
+    if how == "ambiguous":
+        from plumb.present.resolve import candidate_lines
+
+        return candidate_lines(resolution), data
     if not ids:
         if how == "path" or path:
             return [f"{path}: no requirement owns this file yet (an untraced change at the "

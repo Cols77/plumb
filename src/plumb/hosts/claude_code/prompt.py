@@ -18,7 +18,11 @@
    the stop hook queued (a changed source path no requirement owns: read it back and record
    a proposed SR).
 
-Every line is an intent-translation line computed from the records alone and kept through a
+Every line goes through the one emitter, ``plumb.present.delta`` (sp5 3): the flags, the
+compare line, escalations and the untraced instruction too reach the agent once per session
+per state. The relay line is about this turn (``per_turn``): it reaches the agent in every
+turn whose prompt follows a stated set, even when the prompt repeats earlier words. Every
+line is an intent-translation line computed from the records alone and kept through a
 budget cut (spec 10).
 
 Output is plain text, added to the agent's context. Questions to the owner are left to the
@@ -29,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -46,7 +51,6 @@ from plumb.hosts.claude_code.providers import LAZY, judgment_backend
 
 STRONG_MATCH = 1.0
 CHARS_PER_TOKEN = 4  # the estimate behind ``hooks.prompt_tokens``
-SEEN_FILE = "seen.json"
 
 
 def _utc_now() -> str:
@@ -77,20 +81,16 @@ def log_prompt(ctx: HookContext, text: str) -> str:
         pass
     previous = read_json(turn_path)
     asked = previous.get("asked") if isinstance(previous, dict) else None
-    write_json_atomic(turn_path, {"turn_start": time.time(), "prompt_digest": digest,
+    # turn_id: what makes a per_turn line new (plumb.present.delta), even when two turns
+    # start within one clock tick
+    write_json_atomic(turn_path, {"turn_start": time.time(), "turn_id": os.urandom(8).hex(),
+                                  "prompt_digest": digest,
                                   "asked": asked if isinstance(asked, dict) else {}})
     return digest
 
 
-def _seen_path(ctx: HookContext) -> Path:
-    return ctx.session_dir / ctx.session_id / SEEN_FILE
-
-
-def read_seen(ctx: HookContext) -> dict[str, str]:
-    """``{record id: state key}`` of the records this session's agent was already given."""
-    data = read_json(_seen_path(ctx))
-    seen = data.get("records") if isinstance(data, dict) else None
-    return {str(k): str(v) for k, v in seen.items()} if isinstance(seen, dict) else {}
+RECORDS_HEADER = ("plumb: relevant records, new or changed this session (plumb show <ID> for "
+                  "examples and tests):")
 
 
 def seen_key(record: Any, status: Any) -> str:
@@ -99,47 +99,16 @@ def seen_key(record: Any, status: Any) -> str:
     return f"{record.hash}|{state}"
 
 
-def delta_lines(index: Mapping[str, Any], statuses: Mapping[str, Any], ids: Sequence[str],
-                seen: Mapping[str, str], cap: int,
-                budget_chars: int) -> tuple[list[str], list[str]]:
-    """``(lines, injected ids)``: one line per relevant record that is new to this session or
-    changed since it was injected, in at most ``cap`` lines and ``budget_chars`` characters;
-    no line at all when nothing is new. A record cut by the budget is not marked seen, so a
-    later prompt can still bring it."""
-    fresh = [i for i in ids if seen.get(i) != seen_key(index[i], statuses.get(i))]
-    if not fresh:
-        return [], []
-    header = ("plumb: relevant records, new or changed this session (plumb show <ID> for "
-              "examples and tests):")
-    lines = [header]
-    used = len(header)
-    injected: list[str] = []
-    for record_id in fresh:
-        state = statuses[record_id].confirmation if record_id in statuses else "?"
-        line = _clip(f"{record_id} [{state}] {index[record_id].title}")
-        if len(lines) >= cap or (injected and used + len(line) > budget_chars):
-            break
-        lines.append(line)
-        used += len(line)
-        injected.append(record_id)
-    left = [i for i in fresh if i not in injected]
-    if left:
-        lines.append(_clip(f"plumb: +{len(left)} more relevant: plumb show "
-                           + " ".join(left), 160))
-    return lines, injected
+def record_line(record_id: str, index: Mapping[str, Any], statuses: Mapping[str, Any]) -> Any:
+    """The one delta line of a relevant record (ID, state, title), keyed by its hash and
+    confirmation state (sp5 3)."""
+    from plumb.present.delta import Line
 
-
-def write_seen(ctx: HookContext, seen: Mapping[str, str], index: Mapping[str, Any],
-               statuses: Mapping[str, Any], injected: Sequence[str]) -> None:
-    if not injected:
-        return
-    merged = dict(seen)
-    for record_id in injected:
-        merged[record_id] = seen_key(index[record_id], statuses.get(record_id))
-    try:
-        write_json_atomic(_seen_path(ctx), {"records": merged})
-    except OSError:
-        pass
+    state = statuses[record_id].confirmation if record_id in statuses else "?"
+    return Line(_clip(f"{record_id} [{state}] {index[record_id].title}"),
+                subject=f"record:{record_id}",
+                state=seen_key(index[record_id], statuses.get(record_id)),
+                record=record_id, group="records")
 
 
 def _relevant_ids(core: Any, text: str) -> tuple[list[str], list[str]]:
@@ -184,28 +153,42 @@ def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
     return line + "otherwise leave them proposed."
 
 
-def untraced_line(ctx: HookContext, core: Any) -> str | None:
-    """The stop hook's queued untraced change (spec 6.4), delivered once: paths a requirement
-    has linked since are dropped, and the note is removed whatever remains."""
-    from plumb.trace import trace_instruction, untraced_paths
+def untraced_queued(ctx: HookContext, core: Any) -> list[str]:
+    """The stop hook's queued untraced paths (spec 6.4), read once: paths a requirement has
+    linked since are dropped, and the note is removed whatever remains. The emitter then
+    tells the agent about each path once per session (sp5 3)."""
+    from plumb.trace import untraced_paths
 
     note = ctx.session_dir / ctx.session_id / "untraced.json"
     data = read_json(note)
     if data is None:
-        return None
+        return []
     try:
         note.unlink()
     except OSError:
         pass
     paths = data.get("paths") if isinstance(data, dict) else None
     if not isinstance(paths, list):
+        return []
+    return list(untraced_paths(core, [str(p) for p in paths]))
+
+
+def untraced_line(emitter: Any, paths: Sequence[str]) -> Any:
+    """One instruction for the untraced paths the agent has not been told about yet."""
+    from plumb.present.delta import Line
+    from plumb.trace import trace_instruction
+
+    new = [p for p in paths if emitter.is_new(f"untraced:{p}")]
+    if not new:
         return None
-    remaining = untraced_paths(core, [str(p) for p in paths])
-    return trace_instruction(remaining) if remaining else None
+    # oneshot: the note was consumed when read, so the budget must never cut this line
+    return Line(trace_instruction(new), subject="untraced:" + "|".join(sorted(new)),
+                marks=tuple(f"untraced:{p}" for p in new), oneshot=True)
 
 
 def escalation_lines(ctx: HookContext) -> list[str]:
-    """Escalations queued by the cascade since the last print (printed once each)."""
+    """Escalations queued by the cascade since the last print (printed once each). The
+    offset moves past them on read: their lines are ``oneshot`` (never cut by the budget)."""
     queue = ctx.session_dir / "escalations.jsonl"
     try:
         size = queue.stat().st_size
@@ -258,26 +241,30 @@ def escalation_hint(core: Any, index: Mapping[str, Any], strong: Sequence[str],
 def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
                  statuses: Mapping[str, Any], ids: Sequence[str], text: str, digest: str,
                  backend: Any, injected: Sequence[str] | None = None,
-                 ) -> tuple[list[str], list[str]]:
-    """``(lines, flagged)``: the trigger-1 flags on every relevant confirmed record, and the
-    compare line for the confirmed records injected in this prompt (``injected``; all of
-    them when None). A record the agent already has gets no repeated compare line (R9)."""
+                 ) -> tuple[list[Any], list[str]]:
+    """``(lines, flagged)``: the trigger-1 flags on every relevant confirmed record (once
+    per session per record state, sp5 3), and the compare line for the confirmed records
+    injected in this prompt (``injected``; all of them when None)."""
+    from plumb.present.delta import Line
+
     confirmed = [index[i] for i in ids if statuses[i].confirmation == "confirmed"]
-    out: list[str] = []
+    out: list[Any] = []
     flagged: list[str] = []
     if not confirmed:
         return out, flagged
     backend = judgment_backend(core, backend)
     if backend is None:
-        out.append("plumb: intent check unavailable")
+        out.append(Line("plumb: intent check unavailable"))
     else:
         for judgment in backend.intent_change(text, confirmed):
             if judgment.verdict != "change":
                 continue
             flagged.append(judgment.subject)
-            out.append(f"plumb: this may change {judgment.subject} (confirmed). If it "
-                       "does, read back the change and ask before editing; if not, "
-                       "proceed.")
+            subject = index.get(judgment.subject)
+            out.append(Line(f"plumb: this may change {judgment.subject} (confirmed). If it "
+                            "does, read back the change and ask before editing; if not, "
+                            "proceed.", subject=f"flag:{judgment.subject}",
+                            state=getattr(subject, "hash", "") or "-", must=True))
             _append_jsonl(ctx.session_dir / "intent_flags.jsonl",
                           {"at": _utc_now(), "session": ctx.session_id,
                            "prompt_digest": digest, "subject": judgment.subject,
@@ -285,22 +272,27 @@ def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
                            "backend": judgment.backend, "tier": judgment.tier})
     compare = [r.id for r in confirmed if injected is None or r.id in injected]
     if compare:
-        out.append("plumb: compare this request with the confirmed examples of "
-                   + ", ".join(compare)
-                   + "; if it contradicts or extends them, read back the change and ask "
-                   "before editing.")
+        out.append(Line("plumb: compare this request with the confirmed examples of "
+                        + ", ".join(compare)
+                        + "; if it contradicts or extends them, read back the change and ask "
+                        "before editing.", subject="compare:" + ",".join(compare),
+                        state=",".join(seen_key(index[i], statuses.get(i)) for i in compare)))
     return out, flagged
 
 
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
-    """Intent translation only, as a deduplicated delta (spec 10, R9).
+    """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
-    The relay line, the new or changed relevant records (one line each), the intent-change
-    flags, the compare line and the escalation hint are computed from the records alone and
-    kept (``HookContext.keep``); a budget cut, an error or the watchdog prints them. Covering
+    Every line goes through the one emitter (``plumb.present.delta``): the relay line, the
+    new or changed relevant records (one line each), the intent-change flags, the compare
+    line, escalations and the untraced-change instruction, each once per session per state,
+    within ``hooks.prompt_tokens``. They are computed from the records alone and kept
+    (``HookContext.keep``); a budget cut, an error or the watchdog prints them. Covering
     tests are not injected: the agent pulls them with ``plumb show``. ``verify`` is accepted
     for the hook interface and unused."""
     del verify
+    from plumb.present.delta import Line, open_emitter
+
     text = ctx.data.get("prompt")
     text = text if isinstance(text, str) else ""
     digest = log_prompt(ctx, text)
@@ -312,26 +304,37 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     except OSError:
         pass
     core = open_core(ctx.root)
+    hooks = core.config.hooks
+    emitter = open_emitter(ctx, "prompt", config=core.config,
+                           cap_lines=int(hooks.prompt_lines))
     awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json")
-    trace = untraced_line(ctx, core)
-    tail = [line for line in (trace, awaiting) if line]
-    ctx.keep([*escalations, *tail])
+    trace = untraced_line(emitter, untraced_queued(ctx, core))
+    # per_turn: every affirming prompt is told how to relay, even with the same words
+    relay = Line(awaiting, must=True, per_turn=True) if awaiting else None
+    tail = [line for line in (trace, relay) if line]
+    # oneshot: escalation_lines advanced the queue offset past them already
+    queued = [Line(line, oneshot=True) for line in escalations]
+    ctx.keep(emitter.add([*queued, *tail], commit=False))
     # no soft-budget check before the intent lines: only the watchdog bounds them
     ids, strong = _relevant_ids(core, text) if text.strip() else ([], [])
     index = core.index()
     statuses = core.status(ids) if ids else {}
-    hooks = core.config.hooks
-    seen = read_seen(ctx)
-    records, injected = delta_lines(index, statuses, ids, seen, int(hooks.prompt_lines),
-                                    int(hooks.prompt_tokens) * CHARS_PER_TOKEN)
-    ctx.keep([*records, *escalations, *tail])  # a slow intent check still leaves the delta
+    records = emitter.add([record_line(i, index, statuses) for i in ids],
+                          headers={"records": RECORDS_HEADER})
+    injected = [i for i in ids if f"record:{i}" in emitter.emitted]
+    ctx.keep([*records, *emitter.add([*queued, *tail], commit=False)])
     intent, flagged = intent_lines(ctx, core, index, statuses, ids, text, digest, backend,
                                    injected)
+    if flagged:  # the stop hook shows the owner an intent-change card (sp5 4.2, trigger 1)
+        turn_path = ctx.session_dir / ctx.session_id / "turn.json"
+        turn = read_json(turn_path)
+        if isinstance(turn, dict):
+            write_json_atomic(turn_path, {**turn, "flagged": flagged})
     hint = escalation_hint(core, index, strong, flagged) if strong else None
-    middle = [*intent, *([hint] if hint else [])]
-    out = [*records, *escalations, *middle, *tail]
+    rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []), *tail])
+    out = [*records, *rest]
     ctx.keep(out)
-    write_seen(ctx, seen, index, statuses, injected)
+    emitter.close()
     return HookOutput(text="\n".join(out))
 
 
