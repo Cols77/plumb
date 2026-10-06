@@ -1668,3 +1668,92 @@ bases only report. The findings below are recorded, not fixed.
   split. A missing path containing a space gives a 3-token header (`<commit>:a b missing`) and
   `int(b"missing")` raises ValueError, crashing `merge_report`. Record paths are `SR-###.md`
   today, so this is latent.
+
+## Next lane MERGE review, round 2 (2026-10-06, lane/merge a37b752): medium and low findings
+
+The HIGH findings in this round were fixed in this lane: `exit_code` now fails closed when
+verification is unavailable (exit 5, with the error rendered), and the glance reads auto-jev
+fields through one `auto_fields` helper that accepts CAPTURE's nested `payload["auto"]` shape
+(label in `confidence_label`) and the flat sp2 8.2 shape. Integration should add a test that
+drives `capture.autoapprove.gate` end to end into `glance_rows`, because the test here
+reproduces the writer's payload literally and capture's JEV stub fixtures are not on this
+branch. It should also settle which shape sp2 8.2 states.
+
+- [MEDIUM] (`src/plumb/cli.py`) The lane edits coordinator-owned `src/plumb/cli.py` to add the
+  merge-check route (plan 3.1 gives cli.py to the coordinator in phase 0), and it does not repin
+  the links this makes stale: SR-012#8, SR-031#6 and SR-033#2 (implemented_by
+  src/plumb/cli.py). `plumb merge-check main --no-run` on lane/merge exits 1 ("links of touched
+  requirements hold the merge: stale link SR-012#8 ... src/plumb/cli.py"), where sp3 DoD 6
+  expects 4, and the plan 3.4 ownership-diff gate fails. CAPTURE, HOSTS and PRESENT edit cli.py
+  too, so phase 0 apparently never ran: the coordinator must reconcile ROUTES and repin at
+  integration.
+- [MEDIUM] (`src/plumb/boundary/report.py`) `MergeReport` lives in `boundary/report.py`, not in
+  `contracts.py` as plan 3.2 and sp3 9 require. When phase-0 or lane contracts land, two
+  diverging definitions can exist. PRESENT imports `MergeReport` from `plumb.contracts` per the
+  plan, and a coordinator-defined class with different fields will not match what
+  `merge_report` returns.
+- [MEDIUM] (`src/plumb/boundary/report.py`, sp3 7) `render()` does not fit one screen. The
+  awaiting list caps rows at 10, but each row expands to the full statement, every example and
+  the new-link lines. On plumb's own repo, `plumb merge-check main --no-run` prints 77 lines,
+  with lines 3-44 alone holding 10 awaiting rows. The spec allows at most 12 lines outside the
+  lists, with each list capped at 10 rows.
+- [MEDIUM] (`src/plumb/boundary/prepush.py`) `hook_bases` skips any pushed ref that is not the
+  checked-out HEAD, and any ref with neither a known remote sha nor a resolvable
+  `default_base`; when nothing remains, `_hook_pre_push` returns 0. `git push origin feature-x`
+  with another branch checked out, or a new branch in a repo whose default branch is not
+  `main` and that has no `merge.default_base`, prints "merge-check skipped" and pushes
+  unchecked. The hook should refuse a pushed ref it cannot check, or report a non-zero exit.
+- [MEDIUM] (`src/plumb/boundary/report.py`) The full run starts even when the report is already
+  certain to hold with 1 (claims, links, integrity) or 4. It pays for the whole suite, writes
+  no merge evidence, and adds latency to the pre-push hook. Example: a branch with a stale link
+  and a conftest.py change runs the entire suite once and then exits 1. The next invocation
+  reuses the run only when the tree identity is unchanged.
+- [MEDIUM] (`src/plumb/boundary/report.py`, sp3 10 item 6) The definition of done is not met.
+  On plumb's own tree, `plumb merge-check main --no-run` exits 1 instead of 4 because three
+  links to src/plumb/cli.py are stale (SR-012#8, SR-031#6, SR-033#2). The lane repinned 54
+  other links but not these after adding the merge-check route. Run in C:/coding/plumb-merge,
+  `.venv/Scripts/python.exe -m plumb merge-check main --no-run` prints "links of touched
+  requirements hold the merge: stale link SR-012#8 implemented_by src/plumb/cli.py ..." and
+  exits 1.
+- [MEDIUM] (`src/plumb/cli.py`) The lane writes outside its ownership row in plan 3.1:
+  src/plumb/cli.py (the ROUTES entry and help text) and `.plumb/**` are coordinator-owned.
+  Phase 0 never ran on this base (9dd86c6), so `MergeReport` is defined in
+  `boundary/report.py` instead of `contracts.py`, and the merge config section is read through
+  a local fallback. The lane gate step "git diff --name-only main...HEAD: every path in the
+  lane's row" fails for src/plumb/cli.py. A duplicate `MergeReport` type and a conflicting
+  ROUTES or help edit will need reconciling at integration.
+- [MEDIUM] (`src/plumb/boundary/report.py`, KEEP failure policy) An owner waiver of the full run
+  also suppresses the run that would verify unverified touched acceptance tests:
+  `waived = full_waived or ((pending or unverified) and _waived(...))` makes `needed` false,
+  but `exit_code` still returns 5 for `report.unverified`. The check holds with no run, while
+  the full-run line says "waived by the owner". When infrastructure changes, the owner waives
+  (`plumb tests waive --merge main`), and a touched requirement also has a never-run
+  acceptance test, `plumb merge-check main` runs nothing and exits 5 on every call until
+  someone runs `plumb tests run --nodes` by hand. The KEEP policy expects a targeted rerun
+  after an owner waiver.
+- [LOW] (`src/plumb/boundary/fidelity.py`) The 5 s JEV budget is checked only between calls, so
+  one slow `backend.fidelity` call can exceed it. `jev_scores` also runs under
+  `plumb validate --merge` (run_full=False). With JEV configured and a slow network, a single
+  scoring call blocks merge-check or `validate --merge` for as long as the backend's own
+  timeout.
+- [LOW] (`src/plumb/boundary/glance.py`, R13 Q4) The "self-recorded message" label depends on
+  writers setting the `self_recorded`, `via` or `host` markers. A relay whose prompt digest
+  appears in neither the prompt log nor the prompt events is not labelled self-recorded. On a
+  CLI-fallback host whose relay writer does not set these markers, the glance shows a plain
+  AGENT-RELAYED row with no label, although no prompt hook ever logged the digest.
+- [LOW] (`src/plumb/boundary/prepush.py`) The pre-push hook is written into the common hooks
+  directory, which every worktree shares, but it hard-codes the installing worktree's venv
+  interpreter. Pushes from other worktrees run that worktree's plumb code. If the hook is
+  installed from C:/coding/plumb-merge and that worktree is later removed, every `git push`
+  from C:/coding/plumb fails with "not found" (exit 127) and git refuses the push.
+- [LOW] (`src/plumb/boundary/prepush.py`) `hook_bases` uses the remote sha as BASE, as the spec
+  says, so a re-push of an existing branch checks only the commits since the last push, not the
+  change against main. Pushed refs other than the checked-out HEAD are skipped with exit 0.
+  Example: a branch pushed once with exit 4 and `--no-verify`, then pushed again after one more
+  commit, is checked only on that commit's touched requirements. Likewise,
+  `git push origin feature` from a main checkout passes without any check.
+- [LOW] (`src/plumb/boundary/fullrun.py`) In pre-push hook mode, a green report appends a
+  merge-evidence entry to the committed evidence log after the commits being pushed, so the
+  pushed history never contains the evidence for that push. A green `git push` leaves
+  `.plumb/log/evidence.jsonl` modified in the working tree, and the remote has no
+  merge-evidence for the pushed head until a later commit adds it.

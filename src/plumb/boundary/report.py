@@ -58,14 +58,21 @@ def as_dict(report: MergeReport) -> dict[str, Any]:
 
 
 def exit_code(report: MergeReport) -> int:
-    """1 (integrity, claims, links) before 5 (verification) before 4 (confirmation)."""
+    """1 (integrity, claims, links) before 5 (verification) before 4 (confirmation).
+
+    Fails closed: green needs verification evidence, so a verification that could not be
+    read (``available`` false or absent: the lane is missing, or reading the evidence, the
+    tree identity or the test map raised) holds the merge with 5, like a pending full run.
+    This is the one choke point for every entry (``merge-check``, ``validate --merge``, the
+    pre-push hook): each takes its exit from here."""
     if report.error:
         return 2
     if report.integrity or report.claims.get("holds") or report.links:
         return 1
     verification = report.verification
     full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
-    if report.regressions or report.failing or report.unverified or full_held:
+    unavailable = not verification.get("available")
+    if report.regressions or report.failing or report.unverified or full_held or unavailable:
         return 5
     if report.awaiting or report.untraced or report.new_exempt:
         return 4
@@ -393,7 +400,10 @@ def _verification_lines(report: MergeReport, failing_line: Any) -> list[str]:
     verification = report.verification
     out = [_full_run_line(report.full_run, verification)]
     if not verification.get("available"):
-        out.append("verification: unavailable")
+        error = verification.get("error")
+        out.append("verification: unavailable" + (f" ({error})" if error else "")
+                   + "; it holds the merge: green needs test evidence (fix the cause and "
+                     "rerun plumb merge-check)")
         return out
     if verification.get("full_pending"):
         reasons = ", ".join(verification.get("full_pending_reasons") or [])

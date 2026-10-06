@@ -61,6 +61,23 @@ def self_recorded(payload: Mapping[str, Any], prompt_events: Mapping[str, Mappin
             or _marks_self_recorded(prompt_log.get(digest)))
 
 
+AUTO_KEYS = ("score", "model_version", "backend", "claim_kind", "calibration")
+
+
+def auto_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The score, confidence label, model version, backend, claim kind and calibration of an
+    ``auto-jev`` approval, whichever shape wrote it: CAPTURE's writer
+    (``capture.autoapprove.gate``) nests them under ``payload["auto"]``, with the numeric
+    confidence in ``confidence`` and the label in ``confidence_label``; sp2 8.2 shows them at
+    the top level. The one place the glance reads them, so the two never disagree."""
+    nested = payload.get("auto")
+    source: Mapping[str, Any] = nested if isinstance(nested, Mapping) else payload
+    out = {key: source.get(key) for key in AUTO_KEYS}
+    label = source.get("confidence_label")
+    out["confidence"] = label if label is not None else source.get("confidence")
+    return out
+
+
 def _ids(payload: Mapping[str, Any]) -> list[str]:
     return [str(r.get("id")) for r in payload.get("records") or [] if isinstance(r, Mapping)]
 
@@ -93,9 +110,7 @@ def glance_rows(core: Any, base_digests: Iterable[str]) -> list[dict[str, Any]]:
                 prompt_log = _prompt_log(core)
             row["self_recorded"] = self_recorded(payload, prompt_events, prompt_log)
         if by == "auto-jev":
-            for key in ("score", "confidence", "model_version", "backend", "claim_kind",
-                        "calibration"):
-                row[key] = payload.get(key)
+            row.update(auto_fields(payload))
         if isinstance(payload.get("triage"), Mapping):
             row["triage"] = str(payload["triage"].get("group") or "")
         if isinstance(payload.get("set"), Mapping):
