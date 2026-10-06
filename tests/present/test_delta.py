@@ -207,3 +207,47 @@ def test_blocked_stop_untraced_instruction_survives_the_budget(records: Path,
     assert "plumb tests run" in out["reason"]
     assert "src/app/mul.py" in out["reason"]
     assert not note.exists()
+
+
+# --- a per-turn line reaches the agent once in every turn, whatever its words (SR-063 EX-5) ---
+
+
+def test_per_turn_line_is_once_per_turn_not_once_per_session(repo: Path) -> None:
+    """The choke point: a ``per_turn`` line's key carries the emitter's turn, so the same
+    text is dropped within a turn and emitted again in the next one."""
+    path = delta.seen_path(repo / ".plumb" / "session", "s1")
+    line = delta.Line("plumb: run the covering tests", subject="tests", must=True,
+                      per_turn=True)
+    first = delta.Emitter(path, "stop", None, turn="t1")
+    assert first.add([line, line]) == [line.text]
+    first.close()
+    assert delta.Emitter(path, "stop", None, turn="t1").add([line]) == []
+    assert delta.Emitter(path, "stop", None, turn="t2").add([line]) == [line.text]
+
+
+def test_stop_blocks_every_turn_with_unrun_covering_tests(records: Path, hook_input) -> None:
+    """Entry point 1, the stop hook: the owner types "continue" twice; each turn edits code
+    whose covering tests have no fresh evidence, and each turn's stop blocks once."""
+    from present_helpers import FakeVerify, run_stop, touch
+
+    verify = FakeVerify(nodes=("tests/test_calc.py::test_add",))
+    reasons = []
+    for _ in range(2):
+        run_prompt(records, hook_input, "continue")
+        touch(records, "src/app/calc.py")
+        out = run_stop(records, hook_input, verify=verify)
+        reasons.append(out.get("reason") if out.get("decision") == "block" else None)
+    assert all(r and "plumb tests run --paths src/app/calc.py" in r for r in reasons), reasons
+
+
+def test_relay_line_reaches_every_affirming_prompt(records: Path, hook_input) -> None:
+    """Entry point 2, the prompt hook: SR-001 is stated as shown and the owner types "ok"
+    twice (the first relay did not land); both prompts carry the relay instruction."""
+    stated = records / ".plumb" / "session" / "stated.json"
+    stated.parent.mkdir(parents=True, exist_ok=True)
+    stated.write_text(json.dumps({"records": [{"id": "SR-001", "shown": True}]}),
+                      encoding="utf-8")
+    outputs = [run_prompt(records, hook_input, "ok") for _ in range(2)]
+    for out in outputs:
+        assert "plumb: awaiting confirmation: SR-001" in out
+        assert "run plumb relay SR-001 --prompt" in out

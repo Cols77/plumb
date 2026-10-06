@@ -15,7 +15,11 @@ host-neutral API, which delegates to them) goes through ``Emitter.add``:
   tests instruction) are never cut, nor are ``oneshot`` lines: a line whose source the hook
   consumes when it reads it (the queued untraced-change instruction, a queued cascade
   escalation), so a cut would lose it for good;
-- nothing is emitted when nothing is new.
+- nothing is emitted when nothing is new;
+- a ``per_turn`` line (the relay line, the covering-tests instruction, the skipped-check
+  notice) is about this turn, not a subject: its key carries the emitter's turn (the
+  ``turn_id`` of ``turn.json``), so the same words in a later turn ("ok", "continue")
+  reach the agent again, once per turn. With no turn known, every call is a new turn.
 
 The seen set lives in ``.plumb/session/<session>/seen.json`` and is written only when the
 hook closes the emitter, so a hook cut short re-emits next time rather than losing a line.
@@ -49,17 +53,24 @@ class Line:
     must: bool = False             # never cut by the budget
     oneshot: bool = False          # its source is consumed once read: never cut either
     marks: tuple[str, ...] = ()    # further subjects marked seen with this line
+    per_turn: bool = False         # about this turn: once per turn, never once per session
 
     @property
     def kept(self) -> bool:
         """Never cut by the budget or the line cap: ``must`` or ``oneshot``."""
         return self.must or self.oneshot
 
-    def key(self) -> tuple[str, str]:
+    def key(self, turn: str = "") -> tuple[str, str]:
+        """``(subject, state)``: a ``per_turn`` line's state carries ``turn``, so a later
+        turn never finds it seen, whatever its words."""
         if self.subject:
-            return self.subject, self.state or "-"
-        digest = hashlib.sha256(self.text.encode("utf-8")).hexdigest()[:20]
-        return "text:" + digest, "1"
+            subject, state = self.subject, self.state or "-"
+        else:
+            digest = hashlib.sha256(self.text.encode("utf-8")).hexdigest()[:20]
+            subject, state = "text:" + digest, "1"
+        if self.per_turn:
+            state += "@" + (turn or "?")
+        return subject, state
 
 
 def seen_path(session_dir: Path, session_id: str) -> Path:
@@ -83,6 +94,23 @@ def _write_seen(path: Path, seen: Mapping[str, str]) -> None:
     os.replace(tmp, path)
 
 
+def turn_id(session_dir: Path, session_id: str) -> str:
+    """The current turn: the ``turn_id`` (else the ``turn_start``) the prompt hook wrote to
+    ``turn.json``; a fresh nonce when there is none, so a ``per_turn`` line is never taken
+    for seen."""
+    try:
+        data = json.loads((Path(session_dir) / session_id / "turn.json")
+                          .read_text(encoding="utf-8"))
+        data = data if isinstance(data, dict) else {}
+        if data.get("turn_id"):
+            return str(data["turn_id"])
+        if data.get("turn_start") is not None:
+            return repr(float(data["turn_start"]))
+    except (OSError, ValueError, TypeError):
+        pass
+    return "nonce:" + os.urandom(8).hex()
+
+
 def budget_chars(config: Any, kind: str, budget_tokens: int | None = None) -> int | None:
     """The character budget of one hook: ``prompt`` and ``stop`` are bounded, the session
     brief is bounded by its own line cap."""
@@ -100,8 +128,9 @@ class Emitter:
     """The emitter of one hook call: ``add`` as many times as needed, then ``close``."""
 
     def __init__(self, path: Path, kind: str, budget: int | None,
-                 cap_lines: int | None = None) -> None:
+                 cap_lines: int | None = None, turn: str = "") -> None:
         self.path = path
+        self.turn = turn or "nonce:" + os.urandom(8).hex()
         self.kind = kind
         self.budget = budget
         self.cap_lines = cap_lines
@@ -117,7 +146,7 @@ class Emitter:
 
     def fresh(self, lines: Iterable[Line]) -> list[Line]:
         """The lines that are new to this session (nothing is marked)."""
-        return [line for line in lines if line.text and self.is_new(*line.key())]
+        return [line for line in lines if line.text and self.is_new(*line.key(self.turn))]
 
     def add(self, lines: Sequence[Line], *, headers: Mapping[str, str] | None = None,
             commit: bool = True) -> list[str]:
@@ -133,9 +162,9 @@ class Emitter:
         progressed = False
         keys: set[tuple[str, str]] = set()
         for line in self.fresh(lines):
-            if line.key() in keys:
+            if line.key(self.turn) in keys:
                 continue
-            keys.add(line.key())
+            keys.add(line.key(self.turn))
             header = headers.get(line.group or "") if line.group not in done else None
             cost = len(line.text) + (len(header) if header else 0)
             over = self.budget is not None and used + cost > self.budget
@@ -158,7 +187,7 @@ class Emitter:
         if commit:
             self.used, self.count, self.headers_done = used, count, done
             for line in taken:
-                subject, state = line.key()
+                subject, state = line.key(self.turn)
                 self.emitted[subject] = state
                 for mark in line.marks:
                     self.emitted[mark] = "1"
@@ -189,7 +218,8 @@ def open_emitter(ctx: Any, kind: str, *, budget_tokens: int | None = None,
         except Exception:  # noqa: BLE001 - a broken config keeps the defaults
             config = None
     return Emitter(seen_path(ctx.session_dir, ctx.session_id), kind,
-                   budget_chars(config, kind, budget_tokens), cap_lines)
+                   budget_chars(config, kind, budget_tokens), cap_lines,
+                   turn_id(ctx.session_dir, ctx.session_id))
 
 
 def emit(ctx: Any, lines: Sequence[Line | str], kind: str, *,

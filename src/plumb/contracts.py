@@ -301,3 +301,11 @@ class Resolution:
         if self.ambiguous:
             return ()
         return tuple(i.ref for i in self.items if i.kind == "record")
+
+    @property
+    def best(self) -> str | None:
+        """The one thing the words clearly name (a record ID, a path or a test node); None
+        when they are ambiguous or match nothing (the consumer then asks, never guesses)."""
+        if self.ambiguous or not self.items:
+            return None
+        return self.items[0].ref

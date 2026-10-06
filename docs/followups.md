@@ -1630,7 +1630,7 @@ Fixed in this lane (HIGH, each as a class at one choke point, one test per entry
   `plumb explain`, the vault notes and the cards. Tests: `tests/present/test_labels.py`.
 
 Recorded, not fixed:
-- [MEDIUM] `src/plumb/present/__init__.py`: the PRESENT-owned cross-lane interface
+- [MEDIUM, fixed in round 2 below] `src/plumb/present/__init__.py`: the PRESENT-owned cross-lane interface
   `plumb.present.api` (sp5 9: brief, relevant, show, explain, impact, drift, resolve) is
   missing. Phase 0 never ran, so there is no stub or delegation either. HOSTS' MCP server
   (`src/plumb/mcp/server.py:_resolve` on lane/hosts) imports
@@ -1638,7 +1638,7 @@ Recorded, not fixed:
   through unresolved. The `Resolution` type here has no `best` or `ref` attribute, which
   HOSTS reads. The impact and explain CLIs resolve plain words themselves, so the loss is
   limited today, but the plan 3.5 contract is unmet.
-- [MEDIUM] `src/plumb/hosts/claude_code/stop.py`: with `present.card: off`, `summary()`
+- [MEDIUM, fixed in round 2 below] `src/plumb/hosts/claude_code/stop.py`: with `present.card: off`, `summary()`
   hides the triage offer line (extra lines are kept only when they contain "escalated"),
   but `write_stated` still pins the triage group. The owner's next "ok" to something else
   (for example a DEC question card) could be relayed with `--group low-risk` and approve
@@ -1674,3 +1674,80 @@ Recorded, not fixed:
   hook fills after it renders the offer. On a host with no stop hook, a prepared group is
   therefore never relayable, and the owner names the records or uses `plumb triage
   --approve` in the terminal. This is the intended safe default (R2).
+
+## PRESENT lane review, round 2 (2026-10-06): HIGH findings fixed, the rest recorded
+
+Fixed in this lane (HIGH, each as a class at one choke point, one test per entry point):
+- Per-turn lines fire once per turn, never once per session. Guarantee: every turn whose
+  covering tests lack fresh evidence blocks once, and every affirming prompt that follows
+  a stated set is told how to relay, even when the owner repeats the same words ("ok",
+  "continue"). Choke point: `present.delta.Line.per_turn`, whose key carries the
+  emitter's turn (`turn_id`, a nonce the prompt hook writes to `turn.json`). Entry points:
+  the stop hook's covering-tests instruction (was keyed by the prompt digest), the prompt
+  hook's awaiting-confirmation relay line (was keyed by its text, which holds the prompt
+  digest). Tests: `tests/present/test_delta.py` (the emitter, the stop entry point and the
+  prompt entry point); SR-063 EX-5. The blocked stop's skipped-check notice is marked
+  `per_turn` too; it has no test of its own (it rides on a block another line causes).
+- A triage group is pinned in the stated set only when its offer line reached the owner
+  (R2, R13 Q2). Choke point: `hosts/claude_code/stop.write_stated` pins `group` only when
+  every offer line is a line of the message the owner is shown (`stop.offered`). Stop
+  paths: compact, full and off (`tests/present/test_intent_card.py`, parametrized; off
+  pins nothing), and the no-change and with-change paths of a `/plumb confirm` group with
+  the card off (`tests/present/test_confirm.py`). SR-062 EX-4.
+- `plumb.present.api` exists with the sp5 9 signatures (brief, relevant, show, explain,
+  impact, drift, resolve), read-only, and `plumb brief` prints `api.brief`, so the CLI and
+  the MCP server show the same lines. `Resolution.best` is the one clear match (None when
+  ambiguous or empty), which HOSTS' `mcp/server._resolve` reads. Tests:
+  `tests/present/test_api.py`; SR-064 EX-5.
+
+Recorded, not fixed:
+- [MEDIUM] `src/plumb/hosts/claude_code/prompt.py`: the trigger-1 intent-change
+  instruction ("this may change SR-x (confirmed) ... ask before editing") is keyed
+  `flag:SR-x` plus the record's hash, so the agent gets it once per session for an
+  unchanged record. A later, different prompt in the same session that also contradicts
+  SR-x is still judged and flagged (turn.json gets `flagged`), but the agent is not told to
+  ask before editing; only the owner-facing card appears, after the edit. sp5 3 asks for
+  this deduplication, so this is not HIGH, but it weakens the "questions on a real intent
+  change" trigger. Consider keying the flag by the prompt as well (`per_turn=True` on the
+  flag line is the one-line change at the same choke point).
+- [MEDIUM] `src/plumb/hosts/claude_code/session_start.py`: the brief's triage line
+  (`triage_offer_line`, used by the session brief and `plumb brief`) prints only a count.
+  R13 Q2 (DEC-017) wants up to about 5 records by title, then "+N more (see plumb
+  triage)"; the stop summary uses CAPTURE's `offer_line`, which follows Q2, so the two
+  offers disagree. The brief line pins no group, which limits the risk. (Also recorded in
+  the first review round.)
+- [MEDIUM] `src/plumb/hosts/claude_code/stop.py`: `plumb view` writes its vault to
+  `.plumb/view/`, but the stop hook's `IGNORED_PREFIXES` does not exclude `.plumb/view/`,
+  and `plumb init` (CAPTURE's `commands.GITIGNORE_LINES`) does not add `view/`. In a
+  consumer repository `/plumb view` runs through the agent, so that turn's stop hook sees
+  every generated note as a changed path (`records_for_paths`, `verify.select`, the
+  summary's touched line). Fix: add `.plumb/view/` to `IGNORED_PREFIXES`, and `view/` to
+  `GITIGNORE_LINES` at integration.
+- [MEDIUM] `tests/integration/test_session_e2e.py` (coordinator-owned): still asserts
+  the sp1 summary format. The first line is now the status card, and in compact mode
+  "questions: none" is joined into the second line. The Integrate phase's single
+  full-suite run fails at lines 173 and 176 unless the coordinator applies the edits noted
+  in the first round's [INTEGRATION] entry first.
+- [MEDIUM] `src/plumb/align.py`: `collect()` stops at test and code nodes. It never
+  expands to evidence (sp5 8 and R12.2: intent -> ... -> test -> code -> evidence) and
+  never reports the spec's example gap "an example with no evidence", so /plumb review and
+  the vault's edge badges show an unrun chain as complete. (Also recorded in the first
+  round.)
+- [LOW] `src/plumb/hosts/claude_code/templates/plumb-command.md`: `allowed-tools` omits
+  `{plumb} relay`, although its own `confirm` instruction tells the agent to "relay them at
+  once", so every `/plumb confirm SR-034` triggers a permission prompt. Separately,
+  plumb's own installed `.claude/commands/plumb.md` (coordinator-owned) still advertises
+  the old brief, explain and impact set until it is reinstalled at integration.
+- [LOW] `src/plumb/present/review.py`: `_glance` lists revoked agent-relayed and auto-jev
+  approvals as if they were still in force, and omits the R13 Q4 "self-recorded message"
+  label although `present.cards.confirmed_label` exists. The merge-boundary glance itself
+  belongs to MERGE. (Also recorded in the first round.)
+- [INTEGRATION] HOSTS' `mcp/server.py` can now import `plumb.present.api.resolve`; its
+  `_resolve` reads `result.best`, which `Resolution` now provides. `plumb_brief` can call
+  `api.brief` directly instead of the `brief` command (same lines either way).
+- [LOW, flaky] `tests/host/test_latency.py::test_intent_lines_survive_cpu_contention`
+  failed once in this round's focused run (the prompt hook printed only "plumb: check
+  skipped (budget)": the watchdog's hard limit hit before the relay line was kept) and
+  passed when rerun alone. The machine (2 cores) was also running other lanes' tests on
+  top of the test's own CPU contention. If it recurs on an idle machine, keep the relay
+  line before `open_core` (it needs only `stated.json` and the record states).

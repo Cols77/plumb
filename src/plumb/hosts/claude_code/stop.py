@@ -20,7 +20,9 @@
    evidence and now fails; once per failing run). A new test that starts red is "not yet
    passing" and never asks. The block's lines go through the one emitter
    (``plumb.present.delta``): each once per session per state, within
-   ``hooks.stop_tokens``.
+   ``hooks.stop_tokens``; the covering-tests instruction and the skipped-check notice are
+   about this turn (``per_turn``), so every turn whose covering tests lack fresh evidence
+   blocks once, whatever the prompt's words.
 5. Otherwise the owner-facing ``systemMessage``: the status card, the summary lines for
    ``present.card`` (full | compact | off) and the intent cards of the records that matter
    (sp5 4); proposed records are shown, never asked, and the ones not shown are named with
@@ -314,15 +316,17 @@ def confirm_view(core: Any, carry: ConfirmView, skip: Iterable[str] = ()) -> Con
 
 def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
                  stated_ids: Sequence[str], shown: Iterable[str] = (), *,
-                 group: Mapping[str, Any] | None = None,
-                 confirm: ConfirmView | None = None) -> None:
+                 group: Mapping[str, Any] | None = None, offer: Sequence[str] = (),
+                 message: str = "", confirm: ConfirmView | None = None) -> None:
     """The stated set of this reply: what a bare affirmation of the owner may confirm.
 
     The records and groups ``plumb confirm`` prepared this turn stay in it (``via:
     confirm``); they are shown, and a group relayable (``groups``), only as ``confirm``
     rendered them (``confirm_view``). Without ``confirm`` (a blocked stop shows the owner
     nothing) they are kept unshown for the turn's last stop. ``group`` is the triage offer
-    of this turn's own records (``plumb relay --group``)."""
+    of this turn's own records (``plumb relay --group``), pinned only when its ``offer``
+    lines are in ``message``, the text the owner is shown (R2, DEC-017): a group the
+    owner never saw (``present.card: off`` hides the offer) is never relayable."""
     from plumb.normalize import utc_now
 
     carry = confirm if confirm is not None else confirm_carry(ctx, turn)
@@ -348,13 +352,19 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
                             "reply_after_prompt": turn.get("prompt_digest"),
                             "records": records}
     groups = list(confirm.shown_groups) if confirm is not None else []
-    if group is not None and not carry.groups:
+    if group is not None and not carry.groups and offered(offer, message):
         groups.append(dict(group))
     if groups:
         data["groups"] = groups
     if carry.groups:
         data["confirm_groups"] = carry.groups
     write_json_atomic(ctx.session_dir / "stated.json", data)
+
+
+def offered(offer: Sequence[str], message: str) -> bool:
+    """True when every offer line is a line of ``message`` (what reached the owner)."""
+    shown = set(message.splitlines())
+    return bool(offer) and all(line in shown for line in offer)
 
 
 def _confirmations(core: Any, since: float) -> list[str]:
@@ -503,8 +513,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         if not_run:
             wanted.append(Line(tests_instruction(changed,
                                                  float(core.config.verify.turn_budget_s)),
-                               subject=f"tests:{turn.get('prompt_digest') or turn_start}",
-                               must=True))
+                               subject="tests", must=True, per_turn=True))
         for d in open_decisions:
             wanted.append(Line(_dec_question(index[d]), subject=f"question:{d}",
                                state=index[d].hash, must=True))
@@ -532,7 +541,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                 except OSError:
                     pass
             if skipped:
-                reasons += emitter.add([Line(skip_notice(skipped))])
+                reasons += emitter.add([Line(skip_notice(skipped), per_turn=True)])
             emitter.close()
             # a blocked stop shows the owner nothing: a bare "ok" relays no record
             write_stated(ctx, turn, index, stated_ids)
@@ -555,8 +564,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         regressions=[*regressions, *(m["node"] for m in masked)], flagged=flagged,
         escalated=escalated, extra_lines=[*waiting, *offer])
     view = confirm_view(core, carry, shown)
-    write_stated(ctx, turn, index, stated_ids, shown, group=group, confirm=view)
-    return HookOutput(system_message="\n".join([text, *view.lines]) if view.lines else text)
+    message = "\n".join([text, *view.lines]) if view.lines else text
+    write_stated(ctx, turn, index, stated_ids, shown, group=group, offer=offer,
+                 message=message, confirm=view)
+    return HookOutput(system_message=message)
 
 
 def escalated_sets(core: Any, touched_ids: Sequence[str]) -> tuple[list[str], list[str]]:

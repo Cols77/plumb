@@ -201,3 +201,34 @@ def test_triage_offer_line_and_group(calc: Path, hook_input, monkeypatch) -> Non
     assert "plumb: approve the 1 record rated faithful to your words" in message
     stated = json.loads((calc / ".plumb" / "session" / "stated.json").read_text("utf-8"))
     assert stated["groups"][0]["group"] == "low-risk"
+
+
+@pytest.mark.parametrize("mode", ["compact", "full", "off"])
+def test_triage_group_pinned_only_when_its_offer_is_shown(calc: Path, hook_input, monkeypatch,
+                                                          mode: str) -> None:
+    """R2, R13 Q2 (SR-062 EX-5): the stop pins the triage group in the stated set only when
+    the owner saw its offer line; ``present.card: off`` hides the offer, so nothing is
+    relayable with ``plumb relay --group``."""
+    from types import SimpleNamespace
+
+    _config(calc, mode)
+    index = open_core(calc).index()
+    item = SimpleNamespace(id="SR-002", hash=index["SR-002"].hash, title="divide",
+                           rating="faithful", score=0.9)
+    offer = ('plumb: approve the 1 record rated faithful to your words: "divide" (SR-002)? '
+             'say "ok" or see plumb triage')
+    view = SimpleNamespace(backend="heuristic", available=True, low_risk=(item,),
+                           individual=(), offer=offer)
+    fake_capture(monkeypatch, triage=lambda core, ids: view,
+                 stated_group=lambda v: {"group": "low-risk", "records": [
+                     {"id": "SR-002", "hash": index["SR-002"].hash}]})
+    touch(calc, ".plumb/requirements/SR-002.md")
+    message = run_stop(calc, hook_input).get("systemMessage", "")
+    stated = json.loads((calc / ".plumb" / "session" / "stated.json").read_text("utf-8"))
+    groups = stated.get("groups") or []
+    if mode == "off":
+        assert offer not in message.splitlines()
+        assert groups == []
+    else:
+        assert offer in message.splitlines()
+        assert [g["group"] for g in groups] == ["low-risk"]

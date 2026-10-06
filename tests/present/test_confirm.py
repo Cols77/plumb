@@ -229,3 +229,22 @@ def test_blocked_stop_keeps_the_confirm_group_unoffered(records: Path, hook_inpu
     stated = _stated(records)
     assert "groups" not in stated and stated["confirm_groups"]
     assert not any(r["shown"] for r in stated["records"])
+
+
+@pytest.mark.parametrize("changes", [False, True], ids=["no-change", "with-change"])
+def test_card_off_pins_only_the_offer_the_owner_saw(records: Path, hook_input, capsys,
+                                                    monkeypatch, changes) -> None:
+    """R2 with ``present.card: off``, on both stop paths (no change and with changes): the
+    group /plumb confirm prepared is still rendered (the owner asked for it) and so
+    pinned; every pinned group's offer line is in the message the owner saw."""
+    pinned = _fake_triage(records, monkeypatch)
+    (records / ".plumb" / "config.yaml").write_text("present:\n  card: off\n", "utf-8")
+    run_prompt(records, hook_input, "/plumb confirm")
+    assert cli.main(["confirm", "--root", str(records)]) == 0
+    capsys.readouterr()
+    if changes:
+        touch(records, ".plumb/requirements/SR-002.md")
+    message = run_stop(records, hook_input)["systemMessage"]
+    assert ('plumb: approve the 2 records rated faithful to your words: "add", "divide"? '
+            'say "ok" or see plumb triage') in message.splitlines()
+    assert _stated(records)["groups"] == [{"group": "low-risk", "records": pinned}]

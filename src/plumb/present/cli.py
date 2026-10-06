@@ -76,21 +76,17 @@ def cmd_status(command: str, argv: list[str]) -> int:
 
 
 def cmd_brief(command: str, argv: list[str]) -> int:
-    """The sp1 brief, plus at most one line: the triage offer (R8 A)."""
-    code = _delegate(command, argv)
-    if code == 0 and "--json" not in argv and not any(a in ("-h", "--help") for a in argv):
-        from plumb.hosts.claude_code.session_start import triage_offer_line
+    """The sp1 brief, plus at most one line: the triage offer (R8 A). The lines come from
+    ``plumb.present.api.brief``, which the MCP server and the adapters call as well."""
+    from plumb.present import api
 
-        try:
-            root = argv[argv.index("--root") + 1] if "--root" in argv else None
-            from plumb.api import open_core
-
-            offer = triage_offer_line(open_core(resolve_root(root)))
-        except Exception:  # noqa: BLE001 - the offer is advisory
-            offer = None
-        if offer:
-            print(offer)
-    return code
+    parser = _parser(command, "The short intent brief (about 30 lines, cap 40).")
+    parser.add_argument("--max-lines", type=int, default=None)
+    parser.add_argument("--all", action="store_true", dest="show_all")
+    args = parser.parse_args(argv)
+    lines = api.brief(_core(args), full=args.show_all, max_lines=args.max_lines)
+    emit({"lines": lines} if args.as_json else lines, args.as_json)
+    return 0
 
 
 def cmd_show(command: str, argv: list[str]) -> int:

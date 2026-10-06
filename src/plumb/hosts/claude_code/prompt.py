@@ -20,8 +20,10 @@
 
 Every line goes through the one emitter, ``plumb.present.delta`` (sp5 3): the flags, the
 compare line, escalations and the untraced instruction too reach the agent once per session
-per state. Every line is an intent-translation line computed from the records alone and
-kept through a budget cut (spec 10).
+per state. The relay line is about this turn (``per_turn``): it reaches the agent in every
+turn whose prompt follows a stated set, even when the prompt repeats earlier words. Every
+line is an intent-translation line computed from the records alone and kept through a
+budget cut (spec 10).
 
 Output is plain text, added to the agent's context. Questions to the owner are left to the
 agent, and only on the three triggers.
@@ -31,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -78,7 +81,10 @@ def log_prompt(ctx: HookContext, text: str) -> str:
         pass
     previous = read_json(turn_path)
     asked = previous.get("asked") if isinstance(previous, dict) else None
-    write_json_atomic(turn_path, {"turn_start": time.time(), "prompt_digest": digest,
+    # turn_id: what makes a per_turn line new (plumb.present.delta), even when two turns
+    # start within one clock tick
+    write_json_atomic(turn_path, {"turn_start": time.time(), "turn_id": os.urandom(8).hex(),
+                                  "prompt_digest": digest,
                                   "asked": asked if isinstance(asked, dict) else {}})
     return digest
 
@@ -303,7 +309,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
                            cap_lines=int(hooks.prompt_lines))
     awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json")
     trace = untraced_line(emitter, untraced_queued(ctx, core))
-    tail = [line for line in (trace, Line(awaiting, must=True) if awaiting else None) if line]
+    # per_turn: every affirming prompt is told how to relay, even with the same words
+    relay = Line(awaiting, must=True, per_turn=True) if awaiting else None
+    tail = [line for line in (trace, relay) if line]
     # oneshot: escalation_lines advanced the queue offset past them already
     queued = [Line(line, oneshot=True) for line in escalations]
     ctx.keep(emitter.add([*queued, *tail], commit=False))
