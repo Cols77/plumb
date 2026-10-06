@@ -136,9 +136,13 @@ def test_missing_module_reports_not_available(
 
 def test_every_route_names_a_module_path() -> None:
     expected = {"init", "new", "show", "link", "repin", "validate", "check", "status", "drift",
-                "brief", "why", "log", "approve", "relay", "revoke", "tests", "map", "verify",
-                "impact", "hook", "hooks", "install", "statusline", "trailers", "claims",
-                "import", "fidelity", "judge", "judgment"}
+                "brief", "explain", "why", "approve", "relay", "revoke", "tests", "map",
+                "verify", "impact", "hook", "hooks", "install", "statusline", "trailers",
+                "claims", "import", "fidelity", "judge", "judgment",
+                # sub-projects 2 to 5 (next-plan 3.2 item 4)
+                "capture", "intent", "example", "decide", "escalate", "spec", "triage",
+                "config", "jev", "clarify", "merge-check", "hosts", "turn", "mcp", "resolve",
+                "review", "confirm", "align", "view"}
     assert set(cli.ROUTES) == expected
     for module in cli.ROUTES.values():
         assert re.fullmatch(r"plumb(\.[a-z_]+)+", module)

@@ -139,7 +139,9 @@ def test_merge_lists_unjudged_fidelity(fid: Path, capsys) -> None:
     base = _git(fid, "rev-parse", "HEAD").strip()
     (fid / "src" / "mod.py").write_text("def f(x):\n    return x + 1  # same\n",
                                         encoding="utf-8")
-    assert cli.main(["validate", "--merge", base, "--root", str(fid)]) == 4
+    # 5: the test file has no full run yet, so the verification hold comes first (sp3 5);
+    # the fidelity list is advisory and never changes the exit
+    assert cli.main(["validate", "--merge", base, "--root", str(fid)]) == 5
     out = capsys.readouterr().out
     assert "plumb fidelity SR-001" in out
 

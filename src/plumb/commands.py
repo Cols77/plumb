@@ -54,7 +54,7 @@ exempt: []
 baseline: []
 """
 
-GITIGNORE_LINES = ("cache/", "session/", "test_map.txt")
+GITIGNORE_LINES = ("cache/", "session/", "test_map.txt", "view/")
 GITATTRIBUTES_LINES = ("log/*.jsonl merge=union",)
 RECORD_DIRS = ("intents", "requirements", "decisions", "features", "ncs")
 

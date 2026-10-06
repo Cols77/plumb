@@ -58,7 +58,8 @@ from plumb.hosts.claude_code.hookio import (
 )
 from plumb.hosts.claude_code.providers import LAZY, unjudged_fn, verify_api
 
-IGNORED_PREFIXES = (".plumb/session/", ".plumb/cache/", ".plumb/log/", ".git/")
+IGNORED_PREFIXES = (".plumb/session/", ".plumb/cache/", ".plumb/log/", ".plumb/view/",
+                    ".git/")
 IGNORED_FILES = (".plumb/test_map.txt",)
 SUMMARY_LINES = 5
 GIT_TIMEOUT_S = 1.0  # most of the soft budget: under load git status alone can take 0.6 s

@@ -170,12 +170,14 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
 
     # the alignment summary, no question asked
     summary = json.loads(by_name["Stop (stop_hook_active)"].stdout)["systemMessage"]
-    assert summary.startswith("plumb: touched SR-001")
+    lines = summary.splitlines()
+    assert lines[0].startswith("plumb ")  # the status card (sp5 2)
+    assert lines[1].startswith("plumb: touched SR-001")
     assert "plumb: covering tests" in summary and "fresh pass" in summary
     assert "0 not yet passing" in summary
-    assert "plumb: questions: none" in summary
+    assert "questions: none" in summary
 
-    assert by_name["statusline"].stdout.startswith("plumb |")
+    assert by_name["statusline"].stdout.startswith("plumb ")  # the status card (sp5 2)
 
     # every hook well under 2 s; the test run is bounded by the tests themselves
     for step in steps:
