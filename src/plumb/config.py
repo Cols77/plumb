@@ -63,7 +63,16 @@ class JudgmentConfig:
     jev: Mapping[str, Any] = field(default_factory=lambda: {
         "model": "jev-latest", "validated_against": "jev-1.13.0",
         "base_url": "https://api.typesafe.ai",
-        "thresholds": {"accept": 0.9, "escalate_llm": 0.5}})
+        "thresholds": {"accept": 0.9, "escalate_llm": 0.5},
+        # the NAME of the environment variable holding the credential (sp2 C7); plumb never
+        # stores the secret
+        "credential_env": "TYPESAFE_API_KEY"})
+
+
+DEFAULT_SHARED_GLOBS = (".plumb/claims.yaml", "**/contracts.py", "**/cli.py",
+                        "**/migrations/**", "**/schema*", "**/*.schema.json")
+DEFAULT_IRREVERSIBLE = ("delete", "drop", "migrate", "migration", "publish", "release",
+                        "credential", "secret", "password", "security", "purge", "wipe")
 
 
 @dataclass(frozen=True)
@@ -72,6 +81,45 @@ class EscalationConfig:
     max_features: int = 1
     diff_lines: int = 400
     diff_files: int = 10
+    # sp2 6.1 trigger 3: shared surfaces (path globs; verify.infra_globs count too)
+    shared_globs: tuple[str, ...] = DEFAULT_SHARED_GLOBS
+    # sp2 6.1 trigger 4: hard-to-undo effects (words in the request, or path globs with "/")
+    irreversible: tuple[str, ...] = DEFAULT_IRREVERSIBLE
+
+
+@dataclass(frozen=True)
+class TriageConfig:
+    low_risk_min: float = 0.8
+
+
+@dataclass(frozen=True)
+class AutoApproveConfig:
+    """The ``config.yaml`` mirror only: the effective state is the owner's ``config``
+    event (sp2 C4)."""
+
+    enabled: bool = False
+    backend: str = "jev"
+    min_probability: float = 0.9
+    min_confidence: str = "high"
+
+
+@dataclass(frozen=True)
+class CalibrationConfig:
+    min_items: int = 20          # the owner's own past decisions, per record kind (R13 Q1)
+    min_negatives: int = 5       # 'no' examples; generated ones count up to half
+    max_false_accept: float = 0.0
+
+
+@dataclass(frozen=True)
+class ClarifyConfig:
+    answered_min: float = 0.5    # share of a question's terms a confirmed record covers
+
+
+@dataclass(frozen=True)
+class HintsConfig:
+    hidden_deps_max: int = 5
+    hidden_deps_s: float = 1.0
+    authoritative_docs: tuple[str, ...] = ("docs/concept.md", "docs/specs/**")
 
 
 @dataclass(frozen=True)
@@ -93,10 +141,17 @@ class Config:
     judgment: JudgmentConfig = field(default_factory=JudgmentConfig)
     escalation: EscalationConfig = field(default_factory=EscalationConfig)
     trace: TraceConfig = field(default_factory=TraceConfig)
+    triage: TriageConfig = field(default_factory=TriageConfig)
+    auto_approve: AutoApproveConfig = field(default_factory=AutoApproveConfig)
+    calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
+    clarify: ClarifyConfig = field(default_factory=ClarifyConfig)
+    hints: HintsConfig = field(default_factory=HintsConfig)
 
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
-           "judgment": JudgmentConfig, "escalation": EscalationConfig, "trace": TraceConfig}
+           "judgment": JudgmentConfig, "escalation": EscalationConfig, "trace": TraceConfig,
+           "triage": TriageConfig, "auto_approve": AutoApproveConfig,
+           "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig}
 
 
 def _build(cls: type, data: Mapping[str, Any]) -> Any:

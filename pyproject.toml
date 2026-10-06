@@ -21,7 +21,8 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-markers = ["sr(id): links a test to a plumb requirement"]
+markers = ["sr(id): links a test to a plumb requirement",
+           "jev_live: calls the live JEV service; skipped unless its credential is set"]
 
 [tool.ruff]
 line-length = 100

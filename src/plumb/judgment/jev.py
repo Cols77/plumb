@@ -62,16 +62,25 @@ def _store_key(root: Path | None) -> str | None:
     return value if _valid_key(value) else None
 
 
-def key_source(root: Path | None = None, env: Mapping[str, str] | None = None) -> str | None:
+def credential_env(config: Any) -> str:
+    """The NAME of the environment variable holding the JEV credential (sp2 C7)."""
+    jev = getattr(getattr(config, "judgment", None), "jev", None) or {}
+    name = str(jev.get("credential_env") or API_KEY_ENV).strip()
+    return name if name and name.replace("_", "").isalnum() else API_KEY_ENV
+
+
+def key_source(root: Path | None = None, env: Mapping[str, str] | None = None,
+               name: str = API_KEY_ENV) -> str | None:
     """``env``, ``user-store`` or None. Never returns the key itself."""
-    value = (os.environ if env is None else env).get(API_KEY_ENV, "").strip()
+    value = (os.environ if env is None else env).get(name, "").strip()
     if _valid_key(value):
         return "env"
     return "user-store" if _store_key(root) else None
 
 
-def resolve_key(root: Path | None = None, env: Mapping[str, str] | None = None) -> str | None:
-    value = (os.environ if env is None else env).get(API_KEY_ENV, "").strip()
+def resolve_key(root: Path | None = None, env: Mapping[str, str] | None = None,
+                name: str = API_KEY_ENV) -> str | None:
+    value = (os.environ if env is None else env).get(name, "").strip()
     if _valid_key(value):
         return value
     return _store_key(root)
@@ -159,6 +168,17 @@ class JevBackend:
         self.fallback = HeuristicBackend(thresholds)
         self.notices: tuple[str, ...] = ()
         self._down = False
+        self.resolved_version: str | None = None
+
+    @property
+    def version(self) -> str:
+        """The resolved model version of the last answer, else the configured alias."""
+        return self.resolved_version or self.model
+
+    @property
+    def available(self) -> bool:
+        """False once a call failed: the rest of this process uses the heuristic."""
+        return not self._down
 
     # -- plumbing
     def _ask(self, questions: Sequence[tuple[str, JudgmentQuestion]], prefix: str,
@@ -177,6 +197,7 @@ class JevBackend:
             self._down = True  # no retries: the rest of this process uses the heuristic
             self._notice(self.client.last_error or record.outcome)
             return None
+        self.resolved_version = record.resolved_version
         return record
 
     def _notice(self, reason: str) -> None:
@@ -189,6 +210,8 @@ class JevBackend:
 
     def _judgment(self, record: JudgmentRecord, name: str, action: str, subject: str,
                   verdict: str, **extra: Any) -> Judgment:
+        from plumb.judgment.heuristic import confidence_label
+
         answer = record.answers[name]
         tier = route(answer.confidence, self.thresholds,
                      resolved_version=record.resolved_version,
@@ -197,11 +220,17 @@ class JevBackend:
                             confidence=round(answer.confidence, 6), tier=tier,
                             backend=f"jev:{record.resolved_version}",
                             fingerprint=record.request_fingerprint,
-                            reasons=(f"{answer.kind} answer {answer.value}",))
+                            reasons=(f"{answer.kind} answer {answer.value}",),
+                            probability=_probability(answer, verdict),
+                            confidence_label=confidence_label(  # type: ignore[arg-type]
+                                answer.confidence))
         payload = {"subject": subject, "action": action, "verdict": verdict,
                    "confidence": judgment.confidence, "tier": tier,
                    "backend": judgment.backend, "fingerprint": judgment.fingerprint,
-                   "version_drift": record.resolved_version != self.validated_against}
+                   "version_drift": record.resolved_version != self.validated_against,
+                   "model_version": record.resolved_version,
+                   "probability": judgment.probability,
+                   "confidence_label": judgment.confidence_label}
         payload.update(extra)
         try:
             self.core.log_append("events", "judgment", payload)
@@ -270,6 +299,75 @@ class JevBackend:
                               FIDELITY_LEVELS[level], requirement_hash=packet.requirement_hash,
                               end_hashes=hashes, note="jev score (advisory)")
 
+    # -- sp2 11.2
+    def entailment(self, premise: str, hypothesis: str, *, subject: str,
+                   claim_kind: str) -> Judgment:
+        """Do the owner's words (the premise) support every part of the claim? A Noul; the
+        judgment's probability is the vendor's probability of its verdict (sp2 8.2)."""
+        question = JudgmentQuestion.noul(
+            "Do the owner's words support every part of the claim, with nothing added, "
+            "dropped or changed?", "the owner's words support the whole claim",
+            "the claim adds, drops or changes something the owner did not say")
+        prefix = (f"Owner's words:\n{premise}\n\nClaim ({claim_kind}, {subject}):\n"
+                  f"{hypothesis}\n")
+        record = self._ask([("entailment", question)], prefix)
+        if record is None:
+            return self.fallback.entailment(premise, hypothesis, subject=subject,
+                                            claim_kind=claim_kind)
+        p = float(record.answers["entailment"].value)
+        verdict = "entailed" if p >= 0.5 else "not-entailed"
+        return self._judgment(record, "entailment", "faithfulness", subject, verdict,
+                              claim_kind=claim_kind)
+
+    def contradiction(self, prompt: str, record: Record) -> Judgment:
+        from plumb.judgment.heuristic import record_text
+
+        question = JudgmentQuestion.choice(
+            f"Does the request contradict the confirmed requirement {record.id} (negate, "
+            "replace or reverse a confirmed example or its statement), extend it (add "
+            "behaviour beside it), or leave it as it is?",
+            {"contradicts": "it negates, replaces or reverses confirmed behaviour",
+             "extends": "it adds behaviour beside the confirmed behaviour",
+             "benign": "a mention, a question or a tidy-up; the behaviour stays"})
+        prefix = f"Request:\n{prompt}\n\n{record.id}: {record_text(record)}\n"
+        answer = self._ask([("contradiction", question)], prefix)
+        if answer is None:
+            return self.fallback.contradiction(prompt, record)
+        return self._judgment(answer, "contradiction", "contradiction", record.id,
+                              str(answer.answers["contradiction"].value))
+
+    def choose(self, question: str, options: Sequence[str], *, subject: str,
+               context: str = "") -> Judgment:
+        choices: dict[str, str | None] = {str(o): None for o in list(options)[:254]}
+        choices["none"] = "none of these"
+        record = self._ask([("choose", JudgmentQuestion.choice(question, choices))],
+                           f"Context:\n{context}\n")
+        if record is None:
+            return self.fallback.choose(question, options, subject=subject, context=context)
+        return self._judgment(record, "choose", "ownership", subject,
+                              str(record.answers["choose"].value))
+
+    def ask(self, question: str, context: str, *, subject: str, action: str) -> Judgment:
+        record = self._ask([("ask", JudgmentQuestion.noul(question, "yes", "no"))],
+                           f"Context:\n{context}\n")
+        if record is None:
+            return self.fallback.ask(question, context, subject=subject, action=action)
+        p = float(record.answers["ask"].value)
+        return self._judgment(record, "ask", action, subject, "yes" if p >= 0.5 else "no")
+
+
+def _probability(answer: JudgmentAnswer, verdict: str) -> float:
+    """The probability of the verdict: a Noul's ``true`` probability for a positive verdict
+    and its ``false`` probability otherwise; a choice's probability of its label."""
+    if answer.kind == "noul":
+        p = float(answer.value)
+        positive = verdict in ("entailed", "yes", "change", "material")
+        return round(p if positive else 1 - p, 6)
+    try:
+        return round(float(answer.probabilities.get(str(answer.value), answer.confidence)), 6)
+    except (TypeError, ValueError):
+        return round(float(answer.confidence), 6)
+
 
 def open_jev(core: Any, config: Any, *, hook: bool, thresholds: Thresholds) -> Any:
     """The JEV backend when a key exists, else the heuristic with one notice."""
@@ -277,9 +375,10 @@ def open_jev(core: Any, config: Any, *, hook: bool, thresholds: Thresholds) -> A
     from plumb.judgment.heuristic import HeuristicBackend
 
     root = Path(core.root)
-    key = resolve_key(root)
+    name = credential_env(config)
+    key = resolve_key(root, name=name)
     if key is None:
-        note = notice_once(root, "jev-no-key", "plumb: no JEV key (TYPESAFE_API_KEY or "
+        note = notice_once(root, "jev-no-key", f"plumb: no JEV key ({name} or "
                            "~/.config/plumb/jev); using the heuristic")
         return HeuristicBackend(thresholds, [note] if note else [])
     jev = dict(config.judgment.jev or {})

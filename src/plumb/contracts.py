@@ -19,7 +19,7 @@ ID_RE = r"^(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})$"
 LinkKind = Literal["derives_from", "decides", "upstream", "relates_to", "implemented_by",
                    "verified_by", "corrects", "supersedes"]
 Confirmation = Literal["proposed", "confirmed", "unconfirmed-edit"]
-ApprovalBy = Literal["owner", "agent-relayed", "import"]
+ApprovalBy = Literal["owner", "agent-relayed", "import", "auto-jev"]
 LogStream = Literal["events", "evidence"]
 
 
@@ -141,7 +141,9 @@ class FullPending:
     reasons: tuple[str, ...] = ()
 
 
-JudgmentAction = Literal["intent-change", "drift-triage", "fidelity"]
+JudgmentAction = Literal["intent-change", "drift-triage", "fidelity", "faithfulness",
+                         "contradiction", "ownership", "alignment", "dependency",
+                         "ambiguity"]
 Tier = Literal["accept", "escalate-llm", "escalate-human"]
 
 
@@ -155,6 +157,8 @@ class Judgment:
     backend: str                          # heuristic | jev:<version> | host-agent | disabled | fake
     fingerprint: Hash
     reasons: tuple[str, ...] = ()
+    probability: float | None = None      # the answer's probability (JEV), when it has one
+    confidence_label: Literal["low", "medium", "high"] | None = None
 
 
 @dataclass(frozen=True)
@@ -233,8 +237,135 @@ class JudgmentBackend(Protocol):
     def drift_triage(self, states: Sequence[LinkState],
                      texts: Mapping[str, tuple[str, str]]) -> Sequence[Judgment]: ...
     def fidelity(self, packet: FidelityPacket) -> Judgment: ...
+    # sp2 11.2: typed judgments for capture, triage, ownership and hints (advisory, except
+    # the gated entailment of auto-approval, sp2 8.2)
+    version: str                          # resolved model version, "heuristic" otherwise
+    def entailment(self, premise: str, hypothesis: str, *, subject: str,
+                   claim_kind: str) -> Judgment: ...       # entailed | not-entailed | unsure
+    def contradiction(self, prompt: str, record: Record) -> Judgment: ...
+    # verdict contradicts | extends | benign
+    def choose(self, question: str, options: Sequence[str], *, subject: str,
+               context: str = "") -> Judgment: ...         # the chosen option or "none"
+    def ask(self, question: str, context: str, *, subject: str,
+            action: str) -> Judgment: ...                  # yes | no | unsure (Noul)
 
 
 @runtime_checkable
 class LLMCascade(Protocol):
     def escalate(self, request: EscalationRequest) -> None: ...
+
+
+# --------------------------------------------------------------------------- sp2 CAPTURE
+# Data shapes of ``plumb.capture.api`` (sp2 11.1). Every field has a default.
+
+
+@dataclass(frozen=True)
+class CaptureResult:
+    written: tuple[str, ...] = ()          # IDs of new records, in write order
+    updated: tuple[str, ...] = ()          # IDs of edited records
+    needs_owner_again: tuple[str, ...] = ()  # updated records that were confirmed
+    links: tuple[str, ...] = ()            # link ids added
+    auto_approved: tuple[str, ...] = ()    # IDs approved by auto-jev (sp2 8.2)
+    card: str = ""                         # the intent card text for the agent's reply
+    lines: tuple[str, ...] = ()            # "INT-017 proposed", ...
+    dry_run: bool = False
+
+
+@dataclass(frozen=True)
+class IntentFlag:
+    record: str                            # the confirmed record the request may change
+    kind: Literal["contradicts", "extends"] = "extends"
+    confidence: float = 0.0
+    example: str | None = None             # the example it is about (EX-n), when one
+    reason: str = ""
+    backend: str = "heuristic"
+
+
+@dataclass(frozen=True)
+class DiffStats:
+    lines: int = 0                         # changed lines (added + removed)
+    files: int = 0
+    paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class EscalationSuggestion:
+    trigger: Literal["size", "contradiction", "shared", "irreversible", "decisions",
+                     "diff"] = "size"
+    reason: str = ""
+    intent: str | None = None
+    line: str = ""                         # the one line a hook prints
+
+
+@dataclass(frozen=True)
+class TriageItem:
+    id: str
+    hash: Hash = ""
+    title: str = ""
+    kind: str = ""
+    score: float | None = None             # faithfulness, 0..1; None without a judgment
+    rating: Literal["faithful", "riskier", "unrated"] = "unrated"
+    reason: str = ""
+    excluded: str | None = None            # why it is always shown individually
+    backend: str = ""
+
+
+@dataclass(frozen=True)
+class TriageView:
+    backend: str = "none"
+    available: bool = False                # False: "no judgments available"
+    low_risk: tuple[TriageItem, ...] = ()
+    individual: tuple[TriageItem, ...] = ()
+    offer: str | None = None               # the one-line offer (R13 Q2), when low_risk
+
+
+@dataclass(frozen=True)
+class IntentCardData:
+    id: str
+    title: str = ""
+    state: str = "proposed"                # confirmation state
+    confirmed_by: str | None = None        # "you" | "you (relayed)" | "JEV" | "import"
+    label: str = ""                        # plain label, "self-recorded message" included
+    quote: str = ""
+    will: tuple[str, ...] = ()
+    wont: tuple[str, ...] = ()
+    assumed: tuple[str, ...] = ()
+    examples: tuple[tuple[str, str, str], ...] = ()   # (SR, EX-n, text)
+    tests: tuple[tuple[str, str], ...] = ()           # (test end, state)
+    decisions: tuple[str, ...] = ()        # DEC ids deciding it
+
+
+@dataclass(frozen=True)
+class AutoApproveState:
+    configured: bool = False               # the owner's latest config event says on
+    effective: bool = False
+    reason: str = "off"                    # why it is not effective, or "on"
+    backend: str | None = None
+    min_probability: float = 0.9
+    min_confidence: str = "high"
+    calibrated_version: str | None = None
+    model_version: str | None = None       # last resolved JEV version seen
+    suspended: bool = False                # model changed since calibration
+    mirror_mismatch: bool = False          # config.yaml says on without the owner's event
+
+
+@dataclass(frozen=True)
+class Proposal:
+    path: str
+    proposed: str | None = None            # the proposed owner (record ID or test node)
+    candidates: tuple[str, ...] = ()
+    confidence: float = 0.0
+    backend: str = "heuristic"
+    reason: str = ""
+    line: str = ""
+
+
+@dataclass(frozen=True)
+class ClarifyView:
+    depth: Literal["trivial", "incremental", "escalated"] = "incremental"
+    reason: str = ""
+    answered: tuple[str, ...] = ()         # "SR-004 (confirmed): ..." lines
+    questions: tuple[Mapping[str, Any], ...] = ()   # kept, ranked; ask the first
+    dropped: tuple[Mapping[str, Any], ...] = ()     # each with "dropped_because"
+    escalation: tuple[EscalationSuggestion, ...] = ()
+    backend: str = "heuristic"

@@ -19,7 +19,7 @@ from collections.abc import Mapping, Sequence
 from plumb.contracts import FidelityPacket, Judgment, LinkState, Record
 from plumb.judgment.tiers import Thresholds, route
 from plumb.normalize import canonical_json, sha256_bytes, sha256_text
-from plumb.text import CHANGE_WORDS, overlap, terms
+from plumb.text import CHANGE_WORDS
 
 STRONG_OVERLAP = 1.0   # the prompt hook's "strong match" (HOST STRONG_MATCH)
 FLAG_CONFIDENCE = 0.6  # a flag is a hint for the agent: escalate-llm, never accept
@@ -86,6 +86,7 @@ class HeuristicBackend:
     """``JudgmentBackend`` with deterministic rules and no I/O."""
 
     name = "heuristic"
+    version = "heuristic"
 
     def __init__(self, thresholds: Thresholds | None = None,
                  notices: Sequence[str] = ()) -> None:
@@ -101,29 +102,25 @@ class HeuristicBackend:
                         reasons=tuple(reasons))
 
     def intent_change(self, prompt: str, records: Sequence[Record]) -> Sequence[Judgment]:
-        named = set(_ID_RE.findall(prompt))
-        words = change_words(prompt)
-        wanted = terms(prompt)
+        """``change`` only for a contradiction or an extension of the record's confirmed
+        examples or statement (sp2 7.1, C6); change words alone never flag."""
+        from plumb.judgment.textjudge import classify_all
+
         digest = sha256_text(prompt)
+        labels = classify_all(prompt, records)
         out: list[Judgment] = []
         for record in records:
-            reasons: list[str] = []
-            if record.id in named:
-                reasons.append(f"named {record.id}")
+            item = labels[record.id]
+            if item.verdict == "benign":
+                out.append(self._judgment("intent-change", record.id, "no-change",
+                                          CLEAR_CONFIDENCE, [item.reason], digest,
+                                          record.hash))
             else:
-                score = overlap(wanted, terms(record_text(record)))
-                if score >= STRONG_OVERLAP:
-                    reasons.append(f"term overlap {score:.2f}")
-            if reasons and words:
-                reasons.append("change words: " + ", ".join(dict.fromkeys(words)))
+                reasons = [f"{item.verdict}: {item.reason}"]
+                if item.example:
+                    reasons.append(f"example {item.example}")
                 out.append(self._judgment("intent-change", record.id, "change",
                                           FLAG_CONFIDENCE, reasons, digest, record.hash))
-            else:
-                why = reasons or ["no ID or strong overlap"]
-                if not words:
-                    why.append("no change words")
-                out.append(self._judgment("intent-change", record.id, "no-change",
-                                          CLEAR_CONFIDENCE, why, digest, record.hash))
         return out
 
     def drift_triage(self, states: Sequence[LinkState],
@@ -151,3 +148,62 @@ class HeuristicBackend:
                         fingerprint=packet.fingerprint,
                         reasons=("the heuristic does not judge fidelity; the host agent "
                                  "judges the packet",))
+
+    # -- sp2 11.2
+    def entailment(self, premise: str, hypothesis: str, *, subject: str,
+                   claim_kind: str) -> Judgment:
+        """Term coverage of the hypothesis by the premise, with penalties (sp2 8.1). The
+        heuristic never labels its confidence ``high``: it never auto-approves (R8 B)."""
+        from plumb.judgment.textjudge import coverage
+
+        score, reasons = coverage(premise, hypothesis)
+        verdict = "entailed" if score >= 0.8 else ("not-entailed" if score < 0.5 else "unsure")
+        judgment = self._judgment("faithfulness", subject, verdict, 0.5, reasons or
+                                  [f"term coverage {score:.2f}"], claim_kind,
+                                  sha256_text(premise), sha256_text(hypothesis))
+        return _with(judgment, probability=score, confidence_label="low", tier="escalate-llm")
+
+    def contradiction(self, prompt: str, record: Record) -> Judgment:
+        from plumb.judgment.textjudge import classify
+
+        item = classify(prompt, record)
+        reasons = [item.reason] + ([f"example {item.example}"] if item.example else [])
+        return self._judgment("contradiction", record.id, item.verdict, item.confidence,
+                              reasons, sha256_text(prompt), record.hash)
+
+    def choose(self, question: str, options: Sequence[str], *, subject: str,
+               context: str = "") -> Judgment:
+        """The option whose terms the context covers best, when its lead is clear; else
+        ``none`` (sp2 10.1: "no judgments available")."""
+        from plumb.judgment.textjudge import overlap_share, stems
+
+        wanted = stems(context + " " + question)
+        scored = sorted(((overlap_share(stems(o), wanted), o) for o in options),
+                        key=lambda item: (-item[0], item[1]))
+        if not scored or scored[0][0] <= 0:
+            return self._judgment("ownership", subject, "none", 0.0, ["no overlap"],
+                                  question, list(options), sha256_text(context))
+        lead = scored[0][0] - (scored[1][0] if len(scored) > 1 else 0.0)
+        if lead < 0.2:
+            return self._judgment("ownership", subject, "none", 0.0,
+                                  [f"no clear lead ({scored[0][1]} by {lead:.2f})"],
+                                  question, list(options), sha256_text(context))
+        return self._judgment("ownership", subject, scored[0][1], 0.55,
+                              [f"term overlap {scored[0][0]:.2f}, lead {lead:.2f}"],
+                              question, list(options), sha256_text(context))
+
+    def ask(self, question: str, context: str, *, subject: str, action: str) -> Judgment:
+        """The heuristic has no yes/no judgment: ``unsure``, confidence 0."""
+        return self._judgment(action, subject, "unsure", 0.0,
+                              ["the heuristic does not answer yes/no questions"],
+                              question, sha256_text(context))
+
+
+def confidence_label(confidence: float) -> str:
+    return "high" if confidence >= 0.9 else ("medium" if confidence >= 0.7 else "low")
+
+
+def _with(judgment: Judgment, **changes: object) -> Judgment:
+    import dataclasses
+
+    return dataclasses.replace(judgment, **changes)  # type: ignore[arg-type]

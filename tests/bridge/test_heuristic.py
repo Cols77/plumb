@@ -148,3 +148,53 @@ def test_jev_without_adapter_falls_back_with_notice(repo: Path, monkeypatch) -> 
     # one notice per session: the second resolution stays quiet
     again = get_backend(open_core(repo), hook=True)
     assert again.notices == ()
+
+
+# -- sp2 11.2: the additions of the judgment protocol (SR-038, SR-039)
+
+
+@pytest.mark.sr("SR-039")
+def test_heuristic_entailment_is_term_coverage_never_high() -> None:
+    backend = HeuristicBackend()
+    assert backend.version == "heuristic"
+    j = backend.entailment("add multiply next to add, 2 times 3 is 6",
+                           "will: multiply returns the product\nwill: 2 times 3 is 6",
+                           subject="INT-017", claim_kind="intent-readback")
+    assert j.action == "faithfulness" and j.subject == "INT-017"
+    assert j.probability is not None and 0 < j.probability < 1
+    assert j.confidence_label == "low"  # the heuristic never auto-approves (R8 B)
+    full = backend.entailment("add multiply next to add", "add multiply next to add",
+                              subject="INT-017", claim_kind="intent-readback")
+    assert full.verdict == "entailed" and full.probability == 1.0
+    penalised = backend.entailment("add multiply next to add",
+                                   "add multiply next to add\nwon't: floats or decimals",
+                                   subject="INT-017", claim_kind="intent-readback")
+    assert penalised.probability < full.probability
+    assert any("unsupported won't" in r for r in penalised.reasons)
+    empty = backend.entailment("", "anything", subject="X", claim_kind="intent-readback")
+    assert empty.probability == 0.0
+
+
+@pytest.mark.sr("SR-038")
+def test_heuristic_contradiction_labels(sr004) -> None:
+    backend = HeuristicBackend()
+    assert backend.contradiction("approvals should no longer pin the record hash",
+                                 sr004).verdict == "contradicts"
+    assert backend.contradiction("SR-004 should also pin the owner's name next to the hash",
+                                 sr004).verdict == "extends"
+    assert backend.contradiction("fix the typo in the SR-004 docstring",
+                                 sr004).verdict == "benign"
+
+
+@pytest.mark.sr("SR-044")
+def test_heuristic_choose_needs_a_clear_lead_and_ask_is_unsure() -> None:
+    backend = HeuristicBackend()
+    j = backend.choose("Which requirement owns src/app/mul.py?", ["SR-001", "SR-002"],
+                       subject="src/app/mul.py", context="")
+    assert j.verdict == "none"
+    j = backend.choose("Which one?", ["multiply numbers", "export orders"],
+                       subject="x", context="multiply two numbers")
+    assert j.verdict == "multiply numbers"
+    j = backend.ask("Does this diff serve SR-004?", "diff", subject="SR-004",
+                    action="ownership")
+    assert (j.verdict, j.confidence) == ("unsure", 0.0)
