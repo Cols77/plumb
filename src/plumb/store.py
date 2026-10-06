@@ -5,11 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 from collections.abc import Mapping
 from typing import Any
 
-from plumb.contracts import KIND_DIR, KIND_PREFIX, Record
+from plumb.contracts import KIND_DIR, Record
 from plumb.model import RecordError, load_yaml, parse_record, split_frontmatter
 from plumb.paths import PlumbPaths
 
@@ -110,11 +109,17 @@ class Store:
             _write_index_cache(self.paths.index_cache, fresh)
 
     def next_id(self, kind: str) -> str:
-        prefix = KIND_PREFIX[kind]
-        width = 4 if kind == "nc" else 3
-        pattern = re.compile(rf"^{prefix}-(\d+)$")
-        numbers = [int(m.group(1)) for rid in self.index() if (m := pattern.match(rid))]
-        return f"{prefix}-{(max(numbers) + 1 if numbers else 1):0{width}d}"
+        """A new ID of ``kind``, reserved through ``refs/plumb/ids`` (sp6 4.2): the one
+        allocation function every record writer goes through."""
+        from plumb import ids
+
+        return ids.reserve(self.paths, kind, local=self.index())[0]
+
+    def peek_id(self, kind: str) -> str:
+        """The ID ``next_id`` would hand out, reserving nothing (previews, dry runs)."""
+        from plumb import ids
+
+        return ids.peek(self.paths, kind, local=self.index())
 
     def write_record(self, kind: str, fields: Mapping[str, Any], body: str = "",
                      *, record_id: str | None = None) -> Record:

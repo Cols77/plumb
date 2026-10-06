@@ -42,6 +42,8 @@ ROUTES: dict[str, str] = {
     "clarify": "plumb.capture.cli",
     # MERGE (sub-project 3)
     "merge-check": "plumb.boundary.cli",
+    # IDS (sub-project 6)
+    "merge-fix": "plumb.ids.cli", "ids": "plumb.ids.cli",
     # HOSTS (sub-project 4)
     "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
 }
@@ -94,6 +96,11 @@ hosts:         hosts (install|uninstall|status codex|pi|hermes), turn (start|end
 bridge:        trailers, claims, fidelity, judge, judgment, import
 merge:         merge-check (the merge boundary: one full run, claims, links, the glance;
                --install-pre-push for the optional git hook)
+
+parallel work:
+  merge-fix    renumber an ID a merge brought twice: the incoming record gets a new ID and
+               every reference the incoming side added follows; history is never rewritten
+  ids          the IDs reserved in refs/plumb/ids (sync rescans every local branch)
 
 Run `plumb <command> --help` for a command's options. Exit codes: 0 ok, 1 findings,
 2 usage, 3 refused by the guard, 4 merge waits for the owner's confirmation, 5 verification
@@ -201,3 +208,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     except SystemExit as exc:  # a module's argparse --help or usage error
         code = exc.code
         return code if isinstance(code, int) else (0 if code is None else 2)
+    except Exception as exc:
+        # an error that carries its own exit code and owner-facing line (``IdBusy``: the
+        # ID reservation stayed busy, exit 2) ends the command without a traceback
+        code = getattr(exc, "exit_code", None)
+        if not isinstance(code, int):
+            raise
+        print(str(exc), file=sys.stderr)
+        return code

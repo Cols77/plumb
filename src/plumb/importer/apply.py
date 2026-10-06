@@ -124,6 +124,10 @@ def apply_plan(core: Any, plan: ImportPlan) -> dict[str, Any]:
     for item in changed:
         _write(core, item, _links(core, item, hashes))
     core.store.invalidate()
+    if changed:  # the importer keeps upstream IDs: raise refs/plumb/ids over them (sp6 4.3)
+        from plumb import ids
+
+        ids.observe(core.paths, [item.record_id for item in changed])
 
     findings: list[dict[str, str]] = []
     approvals: list[dict[str, Any]] = []
