@@ -60,7 +60,7 @@ _EXT = re.compile(
     r"(?<![\w'])(?:also|as\s+well|too|next\s+to|beside|in\s+addition|additionally|another"
     r"|new|support\w*|extend\w*|plus|allow\w*|include\w*|add\s+(?:a|an|another|new|some)"
     r"|accept\w*|let\s+\S+\s+accept)(?![\w'])")
-_MAKE = re.compile(r"(?<![\w])make\s+(?:the\s+|it\s+|a\s+)?([a-z]+)\s+([a-z]+)")
+_MAKE = re.compile(r"(?<![\w])make\s+(?:the\s+|it\s+|a\s+)?([a-z]+)((?:\s+[a-z]+){1,3})")
 _QUALITY = frozenset({
     "faster", "quicker", "slower", "better", "cleaner", "simpler", "smaller", "readable",
     "robust", "safer", "clearer", "nicer", "prettier", "shorter", "work", "pass", "compile",
