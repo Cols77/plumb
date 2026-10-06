@@ -150,4 +150,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     run = getattr(module, "run", None)
     if run is None:
         return _not_available(command)
-    return int(run(command, args[1:]) or 0)
+    try:
+        return int(run(command, args[1:]) or 0)
+    except SystemExit as exc:  # a module's argparse --help or usage error
+        code = exc.code
+        return code if isinstance(code, int) else (0 if code is None else 2)

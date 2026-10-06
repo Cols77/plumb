@@ -135,12 +135,13 @@ class FakeBackend:
                         confidence=0.0, tier="escalate-llm", backend=self.name,
                         fingerprint=packet.fingerprint)
 
-    def ask(self, question: str, context: str, *, subject: str, action: str) -> Judgment:
+    def ask(self, question: str, context: str, *, subject: str, action: str) -> Any:
+        """Noul: yes | no | unsure, with the answer's probability (sp2 11.2)."""
         verdict = self.answers.get(subject, "yes")
-        return Judgment(action="alignment", subject=subject, verdict=verdict,
-                        confidence=0.9 if verdict != "unsure" else 0.0, tier="accept",
-                        backend=self.name, fingerprint="sha256:" + "1" * 64,
-                        probability=0.95 if verdict == "yes" else 0.05)
+        return types.SimpleNamespace(
+            action="alignment", subject=subject, verdict=verdict,
+            confidence=0.9 if verdict != "unsure" else 0.0, backend=self.name,
+            probability=0.95 if verdict != "unsure" else None)
 
 
 def run_prompt(repo: Path, hook_input: Any, text: str, session: str = "s1", **kwargs: Any
