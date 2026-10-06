@@ -110,7 +110,7 @@ def adopted(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> Path:
         assert cli.main(["link", sr, "verified_by", "tests/test_mod.py", "--example", "EX-1",
                          *root]) == 0
     # the owner confirms in their own terminal (no session marker in this process)
-    assert cli.main(["approve", "INT-001", "SR-001", "SR-002", "FEAT-001", "--yes",
+    assert cli.main(["approve", "INT-001", "SR-001", "SR-002", "FEAT-001",
                      *root]) == 0
     assert cli.main(["tests", "map", *root]) == 0
     assert cli.main(["hooks", "install", "--launcher", "path", *root]) == 0
@@ -131,11 +131,11 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
     print("\n" + json.dumps(timings, indent=2))  # visible with -s
     assert all(s.code == 0 for s in steps), [(s.name, s.code, s.stderr) for s in steps]
 
-    # SessionStart: the brief, with the intent and the tests line
+    # SessionStart: the compact brief (R9), with the counts, the tests line and a pointer
     brief = by_name["SessionStart"].stdout
-    assert brief.startswith("plumb brief")
-    assert "INT-001" in brief and "FEAT-001" in brief and "tests:" in brief
-    assert len(brief.splitlines()) <= 40
+    assert brief.startswith("plumb brief: 1 feature(s), 2 SR (2 confirmed), 1 INT (1 confirmed)")
+    assert "tests:" in brief and "plumb show <ID>" in brief
+    assert len(brief.splitlines()) <= 6
 
     # the contradicting prompt is flagged on the confirmed requirement
     change = by_name["UserPromptSubmit (contradicts)"].stdout
@@ -147,11 +147,11 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
     # a turn that changed nothing prints nothing
     assert by_name["Stop (no change)"].stdout.strip() == ""
 
-    # the prompt naming SR-001 gets the record, its example and its covering test
+    # the contradicting prompt gave SR-001 one line; the next prompt naming it in the same
+    # session injects no repeat (R9 delta), and its examples come from plumb show
+    assert "EX-1" not in change and "tests/test_mod.py" not in change
     named = by_name["UserPromptSubmit (names SR)"].stdout
-    assert named.splitlines()[1].startswith("SR-001 [confirmed]")
-    assert "EX-1: given the numbers 1 and 2" in named
-    assert "tests/test_mod.py::test_add" in named
+    assert "SR-001 [confirmed]" not in named
     assert "this may change" not in named
 
     # the edit is tracked; Stop blocks once for the covering tests

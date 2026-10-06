@@ -1,20 +1,25 @@
-"""UserPromptSubmit: relevant records, their tests and the intent-change flag (spec 6.2).
+"""UserPromptSubmit: a compact delta of the relevant records and the intent-change flag
+(spec 6.2, ruling R9 context economy).
 
 1. Log the prompt (digest, session, time, text) to ``.plumb/session/prompts.jsonl`` and
    start the turn (``turn.json``). This comes first: ``plumb relay`` relies on it.
 2. List the stated records of the previous reply still awaiting the owner, with the relay
    form for this prompt's digest.
-3. Print the relevant records (named IDs first) and their examples, in at most
-   ``hooks.prompt_lines`` lines.
-4. Flag a possible intent change on a confirmed record (``JudgmentBackend``), and ask the
-   agent to compare the request with the confirmed examples it was given.
+3. Print the relevant records (named IDs first) as one line each (ID, state, title), ONLY
+   when the record is newly relevant this session or changed (its content hash or its
+   confirmation state) since it was last injected (``.plumb/session/<id>/seen.json``), within
+   ``hooks.prompt_lines`` lines and the ``hooks.prompt_tokens`` budget. Examples and covering
+   tests are pulled on demand (``plumb show <ID>``); nothing is injected when nothing new is
+   relevant.
+4. Flag a possible intent change on a confirmed record (``JudgmentBackend``), and, with the
+   confirmed records first injected in this prompt, ask the agent to compare the request
+   with their examples.
 5. Print queued escalations and the escalation hint (SHOULD items), and the untraced change
    the stop hook queued (a changed source path no requirement owns: read it back and record
    a proposed SR).
-6. Add each record's covering tests (``VerifyAPI.tests_for``).
 
-Steps 2 to 5 are the intent-translation lines: they are kept through a budget cut, so a
-loaded machine loses at most the covering-test detail of step 6 (spec 10).
+Every line is an intent-translation line computed from the records alone and kept through a
+budget cut (spec 10).
 
 Output is plain text, added to the agent's context. Questions to the owner are left to the
 agent, and only on the three triggers.
@@ -37,10 +42,11 @@ from plumb.hosts.claude_code.hookio import (
     run_hook,
     write_json_atomic,
 )
-from plumb.hosts.claude_code.providers import LAZY, judgment_backend, verify_api
+from plumb.hosts.claude_code.providers import LAZY, judgment_backend
 
 STRONG_MATCH = 1.0
-EXAMPLES_PER_RECORD = 3
+CHARS_PER_TOKEN = 4  # the estimate behind ``hooks.prompt_tokens``
+SEEN_FILE = "seen.json"
 
 
 def _utc_now() -> str:
@@ -76,39 +82,64 @@ def log_prompt(ctx: HookContext, text: str) -> str:
     return digest
 
 
-def _example_line(example: Any) -> str:
-    if example.given or example.when or example.then:
-        text = f"given {example.given}, when {example.when}, then {example.then}"
-    else:
-        text = example.criterion
-    return "  " + _clip(f"{example.id}: {text}", 98)
+def _seen_path(ctx: HookContext) -> Path:
+    return ctx.session_dir / ctx.session_id / SEEN_FILE
 
 
-def record_lines(index: Mapping[str, Any], statuses: Mapping[str, Any], ids: Sequence[str],
-                 tests: Mapping[str, Sequence[str]] | None, cap: int) -> list[str]:
-    """Header plus, per record, its state, examples and covering tests; at most ``cap``."""
-    lines = ["plumb: relevant records (state; examples; covering tests):"]
-    for position, record_id in enumerate(ids):
-        record = index[record_id]
-        left = cap - len(lines)
-        later = len(ids) - position - 1  # keep one header line for each later record
-        if left <= 0:
-            break
+def read_seen(ctx: HookContext) -> dict[str, str]:
+    """``{record id: state key}`` of the records this session's agent was already given."""
+    data = read_json(_seen_path(ctx))
+    seen = data.get("records") if isinstance(data, dict) else None
+    return {str(k): str(v) for k, v in seen.items()} if isinstance(seen, dict) else {}
+
+
+def seen_key(record: Any, status: Any) -> str:
+    """What makes a record worth injecting again: its content hash and its state."""
+    state = status.confirmation if status is not None else "?"
+    return f"{record.hash}|{state}"
+
+
+def delta_lines(index: Mapping[str, Any], statuses: Mapping[str, Any], ids: Sequence[str],
+                seen: Mapping[str, str], cap: int,
+                budget_chars: int) -> tuple[list[str], list[str]]:
+    """``(lines, injected ids)``: one line per relevant record that is new to this session or
+    changed since it was injected, in at most ``cap`` lines and ``budget_chars`` characters;
+    no line at all when nothing is new. A record cut by the budget is not marked seen, so a
+    later prompt can still bring it."""
+    fresh = [i for i in ids if seen.get(i) != seen_key(index[i], statuses.get(i))]
+    if not fresh:
+        return [], []
+    header = ("plumb: relevant records, new or changed this session (plumb show <ID> for "
+              "examples and tests):")
+    lines = [header]
+    used = len(header)
+    injected: list[str] = []
+    for record_id in fresh:
         state = statuses[record_id].confirmation if record_id in statuses else "?"
-        lines.append(_clip(f"{record_id} [{state}] {record.title}"))
-        room = left - 1 - later
-        node_ids = list(tests.get(record_id, ())) if tests else []
-        detail: list[str] = [_example_line(e) for e in record.examples[:EXAMPLES_PER_RECORD]]
-        if node_ids:
-            detail.append("  " + _clip("tests: " + ", ".join(node_ids), 98))
-        if room <= 0:
-            continue
-        if len(detail) > room:
-            # keep the tests line when present, then as many examples as fit
-            detail = (detail[: room - 1] + detail[-1:]) if node_ids and room > 1 else \
-                detail[:room]
-        lines.extend(detail)
-    return lines[:cap] if len(lines) > 1 else []
+        line = _clip(f"{record_id} [{state}] {index[record_id].title}")
+        if len(lines) >= cap or (injected and used + len(line) > budget_chars):
+            break
+        lines.append(line)
+        used += len(line)
+        injected.append(record_id)
+    left = [i for i in fresh if i not in injected]
+    if left:
+        lines.append(_clip(f"plumb: +{len(left)} more relevant: plumb show "
+                           + " ".join(left), 160))
+    return lines, injected
+
+
+def write_seen(ctx: HookContext, seen: Mapping[str, str], index: Mapping[str, Any],
+               statuses: Mapping[str, Any], injected: Sequence[str]) -> None:
+    if not injected:
+        return
+    merged = dict(seen)
+    for record_id in injected:
+        merged[record_id] = seen_key(index[record_id], statuses.get(record_id))
+    try:
+        write_json_atomic(_seen_path(ctx), {"records": merged})
+    except OSError:
+        pass
 
 
 def _relevant_ids(core: Any, text: str) -> tuple[list[str], list[str]]:
@@ -226,8 +257,11 @@ def escalation_hint(core: Any, index: Mapping[str, Any], strong: Sequence[str],
 
 def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
                  statuses: Mapping[str, Any], ids: Sequence[str], text: str, digest: str,
-                 backend: Any) -> tuple[list[str], list[str]]:
-    """``(lines, flagged)``: the trigger-1 flags and the compare line for confirmed records."""
+                 backend: Any, injected: Sequence[str] | None = None,
+                 ) -> tuple[list[str], list[str]]:
+    """``(lines, flagged)``: the trigger-1 flags on every relevant confirmed record, and the
+    compare line for the confirmed records injected in this prompt (``injected``; all of
+    them when None). A record the agent already has gets no repeated compare line (R9)."""
     confirmed = [index[i] for i in ids if statuses[i].confirmation == "confirmed"]
     out: list[str] = []
     flagged: list[str] = []
@@ -249,20 +283,24 @@ def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
                            "prompt_digest": digest, "subject": judgment.subject,
                            "confidence": judgment.confidence,
                            "backend": judgment.backend, "tier": judgment.tier})
-    out.append("plumb: compare this request with the confirmed examples of "
-               + ", ".join(r.id for r in confirmed)
-               + "; if it contradicts or extends them, read back the change and ask "
-               "before editing.")
+    compare = [r.id for r in confirmed if injected is None or r.id in injected]
+    if compare:
+        out.append("plumb: compare this request with the confirmed examples of "
+                   + ", ".join(compare)
+                   + "; if it contradicts or extends them, read back the change and ask "
+                   "before editing.")
     return out, flagged
 
 
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
-    """Intent translation first, evidence detail last (spec 10).
+    """Intent translation only, as a deduplicated delta (spec 10, R9).
 
-    The relay line, the relevant records with their examples, the intent-change flags, the
-    compare line and the escalation hint are computed from the records alone and kept
-    (``HookContext.keep``); a budget cut, an error or the watchdog prints them. Only then
-    are the covering tests added to the record lines."""
+    The relay line, the new or changed relevant records (one line each), the intent-change
+    flags, the compare line and the escalation hint are computed from the records alone and
+    kept (``HookContext.keep``); a budget cut, an error or the watchdog prints them. Covering
+    tests are not injected: the agent pulls them with ``plumb show``. ``verify`` is accepted
+    for the hook interface and unused."""
+    del verify
     text = ctx.data.get("prompt")
     text = text if isinstance(text, str) else ""
     digest = log_prompt(ctx, text)
@@ -282,20 +320,19 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     ids, strong = _relevant_ids(core, text) if text.strip() else ([], [])
     index = core.index()
     statuses = core.status(ids) if ids else {}
-    cap = int(core.config.hooks.prompt_lines)
-    intent, flagged = intent_lines(ctx, core, index, statuses, ids, text, digest, backend)
+    hooks = core.config.hooks
+    seen = read_seen(ctx)
+    records, injected = delta_lines(index, statuses, ids, seen, int(hooks.prompt_lines),
+                                    int(hooks.prompt_tokens) * CHARS_PER_TOKEN)
+    ctx.keep([*records, *escalations, *tail])  # a slow intent check still leaves the delta
+    intent, flagged = intent_lines(ctx, core, index, statuses, ids, text, digest, backend,
+                                   injected)
     hint = escalation_hint(core, index, strong, flagged) if strong else None
     middle = [*intent, *([hint] if hint else [])]
-    ctx.keep([*record_lines(index, statuses, ids, None, cap), *escalations, *middle, *tail])
-    out = [*escalations]
-    if ids:
-        ctx.deadline.check("covering tests")
-        verify = verify_api(core, verify)
-        tests = verify.tests_for(ids) if verify is not None else None
-        out[:0] = record_lines(index, statuses, ids, tests, cap)
-        if verify is None:
-            out.append("plumb: verification unavailable")
-    return HookOutput(text="\n".join([*out, *middle, *tail]))
+    out = [*records, *escalations, *middle, *tail]
+    ctx.keep(out)
+    write_seen(ctx, seen, index, statuses, injected)
+    return HookOutput(text="\n".join(out))
 
 
 def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,

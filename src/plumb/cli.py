@@ -14,10 +14,10 @@ from plumb import __version__
 
 ROUTES: dict[str, str] = {
     # CORE
-    "init": "plumb.commands", "new": "plumb.commands", "show": "plumb.commands",
+    "init": "plumb.commands", "show": "plumb.commands",
     "link": "plumb.commands", "repin": "plumb.commands", "validate": "plumb.commands",
     "check": "plumb.commands", "status": "plumb.commands", "drift": "plumb.commands",
-    "brief": "plumb.commands", "why": "plumb.commands", "log": "plumb.commands",
+    "brief": "plumb.commands", "explain": "plumb.commands", "why": "plumb.commands",
     "approve": "plumb.commands", "relay": "plumb.commands", "revoke": "plumb.commands",
     # VERIFY
     "tests": "plumb.verify.cli", "map": "plumb.verify.cli", "verify": "plumb.verify.cli",
@@ -43,18 +43,20 @@ records and integrity:
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
   status       counts, drift and records awaiting your confirmation
   brief        the short intent brief
+  explain      why a behaviour, file or record exists, in plain terms (plain words, a path
+               or an ID); alias why
   approve      owner approval of records at their current content (owner's terminal only)
   relay        record an owner approval the agent relays, with the owner's quote
   revoke       owner revocation
   drift        drift signals only
-  new, why, log  (not available in this build)
 
 verification:  tests (map | select | run), map, verify, impact
 host:          hook, hooks, install, statusline
 bridge:        trailers, claims, fidelity, judge, judgment, import
 
 Run `plumb <command> --help` for a command's options. Exit codes: 0 ok, 1 findings,
-2 usage, 3 refused by the guard, 4 merge waits for the owner's confirmation.
+2 usage, 3 refused by the guard, 4 merge waits for the owner's confirmation, 5 verification
+holds the merge.
 """
 
 

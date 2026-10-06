@@ -94,8 +94,12 @@ uv run plumb status
 confirm it from your own terminal:
 
 ```bash
-uv run plumb approve SR-001
+uv run plumb approve SR-001      # answer y at the prompt
 ```
+
+Owner-only commands ask y/N in an interactive terminal and refuse to run without one (in
+Git Bash's mintty, prefix `winpty`), so an agent's shell cannot write an owner approval on
+any host.
 
 You can also mark a test directly with `@pytest.mark.sr("SR-001")`. Register the marker in your
 pytest configuration (`markers = ["sr(id): links a test to a plumb requirement"]`).
@@ -147,17 +151,20 @@ drift: stale 0 | dangling 0 | uncovered examples 0
 tests: 1/1 mapped tests with fresh passing evidence
 ```
 
-When your prompt touches a record, the agent receives that record, its confirmed examples and
-its covering tests:
+When your prompt touches a record the agent has not seen in this session (or one that changed
+since), the agent receives one line for it; it pulls the examples and covering tests with
+`plumb show` when it needs them. A later prompt about the same unchanged record injects
+nothing:
 
 ```
-plumb: relevant records (state; examples; covering tests):
+plumb: relevant records, new or changed this session (plumb show <ID> for examples and tests):
 SR-001 [confirmed] add returns the sum of two numbers
-  EX-1: given a = 1 and b = 2, when add(a, b) is called, then it returns 3
-  tests: tests/test_calc.py
 plumb: compare this request with the confirmed examples of SR-001; if it contradicts or
 extends them, read back the change and ask before editing.
 ```
+
+`hooks.prompt_tokens` (200 by default) bounds what one prompt injects, and the session brief
+is a few lines plus a pointer (`hooks.session_brief: full` gives the longer brief).
 
 If the agent edits code and tries to finish, the stop hook first asks it to run the covering
 tests of the turn. This happens at most once per turn and only within the budget:
@@ -207,16 +214,17 @@ prompt 0.45 to 0.6 s, stop 0.65 to 1.2 s on a turn with changes (the first call 
 change rebuilds the test map and can take about 1.4 s). Each hook has a soft budget near the
 2-second ceiling and a 1.9 s watchdog. When a loaded machine cuts a hook short, it still
 prints the read-back, the relevant records and the relay line, and names the skipped step
-(`plumb: check skipped (budget): covering tests`): evidence detail is dropped first, never
-the intent lines.
+(for example `plumb: check skipped (budget): tests` at session start): evidence detail is
+dropped first, never the intent lines.
 
 At a merge boundary, run:
 
 ```bash
 uv run plumb validate --merge main   # exit 4: a touched or widened requirement, an untraced
                                      # change or a new trace.exempt glob waits for you;
-                                     # exit 5: an acceptance test of a touched requirement
-                                     # fails or has not passed on the current code
+                                     # exit 5: an acceptance test the change can affect
+                                     # fails or has not passed on the current code, or
+                                     # full verification is pending
 uv run plumb tests run --full        # if "full verification pending"
 ```
 
@@ -229,9 +237,11 @@ the full options.
 Exit codes: `0` ok, `1` findings, `2` usage, `3` refused by the guard, `4` the merge waits for
 your confirmation (a touched requirement, a requirement widened by a new link, an untraced
 change no requirement owns, or a `trace.exempt` glob added on the branch: `plumb approve
---exempt`), `5` verification holds the merge (a touched acceptance test fails or has no passing
-run on the current code, or a regression is unresolved). Exit 0 does not by itself mean the
-full suite ran: read the `verification:` line for `full verification pending`.
+--exempt`; or a confirmed requirement whose acceptance test changed since you confirmed it),
+`5` verification holds the merge (an acceptance test the change can affect fails or has no
+passing run on the current code, a regression is unresolved, including one hidden by
+rewriting the test, or `full verification pending` holds and no owner waiver covers this
+exact change).
 
 ### Records and integrity
 
@@ -245,11 +255,12 @@ full suite ran: read the `verification:` line for `full verification pending`.
 | `plumb show IDS...` | A record in full: the read-back, will and won't, labelled assumptions, every example, the alternatives and the body. The end-of-turn summary names the records it could not show with this command; a bare "ok" never confirms them, only words that name their IDs do. |
 | `plumb drift` | Drift signals only: stale and dangling links, unconfirmed edits, uncovered examples, and fidelity that a judgment no longer covers. |
 | `plumb brief [--all] [--max-lines N]` | The short intent brief (about 30 lines). |
-| `plumb approve IDS... [--proposed] [--yes] [--note]` | Owner approval of records at their current content. It is refused under the agent session marker. |
+| `plumb explain WORDS...` (alias `why`) | Why a behaviour, a file or a record exists, in your terms: the requirement, your words it derives from, decisions, examples, test state and code. Takes plain words ("how totals are rounded"), a path or a record ID. In Claude Code, `/plumb explain <anything>`. |
+| `plumb approve IDS... [--proposed] [--exempt] [--note]` | Owner approval of records at their current content. It asks y/N in your interactive terminal and is refused under the agent session marker or without a terminal (an agent's shell, a pipe), on every host. `revoke` and `tests waive` work the same way. |
 | `plumb relay IDS... --prompt DIGEST --quote "..." [--revoke]` | Record an approval or a revocation that you gave in a prompt, with your exact words. |
 | `plumb revoke IDS... [--note]` | Owner revocation of the latest approval. |
 
-`plumb new`, `why` and `log` are reserved and answer `not available in this build`.
+This build has no `plumb new` (write the record file yourself, section 3 of the quickstart) and no `plumb log`.
 
 ### Verification
 
@@ -258,7 +269,7 @@ full suite ran: read the `verification:` line for `full verification pending`.
 | `plumb map [--rebuild]` (also `plumb tests map`) | Build the code-to-test map and write `.plumb/test_map.txt`. |
 | `plumb tests select [PATHS...] [--changed] [--budget S]` | Covering tests of the changed paths, in priority order. |
 | `plumb verify` / `plumb tests run [--changed \| --paths P... \| --nodes N... \| --full] [--budget S]` | Run the covering tests (or the full suite) and record evidence. A test that passed before and now fails is reported as a regression. |
-| `plumb tests waive --reason "..." [--diff-digest sha256:...]` | Owner waiver pinned to a diff digest. Only the owner can run it. |
+| `plumb tests waive --reason "..." [--diff-digest sha256:... \| --merge BASE]` | Owner waiver pinned to a diff digest; `--merge BASE` waives the merge boundary's full run for exactly the change from BASE (any later edit voids it). Only the owner can run it. |
 | `plumb impact REF` | What lies downstream of a record or a path: records and covering tests with their evidence state. |
 
 A failing test is rerun once on the same tree to detect flakiness. If shared test
@@ -318,5 +329,8 @@ plumb has been dogfooded from day one: this repository is developed with plumb.
   findings go to `docs/followups.md`.
 
 Design documents: `docs/concept.md` (the concept spec), `docs/specs/sp1-grounding-loop.md`
-(sub-project 1), `docs/plans/sp1-plan.md` and `docs/plans/fork-plan.md` (moving work from
-pi-agent-factory to plumb).
+(sub-project 1), `docs/plans/sp1-plan.md` and `docs/fork-plan.md` (moving work from
+pi-agent-factory to plumb). The next batch: `docs/specs/sp2-intent-capture.md`,
+`docs/specs/sp3-merge-boundary.md`, `docs/specs/sp4-hosts-mcp.md`,
+`docs/specs/sp5-presentation.md` and their one combined plan, `docs/plans/next-plan.md`
+(five lanes, including the pi-agent-factory importer completion).

@@ -31,8 +31,23 @@ def _many_records(repo: Path, write_record, count: int = 60) -> None:
         write_record(repo, f"---\nid: NC-{i:04d}\ntitle: Open problem {i}\nstatus: open\n---\n")
 
 
+@pytest.mark.sr("SR-032")
+def test_brief_is_a_few_lines_and_a_pointer_by_default(repo: Path, write_record,
+                                                       hook_input) -> None:
+    """R9: the session brief is a few lines plus a pointer, never every proposed record."""
+    _many_records(repo, write_record)
+    lines = _run(repo, hook_input, verify=FakeVerify()).splitlines()
+    assert lines[0] == "plumb brief: 0 feature(s), 0 SR (0 confirmed), 60 INT (0 confirmed)"
+    assert len(lines) <= 6
+    assert "open NCs: 5 (plumb brief --all)" in lines
+    assert any(line.startswith("tests: ") for line in lines)
+    assert lines[-1].startswith("plumb: records reach you once per session")
+    assert not any("Intent number 7" in line for line in lines)
+
+
 def test_brief_about_30_lines_with_cap(repo: Path, write_record, hook_input) -> None:
     _many_records(repo, write_record)
+    (repo / ".plumb" / "config.yaml").write_text("hooks:\n  session_brief: full\n", "utf-8")
     out = _run(repo, hook_input, verify=FakeVerify())
     lines = out.splitlines()
     assert lines[0].startswith("plumb brief")
@@ -43,7 +58,7 @@ def test_brief_about_30_lines_with_cap(repo: Path, write_record, hook_input) -> 
 def test_brief_never_passes_hard_cap(repo: Path, write_record, hook_input) -> None:
     _many_records(repo, write_record)
     config = repo / ".plumb" / "config.yaml"
-    config.write_text("hooks:\n  brief_lines: 200\n", encoding="utf-8")
+    config.write_text("hooks:\n  brief_lines: 200\n  session_brief: full\n", encoding="utf-8")
     lines = _run(repo, hook_input, verify=None).splitlines()
     assert len(lines) <= 40
     assert any(line.startswith("tests: verification unavailable") for line in lines)
@@ -112,9 +127,9 @@ def test_brief_survives_a_budget_cut(repo: Path, write_record, hook_input,
         def __init__(self, core) -> None:
             self._core = core
 
-        def brief_lines(self, *args, **kwargs):
+        def status(self, *args, **kwargs):
             clock.now += 5.0
-            return self._core.brief_lines(*args, **kwargs)
+            return self._core.status(*args, **kwargs)
 
         def __getattr__(self, name):
             return getattr(self._core, name)

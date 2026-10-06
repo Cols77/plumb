@@ -1,4 +1,5 @@
-"""CORE commands: init, show, link, repin, validate, status, brief, approve, relay, revoke."""
+"""CORE commands: init, show, link, repin, validate, status, brief, explain (alias why), approve,
+relay, revoke."""
 
 from __future__ import annotations
 
@@ -28,6 +29,8 @@ CONFIG_TEMPLATE = """\
 #   budget_ms: {session_start: 1400, prompt: 1200, stop: 1400, post_edit: 300}
 #   brief_lines: 30
 #   prompt_lines: 20
+#   prompt_tokens: 200         # per-prompt injection budget; records once per session
+#   session_brief: compact     # compact (a few lines) | full (the long brief)
 #   summary_proposed_cap: 3    # records shown in full per summary
 # approve:
 #   affirmations: [ok, okay, yes, approve, approved, confirm, confirmed, agreed, lgtm,
@@ -180,7 +183,7 @@ def cmd_repin(command: str, argv: list[str]) -> int:
 
 
 def _guarded(action: Callable[[], object]) -> int:
-    from plumb.approvals import ApprovalError, Refused
+    from plumb.approvals import ApprovalError, Declined, Refused
 
     try:
         action()
@@ -190,6 +193,9 @@ def _guarded(action: Callable[[], object]) -> int:
     except ApprovalError as exc:
         print(f"plumb: {exc}", file=sys.stderr)
         return 1
+    except Declined as exc:
+        print(f"{exc}")
+        return 0
     return 0
 
 
@@ -204,12 +210,12 @@ def _approved_names(entry: Any) -> str:
 def cmd_approve(command: str, argv: list[str]) -> int:
     from plumb import approvals
 
-    parser = _parser(command, "Owner approval of records at their current content. Refused "
-                     "while the agent session marker is set.")
+    parser = _parser(command, "Owner approval of records at their current content, after a "
+                     "y/N answered in the owner's own interactive terminal. Refused under the "
+                     "agent session marker and outside an interactive terminal.")
     parser.add_argument("ids", nargs="*", help="record IDs")
     parser.add_argument("--proposed", action="store_true",
                         help="every proposed or unconfirmed-edit record")
-    parser.add_argument("--yes", action="store_true", help="do not ask y/N")
     parser.add_argument("--exempt", action="store_true",
                         help="also confirm the trace.exempt globs of .plumb/config.yaml")
     parser.add_argument("--note", default="")
@@ -229,23 +235,11 @@ def cmd_approve(command: str, argv: list[str]) -> int:
             for record_id, record_hash, state in listed:
                 title = core.index()[record_id].title
                 print(f"  {record_id} {state} {record_hash[:19]}  {title}")
-            if not args.yes:
-                if not sys.stdin.isatty():
-                    raise SystemExit(EXIT_USAGE)
-                answer = input(f"approve these {len(listed)} records? [y/N] ")
-                if answer.strip().lower() not in ("y", "yes"):
-                    print("plumb: nothing approved")
-                    return
             ids += [r[0] for r in listed if r[0] not in ids]
-        entry = approvals.approve(core, ids, note=args.note, exempt=args.exempt)
+        entry = approvals.approve(core, ids, note=args.note, exempt=args.exempt)  # asks y/N
         print(f"plumb: approved {_approved_names(entry)}")
 
-    try:
-        return _guarded(act)
-    except SystemExit:
-        print("plumb: not a terminal; pass --yes to approve the listed records",
-              file=sys.stderr)
-        return EXIT_USAGE
+    return _guarded(act)
 
 
 def cmd_revoke(command: str, argv: list[str]) -> int:
@@ -389,6 +383,8 @@ def status_data(core) -> dict:
         "uncovered_examples": {i: list(s.uncovered_examples) for i, s in statuses.items()
                                if s.uncovered_examples and s.confirmation == "confirmed"},
         "awaiting": sorted(i for i, s in statuses.items() if s.confirmation != "confirmed"),
+        "changed_tests": {i: list(s.changed_tests) for i, s in sorted(statuses.items())
+                          if s.changed_tests},
         "verification": verification_state(core),
     }
 
@@ -416,6 +412,9 @@ def cmd_status(command: str, argv: list[str]) -> int:
         f"{links['dangling']}, unpinned {links['unpinned']}",
         "awaiting your confirmation: " + (", ".join(data["awaiting"]) or "none"),
     ]
+    for record_id, ends in data["changed_tests"].items():
+        lines.append(f"acceptance test changed since you confirmed it: {record_id} "
+                     + ", ".join(ends))
     if data["stale"]:
         lines.append("stale links: " + ", ".join(data["stale"]))
     for record_id, items in data["failing"].items():
@@ -484,6 +483,8 @@ def drift_data(core) -> dict:
             elif state.state == "dangling":
                 dangling.append({"link": state.link.id, "target": label})
     unconfirmed = sorted(i for i, s in statuses.items() if s.confirmation == "unconfirmed-edit")
+    changed_tests = {i: list(s.changed_tests) for i, s in sorted(statuses.items())
+                     if s.changed_tests}
     uncovered = {i: list(s.uncovered_examples) for i, s in sorted(statuses.items())
                  if index[i].kind == "requirement" and s.uncovered_examples}
     fidelity: list[dict] | str
@@ -510,7 +511,8 @@ def drift_data(core) -> dict:
     failing = acceptance_failures(core)
     clean = not (stale or dangling or unconfirmed or uncovered or fidelity_signals or failing)
     return {"clean": clean, "stale": stale, "dangling": dangling, "failing": failing,
-            "unconfirmed_edits": unconfirmed, "uncovered_examples": uncovered,
+            "unconfirmed_edits": unconfirmed, "changed_tests": changed_tests,
+            "uncovered_examples": uncovered,
             "fidelity": fidelity, "never_judged": never_judged}
 
 
@@ -529,7 +531,12 @@ def cmd_drift(command: str, argv: list[str]) -> int:
     for item in data["dangling"]:
         lines.append(f"{item['link']} dangling (missing: {item['target']})")
     for record_id in data["unconfirmed_edits"]:
-        lines.append(f"{record_id} unconfirmed edit (approved content changed)")
+        ends = data["changed_tests"].get(record_id)
+        if ends:
+            lines.append(f"{record_id} acceptance test changed since you confirmed it: "
+                         f"{', '.join(ends)} (plumb validate --merge shows the diff)")
+        else:
+            lines.append(f"{record_id} unconfirmed edit (approved content changed)")
     for record_id, examples in data["uncovered_examples"].items():
         lines.append(f"{record_id} uncovered examples: {', '.join(examples)}")
     for record_id, items in data["failing"].items():
@@ -565,6 +572,19 @@ def cmd_show(command: str, argv: list[str]) -> int:
     return 1 if missing else 0
 
 
+def cmd_explain(command: str, argv: list[str]) -> int:
+    from plumb.explain import explain_lines
+
+    parser = _parser(command, "Why a behaviour, a file or a record exists, in plain terms: "
+                     "the requirement, the owner's words it comes from, decisions, examples, "
+                     "test state and code. Takes plain words, a path or a record ID.")
+    parser.add_argument("query", nargs="+", help="plain words, a file path or a record ID")
+    args = parser.parse_args(argv)
+    lines, data = explain_lines(_core(args), " ".join(args.query))
+    emit({**data, "lines": lines} if args.as_json else lines, args.as_json)
+    return 0 if data["records"] else 1
+
+
 def _not_built(command: str, argv: list[str]) -> int:
     print(f"plumb: '{command}' is not available in this build", file=sys.stderr)
     return EXIT_USAGE
@@ -583,6 +603,8 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "status": cmd_status,
     "brief": cmd_brief,
     "drift": cmd_drift,
+    "explain": cmd_explain,
+    "why": cmd_explain,  # the earlier name; explain takes plain words too
 }
 
 

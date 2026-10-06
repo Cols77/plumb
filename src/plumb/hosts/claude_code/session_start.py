@@ -1,4 +1,5 @@
-"""SessionStart: the intent brief, about 30 lines, hard cap 40 (spec 6.1).
+"""SessionStart: the intent brief, a few lines plus a pointer (spec 6.1, ruling R9); the long
+brief (about 30 lines, hard cap 40) with ``hooks.session_brief: full``.
 
 Context, never procedure: the brief from ``CoreAPI.brief_lines`` plus one line of test
 evidence from ``VerifyAPI``. Also writes ``.plumb/session/status.json`` so the status line
@@ -72,6 +73,14 @@ def evidence_line(summary: Mapping[str, Any] | None) -> str:
 
 
 def brief(core: Any, tests_line: str) -> list[str]:
+    """The compact brief by default (R9: a few lines plus a pointer); ``hooks.session_brief:
+    full`` keeps the long brief of about 30 lines."""
+    if str(core.config.hooks.session_brief) != "full":
+        from plumb.query import compact_brief_lines
+
+        lines = compact_brief_lines(core)
+        lines.insert(len(lines) - 1, tests_line)
+        return lines[:HARD_CAP]
     cap = min(int(core.config.hooks.brief_lines), HARD_CAP)
     lines = list(core.brief_lines(max(cap - 1, 1)))[: cap - 1]
     at = len(lines) - 1 if lines and lines[-1].startswith("open NCs") else len(lines)
@@ -86,6 +95,12 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
 
     core = open_core(ctx.root)
+    if ctx.data.get("source") in ("clear", "compact"):
+        # the agent's context lost what earlier prompts injected: records come again (R9)
+        try:
+            (ctx.session_dir / ctx.session_id / "seen.json").unlink()
+        except OSError:
+            pass
     # no soft-budget check before the records brief: only the watchdog bounds it
     records_brief = brief(core, NOT_CHECKED)
     ctx.keep(records_brief)

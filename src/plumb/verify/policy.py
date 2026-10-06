@@ -68,15 +68,51 @@ def current_diff_digest(root: Any) -> str:
     return sha256_bytes(out.stdout.replace(b"\r\n", b"\n"))
 
 
+def range_digest(root: Any, fork: str) -> str:
+    """sha256 of ``git diff <fork>`` plus the untracked files, outside ``.plumb/``: the change
+    a merge-boundary waiver covers (plumb's own records and logs are left out, so recording
+    the waiver does not move the digest it pins; any other edit does)."""
+    import subprocess
+    from pathlib import Path
+
+    from plumb.normalize import file_digest, sha256_bytes
+
+    out = subprocess.run(["git", "diff", fork, "--no-color", "--no-ext-diff", "--", ".",
+                          ":(exclude).plumb"], cwd=root, capture_output=True, timeout=30,
+                         stdin=subprocess.DEVNULL)
+    others = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "-z", "--",
+                             ".", ":(exclude).plumb"], cwd=root, capture_output=True,
+                            timeout=30, stdin=subprocess.DEVNULL)
+    parts = [out.stdout.replace(b"\r\n", b"\n")]
+    for rel in sorted(p for p in others.stdout.decode("utf-8", "replace").split("\0") if p):
+        try:
+            digest = file_digest(Path(root) / rel)
+        except OSError:
+            digest = "unreadable"
+        parts.append(f"\0{rel}\0{digest}".encode())
+    return sha256_bytes(b"".join(parts))
+
+
+def waived(core: Any, digest: str) -> bool:
+    """Whether an owner waiver (written outside the agent session marker) pins ``digest``."""
+    for entry in core.events():
+        if (entry.kind == "waiver" and entry.marker == "none"
+                and entry.payload.get("by") == "owner"
+                and entry.payload.get("diff_digest") == digest):
+            return True
+    return False
+
+
 def waive(core: Any, diff_digest: str, reason: str) -> Any:
     """Append the owner's ``waiver`` event pinned to ``diff_digest``; refused under the
-    agent session marker. Using it in place of a full rerun belongs to sub-project 3."""
-    from plumb.approvals import marker
+    agent session marker and outside an interactive terminal (``approvals.require_owner``).
+    Using it in place of a full rerun belongs to sub-project 3."""
+    from plumb.approvals import Refused, require_owner
 
-    value = marker()
-    if value:
-        raise WaiverRefused(f"plumb tests waive refused: the agent session marker is set "
-                            f"(PLUMB_AGENT_SESSION={value}); only the owner waives, in their "
-                            "own terminal")
+    try:
+        require_owner("tests waive", f"waive the full run for diff {diff_digest[:19]} "
+                      f"({reason}), as yourself (by: owner)?")
+    except Refused as exc:
+        raise WaiverRefused(str(exc)) from exc
     return core.log_append("events", "waiver", {"diff_digest": diff_digest, "reason": reason,
                                                "by": "owner"})

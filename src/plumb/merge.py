@@ -8,17 +8,22 @@ Over ``<base>..HEAD`` plus uncommitted changes:
    merge waits (exit 4): one trigger-2 question lists them. Links are left out of a record's
    hash, so a requirement that gained an ``implemented_by`` or ``verified_by`` end in the
    range (by ``plumb link`` or a frontmatter edit) is an extension of it: it waits too until
-   an approval of it lists that end. A ``trace.exempt`` glob added in the range is not
+   an approval of it lists that end. A requirement whose ``verified_by`` end (an acceptance
+   test of an example the owner confirmed) changed since the approval pinned its content
+   waits as "acceptance test changed", shown with the example and the test's diff. A
+   ``trace.exempt`` glob added in the range is not
    honoured until the owner confirms it (``plumb approve --exempt``), and a path that was
    source under the merge base's config stays source, so a config edit hides nothing;
 2. the approvals and revocations added in the range are listed, agent-relayed ones marked with
    the prompt digest they cite;
 3. fidelity (advisory) and 4. verification state, from the BRIDGE and VERIFY lanes when they
-   are built, otherwise ``unavailable``: full verification pending, touched requirements
-   whose acceptance tests fail (with their example ids; a failure is kept until a run passes
-   the test, whatever changed since), touched acceptance tests with no passing evidence on
-   the current identity, and unresolved regressions (R3). Any of the last three makes the
-   merge exit 5 until a run passes them;
+   are built, otherwise ``unavailable``: full verification pending, then for the touched
+   requirements and every confirmed requirement whose acceptance tests cover a changed path,
+   the acceptance tests that fail (with their example ids; a failure is kept until a run
+   passes the test body that passed before it, so a test rewritten to pass still fails) or
+   have no passing evidence on the current identity, and unresolved regressions (R3). Any of
+   these, and a full verification pending that no owner waiver of this exact change covers
+   (concept 7.4), makes the merge exit 5;
 5. every log line present at the merge base of ``<base>`` and HEAD must still be present,
    unchanged (exit 1 otherwise).
 """
@@ -38,6 +43,8 @@ if TYPE_CHECKING:
 
 EXIT_MERGE_WAITS = 4
 EXIT_REGRESSION = 5  # verification holds the merge: a failing or unverified acceptance test
+CHANGED_TEST = "acceptance test changed"
+DIFF_LINES = 12
 
 
 class GitError(RuntimeError):
@@ -254,6 +261,39 @@ def _describe(core: Core, record_id: str, state: str,
     return lines
 
 
+def changed_test_lines(core: Core, fork: str, record_id: str,
+                       ends: Sequence[str]) -> list[str]:
+    """For each confirmed acceptance test that changed since the owner's approval: the
+    examples it verifies and its diff from the merge base (at most ``DIFF_LINES`` lines), so
+    the owner sees what the test now asserts against the example they confirmed."""
+    record = core.index()[record_id]
+    examples = {e.id: e for e in record.examples}
+    lines: list[str] = []
+    for end in ends:
+        verifies = [link.example for link in record.links
+                    if link.kind == "verified_by" and (link.target.test or link.target.path)
+                    == end and link.example]
+        names = ", ".join(verifies) if verifies else "the requirement"
+        lines.append(f"    acceptance test changed since you confirmed it: {end} "
+                     f"(verifies {names})")
+        for example_id in verifies:
+            example = examples.get(example_id)
+            if example is not None:
+                text = example.criterion or (f"given {example.given}, when {example.when}, "
+                                             f"then {example.then}")
+                lines.append(f"      {example_id} you confirmed: {text}")
+        path = end.split("::", 1)[0]
+        diff = _git(core, "diff", fork, "--no-color", "--no-ext-diff", "--", path,
+                    check=False).splitlines()
+        body = [d for d in diff if d[:1] in "+-" and not d.startswith(("+++", "---"))]
+        for row in body[:DIFF_LINES]:
+            lines.append(f"      {row}")
+        if len(body) > DIFF_LINES:
+            lines.append(f"      ... {len(body) - DIFF_LINES} more changed lines "
+                         f"(git diff {fork[:12]} -- {path})")
+    return lines
+
+
 def _approval_rows(core: Core, base_digests: set[str]) -> list[dict[str, Any]]:
     rows = []
     for entry in core.events():
@@ -278,23 +318,42 @@ def _fidelity(core: Core, touched: Sequence[str]) -> list[str] | None:
     return list(unjudged(core, touched))
 
 
-def _verification(core: Core, touched: Sequence[str]) -> dict[str, Any]:
+def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
+                  fork: str) -> dict[str, Any]:
+    """The verification part of the boundary. Its guarantee: the merge is never green unless
+    every acceptance test the change can affect has passing evidence on the current identity
+    and the full run R5 deferred to this boundary was done (or the owner waived it).
+
+    The acceptance tests checked are those of the touched requirements and of every
+    confirmed requirement whose acceptance tests cover a changed path (``affected``): a
+    change to one requirement's code that breaks another's acceptance test is held too.
+    ``full_pending`` holds the merge until a full run satisfies it or an owner waiver pins
+    this exact change (``plumb tests waive --merge <base>``, concept 7.4)."""
     statuses = core.status(touched)
     not_covered = [i for i, s in statuses.items() if s.confirmation == "confirmed"
                    and not s.covered]
     out: dict[str, Any] = {"confirmed_not_covered": not_covered}
     try:
         from plumb.verify import open_verify
+        from plumb.verify.policy import range_digest, waived
     except ImportError:
         out["available"] = False
         return out
     try:
         verify = open_verify(core)
         pending = verify.full_pending()
+        affected = [i for i in verify.affected_requirements(paths) if i not in touched]
+        scope = sorted({*touched, *affected})
+        waiver = None
+        if pending.pending:
+            digest = range_digest(core.root, fork)
+            waiver = digest if waived(core, digest) else None
         out.update({"available": True, "full_pending": pending.pending,
                     "full_pending_reasons": list(pending.reasons),
-                    "failing": verify.requirement_failures(touched),
-                    "unverified": verify.unverified_acceptance(touched),
+                    "full_waived": waiver,
+                    "affected": affected,
+                    "failing": verify.requirement_failures(scope),
+                    "unverified": verify.unverified_acceptance(scope),
                     "regressions": verify.unresolved_regressions()})
     except Exception as exc:  # a lane failure degrades, never blocks the boundary
         out.update({"available": False, "error": str(exc)})
@@ -306,7 +365,9 @@ def failing_line(record_id: str, item: Mapping[str, Any]) -> str:
     recorded on another identity reads ``(failing, stale: not rerun since the change)``."""
     examples = " ".join(item.get("examples") or ())
     kind = "regression" if item.get("regression") else "failing"
-    if item.get("stale"):
+    if item.get("masked"):
+        kind += ", hidden: the test was changed to pass and you have not confirmed the change"
+    elif item.get("stale"):
         kind += ", stale: not rerun since the change"
     return " ".join(p for p in (record_id, examples, str(item.get("test")), f"({kind})") if p)
 
@@ -327,8 +388,8 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
     required = required_records(core, touched)
     statuses = core.status(required)
     extended = extended_requirements(core, fork, paths)
-    awaiting = [(i, statuses[i].confirmation) for i in required
-                if statuses[i].confirmation != "confirmed"]
+    awaiting = [(i, CHANGED_TEST if statuses[i].changed_tests else statuses[i].confirmation)
+                for i in required if statuses[i].confirmation != "confirmed"]
     awaiting += [(i, "extended") for i in required
                  if i in extended and statuses[i].confirmation == "confirmed"]
     # the owner's exemptions: those at the merge base and those the owner confirmed; a glob
@@ -342,14 +403,15 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
     integrity, base_digests = log_integrity(core, base)
     approvals = _approval_rows(core, base_digests.get("events", set()))
     fidelity = _fidelity(core, touched)
-    verification = _verification(core, touched)
+    verification = _verification(core, touched, paths, fork)
     regressions = verification.get("regressions") or []
     failing = verification.get("failing") or {}
     unverified = verification.get("unverified") or {}
+    full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
     waits = bool(awaiting or untraced or new_exempt)
     if integrity:
         code = 1
-    elif regressions or failing or unverified:
+    elif regressions or failing or unverified or full_held:
         code = EXIT_REGRESSION
     else:
         code = EXIT_MERGE_WAITS if waits else 0
@@ -357,7 +419,9 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
     if as_json:
         print(json.dumps({
             "base": base, "changed": paths, "touched": touched, "required": required,
-            "awaiting": [{"id": i, "state": s, "new_ends": extended.get(i, [])}
+            "awaiting": [{"id": i, "state": s, "new_ends": extended.get(i, []),
+                          **({"changed_tests": list(statuses[i].changed_tests)}
+                             if statuses[i].changed_tests else {})}
                          for i, s in awaiting],
             "untraced": untraced, "new_exempt": new_exempt,
             "approvals": approvals,
@@ -375,6 +439,10 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
         for record_id, state in awaiting:
             for line in _describe(core, record_id, state, extended.get(record_id, ())):
                 print(line)
+            if state == CHANGED_TEST:
+                for line in changed_test_lines(core, fork, record_id,
+                                               statuses[record_id].changed_tests):
+                    print(line)
         for path in untraced:
             print(f"  untraced {path}: no read-back or example covers this change")
         for glob in new_exempt:
@@ -416,7 +484,14 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
         print("verification: unavailable")
     elif verification.get("full_pending"):
         reasons = ", ".join(verification.get("full_pending_reasons") or [])
-        print(f"verification: full verification pending ({reasons}); run plumb tests run --full")
+        if verification.get("full_waived"):
+            print(f"verification: full verification pending ({reasons}); waived by the owner "
+                  "for this exact change")
+        else:
+            print(f"verification: full verification pending ({reasons}); it holds the merge "
+                  "until a full run passes (plumb tests run --full), or the owner waives it for "
+                  f"this change in their own terminal (plumb tests waive --merge {base} "
+                  "--reason ...)")
     else:
         print("verification: no full verification pending")
     if verification["confirmed_not_covered"]:
@@ -430,8 +505,12 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
             what = "never run" if item.get("state") == "none" else "stale since its last pass"
             print("unverified acceptance tests: " + " ".join(
                 p for p in (record_id, examples, str(item.get("test")), f"({what})") if p))
+    affected = verification.get("affected") or []
+    if affected:
+        print("acceptance tests this change can affect (other requirements): "
+              + ", ".join(affected))
     if failing or unverified:
-        print("verification holds the merge: every acceptance test of a touched requirement "
+        print("verification holds the merge: every acceptance test the change can affect "
               "needs a passing run on the current code (plumb tests run --nodes <test>)")
     if regressions:
         shown = ", ".join(regressions[:5]) + (f" +{len(regressions) - 5} more"

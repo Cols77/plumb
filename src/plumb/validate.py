@@ -78,6 +78,8 @@ def validate(core: Core) -> list[Finding]:
         record = index[status.id]
         if status.confirmation == "unconfirmed-edit":
             add("warning", "unconfirmed-edit", status.id,
+                ("acceptance test changed since its approval: "
+                 + ", ".join(status.changed_tests)) if status.changed_tests else
                 "edited since its approval; awaits the owner's confirmation")
         if record.kind == "requirement":
             if status.confirmation == "confirmed" and status.uncovered_examples:

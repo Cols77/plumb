@@ -262,8 +262,27 @@ def test_slash_command_brief_why_impact(repo: Path, no_claims) -> None:
     _install(repo)
     text = (repo / ".claude" / "commands" / "plumb.md").read_text(encoding="utf-8")
     assert "$ARGUMENTS" in text
-    for name in ("brief", "why", "impact"):
+    for name in ("brief", "explain", "why", "impact"):
         assert f"Bash(uv run --no-sync plumb {name}:*)" in text
+
+
+@pytest.mark.sr("SR-033")
+def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> None:
+    """/plumb advertises explain with plain-language arguments, keeps why as an alias, and
+    advertises only subcommands the CLI has (R9: the /plumb why bug)."""
+    from plumb import cli
+
+    _install(repo)
+    text = (repo / ".claude" / "commands" / "plumb.md").read_text(encoding="utf-8")
+    hint = next(line for line in text.splitlines() if line.startswith("argument-hint:"))
+    assert "explain <anything: a feature, a behaviour, a file or an ID>" in hint
+    assert "why <ID|path>" not in text
+    assert "uv run --no-sync plumb explain <their words>" in text
+    advertised = {part.split()[0] for part in hint.split('"')[1].split("|")}
+    assert advertised == {"brief", "explain", "impact"}
+    for name in advertised | {"why", "show"}:
+        assert name in cli.ROUTES, name
+    assert "not available in this build" not in cli._HELP
 
 
 @pytest.mark.sr("SR-026")
