@@ -2501,3 +2501,54 @@ Medium:
   Unverified against a live Hermes: whether `pre_verify` and `transform_llm_output` carry the
   child's own `session_id`. The code reads them as Hermes 0.21 does
   (`agent/conversation_loop.py`, `agent/turn_finalizer.py`).
+
+## Integrate phase (2026-10-06): sub-projects 2 to 5 and the importer on main
+
+Merged on main (`work`, then IMPORT, CAPTURE, MERGE, PRESENT, HOSTS, the plan's order); the
+lane worktrees are removed and the `lane/*` branches kept. The one full run: 802 tests,
+800 passed, 1 skipped (`jev_live`), 1 regression (`tests/verify/test_impact.py`, fixed:
+`plumb impact <path>` resolved an exact path to its owning records; a targeted rerun on the
+fix passed). `plumb merge-check 9dd86c6 --no-run` on plumb exits 4: 87 records await the
+owner, and one untraced deletion (the moved skill template). Integration decisions, then
+medium and low findings:
+
+- [DECISION] R13 Q4 "self-recorded message": CAPTURE (`via != "hook"`) and HOSTS
+  (`via == "turn"`) disagreed. Kept one rule, fail-closed: `plumb relay` writes
+  `self_recorded: true` unless the cited prompt was logged by a host's prompt hook
+  (`via: hook`); the prompt hook logs `via` from the host event (`turn` for `plumb turn
+  start`). `confirm.is_self_recorded` is the one reader (show, explain, cards, the merge
+  glance, hosts status, auto-approval). Prompt-log lines written before `via` existed count
+  as self-recorded (a label only).
+- [DECISION] The stop hook's one stated-set writer keeps PRESENT's confirm cards and
+  triage groups and applies HOSTS' display gate: `unseen` marks nothing shown and pins no
+  group; `status` writes nothing.
+- [DECISION] Helper and fixture files (`*_helpers.py`, `jev_fixtures.py`,
+  `fixtures/intent_prompts.yaml`, `tests/conftest.py`) were `verified_by` ends, so the merge
+  boundary waited forever for evidence they cannot have (exit 5). They are `implemented_by`
+  ends now; a `support` link kind would say it better (as the lanes noted).
+- [DECISION] Two colliding test modules were renamed so the whole suite collects:
+  `tests/present/test_confirm.py` -> `test_present_confirm.py`,
+  `tests/hosts/test_self_recorded.py` -> `test_hosts_self_recorded.py`. NC-0003 backs the
+  claims baseline for them and for lane commits whose trailers named SRs that do not declare
+  the path. The range-aware claims fix (a renamed path counts as declared when its
+  successor is) is still open.
+- [MEDIUM] Phase 0 never ran. Not built: `tests/integration/test_contracts.py` (stubs
+  against protocols), `tests/integration/test_mcp_smoke.py` (the MCP server is covered by
+  `tests/mcp`), `scripts/bench_hooks.py` (hook timings come from
+  `scripts/drive_session.py`); `MergeReport` lives in `plumb.boundary.report`, not in
+  `contracts.py`.
+- [MEDIUM] (latency) On plumb's own repository the session-start hook takes 1.6 to 2.0 s and
+  cuts its tests line ("tests: not checked (budget)"); the stop hook 1.5 to 1.6 s, the
+  prompt hook 0.55 to 0.75 s. Within the seconds bar, but session start sits at its budget.
+- [LOW, flaky] `tests/host/test_latency.py::test_intent_lines_survive_cpu_contention` and
+  `tests/present/test_present_confirm.py::test_relayed_ok_then_confirms_exactly_the_shown`
+  each failed once in a focused run on the loaded 2-core machine (other sessions' Python
+  processes running) and passed on the same tree when rerun; both passed in the full run.
+- [LOW] `plumb import --dry-run` writes the derived `.plumb/cache/config.json` in the target
+  (gitignored cache); records, logs and the claims file are untouched, and the source is
+  unchanged (git status compared).
+- [LOW] The status line after a relay keeps the stop hook's snapshot ("3 awaits you") until
+  the next stop recomputes it.
+- [LOW] In the driven capture flow, "add a subtract helper next to add" also raises the
+  intent-change card for confirmed INT-001 (an extension, trigger 1). Correct by the rule;
+  the heuristic's extension recall may be broad for "next to X" phrasing.

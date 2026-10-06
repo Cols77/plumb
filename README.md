@@ -32,8 +32,11 @@ does.
   shown when you ask for it.
 
 plumb is a host-neutral CLI and Python library with thin host adapters. Claude Code is
-supported first. plumb keeps pi-agent-factory's IDs and `SR:` commit trailers, and it can
-import that project's records.
+supported first; Codex, Pi and Hermes have thin adapters, any other agent can use the
+CLI-only fallback (`plumb turn start|end`), and a read-only MCP server exposes the same views.
+plumb keeps pi-agent-factory's IDs and `SR:` commit trailers, and it imports that project's
+register (requirements, features, bundles, nonconformances, upstream consent) idempotently,
+with a dry-run diff.
 
 ## Quickstart (5 minutes)
 
@@ -127,11 +130,16 @@ The install is idempotent and keeps every entry that does not belong to plumb. I
 
 - `.claude/settings.json`: the `SessionStart`, `UserPromptSubmit`, `PostToolUse` (on edits,
   async) and `Stop` hooks, the status line, the `PLUMB_AGENT_SESSION` marker, and deny rules
-  that stop the agent from running `plumb approve`, `plumb revoke` or `plumb tests waive`, or
-  editing `.plumb/log/`;
+  that stop the agent from running `plumb approve`, `plumb revoke`, `plumb tests waive`,
+  `plumb triage --approve`, `plumb spec approve` or `plumb config auto-approve`, or editing
+  `.plumb/log/`;
 - `.claude/skills/plumb/SKILL.md`, a short skill that tells the agent where the records and the
-  test map are and which commands to use;
-- `.claude/commands/plumb.md`, the `/plumb` slash command;
+  test map are and which commands to use (`capture`, `decide`, `relay`), and
+  `.claude/skills/plumb-clarify/SKILL.md`, which scales the clarification to the request
+  (trivial, incremental, escalated) and asks only the questions that change what gets built,
+  one per message;
+- `.claude/commands/plumb.md`, the `/plumb` slash command (`status`, `explain`, `review`,
+  `confirm`, `impact`, `view`, each taking your own words);
 - a `<!-- plumb:begin -->` block in `CLAUDE.md`;
 - the git `commit-msg` hook, which checks `SR:` trailers.
 
@@ -197,10 +205,26 @@ plumb: +1 more not shown: SR-005 (plumb show SR-005); a confirmation must name t
 
 Your "ok" on the next prompt confirms only what was shown; SR-005 needs words naming it.
 
-The status line reads:
+When the agent records a new intent (`plumb capture`: your verbatim words, its read-back, a
+requirement with examples, a decision), the summary shows it as an intent card, only when it
+matters (a new or changed intent waiting for you, one of the three triggers, or a regression;
+`plumb config card full|compact|off` sets the verbosity):
 
 ```
-plumb | SR 1/1 ok | proposed 0 | stale 1 | tests ok | ask 0
+▸ Intent  INT-002 "Add sub(a, b) beside add, returning a - b"   (proposed — say "ok" to confirm)
+  Will: sub(a, b) returns a - b · Won't: no change to add or mul · Assumed: integers, like add
+  Examples  SR-003/EX-1 given the numbers 5 and 3, when sub is called, then it returns 2  (proposed)
+```
+
+A decision that matters is asked once, one per message ("I assumed integers only; floats too
+also fits. Which one?"). When several proposed records are rated faithful to your words, the
+summary offers them in one line (up to five titles, then "+N more (see plumb triage)"); your
+"ok" confirms exactly that pinned list.
+
+The status line is a one-line card, the state plus a plain-language intent summary:
+
+```
+plumb ● awaits you · "Add sub(a, b) beside add, returning a..." · SR 2/3 ok · 3 awaits you · 1 question
 ```
 
 Read-backs and proposed examples appear in the summary as `proposed` and never block the work.
@@ -217,7 +241,12 @@ prints the read-back, the relevant records and the relay line, and names the ski
 (for example `plumb: check skipped (budget): tests` at session start): evidence detail is
 dropped first, never the intent lines.
 
-At a merge boundary, run:
+At a merge boundary, run `uv run plumb merge-check main`: it runs the full suite at most once
+(only when full verification is pending or touched acceptance tests lack evidence), checks
+claims, links and log integrity, lists the approvals you did not type (agent-relayed,
+auto-jev, import) with their revoke commands, and exits like `plumb validate --merge`
+(which reports without running anything). `plumb merge-check --install-pre-push` makes it a
+git pre-push hook (your choice). The report-only form:
 
 ```bash
 uv run plumb validate --merge main   # exit 4: a touched or widened requirement, an untraced
@@ -260,7 +289,34 @@ exact change).
 | `plumb relay IDS... --prompt DIGEST --quote "..." [--revoke]` | Record an approval or a revocation that you gave in a prompt, with your exact words. |
 | `plumb revoke IDS... [--note]` | Owner revocation of the latest approval. |
 
-This build has no `plumb new` (write the record file yourself, section 3 of the quickstart) and no `plumb log`.
+### Intent capture
+
+| Command | What it does |
+|---|---|
+| `plumb capture --prompt DIGEST --file DOC` | Record a whole read-back in one call: your verbatim quote (checked against the logged prompt), the read-back, will, won't, labelled assumptions, requirements with given/when/then examples, decisions. Everything is proposed; it prints the intent card. `--dry-run` writes nothing. |
+| `plumb new KIND --title ...` | One record with the next ID (`intent`, `requirement`, `decision`, `feature`, `nc`), proposed. |
+| `plumb intent`, `plumb example SR --given --when --then`, `plumb decide --question --chosen --alt [--matters] [--supersede DEC]` | An INT read-back, an example, a decision ("I assumed A; B also fits"). |
+| `plumb clarify "<request>" [--questions FILE]` | The clarification depth (trivial, incremental, escalated) and only the questions that change what gets built, ranked. |
+| `plumb escalate check\|decline` | Escalation suggestions for large, risky or cross-cutting work; `decline` is yours. |
+| `plumb spec show\|approve\|state INT` | An escalated up-front spec; `approve` (your terminal) pins the set hash. |
+| `plumb triage [--approve low-risk]` | Proposed records grouped by faithfulness to your words; `--approve low-risk` confirms exactly the listed hashes in one step (your terminal). |
+| `plumb config auto-approve on\|off`, `config show`, `config card full\|compact\|off` | The opt-in auto-approval (off by default; refused without a passing calibration) and the card verbosity. Your terminal only. |
+| `plumb jev status\|setup\|calibrate` | The optional JEV backend: reachability and version, the name of the credential variable (never the secret), calibration on your own decisions. |
+| `plumb relay IDS... --group low-risk` / `--set INT` | Relay your "ok" for a triage group or an escalated set that was shown. |
+
+### Owner views (plain words; none approves anything)
+
+| Command | What it does |
+|---|---|
+| `plumb resolve WORDS...` | What your words mean: records, files and tests, best first; asks when ambiguous. |
+| `plumb status --card` | The status card, what awaits you and drift. |
+| `plumb review [WORDS...]` | The deep review: what awaits you, approvals you did not type, drift, alignment, the merge state. |
+| `plumb confirm [WORDS...]` | Shows records as cards so your own "ok" can confirm them. |
+| `plumb align [SCOPE]` | Judges each edge from intent to code, weakest first, and names the gaps; never adds or removes an edge. |
+| `plumb view [--open]` | Writes a generated Obsidian vault (one note per record, wikilinks, index notes, a Canvas intent map) under `.plumb/view/`. Editing a note approves nothing. |
+
+In Claude Code these are `/plumb status`, `/plumb explain <anything>`, `/plumb review`,
+`/plumb confirm`, `/plumb impact <anything>` and `/plumb view`.
 
 ### Verification
 
@@ -286,6 +342,21 @@ during the turn.
 | `plumb hook {session-start\|prompt\|post-edit\|stop}` | Hook entry points. Each one reads the host's JSON on stdin, answers on stdout and always exits 0. |
 | `plumb statusline` | Print the one-line status from `.plumb/session/status.json`. It recomputes nothing. |
 
+### Other hosts and MCP
+
+| Command | What it does |
+|---|---|
+| `plumb hosts install\|uninstall\|status codex\|pi\|hermes [--dry-run]` | Thin adapters over the same host-neutral turn API (see `docs/hosts.md` for each host's events). |
+| `plumb turn start\|end [--session ID]` | The CLI-only fallback for a host without hooks; confirmations resting on a message the agent recorded itself are labelled "self-recorded message". |
+| `plumb mcp serve` / `plumb mcp install\|uninstall claude-code\|codex\|hermes` | A read-only MCP server on stdio (brief, relevant records, show, explain, impact, drift); it has no write tool. |
+
+### Merge boundary
+
+| Command | What it does |
+|---|---|
+| `plumb merge-check [BASE] [--no-run] [--json]` | The merge boundary: at most one full run, claims, links, log integrity, the glance of approvals you did not type, advisory fidelity. Exit codes as above. |
+| `plumb merge-check --install-pre-push` / `--uninstall-pre-push` | The optional git pre-push hook. |
+
 ### Bridge
 
 | Command | What it does |
@@ -295,7 +366,7 @@ during the turn.
 | `plumb fidelity SR` | Build the advisory fidelity packet (the statement, examples, linked code, tests and evidence) for the host agent to judge. |
 | `plumb judge SR --verdict fits\|drifts\|unsure [--note]` | Record the host agent's advisory verdict. |
 | `plumb judgment [status]` | Show the judgment backend in use: `heuristic` by default, `jev` optional, or `disabled`. |
-| `plumb import pi-agent-factory SOURCE [--dry-run] [--only SR,FEAT,NC]` | Import pi-agent-factory records as proposed plumb records. |
+| `plumb import pi-agent-factory SOURCE [--dry-run] [--diff] [--only SR,FEAT,NC,CLAIMS]` | Import pi-agent-factory's register, read only: records arrive proposed, with symbol and test-node link ends; a requirement whose upstream human consent pins its current content is confirmed `by: import` only after you say yes in your own terminal. Re-running changes nothing unless the source changed; `--dry-run` prints the diff. |
 
 ## Configuration
 
@@ -311,8 +382,10 @@ for large or cross-cutting work.
 plumb has been dogfooded from day one: this repository is developed with plumb.
 
 - Its own intent is in `.plumb/`. The `INT` records quote the owner's intent brief verbatim.
-  `SR-001` to `SR-025` (feature `FEAT-001`, sub-project 1) carry given/when/then examples, and
-  `DEC` records hold the design choices. Each requirement is linked, with hash pins, to the
+  `SR-001` to `SR-069` (features `FEAT-001` to `FEAT-005`: the grounding loop, intent
+  capture, the merge boundary, the importer and other hosts, presentation) carry
+  given/when/then examples, and `DEC` records hold the design choices. Every record written
+  by an agent stays proposed until the owner confirms it. Each requirement is linked, with hash pins, to the
   modules that implement it and the tests that verify each example.
 - The Claude Code hooks are installed here (`.claude/settings.json`, `.claude/skills/plumb/`),
   so every session on plumb gets the brief, the per-prompt context, the covering-test stop
@@ -323,8 +396,10 @@ plumb has been dogfooded from day one: this repository is developed with plumb.
 - Work is test-first. Use `uv run plumb tests run --changed` while iterating and
   `uv run pytest` (at most `-n 2`) before committing. `uv run ruff check` must pass.
   `scripts/drive_session.py` replays a whole Claude Code session through the installed hooks
-  and times each one against the 2-second limit.
-- Before a merge, run `plumb validate --merge main` and `plumb tests run --full`.
+  and times each one against the 2-second limit; `--capture` replays the capture flow (on a
+  scratch copy) and `--merge-check BASE` adds the merge boundary report.
+- Before a merge, run `plumb merge-check main` (one full run when needed). On plumb itself it
+  exits 4: the records await the owner.
 - Review findings: only HIGH findings are fixed in the change that raised them. Medium and low
   findings go to `docs/followups.md`.
 
