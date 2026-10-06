@@ -163,7 +163,9 @@ def test_hermes_register_drives_callbacks(project: Path, tmp_path: Path, monkeyp
     assert ctx.hooks["pre_verify"](session_id="h1", attempt=1) is None
     ctx.hooks["post_llm_call"](session_id="h1")  # pre_verify already ran: no third stop
     assert ctx.commands["plumb"]("explain the login thing").startswith("plumb: passed")
-    assert "explain the login thing" in ctx.injected[0]
+    # exactly the owner's words, logged as their prompt: plumb adds no word an agent could
+    # relay as the owner's ok
+    assert ctx.injected == ["/plumb explain the login thing"]
     calls = [json.loads(line) for line in log.read_text("utf-8").splitlines()]
     assert [c["event"] for c in calls] == ["session-start", "prompt", "stop", "stop"]
     assert calls[1]["text"] == "hello" and calls[3]["stop_active"] is True

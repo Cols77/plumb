@@ -131,11 +131,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("plumb", {
     description: "plumb: explain, status, review or confirm, in your own words",
     handler: async (args: string, _ctx: any) => {
+      // exactly the owner's words: the message is logged as the owner's prompt, so plumb adds
+      // nothing to it (no word of plumb's could then be relayed as the owner's ok)
       const words = String(args ?? "").trim() || "status";
-      pi.sendUserMessage(
-        `/plumb ${words}\n(plumb: answer in my terms; resolve my words to records with plumb resolve, ` +
-          `then run the matching plumb command: explain, status --card, review or confirm.)`,
-      );
+      pi.sendUserMessage(`/plumb ${words}`);
     },
   });
 }

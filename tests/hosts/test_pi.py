@@ -116,6 +116,7 @@ const injected = await handlers.before_agent_start({ prompt: "hello" }, ctx);
 await handlers.agent_end({}, ctx);
 await handlers.before_agent_start({ prompt: sent[0].m.content }, ctx);
 await handlers.agent_end({}, ctx);
+await commands.plumb.handler("explain the login thing", ctx);
 console.log(JSON.stringify({ injected, sent, notes, commands: Object.keys(commands),
   env: process.env.PLUMB_AGENT_SESSION }));
 '''
@@ -146,7 +147,8 @@ def test_extension_runs_under_node(project: Path, tmp_path: Path) -> None:
     assert data["env"] == "pi" and data["commands"] == ["plumb"]
     assert data["injected"]["message"]["content"] == "ctx session-start\nctx prompt"
     assert data["injected"]["message"]["display"] is False
-    assert len(data["sent"]) == 1 and data["sent"][0]["o"]["deliverAs"] == "followUp"
+    assert len(data["sent"]) == 2 and data["sent"][0]["o"]["deliverAs"] == "followUp"
+    assert data["sent"][1] == {"user": "/plumb explain the login thing"}  # the owner's words only
     assert ["status", "plumb | ok"] in data["notes"]
     calls = [json.loads(line) for line in log.read_text("utf-8").splitlines()]
     assert [c["event"] for c in calls] == ["session-start", "prompt", "stop", "stop"]

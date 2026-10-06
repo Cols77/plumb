@@ -238,6 +238,10 @@ def instruction_block(argv: Sequence[str], host: str, *, hooks: bool) -> str:
         f"  (or `--prompt-file F`), and before your final reply `{plumb} turn end --session "
         "<id>`;",
         "  read their output and follow any instruction they print.",
+        "- A message `/plumb <words>` is the owner asking about the project in plain words:",
+        f"  resolve them to records (`{plumb} explain`, `{plumb} status`, `{plumb} show`) "
+        "and",
+        "  answer in the owner's terms, not code terms.",
         "- Only the owner confirms. Relay the owner's own affirming words with `"
         + plumb + " relay`",
         "  (never silence, never your own words); never run approve, revoke, triage "

@@ -126,10 +126,10 @@ def register(ctx: Any) -> None:
                 pass
 
     def command(raw_args: str = "") -> str:
+        # exactly the owner's words: the message is logged as the owner's prompt, so plumb
+        # adds nothing to it (no word of plumb's could then be relayed as the owner's ok)
         words = (raw_args or "").strip() or "status"
-        message = (f"/plumb {words}\n(plumb: answer in my terms; resolve my words to records "
-                   "with plumb resolve, then run the matching plumb command: explain, "
-                   "status --card, review or confirm.)")
+        message = f"/plumb {words}"
         inject = getattr(ctx, "inject_message", None)
         if callable(inject):
             try:
