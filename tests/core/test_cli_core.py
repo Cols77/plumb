@@ -92,8 +92,10 @@ def test_link_cli_target_forms(repo: Path, write_record,
     assert cli.main(["link", "SR-001", "implemented_by", "src/mod.py", *root]) == 0
     assert cli.main(["link", "SR-001", "verified_by", "tests/test_mod.py", "--example", "EX-1",
                      *root]) == 0
-    # symbol and test-node ends are a SHOULD item: rejected as usage errors for now
-    assert cli.main(["link", "SR-001", "verified_by", "tests/test_mod.py::test_x", *root]) == 2
+    # symbol and test-node ends (next-plan I3): a verified_by path::name is a test node
+    assert cli.main(["link", "SR-001", "verified_by", "tests/test_mod.py::test_x", *root]) == 0
+    assert cli.main(["link", "SR-001", "verified_by", "tests/test_mod.py::", *root]) == 2
+    assert cli.main(["link", "SR-001", "verified_by", "tests/test_mod.py::test_no", *root]) == 1
     assert cli.main(["link", "SR-001", "implemented_by", "../outside.py", *root]) == 2
     assert cli.main(["link", "SR-001", "implemented_by", "src/missing.py", *root]) == 1
     assert cli.main(["link", "SR-001", "derives_from", "SR-001", *root]) == 1  # kind matrix

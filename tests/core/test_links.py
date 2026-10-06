@@ -134,7 +134,7 @@ def test_add_link_rejects_bad_kind_and_missing_end(setup: Path) -> None:
     with pytest.raises(links.LinkError):
         core.add_link("SR-001", "verified_by", Target(path="src/mod.py"), example="EX-7")
     with pytest.raises(links.LinkUsageError):
-        links.parse_cli_target("tests/test_x.py::test_y")
+        links.parse_cli_target("src/mod.py::")
     with pytest.raises(links.LinkUsageError):
         links.parse_cli_target("/abs/path.py")
     assert links.parse_cli_target("INT-001") == Target(record="INT-001")
@@ -188,3 +188,35 @@ def test_records_for_paths(setup: Path) -> None:
     assert mapping["src/mod.py"] == ("SR-001",)
     assert mapping[".plumb/requirements/SR-001.md"] == ("SR-001",)
     assert mapping["other.py"] == ()
+
+
+@pytest.mark.sr("SR-058")
+def test_symbol_and_test_node_ends_from_the_cli_form(setup: Path) -> None:
+    (setup / "src" / "mod.py").write_text("def fn():\n    return 1\n\n\ndef g():\n    pass\n",
+                                          encoding="utf-8")
+    (setup / "tests").mkdir()
+    (setup / "tests" / "test_mod.py").write_text(
+        "import pytest\n\n\n@pytest.mark.parametrize('n', [1])\ndef test_fn(n):\n"
+        "    assert n\n", encoding="utf-8")
+    assert links.parse_cli_target("src\\mod.py::fn") == Target(path="src/mod.py", symbol="fn")
+    core = open_core(setup)
+    impl = core.add_link("SR-001", "implemented_by", links.parse_cli_target("src/mod.py::fn"))
+    assert impl.target == Target(path="src/mod.py", symbol="fn")
+    # a verified_by end named path::name is a test node; parametrize ids are dropped
+    ver = core.add_link("SR-001", "verified_by",
+                        links.parse_cli_target("tests/test_mod.py::test_fn[1]"), "EX-1")
+    assert ver.target == Target(test="tests/test_mod.py::test_fn")
+    reread = open_core(setup).index()["SR-001"].links
+    assert [link.target for link in reread] == [impl.target, ver.target]
+    # an edit elsewhere in the file leaves the symbol end current
+    path = setup / "src" / "mod.py"
+    path.write_text(path.read_text(encoding="utf-8").replace("pass", "return 2"),
+                    encoding="utf-8")
+    assert {s.link.id: s.state for s in open_core(setup).link_states()} == {
+        "SR-001#0": "current", "SR-001#1": "current"}
+    # removing the symbol makes the link dangling
+    path.write_text("def g():\n    pass\n", encoding="utf-8")
+    assert _state(open_core(setup), "SR-001#0").state == "dangling"
+    with pytest.raises(links.LinkError):
+        open_core(setup).add_link("SR-001", "implemented_by",
+                                  links.parse_cli_target("src/mod.py::fn"))

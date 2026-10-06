@@ -32,7 +32,7 @@ def test_imports_sr_fields_and_ac_examples(repo: Path, pi_source: Path) -> None:
     assert [e.id for e in record.examples] == ["AC-1", "AC-2", "AC-3", "AC-4", "AC-5", "AC-6"]
     assert record.examples[1].criterion.startswith("Every judgment records")
     assert "Implemented by" in record.body
-    assert report["counts"]["requirement"] == 2
+    assert report["counts"]["requirement"] == 3
 
 
 def test_structured_bindings_become_links_pinned_when_ends_exist(repo: Path,
@@ -81,11 +81,15 @@ def test_legacy_checksum_verified_and_reported(repo: Path, pi_source: Path) -> N
 
 
 def test_all_imported_records_are_proposed(repo: Path, pi_source: Path) -> None:
+    # every record is proposed, except where an upstream human consent pins the current
+    # content (SR-059, next-plan 9.3): those are confirmed by import, nothing else
     import_pi_factory(open_core(repo), pi_source)
     core = open_core(repo)
     statuses = core.status()
-    assert statuses and all(s.confirmation == "proposed" for s in statuses.values())
-    assert [e.kind for e in core.log_read("events")] == ["import"]
+    confirmed = {rid for rid, s in statuses.items() if s.confirmation != "proposed"}
+    assert confirmed == {"SR-077", "SR-078"}
+    assert all(statuses[rid].approved_by == "import" for rid in confirmed)
+    assert [e.kind for e in core.log_read("events")] == ["import", "approval"]
 
 
 def test_upstream_links_resolve_within_the_batch(repo: Path, pi_source: Path) -> None:

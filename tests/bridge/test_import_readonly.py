@@ -41,13 +41,13 @@ def test_dry_run_writes_nothing(repo: Path, pi_source: Path) -> None:
     before = _plumb_files(repo)
     report = import_pi_factory(open_core(repo), pi_source, dry_run=True)
     assert report["dry_run"] is True
-    assert report["counts"] == {"requirement": 2, "feature": 1, "nc": 1}
+    assert report["counts"] == {"requirement": 3, "feature": 1, "nc": 1}
     assert _plumb_files(repo) == before
 
 
 def test_import_event_logged(repo: Path, pi_source: Path) -> None:
     report = import_pi_factory(open_core(repo), pi_source)
-    [entry] = list(open_core(repo).log_read("events"))
+    [entry] = list(open_core(repo).log_read("events", kinds=["import"]))
     assert entry.kind == "import"
     payload = entry.payload
     assert payload["source"] == str(pi_source)
@@ -78,7 +78,7 @@ def test_import_cli(repo: Path, pi_source: Path, capsys) -> None:
     assert cli.main(["import", "pi-agent-factory", str(pi_source), "--dry-run", "--json",
                      "--root", str(repo)]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["dry_run"] is True and data["counts"]["requirement"] == 2
+    assert data["dry_run"] is True and data["counts"]["requirement"] == 3
     assert cli.main(["import", "pi-agent-factory", str(pi_source), "--only", "NC",
                      "--root", str(repo)]) == 0
     out = capsys.readouterr().out

@@ -1568,3 +1568,238 @@ only add what round 2 found new.
   only raw-ID commands; the plain-language path (say it in chat, the agent relays it) exists
   but is not offered. Fix: after each glance and escalation line, also offer "or say 'revoke
   <title>'" or `/plumb confirm ...`.
+
+## Next lane IMPORT (2026-10-06)
+
+Built: I1 to I5 (MUST) and IS1 to IS3 (SHOULD), nothing dropped. The rehearsal (IS2) is in
+`docs/import-rehearsal.md`; one-pass pinning (IS3) took the exported-copy import from 2 min
+14 s to 17 s. Phase 0 had not run when the lane started, so the lane wired its own entry
+points; the coordinator should check them while merging.
+
+- [MEDIUM] (plan 3.2 item 3, phase 0) The `importer/recheck.py` stub and its lazy call from
+  `validate.py` were not in place. IMPORT added `recheck_import_approvals` with a call at
+  the end of `validate()`, and a `by == "import"` branch near the top of
+  `confirm.entry_problem` (both CAPTURE files, away from CAPTURE's hunks). The older
+  `if by == "import": return "... not accepted"` line further down is now dead code, left
+  in place so the merge with CAPTURE's adjacent `auto-jev` branch stays clean. Fix at
+  integration: delete that line.
+- [MEDIUM] (next-plan 9.3, R10.2) `confirm` accepts a `by: import` approval only when it was
+  written right after the `import` event it cites (`prev == import_event`), with every
+  record citing its consent path, consent digest, consented digest, run and upstream hash.
+  The check that the import event approved that exact `{id, hash}` runs in
+  `plumb validate` only. When R10.2 moves the logs to one file per entry, `prev` chaining
+  no longer orders entries: replace it with a check that has the log context (for example
+  in `checked_entries`).
+- [MEDIUM] Stale links left for the coordinator, because their records are not IMPORT's and
+  CAPTURE also edits the same files: SR-004#1, SR-005#3, SR-030#2 (`confirm.py`), SR-030#10
+  (`validate.py`), SR-025#2 and SR-025#3 (`tests/core/test_cli_core.py`). Repin them after
+  the merge. IMPORT repinned only links whose ends it changed and reviewed: SR-002, SR-003,
+  SR-023, and DEC-011#1, which decides SR-023 (DEC-011 deferred `by: import` to this
+  importer).
+- [MEDIUM] (owner glance) SR-023's statement now says that every record is imported
+  proposed except a requirement whose upstream consent pins its current content
+  (SR-059). It stays proposed.
+- [MEDIUM] (performance, R5 budgets at pi-agent-factory scale) On the exported copy,
+  `plumb drift` takes 10 to 23 s and `plumb status` 11.7 s. Most of that time is in
+  `verify/testmap.verified_tests` (5.2 s of a 10 s drift, quadratic in links). Symbol ends
+  add about 1.3 s, because each call re-reads and hashes its file before the parse cache
+  hit. Fix: index `verified_tests` once per map; add a stat-keyed digest cache in front of
+  the content-keyed parse cache.
+- [LOW] `tests/core/test_cli_core.py` (coordinator-owned) changed with I3: `plumb link ...
+  path::name` is now accepted (a test node for `verified_by`, a symbol otherwise), and an
+  empty name after `::` is a usage error.
+- [LOW] (concept 4.5) The link table says `relates_to` goes from SR to SR. `links.ALLOWED`
+  now also allows a path, for an imported `spec:<id>` relation (next-plan 9.1). Add the row
+  to the concept (coordinator, `docs/**`).
+- [LOW] (claims) Fixture and helper files are declared as `implemented_by` ends: the consent
+  fixtures and the fixture SR-078 for SR-059, and `tests/importer/importer_helpers.py` for
+  SR-060. This way their changes select the importer tests, and `verified_by` never points
+  pytest at a JSON file. A support-file link kind, or an owner-approved exempt glob for
+  `tests/**/fixtures/**`, would say it better.
+- [LOW] (IS1) The claims import adds the upstream exempt globs (for example `**/*.md`) to
+  the target's `.plumb/claims.yaml` with no owner step. At F4, the owner should review the
+  merged policy before `require_trailer` gates commits.
+- [LOW] (I3) Resolving a symbol end ignores the module part of `module:Qual.name`. A name
+  that is only re-exported (imported, never defined in the file) falls back to the whole
+  file and is reported as `symbol-narrowed`.
+- [LOW] `plumb link --help` (CAPTURE's `commands.py`) still says "record ID or
+  repository-relative path". Add `path::Qual.name`.
+- [LOW] Pre-existing, not IMPORT's: `tests/core/test_primitives.py::
+  test_every_route_names_a_module_path` already fails on the lane's base commit 9dd86c6.
+
+## IMPORT lane review (2026-10-06): medium and low findings
+
+Two HIGH findings were fixed in the lane: a `by: import` approval now confirms only what an
+earlier `import` event written outside the agent session approved at that hash (checked in
+`confirm.checked_entries`, so status, hooks, merge and validate agree), and the import
+writes its approvals only after the owner answers `approvals.require_owner` in their own
+terminal (refused under the agent marker; the records then arrive proposed with an
+`approval-withheld` finding). The rest is recorded here.
+
+- [MEDIUM] (`src/plumb/importer/apply.py`) When `_links` updates a record, it re-pins every
+  existing link the import does not own (`derives_from` and the like) to the new record hash
+  and the end's current hash. Staleness that no judgment resolved disappears, with no repin
+  event and no M2 glance ("repinned without a judgment"). Example: SR-X `derives_from
+  INT-5`, INT-5 changes, drift reports the link stale; a re-import that updates SR-X re-pins
+  it silently. Re-pin only the links the import owns, or log the re-pin as one.
+- [MEDIUM] (`src/plumb/importer/pi_factory.py`) A partial import (`--only FEAT`, or a source
+  whose features list SRs that were skipped or absent) writes features whose `requirements`
+  name records that do not exist, so `plumb validate` reports errors ("requirement SR-00x
+  does not exist") instead of the importer reporting membership findings. Seen with the
+  fixture source (10 FEAT-001 errors). Filter `requirements` to known IDs and report a
+  missing-end or membership finding for the rest.
+- [MEDIUM] (`src/plumb/importer/plan.py`) Re-importing an unchanged upstream source turns
+  local plumb-side changes into an `update`: the plan compares with the target's current
+  file, not with the previous import's `upstream_hash`. A local edit to an imported record,
+  or an `implemented_by`/`verified_by`/`upstream`/`relates_to`/`corrects` link added in
+  plumb (all import-owned kinds), is reverted or stripped on the next import, and the
+  owner's confirmation no longer pins the record. The dry-run diff shows it but does not
+  tell a local edit from an upstream change. When `source.upstream_hash` is unchanged, treat
+  the record as unchanged (or emit a local-divergence finding) and keep links the import did
+  not originally write.
+- [MEDIUM] (`src/plumb/importer/recheck.py`, trust model) Fixed in part by the HIGH fixes:
+  a `by: import` approval now needs no agent marker and the owner's terminal answer. Still
+  open: consent validity rests on the shape of a JSON file in the source tree, so an owner
+  who imports a tree an agent could write to confirms whatever consent it holds. Show the
+  consent files' paths and reasons in the terminal question, and list `by: import`
+  approvals with their source tree in the merge-boundary glance (MERGE lane).
+- [MEDIUM] (`src/plumb/confirm.py`, integration) The lane edited CAPTURE-owned `confirm.py`
+  and `validate.py`, and coordinator-owned `tests/core/test_cli_core.py`, outside the plan's
+  ownership table (3.1), because the phase-0 recheck stub was missing. The HIGH fix adds the
+  `imports` context to `entry_problem` and `checked_entries`. lane/capture rewrites the same
+  functions (auto-jev branch, `remaining_entries`). At integration keep IMPORT's early
+  `by: import` branch and the `imports` map in `checked_entries`, delete the dead branch,
+  and run `tests/importer/test_provenance.py` after the merge; otherwise every `by: import`
+  approval fails, or forged ones confirm again.
+- [MEDIUM] (performance, `docs/import-rehearsal.md`, R5 budgets) At pi-agent-factory scale
+  on the imported copy, `plumb drift` takes 10 to 23 s and `plumb status` 11.7 s, far above
+  the seconds budget for anything a per-turn hook or status line calls; validate went from
+  1.2 s to 3.2 s. Most of it is VERIFY's quadratic `verified_tests`; symbol ends add about
+  1.3 s by re-reading and hashing each file before the content-keyed parse cache. After F4
+  this blocks the migration target. Fix: a stat-keyed digest cache in front of
+  `hashing._parse` (IMPORT), and index `verified_tests` once per map (MERGE/VERIFY).
+- [LOW] (`src/plumb/confirm.py`) The second `if by == "import": return "import approvals
+  are not accepted in this build"` branch is unreachable dead code that misleads readers.
+  Remove it at integration.
+- [LOW] (`src/plumb/importer/claims.py`) `plan_claims` overwrites the target's claims
+  `epoch` with upstream's and adds upstream exempt globs (for example `**/*.md`) to
+  `.plumb/claims.yaml` with no owner step. A target with its own epoch then checks claims
+  from a different starting commit, and the docs-wide exemptions silently widen what needs
+  no `SR:` trailer. Keep the target's epoch and make the merged policy an owner step.
+- [LOW] (`src/plumb/hashing.py`) `find_definition` searches only the direct bodies of
+  module, class and def nodes. A symbol or test defined under `if`/`try` (`if
+  TYPE_CHECKING:`, `try: ... except ImportError:`, platform-conditional tests) resolves as
+  missing: a `symbol-narrowed` finding at import, or `plumb link` exit 1, though the
+  definition exists.
+- [LOW] (`docs/import-rehearsal.md`) The rehearsal ran before the owner-terminal step: its
+  9 `by: import` approvals were written without a terminal question. A rehearsal now run
+  from a script or an agent shell gets `approval-withheld` and proposed records instead;
+  re-run the approval part in the owner's terminal.
+- [LOW] (tests) `tests/importer/test_claims.py` shared its basename with
+  `tests/bridge/test_claims.py`, so collecting both directories in one pytest run failed
+  ("import file mismatch"). Renamed to `tests/importer/test_import_claims.py` (SR-058 links
+  follow). `tests/bridge/test_fidelity.py::test_merge_lists_unjudged_fidelity` already fails
+  on lane commit 61697ea (`validate --merge` exits 5, the verification hold, not 4); not
+  IMPORT's, check it at integration.
+
+## IMPORT lane review, round 2 (2026-10-06): ownership and claims-range fixes
+
+Two HIGH findings were fixed in the lane.
+
+1. **The import lane's approval re-check broke the ownership contract (plan 3.1).** Guarantee:
+   `confirm.checked_entries` re-checks every approval source, and IMPORT's `by: import`
+   re-check never shares lines with CAPTURE's re-checks there, so the integration merge
+   cannot drop either one. Entry points that confirm through it: `Core.status` and
+   `confirmation_of` (status, brief, hooks, merge), `plumb validate`, and
+   `recheck_import_approvals`. Fix at one choke point: the `by: import` approval now carries
+   a copy of the `import` event it cites (`import_entry`), so
+   `importer.recheck.import_problem` checks it from the entry alone. The copy must hash to
+   the cited digest, which must be the approval's `prev`. The event must have been written
+   outside the agent marker, and it must approve each `{id, hash}`. `checked_entries` and
+   `entry_problem`'s signature are back to the base commit 9dd86c6. `confirm.py` keeps only
+   the module docstring lines and the early `by == "import"` branch. `git merge-tree` of the
+   lane with lane/capture and lane/hosts no longer conflicts in `src/plumb/confirm.py` or
+   `src/plumb/validate.py`. Tests: `test_checked_entries_rechecks_import_and_auto_jev_approvals`
+   runs a real `by: import` approval and an uncalibrated `auto-jev` approval through
+   whichever `checked_entries` the branch has. Before the CAPTURE merge the auto-jev entry
+   has an unknown source; after it, CAPTURE's recheck refuses it. Run it right after the
+   CAPTURE merge. `test_hand_written_approval_with_a_made_up_event_is_flagged` covers the
+   one case the confirmation path cannot see without log context: a hand-written log line
+   carrying an import event that was never written. It confirms, but `plumb validate`
+   reports it ("not the log entry right before it") and the broken hash chain. This is
+   tamper-evident, as concept 4.6 states, and no weaker than before: an agent that writes
+   outside the marker can forge both entries either way. This supersedes two earlier
+   entries in this file: the "IMPORT lane review" MEDIUM about keeping the `imports` map in
+   `checked_entries`, and the 9.3 note asking for a check with log context.
+2. **The lane's commit range failed `plumb claims check --range 9dd86c6..HEAD`.**
+   `tests/importer/test_claims.py` was added in e4105c9 and renamed in 3a02f02. The check
+   itself enumerated every entry point of the class (a path in the range that no longer
+   exists at HEAD): only these two commit/path pairs. Fixed with NC-0002
+   (`.plumb/ncs/NC-0002.md`, open) and two NC-backed baseline entries in
+   `.plumb/claims.yaml`; the check now reports no undeclared path. **Known integration
+   conflict:** lane/capture also replaced the `baseline: []` line (NC-0001, its skill
+   template move), so `.plumb/claims.yaml` conflicts when CAPTURE merges after IMPORT.
+   Resolve it by keeping all three entries. The class fix belongs in MERGE-owned
+   `claims.claims_check`: a path renamed or deleted later in the range should count as
+   declared when its successor is declared at HEAD, or when the claiming record declared it
+   at that commit. Once that lands, NC-0001, NC-0002 and their baseline entries can be
+   closed. Coordinator decision.
+
+Medium and low findings from the same review:
+
+- [MEDIUM] (`src/plumb/hashing.py`) Test-node ends now hash the Python AST segment. This
+  changes the meaning of existing `test:` ends with no migration. A test node in a
+  non-Python file (one that fails `ast.parse`) now returns None, so the link dangles;
+  before, the whole file was hashed. Existing approvals' `verified` pins of test-node ends
+  were whole-file digests and no longer match. Example: a requirement the owner confirmed
+  before the upgrade, with `verified_by test: tests/x.py::test_a`, is reported by
+  `confirm.changed_tests` as changed. Status and merge then ask for re-approval, and the
+  link shows target-moved until it is repinned. A `verified_by` node in a .ts or .js test
+  file (pi-agent-factory has pi-ext TS tests) is always missing. Plumb's own log has no
+  `verified` pins, so dogfooding does not show it.
+- [MEDIUM] (`src/plumb/importer/plan.py`) A re-import treats every
+  `implemented_by`/`verified_by`/`upstream`/`relates_to` link on an imported SR (and
+  `corrects` on an NC) as import-owned, so it removes any such link added later in plumb
+  with `plumb link`. Example: import SR-077, run `plumb link SR-077 implemented_by
+  src/new.py`, then re-import the same source. The plan marks SR-077 `update` with
+  `- link implemented_by src/new.py`, and apply drops that link. After the fork
+  (decision 9), a refresh from pi-agent-factory silently loses plumb-side traceability,
+  which shows only as one diff line.
+- [MEDIUM] (`src/plumb/importer/claims.py`) An import (agent-runnable, no owner gate)
+  merges the source's `exempt` globs and baseline entries into the target's
+  `.plumb/claims.yaml`, which weakens the claims check with no owner confirmation. The
+  merge boundary gates new `trace.exempt` config globs (merge.py ~395) but not claims.yaml
+  exemptions or baseline entries. Example: `plumb import pi-agent-factory <src>` writes 8
+  exempt globs and 371 baseline entries; later `plumb claims check` stops flagging
+  undeclared paths that match them, and nothing asks the owner.
+- [MEDIUM] (`src/plumb/importer/apply.py`, plan 9.3) Plan 9.3 says the importer writes the
+  `by: import` approval directly from upstream consent. The lane first asks the owner a y/N
+  in their own terminal (`require_owner`). This is stricter, consistent with R2, and stated
+  in SR-059, but it changes the contract. If the coordinator or an agent shell re-runs the
+  rehearsal recipe or the F4 import, it gets `approval-withheld` and every record arrives
+  proposed, which contradicts the rehearsal doc's DoD-3 table. Re-run the approval step in
+  the owner's terminal and update `docs/import-rehearsal.md` at integration.
+- [MEDIUM] (`src/plumb/confirm.py`, integration) The phase-0 recheck stub was missing, so
+  the lane edited CAPTURE-owned `confirm.py` and `validate.py` and coordinator-owned
+  `tests/core/test_cli_core.py`. With fix 1 above, those edits no longer conflict, but a
+  hand resolution could still drop the early `by == "import"` branch in `entry_problem`.
+  Every legitimate `by: import` approval would then fail ("unknown source", or the dead
+  "not accepted" branch). Run `tests/importer/test_provenance.py` right after the CAPTURE
+  merge (integration order: IMPORT, then CAPTURE).
+- [LOW] (`docs/import-rehearsal.md`) The rehearsal record reports 9 requirements "confirmed
+  by import" from an agent-run import. That predates 3a02f02, which gates `by: import`
+  approvals behind `approvals.require_owner`. Run by the agent now, it would show 0
+  approvals and an `approval-withheld` finding, so the documented DoD 9.5 item 3 result
+  cannot be reproduced as written.
+- [LOW] (`src/plumb/importer/cli.py`) `--only` silently drops unknown kinds, so a typo
+  imports nothing (or less than asked) and still exits 0. Example: `plumb import
+  pi-agent-factory <src> --only SRS` leaves `wanted` empty, so the plan has 0 records; it
+  prints "0 created ... 0 finding(s)" with no usage error.
+- [LOW] (`src/plumb/hashing.py`) A `test:` end without `::` used to hash its whole file. It
+  now goes through `hash_test_node`, gets an empty qualname and resolves as missing
+  (dangling). Every test-node pin also switches from a whole-file hash to a
+  function-segment hash, so all existing test-node links in other plumb repositories go
+  stale at once after the upgrade. Example: a hand-written `verified_by: {test:
+  tests/test_x.py}` link dangles after this lane merges, and pinned test-node links report
+  `target moved` until they are repinned. Plumb's own records have no such link (all 33
+  test ends carry `::`).

@@ -11,8 +11,10 @@ from the records' current hashes and the ``approval`` and ``revocation`` events.
   existing test.
 
 An approval that fails its re-check (an owner approval written under the agent session marker,
-or an agent-relayed approval without its cited prompt, affirming quote or quote digest) never
-confirms anything; ``plumb validate`` reports it as an error.
+an agent-relayed approval without its cited prompt, affirming quote or quote digest, or a
+``by: import`` approval that the import event it carries, written outside the agent session,
+did not approve: ``importer/recheck.py``) never confirms anything; ``plumb validate`` reports
+it as an error.
 """
 
 from __future__ import annotations
@@ -51,6 +53,10 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
                                      "prev": entry.prev}):
         return f"{entry.kind} entry does not match its digest (modified)"
     by = payload.get("by")
+    if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)
+        from plumb.importer.recheck import import_problem
+
+        return import_problem(entry)  # self-contained: needs no log context
     if by == "owner":
         if entry.marker != "none":
             return (f"owner {entry.kind} written under the agent session marker "
