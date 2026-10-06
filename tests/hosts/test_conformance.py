@@ -46,3 +46,18 @@ def test_same_output_for_every_host(repo: Path, write_record, tmp_path: Path) ->
     assert first[4][2] is None                            # never while continuing
     for host in HOSTS[1:]:
         assert results[host] == first, host
+
+
+def test_no_adapter_imports_another_adapter() -> None:
+    """sp4 8.5: adapters share only plumb.hosts.common and plumb.hosts.neutral."""
+    import re
+
+    import plumb.hosts as hosts
+
+    base = Path(hosts.__file__).parent
+    for adapter in ("codex", "pi", "hermes"):
+        for path in (base / adapter).rglob("*.py"):
+            text = path.read_text("utf-8")
+            others = {"codex", "pi", "hermes", "claude_code"} - {adapter}
+            for other in others:
+                assert not re.search(rf"plumb\.hosts\.{other}\b", text), (path, other)

@@ -109,7 +109,8 @@ const pi = { on: (e, h) => (handlers[e] = h), sendMessage: (m, o) => sent.push({
   sendUserMessage: (t) => sent.push({ user: t }), registerCommand: (n, o) => (commands[n] = o) };
 mod.default(pi);
 const ctx = { cwd, hasUI: true, sessionManager: { getSessionId: () => "s1" },
-  ui: { setStatus: (k, v) => notes.push(["status", v]), notify: (t) => notes.push(["notify", t]) } };
+  ui: { setStatus: (k, v) => notes.push(["status", v]),
+        notify: (t) => notes.push(["notify", t]) } };
 await handlers.session_start({ reason: "startup" }, ctx);
 const injected = await handlers.before_agent_start({ prompt: "hello" }, ctx);
 await handlers.agent_end({}, ctx);
