@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from plumb.approvals import owner_terminal_answer as REAL_TERMINAL_CHECK
 from plumb.contracts import FullPending, NodeEvidence, Selection
 
 SR1 = """---
@@ -75,3 +76,31 @@ class QuietVerify:
 
     def tests_for(self, refs: Iterable[str]) -> Mapping[str, tuple[str, ...]]:
         return {r: () for r in refs}
+
+
+def snapshot(root: Path) -> dict[str, bytes]:
+    """Every file under ``root`` except .git, by relative path."""
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*"))
+            if p.is_file() and ".git" not in p.relative_to(root).parts}
+
+
+def approve_in_agent_shell(root: Path, monkeypatch, env: Mapping[str, str]) -> int:
+    """``plumb approve SR-001`` as an agent's shell runs it on a host: the environment the
+    adapter gives (``env``), no terminal, a piped "y", and the real terminal check."""
+    import io
+
+    from plumb import approvals, cli
+
+    monkeypatch.setattr(approvals, "owner_terminal_answer", REAL_TERMINAL_CHECK)
+    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr("sys.stdin", io.StringIO("y\ny\n"))
+    monkeypatch.chdir(root)
+    return cli.main(["approve", "SR-001"])
+
+
+def approvals_written(root: Path) -> list:
+    from plumb.api import open_core
+
+    return list(open_core(root).log_read("events", ["approval"]))

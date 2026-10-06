@@ -121,14 +121,19 @@ def read_text(path: Path) -> str | None:
 
 def write_file(root: Path, path: Path, content: str, report: InstallReport,
                dry_run: bool) -> None:
-    """Write ``content`` when it differs (LF line endings)."""
+    """Write ``content`` when it differs, keeping the file's own line endings (CRLF stays
+    CRLF; new files get LF)."""
     if read_text(path) == content:
         return
     report.changed.append(rel(root, path))
     if dry_run:
         return
+    try:
+        crlf = b"\r\n" in path.read_bytes()
+    except OSError:
+        crlf = False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8", newline="\n")
+    path.write_text(content, encoding="utf-8", newline="\r\n" if crlf else "\n")
 
 
 def remove_file(root: Path, path: Path, report: InstallReport, dry_run: bool) -> None:
@@ -283,3 +288,47 @@ def prompt_lines(root: Path, prompt_hook: bool, how: str) -> list[str]:
 def installed_hosts(root: Path, detectors: Iterable[tuple[str, Callable[[Path], bool]]],
                     skip: str) -> list[str]:
     return [name for name, installed in detectors if name != skip and installed(root)]
+
+
+# --------------------------------------------------------------------------- shared block
+
+# What each adapter leaves in the repository, by path only (no adapter imports another).
+ADAPTER_FILES = {
+    "codex": (".codex/hooks.json", ".codex/config.toml"),
+    "pi": (".pi/extensions/plumb/index.ts",),
+    "hermes": (".hermes/plugins/plumb/plugin.yaml",),
+}
+
+
+def adapter_installed(root: Path, host: str) -> bool:
+    """Whether ``host``'s adapter files carry plumb's entries."""
+    for name in ADAPTER_FILES.get(host, ()):
+        path = root / name
+        text = read_text(path) if path.exists() else None
+        if text is None:
+            continue
+        if host != "codex" or "plumb hook" in text or "# >>> plumb" in text:
+            return True
+    return False
+
+
+def context_file(root: Path, host: str) -> Path:
+    """The always-loaded instruction file: ``AGENTS.md`` (Codex, Pi; Hermes too unless the
+    project uses ``.hermes.md`` or ``HERMES.md``, which Hermes loads first)."""
+    if host == "hermes":
+        for name in (".hermes.md", "HERMES.md"):
+            if (root / name).exists():
+                return root / name
+    return root / "AGENTS.md"
+
+
+def remove_shared_block(root: Path, host: str, report: InstallReport, dry_run: bool) -> None:
+    """Remove the instruction block unless another installed adapter still reads it."""
+    path = context_file(root, host)
+    others = [h for h in HOSTS if h != host and adapter_installed(root, h)
+              and context_file(root, h) == path]
+    if others:
+        report.lines.append(f"{rel(root, path)} block kept: still used by "
+                            + ", ".join(others))
+        return
+    remove_block(root, path, report, dry_run)
