@@ -103,6 +103,33 @@ def _show(core: Core, commit: str, rel: str) -> str | None:
     return result.stdout.decode("utf-8", "replace")
 
 
+def show_many(core: Core, commit: str, rels: Sequence[str]) -> dict[str, str | None]:
+    """Each of ``rels`` as it was at ``commit`` (None when absent), with ONE ``git cat-file
+    --batch`` process instead of one ``git show`` per path."""
+    rels = list(dict.fromkeys(rels))
+    if not rels:
+        return {}
+    prefix = _git(core, "rev-parse", "--show-prefix", check=False).strip()
+    request = "".join(f"{commit}:{prefix}{rel}\n" for rel in rels).encode("utf-8")
+    result = subprocess.run(["git", "cat-file", "--batch"], cwd=core.root, input=request,
+                            capture_output=True)
+    if result.returncode != 0:
+        return {rel: _show(core, commit, rel) for rel in rels}
+    out: dict[str, str | None] = {}
+    data, pos = result.stdout, 0
+    for rel in rels:
+        end = data.index(b"\n", pos)
+        header = data[pos:end].split()
+        pos = end + 1
+        if len(header) != 3 or header[1] in (b"missing", b"ambiguous"):
+            out[rel] = None
+            continue
+        size = int(header[2])
+        out[rel] = data[pos:pos + size].decode("utf-8", "replace")
+        pos += size + 1
+    return out
+
+
 def base_config(core: Core, fork: str) -> Any:
     """The config at the merge base (defaults when it had no ``.plumb/config.yaml``)."""
     from plumb.config import Config, config_from_mapping
@@ -152,14 +179,13 @@ def extended_requirements(core: Core, fork: str,
     changed = {clean_rel_path(p) or p for p in paths}
     approved: dict[str, set[str]] | None = None
     out: dict[str, list[str]] = {}
-    for record in core.index().values():
-        if record.kind != "requirement" or record.path not in changed:
-            continue
+    candidates = [r for r in core.index().values()
+                  if r.kind == "requirement" and r.path in changed and owning_ends(r)]
+    texts = show_many(core, fork, [r.path for r in candidates])
+    for record in candidates:
         now = owning_ends(record)
-        if not now:
-            continue
         before: list[str] = []
-        text = _show(core, fork, record.path)
+        text = texts.get(record.path)
         if text is not None:
             try:
                 before = owning_ends(parse_record(text, record.path))
@@ -294,30 +320,6 @@ def changed_test_lines(core: Core, fork: str, record_id: str,
     return lines
 
 
-def _approval_rows(core: Core, base_digests: set[str]) -> list[dict[str, Any]]:
-    rows = []
-    for entry in core.events():
-        if entry.kind not in ("approval", "revocation") or entry.digest in base_digests:
-            continue
-        payload: Mapping[str, Any] = entry.payload
-        rows.append({"kind": entry.kind, "by": payload.get("by"), "at": entry.at,
-                     "records": [r.get("id") for r in payload.get("records") or []
-                                 if isinstance(r, Mapping)]
-                     + ([f"trace.exempt {' '.join(map(str, payload['exempt']))}"]
-                        if payload.get("exempt") else []),
-                     "quote": payload.get("quote"), "prompt_digest": payload.get("prompt_digest"),
-                     "marker": entry.marker})
-    return rows
-
-
-def _fidelity(core: Core, touched: Sequence[str]) -> list[str] | None:
-    try:
-        from plumb.judgment.fidelity import unjudged
-    except ImportError:
-        return None
-    return list(unjudged(core, touched))
-
-
 def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
                   fork: str) -> dict[str, Any]:
     """The verification part of the boundary. Its guarantee: the merge is never green unless
@@ -373,154 +375,16 @@ def failing_line(record_id: str, item: Mapping[str, Any]) -> str:
 
 
 def merge_check(core: Core, base: str, *, as_json: bool) -> int:
-    """Run the merge-boundary checks against ``base``; prints a report; returns the exit."""
-    try:
-        _git(core, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
-        paths, messages = changed_paths(core, base)
-    except (GitError, OSError) as exc:
-        print(f"plumb: cannot read the range {base}..HEAD: {exc}")
-        return 2
-    from plumb.approvals import approved_exempt
-    from plumb.trace import untraced_paths
+    """``plumb validate --merge BASE``: the report-only form of ``plumb merge-check`` (sp3 9).
 
-    fork = _git(core, "merge-base", base, "HEAD").strip()
-    touched = touched_requirements(core, paths, messages)
-    required = required_records(core, touched)
-    statuses = core.status(required)
-    extended = extended_requirements(core, fork, paths)
-    awaiting = [(i, CHANGED_TEST if statuses[i].changed_tests else statuses[i].confirmation)
-                for i in required if statuses[i].confirmation != "confirmed"]
-    awaiting += [(i, "extended") for i in required
-                 if i in extended and statuses[i].confirmation == "confirmed"]
-    # the owner's exemptions: those at the merge base and those the owner confirmed; a glob
-    # added in the range waits for the owner, and the base config's layout still counts
-    before = base_config(core, fork)
-    seen = set(before.trace.exempt) | approved_exempt(core)
-    current_globs = [str(g) for g in core.config.trace.exempt]
-    new_exempt = [g for g in current_globs if g not in seen]
-    honoured = [g for g in current_globs if g in seen]
-    untraced = untraced_paths(core, paths, configs=[core.config, before], exempt=honoured)
-    integrity, base_digests = log_integrity(core, base)
-    approvals = _approval_rows(core, base_digests.get("events", set()))
-    fidelity = _fidelity(core, touched)
-    verification = _verification(core, touched, paths, fork)
-    regressions = verification.get("regressions") or []
-    failing = verification.get("failing") or {}
-    unverified = verification.get("unverified") or {}
-    full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
-    waits = bool(awaiting or untraced or new_exempt)
-    if integrity:
-        code = 1
-    elif regressions or failing or unverified or full_held:
-        code = EXIT_REGRESSION
-    else:
-        code = EXIT_MERGE_WAITS if waits else 0
+    It is ``plumb.boundary.merge_report(run_full=False)`` printed by ``render`` (or as JSON),
+    so the two commands never disagree on the same tree. Returns the exit code."""
+    from plumb.boundary import as_dict, merge_report, render
 
+    report = merge_report(core, base, run_full=False)
     if as_json:
-        print(json.dumps({
-            "base": base, "changed": paths, "touched": touched, "required": required,
-            "awaiting": [{"id": i, "state": s, "new_ends": extended.get(i, []),
-                          **({"changed_tests": list(statuses[i].changed_tests)}
-                             if statuses[i].changed_tests else {})}
-                         for i, s in awaiting],
-            "untraced": untraced, "new_exempt": new_exempt,
-            "approvals": approvals,
-            "fidelity": "unavailable" if fidelity is None else fidelity,
-            "verification": verification, "log_integrity": integrity, "exit": code,
-        }, indent=2, default=str))
-        return code
-
-    print(f"plumb merge boundary: {base}..HEAD plus uncommitted changes")
-    print("touched requirements: " + (", ".join(touched) if touched else "none"))
-    if untraced:
-        print("untraced changes (no requirement owns them): " + ", ".join(untraced))
-    if waits:
-        print("merge waits for your confirmation:")
-        for record_id, state in awaiting:
-            for line in _describe(core, record_id, state, extended.get(record_id, ())):
-                print(line)
-            if state == CHANGED_TEST:
-                for line in changed_test_lines(core, fork, record_id,
-                                               statuses[record_id].changed_tests):
-                    print(line)
-        for path in untraced:
-            print(f"  untraced {path}: no read-back or example covers this change")
-        for glob in new_exempt:
-            print(f"  trace.exempt {glob}: added in this range; it exempts paths from any "
-                  "requirement and is not honoured until you confirm it")
-        if awaiting:
-            ids = " ".join(i for i, _ in awaiting)
-            print(f"plumb: merge waits for your confirmation: `plumb approve {ids}`, or say ok "
-                  "in the session")
-        if new_exempt:
-            print("plumb: to keep the new trace.exempt globs, `plumb approve --exempt`, or say "
-                  "ok to the exemption in the session; otherwise remove them")
-        if untraced:
-            print("plumb: for the untraced changes, ask the agent to read them back and record "
-                  "a proposed SR linked implemented_by them, then confirm it; or, if they need "
-                  "no requirement, list them under trace.exempt in .plumb/config.yaml and "
-                  "confirm that with `plumb approve --exempt`")
+        print(json.dumps(as_dict(report), indent=2, default=str))
     else:
-        print("confirmation: every touched requirement is confirmed")
-    if approvals:
-        print("approvals in range (for a glance):")
-        for row in approvals:
-            records = ", ".join(map(str, row["records"]))
-            line = f"  {row['kind']} {row['by']} {records} at {row['at']}"
-            if row["by"] == "agent-relayed":
-                line += (f" | AGENT-RELAYED quote \"{row['quote']}\" prompt "
-                         f"{str(row['prompt_digest'])[:19]}")
+        for line in render(report):
             print(line)
-    else:
-        print("approvals in range: none")
-    if fidelity is None:
-        print("fidelity: unavailable")
-    elif fidelity:
-        for sr in fidelity:
-            print(f"fidelity (advisory): {sr} unjudged, drifts or unsure: plumb fidelity {sr}")
-    else:
-        print("fidelity: every touched requirement judged")
-    if not verification.get("available"):
-        print("verification: unavailable")
-    elif verification.get("full_pending"):
-        reasons = ", ".join(verification.get("full_pending_reasons") or [])
-        if verification.get("full_waived"):
-            print(f"verification: full verification pending ({reasons}); waived by the owner "
-                  "for this exact change")
-        else:
-            print(f"verification: full verification pending ({reasons}); it holds the merge "
-                  "until a full run passes (plumb tests run --full), or the owner waives it for "
-                  f"this change in their own terminal (plumb tests waive --merge {base} "
-                  "--reason ...)")
-    else:
-        print("verification: no full verification pending")
-    if verification["confirmed_not_covered"]:
-        print("confirmed but not covered: " + ", ".join(verification["confirmed_not_covered"]))
-    for record_id, items in failing.items():
-        for item in items:
-            print("failing acceptance tests: " + failing_line(record_id, item))
-    for record_id, items in unverified.items():
-        for item in items:
-            examples = " ".join(item.get("examples") or ())
-            what = "never run" if item.get("state") == "none" else "stale since its last pass"
-            print("unverified acceptance tests: " + " ".join(
-                p for p in (record_id, examples, str(item.get("test")), f"({what})") if p))
-    affected = verification.get("affected") or []
-    if affected:
-        print("acceptance tests this change can affect (other requirements): "
-              + ", ".join(affected))
-    if failing or unverified:
-        print("verification holds the merge: every acceptance test the change can affect "
-              "needs a passing run on the current code (plumb tests run --nodes <test>)")
-    if regressions:
-        shown = ", ".join(regressions[:5]) + (f" +{len(regressions) - 5} more"
-                                              if len(regressions) > 5 else "")
-        print(f"regression: {shown} passed in an earlier run and now fails; the merge waits "
-              "until a run passes them (plumb tests run --nodes <id>), or the owner decides")
-    if integrity:
-        print("log integrity: FAILED")
-        for problem in integrity:
-            print(f"  {problem}")
-    else:
-        print("log integrity: ok")
-    return code
+    return report.exit

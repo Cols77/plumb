@@ -139,7 +139,7 @@ def check_msg(root: Path, message: str) -> tuple[int, list[str]]:
     policy = load_policy(root)
     ids = parse_sr_trailer(message)
     if not ids:
-        if policy.require_trailer:
+        if policy.require_trailer and not _generated_over_exempt(root, policy, message):
             return 1, [f"plumb: this commit declares no '{TRAILER_KEY}:' trailer; add a line "
                        f"'{TRAILER_KEY}: SR-0xx' naming the requirements it serves"]
         return 0, []
@@ -149,12 +149,53 @@ def check_msg(root: Path, message: str) -> tuple[int, list[str]]:
                    + ", ".join(malformed)]
     from plumb.api import open_core
 
-    index = open_core(root).index()
+    core = open_core(root)
+    index = core.index()
     unknown = [i for i in ids if i not in index]
     if unknown:
         return 1, [f"plumb: the {TRAILER_KEY}: trailer names unknown record(s): "
                    + ", ".join(unknown) + " (see .plumb/requirements/)"]
-    return 0, []
+    return 0, _serves_warnings(core, ids, staged_paths(root))
+
+
+# git writes these messages itself (revert, merge, fixup/squash/amend for autosquash)
+_GENERATED = re.compile(r"^(?:Revert \"|Merge (?:branch|remote-tracking branch|tag|pull "
+                        r"request|commit|[0-9a-f]{7,})|(?:fixup|squash|amend)! )")
+
+
+def staged_paths(root: Path) -> list[str]:
+    """The paths the commit being written changes (``git diff --cached``), or []."""
+    result = subprocess.run(["git", "diff", "--cached", "--name-only", "--no-renames", "-z"],
+                            cwd=root, capture_output=True)
+    if result.returncode != 0:
+        return []
+    return [p for p in result.stdout.decode("utf-8", "replace").split("\0") if p]
+
+
+def _generated_over_exempt(root: Path, policy: ClaimsPolicy, message: str) -> bool:
+    """A git-generated revert, merge or fixup message whose staged paths are all exempt
+    needs no trailer: like ``plumb claims check``, it claims nothing that needs a claim."""
+    first = message.lstrip().splitlines()[0] if message.strip() else ""
+    if not _GENERATED.match(first):
+        return False
+    paths = staged_paths(root)
+    return bool(paths) and all(exempting_glob(policy, p) is not None for p in paths)
+
+
+def _serves_warnings(core: Any, ids: list[str], paths: list[str]) -> list[str]:
+    """Non-blocking "does this diff serve its claimed SRs?" warnings (R12.3, sp2 10.1) from
+    the capture lane's ``diff_serves``; nothing when it is absent or fails. The exit code
+    and the claims result never depend on it."""
+    if not paths:
+        return []
+    try:
+        from plumb.capture.api import diff_serves
+    except ImportError:
+        return []
+    try:
+        return [str(line) for line in diff_serves(core, ids, paths) or ()]
+    except Exception:
+        return []
 
 
 # --------------------------------------------------------------------------- install-hook

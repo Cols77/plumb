@@ -45,6 +45,15 @@ REWRITTEN = ("import pytest\n\nfrom pkg.mod import add\n\n\n@pytest.mark.sr(\"SR
              "    assert add(0, 0) == 0\n")
 
 
+def _check(root: Path, base: str, *, as_json: bool = False) -> int:
+    """The merge report after the reviewed link ends are repinned (a stale link of a touched
+    requirement holds the merge with exit 1 before verification is read, sp3 5)."""
+    from plumb.links import repin
+
+    repin(open_core(root), all_stale=True)
+    return merge_check(open_core(root), base, as_json=as_json)
+
+
 def _head(root: Path) -> str:
     return subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True,
                           text=True, check=True).stdout.strip()
@@ -106,7 +115,7 @@ def test_a_pass_after_the_test_body_changed_does_not_resolve_a_regression() -> N
 def test_merge_holds_a_regression_hidden_by_rewriting_the_test(confirmed, capsys) -> None:
     root, base = confirmed
     _rewrite_test_to_pass(root)
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base, as_json=False)
     out = capsys.readouterr().out
     assert code == 5, out
     assert ("failing acceptance tests: SR-001 EX-1 tests/test_mod.py (regression, hidden: the "
@@ -122,7 +131,7 @@ def test_merge_holds_a_regression_hidden_by_rewriting_the_test(confirmed, capsys
     # the owner looks and confirms the new test: SR-001 no longer waits; SR-002, whose
     # doubling the subtraction broke, still holds the merge until its test is rerun
     approvals.approve(open_core(root), ["SR-001"])
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base, as_json=False)
     out = capsys.readouterr().out
     assert code == 5, out
     assert "hidden" not in out and "SR-001 (acceptance test changed)" not in out
@@ -134,7 +143,7 @@ def test_merge_waits_for_the_owner_on_a_changed_acceptance_test(confirmed, capsy
     write(root, "tests/test_mod.py", (root / "tests/test_mod.py").read_text("utf-8")
           + "\n\ndef test_add_more():\n    assert add(2, 2) == 4\n")
     assert open_verify(open_core(root)).run(nodes=["tests/test_mod.py"]).ok
-    code = merge_check(open_core(root), base, as_json=True)
+    code = _check(root, base, as_json=True)
     data = json.loads(capsys.readouterr().out)
     assert code == 4, data
     assert data["awaiting"][0]["id"] == "SR-001"
@@ -202,14 +211,14 @@ def test_infrastructure_change_holds_the_merge_until_a_full_run_or_an_owner_waiv
     root, base = confirmed
     write(root, "tests/conftest.py", "import pkg.helper\n\npkg.helper.twice = lambda a: 0\n")
     commit_all(root, "conftest")
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base, as_json=False)
     out = capsys.readouterr().out
     assert code == 5, out
     assert "full verification pending (tests/conftest.py changed); it holds the merge" in out
     assert "acceptance tests this change can affect (other requirements): SR-001, SR-002" \
         in out
     open_verify(open_core(root)).run(nodes=["tests/test_mod.py", "tests/test_helper.py"])
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base, as_json=False)
     out = capsys.readouterr().out
     assert code == 5, out
     assert "failing acceptance tests: SR-002 EX-1 tests/test_helper.py (regression)" in out
@@ -219,7 +228,7 @@ def test_owner_waiver_of_the_full_run_covers_exactly_this_change(confirmed, caps
     root, base = confirmed
     write(root, "pyproject.toml", (root / "pyproject.toml").read_text("utf-8") + "# note\n")
     commit_all(root, "pyproject comment")
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base, as_json=False)
     out = capsys.readouterr().out
     assert code == 5, out
     assert "full verification pending (pyproject.toml changed); it holds the merge" in out
@@ -227,12 +236,12 @@ def test_owner_waiver_of_the_full_run_covers_exactly_this_change(confirmed, caps
     assert cli.main(["tests", "waive", "--root", str(root), "--merge", base,
                      "--reason", "comment only"]) == 0
     capsys.readouterr()
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base, as_json=False)
     out = capsys.readouterr().out
     assert code == 0, out
     assert "waived by the owner for this exact change" in out
     write(root, "src/pkg/lonely.py", "VALUE = 2\n")  # any later edit voids the waiver
-    assert merge_check(open_core(root), base, as_json=False) == 5
+    assert _check(root, base, as_json=False) == 5
     capsys.readouterr()
 
 
@@ -250,7 +259,7 @@ def test_change_to_one_requirement_holds_another_requirements_acceptance_test(
     # add still passes its own tests, but twice() (SR-002) now breaks
     write(root, "src/pkg/mod.py", "def add(a, b):\n    return a + b if a != b else 0\n")
     assert open_verify(open_core(root)).run(nodes=["tests/test_mod.py"]).ok
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base, as_json=False)
     out = capsys.readouterr().out
     assert code == 5, out
     assert "touched requirements: SR-001" in out
@@ -258,7 +267,7 @@ def test_change_to_one_requirement_holds_another_requirements_acceptance_test(
     assert ("unverified acceptance tests: SR-002 EX-1 tests/test_helper.py (stale since its "
             "last pass)") in out
     open_verify(open_core(root)).run(nodes=["tests/test_helper.py"])
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base, as_json=False)
     out = capsys.readouterr().out
     assert code == 5, out
     assert "failing acceptance tests: SR-002 EX-1 tests/test_helper.py (regression)" in out

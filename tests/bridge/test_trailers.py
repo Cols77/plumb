@@ -123,3 +123,71 @@ def test_trailers_cli(repo: Path, write_record, capsys) -> None:
     assert "commit-msg" in capsys.readouterr().out
     assert cli.main(["trailers", "--help"]) == 0
     assert cli.main(["trailers", "bogus"]) == 2
+
+
+# -- MERGE MS3: git's own revert, merge and fixup messages over exempt paths only ---------
+
+
+@pytest.mark.sr("SR-049")
+@pytest.mark.parametrize("message", ['Revert "add docs"\n\nThis reverts commit abc.\n',
+                                     "Merge branch 'feat'\n", "fixup! add docs\n",
+                                     "squash! add docs\n"])
+def test_generated_message_over_exempt_paths_passes(repo: Path, write_record,
+                                                    message: str) -> None:
+    write_record(repo, SR_001)
+    _require(repo)
+    (repo / "docs").mkdir()
+    (repo / "docs" / "guide.md").write_text("g\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    code, lines = check_msg(repo, message)
+    assert code == 0, lines
+    (repo / "src.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "src.py")
+    assert check_msg(repo, message)[0] == 1  # a non-exempt path still needs a trailer
+
+
+@pytest.mark.sr("SR-049")
+def test_plain_message_over_exempt_paths_still_needs_trailer(repo: Path, write_record) -> None:
+    write_record(repo, SR_001)
+    _require(repo)
+    (repo / "docs").mkdir()
+    (repo / "docs" / "guide.md").write_text("g\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    assert check_msg(repo, "update the guide\n")[0] == 1
+
+
+# -- MERGE MS2: "does this diff serve its claimed SRs?" is a non-blocking warning -----------
+
+
+class _FakeCaptureApi:
+    calls: list = []
+
+    @staticmethod
+    def diff_serves(core, sr_ids, paths):
+        _FakeCaptureApi.calls.append((list(sr_ids), list(paths)))
+        return [f"plumb: warning: {sr_ids[0]} may not be served by {paths[0]}"]
+
+
+@pytest.mark.sr("SR-044")
+def test_diff_serves_warning_never_blocks(repo: Path, write_record, monkeypatch) -> None:
+    import types
+
+    write_record(repo, SR_001)
+    (repo / "app.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "app.py")
+    package = types.ModuleType("plumb.capture")
+    monkeypatch.setitem(sys.modules, "plumb.capture", package)
+    monkeypatch.setitem(sys.modules, "plumb.capture.api", _FakeCaptureApi)
+    _FakeCaptureApi.calls = []
+    code, lines = check_msg(repo, "x\n\nSR: SR-001\n")
+    assert code == 0
+    assert lines == ["plumb: warning: SR-001 may not be served by app.py"]
+    assert _FakeCaptureApi.calls == [(["SR-001"], ["app.py"])]
+
+    def boom(core, sr_ids, paths):
+        raise RuntimeError("backend down")
+
+    monkeypatch.setattr(_FakeCaptureApi, "diff_serves", staticmethod(boom))
+    assert check_msg(repo, "x\n\nSR: SR-001\n") == (0, [])
+    monkeypatch.setitem(sys.modules, "plumb.capture.api", None)  # not built: no warning
+    assert check_msg(repo, "x\n\nSR: SR-001\n") == (0, [])
