@@ -1,7 +1,7 @@
 ---
-description: plumb in plain words - status, explain anything, review, confirm, what a change would reach, the Obsidian view
-argument-hint: "status | explain <anything> | review [<anything>] | confirm [<anything>] | impact <anything> | view"
-allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} confirm:*), Bash({plumb} impact:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*)
+description: plumb in plain words - status, explain anything, review, confirm, what a change would reach, the Obsidian view, JEV setup and status
+argument-hint: "status | explain <anything> | review [<anything>] | confirm [<anything>] | impact <anything> | view | jev status | jev setup <provider>"
+allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} confirm:*), Bash({plumb} impact:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -27,5 +27,15 @@ only when asked.
   change would reach.
 - `view`: run `{plumb} view --open` and tell them the Obsidian vault is open (generated;
   editing a note approves nothing).
+- `jev status`: run `{plumb} jev status --probe` and say whether the JEV judge is set
+  up: the provider, the endpoint, where the key comes from (a label: the environment, an env
+  file or the user store; never the key), whether it answered and the model version it
+  resolved. One tiny call; nothing from the repository is sent.
+- `jev setup [openrouter|typesafe]` (also their words, "use OpenRouter for JEV"): run
+  `{plumb} jev setup --provider openrouter --env-var OPENROUTER_API_KEY` (or `--provider
+  typesafe --env-var TYPESAFE_API_KEY`), adding `--env-file <path>` when they name an env
+  file outside the repository that holds the key; it is read there in place and never
+  copied. Then run `{plumb} jev status --probe` and report it. Never ask them to type a
+  command or paste the key; never print, echo or read out the key or the env file.
 
 Change nothing else.

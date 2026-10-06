@@ -1,9 +1,14 @@
 """The optional JEV adapter (spec 8.2): TypeSafe's fast typed-judgment model.
 
-Active only when a key exists in ``TYPESAFE_API_KEY`` or in the user store
-``~/.config/plumb/jev``; a key is never read from inside the repository. The client speaks
-the wire shapes pinned by pi-agent-factory's vendor verification record
-(``POST {base_url}/v1/systemone`` with ``{state, model, questions}``) through
+Active only when a key resolves for the variable ``judgment.jev.credential_env`` names
+(``TYPESAFE_API_KEY``, or ``OPENROUTER_API_KEY`` with ``provider: openrouter``): from the
+process environment, then from the env file the user-level ``~/.config/plumb/jev.json``
+names (read in place, never copied), then from the legacy raw-key store
+``~/.config/plumb/jev``. A key is never read from inside the repository, and never written to
+a log, record, notice or output. The client speaks the Decisions wire shapes pinned by
+pi-agent-factory's vendor verification record (``POST {base_url}{path}`` with
+``{state, model, questions}``; ``/v1/systemone`` at TypeSafe, ``/api/alpha/decisions`` at
+OpenRouter) through
 ``urllib.request``: hard timeout ``judgment.hook_timeout_ms`` in hooks, 10 s on the command
 line, no retries. A missing key, a timeout or any error falls back to the heuristic with one
 notice per session window. Every JEV judgment is logged as a ``judgment`` event carrying its
@@ -30,7 +35,7 @@ from plumb.judgment.model import (
     JudgmentRequest,
     make_record,
 )
-from plumb.judgment.tiers import Thresholds, route
+from plumb.judgment.tiers import Thresholds, route, same_version
 
 API_KEY_ENV = "TYPESAFE_API_KEY"
 SYSTEM_ONE_PATH = "/v1/systemone"
@@ -69,24 +74,103 @@ def credential_env(config: Any) -> str:
     return name if name and name.replace("_", "").isalnum() else API_KEY_ENV
 
 
-def key_source(root: Path | None = None, env: Mapping[str, str] | None = None,
-               name: str = API_KEY_ENV) -> str | None:
-    """``env``, ``user-store`` or None. Never returns the key itself."""
+def user_config_path() -> Path:
+    """The user-level ``jev.json``: ``{"credential_env": NAME, "env_file": PATH}``. It names
+    where the credential lives; it never holds the credential."""
+    return Path.home() / ".config" / "plumb" / "jev.json"
+
+
+def _inside(path: Path, root: Path | None) -> bool:
+    return root is not None and path.resolve().is_relative_to(Path(root).resolve())
+
+
+def user_env_file(root: Path | None = None) -> Path | None:
+    """The env file ``jev.json`` names: absolute, outside the repository, else None."""
+    config = user_config_path()
+    try:
+        if _inside(config, root):
+            return None
+        data = json.loads(config.read_text(encoding="utf-8"))
+        raw = data.get("env_file") if isinstance(data, dict) else None
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        path = Path(raw.strip()).expanduser()
+        if not path.is_absolute() or _inside(path, root):
+            return None  # keys are never repository state
+        return path.resolve()
+    except (OSError, ValueError):
+        return None
+
+
+def parse_env_value(text: str, name: str) -> str | None:
+    """The value of ``name`` in env-file text (``KEY=VALUE`` lines, an optional ``export``,
+    optional quotes; comments and blank lines ignored). The last assignment wins."""
+    found: str | None = None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, sep, value = line.partition("=")
+        if not sep or key.strip() != name:
+            continue
+        value = value.strip()
+        if value[:1] in ("'", '"'):
+            end = value.find(value[0], 1)
+            value = value[1:end] if end > 0 else value[1:]
+        else:
+            value = value.split(" #", 1)[0].split("\t#", 1)[0].strip()
+        found = value
+    return found
+
+
+def _env_file_key(root: Path | None, name: str) -> str | None:
+    path = user_env_file(root)
+    if path is None:
+        return None
+    try:
+        value = parse_env_value(path.read_text(encoding="utf-8-sig"), name)
+    except (OSError, UnicodeDecodeError):
+        return None
+    return value if value is not None and _valid_key(value) else None
+
+
+def _lookup(root: Path | None, env: Mapping[str, str] | None,
+            name: str) -> tuple[str, str] | None:
+    """``(source label, key)``: the process environment, then the user env file, then the
+    legacy raw-key store."""
     value = (os.environ if env is None else env).get(name, "").strip()
     if _valid_key(value):
-        return "env"
-    return "user-store" if _store_key(root) else None
+        return "env", value
+    value = _env_file_key(root, name) or ""
+    if value:
+        return "env-file", value
+    value = _store_key(root) or ""
+    return ("user-store", value) if value else None
+
+
+def key_source(root: Path | None = None, env: Mapping[str, str] | None = None,
+               name: str = API_KEY_ENV) -> str | None:
+    """``env``, ``env-file``, ``user-store`` or None. Never returns the key itself."""
+    found = _lookup(root, env, name)
+    return found[0] if found else None
 
 
 def resolve_key(root: Path | None = None, env: Mapping[str, str] | None = None,
                 name: str = API_KEY_ENV) -> str | None:
-    value = (os.environ if env is None else env).get(name, "").strip()
-    if _valid_key(value):
-        return value
-    return _store_key(root)
+    found = _lookup(root, env, name)
+    return found[1] if found else None
 
 
 # --------------------------------------------------------------------------- client
+
+
+def _usage(raw: Mapping[str, Any]) -> dict[str, int | float]:
+    """The numeric usage fields as sent: token counts stay integers, a gateway's ``cost``
+    stays a float."""
+    return {str(k): v for k, v in raw.items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool)}
 
 
 def _answer(kind: str, raw: Mapping[str, Any]) -> JudgmentAnswer:
@@ -103,11 +187,18 @@ def _answer(kind: str, raw: Mapping[str, Any]) -> JudgmentAnswer:
                                       float(raw["confidence"]))
 
 
-class JevClient:
-    """Minimal ``urllib`` client of ``/v1/systemone``. Never raises: it fails safe."""
+def endpoint_url(base_url: str, path: str | None = None) -> str:
+    """``base_url`` joined with the Decisions ``path`` (one slash between them)."""
+    return base_url.rstrip("/") + "/" + (path or SYSTEM_ONE_PATH).lstrip("/")
 
-    def __init__(self, *, base_url: str, key: str, timeout_s: float) -> None:
-        self.url = base_url.rstrip("/") + SYSTEM_ONE_PATH
+
+class JevClient:
+    """Minimal ``urllib`` client of the Decisions endpoint (``/v1/systemone`` at TypeSafe,
+    ``/api/alpha/decisions`` at OpenRouter). Never raises: it fails safe."""
+
+    def __init__(self, *, base_url: str, key: str, timeout_s: float,
+                 path: str = SYSTEM_ONE_PATH) -> None:
+        self.url = endpoint_url(base_url, path)
         self.key = key
         self.timeout_s = timeout_s
         self.last_error: str | None = None
@@ -139,7 +230,7 @@ class JevClient:
             answers_raw = data["answers"]
             answers = {name: _answer(q.kind, answers_raw[name]) for name, q in request.questions}
             usage = data.get("usage")
-            usage = {k: int(v) for k, v in usage.items()} if isinstance(usage, Mapping) else None
+            usage = _usage(usage) if isinstance(usage, Mapping) else None
         except (ValueError, KeyError, TypeError, AttributeError) as exc:
             self.last_error = f"malformed response ({type(exc).__name__})"
             return make_record(request, outcome="invalid", timestamp=utc_now())
@@ -227,7 +318,8 @@ class JevBackend:
         payload = {"subject": subject, "action": action, "verdict": verdict,
                    "confidence": judgment.confidence, "tier": tier,
                    "backend": judgment.backend, "fingerprint": judgment.fingerprint,
-                   "version_drift": record.resolved_version != self.validated_against,
+                   "version_drift": (self.validated_against is not None and not same_version(
+                       record.resolved_version, self.validated_against)),
                    "model_version": record.resolved_version,
                    "probability": judgment.probability,
                    "confidence_label": judgment.confidence_label}
@@ -378,14 +470,15 @@ def open_jev(core: Any, config: Any, *, hook: bool, thresholds: Thresholds) -> A
     name = credential_env(config)
     key = resolve_key(root, name=name)
     if key is None:
-        note = notice_once(root, "jev-no-key", f"plumb: no JEV key ({name} or "
-                           "~/.config/plumb/jev); using the heuristic")
+        note = notice_once(root, "jev-no-key", f"plumb: no JEV key ({name} in the "
+                           "environment, or the env file ~/.config/plumb/jev.json names); "
+                           "using the heuristic")
         return HeuristicBackend(thresholds, [note] if note else [])
     jev = dict(config.judgment.jev or {})
     timeout = (max(0.05, float(config.judgment.hook_timeout_ms) / 1000.0) if hook
                else CLI_TIMEOUT_S)
     client = JevClient(base_url=str(jev.get("base_url") or "https://api.typesafe.ai"), key=key,
-                       timeout_s=timeout)
+                       timeout_s=timeout, path=str(jev.get("path") or SYSTEM_ONE_PATH))
     validated = jev.get("validated_against")
     return JevBackend(core, client, model=str(jev.get("model") or DEFAULT_MODEL_ALIAS),
                       validated_against=str(validated) if validated else None,

@@ -133,7 +133,7 @@ class JudgmentRecord:
     outcome: Outcome
     tiers: dict[str, str] = field(default_factory=dict)
     version_drift: bool = False
-    usage: dict[str, int] | None = None
+    usage: dict[str, int | float] | None = None
     digest: str = ""
 
 
@@ -153,7 +153,7 @@ def request_fingerprint(state_digest: str, questions_digest: str, resolved_versi
 def make_record(request: JudgmentRequest, *, outcome: Outcome, timestamp: str,
                 resolved_version: str | None = None,
                 answers: Mapping[str, JudgmentAnswer] | None = None,
-                usage: Mapping[str, int] | None = None) -> JudgmentRecord:
+                usage: Mapping[str, int | float] | None = None) -> JudgmentRecord:
     """A sealed, unrouted record for ``request``."""
     s_hash = state_hash(request.state)
     q_hash = question_set_hash(request.questions)

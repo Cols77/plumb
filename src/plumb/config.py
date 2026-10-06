@@ -62,13 +62,34 @@ class ApproveConfig:
 class JudgmentConfig:
     backend: str = "heuristic"
     hook_timeout_ms: int = 800
-    jev: Mapping[str, Any] = field(default_factory=lambda: {
-        "model": "jev-latest", "validated_against": "jev-1.13.0",
-        "base_url": "https://api.typesafe.ai",
-        "thresholds": {"accept": 0.9, "escalate_llm": 0.5},
-        # the NAME of the environment variable holding the credential (sp2 C7); plumb never
-        # stores the secret
-        "credential_env": "TYPESAFE_API_KEY"})
+    jev: Mapping[str, Any] = field(default_factory=lambda: jev_settings({}))
+
+
+# A provider preset supplies the JEV defaults; explicit judgment.jev values still win.
+# credential_env is the NAME of the environment variable holding the credential (sp2 C7);
+# plumb never stores the secret.
+JEV_PROVIDERS: Mapping[str, Mapping[str, str]] = {
+    "typesafe": {"base_url": "https://api.typesafe.ai", "path": "/v1/systemone",
+                 "model": "jev-latest", "validated_against": "jev-1.13.0",
+                 "credential_env": "TYPESAFE_API_KEY"},
+    "openrouter": {"base_url": "https://openrouter.ai", "path": "/api/alpha/decisions",
+                   "model": "typesafe/jev-1.13", "validated_against": "typesafe/jev-1.13",
+                   "credential_env": "OPENROUTER_API_KEY"},
+}
+DEFAULT_JEV_PROVIDER = "typesafe"
+
+
+def jev_settings(raw: Mapping[str, Any] | None) -> dict[str, Any]:
+    """``judgment.jev`` resolved: the provider preset's defaults (``typesafe`` unless
+    ``provider`` names another), then every value given explicitly."""
+    raw = dict(raw or {})
+    provider = str(raw.get("provider") or DEFAULT_JEV_PROVIDER).strip().lower()
+    preset = JEV_PROVIDERS.get(provider, JEV_PROVIDERS[DEFAULT_JEV_PROVIDER])
+    settings: dict[str, Any] = {"provider": provider, **preset,
+                                "thresholds": {"accept": 0.9, "escalate_llm": 0.5}}
+    settings.update({k: v for k, v in raw.items() if v is not None})
+    settings["provider"] = provider
+    return settings
 
 
 DEFAULT_SHARED_GLOBS = (".plumb/claims.yaml", "**/contracts.py", "**/cli.py",
@@ -187,6 +208,8 @@ def _build(cls: type, data: Mapping[str, Any]) -> Any:
             value = tuple(value)
         elif isinstance(f.default, tuple) and isinstance(value, str):
             value = (value,)
+        elif cls is JudgmentConfig and f.name == "jev" and isinstance(value, Mapping):
+            value = jev_settings(value)
         elif isinstance(value, Mapping) and f.default_factory is not dataclasses.MISSING:
             merged = dict(f.default_factory())  # type: ignore[misc]
             merged.update(value)

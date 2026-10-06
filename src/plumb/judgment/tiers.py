@@ -3,12 +3,15 @@
 Extracted from pi-agent-factory's ``substrate/judgment/tiers.py``: confidence >= ``accept``
 is ``accept``, >= ``escalate_llm`` is ``escalate-llm``, below is ``escalate-human``. When
 the resolved model version differs from the version the thresholds were validated against,
-``accept`` becomes ``escalate-llm``. ``escalate-human`` reaches the owner only when the item
-also meets one of the three interruption triggers (spec 6.5); routing alone never asks.
+``accept`` becomes ``escalate-llm``; versions are compared only through ``same_version``
+(one normalizer: a gateway's ``typesafe/jev-1.13-20260917`` is ``jev-1.13.0``).
+``escalate-human`` reaches the owner only when the item also meets one of the three
+interruption triggers (spec 6.5); routing alone never asks.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -32,6 +35,27 @@ class Thresholds:
 
 
 _DEFAULT = Thresholds()
+_SNAPSHOT = re.compile(r"-\d{8}$")
+_ZERO_PATCH = re.compile(r"(\d+\.\d+)(?:\.0+)+$")
+
+
+def normalize_version(version: str | None) -> str | None:
+    """The one model-version normalizer: lower case, no leading ``~`` (a gateway alias
+    marker), no vendor prefix (``typesafe/``), no trailing ``-YYYYMMDD`` snapshot date and no
+    zero patch, so ``jev-1.13``, ``jev-1.13.0`` and ``typesafe/jev-1.13-20260917`` are one
+    version. None for an empty version."""
+    if version is None:
+        return None
+    text = str(version).strip().lower().lstrip("~")
+    text = text.rsplit("/", 1)[-1].lstrip("~")
+    text = _ZERO_PATCH.sub(lambda m: m.group(1), _SNAPSHOT.sub("", text))
+    return text or None
+
+
+def same_version(a: str | None, b: str | None) -> bool:
+    """Whether two model names denote the same version (both present)."""
+    na, nb = normalize_version(a), normalize_version(b)
+    return na is not None and na == nb
 
 
 def route(confidence: float, thresholds: Thresholds = _DEFAULT, *,
@@ -44,6 +68,6 @@ def route(confidence: float, thresholds: Thresholds = _DEFAULT, *,
     else:
         tier = "escalate-human"
     if (tier == "accept" and validated_against is not None
-            and resolved_version != validated_against):
+            and not same_version(resolved_version, validated_against)):
         return "escalate-llm"
     return tier

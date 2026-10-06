@@ -70,3 +70,44 @@ def test_record_digest_detects_mutation() -> None:
     assert not verify_record(tampered)
     refingered = dataclasses.replace(record, resolved_version="jev-9")
     assert not verify_record(refingered)
+
+
+# -- one model-version normalizer for every comparison (OpenRouter's names, SR-039)
+
+SAME_113 = ("jev-1.13", "jev-1.13.0", "typesafe/jev-1.13", "typesafe/jev-1.13-20260917",
+            "~typesafe/jev-1.13", "JEV-1.13.0")
+
+
+@pytest.mark.sr("SR-039")
+def test_normalize_version_folds_vendor_prefix_alias_marker_and_snapshot_date() -> None:
+    from plumb.judgment.tiers import normalize_version, same_version
+
+    assert {normalize_version(v) for v in SAME_113} == {"jev-1.13"}
+    assert normalize_version("~typesafe/jev-latest") == "jev-latest"
+    assert normalize_version(None) is None and normalize_version("  ") is None
+    for a in SAME_113:
+        for b in SAME_113:
+            assert same_version(a, b)
+    assert not same_version("jev-1.13.0", "jev-1.14")
+    assert not same_version("typesafe/jev-1.13-20260917", "typesafe/jev-1.14-20261001")
+    assert not same_version("jev-1.13", None)
+
+
+@pytest.mark.sr("SR-039")
+def test_route_treats_equivalent_names_as_the_validated_version() -> None:
+    assert route(0.95, T, resolved_version="typesafe/jev-1.13-20260917",
+                 validated_against="jev-1.13.0") == "accept"
+    assert route(0.95, T, resolved_version="jev-1.13.0",
+                 validated_against="typesafe/jev-1.13") == "accept"
+    assert route(0.95, T, resolved_version="typesafe/jev-1.14-20261001",
+                 validated_against="typesafe/jev-1.13") == "escalate-llm"
+
+
+@pytest.mark.sr("SR-039")
+def test_context_limits_follow_the_normalized_version(monkeypatch) -> None:
+    from plumb.judgment import state
+
+    big, small = state.ContextLimits(64000, 32000), state.ContextLimits(8000, 4000)
+    monkeypatch.setattr(state, "VERSION_LIMITS", {"jev-1.13.0": big, "jev-0.9.0": small})
+    assert state.context_limits("typesafe/jev-1.13-20260917") == big
+    assert state.context_limits("jev-2.0") == small

@@ -32,6 +32,20 @@ def owner_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(approvals, "owner_terminal_answer", lambda question: "y")
 
 
+@pytest.fixture(autouse=True)
+def jev_user_files(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory,
+                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never read the real user-level JEV files (``~/.config/plumb/jev`` and
+    ``jev.json``); only ``jev_live`` tests do, so a configured machine runs them."""
+    if request.node.get_closest_marker("jev_live"):
+        return
+    from plumb.judgment import jev
+
+    home = tmp_path_factory.mktemp("user-config")
+    monkeypatch.setattr(jev, "user_store_path", lambda: home / "jev")
+    monkeypatch.setattr(jev, "user_config_path", lambda: home / "jev.json")
+
+
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A temporary git repository adopted by plumb (``.plumb/`` dirs) with one commit."""

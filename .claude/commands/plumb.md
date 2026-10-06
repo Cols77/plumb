@@ -1,7 +1,7 @@
 ---
-description: plumb in plain words - status, explain anything, review, confirm, what a change would reach, the Obsidian view
-argument-hint: "status | explain <anything> | review [<anything>] | confirm [<anything>] | impact <anything> | view"
-allowed-tools: Bash(.venv/Scripts/python.exe -m plumb status:*), Bash(.venv/Scripts/python.exe -m plumb brief:*), Bash(.venv/Scripts/python.exe -m plumb explain:*), Bash(.venv/Scripts/python.exe -m plumb why:*), Bash(.venv/Scripts/python.exe -m plumb review:*), Bash(.venv/Scripts/python.exe -m plumb confirm:*), Bash(.venv/Scripts/python.exe -m plumb impact:*), Bash(.venv/Scripts/python.exe -m plumb view:*), Bash(.venv/Scripts/python.exe -m plumb show:*), Bash(.venv/Scripts/python.exe -m plumb resolve:*), Bash(.venv/Scripts/python.exe -m plumb align:*)
+description: plumb in plain words - status, explain anything, review, confirm, what a change would reach, the Obsidian view, JEV setup and status
+argument-hint: "status | explain <anything> | review [<anything>] | confirm [<anything>] | impact <anything> | view | jev status | jev setup <provider>"
+allowed-tools: Bash(.venv/Scripts/python.exe -m plumb status:*), Bash(.venv/Scripts/python.exe -m plumb brief:*), Bash(.venv/Scripts/python.exe -m plumb explain:*), Bash(.venv/Scripts/python.exe -m plumb why:*), Bash(.venv/Scripts/python.exe -m plumb review:*), Bash(.venv/Scripts/python.exe -m plumb confirm:*), Bash(.venv/Scripts/python.exe -m plumb impact:*), Bash(.venv/Scripts/python.exe -m plumb view:*), Bash(.venv/Scripts/python.exe -m plumb show:*), Bash(.venv/Scripts/python.exe -m plumb resolve:*), Bash(.venv/Scripts/python.exe -m plumb align:*), Bash(.venv/Scripts/python.exe -m plumb jev status:*), Bash(.venv/Scripts/python.exe -m plumb jev setup:*)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -27,5 +27,15 @@ only when asked.
   change would reach.
 - `view`: run `.venv/Scripts/python.exe -m plumb view --open` and tell them the Obsidian vault is open (generated;
   editing a note approves nothing).
+- `jev status`: run `.venv/Scripts/python.exe -m plumb jev status --probe` and say whether the JEV judge is set
+  up: the provider, the endpoint, where the key comes from (a label: the environment, an env
+  file or the user store; never the key), whether it answered and the model version it
+  resolved. One tiny call; nothing from the repository is sent.
+- `jev setup [openrouter|typesafe]` (also their words, "use OpenRouter for JEV"): run
+  `.venv/Scripts/python.exe -m plumb jev setup --provider openrouter --env-var OPENROUTER_API_KEY` (or `--provider
+  typesafe --env-var TYPESAFE_API_KEY`), adding `--env-file <path>` when they name an env
+  file outside the repository that holds the key; it is read there in place and never
+  copied. Then run `.venv/Scripts/python.exe -m plumb jev status --probe` and report it. Never ask them to type a
+  command or paste the key; never print, echo or read out the key or the env file.
 
 Change nothing else.
