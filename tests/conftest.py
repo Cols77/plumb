@@ -22,6 +22,16 @@ def git(root: Path, *args: str) -> str:
     return result.stdout
 
 
+@pytest.fixture(autouse=True)
+def owner_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The test process stands in for the owner's interactive terminal: every owner-only
+    question (``approvals.require_owner``) is answered "y". The guard's own tests
+    (``tests/core/test_owner_terminal.py``) restore the real terminal check."""
+    from plumb import approvals
+
+    monkeypatch.setattr(approvals, "owner_terminal_answer", lambda question: "y")
+
+
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A temporary git repository adopted by plumb (``.plumb/`` dirs) with one commit."""

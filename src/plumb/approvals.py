@@ -2,8 +2,10 @@
 
 Only two sources confirm a record:
 
-1. the owner, with ``plumb approve`` in their own terminal (refused while the agent session
-   marker ``PLUMB_AGENT_SESSION`` is set);
+1. the owner, with ``plumb approve`` in their own terminal: refused while the agent session
+   marker ``PLUMB_AGENT_SESSION`` is set, and, on every host, written only after a y/N
+   answered in an interactive terminal (``require_owner``, the one choke point of every
+   owner-only write), so an agent shell the adapter could not mark is refused too;
 2. an agent-relayed approval, ``plumb relay``, which carries the owner's verbatim words: the
    cited prompt must be in the prompt log and hash to its digest, the quote must be a verbatim
    part of it and contain an affirmation that no negation before it in its sentence turns
@@ -18,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -56,6 +59,61 @@ def refuse_under_marker(command: str) -> None:
         raise Refused(f"plumb {command} refused: the agent session marker is set "
                       f"(PLUMB_AGENT_SESSION={value}). Only the owner approves, in their own "
                       "terminal; relay the owner's words with plumb relay instead.")
+
+
+class Declined(Exception):
+    """The owner answered no (or nothing) at the terminal question; nothing was written."""
+
+
+def _interactive() -> bool:
+    """Whether stdin and stdout are both interactive terminals."""
+    try:
+        return bool(sys.stdin.isatty() and sys.stdout.isatty())
+    except (AttributeError, ValueError, OSError):
+        return False
+
+
+def owner_terminal_answer(question: str) -> str | None:
+    """The answer typed at ``question`` in an interactive terminal, or None when stdin and
+    stdout are not both terminals (an agent's shell tool, a pipe, a script, CI).
+
+    Tests replace this function (``tests/conftest.py``) so the test process stands in for the
+    owner's terminal; the guard's own tests restore it."""
+    if not _interactive():
+        return None
+    try:
+        return input(question)
+    except EOFError:
+        return ""
+
+
+def require_owner(command: str, question: str) -> None:
+    """The one choke point of every owner-only write (concept 4.6, guard check 4).
+
+    Guarantee: an entry attributed to the owner (``by: owner`` approval or revocation, owner
+    waiver, set or triage approval, the auto-approve ``config`` event) is written only from
+    the owner's own interactive terminal, on every host. Refused (exit 3) under the session
+    marker, and refused when stdin and stdout are not both terminals, which is how an agent's
+    shell runs on a host whose adapter cannot set the marker; a piped "y" proves nothing.
+    Otherwise the owner answers ``question`` with y/N; any other answer raises ``Declined``.
+    """
+    refuse_under_marker(command)
+    answer = owner_terminal_answer(f"{question} [y/N] ")
+    if answer is None:
+        raise Refused(f"plumb {command} refused: not an interactive terminal. Owner-only "
+                      "commands write only after a y/N answered in the owner's own terminal "
+                      "(stdin and stdout both terminals; in mintty, prefix winpty). An agent "
+                      "relays the owner's words with plumb relay instead.")
+    if answer.strip().lower() not in ("y", "yes"):
+        raise Declined(f"plumb {command}: nothing written")
+
+
+def _names(items: Sequence[Mapping[str, Any]], extra: Mapping[str, Any]) -> str:
+    names = [str(item["id"]) for item in items]
+    shown = ", ".join(names[:6]) + (f" and {len(names) - 6} more" if len(names) > 6 else "")
+    if extra.get("exempt"):
+        shown = (shown + "; " if shown else "") + "trace.exempt " + " ".join(extra["exempt"])
+    return shown
 
 
 def _verified_pins(core: Core, record: Any) -> dict[str, str]:
@@ -140,6 +198,8 @@ def approve(core: Core, ids: Iterable[str], *, note: str = "",
     ids = list(ids)
     extra = _exempt_payload(core, exempt)
     records = _records(core, ids) if ids or not extra else []
+    require_owner("approve", f"approve {_names(records, extra)} at their current content, "
+                  "as yourself (by: owner)?")
     payload = {"records": records, "by": "owner", "prompt_digest": None, "quote": None,
                "quote_digest": None, "affirmation": None, "stated_set": None, "note": note,
                **extra}
@@ -160,7 +220,9 @@ def _revoked_records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
 
 def revoke(core: Core, ids: Iterable[str], *, note: str = "") -> LogEntry:
     refuse_under_marker("revoke")
-    payload = {"records": _revoked_records(core, ids), "by": "owner", "prompt_digest": None,
+    records = _revoked_records(core, ids)
+    require_owner("revoke", f"revoke your approval of {_names(records, {})} (by: owner)?")
+    payload = {"records": records, "by": "owner", "prompt_digest": None,
                "quote": None, "quote_digest": None, "note": note}
     return core.log_append("events", "revocation", payload)
 

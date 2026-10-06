@@ -105,7 +105,7 @@ def test_drift_reports_uncovered_examples_of_any_requirement(repo, write_record,
 @pytest.mark.sr("SR-004")
 def test_drift_reports_unconfirmed_edit(repo, write_record, capsys):
     _setup(repo, write_record)
-    assert cli.main(["approve", "SR-001", "--yes", "--root", str(repo)]) == 0
+    assert cli.main(["approve", "SR-001", "--root", str(repo)]) == 0
     sr = repo / ".plumb" / "requirements" / "SR-001.md"
     sr.write_text(sr.read_text(encoding="utf-8").replace(
         "hash of both of its ends", "hash of each of its two ends"), encoding="utf-8")

@@ -201,8 +201,8 @@ def cmd_impact(prog: str, argv: list[str]) -> int:
 def cmd_waive(prog: str, argv: list[str]) -> int:
     import re
 
-    parser = _parser(prog, "Owner waiver pinned to a diff digest (owner only; refused under "
-                     "the agent session marker).")
+    parser = _parser(prog, "Owner waiver pinned to a diff digest (owner only: a y/N in the "
+                     "owner's interactive terminal; refused under the agent session marker).")
     parser.add_argument("--diff-digest", default=None,
                         help="sha256:<hex> (default: the digest of git diff HEAD)")
     parser.add_argument("--merge", metavar="BASE", default=None,
@@ -211,6 +211,7 @@ def cmd_waive(prog: str, argv: list[str]) -> int:
     parser.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     from plumb.api import open_core
+    from plumb.approvals import Declined
     from plumb.verify.policy import DIGEST_RE, WaiverRefused, current_diff_digest, waive
 
     core = open_core(resolve_root(args.root))
@@ -246,6 +247,9 @@ def cmd_waive(prog: str, argv: list[str]) -> int:
     except WaiverRefused as exc:
         print(f"plumb: refused: {exc}", file=sys.stderr)
         return 3
+    except Declined as exc:
+        print(f"{exc}")
+        return EXIT_OK
     emit({"waiver": digest, "reason": args.reason, "digest": entry.digest} if args.as_json
          else f"plumb: waiver recorded for diff {digest}", args.as_json)
     return EXIT_OK

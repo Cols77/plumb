@@ -68,7 +68,7 @@ calibrated JEV auto-approval of records derived directly from the owner's words 
 | C1 | Helpers `plumb intent`, `plumb example`, `plumb decide` (concept 11, item 2) | Those three, plus `plumb capture`, which writes a whole read-back (INT, SR with examples, DEC) from one JSON document in one call, and `plumb new <kind>` as the generic form | One call per turn keeps the agent's overhead to one interpreter start (about 225 ms here) instead of one per record; the single-record helpers stay for small edits |
 | C2 | Set approval pins a set hash over the sorted member hashes (4.6) | The set is anchored on an `INT` with `mode: escalated` and a `members` list; `plumb spec approve INT-###` (owner) or `plumb relay --set INT-### --prompt --quote` (relayed) writes one approval with the set hash and every member's hash | Gives the set an identity the owner can name, inside the existing record model; no new record kind |
 | C3 | "No model ... confirms intent" (concept 8 and 12) | Exception R8 B: `by: auto-jev` approvals, off by default, only for records derived directly from the owner's words, only after a passing calibration for the current model version, and only while the owner's own `plumb config auto-approve on` event stands | Owner decision 2026-10-06 ("Ok for A+B") and R12.1. The concept is updated in the same change (section 8 and 12) |
-| C4 | `.plumb/config.yaml` holds settings (4.1) | `auto_approve` in `config.yaml` is a mirror. The effective state is the latest `config` event written by `plumb config auto-approve` in the owner's terminal (no session marker). A `config.yaml` that says on without that event is off, and `plumb validate` warns | The agent may edit `config.yaml` (the guard denies only `.plumb/log/**`); R8 says the command is "owner-terminal only, logged in the event log". The log event is what the agent cannot write on the normal path |
+| C4 | `.plumb/config.yaml` holds settings (4.1) | `auto_approve` in `config.yaml` is a mirror. The effective state is the latest `config` event written by `plumb config auto-approve` in the owner's terminal (the owner-terminal guard, concept 4.6 check 4: no session marker and a y/N answered in an interactive terminal). A `config.yaml` that says on without that event is off, and `plumb validate` warns | The agent may edit `config.yaml` (the guard denies only `.plumb/log/**`); R8 says the command is "owner-terminal only, logged in the event log". The log event is what the agent cannot write on the normal path |
 | C5 | R8 A: one line "approve the N records rated faithful to your words?" | The line names every record of the group by ID; the stated set records the group with its hashes; a relayed "ok" on the next prompt approves exactly that group (`plumb relay --group low-risk`), even though the records were not each shown in full | The owner chose the grouped one-line confirmation explicitly (R8 A). Naming every ID keeps the owner's words tied to an exact, inspectable set; the full records are one `plumb triage` away |
 | C6 | Intent-change detection flags change words on a matched confirmed record (6.2) | Scored against the confirmed record's examples: a contradiction (the request negates or replaces a `then`), an extension (new behaviour next to a confirmed one), or benign (a mention, a tidy-up). Change words alone never flag | The heuristic flagged "also tidy the add docstring for SR-001" and missed "make add subtract" (followups, round 5): a false interruption and a missed trigger 1 |
 | C7 | JEV key in `TYPESAFE_API_KEY` or the user store `~/.config/plumb/jev` (8) | `plumb jev setup` records only the NAME of the environment variable (`judgment.jev.credential_env`, default `TYPESAFE_API_KEY`); the user store remains a fallback read path; no secret is ever written by plumb | R8 commands: "records only the NAME of the environment variable that holds the credential; never stores the secret" |
@@ -184,7 +184,8 @@ triggers (concept 5.2), each with its reason:
 A suggestion is shown as one line by the prompt or stop hook
 (`plumb: consider an up-front spec: touches 2 features (FEAT-001, FEAT-003); the owner
 decides`). It is never a question by itself. `plumb escalate decline [--intent INT-###]`
-(agent-relayed when the owner says no, or the owner's terminal) appends an
+(agent-relayed when the owner says no, or the owner's terminal through
+`approvals.require_owner`) appends an
 `escalation-declined` event; the same trigger for the same intent is not suggested again.
 
 ### 6.2 The escalated set and its approval (SR-037)
@@ -196,7 +197,8 @@ set for approval, which is a trigger-2 question the owner invited by accepting.
 
 - `plumb spec show INT-###` prints every member in full (the read-back of each), the set
   hash and the approval command.
-- `plumb spec approve INT-###` (owner's terminal; refused under the marker) and
+- `plumb spec approve INT-###` (owner's terminal, through `approvals.require_owner`: refused
+  under the marker and outside an interactive terminal, exit 3) and
   `plumb relay --set INT-### --prompt D --quote Q` (the owner's affirming words in a prompt
   after the set was shown) write one `approval` event:
   `{"records": [{"id", "hash"}...], "set": {"anchor": "INT-###", "hash": "sha256:..."},
@@ -268,7 +270,7 @@ The client exists (`plumb/judgment/jev.py`, sub-project 1 BS3) and is reached on
 
 ### 8.1 Triage, always available (SR-040)
 
-`plumb triage [--json] [--approve low-risk] [--yes]`:
+`plumb triage [--json] [--approve low-risk]`:
 
 1. Takes every `proposed` or unconfirmed-edit record.
 2. Scores each for faithfulness to the owner's words with
@@ -285,8 +287,10 @@ The client exists (`plumb/judgment/jev.py`, sub-project 1 BS3) and is reached on
    `matters: true`, a member of an escalated set, an edit of a record the owner confirmed
    before, and any record whose premise is empty (no owner words to compare).
 4. Prints the low-risk group first (one line per record: ID, title, rating), then the others.
-5. `--approve low-risk`, in the owner's terminal only (refused under the marker, exit 3),
-   lists the group with hashes, asks `y/N` unless `--yes`, and writes one `approval` event
+5. `--approve low-risk`, in the owner's terminal only, lists the group with hashes, then
+   writes through `approvals.require_owner` (refused under the marker and outside an
+   interactive terminal, exit 3; its one `y/N`, which no flag skips, is the confirmation of
+   the one step), and writes one `approval` event
    `by: owner` of exactly the listed hashes, with `"triage": {"group": "low-risk",
    "backend": ..., "scores": {...}}`. A record that changed between listing and writing is
    left out and named.
@@ -311,13 +315,15 @@ auto_approve: {enabled: false, backend: jev, min_probability: 0.9, min_confidenc
 
 `plumb config auto-approve on [--backend jev] [--min-probability 0.9] [--min-confidence
 high]`, `plumb config auto-approve off` and `plumb config show` run in the owner's terminal
-only (refused under the marker, exit 3; denied by the installed deny rules). `on` writes a
+only (refused under the marker, exit 3; denied by the installed deny rules). `on` and `off`
+write through `approvals.require_owner`, so they are also refused outside an interactive
+terminal on every host (concept 4.6 check 4). `on` writes a
 `config` event and the mirror, and refuses (exit 1, nothing written) when JEV is not
 configured, the credential is absent, or no passing calibration exists for the current
 resolved model version (8.3).
 
 Auto-approval is **effective** only when all of these hold: the latest `config` event says
-on and was written with no session marker; JEV is configured and answered (the heuristic
+on and was written with no session marker through `approvals.require_owner`; JEV is configured and answered (the heuristic
 never auto-approves); a passing `calibration` event exists for the resolved model version.
 When the resolved version differs from the calibrated one, auto-approval is suspended and the
 status line and brief say so (`auto-approve suspended: model changed, recalibrate`).
@@ -522,8 +528,9 @@ version: str                                          # resolved model version, 
    `spec approve`, `triage`, `config auto-approve|show`, `jev status|setup|calibrate` and
    `clarify` exist, have tests marked with their SR, and appear in `plumb --help`.
 2. The precision fixture of 7.1 passes: every `contradicts` prompt flagged, no `benign` one.
-3. Guard tests: `spec approve`, `triage --approve` and `config auto-approve` refuse under the
-   marker; `relay --group` and `relay --set` enforce the R2 checks; auto-approval never fires
+3. Guard tests: `spec approve`, `triage --approve`, `config auto-approve on|off` and the
+   owner's `escalate decline` refuse under the marker, and refuse with no marker outside an
+   interactive terminal (one test per command, stdin a pipe holding "y"); `relay --group` and `relay --set` enforce the R2 checks; auto-approval never fires
    with the heuristic, without an owner `config` event, without a passing calibration, for a
    `matters: true` DEC, for a set member or for an edit of an owner-confirmed record.
 4. JEV unit tests pass on the local stub; live tests are skipped without the credential.

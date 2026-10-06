@@ -183,7 +183,7 @@ def cmd_repin(command: str, argv: list[str]) -> int:
 
 
 def _guarded(action: Callable[[], object]) -> int:
-    from plumb.approvals import ApprovalError, Refused
+    from plumb.approvals import ApprovalError, Declined, Refused
 
     try:
         action()
@@ -193,6 +193,9 @@ def _guarded(action: Callable[[], object]) -> int:
     except ApprovalError as exc:
         print(f"plumb: {exc}", file=sys.stderr)
         return 1
+    except Declined as exc:
+        print(f"{exc}")
+        return 0
     return 0
 
 
@@ -207,12 +210,12 @@ def _approved_names(entry: Any) -> str:
 def cmd_approve(command: str, argv: list[str]) -> int:
     from plumb import approvals
 
-    parser = _parser(command, "Owner approval of records at their current content. Refused "
-                     "while the agent session marker is set.")
+    parser = _parser(command, "Owner approval of records at their current content, after a "
+                     "y/N answered in the owner's own interactive terminal. Refused under the "
+                     "agent session marker and outside an interactive terminal.")
     parser.add_argument("ids", nargs="*", help="record IDs")
     parser.add_argument("--proposed", action="store_true",
                         help="every proposed or unconfirmed-edit record")
-    parser.add_argument("--yes", action="store_true", help="do not ask y/N")
     parser.add_argument("--exempt", action="store_true",
                         help="also confirm the trace.exempt globs of .plumb/config.yaml")
     parser.add_argument("--note", default="")
@@ -232,23 +235,11 @@ def cmd_approve(command: str, argv: list[str]) -> int:
             for record_id, record_hash, state in listed:
                 title = core.index()[record_id].title
                 print(f"  {record_id} {state} {record_hash[:19]}  {title}")
-            if not args.yes:
-                if not sys.stdin.isatty():
-                    raise SystemExit(EXIT_USAGE)
-                answer = input(f"approve these {len(listed)} records? [y/N] ")
-                if answer.strip().lower() not in ("y", "yes"):
-                    print("plumb: nothing approved")
-                    return
             ids += [r[0] for r in listed if r[0] not in ids]
-        entry = approvals.approve(core, ids, note=args.note, exempt=args.exempt)
+        entry = approvals.approve(core, ids, note=args.note, exempt=args.exempt)  # asks y/N
         print(f"plumb: approved {_approved_names(entry)}")
 
-    try:
-        return _guarded(act)
-    except SystemExit:
-        print("plumb: not a terminal; pass --yes to approve the listed records",
-              file=sys.stderr)
-        return EXIT_USAGE
+    return _guarded(act)
 
 
 def cmd_revoke(command: str, argv: list[str]) -> int:

@@ -25,7 +25,11 @@ Binding owner rules for every phase (from the work order and the brief):
    `plumb drift` before committing. **Agents never approve records**: no agent runs
    `plumb approve`, `plumb revoke`, `plumb triage --approve`, `plumb spec approve` or
    `plumb config auto-approve`, and no agent relays an approval without the owner's own
-   affirming words (R2). Only the owner confirms.
+   affirming words (R2). Only the owner confirms. Every owner-only command writes through
+   the one choke point `approvals.require_owner` (concept 4.6 check 4: refused under the
+   marker and, on every host, outside an interactive terminal); no lane adds an owner-only
+   write that bypasses it, and each new owner-only command gets a test that runs it with no
+   marker and stdin a pipe holding "y" and asserts exit 3 with nothing written.
 6. Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## 1. Shape of the work
@@ -208,14 +212,14 @@ contradiction-aware intent flags; triage; the skills. Then the R8 B, R11 and R12
 | C1 | `capture/records.py` and `capture/cli.py`: `plumb new`, `intent`, `example`, `decide` (incl. `--supersede`, `--recommend`, `--matters`), IDs only through `Store.next_id`, links through `add_link` | MUST | SR-035 | 15 min |
 | C2 | `capture/capture.py`: `plumb capture` (sp2 5.1): quote check against the logged prompt, records and links, `updates`, intent card via `present.render.intent_card`, `CaptureResult` | MUST | SR-034 | 20 min |
 | C3 | `judgment/heuristic.py` `contradiction` and `capture.api.intent_flags`: contradicts, extends, benign against confirmed examples; fixture of at least 30 labelled prompts | MUST | SR-038 | 20 min |
-| C4 | `capture/escalation.py`: the six triggers, `escalate decline`, `escalation-declined` event, no repeat per intent | MUST | SR-036 | 15 min |
-| C5 | Set approval: `INT` `members`, `spec show`, `spec approve` (owner; refused under the marker), `relay --set` in `commands.py`/`approvals.py`, member state in `confirm.py` | MUST | SR-037 | 20 min |
-| C6 | `capture/triage.py`: heuristic `entailment`, groups and exclusions, `plumb triage`, `--approve low-risk` (owner), `relay --group`, `triage` event; `capture.api.triage`, `card_data`, `confirmation_counts`, `next_question` | MUST | SR-040 | 20 min |
+| C4 | `capture/escalation.py`: the six triggers, `escalate decline` (the owner's form through `approvals.require_owner`), `escalation-declined` event, no repeat per intent | MUST | SR-036 | 15 min |
+| C5 | Set approval: `INT` `members`, `spec show`, `spec approve` (owner; through `approvals.require_owner`), `relay --set` in `commands.py`/`approvals.py`, member state in `confirm.py` | MUST | SR-037 | 20 min |
+| C6 | `capture/triage.py`: heuristic `entailment`, groups and exclusions, `plumb triage`, `--approve low-risk` (owner; through `approvals.require_owner`), `relay --group`, `triage` event; `capture.api.triage`, `card_data`, `confirmation_counts`, `next_question` | MUST | SR-040 | 20 min |
 | C7 | Skills: `templates/skills/plumb/SKILL.md` names `capture`, `decide`, `clarify`, `triage` and the relay forms (about 25 lines); `templates/skills/plumb-clarify/SKILL.md` (sp2 9.1) | MUST | SR-046, SR-043 | 10 min |
 | CS1 | `plumb clarify` and `capture.api.clarify`; `tests/capture/test_clarify_e2e.py` (sp2 9.3) | SHOULD | SR-043 | 25 min |
 | CS2 | JEV protocol methods in `jev.py`; `plumb jev status`, `plumb jev setup` (name only), `jev_live` tests skipped without the credential | SHOULD | SR-039 | 20 min |
 | CS3 | `plumb jev calibrate` (sp2 8.3), `calibration` event | SHOULD | SR-042 | 25 min |
-| CS4 | `plumb config auto-approve on\|off`, `config show`, `config card`; the gate in `capture`; `by: auto-jev` approvals; `validate` re-check | SHOULD | SR-041 | 30 min |
+| CS4 | `plumb config auto-approve on\|off` (through `approvals.require_owner`), `config show`, `config card`; the gate in `capture`; `by: auto-jev` approvals; `validate` re-check | SHOULD | SR-041 | 30 min |
 | CS5 | `ownership_proposals`, test-node proposals, `diff_serves` (sp2 10.1) | SHOULD | SR-044 | 25 min |
 | CS6 | `drift_hints`: hidden-dependency scan (sp2 10.2) | SHOULD | SR-045 | 15 min |
 
@@ -233,18 +237,22 @@ Tests (`tests/capture/` unless named), each marked with its SR:
 - C3 `test_intent_flags.py`: `test_contradiction_flagged`, `test_extension_flagged`,
   `test_benign_mention_not_flagged`, `test_proposed_record_never_flagged`,
   `test_precision_fixture_all_contradictions_no_benign`
-- C4 `test_escalation.py`: one test per trigger (six), `test_declined_not_repeated`
+- C4 `test_escalation.py`: one test per trigger (six), `test_declined_not_repeated`,
+  `test_owner_decline_refused_without_terminal`
 - C5 `test_set_approval.py`: `test_set_hash_over_sorted_members`,
-  `test_spec_approve_refused_under_marker`, `test_relay_set_checks_r2`,
+  `test_spec_approve_refused_under_marker`, `test_spec_approve_refused_without_terminal`,
+  `test_relay_set_checks_r2`,
   `test_member_edit_unconfirms_member_and_set`
 - C6 `test_triage.py`: `test_groups_low_risk_first`, `test_exclusions_shown_individually`,
-  `test_approve_low_risk_exact_hashes_owner_only`, `test_relay_group_needs_group_in_stated_set`,
+  `test_approve_low_risk_exact_hashes_owner_only`,
+  `test_approve_low_risk_refused_without_terminal`, `test_relay_group_needs_group_in_stated_set`,
   `test_no_backend_reports_no_judgments`
 - C7 `test_skills.py`: `test_plumb_skill_names_capture_helpers`,
   `test_clarify_skill_states_depths_and_discipline`
 - CS1 `test_clarify.py`, `test_clarify_e2e.py`; CS2 `tests/bridge/test_jev.py` additions,
   `test_jev_cli.py`; CS3 `test_calibrate.py`; CS4 `test_auto_approve.py` (one test per
   "never" case of sp2 8.2, plus `test_config_on_refused_without_calibration`,
+  `test_config_on_off_refused_without_terminal`,
   `test_yaml_without_owner_event_is_off`, `test_validate_rechecks_auto_jev`); CS5
   `test_ownership.py`; CS6 `test_hints.py`
 
@@ -295,9 +303,9 @@ and the read-only MCP server.
 |---|---|---|---|---|
 | H1 | `docs/hosts.md`: each host's event surface from the installed version's docs or `--help` (read-only), as capability tables; rows without a mechanism marked fallback | MUST | SR-053 | 10 min |
 | H2 | `hosts/cli.py`: `plumb hosts install\|uninstall\|status <host>`, `plumb turn start\|end`, shared install helpers (idempotent block and file writes, foreign entries kept); conformance test across host values | MUST | SR-053 | 25 min |
-| H3 | `hosts/codex/`: `AGENTS.md` block, hooks where available, `notify` entry, marker where supported | MUST | SR-054 | 20 min |
-| H4 | `hosts/pi/`: rendered `.pi/extensions/plumb/index.ts` mapping session start, input, tool result, agent end, the footer status and the `/plumb` command | MUST | SR-055 | 20 min |
-| H5 | `hosts/hermes/`: rendered plugin (`plugin.yaml`, `plugin.py` with `register(ctx)`) | MUST | SR-056 | 15 min |
+| H3 | `hosts/codex/`: `AGENTS.md` block, hooks where available, `notify` entry, marker where supported; `hosts status codex` prints the sp4 3.2 line when the marker is unavailable | MUST | SR-054 | 20 min |
+| H4 | `hosts/pi/`: rendered `.pi/extensions/plumb/index.ts` mapping session start, input, tool result, agent end, the footer status and the `/plumb` command; marker where the extension API sets it, else the sp4 3.2 status line | MUST | SR-055 | 20 min |
+| H5 | `hosts/hermes/`: rendered plugin (`plugin.yaml`, `plugin.py` with `register(ctx)`); marker where the plugin sets it, else the sp4 3.2 status line | MUST | SR-056 | 15 min |
 | H6 | `mcp/server.py`, `mcp/cli.py`: JSON-RPC over stdio, the six read-only tools over `present.api`, read-only test | MUST | SR-057 | 30 min |
 | HS1 | `plumb mcp install\|uninstall claude-code\|codex\|hermes` | SHOULD | SR-057 | 15 min |
 | HS2 | Type-check the rendered Pi extension with `node` when available (skipped otherwise) | SHOULD | SR-055 | 10 min |
@@ -308,7 +316,9 @@ Tests: `tests/hosts/test_turn.py` (`test_turn_start_logs_digest_and_prints_delta
 `test_turn_end_prints_summary_and_block_exit_0`), `test_conformance.py`
 (`test_same_output_for_every_host`), `test_codex.py`, `test_pi.py`, `test_hermes.py` (each:
 `test_install_idempotent_preserves_foreign`, `test_uninstall_removes_only_plumb`,
-`test_dry_run_writes_nothing`, plus `test_pi_extension_names_events_and_commands` and
+`test_dry_run_writes_nothing`, `test_owner_only_refused_in_agent_shell` and
+`test_status_names_missing_marker` (sp4 3.4 and 8.6), plus
+`test_pi_extension_names_events_and_commands` and
 `test_hermes_register_drives_callbacks` with a fake `ctx`); `tests/mcp/test_server.py`
 (`test_initialize_and_tools_list`, `test_each_tool_matches_cli_view`,
 `test_unknown_method_error`, `test_tools_are_read_only_plumb_unchanged`,
@@ -501,8 +511,9 @@ recorded; no hook over budget without a followup entry.
 
 ## 12. Protection order and cuts
 
-Never cut: phase 0; every lane's R2 guard items (C5 and C6 owner-only refusals and relay
-checks, the deny rules of 3.2, CS4's "never" cases if CS4 is built, M2's glance, I5's
+Never cut: phase 0; every lane's R2 guard items (the owner-terminal guard
+`approvals.require_owner` with its test per owner-only command in C4, C5, C6 and CS4, and the
+per-host guard tests of H3 to H5; C5 and C6 relay checks, the deny rules of 3.2, CS4's "never" cases if CS4 is built, M2's glance, I5's
 provenance rule, the MCP read-only test); the single full run and the dogfood checks of
 phase 2; the HIGH-fix rule.
 

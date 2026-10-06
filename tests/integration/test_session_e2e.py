@@ -110,7 +110,7 @@ def adopted(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> Path:
         assert cli.main(["link", sr, "verified_by", "tests/test_mod.py", "--example", "EX-1",
                          *root]) == 0
     # the owner confirms in their own terminal (no session marker in this process)
-    assert cli.main(["approve", "INT-001", "SR-001", "SR-002", "FEAT-001", "--yes",
+    assert cli.main(["approve", "INT-001", "SR-001", "SR-002", "FEAT-001",
                      *root]) == 0
     assert cli.main(["tests", "map", *root]) == 0
     assert cli.main(["hooks", "install", "--launcher", "path", *root]) == 0

@@ -308,7 +308,7 @@ session, which is enough for the write-time check below.
 
 **Guard against self-approval.** The agent has shell access, so without a guard it could run
 `plumb approve` itself and produce an entry that looks like the owner's. plumb prevents this
-with three cheap, deterministic checks, none of which calls a model:
+with four cheap, deterministic checks, none of which calls a model:
 
 1. **Session marker.** `plumb install claude-code` sets `PLUMB_AGENT_SESSION=claude-code` in
    the host's session environment (`.claude/settings.json` `env`). The variable reaches every
@@ -334,6 +334,17 @@ with three cheap, deterministic checks, none of which calls a model:
    non-zero exit and is not stored. The stored entry records the prompt digest, the quote,
    the digest of the quote, the matched affirmation term and the stated set, so the result
    of the check stays inspectable after the session state is deleted.
+4. **Owner terminal, on every host.** Checks 1 and 2 need the host's help: an adapter that
+   cannot set the marker or install a tool guard (section 9 and sp4) leaves the agent's shell
+   looking like the owner's. So every owner-only command (`plumb approve`, `plumb revoke`,
+   `plumb tests waive`, `plumb spec approve`, `plumb triage --approve`,
+   `plumb config auto-approve`, and any later one) writes its `by: owner` entry through one
+   choke point (`approvals.require_owner`) that, after the marker check, requires stdin and
+   stdout to be interactive terminals and a `y`/`N` answered there. There is no flag that
+   skips the question. An agent's shell tool runs without a terminal, so the command is
+   refused (exit 3) whether or not the marker is set, and a piped `y` proves nothing. An
+   agent that drives a pseudo-terminal could still answer the question; that is a deliberate
+   bypass, covered by the trust model below, not the normal path.
 
 `plumb check` re-checks every committed approval: each `agent-relayed` entry must cite a
 prompt digest present in the prompt-digest log and recorded before the approval, and its
@@ -347,7 +358,8 @@ own terminal, they use `plumb approve`.
 not tamper-proof against a malicious agent. The guard does not make the agent's shell a
 sandbox: an agent determined to bypass it can forge an entry, or a prompt digest, before it
 is committed. What plumb guarantees is that self-approval cannot happen by accident, is
-refused on the normal path, and that any edit, deletion or out-of-order insertion of a
+refused on the normal path on every host (check 4 holds where a host cannot set the marker),
+and that any edit, deletion or out-of-order insertion of a
 committed entry shows up in `plumb check` and in git history. The merge-boundary list of
 `agent-relayed` approvals with their quotes (section 7.5) is the owner's cheap backstop
 against a relayed approval the owner never gave.

@@ -58,7 +58,7 @@ def test_approve_refused_under_marker(setup: Path, monkeypatch: pytest.MonkeyPat
         approvals.revoke(open_core(setup), ["SR-001"])
     root = ["--root", str(setup)]
     assert cli.main(["approve", "SR-001", *root]) == 3
-    assert cli.main(["approve", "--proposed", "--yes", *root]) == 3
+    assert cli.main(["approve", "--proposed", *root]) == 3
     assert cli.main(["revoke", "SR-001", *root]) == 3
     assert "refused" in capsys.readouterr().err
     assert list(open_core(setup).log_read("events")) == []
@@ -67,8 +67,7 @@ def test_approve_refused_under_marker(setup: Path, monkeypatch: pytest.MonkeyPat
 def test_approve_proposed_pins_all_listed(setup: Path,
                                           capsys: pytest.CaptureFixture[str]) -> None:
     root = ["--root", str(setup)]
-    assert cli.main(["approve", "--proposed", *root]) == 2  # not a TTY and no --yes
-    assert cli.main(["approve", "--proposed", "--yes", *root]) == 0
+    assert cli.main(["approve", "--proposed", *root]) == 0  # y/N answered in the terminal
     out = capsys.readouterr().out
     assert "SR-001" in out and "INT-001" in out
     entries = list(open_core(setup).log_read("events", kinds=["approval"]))

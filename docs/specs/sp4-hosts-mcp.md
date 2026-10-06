@@ -32,7 +32,7 @@ hash, selects a test or approves a record.
 | D3: host-neutral core, thin adapters, "Codex, Pi, Hermes and MCP come later" | 3 to 6 |
 | D3: "Do NOT bring the per-turn admission/coordination weight" | adapters call one process per event, no admission, no locks (3.3) |
 | D5 "A": background, status line, end-of-turn summary, questions on three triggers only | the same `TurnOutput` on every host; the fallback keeps the CLI path (3.2) |
-| R2: only the owner's explicit words confirm; the guard | session marker on every host; the MCP server has no write tool (6.3) |
+| R2: only the owner's explicit words confirm; the guard | the owner-terminal guard on every host (3.4), the session marker where the host lets the adapter set it; the MCP server has no write tool (6.3) |
 | R9: context economy and the owner's mental model | every host renders PRESENT's output contract; deltas, not full records (3.1) |
 | Quality bar: "Per-turn overhead is seconds, not minutes." | one interpreter start per event; budgets of sp1 10 (3.3) |
 | R10 (SP6): "git is the coordinator, and plumb holds no shared mutable runtime state" | adapters keep per-session state under `.plumb/session/<sid>/` only (7) |
@@ -85,9 +85,11 @@ Every adapter installs it, and it is all a host without lifecycle hooks gets:
   logic would block, the instruction on stdout with exit 0 (the `stop` event). Both are the
   same `handle_event` calls;
 - the session marker `PLUMB_AGENT_SESSION=<host>` wherever the host lets the adapter set the
-  agent's shell environment; where it cannot, the adapter says so in `plumb hosts status`
-  ("guard layer 1 unavailable on this host: rely on the deny rules or the owner's glance at
-  the merge boundary"), and the trust model of concept 4.6 is restated there.
+  agent's shell environment. The marker is a convenience, not the guard: the owner-terminal
+  guard of 3.4 refuses owner-only commands from the agent's shell on every host, marker or
+  not. Where the adapter cannot set the marker, `plumb hosts status` says so in these words:
+  "no session marker on this host: owner-only commands require an interactive terminal"
+  (followed by the trust model of concept 4.6 in one line).
 
 ### 3.3 Budgets and weight
 
@@ -95,6 +97,21 @@ One `plumb` process per event, never a resident daemon, no admission, no per-cal
 beyond the log lock. The sp1 budgets apply to every host (prompt 1.2 s, stop 1.4 s, session
 start 1.4 s soft; 1.9 s watchdog). A host that runs hooks synchronously on every tool call
 gets no per-tool-call hook from plumb except edit tracking where the host makes it cheap.
+
+### 3.4 The owner-terminal guard on every host
+
+Guarantee (R2, concept 4.6 check 4): a `by: owner` entry is written only from the owner's own
+terminal, on every host. Codex, Pi and Hermes adapters may be unable to set the session
+marker, and only Claude Code gets deny rules, so neither can be the guard there. The guard is
+host-neutral and lives in the core: every owner-only command (`approve`, `revoke`,
+`tests waive`, `spec approve`, `triage --approve`, `config auto-approve on|off`, the owner's
+`escalate decline`) writes through `approvals.require_owner`, which refuses under the marker
+and refuses (exit 3, nothing written) unless stdin and stdout are interactive terminals and
+the owner answers `y` there; no flag skips the question. Agents' shell tools run commands
+without a terminal, so an agent that runs `plumb approve SR-0xx` or `plumb approve
+--proposed` on any host is refused; the agent's path is `plumb relay` with the owner's
+words. No adapter adds an owner-only path of its own (the MCP server has none, 6.3), and no
+adapter command runs an owner-only verb on the owner's behalf.
 
 ## 4. Adapters
 
@@ -117,7 +134,7 @@ back to the CLI-only path of 3.2 and the table says so.
 | stop (owner summary) | the `notify` program Codex runs after each agent turn, which receives the turn's JSON and runs `plumb hook stop --host codex --format text` to refresh the status and log the summary for `plumb status` | `plumb turn end` |
 | edit | none needed: the stop event's `git status` catches every edit (sp1 6.4 step 1) | same |
 | tools | the MCP server of 6, registered as `[mcp_servers.plumb]` in the project's Codex configuration | CLI |
-| guard | the marker in the configured shell environment, if supported | 3.2 |
+| guard | the owner-terminal guard of 3.4 (always); the marker in the configured shell environment, if supported | `plumb hosts status` names the missing marker (3.2) |
 
 ### 4.2 Pi (SR-055)
 
@@ -132,6 +149,7 @@ reference shape: a thin TypeScript layer that shells out to a Python CLI).
 | edit | the tool-result event for edit and write tools: `plumb hook post-edit --host pi` in the background | stop's `git status` |
 | stop | the agent-end event: show `owner_lines` as a notice, set the footer status to `status_line`; when `block` is set, send it as a follow-up user-role steering message once | `plumb turn end` |
 | owner commands | `/plumb ...` registered as a Pi command that passes the words to the agent (sp5 6) | the agent runs the CLI |
+| guard | the owner-terminal guard of 3.4 (always); the marker in the environment of the shell tool if the extension API sets it | `plumb hosts status` names the missing marker (3.2) |
 
 `plumb hosts install pi` renders `.pi/extensions/plumb/index.ts` (about 120 lines, no
 dependencies beyond Pi's extension API and Node's `child_process`) and a `package.json` if the
@@ -150,6 +168,7 @@ that registers commands and, where the version supports it, lifecycle hooks
 | session-start, prompt, stop | lifecycle hooks registered in `register(ctx)` when the installed Hermes exposes them; each calls `plumb.hosts.neutral.handle_event` in-process (Hermes is Python) or the CLI | context-file block and `plumb turn start/end` |
 | owner commands | `ctx.register_command("plumb", ...)` passing the words to the agent | CLI |
 | tools | the MCP server of 6 if Hermes is configured with MCP servers | CLI |
+| guard | the owner-terminal guard of 3.4 (always); the marker in the agent's shell environment if the plugin can set it | `plumb hosts status` names the missing marker (3.2) |
 
 `plumb hosts install hermes` renders `.hermes/plugins/plumb/{plugin.yaml,__init__.py,
 plugin.py}`. Tests import `plugin.py` with a fake `ctx` and drive each registered callback.
@@ -227,6 +246,10 @@ with no adapter change.
    tool, an unknown method) and the read-only test of 6.3.
 5. No adapter imports a module of another adapter; no test needs Codex, Pi, Hermes or Node
    installed (tests that would use them are skipped when absent).
+6. The guard of 3.4, one test per host value (`codex`, `pi`, `hermes`): with the environment
+   the installed adapter gives the agent's shell (no marker where it sets none) and no
+   terminal, `plumb approve SR-0xx` exits 3 and writes nothing; `plumb hosts status <host>`
+   prints the 3.2 line for each host without the marker.
 
 ## 9. Out of scope
 

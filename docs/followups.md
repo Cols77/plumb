@@ -1364,3 +1364,102 @@ review has run on them yet; these are the planner's own notes.
   PRESENT, dropped last; if it is dropped, it leads the next batch.
 - [LOW] (FEAT-004) The importer completion shares FEAT-004 with the host adapters (DEC-015)
   because the work order names FEAT-002 to FEAT-005.
+
+## Next batch spec review (2026-10-06): medium and low findings
+
+From the review of `docs/specs/sp2-intent-capture.md`, `sp3-merge-boundary.md`,
+`sp4-hosts-mcp.md` and `docs/plans/next-plan.md` against the brief and the concept. The one
+HIGH finding (a host without the session marker let the agent write `by: owner` entries) is
+fixed in the same commit: every owner-only write now goes through
+`approvals.require_owner`, which refuses outside an interactive terminal on every host
+(concept 4.6 check 4, sp4 3.4, SR-005 EX-6). Findings that two verifiers reported are merged
+into one entry.
+
+- [MEDIUM] (sp2 8.2 "Eligible only", sp2 3; reported three times) An `SR` becomes eligible for
+  auto-approval when every example carries a quote span, but the SR's hash also covers its
+  agent-written title, statement, feature and `implemented_by` ends, so auto-approving it
+  confirms agent wording beyond the owner's given/when/then (R8 B lists only INT read-backs
+  and examples). JEV entailment over the whole record narrows but does not match the owner's
+  list, and sp2 3 does not declare the widening. 8.2 also says `plumb example` asks the gate
+  without defining its case. Fix: add a C8 row to sp2 3 naming the mapping and its reason;
+  require the SR's statement and title to be entailed by the quoted spans (claim kind
+  `example-restatement`) or to carry their own verbatim `quote`; state that `plumb example`
+  is never eligible (or define it); CS4 tests: an SR with a non-entailed agent statement and
+  quoted examples is never auto-approved, and `plumb example` never auto-approves.
+- [MEDIUM] (plan 4 CS2 and CS4, 7 PS2; reported twice) The R8 commands the owner asked for
+  ("there should be a command for that": `plumb jev status`, `plumb jev setup`,
+  `plumb config show`) and the R12 pieces the owner adopted ("Ok adopt the missing pieces")
+  are SHOULD items early in the drop orders. Fix: promote `jev status`, `jev setup` and
+  `config show` to MUST (they are cheap) or put them last in the drop order; name every
+  dropped R8, R11 or R12 item at the top of the handoff, as the plan does for the vault.
+- [MEDIUM] (plan 4 CS1, 12; reported twice) The R11 measurement ("the e2e session test covers
+  one ambiguous request that yields exactly the questions that matter") is droppable, which
+  would leave the clarify skill unmeasured. Fix: put CS1 in the never-cut list of plan 12, or
+  make `test_clarify_e2e.py` a MUST with `plumb clarify` reduced to what the test needs.
+- [MEDIUM] (sp2 5.1 first rule) `intent.quote` is checked against the logged prompt only when
+  `--prompt` is given; without it an agent paraphrase is stored as the owner's words and then
+  serves as the triage premise, inflating the low-risk group. Fix: require `--prompt` for any
+  capture that writes an INT or example quote, or mark such records "unverified quote" and
+  keep them out of the low-risk group.
+- [MEDIUM] (sp4 4.2 stop row) On Pi the block instruction is sent as a user-role steering
+  message; if Pi's input event fires for it, the prompt hook logs plumb's own text as an owner
+  prompt, which a relay could then quote (the "say ok" offer wording). Fix: tag
+  plumb-originated steering messages and skip them in the prompt-digest log, or deliver the
+  block as a non-user context message; test that a block message never becomes a logged
+  owner prompt.
+- [MEDIUM] (sp2 3 C5 and 8.1, concept 4.6 "The offer names every record of the group by ID",
+  against sp5 lines 81-83 and R9) sp2 and the concept put every ID of the low-risk group in
+  the `plumb brief` line (about 50 IDs on plumb's own repository), which is the list of
+  proposed records R9 forbids; sp5 says one count line with a pointer. Fix: sp5 wins for the
+  brief and the agent's context (a count and `plumb triage`); exact IDs and hashes stay in
+  `stated.json` groups and `plumb triage`; the owner-facing end-of-turn line lists IDs up to
+  a small cap plus "+N more (plumb triage)". Align sp2 8.1, C5 and concept 4.6.
+- [MEDIUM] (sp2 8.3, R12.1) Synthetic perturbations count toward `min_negatives` (up to
+  half), so a calibration can pass with very few real owner revocations, loosening the gate
+  R12.1 defines on "the owner's own confirmed and revoked records"; the departure is not in
+  sp2 3. Fix: declare it in sp2 3; report owner-labelled and synthetic accuracy separately in
+  the `calibration` event; require a minimum of real owner-labelled items, with synthetic
+  negatives only adding to a passing real-label result.
+- [MEDIUM] (sp2 5.3 and 9.1, concept 6.6 trigger 2) R11's timing rule (clarifying questions
+  only when the owner starts or changes intent, never mid-implementation unless a
+  contradiction appears) lives only in the skill text: a `matters: true` DEC the agent writes
+  mid-implementation is asked by the stop hook. Fix: ask such a DEC only when it was written
+  in a turn whose prompt started or changed intent (clarify depth incremental or escalated)
+  or when a contradiction flag exists; otherwise show it as a labelled assumption; test that a
+  mid-implementation DEC is not asked.
+- [MEDIUM] (sp4 3.2 with sp3 3.2) The merge-boundary glance lists approval and revocation
+  events but not `config` (auto-approve on/off) or `jev-setup` events. The HIGH fix makes
+  `config auto-approve` refuse outside an interactive terminal on every host, so an agent can
+  no longer write it on the normal path, but the owner still cannot glance at it. Fix: list
+  the range's `config` and `jev-setup` events in the merge-check glance; have the brief say
+  when a host runs without the marker.
+- [LOW] (sp2 4) New event kinds (`config`, `calibration`, `escalation-declined`, `triage`,
+  `jev-setup`) go into `events.jsonl`, which R10.2 calls implementation drift. sp2 12 routes
+  every write through `log_append`, so this is only extra migration load. Fix: the SP6
+  one-file-per-entry migration covers these kinds.
+- [LOW] (sp2 6.2; reported twice) An unapproved escalated set is named "once per turn" as the
+  open trigger-2 question, while other questions are asked once per hash, so the owner is
+  re-asked every turn while deliberately waiting. Fix: ask once per set hash; afterwards show
+  it on the status card and in the brief only, and keep the agent-side "do not write its code
+  yet" instruction in the deduplicated delta.
+- [LOW] (sp3 9 and the R10.5 row of sp3 2) `plumb check` is an alias of `validate`, so
+  `plumb check --merge` runs `merge_report(run_full=False)` and never the one full suite R10.5
+  names, contradicting "Same entry point". Fix: state that SP6's R10.5 hook uses
+  `plumb merge-check`, and either document `check --merge` as the report-only form or route
+  it to merge-check with the full run.
+- [LOW] (sp2 6.2 and 8.1 step 5) `plumb spec show|approve` need an INT ID, against R9's
+  plain-language arguments. Fix: resolve plain words through `plumb resolve` (sp5) and print
+  the listed hashes before writing. (The triage y/N is now stated as the confirmation of R8's
+  one step: it is the owner-terminal guard's question, which no flag skips.)
+- [LOW] (sp2 7.1) The precision fixture sets no floor for `extends` prompts, though an
+  extension is trigger 1; a heuristic missing every extension passes. Fix: add a minimum
+  recall for `extends`, or report it as an advisory metric.
+- [LOW] (src/plumb/approvals.py `require_owner`, this fix) Owner-only commands now need stdin
+  and stdout to be terminals. Git Bash's mintty is not one for native Windows Python, so the
+  owner there must prefix `winpty` (the refusal says so) or use Windows Terminal or
+  PowerShell. `plumb approve --yes` is removed: the y/N is the guard's proof and no flag skips
+  it. `docs/specs/sp1-grounding-loop.md` still documents `--yes` as history.
+- [LOW] (concept 4.6 check 4) An agent that drives a pseudo-terminal could answer the y/N
+  itself. This is a deliberate bypass inside the stated trust model (tamper-evident, not
+  tamper-proof), not the normal path. Fix (optional, later): record in each `by: owner` entry
+  that the answer came from a terminal, so the glance can show it.

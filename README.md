@@ -94,8 +94,12 @@ uv run plumb status
 confirm it from your own terminal:
 
 ```bash
-uv run plumb approve SR-001
+uv run plumb approve SR-001      # answer y at the prompt
 ```
+
+Owner-only commands ask y/N in an interactive terminal and refuse to run without one (in
+Git Bash's mintty, prefix `winpty`), so an agent's shell cannot write an owner approval on
+any host.
 
 You can also mark a test directly with `@pytest.mark.sr("SR-001")`. Register the marker in your
 pytest configuration (`markers = ["sr(id): links a test to a plumb requirement"]`).
@@ -252,7 +256,7 @@ exact change).
 | `plumb drift` | Drift signals only: stale and dangling links, unconfirmed edits, uncovered examples, and fidelity that a judgment no longer covers. |
 | `plumb brief [--all] [--max-lines N]` | The short intent brief (about 30 lines). |
 | `plumb explain WORDS...` (alias `why`) | Why a behaviour, a file or a record exists, in your terms: the requirement, your words it derives from, decisions, examples, test state and code. Takes plain words ("how totals are rounded"), a path or a record ID. In Claude Code, `/plumb explain <anything>`. |
-| `plumb approve IDS... [--proposed] [--yes] [--note]` | Owner approval of records at their current content. It is refused under the agent session marker. |
+| `plumb approve IDS... [--proposed] [--exempt] [--note]` | Owner approval of records at their current content. It asks y/N in your interactive terminal and is refused under the agent session marker or without a terminal (an agent's shell, a pipe), on every host. `revoke` and `tests waive` work the same way. |
 | `plumb relay IDS... --prompt DIGEST --quote "..." [--revoke]` | Record an approval or a revocation that you gave in a prompt, with your exact words. |
 | `plumb revoke IDS... [--note]` | Owner revocation of the latest approval. |
 
