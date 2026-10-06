@@ -210,22 +210,61 @@ def _preview(core: Core, plan: _Plan) -> list[IntentCardData]:
     return []
 
 
+UNCHECKED_NOTE = ("quote not checked (no --prompt): it is kept as the agent's quote, not as "
+                  "the owner's words, and triage never rates it faithful; give --prompt "
+                  "<digest> of the owner's logged prompt")
+
+
+def _check_quotes(core: Core, plan: _Plan, prompt: str | None) -> bool:
+    """Check every quote the document stores as the owner's words against the logged
+    prompt (before anything is written), and pin each example quote to that prompt
+    (``prompt`` on the example; R8 A: triage counts only verified words). Returns whether
+    a quote was left unchecked: no ``--prompt`` was given."""
+    examples = [e for item in plan.requirements for e in item["fields"]["examples"]
+                if e.get("quote")]
+    added = [e for _, changes in plan.updates for e in changes.get("examples") or []
+             if e.get("quote") and not e.get("prompt")]
+    if not prompt:
+        return plan.intent is not None or bool(examples) or bool(added)
+    from plumb.approvals import quote_in_prompt
+    from plumb.normalize import normalize_text
+
+    entry = (check_quote(core, prompt, plan.intent["quote"]) if plan.intent is not None
+             else _entry(core, prompt))
+    text = normalize_text(str(entry["text"]))
+    prefix = str(entry["digest"]).removeprefix("sha256:")[:16]
+    for example in examples:
+        if not quote_in_prompt(normalize_text(str(example["quote"])), text):
+            raise CaptureError(f"the quote of example {example['id']} is not a verbatim part "
+                               "of that prompt; the owner's words are never paraphrased "
+                               "into a quote")
+        example["prompt"] = prefix
+    for example in added:  # an update keeps earlier examples' quotes as they were
+        if quote_in_prompt(normalize_text(str(example["quote"])), text):
+            example["prompt"] = prefix
+    return False
+
+
+def _entry(core: Core, prompt: str) -> Mapping[str, Any]:
+    from plumb.approvals import Refused, find_prompt
+
+    try:
+        return find_prompt(core, prompt)
+    except Refused as exc:
+        raise CaptureError(str(exc)) from exc
+
+
 def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = None,
             dry_run: bool = False, backend: Any = None) -> CaptureResult:
     """Write the read-back ``doc`` as proposed records; see the module docstring."""
     from plumb.capture.card import card_data, render
 
     plan = _Plan(core, doc)
+    unchecked = _check_quotes(core, plan, prompt_digest)
     if prompt_digest:
-        if plan.intent is not None:
-            prompt_digest = str(check_quote(core, prompt_digest, plan.intent["quote"])["digest"])
-        else:
-            from plumb.approvals import Refused, find_prompt
+        from plumb.approvals import find_prompt
 
-            try:
-                prompt_digest = str(find_prompt(core, prompt_digest)["digest"])
-            except Refused as exc:
-                raise CaptureError(str(exc)) from exc
+        prompt_digest = str(find_prompt(core, prompt_digest)["digest"])
     if dry_run:
         card = render(_preview(core, plan))
         lines = ["dry run: nothing written"]
@@ -295,6 +334,8 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
     lines = [f"{rid} {statuses[rid].confirmation}" + (" (confirmed by JEV)" if rid in auto
                                                       else "") for rid in written + updated]
     lines += [f"{rid} was confirmed; this edit needs the owner again" for rid in again]
+    if unchecked:
+        lines.append(UNCHECKED_NOTE)
     if plan.intent_ref is not None and written:
         from plumb.capture.spec import set_of
 

@@ -297,7 +297,16 @@ Two forms the owner chose on 2026-10-06 (D14) sit beside these:
   set pins the whole group's hashes, `plumb triage` shows it in full, and the owner's "ok"
   approves exactly that pinned list, no more: a record changed since the offer is left out
   and named. An "ok" that objects to one of the group, or names records instead, does not
-  confirm the group. The rating never approves anything by itself.
+  confirm the group. The rating never approves anything by itself. A record joins the group
+  only when its premise is the owner's verified words and nothing in it contradicts them,
+  whatever the backend scored (one choke point, the low-risk admission of `plumb triage`):
+  every quote it rests on must be verbatim in a prompt the host's prompt hook logged (a
+  quote stored without `--prompt`, or resting on a self-recorded message, is shown
+  individually as "quote not verified", and owner views call it "quoted, not checked
+  against your logged prompt", never "your words"), and cheap checks find no changed number
+  and no flipped will/won't or result against those words (the "no" cases of R13 Q1, the
+  variations calibration generates); such a record is shown individually as "contradicts
+  your words".
 - **Auto-approval (D14 B).** Off by default. Only the owner turns it on, in the owner's
   terminal (`plumb config auto-approve on`, logged as an event; editing `config.yaml` alone
   does not turn it on), and only after a passing calibration for the current JEV model
@@ -345,8 +354,13 @@ with four cheap, deterministic checks, none of which calls a model:
    never shown. The owner's words also decide which of those records the "ok" covers: when
    the clause the quote comes from (or the quote) names records, it confirms only those
    ("SR-001 is ok but DEC-001 is wrong" confirms SR-001 alone), and a record the prompt
-   names next to objection or change words (wrong, not, instead, change, rewrite, except,
-   ...) is never confirmed by it: an objection is not an approval. The prompt hook's relay
+   names next to objection or change words (wrong, not, instead, should, change, rewrite,
+   except, ...) is never confirmed by it: an objection is not an approval. The owner names
+   records in plain words as often as by ID (R9), so a record counts as named when the
+   clause holds its ID or a distinctive word of its title, statement, examples or quote
+   ("No, the pow example is wrong, it should return 9. Ok, carry on" objects to the records
+   about pow); an objection that refers to "the example" or "the test" in general and names
+   none objects to every record. The prompt hook's relay
    suggestion applies the same rule, so it lists every awaiting record only for a bare "ok".
    The same words sent twice ("ok" today and "ok" last week) share a digest; the check
    reads the latest logged prompt with that digest, the one the owner just sent, against
@@ -550,7 +564,14 @@ On each prompt, the prompt hook:
    prompt that may change a confirmed record gets its own instruction, also later in the
    same session (D5, trigger 1); only the record lines of step 2 are deduplicated. The
    agent, which is already running, acts as the cascade's LLM tier at no extra cost. Only a
-   confirmed contradiction or extension reaches the owner.
+   confirmed contradiction or extension reaches the owner: the flag is an instruction to the
+   agent, and the stop hook shows the owner an intent-change card only when the turn shows
+   the agent concluded there is a change (it edited the flagged record, or wrote or edited a
+   record that supersedes, corrects, relates to, derives from or decides it), or when a
+   backend other than the heuristic rated the flag `accept`. A heuristic flag alone never
+   reaches the owner, on any host. The heuristic never reads a shared leading "add a ..."
+   (or "function", "returning") as a subject in common: a new, unrelated feature is not an
+   extension of a confirmed one.
 
 ### 6.3 Edit tracking
 
@@ -738,7 +759,13 @@ tests within a time budget, and three rules keep them to seconds:
   (same package, then its parent), in a deterministic order, at most `verify.sample_size`
   (10 by default) and inside the time budget. It also sets `full verification pending`,
   which holds while any such file differs from its hash recorded with the latest full-suite
-  evidence.
+  evidence. A hook never builds a test map inline that it cannot build within its budget
+  (a fresh checkout, where `.plumb/cache/` is empty): the build starts outside the hook (a
+  detached `plumb map`), and until it lands the turn gets the same bounded sample with
+  `full verification pending` ("coverage unknown"), on every host. The regression check
+  (trigger 3) reads the regressions this turn's runs recorded from the evidence index
+  before any step a budget can cut, so it never waits for the map; when the budget cuts the
+  selection itself, the agent is still asked to run the turn's covering tests.
 - **A per-turn time budget caps the selection.** `plumb verify` in a turn runs the selected
   tests in priority order (tests linked by `verified_by` to the changed requirements, then
   tests that mention a changed path literally, then import-closure tests, nearest importers

@@ -8,6 +8,12 @@ record is shown individually with its rating. Always individual: a DEC with ``ma
 true``, a member of an escalated set, an edit of a record the owner confirmed before, and a
 record with no owner words to compare.
 
+The low-risk admission is one choke point: a record joins the group only when its premise
+is the owner's verified words (every quote verbatim in a prompt the host's prompt hook
+logged; otherwise "quote not verified") and nothing in it contradicts them (a changed
+number, a flipped will/won't or result: ``textjudge.contradiction``). Either problem rates
+the record "riskier" and shows it individually, whatever the backend scored.
+
 Triage never approves anything by itself. ``plumb triage --approve low-risk`` is the owner's
 one step from the owner's own terminal (``approvals.require_owner``) and approves exactly the
 listed hashes; in a session, the owner's "ok" to the offer line is relayed with ``plumb relay
@@ -83,6 +89,78 @@ def claim(index: Mapping[str, Record], record: Record) -> tuple[str, str, str]:
     return record.kind, "", record.title
 
 
+UNVERIFIED = "quote not verified"
+CONTRADICTS = "contradicts your words"
+
+
+class _Prompts:
+    """The owner's logged prompts, read once per triage: ``text(prefix)`` is the text of the
+    hook-logged prompt a record's ``prompt`` digest prefix names, or None (unknown, not
+    hashing to its digest, or recorded by the agent itself: ``via`` other than ``hook``)."""
+
+    def __init__(self, core: Core) -> None:
+        self.core = core
+        self.cache: dict[str, str | None] = {}
+
+    def text(self, prefix: Any) -> str | None:
+        key = str(prefix or "").strip()
+        if not key:
+            return None
+        if key not in self.cache:
+            from plumb.approvals import Refused, find_prompt
+
+            try:
+                entry = find_prompt(self.core, key)
+            except Refused:
+                entry = None
+            ok = entry is not None and entry.get("via") == "hook"
+            self.cache[key] = str(entry["text"]) if ok and entry is not None else None
+        return self.cache[key]
+
+
+def _holds(text: str | None, quote: str) -> bool:
+    from plumb.approvals import quote_in_prompt
+    from plumb.normalize import normalize_text
+
+    return text is not None and quote_in_prompt(normalize_text(quote), normalize_text(text))
+
+
+def _verified_intent(prompts: _Prompts, record: Record) -> str | None:
+    """The logged prompt text an intent's quote is verbatim in, or None."""
+    text = prompts.text(record.fields.get("prompt"))
+    quote = _flat(record.fields.get("quote"))
+    return text if quote and _holds(text, quote) else None
+
+
+def premise_problem(prompts: _Prompts, index: Mapping[str, Record],
+                    record: Record) -> str | None:
+    """Why the record's premise is not the owner's verified words, or None (R8 A: a record
+    is rated against the owner's words only when they are the owner's). Every piece of the
+    premise must be verbatim in a prompt the host's prompt hook logged: an intent's quote in
+    the prompt its ``prompt`` digest names; a requirement's or a decision's intents the same
+    way, and each example quote in one of those prompts or in its own ``prompt``."""
+    if record.kind == "intent":
+        return None if _verified_intent(prompts, record) else (
+            f"{UNVERIFIED}: no prompt the hook logged holds it")
+    texts: list[str] = []
+    for link in record.links:
+        parent = index.get(link.target.record or "")
+        if (link.kind == "derives_from" and parent is not None and parent.kind == "intent"
+                and _flat(parent.fields.get("quote"))):
+            text = _verified_intent(prompts, parent)
+            if text is None:
+                return f"{UNVERIFIED}: {parent.id}'s quote is in no prompt the hook logged"
+            texts.append(text)
+    for raw in record.fields.get("examples") or []:
+        if not isinstance(raw, Mapping) or not _flat(raw.get("quote")):
+            continue
+        own = prompts.text(raw.get("prompt"))
+        if not any(_holds(t, _flat(raw.get("quote"))) for t in [*texts, own]):
+            return (f"{UNVERIFIED}: the quote of {raw.get('id') or 'an example'} is in no "
+                    "prompt the hook logged")
+    return None
+
+
 def exclusion(core: Core, record: Record, statuses: Mapping[str, Any],
               approved_before: set[str], set_members: Mapping[str, str],
               premise: str) -> str | None:
@@ -156,10 +234,15 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
     dirty = False
     low: list[TriageItem] = []
     single: list[TriageItem] = []
+    prompts = _Prompts(core)
     for record_id in wanted:
         record = index[record_id]
         kind, premise, hypothesis = claim(index, record)
         excluded = exclusion(core, record, statuses, before, members, premise)
+        # the one low-risk admission (R8 A): the premise must be the owner's verified words
+        # and nothing in the record may contradict them, whatever the backend scored
+        unfaithful = None if excluded is not None else (
+            premise_problem(prompts, index, record) or _contradiction(premise, hypothesis))
         score: float | None = None
         reason = ""
         used = name
@@ -184,6 +267,8 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
                     dirty = True
         rating = "unrated" if score is None else ("faithful" if score >= threshold
                                                   else "riskier")
+        if unfaithful is not None:
+            rating, excluded = "riskier", unfaithful
         item = TriageItem(id=record_id, hash=record.hash, title=record.title, kind=record.kind,
                           score=None if score is None else round(score, 3),
                           rating=rating, reason=reason, excluded=excluded, backend=used)
@@ -195,6 +280,16 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
         _save_cache(core, cache)
     return TriageView(backend=name, available=available, low_risk=tuple(low),
                       individual=tuple(single), offer=offer_line(low))
+
+
+def _contradiction(premise: str, hypothesis: str) -> str | None:
+    """A changed number or a flipped will/won't or result against the owner's words
+    (``textjudge.contradiction``: the "no" cases of R13 Q1, which the calibration's
+    ``variations`` generate)."""
+    from plumb.judgment.textjudge import contradiction
+
+    problem = contradiction(premise, hypothesis)
+    return None if problem is None else f"{CONTRADICTS}: {problem}"
 
 
 def _order(record_id: str) -> tuple[int, int]:

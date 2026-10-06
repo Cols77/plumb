@@ -135,8 +135,9 @@ def no_derived_writes() -> Any:
         return
     original = testmap.build_map
 
-    def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True) -> Any:
-        return original(core, rebuild=rebuild, write_text=False)
+    def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True,
+                  max_parse: int | None = None) -> Any:
+        return original(core, rebuild=rebuild, write_text=False, max_parse=max_parse)
 
     testmap.build_map = build_map
     try:

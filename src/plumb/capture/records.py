@@ -119,7 +119,7 @@ def write_intent(core: Core, quote: str, readback: str, **kwargs: Any) -> Record
 
 
 def example_entry(example_id: str, given: str, when: str, then: str,
-                  quote: str | None = None) -> dict[str, Any]:
+                  quote: str | None = None, prompt: str | None = None) -> dict[str, Any]:
     if not (given or when or then):
         raise CaptureError("an example needs given, when and then")
     entry: dict[str, Any] = {"id": example_id, "given": " ".join(str(given).split()),
@@ -127,6 +127,8 @@ def example_entry(example_id: str, given: str, when: str, then: str,
                              "then": " ".join(str(then).split())}
     if quote:
         entry["quote"] = " ".join(str(quote).split())
+        if prompt:  # checked against that logged prompt (R8 A: triage verifies it again)
+            entry["prompt"] = prompt.removeprefix("sha256:")[:16]
     return entry
 
 
@@ -137,14 +139,14 @@ def next_example_id(raw: Sequence[Mapping[str, Any]]) -> str:
 
 
 def add_example(core: Core, sr_id: str, given: str, when: str, then: str,
-                quote: str | None = None) -> tuple[Record, str]:
+                quote: str | None = None, prompt: str | None = None) -> tuple[Record, str]:
     """``plumb example SR-###``: append ``EX-n``; returns the record and the example ID."""
     record = core.index().get(sr_id)
     if record is None or record.kind != "requirement":
         raise CaptureError(f"no requirement {sr_id}")
     raw = [dict(e) for e in record.fields.get("examples") or [] if isinstance(e, Mapping)]
     example_id = next_example_id(raw)
-    raw.append(example_entry(example_id, given, when, then, quote))
+    raw.append(example_entry(example_id, given, when, then, quote, prompt))
     return rewrite(core, record, {"examples": raw}), example_id
 
 

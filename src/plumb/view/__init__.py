@@ -177,7 +177,10 @@ class Vault:
             out.append("")
             out.append(f"> [!{kind}] #{name}")
         if fields.get("quote"):
-            out += ["", f"Your words: \"{_flat(fields['quote'])}\""]
+            from plumb.text import quote_label
+
+            label = quote_label(fields)
+            out += ["", f"{label[0].upper()}{label[1:]}: \"{_flat(fields['quote'])}\""]
         for key, label in (("readback", "Read-back"), ("statement", "Statement"),
                            ("description", "Description"), ("question", "Question"),
                            ("chosen", "Chosen")):

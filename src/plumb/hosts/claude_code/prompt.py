@@ -151,7 +151,7 @@ def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
         return None
     short = digest.removeprefix("sha256:")[:12]
     named, objected = owner_scope(normalize_text(text), None,
-                                  core.config.approve.affirmations)
+                                  core.config.approve.affirmations, core.index())
     held = [i for i in pending if i in objected or (named and i not in named)]
     shown = [i for i in pending if i not in hidden and i not in held]
     unshown = [i for i in pending if i in hidden and i not in held]
@@ -262,16 +262,19 @@ def escalation_hint(core: Any, index: Mapping[str, Any], strong: Sequence[str],
 def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
                  statuses: Mapping[str, Any], ids: Sequence[str], text: str, digest: str,
                  backend: Any, injected: Sequence[str] | None = None,
-                 ) -> tuple[list[Any], list[str]]:
-    """``(lines, flagged)``: the trigger-1 flags on every relevant confirmed record (once
-    per turn: each request that may change it is flagged, decision 5), and the compare line
-    for the confirmed records injected in this prompt (``injected``; all of them when
-    None)."""
+                 ) -> tuple[list[Any], dict[str, dict[str, Any]]]:
+    """``(lines, flags)``: the trigger-1 flags on every relevant confirmed record (once
+    per turn: each request that may change it is flagged, decision 5), each with the
+    judgment behind it (``backend``, ``tier``, ``confidence``), and the compare line for the
+    confirmed records injected in this prompt (``injected``; all of them when None).
+
+    A flag is an instruction to the agent, the cascade's LLM tier (concept 6.2): it is never
+    shown to the owner by itself (the stop hook's ``concluded_flags``)."""
     from plumb.present.delta import Line
 
     confirmed = [index[i] for i in ids if statuses[i].confirmation == "confirmed"]
     out: list[Any] = []
-    flagged: list[str] = []
+    flagged: dict[str, dict[str, Any]] = {}
     if not confirmed:
         return out, flagged
     backend = judgment_backend(core, backend)
@@ -281,7 +284,8 @@ def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
         for judgment in backend.intent_change(text, confirmed):
             if judgment.verdict != "change":
                 continue
-            flagged.append(judgment.subject)
+            flagged[judgment.subject] = {"backend": judgment.backend, "tier": judgment.tier,
+                                         "confidence": judgment.confidence}
             subject = index.get(judgment.subject)
             out.append(Line(f"plumb: this may change {judgment.subject} (confirmed). If it "
                             "does, read back the change and ask before editing; if not, "
@@ -351,12 +355,13 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     ctx.keep([*records, *emitter.add([*queued, *tail], commit=False)])
     intent, flagged = intent_lines(ctx, core, index, statuses, ids, text, digest, backend,
                                    injected)
-    if flagged:  # the stop hook shows the owner an intent-change card (sp5 4.2, trigger 1)
+    if flagged:  # the stop hook shows the owner an intent-change card only when the agent
+        # concluded there is a change (sp5 4.2, trigger 1; stop.concluded_flags)
         turn_path = ctx.session_dir / ctx.session_id / "turn.json"
         turn = read_json(turn_path)
         if isinstance(turn, dict):
-            write_json_atomic(turn_path, {**turn, "flagged": flagged})
-    hint = escalation_hint(core, index, strong, flagged) if strong else None
+            write_json_atomic(turn_path, {**turn, "flagged": list(flagged), "flags": flagged})
+    hint = escalation_hint(core, index, strong, list(flagged)) if strong else None
     rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []), *tail])
     out = [*records, *rest]
     ctx.keep(out)

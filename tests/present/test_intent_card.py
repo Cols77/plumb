@@ -177,6 +177,15 @@ def test_intent_change_flag_gets_a_card(calc: Path, hook_input) -> None:
     approvals.approve(open_core(calc), ["SR-001"])
     run_prompt(calc, hook_input, "SR-001 add should use floats instead")
     touch(calc, "src/app/calc.py")
+    # the flag alone is the agent's instruction: no owner card until the agent concludes
+    message = run_stop(calc, hook_input)["systemMessage"]
+    assert "Intent change" not in message
+    # the agent concluded there is a change: it updated the flagged record
+    run_prompt(calc, hook_input, "SR-001 add should use floats instead")
+    record = calc / ".plumb" / "requirements" / "SR-001.md"
+    record.write_text(record.read_text("utf-8").replace("for integers", "for floats"),
+                      "utf-8")
+    touch(calc, ".plumb/requirements/SR-001.md")
     message = run_stop(calc, hook_input)["systemMessage"]
     assert '▸ Intent change  SR-001 "add returns the sum of two numbers"' in message
 

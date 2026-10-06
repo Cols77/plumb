@@ -32,3 +32,12 @@ def overlap(a: frozenset[str], b: frozenset[str]) -> float:
     if not a or not b:
         return 0.0
     return len(a & b) / math.sqrt(len(b))
+
+
+def quote_label(fields: object) -> str:
+    """How an owner view names an intent's quote: "your words" only when it was checked
+    against the owner's logged prompt when it was written (the record's ``prompt`` digest);
+    otherwise it is a quote nobody checked (R8 A: an unchecked quote is never presented as
+    the owner's words)."""
+    prompt = fields.get("prompt") if isinstance(fields, dict) else None
+    return "your words" if prompt else "quoted, not checked against your logged prompt"

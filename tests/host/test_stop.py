@@ -543,11 +543,14 @@ def test_a_step_starting_past_the_budget_is_skipped_and_reported(
     assert "DEC-001" in {r["id"] for r in stated["records"]}
     status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert status["skipped"] == "covering tests"
-    # the next stop (the DEC already asked) prints the summary with the skip notice
+    # the next turn (the DEC already asked): the cut selection still asks the agent for the
+    # covering tests of the turn's code change (R5), then the summary names the skip
     start_turn(project, asked=json.loads(
         (project / ".plumb" / "session" / "s1" / "turn.json").read_text("utf-8"))["asked"])
     edit(project, "src/calc.py", "def add(a, b):\n    return int(b) + int(a)\n")
-    summary = _summary(run_stop(project, hook_input, verify=verify))
+    reason = _block(run_stop(project, hook_input, verify=verify))
+    assert reason is not None and "plumb tests run --paths src/calc.py" in reason
+    summary = _summary(run_stop(project, hook_input, verify=verify, active=True))
     assert "check skipped (budget): covering tests" in summary
     assert "questions: DEC-001" in summary
 

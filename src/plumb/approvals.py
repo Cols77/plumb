@@ -394,8 +394,23 @@ _CLAUSE_WORD = re.compile(r"(?<!\w)(?:but|however|though|although|whereas|while|
 _OBJECTION = re.compile(
     r"(?<!\w)(?:no|not|never|nope|nah|nor|wrong|incorrect|instead|change|changed|changes"
     r"|rewrite|redo|fix|reject|rejected|revert|remove|drop|disagree|except|wait|hold|stop"
-    r"|bad|broken|cannot|dont|cant|wont|isnt|arent|shouldnt|wouldnt|doesnt|didnt)(?!\w)"
+    r"|bad|broken|cannot|dont|cant|wont|isnt|arent|shouldnt|wouldnt|doesnt|didnt"
+    r"|should|must|rather|prefer|replace|rename|mistake|typo)(?!\w)"
     r"|\w+n['’]t(?!\w)", re.IGNORECASE)
+# Words that point at "a record" in general without naming one ("the example is wrong"):
+# an objection clause that holds one of them and names no record objects to every
+# candidate record.
+_REFERENCE = ("example", "examples", "test", "tests", "requirement", "requirements",
+              "record", "records", "intent", "decision", "decisions", "assumption",
+              "assumptions", "readback", "spec", "card", "statement", "behaviour", "behavior",
+              "result", "results")
+# Words too common in records to name one by themselves (plain-language naming, R9).
+_GENERIC = (*_REFERENCE, "function", "functions", "method", "class", "code", "file", "files",
+            "value", "values", "number", "numbers", "return", "returns", "returning", "call",
+            "called", "calls", "given", "case", "cases", "thing", "things", "work", "please",
+            "carry", "look", "looks", "good", "fine", "right", "need", "want", "like", "keep",
+            "add", "adds", "make", "run", "runs", "time", "way", "okay", "yes", "sure",
+            "think", "seem", "seems", "go", "ahead")
 # What may sit between IDs in a list ("SR-001, SR-002 and DEC-001").
 _ID_LIST_FILLER = re.compile(r"(?:[\s,&+/:;]|(?<!\w)(?:and|or)(?!\w))*", re.IGNORECASE)
 
@@ -427,25 +442,71 @@ def _clauses(text: str) -> list[tuple[int, int]]:
     return merged
 
 
-def owner_scope(text: str, quote: str | None,
-                affirmations: Sequence[str]) -> tuple[set[str], set[str]]:
+def _naming_stems(record: Any) -> frozenset[str]:
+    """The words the owner may name ``record`` by (R9: plain language, not IDs): its title,
+    statement, read-back, quote, and every example's given/when/then and quote."""
+    from plumb.present.resolve import stems
+
+    fields = getattr(record, "fields", {}) or {}
+    parts = [str(getattr(record, "title", "") or "")]
+    for key in ("statement", "readback", "quote", "question", "chosen"):
+        value = fields.get(key)
+        parts.extend(map(str, value) if isinstance(value, list) else [str(value or "")])
+    for example in getattr(record, "examples", ()) or ():
+        parts.extend((example.given, example.when, example.then, example.criterion))
+    for raw in fields.get("examples") or []:
+        if isinstance(raw, Mapping) and raw.get("quote"):
+            parts.append(str(raw["quote"]))
+    return stems(" ".join(parts))
+
+
+def _plain_named(clause: str, records: Mapping[str, Any]) -> set[str]:
+    """The ``records`` that ``clause`` names in plain words: one of its distinctive words
+    (neither an objection word nor a generic one) is a word of the record."""
+    from plumb.present.resolve import stems
+
+    words = stems(_OBJECTION.sub(" ", clause)) - stems(" ".join(_GENERIC))
+    if not words:
+        return set()
+    return {record_id for record_id, record in records.items()
+            if words & _naming_stems(record)}
+
+
+def _refers_generally(clause: str) -> bool:
+    from plumb.present.resolve import stems
+
+    return bool(stems(clause) & stems(" ".join(_REFERENCE)))
+
+
+def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
+                records: Mapping[str, Any] | None = None) -> tuple[set[str], set[str]]:
     """``(named, objected)``: the record IDs the owner's affirming words name, and every
-    record ID the prompt names in a clause that objects to it or asks to change it.
+    record the prompt names in a clause that objects to it or asks to change it.
 
     The one place that reads which records a prompt confirms (R2), for ``plumb relay``
     (IDs, ``--group``, ``--set``) and the relay line the prompt hook suggests. The
     affirming words are the clauses ``quote`` occurs in (without a quote: the clauses
     holding an affirmation term). When they name records, an ok confirms only those
-    ("SR-001 is ok but DEC-001 is wrong" confirms SR-001 alone); a record named next to
-    objection words ("wrong", "not", "instead", "change", ...) anywhere in the prompt is
-    never confirmed. Both sets are empty for a bare "ok"."""
+    ("SR-001 is ok but DEC-001 is wrong" confirms SR-001 alone). A record named next to
+    objection or change words ("wrong", "not", "instead", "should", "except", ...)
+    anywhere in the prompt is never confirmed, however the owner names it (R9): by its ID,
+    or, among ``records`` (the record index), by a word of its title, statement, examples
+    or quote ("the pow example is wrong" objects to the records about pow). An objection
+    clause that names no record but refers to one in general ("the example is wrong")
+    objects to every record. Both sets are empty for a bare "ok"."""
     clauses = _clauses(text)
     objected: set[str] = set()
     for start, end in clauses:
         clause = text[start:end]
         ids = set(_RECORD_ID.findall(clause))
-        if ids and _OBJECTION.search(_NOT_NEGATING.sub(" ", _RECORD_ID.sub(" ", clause))):
-            objected |= ids
+        if not _OBJECTION.search(_NOT_NEGATING.sub(" ", _RECORD_ID.sub(" ", clause))):
+            continue
+        objected |= ids
+        if records:
+            plain = _plain_named(_RECORD_ID.sub(" ", clause), records)
+            if not ids and not plain and _refers_generally(clause):
+                plain = set(records)
+            objected |= plain
     if quote:
         spans = [(m.start(), m.end()) for m in _quote_pattern(quote).finditer(text)]
     else:
@@ -458,14 +519,15 @@ def owner_scope(text: str, quote: str | None,
 
 
 def _check_scope(text: str, quote: str, affirmations: Sequence[str], ids: Sequence[str],
-                 *, group: str | None = None, set_anchor: str | None = None) -> None:
+                 *, group: str | None = None, set_anchor: str | None = None,
+                 records: Mapping[str, Any] | None = None) -> None:
     """Refused unless the owner's words affirm every record of the relay (``owner_scope``).
 
     The IDs path: no record the prompt objects to, and, when the affirming words name
     records, only those. ``--group``: the owner's ok to the offer names no record and objects
     to none of the group (otherwise the named IDs are relayed one by one). ``--set``: no set
     id is objected to, and named records include the anchor."""
-    named, objected = owner_scope(text, quote, affirmations)
+    named, objected = owner_scope(text, quote, affirmations, records)
     against = sorted(i for i in ids if i in objected)
     if against:
         allowed = sorted(i for i in (named or set(ids)) if i not in objected and i in ids)
@@ -618,8 +680,10 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
     elif ids or not extra:
         records = _revoked_records(core, ids) if revoke else _records(core, ids)
     if not revoke and records:
+        relayed = [str(r["id"]) for r in records]
         _check_scope(normalize_text(text), normalized_quote, core.config.approve.affirmations,
-                     [str(r["id"]) for r in records], group=group, set_anchor=set_anchor)
+                     relayed, group=group, set_anchor=set_anchor,
+                     records=index)
     stated, stated_ids = _stated(core, str(entry.get("at") or ""))
     if set_anchor:
         _check_set_shown(set_anchor, records, normalized_quote, stated)

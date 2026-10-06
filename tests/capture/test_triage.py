@@ -21,11 +21,27 @@ from plumb.capture.triage import offer_line, stated_group, triage
 pytestmark = pytest.mark.sr("SR-040")
 
 
+def _prompt(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
 def faithful_intent(n: int) -> str:
+    """An INT whose quote is verbatim in the owner's hook-logged prompt (``logged``)."""
     return record_text(f"INT-0{n}", f"multiply number {n}",
                        quote=f"add multiply number {n} next to add",
                        readback=f"add multiply number {n} next to add",
-                       will=[f"multiply number {n}"])
+                       will=[f"multiply number {n}"],
+                       prompt=_prompt(f"add multiply number {n} next to add"))
+
+
+@pytest.fixture(autouse=True)
+def logged(repo: Path) -> None:
+    """The owner's prompts the INTs of these tests quote, logged by the prompt hook."""
+    for n in range(10, 30):
+        log_prompt(repo, f"add multiply number {n} next to add", at="2026-10-06T00:00:00Z")
+    log_prompt(repo, "export to CSV", at="2026-10-06T00:00:00Z")
 
 
 @pytest.fixture
@@ -37,7 +53,7 @@ def project(repo: Path, write_record) -> Path:
                                    links=[{"kind": "derives_from", "to": "INT-017"}]))
     write_record(repo, record_text("INT-018", "export redesign", quote="export to CSV",
                                    readback="rebuild every exporter with a plugin system",
-                                   wont=["no PDF"]))
+                                   wont=["no PDF"], prompt=_prompt("export to CSV")))
     write_record(repo, record_text("FEAT-001", "calculator"))
     return repo
 

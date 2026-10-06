@@ -14,7 +14,10 @@ LAZY: Any = object()
 
 
 def verify_api(core: Any, given: Any = LAZY) -> Any:
-    """``plumb.verify.open_verify(core)``, or None when VERIFY is unavailable."""
+    """``plumb.verify.open_verify(core, hook=True)``, or None when VERIFY is unavailable.
+
+    Hook mode: a hook never builds a cold test map inline; it gets the unknown-coverage
+    sample and the pending flag instead, and the map is built outside its budget (R5)."""
     if given is not LAZY:
         return given
     try:
@@ -22,7 +25,7 @@ def verify_api(core: Any, given: Any = LAZY) -> Any:
     except ImportError:
         return None
     try:
-        return open_verify(core)
+        return open_verify(core, hook=True)
     except Exception:  # noqa: BLE001 - a failing lane degrades, never breaks a hook
         return None
 

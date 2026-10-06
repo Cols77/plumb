@@ -60,6 +60,11 @@ _EXT = re.compile(
     r"(?<![\w'])(?:also|as\s+well|too|next\s+to|beside|in\s+addition|additionally|another"
     r"|new|support\w*|extend\w*|plus|allow\w*|include\w*|add\s+(?:a|an|another|new|some)"
     r"|accept\w*|let\s+\S+\s+accept)(?![\w'])")
+# "add a ...", "another", "new": a new thing, which extends a record only when the request
+# attaches it to the record ("add a rounding option to sub"), never by itself
+_NEW_THING = re.compile(r"add\s+(?:a|an|another|new|some)|another|new")
+_ATTACH = re.compile(r"(?<![\w])(?:to|for|in|into|on|of|inside|within)\s+(?:the\s+|a\s+|an\s+)?"
+                     r"([a-z]+)")
 _MAKE = re.compile(r"(?<![\w])make\s+(?:the\s+|it\s+|a\s+)?([a-z]+)((?:\s+[a-z]+){1,3})")
 _QUALITY = frozenset({
     "faster", "quicker", "slower", "better", "cleaner", "simpler", "smaller", "readable",
@@ -70,6 +75,17 @@ _QUESTION_START = re.compile(
     r"|could\s+you\s+explain)\b", re.IGNORECASE)
 _NOT_ASKING_CHANGE = re.compile(r"just\s+asking|no\s+change\s+yet|don't\s+change|do\s+not\s+change",
                                 re.IGNORECASE)
+
+# words every request shares ("add a ... function returning ..."): they never make a
+# record a request's subject by themselves (a new "add a negate function" is not about a
+# confirmed "add a sub function")
+_GENERIC_REQUEST = frozenset(stem(w) for w in (
+    "function", "functions", "method", "class", "return", "returns", "returning", "create",
+    "implement", "write", "build", "call", "value", "values", "number", "numbers", "feature",
+    "code", "new", "another", "please", "want", "need"))
+# the request's leading verb for a new thing ("add a ...", "create a ..."): not a subject
+_LEADING_NEW = re.compile(r"^\s*(?:please\s+)?(?:add|create|implement|write|build|make)"
+                          r"\s+(?:a|an|another|new|some)(?![\w])", re.IGNORECASE)
 
 CONTRA_NAMED = 0.8
 CONTRA_MATCHED = 0.65
@@ -123,8 +139,9 @@ def classify(prompt: str, record: object, *, others_named: bool = False) -> Clas
     named = record_id in set(_ID.findall(text))
     wanted = stems(text)
     subject = stems(record_subject_text(record))
+    request = stems(_LEADING_NEW.sub(" ", text))
     title = stems(str(getattr(record, "title", "")))
-    shared = wanted & subject
+    shared = (request & subject) - _GENERIC_REQUEST
     if not named:
         needed = 3 if others_named else 1
         if len(shared) < needed or (len(shared) < 2 and not shared & title):
@@ -142,9 +159,11 @@ def classify(prompt: str, record: object, *, others_named: bool = False) -> Clas
     contra = _CONTRA.search(lowered)
     make = None
     for match in _MAKE.finditer(lowered):
-        target, result = stem(match.group(1)), match.group(2)
-        if (target in shared or named) and result not in _QUALITY \
-                and stem(result) not in then_terms and result not in STOPWORDS:
+        # "make sub faster" asks for a quality, not a new result: only the first word of
+        # the result says which ("faster"); any other new word is a new result ("json")
+        target, result = stem(match.group(1)), match.group(2).split()
+        if (target in shared or named) and result[0] not in _QUALITY \
+                and any(stem(w) not in then_terms and w not in STOPWORDS for w in result):
             make = match
             break
     tidy = _TIDY.search(lowered)
@@ -158,7 +177,9 @@ def classify(prompt: str, record: object, *, others_named: bool = False) -> Clas
         return Classified("contradicts", confidence, example,
                           f"'{contra.group(0)}' negates or replaces the confirmed behaviour",
                           len(shared))
-    ext = _EXT.search(lowered)
+    attached = named or any(stem(m.group(1)) in shared for m in _ATTACH.finditer(lowered))
+    ext = next((m for m in _EXT.finditer(lowered)
+                if attached or not _NEW_THING.fullmatch(m.group(0))), None)
     if ext is not None and wanted - subject:
         new = ", ".join(sorted(wanted - subject)[:3])
         return Classified("extends", EXTENDS, example,
@@ -222,3 +243,91 @@ def overlap_share(a: Iterable[str], b: Iterable[str]) -> float:
     """Share of ``a`` found in ``b``."""
     a, b = set(a), set(b)
     return len(a & b) / len(a) if a else 0.0
+
+
+# --------------------------------------------------------------------------- contradiction
+
+# A number as written: a sign only when nothing word-like is glued before it ("-2", not
+# the "-" of "a-2").
+_NUMBER = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?|(?<=[A-Za-z])\d+(?:\.\d+)?")
+_NEGATION = re.compile(
+    r"(?<![\w'])(?:not|no|never|none|nothing|without|cannot|can't|don't|doesn't|didn't"
+    r"|won't|wont|isn't|aren't|shouldn't|mustn't|no\s+longer|neither|nor)(?![\w'])")
+_SENTENCE = re.compile(r"[.!?;]+(?=\s|$)|\n")
+_CLAUSE = re.compile(r"[.!?;,:]+(?=\s|$)|\n|(?<![\w])(?:but|however|and\s+then)(?![\w])")
+# words a negated statement wraps around its subject ("it is not true that ...")
+_FILLER = frozenset({"true", "case", "that"})
+
+
+def _numbers(text: str) -> dict[float, int]:
+    out: dict[float, int] = {}
+    for match in _NUMBER.finditer(text):
+        try:
+            value = float(match.group())
+        except ValueError:
+            continue
+        out[value] = out.get(value, 0) + 1
+    return out
+
+
+def _show(value: float) -> str:
+    return str(int(value)) if value == int(value) else str(value)
+
+
+def _clauses(text: str) -> list[str]:
+    return [c.strip() for c in _CLAUSE.split(text) if c and c.strip()]
+
+
+def contradiction(premise: str, hypothesis: str) -> str | None:
+    """Why ``hypothesis`` contradicts the owner's words ``premise``, or None (R8 A, R13 Q1).
+
+    Cheap, deterministic checks for the "no" cases the owner named: a changed number (a
+    number of a hypothesis line that the premise does not hold as often, sign included:
+    "returns 2" against "returns -2"), a flipped will/won't (a will line, a read-back or a
+    result holding every word of something the premise negates: "change add" against "do
+    not change add") and the reverse (a won't line, or a negated result, whose words all sit
+    in a clause the premise states positively: "it is not true that it returns 8" against
+    "then it returns 8"). Term coverage alone ignores all three."""
+    text = premise.translate(_APOSTROPHES).lower()
+    have = _numbers(text)
+    negated_scopes: list[frozenset[str]] = []
+    positive: list[frozenset[str]] = []
+    for clause in _clauses(text):
+        match = _NEGATION.search(clause)
+        if match is None:
+            positive.append(stems(clause))
+        else:
+            scope = stems(clause[match.end():])
+            if scope:
+                negated_scopes.append(scope)
+    # a whole sentence stated positively ("given 2, when pow is called, then it returns 8")
+    positive += [stems(s) for s in _SENTENCE.split(text) if s.strip()
+                 and _NEGATION.search(s) is None]
+    for raw in hypothesis.splitlines():
+        line = raw.translate(_APOSTROPHES)
+        label = _LABEL.match(line)
+        kind = label.group(1).lower() if label else ""
+        body = (line[label.end():] if label else line).strip()
+        if not body:
+            continue
+        for value, count in _numbers(body.lower()).items():
+            if have.get(value, 0) < count:
+                return (f"the number {_show(value)} in \"{body[:60]}\" is not in your words "
+                        "as often")
+        words = stems(body) - _FILLER
+        negation = _NEGATION.search(body.lower())
+        negated = kind in ("won't", "wont") or negation is not None
+        if negation is not None and kind not in ("won't", "wont"):
+            # what the line negates: "then it is not true that it returns 8" -> "returns 8"
+            words = stems(body[negation.end():]) - _FILLER or words
+        if not words:
+            continue
+        if not negated:
+            for scope in negated_scopes:
+                if scope <= words:
+                    return (f"\"{body[:60]}\" does what your words rule out "
+                            f"({', '.join(sorted(scope))})")
+        elif any(words <= clause for clause in positive) \
+                and not any(words <= scope or scope <= words for scope in negated_scopes):
+            return f"\"{body[:60]}\" rules out what your words ask for"
+    return None

@@ -57,6 +57,7 @@ from plumb.hosts.claude_code.hookio import (
     write_json_atomic,
 )
 from plumb.hosts.claude_code.providers import LAZY, unjudged_fn, verify_api
+from plumb.trace import is_code_path
 
 IGNORED_PREFIXES = (".plumb/session/", ".plumb/cache/", ".plumb/log/", ".plumb/view/",
                     ".git/")
@@ -443,7 +444,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
             stated_ids.append(d)
     # the cards' triggers known from the records alone (sp5 4.2): this turn's intent-change
     # flags (trigger 1, from the prompt hook) and escalated sets awaiting approval
-    flagged = [str(i) for i in turn.get("flagged") or [] if str(i) in index]
+    flagged = concluded_flags(index, turn, edited_ids)
     escalated, waiting = escalated_sets(core, touched_ids)
     from plumb.present.cards import session_intent
 
@@ -469,6 +470,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                                       "prompt_digest": turn.get("prompt_digest")})
 
     verify = verify_api(core, verify)
+    # trigger 3 first (R3, R5): the regressions this turn's runs recorded come from the
+    # evidence index alone, before any step a budget can cut (no test map needed)
+    recorded = turn_regressions(verify, turn_start)
     selection = evidence = pending = None
     if verify is not None:
         if ctx.deadline.expired():
@@ -480,14 +484,20 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
             pending = verify.full_pending()
 
     # trigger 3: regressions (R3), asked once per failing run
-    regressions = sorted(n for n, e in (evidence or {}).items() if e.regression)
+    regressing = {n: e for n, e in (evidence or {}).items() if e.regression}
+    regressing.update({n: e for n, e in (recorded or {}).items() if n not in regressing})
+    regressions = sorted(regressing)
     open_regressions = [n for n in regressions
-                        if asked.get(f"regression:{n}") != (evidence[n].last_run or "?")]
+                        if asked.get(f"regression:{n}") != (regressing[n].last_run or "?")]
     # trigger 3 as well: a regression of a confirmed example hidden by changing its test
     masked = masked_acceptance(core, verify, index, all_statuses, touched_ids, changed)
     open_masked = [m for m in masked
                    if asked.get(f"masked:{m['node']}") != str(m.get("masked_by") or "?")]
     not_run = [n for n, e in (evidence or {}).items() if e.state in ("none", "stale")]
+    # R5: a turn that changed code always gets its covering tests run; when the budget cut
+    # the selection, the agent's own `plumb tests run --paths` selects them
+    unselected = (verify is not None and selection is None
+                  and any(is_code_path(core.config, p) for p in changed))
 
     unjudged = unjudged_fn(unjudged)
     requirement_ids = [i for i in touched_ids if index[i].kind == "requirement"]
@@ -517,7 +527,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         # session per state; the triggers and the tests instruction are never cut
         emitter = open_emitter(ctx, "stop", config=core.config)
         wanted: list[Line] = []
-        if not_run:
+        if not_run or unselected:
             wanted.append(Line(tests_instruction(changed,
                                                  float(core.config.verify.turn_budget_s)),
                                subject="tests", must=True, per_turn=True))
@@ -526,9 +536,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                                state=index[d].hash, must=True))
             asked[d] = index[d].hash
         for n in open_regressions:
-            wanted.append(Line(_regression_line(n, evidence[n]), subject=f"regression:{n}",
-                               state=evidence[n].last_run or "?", must=True))
-            asked[f"regression:{n}"] = evidence[n].last_run or "?"
+            wanted.append(Line(_regression_line(n, regressing[n]), subject=f"regression:{n}",
+                               state=regressing[n].last_run or "?", must=True))
+            asked[f"regression:{n}"] = regressing[n].last_run or "?"
         for m in open_masked:
             wanted.append(Line(_masked_line(index, m), subject=f"masked:{m['node']}",
                                state=str(m.get("masked_by") or "?"), must=True))
@@ -565,7 +575,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     text, shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
         pending, questions, fidelity, turn_start, verify is not None, skipped,
-        tests_checked="covering tests" not in skipped, untraced=untraced,
+        tests_checked="covering tests" not in skipped or recorded is not None,
+        untraced=untraced,
         changed_tests=changed_acceptance(index, all_statuses, touched_ids),
         snapshot=snapshot, decisions=decisions,
         regressions=[*regressions, *(m["node"] for m in masked)], flagged=flagged,
@@ -575,6 +586,49 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     write_stated(ctx, turn, index, stated_ids, shown, group=group, offer=offer,
                  message=message, confirm=view)
     return HookOutput(system_message=message)
+
+
+# links by which a record written or edited this turn says it changes another one
+_CHANGE_LINKS = ("supersedes", "corrects", "relates_to", "derives_from", "decides")
+
+
+def concluded_flags(index: Mapping[str, Any], turn: Mapping[str, Any],
+                    edited_ids: Sequence[str]) -> list[str]:
+    """The prompt hook's intent-change flags (trigger 1) the owner sees as a card: only
+    those the turn shows a change for. The prompt hook's flag is an instruction to the agent,
+    which is the cascade's LLM tier (concept 6.2); a heuristic flag alone never reaches the
+    owner (decision 5: "few, meaningful interruptions").
+
+    A flag counts when the agent edited the flagged record this turn, or wrote or edited a
+    record that links to it (supersedes, corrects, relates to, derives from or decides it),
+    or when a judgment backend other than the heuristic rated it ``accept`` (confident)."""
+    raw = [str(i) for i in turn.get("flagged") or [] if str(i) in index]
+    if not raw:
+        return []
+    details = turn.get("flags") if isinstance(turn.get("flags"), Mapping) else {}
+    edited = set(edited_ids)
+    linked = {link.target.record for i in edited if i in index for link in index[i].links
+              if link.kind in _CHANGE_LINKS and link.target.record}
+    out = []
+    for record_id in raw:
+        info = details.get(record_id) if isinstance(details.get(record_id), Mapping) else {}
+        confident = info.get("tier") == "accept" and info.get("backend") not in (
+            None, "", "heuristic")
+        if record_id in edited or record_id in linked or confident:
+            out.append(record_id)
+    return out
+
+
+def turn_regressions(verify: Any, turn_start: float) -> dict[str, Any] | None:
+    """The regressions this turn's test runs recorded (``VerifyAPI.recorded_regressions``
+    since the turn started), or None when they could not be read (no VERIFY, no turn start,
+    or a VerifyAPI without the method)."""
+    if verify is None or not turn_start or not hasattr(verify, "recorded_regressions"):
+        return None
+    try:
+        return dict(verify.recorded_regressions(_iso(max(turn_start - 1.0, 0.0))))
+    except Exception:  # noqa: BLE001 - a lane failure degrades, never breaks the stop
+        return None
 
 
 def escalated_sets(core: Any, touched_ids: Sequence[str]) -> tuple[list[str], list[str]]:

@@ -9,7 +9,48 @@ from typing import Any
 
 from plumb.contracts import FullPending, NodeEvidence, Selection
 
-DERIVED_VERSION = 1
+DERIVED_VERSION = 2
+# A hook parses at most this many files of a stale or missing test map inline (about 20 ms
+# a file); a larger build runs outside the hook (``spawn_map_build``), R5.
+HOOK_PARSE_MAX = 25
+COVERAGE_UNKNOWN = ("coverage unknown: the test map is not built yet (it is being built "
+                    "outside the hook; plumb map builds it now)")
+MAP_BUILD_LOCK_S = 300.0
+
+
+def spawn_map_build(root: Path) -> bool:
+    """Start ``plumb map`` detached, so a cold test map is built outside every hook's budget
+    (R5; at most one start per ``MAP_BUILD_LOCK_S``). Never raises; False when not started
+    (``PLUMB_NO_BACKGROUND_MAP`` set, a recent start, or no process could start)."""
+    import os
+    import subprocess
+    import sys
+    import time
+
+    if os.environ.get("PLUMB_NO_BACKGROUND_MAP"):
+        return False
+    lock = Path(root) / ".plumb" / "cache" / "map.building"
+    try:
+        if time.time() - lock.stat().st_mtime < MAP_BUILD_LOCK_S:
+            return False
+    except OSError:
+        pass
+    options: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+                               "stderr": subprocess.DEVNULL, "cwd": str(root),
+                               "close_fds": True}
+    if os.name == "nt":
+        options["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0x8)
+                                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200))
+    else:
+        options["start_new_session"] = True
+    try:
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text(str(os.getpid()), encoding="utf-8")
+        subprocess.Popen([sys.executable, "-m", "plumb", "map", "--root", str(root)],
+                         **options)
+    except OSError:
+        return False
+    return True
 
 
 def _pending_dict(pending: FullPending) -> dict[str, Any]:
@@ -69,19 +110,32 @@ class RunReport:
 class Verify:
     """VerifyAPI over one CoreAPI. Map, index and env key are cached per instance."""
 
-    def __init__(self, core: Any) -> None:
+    def __init__(self, core: Any, *, hook: bool = False) -> None:
         self.core = core
         self.root = Path(core.root)
+        self.hook = hook
+        self.map_missing: str | None = None  # hook mode: why the map was not built inline
         self._map: Any = None
         self._index: dict[str, Any] | None = None
         self._env_key: str | None = None
 
     # -- cached state
     def test_map(self) -> Any:
+        """The test map. In hook mode, ``MapUnavailable`` instead of a build that would take
+        longer than a hook may spend (more than ``HOOK_PARSE_MAX`` files to parse); the
+        build is then started outside the hook (``spawn_map_build``)."""
         if self._map is None:
-            from plumb.verify.testmap import build_map
+            from plumb.verify.testmap import MapUnavailable, build_map
 
-            self._map = build_map(self.core)
+            if self.map_missing is not None:
+                raise MapUnavailable(self.map_missing)
+            try:
+                self._map = build_map(self.core,
+                                      max_parse=HOOK_PARSE_MAX if self.hook else None)
+            except MapUnavailable as exc:
+                self.map_missing = str(exc)
+                spawn_map_build(self.root)
+                raise
         return self._map
 
     def index(self) -> dict[str, Any]:
@@ -100,12 +154,80 @@ class Verify:
 
     # -- VerifyAPI
     def select(self, changed: Sequence[str], *, budget_s: float | None = None) -> Selection:
+        """The covering tests of ``changed`` (spec 7.2). The one choke point of R5 for every
+        host: when the test map is not available within a hook's budget, the bounded
+        unknown-coverage sample (``unknown_selection``) with ``full_pending`` set, never
+        nothing."""
         from plumb.verify.evidence import durations
         from plumb.verify.select import select_tests
+        from plumb.verify.testmap import MapUnavailable
 
         index = self.index()
-        return select_tests(self.core, self.test_map(), changed, budget_s=budget_s,
+        try:
+            tmap = self.test_map()
+        except MapUnavailable:
+            return self.unknown_selection(changed)
+        return select_tests(self.core, tmap, changed, budget_s=budget_s,
                             durations=durations(index), scale=float(index.get("scale") or 1.0))
+
+    def unknown_selection(self, changed: Sequence[str]) -> Selection:
+        """R5 without a test map: the changed test files themselves plus a bounded,
+        deterministic sample of the tests nearest each changed source file (at most
+        ``verify.sample_size``), every source file reported as unknown coverage."""
+        from plumb.trace import is_code_path
+        from plumb.verify.select import (
+            is_documentation,
+            matches_infra,
+            nearest_tests,
+            normalize_path,
+        )
+        from plumb.verify.testmap import is_test_file, scan_files
+
+        config = self.core.config
+        vcfg = config.verify
+        norm = list(dict.fromkeys(p for p in (normalize_path(c) for c in changed) if p))
+        docs = [p for p in norm if is_documentation(p)]
+        infra = sorted(p for p in norm if p not in docs and matches_infra(p, vcfg.infra_globs))
+        rest = [p for p in norm if p not in docs and p not in infra
+                and not (self.root / p).is_dir()]
+        tests = sorted(r for r in scan_files(self.root, config)
+                       if is_test_file(r, config.test_dirs))
+        test_set = set(tests)
+        reasons: dict[str, Any] = {p: "import" for p in rest if p in test_set}
+        unknown = tuple(p for p in rest if p not in test_set and is_code_path(config, p))
+        sampled: list[str] = []
+        for path in unknown:
+            pool = [t for t in tests if t not in reasons]
+            for test in nearest_tests(path, pool, config.source_dirs, config.test_dirs,
+                                      vcfg.sample_size):
+                if len(sampled) >= vcfg.sample_size:
+                    break
+                reasons[test] = "sample"
+                sampled.append(test)
+        nodes = tuple(reasons)
+        return Selection(changed=tuple(norm), nodes=nodes, reasons=reasons, deferred=(),
+                         sampled=tuple(sampled), unknown_coverage=unknown,
+                         infra_changed=tuple(infra),
+                         doc_only=bool(norm) and len(docs) == len(norm),
+                         expected_s=float(len(nodes)) * float(vcfg.default_test_s))
+
+    def recorded_regressions(self, since: str = "") -> dict[str, NodeEvidence]:
+        """Trigger 3 without a test map (R3): the nodes whose last recorded run, at or after
+        ``since`` (ISO time), failed after a recorded pass. Read from the evidence index
+        alone, so the regression check never waits for the map."""
+        out: dict[str, NodeEvidence] = {}
+        for node_id, entry in sorted(self.index().get("nodes", {}).items()):
+            last = entry.get("last") or {}
+            passed = entry.get("last_pass")
+            if last.get("outcome") != "failed" or not passed:
+                continue
+            if since and str(last.get("at") or "") < since:
+                continue
+            out[node_id] = NodeEvidence(
+                node_id=node_id, state="fresh-fail", regression=True,
+                test_changed_since_pass=last.get("test_hash") != passed.get("test_hash"),
+                last_run=last.get("run_id"))
+        return out
 
     def expected_s(self, targets: Iterable[str]) -> float:
         """The unscaled estimate of ``targets`` (recorded durations, defaults otherwise)."""
@@ -120,8 +242,14 @@ class Verify:
 
     def evidence(self, nodes: Iterable[str]) -> Mapping[str, NodeEvidence]:
         from plumb.verify.evidence import node_evidence
+        from plumb.verify.testmap import MapUnavailable
 
-        index, tmap, key = self.index(), self.test_map(), self.env_key()
+        nodes = list(nodes)
+        try:
+            tmap = self.test_map()
+        except MapUnavailable:  # no closure to check freshness against: not yet run
+            return {n: NodeEvidence(node_id=n, state="none") for n in nodes}
+        index, key = self.index(), self.env_key()
         identity = self.identity()
         return {n: node_evidence(index, tmap, n, key, identity) for n in nodes}
 
@@ -156,6 +284,7 @@ class Verify:
         infra = {p: stat(self.root / p) for p in core.config.verify.infra_globs
                  if not any(ch in p for ch in "*?[")}
         parts = {"v": DERIVED_VERSION, "scan": scan_files(self.root, core.config),
+                 "map": stat(core.paths.test_map_json),
                  "records": records, "evidence": stat(core.paths.log_evidence),
                  "config": stat(core.paths.config), "env": self.env_key(),
                  "identity": stat(core.paths.env_identity), "infra": infra}
@@ -178,6 +307,9 @@ class Verify:
         if name in values:
             return values[name]
         value = compute()
+        after = self.fingerprint()  # computing may have built the map (a new map stat)
+        if after != fp:
+            fp, values = after, {}
         values[name] = value
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -189,8 +321,15 @@ class Verify:
         return value
 
     def full_pending(self) -> FullPending:
-        """Whether a full run is due (R5), cached by ``fingerprint()`` for the hooks."""
-        data = self.derived("full_pending", lambda: _pending_dict(self._full_pending()))
+        """Whether a full run is due (R5), cached by ``fingerprint()`` for the hooks. Pending
+        ("coverage unknown") while the test map is not built (hook mode)."""
+        from plumb.verify.testmap import MapUnavailable
+
+        try:
+            data = self.derived("full_pending",
+                                lambda: _pending_dict(self._full_pending()))
+        except MapUnavailable:
+            return FullPending(pending=True, reasons=(COVERAGE_UNKNOWN,))
         return FullPending(pending=bool(data["pending"]), reasons=tuple(data["reasons"]))
 
     def _full_pending(self) -> FullPending:
@@ -241,10 +380,18 @@ class Verify:
         return out
 
     def tests_for(self, refs: Iterable[str]) -> Mapping[str, tuple[str, ...]]:
+        from plumb.verify.testmap import MapUnavailable
+
+        refs = list(refs)
+        try:
+            return self._tests_for(refs)
+        except MapUnavailable:  # hook mode, no map yet: nothing mapped
+            return {ref: () for ref in refs}
+
+    def _tests_for(self, refs: list[str]) -> Mapping[str, tuple[str, ...]]:
         from plumb.model import ID_PATTERN
         from plumb.verify.select import normalize_path
 
-        refs = list(refs)
         if refs and all(ID_PATTERN.match(ref) for ref in refs):
             # record ids only (the prompt hook, the brief): no map build on a warm call
             records = self.derived("record_tests", lambda: {

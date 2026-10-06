@@ -2700,3 +2700,205 @@ Recorded, not fixed (owner rule: HIGH only):
   on the toy), the guard (exit 3 without a TTY or under the marker), the commit-msg hook,
   merge-check (exit 4/5/1, one full run), the MCP server (6 read-only tools), the host
   adapters, the importer (idempotent, all proposed) and plumb-clarify with its e2e test.
+
+## Whole-plumb audit, round 2 (2026-10-06): HIGH findings fixed, the rest recorded
+
+The audit drove the real CLI, the hooks, merge-check and the MCP server on scratch projects
+and on fresh clones of plumb. Four HIGH findings were fixed in this change, each as a class:
+
+- [FIXED, HIGH] R2 / R9 / concept 4.6 check 3, "an objection is not an approval": objections
+  counted only when the owner named a record by its ID. "No, the pow example is wrong, it
+  should return 9. Ok, carry on with the tests" let `plumb relay INT-005 SR-005 --quote "Ok,
+  carry on with the tests"` confirm the pow records, and the prompt hook suggested exactly
+  that relay; "ok but div should return a float" and "Looks good except the pow example: it
+  should be 2 and 4 giving 16. ok go ahead" were relayed the same way. Guarantee: a relayed
+  confirmation never covers a record the same prompt objects to or asks to change, however
+  the owner names it. One choke point, `approvals.owner_scope`, now resolves plain words
+  against the record index: a record counts as named when an objection clause holds its ID
+  or a distinctive word of its title, statement, examples or quote (generic words such as
+  "function", "return", "example" never name one); an objection that refers to "the example"
+  in general objects to every record; "should", "must", "rather", "replace", "rename" join
+  the objection words. `plumb relay` (IDs, `--group`, `--set`) and the prompt hook's relay
+  line (Claude Code and `plumb turn start`) read it. Tests:
+  `tests/capture/test_plain_objection.py`, one per entry point. SR-005 EX-9 (proposed).
+- [FIXED, HIGH] R8 A / R13 Q1: the low-risk group admitted records that contradict the
+  owner's words, or rest on invented ones, under "rated faithful to your words" (a will
+  "change add" against "Do not change add", an example returning 2 against "returns -2", a
+  quote captured without `--prompt` that the owner never wrote). Guarantee: a record enters
+  the low-risk group only if its premise is the owner's verified words and nothing in it
+  contradicts them. One choke point, the low-risk admission in `triage.triage()`: (a) every
+  quote must be verbatim in a prompt the host's prompt hook logged (`via: hook`; an INT's
+  `prompt` digest, a requirement's intents, each example quote in one of those prompts or
+  its own `prompt`), else the record is shown individually as "quote not verified"; (b)
+  `textjudge.contradiction` finds a changed number (sign included), a will/read-back/result
+  holding everything the owner's words negate, or a won't/negated result whose words the
+  owner states positively, and the record is shown as "contradicts your words". `capture`
+  with `--prompt` now checks example quotes too and pins them (`prompt` on the example);
+  `capture`, `intent`, `new intent` and `example --quote` without `--prompt` say "quote not
+  checked", and `plumb explain` and the vault call such a quote "quoted, not checked against
+  your logged prompt", never "your words". Tests: `tests/capture/test_triage_admission.py`
+  (capture with no prompt, intent, example --quote, a flipped will/won't, a changed number,
+  and every calibration variation). SR-040 EX-5, EX-6 (proposed). The earlier MEDIUM on the
+  unchecked capture quote is superseded.
+- [FIXED, HIGH] Decision 5 / concept 6.2 trigger 1: a heuristic-only flag became an owner
+  "Intent change" card (an unrelated "add a negate function returning minus a" flagged as
+  extending a confirmed "add a sub function" because both start with "add a"; also with
+  `card off`). Guarantee: the agent, the cascade's LLM tier, gates the card. The prompt hook
+  keeps the flag as an agent instruction and records its judgment (`flags` in `turn.json`);
+  `stop.concluded_flags` shows the card only when the agent edited the flagged record or
+  wrote or edited a record linking to it (supersedes, corrects, relates to, derives from,
+  decides), or a backend other than the heuristic rated it `accept`. The heuristic no longer
+  reads a leading "add a/create a ..." or generic words (function, returning, number) as a
+  subject in common, a new thing ("add a", "another", "new") extends a record only when the
+  request attaches it to that record ("... to sub"), and "make sub faster" is a quality, not
+  a contradiction (the result's first word was compared with its leading space). Tests:
+  `tests/hosts/test_turn_gates.py` over the Claude Code hooks, `plumb turn end` and the
+  Codex, Pi and Hermes adapters; `tests/present/test_intent_card.py` (the card appears once
+  the agent updates the record). SR-062 EX-5 (proposed).
+- [FIXED, HIGH] R5 / R3 / decision 6: on a fresh checkout (`.plumb/cache/` is gitignored)
+  the stop hook built the test map inline (about 5 s on plumb), hit the 1.9 s watchdog every
+  turn and printed only "check skipped (budget): covering tests ... regressions not checked".
+  Guarantee: every turn with code changes selects covering tests or falls back to R5's
+  bounded sample plus `full verification pending`, and the regression check is never the
+  step that gets dropped. One choke point, `VerifyAPI.select` in hook mode (`open_verify(core,
+  hook=True)` from the hook providers, and every VerifyAPI opened while `run_hook` runs): a
+  map with more than `HOOK_PARSE_MAX` files to parse raises `MapUnavailable`, a detached
+  `plumb map` builds it outside the hook (`spawn_map_build`, once per 5 minutes), and the
+  turn gets `unknown_selection` (changed tests plus the nearest tests, at most
+  `verify.sample_size`) with `full_pending` "coverage unknown"; `evidence`, `tests_for` and
+  `full_pending` degrade the same way, and the derived cache now keys on the map file. The
+  stop hook reads the regressions this turn's runs recorded (`recorded_regressions`, from
+  the evidence index alone) before any budgeted step, and asks the agent for the turn's
+  covering tests when the budget cut the selection. Measured on a fresh clone of plumb:
+  stop 1.75 to 1.84 s with "covering tests 10 ... full verification pending (coverage
+  unknown ...)", then the map landed in the background and the next turn selected
+  covering tests. Tests: `tests/hosts/test_turn_gates.py` (no map, every entry point: the
+  sample's tests instruction, the pending flag, the regression question, the background
+  build). SR-017 EX-5 (proposed).
+
+Residual of the R5 fix, recorded (not fixed):
+
+- [MEDIUM] (quality bar "seconds, not minutes"; R5) On plumb, the stop hook still spends 1.0
+  to 1.7 s in `core.status()` hashing the 721 link ends (no hash cache across processes).
+  With a cold OS file cache (the first turns on a fresh clone) the watchdog fired before the
+  early summary, so that turn printed only "check skipped (budget)". The session-start tests
+  line is cut on plumb every time ("tests: not checked (budget)") because its derived cache
+  is never written before the watchdog. Fix: cache link-end hashes by file fingerprint in
+  `.plumb/cache/` (as the test map does), and write the derived brief_tests value as soon as
+  it is computed.
+
+Recorded, not fixed (owner rule: HIGH only):
+
+- [MEDIUM] (R8 A, R12) With the default heuristic the low-risk group is empty in practice,
+  so the one-line grouped confirmation the owner chose never appears without JEV. On plumb,
+  `plumb triage` lists all 117 proposed records individually (INT-004..INT-010 score 0.00).
+  In a toy project, examples quoting the owner's logged prompt word for word ("2 times 3 is
+  6") still scored 0.17 (SR) and 0.33 (INT), under the 0.8 threshold; with `low_risk_min:
+  0.1` the group, the brief hint and `--approve low-risk` all worked. Fix: score against the
+  whole logged prompt as well as the quote fragment; treat given/when/then restatements of a
+  verbatim-quoted example as entailed; pick the heuristic threshold from a fixture of real
+  captures. Tests at the triage entry point and the brief/summary offer line.
+- [MEDIUM] (R9 context economy) The MCP tool `plumb_brief` with no arguments returns the long
+  brief (all features, the 21 proposed INT records one per line with quotes), although its
+  description promises a few lines; the session-start hook gives the compact brief. Fix:
+  return the compact brief without `full`, keep the long form behind `full=true`; test the
+  MCP tools/call entry point.
+- [MEDIUM] (quality bar; decision 5) Owner views are slow and long on plumb (69 SR, 721
+  links): `plumb status` 12.5 s cold and 3.4 s warm; `plumb review` (behind `/plumb review`)
+  11.5 s and 140 lines, 117 of them one per proposed record. The hooks stay near 2 s. Fix:
+  let status and review read the derived status the hooks compute; group what awaits the
+  owner in review (the triage group, then riskier records, capped with "+N more").
+- [LOW] (R11, dogfood) `scripts/drive_session.py --capture` on a scratch clone of plumb exits
+  2 ("implemented_by src/pkg/mod.py does not exist": CAPTURE_DOC hard-codes the example
+  project's path), then crashes with UnicodeEncodeError on "●" under cp1252. Fix: derive the
+  path from the target root or create the file on the scratch copy; reconfigure stdout to
+  UTF-8 as the hooks do.
+- [LOW] (R2 trust model) The installed deny rules protect `.plumb/log/**` but not
+  `.plumb/session/prompts.jsonl`, where relay reads the prompt and its `via: hook` label
+  (which also gates auto-jev eligibility and, now, triage's verified premise). Fix: add
+  Edit/Write/MultiEdit(.plumb/session/**) to the deny rules, or have the prompt hook also
+  write a digest where the deny rules reach; state the residual risk in the README trust
+  paragraph. (Same class as the round-1 MEDIUM above.)
+- [LOW] (R9 status card) `plumb triage` and `plumb review` print "riskier 0.33" where the
+  number is the faithfulness score (higher is better); "riskier 0.00" reads as safe. Fix:
+  print "faithfulness 0.33 (below 0.80)" or "riskier: little support in your words".
+- [LOW] (R1) `merge-check main --no-run` on a clone with one change touching SR-002 and
+  SR-058 printed "merge waits for your confirmation" but exited 1 because a stale link was
+  also present; the README says such a merge exits 4. Fix: document the precedence, or exit
+  4 while confirmation is pending and list the stale links; test the merge-check entry point.
+- [LOW] (decision 5) With a session id that has no SessionStart or prompt record, post-edit
+  drops the edit and both Stop calls print nothing (no covering-test request, no summary)
+  although a test file changed. Fix: create the session state lazily in post-edit and stop,
+  or log "no session state; summary skipped" and print one summary line.
+- [MEDIUM] (decision 5, R9) Paraphrased contradictions are missed: after SR-001 (sub) was
+  confirmed, "make the subtraction reject decimal numbers" injected no record line and no
+  compare instruction; only "Actually sub should raise an error on floats instead", sharing
+  terms with the record, was flagged (partly recorded above). Fix: when no record matches by
+  terms, fall back to the `plumb explain` resolver (or the judgment backend) so plain-language
+  requests still bring in their confirmed records and the compare instruction.
+- [MEDIUM] (R1, concept 6.6 trigger 2) A request contradicting a proposed record the work
+  relies on is never flagged: "mul should no longer multiply a and b, instead it should
+  return a to the power b" against proposed SR-003 produced only the record lines. Fix: emit
+  the per-turn change instruction for proposed records the turn's work relies on (the stated
+  set, for example), phrased as trigger 2.
+- [MEDIUM] (R11) The stop hook asks "I assumed A; B also fits. Which one?" while the card
+  printed with it says "(proposed — say "ok" to confirm)", so a bare "ok" answering "Which
+  one?" confirms option A without choosing; the same summary listed two decision questions
+  ("questions: DEC-001; DEC-002"). Fix: for a decision that matters, prompt for a choice
+  ("say A or B") and have relay require the chosen option's words, or the ID with "ok"; cap
+  the summary at one decision question per message.
+- [MEDIUM] (R1) DEC-002 (matters: true, proposed, created on the branch) was missing from
+  "merge waits for your confirmation" (only SR and INT records were listed), and merge-check
+  exited 1 because claim findings took precedence over the documented 4 and 5. Fix: list
+  unconfirmed decisions that matter linked to touched records at the boundary; report the
+  most specific exit code (4 or 5) even with claim findings.
+- [LOW] (R13 Q1) DEC-018 adds a condition the owner did not state: "and accept at least half
+  of the owner's confirmed records". Fix: mark it as an agent assumption in the record (it
+  stays proposed), or drop it.
+- [LOW] (concept 4.6) The prompt digest lives in the gitignored `session/prompts.jsonl` and
+  reaches the committed events log only when a relay cites it, so the committed log does not
+  hold every owner prompt as the concept says. Fix: append the digest at prompt time, or
+  correct concept 4.6 to describe the lazy logging.
+- [MEDIUM] (R5) On a loaded 2-core machine, 2 of 4 edit turns on a scratch clone of plumb ran
+  the stop hook into the 1.9 s watchdog and ended with "check skipped (budget): covering
+  tests ... regressions not checked (budget)", no covering-test request and no pending flag
+  (`validate --merge` did report "full run: needed"); session start cut "tests" every time.
+  Fix: always emit the cheap "run plumb tests run --paths <changed>" block when the turn
+  changed code, or set a pending flag the status line shows. (The HIGH R5 fix above now does
+  both when the selection step itself is cut; a watchdog cut before the early summary is the
+  residual MEDIUM above.)
+- [MEDIUM] (R1, README "Your 'ok' ... confirms only what was shown") The stop hook's message
+  showed four cards each saying "(proposed — say "ok" to confirm)" (DEC-001, INT-001, SR-002,
+  SR-001); after the owner's "ok", `plumb relay SR-001 --quote ok` was refused ("SR-001 is
+  not in the stated set of the reply"). It fails safe but invites an "ok" that cannot
+  confirm, and a fourth record got a full card although the README says records past the
+  three-record cap are named. Fix: render "say ok to confirm" only for records written into
+  the stated set; mark the others "name it to confirm".
+- [MEDIUM] (R9) `plumb explain sub` finds SR-002, but "subtract", "subtraction" and "the
+  subtraction thing" return "nothing in plumb's records matches", from the CLI and the MCP
+  `plumb_explain` tool; MCP `plumb_impact` on `src/app/calc.py` returns "plumb impact SR-001
+  / records: none" while the CLI says "records: SR-001". Fix: stemming or prefix matching in
+  the resolver; the same path resolution in the MCP impact tool as in the CLI.
+- [LOW] (decision 5, R12) The affirmation "ok, SR-002 is right and also approve INT-001" (via
+  `plumb turn start`) produced "this may change SR-002 (confirmed)" and "consider escalating
+  to an up-front spec"; `plumb turn start --help` runs a turn instead of printing help; the
+  commit-msg ownership warning ("does this diff serve its claimed SRs?") prints nothing with
+  the heuristic backend, where R12 asks for a degraded form or "no judgments available".
+  Fix: exclude affirmation prompts from intent-change and escalation hints; handle --help in
+  turn_main; print "no judgments available" under the heuristic.
+- [MEDIUM] (R9) `plumb explain the relay check` named SR-047 (merge-check) as the best match,
+  not SR-005 or DEC-003 ("Relayed approvals use plumb relay"), which define the relay check.
+  Fix: rank records whose title or statement holds the query's content terms above records
+  that only mention them in passing.
+- [MEDIUM] (decision 5, R9) On a fresh clone the first SessionStart hit the watchdog and
+  printed only "plumb: check skipped (budget)", with no brief or pointer; the status line
+  read "plumb | no status yet" until a later Stop wrote status.json. Fix: print the
+  record-only brief before any cache-building step, so the R9 brief always appears on a
+  cold start. (Observed again in this round: the first stop and session start on a clone
+  with a cold file cache; see the residual MEDIUM above.)
+- [LOW] (exit codes) `plumb merge-check --no-run HEAD~3` with 48+ unconfirmed touched
+  requirements exited 5 (verification), not 4: the owner's confirmation, the primary hold,
+  hides behind the code for a full run that `--no-run` does not perform. Fix: let 4 take
+  precedence when touched records await the owner, or document the precedence.
+- [LOW] (quality bar) `plumb view` took 31 s on plumb's records (602 notes). It is on demand,
+  not per turn. Fix: rewrite only the notes whose source hash changed.

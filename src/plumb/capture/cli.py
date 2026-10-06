@@ -118,8 +118,14 @@ def cmd_new(command: str, argv: list[str]) -> int:
             if value is not None:
                 fields[key] = value
         record = new_record(core, args.kind, fields, args.body, derives_from=args.derives)
+        lines = [f"plumb: {record.id} proposed ({record.path})"]
+        if args.kind == "intent":  # no --prompt here: the quote is never checked
+            from plumb.capture.capture import UNCHECKED_NOTE
+
+            lines.append("plumb: " + UNCHECKED_NOTE.replace("give --prompt", "use plumb "
+                                                            "intent --prompt"))
         emit({"id": record.id, "path": record.path, "hash": record.hash} if args.as_json
-             else f"plumb: {record.id} proposed ({record.path})", args.as_json)
+             else lines, args.as_json)
         return 0
 
     return _guarded(act)
@@ -141,15 +147,18 @@ def cmd_intent(command: str, argv: list[str]) -> int:
     core = _core(args)
 
     def act() -> int:
-        if args.prompt:
-            from plumb.capture.capture import check_quote
+        from plumb.capture.capture import UNCHECKED_NOTE, check_quote
 
-            check_quote(core, args.prompt, args.quote)
+        prompt = (str(check_quote(core, args.prompt, args.quote)["digest"]) if args.prompt
+                  else None)
         record = write_intent(core, args.quote, args.readback, will=args.will,
                               wont=args.wont, assumptions=args.assumptions, title=args.title,
-                              prompt=args.prompt)
-        emit({"id": record.id, "path": record.path} if args.as_json
-             else f"plumb: {record.id} proposed ({record.path})", args.as_json)
+                              prompt=prompt)
+        lines = [f"plumb: {record.id} proposed ({record.path})"]
+        if prompt is None:
+            lines.append("plumb: " + UNCHECKED_NOTE)
+        emit({"id": record.id, "path": record.path, "quote_checked": prompt is not None}
+             if args.as_json else lines, args.as_json)
         return 0
 
     return _guarded(act)
@@ -170,15 +179,18 @@ def cmd_example(command: str, argv: list[str]) -> int:
     core = _core(args)
 
     def act() -> int:
-        if args.prompt and args.quote:
-            from plumb.capture.capture import check_quote
+        from plumb.capture.capture import UNCHECKED_NOTE, check_quote
 
-            check_quote(core, args.prompt, args.quote)
+        prompt = None
+        if args.prompt and args.quote:
+            prompt = str(check_quote(core, args.prompt, args.quote)["digest"])
         was = core.status([args.sr]).get(args.sr)
         record, example_id = add_example(core, args.sr, args.given, args.when, args.then,
-                                         args.quote)
+                                         args.quote, prompt)
         state = core.status([record.id])[record.id].confirmation
         lines = [f"plumb: {record.id} {example_id} added; {record.id} {state}"]
+        if args.quote and prompt is None:
+            lines.append("plumb: " + UNCHECKED_NOTE)
         if was is not None and was.confirmation == "confirmed":
             lines.append(f"plumb: {record.id} was confirmed; this edit needs the owner again")
         emit({"id": record.id, "example": example_id, "state": state} if args.as_json

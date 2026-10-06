@@ -20,6 +20,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from plumb.text import quote_label
+
 MAX_MATCHES = 3
 
 _STATE = {"confirmed": "confirmed", "proposed": "proposed, awaiting your confirmation",
@@ -123,7 +125,7 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
     if record.kind == "intent" and fields.get("quote"):
         quote = fields["quote"]
         quote = " / ".join(map(str, quote)) if isinstance(quote, list) else quote
-        lines.append("  your words: \"" + _clip(quote) + "\"")
+        lines.append(f"  {quote_label(fields)}: \"" + _clip(quote) + "\"")
     if record.kind == "decision":
         if fields.get("chosen"):
             lines.append("  chosen: " + _clip(fields["chosen"]))
@@ -139,7 +141,8 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
             quote = " / ".join(map(str, quote)) if isinstance(quote, list) else quote
             target_state = _state(core, target, statuses.get(target))
             lines.append(f"  why: {target} \"{parent.title}\" ({target_state})"
-                         + (f", your words: \"{_clip(quote, 120)}\"" if quote else ""))
+                         + (f", {quote_label(parent.fields)}: \"{_clip(quote, 120)}\""
+                            if quote else ""))
     for other in index.values():
         if other.kind != "decision":
             continue

@@ -231,12 +231,17 @@ Read-backs and proposed examples appear in the summary as `proposed` and never b
 To confirm them, reply in the session in your own words, for example "ok, SR-009 is right".
 The agent then records your words with `plumb relay`, and the approval is marked
 `agent-relayed` with your quote and the digest of your prompt. A prompt that does not object
-does not count as a confirmation.
+does not count as a confirmation, and an "ok" never confirms a record the same prompt objects
+to, however you name it ("the pow example is wrong, it should return 9. Ok, carry on" leaves
+the pow records proposed). The triage offer only groups records whose quotes are your logged
+words and that contradict none of them (no changed number, no flipped will/won't).
 
 Hook timing on the 2-core development machine, warm caches: session start 0.55 to 0.8 s,
 prompt 0.45 to 0.6 s, stop 0.65 to 1.2 s on a turn with changes (the first call after a code
 change rebuilds the test map and can take about 1.4 s). Each hook has a soft budget near the
-2-second ceiling and a 1.9 s watchdog. When a loaded machine cuts a hook short, it still
+2-second ceiling and a 1.9 s watchdog. A hook never builds a cold test map inline (a fresh
+clone): `plumb map` runs detached, and meanwhile a turn gets a bounded sample of nearby tests
+with `full verification pending (coverage unknown)`. When a loaded machine cuts a hook short, it still
 prints the read-back, the relevant records and the relay line, and names the skipped step
 (for example `plumb: check skipped (budget): tests` at session start): evidence detail is
 dropped first, never the intent lines.

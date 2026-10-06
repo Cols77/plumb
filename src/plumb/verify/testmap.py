@@ -303,8 +303,17 @@ def scan_files(root: Path, config: Any) -> dict[str, str]:
     return scanned
 
 
-def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True) -> TestMap:
-    """Build (or refresh from the cache) the test map of ``core``'s repository."""
+class MapUnavailable(Exception):
+    """The test map would take longer to build than a hook may spend (R5): the hook falls
+    back to the unknown-coverage sample and the map is built outside its budget."""
+
+
+def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True,
+              max_parse: int | None = None) -> TestMap:
+    """Build (or refresh from the cache) the test map of ``core``'s repository.
+
+    ``max_parse``: raise ``MapUnavailable`` instead of parsing more files than that (a cold
+    or badly stale cache in a hook: about 20 ms a file, seconds on a real repository)."""
     from plumb.verify.imports import known_files, resolve_edge_rel
 
     root = Path(core.root)
@@ -316,6 +325,12 @@ def build_map(core: Any, *, rebuild: bool = False, write_text: bool = True) -> T
     scanned = scan_files(root, config)
     cache = {} if rebuild else _load_cache(paths.test_map_json)
     cached_files: Mapping[str, Any] = cache.get("files", {})
+    if max_parse is not None:
+        stale = sum(1 for rel, fp in scanned.items()
+                    if not (isinstance(cached_files.get(rel), dict)
+                            and cached_files[rel].get("fp") == fp))
+        if stale > max_parse:
+            raise MapUnavailable(f"{stale} files to parse")
     files: dict[str, dict[str, Any]] = {}
     parsed = 0
     for rel, fp in sorted(scanned.items()):

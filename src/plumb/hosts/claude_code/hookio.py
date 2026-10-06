@@ -239,6 +239,10 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     kept = Kept()
     found: Path | None = None
     timer: threading.Timer | None = None
+    lane = _verify_lane()
+    was_hook = getattr(lane, "HOOK_PROCESS", False)
+    if lane is not None:  # every VerifyAPI this hook opens is in hook mode (R5)
+        lane.HOOK_PROCESS = True
     try:
         data = read_input(stdin)
         found = find_hook_root(data, root)
@@ -274,7 +278,18 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     finally:
         if timer is not None:
             timer.cancel()
+        if lane is not None:
+            lane.HOOK_PROCESS = was_hook
     return 0
+
+
+def _verify_lane() -> Any:
+    """``plumb.verify`` (a tiny module), or None in a build without it."""
+    try:
+        import plumb.verify as lane
+    except ImportError:
+        return None
+    return lane
 
 
 def write_json_atomic(path: Path, data: Any) -> None:
