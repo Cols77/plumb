@@ -49,8 +49,8 @@ CARD_SAY_COMBINED = ("  Say: \"keep {ours}'s\", \"keep {theirs}'s\", \"ok, the c
 CONFLICTS_HEADER = "intent conflicts wait for your choice (/plumb conflicts):"
 NO_CONFLICTS = "plumb: no intent conflict waits for you"
 CONFLICTS_BRIEF = "plumb: {n} intent conflict(s) await your choice (/plumb conflicts)"
-CONFLICTS_CARD = "· {n} conflict awaits you"
-CONFLICTS_CARD_ASCII = "conflict {n}"
+CONFLICTS_CARD = "{n} conflict awaits you"
+CONFLICTS_CARD_MANY = "{n} conflicts await you"
 
 # -- choosing a side (8.4)
 CHOOSE_REFUSED = ("plumb: only the owner chooses a side; say which version to keep (for "
@@ -77,8 +77,9 @@ PREMERGE_COLLISION = ("  {record}: two different records hold this ID; /plumb me
 PREMERGE_OK = "plumb: merge check: nothing holds this merge"
 
 
-def conflicts_card(n: int, *, ascii_only: bool = False) -> str:
-    return (CONFLICTS_CARD_ASCII if ascii_only else CONFLICTS_CARD).format(n=n)
+def conflicts_card(n: int) -> str:
+    """The status card's part for open intent conflicts ("1 conflict awaits you")."""
+    return (CONFLICTS_CARD if n == 1 else CONFLICTS_CARD_MANY).format(n=n)
 
 
 _PLUMB_VERB = re.compile(r"(?<![/\w-])plumb[ \t]+([a-z][a-z-]*)(?![\w-]*:)")

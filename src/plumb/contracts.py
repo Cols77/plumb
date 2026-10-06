@@ -205,6 +205,7 @@ class StatusSnapshot:
     intent_summary: str = ""              # the session's intent in plain words (<= 40 chars)
     confirmed_by: Mapping[str, int] = field(default_factory=dict)  # owner, agent-relayed, ...
     auto_approve: str = "off"             # on | off | suspended
+    conflicts: int = 0                    # sp6 8.3: open intent conflicts awaiting the owner
 
 
 @runtime_checkable

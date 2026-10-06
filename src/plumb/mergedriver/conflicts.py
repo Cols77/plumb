@@ -546,3 +546,65 @@ def choose_owner(core: Any, ref: str, take: str,
     require_owner("conflict choose",
                   f"Keep {side} of {conflict.record} \"{conflict.title}\"?")
     return conflict, apply_choice(core, conflict, take, by="owner", values=values)
+
+
+# --------------------------------------------------------------------------- the stop hook
+
+
+class _CachedOnly:
+    """A backend that never calls out: inside a hook the card shows a judgment only when
+    one is already logged for this pair (the 5 s call belongs to /plumb conflicts)."""
+
+    name = "heuristic"
+    version = "heuristic"
+
+
+CACHED_ONLY = _CachedOnly()
+SHOWN_FILE = "conflicts-shown.json"
+REQUESTED_FILE = "conflicts-requested.json"
+
+
+def _key(conflict: IntentConflict) -> str:
+    entry = stated_key(conflict)
+    return "|".join(str(entry[k]) for k in ("ic", "ours_hash", "theirs_hash", "combined_hash"))
+
+
+def turn_cards(core: Any, session_dir: Any, session_id: str,
+               turn_start: str = "") -> tuple[list[str], list[dict[str, Any]]]:
+    """``(lines, stated entries)`` for the stop hook's reply: the card of every open
+    conflict this session has not shown at its current versions (a trigger: two versions
+    of intent contradict), and every card ``plumb conflicts`` asked for this turn. Reads
+    the record index and two small session files; never calls a judgment backend."""
+    from pathlib import Path
+
+    conflicts = open_conflicts(core)
+    if not conflicts:
+        return [], []
+    directory = Path(session_dir)
+    try:
+        seen_data = json.loads((directory / SHOWN_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        seen_data = {}
+    seen = set(seen_data.get("keys") or []) if isinstance(seen_data, Mapping) and \
+        seen_data.get("session") == session_id else set()
+    try:
+        asked = json.loads((directory / REQUESTED_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        asked = {}
+    requested = set(asked.get("ics") or []) if isinstance(asked, Mapping) and \
+        str(asked.get("at") or "") >= turn_start else set()
+    lines: list[str] = []
+    shown: list[str] = []
+    for conflict in conflicts:
+        if conflict.ic in requested or _key(conflict) not in seen:
+            lines.extend(conflict_card(core, conflict, backend=CACHED_ONLY))
+            shown.append(conflict.ic)
+            seen.add(_key(conflict))
+    if shown:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / SHOWN_FILE).write_text(
+                json.dumps({"session": session_id, "keys": sorted(seen)}), encoding="utf-8")
+        except OSError:
+            pass
+    return lines, stated_entries(core, shown)

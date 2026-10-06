@@ -97,6 +97,11 @@ def status_card(snapshot: Any, *, ascii: bool = False) -> str:
         parts.append("full pending")
     if data.get("auto_approve") == "suspended":
         parts.append("auto-approve suspended")
+    conflicts = _int(data, "conflicts")
+    if conflicts:  # sp6 8.3: an intent conflict a merge left awaits the owner's choice
+        from plumb.present.owner_text import conflicts_card
+
+        parts.append(conflicts_card(conflicts))
     if ascii:
         return to_ascii("plumb | " + " | ".join(parts))
     return f"plumb {GLYPHS[state]} " + " · ".join(parts)

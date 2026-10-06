@@ -311,7 +311,8 @@ def confirm_view(core: Any, carry: ConfirmView, skip: Iterable[str] = ()) -> Con
 def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
                  stated_ids: Sequence[str], shown: Iterable[str] = (), *,
                  group: Mapping[str, Any] | None = None, offer: Sequence[str] = (),
-                 message: str = "", confirm: ConfirmView | None = None) -> None:
+                 message: str = "", confirm: ConfirmView | None = None,
+                 conflicts: Sequence[Mapping[str, Any]] = ()) -> None:
     """The stated set of this reply: what a bare affirmation of the owner may confirm.
 
     The records and groups ``plumb confirm`` prepared this turn stay in it (``via:
@@ -363,6 +364,8 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
         data["groups"] = groups
     if carry.groups:
         data["confirm_groups"] = carry.groups
+    if seen and conflicts:  # sp6 8.4: the conflict cards this reply showed the owner
+        data["conflicts"] = [dict(c) for c in conflicts]
     write_json_atomic(ctx.session_dir / "stated.json", data)
 
 
@@ -583,9 +586,28 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         escalated=escalated, extra_lines=[*waiting, *offer])
     view = confirm_view(core, carry, shown)
     message = "\n".join([text, *view.lines]) if view.lines else text
+    conflict_lines, conflicts = conflict_cards(ctx, core, turn)
+    if conflict_lines:
+        message = "\n".join([message, *conflict_lines])
     write_stated(ctx, turn, index, stated_ids, shown, group=group, offer=offer,
-                 message=message, confirm=view)
+                 message=message, confirm=view, conflicts=conflicts)
     return HookOutput(system_message=message)
+
+
+def conflict_cards(ctx: HookContext, core: Any,
+                   turn: Mapping[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
+    """sp6 8.3: the intent conflicts a merge left, as full cards in the turn they appear
+    (once per conflict version per session) and whenever ``plumb conflicts`` asked; their
+    stated entries let the owner's next words choose a side (8.4). Never fails the stop."""
+    try:
+        from plumb.mergedriver.conflicts import turn_cards
+    except ImportError:
+        return [], []
+    start = _iso(float(turn.get("turn_start") or 0)) if turn.get("turn_start") else ""
+    try:
+        return turn_cards(core, ctx.session_dir, ctx.session_id, start)
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        return [], []
 
 
 # links by which a record written or edited this turn says it changes another one
