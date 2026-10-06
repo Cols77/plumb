@@ -40,6 +40,10 @@ def _state(status: Any) -> str:
         by = getattr(status, "approved_by", None)
         state += {"owner": " by you", "agent-relayed": " by you (relayed from chat)"}.get(
             str(by), f" ({by})" if by else "")
+    if getattr(status, "self_recorded", False):
+        from plumb.confirm import SELF_RECORDED
+
+        state += f", {SELF_RECORDED}"  # R13 Q4
     return state
 
 

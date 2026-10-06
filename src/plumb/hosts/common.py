@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from plumb.confirm import SELF_RECORDED
+
 IS_WINDOWS = os.name == "nt"
 MARKER_NAME = "PLUMB_AGENT_SESSION"
 BLOCK_BEGIN = "<!-- plumb:begin -->"
@@ -30,10 +32,9 @@ TRUST_LINE = ("trust model: plumb's log is hash-chained and tamper-evident, not 
               "against a malicious agent; relayed approvals are listed at the merge boundary "
               "for your glance")
 # R13 Q4: a chat "ok" confirms on a host without a prompt hook, labelled everywhere
-SELF_RECORDED = "self-recorded message"
 FALLBACK_PROMPT_LINE = ("prompts: CLI-only fallback (the agent runs plumb turn start): a chat "
                         "\"ok\" still confirms, and every such confirmation is labelled "
-                        "\"self-recorded message\"")
+                        f"\"{SELF_RECORDED}\"")
 
 
 class InstallError(RuntimeError):
@@ -93,8 +94,31 @@ def launcher_argv(root: Path, requested: str = "auto", *,
 
 
 def command_line(argv: Sequence[str]) -> str:
-    """One shell command line (POSIX quoting; Windows paths use forward slashes)."""
+    """One command line for an agent to type (POSIX quoting; Windows paths use forward
+    slashes, which bash and PowerShell both run)."""
     return " ".join(shlex.quote(part) for part in argv)
+
+
+def shell_command(argv: Sequence[str], *, windows: bool = IS_WINDOWS) -> str:
+    """The command line a host runs through the platform shell (a hook ``command``).
+
+    The one renderer of every command plumb writes into a host's configuration for its shell
+    to run: on POSIX, ``sh`` quoting; on Windows the line must run in both cmd and PowerShell
+    (Codex uses either), so the program path takes backslashes and no token is quoted. A
+    POSIX single quote, or a quoted program path, runs in neither; a token that would need
+    quoting is refused (choose ``--launcher path`` or ``uv``)."""
+    if not windows:
+        return " ".join(shlex.quote(part) for part in argv)
+    parts = list(argv)
+    if parts:
+        parts[0] = parts[0].replace("/", "\\")
+    unsafe = set(" \t\"'&|<>^%()`$;,@{}")
+    for part in parts:
+        if not part or unsafe.intersection(part):
+            raise InstallError(f"cannot write a hook command that cmd and PowerShell both run "
+                               f"for the argument {part!r}; choose another launcher "
+                               "(--launcher path or uv)")
+    return " ".join(parts)
 
 
 def is_plumb_command(command: Any) -> bool:
@@ -262,19 +286,14 @@ def marker_lines(marker: bool, how: str) -> list[str]:
 
 
 def self_recorded_count(root: Path) -> int:
-    """Confirmations standing on a message the agent recorded itself (R13 Q4)."""
-    try:
-        from plumb.capture.confirmations import confirmation_counts  # type: ignore
-    except ImportError:
-        confirmation_counts = None
+    """Valid confirmations standing on a message the agent recorded itself (R13 Q4): the
+    approvals ``plumb relay`` marked ``self_recorded`` (confirm.is_self_recorded)."""
     try:
         from plumb.api import open_core
+        from plumb.confirm import self_recorded_approvals
 
         core = open_core(root)
-        if confirmation_counts is not None:
-            return int(confirmation_counts(core).get("self-recorded", 0))
-        return sum(1 for entry in core.log_read("events", ["approval"])
-                   if entry.payload.get("self_recorded"))
+        return self_recorded_approvals(core.events(), core.config.approve.affirmations)
     except Exception:  # noqa: BLE001 - status never fails on a broken log
         return 0
 

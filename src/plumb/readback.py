@@ -18,6 +18,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from plumb.confirm import SELF_RECORDED
+
 
 def _flat(value: Any) -> str:
     if isinstance(value, list):
@@ -94,7 +96,10 @@ def show_lines(core: Any, ids: Iterable[str]) -> tuple[list[str], list[str]]:
             continue
         if lines:
             lines.append("")
-        state = statuses[record_id].confirmation if record_id in statuses else "?"
+        status = statuses.get(record_id)
+        state = status.confirmation if status is not None else "?"
+        if status is not None and getattr(status, "self_recorded", False):
+            state += f", {SELF_RECORDED}"  # R13 Q4
         lines.append(f"{record_id} ({record.kind}, {state}) {record.path}")
         lines.extend("  " + line for line in record_lines(record))
         body = record.body.strip()

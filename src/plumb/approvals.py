@@ -417,7 +417,10 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
                                              "at": entry.get("at")})
     payload: dict[str, Any] = {"records": records, "by": "agent-relayed",
                                "prompt_digest": digest, "quote": normalized_quote,
-                               "quote_digest": sha256_text(normalized_quote)}
+                               "quote_digest": sha256_text(normalized_quote),
+                               # R13 Q4: the cited prompt reached the log through the
+                               # agent's own `plumb turn start`, not the host's prompt hook
+                               "self_recorded": entry.get("via") == "turn"}
     if revoke:
         payload["note"] = note
         return core.log_append("events", "revocation", payload)

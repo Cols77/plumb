@@ -30,7 +30,6 @@ from plumb.hosts.common import (
     MARKER_NAME,
     InstallError,
     InstallReport,
-    command_line,
     context_file,
     has_block,
     instruction_block,
@@ -43,6 +42,7 @@ from plumb.hosts.common import (
     read_text,
     remove_file,
     remove_shared_block,
+    shell_command,
     upsert_block,
     write_file,
 )
@@ -56,8 +56,8 @@ HOOK_TIMEOUT_S = 10
 
 
 def _codex_argv(argv: Sequence[str]) -> list[str]:
-    """Codex runs hooks through the platform shell: a relative venv interpreter needs
-    backslashes for cmd and PowerShell on Windows."""
+    """The ``notify`` program, which Codex executes directly (no shell): a relative venv
+    interpreter takes backslashes on Windows."""
     out = list(argv)
     if IS_WINDOWS and out and "/" in out[0]:
         out[0] = out[0].replace("/", "\\")
@@ -65,8 +65,9 @@ def _codex_argv(argv: Sequence[str]) -> list[str]:
 
 
 def hook_command(argv: Sequence[str], event: str) -> str:
-    return command_line([*_codex_argv(argv), "hook", event, "--host", HOST, "--format",
-                         "claude"])
+    """A hook ``command`` of .codex/hooks.json: Codex runs it through the platform shell, so
+    it is rendered by the one shell renderer (common.shell_command)."""
+    return shell_command([*argv, "hook", event, "--host", HOST, "--format", "claude"])
 
 
 def notify_argv(argv: Sequence[str]) -> list[str]:

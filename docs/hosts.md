@@ -18,8 +18,15 @@ run by an agent exits 3 and writes nothing on every host.
 Prompts and the "self-recorded message" label (R13 Q4): a prompt that reaches plumb through
 a host's prompt hook is logged `via: hook`. A prompt the agent records itself with
 `plumb turn start` is logged `via: turn`; a chat "ok" relayed from it still confirms, and
-the confirmation is labelled "self-recorded message" in `plumb show`, the merge-boundary
-glance and `plumb hosts status`.
+the confirmation is labelled "self-recorded message" in `plumb show`, `plumb explain`, the
+merge-boundary glance and `plumb hosts status`. `plumb relay` writes the label once, as
+`self_recorded: true` in the approval's hash-chained payload when the cited prompt was logged
+`via: turn`; every surface reads that one field (`plumb.confirm.is_self_recorded`).
+
+Hook commands that a host runs through the platform shell (Codex's `.codex/hooks.json`) are
+rendered by one function, `plumb.hosts.common.shell_command`: POSIX `sh` quoting, and on
+Windows a line that cmd and PowerShell both run (backslashed program path, no quoting; a
+launcher that would need quoting is refused).
 
 ## Codex (codex-cli 0.160.0) — `plumb hosts install codex` (SR-054)
 

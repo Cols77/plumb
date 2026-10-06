@@ -35,6 +35,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from plumb.confirm import SELF_RECORDED, is_self_recorded
 from plumb.hashing import clean_rel_path, target_path
 from plumb.trailers import parse_sr_trailer
 
@@ -306,6 +307,7 @@ def _approval_rows(core: Core, base_digests: set[str]) -> list[dict[str, Any]]:
                      + ([f"trace.exempt {' '.join(map(str, payload['exempt']))}"]
                         if payload.get("exempt") else []),
                      "quote": payload.get("quote"), "prompt_digest": payload.get("prompt_digest"),
+                     "self_recorded": is_self_recorded(payload),
                      "marker": entry.marker})
     return rows
 
@@ -470,6 +472,8 @@ def merge_check(core: Core, base: str, *, as_json: bool) -> int:
             if row["by"] == "agent-relayed":
                 line += (f" | AGENT-RELAYED quote \"{row['quote']}\" prompt "
                          f"{str(row['prompt_digest'])[:19]}")
+            if row.get("self_recorded"):
+                line += f" | {SELF_RECORDED.upper()}"  # R13 Q4
             print(line)
     else:
         print("approvals in range: none")

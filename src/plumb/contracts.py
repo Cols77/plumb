@@ -93,6 +93,9 @@ class RecordStatus:
     # requirements: verified_by ends whose content changed since the owner's approval pinned
     # it (the record is then an unconfirmed edit: its acceptance test changed meaning)
     changed_tests: tuple[str, ...] = ()
+    # R13 Q4: the standing approval rests on a message the agent recorded itself (an
+    # agent-relayed approval citing a prompt logged by `plumb turn start`)
+    self_recorded: bool = False
 
 
 @dataclass(frozen=True)
