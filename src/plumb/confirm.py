@@ -70,21 +70,44 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
         return None
     if by == "import":
         return "import approvals are not accepted in this build (spec F11)"
+    if by == "auto-jev":
+        if entry.kind != "approval":
+            return f"auto-jev {entry.kind}: only the owner revokes"
+        return None  # re-checked in log order by checked_entries (sp2 8.2)
     return f"{entry.kind} has an unknown source by={by!r}"
 
 
 def checked_entries(entries: Iterable[LogEntry],
                     affirmations: Sequence[str]) -> list[tuple[LogEntry, str | None]]:
     """Approval and revocation entries in log order, each with its re-check problem."""
+    from plumb.capture.autoapprove import recheck
+
     prompts: set[str] = set()
+    calibrations: dict[str, LogEntry] = {}
+    config: Mapping[str, Any] | None = None
+    approved: set[str] = set()  # records with an owner, relayed or imported approval
     out: list[tuple[LogEntry, str | None]] = []
     for entry in entries:
         if entry.kind == "prompt":
             digest = entry.payload.get("digest")
             if isinstance(digest, str):
                 prompts.add(digest)
+        elif entry.kind == "config":
+            settings = entry.payload.get("auto_approve")
+            owner = entry.marker == "none" and entry.payload.get("by") == "owner"
+            if owner and isinstance(settings, Mapping):
+                config = settings
+        elif entry.kind == "calibration":
+            calibrations[entry.digest] = entry
         elif entry.kind in ("approval", "revocation"):
-            out.append((entry, entry_problem(entry, prompts, affirmations)))
+            problem = entry_problem(entry, prompts, affirmations)
+            by = entry.payload.get("by")
+            if problem is None and by == "auto-jev":
+                problem = recheck(entry, config, calibrations, prompts, approved)
+            if problem is None and entry.kind == "approval" and by != "auto-jev":
+                approved.update(str(r.get("id")) for r in entry.payload.get("records") or []
+                                if isinstance(r, Mapping))
+            out.append((entry, problem))
     return out
 
 

@@ -103,6 +103,18 @@ def validate(core: Core) -> list[Finding]:
         add("warning", "proposed", f"{len(proposed)} records",
             f"proposed, awaiting the owner's confirmation: {shown}")
 
+    # auto-approval (sp2 C4): config.yaml is a mirror; only the owner's config event counts
+    try:
+        from plumb.capture.autoapprove import auto_approve_state
+
+        state = auto_approve_state(core)
+    except Exception:  # noqa: BLE001 - an optional lane never fails validate
+        state = None
+    if state is not None and state.mirror_mismatch:
+        add("warning", "auto-approve-mirror", ".plumb/config.yaml",
+            "auto_approve says enabled, but no owner config event turned it on: it is off "
+            "(plumb config auto-approve on, in the owner's own terminal)")
+
     # logs and approvals
     for stream in ("events", "evidence"):
         for problem in log.verify_chain(core.paths, stream):

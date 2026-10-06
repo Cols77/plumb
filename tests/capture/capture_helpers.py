@@ -79,3 +79,65 @@ def record_text(record_id: str, title: str, **fields) -> str:
 
 
 from plumb.approvals import owner_terminal_answer as REAL_TERMINAL_CHECK  # noqa: E402
+
+# --------------------------------------------------------------------------- a JEV stub
+
+KEY = "ts-test-key-abcdefghij"
+
+
+class JevStub:
+    """A local ``/v1/systemone`` stub (no network). ``noul(state) -> p`` answers each Noul
+    question; ``model`` is the resolved version it reports."""
+
+    def __init__(self, noul=None, model: str = "jev-1.13.0") -> None:
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        self.noul = noul or (lambda state: 0.95)
+        self.model = model
+        self.requests: list[dict] = []
+        stub = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args) -> None:
+                pass
+
+            def do_POST(self) -> None:  # noqa: N802
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                stub.requests.append(body)
+                answers = {}
+                for name, q in body["questions"].items():
+                    if q["type"] == "noul":
+                        answers[name] = {"type": "noul", "noul": stub.noul(body["state"])}
+                    else:
+                        label = next(iter(q["criteria"]))
+                        answers[name] = {"type": "choice", "choice": label,
+                                         "probabilities": {label: 0.9}, "confidence": 0.9}
+                data = json.dumps({"model": stub.model, "answers": answers}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def use_jev(repo: Path, stub: JevStub, monkeypatch, *, extra: str = "") -> None:
+    """Configure ``repo`` for JEV against ``stub``, with the credential in the environment
+    and no user store."""
+    from plumb.judgment import jev as jev_mod
+
+    (repo / ".plumb" / "config.yaml").write_text(
+        "judgment:\n  backend: jev\n  hook_timeout_ms: 2000\n"
+        f"  jev: {{base_url: '{stub.url}'}}\n" + extra, encoding="utf-8")
+    monkeypatch.setenv("TYPESAFE_API_KEY", KEY)
+    monkeypatch.setattr(jev_mod, "user_store_path", lambda: repo.parent / "home" / "jev")

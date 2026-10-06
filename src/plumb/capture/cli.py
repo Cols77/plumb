@@ -380,7 +380,90 @@ def cmd_clarify(command: str, argv: list[str]) -> int:
     return _guarded(act)
 
 
+# --------------------------------------------------------------------------- jev, config
+
+
+def cmd_jev(command: str, argv: list[str]) -> int:
+    from plumb.capture import jevcmd
+    from plumb.capture.calibrate import CalibrationUnavailable, calibrate, result_lines
+
+    parser = _parser(command, "The optional JEV backend: status (never the secret), setup "
+                     "(records only the credential variable's NAME), calibrate (measures it "
+                     "on your own decisions before any auto-approval).")
+    parser.add_argument("action", choices=["status", "setup", "calibrate"])
+    parser.add_argument("--probe", action="store_true", help="status: one call, 2 s limit")
+    parser.add_argument("--env-var", default="TYPESAFE_API_KEY",
+                        help="setup: the variable that holds the credential")
+    parser.add_argument("--base-url", default=None)
+    args = parser.parse_args(argv)
+    core = _core(args)
+
+    def act() -> int:
+        if args.action == "status":
+            data = jevcmd.jev_status(core, probe=args.probe)
+            emit(data if args.as_json else jevcmd.status_lines(data), args.as_json)
+            return 0
+        if args.action == "setup":
+            emit(jevcmd.jev_setup(core, env_var=args.env_var, base_url=args.base_url),
+                 False)
+            return 0
+        try:
+            entry, results = calibrate(core)
+        except CalibrationUnavailable as exc:
+            emit({"calibrated": False, "reason": str(exc)} if args.as_json
+                 else f"plumb jev calibrate: {exc}", args.as_json)
+            return EXIT_FINDINGS
+        if args.as_json:
+            emit(dict(entry.payload), True)
+        else:
+            emit(result_lines(entry.payload["per_kind"], entry.payload.get("model_version")),
+                 False)
+        return 0 if any(r.passing for r in results.values()) else EXIT_FINDINGS
+
+    return _guarded(act)
+
+
+def cmd_config(command: str, argv: list[str]) -> int:
+    from plumb.capture import jevcmd
+
+    parser = _parser(command, "Owner settings: auto-approve on|off and show run in your own "
+                     "terminal only (logged in the event log); card full|compact|off sets "
+                     "the intent card's verbosity.")
+    parser.add_argument("setting", choices=["auto-approve", "show", "card"])
+    parser.add_argument("value", nargs="?", default=None)
+    parser.add_argument("--backend", default="jev")
+    parser.add_argument("--min-probability", type=float, default=0.9)
+    parser.add_argument("--min-confidence", default="high", choices=["low", "medium", "high"])
+    args = parser.parse_args(argv)
+    core = _core(args)
+
+    def act() -> int:
+        if args.setting == "show":
+            emit(jevcmd.config_show(core), False)
+            return 0
+        if args.setting == "card":
+            if args.value is None:
+                parser.error("card takes full, compact or off")
+            print(f"plumb: card {jevcmd.set_card(core, args.value)}")
+            return 0
+        if args.value not in ("on", "off"):
+            parser.error("auto-approve takes on or off")
+        try:
+            jevcmd.auto_approve(core, args.value == "on", backend=args.backend,
+                                min_probability=args.min_probability,
+                                min_confidence=args.min_confidence)
+        except jevcmd.ConfigRefused as exc:
+            print(f"plumb: auto-approve stays off: {exc}", file=sys.stderr)
+            return EXIT_FINDINGS
+        print(f"plumb: auto-approve {args.value} (by: owner; logged)")
+        return 0
+
+    return _guarded(act)
+
+
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
+    "jev": cmd_jev,
+    "config": cmd_config,
     "clarify": cmd_clarify,
     "triage": cmd_triage,
     "escalate": cmd_escalate,
