@@ -35,8 +35,10 @@ def _prompt(root: Path, text: str, **extra: object) -> str:
     path = root / ".plumb" / "session" / "prompts.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"digest": digest, "session": "s", "at": "t", "text": text,
-                                 **extra}) + "\n")
+        # logged as the host's prompt hook logs it (R13 Q4), unless the test says otherwise
+        line = {"digest": digest, "session": "s", "at": "t", "text": text,
+                **({} if extra else {"via": "hook"})}
+        handle.write(json.dumps({**line, **extra}) + "\n")
     return digest
 
 

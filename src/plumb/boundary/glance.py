@@ -51,7 +51,13 @@ def self_recorded(payload: Mapping[str, Any], prompt_events: Mapping[str, Mappin
     The convention, read in three places so any writer can state it: the approval payload,
     the committed ``prompt`` event it cites, or the session's prompt-log line, carrying
     ``self_recorded: true``, ``via`` naming a self-recording path (``turn``, ``cli``) or
-    ``host: cli``."""
+    ``host: cli``. A relay that states it (``plumb relay`` writes ``self_recorded`` into the
+    digest-protected payload) is read through ``confirm.is_self_recorded``, the one test every
+    surface labels by; the prompt fallbacks serve only approvals written without the key."""
+    if "self_recorded" in payload:
+        from plumb.confirm import is_self_recorded
+
+        return is_self_recorded(payload)
     if _marks_self_recorded(payload):
         return True
     digest = payload.get("prompt_digest")

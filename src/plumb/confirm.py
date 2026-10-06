@@ -117,6 +117,18 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
     return out
 
 
+# R13 Q4: the label of every confirmation resting on a prompt the agent recorded itself
+SELF_RECORDED = "self-recorded message"
+
+
+def is_self_recorded(payload: Mapping[str, Any]) -> bool:
+    """Whether an approval rests on a message the agent recorded itself (R13 Q4): an
+    agent-relayed approval whose cited prompt was not logged by the host's prompt hook
+    (``plumb relay`` writes ``self_recorded``). The one test every surface (``plumb show``,
+    ``plumb explain``, the merge glance, ``plumb hosts status``) labels by."""
+    return payload.get("by") == "agent-relayed" and payload.get("self_recorded") is True
+
+
 def remaining_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
                       escalated: Collection[str] = ()
                       ) -> dict[str, list[tuple[str, str, LogEntry]]]:
@@ -165,6 +177,14 @@ def remaining_approvals(entries: Iterable[LogEntry], affirmations: Sequence[str]
     return {record_id: [(h, by) for h, by, _ in approvals]
             for record_id, approvals in remaining_entries(entries, affirmations,
                                                           escalated).items()}
+
+
+def self_recorded_approvals(entries: Iterable[LogEntry], affirmations: Sequence[str],
+                            escalated: Collection[str] = ()) -> int:
+    """How many valid approvals rest on a self-recorded message (R13 Q4)."""
+    return sum(1 for entry, problem in checked_entries(entries, affirmations, escalated)
+               if problem is None and entry.kind == "approval"
+               and is_self_recorded(entry.payload))
 
 
 def verified_end(link: Any) -> str | None:
@@ -236,8 +256,9 @@ def confirmation_of(record: Record,
 def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordStatus]:
     index = core.index()
     selected = list(index) if ids is None else [i for i in ids if i in index]
-    approvals = remaining_approvals(core.events(), core.config.approve.affirmations,
-                                    escalated_of(core))
+    standing = remaining_entries(core.events(), core.config.approve.affirmations,
+                                 escalated_of(core))
+    approvals = {r: [(h, by) for h, by, _ in items] for r, items in standing.items()}
     pins = approved_test_pins(core.events(), core.config.approve.affirmations, index)
     states = core.link_states(selected)
     by_record: dict[str, list] = {}
@@ -252,6 +273,9 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
     for record_id in selected:
         record = index[record_id]
         confirmation, by = confirmation_of(record, approvals.get(record_id, []))
+        latest = standing.get(record_id)
+        self_recorded = bool(confirmation != "proposed" and latest
+                             and is_self_recorded(latest[-1][2].payload))
         record_states = tuple(by_record.get(record_id, ()))
         uncovered: tuple[str, ...] = ()
         covered = False
@@ -271,5 +295,6 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
             id=record_id, confirmation=confirmation,  # type: ignore[arg-type]
             approved_by=by,  # type: ignore[arg-type]
             covered=covered, uncovered_examples=uncovered, links=record_states,
-            superseded_by=superseded.get(record_id), changed_tests=moved)
+            superseded_by=superseded.get(record_id), changed_tests=moved,
+            self_recorded=self_recorded)
     return out

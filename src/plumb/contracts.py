@@ -93,6 +93,9 @@ class RecordStatus:
     # requirements: verified_by ends whose content changed since the owner's approval pinned
     # it (the record is then an unconfirmed edit: its acceptance test changed meaning)
     changed_tests: tuple[str, ...] = ()
+    # R13 Q4: the standing approval rests on a message the agent recorded itself (an
+    # agent-relayed approval citing a prompt logged by `plumb turn start`)
+    self_recorded: bool = False
 
 
 @dataclass(frozen=True)
@@ -424,3 +427,30 @@ class ClarifyView:
     dropped: tuple[Mapping[str, Any], ...] = ()     # each with "dropped_because"
     escalation: tuple[EscalationSuggestion, ...] = ()
     backend: str = "heuristic"
+
+
+# --------------------------------------------------------------------------- sp4 HOSTS
+# The host-neutral turn API (sp4 3.1): every adapter turns its host's event into a
+# ``TurnEvent`` and renders the ``TurnOutput`` of ``plumb.hosts.neutral.handle_event``.
+
+TurnKind = Literal["session-start", "prompt", "edit", "stop"]
+
+
+@dataclass(frozen=True)
+class TurnEvent:
+    kind: TurnKind
+    root: Path
+    session_id: str
+    host: str                         # "claude-code" | "codex" | "pi" | "hermes" | "cli"
+    text: str | None = None           # prompt text (prompt)
+    path: str | None = None           # edited path (edit)
+    source: str | None = None         # session start source: startup | resume | clear | compact
+    stop_active: bool = False         # the host is already continuing after a block
+
+
+@dataclass(frozen=True)
+class TurnOutput:
+    agent_context: tuple[str, ...] = ()   # lines added to the agent's context
+    owner_lines: tuple[str, ...] = ()     # status card, summary, intent card (owner-facing)
+    block: str | None = None              # one instruction that keeps the agent working
+    status_line: str = ""                 # the one-line status card

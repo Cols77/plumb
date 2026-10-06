@@ -14,10 +14,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
+from plumb.confirm import SELF_RECORDED  # the one label (R13 Q4)
+
 if TYPE_CHECKING:
     from plumb.api import Core
 
-SELF_RECORDED = "self-recorded message"
 WORDS = {"owner": "you", "agent-relayed": "you (relayed)", "auto-jev": "JEV",
          "import": "import"}
 
@@ -34,7 +35,9 @@ def standing(core: Core) -> dict[str, tuple[str, str, Any]]:
 
 
 def is_self_recorded(entry: Any) -> bool:
-    return bool(entry is not None and entry.payload.get("self_recorded"))
+    from plumb.confirm import is_self_recorded as _is
+
+    return bool(entry is not None and _is(entry.payload))
 
 
 def labels_for(core: Core, ids: Iterable[str]) -> dict[str, str]:

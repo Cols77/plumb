@@ -42,6 +42,8 @@ ROUTES: dict[str, str] = {
     "clarify": "plumb.capture.cli",
     # MERGE (sub-project 3)
     "merge-check": "plumb.boundary.cli",
+    # HOSTS (sub-project 4)
+    "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
 }
 
 _HELP = """usage: plumb <command> [options]
@@ -87,6 +89,8 @@ owner views (plain words, paths or IDs; none approves anything):
 
 verification:  tests (map | select | run), map, verify
 host:          hook, hooks, install, statusline
+hosts:         hosts (install|uninstall|status codex|pi|hermes), turn (start|end: the
+               CLI-only fallback), mcp (serve: the read-only MCP server on stdio)
 bridge:        trailers, claims, fidelity, judge, judgment, import
 merge:         merge-check (the merge boundary: one full run, claims, links, the glance;
                --install-pre-push for the optional git hook)

@@ -2304,3 +2304,200 @@ Recorded, not fixed:
   passed when rerun alone. The machine (2 cores) was also running other lanes' tests on
   top of the test's own CPU contention. If it recurs on an idle machine, keep the relay
   line before `open_core` (it needs only `stated.json` and the record states).
+## Next lane HOSTS (2026-10-06)
+
+Lane HOSTS (sp4) built H1 to H6 and HS1, HS2 on `lane/hosts`; nothing is left unbuilt.
+Integration notes for the coordinator (there was no phase 0, so the lane wrote the parts of
+the phase-0 contract it consumes):
+
+- [INTEGRATE] `src/plumb/contracts.py` gains `TurnEvent` and `TurnOutput` (sp4 3.1) at the
+  end of the file; CAPTURE also appends there: keep both sections.
+- [INTEGRATE] `src/plumb/hosts/neutral.py` is the phase-0 delegation (PRESENT owns it from
+  then on): `handle_event(event, *, deadline, kept, verify, backend, unjudged)` over the
+  Claude Code handlers. If PRESENT adds its own `neutral.py`, keep its rendering and keep
+  `via(event)`: a `host == "cli"` event (`plumb turn start`) logs its prompt `via: turn`.
+- [INTEGRATE] `src/plumb/hosts/claude_code/prompt.py` `log_prompt` writes
+  `"via": ctx.extra.get("via") or "hook"`; CAPTURE's branch writes `"via": "hook"` on the same
+  line. Take this lane's line: with CAPTURE's, a `plumb turn start` prompt (recorded by the
+  agent itself) would be logged as hook-recorded and lose the "self-recorded message" label
+  (R13 Q4).
+- [INTEGRATE] `src/plumb/hosts/claude_code/cli.py` `_hook` hands `--host`/`--format` to
+  `plumb.hosts.cli.hook_main` (four lines); `src/plumb/cli.py` routes `hosts`, `turn`, `mcp`.
+- [INTEGRATE] My edits to shared files leave links of other lanes' SRs stale (SR-010, SR-012,
+  SR-014, SR-026, SR-027 among them); the lane repinned only SR-053 to SR-057.
+- [MEDIUM] (sp4 4.1, R2) Codex feeds a Stop hook's `reason` back to the model; whether it
+  also fires `UserPromptSubmit` for that continuation is not documented. If it does, plumb's
+  own block text would be logged as an owner prompt `via: hook`. Pi's follow-up and Hermes'
+  `pre_verify` never reach the prompt hook. Fix: the stop event records the digest of the
+  block it emitted per session, and the prompt event logs a prompt equal to it as
+  `via: plumb`, which relay refuses as a quote source. Check with a live Codex session first.
+- [MEDIUM] (sp4 4.1) The Codex rows rest on the 0.160 binary's embedded hook schemas and
+  strings (`.codex/hooks.json`, `hooks.state.<key>.trusted_hash`), not on a live run: run one
+  Codex session in a trusted project to confirm the hooks fire and the JSON output is read.
+- [LOW] (sp4 6.4) Hermes keeps MCP servers in the user's `config.yaml`
+  (`HERMES_HOME`, `%LOCALAPPDATA%\hermes` on Windows), not in the project: `plumb mcp install
+  hermes` writes there, with the project as `cwd`; when the file already has `mcp_servers`
+  it prints the entry instead of editing the owner's YAML.
+- [LOW] (sp4 6.2) `plumb_impact` resolves plain words through `plumb.present.api.resolve`
+  when PRESENT's resolver is in the build (its result's `best` or `ref`); until then the
+  reference is passed as given. Align the attribute name when PRESENT lands.
+- [LOW] (sp4 6.3) Inside a tool call the MCP server swaps `plumb.verify.testmap.build_map` for
+  a non-writing wrapper so the derived `.plumb/test_map.txt` is not refreshed. A
+  `write_text=False` option on `open_verify` (VERIFY's file) would make that a parameter.
+- [LOW] (sp4 4.3) Hermes' `/plumb` falls back to returning the words for the owner to send
+  when `ctx.inject_message` is unavailable (gateway sessions without the injection grant).
+
+## HOSTS lane review (2026-10-06): fixes, integration notes, medium and low findings
+
+Fixed (HIGH, whole class):
+
+- Codex hook commands that neither cmd nor PowerShell could run (`'.venv\Scripts\python.exe'`
+  in POSIX single quotes). Guarantee: every command plumb writes into a host's configuration
+  for the platform shell runs there as written. Entry points: the three `.codex/hooks.json`
+  commands (SessionStart, UserPromptSubmit, Stop); Codex `notify`, the Pi and Hermes spawns
+  and the MCP configurations are argv arrays executed without a shell. Choke point:
+  `plumb.hosts.common.shell_command` (Windows: backslashed program path, no quoting, refuses a
+  token that would need quoting). Test: `tests/hosts/test_codex.py::
+  test_hook_commands_run_in_the_platform_shell` runs the rendered command in cmd and
+  PowerShell (sh on POSIX).
+- R13 Q4 "self-recorded message" existed only as a log tag. Guarantee: every confirmation
+  resting on a message the agent recorded itself is labelled. Writer (one choke point):
+  `approvals.relay` writes `self_recorded: <cited prompt via == "turn">` into the approval's
+  payload (digest-protected). Reader (one choke point): `confirm.is_self_recorded`, surfaced as
+  `RecordStatus.self_recorded`. Surfaces: `plumb show`, `plumb explain`, the merge glance
+  (text and JSON) and `plumb hosts status` (all three hosts); one test each in
+  `tests/hosts/test_self_recorded.py`.
+- [INTEGRATE] These fixes touch files of other lanes: `approvals.py` and `confirm.py`
+  (CAPTURE, core), `contracts.py` (`RecordStatus.self_recorded`, defaulted, additive),
+  `readback.py` and `explain.py` (PRESENT), `merge.py` (MERGE). If CAPTURE rewrites
+  `relay`/`find_prompt`, keep the `self_recorded` payload key; if PRESENT moves show/explain,
+  keep the label. Re-run `tests/hosts/test_self_recorded.py` after every merge.
+- [MEDIUM] (R13 Q4, R2) The label rests on the prompt log's `via`, which the agent can still
+  defeat by running `plumb hook prompt --host codex` itself (logged `via: hook`) or editing
+  `.plumb/session/prompts.jsonl` (not hash-chained). Within the tamper-evident trust model,
+  but the merge glance should also flag a relayed approval whose prompt's `via: hook` arrived
+  from a shell carrying the session marker, once a host's hook environment is known to lack it.
+
+Medium and low findings recorded (not fixed in this lane):
+
+- [MEDIUM] (src/plumb/hosts/cli.py, R9) `plumb turn start/end` fall back to the fixed session
+  id `cli` when `--session` and `PLUMB_SESSION_ID` are both absent, so every agent session
+  shares one state: the session-start brief is shown once for the repository's lifetime and
+  seen.json deduplication carries over. A fresh agent starts without the relevant records.
+  Fix: derive a session id per agent session (or require `--session` and say which id in the
+  instruction block).
+- [MEDIUM] (src/plumb/hosts/cli.py) The first `turn start` of a session runs session-start
+  and prompt in one process, each with its own 1.9 s watchdog that ends the process with
+  `os._exit(0)`. If session-start hits the watchdog, the owner's prompt is never logged and
+  turn.json is not written; worst-case latency is about 3.8 s. Fix: one deadline for the pair,
+  log the prompt first.
+- [MEDIUM] (src/plumb/hosts/cli.py) `turn end` treats the turn as already continuing
+  (`stop_active`) only when turn.json has a prompt digest; without a preceding `turn start`
+  every `turn end` blocks again (the `not_run` tests reason repeats). Fix: record the block in
+  the session state independently of the prompt digest.
+- [MEDIUM] (src/plumb/mcp/server.py, sp4 6.2/6.3, plan H6) The MCP tools run CLI commands
+  in-process (`cli.main` inside `redirect_stdout`) instead of the frozen `plumb.present.api`
+  functions, so the read-only guarantee holds only for today's commands. If PRESENT's
+  brief/show/explain write session or judgment state, an MCP read becomes a write. Re-run
+  `test_tools_are_read_only_plumb_unchanged` after the PRESENT merge; switch to the API.
+- [MEDIUM] (src/plumb/hosts/claude_code/prompt.py, R13 Q4) Cross-lane conflict on the `via`
+  line: this lane writes `"via": ctx.extra.get("via") or "hook"`, CAPTURE hard-codes
+  `"via": "hook"`, PRESENT rewrote log_prompt. Keeping either other version logs `plumb turn
+  start` prompts as hook-recorded and drops the label. Guard: `tests/hosts/test_turn.py::
+  test_turn_start_logs_digest_and_prints_delta` and `tests/hosts/test_self_recorded.py` must
+  run after that merge.
+- [MEDIUM] (src/plumb/hosts/pi/templates/index.ts) The Pi `/plumb` command calls
+  `pi.sendUserMessage(...)` without `deliverAs`; Pi throws while the agent is streaming, so
+  `/plumb` typed during a running turn fails and the words reach neither the agent nor the
+  prompt log. Fix: pass `{ deliverAs: "followUp" }`.
+- [MEDIUM] (src/plumb/hosts/codex/install.py, R13 Q4) `hosts status codex` says prompts are
+  "recorded by the host's prompt hook" as soon as the entry is in .codex/hooks.json, before the
+  owner has trusted the hooks in Codex; until then the CLI fallback (self-recorded) runs. Fix:
+  read `hooks.state.<key>.trusted_hash` (or say "installed, trust pending").
+- [MEDIUM] (src/plumb/contracts.py, plan 3.1) The lane edited coordinator and PRESENT files
+  (contracts.py TurnEvent/TurnOutput, cli.py ROUTES/help, hosts/neutral.py,
+  hosts/claude_code/cli.py and prompt.py, the new hosts/common.py) with no phase 0; the
+  lane-gate `git diff --name-only main...HEAD` check fails on its 3.1 row. Resolving the
+  CAPTURE or PRESENT conflicts the wrong way silently drops `via: turn`.
+- [LOW] (src/plumb/mcp/cli.py) `plumb mcp uninstall codex` (and Hermes) rewrite the config
+  file even when it holds no plumb block: trailing newlines are trimmed (reported as changed)
+  and a whitespace-only file is deleted. Fix: write only when a block was removed.
+- [LOW] (src/plumb/hosts/codex/install.py) On Codex both the Stop hook and `notify` run the
+  stop event after every turn (notify with stop_active=True): twice the per-turn stop work
+  (about 1 to 1.4 s each), and notify can overwrite the stated.json the Stop hook wrote, which
+  `plumb relay` checks the owner's quote against. Fix: notify only refreshes the summary and
+  never rewrites stated.json, or skip notify when the Stop hook is installed.
+
+## HOSTS lane review, round 2 (2026-10-06): fixes and medium findings
+
+Fixed (HIGH, by class):
+
+- Owner words only (R2): Hermes runs delegated subagents, its background review and cron
+  runs in-process, and their turns fire the plugin's hooks with `parent_session_id`. The
+  plugin's one gate (`_owner_session`) now skips those sessions in every hook: no prompt is
+  logged `via: hook`, and no stop or summary runs for them. Tests:
+  `tests/hosts/test_hermes.py::test_child_agent_turns_are_never_the_owner` and the real
+  plumb check in `test_real_plumb_through_the_plugin`.
+- `shown` only when the owner sees the summary (R1, R2, R13 Q4): the stated set's one writer
+  (`hosts/claude_code/stop.py::write_stated`, a PRESENT/CAPTURE-owned file, edited at that
+  choke point only) applies the `display` that each entry point passes to
+  `hosts.neutral.handle_event`. `owner` is the Claude Code and Codex Stop hooks, Pi
+  `agent_end` and `plumb turn end`; the fallback block now tells the agent to put the
+  summary in its final reply. `status` is Codex `notify`, which no longer rewrites the stated
+  set that `plumb turn end` or the Stop hook wrote. `unseen` is `plumb hook stop --unseen`:
+  no record is marked shown. Hermes now shows `owner_lines` by appending them to the reply
+  (`transform_llm_output`). When the reply did not carry them (another plugin's transform
+  won, the turn was interrupted, or a Hermes without the hook), the plugin reruns the stop
+  `--unseen`. Tests: `tests/hosts/test_stated_display.py` (turn end, Codex notify, Codex
+  Stop hook, `--unseen`, the fallback block) and
+  `tests/hosts/test_hermes.py::test_unshown_summary_reruns_stop_unseen`. This also resolves
+  the stated.json part of the earlier LOW item on Codex's double stop run.
+
+Medium:
+
+- [MEDIUM] (src/plumb/hosts/cli.py) When `--prompt-file` is not given, `plumb turn start`
+  reads the prompt with `sys.stdin.read()` whenever stdin is not a TTY. If an agent's shell
+  tool runs the command with an inherited stdin pipe that never closes, the read waits for
+  EOF with no timeout or watchdog: the watchdog starts only inside `run_event`, after the
+  read. A host whose shell tool holds an open, non-TTY stdin and an agent that runs `plumb
+  turn start --session s1` without piping the message (the AGENTS.md block allows "with the
+  owner's message on stdin") block until the host's tool timeout. That breaks the "seconds
+  per turn" bar. Fix: read stdin only when data is available, apply the watchdog before the
+  read, or require `--prompt-file`/stdin to be explicit.
+- [MEDIUM] (src/plumb/hosts/claude_code/prompt.py) The lane edited files owned by other lanes
+  (approvals.py, confirm.py, contracts.py, explain.py, readback.py, merge.py,
+  hosts/neutral.py, hosts/claude_code/*, cli.py) instead of stopping and asking the
+  coordinator, as plan section 2 requires. CAPTURE implements the same Q4 label with
+  opposite semantics: its prompt.py hard-codes `via: hook` and its relay and escalation code
+  test `via != "hook"`, while HOSTS tests `via == "turn"`. If the coordinator takes CAPTURE's
+  `log_prompt` line, `plumb turn start` prompts are logged as hook-recorded, and
+  confirmations on the Codex and Pi fallback lose the "self-recorded message" label.
+  `tests/hosts/test_self_recorded.py::test_relay_marks_an_approval_resting_on_a_turn_prompt`
+  catches this only if it is rerun after the merge. Round 2 adds `stop.write_stated` (the
+  `display` gate) to the files to reconcile: keep it, and rerun
+  `tests/hosts/test_stated_display.py` after the merge.
+- [MEDIUM] (src/plumb/hosts/pi/templates/index.ts) Loop protection on Pi depends on
+  `blockedThisTurn`, which `before_agent_start` resets for any prompt not in `injected`. Pi
+  documents `before_agent_start` as firing "after user submits prompt". If it also fires for
+  the `followUp`/`triggerTurn` custom message with an empty or different `event.prompt`, an
+  empty prompt is logged as the owner's (`via: hook`) and the stop block can repeat:
+  `agent_end` blocks (tests not run) and sends followUp with triggerTurn, `before_agent_start`
+  fires with prompt "", resets `blockedThisTurn` and logs "", the next `agent_end` sends
+  `stop_active=false`, and `tests_instruction` (which has no once-guard) blocks again. The
+  block also fires on `agent_end`, which Pi says may precede auto-retry or compaction; Pi
+  recommends `agent_settled` for this. Unverified against a live Pi.
+- [MEDIUM] (src/plumb/hosts/codex/install.py) With trusted hooks, Codex runs the full stop
+  event twice per turn: the Stop hook, then notify. Each run repeats git status, verify.select
+  and evidence, and covering-test selection on a 2-core machine, so every Codex turn spends
+  two stop-handler runs of up to about 1.9 s each. Notify no longer rewrites stated.json
+  (round 2), but it still rewrites status.json from a recomputation the owner does not see,
+  and a slow notify can race the owner's next prompt. Fix: skip notify's stop work when the
+  Stop hook ran for this turn, or make notify refresh only status.json from the last snapshot.
+- [MEDIUM] (src/plumb/hosts/hermes/templates/plugin.py) The Hermes plugin keeps
+  `_children`, `_summaries` and `_stopped` in module memory for the life of the Hermes
+  process. They are never pruned, which is harmless but grows slowly with every delegated
+  child session. A child whose `on_session_start` fires before its first `pre_llm_call`
+  still runs the session-start event once, which is a read-only brief and logs no prompt.
+  Unverified against a live Hermes: whether `pre_verify` and `transform_llm_output` carry the
+  child's own `session_id`. The code reads them as Hermes 0.21 does
+  (`agent/conversation_loop.py`, `agent/turn_finalizer.py`).

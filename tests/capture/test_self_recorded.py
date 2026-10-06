@@ -37,7 +37,7 @@ def test_self_recorded_message_is_labelled(project: Path, capsys) -> None:
                                                  "self-recorded message"
     assert confirmation_counts(core)["self-recorded"] == 1
     assert run(project, "show", "SR-001") == 0
-    assert "(requirement, confirmed, self-recorded message)" in capsys.readouterr().out
+    assert "(requirement, confirmed by you (relayed), self-recorded message)" in capsys.readouterr().out
 
 
 def test_hook_recorded_prompt_carries_no_label(project: Path) -> None:
@@ -45,7 +45,7 @@ def test_hook_recorded_prompt_carries_no_label(project: Path) -> None:
     assert run(project, "relay", "SR-002", "--prompt", digest, "--quote", "ok") == 0
     core = open_core(project)
     [entry] = list(core.log_read("events", ["approval"]))
-    assert "self_recorded" not in entry.payload
+    assert entry.payload["self_recorded"] is False
     assert confirmation_label(core, "SR-002") == "confirmed by you (relayed)"
     assert confirmation_counts(core)["self-recorded"] == 0
 

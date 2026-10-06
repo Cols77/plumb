@@ -318,12 +318,23 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     nothing) they are kept unshown for the turn's last stop. ``group`` is the triage offer
     of this turn's own records (``plumb relay --group``), pinned only when its ``offer``
     lines are in ``message``, the text the owner is shown (R2, DEC-017): a group the
-    owner never saw (``present.card: off`` hides the offer) is never relayable."""
+    owner never saw (``present.card: off`` hides the offer) is never relayable.
+
+    The one writer of ``stated.json``, so it holds the guarantee "``shown`` only when the
+    owner sees the summary" for every host (``ctx.extra["display"]``, set by
+    ``hosts.neutral.handle_event``): ``owner`` (the host shows ``owner_lines``) keeps
+    ``shown``; ``unseen`` (the host could not show them) writes no record or group as shown;
+    ``status`` (a status refresh, e.g. Codex's ``notify``) leaves the stated set of the reply
+    the owner actually answers untouched."""
     from plumb.normalize import utc_now
 
+    display = ctx.extra.get("display", "owner")
+    if display == "status":
+        return
+    seen = display == "owner"
     carry = confirm if confirm is not None else confirm_carry(ctx, turn)
-    rendered = confirm.shown if confirm is not None else {}
-    shown = set(shown)
+    rendered = confirm.shown if confirm is not None and seen else {}
+    shown = set(shown) if seen else set()
     records = [{"id": i, "hash": index[i].hash, "shown": i in shown} for i in stated_ids]
     by_id = {r["id"]: r for r in records}
     for item in carry.records:
@@ -343,8 +354,8 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     data: dict[str, Any] = {"at": utc_now(), "session": ctx.session_id,
                             "reply_after_prompt": turn.get("prompt_digest"),
                             "records": records}
-    groups = list(confirm.shown_groups) if confirm is not None else []
-    if group is not None and not carry.groups and offered(offer, message):
+    groups = list(confirm.shown_groups) if confirm is not None and seen else []
+    if seen and group is not None and not carry.groups and offered(offer, message):
         groups.append(dict(group))
     if groups:
         data["groups"] = groups
