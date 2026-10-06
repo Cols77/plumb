@@ -303,7 +303,45 @@ def cmd_spec(command: str, argv: list[str]) -> int:
     return _guarded(act)
 
 
+# --------------------------------------------------------------------------- triage
+
+
+def cmd_triage(command: str, argv: list[str]) -> int:
+    from plumb.capture.triage import approve_low_risk, log_triage, triage, view_lines
+
+    parser = _parser(command, "Proposed records grouped by faithfulness to your words (the "
+                     "low-risk group first, riskier records individually). Advisory: it "
+                     "approves nothing. --approve low-risk is your one step, in your own "
+                     "terminal only.")
+    parser.add_argument("--approve", choices=["low-risk"], default=None)
+    parser.add_argument("--note", default="")
+    args = parser.parse_args(argv)
+    core = _core(args)
+
+    def act() -> int:
+        if args.approve:
+            entry = approve_low_risk(core, note=args.note)  # asks y/N
+            ids = [r["id"] for r in entry.payload["records"]]
+            print(f"plumb: approved {', '.join(ids)} (low-risk group, by: owner)")
+            left_out = entry.payload["triage"].get("left_out") or []
+            if left_out:
+                print("plumb: changed since the listing, left out: " + ", ".join(left_out))
+            return 0
+        view = triage(core)
+        log_triage(core, view)
+        if args.as_json:
+            import dataclasses
+
+            emit(dataclasses.asdict(view), True)
+        else:
+            emit(view_lines(view), False)
+        return 0
+
+    return _guarded(act)
+
+
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
+    "triage": cmd_triage,
     "escalate": cmd_escalate,
     "spec": cmd_spec,
     "capture": cmd_capture,
