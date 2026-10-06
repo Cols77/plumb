@@ -3228,3 +3228,120 @@ Medium and low findings, not fixed:
   `prompt.py`, `stop.py`, `post_edit.py`, `snapshot.py` and `install.py` without their
   `hosts/claude_code/` prefix, so the lane gate's `git diff --name-only` check against the row
   (3.4) cannot be applied mechanically. Fix: list full paths once each.
+
+## SP6 spec and plan review, round 2 (2026-10-06)
+
+Second review of `docs/specs/sp6-parallel-work.md` and `docs/plans/sp6-plan.md` against the
+concept and the brief (R10), after 56d864b. No HIGH findings. Medium and low findings, not
+fixed. Where an entry restates one from the round above, it says so; the fix here supersedes
+or extends that entry.
+
+- [MEDIUM] (R10.3: "Non-overlapping changes merge automatically. A content conflict becomes
+  an INTENT CONFLICT, shown at the merge boundary as one intent card with both versions";
+  quality bar: "Trust comes from evidence: hashes, pinned approvals") Spec 8.4 ("Applying a
+  choice writes the record with the chosen side's exact fields and body ... keeps the merged
+  links"; "Choosing a side whose content the owner confirmed on that side makes the record
+  confirmed again"), SR-076 EX-3 and plan D6 `test_choosing_a_confirmed_side_reconfirms` do
+  not say what happens to fields that merged on their own (7.3) when the owner picks a side.
+  If "the chosen side's exact fields" means the whole record, the other side's non-overlapping
+  changes (main's title change, say) are dropped silently although the card listed them as
+  "Merged on their own", against principle 3.4 ("plumb never silently picks a side"). If they
+  are kept, the result hash matches neither side and re-confirmation through the existing
+  approval cannot hold. The pinned hash keeps this safe: a missing detail, not a
+  contradiction. Same as the round-1 8.4 entry. Fix: the choice applies only to the
+  conflicting fields and every other merged field is kept; re-confirmation through an
+  existing approval happens only when the result hash equals that side's approved hash,
+  otherwise the record stays proposed and the card says so ("keeps main's title too; needs
+  your ok"); change SR-076 EX-3 and the D6 test to match.
+- [MEDIUM] (R10.1: "`plumb merge-fix` renumbers at merge and rewrites every reference") Spec
+  5.3's enumerated places and 7.3's driver EX renumbering leave references out. merge-fix
+  does not rewrite references the incoming side added outside `.plumb` records, test files,
+  claims and the merge message: docs (a `docs/specs` page naming SR-070), source comments and
+  docstrings, CLAUDE.md, and `SR-070/EX-n` markers in test files outside the changed set.
+  When both sides add the same EX-n, the driver renumbers theirs to EX-(n+1) and rewrites only
+  the links inside that record, so the incoming test files' `@pytest.mark.sr("SR-005/EX-3")`
+  markers silently point at ours's EX-3 and test evidence is attributed to the wrong example.
+  Fix: merge-fix, plus a post-merge step for the driver's EX renumbers, scans every text file
+  the incoming side added or changed since the merge base for the old ID or example reference
+  (the same "introduced by the incoming side" rule), and reports what it cannot rewrite
+  safely as drift; one test per place, including the EX renumber's test markers.
+- [MEDIUM] (R10.1, the same words) Spec 5.3 and the SR-071 statement narrow "every
+  reference" to "every reference the incoming side introduced", and rewrite test markers only
+  in test files the incoming side added or changed since the merge base. That is the right
+  reading (references from our side name our record, which keeps its ID; EX-4), but the spec
+  does not say why, so a verifier can read it as an omission. Fix: one sentence in 5.3 and in
+  the SR-071 statement: references from our side name our record, which keeps its ID, so
+  "every reference to the incoming record" is exactly the set the incoming side introduced.
+- [MEDIUM] (R10.5: "`plumb check --merge` on the merge result (confirmations, claims, links,
+  intent conflicts, one full suite) as a pre-merge or pre-push hook") Spec 8.2 and 10 keep the
+  pre-merge-commit hook optional, plan 8.2 says it "is NOT run on plumb's repository without
+  the owner's request", and plumb's `.git/hooks` holds only `commit-msg`, so neither the
+  pre-merge-commit hook nor the sp3 pre-push hook is installed on plumb. Under DEC-021 git
+  completes a merge carrying an open intent conflict; a merge on main can record an IC block,
+  and nothing holds it until someone runs /plumb merge-check. The owner's words describe the
+  check running as a hook; the plan's caution (it changes the owner's merges) is reasonable
+  but is not a ruling. Extends the round-1 DEC-021 entry. Fix: `/plumb init` (R15) offers the
+  boundary hook as part of adopting a repository, with a one-line ask in the init summary; or
+  record here, as an open owner question, which hook (pre-push or pre-merge-commit) is the
+  default; and the status card says "merges are not checked by a hook" when neither is
+  installed.
+- [MEDIUM] (R10.3, R10.5, the same words) Spec 8.2 (DEC-021), plan 8.2: the driver exits 0
+  and git records the merge commit with an open `conflict` block unless the optional
+  pre-merge-commit hook is installed, which the plan leaves uninstalled on plumb, so on
+  plumb's main an unresolved intent conflict can be committed and stay until the pre-push
+  check. This stays within R10.5's "pre-merge or pre-push" wording: a design refinement.
+  Same as the round-1 DEC-021 entry. Fix: the stop hook or the session brief keeps surfacing
+  open ICs on the current branch until they are resolved (spec 8.3 already counts them), and
+  this entry records that without the pre-merge-commit hook IC-carrying merge commits can
+  land locally.
+- [MEDIUM] (KEEP: "approvals pinned to exact content (simplified consent)") Spec 5.4
+  (`approval_aliases`): a renumber changes the record hash, because the hash covers `id`, and
+  approvals are carried through an alias only while the content with the old ID hashes back
+  to the pin. That keeps the exact-content guarantee in substance, but the carried
+  confirmation is a new trust path, not listed in the merge-boundary glance the way
+  agent-relayed and auto-JEV approvals are (R2, R8 B). Same as the round-1 `approval_aliases`
+  entry, raised to MEDIUM. Fix: list approvals carried by a renumber in the merge-boundary
+  glance and in `plumb show`, labelled as carried by a renumber with the from and to IDs.
+- [LOW] (R15: "The plugin's hooks and commands invoke the plumb CLI from the plugin's own
+  bundled environment ... never from the target repository's .venv") Spec 7.1 writes
+  `merge.plumb-record.driver = <launcher> merge-driver ...` into the repository's git config
+  as an absolute launcher, and plan 8.2 installs it through `uv run plumb hooks install`.
+  Once R15 lands that path points inside a versioned plugin install, so a plugin update can
+  leave a stale driver path, and git then fails the record merge or falls back to a text
+  merge without warning; the dogfood install also binds plumb's own driver to the repository
+  `.venv`. Fix: point the driver at a stable shim, or re-check the launcher in the
+  session-start hook and in `hooks status`, reporting "merge driver: stale launcher (/plumb
+  init fixes it)".
+- [LOW] ("a lighter, more elegant and interactive way to leverage coherence"; R10: "awareness
+  instead of locks: git is the coordinator") Spec 5.4 to 5.5 (`approval_aliases`,
+  `trailer_aliases`), 6.3 (pack cache) and 8.2 (held merge plus "finish the merge"): every
+  part maps to an R10 item and none reintroduces leases, admission or transactions, but the
+  alias layers and the per-stream pack cache add read-path complexity every reader must
+  respect. A refinement concern. Fix: keep the aliasing behind the one choke point the spec
+  names (`ids.approval_aliases` / `trailer_aliases`), with a conformance test showing no other
+  reader resolves renumbers; revisit whether the pack cache is needed once real log volumes
+  are measured.
+- [LOW] (R10.2: "one file per entry under .plumb/log/<kind>/, as concept 4.7 says") Spec 6.1
+  and 6.5 give migrated entries a suffix derived from the digest (`digest[8:16]`) and a
+  `.000000` stamp, not the uuid8 of concept 4.7 (`<UTC-stamp>-<uuid8>.json`, "os.link with a
+  uuid suffix"). A justified refinement (it makes the migration idempotent) that the concept
+  does not mention. Fix: in the phase-2 concept update (spec 14 item 7), describe the
+  deterministic suffix for migrated entries in concept 4.7.
+- [LOW] (owner rule: "Hook latency stays in seconds. Awareness must stay cheap.") Spec 9.2 and
+  9.3 add git processes to hooks: the session-start branch scan (up to 8 `git diff`
+  processes, capped at 400 ms) and the stop-hook publish (2 git processes when HEAD moved).
+  They are bounded and within budget, but on a 2-core machine with many branches the cap is
+  reached often and some branches keep stale cached results. Related to the round-1 branch
+  scan entry. Fix: keep the caps; measure the session-start cost on plumb's own repository
+  after Integrate.
+- [LOW] (owner rule: "Run no full suite except the single run in Integrate.") Spec 10
+  (`merge.premerge_run_full: true`), plan 8.2: with the pre-merge-commit hook and the pre-push
+  hook both installed, the full suite can run twice per merge-and-push. plumb avoids it by not
+  installing the pre-merge-commit hook, but the default config makes the duplicate run
+  possible for users. Fix: pre-push reuses the pinned full-run evidence when the
+  pre-merge-commit run already covered the same tree identity (sp3 evidence reuse).
+- [LOW] (plan hygiene) Plan 3.1's coordinator row lists `cli.py` twice and gives the hook
+  modules without their `hosts/claude_code/` prefix after the first entry, so the paths are
+  ambiguous for lane agents. Same as the round-1 coordinator-row entry. Fix: remove the
+  duplicate and spell out the full paths for `prompt.py`, `stop.py`, `post_edit.py`,
+  `snapshot.py` and `install.py`.
