@@ -146,20 +146,12 @@ def _dec_question(record: Any) -> str:
 
 def matters_decisions(index: Mapping[str, Any], statuses: Mapping[str, Any],
                       touched: Iterable[str]) -> list[str]:
-    """Unconfirmed DECs with ``matters: true`` that are touched or decide a touched record."""
-    touched = set(touched)
-    out = []
-    for record_id, record in sorted(index.items()):
-        if record.kind != "decision" or record.fields.get("matters") is not True:
-            continue
-        linked = {link.target.record for link in record.links if link.target.record}
-        if record_id not in touched and not (linked & touched):
-            continue
-        status = statuses.get(record_id)
-        if status is not None and status.confirmation == "confirmed":
-            continue
-        out.append(record_id)
-    return out
+    """Open DECs with ``matters: true`` that are touched or decide a touched record, earliest
+    first: ``plumb.capture.clarify.open_decisions`` (unconfirmed and not superseded), the one
+    rule the clarify queue and the escalation trigger share."""
+    from plumb.capture.clarify import open_decisions
+
+    return open_decisions(index, statuses, touched)
 
 
 def changed_acceptance(index: Mapping[str, Any], statuses: Mapping[str, Any],
@@ -330,7 +322,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     decisions = matters_decisions(index, all_statuses, touched_ids)
     # R11 "ONE per message": only the earliest open decision is asked; the next one waits
     # until it is answered (plumb.capture.api.next_question, sp2 5.3)
-    first = sorted(decisions, key=lambda d: int(d.rsplit("-", 1)[-1]))[:1]
+    first = decisions[:1]
     open_decisions = [d for d in first if asked.get(d) != index[d].hash]
     stated_ids = [i for i in edited_ids
                   if all_statuses[i].confirmation != "confirmed"]

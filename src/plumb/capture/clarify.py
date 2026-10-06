@@ -10,15 +10,16 @@
   every option builds the same thing; the rest are ranked ("does the answer change what gets
   built?") and the agent asks the first, ONE per message.
 
-``next_question`` is the stop hook's rule for decisions that matter: only the earliest
-unconfirmed one is asked, and the next one only after it is answered (sp2 5.3).
+``open_decisions`` is the one rule for decisions that matter (stop hook, ``next_question``,
+the escalation trigger): unconfirmed and not superseded; only the earliest is asked, and the
+next one only after it is answered (sp2 5.3).
 """
 
 from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from plumb.contracts import ClarifyView
@@ -34,22 +35,46 @@ def _number(record_id: str) -> int:
     return int(tail) if tail.isdigit() else 0
 
 
-def next_question(core: Core, touched: Sequence[str]) -> str | None:
-    """The one decision to ask now: the earliest-recorded unconfirmed DEC with ``matters:
-    true`` among ``touched`` or deciding (or deriving from) a touched record."""
-    index = core.index()
+DECIDING_LINKS = ("decides", "derives_from")
+
+
+def superseded_ids(index: Mapping[str, Any]) -> set[str]:
+    """Records another record's ``supersedes`` link points at (``plumb decide --supersede``
+    never edits the old decision, so only this link says it is no longer open)."""
+    return {link.target.record for record in index.values() for link in record.links
+            if link.kind == "supersedes" and link.target.record in index}
+
+
+def open_decisions(index: Mapping[str, Any], statuses: Mapping[str, Any],
+                   touched: Iterable[str]) -> list[str]:
+    """THE open decisions that matter (the one rule behind the stop hook's question, the
+    clarify queue and the escalation trigger, R1/R11): DECs with ``matters: true`` that are
+    neither confirmed nor superseded, and are touched or decide (or derive from) a touched
+    record; earliest-recorded first. A superseded DEC is closed: the owner answered it by the
+    decision that replaced it, so it never blocks the queue (one question per message)."""
     touched_set = set(touched)
-    statuses = core.status()
-    candidates = []
-    for record in index.values():
+    closed = superseded_ids(index)
+    out = []
+    for record_id, record in index.items():
         if record.kind != "decision" or record.fields.get("matters") is not True:
             continue
-        if statuses[record.id].confirmation == "confirmed":
+        if record_id in closed:
             continue
-        linked = {link.target.record for link in record.links if link.target.record}
-        if record.id in touched_set or linked & touched_set:
-            candidates.append(record.id)
-    return min(candidates, key=_number) if candidates else None
+        status = statuses.get(record_id)
+        if status is not None and (status.confirmation == "confirmed"
+                                   or getattr(status, "superseded_by", None)):
+            continue
+        linked = {link.target.record for link in record.links
+                  if link.kind in DECIDING_LINKS and link.target.record}
+        if record_id in touched_set or linked & touched_set:
+            out.append(record_id)
+    return sorted(out, key=lambda i: (_number(i), i))
+
+
+def next_question(core: Core, touched: Sequence[str]) -> str | None:
+    """The one decision to ask now: the first of ``open_decisions``."""
+    found = open_decisions(core.index(), core.status(), touched)
+    return found[0] if found else None
 
 
 def _option_label(option: Any) -> str:

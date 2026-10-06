@@ -24,7 +24,7 @@ import sys
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from plumb.confirm import affirmation_in, remaining_approvals
+from plumb.confirm import affirmation_in, escalated_of, remaining_approvals
 from plumb.contracts import LogEntry
 from plumb.normalize import normalize_text, sha256_bytes, sha256_text
 from plumb.trace import owning_ends
@@ -178,10 +178,10 @@ def current_exempt(core: Core) -> list[str]:
 
 def approved_exempt(core: Core) -> set[str]:
     """Every ``trace.exempt`` glob a valid approval entry confirmed (spec 7.5)."""
-    from plumb.confirm import checked_entries
+    from plumb.confirm import checked
 
     out: set[str] = set()
-    for entry, problem in checked_entries(core.events(), core.config.approve.affirmations):
+    for entry, problem in checked(core):
         if problem is None and entry.kind == "approval":
             out.update(str(g) for g in entry.payload.get("exempt") or [])
     return out
@@ -214,7 +214,8 @@ def approve(core: Core, ids: Iterable[str], *, note: str = "",
 
 def _revoked_records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
     """Each record with the hash of the approval being revoked (its latest one)."""
-    approvals = remaining_approvals(core.events(), core.config.approve.affirmations)
+    approvals = remaining_approvals(core.events(), core.config.approve.affirmations,
+                                    escalated_of(core))
     out = []
     for item in _records(core, ids):
         remaining = approvals.get(item["id"], [])

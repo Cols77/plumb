@@ -123,10 +123,10 @@ def _save_cache(core: Core, cache: Mapping[str, Any]) -> None:
 def approved_before(core: Core) -> set[str]:
     """Records with any valid approval in the log, by anyone (an edit of them is never
     low-risk, sp2 8.1)."""
-    from plumb.confirm import checked_entries
+    from plumb.confirm import checked
 
     out: set[str] = set()
-    for entry, problem in checked_entries(core.events(), core.config.approve.affirmations):
+    for entry, problem in checked(core):
         if problem is None and entry.kind == "approval":
             out.update(str(r.get("id")) for r in entry.payload.get("records") or []
                        if isinstance(r, Mapping))

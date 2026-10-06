@@ -295,6 +295,15 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
     lines = [f"{rid} {statuses[rid].confirmation}" + (" (confirmed by JEV)" if rid in auto
                                                       else "") for rid in written + updated]
     lines += [f"{rid} was confirmed; this edit needs the owner again" for rid in again]
+    if plan.intent_ref is not None and written:
+        from plumb.capture.spec import set_of
+
+        owners = set_of(core)
+        joined = [i for i in written if owners.get(i) == plan.intent_ref]
+        if joined:
+            lines.append(f"{plan.intent_ref} is an escalated spec: {', '.join(joined)} joined "
+                         "its set, which waits for the owner's set approval (plumb spec show "
+                         f"{plan.intent_ref})")
     return CaptureResult(written=tuple(written), updated=tuple(updated),
                          needs_owner_again=tuple(again), links=tuple(links),
                          auto_approved=tuple(auto), card=card, lines=tuple(lines))

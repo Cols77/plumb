@@ -24,11 +24,10 @@ WORDS = {"owner": "you", "agent-relayed": "you (relayed)", "auto-jev": "JEV",
 
 def standing(core: Core) -> dict[str, tuple[str, str, Any]]:
     """``{id: (hash, by, entry)}`` of each record's latest standing approval."""
-    from plumb.confirm import remaining_entries
+    from plumb.confirm import remaining
 
     out: dict[str, tuple[str, str, Any]] = {}
-    for record_id, approvals in remaining_entries(
-            core.events(), core.config.approve.affirmations).items():
+    for record_id, approvals in remaining(core).items():
         if approvals:
             out[record_id] = approvals[-1]
     return out

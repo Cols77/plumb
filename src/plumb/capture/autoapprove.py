@@ -22,7 +22,7 @@ revoke``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from plumb.contracts import AutoApproveState, LogEntry
@@ -123,7 +123,7 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
         return []
     from plumb.approvals import Refused, approval_items, find_prompt, quote_in_prompt
     from plumb.capture.calibrate import latest_calibration
-    from plumb.capture.spec import set_of
+    from plumb.capture.spec import escalated_ids
     from plumb.capture.triage import approved_before
     from plumb.normalize import normalize_text
 
@@ -146,15 +146,13 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
     if calibration is None:
         return []
     index = core.index()
-    members = set_of(core)
+    escalated = escalated_ids(core)
     before = approved_before(core)
     out: list[str] = []
     for record_id in ids:
         record = index.get(record_id)
-        if record is None or record.kind not in CLAIM_KIND or record_id in members:
-            continue
-        if record.kind == "intent" and record.fields.get("mode") == "escalated":
-            continue
+        if record is None or record.kind not in CLAIM_KIND or record_id in escalated:
+            continue  # an escalated spec set waits for the owner's set approval (R8 B)
         if record_id in before:
             continue
         kind = CLAIM_KIND[record.kind]
@@ -209,12 +207,13 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
 
 def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
             calibrations: Mapping[str, LogEntry], prompts: set[str],
-            approved: set[str]) -> str | None:
+            approved: set[str], escalated: Collection[str] = ()) -> str | None:
     """Why an ``auto-jev`` approval fails its re-check, or None (sp2 8.2): an owner
     ``config`` on before it, a passing calibration for the same model version, a cited
     prompt event logged by the prompt hook (not self-recorded), a score at or above the
     recorded thresholds, an eligible record kind, and no earlier owner, relayed or imported
-    approval of the record."""
+    approval of the record, and no record of an escalated spec set (``escalated``,
+    ``spec.escalated_ids``)."""
     payload = entry.payload
     auto = payload.get("auto")
     if not isinstance(auto, Mapping):
@@ -252,4 +251,7 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
             return f"auto-jev approval of {record_id}, which is not an eligible record"
         if record_id in approved:
             return f"auto-jev approval of {record_id}, which had an approval before"
+        if record_id in escalated:
+            return (f"auto-jev approval of {record_id}, which belongs to an escalated spec "
+                    "set (only the owner's set approval confirms it)")
     return None

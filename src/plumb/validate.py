@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
 from plumb import log
-from plumb.confirm import checked_entries
+from plumb.confirm import checked
 from plumb.links import kind_problem
 
 if TYPE_CHECKING:
@@ -119,7 +119,7 @@ def validate(core: Core) -> list[Finding]:
     for stream in ("events", "evidence"):
         for problem in log.verify_chain(core.paths, stream):
             add("error", "log", f"{stream}.jsonl", problem)
-    for entry, problem in checked_entries(core.events(), core.config.approve.affirmations):
+    for entry, problem in checked(core):
         if problem:
             ids = ", ".join(str(r.get("id")) for r in entry.payload.get("records") or []
                             if isinstance(r, Mapping))

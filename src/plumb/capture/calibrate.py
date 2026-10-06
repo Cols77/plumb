@@ -104,14 +104,13 @@ def variations(item: Item) -> list[Item]:
 
 
 def labelled_set(core: Core) -> list[Item]:
-    from plumb.confirm import checked_entries, remaining_entries
+    from plumb.confirm import checked, remaining
 
     index = core.index()
     statuses = core.status()
-    affirmations = core.config.approve.affirmations
     revoked: set[str] = set()
     auto: set[str] = set()
-    for entry, problem in checked_entries(core.events(), affirmations):
+    for entry, problem in checked(core):
         if problem is not None:
             continue
         ids = {str(r.get("id")) for r in entry.payload.get("records") or []
@@ -121,7 +120,7 @@ def labelled_set(core: Core) -> list[Item]:
             revoked |= ids
         if entry.kind == "approval" and entry.payload.get("by") == "auto-jev":
             auto |= ids
-    standing = remaining_entries(core.events(), affirmations)
+    standing = remaining(core)
     items: list[Item] = []
     for record_id in sorted(index):
         record = index[record_id]

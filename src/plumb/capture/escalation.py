@@ -138,12 +138,9 @@ def escalation(core: Core, *, prompt: str | None = None, matched: Sequence[str] 
         found.append(("irreversible", "hard to undo: " + ", ".join(hits[:4])))
 
     related = set(ids) | ({intent} if intent else set())
-    statuses = core.status()
-    open_decisions = sorted(
-        r.id for r in index.values() if r.kind == "decision"
-        and r.fields.get("matters") is True and statuses[r.id].confirmation != "confirmed"
-        and (r.id in related or any(link.target.record in related for link in r.links
-                                    if link.kind in ("derives_from", "decides"))))
+    from plumb.capture.clarify import open_decisions as _open
+
+    open_decisions = _open(index, core.status(), related)
     if len(open_decisions) >= 2:
         found.append(("decisions", f"{len(open_decisions)} decisions that matter are "
                                    f"unconfirmed ({', '.join(open_decisions[:4])})"))

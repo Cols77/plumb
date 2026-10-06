@@ -42,12 +42,58 @@ def members(core: Core, anchor: str) -> list[str]:
     return [str(m) for m in raw if isinstance(m, str)]
 
 
+SET_LINKS = ("derives_from", "decides")
+
+
+def _anchors(core: Core) -> dict[str, Any]:
+    return {r.id: r for r in core.index().values()
+            if r.kind == "intent" and r.fields.get("mode") == "escalated"}
+
+
+def escalated_sets(core: Core) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """``({anchor: [record ids]}, {record id: anchor})``: THE membership rule of an escalated
+    set (R8 B "never for an escalated spec set"). A record belongs to the set when the anchor
+    lists it in ``members`` or when it derives from or decides the anchor or another record
+    of the set (``plumb capture`` with ``"intent": "INT-x"``, ``plumb new``/``decide``
+    against it): such a record joins the set hash, so the set needs the owner again."""
+    index = core.index()
+    anchors = _anchors(core)
+    sets: dict[str, list[str]] = {}
+    owner: dict[str, str] = {}
+    for anchor_id, anchor in sorted(anchors.items()):
+        declared = [str(m) for m in anchor.fields.get("members") or [] if isinstance(m, str)]
+        sets[anchor_id] = []
+        for member in declared:
+            if member not in anchors and member not in owner:
+                owner[member] = anchor_id
+                sets[anchor_id].append(member)
+    grew = True
+    while grew:
+        grew = False
+        for record_id, record in sorted(index.items()):
+            if record_id in anchors or record_id in owner:
+                continue
+            for link in record.links:
+                target = link.target.record
+                if link.kind not in SET_LINKS or not target:
+                    continue
+                anchor_id = target if target in anchors else owner.get(target)
+                if anchor_id is not None:
+                    owner[record_id] = anchor_id
+                    sets[anchor_id].append(record_id)
+                    grew = True
+                    break
+    return sets, owner
+
+
 def set_ids(core: Core, anchor: str) -> list[str]:
-    ids = [anchor, *members(core, anchor)]
-    missing = [i for i in ids if i not in core.index()]
+    """The anchor, its declared members, then the records that derive from the set."""
+    declared = members(core, anchor)
+    missing = [i for i in [anchor, *declared] if i not in core.index()]
     if missing:
         raise SpecError(f"{anchor} names members that do not exist: {', '.join(missing)}")
-    return ids
+    sets, _ = escalated_sets(core)
+    return [anchor, *declared, *[i for i in sets.get(anchor, []) if i not in declared]]
 
 
 def current_set_hash(core: Core, anchor: str) -> str:
@@ -56,20 +102,24 @@ def current_set_hash(core: Core, anchor: str) -> str:
 
 
 def set_of(core: Core) -> dict[str, str]:
-    """``{member id: anchor}`` for every escalated set (members never auto-approve)."""
-    out: dict[str, str] = {}
-    for record in core.index().values():
-        if record.kind == "intent" and record.fields.get("mode") == "escalated":
-            for member in record.fields.get("members") or []:
-                out[str(member)] = record.id
-    return out
+    """``{record id: anchor}`` for every record of an escalated set (declared members and
+    records deriving from the set; ``escalated_sets``). The anchors are not keys."""
+    return escalated_sets(core)[1]
+
+
+def escalated_ids(core: Core) -> frozenset[str]:
+    """Every anchor and every record of an escalated set: none is ever auto-approved."""
+    return frozenset(_anchors(core)) | frozenset(set_of(core))
+
+
+def in_escalated_set(core: Core, record_id: str) -> bool:
+    return record_id in escalated_ids(core)
 
 
 def _set_approvals(core: Core, anchor: str) -> list[LogEntry]:
-    from plumb.confirm import checked_entries
+    from plumb.confirm import checked
 
-    return [entry for entry, problem in checked_entries(core.events(),
-                                                        core.config.approve.affirmations)
+    return [entry for entry, problem in checked(core)
             if problem is None and entry.kind == "approval"
             and isinstance(entry.payload.get("set"), Mapping)
             and entry.payload["set"].get("anchor") == anchor]
