@@ -1,9 +1,10 @@
 """SessionStart: the intent brief, a few lines plus a pointer (spec 6.1, ruling R9); the long
 brief (about 30 lines, hard cap 40) with ``hooks.session_brief: full``.
 
-Context, never procedure: the brief from ``CoreAPI.brief_lines`` plus one line of test
-evidence from ``VerifyAPI``. Also writes ``.plumb/session/status.json`` so the status line
-has data from the first turn.
+Every line goes through the one emitter (``plumb.present.delta``, sp5 3): a resumed
+session that already has a line gets nothing new. Context, never procedure: the brief
+from ``CoreAPI.brief_lines`` plus one line of test evidence from ``VerifyAPI``. Also
+writes ``.plumb/session/status.json`` so the status line has data from the first turn.
 
 The records brief is computed first and kept (``HookContext.keep``): when the budget runs
 out, the owner's records are still briefed and only the tests line reads ``not checked``.
@@ -93,23 +94,26 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     from plumb.api import open_core
     from plumb.contracts import FullPending
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
+    from plumb.present.delta import Line, open_emitter, reset
 
     core = open_core(ctx.root)
-    if ctx.data.get("source") in ("clear", "compact"):
-        # the agent's context lost what earlier prompts injected: records come again (R9)
-        try:
-            (ctx.session_dir / ctx.session_id / "seen.json").unlink()
-        except OSError:
-            pass
+    if ctx.data.get("source") != "resume":
+        # a new conversation, /clear or compaction: the agent's context lost what earlier
+        # hooks injected, so records come again (R9); a resumed one keeps its transcript
+        reset(ctx.session_dir, ctx.session_id)
+    emitter = open_emitter(ctx, "session-start", config=core.config)
     # no soft-budget check before the records brief: only the watchdog bounds it
     records_brief = brief(core, NOT_CHECKED)
-    ctx.keep(records_brief)
+    ctx.keep(emitter.add([Line(line) for line in records_brief], commit=False))
     verify = verify_api(core, verify)
     summary = None
     if verify is not None:
         ctx.deadline.check("tests")
         summary = cached_summary(core, verify)
-    lines = [evidence_line(summary) if line == NOT_CHECKED else line for line in records_brief]
+    lines = emitter.add([Line(evidence_line(summary) if line == NOT_CHECKED else line)
+                         for line in records_brief])
+    ctx.keep(lines)
+    emitter.close()
     if not ctx.deadline.expired():
         pending = None if summary is None else FullPending(summary["pending"],
                                                            tuple(summary["reasons"]))

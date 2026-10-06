@@ -389,27 +389,44 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         ask=len(questions), skipped=", ".join(skipped) or None))
 
     if not active:
-        reasons: list[str] = []
+        from plumb.present.delta import Line, open_emitter
+
+        # the agent's instructions go through the one emitter (sp5 3): each once per
+        # session per state; the triggers and the tests instruction are never cut
+        emitter = open_emitter(ctx, "stop", config=core.config)
+        wanted: list[Line] = []
         if not_run:
-            reasons.append(tests_instruction(changed, float(core.config.verify.turn_budget_s)))
+            wanted.append(Line(tests_instruction(changed,
+                                                 float(core.config.verify.turn_budget_s)),
+                               subject=f"tests:{turn.get('prompt_digest') or turn_start}",
+                               must=True))
         for d in open_decisions:
-            reasons.append(_dec_question(index[d]))
+            wanted.append(Line(_dec_question(index[d]), subject=f"question:{d}",
+                               state=index[d].hash, must=True))
             asked[d] = index[d].hash
         for n in open_regressions:
-            reasons.append(_regression_line(n, evidence[n]))
+            wanted.append(Line(_regression_line(n, evidence[n]), subject=f"regression:{n}",
+                               state=evidence[n].last_run or "?", must=True))
             asked[f"regression:{n}"] = evidence[n].last_run or "?"
         for m in open_masked:
-            reasons.append(_masked_line(index, m))
+            wanted.append(Line(_masked_line(index, m), subject=f"masked:{m['node']}",
+                               state=str(m.get("masked_by") or "?"), must=True))
             asked[f"masked:{m['node']}"] = str(m.get("masked_by") or "?")
+        reasons = emitter.add(wanted)
         if reasons:
             if queued:  # the block tells the agent now; the next prompt need not repeat it
-                reasons.append(trace_instruction(queued))
+                new = [p for p in queued if emitter.is_new(f"untraced:{p}")]
+                reasons += emitter.add([Line(trace_instruction(new),
+                                             subject="untraced:" + "|".join(sorted(new)),
+                                             marks=tuple(f"untraced:{p}" for p in new))]
+                                       if new else [])
                 try:
                     note_path.unlink()
                 except OSError:
                     pass
             if skipped:
-                reasons.append(skip_notice(skipped))
+                reasons += emitter.add([Line(skip_notice(skipped))])
+            emitter.close()
             # a blocked stop shows the owner nothing: a bare "ok" relays no record
             write_stated(ctx, turn, index, stated_ids)
             write_json_atomic(turn_path, {**turn, "asked": asked,

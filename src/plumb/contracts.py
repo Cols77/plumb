@@ -193,6 +193,11 @@ class StatusSnapshot:
     fidelity_unjudged: tuple[str, ...] = ()
     ask: int = 0
     skipped: str | None = None            # "budget" | "error" | None
+    # sp5 4.1 (the status card); the defaults keep older snapshots readable
+    state: str = ""                       # aligned | awaits you | drift | failing | regression
+    intent_summary: str = ""              # the session's intent in plain words (<= 40 chars)
+    confirmed_by: Mapping[str, int] = field(default_factory=dict)  # owner, agent-relayed, ...
+    auto_approve: str = "off"             # on | off | suspended
 
 
 @runtime_checkable
@@ -238,3 +243,55 @@ class JudgmentBackend(Protocol):
 @runtime_checkable
 class LLMCascade(Protocol):
     def escalate(self, request: EscalationRequest) -> None: ...
+
+
+# --------------------------------------------------------------------------- sp5 PRESENT
+# The output contract every host renders (sp5 9): cards and plain-language resolution.
+
+CardMode = Literal["full", "compact", "off"]
+
+
+@dataclass(frozen=True)
+class IntentCardData:
+    """The data of one intent card (sp2 11.1; the same shape CAPTURE provides)."""
+
+    id: str
+    title: str = ""
+    state: str = "proposed"                # confirmation state
+    confirmed_by: str | None = None        # "you" | "you (relayed)" | "JEV" | "import"
+    label: str = ""                        # plain label, "self-recorded message" included
+    quote: str = ""
+    will: tuple[str, ...] = ()
+    wont: tuple[str, ...] = ()
+    assumed: tuple[str, ...] = ()
+    examples: tuple[tuple[str, str, str], ...] = ()   # (SR, EX-n, text)
+    tests: tuple[tuple[str, str], ...] = ()           # (test end, state)
+    decisions: tuple[str, ...] = ()        # DEC ids deciding it
+
+
+@dataclass(frozen=True)
+class Resolved:
+    """One thing the owner's words may mean: a record, a repository path or a test node."""
+
+    ref: str                               # "SR-004", "src/app/calc.py", "tests/x.py::t"
+    kind: Literal["record", "path", "test"] = "record"
+    title: str = ""                        # the owner's terms: a record title, else the ref
+    score: float = 0.0                     # 0..1
+    reason: str = ""                       # "matched the title of SR-004"
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """``plumb resolve``: the owner's words mapped to records, paths and tests (sp5 5)."""
+
+    query: str
+    how: Literal["id", "path", "test", "words", "none"] = "none"
+    items: tuple[Resolved, ...] = ()       # ranked, best first
+    ambiguous: bool = False                # the best match is not clearly ahead: ask
+
+    @property
+    def ids(self) -> tuple[str, ...]:
+        """The record IDs, when the resolution is clear; () when it is ambiguous."""
+        if self.ambiguous:
+            return ()
+        return tuple(i.ref for i in self.items if i.kind == "record")
