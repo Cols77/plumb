@@ -548,7 +548,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
             if queued:  # the block tells the agent now; the next prompt need not repeat it
                 new = [p for p in queued if emitter.is_new(f"untraced:{p}")]
                 # oneshot: the note is removed below, so the budget must never cut it
-                reasons += emitter.add([Line(trace_instruction(new),
+                reasons += emitter.add([Line(trace_instruction(new, core=core),
                                              subject="untraced:" + "|".join(sorted(new)),
                                              marks=tuple(f"untraced:{p}" for p in new),
                                              oneshot=True)]

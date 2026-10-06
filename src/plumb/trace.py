@@ -162,11 +162,51 @@ def untraced_paths(core: Any, paths: Iterable[str], *, configs: Sequence[Any] | 
     return out
 
 
-def trace_instruction(paths: list[str], limit: int = 4) -> str:
-    """The one-line agent-facing instruction for untraced changes (non-blocking, R1)."""
+# The ownership proposals the untraced instruction carries are bounded: at most the shown
+# paths, and no new judgment once this much time has gone (a JEV call is 70-500 ms).
+PROPOSAL_BUDGET_S = 0.6
+
+
+def ownership_lines(core: Any, paths: Sequence[str], *, limit: int = 4,
+                    budget_s: float = PROPOSAL_BUDGET_S) -> list[str]:
+    """The proposed owning requirement of each untraced path (R12.3, SR-044), one line per
+    path, from CAPTURE's ``ownership_proposals``: proposals for the agent's read-back only,
+    never a link. Bounded by ``limit`` paths and ``budget_s``; empty without CAPTURE."""
+    import time
+
+    try:
+        from plumb.capture.api import ownership_proposals
+    except ImportError:
+        return []
+    started = time.monotonic()
+    out: list[str] = []
+    for path in list(paths)[:limit]:
+        if time.monotonic() - started > budget_s:
+            break
+        proposal = ownership_proposals(core, [path]).get(path)
+        line = str(getattr(proposal, "line", "") or "")
+        if line:
+            out.append(line.removeprefix("plumb: "))
+    return out
+
+
+def trace_instruction(paths: list[str], limit: int = 4, *, core: Any = None) -> str:
+    """The one-line agent-facing instruction for untraced changes (non-blocking, R1).
+
+    The one builder of the untraced-change instruction (the Claude Code stop and prompt
+    hooks, and through them ``plumb turn end`` and every adapter): given ``core``, it carries
+    the ownership proposal of each shown path (``ownership_lines``) for the read-back."""
     shown = ", ".join(paths[:limit]) + (f" +{len(paths) - limit} more" if len(paths) > limit
                                          else "")
-    return (f"plumb: untraced change: {shown} changed with no requirement owning it. Read the "
+    text = (f"plumb: untraced change: {shown} changed with no requirement owning it. Read the "
             "change back to the owner in their terms (what will and won't be done, "
             "assumptions labelled), record it as a proposed SR with given/when/then examples "
             "(edge cases too) deriving from an INT, and link it implemented_by those paths.")
+    if core is not None:
+        try:
+            proposals = ownership_lines(core, paths, limit=limit)
+        except Exception:  # noqa: BLE001 - a proposal never costs the instruction itself
+            proposals = []
+        if proposals:
+            text += " Proposed owners: " + " | ".join(proposals)
+    return text

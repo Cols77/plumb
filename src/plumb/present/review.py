@@ -103,6 +103,8 @@ def _glance(core: Any, scope: set[str] | None) -> list[str]:
                     how += f" ({score})"
             else:
                 how = f"relayed from your words \"{entry.payload.get('quote') or ''}\""
+                if entry.payload.get("prompt_objects") is True:
+                    how += " (the same message also objected or asked for a change)"
             lines.append(f"  {record_id} \"{index[record_id].title}\" {how}, {entry.at}")
     if len(lines) == 1:
         lines.append("  none")
@@ -110,13 +112,25 @@ def _glance(core: Any, scope: set[str] | None) -> list[str]:
 
 
 def _changed(core: Any, base: str) -> list[str]:
+    """Paths changed since the merge base, committed or not (untracked files too), as
+    ``plumb merge-check`` reads them; without the base, the working tree's own changes."""
     try:
-        out = subprocess.run(["git", "diff", "--name-only", f"{base}...HEAD"], cwd=core.root,
-                             capture_output=True, text=True, timeout=5, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return []
-    return [p.strip() for p in out.stdout.splitlines() if p.strip()] \
-        if out.returncode == 0 else []
+        from plumb.merge import changed_paths
+
+        return list(changed_paths(core, base)[0])
+    except Exception:  # noqa: BLE001 - no such base, or no MERGE lane: the tree's changes
+        pass
+    paths: list[str] = []
+    for args in (["diff", "--name-only", "HEAD"],
+                 ["ls-files", "--others", "--exclude-standard"]):
+        try:
+            out = subprocess.run(["git", *args], cwd=core.root, capture_output=True,
+                                 text=True, timeout=5, check=False)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if out.returncode == 0:
+            paths += [p.strip() for p in out.stdout.splitlines() if p.strip()]
+    return sorted(set(paths))
 
 
 def _drift(core: Any, scope: set[str] | None, base: str) -> list[str]:

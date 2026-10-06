@@ -389,7 +389,8 @@ def test_writes_stated_set(project: Path, hook_input) -> None:
     text = "ok, sounds right"
     prompts = project / ".plumb" / "session" / "prompts.jsonl"
     prompts.write_text(json.dumps({"digest": approvals.prompt_digest(text), "session": "s1",
-                                   "at": "2999-01-01T00:00:00Z", "text": text}) + "\n",
+                                   "at": "2999-01-01T00:00:00Z", "text": text,
+                                   "via": "hook"}) + "\n",
                        "utf-8")
     approvals.relay(open_core(project), ["SR-002"], prompt=approvals.prompt_digest(text),
                     quote="ok")

@@ -169,7 +169,7 @@ def decline(core: Core, *, intent: str | None, triggers: Sequence[str] = (),
     (``prompt`` and ``quote``), or from the owner's terminal."""
     from plumb.approvals import (
         Refused,
-        find_prompt,
+        owner_prompt,
         quote_in_prompt,
         require_owner,
     )
@@ -188,7 +188,7 @@ def decline(core: Core, *, intent: str | None, triggers: Sequence[str] = (),
     if prompt is not None or quote is not None:
         if not prompt or not quote:
             raise Refused("a relayed decline needs --prompt and --quote (the owner's words)")
-        entry = find_prompt(core, prompt)
+        entry = owner_prompt(core, prompt)
         normalized = normalize_text(quote)
         if not quote_in_prompt(normalized, normalize_text(str(entry["text"]))):
             raise Refused("the quote is not a verbatim part of that prompt (whole words)")

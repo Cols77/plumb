@@ -32,7 +32,7 @@ def log_prompt(root: Path, text: str, at: str = "2026-10-06T03:00:00Z",
     prompts.parent.mkdir(parents=True, exist_ok=True)
     with prompts.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"digest": digest, "session": session, "at": at,
-                                 "text": text}) + "\n")
+                                 "text": text, "via": "hook"}) + "\n")
     return digest
 
 
@@ -272,8 +272,6 @@ def test_relay_rejects_question(setup: Path, prompt: str, quote: str) -> None:
 @pytest.mark.parametrize("prompt, quote", [
     ("Is the build green? Yes, approve SR-001.", "approve SR-001"),
     ("No objections, approve SR-001.", "approve SR-001"),
-    ("Not that one. ok for SR-001", "ok for SR-001"),
-    ("ok for SR-001, but do not touch the docs", "ok for SR-001"),
 ])
 def test_relay_accepts_affirmation_outside_negation_and_question(setup: Path, prompt: str,
                                                                  quote: str) -> None:
@@ -281,6 +279,21 @@ def test_relay_accepts_affirmation_outside_negation_and_question(setup: Path, pr
     digest = log_prompt(setup, prompt)
     approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote=quote)
     assert _confirmation(setup, "SR-001") == "confirmed"
+
+
+@pytest.mark.parametrize("prompt, quote", [
+    ("Not that one. ok for SR-001", "ok for SR-001"),
+    ("ok for SR-001, but do not touch the docs", "ok for SR-001"),
+])
+def test_relay_refuses_beside_an_objection_it_cannot_place(setup: Path, prompt: str,
+                                                           quote: str) -> None:
+    """An objection or change clause that names no record (by ID or in plain words) may be
+    about any record the owner was shown: the ok confirms nothing (R2; audit round 3)."""
+    state_set(setup, ["SR-001"])
+    digest = log_prompt(setup, prompt)
+    with pytest.raises(approvals.Refused, match="object"):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote=quote)
+    assert _confirmation(setup, "SR-001") == "proposed"
 
 
 def test_relay_revoke_accepts_negated_quote(setup: Path) -> None:

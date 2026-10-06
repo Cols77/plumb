@@ -2902,3 +2902,131 @@ Recorded, not fixed (owner rule: HIGH only):
   precedence when touched records await the owner, or document the precedence.
 - [LOW] (quality bar) `plumb view` took 31 s on plumb's records (602 notes). It is on demand,
   not per turn. Fix: rewrite only the notes whose source hash changed.
+
+## Whole-plumb audit, round 3 (2026-10-06): medium and low findings
+
+The round's HIGH findings are fixed in the same commit, each as a class at one choke point:
+a self-recorded message never grounds a relay where the prompt hook runs
+(`approvals.owner_prompt`; deny rules for `plumb turn start` and `plumb hook prompt`); an
+"ok" beside a correction the agent cannot place confirms nothing, a quote beside any
+objection is the owner's whole statement, and the glance prints the whole message
+(`approvals.owner_scope`); every CLI verb prints UTF-8 through a cp1252 pipe
+(`plumb.cli.utf8_output`); `plumb turn start` logs the prompt before the brief, so the
+watchdog never drops it; every untraced-change instruction names the proposed owner
+(`plumb.trace.trace_instruction`) and `plumb review` reads uncommitted changes. Recorded
+here without fixing:
+
+- [MEDIUM] (decision 5, R3, concept 7.5) `verified_by` links pin the whole test file: an
+  unrelated, passing `test_mul` appended to the shared `tests/test_calc.py` turned the
+  owner-confirmed SR-001 (sub) and SR-002 (add) into unconfirmed edits ("SR 0/2 ok"),
+  merge-check exit 4 asked to re-confirm them and `plumb review` said "SR-001 changed since
+  you confirmed it" though the record did not change. In a regression turn where only add
+  broke, the card also showed "Regression SR-001 'sub returns the difference' ... regression"
+  while test_sub passed, and counted "2 questions" for one regression. Fix: pin and
+  attribute acceptance tests at node level (hash the test function a `verified_by` link
+  names); make capture and link default to node ids (drift already proposes them); keep
+  whole-file pins as a fallback that does not de-confirm the record on additions.
+- [MEDIUM] (decision 5 / R1, concept 6.6 "asked once per hash") `turn['asked']` is per
+  session: three sessions each making a one-line comment tweak to `src/plumb/claims.py` asked
+  the same unconfirmed DEC-002 question again; with 19 unconfirmed decisions that matter in
+  the dogfood repository, routine edits keep re-raising questions. The question text is also
+  malformed ("I assumed ... check.; A PreToolUse hook ... also fits. Which one?"). Fix:
+  persist asked-decision hashes per repository (a cache keyed by the DEC hash), and fix the
+  phrasing join.
+- [MEDIUM] (decision 6, quality bar) On plumb's own repository the session-start hook hits
+  the 1.9 s watchdog ("tests: not checked (budget)", "check skipped (budget)") and the stop
+  hook sometimes skips the covering-test request ("regressions not checked (budget)", no
+  block); a claims.py change defers 110 of 111 covering tests. The hooks degrade honestly,
+  but on the dogfood repository the loop's verification is often not exercised per turn.
+  Fix: precompute the per-turn data (status snapshot, test selection) asynchronously in
+  post-edit so the stop hook only reads a cache; track hook-skip rates in `plumb status`.
+- [MEDIUM] (R9 plain-language arguments) `plumb explain "how subtraction works"` and
+  `plumb align "subtraction"` say "nothing in plumb's records matches" for SR-001 "sub
+  returns the difference": resolution matches literal terms only, and the /plumb command
+  relies on the agent to rephrase. Fix: a stemming and synonym pass, a backend Choice over
+  the top candidates when term overlap is zero, and a /plumb instruction to retry with
+  record titles before reporting no match.
+- [LOW] (R8 A, quality bar) In the dogfood repository all 117 proposed records fall into
+  "individually": their quotes come from the pre-plumb brainstorm, so no hook-logged prompt
+  holds them and the grouped one-line confirmation never applies to the backlog.
+  docs/followups.md has grown to about 276 KB and 2.9k lines. In a repository whose default
+  branch is not `main`, `plumb review` shows "merge state against main: exit 2". Fix: a
+  one-time bootstrap path (`plumb triage --source brief`, checking quotes against an
+  owner-provided transcript file); summarise and archive closed followups; default the merge
+  base to the repository's HEAD branch.
+- [MEDIUM] (decision 5 trigger 1) "make multiply handle decimal numbers like 2.5", which
+  contradicts the confirmed DEC-001 "integers only" and SR-001, got no flag and no record
+  lines: the records were already injected (deduplicated), "make ... handle" is not change
+  language and "multiply" does not overlap "mul". "rename mul, pow and sub ..." flagged only
+  INT-001 and missed the sub records. A recall gap in a heuristic (MEDIUM under R7). Fix:
+  when a prompt matches confirmed records by a stem or synonym, or names a value outside a
+  confirmed decision's chosen option, emit the "this may change" instruction even for
+  records already injected; add the decision's chosen and alternative terms to the match
+  set.
+- [MEDIUM] (R9 card format "Tests ... passing") The card's Tests line printed
+  "tests/test_calc.py::test_mul (not run)" right after `plumb tests run --full` recorded 2
+  passes, and "not run" in the Regression card right after the same test was recorded as a
+  regression, while the summary beside it said "1 fresh pass" or "1 regression". Fix: the
+  card reads the same evidence lookup as the covering-tests line (node id plus test-source
+  hash); a card test with recorded pass and fail evidence.
+- [MEDIUM] (decision 2 drift signals, quality bar) `plumb capture` pins `implemented_by` to
+  the code as it is before the change, so the first implementation edit always makes the
+  link stale ("SR-001#1 -> src/app/calc.py (target moved)") and merge-check holds on stale
+  links the agent routinely clears with `plumb repin`; staleness every normal turn produces
+  trains both agent and owner to ignore it. Fix: treat an `implemented_by` link whose code
+  end changed in the turn or range that created it as "pending first pin", repinned
+  automatically when its covering tests pass; keep staleness for changes after a pinned,
+  verified state.
+- [LOW] (R3) A never-passed test shows as "plumb failing ... 1 failing" (red state) in the
+  status card next to "not yet passing": it does not interrupt, but the red state suggests a
+  problem during test-first work; a single regression is also counted as "2 questions"
+  (file and node). Fix: "not yet passing" wording and a neutral glyph for tests that never
+  passed; deduplicate a regression's file and node entries.
+- [MEDIUM] (R8 commands "owner-terminal only") `plumb config show` with stdin from
+  /dev/null printed the full auto-approve state with exit 0 in a non-interactive shell,
+  unlike `config auto-approve on`, which refuses. Claude Code's deny rules block it; on other
+  hosts nothing does. Read-only, so no harm. Fix: route `config show` through the
+  owner-terminal guard, or record (with a DEC) that the read-only view is deliberately open
+  to agents.
+- [LOW] (R3, decision 5) For a single regressed test (`tests/core/test_zz.py::test_a`) the
+  stop-hook block repeated the regression at file level and at node level. The behaviour is
+  right (it blocks on a previously passing test; a new red test does not interrupt). Fix:
+  deduplicate regression lines per node in the stop summary.
+- [LOW] (R9) `plumb turn start --help` runs a real turn and prints the session brief instead
+  of the help text; when a merge both waits for confirmation and has stale links or a claims
+  finding, `merge-check --no-run` exits 1 (integrity) rather than 4. The owner-facing text is
+  right in both cases. Fix: handle --help after the subcommand; document or adjust the exit
+  code precedence.
+- [MEDIUM] (R12 degraded form, R12.3) A new untraced `src/app/other.py` committed with "SR:
+  SR-001": `plumb trailers check-msg` and the commit-msg hook printed nothing and exited 0,
+  neither a degraded warning nor "no judgments available" (`capture.ownership.diff_serves`:
+  "the heuristic answers nothing"; `claims.py` 187-196). Already recorded (round 1 MEDIUM,
+  round 2 LOW) and still open. Fix: under the heuristic, print a degraded warning (the
+  claimed SR declares none of the staged paths) or "no judgments available"; keep it
+  non-blocking and test it at the commit-msg entry point.
+- [MEDIUM] (R12.4) Changing one number in docs/concept.md ("under 2 seconds" to "under 3
+  seconds") made `plumb drift` propose SR-005, SR-040, SR-063, SR-064 and SR-032 "by shared
+  terms: adapter, affirm, affirmation / add, affirm, agent / ...": terms of the whole
+  document, not of the changed text, where sp2 10.2 says "its changed terms". Fix: compute
+  the overlap from the diff hunks' terms only (for a record, from its changed fields); a test
+  where a one-line numeric change yields no unrelated hints.
+- [MEDIUM] (quality bar, R9 session state) The read-only view `plumb triage` appended a
+  committed `triage` event to `.plumb/log/events.jsonl`, leaving the tree dirty; agents
+  running it leave uncommitted log lines in every worktree, against SP6's no-conflicting-logs
+  goal. Already recorded as LOW and reproduced again. Fix: keep the triage snapshot in
+  gitignored cache or session state; log a committed event only when the owner acts
+  (`triage --approve`, or a group relay).
+- [LOW] (quality bar "seconds, not minutes") On a clone of plumb: session-start 1.8-2.3 s,
+  prompt 1.0-1.3 s, stop 1.9-2.2 s, status line 0.35 s. The first cold SessionStart printed
+  only "plumb: check skipped (budget)" with no brief; later runs cut "tests: not checked
+  (budget)" and the stop hook cut "covering tests, confirmations". The README still says
+  0.55-1.2 s and "never the intent lines". Matches round-2 MEDIUMs; within the owner's
+  "seconds". Fix (as recorded): cache link-end hashes across processes, emit the record-only
+  brief before any cache-building step, update the README timings to the dogfood numbers.
+- [LOW] (this round's fixes, trade-offs) The unplaced-objection rule (R2) also refuses
+  "Not that one. ok for SR-001" and "ok for SR-001, but do not touch the docs" unless the
+  objection names a record by ID or a word of it: a false refusal leaves the record proposed
+  (non-blocking under R1), which the owner's ruling prefers over confirming a record the
+  owner corrected. On Codex, a self-recorded message is refused only once the Codex prompt
+  hook has logged a prompt (no repository file says whether the owner trusted the hooks);
+  the prompt log now records the logging host for that reason.

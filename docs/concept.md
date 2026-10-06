@@ -360,7 +360,14 @@ with four cheap, deterministic checks, none of which calls a model:
    clause holds its ID or a distinctive word of its title, statement, examples or quote
    ("No, the pow example is wrong, it should return 9. Ok, carry on" objects to the records
    about pow); an objection that refers to "the example" or "the test" in general and names
-   none objects to every record. The prompt hook's relay
+   none objects to every record. The same holds for any objection or change clause (an
+   objection word, or a clause opening with but, though, except, ...) when none of the
+   prompt's objections names a record by ID or in plain words among the records the owner was
+   shown: "ok, except 3 minus 5 should return 0" confirms nothing, since the correction may be
+   about any of them. When the prompt objects to something else, the quote must be the
+   owner's whole statement ("Ok, carry on with the tests", never a bare "Ok" cut from it),
+   the approval records `prompt_objects`, and the merge-boundary glance flags it and prints
+   the owner's whole logged message beside the quote. The prompt hook's relay
    suggestion applies the same rule, so it lists every awaiting record only for a bare "ok".
    The same words sent twice ("ok" today and "ok" last week) share a digest; the check
    reads the latest logged prompt with that digest, the one the owner just sent, against
@@ -402,7 +409,12 @@ against a relayed approval the owner never gave.
 fallback of section 9), the agent records the owner's message itself with `plumb turn
 start`. A chat "ok" may still confirm through `plumb relay`, but every confirmation resting
 on a message the agent recorded itself is labelled "self-recorded message" in `plumb show`,
-the merge-boundary glance and the host status, and it never supports an auto-approval.
+the merge-boundary glance and the host status, and it never supports an auto-approval. This path exists only for hosts WITHOUT a prompt hook: where the session marker names a
+host whose prompt hook runs (`claude-code`; Codex once its hook has logged a prompt), a
+relay, a relayed escalation decline or an auto-approval resting on a message not logged by
+that hook is refused (exit 3) at one choke point (`approvals.owner_prompt`), and the Claude
+Code deny rules also cover `plumb turn start` and `plumb hook prompt`. Otherwise the agent
+could pipe its own "ok" into `plumb turn start` and relay it.
 
 An escalated plan (section 5.2) is approved as a set: one approval pins a set hash over the
 sorted member hashes. The set is anchored on an `INT` with `mode: escalated` and a `members`
@@ -943,7 +955,10 @@ and sharper; all judgments are logged and advisory.
 3. **Ownership proposals.** For an untraced change, the backend proposes the owning
    requirement (a choice over candidates narrowed by the code map), and "does this diff serve
    its claimed SRs?" becomes a non-blocking commit-hook warning. A bare test-file reference
-   gets a proposed test node. These feed the agent's read-back; they never write links.
+   gets a proposed test node. These feed the agent's read-back: every untraced-change
+   instruction (the stop hook's, the next prompt's, `plumb turn end`'s) names the proposed
+   owner of each shown path, bounded in paths and time, and `plumb review` lists them for
+   uncommitted changes too. They never write links.
 4. **Hidden-dependency scan.** When a confirmed record or an authoritative document changes,
    a bounded scan proposes records or documents that silently depend on it, shown as drift
    hints only, never as staleness marks or edges.
@@ -975,7 +990,9 @@ stays the agent's interface (D13).
 
 Later adapters (Codex, Pi, Hermes) are thin layers over one host-neutral turn API, mirroring
 these hooks where the host supports them, with a CLI-only fallback (an instruction file plus
-`plumb turn start` and `plumb turn end`) where it does not. On such a host the owner's chat
+`plumb turn start` and `plumb turn end`) where it does not. `plumb turn start` logs the
+owner's message and starts the turn before it prints the session brief of a session's first
+turn, so a brief cut by the watchdog never drops the message. On such a host the owner's chat
 "ok" may confirm, and each confirmation resting on a message the agent recorded itself is
 labelled "self-recorded message" (D18, R13 Q4; section 4.6); a read-only MCP server on stdio
 exposes the brief, the relevant records, why and impact, and drift

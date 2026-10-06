@@ -77,7 +77,10 @@ def log_prompt(ctx: HookContext, text: str) -> str:
                   {"digest": digest, "session": ctx.session_id, "at": _utc_now(),
                    # R13 Q4: "hook" only from a host's prompt hook; `plumb turn start`
                    # (the agent records the message itself) passes via "turn"
-                   "text": text, "via": str(ctx.extra.get("via") or "hook")})
+                   "text": text, "via": str(ctx.extra.get("via") or "hook"),
+                   # which host's hook logged it: a hook-logged prompt from a host proves
+                   # that host's prompt hook runs (approvals.host_logs_prompts)
+                   "host": str(ctx.extra.get("host") or "claude-code")})
     turn_path = ctx.session_dir / ctx.session_id / "turn.json"
     try:  # a new turn: the touched list holds this turn's edits only
         (turn_path.parent / "touched.txt").unlink()
@@ -151,7 +154,8 @@ def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
         return None
     short = digest.removeprefix("sha256:")[:12]
     named, objected = owner_scope(normalize_text(text), None,
-                                  core.config.approve.affirmations, core.index())
+                                  core.config.approve.affirmations, core.index(),
+                                  scope=wanted)
     held = [i for i in pending if i in objected or (named and i not in named)]
     shown = [i for i in pending if i not in hidden and i not in held]
     unshown = [i for i in pending if i in hidden and i not in held]
@@ -164,8 +168,12 @@ def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
         line += (f"the owner's ok names only {', '.join(sorted(named))}: relay only the "
                  "named records; ")
     if shown:
+        from plumb.approvals import objection_clauses
+
+        words = ("owner's whole sentence" if objection_clauses(normalize_text(text))
+                 else "owner's exact words")
         line += (f"if this prompt affirms them, run plumb relay {' '.join(shown)} --prompt "
-                 f"{short} --quote \"<owner's exact words>\"; ")
+                 f"{short} --quote \"<{words}>\"; ")
     if unshown:
         verb = "was" if len(unshown) == 1 else "were"
         pronoun = "it" if len(unshown) == 1 else "them"
@@ -194,7 +202,7 @@ def untraced_queued(ctx: HookContext, core: Any) -> list[str]:
     return list(untraced_paths(core, [str(p) for p in paths]))
 
 
-def untraced_line(emitter: Any, paths: Sequence[str]) -> Any:
+def untraced_line(emitter: Any, paths: Sequence[str], core: Any = None) -> Any:
     """One instruction for the untraced paths the agent has not been told about yet."""
     from plumb.present.delta import Line
     from plumb.trace import trace_instruction
@@ -203,7 +211,7 @@ def untraced_line(emitter: Any, paths: Sequence[str]) -> Any:
     if not new:
         return None
     # oneshot: the note was consumed when read, so the budget must never cut this line
-    return Line(trace_instruction(new), subject="untraced:" + "|".join(sorted(new)),
+    return Line(trace_instruction(new, core=core), subject="untraced:" + "|".join(sorted(new)),
                 marks=tuple(f"untraced:{p}" for p in new), oneshot=True)
 
 
@@ -338,7 +346,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     emitter = open_emitter(ctx, "prompt", config=core.config,
                            cap_lines=int(hooks.prompt_lines))
     awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json", text)
-    trace = untraced_line(emitter, untraced_queued(ctx, core))
+    trace = untraced_line(emitter, untraced_queued(ctx, core), core)
     # per_turn: every affirming prompt is told how to relay, even with the same words
     relay = Line(awaiting, must=True, per_turn=True) if awaiting else None
     tail = [line for line in (trace, relay) if line]

@@ -352,7 +352,7 @@ during the turn.
 | Command | What it does |
 |---|---|
 | `plumb hosts install\|uninstall\|status codex\|pi\|hermes [--dry-run]` | Thin adapters over the same host-neutral turn API (see `docs/hosts.md` for each host's events). |
-| `plumb turn start\|end [--session ID]` | The CLI-only fallback for a host without hooks; confirmations resting on a message the agent recorded itself are labelled "self-recorded message". |
+| `plumb turn start\|end [--session ID]` | The CLI-only fallback for a host without hooks; confirmations resting on a message the agent recorded itself are labelled "self-recorded message". On a host whose prompt hook runs (Claude Code, or Codex once its hooks are trusted), such a message never grounds a relay. |
 | `plumb mcp serve` / `plumb mcp install\|uninstall claude-code\|codex\|hermes` | A read-only MCP server on stdio (brief, relevant records, show, explain, impact, drift); it has no write tool. |
 
 ### Merge boundary

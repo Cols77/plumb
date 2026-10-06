@@ -151,8 +151,27 @@ def _not_available(command: str) -> int:
     return 2
 
 
+def utf8_output() -> None:
+    """Make stdout and stderr UTF-8 (errors replaced), whatever the console or pipe encoding.
+
+    The one choke point that lets every verb print plumb's glyphs (the card's ●, ▸, ✓):
+    Python encodes a pipe in the locale code page (cp1252 on Windows) unless PYTHONUTF8 or
+    PYTHONIOENCODING says otherwise, which is how an agent's shell tool runs plumb. Hooks and
+    ``plumb turn`` set their own (strict) UTF-8 stdout on top of this."""
+    for stream in (sys.stdout, sys.stderr):
+        encoding = str(getattr(stream, "encoding", "") or "").lower().replace("-", "")
+        reconfigure = getattr(stream, "reconfigure", None)
+        if encoding == "utf8" or reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """`plumb <command> ...`: import ROUTES[command] lazily and return its run()."""
+    utf8_output()
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in ("-h", "--help", "help"):
         sys.stdout.write(help_text())

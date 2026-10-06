@@ -281,6 +281,47 @@ def find_prompt(core: Core, given: str) -> Mapping[str, Any]:
     return {**entry, "digest": digest}
 
 
+# Hosts whose prompt hook logs every owner prompt once plumb is installed there: the install
+# writes the hooks and the session marker together (``plumb install claude-code``).
+PROMPT_HOOK_HOSTS = ("claude-code",)
+
+
+def host_logs_prompts(core: Core, host: str | None) -> bool:
+    """Whether the host named by the session marker has a working prompt hook.
+
+    Claude Code always does (the marker and the hooks are installed together). Another
+    host's hooks run only once the owner trusts them (Codex keeps a hash per hook), so
+    there a prompt the hook already logged for that host is the proof. Without a marker
+    (the owner's own terminal, or a host that cannot set one) nothing says so."""
+    if not host or host == "cli":
+        return False
+    if host in PROMPT_HOOK_HOSTS:
+        return True
+    return any(item.get("via") == "hook" and item.get("host") == host
+               for item in _read_jsonl(core.paths.prompts))
+
+
+def owner_prompt(core: Core, given: str) -> Mapping[str, Any]:
+    """The logged prompt that grounds an owner decision the agent relays (``plumb relay``
+    with IDs, ``--group``, ``--set``, ``plumb escalate decline --prompt``): the one choke
+    point of R2's "the owner's explicit words".
+
+    Guarantee: on a host whose prompt hook is installed, only a prompt that hook logged
+    (``via: hook``) grounds a relay. A message the agent recorded itself (``plumb turn
+    start``, ``via: turn``) is the CLI-only fallback's path for hosts WITHOUT a prompt hook
+    (R13 Q4, labelled "self-recorded message"); where the hook exists, it would let the
+    agent write the owner's words itself, so it is refused (exit 3)."""
+    entry = find_prompt(core, given)
+    host = marker()
+    if entry.get("via") != "hook" and host_logs_prompts(core, host):
+        raise Refused(f"prompt {str(entry['digest'])[:19]} was not logged by the prompt hook "
+                      f"(via: {entry.get('via') or '?'}); on this host "
+                      f"(PLUMB_AGENT_SESSION={host}) only the owner's own prompts, as the "
+                      "hook logged them, confirm anything. A message the agent recorded "
+                      "itself (plumb turn start) is for hosts without a prompt hook")
+    return entry
+
+
 def _stated(core: Core, prompt_at: str) -> tuple[dict[str, tuple[str, bool]], list[str]]:
     """The stated set ``{id: (hash, shown)}`` of the reply before the prompt, and its ids.
 
@@ -478,8 +519,27 @@ def _refers_generally(clause: str) -> bool:
     return bool(stems(clause) & stems(" ".join(_REFERENCE)))
 
 
+# A clause that opens with a contrastive word asks for something other than what was shown
+# ("sounds good, but b can be negative", "yes, though negative exponents must work too"):
+# a change clause even without an objection word.
+_CHANGE_OPENING = re.compile(r"^\W*(?:but|however|though|although|whereas|yet|except"
+                             r"|instead)(?!\w)", re.IGNORECASE)
+
+
+def _objects(clause: str) -> bool:
+    """Whether ``clause`` objects to something or asks to change it."""
+    body = _NOT_NEGATING.sub(" ", _RECORD_ID.sub(" ", clause))
+    return bool(_OBJECTION.search(body) or _CHANGE_OPENING.match(clause))
+
+
+def objection_clauses(text: str) -> list[str]:
+    """The clauses of ``text`` that object to something or ask to change it."""
+    return [text[a:b].strip() for a, b in _clauses(text) if _objects(text[a:b])]
+
+
 def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
-                records: Mapping[str, Any] | None = None) -> tuple[set[str], set[str]]:
+                records: Mapping[str, Any] | None = None,
+                scope: Iterable[str] | None = None) -> tuple[set[str], set[str]]:
     """``(named, objected)``: the record IDs the owner's affirming words name, and every
     record the prompt names in a clause that objects to it or asks to change it.
 
@@ -493,20 +553,38 @@ def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
     or, among ``records`` (the record index), by a word of its title, statement, examples
     or quote ("the pow example is wrong" objects to the records about pow). An objection
     clause that names no record but refers to one in general ("the example is wrong")
-    objects to every record. Both sets are empty for a bare "ok"."""
+    objects to every record. Both sets are empty for a bare "ok".
+
+    ``scope`` is the records the owner was asked about (the stated set of the reply before
+    the prompt and the records relayed). A prompt holding an objection or change clause
+    (an objection word, or a clause opening with but, though, except, ...) none of whose
+    objections names a record by ID or resolves in plain words to a record of ``scope``
+    objects to every record of ``scope``: the
+    owner corrected something the agent cannot place ("ok, except 3 minus 5 should return
+    0"), so the ok confirms nothing rather than the record the correction is about."""
     clauses = _clauses(text)
     objected: set[str] = set()
+    wanted = set(scope or ())
+    objecting = False
+    placed = False
     for start, end in clauses:
         clause = text[start:end]
         ids = set(_RECORD_ID.findall(clause))
-        if not _OBJECTION.search(_NOT_NEGATING.sub(" ", _RECORD_ID.sub(" ", clause))):
+        if not _objects(clause):
             continue
-        objected |= ids
+        objecting = True
+        named_here = set(ids)
         if records:
             plain = _plain_named(_RECORD_ID.sub(" ", clause), records)
+            named_here |= plain
             if not ids and not plain and _refers_generally(clause):
                 plain = set(records)
             objected |= plain
+        objected |= ids
+        if ids or named_here & wanted:  # an ID the owner wrote places the objection
+            placed = True
+    if objecting and wanted and not placed:
+        objected |= wanted
     if quote:
         spans = [(m.start(), m.end()) for m in _quote_pattern(quote).finditer(text)]
     else:
@@ -518,16 +596,60 @@ def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
     return named, objected
 
 
+def _trimmed(text: str, spans: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+    """``spans`` without surrounding blanks and closing punctuation."""
+    out: list[tuple[int, int]] = []
+    for a, b in spans:
+        segment = text[a:b]
+        body = segment.rstrip().rstrip(".!?;,:").rstrip()
+        lead = len(segment) - len(segment.lstrip())
+        if body.strip():
+            out.append((a + lead, a + len(body)))
+    return out
+
+
+def _statements(text: str) -> list[tuple[int, int]]:
+    """``(start, end)`` of each statement of ``text``: its sentences, each cut again where a
+    contrastive word (but, except, though, ...) starts the next part ("SR-001 is ok | but
+    INT-001 is wrong, use floats")."""
+    cuts = {0, len(text)}
+    cuts.update(m.end() for m in _SENTENCE_END.finditer(text))
+    cuts.update(m.start() for m in _CLAUSE_WORD.finditer(text))
+    points = sorted(cuts)
+    return [(a, b) for a, b in zip(points, points[1:], strict=False) if text[a:b].strip()]
+
+
+def quote_covers_clauses(quote: str, text: str) -> bool:
+    """Whether ``quote`` occurs in ``text`` as whole statements (``_statements``): it starts
+    where one starts and ends where one ends (it may span several), never a bare "ok" cut
+    from "Ok, carry on with the tests"."""
+    spans = _trimmed(text, _statements(text))
+    starts = {a for a, _ in spans}
+    for occurrence in _quote_pattern(quote).finditer(text):
+        begin, end = occurrence.start(), occurrence.end()
+        if begin not in starts:
+            continue
+        last = next((b for a, b in spans if a <= end - 1 < b), None)
+        if last is None or end >= last:
+            return True
+    return False
+
+
 def _check_scope(text: str, quote: str, affirmations: Sequence[str], ids: Sequence[str],
                  *, group: str | None = None, set_anchor: str | None = None,
-                 records: Mapping[str, Any] | None = None) -> None:
+                 records: Mapping[str, Any] | None = None,
+                 scope: Iterable[str] = ()) -> None:
     """Refused unless the owner's words affirm every record of the relay (``owner_scope``).
 
     The IDs path: no record the prompt objects to, and, when the affirming words name
     records, only those. ``--group``: the owner's ok to the offer names no record and objects
     to none of the group (otherwise the named IDs are relayed one by one). ``--set``: no set
-    id is objected to, and named records include the anchor."""
-    named, objected = owner_scope(text, quote, affirmations, records)
+    id is objected to, and named records include the anchor. When the prompt holds an
+    objection or change clause at all, the quote must be the whole clause (or clauses) the
+    owner's affirmation sits in, never a bare "ok" cut from beside a correction, so the
+    stored quote, which the merge-boundary glance shows, carries what the owner said."""
+    named, objected = owner_scope(text, quote, affirmations, records,
+                                  scope=[*ids, *scope])
     against = sorted(i for i in ids if i in objected)
     if against:
         allowed = sorted(i for i in (named or set(ids)) if i not in objected and i in ids)
@@ -535,23 +657,23 @@ def _check_scope(text: str, quote: str, affirmations: Sequence[str], ids: Sequen
                 else "")
         raise Refused(f"the owner's words object to or ask to change {', '.join(against)}; "
                       f"an objection is not an approval{hint}")
-    if not named:
-        return
-    if group:
+    if named and group:
         raise Refused(f"the owner's words name {', '.join(sorted(named))}; an ok naming "
                       f"records confirms those records, not group {group}: relay the named "
                       "IDs instead")
-    if set_anchor:
-        if set_anchor not in named:
-            raise Refused(f"the owner's words name {', '.join(sorted(named))}, not the set "
-                          f"{set_anchor}; relay the named IDs instead")
-        return
-    outside = sorted(i for i in ids if i not in named)
+    if named and set_anchor and set_anchor not in named:
+        raise Refused(f"the owner's words name {', '.join(sorted(named))}, not the set "
+                      f"{set_anchor}; relay the named IDs instead")
+    outside = sorted(i for i in ids if i not in named) if named and not set_anchor else []
     if outside:
         allowed = sorted(i for i in ids if i in named)
         hint = f"; relay only {' '.join(allowed)}" if allowed else ""
         raise Refused(f"the owner's words name {', '.join(sorted(named))}, not "
                       f"{', '.join(outside)}; an ok naming records confirms only those{hint}")
+    if objection_clauses(text) and not quote_covers_clauses(quote, text):
+        raise Refused("the owner's message also objects to or asks to change something; "
+                      "quote the whole clause the owner's affirmation sits in, not only "
+                      "the affirming words")
 
 
 def _stated_group(core: Core, group: str, prompt_at: str) -> list[dict[str, Any]]:
@@ -629,8 +751,9 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
     hash (edited after the owner saw it) is refused (``_check_set_shown``).
 
     A confirmation resting on a prompt the prompt hook did not record (a host without one,
-    where the agent recorded the message itself) is labelled ``self_recorded`` (R13 Q4)."""
-    entry = find_prompt(core, prompt)
+    where the agent recorded the message itself) is labelled ``self_recorded`` (R13 Q4); on a
+    host whose prompt hook is installed, such a prompt is refused (``owner_prompt``)."""
+    entry = owner_prompt(core, prompt)
     text = str(entry["text"])
     normalized_quote = normalize_text(quote)
     if not normalized_quote or not quote_in_prompt(normalized_quote, normalize_text(text)):
@@ -679,12 +802,12 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
             raise ApprovalError(str(exc)) from exc
     elif ids or not extra:
         records = _revoked_records(core, ids) if revoke else _records(core, ids)
+    stated, stated_ids = _stated(core, str(entry.get("at") or ""))
     if not revoke and records:
         relayed = [str(r["id"]) for r in records]
         _check_scope(normalize_text(text), normalized_quote, core.config.approve.affirmations,
                      relayed, group=group, set_anchor=set_anchor,
-                     records=index)
-    stated, stated_ids = _stated(core, str(entry.get("at") or ""))
+                     records=index, scope=stated_ids)
     if set_anchor:
         _check_set_shown(set_anchor, records, normalized_quote, stated)
     elif not group:
@@ -708,6 +831,10 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
         return core.log_append("events", "revocation", payload)
     payload.update({"affirmation": affirmation, "stated_set": stated_ids or None,
                     "note": note, **extra})
+    if objection_clauses(normalize_text(text)):
+        # the owner's message also objected to or asked to change something (not these
+        # records): the merge-boundary glance flags it beside the quote
+        payload["prompt_objects"] = True
     if set_digest is not None:
         payload["set"] = set_digest
     if triage is not None:

@@ -200,11 +200,23 @@ def turn_main(argv: list[str]) -> int:
         except OSError as exc:
             sys.stderr.write(f"plumb: cannot read the prompt: {exc}\n")
             text = ""
-        if not (state_dir / "turn.json").exists():  # the session's first turn: the brief
-            run_event("session-start", {**base, "source": "startup"}, host="cli", fmt=fmt,
+        first = not (state_dir / "turn.json").exists()  # the session's first turn
+        if first:  # a new conversation: forget what earlier hooks injected (as the brief)
+            try:
+                from plumb.present.delta import reset
+
+                reset(root / ".plumb" / "session", session)
+            except Exception:  # noqa: BLE001 - never block the turn on session state
+                pass
+        # The owner's message first: it is logged and the turn started (turn.json) before
+        # anything slower runs, so the brief reaching the watchdog (which ends the process)
+        # can never drop the prompt; a relay or capture needs its digest (R13 Q4).
+        run_event("prompt", {**base, "prompt": text}, host="cli", fmt=fmt, root=str(root))
+        if first:  # then the session brief, under its own budget and watchdog; "resume"
+            # keeps what the prompt event just injected
+            run_event("session-start", {**base, "source": "resume"}, host="cli", fmt=fmt,
                       root=str(root))
-        return run_event("prompt", {**base, "prompt": text}, host="cli", fmt=fmt,
-                         root=str(root))
+        return 0
     # turn end: at most one block per turn, never on a second `turn end` of the same turn
     turn = read_json(state_dir / "turn.json")
     digest = turn.get("prompt_digest") if isinstance(turn, dict) else None

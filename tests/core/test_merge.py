@@ -122,7 +122,7 @@ def test_merge_lists_approvals_in_range_with_relayed_marked(base, capsys) -> Non
     text = "SR-001 looks good, approved"
     digest = approvals.prompt_digest(text)
     prompts.write_text(json.dumps({"digest": digest, "session": "s", "at": "t",
-                                   "text": text}) + "\n", encoding="utf-8")
+                                   "text": text, "via": "hook"}) + "\n", encoding="utf-8")
     approvals.relay(open_core(root), ["SR-001"], prompt=digest, quote="SR-001 looks good, "
                     "approved")
     (root / "src" / "mod.py").write_text("x = 2\n", encoding="utf-8")
