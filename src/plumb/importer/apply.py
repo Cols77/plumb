@@ -167,12 +167,15 @@ def apply_plan(core: Any, plan: ImportPlan) -> dict[str, Any]:
         "approved": [{"id": a["id"], "hash": a["hash"]} for a in approvals]})
     approved: list[str] = []
     if approvals:
-        upstream = (approvals[0]["upstream"] if len(approvals) == 1 else
+        from plumb.importer.recheck import event_copy
+
+        upstream =(approvals[0]["upstream"] if len(approvals) == 1 else
                     {"repo": REPO, "repo_head": plan.head,
                      "consent_path": f"{len(approvals)} consent records (see each record)"})
         entry = core.log_append("events", "approval", {
             "records": approvals, "by": "import", "upstream": upstream,
-            "import_event": event.digest, "prompt_digest": None, "quote": None,
+            "import_event": event.digest, "import_entry": event_copy(event),
+            "prompt_digest": None, "quote": None,
             "note": "upstream human consent pinning the imported content (next-plan 9.3)"})
         if entry.prev == event.digest:
             approved = [a["id"] for a in approvals]

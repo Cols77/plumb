@@ -112,6 +112,8 @@ def test_by_import_cites_consent_file_and_digest(repo: Path, source: Path) -> No
     assert upstream["repo_head"] == "0123456789abcdef0123456789abcdef01234567"
     [event] = [e for e in open_core(repo).log_read("events") if e.kind == "import"]
     assert approval.payload["import_event"] == event.digest
+    # the approval carries the event it cites, so its re-check needs no log context
+    assert approval.payload["import_entry"]["payload"] == dict(event.payload)
     assert event.payload["approved"] == [{"id": r["id"], "hash": r["hash"]}
                                          for r in approval.payload["records"]]
 
@@ -166,8 +168,10 @@ def test_validate_flags_an_import_event_that_did_not_approve(repo: Path, source:
     core = open_core(repo)
     approval = _approvals(repo)[0]
     # forging both entries is tamper-evident: validate names the approval
+    from plumb.importer.recheck import event_copy
+
     event = log.append(core.paths, "events", "import", {"approved": []})
-    forged = dict(approval.payload, import_event=event.digest)
+    forged = dict(approval.payload, import_event=event.digest, import_entry=event_copy(event))
     log.append(core.paths, "events", "approval", forged)
     errors = [f for f in validate(open_core(repo)) if f.code == "approval"]
     assert any("SR-077" in e.subject and "did not approve" in e.message for e in errors)
@@ -188,15 +192,19 @@ examples:
 """
 
 
-def _forged(record_id: str, record_hash: str, cite: str) -> dict:
-    """A well-formed by: import approval with made-up upstream fields, citing ``cite``."""
+def _forged(record_id: str, record_hash: str, cite: str, event=None) -> dict:
+    """A well-formed by: import approval with made-up upstream fields, citing ``cite`` and
+    carrying a copy of ``event`` when given."""
+    from plumb.importer.recheck import event_copy
+
     return {"records": [{"id": record_id, "hash": record_hash, "upstream": {
         "repo": "pi-agent-factory", "repo_head": "0" * 40,
         "consent_path": f"{CONSENT_DIR}/{record_id}.json", "consent_digest": "sha256:" + "1" * 64,
         "requirement_sha256": "2" * 64, "upstream_hash": "sha256:" + "3" * 64,
         "run_id": "JEV-REVIEW-INTEGRATION"}}],
-        "by": "import", "upstream": {}, "import_event": cite, "prompt_digest": None,
-        "quote": None}
+        "by": "import", "upstream": {}, "import_event": cite,
+        "import_entry": event_copy(event) if event is not None else None,
+        "prompt_digest": None, "quote": None}
 
 
 def _approval_errors(repo: Path) -> list[str]:
@@ -256,7 +264,7 @@ def test_forged_by_import_through_core_api_confirms_nothing(
     # an import event approving it, then an approval citing that: still the agent's session
     event = core.log_append("events", "import", {"approved": [{"id": "SR-001",
                                                                "hash": record_hash}]})
-    core.log_append("events", "approval", _forged("SR-001", record_hash, event.digest))
+    core.log_append("events", "approval", _forged("SR-001", record_hash, event.digest, event))
     status = open_core(repo).status(["SR-001"])["SR-001"]
     assert status.confirmation == "proposed" and status.approved_by is None
     errors = _approval_errors(repo)
@@ -278,14 +286,23 @@ def test_forged_by_import_through_direct_log_write_confirms_nothing(
     event = log.append(core.paths, "events", "import",
                        {"approved": [{"id": "SR-001", "hash": record_hash}]})
     monkeypatch.delenv("PLUMB_AGENT_SESSION")
-    log.append(core.paths, "events", "approval", _forged("SR-001", record_hash, event.digest))
+    log.append(core.paths, "events", "approval",
+               _forged("SR-001", record_hash, event.digest, event))
     # an import event that approved another hash backs no approval of this one
     event = log.append(core.paths, "events", "import",
                        {"approved": [{"id": "SR-001", "hash": "sha256:" + "4" * 64}]})
-    log.append(core.paths, "events", "approval", _forged("SR-001", record_hash, event.digest))
+    log.append(core.paths, "events", "approval",
+               _forged("SR-001", record_hash, event.digest, event))
+    # a copy that is not the cited event (its approval list widened) backs nothing either
+    event = log.append(core.paths, "events", "import", {"approved": []})
+    widened = _forged("SR-001", record_hash, event.digest, event)
+    widened["import_entry"]["payload"] = {"approved": [{"id": "SR-001", "hash": record_hash}]}
+    log.append(core.paths, "events", "approval", widened)
     assert open_core(repo).status(["SR-001"])["SR-001"].confirmation == "proposed"
     errors = _approval_errors(repo)
-    assert sum("cites no earlier import event" in e for e in errors) == 2
+    assert sum("carries no copy of the import event" in e for e in errors) == 2
+    assert sum("import event written under the agent session marker" in e
+               for e in errors) == 1
     assert sum("did not approve" in e for e in errors) == 1
 
 
@@ -307,3 +324,64 @@ def test_forged_by_import_is_proposed_through_the_cli(repo: Path, write_record,
     assert data["requirements"]["confirmed"] == 0 and "SR-001" in data["awaiting"]
     assert cli.main(["validate", "--root", str(repo)]) != 0
     assert "agent session marker" in capsys.readouterr().out
+
+
+def test_hand_written_approval_with_a_made_up_event_is_flagged(repo: Path, write_record) -> None:
+    """A raw log line carrying an import event that was never written: confirm's
+    self-contained re-check cannot see the log, so validate names it (and the broken chain);
+    tamper-evident, as concept 4.6 states."""
+    from plumb.log import entry_digest
+    from plumb.normalize import canonical_json
+
+    write_record(repo, LOCAL_SR)
+    core = open_core(repo)
+    record_hash = core.index()["SR-001"].hash
+    made_up = {"at": "2026-10-06T00:00:00Z", "marker": "none", "prev": None,
+               "payload": {"approved": [{"id": "SR-001", "hash": record_hash}]}}
+    cited = entry_digest({"v": 1, "kind": "import", **made_up})
+    payload = _forged("SR-001", record_hash, cited)
+    payload["import_entry"] = made_up
+    line = {"v": 1, "kind": "approval", "at": "2026-10-06T00:00:01Z", "marker": "none",
+            "payload": payload, "prev": cited}
+    line["digest"] = entry_digest(line)
+    path = core.paths.log_path("events")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("ab") as handle:
+        handle.write(canonical_json(line) + b"\n")
+    errors = _approval_errors(repo)
+    assert any("not the log entry right before it" in e for e in errors)
+    from plumb.validate import validate
+
+    assert any(f.code == "log" for f in validate(open_core(repo)))
+
+
+# One choke point, two lanes (review HIGH, next-plan 3.1): confirm.checked_entries re-checks
+# every approval source. IMPORT's by: import re-check needs no log context, so CAPTURE's
+# auto-jev re-check there merges without a conflict; this test runs through whichever
+# checked_entries the branch has, before and after that merge.
+
+def test_checked_entries_rechecks_import_and_auto_jev_approvals(
+        repo: Path, source: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb import approvals
+    from plumb.confirm import checked_entries
+
+    monkeypatch.setattr(approvals, "owner_terminal_answer", lambda question: "y")
+    report = import_pi_factory(open_core(repo), source)
+    assert report["approved"] == ["SR-077", "SR-078"]
+    core = open_core(repo)
+    # an auto-jev approval with no owner config event and no calibration: it fails closed
+    sr003 = core.index()["SR-003"].hash
+    core.log_append("events", "approval", {
+        "records": [{"id": "SR-003", "hash": sr003}], "by": "auto-jev", "score": 0.99,
+        "confidence": "high", "prompt_digest": "sha256:" + "5" * 64,
+        "backend_version": "jev-test", "quote": None})
+    core = open_core(repo)
+    checked = {str(e.payload.get("by")): problem
+               for e, problem in checked_entries(core.events(),
+                                                 core.config.approve.affirmations)}
+    assert checked["import"] is None
+    assert checked["auto-jev"] is not None
+    statuses = core.status(["SR-077", "SR-078", "SR-003"])
+    assert statuses["SR-077"].approved_by == "import"
+    assert statuses["SR-078"].confirmation == "confirmed"
+    assert statuses["SR-003"].confirmation == "proposed"
