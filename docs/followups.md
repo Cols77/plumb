@@ -1568,3 +1568,61 @@ only add what round 2 found new.
   only raw-ID commands; the plain-language path (say it in chat, the agent relays it) exists
   but is not offered. Fix: after each glance and escalation line, also offer "or say 'revoke
   <title>'" or `/plumb confirm ...`.
+
+## Next lane IMPORT (2026-10-06)
+
+Built: I1 to I5 (MUST) and IS1 to IS3 (SHOULD), nothing dropped. The rehearsal (IS2) is in
+`docs/import-rehearsal.md`; one-pass pinning (IS3) took the exported-copy import from 2 min
+14 s to 17 s. Phase 0 had not run when the lane started, so the lane wired its own entry
+points; the coordinator should check them while merging.
+
+- [MEDIUM] (plan 3.2 item 3, phase 0) The `importer/recheck.py` stub and its lazy call from
+  `validate.py` were not in place. IMPORT added `recheck_import_approvals` with a call at
+  the end of `validate()`, and a `by == "import"` branch near the top of
+  `confirm.entry_problem` (both CAPTURE files, away from CAPTURE's hunks). The older
+  `if by == "import": return "... not accepted"` line further down is now dead code, left
+  in place so the merge with CAPTURE's adjacent `auto-jev` branch stays clean. Fix at
+  integration: delete that line.
+- [MEDIUM] (next-plan 9.3, R10.2) `confirm` accepts a `by: import` approval only when it was
+  written right after the `import` event it cites (`prev == import_event`), with every
+  record citing its consent path, consent digest, consented digest, run and upstream hash.
+  The check that the import event approved that exact `{id, hash}` runs in
+  `plumb validate` only. When R10.2 moves the logs to one file per entry, `prev` chaining
+  no longer orders entries: replace it with a check that has the log context (for example
+  in `checked_entries`).
+- [MEDIUM] Stale links left for the coordinator, because their records are not IMPORT's and
+  CAPTURE also edits the same files: SR-004#1, SR-005#3, SR-030#2 (`confirm.py`), SR-030#10
+  (`validate.py`), SR-025#2 and SR-025#3 (`tests/core/test_cli_core.py`). Repin them after
+  the merge. IMPORT repinned only links whose ends it changed and reviewed: SR-002, SR-003,
+  SR-023, and DEC-011#1, which decides SR-023 (DEC-011 deferred `by: import` to this
+  importer).
+- [MEDIUM] (owner glance) SR-023's statement now says that every record is imported
+  proposed except a requirement whose upstream consent pins its current content
+  (SR-059). It stays proposed.
+- [MEDIUM] (performance, R5 budgets at pi-agent-factory scale) On the exported copy,
+  `plumb drift` takes 10 to 23 s and `plumb status` 11.7 s. Most of that time is in
+  `verify/testmap.verified_tests` (5.2 s of a 10 s drift, quadratic in links). Symbol ends
+  add about 1.3 s, because each call re-reads and hashes its file before the parse cache
+  hit. Fix: index `verified_tests` once per map; add a stat-keyed digest cache in front of
+  the content-keyed parse cache.
+- [LOW] `tests/core/test_cli_core.py` (coordinator-owned) changed with I3: `plumb link ...
+  path::name` is now accepted (a test node for `verified_by`, a symbol otherwise), and an
+  empty name after `::` is a usage error.
+- [LOW] (concept 4.5) The link table says `relates_to` goes from SR to SR. `links.ALLOWED`
+  now also allows a path, for an imported `spec:<id>` relation (next-plan 9.1). Add the row
+  to the concept (coordinator, `docs/**`).
+- [LOW] (claims) Fixture and helper files are declared as `implemented_by` ends: the consent
+  fixtures and the fixture SR-078 for SR-059, and `tests/importer/importer_helpers.py` for
+  SR-060. This way their changes select the importer tests, and `verified_by` never points
+  pytest at a JSON file. A support-file link kind, or an owner-approved exempt glob for
+  `tests/**/fixtures/**`, would say it better.
+- [LOW] (IS1) The claims import adds the upstream exempt globs (for example `**/*.md`) to
+  the target's `.plumb/claims.yaml` with no owner step. At F4, the owner should review the
+  merged policy before `require_trailer` gates commits.
+- [LOW] (I3) Resolving a symbol end ignores the module part of `module:Qual.name`. A name
+  that is only re-exported (imported, never defined in the file) falls back to the whole
+  file and is reported as `symbol-narrowed`.
+- [LOW] `plumb link --help` (CAPTURE's `commands.py`) still says "record ID or
+  repository-relative path". Add `path::Qual.name`.
+- [LOW] Pre-existing, not IMPORT's: `tests/core/test_primitives.py::
+  test_every_route_names_a_module_path` already fails on the lane's base commit 9dd86c6.

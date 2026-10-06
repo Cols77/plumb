@@ -70,6 +70,9 @@ def test_spec_relation_becomes_relates_to_path(repo: Path, source: Path) -> None
     import_pi_factory(open_core(repo), source, only={"SR"})
     assert _targets(open_core(repo), "SR-003")[("relates_to", Target(path=spec), None)] == \
         "current"
+    from plumb.validate import validate
+
+    assert not [f for f in validate(open_core(repo)) if f.code == "kind"]
 
 
 def test_feature_union_and_differences(repo: Path, source: Path) -> None:

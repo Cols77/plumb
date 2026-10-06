@@ -69,8 +69,13 @@ class Planned:
 class Report:
     def __init__(self) -> None:
         self.findings: list[dict[str, str]] = []
+        self._seen: set[tuple[str, str, str]] = set()
 
     def add(self, kind: str, record_id: str, detail: str) -> None:
+        key = (kind, record_id, detail)
+        if key in self._seen:  # two links to one missing end: one finding
+            return
+        self._seen.add(key)
         self.findings.append({"kind": kind, "id": record_id, "detail": detail})
 
 

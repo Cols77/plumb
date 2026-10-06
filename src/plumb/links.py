@@ -24,7 +24,9 @@ ALLOWED: Mapping[str, tuple[frozenset[str], frozenset[str]]] = {
     "derives_from": (frozenset({"requirement", "decision", "feature"}), frozenset({"intent"})),
     "decides": (frozenset({"decision"}), frozenset({"intent", "requirement"})),
     "upstream": (frozenset({"requirement"}), frozenset({"requirement"})),
-    "relates_to": (frozenset({"requirement"}), frozenset({"requirement"})),
+    # relates_to a path: a document the requirement relates to, such as an imported
+    # spec:<id> relation's spec (next-plan 9.1)
+    "relates_to": (frozenset({"requirement"}), frozenset({"requirement", "code"})),
     "implemented_by": (frozenset({"requirement"}), frozenset({"code"})),
     "verified_by": (frozenset({"requirement"}), frozenset({"test", "code"})),
     "corrects": (frozenset({"nc"}), frozenset({"requirement", "code"})),

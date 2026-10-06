@@ -269,6 +269,7 @@ def _approved_before(core: Any) -> tuple[set[tuple[str, str]], set[tuple[str, st
 
 def plan_import(core: Any, source: Path, *, only: Iterable[str] | None = None) -> ImportPlan:
     """What importing ``source`` into ``core``'s repository would do. Writes nothing."""
+    from plumb.links import kind_allowed, target_category
     from plumb.model import record_hash
     from plumb.store import ordered_frontmatter
 
@@ -325,6 +326,11 @@ def plan_import(core: Any, source: Path, *, only: Iterable[str] | None = None) -
         links: list[LinkKey] = []
         for spec in item.links:
             target = _resolve(core, spec, item.record_id, known, report)
+            if target is not None and not kind_allowed(spec.kind, item.kind,
+                                                       target_category(target) or ""):
+                report.add("link-skipped", item.record_id, f"{describe((spec.kind, target, None))}"
+                           f": {spec.kind} is not allowed from {item.kind} to that end")
+                target = None
             key = (spec.kind, target, spec.example) if target is not None else None
             if key is not None and key not in links:
                 links.append(key)  # type: ignore[arg-type]
