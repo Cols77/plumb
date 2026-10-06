@@ -83,6 +83,39 @@ def _hook_pre_push(core: Any, run_full: bool) -> int:
     return worst
 
 
+def _premerge_install(root: Path, args: Any) -> int:
+    """``--install-pre-merge-commit`` / ``--uninstall-pre-merge-commit`` (sp6 10)."""
+    from plumb.boundary.premerge import hook_line, install_hook, uninstall_hook
+    from plumb.boundary.prepush import ForeignHookError
+    from plumb.cliutil import emit
+    from plumb.present import owner_text
+
+    out: dict[str, Any] = {"hook": "pre-merge-commit"}
+    code = 0
+    try:
+        if args.install_pre_merge_commit:
+            out["path"] = str(install_hook(root, args.interpreter))
+            out["installed"] = True
+            line = owner_text.PREMERGE_INSTALLED
+        else:
+            removed = uninstall_hook(root)
+            out["removed"] = removed
+            line = owner_text.PREMERGE_REMOVED if removed else (
+                "plumb: no merge check of plumb's to remove (your own hook is left)")
+    except ForeignHookError:
+        out.update(installed=False, foreign=True, hook_line=hook_line(args.interpreter))
+        line, code = owner_text.FOREIGN_HOOK, 1
+    except (OSError, subprocess.CalledProcessError) as exc:
+        out.update(installed=False, error=str(exc))
+        line, code = f"plumb: the merge check was not changed: {exc}", 1
+    out["line"] = line
+    if args.as_json:
+        emit(out, True)
+    else:
+        print(line)
+    return code
+
+
 def run(command: str, argv: list[str]) -> int:
     import argparse
 
@@ -101,13 +134,20 @@ def run(command: str, argv: list[str]) -> int:
                              "merge.default_base, main)")
     parser.add_argument("--no-run", action="store_true",
                         help="never run the full suite; report what would hold")
-    parser.add_argument("--hook", choices=["pre-push"], default=None,
-                        help="git hook mode: read the pushed refs on stdin")
+    parser.add_argument("--hook", choices=["pre-push", "pre-merge-commit"], default=None,
+                        help="git hook mode: pre-push reads the pushed refs on stdin; "
+                             "pre-merge-commit is the quick check of the merge in progress "
+                             "(no test run, R17)")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--install-pre-push", action="store_true",
                        help="write the optional git pre-push hook running this check")
     group.add_argument("--uninstall-pre-push", action="store_true",
                        help="remove plumb's pre-push hook (a foreign hook is left)")
+    group.add_argument("--install-pre-merge-commit", action="store_true",
+                       help="write the git pre-merge-commit hook (the quick merge check; "
+                            "plumb hooks install writes it by default)")
+    group.add_argument("--uninstall-pre-merge-commit", action="store_true",
+                       help="remove plumb's pre-merge-commit hook (a foreign hook is left)")
     parser.add_argument("--interpreter", default=sys.executable,
                         help="Python that runs the pre-push hook (default: this one)")
     add_common(parser)
@@ -116,6 +156,8 @@ def run(command: str, argv: list[str]) -> int:
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
     root = resolve_root(args.root)
+    if args.install_pre_merge_commit or args.uninstall_pre_merge_commit:
+        return _premerge_install(root, args)
     if args.install_pre_push or args.uninstall_pre_push:
         from plumb.boundary.prepush import install_pre_push_hook, uninstall_pre_push_hook
 
@@ -136,6 +178,10 @@ def run(command: str, argv: list[str]) -> int:
             return 1
         return 0
     core = open_core(root)
+    if args.hook == "pre-merge-commit":
+        from plumb.boundary.premerge import run_hook
+
+        return run_hook(core)
     if args.hook == "pre-push":
         return _hook_pre_push(core, not args.no_run)
     base = args.base or str(merge_settings(core)["default_base"])

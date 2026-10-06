@@ -41,11 +41,15 @@ GUARDED = ("approve", "revoke", "tests waive", "triage --approve", "spec approve
            # the agent never logs a prompt itself where the prompt hook runs: `turn start`
            # is the CLI-only fallback of hosts without one, and `hook prompt` is the hook's
            # own entry (defence in depth beside approvals.owner_prompt)
-           "turn start", "hook prompt")
+           "turn start", "hook prompt",
+           # only the owner chooses a side of an intent conflict (sp6 8.4): the agent relays
+           # the owner's words with `conflict relay`, never `conflict choose`
+           "conflict choose")
 STANDARD_PREFIXES = ("plumb", "uv run plumb", "python -m plumb")
 _PLUMB_COMMAND = re.compile(r"(?:^|[\s\"'/\\])plumb(?:\.exe)?[\"']?\s+(?:hook\s|statusline\b)")
 _PLUMB_DENY = re.compile(r"plumb (?:approve|revoke|tests waive|triage --approve|spec approve"
-                         r"|config auto-approve|config show|turn start|hook prompt):\*\)$"
+                         r"|config auto-approve|config show|turn start|hook prompt"
+                         r"|conflict choose):\*\)$"
                          r"|PLUMB_AGENT_SESSION|"
                          r"^(?:Edit|Write|MultiEdit)\(\.plumb/log/\*\*\)$")
 
@@ -366,7 +370,41 @@ def install(root: Path, *, launcher: Launcher | str = "auto", dry_run: bool = Fa
            dry_run)
     if commit_hook:
         _commit_msg_hook(root, interpreter or sys.executable, report, dry_run)
+        git_adoption(root, interpreter or sys.executable, report.lines, dry_run)
     return report
+
+
+def git_adoption(root: Path, interpreter: str, lines: list[str], dry_run: bool) -> None:
+    """The git side of adopting a repository (sp6 7.1, 10; R15, R17): the record merge
+    driver and the quick merge check (the pre-merge-commit hook, no test run). Both use the
+    commit-msg hook's launcher. Reported, never fatal."""
+    try:
+        from plumb.mergedriver import install as install_driver
+        from plumb.mergedriver.gitconfig import launcher_for
+    except ImportError:
+        lines.append("plumb: record merge driver skipped: not available in this build")
+    else:
+        try:
+            lines.extend(install_driver(root, launcher_for(interpreter), dry_run=dry_run))
+        except Exception as exc:  # noqa: BLE001 - reported, never fatal
+            lines.append(f"plumb: record merge driver not installed: {exc}")
+    try:
+        from plumb.boundary.premerge import install_hook
+        from plumb.boundary.prepush import ForeignHookError
+        from plumb.present import owner_text
+    except ImportError:
+        return
+    if dry_run:
+        lines.append("plumb: would install the quick merge check (git pre-merge-commit hook)")
+        return
+    try:
+        install_hook(root, interpreter)
+    except ForeignHookError:
+        lines.append(owner_text.FOREIGN_HOOK)
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal
+        lines.append(f"plumb: the quick merge check was not installed: {exc}")
+    else:
+        lines.append(owner_text.PREMERGE_INSTALLED)
 
 
 def uninstall(root: Path, *, dry_run: bool = False) -> InstallReport:
@@ -416,9 +454,30 @@ def uninstall(root: Path, *, dry_run: bool = False) -> InstallReport:
                 hook.unlink()
             report.lines.append(f"plumb: {'would remove' if dry_run else 'removed'} the "
                                 "commit-msg hook")
+    _git_unadoption(root, report, dry_run)
     if not report.changed:
         report.lines.append("plumb: nothing of plumb's is installed")
     return report
+
+
+def _git_unadoption(root: Path, report: InstallReport, dry_run: bool) -> None:
+    try:
+        from plumb.boundary.premerge import hook_state, uninstall_hook
+        from plumb.mergedriver import uninstall as uninstall_driver
+    except ImportError:
+        return
+    try:
+        removed = uninstall_driver(root, dry_run=dry_run)
+    except Exception:  # noqa: BLE001 - nothing to remove outside git
+        removed = []
+    report.lines.extend(removed)
+    report.changed.extend("merge driver" for _ in removed[:1])
+    if hook_state(root) == "plumb":
+        report.changed.append("pre-merge-commit")
+        if not dry_run:
+            uninstall_hook(root)
+        report.lines.append(f"plumb: {'would remove' if dry_run else 'removed'} the "
+                            "pre-merge-commit hook")
 
 
 def _commit_msg_path(root: Path) -> Path | None:
@@ -486,6 +545,13 @@ def status(root: Path) -> list[str]:
     else:
         body = hook.read_text(encoding="utf-8", errors="replace")
         lines.append("commit-msg hook: " + ("plumb" if COMMIT_MSG_MARK in body else "non-plumb"))
+    try:
+        from plumb.boundary.premerge import hook_state
+        from plumb.mergedriver import status as driver_status
+    except ImportError:
+        return lines
+    lines.append(driver_status(root))
+    lines.append("pre-merge-commit hook (quick merge check): " + hook_state(root))
     return lines
 
 

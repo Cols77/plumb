@@ -42,6 +42,9 @@ ROUTES: dict[str, str] = {
     "clarify": "plumb.capture.cli",
     # MERGE (sub-project 3)
     "merge-check": "plumb.boundary.cli",
+    # MERGEDRIVER (sub-project 6): record files merge field by field; intent conflicts
+    "merge-driver": "plumb.mergedriver.cli", "conflict": "plumb.mergedriver.cli",
+    "conflicts": "plumb.mergedriver.cli",
     # HOSTS (sub-project 4)
     "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
 }
@@ -94,6 +97,12 @@ hosts:         hosts (install|uninstall|status codex|pi|hermes), turn (start|end
 bridge:        trailers, claims, fidelity, judge, judgment, import
 merge:         merge-check (the merge boundary: one full run, claims, links, the glance;
                --install-pre-push for the optional git hook)
+
+record merges (parallel work):
+  conflicts    the intent conflicts a merge left, as cards (both versions; nothing chosen)
+  conflict     propose a combined version; choose a side (owner's terminal), relay the
+               owner's choice (--prompt, --quote)
+  merge-driver  git's merge driver for record files (git calls it; see plumb hooks install)
 
 Run `plumb <command> --help` for a command's options. Exit codes: 0 ok, 1 findings,
 2 usage, 3 refused by the guard, 4 merge waits for the owner's confirmation, 5 verification

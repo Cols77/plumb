@@ -114,10 +114,17 @@ def cmd_init(command: str, argv: list[str]) -> int:
     args = parser.parse_args(argv)
     root = resolve_root(args.root)
     changed = init_repo(root)
+    # sp6 7.1, 10 (R15, R17): adopting a repository also sets up the record merge driver
+    # and the quick merge check (no test run) in git, when it is a git repository
+    from plumb.hosts.claude_code.install import git_adoption
+
+    git_lines: list[str] = []
+    if (root / ".git").exists():
+        git_adoption(root, sys.executable, git_lines, False)
     if args.as_json:
-        emit({"root": str(root), "changed": changed}, True)
-    elif changed:
-        emit([f"plumb: created {c}" for c in changed], False)
+        emit({"root": str(root), "changed": changed, "git": git_lines}, True)
+    elif changed or git_lines:
+        emit([f"plumb: created {c}" for c in changed] + git_lines, False)
     else:
         print("plumb: already initialized")
     return 0

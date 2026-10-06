@@ -49,6 +49,10 @@ class MergeReport:
     run_full: bool = False
     evidence: str | None = None      # digest of the merge-evidence entry (green, run_full)
     error: str | None = None         # the range could not be read (exit 2)
+    # sp6 10: record paths git left unmerged (exit 1) and open intent conflicts as their
+    # cards (exit 4), on the merge result, so the report can run in the middle of a merge
+    unmerged: tuple[Mapping[str, Any], ...] = ()          # {path, record, title, how, line}
+    intent_conflicts: tuple[Mapping[str, Any], ...] = ()  # {ic, record, title, card}
     exit: int = 0
 
 
@@ -67,14 +71,14 @@ def exit_code(report: MergeReport) -> int:
     pre-push hook): each takes its exit from here."""
     if report.error:
         return 2
-    if report.integrity or report.claims.get("holds") or report.links:
+    if report.integrity or report.claims.get("holds") or report.links or report.unmerged:
         return 1
     verification = report.verification
     full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
     unavailable = not verification.get("available")
     if report.regressions or report.failing or report.unverified or full_held or unavailable:
         return 5
-    if report.awaiting or report.untraced or report.new_exempt:
+    if report.awaiting or report.untraced or report.new_exempt or report.intent_conflicts:
         return 4
     return 0
 
@@ -166,6 +170,16 @@ def _validation_errors(core: Any) -> list[str]:
     return [f"validate: {f.line()}" for f in validate(core) if f.severity == "error"]
 
 
+def _merge_state(core: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """``(unmerged, intent_conflicts)`` of the working tree (sp6 10)."""
+    from plumb.mergedriver.conflicts import conflict_card, open_conflicts
+    from plumb.mergedriver.unmerged import unmerged_rows
+
+    conflicts = [{"ic": c.ic, "record": c.record, "title": c.title,
+                  "card": conflict_card(core, c)} for c in open_conflicts(core)]
+    return unmerged_rows(core), conflicts
+
+
 def merge_report(core: Any, base: str, *, run_full: bool = True,
                  runner: Runner | None = None) -> MergeReport:
     """Every section of the merge boundary against ``base``; runs the full suite at most once
@@ -248,6 +262,8 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         regressions=tuple(verification.get("regressions") or ()),
         fidelity=None if fidelity is None else tuple(fidelity),
         integrity=tuple(integrity), verification=verification, run_full=run_full)
+    unmerged, conflicts = _merge_state(core)
+    report = _replace(report, unmerged=tuple(unmerged), intent_conflicts=tuple(conflicts))
     code = exit_code(report)
     evidence = None
     if code == 0 and run_full and identity is not None:
@@ -362,6 +378,16 @@ def render(report: MergeReport) -> list[str]:
     if report.links:
         out.append("links of touched requirements hold the merge:")
         out.extend(_capped([link_line(dict(row)) for row in report.links]))
+    if report.unmerged:
+        from plumb.mergedriver.unmerged import unmerged_lines
+
+        out.extend(unmerged_lines([dict(r) for r in report.unmerged]))
+    if report.intent_conflicts:
+        from plumb.present.owner_text import CONFLICTS_HEADER
+
+        out.append(CONFLICTS_HEADER)
+        for conflict in report.intent_conflicts:
+            out.extend(str(line) for line in conflict.get("card") or [])
     if report.integrity:
         out.append("log integrity: FAILED")
         out.extend(_capped([f"  {problem}" for problem in report.integrity]))

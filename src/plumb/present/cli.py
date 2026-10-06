@@ -98,10 +98,24 @@ def cmd_show(command: str, argv: list[str]) -> int:
     parser.add_argument("words", nargs="+", metavar="ID_OR_WORDS")
     args = parser.parse_args(argv)
     core = _core(args)
-    ids, _, answered = _resolve_or_ask(core, args.words, args.as_json)
+    # sp6 8.1: an IC-### is the intent conflict record on its record file
+    from plumb.mergedriver.conflicts import conflict_cards, is_conflict_id
+
+    conflict_ids = [w for w in args.words if is_conflict_id(w)]
+    words = [w for w in args.words if not is_conflict_id(w)]
+    conflict_lines, missing_ics = conflict_cards(core, conflict_ids)
+    if not words:
+        for ic in missing_ics:
+            print(f"plumb: no open conflict {ic}", file=sys.stderr)
+        emit({"lines": conflict_lines, "missing": missing_ics} if args.as_json
+             else conflict_lines, args.as_json)
+        return 1 if missing_ics else 0
+    ids, _, answered = _resolve_or_ask(core, words, args.as_json)
     if answered:
         return 0
     lines, missing = show_lines(core, ids)
+    lines = conflict_lines + lines + conflict_cards(core, ids, by_record=True)[0]
+    missing = missing_ics + list(missing)
     for record_id in missing:
         print(f"plumb: no record {record_id}", file=sys.stderr)
     emit({"lines": lines, "missing": missing} if args.as_json else lines, args.as_json)

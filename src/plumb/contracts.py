@@ -454,3 +454,39 @@ class TurnOutput:
     owner_lines: tuple[str, ...] = ()     # status card, summary, intent card (owner-facing)
     block: str | None = None              # one instruction that keeps the agent working
     status_line: str = ""                 # the one-line status card
+
+
+# --------------------------------------------------------------------------- sp6 MERGEDRIVER
+# The record merge driver and intent conflicts (sp6 7, 8, 12): ``plumb.mergedriver``.
+
+
+@dataclass(frozen=True)
+class DriverResult:
+    """``merge_texts`` (sp6 7.2): the text written to git's ``OURS`` file, the exit status
+    (0 merged, possibly carrying an intent conflict; 1 git must stop) and the notes the
+    driver prints to stderr."""
+
+    text: str = ""
+    exit: int = 0
+    notes: tuple[str, ...] = ()
+    conflict: str | None = None          # the IC-### written into the record, if any
+    merged: tuple[str, ...] = ()         # what merged on its own, in the owner's terms
+
+
+@dataclass(frozen=True)
+class IntentConflict:
+    """One open intent conflict (sp6 8.1): the ``conflict`` block of a record file.
+    ``fields`` maps a field name (``statement``, ``examples/EX-2``, ``body``) to
+    ``{base, ours, theirs}``; ``labels`` are (ours, theirs); ``hashes`` are
+    ``{base, ours, theirs}`` record hashes; ``proposed`` is a combined version the agent
+    proposed (``{fields, hash}``), never applied without the owner's choice."""
+
+    ic: str = ""
+    record: str = ""
+    title: str = ""
+    fields: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    labels: tuple[str, str] = ("ours", "theirs")
+    hashes: Mapping[str, str] = field(default_factory=dict)
+    merged: tuple[str, ...] = ()
+    proposed: Mapping[str, Any] | None = None
+    path: str = ""
