@@ -7,6 +7,7 @@ Kept import-light on purpose: hooks call this every turn, so start-up imports no
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Sequence
 
@@ -14,14 +15,18 @@ from plumb import __version__
 
 ROUTES: dict[str, str] = {
     # CORE
-    "init": "plumb.commands", "show": "plumb.commands",
+    "init": "plumb.commands",
     "link": "plumb.commands", "repin": "plumb.commands", "validate": "plumb.commands",
-    "check": "plumb.commands", "status": "plumb.commands", "drift": "plumb.commands",
-    "brief": "plumb.commands", "explain": "plumb.commands", "why": "plumb.commands",
+    "check": "plumb.commands",
     "approve": "plumb.commands", "relay": "plumb.commands", "revoke": "plumb.commands",
+    # PRESENT (sub-project 5): the owner's commands, plain words accepted
+    "status": "plumb.present.cli", "brief": "plumb.present.cli", "drift": "plumb.present.cli",
+    "show": "plumb.present.cli", "explain": "plumb.present.cli", "why": "plumb.present.cli",
+    "impact": "plumb.present.cli", "resolve": "plumb.present.cli",
+    "review": "plumb.present.cli", "confirm": "plumb.present.cli",
+    "align": "plumb.present.cli", "view": "plumb.present.cli",
     # VERIFY
     "tests": "plumb.verify.cli", "map": "plumb.verify.cli", "verify": "plumb.verify.cli",
-    "impact": "plumb.verify.cli",
     # HOST
     "hook": "plumb.hosts.claude_code.cli", "hooks": "plumb.hosts.claude_code.cli",
     "install": "plumb.hosts.claude_code.cli", "statusline": "plumb.hosts.claude_code.cli",
@@ -41,7 +46,7 @@ records and integrity:
   link         add a hash-pinned link between a record and a record, file or test
   repin        refresh link pins (never confirms)
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
-  status       counts, drift and records awaiting your confirmation
+  status       counts, drift and records awaiting your confirmation (--card: the card)
   brief        the short intent brief
   explain      why a behaviour, file or record exists, in plain terms (plain words, a path
                or an ID); alias why
@@ -50,7 +55,16 @@ records and integrity:
   revoke       owner revocation
   drift        drift signals only
 
-verification:  tests (map | select | run), map, verify, impact
+owner views (plain words, paths or IDs; none approves anything):
+  resolve      what your words mean: records, files and tests, best first
+  review       the deep review: what awaits you, approvals you did not type, drift,
+               alignment, the merge state
+  confirm      show records as cards so your own "ok" can confirm them
+  align        judge each edge from intent to evidence, weakest first; name the gaps
+  view         write the Obsidian vault and the Canvas intent map (--open)
+  impact       what a change would reach
+
+verification:  tests (map | select | run), map, verify
 host:          hook, hooks, install, statusline
 bridge:        trailers, claims, fidelity, judge, judgment, import
 
@@ -58,6 +72,51 @@ Run `plumb <command> --help` for a command's options. Exit codes: 0 ok, 1 findin
 2 usage, 3 refused by the guard, 4 merge waits for the owner's confirmation, 5 verification
 holds the merge.
 """
+
+
+def _available(command: str) -> bool:
+    """A verb is listed only when its module is importable in this build (SR-068)."""
+    import importlib.util
+
+    module = ROUTES.get(command)
+    if module is None:
+        return False
+    try:
+        return importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+_VERB_LINE = re.compile(r"^  ([a-z][a-z-]*)\s{2,}")
+_LIST_LINE = re.compile(r"^([a-z][a-z ]*:)(\s+)(.*)$")
+
+
+def help_text() -> str:
+    """``_HELP`` without the verbs this build lacks: a verb line (``  verb  text``) and its
+    continuation lines go; in a category line (``host: hook, hooks``) each verb is kept only
+    when available. Nothing unavailable is advertised (sp5 6.4)."""
+    out: list[str] = []
+    dropping = False
+    for line in _HELP.splitlines():
+        verb = _VERB_LINE.match(line)
+        if verb:
+            dropping = not _available(verb.group(1))
+            if not dropping:
+                out.append(line)
+            continue
+        if dropping and line.startswith("    "):
+            continue
+        dropping = False
+        listed = _LIST_LINE.match(line)
+        if listed and "," in listed.group(3) or (listed and listed.group(3).split(" ")[0]
+                                                 in ROUTES):
+            kept = [item for item in listed.group(3).split(", ")
+                    if _available(item.split(" ")[0])]
+            if kept:
+                out.append(listed.group(1) + listed.group(2) + ", ".join(kept))
+            continue
+        out.append(line)
+    return "\n".join(out) + "\n"
 
 
 def _not_available(command: str) -> int:
@@ -69,7 +128,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """`plumb <command> ...`: import ROUTES[command] lazily and return its run()."""
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in ("-h", "--help", "help"):
-        sys.stdout.write(_HELP)
+        sys.stdout.write(help_text())
         return 0
     if args[0] == "--version":
         print(f"plumb {__version__}")

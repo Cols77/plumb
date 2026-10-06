@@ -18,7 +18,6 @@ agent runs it for ``/plumb explain`` and restates the answer for the owner.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from pathlib import Path
 from typing import Any
 
 MAX_MATCHES = 3
@@ -44,29 +43,37 @@ def _state(status: Any) -> str:
 
 
 def resolve(core: Any, query: str) -> tuple[list[str], str, str | None]:
-    """``(record ids, how, path)``: what ``query`` names. ``how`` is ``id``, ``path``,
-    ``words`` or ``none``; ``path`` is the repository path when the query is one."""
-    from plumb.hashing import clean_rel_path
-    from plumb.query import _ID_IN_TEXT, relevant
+    """``(record ids, how, path)``: what ``query`` names, through ``plumb.present.resolve``
+    (sp5 5). ``how`` is ``id``, ``path``, ``test``, ``words``, ``ambiguous`` or ``none``;
+    ``path`` is the repository path when the query (or its clear best match) is one."""
+    resolution = resolve_words(core, query)
+    ids, how, path = _from_resolution(core, resolution)
+    return ids, how, path
 
-    index = core.index()
-    text = " ".join(query.split())
-    named = [i for i in dict.fromkeys(_ID_IN_TEXT.findall(text)) if i in index]
-    if named:
-        return named, "id", None
-    rel = clean_rel_path(text.strip("'\"")) if text and " " not in text else None
-    if rel is not None:
-        owners = list(core.records_for_paths([rel]).get(rel, ()))
-        if owners or (Path(core.root) / rel).exists():
-            requirements = [i for i in owners if index[i].kind == "requirement"]
-            return sorted(requirements or owners), "path", rel
-    scored = [(i, score) for i, score in relevant(core, text, limit=MAX_MATCHES * 3)
-              if score > 0]
-    if not scored:
+
+def resolve_words(core: Any, query: str) -> Any:
+    from plumb.present.resolve import resolve as present_resolve
+
+    return present_resolve(core, query)
+
+
+def _from_resolution(core: Any, resolution: Any) -> tuple[list[str], str, str | None]:
+    if resolution.how == "none":
         return [], "none", None
-    best = scored[0][1]
-    picked = [i for i, score in scored if score >= best * 0.5][:MAX_MATCHES]
-    return picked, "words", None
+    if resolution.ambiguous:
+        return [], "ambiguous", None
+    items = list(resolution.items)
+    records = [i.ref for i in items if i.kind == "record"]
+    paths = [i.ref for i in items if i.kind == "path"]
+    if resolution.how == "path" or (not records and paths):
+        path = paths[0] if paths else resolution.query.strip("'\"")
+        if not records and paths:
+            index = core.index()
+            owners = list(core.records_for_paths([path]).get(path, ()))
+            requirements = [i for i in owners if index[i].kind == "requirement"]
+            records = sorted(requirements or owners)
+        return records[:MAX_MATCHES], "path", path
+    return records[:MAX_MATCHES], resolution.how, None
 
 
 def _tests(core: Any, record_id: str) -> list[str]:
@@ -169,10 +176,19 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
 
 
 def explain_lines(core: Any, query: str) -> tuple[list[str], dict[str, Any]]:
-    """The answer lines and ``{query, how, path, records}``."""
-    ids, how, path = resolve(core, query)
+    """The answer lines and ``{query, how, path, records, candidates}``. When the words do
+    not clearly name one thing, the candidates are listed in the owner's terms with the
+    question (sp5 5), and nothing is explained."""
+    resolution = resolve_words(core, query)
+    ids, how, path = _from_resolution(core, resolution)
     statuses = core.status()
-    data: dict[str, Any] = {"query": query, "how": how, "path": path, "records": ids}
+    data: dict[str, Any] = {"query": query, "how": how, "path": path, "records": ids,
+                            "candidates": [i.ref for i in resolution.items]
+                            if resolution.ambiguous else []}
+    if how == "ambiguous":
+        from plumb.present.resolve import candidate_lines
+
+        return candidate_lines(resolution), data
     if not ids:
         if how == "path" or path:
             return [f"{path}: no requirement owns this file yet (an untraced change at the "
