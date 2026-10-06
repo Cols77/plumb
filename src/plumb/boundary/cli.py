@@ -39,7 +39,8 @@ def merge_settings(core: Any) -> dict[str, Any]:
     return out
 
 
-def _print_report(core: Any, base: str, *, run_full: bool, as_json: bool) -> int:
+def _print_report(core: Any, base: str, *, run_full: bool, as_json: bool) -> Any:
+    """Compute, print and return one ``MergeReport``."""
     from plumb.boundary import as_dict, merge_report, render
     from plumb.cliutil import emit
 
@@ -49,7 +50,7 @@ def _print_report(core: Any, base: str, *, run_full: bool, as_json: bool) -> int
     else:
         for line in render(report):
             print(line)
-    return report.exit
+    return report
 
 
 def _hook_pre_push(core: Any, run_full: bool) -> int:
@@ -64,14 +65,18 @@ def _hook_pre_push(core: Any, run_full: bool) -> int:
         return 0
     worst = 0
     seen: set[str] = set()
+    # One merge-check invocation starts at most ONE full-suite run, whatever its result
+    # (sp3 4): once a report has run the suite, the remaining bases only report.
+    may_run = run_full and bool(settings["prepush_run_full"])
     for ref, base in bases:
         if base in seen:
             continue
         seen.add(base)
         print(f"plumb pre-push: {ref}")
-        code = _print_report(core, base, run_full=run_full and bool(settings["prepush_run_full"]),
-                             as_json=False)
-        worst = max(worst, code)
+        report = _print_report(core, base, run_full=may_run, as_json=False)
+        if (report.full_run or {}).get("ran"):
+            may_run = False
+        worst = max(worst, report.exit)
     if worst:
         print(f"plumb pre-push: the push is refused (merge-check exit {worst}); fix the report "
               "above, or push with --no-verify to bypass the hook", file=sys.stderr)
@@ -134,4 +139,4 @@ def run(command: str, argv: list[str]) -> int:
     if args.hook == "pre-push":
         return _hook_pre_push(core, not args.no_run)
     base = args.base or str(merge_settings(core)["default_base"])
-    return _print_report(core, base, run_full=not args.no_run, as_json=args.as_json)
+    return int(_print_report(core, base, run_full=not args.no_run, as_json=args.as_json).exit)

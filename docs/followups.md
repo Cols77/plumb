@@ -1621,3 +1621,50 @@ Notes for the coordinator (phase 0 had not run when the lane started from `work`
   SR-047 so the claims check accepts it; a `verified_by` link would make the helper an
   acceptance test with no evidence. A `support` link kind, or a claims exemption for
   `tests/**/*_helpers.py`, would say this better.
+
+## Next lane MERGE review (2026-10-06, lane/merge b5ce535): medium and low findings
+
+The review's one HIGH finding (hook mode started a second full run for a second pushed base) is
+fixed in `plumb.boundary.cli._hook_pre_push`: once a report has run the suite, the remaining
+bases only report. The findings below are recorded, not fixed.
+
+- [MEDIUM] (`src/plumb/boundary/report.py`, SR-052, sp3 7) merge-check is not one screen. The
+  awaiting list is capped at 10 records, but each record prints its full statement, every
+  example and its new ends, so the cap counts records rather than lines.
+  `python -m plumb merge-check main --no-run` on plumb itself prints 77 lines; ten awaiting
+  records take about 40 of them, and the fidelity, verification and links lists add more. sp3 7
+  asks for at most 12 lines outside the lists, with each list capped at 10 rows.
+- [MEDIUM] (`src/plumb/cli.py`) The lane edited the coordinator-owned `cli.py` (merge-check
+  route and help line) and left three stale links on it: SR-012#8, SR-031#6 and SR-033#2. Phase
+  0 had not run. `plumb merge-check main --no-run` exits 1 on the lane branch because of those
+  links, where sp3 10 item 6 expects exit 4. The integrate phase must repin them and reconcile
+  the route with the phase-0 ROUTES, or every merge-check on the merged tree exits 1.
+- [MEDIUM] (`src/plumb/boundary/report.py`) `MergeReport` is defined in `plumb.boundary.report`,
+  not in `contracts.py` as plan 3.2 and sp3 9 require, and `merge_report` has an extra `runner`
+  keyword, so the frozen coordinator contract and the lane's type can diverge. If phase 0 adds
+  `contracts.MergeReport` with the sp3 9 field list, PRESENT's `/plumb review` may import it; it
+  lacks the fields this lane added (`required`, glance `self_recorded`, `verification`,
+  `evidence`, `error`).
+- [MEDIUM] (`src/plumb/boundary/glance.py`, R13 Q4) The "self-recorded message" label depends on
+  a convention no lane has agreed: `self_recorded`, or `via: turn|cli`, or `host: cli`, on the
+  approval, the prompt event or the prompt-log line. HOSTS sets `via=turn` only in
+  `HookContext.extra`, and neither CAPTURE's relay nor PRESENT's prompt hook is contracted to
+  persist it. On a CLI-fallback host, `plumb turn start` logs the prompt and the agent relays the
+  owner's "ok"; without the field on the prompt-log line the glance shows a plain AGENT-RELAYED
+  row with no "self-recorded message" label, contradicting Q4 until integration wires it.
+- [MEDIUM] (`src/plumb/boundary/prepush.py`, sp3 8, R1) When the remote ref exists, hook mode
+  uses the remote sha as BASE, so a push that updates an existing branch checks only the new
+  commits; pushes of refs other than HEAD are skipped and allowed with exit 0. A feature branch
+  pushed earlier with an unconfirmed SR in its first commits passes on a later one-commit push;
+  `git push origin other-branch` passes unchecked. This matches the letter of sp3 8 but weakens
+  the R1 boundary.
+- [LOW] (`src/plumb/claims.py`) The commit-msg hook calls `capture.api.diff_serves` with no time
+  budget. Once CAPTURE wires JEV into `diff_serves`, each `git commit` may block up to the JEV
+  client timeout per claimed SR. The warning is non-blocking, but latency is unbounded there.
+- [LOW] (`src/plumb/boundary/report.py`) `claims.yaml` "problems" rows print under the header
+  "claims hold the merge:" although `claims_gate` does not hold the merge on them; the exit stays
+  0 or 4, which misleads the glance.
+- [LOW] (`src/plumb/merge.py`) `show_many` parses `git cat-file --batch` headers by whitespace
+  split. A missing path containing a space gives a 3-token header (`<commit>:a b missing`) and
+  `int(b"missing")` raises ValueError, crashing `merge_report`. Record paths are `SR-###.md`
+  today, so this is latent.

@@ -121,3 +121,59 @@ def test_merge_evidence_only_on_green(confirmed) -> None:
     repin_all(root)
     waiting = merge_report(open_core(root), sha, runner=Counting())
     assert waiting.exit == 4 and len(_evidence(root)) == 1
+
+
+# One full run per invocation, at every entry point that can reach ``fullrun.full_run``:
+# merge_report (test_red_run_not_repeated_and_holds_5), ``plumb merge-check BASE``,
+# ``plumb merge-check --hook pre-push`` (one report per pushed base) and
+# ``plumb validate --merge BASE`` (report only, never runs).
+
+
+@pytest.fixture
+def red(repo: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str, Counting]:
+    """Every record confirmed, a failing suite, and the default runner counted."""
+    import plumb.boundary.fullrun as fullrun
+
+    project(repo, test=FAILING)
+    approvals.approve(open_core(repo), ["SR-001", "SR-002", "INT-001"])
+    sha = commit(repo, "project")
+    runner = Counting()
+    monkeypatch.setattr(fullrun, "default_runner", runner)
+    return repo, sha, runner
+
+
+def test_cli_single_base_runs_once(red, capsys) -> None:
+    from plumb import cli
+
+    root, sha, runner = red
+    assert cli.main(["merge-check", sha, "--root", str(root)]) == 5
+    assert runner.calls == 1
+
+
+def test_hook_many_bases_runs_once(red, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """Two pushed refs at HEAD with different remote shas and a red suite: the first report
+    runs the suite, the second only reports (sp3 4: never a second full run)."""
+    import io
+
+    from merge_helpers import git
+
+    from plumb.boundary.cli import _hook_pre_push
+
+    root, sha, runner = red
+    write(root, "notes.md", "n\n")
+    head = commit(root, "notes")
+    first = git(root, "rev-list", "--max-parents=0", "HEAD").strip()
+    stdin = (f"refs/heads/x {head} refs/heads/x {sha}\n"
+             f"refs/heads/y {head} refs/heads/y {first}\n")
+    monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
+    assert _hook_pre_push(open_core(root), True) == 5
+    assert runner.calls == 1
+    assert capsys.readouterr().out.count("plumb pre-push: refs/heads/") == 2
+
+
+def test_validate_merge_never_runs(red, capsys) -> None:
+    from plumb import cli
+
+    root, sha, runner = red
+    assert cli.main(["validate", "--merge", sha, "--root", str(root)]) == 5
+    assert runner.calls == 0
