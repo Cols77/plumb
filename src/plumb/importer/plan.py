@@ -79,6 +79,7 @@ class ImportPlan:
     wanted: tuple[str, ...]
     records: list[RecordPlan]
     findings: list[dict[str, str]]
+    claims: Any = None                # claims.ClaimsPlan when CLAIMS is imported
 
     def by_action(self, action: str) -> list[RecordPlan]:
         return [r for r in self.records if r.action == action]
@@ -105,6 +106,8 @@ class ImportPlan:
                 out.extend(f"  - link {describe(key)}" for key in item.links_removed)
             elif item.action == "skip":
                 out.append(f"skip {item.record_id} {item.source_path}: {item.reason}")
+        if self.claims is not None:
+            out.extend(self.claims.lines())
         for item in self.approvals():
             assert item.approval is not None
             out.append(f"approve {item.record_id} by import: upstream consent "
@@ -273,7 +276,8 @@ def plan_import(core: Any, source: Path, *, only: Iterable[str] | None = None) -
     if not source.is_dir():
         raise FileNotFoundError(f"{source} is not a directory")
     refuse_plumb_itself(core.root)
-    wanted = {k.strip().upper() for k in (only or KINDS)} & set(KINDS)
+    every = set(KINDS) | {"CLAIMS"}
+    wanted = {k.strip().upper() for k in (only or every)} & every
     report = Report()
     planned, features = read_source(source, wanted, report)
     consents = read_consents(source, report) if "SR" in wanted else {}
@@ -352,6 +356,11 @@ def plan_import(core: Any, source: Path, *, only: Iterable[str] | None = None) -
                 plan.approval = consent
         plans.append(plan)
     plans.sort(key=lambda p: (list(KINDS.values()).index(p.kind), p.record_id))
+    claims = None
+    if "CLAIMS" in wanted:
+        from plumb.importer.claims import plan_claims
+
+        claims = plan_claims(core, source, report)
     return ImportPlan(source=str(source), head=read_head(source),
                       wanted=tuple(k for k in KINDS if k in wanted), records=plans,
-                      findings=report.findings)
+                      findings=report.findings, claims=claims)

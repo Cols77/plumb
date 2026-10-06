@@ -111,7 +111,12 @@ def apply_plan(core: Any, plan: ImportPlan) -> dict[str, Any]:
                                        "; no by: import approval"})
         else:
             approvals.append(approval)
-    if not changed and not approvals:
+    claims_changed = False
+    if plan.claims is not None:
+        from plumb.importer.claims import apply_claims
+
+        claims_changed = apply_claims(core, plan.claims)
+    if not changed and not approvals and not claims_changed:
         return {"event": None, "approved": [], "findings": findings}
 
     from plumb.normalize import canonical_json, sha256_bytes
@@ -125,6 +130,10 @@ def apply_plan(core: Any, plan: ImportPlan) -> dict[str, Any]:
         "records": [r.record_id for r in changed],
         "created": [r.record_id for r in changed if r.action == "create"],
         "updated": [r.record_id for r in changed if r.action == "update"],
+        "claims": None if plan.claims is None else {
+            "policy": plan.claims.action, "added_exempt": plan.claims.added_exempt,
+            "added_baseline": plan.claims.added_baseline,
+            "ingest": None if plan.claims.ingest is None else plan.claims.ingest["digest"]},
         "approved": [{"id": a["id"], "hash": a["hash"]} for a in approvals]})
     approved: list[str] = []
     if approvals:
