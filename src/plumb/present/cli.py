@@ -127,9 +127,15 @@ def cmd_impact(command: str, argv: list[str]) -> int:
     parser.add_argument("words", nargs="+", metavar="WORDS")
     args = parser.parse_args(argv)
     core = _core(args)
-    ids, paths, answered = _resolve_or_ask(core, args.words, args.as_json)
-    if answered:
-        return 0
+    exact = args.words[0].replace("\\", "/") if len(args.words) == 1 else ""
+    if exact and (core.root / exact.split("::", 1)[0]).is_file():
+        # a repository path or test node is its own answer: what a change to it reaches,
+        # not the impact of the records that own it (VS4, SR-016)
+        ids, paths = [], [exact]
+    else:
+        ids, paths, answered = _resolve_or_ask(core, args.words, args.as_json)
+        if answered:
+            return 0
     try:
         from plumb.verify.cli import run as verify_run
     except ImportError:
