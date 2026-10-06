@@ -51,6 +51,10 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
                                      "prev": entry.prev}):
         return f"{entry.kind} entry does not match its digest (modified)"
     by = payload.get("by")
+    if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)
+        from plumb.importer.recheck import import_problem
+
+        return import_problem(entry)
     if by == "owner":
         if entry.marker != "none":
             return (f"owner {entry.kind} written under the agent session marker "

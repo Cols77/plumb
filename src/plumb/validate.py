@@ -113,6 +113,12 @@ def validate(core: Core) -> list[Finding]:
                             if isinstance(r, Mapping))
             add("error", "approval", ids or entry.digest[:19],
                 f"{problem} (entry {entry.digest[:19]}); it confirms nothing")
+    # by: import approvals across entries (next-plan 9.3; the importer's own re-check)
+    from plumb.importer.recheck import recheck_import_approvals
+
+    for problem in recheck_import_approvals(core):
+        subject, _, message = problem.partition(": ")
+        add("error", "approval", subject, message)
     return findings
 
 
