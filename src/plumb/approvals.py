@@ -395,6 +395,43 @@ def _stated_group(core: Core, group: str, prompt_at: str) -> list[dict[str, Any]
                   "the owner's ok confirms only a group the reply offered")
 
 
+def _check_shown(record_id: str, current: str, quote: str,
+                 stated: Mapping[str, tuple[str, bool]]) -> None:
+    """Refused unless the quote names ``record_id``, or the reply before the prompt showed
+    it in full at its ``current`` hash (R2: a relayed ok confirms only what it showed)."""
+    if _named(record_id, quote):
+        return
+    stated_hash, shown = stated.get(record_id, (None, False))
+    if stated_hash is None or stated_hash not in ("", current):
+        raise Refused(f"{record_id} is not in the stated set of the reply before that "
+                      "prompt at its current content and the quote does not name it")
+    if not shown:
+        raise Refused(f"{record_id} was not shown in full in the reply before that "
+                      "prompt (plumb show prints it); the quote must name it")
+
+
+def _check_set_shown(anchor: str, records: Sequence[Mapping[str, Any]], quote: str,
+                     stated: Mapping[str, tuple[str, bool]]) -> None:
+    """The set path's R2 check, over every set id (the anchor and each member), each at the
+    hash the set approval pins (sp2 6.2).
+
+    Through the stated set (the quote does not name the anchor), every set id must have been
+    shown in full at that hash. When the quote names the anchor, the owner refers to the set
+    by name; a set id the reply showed at another hash was still edited after the owner saw
+    it, and is refused unless the quote names it too."""
+    anchor_named = _named(anchor, quote)
+    for item in records:
+        record_id, current = str(item["id"]), str(item["hash"])
+        if anchor_named and not _named(record_id, quote):
+            stated_hash = stated.get(record_id, (None, False))[0]
+            if stated_hash not in (None, "", current):
+                raise Refused(f"{record_id} of the set {anchor} changed after the reply "
+                              "before that prompt showed it; show the set again (plumb spec "
+                              "show) and relay the owner's new words")
+            continue
+        _check_shown(record_id, current, quote, stated)
+
+
 def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bool = False,
           note: str = "", exempt: bool = False, group: str | None = None,
           set_anchor: str | None = None) -> LogEntry:
@@ -404,8 +441,10 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
     must then name the exemption (the word "exempt" or one of the globs). With ``group``
     (sp2 8.1), it approves exactly the records and hashes of that group in the stated set of
     the reply before the prompt (a record changed since is left out and named). With
-    ``set_anchor`` (sp2 6.2), it is the one set-hash approval of an escalated spec: the
-    anchor must be in that stated set, shown, or named in the quote.
+    ``set_anchor`` (sp2 6.2), it is the one set-hash approval of an escalated spec: every set
+    id (the anchor and each member) must be in that stated set, shown, at the hash the
+    approval pins, unless the quote names the anchor; then only a set id shown at another
+    hash (edited after the owner saw it) is refused (``_check_set_shown``).
 
     A confirmation resting on a prompt the prompt hook did not record (a host without one,
     where the agent recorded the message itself) is labelled ``self_recorded`` (R13 Q4)."""
@@ -459,19 +498,11 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
     elif ids or not extra:
         records = _revoked_records(core, ids) if revoke else _records(core, ids)
     stated, stated_ids = _stated(core, str(entry.get("at") or ""))
-    checked = [] if group else ([r for r in records if r["id"] == set_anchor] if set_anchor
-                                else records)
-    for item in checked:
-        record_id = item["id"]
-        if _named(record_id, normalized_quote):
-            continue
-        stated_hash, shown = stated.get(record_id, (None, False))
-        if stated_hash is None or stated_hash not in ("", index[record_id].hash):
-            raise Refused(f"{record_id} is not in the stated set of the reply before that "
-                          "prompt and the quote does not name it")
-        if not shown:
-            raise Refused(f"{record_id} was not shown in full in the reply before that "
-                          "prompt (plumb show prints it); the quote must name it")
+    if set_anchor:
+        _check_set_shown(set_anchor, records, normalized_quote, stated)
+    elif not group:
+        for item in records:
+            _check_shown(item["id"], index[item["id"]].hash, normalized_quote, stated)
     digest = str(entry["digest"])
     known = {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}
     if digest not in known:

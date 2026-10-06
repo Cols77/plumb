@@ -153,6 +153,45 @@ def test_never_for_an_escalated_set(ready) -> None:
     assert all(state_of(repo, i) == "proposed" for i in new_ids(repo, before))
 
 
+def test_never_on_a_self_recorded_prompt(ready) -> None:
+    """R13 Q4 / R8 B: a message the agent recorded itself (no prompt hook, a CLI-fallback
+    host) never carries an auto-approval; the records wait for the owner."""
+    repo, _ = ready
+    before = set(open_core(repo).index())
+    digest = log_prompt(repo, PROMPT, via=None)
+    assert capture(repo, {"intent": INTENT, "requirements": [REQUIREMENT]},
+                   "--prompt", digest) == 0
+    assert all(state_of(repo, i) == "proposed" for i in new_ids(repo, before))
+    assert not [e for e in open_core(repo).log_read("events", ["approval"])
+                if e.payload.get("by") == "auto-jev"]
+
+
+def test_validate_rejects_auto_jev_on_a_self_recorded_prompt(ready, monkeypatch) -> None:
+    """The validate re-check: an auto-jev approval not resting on a hook-logged prompt
+    confirms nothing, whoever wrote it."""
+    repo, _ = ready
+    before = set(open_core(repo).index())
+    digest = log_prompt(repo, PROMPT)
+    assert capture(repo, {"intent": INTENT}, "--prompt", digest) == 0
+    [intent] = new_ids(repo, before)
+    core = open_core(repo)
+    [good] = [e for e in core.log_read("events", ["approval"])
+              if e.payload.get("by") == "auto-jev"]
+    assert good.payload["auto"]["prompt_via"] == "hook"
+    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    assert run(repo, "revoke", intent) == 0  # the owner's terminal
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    forged = {**good.payload, "auto": {**good.payload["auto"]}}
+    del forged["auto"]["prompt_via"]
+    core.log_append("events", "approval", forged)
+    from plumb.validate import validate
+
+    core = open_core(repo)
+    errors = [f for f in validate(core) if f.severity == "error"]
+    assert any("recorded itself" in f.message for f in errors)
+    assert state_of(repo, intent) == "proposed"
+
+
 def test_never_for_a_record_confirmed_before(ready) -> None:
     repo, _ = ready
     core = open_core(repo)

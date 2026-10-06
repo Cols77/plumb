@@ -74,7 +74,10 @@ def test_relay_set_checks_r2(spec: Path, monkeypatch) -> None:
     digest = log_prompt(spec, "ok, go with that spec", at="2026-10-06T10:00:00Z")
     # the anchor was not in the reply before the prompt, and the quote does not name it
     assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 3
+    # the anchor alone in the stated set: its members were never shown (sp2 6.2, R2)
     write_stated(spec, [("INT-021", index["INT-021"].hash)])
+    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 3
+    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
     # a quote that does not affirm confirms nothing
     assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote",
                "go with that spec") == 3
@@ -88,6 +91,47 @@ def test_relay_set_checks_r2(spec: Path, monkeypatch) -> None:
     (spec / ".plumb" / "session" / "stated.json").unlink()
     assert run(spec, "relay", "--set", "INT-021", "--prompt", digest2, "--quote",
                "INT-021 is ok") == 0
+
+
+def edit_member(repo: Path, record_id: str, old: str, new: str) -> None:
+    path = repo / ".plumb" / "requirements" / f"{record_id}.md"
+    path.write_text(path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+
+
+def test_relay_set_refuses_member_edited_after_shown(spec: Path, monkeypatch, capsys) -> None:
+    """Through the stated set: a member edited after the reply showed it is not approved at
+    content the owner never saw (KEEP "approvals pinned to exact content", R2)."""
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    index = open_core(spec).index()
+    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
+    digest = log_prompt(spec, "ok", at="2026-10-06T10:00:00Z")
+    edit_member(spec, "SR-070", "rule 70", "rule never shown")
+    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 3
+    assert "SR-070" in capsys.readouterr().err
+    assert approvals(spec) == []
+    core = open_core(spec)
+    assert core.status(["SR-070"])["SR-070"].confirmation == "proposed"
+    assert set_state(core, "INT-021") == "unapproved"
+
+
+def test_relay_set_named_anchor_refuses_member_edited_after_shown(spec: Path, monkeypatch,
+                                                                  capsys) -> None:
+    """The quote names the anchor: a member the reply showed at another hash was edited after
+    the owner saw it and is refused unless the quote names it too."""
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    index = open_core(spec).index()
+    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
+    digest = log_prompt(spec, "INT-021 is ok", at="2026-10-06T10:00:00Z")
+    edit_member(spec, "SR-071", "rule 71", "rule never shown")
+    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote",
+               "INT-021 is ok") == 3
+    assert "SR-071" in capsys.readouterr().err
+    assert approvals(spec) == []
+    # unchanged since shown, the same named quote approves the whole set
+    edit_member(spec, "SR-071", "rule never shown", "rule 71")
+    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote",
+               "INT-021 is ok") == 0
+    assert set_state(open_core(spec), "INT-021") == "approved"
 
 
 def test_member_edit_unconfirms_member_and_set(spec: Path) -> None:

@@ -13,7 +13,8 @@ Eligible only: an INT whose quote is a verbatim span of the logged prompt, and a
 written in the same capture whose every example quotes that prompt verbatim, when JEV judges
 that the owner's logged words support the requirement's wording AND every one of its examples
 (R13 Q3). Never: a DEC, an escalated spec or its members, a record that ever had an owner,
-relayed or imported approval, any record without a prompt, or when JEV is unavailable. Each
+relayed or imported approval, any record without a prompt, a prompt the prompt hook did not
+log (a message the agent recorded itself, R13 Q4), or when JEV is unavailable. Each
 approval is ``by: auto-jev`` with its score, confidence, prompt digest, backend, model version
 and the calibration it rests on, hash-pinned like any approval and revocable with ``plumb
 revoke``.
@@ -130,6 +131,10 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
         prompt = find_prompt(core, prompt_digest)
     except Refused:
         return []
+    if prompt.get("via") != "hook":
+        # R13 Q4 / R8 B: a message the agent recorded itself is not the owner's own words
+        # as the prompt hook logged them; no human sees an auto-approval, so none rests on it
+        return []
     text = normalize_text(str(prompt["text"]))
     if backend is None:
         from plumb.judgment import get_backend
@@ -194,7 +199,8 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
                      "confidence_label": weakest.confidence_label,
                      "backend": weakest.backend, "model_version": version,
                      "calibration": calibration.digest, "claim_kind": kind,
-                     "threshold": threshold, "min_probability": state.min_probability,
+                     "threshold": threshold, "prompt_via": "hook",
+                     "min_probability": state.min_probability,
                      "min_confidence": state.min_confidence, "parts": len(judgments),
                      "fingerprints": [j.fingerprint for j in judgments]}})
         out.append(record_id)
@@ -206,8 +212,9 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
             approved: set[str]) -> str | None:
     """Why an ``auto-jev`` approval fails its re-check, or None (sp2 8.2): an owner
     ``config`` on before it, a passing calibration for the same model version, a cited
-    prompt event, a score at or above the recorded thresholds, an eligible record kind, and
-    no earlier owner, relayed or imported approval of the record."""
+    prompt event logged by the prompt hook (not self-recorded), a score at or above the
+    recorded thresholds, an eligible record kind, and no earlier owner, relayed or imported
+    approval of the record."""
     payload = entry.payload
     auto = payload.get("auto")
     if not isinstance(auto, Mapping):
@@ -225,6 +232,9 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
         return f"auto-jev approval of claim kind {kind} without a passing calibration"
     if payload.get("prompt_digest") not in prompts:
         return "auto-jev approval cites no earlier prompt event"
+    if auto.get("prompt_via") != "hook" or payload.get("self_recorded"):
+        return ("auto-jev approval rests on a message the agent recorded itself (not logged "
+                "by the prompt hook); only the owner or a relayed ok confirms it")
     try:
         score = float(auto.get("score"))
     except (TypeError, ValueError):
