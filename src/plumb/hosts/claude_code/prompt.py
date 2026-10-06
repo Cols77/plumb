@@ -69,7 +69,7 @@ def log_prompt(ctx: HookContext, text: str) -> str:
     digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
     _append_jsonl(ctx.session_dir / "prompts.jsonl",
                   {"digest": digest, "session": ctx.session_id, "at": _utc_now(),
-                   "text": text})
+                   "text": text, "via": str(ctx.extra.get("via") or "hook")})
     turn_path = ctx.session_dir / ctx.session_id / "turn.json"
     try:  # a new turn: the touched list holds this turn's edits only
         (turn_path.parent / "touched.txt").unlink()

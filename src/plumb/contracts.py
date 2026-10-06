@@ -238,3 +238,30 @@ class JudgmentBackend(Protocol):
 @runtime_checkable
 class LLMCascade(Protocol):
     def escalate(self, request: EscalationRequest) -> None: ...
+
+
+# --------------------------------------------------------------------------- sp4 HOSTS
+# The host-neutral turn API (sp4 3.1): every adapter turns its host's event into a
+# ``TurnEvent`` and renders the ``TurnOutput`` of ``plumb.hosts.neutral.handle_event``.
+
+TurnKind = Literal["session-start", "prompt", "edit", "stop"]
+
+
+@dataclass(frozen=True)
+class TurnEvent:
+    kind: TurnKind
+    root: Path
+    session_id: str
+    host: str                         # "claude-code" | "codex" | "pi" | "hermes" | "cli"
+    text: str | None = None           # prompt text (prompt)
+    path: str | None = None           # edited path (edit)
+    source: str | None = None         # session start source: startup | resume | clear | compact
+    stop_active: bool = False         # the host is already continuing after a block
+
+
+@dataclass(frozen=True)
+class TurnOutput:
+    agent_context: tuple[str, ...] = ()   # lines added to the agent's context
+    owner_lines: tuple[str, ...] = ()     # status card, summary, intent card (owner-facing)
+    block: str | None = None              # one instruction that keeps the agent working
+    status_line: str = ""                 # the one-line status card

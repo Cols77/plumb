@@ -38,6 +38,10 @@ def _root_option(argv: list[str]) -> tuple[str | None, list[str]]:
 
 def _hook(argv: list[str]) -> int:
     start = time.monotonic()
+    if any(a.split("=", 1)[0] in ("--host", "--format") for a in argv):
+        from plumb.hosts.cli import hook_main  # sp4 3.1: any host through hosts.neutral
+
+        return hook_main(argv, start)
     root, rest = _root_option(argv)
     if not rest or rest[0] in ("-h", "--help"):
         sys.stdout.write(_HOOK_USAGE)

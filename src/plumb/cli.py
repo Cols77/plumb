@@ -29,6 +29,8 @@ ROUTES: dict[str, str] = {
     "trailers": "plumb.claims", "claims": "plumb.claims",
     "import": "plumb.importer.cli", "fidelity": "plumb.judgment.cli",
     "judge": "plumb.judgment.cli", "judgment": "plumb.judgment.cli",
+    # HOSTS (sub-project 4)
+    "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
 }
 
 _HELP = """usage: plumb <command> [options]
@@ -52,6 +54,8 @@ records and integrity:
 
 verification:  tests (map | select | run), map, verify, impact
 host:          hook, hooks, install, statusline
+hosts:         hosts (install|uninstall|status codex|pi|hermes), turn (start|end: the
+               CLI-only fallback), mcp (serve: the read-only MCP server on stdio)
 bridge:        trailers, claims, fidelity, judge, judgment, import
 
 Run `plumb <command> --help` for a command's options. Exit codes: 0 ok, 1 findings,
