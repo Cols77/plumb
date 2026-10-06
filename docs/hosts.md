@@ -43,7 +43,7 @@ a trusted hash per hook, so the owner trusts plumb's hooks once in Codex before 
 | prompt | `UserPromptSubmit` hook: `plumb hook prompt --host codex --format claude` (logged `via: hook`) | yes | `plumb turn start` (logged `via: turn`, self-recorded) |
 | edit | none needed: the stop event's one `git status` catches every edit | n/a | same |
 | stop | `Stop` hook: `plumb hook stop --host codex --format claude` (block at most once, never while `stop_hook_active`) | yes | `plumb turn end` |
-| stop (owner summary) | `notify` in `.codex/config.toml`: `plumb hook stop --host codex --format text --notify`, Codex appends the turn's JSON; it refreshes the status and never blocks | yes, unless the project or user configuration already sets `notify` (kept) | `plumb status` |
+| stop (owner summary) | `notify` in `.codex/config.toml`: `plumb hook stop --host codex --format text --notify`, Codex appends the turn's JSON; it refreshes the status, never blocks and never rewrites the stated set (`notify` output is not shown to the owner) | yes, unless the project or user configuration already sets `notify` (kept) | `plumb status` |
 | tools | the read-only MCP server, `[mcp_servers.plumb]` in `.codex/config.toml` (`plumb mcp install codex`) | on request | CLI |
 | guard | owner-terminal guard (always); marker `PLUMB_AGENT_SESSION=codex` through `shell_environment_policy.set` in `.codex/config.toml` | yes, unless a foreign `shell_environment_policy` table exists (kept; status says the marker is missing) | `plumb hosts status codex` names the missing marker |
 
@@ -71,7 +71,8 @@ Hermes plugins are directories with `plugin.yaml` and an `__init__.py` exposing
 only with `HERMES_ENABLE_PROJECT_PLUGINS=1`. Hooks: `on_session_start` (return ignored),
 `pre_llm_call` (returns `{"context": ...}`, appended to the turn's user message),
 `post_tool_call`, `pre_verify` (accepts `{"decision": "block", "reason": ...}` to keep the
-agent going, fires when the turn edited code), `post_llm_call`; commands with
+agent going, fires when the turn edited code), `transform_llm_output` (a returned string
+replaces the reply), `post_llm_call` (`assistant_response`); commands with
 `ctx.register_command`, messages with `ctx.inject_message`. Hermes runs its own
 interpreter, so the plugin calls the plumb CLI (`--format json`) rather than importing plumb.
 
@@ -80,7 +81,9 @@ interpreter, so the plugin calls the plumb CLI (`--format json`) rather than imp
 | session-start | `on_session_start` cannot inject context: the brief rides on the first `pre_llm_call` | yes | `AGENTS.md` (or `.hermes.md`) block |
 | prompt | `pre_llm_call` (`user_message`): `plumb hook prompt --host hermes --format json`, `agent_context` returned as context (logged `via: hook`) | yes | `plumb turn start` |
 | edit | `post_tool_call` for `write_file` and `patch`: `plumb hook post-edit` in the background | yes | stop's `git status` |
-| stop | `pre_verify` (edited turns): the stop event, `block` returned once (`attempt == 0`); `post_llm_call` (other turns): the stop event for the status, never a block | yes | `plumb turn end` |
+| stop | `pre_verify` (edited turns): the stop event, `block` returned once (`attempt == 0`); `transform_llm_output` (other turns): the stop event, never a block | yes | `plumb turn end` |
+| stop (owner summary) | `transform_llm_output` appends `owner_lines` to the reply the owner reads; `post_llm_call` checks the reply carries them, else (interrupted turn, empty reply, another plugin's transform won, an older Hermes) reruns the stop event `--unseen`, so no stated record stays marked shown | yes | `plumb status` |
+| child agents | delegated subagents, the background review and cron runs fire the same hooks in-process with `parent_session_id`: the plugin skips them (no prompt logged, no stop, no summary), since their messages are never the owner's words | yes | n/a |
 | owner commands | `/plumb <words>` (`ctx.register_command`): the words are passed to the agent with `ctx.inject_message` | yes | CLI |
 | tools | the read-only MCP server in Hermes' `mcp_servers` (`plumb mcp install hermes`, user configuration) | on request | CLI |
 | guard | owner-terminal guard (always); `register(ctx)` sets `PLUMB_AGENT_SESSION=hermes` in Hermes' environment, which its local terminal tool inherits (not remote terminal backends) | yes | `plumb hosts status hermes` names the missing marker |

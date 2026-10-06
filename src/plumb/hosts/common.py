@@ -261,7 +261,10 @@ def instruction_block(argv: Sequence[str], host: str, *, hooks: bool) -> str:
         f"- {when} `{plumb} turn start --session <id>` with the owner's message on stdin",
         f"  (or `--prompt-file F`), and before your final reply `{plumb} turn end --session "
         "<id>`;",
-        "  read their output and follow any instruction they print.",
+        "  read their output and follow any instruction they print. Put the summary "
+        "`turn end`",
+        "  prints in your final reply as printed: a bare \"ok\" confirms only what the "
+        "owner saw.",
         "- A message `/plumb <words>` is the owner asking about the project in plain words:",
         f"  resolve them to records (`{plumb} explain`, `{plumb} status`, `{plumb} show`) "
         "and",

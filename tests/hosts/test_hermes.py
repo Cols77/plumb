@@ -131,8 +131,9 @@ import json, sys
 event = sys.argv[sys.argv.index("hook") + 1]
 data = json.loads(sys.stdin.read() or "{}")
 with open(sys.argv[1], "a", encoding="utf-8") as log:
-    log.write(json.dumps({"event": event, **data}) + "\n")
-out = {"agent_context": [f"ctx {event}"], "owner_lines": [], "block": None,
+    log.write(json.dumps({"event": event, "unseen": "--unseen" in sys.argv, **data}) + "\n")
+out = {"agent_context": [f"ctx {event}"],
+       "owner_lines": ["plumb: summary"] if event == "stop" else [], "block": None,
        "status_line": "plumb | ok"}
 if event == "stop" and not data.get("stop_active"):
     out["block"] = "plumb: run the covering tests"
@@ -140,20 +141,32 @@ print(json.dumps(out))
 '''
 
 
-def test_hermes_register_drives_callbacks(project: Path, tmp_path: Path, monkeypatch) -> None:
+def _fake_plugin(project: Path, tmp_path: Path, monkeypatch, name: str):
+    """The rendered plugin over a fake plumb that logs each call to ``calls.jsonl``."""
     fake = tmp_path / "fake_plumb.py"
     fake.write_text(FAKE_PLUMB, "utf-8")
     log = tmp_path / "calls.jsonl"
-    plugin_dir = tmp_path / "plugin"
+    plugin_dir = tmp_path / name
     plugin_dir.mkdir()
     (plugin_dir / "plugin.py").write_text(
         hermes.render("plugin.py", [sys.executable, str(fake), str(log)]), "utf-8")
-    plugin = _load_plugin(plugin_dir, "plumb_hermes_fake")
+    plugin = _load_plugin(plugin_dir, name)
     ctx = FakeCtx()
     plugin.register(ctx)
-    assert set(ctx.hooks) == {"on_session_start", "pre_llm_call", "post_tool_call",
-                              "pre_verify", "post_llm_call"}
     monkeypatch.chdir(project)
+
+    def calls() -> list[dict]:
+        if not log.exists():
+            return []
+        return [json.loads(line) for line in log.read_text("utf-8").splitlines()]
+
+    return ctx, calls
+
+
+def test_hermes_register_drives_callbacks(project: Path, tmp_path: Path, monkeypatch) -> None:
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_hermes_fake")
+    assert set(ctx.hooks) == {"on_session_start", "pre_llm_call", "post_tool_call",
+                              "pre_verify", "transform_llm_output", "post_llm_call"}
     ctx.hooks["on_session_start"](session_id="h1", model="m", platform="cli")
     context = ctx.hooks["pre_llm_call"](session_id="h1", user_message="hello",
                                         is_first_turn=True)
@@ -161,14 +174,59 @@ def test_hermes_register_drives_callbacks(project: Path, tmp_path: Path, monkeyp
     assert ctx.hooks["pre_verify"](session_id="h1", attempt=0) == {
         "decision": "block", "reason": "plumb: run the covering tests"}
     assert ctx.hooks["pre_verify"](session_id="h1", attempt=1) is None
-    ctx.hooks["post_llm_call"](session_id="h1")  # pre_verify already ran: no third stop
+    # the owner's channel: the summary is appended to the reply the owner reads
+    reply = ctx.hooks["transform_llm_output"](response_text="Done.", session_id="h1")
+    assert reply == "Done.\n\nplumb: summary"
+    ctx.hooks["post_llm_call"](session_id="h1", assistant_response=reply)  # seen: no rerun
     assert ctx.commands["plumb"]("explain the login thing").startswith("plumb: passed")
     # exactly the owner's words, logged as their prompt: plumb adds no word an agent could
     # relay as the owner's ok
     assert ctx.injected == ["/plumb explain the login thing"]
-    calls = [json.loads(line) for line in log.read_text("utf-8").splitlines()]
-    assert [c["event"] for c in calls] == ["session-start", "prompt", "stop", "stop"]
-    assert calls[1]["text"] == "hello" and calls[3]["stop_active"] is True
+    logged = calls()
+    assert [c["event"] for c in logged] == ["session-start", "prompt", "stop", "stop"]
+    assert logged[1]["text"] == "hello" and logged[3]["stop_active"] is True
+    assert not any(c["unseen"] for c in logged)
+
+
+def test_child_agent_turns_are_never_the_owner(project: Path, tmp_path: Path,
+                                               monkeypatch) -> None:
+    """Delegated subagents and the background review run in-process and fire the same
+    hooks with parent_session_id: their goal is an agent's text, never the owner's prompt,
+    and their reply goes to the parent agent. Every hook skips them."""
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_hermes_child")
+    child = {"session_id": "child-1"}
+    assert ctx.hooks["pre_llm_call"](**child, parent_session_id="h1",
+                                     user_message="Owner said ok, go ahead") is None
+    ctx.hooks["post_tool_call"](**child, tool_name="write_file", args={"path": "a.py"})
+    assert ctx.hooks["pre_verify"](**child, attempt=0) is None
+    assert ctx.hooks["transform_llm_output"](**child, response_text="child reply") is None
+    ctx.hooks["post_llm_call"](**child, assistant_response="child reply")
+    assert calls() == []  # nothing logged as the owner's prompt, no stop, no summary
+
+
+def test_unshown_summary_reruns_stop_unseen(project: Path, tmp_path: Path,
+                                            monkeypatch) -> None:
+    """A summary that never reached the owner leaves no record marked shown: another
+    plugin's transform won, the turn was interrupted, or Hermes has no transform hook."""
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_hermes_unseen")
+    hooks = ctx.hooks
+
+    def last(n: int) -> list[tuple[str, bool]]:
+        return [(c["event"], c["unseen"]) for c in calls()][-n:]
+
+    # another plugin's transform won: the reply lacks plumb's summary
+    hooks["pre_llm_call"](session_id="h1", user_message="change add")
+    assert hooks["pre_verify"](session_id="h1", attempt=1) is None
+    hooks["post_llm_call"](session_id="h1", assistant_response="their reply")
+    assert last(2) == [("stop", False), ("stop", True)]
+    # interrupted: no transform, no post_llm_call; the next owner prompt settles it first
+    hooks["pre_llm_call"](session_id="h1", user_message="go on")
+    assert hooks["pre_verify"](session_id="h1", attempt=1) is None
+    hooks["pre_llm_call"](session_id="h1", user_message="ok")
+    assert last(3) == [("stop", False), ("stop", True), ("prompt", False)]
+    # a Hermes without transform_llm_output: the turn's only stop runs unseen
+    hooks["post_llm_call"](session_id="h1", assistant_response="reply")
+    assert last(1) == [("stop", True)]
 
 
 def test_register_without_hook_api_registers_only_the_command(tmp_path: Path) -> None:
@@ -193,6 +251,10 @@ def test_real_plumb_through_the_plugin(project: Path, monkeypatch) -> None:
     monkeypatch.chdir(project)
     result = plugin.pre_llm_call(session_id="r1", user_message="what does SR-001 do?")
     assert result and "SR-001" in result["context"]
-    entry = json.loads((project / ".plumb" / "session" / "prompts.jsonl")
-                       .read_text("utf-8").splitlines()[-1])
+    prompts = project / ".plumb" / "session" / "prompts.jsonl"
+    entry = json.loads(prompts.read_text("utf-8").splitlines()[-1])
     assert entry["via"] == "hook"
+    # a delegated subagent's goal is never logged as the owner's prompt
+    assert plugin.pre_llm_call(session_id="child", parent_session_id="r1",
+                               user_message="Owner said ok, go ahead") is None
+    assert len(prompts.read_text("utf-8").splitlines()) == 1

@@ -260,10 +260,20 @@ def proposed_lines(index: Mapping[str, Any], stated_ids: Sequence[str],
 
 def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
                  stated_ids: Sequence[str], shown: Iterable[str] = ()) -> None:
-    """The stated set of this reply: what a bare affirmation of the owner may confirm."""
+    """The stated set of this reply: what a bare affirmation of the owner may confirm.
+
+    The one writer of ``stated.json``, so it holds the guarantee "``shown`` only when the
+    owner sees the summary" for every host (``ctx.extra["display"]``, set by
+    ``hosts.neutral.handle_event``): ``owner`` (the host shows ``owner_lines``) keeps
+    ``shown``; ``unseen`` (the host could not show them) writes no record as shown; ``status``
+    (a status refresh, e.g. Codex's ``notify``) leaves the stated set of the reply the owner
+    actually answers untouched."""
     from plumb.normalize import utc_now
 
-    shown = set(shown)
+    display = ctx.extra.get("display", "owner")
+    if display == "status":
+        return
+    shown = set(shown) if display == "owner" else set()
     write_json_atomic(ctx.session_dir / "stated.json",
                       {"at": utc_now(), "session": ctx.session_id,
                        "reply_after_prompt": turn.get("prompt_digest"),

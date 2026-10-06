@@ -35,6 +35,7 @@ HOSTS = ("claude-code", "codex", "pi", "hermes", "cli")
 SELF_RECORDING_HOSTS = ("cli",)  # the fallback: the agent records the owner's message itself
 HOOK_NAMES = {"session-start": "session-start", "prompt": "prompt", "edit": "post-edit",
               "stop": "stop"}
+DISPLAYS = ("owner", "unseen", "status")  # does the owner see the stop's owner_lines?
 BUDGET_KEYS = {"session-start": "session_start", "prompt": "prompt", "edit": "post_edit",
                "stop": "stop"}
 
@@ -148,17 +149,24 @@ def _handler(kind: str, verify: Any, backend: Any, unjudged: Any
 
 def handle_event(event: TurnEvent, *, deadline: Deadline | None = None,
                  kept: Kept | None = None, verify: Any = LAZY, backend: Any = LAZY,
-                 unjudged: Any = LAZY) -> TurnOutput:
+                 unjudged: Any = LAZY, display: str = "owner") -> TurnOutput:
     """The one turn API. ``deadline`` and ``kept`` come from the hook runner when the event
     arrives through ``plumb hook``/``plumb turn`` (budget, watchdog, kept lines); tests pass
-    fakes for ``verify``, ``backend`` and ``unjudged``."""
+    fakes for ``verify``, ``backend`` and ``unjudged``.
+
+    ``display`` says whether the owner sees this stop event's ``owner_lines`` (DISPLAYS):
+    ``owner`` (the host shows them), ``unseen`` (it cannot: no record of the stated set is
+    marked shown, so a bare "ok" relays none) or ``status`` (a status refresh that never
+    rewrites the stated set). The stated set's one writer (``stop.write_stated``) applies it."""
     if event.kind not in HOOK_NAMES:
         raise ValueError(f"unknown event '{event.kind}'")
+    if display not in DISPLAYS:
+        raise ValueError(f"unknown display '{display}'")
     root = Path(event.root)
     ctx = HookContext(name=HOOK_NAMES[event.kind], data=hook_data(event), root=root,
                       session_id=safe_session_id(event.session_id),
                       deadline=deadline or Deadline(_budget_ms(root, event.kind)),
-                      extra={"via": via(event), "host": event.host})
+                      extra={"via": via(event), "host": event.host, "display": display})
     if kept is not None:
         ctx.kept = kept
     out = _handler(event.kind, verify, backend, unjudged)(ctx)

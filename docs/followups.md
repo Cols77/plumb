@@ -1692,3 +1692,77 @@ Medium and low findings recorded (not fixed in this lane):
   (about 1 to 1.4 s each), and notify can overwrite the stated.json the Stop hook wrote, which
   `plumb relay` checks the owner's quote against. Fix: notify only refreshes the summary and
   never rewrites stated.json, or skip notify when the Stop hook is installed.
+
+## HOSTS lane review, round 2 (2026-10-06): fixes and medium findings
+
+Fixed (HIGH, by class):
+
+- Owner words only (R2): Hermes runs delegated subagents, its background review and cron
+  runs in-process, and their turns fire the plugin's hooks with `parent_session_id`. The
+  plugin's one gate (`_owner_session`) now skips those sessions in every hook: no prompt is
+  logged `via: hook`, and no stop or summary runs for them. Tests:
+  `tests/hosts/test_hermes.py::test_child_agent_turns_are_never_the_owner` and the real
+  plumb check in `test_real_plumb_through_the_plugin`.
+- `shown` only when the owner sees the summary (R1, R2, R13 Q4): the stated set's one writer
+  (`hosts/claude_code/stop.py::write_stated`, a PRESENT/CAPTURE-owned file, edited at that
+  choke point only) applies the `display` that each entry point passes to
+  `hosts.neutral.handle_event`. `owner` is the Claude Code and Codex Stop hooks, Pi
+  `agent_end` and `plumb turn end`; the fallback block now tells the agent to put the
+  summary in its final reply. `status` is Codex `notify`, which no longer rewrites the stated
+  set that `plumb turn end` or the Stop hook wrote. `unseen` is `plumb hook stop --unseen`:
+  no record is marked shown. Hermes now shows `owner_lines` by appending them to the reply
+  (`transform_llm_output`). When the reply did not carry them (another plugin's transform
+  won, the turn was interrupted, or a Hermes without the hook), the plugin reruns the stop
+  `--unseen`. Tests: `tests/hosts/test_stated_display.py` (turn end, Codex notify, Codex
+  Stop hook, `--unseen`, the fallback block) and
+  `tests/hosts/test_hermes.py::test_unshown_summary_reruns_stop_unseen`. This also resolves
+  the stated.json part of the earlier LOW item on Codex's double stop run.
+
+Medium:
+
+- [MEDIUM] (src/plumb/hosts/cli.py) When `--prompt-file` is not given, `plumb turn start`
+  reads the prompt with `sys.stdin.read()` whenever stdin is not a TTY. If an agent's shell
+  tool runs the command with an inherited stdin pipe that never closes, the read waits for
+  EOF with no timeout or watchdog: the watchdog starts only inside `run_event`, after the
+  read. A host whose shell tool holds an open, non-TTY stdin and an agent that runs `plumb
+  turn start --session s1` without piping the message (the AGENTS.md block allows "with the
+  owner's message on stdin") block until the host's tool timeout. That breaks the "seconds
+  per turn" bar. Fix: read stdin only when data is available, apply the watchdog before the
+  read, or require `--prompt-file`/stdin to be explicit.
+- [MEDIUM] (src/plumb/hosts/claude_code/prompt.py) The lane edited files owned by other lanes
+  (approvals.py, confirm.py, contracts.py, explain.py, readback.py, merge.py,
+  hosts/neutral.py, hosts/claude_code/*, cli.py) instead of stopping and asking the
+  coordinator, as plan section 2 requires. CAPTURE implements the same Q4 label with
+  opposite semantics: its prompt.py hard-codes `via: hook` and its relay and escalation code
+  test `via != "hook"`, while HOSTS tests `via == "turn"`. If the coordinator takes CAPTURE's
+  `log_prompt` line, `plumb turn start` prompts are logged as hook-recorded, and
+  confirmations on the Codex and Pi fallback lose the "self-recorded message" label.
+  `tests/hosts/test_self_recorded.py::test_relay_marks_an_approval_resting_on_a_turn_prompt`
+  catches this only if it is rerun after the merge. Round 2 adds `stop.write_stated` (the
+  `display` gate) to the files to reconcile: keep it, and rerun
+  `tests/hosts/test_stated_display.py` after the merge.
+- [MEDIUM] (src/plumb/hosts/pi/templates/index.ts) Loop protection on Pi depends on
+  `blockedThisTurn`, which `before_agent_start` resets for any prompt not in `injected`. Pi
+  documents `before_agent_start` as firing "after user submits prompt". If it also fires for
+  the `followUp`/`triggerTurn` custom message with an empty or different `event.prompt`, an
+  empty prompt is logged as the owner's (`via: hook`) and the stop block can repeat:
+  `agent_end` blocks (tests not run) and sends followUp with triggerTurn, `before_agent_start`
+  fires with prompt "", resets `blockedThisTurn` and logs "", the next `agent_end` sends
+  `stop_active=false`, and `tests_instruction` (which has no once-guard) blocks again. The
+  block also fires on `agent_end`, which Pi says may precede auto-retry or compaction; Pi
+  recommends `agent_settled` for this. Unverified against a live Pi.
+- [MEDIUM] (src/plumb/hosts/codex/install.py) With trusted hooks, Codex runs the full stop
+  event twice per turn: the Stop hook, then notify. Each run repeats git status, verify.select
+  and evidence, and covering-test selection on a 2-core machine, so every Codex turn spends
+  two stop-handler runs of up to about 1.9 s each. Notify no longer rewrites stated.json
+  (round 2), but it still rewrites status.json from a recomputation the owner does not see,
+  and a slow notify can race the owner's next prompt. Fix: skip notify's stop work when the
+  Stop hook ran for this turn, or make notify refresh only status.json from the last snapshot.
+- [MEDIUM] (src/plumb/hosts/hermes/templates/plugin.py) The Hermes plugin keeps
+  `_children`, `_summaries` and `_stopped` in module memory for the life of the Hermes
+  process. They are never pruned, which is harmless but grows slowly with every delegated
+  child session. A child whose `on_session_start` fires before its first `pre_llm_call`
+  still runs the session-start event once, which is a read-only brief and logs no prompt.
+  Unverified against a live Hermes: whether `pre_verify` and `transform_llm_output` carry the
+  child's own `session_id`. The code reads them as Hermes 0.21 does
+  (`agent/conversation_loop.py`, `agent/turn_finalizer.py`).

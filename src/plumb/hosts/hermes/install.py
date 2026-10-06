@@ -2,10 +2,10 @@
 
 Renders the project plugin ``.hermes/plugins/plumb/{plugin.yaml,__init__.py,plugin.py}``
 (``register(ctx)`` registers ``on_session_start``, ``pre_llm_call``, ``post_tool_call``,
-``pre_verify``, ``post_llm_call`` and the ``/plumb`` command, and sets the session marker) and
-the instruction block of the CLI-only fallback in the context file Hermes loads
-(``.hermes.md`` or ``HERMES.md`` when the project has one, else ``AGENTS.md``). Hermes loads
-project plugins only with ``HERMES_ENABLE_PROJECT_PLUGINS=1``.
+``pre_verify``, ``transform_llm_output``, ``post_llm_call`` and the ``/plumb`` command, and
+sets the session marker) and the instruction block of the CLI-only fallback in the context
+file Hermes loads (``.hermes.md`` or ``HERMES.md`` when the project has one, else
+``AGENTS.md``). Hermes loads project plugins only with ``HERMES_ENABLE_PROJECT_PLUGINS=1``.
 """
 
 from __future__ import annotations

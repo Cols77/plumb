@@ -9,7 +9,9 @@
   shares, by default; the ``TurnEvent`` fields with ``--format json``), calls
   ``handle_event`` within the sp1 budgets and the watchdog, and prints the ``TurnOutput`` in
   the requested format. ``--notify`` takes the JSON from the last argument instead of stdin
-  (Codex's ``notify`` program) and never blocks. Always exits 0.
+  (Codex's ``notify`` program), never blocks and never rewrites the stated set (a status
+  refresh: the owner does not see its output). ``--unseen`` says the host could not show
+  the owner this stop's ``owner_lines``, so no stated record is marked shown. Always exits 0.
 - ``plumb hosts install|uninstall|status <host>``: the thin adapters for ``codex``, ``pi``
   and ``hermes``.
 
@@ -35,7 +37,7 @@ ADAPTERS = {"codex": "plumb.hosts.codex.install", "pi": "plumb.hosts.pi.install"
             "hermes": "plumb.hosts.hermes.install"}
 
 _HOOK_USAGE = ("usage: plumb hook {session-start|prompt|post-edit|stop} --host HOST "
-               "[--format claude|json|text] [--notify] [--root PATH]\n")
+               "[--format claude|json|text] [--notify] [--unseen] [--root PATH]\n")
 _TURN_USAGE = ("usage: plumb turn {start|end} [--session ID] [--prompt-file F] "
                "[--format text|json] [--root PATH]\n"
                "The CLI-only fallback: `turn start` (the owner's message on stdin or in "
@@ -102,9 +104,10 @@ def _options(argv: list[str], flags: tuple[str, ...], values: tuple[str, ...]
 
 
 def run_event(kind: str, data: dict[str, Any], *, host: str, fmt: str,
-              root: str | None, stdout: Any = None, start: float | None = None) -> int:
+              root: str | None, stdout: Any = None, start: float | None = None,
+              display: str = "owner") -> int:
     """One event through ``handle_event`` inside the hook runner (budget, watchdog, kept
-    lines, the catch-all). Always returns 0."""
+    lines, the catch-all). ``display``: see ``handle_event``. Always returns 0."""
     from plumb.hosts.claude_code.hookio import hook_budget, run_hook, use_utf8_stdio
     from plumb.hosts.neutral import BUDGET_KEYS, event_from_data, handle_event
 
@@ -113,7 +116,8 @@ def run_event(kind: str, data: dict[str, Any], *, host: str, fmt: str,
 
     def handler(ctx: Any) -> Rendered:
         event = event_from_data(kind, ctx.data, ctx.root, host, fmt)
-        return Rendered(kind, handle_event(event, deadline=ctx.deadline, kept=ctx.kept), fmt)
+        return Rendered(kind, handle_event(event, deadline=ctx.deadline, kept=ctx.kept,
+                                           display=display), fmt)
 
     return run_hook(EVENTS.get(kind, kind), handler,
                     stdin=io.StringIO(json.dumps(data)),
@@ -125,7 +129,7 @@ def run_event(kind: str, data: dict[str, Any], *, host: str, fmt: str,
 def hook_main(argv: list[str], start: float | None = None) -> int:
     """``plumb hook <event> --host X --format F``: a host's hook entry point."""
     start = time.monotonic() if start is None else start
-    opts, rest = _options(argv, ("--notify",), ("--host", "--format", "--root"))
+    opts, rest = _options(argv, ("--notify", "--unseen"), ("--host", "--format", "--root"))
     if not rest or rest[0] in ("-h", "--help"):
         sys.stdout.write(_HOOK_USAGE)
         return 0 if rest else 2
@@ -151,7 +155,10 @@ def hook_main(argv: list[str], start: float | None = None) -> int:
 
         use_utf8_stdio()
         data = read_input(sys.stdin)
-    return run_event(kind, data, host=host, fmt=fmt, root=opts.get("--root"), start=start)
+    display = ("status" if opts.get("--notify") else
+               "unseen" if opts.get("--unseen") else "owner")
+    return run_event(kind, data, host=host, fmt=fmt, root=opts.get("--root"), start=start,
+                     display=display)
 
 
 # --------------------------------------------------------------------------- turn
