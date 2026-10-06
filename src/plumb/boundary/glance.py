@@ -76,19 +76,27 @@ def _clip(text: str) -> str:
 
 
 def _message(payload: Mapping[str, Any],
-             prompt_log: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+             prompt_log: Mapping[str, Mapping[str, Any]],
+             core: Any = None) -> dict[str, Any]:
     """The owner's whole logged message beside the quote the agent chose, and whether it
     also objects to or asks to change something (R2: the glance is the owner's backstop, so
     a correction next to an "ok" must be visible there). The text is in the session's prompt
     log while it exists; the flag is in the approval itself (``plumb relay`` writes
     ``prompt_objects``), so it survives the session."""
-    from plumb.approvals import objection_clauses
+    from plumb.approvals import change_clauses
     from plumb.normalize import normalize_text
 
     item = prompt_log.get(str(payload.get("prompt_digest") or ""))
     raw = item.get("text") if isinstance(item, Mapping) else None
     text = normalize_text(raw) if isinstance(raw, str) else None
-    objects = payload.get("prompt_objects") is True or bool(text and objection_clauses(text))
+    objects = payload.get("prompt_objects") is True
+    if not objects and text:
+        # the one change-clause reader, against the records this approval and the stated
+        # set were about (a plain-word correction is flagged, not only an objection word)
+        index = core.index() if core is not None else None
+        affirmations = core.config.approve.affirmations if core is not None else ()
+        scope = [*_ids(payload), *(str(i) for i in payload.get("stated_set") or [])]
+        objects = bool(change_clauses(text, index, scope, affirmations))
     return {"prompt_objects": objects, "prompt_text": text}
 
 
@@ -140,7 +148,7 @@ def glance_rows(core: Any, base_digests: Iterable[str]) -> list[dict[str, Any]]:
             if prompt_log is None:
                 prompt_log = _prompt_log(core)
             row["self_recorded"] = self_recorded(payload, prompt_events, prompt_log)
-            row.update(_message(payload, prompt_log))
+            row.update(_message(payload, prompt_log, core))
         if by == "auto-jev":
             row.update(auto_fields(payload))
         if isinstance(payload.get("triage"), Mapping):

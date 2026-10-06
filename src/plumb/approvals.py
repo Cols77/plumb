@@ -483,30 +483,111 @@ def _clauses(text: str) -> list[tuple[int, int]]:
     return merged
 
 
-def _naming_stems(record: Any) -> frozenset[str]:
-    """The words the owner may name ``record`` by (R9: plain language, not IDs): its title,
-    statement, read-back, quote, and every example's given/when/then and quote."""
+def _texts(value: Any) -> list[str]:
+    """The strings of a record field: a string, a list of strings, or a list of items with a
+    ``text`` (will/won't entries)."""
+    if isinstance(value, list):
+        return [str(v.get("text") or "") if isinstance(v, Mapping) else str(v or "")
+                for v in value]
+    return [str(value or "")]
+
+
+# The record fields that state what the record does NOT choose: a decision's alternatives
+# and an intent's won't list. Their words name the record (the owner answering "floats"
+# talks about DEC "Floats too?") but never restate it.
+_CONTRAST_FIELDS = ("alternatives", "wont")
+_NAMING_CACHE: dict[tuple[str, str], frozenset[str]] = {}
+
+
+# A number as the owner writes it ("multiply by 0 gives 1"): numbers carry behaviour, so they
+# count as words of a clause and of a record ("#0").
+_NUMBER = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?!\w)")
+
+
+def _words(text: str) -> frozenset[str]:
+    """The stems of ``text`` and its numbers (``#0``), record IDs left out."""
     from plumb.present.resolve import stems
 
+    text = _RECORD_ID.sub(" ", text)
+    return stems(text) | frozenset("#" + n for n in _NUMBER.findall(text))
+
+
+def _naming_stems(record: Any) -> frozenset[str]:
+    """The words the owner may name ``record`` by (R9: plain language, not IDs): its title,
+    statement, read-back, quote, will and won't lists, assumptions, a decision's question,
+    chosen option and alternatives, and every example's given/when/then and quote."""
+    from plumb.present.resolve import stems
+
+    key = (str(getattr(record, "id", "") or ""), str(getattr(record, "hash", "") or ""))
+    if all(key) and key in _NAMING_CACHE:
+        return _NAMING_CACHE[key]
     fields = getattr(record, "fields", {}) or {}
     parts = [str(getattr(record, "title", "") or "")]
-    for key in ("statement", "readback", "quote", "question", "chosen"):
-        value = fields.get(key)
-        parts.extend(map(str, value) if isinstance(value, list) else [str(value or "")])
+    for name in ("statement", "readback", "quote", "question", "chosen", "will",
+                 "assumptions", "assumed", *_CONTRAST_FIELDS):
+        parts.extend(_texts(fields.get(name)))
     for example in getattr(record, "examples", ()) or ():
         parts.extend((example.given, example.when, example.then, example.criterion))
     for raw in fields.get("examples") or []:
         if isinstance(raw, Mapping) and raw.get("quote"):
             parts.append(str(raw["quote"]))
-    return stems(" ".join(parts))
+    # words only: a number counts as content of a clause (``_distinctive``) but is too
+    # common across records to place a correction on one of them
+    found = stems(_RECORD_ID.sub(" ", " ".join(parts)))
+    if all(key):
+        if len(_NAMING_CACHE) > 4096:
+            _NAMING_CACHE.clear()
+        _NAMING_CACHE[key] = found
+    return found
 
 
-def _plain_named(clause: str, records: Mapping[str, Any]) -> set[str]:
+def _restating(record: Any) -> tuple[frozenset[str], frozenset[str]]:
+    """``(chosen, restating)``: the words of a decision's chosen option, and the words that
+    restate ``record`` (its title and chosen option), each without the words only its
+    alternatives or won't list hold (DEC "Floats too?" chose "integers only": "floats"
+    names it but never restates it)."""
+    fields = getattr(record, "fields", {}) or {}
+    chosen = _words(" ".join(_texts(fields.get("chosen"))))
+    contrast = _words(" ".join(t for name in _CONTRAST_FIELDS
+                               for t in _texts(fields.get(name)))) - chosen
+    title = _words(str(getattr(record, "title", "") or ""))
+    return chosen - contrast, (title | chosen) - contrast
+
+
+# Words that ask for different behaviour ("ok, and make cube accept floats too", "ok,
+# please also accept floats", "actually multiply by 0 gives 1"): beside a distinctive word, a
+# clause holding one asks for a change even without an objection word (R2, decision 2).
+_DIRECTIVE = re.compile(
+    r"(?<!\w)(?:make|makes|making|change|changes|add|adds|adding|accept|accepts|accepting"
+    r"|return|returns|rename|renames|instead|also|too|support|supports|allow|allows|handle"
+    r"|handles|use|uses|give|gives|treat|treats|switch|extend|extends|include|includes"
+    r"|want|wants|need|needs|actually|rather|only|plus|either|as\s+well)(?!\w)",
+    re.IGNORECASE)
+# Words that carry no behaviour beside an affirmation ("ok, thanks", "great, carry on").
+_FILLER = ("please", "thanks", "thank", "great", "perfect", "nice", "cool", "awesome",
+           "good", "fine", "right", "correct", "everything", "now", "proceed", "continue",
+           "ahead", "both", "them", "sounds", "sound", "looks", "done", "well", "fair",
+           "enough", "alright", "all", "lgtm", "agreed", "approve", "approved", "confirm",
+           "confirmed", "okay", "yes", "yep", "yeah", "sure", "ship", "start", "begin",
+           "implement", "implementation", "build", "write", "writing", "tests", "test")
+# Words that, in a clause naming a record by its title alone, praise it ("ok, the multiply
+# looks good"): such a clause restates nothing and asks for nothing.
+_POSITIVE = re.compile(r"(?<!\w)(?:good|fine|great|perfect|right|correct|nice|works?"
+                       r"|sounds|looks|ok|okay|yes|lgtm)(?!\w)", re.IGNORECASE)
+
+
+def _distinctive(clause: str, affirmations: Sequence[str] = ()) -> frozenset[str]:
+    """The words of ``clause`` that can name behaviour: neither a record ID, an objection
+    or directive word, an affirmation term, filler nor a generic word."""
+    body = _DIRECTIVE.sub(" ", _OBJECTION.sub(" ", _RECORD_ID.sub(" ", clause)))
+    return _words(body) - _words(" ".join((*_GENERIC, *_FILLER, *affirmations)))
+
+
+def _plain_named(clause: str, records: Mapping[str, Any],
+                 affirmations: Sequence[str] = ()) -> set[str]:
     """The ``records`` that ``clause`` names in plain words: one of its distinctive words
-    (neither an objection word nor a generic one) is a word of the record."""
-    from plumb.present.resolve import stems
-
-    words = stems(_OBJECTION.sub(" ", clause)) - stems(" ".join(_GENERIC))
+    (``_distinctive``) is a word of the record (``_naming_stems``)."""
+    words = _distinctive(clause, affirmations)
     if not words:
         return set()
     return {record_id for record_id, record in records.items()
@@ -527,14 +608,67 @@ _CHANGE_OPENING = re.compile(r"^\W*(?:but|however|though|although|whereas|yet|ex
 
 
 def _objects(clause: str) -> bool:
-    """Whether ``clause`` objects to something or asks to change it."""
+    """Whether ``clause`` holds an objection word or opens with a contrastive word."""
     body = _NOT_NEGATING.sub(" ", _RECORD_ID.sub(" ", clause))
     return bool(_OBJECTION.search(body) or _CHANGE_OPENING.match(clause))
 
 
+def _asks_change(clause: str, records: Mapping[str, Any] | None, wanted: Iterable[str],
+                 affirmations: Sequence[str] = ()) -> bool:
+    """Whether ``clause`` objects to something or asks for different behaviour (R2: "an
+    objection is not an approval"; decision 2: the owner's corrections are explicit
+    decisions, never confirmed by the ok beside them).
+
+    A clause asks for a change when it holds an objection word or opens with a contrastive
+    word (``_objects``); when it holds a directive word (make, accept, also, too, return,
+    actually, ...) beside a distinctive word ("and make cube accept floats too", "please also
+    accept floats"); or when it says anything about a record the owner was asked about
+    (``wanted``, else any of ``records``) in plain words, by its title, statement, examples,
+    assumptions, won't list or a decision's alternatives ("Actually multiply by 0 gives 1",
+    "abs of a negative is negative for us"); numbers count as words, and a clause naming no
+    shown record still asks for a change when it holds a directive or a number ("3 minus 5 is
+    0 for us"). Only a clause repeating
+    a decision's chosen option ("orders only"), or praising a record by the words of its
+    title ("the multiply looks good"), does not. A clause holding only the affirmation,
+    record IDs or filler ("ok", "thanks, carry on with the tests") never does."""
+    if _objects(clause):
+        return True
+    words = _distinctive(clause, affirmations)
+    if not words:
+        return False
+    keep = set(wanted or ())
+    pool = ({i: r for i, r in records.items() if i in keep} if keep else records) or {}
+    named = [r for r in pool.values() if words & _naming_stems(r)]
+    if named:
+        restated = [_restating(r) for r in named]
+        if words <= frozenset().union(*(c for c, _ in restated)):
+            return False  # the owner repeats the chosen option ("ok, orders only")
+        praising = bool(_POSITIVE.search(clause) or _affirmation_offsets(clause, affirmations))
+        if praising and words <= frozenset().union(*(r for _, r in restated)):
+            return False  # praise by the title's words ("ok, the multiply looks good")
+        return True
+    # naming no shown record: a directive ("and also add a divide function") or a number
+    # ("3 minus 5 is 0 for us") still states behaviour the agent cannot place
+    return bool(_DIRECTIVE.search(_RECORD_ID.sub(" ", clause))
+                or any(w.startswith("#") for w in words))
+
+
+def change_clauses(text: str, records: Mapping[str, Any] | None = None,
+                   scope: Iterable[str] = (), affirmations: Sequence[str] = ()) -> list[str]:
+    """The clauses of ``text`` that object to something or ask for different behaviour
+    (``_asks_change``), read against ``records`` and the records the owner was asked about
+    (``scope``). The one reader behind ``owner_scope``, the relay's whole-statement quote,
+    the approval's ``prompt_objects`` flag, the prompt hook's relay line and the
+    merge-boundary glance."""
+    wanted = list(scope or ())
+    return [text[a:b].strip() for a, b in _clauses(text)
+            if _asks_change(text[a:b], records, wanted, affirmations)]
+
+
 def objection_clauses(text: str) -> list[str]:
-    """The clauses of ``text`` that object to something or ask to change it."""
-    return [text[a:b].strip() for a, b in _clauses(text) if _objects(text[a:b])]
+    """``change_clauses`` without the record index: only objection, contrastive and
+    directive words count."""
+    return change_clauses(text)
 
 
 def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
@@ -556,12 +690,14 @@ def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
     objects to every record. Both sets are empty for a bare "ok".
 
     ``scope`` is the records the owner was asked about (the stated set of the reply before
-    the prompt and the records relayed). A prompt holding an objection or change clause
-    (an objection word, or a clause opening with but, though, except, ...) none of whose
-    objections names a record by ID or resolves in plain words to a record of ``scope``
-    objects to every record of ``scope``: the
-    owner corrected something the agent cannot place ("ok, except 3 minus 5 should return
-    0"), so the ok confirms nothing rather than the record the correction is about."""
+    the prompt and the records relayed). A change clause (``_asks_change``: an objection
+    word, a clause opening with but, though, except, ..., a directive beside a distinctive
+    word, "and make cube accept floats too", or plain words about a record of ``scope``,
+    "Actually multiply by 0 gives 1") objects to the records it names; when none of the
+    prompt's change clauses names a record by ID or resolves in plain words to a record of
+    ``scope``, the prompt objects to every record of ``scope``: the owner corrected
+    something the agent cannot place ("ok, except 3 minus 5 should return 0"), so the ok
+    confirms nothing rather than the record the correction is about."""
     clauses = _clauses(text)
     objected: set[str] = set()
     wanted = set(scope or ())
@@ -570,12 +706,12 @@ def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
     for start, end in clauses:
         clause = text[start:end]
         ids = set(_RECORD_ID.findall(clause))
-        if not _objects(clause):
+        if not _asks_change(clause, records, wanted, affirmations):
             continue
         objecting = True
         named_here = set(ids)
         if records:
-            plain = _plain_named(_RECORD_ID.sub(" ", clause), records)
+            plain = _plain_named(clause, records, affirmations)
             named_here |= plain
             if not ids and not plain and _refers_generally(clause):
                 plain = set(records)
@@ -648,6 +784,7 @@ def _check_scope(text: str, quote: str, affirmations: Sequence[str], ids: Sequen
     objection or change clause at all, the quote must be the whole clause (or clauses) the
     owner's affirmation sits in, never a bare "ok" cut from beside a correction, so the
     stored quote, which the merge-boundary glance shows, carries what the owner said."""
+    scope = list(scope)
     named, objected = owner_scope(text, quote, affirmations, records,
                                   scope=[*ids, *scope])
     against = sorted(i for i in ids if i in objected)
@@ -670,7 +807,8 @@ def _check_scope(text: str, quote: str, affirmations: Sequence[str], ids: Sequen
         hint = f"; relay only {' '.join(allowed)}" if allowed else ""
         raise Refused(f"the owner's words name {', '.join(sorted(named))}, not "
                       f"{', '.join(outside)}; an ok naming records confirms only those{hint}")
-    if objection_clauses(text) and not quote_covers_clauses(quote, text):
+    if (change_clauses(text, records, [*ids, *scope], affirmations)
+            and not quote_covers_clauses(quote, text)):
         raise Refused("the owner's message also objects to or asks to change something; "
                       "quote the whole clause the owner's affirmation sits in, not only "
                       "the affirming words")
@@ -831,7 +969,9 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
         return core.log_append("events", "revocation", payload)
     payload.update({"affirmation": affirmation, "stated_set": stated_ids or None,
                     "note": note, **extra})
-    if objection_clauses(normalize_text(text)):
+    if change_clauses(normalize_text(text), index, [*(str(r["id"]) for r in records),
+                                                    *stated_ids],
+                      core.config.approve.affirmations):
         # the owner's message also objected to or asked to change something (not these
         # records): the merge-boundary glance flags it beside the quote
         payload["prompt_objects"] = True

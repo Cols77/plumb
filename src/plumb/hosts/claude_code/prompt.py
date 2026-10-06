@@ -168,9 +168,11 @@ def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
         line += (f"the owner's ok names only {', '.join(sorted(named))}: relay only the "
                  "named records; ")
     if shown:
-        from plumb.approvals import objection_clauses
+        from plumb.approvals import change_clauses
 
-        words = ("owner's whole sentence" if objection_clauses(normalize_text(text))
+        words = ("owner's whole sentence"
+                 if change_clauses(normalize_text(text), core.index(), wanted,
+                                   core.config.approve.affirmations)
                  else "owner's exact words")
         line += (f"if this prompt affirms them, run plumb relay {' '.join(shown)} --prompt "
                  f"{short} --quote \"<{words}>\"; ")

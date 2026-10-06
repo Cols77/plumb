@@ -3030,3 +3030,73 @@ here without fixing:
   owner corrected. On Codex, a self-recorded message is refused only once the Codex prompt
   hook has logged a prompt (no repository file says whether the owner trusted the hooks);
   the prompt log now records the logging host for that reason.
+
+## Whole-plumb audit, round 4 (2026-10-06, commit 32c3db8): medium and low findings
+
+Two HIGH findings were fixed as one class in this round (R2, decision 2): an "ok" beside a
+correction written in plain words, with no objection word and no but/though/except opening
+("ok, please also accept floats", "ok. Actually multiply by 0 gives 1 for us", "ok, and make
+cube accept floats too"), confirmed every record shown, including the decision and the
+example it contradicted. `approvals.change_clauses` is now the one change-clause reader
+behind `owner_scope`, the relay's whole-statement quote, `prompt_objects`, the prompt hook's
+relay line (and so `plumb turn start`) and the merge-boundary glance (concept 4.6, SR-005
+EX-12, `tests/capture/test_plain_change.py`). The findings below were recorded, not fixed.
+
+- [MEDIUM] (R13 Q2) After the stop hook's low-risk offer line ("approve the 8 records rated
+  faithful to your words: ... +3 more (see plumb triage)? say \"ok\"") and the owner's "ok",
+  the prompt hook's relay line (`hosts/claude_code/prompt.py` `awaiting_line`) never
+  mentions the group: it suggests relaying only the records shown in full and says the others
+  "were not shown in full: relay them only if the owner's words name them", against the skill
+  (`--group low-risk`) and R13 Q2. Safe (records stay proposed, R1). Fix: when stated.json
+  holds a group whose offer was shown and the prompt affirms without naming records, suggest
+  `plumb relay --group low-risk --prompt <digest> --quote "<owner's exact words>"` for the
+  pinned list.
+- [LOW] (R13 Q4) CLI fallback: in a new session where proposed records exist but none was
+  touched this turn, `plumb turn end` prints nothing and the stated set is empty, so the owner
+  never sees a card for them and a chat "ok" cannot confirm them unless the agent runs
+  `plumb confirm`. Non-blocking under R1. Fix: on a session's first turn end, render the
+  records awaiting the owner (capped), or point the agent to `plumb confirm`.
+- [MEDIUM] (R13 Q4, R9) Confirmations resting on a message `plumb turn start` recorded
+  (via: turn) are labelled "self-recorded message" in `plumb show` and the merge-check glance,
+  but `plumb review` section 2 lists them as "relayed from your words ..." with no label, and
+  `plumb hooks status` (Claude Code) prints no count of them while `plumb hosts status codex`
+  does. Fix: every glance renderer reads the self-recorded flag from one helper; add the label
+  and the count to `plumb review` and `plumb hooks status`.
+- [MEDIUM] (R2) `approvals.host_logs_prompts` refuses a self-recorded prompt on Claude Code only
+  when `PLUMB_AGENT_SESSION` is set. In a repository whose prompt log already holds
+  hook-logged prompts from host claude-code, `env -u PLUMB_AGENT_SESSION plumb relay ...
+  --prompt <turn digest>` confirmed both records (labelled self-recorded). For Codex a
+  hook-logged prompt in the log already proves the host has a prompt hook. Fix: also return
+  True when the prompt log holds a via: hook entry from any host.
+- [MEDIUM] (R10.1, concept 4.3; baseline for SP6, not a defect of 32c3db8) Two worktrees of one
+  repository capturing in parallel both allocated INT-003 and SR-003; merging both gave
+  add/add conflicts on the record files, and after a plain resolution `plumb validate` reported
+  0 errors and merge-check "log integrity: ok" while feat-b's intent was lost and its code and
+  "SR: SR-003" trailer pointed at feat-a's requirement. Fix in SP6: reserve IDs through
+  `refs/plumb/ids` inside `Store.next_id`; a two-worktree test with concurrent captures
+  asserting distinct IDs; the merge driver or validate reports the same ID with divergent
+  content as an intent conflict.
+- [LOW] (R12.3) A new untraced `src/app/util/powerhelp.py` ("power helper for negative
+  exponents") next to confirmed SR-004 "power works": the stop-hook block, `plumb turn end` and
+  `plumb review` all say "no requirement owns it; record a new SR", although the terms overlap
+  clearly (allowed degraded mode; latency fine: stop 0.8 s, turn end 0.7 s). Fix: when the code
+  map has no entry for the file, fall back to term overlap with requirement titles and
+  statements and offer the top candidate as a proposal.
+- [LOW] (this round's fix, trade-offs) The widened change-clause reader errs towards refusing:
+  a directive beside a word that does not only restate a shown record ("ok, and also add a
+  divide function", a new request beside the ok) objects to the records it names, or to every
+  shown record when it names none; a clause praising a record by its title ("ok, the multiply
+  looks good", "ok, go ahead and add the cube") and one repeating a decision's chosen option
+  ("ok, orders only") still confirm. A false refusal leaves records proposed
+  (non-blocking under R1). A sentence that is the bare affirmation ("ok." then the correction)
+  remains a whole statement: it may confirm the records the correction does not name, and the
+  approval carries `prompt_objects`, which the merge-boundary glance flags with the whole
+  message. Numbers count as content of a clause but never place a correction on a record (too
+  many records share them); a clause naming no shown record but holding a number objects to
+  every shown record ("ok, 3 minus 5 is 0 for us"; also "ok, see you at 5", a false refusal).
+  Residual: a correction that shares no word with any shown record and holds neither a
+  directive nor a number ("ok, negative exponents are supported" when no shown record
+  mentions exponents) is still read as a plain ok; the stored quote and the glance's whole
+  message remain the owner's backstop. Fix: when a judgment backend is configured, ask it
+  whether each content clause beside the ok changes a shown record (Noul), and treat a clause
+  with distinctive words the heuristic cannot place as a change.

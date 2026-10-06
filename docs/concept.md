@@ -360,10 +360,20 @@ with four cheap, deterministic checks, none of which calls a model:
    clause holds its ID or a distinctive word of its title, statement, examples or quote
    ("No, the pow example is wrong, it should return 9. Ok, carry on" objects to the records
    about pow); an objection that refers to "the example" or "the test" in general and names
-   none objects to every record. The same holds for any objection or change clause (an
-   objection word, or a clause opening with but, though, except, ...) when none of the
-   prompt's objections names a record by ID or in plain words among the records the owner was
-   shown: "ok, except 3 minus 5 should return 0" confirms nothing, since the correction may be
+   none objects to every record. A correction needs no objection word: a change clause is
+   any clause that holds an objection word, opens with but, though, except, ..., holds a
+   directive (make, accept, also, too, return, actually, ...) beside a word naming behaviour
+   ("ok, and make cube accept floats too"), or says anything in plain words about a record
+   the owner was shown, through its title, statement, examples, assumptions, won't list or a
+   decision's alternatives, numbers included ("ok, please also accept floats" against a
+   decision whose alternative is floats, "ok. Actually multiply by 0 gives 1" against an
+   example saying 0); a clause naming no shown record still asks for a change when it holds
+   a directive or a number ("ok, 3 minus 5 is 0 for us"). Only a clause repeating a
+   decision's chosen option ("ok, orders only") or praising a record by its title ("ok, the
+   multiply looks good") is not one. A change
+   clause objects to the records it names; when none of the prompt's change clauses names a
+   record by ID or in plain words among the records the owner was shown, it objects to every
+   one: "ok, except 3 minus 5 should return 0" confirms nothing, since the correction may be
    about any of them. When the prompt objects to something else, the quote must be the
    owner's whole statement ("Ok, carry on with the tests", never a bare "Ok" cut from it),
    the approval records `prompt_objects`, and the merge-boundary glance flags it and prints
