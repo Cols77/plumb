@@ -107,7 +107,8 @@ allocation function"):
    the oid read in step 1, or the all-zero oid when the ref did not exist (create only).
 4. If `update-ref` fails because the ref moved, go back to step 1 after a random 5 to 50 ms
    pause, at most 50 times and at most 3 s; then fail with exit 2 and
-   "plumb: could not reserve an ID (refs/plumb/ids busy); try again". A number is never
+   "plumb: could not reserve an ID (another session is creating records); try again in a
+   moment" (`owner_text.ID_BUSY`, 11.1). A number is never
    handed out twice: it is handed out only after the compare-and-swap succeeded.
 
 `plumb.ids.peek(paths, kind)` returns the ID `reserve` would hand out without writing; every
@@ -138,7 +139,8 @@ once).
 
 When the root is not inside a git work tree, or `git` cannot run, `reserve` returns the
 highest local number plus one and the command prints one line: "plumb: SR-080 is not
-reserved (no git repository); plumb merge-fix fixes a collision later". Nothing fails.
+reserved (no git repository); /plumb merge-fix fixes a collision later" (`owner_text.ID_UNRESERVED`,
+11.1). Nothing fails.
 
 ### 4.5 Entry points (one test each)
 
@@ -236,7 +238,7 @@ ID; the pending merge message is rewritten (5.3).
 - Idempotent: a second run finds no collision and writes nothing.
 - Output, for the agent to relay in the owner's terms: "SR-070 "export csv" from the merged
   branch is now SR-081 (4 references in 3 files; the owner's approval carried; 2 commits'
-  trailers mapped)".
+  trailers mapped)" (`owner_text.RENUMBERED`, 11.1).
 - Exit 0 when nothing is left to fix, 1 when a collision remains (for example a side that is
   not a parseable record), 2 on usage errors.
 
@@ -343,7 +345,9 @@ identical files for their common lines, so they merge without conflict and witho
 duplicates (identical add/add). A legacy line that arrives later by a merge (step 3's union
 case) is read by every reader at once (6.3) and moved by the next `plumb log migrate`.
 `--check` exits 1 while legacy lines remain; `plumb validate` and the merge report show
-"N legacy log lines not migrated (plumb log migrate)" as a warning, never a hold.
+"plumb: N log entries are still in the old format (say "migrate the logs", or /plumb migrate
+the logs)" (`owner_text.LEGACY_LOG`, 11.1) as a warning, never a hold. The owner reaches the
+migration only through those words (section 11); the agent runs `plumb log migrate`.
 `plumb init` stops creating the JSONL files. `.plumb/.gitattributes` keeps
 `log/*.jsonl merge=union` for the transition.
 
@@ -365,11 +369,13 @@ case) is read by every reader at once (6.3) and moved by the next `plumb log mig
   `%Y` are the two sides' labels (git 2.44 or later); with an older git, the driver reads
   the labels from `HEAD` and `MERGE_HEAD`/`REBASE_HEAD`/`CHERRY_PICK_HEAD`.
 - `plumb hooks uninstall` removes exactly these lines and keys. `plumb hooks status` reports
-  "merge driver: installed | not installed | attribute without driver".
+  "merge driver: installed | not installed | attribute without driver", the last two
+  followed by "(/plumb init installs it)" (`owner_text.DRIVER_STATUS`, 11.1).
 
 A clone where the driver is not configured falls back to git's text merge for record files
 (the attribute names an unknown driver); `plumb check --merge` then reports any conflict
-markers as an unparsable record (exit 1) with "/plumb init installs the record merge".
+markers as an unparsable record (exit 1) with "/plumb init installs the record merge"
+(`owner_text.NO_DRIVER`, 11.1).
 
 ### 7.2 Invocation
 
@@ -403,14 +409,14 @@ between the sides merges cleanly and does not change the record hash.
 
 The merged frontmatter and body, written to `OURS`, exit 0. The driver prints one line per
 record to stderr, which git shows: "plumb: SR-005 merged field by field (links +2 from
-feat-x, EX-4 from feat-x renumbered from EX-3)".
+feat-x, EX-4 from feat-x renumbered from EX-3)" (`owner_text.MERGED_FIELDS`, 11.1).
 
 ### 7.5 Both sides added the same ID (an ID collision)
 
 When the base is empty (an add/add) and both sides declare the same `id` with different
 content, this is an ID collision, not an intent conflict: two different records. The driver
 writes ours unchanged, prints "plumb: SR-070 was created on both sides as different records;
-/plumb merge-fix renumbers the incoming one", and exits 1. git stops with the path unmerged,
+/plumb merge-fix renumbers the incoming one" (`owner_text.ADD_ADD`, 11.1), and exits 1. git stops with the path unmerged,
 and its index keeps both versions as stages 2 and 3, which `plumb merge-fix` reads (5.1).
 When the add/add contents are equal after parsing, the driver writes one and exits 0.
 
@@ -418,7 +424,9 @@ When the add/add contents are equal after parsing, the driver writes one and exi
 
 When a side cannot be parsed, the driver falls back to `git merge-file` on the whole text
 and returns its status (conflict markers, exit 1). `plumb validate` then names the
-unparsable file. This is the only case where a record file gets conflict markers.
+unparsable file in the owner's terms: "plumb: the record file of SR-005 "relay checks" holds
+both versions of a text merge; say "keep mine" or "keep theirs" for it" (`owner_text.UNPARSABLE`,
+11.1). This is the only case where a record file gets conflict markers.
 
 ## 8. Intent conflicts (SR-076)
 
@@ -462,7 +470,9 @@ the merge boundary holds instead (10): `plumb check --merge`, `plumb merge-check
 pre-push hook and the optional pre-merge-commit hook report every open intent conflict and
 exit 4 until the owner has chosen. With the pre-merge-commit hook installed, git does not
 record the merge commit: the merged files stay staged and the merge stays in progress until
-the choice is made, then `git commit` completes it.
+the choice is made; the owner then says "finish the merge" (or `/plumb merge-check`, which
+offers it) and the agent completes it with `git commit`. The owner never types a git
+command.
 
 ### 8.3 The conflict card
 
@@ -499,7 +509,10 @@ plumb conflict propose <IC> --file <record.yaml>
 
 - **Owner's terminal.** Without `--prompt`, the command writes `by: owner` through
   `approvals.require_owner` (refused under the session marker and without an interactive
-  terminal, exit 3, nothing written; concept 4.6 check 4).
+  terminal, exit 3, nothing written; concept 4.6 check 4). The refusal reads "plumb: only
+  the owner chooses a side; say which version to keep (for example "keep feat-x's")"
+  (`owner_text.CHOOSE_REFUSED`, 11.1), and a choice applied reads "plumb: SR-005 "relay
+  checks" now holds feat-x's version" (`owner_text.CHOSEN`).
 - **Relayed.** With `--prompt` and `--quote`, the agent relays the owner's own words. The
   prompt must be logged by the host's prompt hook (`approvals.owner_prompt`), the quote must
   be verbatim in it, the conflict card must be in the stated set of the reply before that
@@ -529,7 +542,9 @@ choice is not itself an approval of new content.
 Links, pins and examples added on both sides (7.3), formatting, an ID collision (7.5), and
 log entries (6) never produce one. A record deleted on one side and changed on the other is
 git's modify/delete conflict (the driver is not called); `plumb check --merge` lists it as
-an unmerged record path (exit 1) with the two choices. Records are superseded, not deleted,
+an unmerged record path (exit 1) with the two choices in plain words: "SR-005 "relay checks"
+was changed on main and removed on feat-x; say "keep the changed one" or "keep it removed""
+(`owner_text.MODIFY_DELETE`, 11.1). Records are superseded, not deleted,
 so this is rare.
 
 ## 9. Cross-worktree awareness (SR-078, SR-079)
@@ -595,7 +610,7 @@ seen (the delta's seen set, sp5 3) and the records the current prompt is about.
 ### 9.4 Where the owner and the agent see it
 
 - **Session brief:** one line per overlap with this worktree's changing records, at most
-  `awareness.brief_lines` (3), then "+N more (plumb status)":
+  `awareness.brief_lines` (3), then "+N more (/plumb status)" (`owner_text.MORE_OVERLAPS`, 11.1):
   `plumb: SR-005 "relay checks" is also being changed on branch feat-x`.
 - **Prompt delta:** when a record relevant to the prompt (sp1 6.2 step 2) is being changed
   elsewhere, one line through `present.delta.emit`, keyed by
@@ -627,22 +642,28 @@ sp1 budgets; a check that runs out of budget is skipped with "plumb: awareness s
 
 | Section | Content | Exit |
 |---|---|---|
-| `id_collisions` | two record files with one ID; record paths unmerged by an add/add; each with its paths and "/plumb merge-fix" | 1 |
-| `unmerged` | record paths git left unmerged for another reason (modify/delete, an unparsable side, no driver), with the plain choices | 1 |
+| `id_collisions` | two record files with one ID; record paths unmerged by an add/add; each with its titles and "/plumb merge-fix fixes it" | 1 |
+| `unmerged` | record paths git left unmerged for another reason (modify/delete, an unparsable side, no driver), with the plain choices (8.5, 7.6) | 1 |
 | `intent_conflicts` | every open `IC`, as its card (8.3) | 4 |
 
 Exit precedence stays 1, then 5, then 4 (sp3). Legacy log lines not migrated are a warning
-line. The report runs on the merge result: the working tree, including staged and
+line (6.5). The report runs on the merge result: the working tree, including staged and
 uncommitted changes, so it can run in the middle of a merge.
 
 **pre-merge-commit hook.** `plumb merge-check --install-pre-merge-commit` and
 `--uninstall-pre-merge-commit` mirror the pre-push hook (sp3 8): the shared hooks directory
 (`git rev-parse --git-path hooks/pre-merge-commit`), a marker line, a foreign hook left
-untouched with the line to call plumb from it. The hook runs
+untouched. For a foreign hook the text output says, in plain words, "your own pre-merge-commit
+hook was kept; say "call plumb from my merge hook" to add it" (`owner_text.FOREIGN_HOOK`,
+11.1); the line to add is only in `--json` (`hook_line`), for the agent that edits the hook
+when the owner says so. The hook runs
 `plumb merge-check --hook pre-merge-commit`: the base is `HEAD` (the first parent), the
 change is the staged merge result, the claims range is `HEAD..MERGE_HEAD`, and the full
 suite runs once as in sp3 4 unless `merge.premerge_run_full: false`. A non-zero report
-refuses the merge commit; the merge stays in progress. git runs this hook only when
+refuses the merge commit; the merge stays in progress, and the report ends with
+"plumb: the merge is not recorded yet; once this is settled, say "finish the merge""
+(`owner_text.MERGE_HELD`, 11.1) after the sections' own pointers (`/plumb conflicts`,
+`/plumb merge-fix`). git runs this hook only when
 `git merge` commits on its own; a merge stopped by a conflict and finished with
 `git commit` is covered by the pre-push hook and by `/plumb merge-check`.
 
@@ -660,10 +681,56 @@ words; the agent runs the CLI:
 | Check a merge | `/plumb merge-check` | `plumb merge-check` / `plumb check --merge` |
 | Who else changes what | `/plumb status` or "is anyone else changing X?" | `plumb status` |
 | The hooks at merge and push | "check merges before they are recorded" | `plumb merge-check --install-pre-merge-commit`, `--install-pre-push` |
+| Call plumb from the owner's own hook | "call plumb from my merge hook" | edits the hook with the `hook_line` of `--json` (10) |
+| Finish a held merge | "finish the merge" (offered by `/plumb merge-check` once nothing holds it) | `plumb merge-check`, then `git commit` |
+| Move old log lines to per-entry files | "migrate the logs" or `/plumb migrate the logs` | `plumb log migrate` (it changes no intent and approves nothing) |
+| Choose for a file left in text-merge form, or a modify/delete | "keep mine" / "keep theirs", "keep the changed one" / "keep it removed" | the matching `git checkout --ours/--theirs` or `git rm`, then `plumb validate` |
 
 Cards, hook lines and error messages name the `/plumb` command or the words to say, never a
 shell command (R14). The CLI forms in this spec are the agent's interface. The feature to
-owner entry point matrix (R14 deliverable) gains these rows.
+owner entry point matrix (R14 deliverable) gains these rows, and the `/plumb` command
+template routes "merge-fix", "conflicts", "merge-check", "migrate the logs" and "finish the
+merge" to the agent commands above.
+
+### 11.1 Owner-visible text: one choke point
+
+Guarantee: no text SP6 shows the owner (cards, hook output, the merge report, warnings,
+error lines, git's merge output from the driver) names a bare `plumb <verb>` or any other
+shell command; it names a `/plumb` command or the plain words to say.
+
+Choke point: every SP6 owner-visible string is a constant or a small formatting function
+of one coordinator-owned module, `plumb.present.owner_text`, written in phase 0; lanes
+import it and never inline owner wording. The module also exports
+`bare_cli_verbs(text) -> list[str]`, which returns every `plumb <verb>` in `text` whose verb
+is a `cli.ROUTES` key, that is not preceded by `/` and whose verb is not directly followed
+by `:` (so `/plumb merge-fix` and the label "plumb log: not available in this build" pass,
+and `plumb merge-fix`, `uv run plumb log migrate` do not). The CLI's own `--help`, `--json` and
+the agent-facing forms in this spec are the agent's interface and are not owner text.
+
+Every surface, with its constant and its test (one test per surface; each renders the
+surface for real and asserts `bare_cli_verbs(output) == []`):
+
+| Surface | Constant(s) | Section | Test |
+|---|---|---|---|
+| ID fallback line of every record-creating command | `ID_UNRESERVED` | 4.4 | `tests/ids/test_owner_text.py::test_fallback_line` |
+| ID reservation busy error | `ID_BUSY` | 4.2 | `tests/ids/test_owner_text.py::test_busy_error` |
+| `merge-fix` text output | `RENUMBERED` | 5.6 | `tests/ids/test_owner_text.py::test_merge_fix_output` |
+| Merge report `id_collisions` section (check --merge, validate --merge, merge-check, pre-push, pre-merge-commit) | `COLLISION` | 10 | `tests/ids/test_owner_text.py::test_collision_section` |
+| Legacy-log warning in `plumb validate` and in the merge report | `LEGACY_LOG` | 6.5, 10 | `tests/logs/test_owner_text.py::test_validate_warning`, `::test_merge_report_warning` |
+| Driver stderr: merged field by field, add/add collision, text fallback | `MERGED_FIELDS`, `ADD_ADD`, `UNPARSABLE` | 7.4, 7.5, 7.6 | `tests/mergedriver/test_owner_text.py::test_driver_stderr` (all three cases) |
+| `hooks status` driver line | `DRIVER_STATUS` | 7.1 | `tests/mergedriver/test_owner_text.py::test_driver_status` |
+| Merge report `unmerged` section (modify/delete, unparsable side, no driver) | `MODIFY_DELETE`, `UNPARSABLE`, `NO_DRIVER` | 7.1, 7.6, 8.5, 10 | `tests/mergedriver/test_owner_text.py::test_unmerged_section` |
+| The conflict card, wherever it appears (`plumb conflicts`, review, merge report, stop hook) | `conflict_card` lines | 8.3 | `tests/mergedriver/test_owner_text.py::test_conflict_card` |
+| `conflict choose` refusals and results | `CHOOSE_REFUSED`, `CHOSEN` | 8.4 | `tests/mergedriver/test_owner_text.py::test_choose_messages` |
+| Pre-merge-commit refusal and foreign-hook install output | `MERGE_HELD`, `FOREIGN_HOOK` | 10 | `tests/mergedriver/test_owner_text.py::test_premerge_hook_output` |
+| Session brief overlap lines and overflow | `OVERLAP`, `MORE_OVERLAPS` | 9.4 | `tests/awareness/test_owner_text.py::test_brief_lines` |
+| Prompt delta and stop hook overlap lines | `OVERLAP` | 9.4 | `tests/awareness/test_owner_text.py::test_delta_and_stop_lines` |
+| Status card overlap and conflict counts | `OVERLAP_CARD`, `CONFLICTS_CARD` | 8.3, 9.4 | `tests/awareness/test_owner_text.py::test_status_card` |
+| `plumb status` overlap section | `OVERLAP` | 9.4 | `tests/awareness/test_owner_text.py::test_status_section` |
+
+`tests/present/test_owner_text.py` (phase 0) tests `bare_cli_verbs` itself and asserts that
+every constant of the module passes it. The e2e scenarios (14 items 2 and 3) apply it to
+every hook output they capture.
 
 ## 12. Interfaces
 
@@ -703,6 +770,12 @@ def overlaps(core: CoreAPI, mine: Iterable[str], *, deadline: Any = None,
 def brief_lines(core: CoreAPI, deadline: Any) -> list[str]: ...
 def delta_lines(core: CoreAPI, ids: Iterable[str]) -> list[Line]: ...  # keyed for present.delta
 def snapshot_fields(core: CoreAPI, seen: Iterable[str]) -> Mapping[str, Any]: ...
+
+# plumb.present.owner_text (coordinator, phase 0; 11.1)
+ID_UNRESERVED, ID_BUSY, RENUMBERED, COLLISION, LEGACY_LOG, MERGED_FIELDS, ADD_ADD,
+UNPARSABLE, NO_DRIVER, DRIVER_STATUS, MODIFY_DELETE, CHOOSE_REFUSED, CHOSEN, MERGE_HELD,
+FOREIGN_HOOK, OVERLAP, MORE_OVERLAPS, OVERLAP_CARD, CONFLICTS_CARD: str  # format strings
+def bare_cli_verbs(text: str) -> list[str]: ...
 ```
 
 New data classes (contracts, frozen, defaults on every field): `IdState`, `Collision`
@@ -756,7 +829,8 @@ No hook runs `merge-fix`, the migration or the driver.
    `plumb log migrate` moves its new lines.
 5. The hook latency tests still pass, with the overlap check under 50 ms warm for five
    worktrees and no git process on the prompt path.
-6. No owner-facing text instructs a shell command (R14); every new owner-only write
+6. No owner-facing text instructs a shell command (R14): every surface of 11.1 has its
+   passing test, and every SP6 owner string lives in `plumb.present.owner_text`; every new owner-only write
    (`plumb conflict choose` without `--prompt`) has the exit-3 test with no marker and stdin
    a pipe holding "y".
 7. `docs/concept.md` 4.3, 4.7 and 7.5 and the README describe the shipped behaviour; medium

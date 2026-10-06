@@ -93,7 +93,7 @@ through plumb's commands (`plumb link`, `plumb repin`, `plumb verify`), which to
 
 | Owner | Paths |
 |---|---|
-| Coordinator (phases 0, 2, 3) | `src/plumb/contracts.py`, `config.py`, `cli.py`, `api.py`, `store.py`, `confirm.py`, `claims.py`, `validate.py`, `importer/apply.py`, `boundary/report.py`, `boundary/cli.py`, `boundary/__init__.py`, `present/render.py`, `present/cli.py`, `present/report.py`, `hosts/claude_code/session_start.py`, `prompt.py`, `stop.py`, `post_edit.py`, `snapshot.py`, `install.py`, `cli.py`, `hosts/claude_code/templates/**`, the stub packages' `__init__.py` API names; `tests/gitrepo.py`, `tests/logutil.py` (phase 0 only; then LOGS), `tests/integration/**`, `tests/test_smoke.py`; `.plumb/**`, `.claude/**`, `CLAUDE.md`, `README.md`, `docs/**` (lanes only append to `docs/followups.md`) |
+| Coordinator (phases 0, 2, 3) | `src/plumb/contracts.py`, `config.py`, `cli.py`, `api.py`, `store.py`, `confirm.py`, `claims.py`, `validate.py`, `importer/apply.py`, `boundary/report.py`, `boundary/cli.py`, `boundary/__init__.py`, `present/render.py`, `present/cli.py`, `present/report.py`, `present/owner_text.py` (new), `hosts/claude_code/session_start.py`, `prompt.py`, `stop.py`, `post_edit.py`, `snapshot.py`, `install.py`, `cli.py`, `hosts/claude_code/templates/**`, the stub packages' `__init__.py` API names; `tests/gitrepo.py`, `tests/logutil.py` (phase 0 only; then LOGS), `tests/present/test_owner_text.py` (new), `tests/integration/**`, `tests/test_smoke.py`; `.plumb/**`, `.claude/**`, `CLAUDE.md`, `README.md`, `docs/**` (lanes only append to `docs/followups.md`) |
 | IDS | `src/plumb/ids/**` (new; keeps the phase-0 API names); `tests/ids/**` (new) |
 | LOGS | `src/plumb/log.py`, `src/plumb/logcmd.py` (new), `src/plumb/paths.py`, `src/plumb/merge.py` (`log_integrity` and its helpers only), `src/plumb/verify/evidence.py` (`load_index` and its cursor only), `src/plumb/commands.py` (`init`'s log files and `GITATTRIBUTES_LINES` only); `tests/logs/**` (new), `tests/logutil.py` (after phase 0), `tests/core/test_log.py` |
 | MERGEDRIVER | `src/plumb/mergedriver/**` (new; keeps the phase-0 API names), `src/plumb/boundary/premerge.py` (new); `tests/mergedriver/**` (new) |
@@ -165,9 +165,11 @@ compatibility `judgment` from MERGEDRIVER); the stop and post-edit hooks write
    `plumb.logcmd`; `merge-driver`, `conflict`, `conflicts` -> `plumb.mergedriver.cli`. Each
    lane's `cli` module starts as a stub that prints "not available in this build" (exit 2);
    `plumb --help` lists a verb only when its module is importable (SR-068).
-6. **The `/plumb` command template** names `/plumb merge-fix`, `/plumb conflicts`, choosing
-   a side in plain words, and overlaps under `/plumb status` (spec 11), and the R14 feature
-   matrix in `docs/` gains the SP6 rows.
+6. **The `/plumb` command template** names `/plumb merge-fix`, `/plumb conflicts`,
+   `/plumb merge-check`, choosing a side in plain words, "migrate the logs", "finish the
+   merge", "call plumb from my merge hook", the text-merge and modify/delete choices, and
+   overlaps under `/plumb status` (spec 11), and the R14 feature matrix in `docs/` gains the
+   SP6 rows.
 7. **Test helpers.** `tests/gitrepo.py` (temporary repositories, worktrees, clones);
    `tests/logutil.py` with `entries(root, stream)`, `raw_entries(root, stream)` and
    `tamper(root, stream, index, mutate)`, written against today's JSONL; the ten test files
@@ -179,11 +181,19 @@ compatibility `judgment` from MERGEDRIVER); the stop and post-edit hooks write
    `tests/integration/test_contracts.py` checks every stub against its signature.
 8. **Records.** FEAT-006, INT-022, SR-070 to SR-079 and DEC-020 to DEC-022 exist (written
    with this plan). Phase 0 links each stub module `implemented_by` its SR.
+9. **Owner text, the R14 choke point (spec 11.1).** `src/plumb/present/owner_text.py` holds
+   every SP6 owner-visible string as a constant or format function (the list of spec 12) and
+   `bare_cli_verbs(text)`, matched against `cli.ROUTES` keys. Lanes import these and never
+   write owner wording inline; a wording change goes through the coordinator.
+   `tests/present/test_owner_text.py`: `test_bare_cli_verbs_flags_plumb_verbs` (`plumb
+   merge-fix`, `uv run plumb log migrate`), `test_slash_command_passes` (`/plumb merge-fix`,
+   `/plumb status`), `test_plumb_colon_prefix_passes` ("plumb: SR-005 ..."),
+   `test_every_constant_passes`.
 
 ### 3.3 Phase-0 gate
 
 ```
-uv run pytest tests/core tests/host tests/merge tests/verify/test_evidence.py tests/verify/test_aborted.py tests/integration/test_contracts.py tests/test_smoke.py -q
+uv run pytest tests/core tests/host tests/merge tests/verify/test_evidence.py tests/verify/test_aborted.py tests/integration/test_contracts.py tests/present/test_owner_text.py tests/test_smoke.py -q
 uv run ruff check src tests
 uv run plumb validate && uv run plumb drift
 uv run plumb --help        # lists only importable verbs
@@ -222,7 +232,7 @@ focused set once on `main`; it does not run the whole suite until phase 2.
 | LOGS | `log.append`, `read`, `verify_chain` (signatures kept, `since` added), `LogEntry.name` | every lane through `CoreAPI` | today's JSONL |
 | MERGEDRIVER | `open_conflicts`, `conflict_card`, `stated_entries`, `install`, `uninstall`, `status`, `boundary.premerge` | the merge report, the hooks, `hooks install` | no conflicts; "merge driver: not available" |
 | AWARENESS | `publish`, `note_edit`, `overlaps`, `brief_lines`, `delta_lines`, `snapshot_fields` | the hooks, the status card, `plumb status` | nothing shown |
-| Coordinator | the data classes, routes, call sites and config keys of 3.2 | all | frozen; changes only through the coordinator |
+| Coordinator | the data classes, routes, call sites and config keys of 3.2; `present.owner_text` (every owner-visible string, `bare_cli_verbs`) | all | frozen; changes only through the coordinator |
 
 Unit tests never import another lane's new modules; they use the phase-0 stubs or local
 fakes. MERGEDRIVER's `merge_texts` takes `reserve_ic` as a parameter, so its unit tests need
@@ -237,12 +247,12 @@ with every reference rewritten and nothing in history touched.
 | # | Task | SR | Est. |
 |---|---|---|---|
 | I1 | `ids/ref.py`: read and write the ref blob (`rev-parse`, `cat-file`, `hash-object -w`, `update-ref` with the old oid or the zero oid), canonical JSON, `recent` capped at 50 | SR-070 | 20 min |
-| I2 | `ids/reserve.py`: `reserve` (batch per prefix, compare-and-swap loop with jittered retry, 50 tries / 3 s, exit-2 message), `peek`, `observe`, `state`; the no-git fallback line; `IC` prefix | SR-070 | 25 min |
+| I2 | `ids/reserve.py`: `reserve` (batch per prefix, compare-and-swap loop with jittered retry, 50 tries / 3 s, exit-2 message `owner_text.ID_BUSY`), `peek`, `observe`, `state`; the no-git fallback line `owner_text.ID_UNRESERVED`; `IC` prefix | SR-070 | 25 min |
 | I3 | Seeding from this worktree and every local branch tip (`for-each-ref`, one `ls-tree` per branch, once per clone); `plumb ids` (status) and `plumb ids sync` in `ids/cli.py` | SR-070 | 15 min |
-| I4 | `ids/collisions.py`: unmerged add/add record paths (stages 2 and 3), duplicate IDs at different paths, `--from <ref>` preview; `collisions(core, base)` for the merge report (exit 1, "/plumb merge-fix") | SR-071, SR-072 | 20 min |
+| I4 | `ids/collisions.py`: unmerged add/add record paths (stages 2 and 3), duplicate IDs at different paths, `--from <ref>` preview; `collisions(core, base)` for the merge report (exit 1, `owner_text.COLLISION`) | SR-071, SR-072 | 20 min |
 | I5 | `ids/mergefix.py`: keep the first parent, reserve after `observe`, rewrite every reference the incoming side introduced (spec 5.3, each place), keep both when both sides introduced it, repin pure-renumber pins, rewrite `MERGE_MSG`/`SQUASH_MSG` trailers, `git add`, `--dry-run` with `peek`, idempotent | SR-071 | 35 min |
 | I6 | The `renumber` event; `approval_aliases` (carried only while the content with the old ID hashes to the pin); `trailer_aliases`; the `plumb validate` re-check of `renumber` entries through the phase-0 call site | SR-071 | 25 min |
-| I7 | `plumb merge-fix` CLI (`ids/cli.py`): output in the owner's terms (titles), `--json`, exits 0/1/2 | SR-071 | 10 min |
+| I7 | `plumb merge-fix` CLI (`ids/cli.py`): output in the owner's terms (titles, `owner_text.RENUMBERED`), `--json`, exits 0/1/2 | SR-071 | 10 min |
 
 Total: 150 min. Merge points: after I3, after I6, at the end.
 
@@ -285,6 +295,10 @@ Tests (`tests/ids/`), each marked with its SR:
   `test_claims_reads_incoming_trailers_as_new_id`, `test_validate_rejects_forged_renumber`
 - I7 `test_cli.py`: `test_output_names_titles_not_paths`, `test_json_shape`,
   `test_exit_codes`
+- `test_owner_text.py` (spec 11.1, one test per surface, each asserting
+  `bare_cli_verbs(output) == []`): `test_fallback_line` (SR-070), `test_busy_error`
+  (SR-070), `test_merge_fix_output` (SR-071), `test_collision_section` (SR-072, through
+  `plumb check --merge` and `plumb merge-check`)
 
 Definition of done: spec 14 items 1 and 3 for SR-070 to SR-072.
 
@@ -299,7 +313,7 @@ accept both formats; integrity checks that still catch an edit or a deletion.
 | L2 | `log.append`: per-worktree lock, head pointer (rebuilt by a scan), temporary file plus no-replace `os.link`, fsync, new suffix on a clash | SR-073 | 25 min |
 | L3 | `log.read`: both formats, dedup by digest, order by `at` then chain then name, the pack cache, `LogEntry.name`, `since`; `verify_chain` over both formats with file names in the messages | SR-073, SR-074 | 30 min |
 | L4 | `verify/evidence.load_index`: the name cursor and the rebuild when an entry arrives out of order; `merge.log_integrity`: one `git diff --name-status` for entry files, the legacy line check by digest | SR-073, SR-074 | 25 min |
-| L5 | `logcmd.py`: `plumb log migrate [--dry-run] [--check] [--json]` (refuse on a bad line, skip existing names, truncate the legacy files only when complete, rebuild caches); `plumb validate` and the merge report's legacy-line warning through the phase-0 call; `plumb init` stops creating JSONL files | SR-074 | 30 min |
+| L5 | `logcmd.py`: `plumb log migrate [--dry-run] [--check] [--json]` (refuse on a bad line, skip existing names, truncate the legacy files only when complete, rebuild caches); `plumb validate` and the merge report's legacy-line warning (`owner_text.LEGACY_LOG`) through the phase-0 call; `plumb init` stops creating JSONL files | SR-074 | 30 min |
 | L6 | `tests/logutil.py` moves to the per-entry format (reads both), so the ten rewired test files pass unchanged; `SR-006`'s statement and EX-2 updated to the per-entry layout through `plumb capture` `updates` (it stays proposed) | SR-073 | 15 min |
 | L7 | Latency: a warm `read` of 2000 events under 60 ms with the pack cache, cold under 1 s, measured in `tests/logs/test_read_cost.py` | SR-073 | 10 min |
 
@@ -336,6 +350,8 @@ Tests (`tests/logs/`), each marked with its SR:
   (EX-5), `test_check_exits_1_while_legacy_lines_remain`, `test_dry_run_writes_nothing`,
   `test_init_creates_no_jsonl`
 - `test_single_writer.py`: `test_only_log_py_writes_under_plumb_log` (conformance scan)
+- `test_owner_text.py` (spec 11.1): `test_validate_warning`, `test_merge_report_warning`
+  (SR-074; each with legacy lines left and asserting `bare_cli_verbs(output) == []`)
 - L7 `test_read_cost.py`
 
 Definition of done: spec 14 items 1 and 4 for SR-073 and SR-074 (item 4's migration of
@@ -349,7 +365,7 @@ the owner resolves; the merge boundary and a pre-merge-commit hook hold it.
 | # | Task | SR | Est. |
 |---|---|---|---|
 | D1 | `mergedriver/merge.py`: `merge_texts` (pure): the field rules of spec 7.3 (links, string lists, examples with EX renumbering, scalars, body via `git merge-file -p`), stable key order, notes for stderr | SR-075 | 35 min |
-| D2 | Add/add and fallbacks: same ID and different content -> ours, exit 1 with the merge-fix line; equal content -> one, exit 0; unparsable side -> `git merge-file` on the whole text and its status | SR-075 | 10 min |
+| D2 | Add/add and fallbacks: same ID and different content -> ours, exit 1 with `owner_text.ADD_ADD`; equal content -> one, exit 0; unparsable side -> `git merge-file` on the whole text and its status (`owner_text.UNPARSABLE` in validate and the `unmerged` section) | SR-075 | 10 min |
 | D3 | `mergedriver/driver.py` and `cli.py`: `plumb merge-driver %O %A %B %P %X %Y` (labels, older-git fallback from `HEAD`/`MERGE_HEAD`/`REBASE_HEAD`/`CHERRY_PICK_HEAD`), import-light, under 300 ms | SR-075 | 15 min |
 | D4 | `mergedriver/install.py`: `.plumb/.gitattributes` lines and git config keys, idempotent, foreign lines kept, uninstall exact, status line; called from `hooks install` (phase-0 site) | SR-075 | 15 min |
 | D5 | Intent conflict: the `conflict` block (spec 8.1) with `IC` from `reserve_ic`; `open_conflicts`; `plumb show IC-###`; `conflict_card` (spec 8.3) with the optional compatibility judgment (once per pair of hashes, logged, 5 s limit, "no judgment available" otherwise); `stated_entries` | SR-076 | 30 min |
@@ -394,6 +410,12 @@ Tests (`tests/mergedriver/`), each marked with its SR:
   (EX-2, real `git merge` with the hook installed: no merge commit, `MERGE_HEAD` kept,
   output names `/plumb conflicts`), `test_commit_completes_after_choice`,
   `test_foreign_hook_untouched` (EX-3), `test_uninstall_removes_only_plumb_hook`
+- `test_owner_text.py` (spec 11.1, one test per surface, each asserting
+  `bare_cli_verbs(output) == []`): `test_driver_stderr` (merged, add/add and text fallback;
+  SR-075), `test_driver_status` (SR-075), `test_unmerged_section` (modify/delete, unparsable
+  side, no driver; SR-077), `test_conflict_card` (SR-076), `test_choose_messages`
+  (refusal and result; SR-076), `test_premerge_hook_output` (refusal with `MERGE_HELD`, and
+  the foreign-hook install text; SR-077)
 
 Definition of done: spec 14 items 1, 2 (driver and conflict parts) and 6 for SR-075 to
 SR-077.
@@ -408,7 +430,7 @@ works on, from cheap read-only reads.
 | A1 | `awareness/gitfiles.py`: the common directory, worktrees (`worktrees/*/gitdir`, `HEAD`), branch tips (`refs/heads/**`, `packed-refs`) read as files; missing paths ignored | SR-079 | 20 min |
 | A2 | `awareness/publish.py`: `publish` (changed records, `edited`/`new`/`ends`, the committed part recomputed only when `HEAD` moved), `note_edit` (append a path, no index), atomic write of `changing.json` | SR-079 | 25 min |
 | A3 | `awareness/scan.py`: `overlaps` over worktrees (age limit, own worktree skipped, record mapping with the reader's index too, the other side's hash) and, at session start, branches without a worktree (tip cache, `branch_max`, `branch_scan_ms`, default branch skipped) | SR-078, SR-079 | 35 min |
-| A4 | `awareness/lines.py`: `brief_lines` (cap and "+N more"), `delta_lines` keyed `(overlap, record, branch, other hash)` for `present.delta`, `snapshot_fields` (`overlaps`, `overlap_labels`); wording of spec 9.4 in the owner's terms | SR-078 | 25 min |
+| A4 | `awareness/lines.py`: `brief_lines` (cap and `owner_text.MORE_OVERLAPS`, "+N more (/plumb status)"), `delta_lines` keyed `(overlap, record, branch, other hash)` for `present.delta`, `snapshot_fields` (`overlaps`, `overlap_labels`); wording of spec 9.4 in the owner's terms | SR-078 | 25 min |
 | A5 | Budget: the deadline passed by the hooks; "awareness skipped (budget)" to the error log; the 50 ms warm check with five worktrees and no git process on the prompt path | SR-079 | 20 min |
 | A6 | `plumb status` overlap section data (`present/report.py` renders it through the phase-0 site) | SR-078 | 10 min |
 
@@ -436,6 +458,10 @@ Tests (`tests/awareness/`), each marked with its SR:
 - A5 `test_budget.py`: `test_five_worktrees_under_50_ms_warm_no_git_process`
   (SR-079 EX-1; `subprocess.run` patched to fail the test),
   `test_budget_exhausted_skips_quietly`
+- `test_owner_text.py` (spec 11.1, one test per surface, each asserting
+  `bare_cli_verbs(output) == []`, SR-078): `test_brief_lines` (with the overflow line),
+  `test_delta_and_stop_lines`, `test_status_card` (Unicode and ASCII),
+  `test_status_section`
 
 Definition of done: spec 14 items 1, 2 (awareness part) and 5 for SR-078 and SR-079.
 
@@ -470,7 +496,8 @@ Definition of done: spec 14 items 1, 2 (awareness part) and 5 for SR-078 and SR-
 - Write `tests/integration/test_parallel_e2e.py` (spec 14 items 2 and 3): the two-worktree
   scenario and the clone scenario, end to end through the CLI and the real hooks
   (session-start, prompt and stop driven as in `test_session_e2e.py`), each marked with every
-  SR it covers. Run it once in the foreground.
+  SR it covers; every hook output and merge report they capture passes
+  `owner_text.bare_cli_verbs` (spec 11.1). Run it once in the foreground.
 - Update `docs/concept.md` 4.3 (IDs reserved through `refs/plumb/ids`), 4.7 (the migration
   is done) and 7.5 (the three new sections), the README (parallel work, in the owner's
   terms, no shell commands for the owner) and the R14 feature matrix.
@@ -505,7 +532,8 @@ spec and the merged code, and try the scenarios themselves in a temporary reposi
    both versions, stays unconfirmed, and only the owner's explicit words choose (R2).
 4. Awareness lines appear once, in the owner's terms, and cost no git process per prompt.
 5. `plumb check --merge` holds collisions (1) and intent conflicts (4).
-6. No owner-facing text names a shell command (R14).
+6. No owner-facing text names a shell command (R14): every surface of spec 11.1 has its
+   passing test and draws its wording from `present.owner_text`.
 
 Severity follows R7: HIGH only for a genuine contradiction or omission of the owner's
 explicit words, decisions or rulings. HIGH findings are fixed by class (owner rule 1);

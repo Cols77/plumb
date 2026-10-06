@@ -3150,3 +3150,81 @@ round ("ok, negative exponents are supported" read as a plain ok) is closed by t
   read as scoped. Fix: when a judgment backend is configured, ask it whether each clause beside
   the ok holds something back (Noul), and widen the vocabulary of assent from the owner's
   confirmed replies.
+
+## SP6 spec and plan review (2026-10-06)
+
+Review of `docs/specs/sp6-parallel-work.md` and `docs/plans/sp6-plan.md` against the concept
+and the brief (R10). The one HIGH class (R14: SP6 owner-visible strings that named bare CLI
+verbs, such as "(plumb log migrate)" in the merge report the pre-push and pre-merge-commit
+hooks print, "plumb merge-fix fixes a collision later" and "+N more (plumb status)") is fixed
+in the spec and the plan: spec 11.1 lists every SP6 owner-visible surface, phrases each one as
+a `/plumb` command or plain words, routes the log migration behind "migrate the logs" (spec 11
+table), puts every string in one coordinator-owned module (`plumb.present.owner_text`, plan
+3.2 item 9) with `bare_cli_verbs`, and adds one test per surface to the lanes' test lists.
+Medium and low findings, not fixed:
+
+- [MEDIUM] (R14) The same "+N more (plumb ...)" pattern already runs through the codebase,
+  outside SP6: `query.py` ("+N more (plumb brief --all)", twice), `align.py`
+  ("+N more (plumb align)"), `boundary/report.py` `MORE` ("+N more (plumb merge-check
+  --json)"), the `approvals.require_owner` refusal ("An agent relays the owner's words with
+  plumb relay instead") and README lines such as "(plumb show <ID> for examples and tests)".
+  The records carry it too: SR-009 EX ("+N more (plumb brief --all)"), SR-052 EX ("+15 more
+  (plumb merge-check --json)"), and R13 Q2's own wording "(see plumb triage)" (DEC-017). These
+  belong to the R14 class fix: route each through `plumb.present.owner_text` (spec 11.1) with
+  a `/plumb` command or plain words ("+N more (/plumb status)", "/plumb review"), and update
+  the record examples through `plumb capture` (they stay proposed). One test per surface with
+  `bare_cli_verbs`.
+- [MEDIUM] (R1, R10.5) Under DEC-021 git completes the merge with the conflict block in place,
+  and the plan (8.2) deliberately leaves the pre-merge-commit hook uninstalled in plumb's own
+  repository. A local merge into main can therefore record an unresolved intent conflict in a
+  commit on main; the hold arrives only at push, or never in a repository without a remote or
+  without the pre-push hook. The design respects R10.3 ("shown at the merge boundary") and the
+  owner's choice of hooks, but the boundary can silently move after the merge commit. Fix:
+  keep DEC-021; have the session brief and the status card raise an open IC on the default
+  branch as "1 conflict awaits you" (spec 8.3 partly does this); state in the README and the
+  concept 7.5 update that without the pre-merge-commit hook a local merge can carry an open
+  conflict until push.
+- [MEDIUM] (R10.5: "one full suite") `merge.premerge_run_full: false` lets the
+  pre-merge-commit hook skip the full suite (spec 10 and 12; plan D7). The default is true, so
+  this is not a contradiction, but the switch weakens the boundary and the spec does not say
+  the pre-push hook still runs the suite when it is off. Fix: state that with the switch off
+  the pre-merge-commit hook only defers the suite (it sets `full verification pending`,
+  satisfied by the pre-push or merge-check run), or drop the switch.
+- [MEDIUM] (KEEP: approvals pinned to exact content; R10.3) Spec 8.4 "Applying a choice writes
+  the record with the chosen side's exact fields and body" is ambiguous about fields the
+  driver already merged on their own: with theirs changing `title` cleanly and both sides
+  changing `statement`, choosing "ours" either silently drops theirs's title change (the card
+  shows only the conflicting fields, so the owner never sees it) or keeps it, and then the
+  result hash matches no side and the re-confirmation claim fails. Fix: choosing a side
+  replaces only the conflicting fields and keeps every field merged on its own;
+  re-confirmation applies only when the resulting hash equals an approved hash, otherwise the
+  record stays proposed with a read-back; add a test with one merged and one conflicting field.
+- [MEDIUM] (R10.1) Spec 5.2: for a working-tree duplicate with no merge in progress, "the
+  record whose file was added later in git log --diff-filter=A is the incoming one". After a
+  committed merge, commit time can name the first-parent side's record as incoming when the
+  other clone created its record later, contradicting DEC-022 ("The first parent ... keeps its
+  IDs"): the record main relies on would be renumbered and its approvals moved to the alias
+  path. Fix: for a committed duplicate, find the merge commit that brought the two records
+  together and apply the first-parent rule to it (the side reachable only through the second
+  parent is incoming); fall back to commit time only when no such merge exists, with a test.
+- [LOW] (KEEP: approvals pinned to exact content) Spec 5.4 carries approvals across a renumber
+  through `ids.approval_aliases`: an approval then confirms content whose hash differs from
+  its pin (only the id differs), through an alias the agent-run merge-fix writes. It is
+  tightly bounded (the carry holds only while the content with the old id hashes to the pin,
+  and validate re-checks every renumber entry), but the merge-boundary glance does not show
+  it. Fix: label carried approvals ("carried from SR-070 by renumber") in `plumb show` and in
+  the merge-boundary glance, like agent-relayed and auto-JEV approvals.
+- [LOW] (owner rule: no full suite except the single Integrate run) Plan D7 tests
+  `test_hook_refuses_merge_commit_on_ic` and `test_commit_completes_after_choice` run a real
+  merge-check, which runs the configured full suite with `merge.premerge_run_full: true` by
+  default; the plan does not say they use a stub suite. Fix: run them in a temporary
+  repository with a stub test command, or set `merge.premerge_run_full: false` there.
+- [LOW] (R10.4) Spec 9.3's branch scan (branches without a worktree, one `git diff` per branch
+  at session start) goes beyond reading the other worktrees' `.plumb`: it is capped (8
+  branches, 400 ms) and consistent with "another worktree or branch", but a cold start with
+  many branches spreads over several sessions with no sign that awareness is incomplete.
+  Optional fix: the brief says "awareness: N branches not yet scanned" when the cap was hit.
+- [LOW] (owner rule: disjoint ownership) Plan 3.1's coordinator row lists `cli.py` twice and
+  `prompt.py`, `stop.py`, `post_edit.py`, `snapshot.py` and `install.py` without their
+  `hosts/claude_code/` prefix, so the lane gate's `git diff --name-only` check against the row
+  (3.4) cannot be applied mechanically. Fix: list full paths once each.
