@@ -340,7 +340,48 @@ def cmd_triage(command: str, argv: list[str]) -> int:
     return _guarded(act)
 
 
+# --------------------------------------------------------------------------- clarify
+
+
+def cmd_clarify(command: str, argv: list[str]) -> int:
+    from plumb.capture.clarify import clarify, view_lines, write_session
+
+    parser = _parser(command, "The clarification depth of a request (trivial, incremental, "
+                     "escalated), what confirmed records already answer, and which drafted "
+                     "questions matter, ranked: ask the first, one per message.")
+    parser.add_argument("request", nargs="+")
+    parser.add_argument("--questions", default=None,
+                        help="JSON list of {question, options, recommended}")
+    args = parser.parse_args(argv)
+    core = _core(args)
+
+    def act() -> int:
+        import dataclasses
+        import json
+
+        from plumb.capture.records import CaptureError
+
+        questions = []
+        if args.questions:
+            try:
+                with open(args.questions, encoding="utf-8") as handle:
+                    questions = json.load(handle)
+            except (OSError, ValueError) as exc:
+                raise CaptureError(f"cannot read {args.questions}: {exc}") from exc
+            if not isinstance(questions, list) or not all(isinstance(q, dict)
+                                                          for q in questions):
+                raise CaptureError("--questions takes a JSON list of objects")
+        request = " ".join(args.request)
+        view = clarify(core, request, questions)
+        write_session(core, view, request)
+        emit(dataclasses.asdict(view) if args.as_json else view_lines(view), args.as_json)
+        return 0
+
+    return _guarded(act)
+
+
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
+    "clarify": cmd_clarify,
     "triage": cmd_triage,
     "escalate": cmd_escalate,
     "spec": cmd_spec,

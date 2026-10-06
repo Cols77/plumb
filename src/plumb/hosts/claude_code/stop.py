@@ -328,7 +328,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
 
     # trigger 2: decisions that matter, unconfirmed, touched this turn
     decisions = matters_decisions(index, all_statuses, touched_ids)
-    open_decisions = [d for d in decisions if asked.get(d) != index[d].hash]
+    # R11 "ONE per message": only the earliest open decision is asked; the next one waits
+    # until it is answered (plumb.capture.api.next_question, sp2 5.3)
+    first = sorted(decisions, key=lambda d: int(d.rsplit("-", 1)[-1]))[:1]
+    open_decisions = [d for d in first if asked.get(d) != index[d].hash]
     stated_ids = [i for i in edited_ids
                   if all_statuses[i].confirmation != "confirmed"]
     for d in decisions:

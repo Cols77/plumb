@@ -112,7 +112,7 @@ class CalibrationConfig:
 
 @dataclass(frozen=True)
 class ClarifyConfig:
-    answered_min: float = 0.5    # share of a question's terms a confirmed record covers
+    answered_min: float = 0.6    # share of a question's terms a confirmed record covers
 
 
 @dataclass(frozen=True)
