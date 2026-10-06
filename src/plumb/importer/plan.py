@@ -13,7 +13,8 @@ the target, and gives each source record one action:
 
 A requirement whose upstream consent pins its current bytes gets a planned ``by: import``
 approval (``consent.py``), unless one was already written for that content (even if the
-owner revoked it since: a re-import never resurrects a revoked approval). Planning writes
+owner revoked it since: a re-import never resurrects a revoked approval); applying writes it
+only after the owner confirms it in their own terminal (``apply._owner_withholds``). Planning writes
 nothing; ``apply.py`` applies a plan.
 """
 
@@ -251,13 +252,12 @@ def _changes(existing: Record, fields: Mapping[str, Any], body: str) -> list[Fie
 def _approved_before(core: Any) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
     """``(records with a by: import approval ever written at a hash, records whose standing
     approvals include a hash)``, as ``(id, hash)`` pairs."""
-    from plumb.confirm import remaining_approvals
-    from plumb.importer.recheck import import_problem
+    from plumb.confirm import checked_entries, remaining_approvals
 
     ever: set[tuple[str, str]] = set()
-    for entry in core.events():
-        if entry.kind == "approval" and entry.payload.get("by") == "import" \
-                and import_problem(entry) is None:
+    for entry, problem in checked_entries(core.events(), core.config.approve.affirmations):
+        if problem is None and entry.kind == "approval" \
+                and entry.payload.get("by") == "import":
             for item in entry.payload.get("records") or []:
                 if isinstance(item, Mapping):
                     ever.add((str(item.get("id")), str(item.get("hash"))))

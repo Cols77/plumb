@@ -170,4 +170,140 @@ def test_validate_flags_an_import_event_that_did_not_approve(repo: Path, source:
     forged = dict(approval.payload, import_event=event.digest)
     log.append(core.paths, "events", "approval", forged)
     errors = [f for f in validate(open_core(repo)) if f.code == "approval"]
-    assert any(e.subject == "SR-077" and "did not approve" in e.message for e in errors)
+    assert any("SR-077" in e.subject and "did not approve" in e.message for e in errors)
+
+
+# The guarantee (concept 10, R2): a by: import approval confirms only what an import run
+# outside the agent session approved after the owner answered its terminal question. One test
+# per entry point that writes one: the import API, the import CLI, the core API append, a
+# direct log write; and the CLI that reads confirmations.
+
+LOCAL_SR = """---
+id: SR-001
+title: A local requirement nobody imported
+statement: Something the owner never confirmed.
+examples:
+  - {id: EX-1, given: a state, when: an action, then: a result}
+---
+"""
+
+
+def _forged(record_id: str, record_hash: str, cite: str) -> dict:
+    """A well-formed by: import approval with made-up upstream fields, citing ``cite``."""
+    return {"records": [{"id": record_id, "hash": record_hash, "upstream": {
+        "repo": "pi-agent-factory", "repo_head": "0" * 40,
+        "consent_path": f"{CONSENT_DIR}/{record_id}.json", "consent_digest": "sha256:" + "1" * 64,
+        "requirement_sha256": "2" * 64, "upstream_hash": "sha256:" + "3" * 64,
+        "run_id": "JEV-REVIEW-INTEGRATION"}}],
+        "by": "import", "upstream": {}, "import_event": cite, "prompt_digest": None,
+        "quote": None}
+
+
+def _approval_errors(repo: Path) -> list[str]:
+    from plumb.validate import validate
+
+    return [f.message for f in validate(open_core(repo)) if f.code == "approval"]
+
+
+def test_import_api_in_agent_session_writes_no_approval(repo: Path, source: Path,
+                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "1")
+    report = import_pi_factory(open_core(repo), source)
+    assert report["approved"] == [] and _approvals(repo) == []
+    assert any(f["kind"] == "approval-withheld" and "SR-077" in f["id"]
+               for f in report["findings"])
+    statuses = open_core(repo).status(["SR-077", "SR-078"])
+    assert {s.confirmation for s in statuses.values()} == {"proposed"}
+    # the owner declining at the terminal withholds them too
+    from plumb import approvals
+
+    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    monkeypatch.setattr(approvals, "owner_terminal_answer", lambda question: "n")
+    report = import_pi_factory(open_core(repo), source)
+    assert _approvals(repo) == [] and report["approved"] == []
+    # the owner's own run confirms them, without rewriting the records
+    monkeypatch.setattr(approvals, "owner_terminal_answer", lambda question: "y")
+    report = import_pi_factory(open_core(repo), source)
+    assert report["approved"] == ["SR-077", "SR-078"]
+    assert open_core(repo).status(["SR-077"])["SR-077"].approved_by == "import"
+    assert not _approval_errors(repo)
+
+
+def test_import_cli_in_agent_session_writes_no_approval(repo: Path, source: Path,
+                                                        monkeypatch: pytest.MonkeyPatch,
+                                                        capsys: pytest.CaptureFixture[str]
+                                                        ) -> None:
+    from plumb import cli
+
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "1")
+    # a consent the agent made for its own content is no better than a real one here
+    assert cli.main(["import", "pi-agent-factory", str(source), "--root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "0 confirmed by import" in out and "approval-withheld" in out
+    assert _approvals(repo) == []
+    assert open_core(repo).status(["SR-077"])["SR-077"].confirmation == "proposed"
+
+
+def test_forged_by_import_through_core_api_confirms_nothing(
+        repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> None:
+    write_record(repo, LOCAL_SR)
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "1")
+    core = open_core(repo)
+    record_hash = core.index()["SR-001"].hash
+    # a note, then an approval citing it (case B of the review's repro)
+    note = core.log_append("events", "note", {"text": "anything"})
+    core.log_append("events", "approval", _forged("SR-001", record_hash, note.digest))
+    # an import event approving it, then an approval citing that: still the agent's session
+    event = core.log_append("events", "import", {"approved": [{"id": "SR-001",
+                                                               "hash": record_hash}]})
+    core.log_append("events", "approval", _forged("SR-001", record_hash, event.digest))
+    status = open_core(repo).status(["SR-001"])["SR-001"]
+    assert status.confirmation == "proposed" and status.approved_by is None
+    errors = _approval_errors(repo)
+    assert len(errors) == 2 and all("agent session marker" in e for e in errors)
+
+
+def test_forged_by_import_through_direct_log_write_confirms_nothing(
+        repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb import log
+
+    write_record(repo, LOCAL_SR)
+    core = open_core(repo)
+    record_hash = core.index()["SR-001"].hash
+    # outside the marker: the cited entry is not an import event
+    note = log.append(core.paths, "events", "note", {"text": "anything"})
+    log.append(core.paths, "events", "approval", _forged("SR-001", record_hash, note.digest))
+    # an import event written in the agent session backs no approval
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "1")
+    event = log.append(core.paths, "events", "import",
+                       {"approved": [{"id": "SR-001", "hash": record_hash}]})
+    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    log.append(core.paths, "events", "approval", _forged("SR-001", record_hash, event.digest))
+    # an import event that approved another hash backs no approval of this one
+    event = log.append(core.paths, "events", "import",
+                       {"approved": [{"id": "SR-001", "hash": "sha256:" + "4" * 64}]})
+    log.append(core.paths, "events", "approval", _forged("SR-001", record_hash, event.digest))
+    assert open_core(repo).status(["SR-001"])["SR-001"].confirmation == "proposed"
+    errors = _approval_errors(repo)
+    assert sum("cites no earlier import event" in e for e in errors) == 2
+    assert sum("did not approve" in e for e in errors) == 1
+
+
+def test_forged_by_import_is_proposed_through_the_cli(repo: Path, write_record,
+                                                      monkeypatch: pytest.MonkeyPatch,
+                                                      capsys: pytest.CaptureFixture[str]
+                                                      ) -> None:
+    from plumb import cli
+
+    write_record(repo, LOCAL_SR)
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "1")
+    core = open_core(repo)
+    note = core.log_append("events", "note", {"text": "anything"})
+    core.log_append("events", "approval",
+                    _forged("SR-001", core.index()["SR-001"].hash, note.digest))
+    capsys.readouterr()
+    assert cli.main(["status", "--json", "--root", str(repo)]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["requirements"]["confirmed"] == 0 and "SR-001" in data["awaiting"]
+    assert cli.main(["validate", "--root", str(repo)]) != 0
+    assert "agent session marker" in capsys.readouterr().out

@@ -11,8 +11,9 @@ from the records' current hashes and the ``approval`` and ``revocation`` events.
   existing test.
 
 An approval that fails its re-check (an owner approval written under the agent session marker,
-or an agent-relayed approval without its cited prompt, affirming quote or quote digest) never
-confirms anything; ``plumb validate`` reports it as an error.
+an agent-relayed approval without its cited prompt, affirming quote or quote digest, or a
+``by: import`` approval that no earlier import event outside the agent session approved,
+``importer/recheck.py``) never confirms anything; ``plumb validate`` reports it as an error.
 """
 
 from __future__ import annotations
@@ -43,8 +44,14 @@ def affirmation_in(quote: str, affirmations: Sequence[str]) -> str | None:
 
 
 def entry_problem(entry: LogEntry, prompt_digests: set[str],
-                  affirmations: Sequence[str]) -> str | None:
-    """Why an approval or revocation entry fails its re-check, or None (spec 5.6)."""
+                  affirmations: Sequence[str],
+                  imports: Mapping[str, set[tuple[str, str]]] | None = None) -> str | None:
+    """Why an approval or revocation entry fails its re-check, or None (spec 5.6).
+
+    ``imports`` maps the digest of every earlier ``import`` event written outside the agent
+    session to the ``(id, hash)`` pairs it approved (``checked_entries`` builds it); a ``by:
+    import`` approval is checked against it, so without it no ``by: import`` approval
+    confirms anything."""
     payload: Mapping[str, Any] = entry.payload
     if entry.digest != entry_digest({"v": 1, "kind": entry.kind, "at": entry.at,
                                      "marker": entry.marker, "payload": dict(payload),
@@ -54,7 +61,7 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
     if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)
         from plumb.importer.recheck import import_problem
 
-        return import_problem(entry)
+        return import_problem(entry, imports or {})
     if by == "owner":
         if entry.marker != "none":
             return (f"owner {entry.kind} written under the agent session marker "
@@ -80,15 +87,22 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
 def checked_entries(entries: Iterable[LogEntry],
                     affirmations: Sequence[str]) -> list[tuple[LogEntry, str | None]]:
     """Approval and revocation entries in log order, each with its re-check problem."""
+    from plumb.importer.recheck import import_event_pairs
+
     prompts: set[str] = set()
+    imports: dict[str, set[tuple[str, str]]] = {}
     out: list[tuple[LogEntry, str | None]] = []
     for entry in entries:
         if entry.kind == "prompt":
             digest = entry.payload.get("digest")
             if isinstance(digest, str):
                 prompts.add(digest)
+        elif entry.kind == "import":
+            pairs = import_event_pairs(entry)
+            if pairs is not None:
+                imports[entry.digest] = pairs
         elif entry.kind in ("approval", "revocation"):
-            out.append((entry, entry_problem(entry, prompts, affirmations)))
+            out.append((entry, entry_problem(entry, prompts, affirmations, imports)))
     return out
 
 

@@ -15,7 +15,8 @@ def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="plumb import", description="Import another tool's records into plumb. The "
         "source is read only. Records arrive proposed, except a requirement whose upstream "
-        "human consent pins its current content (by: import). Re-running updates in place.")
+        "human consent pins its current content (by: import), once the owner confirms that "
+        "in their own terminal. Re-running updates in place.")
     add_common(parser)
     parser.add_argument("tool", help="the source tool: pi-agent-factory")
     parser.add_argument("source", help="path of the source checkout")

@@ -1626,3 +1626,78 @@ points; the coordinator should check them while merging.
   repository-relative path". Add `path::Qual.name`.
 - [LOW] Pre-existing, not IMPORT's: `tests/core/test_primitives.py::
   test_every_route_names_a_module_path` already fails on the lane's base commit 9dd86c6.
+
+## IMPORT lane review (2026-10-06): medium and low findings
+
+Two HIGH findings were fixed in the lane: a `by: import` approval now confirms only what an
+earlier `import` event written outside the agent session approved at that hash (checked in
+`confirm.checked_entries`, so status, hooks, merge and validate agree), and the import
+writes its approvals only after the owner answers `approvals.require_owner` in their own
+terminal (refused under the agent marker; the records then arrive proposed with an
+`approval-withheld` finding). The rest is recorded here.
+
+- [MEDIUM] (`src/plumb/importer/apply.py`) When `_links` updates a record, it re-pins every
+  existing link the import does not own (`derives_from` and the like) to the new record hash
+  and the end's current hash. Staleness that no judgment resolved disappears, with no repin
+  event and no M2 glance ("repinned without a judgment"). Example: SR-X `derives_from
+  INT-5`, INT-5 changes, drift reports the link stale; a re-import that updates SR-X re-pins
+  it silently. Re-pin only the links the import owns, or log the re-pin as one.
+- [MEDIUM] (`src/plumb/importer/pi_factory.py`) A partial import (`--only FEAT`, or a source
+  whose features list SRs that were skipped or absent) writes features whose `requirements`
+  name records that do not exist, so `plumb validate` reports errors ("requirement SR-00x
+  does not exist") instead of the importer reporting membership findings. Seen with the
+  fixture source (10 FEAT-001 errors). Filter `requirements` to known IDs and report a
+  missing-end or membership finding for the rest.
+- [MEDIUM] (`src/plumb/importer/plan.py`) Re-importing an unchanged upstream source turns
+  local plumb-side changes into an `update`: the plan compares with the target's current
+  file, not with the previous import's `upstream_hash`. A local edit to an imported record,
+  or an `implemented_by`/`verified_by`/`upstream`/`relates_to`/`corrects` link added in
+  plumb (all import-owned kinds), is reverted or stripped on the next import, and the
+  owner's confirmation no longer pins the record. The dry-run diff shows it but does not
+  tell a local edit from an upstream change. When `source.upstream_hash` is unchanged, treat
+  the record as unchanged (or emit a local-divergence finding) and keep links the import did
+  not originally write.
+- [MEDIUM] (`src/plumb/importer/recheck.py`, trust model) Fixed in part by the HIGH fixes:
+  a `by: import` approval now needs no agent marker and the owner's terminal answer. Still
+  open: consent validity rests on the shape of a JSON file in the source tree, so an owner
+  who imports a tree an agent could write to confirms whatever consent it holds. Show the
+  consent files' paths and reasons in the terminal question, and list `by: import`
+  approvals with their source tree in the merge-boundary glance (MERGE lane).
+- [MEDIUM] (`src/plumb/confirm.py`, integration) The lane edited CAPTURE-owned `confirm.py`
+  and `validate.py`, and coordinator-owned `tests/core/test_cli_core.py`, outside the plan's
+  ownership table (3.1), because the phase-0 recheck stub was missing. The HIGH fix adds the
+  `imports` context to `entry_problem` and `checked_entries`. lane/capture rewrites the same
+  functions (auto-jev branch, `remaining_entries`). At integration keep IMPORT's early
+  `by: import` branch and the `imports` map in `checked_entries`, delete the dead branch,
+  and run `tests/importer/test_provenance.py` after the merge; otherwise every `by: import`
+  approval fails, or forged ones confirm again.
+- [MEDIUM] (performance, `docs/import-rehearsal.md`, R5 budgets) At pi-agent-factory scale
+  on the imported copy, `plumb drift` takes 10 to 23 s and `plumb status` 11.7 s, far above
+  the seconds budget for anything a per-turn hook or status line calls; validate went from
+  1.2 s to 3.2 s. Most of it is VERIFY's quadratic `verified_tests`; symbol ends add about
+  1.3 s by re-reading and hashing each file before the content-keyed parse cache. After F4
+  this blocks the migration target. Fix: a stat-keyed digest cache in front of
+  `hashing._parse` (IMPORT), and index `verified_tests` once per map (MERGE/VERIFY).
+- [LOW] (`src/plumb/confirm.py`) The second `if by == "import": return "import approvals
+  are not accepted in this build"` branch is unreachable dead code that misleads readers.
+  Remove it at integration.
+- [LOW] (`src/plumb/importer/claims.py`) `plan_claims` overwrites the target's claims
+  `epoch` with upstream's and adds upstream exempt globs (for example `**/*.md`) to
+  `.plumb/claims.yaml` with no owner step. A target with its own epoch then checks claims
+  from a different starting commit, and the docs-wide exemptions silently widen what needs
+  no `SR:` trailer. Keep the target's epoch and make the merged policy an owner step.
+- [LOW] (`src/plumb/hashing.py`) `find_definition` searches only the direct bodies of
+  module, class and def nodes. A symbol or test defined under `if`/`try` (`if
+  TYPE_CHECKING:`, `try: ... except ImportError:`, platform-conditional tests) resolves as
+  missing: a `symbol-narrowed` finding at import, or `plumb link` exit 1, though the
+  definition exists.
+- [LOW] (`docs/import-rehearsal.md`) The rehearsal ran before the owner-terminal step: its
+  9 `by: import` approvals were written without a terminal question. A rehearsal now run
+  from a script or an agent shell gets `approval-withheld` and proposed records instead;
+  re-run the approval part in the owner's terminal.
+- [LOW] (tests) `tests/importer/test_claims.py` shared its basename with
+  `tests/bridge/test_claims.py`, so collecting both directories in one pytest run failed
+  ("import file mismatch"). Renamed to `tests/importer/test_import_claims.py` (SR-058 links
+  follow). `tests/bridge/test_fidelity.py::test_merge_lists_unjudged_fidelity` already fails
+  on lane commit 61697ea (`validate --merge` exits 5, the verification hold, not 4); not
+  IMPORT's, check it at integration.

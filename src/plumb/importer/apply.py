@@ -5,7 +5,8 @@ record ends pin the planned hashes of the batch, file, symbol and test-node ends
 current hashes. Unchanged records are not touched, so applying the same source twice changes
 no file. An ``import`` event is appended only when something changed; right after it, one
 ``approval`` entry ``by: import`` covers the requirements whose upstream human consent pins
-their current content (``recheck.py`` re-checks it). Nothing else is ever confirmed.
+their current content, written only after the owner confirms them in their own terminal
+(``_owner_withholds``; ``recheck.py`` re-checks it). Nothing else is ever confirmed.
 """
 
 from __future__ import annotations
@@ -89,6 +90,29 @@ def _approval_item(core: Any, plan: RecordPlan, head: str | None) -> dict[str, A
     return item
 
 
+def _owner_withholds(ids: list[str]) -> str | None:
+    """None when the owner, in their own terminal, confirms the ``by: import`` approvals of
+    ``ids``; otherwise why they are withheld (the records are then imported proposed).
+
+    The guarantee (concept 10, R2): importing never manufactures a confirmation the owner did
+    not give. A consent file in the source is only as trustworthy as whoever wrote the source
+    tree, so the run's approvals go through ``approvals.require_owner``, the choke point of
+    every owner-only write: refused under the agent session marker and outside an
+    interactive terminal, written only after the owner's y/N."""
+    from plumb.approvals import Declined, Refused, require_owner
+
+    shown = ", ".join(ids[:5]) + (f", +{len(ids) - 5} more" if len(ids) > 5 else "")
+    try:
+        require_owner("import", f"Confirm {len(ids)} imported requirement(s) whose upstream "
+                      f"human consent pins their current content ({shown})?")
+    except Refused as exc:
+        return (f"{exc} No by: import approval was written; the records stay proposed. "
+                "Re-run the import in the owner's terminal to confirm them.")
+    except Declined:
+        return "the owner declined; no by: import approval, the records stay proposed"
+    return None
+
+
 def apply_plan(core: Any, plan: ImportPlan) -> dict[str, Any]:
     """Write the plan's created and updated records, then its event and approval."""
     index = core.index()
@@ -111,6 +135,12 @@ def apply_plan(core: Any, plan: ImportPlan) -> dict[str, Any]:
                                        "; no by: import approval"})
         else:
             approvals.append(approval)
+    if approvals:
+        withheld = _owner_withholds([a["id"] for a in approvals])
+        if withheld is not None:
+            findings.append({"kind": "approval-withheld",
+                             "id": ", ".join(a["id"] for a in approvals), "detail": withheld})
+            approvals = []
     claims_changed = False
     if plan.claims is not None:
         from plumb.importer.claims import apply_claims
