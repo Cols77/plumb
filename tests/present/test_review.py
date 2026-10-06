@@ -43,7 +43,8 @@ def test_review_has_the_five_sections(records: Path, capsys) -> None:
     for heading in ("1. awaits you:", "2. approvals you did not type", "3. drift:",
                     "4. alignment:", "5. merge state"):
         assert heading in out
-    assert "triage unavailable" in out  # CAPTURE is another lane
+    # CAPTURE's triage rates each awaiting record (heuristic backend once merged)
+    assert 'INT-001 "add multiply next to add" (riskier' in out
     assert 'question DEC-001 "Rounding mode": assumed half-up' in out
     assert "gap: SR-002 has no code" in out
     assert "it approves nothing" in out
