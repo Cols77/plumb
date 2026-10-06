@@ -9,9 +9,11 @@ Run plumb as `{plumb}`. Context lives in files; read it before acting.
 - Records: `.plumb/` holds INT (the owner's words), SR (requirements with given/when/then
   examples), DEC (decisions), FEAT (features) and NC (nonconformances).
   `{plumb} brief` prints the current intent; `{plumb} status` lists what awaits the owner.
+- Hook lines name a relevant record once per session (ID, state, title); `{plumb} show <ID>`
+  prints its examples and tests, `{plumb} explain <words>` why something exists.
 - Before editing a file, grep `.plumb/test_map.txt` for it: the tests listed cover it.
-- When the stop hook asks, run the test command it names inside your turn
-  (`{plumb} tests run --paths <files>`, or `{plumb} tests run --changed`).
+- Never rewrite a confirmed example's acceptance test to make it pass; the owner sees it.
+- When the stop hook asks, run the command it names (`{plumb} tests run --changed`).
 - Read back each request in your reply (what will and won't be done, assumptions labelled)
   and record it as a proposed SR with examples, linked `implemented_by` the code it changes;
   it never blocks. "plumb: untraced change" names changed files no SR owns yet.
@@ -24,6 +26,5 @@ Run plumb as `{plumb}`. Context lives in files; read it before acting.
   records the summary showed in full; one listed as "not shown" is relayed only when the
   owner's words name its ID (`{plumb} show <ID>` prints it in full). Never run
   `plumb approve` or `plumb revoke`: they belong to the owner's own terminal.
-- After a requirement's code changed, `{plumb} fidelity <SR>` builds an advisory packet to
-  judge it.
+- After a requirement's code changed, `{plumb} fidelity <SR>` builds an advisory packet.
 - Commits carry an `SR: SR-###` trailer naming the requirements they serve.

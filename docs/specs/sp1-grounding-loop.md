@@ -506,8 +506,11 @@ and the turn continues: plumb never blocks work because of its own failure.
 
 ### 6.1 SessionStart: the intent brief
 
-Plain-text context, about 30 lines, hard cap 40, from `CoreAPI.brief_lines` plus
-`VerifyAPI` state:
+By default (ruling R9, SR-032, `hooks.session_brief: compact`) a few lines: the record counts,
+the lines awaiting the owner, decisions that matter, drift, open NCs, one tests line and a
+pointer to `plumb show`, `plumb explain` and `plumb brief --all`. With
+`hooks.session_brief: full`, plain-text context of about 30 lines, hard cap 40, from
+`CoreAPI.brief_lines` plus `VerifyAPI` state:
 
 ```
 plumb brief (records in .plumb/, test map in .plumb/test_map.txt)
@@ -526,21 +529,26 @@ Context, never procedure. Sections that would exceed the cap end with `+N more (
 --all)`. The hook also writes `.plumb/session/status.json` (6.6) so the status line has data
 from the first turn.
 
-### 6.2 UserPromptSubmit: relevant records, tests and the intent-change flag
+### 6.2 UserPromptSubmit: a delta of relevant records and the intent-change flag
 
 1. Compute `digest = sha256(prompt text)`; append `{digest, session, at, text}` to
    `.plumb/session/prompts.jsonl`; record the turn start time in
    `.plumb/session/<session_id>/turn.json`.
 2. Select relevant records: IDs named in the prompt first, then `CoreAPI.relevant(prompt)`
    (term overlap with titles, statements and examples; superseded records excluded), at
-   most 5. Print each with its state, its confirmed examples (one line each, truncated to
-   100 characters) and its covering tests from `VerifyAPI.tests_for`. At most 20 lines.
+   most 5. Print one line per record (ID, state, title), only for a record that is newly
+   relevant in this session or whose hash or confirmation state changed since it was injected
+   (`.plumb/session/<session_id>/seen.json`; a SessionStart with source `clear` or `compact`
+   deletes it), within `hooks.prompt_lines` lines and the `hooks.prompt_tokens` budget (4
+   characters per token). A record cut by the budget is named with `plumb show` and not marked
+   seen. Nothing is printed when nothing is new. Examples and covering tests are pulled on
+   demand with `plumb show` (ruling R9, SR-032).
 3. Intent-change flag: `JudgmentBackend.intent_change(prompt, confirmed matched records)`.
    The heuristic flags a confirmed record matched by ID or by strong overlap together with
    change language (instead, no longer, remove, rename, also, change, should now, don't,
    stop, replace). For each flag:
    `plumb: this may change SR-004 (confirmed). If it does, read back the change and ask before
-   editing; if not, proceed.` Whenever confirmed records are injected, one more line tells the
+   editing; if not, proceed.` Whenever confirmed records are first injected, one more line tells the
    agent to compare the request with their examples, so a contradiction phrased without
    change words is still caught by the agent (the cascade's LLM tier, at no extra call).
    Every flag is logged to session state for later precision measurement.
@@ -675,9 +683,10 @@ claude-code`) merges, idempotently and preserving every non-plumb entry:
   `plumb fidelity <SR>` when a requirement's code changed; grep `.plumb/test_map.txt` before
   editing a file. The skill and the slash command are rendered with the chosen launcher
   prefix, so the commands they name run as written.
-- `.claude/commands/plumb.md` (a SHOULD item, plan HS2): `/plumb brief`, `/plumb why <ref>`, `/plumb impact <ref>`,
-  running `plumb $ARGUMENTS` with `allowed-tools: Bash(plumb brief:*), Bash(plumb why:*),
-  Bash(plumb impact:*)` and summarizing the output.
+- `.claude/commands/plumb.md` (a SHOULD item, plan HS2): `/plumb brief`, `/plumb explain
+  <anything>` (alias `why`) and `/plumb impact <anything>`, with plain-language arguments
+  the agent resolves to records, paths or tests before running `plumb explain`, `plumb impact`
+  or `plumb show`, answering in the owner's terms (ruling R9, SR-033).
 - A block between `<!-- plumb:begin -->` and `<!-- plumb:end -->` in `CLAUDE.md`: records live
   in `.plumb/`, the test map is `.plumb/test_map.txt`, `plumb brief` for the current intent.
 - The git `commit-msg` hook (path from `git rev-parse --git-path hooks`) running
@@ -925,7 +934,7 @@ the first directory holding `.plumb/`, else `.git`), `--json` where noted. Exit 
 | `plumb status [--json]` | CORE (MUST) | Counts, drift, awaiting confirmation, tests (via VerifyAPI when present) |
 | `plumb brief [--max-lines N] [--all]` | CORE (MUST) | The session brief text (6.1) |
 | `plumb drift [--json]` | CORE (SHOULD) | Drift signals only |
-| `plumb why <ID\|path>` | CORE (SHOULD) | Upward chain: path -> SRs -> INT quotes and deciding DECs |
+| `plumb explain <words\|path\|ID>` (alias `why`) | CORE (SHOULD) | Upward chain in the owner's terms: path or words -> SRs -> INT quotes, deciding DECs, examples, test state, code (SR-033) |
 | `plumb log [--stream events\|evidence] [--kind K] [-n N]` | CORE (SHOULD) | Read the logs |
 | `plumb trailers check-msg <file>` | BRIDGE (MUST) | `commit-msg` check (5.9) |
 | `plumb trailers install-hook` | BRIDGE (MUST) | Write the git `commit-msg` hook (5.9) |
@@ -1017,6 +1026,8 @@ hooks:
   budget_ms: {session_start: 1400, prompt: 1200, stop: 1400, post_edit: 300}
   brief_lines: 30
   prompt_lines: 20
+  prompt_tokens: 200         # R9: the most one prompt injects; records once per session
+  session_brief: compact     # compact (a few lines and a pointer) | full
   summary_proposed_cap: 3    # proposed records shown in full per summary
 approve:
   affirmations: [ok, okay, yes, approve, approved, confirm, confirmed, agreed, lgtm, go ahead, sounds good]

@@ -205,6 +205,9 @@ def cmd_waive(prog: str, argv: list[str]) -> int:
                      "the agent session marker).")
     parser.add_argument("--diff-digest", default=None,
                         help="sha256:<hex> (default: the digest of git diff HEAD)")
+    parser.add_argument("--merge", metavar="BASE", default=None,
+                        help="waive the merge boundary's full run for exactly the change "
+                        "from the merge base of BASE (any later edit voids it)")
     parser.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     from plumb.api import open_core
@@ -215,6 +218,9 @@ def cmd_waive(prog: str, argv: list[str]) -> int:
     if digest is not None and not re.match(DIGEST_RE, digest):
         print("plumb: --diff-digest must be sha256:<64 lowercase hex>", file=sys.stderr)
         return EXIT_USAGE
+    if digest is not None and args.merge is not None:
+        print("plumb: pass --diff-digest or --merge, not both", file=sys.stderr)
+        return EXIT_USAGE
     try:
         if digest is None:
             from plumb.approvals import marker
@@ -222,7 +228,20 @@ def cmd_waive(prog: str, argv: list[str]) -> int:
             if marker():
                 raise WaiverRefused("plumb tests waive refused: the agent session marker is "
                                     "set; only the owner waives, in their own terminal")
-            digest = current_diff_digest(core.root)
+            if args.merge is not None:
+                import subprocess
+
+                from plumb.verify.policy import range_digest
+
+                fork = subprocess.run(["git", "merge-base", args.merge, "HEAD"], cwd=core.root,
+                                      capture_output=True, text=True)
+                if fork.returncode != 0:
+                    print(f"plumb: cannot find the merge base of {args.merge} and HEAD",
+                          file=sys.stderr)
+                    return EXIT_USAGE
+                digest = range_digest(core.root, fork.stdout.strip())
+            else:
+                digest = current_diff_digest(core.root)
         entry = waive(core, digest, args.reason)
     except WaiverRefused as exc:
         print(f"plumb: refused: {exc}", file=sys.stderr)

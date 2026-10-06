@@ -90,6 +90,9 @@ class RecordStatus:
     uncovered_examples: tuple[str, ...]
     links: tuple[LinkState, ...]
     superseded_by: str | None = None
+    # requirements: verified_by ends whose content changed since the owner's approval pinned
+    # it (the record is then an unconfirmed edit: its acceptance test changed meaning)
+    changed_tests: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

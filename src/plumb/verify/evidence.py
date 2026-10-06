@@ -23,7 +23,8 @@ from typing import Any
 from plumb.contracts import NodeEvidence
 from plumb.normalize import canonical_json, file_digest, sha256_bytes
 
-INDEX_VERSION = 4  # 3: a full run must collect cleanly to count; 4: its failures are kept
+INDEX_VERSION = 5  # 3: a full run must collect cleanly to count; 4: its failures are kept;
+# 5: a regression is kept until a pass on the test body that passed before it ("regressed")
 _GUARD_BYTES = 65536
 PASS_OUTCOMES = frozenset({"passed", "flaky"})
 GOOD_OUTCOMES = frozenset({"passed", "flaky", "skipped", "xfailed"})
@@ -152,6 +153,30 @@ def learn_scale(index: dict[str, Any], payload: Mapping[str, Any]) -> None:
     index["scale_run"] = run_id
 
 
+def _track_regression(entry: dict[str, Any], rec: Mapping[str, Any]) -> None:
+    """Keep ``entry["regressed"]`` from a regression (a failure after a recorded pass) until a
+    pass on the same test body as the pass before it. A pass or skip after the test body
+    changed does not resolve it: it is marked ``masked_by`` that run, so a test rewritten to
+    pass never erases a regression of a confirmed example (``Verify.masked_regressions``)."""
+    outcome = rec.get("outcome")
+    regressed = entry.get("regressed")
+    if outcome == "failed":
+        last_pass = entry.get("last_pass")
+        if last_pass is not None and not regressed:
+            entry["regressed"] = {"failed_in": rec.get("run_id"),
+                                  "passed_in": last_pass.get("run_id"),
+                                  "test_hash": last_pass.get("test_hash")}
+        elif regressed:
+            regressed.pop("masked_by", None)
+        return
+    if not regressed:
+        return
+    if outcome in PASS_OUTCOMES and rec.get("test_hash") == regressed.get("test_hash"):
+        del entry["regressed"]
+    else:
+        regressed["masked_by"] = rec.get("run_id")
+
+
 def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "") -> None:
     """Fold one ``test-run`` payload into the index (idempotent for a repeated entry)."""
     if payload.get("discarded"):
@@ -171,6 +196,7 @@ def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "")
         if "identity" in env:
             rec["identity"] = env.get("identity")
         entry = nodes.setdefault(node_id, {"last": None, "last_pass": None})
+        _track_regression(entry, rec)
         entry["last"] = rec
         if rec["outcome"] in PASS_OUTCOMES:
             entry["last_pass"] = rec

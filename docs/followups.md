@@ -1273,3 +1273,71 @@ same change (the file aggregate leaves out nodes no longer in the source).
   other acceptance tests have no passing evidence on the current code; the extension is still
   listed in the same report. Fix: none needed; the sp1 spec states the precedence (1, then 5,
   then 4).
+
+## Delivered-repository verification, round 5 (2026-10-06, commits 0680662 and 871296e)
+
+Raised by the verification of the round-3 and round-4 fixes. Its HIGH findings were fixed in
+the same change. An approval now pins each `verified_by` end, so a confirmed example's
+acceptance test that changed, or was rewritten to pass after a regression, reaches the owner.
+The stop hook asks about it as a regression, and the merge waits or holds (SR-030). The merge
+boundary also checks the acceptance tests of every confirmed requirement whose tests cover a
+changed path, and `full verification pending` holds it until a full run or an owner waiver of
+this exact change (`plumb tests waive --merge BASE`) satisfies it (SR-031). This resolves
+the round-4 MEDIUM entry above on the boundary exiting 0 while full verification was pending.
+The prompt hook injects a per-session deduplicated delta, one line per record within a token
+budget, and the session brief is a few lines plus a pointer (SR-032, R9). `plumb explain
+<plain words|path|ID>` replaces the unavailable `why` (kept as an alias), and the installed
+`/plumb` command routes it (SR-033, R9). The remaining R9 parts are scheduled in concept
+section 11 item 2.
+
+- [MEDIUM] (src/plumb/hosts/claude_code/prompt.py intent-change flag, heuristic backend) The
+  flag fired on the wrong prompts. "Also tidy the add docstring for SR-001" was flagged "this
+  may change SR-001 (confirmed) ... ask before editing" with an escalation hint, which is a
+  false interruption. "make add subtract" (a direct contradiction) and "add a multiply
+  function next to add" (an extension) were not flagged and only got the generic compare
+  line. Owner: "questions ONLY on a real intent change (a request that contradicts or extends
+  a confirmed requirement)". Fix: score contradiction or extension against the confirmed
+  examples rather than on ID mentions, with example-based tests for contradict, extend and
+  benign prompts.
+- [MEDIUM] (src/plumb/trace.py owned_paths, file-level ownership; src/plumb/merge.py)
+  Appending a new behaviour (`def mul`) to src/pkg/mod.py, a file the confirmed SR-001 already
+  owns, raises no untraced-change signal, and after a covering run `validate --merge` exits 0.
+  The only signals are a stale-link warning and advisory fidelity. Whole-file hashing is
+  sanctioned for 1a, so this is a refinement. Fix: once symbol-level hashing lands (roadmap
+  1b), treat new symbols in an owned file as untraced. Until then, list the stale
+  `implemented_by` links of confirmed requirements in the merge report's waits section.
+- [MEDIUM] (R9 remainder, scheduled in concept section 11 item 2) Not built in this change:
+  - the one-line status card and the full intent card, configurable `full`, `compact` or
+    `off`;
+  - plain-language arguments for the other owner commands (`impact` resolves words only
+    through the agent's `/plumb` instructions);
+  - `plumb view`, the generated Obsidian vault.
+- [LOW] (src/plumb/hosts/claude_code/statusline.py reads .plumb/session/status.json only)
+  After a CLI `plumb tests run` that recorded a regression, the status line still read
+  "SR 1/1 ok | stale 0 | tests not run" until the next stop hook refreshed the snapshot. Fix:
+  have `plumb tests run` (and approve/relay) refresh status.json.
+- [LOW] (src/plumb/trace.py is_code_path, CODE_SUFFIXES used when source_dirs is not
+  configured) Inferred from the code, not reproduced. When source_dirs is unconfigured, a file
+  outside the source directories counts as source only if its suffix is in CODE_SUFFIXES. So
+  changes to .html, .css, .json, .yaml and .toml app files, Dockerfiles and Makefiles are never
+  reported as untraced and can skip the read-back. The untraced path itself works. Fix:
+  consider treating any tracked non-doc file outside test, docs and dot directories as
+  source, with `trace.exempt` (owner-confirmed) as the escape hatch.
+- [LOW] (observed while fixing this round; src/plumb/confirm.py approved_test_pins) An
+  approval recorded before this change pins no `verified_by` content. A requirement confirmed
+  that way is not shown as "acceptance test changed" until the owner approves it again. A
+  regression hidden by rewriting its test is still caught, because a regression is resolved
+  only by a pass on the original test body. Fix: none needed beyond one re-approval. A note
+  in the brief would help.
+- [LOW] (observed while fixing this round; src/plumb/commands.py drift_data) `plumb drift`
+  does not list a confirmed requirement whose acceptance test went stale because another
+  requirement's code changed. Only the merge boundary lists it ("acceptance tests this change
+  can affect"). Fix: reuse `Verify.affected_requirements` over the working-tree changes in
+  drift.
+- [LOW] (observed in a scratch repository without a .gitignore; stop hook block) The stop
+  hook's `plumb tests run --paths ...` command listed `__pycache__/*.pyc` files as changed
+  paths. Fix: leave paths outside the source and test definitions out of the suggested
+  command.
+- [LOW] (.plumb/features/FEAT-001.md) The feature's `requirements` list stops at SR-025.
+  SR-026 to SR-033 name FEAT-001 only in their own frontmatter. Fix: list them when the owner
+  next confirms FEAT-001, so its hash moves only once.

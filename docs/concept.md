@@ -36,7 +36,7 @@ On planning:
 > their system will have their intent succesfully translated?"
 
 The owner's decisions that shape plumb. The numbers follow the owner intent brief (decisions
-1 to 12):
+1 to 12); D13 is the owner's ruling R9 of 2026-10-06:
 
 | # | Decision | Owner's words |
 |---|---|---|
@@ -52,6 +52,7 @@ The owner's decisions that shape plumb. The numbers follow the owner intent brie
 | D10 | Spawn a workflow that captures the intent in this concept spec as the future reference, then plans the dogfooding work and the pi-agent-factory fork. | "Consider spawning a workflow ... to capture this intent in a concept spec that we will then be able to refer to in the future, and then also plan for the work needed for dogfooding and the kind of pi-agent-factory fork that is about to happen." |
 | D11 | Owner does not review; agents verify: the owner reviews neither this spec nor any plan, and independent verifier agents check every artifact against the owner's words. Implementation available by tomorrow morning (9 hours): sub-project 1 has a time-boxed slice that must be dogfoodable by then (section 11). | "I wont review the concept spec or any plan. use agents that verify that my intent based on that conversation is respected. I want to have the implementation available by tomorrow morning (in 9 hours)." |
 | D12 | The repository and CLI are named plumb (a plumb line checks true alignment). | "coherence is a bit confusing because it's a usefull word to use." |
+| D13 | Presentation and context economy (ruling R9). Hooks inject a compact, deduplicated delta: one line per record (ID, title, state), only when it is newly relevant in the session or changed, within a per-turn token budget, nothing when nothing is new; details by `plumb show`; a session brief of a few lines and a pointer. The owner sees a one-line status card by default and the full intent card only when it matters, configurable `full`, `compact` or `off`. Owner commands take plain language and answer in the owner's terms (`/plumb explain <anything>` replaces `plumb why <file\|ID>`). `plumb view` writes a generated Obsidian vault of the records for deep review; editing it never approves. | "isnt there a smarter way to do this? Isnt the risk to bloat the context way too fast with redundant tokens?" / "a proper way to present the relevant information to the user, but only when it is important. Otherwise it should only be small card ... collapsible or configured to be disabled." / "the user don't necessarily know the code ... All the commands should be designed to handle this properly" / "use obsidian as the frontend perhaps?" |
 
 ## 2. Problem
 
@@ -425,14 +426,14 @@ plumb never blocks the owner's work because of its own failure.
 
 ### 6.1 Session brief (session start)
 
-The session-start hook outputs a compact brief of at most about 60 lines:
-
-- the active features;
-- confirmed intents in one line each;
-- open decisions that matter;
-- stale links, unconfirmed edits, records still proposed, failing or missing evidence, and
-  open NCs;
-- the location of the test map (`plumb map`).
+The session-start hook outputs a few lines and a pointer (D13): the record counts, what awaits
+the owner, decisions that matter, drift, open NCs, one line of test evidence, and where the
+rest is (`plumb show <ID>`, `plumb explain <anything>`, `plumb brief --all`). It never lists
+every proposed record; records reach the agent one line at a time as they become relevant
+(section 6.2). `hooks.session_brief: full` restores the longer brief (about 30 lines, hard cap
+40): the active features, confirmed intents in one line each, open decisions that matter,
+stale links, unconfirmed edits, records still proposed, failing or missing evidence, and open
+NCs.
 
 It is context, not procedure.
 
@@ -444,8 +445,13 @@ On each prompt, the prompt hook:
    gitignored session state, so an approval can quote it and the quote can be checked
    (section 4.6);
 2. selects the relevant records, either named by ID or matched by term overlap with titles,
-   statements and examples, and injects them with their confirmed examples and the tests
-   that cover them, in about 20 lines at most;
+   statements and examples, and injects a deduplicated delta (D13): one line per record (ID,
+   state, title), only for a record that is newly relevant in this session or whose hash or
+   confirmation state changed since it was injected (session state keeps what the agent has
+   seen; a `/clear` or compaction resets it), within `hooks.prompt_lines` and the
+   `hooks.prompt_tokens` budget. A record cut by the budget is named with `plumb show` and
+   comes on a later prompt. Nothing is injected when nothing new is relevant. Examples and
+   covering tests are pulled on demand with `plumb show <ID>`;
 3. checks for a possible intent change. The heuristic default flags a prompt that matches a
    confirmed record and contains change language (instead, no longer, remove, rename, also,
    change, should now, don't). When the judgment backend is enabled, it filters these
@@ -673,7 +679,8 @@ failure; it never moves a full run into a turn:
   attempts. Within a turn this reruns only the failed tests.
 - **Owner-waiver targeted rerun.** At the merge boundary, an owner waiver lets a targeted
   rerun stand in for a full rerun. The waiver is an immutable log entry pinned to the diff
-  digest it covers.
+  digest it covers (`plumb tests waive --merge <base>`, the owner's terminal only); any later
+  edit voids it.
 - **Full rerun only when shared test infrastructure changes, and only at the merge
   boundary.** A change to shared test infrastructure sets `full verification pending`
   (section 7.2). Within a turn it is reported, never run. At the merge boundary the full run
@@ -705,12 +712,22 @@ the change from `<base>`:
   revoke any of them.
 - **Fidelity, advisory.** Touched requirements with no judgment for their current hashes, or
   with a `drifts` or `unsure` verdict, are listed with the `plumb fidelity` command for each.
-- **Verification state.** `full verification pending` and tests deferred by the per-turn
-  budget are listed, with every touched requirement whose acceptance tests fail, named by
-  example. A failing touched acceptance test (kept until a run passes it, whatever changed
-  since), one with no passing evidence on the current code, or an unresolved regression holds
-  the merge until a run passes it; a full run that collected nothing, hit a collection error
-  or failed a test that has not passed since never counts as full verification.
+- **Verification state.** The merge is never green unless every acceptance test the change
+  can affect has passing evidence on the current code. The acceptance tests checked are those
+  of the touched requirements and of every confirmed requirement whose acceptance tests cover
+  a changed path, so a change to one requirement's code that breaks another's is held too.
+  A failing one (kept until a run passes the test body that passed before it, so a test
+  rewritten to pass still fails), one with no passing evidence on the current code, or an
+  unresolved regression holds the merge until a run passes it. `full verification pending`
+  holds the merge until a full run satisfies it or an owner waiver pins this exact change
+  (section 7.4); a full run that collected nothing, hit a collection error or failed a test
+  that has not passed since never counts as full verification.
+- **Confirmed acceptance tests.** An approval of a requirement pins the content of each
+  `verified_by` end. A confirmed requirement whose acceptance test changed since is an
+  unconfirmed edit, "acceptance test changed": it waits for the owner like any other
+  unconfirmed requirement, shown with the example it verifies and the test's diff. A
+  regression hidden by changing the test is a regression question in the stop hook (trigger
+  3), never "questions: none".
 
 Sub-project 3 completes the boundary: plumb runs the full suite (which satisfies
 `full verification pending` by recording the current hashes of the shared test
@@ -869,7 +886,13 @@ and an MCP server exposing read-only record and map tools) reuse the same CLI co
      `plumb decide`);
    - the escalation triggers and set approvals;
    - the live JEV client (standard-library HTTP), used as an accelerator of the fidelity
-     path that sub-project 1 already provides.
+     path that sub-project 1 already provides;
+   - presentation (D13), beyond what sub-project 1 already ships (the per-session prompt
+     delta, the compact session brief and `plumb explain`): the one-line status card and the
+     full intent card, configurable `full`, `compact` or `off`; plain-language arguments for
+     every owner command; and `plumb view`, a generated Obsidian vault of the records (one
+     note per record with state and hash, wikilinks from INT to SR, examples, tests and code,
+     index notes and a canvas intent map) that never approves anything.
 3. **Merge boundary.** This completes section 7.5: the full-suite run that satisfies
    `full verification pending`, evidence promotion, the claims audit over a range, log
    integrity against git, and a pre-merge or CI entry point.

@@ -43,6 +43,11 @@ class HooksConfig:
     budget_ms: Mapping[str, int] = field(default_factory=lambda: dict(DEFAULT_HOOK_BUDGET_MS))
     brief_lines: int = 30
     prompt_lines: int = 20
+    # R9 context economy: the most a prompt hook injects (records are one line each, and only
+    # when new or changed this session); estimated at 4 characters per token
+    prompt_tokens: int = 200
+    # the session-start brief: a few lines plus a pointer (compact), or the long brief (full)
+    session_brief: str = "compact"
     summary_proposed_cap: int = 3
 
 

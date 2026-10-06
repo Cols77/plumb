@@ -162,6 +162,67 @@ def matters_decisions(index: Mapping[str, Any], statuses: Mapping[str, Any],
     return out
 
 
+def changed_acceptance(index: Mapping[str, Any], statuses: Mapping[str, Any],
+                       touched_ids: Iterable[str]) -> list[str]:
+    """``SR-001 tests/test_mod.py (EX-1) changed since you confirmed it``: touched
+    requirements whose acceptance test content no longer matches the owner's approval. Shown
+    in the summary, never asked (R1); the merge boundary waits for the owner on it."""
+    out = []
+    for record_id in touched_ids:
+        status = statuses.get(record_id)
+        ends = getattr(status, "changed_tests", ()) if status is not None else ()
+        if not ends:
+            continue
+        record = index[record_id]
+        for end in ends:
+            examples = [link.example for link in record.links if link.kind == "verified_by"
+                        and (link.target.test or link.target.path) == end and link.example]
+            what = f" ({', '.join(examples)})" if examples else ""
+            out.append(f"acceptance test changed since you confirmed it: {record_id} "
+                       f"{end}{what}, awaits your confirmation (plumb show {record_id})")
+    return out
+
+
+def masked_acceptance(core: Any, verify: Any, index: Mapping[str, Any],
+                      statuses: Mapping[str, Any], touched_ids: Sequence[str],
+                      changed: Sequence[str]) -> list[dict[str, Any]]:
+    """Regressions of this turn's confirmed acceptance tests that a change to the test hid
+    (``VerifyAPI.masked_regressions``), checked only when a changed path is a ``verified_by``
+    end of a touched requirement (cheap otherwise)."""
+    if verify is None or not hasattr(verify, "masked_regressions"):
+        return []
+    changed_set = set(changed)
+    ends = {(link.target.test or link.target.path or "").split("::", 1)[0]
+            for i in touched_ids if index[i].kind == "requirement"
+            for link in index[i].links if link.kind == "verified_by"}
+    files = sorted(ends & changed_set)
+    if not files:
+        return []
+    scoped = {i: statuses[i] for i in touched_ids if i in statuses}
+    try:
+        return list(verify.masked_regressions(files=files, statuses=scoped))
+    except Exception:  # noqa: BLE001 - a lane failure degrades, never breaks the stop
+        return []
+
+
+def _masked_line(index: Mapping[str, Any], item: Mapping[str, Any]) -> str:
+    parts = []
+    for record_id, examples in (item.get("requirements") or {}).items():
+        record = index.get(record_id)
+        texts = []
+        for example in (record.examples if record is not None else ()):
+            if example.id in examples:
+                texts.append(f"{example.id} \"" + (example.criterion or (
+                    f"given {example.given}, when {example.when}, then {example.then}"))
+                    + "\"")
+        parts.append(f"{record_id} " + ("; ".join(texts) if texts else "(no example named)"))
+    return _clip(f"plumb: regression hidden: {item['node']} passed in run "
+                 f"{item.get('passed_in') or '?'}, then failed, and passes now only because "
+                 f"the test itself was changed. It verifies {'; '.join(parts)}, which the "
+                 "owner confirmed. Tell the owner, with a read-back of the code and test "
+                 "change, and ask how to proceed; a test is not rewritten to pass.", 600)
+
+
 def _regression_line(node: str, evidence: Any) -> str:
     note = " (test source changed since the pass)" if evidence.test_changed_since_pass else ""
     run = f" (last run {evidence.last_run})" if evidence.last_run else ""
@@ -277,7 +338,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     # watchdog) still shows it; kept before the stated set says "shown", never after
     early, early_shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, None, None, None,
-        decisions, (), 0.0, True, tests_checked=False, untraced=untraced)
+        decisions, (), 0.0, True, tests_checked=False, untraced=untraced,
+        changed_tests=changed_acceptance(index, all_statuses, touched_ids))
     ctx.keep(early.splitlines())
     write_stated(ctx, turn, index, stated_ids, early_shown)
     note_path = session_dir / "untraced.json"
@@ -301,6 +363,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     regressions = sorted(n for n, e in (evidence or {}).items() if e.regression)
     open_regressions = [n for n in regressions
                         if asked.get(f"regression:{n}") != (evidence[n].last_run or "?")]
+    # trigger 3 as well: a regression of a confirmed example hidden by changing its test
+    masked = masked_acceptance(core, verify, index, all_statuses, touched_ids, changed)
+    open_masked = [m for m in masked
+                   if asked.get(f"masked:{m['node']}") != str(m.get("masked_by") or "?")]
     not_run = [n for n, e in (evidence or {}).items() if e.state in ("none", "stale")]
 
     unjudged = unjudged_fn(unjudged)
@@ -314,7 +380,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                 fidelity = tuple(unjudged(core, requirement_ids))
             except Exception:  # noqa: BLE001 - advisory only
                 fidelity = ()
-    questions = [f"regression {n}" for n in regressions] + decisions
+    questions = ([f"regression {n}" for n in regressions]
+                 + [f"regression hidden by a test change {m['node']}" for m in masked]
+                 + decisions)
     write_snapshot(ctx.root, build_snapshot(
         core, evidence=evidence, full_pending=pending, statuses=all_statuses,
         deferred=len(selection.deferred) if selection else 0, fidelity_unjudged=fidelity,
@@ -330,6 +398,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         for n in open_regressions:
             reasons.append(_regression_line(n, evidence[n]))
             asked[f"regression:{n}"] = evidence[n].last_run or "?"
+        for m in open_masked:
+            reasons.append(_masked_line(index, m))
+            asked[f"masked:{m['node']}"] = str(m.get("masked_by") or "?")
         if reasons:
             if queued:  # the block tells the agent now; the next prompt need not repeat it
                 reasons.append(trace_instruction(queued))
@@ -351,7 +422,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     text, shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
         pending, questions, fidelity, turn_start, verify is not None, skipped,
-        tests_checked="covering tests" not in skipped, untraced=untraced)
+        tests_checked="covering tests" not in skipped, untraced=untraced,
+        changed_tests=changed_acceptance(index, all_statuses, touched_ids))
     if shown != early_shown:
         write_stated(ctx, turn, index, stated_ids, shown)
     return HookOutput(system_message=text)
@@ -384,7 +456,8 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
             questions: Sequence[str], fidelity: Sequence[str], turn_start: float,
             verify_available: bool, skipped: Sequence[str] = (), *,
             tests_checked: bool = True,
-            untraced: Sequence[str] = ()) -> tuple[str, list[str]]:
+            untraced: Sequence[str] = (),
+            changed_tests: Sequence[str] = ()) -> tuple[str, list[str]]:
     """The summary text and the stated ids it showed in full.
 
     ``tests_checked`` False (the covering tests were not evaluated, or not yet): the
@@ -428,7 +501,7 @@ def summary(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
     if pending is not None and pending.pending:
         lines.append("plumb: full verification pending (" + ", ".join(pending.reasons) + ")")
     confirmed = _confirmations(core, turn_start)
-    extra = []
+    extra = list(changed_tests)
     if confirmed:
         extra.append("; ".join(confirmed))
     if fidelity:

@@ -21,7 +21,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from plumb.confirm import affirmation_in, confirmation_of, remaining_approvals
+from plumb.confirm import affirmation_in, remaining_approvals
 from plumb.contracts import LogEntry
 from plumb.normalize import normalize_text, sha256_bytes, sha256_text
 from plumb.trace import owning_ends
@@ -58,6 +58,21 @@ def refuse_under_marker(command: str) -> None:
                       "terminal; relay the owner's words with plumb relay instead.")
 
 
+def _verified_pins(core: Core, record: Any) -> dict[str, str]:
+    """``{verified_by end: content hash}`` of a requirement's existing acceptance tests."""
+    from plumb.confirm import verified_end
+
+    out: dict[str, str] = {}
+    for link in record.links:
+        end = verified_end(link)
+        if end is None:
+            continue
+        digest = core.hash_target(link.target)
+        if digest is not None:
+            out[end] = digest
+    return out
+
+
 def _records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
     index = core.index()
     out: list[dict[str, Any]] = []
@@ -70,6 +85,9 @@ def _records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
             ends = owning_ends(record)
             if ends:  # what the requirement owns as approved: the merge boundary asks
                 item["ends"] = ends  # again for an end added later (a widened requirement)
+            verified = _verified_pins(core, record)
+            if verified:  # the content of each acceptance test the owner confirmed: an
+                item["verified"] = verified  # edit to it is an unconfirmed edit (confirm.py)
             out.append(item)
     if not out:
         raise ApprovalError("name at least one record")
@@ -77,12 +95,13 @@ def _records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
 
 
 def pending(core: Core) -> list[tuple[str, str, str]]:
-    """``(id, hash, confirmation)`` of every proposed or unconfirmed-edit record."""
+    """``(id, hash, confirmation)`` of every proposed or unconfirmed-edit record (a
+    requirement whose confirmed acceptance test changed is an unconfirmed edit too)."""
     index = core.index()
-    approvals = remaining_approvals(core.events(), core.config.approve.affirmations)
+    statuses = core.status()
     out = []
     for record_id in sorted(index):
-        state, _ = confirmation_of(index[record_id], approvals.get(record_id, []))
+        state = statuses[record_id].confirmation
         if state != "confirmed":
             out.append((record_id, index[record_id].hash, state))
     return out

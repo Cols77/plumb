@@ -112,26 +112,24 @@ def test_injects_named_records_first(records: Path, hook_input) -> None:
     assert any(line.startswith("SR-009") for line in record_lines)
 
 
-def test_injects_examples_and_tests_within_20_lines(records: Path, hook_input,
-                                                     write_record) -> None:
-    for i in range(10, 16):
+@pytest.mark.sr("SR-032")
+def test_injects_one_line_per_record_within_the_budget(records: Path, hook_input,
+                                                       write_record) -> None:
+    """R9: one line per relevant record (ID, state, title); examples and tests stay behind
+    plumb show; the token budget bounds the delta."""
+    for i in range(10, 40):
         write_record(records, f"---\nid: SR-0{i}\ntitle: Stale link rule {i}\n"
                      "statement: stale links pins hashes\nexamples:\n"
-                     + "".join(f"- id: EX-{n}\n  given: stale link {n}\n  when: pins\n"
-                               f"  then: stale {n} " + "x" * 120 + "\n" for n in range(1, 5))
-                     + "---\n")
-    verify = FakeVerify(tests={"SR-003": ("tests/test_links.py::test_pin_drift",
-                                          "tests/test_links.py::test_repin")})
-    out = _run(records, hook_input, "SR-003 stale links pins hashes", verify=verify)
+                     "- id: EX-1\n  given: stale link\n  when: pins\n  then: stale\n---\n")
+    out = _run(records, hook_input, "SR-003 stale links pins hashes")
     lines = out.splitlines()
-    assert lines[1].startswith("SR-003")
-    assert "  EX-1: given a link from SR-003 to src/links.py, when src/links.py changes, " \
-           "then the link is stale" in lines
-    assert ("  tests: tests/test_links.py::test_pin_drift, tests/test_links.py::test_repin"
-            in lines)
-    section = [line for line in lines if not line.startswith("plumb:")]
-    assert len(section) + 1 <= 20
-    assert all(len(line) <= 102 for line in lines if line.startswith("  EX-"))
+    assert lines[0].startswith("plumb: relevant records, new or changed this session")
+    assert lines[1] == "SR-003 [proposed] Links pin both ends"
+    assert not any("EX-1" in line or "tests:" in line for line in lines)
+    records_shown = [line for line in lines if line.startswith("SR-")]
+    assert 1 < len(records_shown) <= 5
+    assert all(" [proposed] " in line for line in records_shown)
+    assert len(out) <= 200 * 4 + 200  # hooks.prompt_tokens, plus the escalation hint
 
 
 def test_intent_change_flag_on_confirmed_record_with_change_words(records: Path,
@@ -205,10 +203,11 @@ def test_backend_unavailable_degrades(records: Path, hook_input) -> None:
     assert "plumb: compare this request" in out
 
 
-def test_verify_unavailable_degrades(records: Path, hook_input) -> None:
+def test_needs_no_verification(records: Path, hook_input) -> None:
+    """Covering tests are pulled on demand (plumb show), so the hook never asks VERIFY."""
     out = _run(records, hook_input, "SR-003 stale links", verify=None)
     assert out.splitlines()[1].startswith("SR-003")
-    assert "plumb: verification unavailable" in out
+    assert "verification unavailable" not in out
 
 
 def test_nothing_relevant_prints_nothing(records: Path, hook_input) -> None:
@@ -265,8 +264,8 @@ class _SlowBackend(FakeBackend):
 
 
 def test_intent_lines_survive_a_budget_cut(records: Path, hook_input, monkeypatch) -> None:
-    """Records, the intent-change flag, the compare line and the relay line are kept; only
-    the covering-test detail is cut and named."""
+    """Records, the intent-change flag, the compare line and the relay line are printed even
+    when the intent check is slow; nothing asks for the covering tests."""
     from plumb.hosts.claude_code import hookio
 
     clock = _Clock()
@@ -286,12 +285,12 @@ def test_intent_lines_survive_a_budget_cut(records: Path, hook_input, monkeypatc
     out = _run(records, hook_input, "SR-003 should now stop pinning both ends",
                backend=backend, verify=verify)
     lines = out.splitlines()
-    assert lines[0] == "plumb: relevant records (state; examples; covering tests):"
+    assert lines[0].startswith("plumb: relevant records, new or changed this session")
     assert lines[1].startswith("SR-003 [confirmed]")
     assert "plumb: this may change SR-003 (confirmed)." in out
     assert "plumb: compare this request with the confirmed examples of SR-003" in out
     assert "plumb: awaiting confirmation: SR-009" in out and "plumb relay SR-009" in out
-    assert lines[-1] == "plumb: check skipped (budget): covering tests"
+    assert not any("covering tests" in line for line in lines)
     assert calls == []
 
 
@@ -328,3 +327,59 @@ def test_queued_path_linked_since_is_not_repeated(records: Path, hook_input) -> 
     open_core(records).add_link("SR-009", "implemented_by", Target(path="src/mul.py"))
     _queue_untraced(records, ["src/mul.py"])
     assert "untraced change" not in _run(records, hook_input, "thanks")
+
+
+# -- R9 context economy: a deduplicated delta per session (SR-032) ----------------------------
+
+
+@pytest.mark.sr("SR-032")
+def test_second_prompt_naming_an_unchanged_record_injects_nothing(records: Path,
+                                                                   hook_input) -> None:
+    first = _run(records, hook_input, "SR-003 stale links")
+    assert "SR-003 [proposed] Links pin both ends" in first
+    assert _run(records, hook_input, "again SR-003 stale links") == ""
+    # another session has not seen it
+    assert "SR-003 [proposed]" in _run(records, hook_input, "SR-003 stale links", session="s2")
+
+
+@pytest.mark.sr("SR-032")
+def test_changed_record_is_injected_again_as_one_line(records: Path, hook_input) -> None:
+    _run(records, hook_input, "SR-003 and SR-004")
+    path = records / ".plumb" / "requirements" / "SR-003.md"
+    path.write_text(path.read_text("utf-8").replace("a moved end", "any moved end"), "utf-8")
+    lines = _run(records, hook_input, "SR-003 and SR-004").splitlines()
+    assert [line for line in lines if line.startswith("SR-")] == [
+        "SR-003 [proposed] Links pin both ends"]
+
+
+@pytest.mark.sr("SR-032")
+def test_confirmation_change_is_injected_again(records: Path, hook_input) -> None:
+    _run(records, hook_input, "SR-004 approvals")
+    _confirm(records, "SR-004")
+    out = _run(records, hook_input, "SR-004 approvals")
+    assert "SR-004 [confirmed] Approvals pin exact content" in out
+    assert "plumb: compare this request with the confirmed examples of SR-004" in out
+    # the compare line comes with the record, not on every prompt
+    assert "compare this request" not in _run(records, hook_input, "SR-004 approvals")
+
+
+@pytest.mark.sr("SR-032")
+def test_records_cut_by_the_budget_come_on_a_later_prompt(records: Path, hook_input,
+                                                          write_record) -> None:
+    (records / ".plumb" / "config.yaml").write_text("hooks:\n  prompt_tokens: 10\n", "utf-8")
+    first = _run(records, hook_input, "SR-003 SR-004")
+    assert "SR-003 [proposed]" in first and "SR-004" not in first.splitlines()[1]
+    assert "more relevant: plumb show SR-004" in first
+    second = _run(records, hook_input, "SR-003 SR-004")
+    assert "SR-004 [proposed]" in second and "SR-003 [proposed]" not in second
+
+
+@pytest.mark.sr("SR-032")
+def test_session_clear_resets_what_the_agent_has_seen(records: Path, hook_input) -> None:
+    from plumb.hosts.claude_code import session_start
+
+    _run(records, hook_input, "SR-003 stale links")
+    payload = hook_input("SessionStart", session_id="s1", source="clear")
+    assert session_start.main(stdin=io.StringIO(payload), stdout=io.StringIO(), root=records,
+                              verify=FakeVerify()) == 0
+    assert "SR-003 [proposed]" in _run(records, hook_input, "SR-003 stale links")

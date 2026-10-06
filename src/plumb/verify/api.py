@@ -199,6 +199,8 @@ class Verify:
         tmap = self.test_map()
         full = self.index().get("full")
         if not full:
+            if not tmap.test_files:  # no test to run: a full run has nothing to verify
+                return FullPending(pending=False, reasons=())
             return FullPending(pending=True, reasons=("no full run recorded",))
         reasons: list[str] = []
         current = self.infra_hashes()
@@ -290,9 +292,11 @@ class Verify:
     def acceptance(self, ids: Iterable[str] | None = None,
                    ) -> dict[str, list[dict[str, Any]]]:
         """Every acceptance test of the requirements ``ids`` (default: all) with its state:
-        ``{SR: [{test, examples, state, regression, stale, failing, unverified,
+        ``{SR: [{test, examples, state, regression, masked, stale, failing, unverified,
         last_run}]}``; ``failing`` and ``unverified`` are exclusive, both false only for a
-        test passing on the current identity."""
+        test passing on the current identity. ``masked``: the test passes only after it was
+        changed since it regressed, and the owner has not confirmed the change; it counts
+        as a failing regression (``masked_regressions``)."""
         index = self.core.index()
         wanted = list(ids) if ids is not None else sorted(
             i for i, r in index.items() if r.kind == "requirement")
@@ -318,15 +322,19 @@ class Verify:
                         tests[test] = []
         refs = list(dict.fromkeys(t for tests in per_record.values() for t in tests))
         evidence = self.evidence(refs) if refs else {}
+        masked: dict[str, set[str]] = {}  # test file -> SRs whose changed test hid a regression
+        for item in self.masked_regressions() if refs else ():
+            masked.setdefault(item["node"].split("::", 1)[0], set()).update(item["requirements"])
         out: dict[str, list[dict[str, Any]]] = {}
         for record_id, tests in per_record.items():
             items = []
             for ref, examples in tests.items():
                 ev = evidence[ref]
-                failing = ev.state == "fresh-fail" or ev.last_failed or ev.regression
+                hidden = record_id in masked.get(ref.split("::", 1)[0], ())
+                failing = ev.state == "fresh-fail" or ev.last_failed or ev.regression or hidden
                 passing = ev.state in ("fresh-pass", "flaky-pass")
                 items.append({"test": ref, "examples": examples, "state": ev.state,
-                              "regression": ev.regression,
+                              "regression": ev.regression or hidden, "masked": hidden,
                               "stale": ev.state in ("stale", "none"), "failing": failing,
                               "unverified": not failing and not passing,
                               "last_run": ev.last_run})
@@ -352,6 +360,90 @@ class Verify:
                 continue
             out.append(node_id)
         return out
+
+    def masked_regressions(self, files: Iterable[str] | None = None,
+                           statuses: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Regressions of owner-confirmed acceptance tests that a change to the test hid:
+        ``[{node, passed_in, failed_in, masked_by, requirements: {SR: [EX ids]}}]``.
+
+        A node counts while its recorded regression has had no pass on the test body that
+        passed before it (``evidence._track_regression``: a pass after the test body changed
+        marks it ``masked_by`` that run; a deleted node counts too) and its file is a
+        ``verified_by`` end of a requirement the owner has approved (confirmed or an
+        unconfirmed edit) whose current content no standing approval pinned
+        (``confirm.approved_test_pins``). Rerunning the original test, or the owner confirming
+        the requirement with the changed test (``plumb approve``), resolves it. ``files``
+        limits it to those test files."""
+        from plumb.confirm import approved_test_pins, verified_end
+        from plumb.verify.markers import strip_param
+
+        core = self.core
+        index = core.index()
+        statuses = core.status() if statuses is None else statuses
+        pins = approved_test_pins(core.events(), core.config.approve.affirmations, index)
+        changed: dict[str, dict[str, list[str]]] = {}
+        for record_id, status in statuses.items():
+            confirmation = getattr(status, "confirmation", "proposed")
+            if record_id not in index or confirmation == "proposed":
+                continue
+            pinned = pins.get(record_id, {})
+            for link in index[record_id].links:
+                end = verified_end(link)
+                if end is None:
+                    continue
+                now = core.hash_target(link.target)
+                if now is not None and now in pinned.get(end, ()):
+                    continue  # the owner confirmed this exact test content
+                examples = changed.setdefault(end.split("::", 1)[0], {}).setdefault(
+                    record_id, [])
+                if link.example and link.example not in examples:
+                    examples.append(link.example)
+        if not changed:
+            return []
+        wanted = None if files is None else {f.split("::", 1)[0] for f in files}
+        tmap = self.test_map()
+        out = []
+        for node_id, entry in sorted(self.index().get("nodes", {}).items()):
+            regressed = entry.get("regressed") or {}
+            test_file = node_id.split("::", 1)[0]
+            if not regressed or test_file not in changed:
+                continue
+            if wanted is not None and test_file not in wanted:
+                continue
+            info = tmap.files.get(test_file)
+            deleted = info is None or strip_param(node_id) not in info.get("nodes", {})
+            if not regressed.get("masked_by") and not deleted:
+                continue  # still failing: an ordinary regression (unresolved_regressions)
+            out.append({"node": node_id, "passed_in": regressed.get("passed_in"),
+                        "failed_in": regressed.get("failed_in"),
+                        "masked_by": regressed.get("masked_by"),
+                        "requirements": changed[test_file]})
+        return out
+
+    def affected_requirements(self, paths: Iterable[str]) -> list[str]:
+        """Confirmed requirements (confirmed or an unconfirmed edit) whose acceptance tests
+        (``verified_by`` ends and marker-mapped tests) cover one of ``paths``: a changed test
+        file itself, or a test whose import closure, mention or ``verified_by`` link reaches a
+        changed source path. The merge boundary checks their evidence, so a change to one
+        requirement's code that breaks another requirement's acceptance test cannot pass
+        unrerun."""
+        paths = [p for p in paths if p]
+        if not paths:
+            return []
+        covering: set[str] = set()
+        for tests in self.tests_for(paths).values():
+            covering.update(t.split("::", 1)[0] for t in tests)
+        if not covering:
+            return []
+        index = self.core.index()
+        statuses = self.core.status()
+        out = []
+        for record_id, items in self.acceptance(
+                [i for i, s in statuses.items() if index[i].kind == "requirement"
+                 and s.confirmation != "proposed"]).items():
+            if any(str(item["test"]).split("::", 1)[0] in covering for item in items):
+                out.append(record_id)
+        return sorted(out)
 
     def impact(self, ref: str) -> dict[str, Any]:
         """Downstream of a record or a path: records, code ends, covering tests (VS4)."""

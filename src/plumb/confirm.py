@@ -3,7 +3,10 @@ from the records' current hashes and the ``approval`` and ``revocation`` events.
 
 - proposed: no (unrevoked, valid) approval of the record exists;
 - confirmed: the latest such approval pins the record's current hash;
-- unconfirmed-edit: an approval exists but pins an older hash;
+- unconfirmed-edit: an approval exists but pins an older hash, or (requirements) an approval
+  pinned the content of a ``verified_by`` end that has changed since (``changed_tests``): an
+  owner-confirmed example's acceptance test cannot change meaning, or be rewritten to pass,
+  without the owner seeing it;
 - covered (requirements): confirmed, and every example has a verified_by link to an
   existing test.
 
@@ -106,6 +109,62 @@ def remaining_approvals(entries: Iterable[LogEntry],
     return remaining
 
 
+def verified_end(link: Any) -> str | None:
+    """The key an approval pins a ``verified_by`` end under: its test node or path."""
+    if link.kind != "verified_by":
+        return None
+    target = link.target
+    return target.test or target.path
+
+
+def approved_test_pins(entries: Iterable[LogEntry], affirmations: Sequence[str],
+                       index: Mapping[str, Record]) -> dict[str, dict[str, set[str]]]:
+    """``{SR: {verified_by end: content hashes}}``: what the owner's approvals of each
+    requirement at its current hash pinned for its acceptance tests (approvals still standing
+    after revocations). An approval written before ends were pinned pins nothing."""
+    standing: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
+    for entry, problem in checked_entries(entries, affirmations):
+        if problem is not None:
+            continue
+        for item in entry.payload.get("records") or []:
+            if not isinstance(item, Mapping) or not isinstance(item.get("id"), str):
+                continue
+            record_id, record_hash = item["id"], str(item.get("hash"))
+            kept = standing.setdefault(record_id, [])
+            if entry.kind == "approval":
+                pins = item.get("verified")
+                kept.append((record_hash, pins if isinstance(pins, Mapping) else {}))
+            elif kept:
+                rest = [k for k in kept if k[0] != record_hash]
+                standing[record_id] = rest if len(rest) < len(kept) else kept[:-1]
+    out: dict[str, dict[str, set[str]]] = {}
+    for record_id, kept in standing.items():
+        record = index.get(record_id)
+        if record is None:
+            continue
+        for record_hash, pins in kept:
+            if record_hash != record.hash:
+                continue
+            for end, digest in pins.items():
+                out.setdefault(record_id, {}).setdefault(str(end), set()).add(str(digest))
+    return out
+
+
+def changed_tests(states: Iterable[Any], pinned: Mapping[str, set[str]]) -> tuple[str, ...]:
+    """The ``verified_by`` ends whose current content no approval pinned (a missing end
+    counts: deleting a confirmed example's test is a change too)."""
+    out: list[str] = []
+    for state in states:
+        end = verified_end(state.link)
+        if end is None or end not in pinned:
+            continue
+        now = state.current.target if state.current is not None else None
+        if now is None or now not in pinned[end]:
+            if end not in out:
+                out.append(end)
+    return tuple(out)
+
+
 def confirmation_of(record: Record,
                     approvals: Sequence[tuple[str, str]]) -> tuple[str, str | None]:
     if not approvals:
@@ -120,6 +179,7 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
     index = core.index()
     selected = list(index) if ids is None else [i for i in ids if i in index]
     approvals = remaining_approvals(core.events(), core.config.approve.affirmations)
+    pins = approved_test_pins(core.events(), core.config.approve.affirmations, index)
     states = core.link_states(selected)
     by_record: dict[str, list] = {}
     for state in states:
@@ -136,6 +196,11 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
         record_states = tuple(by_record.get(record_id, ()))
         uncovered: tuple[str, ...] = ()
         covered = False
+        moved: tuple[str, ...] = ()
+        if record.kind == "requirement" and confirmation == "confirmed" and record_id in pins:
+            moved = changed_tests(record_states, pins[record_id])
+            if moved:
+                confirmation = "unconfirmed-edit"
         if record.kind == "requirement":
             verified = [s for s in record_states
                         if s.link.kind == "verified_by" and s.state != "dangling"]
@@ -147,5 +212,5 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
             id=record_id, confirmation=confirmation,  # type: ignore[arg-type]
             approved_by=by,  # type: ignore[arg-type]
             covered=covered, uncovered_examples=uncovered, links=record_states,
-            superseded_by=superseded.get(record_id))
+            superseded_by=superseded.get(record_id), changed_tests=moved)
     return out
