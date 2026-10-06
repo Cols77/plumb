@@ -1,0 +1,131 @@
+"""``plumb.capture.api``: what CAPTURE provides to the other lanes (sp2 11.1).
+
+PRESENT (hooks, cards, review, drift), MERGE (``diff_serves`` in ``trailers check-msg``) and
+HOSTS (through PRESENT) call these functions only. Each returns within about 1 s with the
+heuristic and degrades to an empty result on any error, so a hook that calls it never fails
+because of it. None of them confirms anything; ``capture`` writes proposed records only
+(and, only when the owner turned it on, the narrow auto-approval of sp2 8.2).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any
+
+from plumb.contracts import (
+    AutoApproveState,
+    CaptureResult,
+    ClarifyView,
+    DiffStats,
+    EscalationSuggestion,
+    IntentCardData,
+    IntentFlag,
+    Proposal,
+    TriageView,
+)
+
+if TYPE_CHECKING:
+    from plumb.api import Core
+
+def _safe[T](default: T, call: Callable[[], T]) -> T:
+    try:
+        return call()
+    except Exception:  # noqa: BLE001 - an advisory lane never fails its caller
+        return default
+
+
+def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = None,
+            dry_run: bool = False) -> CaptureResult:
+    """Write the read-back ``doc`` as proposed records (sp2 5.1). Raises ``CaptureError``
+    on a bad document (the command maps it to exit 2): a writer is told, never silenced."""
+    from plumb.capture.capture import capture as _capture
+
+    return _capture(core, doc, prompt_digest=prompt_digest, dry_run=dry_run)
+
+
+def intent_flags(core: Core, prompt: str, matched: Sequence[str]) -> Sequence[IntentFlag]:
+    from plumb.capture.flags import intent_flags as _flags
+
+    return _safe([], lambda: _flags(core, prompt, matched))
+
+
+def escalation(core: Core, *, prompt: str | None = None, matched: Sequence[str] = (),
+               diff: DiffStats | None = None) -> Sequence[EscalationSuggestion]:
+    from plumb.capture.escalation import escalation as _escalation
+
+    return _safe([], lambda: _escalation(core, prompt=prompt, matched=matched, diff=diff))
+
+
+def next_question(core: Core, touched: Sequence[str]) -> str | None:
+    """The one DEC to ask next (R11 "ONE per message"): the earliest-recorded unconfirmed
+    decision that matters among ``touched`` or deciding a touched record, else None."""
+    from plumb.capture.clarify import next_question as _next
+
+    return _safe(None, lambda: _next(core, touched))
+
+
+def triage(core: Core, ids: Iterable[str] | None = None) -> TriageView:
+    from plumb.capture.triage import triage as _triage
+
+    return _safe(TriageView(), lambda: _triage(core, ids, hook=True))
+
+
+def card_data(core: Core, ids: Sequence[str]) -> Sequence[IntentCardData]:
+    from plumb.capture.card import card_data as _card_data
+
+    return _safe([], lambda: _card_data(core, ids))
+
+
+def confirmation_counts(core: Core) -> Mapping[str, int]:
+    """``{"owner", "agent-relayed", "auto-jev", "import", "proposed", "self-recorded"}``."""
+    from plumb.capture.confirmations import confirmation_counts as _counts
+
+    return _safe({}, lambda: _counts(core))
+
+
+def confirmation_label(core: Core, record_id: str) -> str:
+    """"confirmed by you", "confirmed by JEV", "..., self-recorded message" (R8 B, R13 Q4)."""
+    from plumb.capture.confirmations import confirmation_label as _label
+
+    return _safe("", lambda: _label(core, record_id))
+
+
+def auto_approve_state(core: Core) -> AutoApproveState:
+    from plumb.capture.autoapprove import auto_approve_state as _state
+
+    return _safe(AutoApproveState(), lambda: _state(core))
+
+
+def ownership_proposals(core: Core, paths: Sequence[str]) -> Mapping[str, Proposal]:
+    from plumb.capture.ownership import ownership_proposals as _proposals
+
+    return _safe({}, lambda: _proposals(core, paths))
+
+
+def diff_serves(core: Core, sr_ids: Sequence[str], paths: Sequence[str]) -> Sequence[str]:
+    """Warning lines for claimed SRs the diff may not serve (non-blocking, sp2 10.1)."""
+    from plumb.capture.ownership import diff_serves as _serves
+
+    return _safe([], lambda: _serves(core, sr_ids, paths))
+
+
+def drift_hints(core: Core, changed: Sequence[str]) -> Sequence[str]:
+    """Hint lines: hidden dependencies and proposed test nodes; never edges (sp2 10)."""
+    from plumb.capture.hints import drift_hints as _hints
+
+    return _safe([], lambda: _hints(core, changed))
+
+
+def clarify(core: Core, request: str,
+            questions: Sequence[Mapping[str, Any]] = ()) -> ClarifyView:
+    from plumb.capture.clarify import clarify as _clarify
+
+    return _safe(ClarifyView(), lambda: _clarify(core, request, questions))
+
+
+def stated_group(view: TriageView) -> Mapping[str, Any] | None:
+    """The ``{group, records: [{id, hash}]}`` the stop hook writes into the stated set with
+    the triage offer line, so the owner's "ok" relays exactly that group (DEC-017)."""
+    from plumb.capture.triage import stated_group as _group
+
+    return _safe(None, lambda: _group(view))

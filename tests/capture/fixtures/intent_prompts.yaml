@@ -1,0 +1,76 @@
+# Labelled prompts for the intent-change flags (sp2 7.1, SR-038 EX-4). Every record below is
+# confirmed in the test. label: contradicts | extends | benign; record: the record it is about.
+records:
+  SR-001: |
+    ---
+    id: SR-001
+    title: add returns the sum
+    statement: add(a, b) returns the sum of two numbers
+    examples:
+    - id: EX-1
+      given: a = 1 and b = 2
+      when: add runs
+      then: it returns 3
+    ---
+  SR-002: |
+    ---
+    id: SR-002
+    title: Orders export as CSV files
+    statement: The export writes the user's orders as a CSV file, one row per order.
+    examples:
+    - id: EX-1
+      given: a user with 2 orders
+      when: the export runs
+      then: a CSV file with 2 rows is written
+    ---
+  SR-003: |
+    ---
+    id: SR-003
+    title: Account lockout after failed logins
+    statement: After 3 failed logins the account is locked for 15 minutes.
+    examples:
+    - id: EX-1
+      given: 3 failed logins in a row
+      when: a fourth login is tried
+      then: the account is locked for 15 minutes
+    ---
+prompts:
+  # contradictions: the request negates, replaces or reverses a confirmed then
+  - {text: "make add subtract", label: contradicts, record: SR-001}
+  - {text: "add should return the difference instead of the sum", label: contradicts, record: SR-001}
+  - {text: "add no longer needs to return the sum", label: contradicts, record: SR-001}
+  - {text: "remove the add function", label: contradicts, record: SR-001}
+  - {text: "rename add to plus", label: contradicts, record: SR-001}
+  - {text: "exports should be JSON instead of CSV", label: contradicts, record: SR-002}
+  - {text: "stop writing CSV files on export", label: contradicts, record: SR-002}
+  - {text: "make the export write JSON", label: contradicts, record: SR-002}
+  - {text: "replace the CSV export with an Excel file", label: contradicts, record: SR-002}
+  - {text: "lock the account after 5 failed logins instead of 3", label: contradicts, record: SR-003}
+  - {text: "accounts should not be locked anymore", label: contradicts, record: SR-003}
+  - {text: "change the lockout to 30 minutes", label: contradicts, record: SR-003}
+  - {text: "SR-003 should never lock an account", label: contradicts, record: SR-003}
+  # extensions: new behaviour beside a confirmed one
+  - {text: "add a multiply function next to add", label: extends, record: SR-001}
+  - {text: "also support adding three numbers with add", label: extends, record: SR-001}
+  - {text: "export should also include the invoices", label: extends, record: SR-002}
+  - {text: "add an email notification when an account is locked", label: extends, record: SR-003}
+  - {text: "add a PDF export next to the CSV one", label: extends, record: SR-002}
+  - {text: "let add accept floats as well", label: extends, record: SR-001}
+  - {text: "support exporting a single order too", label: extends, record: SR-002}
+  # benign: mentions, questions, tidy-ups, tests, docs
+  - {text: "also tidy the add docstring for SR-001", label: benign, record: SR-001}
+  - {text: "fix the typo in the add comment", label: benign, record: SR-001}
+  - {text: "format calc.py", label: benign, record: SR-001}
+  - {text: "what does add return for negative numbers?", label: benign, record: SR-001}
+  - {text: "run the tests for the CSV export", label: benign, record: SR-002}
+  - {text: "explain SR-003", label: benign, record: SR-003}
+  - {text: "improve the error message of the login form", label: benign, record: SR-003}
+  - {text: "rename the variable in add to total", label: benign, record: SR-001}
+  - {text: "add type hints to add", label: benign, record: SR-001}
+  - {text: "update the README to describe the export", label: benign, record: SR-002}
+  - {text: "commit the export changes", label: benign, record: SR-002}
+  - {text: "check that the lockout still works", label: benign, record: SR-003}
+  - {text: "reformat the lockout code", label: benign, record: SR-003}
+  - {text: "add a comment explaining add", label: benign, record: SR-001}
+  - {text: "show me SR-002", label: benign, record: SR-002}
+  - {text: "add tests for SR-001 covering EX-1", label: benign, record: SR-001}

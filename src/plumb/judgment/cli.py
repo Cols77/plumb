@@ -121,11 +121,11 @@ def judgment_status(core: Any) -> dict[str, Any]:
     out: dict[str, Any] = {"configured": config.backend, "backend": backend.name,
                            "notices": list(getattr(backend, "notices", ()))}
     try:
-        from plumb.judgment.jev import key_source
+        from plumb.judgment.jev import credential_env, key_source
     except ImportError:
         out["jev"] = "not available in this build"
     else:
-        source = key_source(core.root)
+        source = key_source(core.root, name=credential_env(core.config))
         out["jev_key"] = "present" if source else "absent"
         if source:
             out["jev_key_source"] = source

@@ -85,6 +85,12 @@ def show_lines(core: Any, ids: Iterable[str]) -> tuple[list[str], list[str]]:
     wanted = [i for i in ids]
     known = [i for i in wanted if i in index]
     statuses = core.status(known) if known else {}
+    try:  # R8 B and R13 Q4: who confirmed is labelled everywhere it is shown
+        from plumb.capture.confirmations import labels_for
+
+        labels = labels_for(core, known) if known else {}
+    except Exception:  # noqa: BLE001 - a missing lane never fails plumb show
+        labels = {}
     lines: list[str] = []
     missing: list[str] = []
     for record_id in wanted:
@@ -95,6 +101,10 @@ def show_lines(core: Any, ids: Iterable[str]) -> tuple[list[str], list[str]]:
         if lines:
             lines.append("")
         state = statuses[record_id].confirmation if record_id in statuses else "?"
+        if state == "confirmed" and statuses[record_id].approved_by == "auto-jev":
+            state = "confirmed by JEV"
+        if record_id in labels:
+            state += f", {labels[record_id]}"
         lines.append(f"{record_id} ({record.kind}, {state}) {record.path}")
         lines.extend("  " + line for line in record_lines(record))
         body = record.body.strip()

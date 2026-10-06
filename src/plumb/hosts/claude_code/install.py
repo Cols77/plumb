@@ -36,10 +36,12 @@ HOOKS: tuple[tuple[str, str, str | None, bool], ...] = (
     ("post-edit", "PostToolUse", POST_EDIT_MATCHER, True),
     ("stop", "Stop", None, False),
 )
-GUARDED = ("approve", "revoke", "tests waive")
+GUARDED = ("approve", "revoke", "tests waive", "triage --approve", "spec approve",
+           "config auto-approve", "config show")
 STANDARD_PREFIXES = ("plumb", "uv run plumb", "python -m plumb")
 _PLUMB_COMMAND = re.compile(r"(?:^|[\s\"'/\\])plumb(?:\.exe)?[\"']?\s+(?:hook\s|statusline\b)")
-_PLUMB_DENY = re.compile(r"plumb (?:approve|revoke|tests waive):\*\)$|PLUMB_AGENT_SESSION|"
+_PLUMB_DENY = re.compile(r"plumb (?:approve|revoke|tests waive|triage --approve|spec approve"
+                         r"|config auto-approve|config show):\*\)$|PLUMB_AGENT_SESSION|"
                          r"^(?:Edit|Write|MultiEdit)\(\.plumb/log/\*\*\)$")
 
 
@@ -257,6 +259,15 @@ def template(name: str, launcher: Launcher) -> str:
     return text.replace("{plumb}", launcher.agent_prefix)
 
 
+def skill_names() -> list[str]:
+    """Every skill shipped under ``templates/skills/<name>/SKILL.md`` (sp2 9.1: the
+    ``plumb`` skill and ``plumb-clarify`` beside it)."""
+    base = Path(__file__).parent / "templates" / "skills"
+    if not base.is_dir():
+        return []
+    return sorted(d.name for d in base.iterdir() if (d / "SKILL.md").is_file())
+
+
 def _write(path: Path, content: str, report: InstallReport, root: Path, dry_run: bool) -> None:
     rel = path.relative_to(root).as_posix()
     try:
@@ -336,8 +347,9 @@ def install(root: Path, *, launcher: Launcher | str = "auto", dry_run: bool = Fa
     report.lines.append("plumb: hooks " + (", ".join(names) if names else "none")
                         + f"; status line; {MARKER_NAME}; deny rules")
     claude = root / ".claude"
-    _write(claude / "skills" / "plumb" / "SKILL.md", template("SKILL.md", chosen), report,
-           root, dry_run)
+    for name in skill_names():
+        _write(claude / "skills" / name / "SKILL.md",
+               template(f"skills/{name}/SKILL.md", chosen), report, root, dry_run)
     _write(claude / "commands" / "plumb.md", template("plumb-command.md", chosen), report,
            root, dry_run)
     claude_md = root / "CLAUDE.md"
@@ -362,7 +374,8 @@ def uninstall(root: Path, *, dry_run: bool = False) -> InstallReport:
         if cleaned != current:
             _write(settings_path, _dump(cleaned), report, root, dry_run)
     claude = root / ".claude"
-    for path in (claude / "skills" / "plumb" / "SKILL.md", claude / "commands" / "plumb.md"):
+    skills = [claude / "skills" / name / "SKILL.md" for name in skill_names()]
+    for path in (*skills, claude / "commands" / "plumb.md"):
         if path.exists():
             report.changed.append(path.relative_to(root).as_posix())
             if not dry_run:
@@ -451,6 +464,10 @@ def status(root: Path) -> list[str]:
     skill = claude / "skills" / "plumb" / "SKILL.md"
     lines.append("skill: " + (".claude/skills/plumb/SKILL.md" if skill.exists()
                               else "not installed"))
+    others = [n for n in skill_names() if n != "plumb"
+              and (claude / "skills" / n / "SKILL.md").exists()]
+    if others:
+        lines.append("other skills: " + ", ".join(others))
     command = claude / "commands" / "plumb.md"
     lines.append("slash command: " + ("/plumb" if command.exists() else "not installed"))
     try:

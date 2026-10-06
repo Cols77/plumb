@@ -269,18 +269,32 @@ def cmd_relay(command: str, argv: list[str]) -> int:
     parser.add_argument("--revoke", action="store_true")
     parser.add_argument("--exempt", action="store_true",
                         help="also confirm the trace.exempt globs (the quote names them)")
+    parser.add_argument("--group", default=None,
+                        help="the group the last reply offered (low-risk, from plumb triage)")
+    parser.add_argument("--set", default=None, dest="set_anchor", metavar="INT",
+                        help="the escalated spec whose set the reply presented")
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
-    if not args.ids and not args.exempt:
-        parser.error("name record IDs or pass --exempt")
+    if not args.ids and not args.exempt and not args.group and not args.set_anchor:
+        parser.error("name record IDs or pass --exempt, --group or --set")
     core = _core(args)
 
     def act() -> None:
         entry = approvals.relay(core, args.ids, prompt=args.prompt, quote=args.quote,
-                                revoke=args.revoke, note=args.note, exempt=args.exempt)
+                                revoke=args.revoke, note=args.note, exempt=args.exempt,
+                                group=args.group, set_anchor=args.set_anchor)
         verb = "revoked" if args.revoke else "confirmed"
         names = _approved_names(entry)
-        print(f"plumb: {verb} {names} (agent-relayed) on the owner's words \"{args.quote}\"")
+        what = (f" (group {args.group})" if args.group else
+                f" (set {args.set_anchor})" if args.set_anchor else "")
+        print(f"plumb: {verb} {names}{what} (agent-relayed) on the owner's words "
+              f"\"{args.quote}\"")
+        left_out = (entry.payload.get("triage") or {}).get("left_out") or []
+        if left_out:
+            print("plumb: changed since offered, left out: " + ", ".join(left_out))
+        if entry.payload.get("self_recorded"):
+            print("plumb: labelled self-recorded message: the prompt hook did not record "
+                  "these words")
 
     return _guarded(act)
 
@@ -513,7 +527,18 @@ def drift_data(core) -> dict:
     return {"clean": clean, "stale": stale, "dangling": dangling, "failing": failing,
             "unconfirmed_edits": unconfirmed, "changed_tests": changed_tests,
             "uncovered_examples": uncovered,
-            "fidelity": fidelity, "never_judged": never_judged}
+            "fidelity": fidelity, "never_judged": never_judged, "hints": drift_hint_lines(core)}
+
+
+def drift_hint_lines(core) -> list[str]:
+    """Hints only (sp2 10): hidden dependencies and proposed test nodes. Never drift
+    signals: they change neither ``clean`` nor the exit code."""
+    try:
+        from plumb.capture.hints import changed_paths, drift_hints
+
+        return drift_hints(core, changed_paths(core), all_nodes=True)
+    except Exception:  # noqa: BLE001 - advisory; a missing lane never fails drift
+        return []
 
 
 def cmd_drift(command: str, argv: list[str]) -> int:
@@ -551,6 +576,7 @@ def cmd_drift(command: str, argv: list[str]) -> int:
                          f"(plumb fidelity {item['requirement']})")
     if not lines:
         lines.append("drift: none")
+    lines.extend(data.get("hints") or [])
     if data["never_judged"]:
         lines.append(f"advisory: fidelity never judged for {len(data['never_judged'])} "
                      "requirements (listed at the merge boundary; plumb fidelity <SR>)")

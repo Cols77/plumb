@@ -24,7 +24,7 @@ import sys
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from plumb.confirm import affirmation_in, remaining_approvals
+from plumb.confirm import affirmation_in, escalated_of, remaining_approvals
 from plumb.contracts import LogEntry
 from plumb.normalize import normalize_text, sha256_bytes, sha256_text
 from plumb.trace import owning_ends
@@ -131,6 +131,12 @@ def _verified_pins(core: Core, record: Any) -> dict[str, str]:
     return out
 
 
+def approval_items(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
+    """The ``records`` of an approval of ``ids`` at their current hashes, with the owned
+    ends and the acceptance-test pins (what the merge boundary and ``changed_tests`` check)."""
+    return _records(core, ids)
+
+
 def _records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
     index = core.index()
     out: list[dict[str, Any]] = []
@@ -172,10 +178,10 @@ def current_exempt(core: Core) -> list[str]:
 
 def approved_exempt(core: Core) -> set[str]:
     """Every ``trace.exempt`` glob a valid approval entry confirmed (spec 7.5)."""
-    from plumb.confirm import checked_entries
+    from plumb.confirm import checked
 
     out: set[str] = set()
-    for entry, problem in checked_entries(core.events(), core.config.approve.affirmations):
+    for entry, problem in checked(core):
         if problem is None and entry.kind == "approval":
             out.update(str(g) for g in entry.payload.get("exempt") or [])
     return out
@@ -208,7 +214,8 @@ def approve(core: Core, ids: Iterable[str], *, note: str = "",
 
 def _revoked_records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
     """Each record with the hash of the approval being revoked (its latest one)."""
-    approvals = remaining_approvals(core.events(), core.config.approve.affirmations)
+    approvals = remaining_approvals(core.events(), core.config.approve.affirmations,
+                                    escalated_of(core))
     out = []
     for item in _records(core, ids):
         remaining = approvals.get(item["id"], [])
@@ -366,12 +373,82 @@ def affirmation_context_problem(quote: str, text: str,
     return None
 
 
+def _stated_group(core: Core, group: str, prompt_at: str) -> list[dict[str, Any]]:
+    """The records ``{id, hash}`` of the group the reply before the prompt offered (the
+    stop hook writes it into the stated set, sp2 8.1)."""
+    try:
+        data = json.loads(core.paths.stated.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    if not isinstance(data, Mapping):
+        raise Refused(f"no group {group} in the stated set of the reply before that prompt")
+    stated_at = str(data.get("at") or "")
+    if stated_at and prompt_at and stated_at > prompt_at:
+        raise Refused("the stated set was written after that prompt; it is not the reply "
+                      "the owner answered")
+    for item in data.get("groups") or []:
+        if isinstance(item, Mapping) and item.get("group") == group:
+            records = [r for r in item.get("records") or [] if isinstance(r, Mapping)
+                       and isinstance(r.get("id"), str) and isinstance(r.get("hash"), str)]
+            if records:
+                return [{"id": r["id"], "hash": r["hash"]} for r in records]
+    raise Refused(f"no group {group} in the stated set of the reply before that prompt; "
+                  "the owner's ok confirms only a group the reply offered")
+
+
+def _check_shown(record_id: str, current: str, quote: str,
+                 stated: Mapping[str, tuple[str, bool]]) -> None:
+    """Refused unless the quote names ``record_id``, or the reply before the prompt showed
+    it in full at its ``current`` hash (R2: a relayed ok confirms only what it showed)."""
+    if _named(record_id, quote):
+        return
+    stated_hash, shown = stated.get(record_id, (None, False))
+    if stated_hash is None or stated_hash not in ("", current):
+        raise Refused(f"{record_id} is not in the stated set of the reply before that "
+                      "prompt at its current content and the quote does not name it")
+    if not shown:
+        raise Refused(f"{record_id} was not shown in full in the reply before that "
+                      "prompt (plumb show prints it); the quote must name it")
+
+
+def _check_set_shown(anchor: str, records: Sequence[Mapping[str, Any]], quote: str,
+                     stated: Mapping[str, tuple[str, bool]]) -> None:
+    """The set path's R2 check, over every set id (the anchor and each member), each at the
+    hash the set approval pins (sp2 6.2).
+
+    Through the stated set (the quote does not name the anchor), every set id must have been
+    shown in full at that hash. When the quote names the anchor, the owner refers to the set
+    by name; a set id the reply showed at another hash was still edited after the owner saw
+    it, and is refused unless the quote names it too."""
+    anchor_named = _named(anchor, quote)
+    for item in records:
+        record_id, current = str(item["id"]), str(item["hash"])
+        if anchor_named and not _named(record_id, quote):
+            stated_hash = stated.get(record_id, (None, False))[0]
+            if stated_hash not in (None, "", current):
+                raise Refused(f"{record_id} of the set {anchor} changed after the reply "
+                              "before that prompt showed it; show the set again (plumb spec "
+                              "show) and relay the owner's new words")
+            continue
+        _check_shown(record_id, current, quote, stated)
+
+
 def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bool = False,
-          note: str = "", exempt: bool = False) -> LogEntry:
+          note: str = "", exempt: bool = False, group: str | None = None,
+          set_anchor: str | None = None) -> LogEntry:
     """Record an approval (or revocation) the agent relays from the owner's own words.
 
     With ``exempt``, the approval also confirms the current ``trace.exempt`` globs; the quote
-    must then name the exemption (the word "exempt" or one of the globs)."""
+    must then name the exemption (the word "exempt" or one of the globs). With ``group``
+    (sp2 8.1), it approves exactly the records and hashes of that group in the stated set of
+    the reply before the prompt (a record changed since is left out and named). With
+    ``set_anchor`` (sp2 6.2), it is the one set-hash approval of an escalated spec: every set
+    id (the anchor and each member) must be in that stated set, shown, at the hash the
+    approval pins, unless the quote names the anchor; then only a set id shown at another
+    hash (edited after the owner saw it) is refused (``_check_set_shown``).
+
+    A confirmation resting on a prompt the prompt hook did not record (a host without one,
+    where the agent recorded the message itself) is labelled ``self_recorded`` (R13 Q4)."""
     entry = find_prompt(core, prompt)
     text = str(entry["text"])
     normalized_quote = normalize_text(quote)
@@ -394,21 +471,39 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
         raise Refused("the quote does not name the exemption (the word exempt or a glob); "
                       "an ok about something else confirms no trace.exempt change")
     records: list[dict[str, Any]] = []
-    if ids or not extra:
+    left_out: list[str] = []
+    set_digest: dict[str, str] | None = None
+    triage: dict[str, Any] | None = None
+    index = core.index()
+    if (group or set_anchor) and (revoke or ids or exempt):
+        raise ApprovalError("--group and --set approve a whole offered group or set; they "
+                            "take no IDs, --revoke or --exempt")
+    if group:
+        for item in _stated_group(core, group, str(entry.get("at") or "")):
+            record = index.get(item["id"])
+            if record is None or record.hash != item["hash"]:
+                left_out.append(item["id"])
+                continue
+            records.extend(_records(core, [item["id"]]))
+        if not records:
+            raise Refused(f"every record of group {group} changed since it was offered: "
+                          + ", ".join(left_out))
+        triage = {"group": group, "left_out": left_out}
+    elif set_anchor:
+        from plumb.capture.spec import SpecError, set_payload
+
+        try:
+            records, set_digest = set_payload(core, set_anchor)
+        except SpecError as exc:
+            raise ApprovalError(str(exc)) from exc
+    elif ids or not extra:
         records = _revoked_records(core, ids) if revoke else _records(core, ids)
     stated, stated_ids = _stated(core, str(entry.get("at") or ""))
-    index = core.index()
-    for item in records:
-        record_id = item["id"]
-        if _named(record_id, normalized_quote):
-            continue
-        stated_hash, shown = stated.get(record_id, (None, False))
-        if stated_hash is None or stated_hash not in ("", index[record_id].hash):
-            raise Refused(f"{record_id} is not in the stated set of the reply before that "
-                          "prompt and the quote does not name it")
-        if not shown:
-            raise Refused(f"{record_id} was not shown in full in the reply before that "
-                          "prompt (plumb show prints it); the quote must name it")
+    if set_anchor:
+        _check_set_shown(set_anchor, records, normalized_quote, stated)
+    elif not group:
+        for item in records:
+            _check_shown(item["id"], index[item["id"]].hash, normalized_quote, stated)
     digest = str(entry["digest"])
     known = {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}
     if digest not in known:
@@ -418,9 +513,15 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
     payload: dict[str, Any] = {"records": records, "by": "agent-relayed",
                                "prompt_digest": digest, "quote": normalized_quote,
                                "quote_digest": sha256_text(normalized_quote)}
+    if entry.get("via") != "hook":
+        payload["self_recorded"] = True  # R13 Q4: shown as "self-recorded message"
     if revoke:
         payload["note"] = note
         return core.log_append("events", "revocation", payload)
     payload.update({"affirmation": affirmation, "stated_set": stated_ids or None,
                     "note": note, **extra})
+    if set_digest is not None:
+        payload["set"] = set_digest
+    if triage is not None:
+        payload["triage"] = triage
     return core.log_append("events", "approval", payload)

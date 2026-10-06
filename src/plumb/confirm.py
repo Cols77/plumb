@@ -20,7 +20,7 @@ it as an error.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from plumb.contracts import LogEntry, Record, RecordStatus
@@ -74,31 +74,56 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
         if entry.kind == "approval" and affirmation_in(quote, affirmations) is None:
             return "agent-relayed approval quote contains no affirmation"
         return None
-    if by == "import":
-        return "import approvals are not accepted in this build (spec F11)"
+    if by == "auto-jev":
+        if entry.kind != "approval":
+            return f"auto-jev {entry.kind}: only the owner revokes"
+        return None  # re-checked in log order by checked_entries (sp2 8.2)
     return f"{entry.kind} has an unknown source by={by!r}"
 
 
-def checked_entries(entries: Iterable[LogEntry],
-                    affirmations: Sequence[str]) -> list[tuple[LogEntry, str | None]]:
-    """Approval and revocation entries in log order, each with its re-check problem."""
+def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
+                    escalated: Collection[str] = ()) -> list[tuple[LogEntry, str | None]]:
+    """Approval and revocation entries in log order, each with its re-check problem.
+    ``escalated``: the records of escalated spec sets (``escalated_of``), which no auto-jev
+    approval confirms; callers holding a Core use ``checked``/``remaining``."""
+    from plumb.capture.autoapprove import recheck
+
     prompts: set[str] = set()
+    calibrations: dict[str, LogEntry] = {}
+    config: Mapping[str, Any] | None = None
+    approved: set[str] = set()  # records with an owner, relayed or imported approval
     out: list[tuple[LogEntry, str | None]] = []
     for entry in entries:
         if entry.kind == "prompt":
             digest = entry.payload.get("digest")
             if isinstance(digest, str):
                 prompts.add(digest)
+        elif entry.kind == "config":
+            settings = entry.payload.get("auto_approve")
+            owner = entry.marker == "none" and entry.payload.get("by") == "owner"
+            if owner and isinstance(settings, Mapping):
+                config = settings
+        elif entry.kind == "calibration":
+            calibrations[entry.digest] = entry
         elif entry.kind in ("approval", "revocation"):
-            out.append((entry, entry_problem(entry, prompts, affirmations)))
+            problem = entry_problem(entry, prompts, affirmations)
+            by = entry.payload.get("by")
+            if problem is None and by == "auto-jev":
+                problem = recheck(entry, config, calibrations, prompts, approved, escalated)
+            if problem is None and entry.kind == "approval" and by != "auto-jev":
+                approved.update(str(r.get("id")) for r in entry.payload.get("records") or []
+                                if isinstance(r, Mapping))
+            out.append((entry, problem))
     return out
 
 
-def remaining_approvals(entries: Iterable[LogEntry],
-                        affirmations: Sequence[str]) -> dict[str, list[tuple[str, str]]]:
-    """Per record, the valid approvals ``(hash, by)`` left after revocations, in order."""
-    remaining: dict[str, list[tuple[str, str]]] = {}
-    for entry, problem in checked_entries(entries, affirmations):
+def remaining_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
+                      escalated: Collection[str] = ()
+                      ) -> dict[str, list[tuple[str, str, LogEntry]]]:
+    """Per record, the valid approvals ``(hash, by, entry)`` left after revocations, in
+    order (the entry carries the labels: ``self_recorded``, the auto-jev score, a set)."""
+    remaining: dict[str, list[tuple[str, str, LogEntry]]] = {}
+    for entry, problem in checked_entries(entries, affirmations, escalated):
         if problem is not None:
             continue
         by = str(entry.payload.get("by"))
@@ -108,11 +133,38 @@ def remaining_approvals(entries: Iterable[LogEntry],
             record_id, record_hash = item["id"], str(item.get("hash"))
             approvals = remaining.setdefault(record_id, [])
             if entry.kind == "approval":
-                approvals.append((record_hash, by))
+                approvals.append((record_hash, by, entry))
             elif approvals:
                 kept = [a for a in approvals if a[0] != record_hash]
                 remaining[record_id] = kept if len(kept) < len(approvals) else approvals[:-1]
     return remaining
+
+
+def escalated_of(core: Core) -> frozenset[str]:
+    """The records of escalated spec sets (``plumb.capture.spec.escalated_ids``), which
+    no auto-jev approval confirms."""
+    from plumb.capture.spec import escalated_ids
+
+    return escalated_ids(core)
+
+
+def checked(core: Core) -> list[tuple[LogEntry, str | None]]:
+    """``checked_entries`` of ``core``'s event log with every re-check input (the one entry
+    point for callers holding a Core)."""
+    return checked_entries(core.events(), core.config.approve.affirmations, escalated_of(core))
+
+
+def remaining(core: Core) -> dict[str, list[tuple[str, str, LogEntry]]]:
+    return remaining_entries(core.events(), core.config.approve.affirmations,
+                             escalated_of(core))
+
+
+def remaining_approvals(entries: Iterable[LogEntry], affirmations: Sequence[str],
+                        escalated: Collection[str] = ()) -> dict[str, list[tuple[str, str]]]:
+    """Per record, the valid approvals ``(hash, by)`` left after revocations, in order."""
+    return {record_id: [(h, by) for h, by, _ in approvals]
+            for record_id, approvals in remaining_entries(entries, affirmations,
+                                                          escalated).items()}
 
 
 def verified_end(link: Any) -> str | None:
@@ -184,7 +236,8 @@ def confirmation_of(record: Record,
 def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordStatus]:
     index = core.index()
     selected = list(index) if ids is None else [i for i in ids if i in index]
-    approvals = remaining_approvals(core.events(), core.config.approve.affirmations)
+    approvals = remaining_approvals(core.events(), core.config.approve.affirmations,
+                                    escalated_of(core))
     pins = approved_test_pins(core.events(), core.config.approve.affirmations, index)
     states = core.link_states(selected)
     by_record: dict[str, list] = {}

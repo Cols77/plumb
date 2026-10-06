@@ -1803,3 +1803,134 @@ Medium and low findings from the same review:
   tests/test_x.py}` link dangles after this lane merges, and pinned test-node links report
   `target moved` until they are repinned. Plumb's own records have no such link (all 33
   test ends carry `::`).
+## Next lane CAPTURE (2026-10-06, branch lane/capture)
+
+Built: every CAPTURE item of next-plan 4 (C1 to C7 and CS1 to CS6, all MUST under R13 Q5),
+with R13 Q1 to Q4: `plumb capture`, `new`, `intent`, `example`, `decide`, `escalate check|
+decline`, `spec show|approve|state`, `triage [--approve low-risk]`, `relay --group|--set`,
+`config auto-approve on|off|show|card`, `jev status|setup|calibrate`, `clarify`; the skills
+`plumb` and `plumb-clarify`; `plumb.capture.api` (sp2 11.1) and the `JudgmentBackend`
+additions (sp2 11.2). New records: INT-021 (the R13 answers), SR-069 (Q4 "self-recorded
+message"), NC-0001 (claims baseline for the moved skill template); all proposed.
+
+Phase 0 had not run when this lane started (no contracts, routes or installer changes on
+the base 9dd86c6). The lane wrote the phase-0 pieces it needed, kept to small additions,
+and the coordinator should expect conflicts there at merge:
+
+- `contracts.py`: `ApprovalBy` "auto-jev"; `JudgmentAction` values; `Judgment.probability`
+  and `confidence_label`; the protocol methods; `CaptureResult`, `IntentFlag`, `DiffStats`,
+  `EscalationSuggestion`, `TriageItem`, `TriageView` (with `offer`), `IntentCardData`,
+  `AutoApproveState`, `Proposal`, `ClarifyView`. Not written: `TurnEvent`, `TurnOutput`,
+  `MergeReport`, `Resolution`, `CardMode`, the `StatusSnapshot` additions.
+- `config.py`: `triage`, `auto_approve`, `calibration`, `clarify` (answered_min 0.6),
+  `hints`, `escalation.shared_globs|irreversible`, `judgment.jev.credential_env`. Not
+  written: `present`, `resolve`, `merge`, `hooks.stop_tokens`, `capture`.
+- `cli.py`: routes and help for the CAPTURE verbs only.
+- `pyproject.toml`: the `jev_live` marker (shared test infrastructure: full verification
+  pending until the integrate run).
+- `install.py` (PRESENT/HOST): installs every `templates/skills/<name>/SKILL.md` (the skill
+  moved there; SR-015, SR-030 and SR-032 re-pointed and repinned); deny rules for
+  `triage --approve`, `spec approve`, `config auto-approve`, `config show`.
+- `stop.py` (PRESENT): one decision that matters per message (R11), the earliest first.
+- `prompt.py` (PRESENT): prompt-log entries carry `"via": "hook"` (R13 Q4).
+- `readback.py` (PRESENT): `plumb show` labels "confirmed by JEV" and "self-recorded message".
+- `commands.py`: `relay --group|--set`, and `plumb drift` prints hint lines (never signals).
+
+Interfaces the other lanes still have to call (not wired by CAPTURE):
+
+- PRESENT: the stop hook writes `stated.json` `groups` from `capture.api.stated_group(
+  capture.api.triage(core))` and prints `TriageView.offer` (R8 A, Q2), deduplicated; the
+  brief carries the same offer line; the prompt hook prints `capture.api.escalation` lines
+  and may replace its flag lines with `capture.api.intent_flags` + `flags.flag_line` (the
+  heuristic `intent_change` already uses the contradiction scoring); the stop hook names an
+  unapproved escalated set with `capture.spec.waiting_line` (once per set hash); the status
+  line uses `confirmation_counts` ("N by JEV", "self-recorded") and `auto_approve_state`
+  ("auto-approve suspended: model changed, recalibrate"); the untraced instruction can
+  append `ownership_proposals(...)[path].line`; `card.render` is the plain card PRESENT may
+  replace with `present.render.intent_card`.
+- MERGE: `trailers check-msg` calls `capture.api.diff_serves` (MS2); the glance lists
+  approvals whose payload has `by: auto-jev` (with `auto.score`) or `self_recorded: true`
+  ("self-recorded message", Q4); `capture.spec.set_state` gives a set's state.
+- HOSTS: a host whose own hook records the owner's prompt writes `"via": "hook"` in
+  `.plumb/session/prompts.jsonl`; a prompt the agent records itself (CLI fallback) leaves
+  it out, and every confirmation resting on it is labelled "self-recorded message" (Q4),
+  which the host status should show.
+- IMPORT: `confirm.entry_problem` still refuses `by: import`; the phase-0
+  `importer/recheck.py` hook in `validate.py` was not written by this lane.
+
+Medium and low findings, and open notes:
+
+- [MEDIUM] Triage with JEV makes one call per uncached record (no batching): up to 8 s on
+  the command line, 0.6 s in a hook; records not scored in time stay "unrated" and
+  individual. Fix: batch the Noul questions of several records in one request.
+- [MEDIUM] Calibration uses the current content of confirmed and revoked records (the log
+  keeps hashes, not the text the owner saw); a revoked record edited afterwards is labelled
+  by its new text. Fix: keep the approved text digest-addressed in the cache, or calibrate
+  only records unchanged since their approval or revocation.
+- [MEDIUM] The heuristic fixtures (36 intent prompts, the e2e questions) were written with
+  the heuristic in view: they guard against regressions, not real-world precision.
+- [LOW] The pre-existing failure `tests/bridge/test_fidelity.py::
+  test_merge_lists_unjudged_fidelity` also fails on the base 9dd86c6 (merge-check output);
+  MERGE's area.
+- [LOW] The commit-msg hook installed from `C:/coding/plumb/.venv` checks trailer presence,
+  not the claims; three of this lane's commits had undeclared paths, caught by `plumb claims
+  check` and declared afterwards (c2aa6c4). Fix: run the claims check for the commit's own
+  paths in `trailers check-msg`.
+- [LOW] Links of SP1 requirements made stale by this lane's edits (SR-010, SR-017, SR-021,
+  SR-026, SR-027, SR-029, SR-030, SR-032 and others) are left stale for review: the
+  heuristic intent-change behaviour changed on purpose (sp2 C6).
+- [LOW] IDs INT-021, SR-069 and NC-0001 were allocated without the R10 reservation; another
+  lane may have used the same numbers (`plumb merge-fix` is SP6).
+- [LOW] sp2 4's decision field `asked` is not written: writing it would change the record
+  hash and re-ask; the stop hook's session `asked` map keeps that state.
+- [LOW] `plumb config show` is refused under the session marker as sp2 8.2 says; the agent
+  reads the same state through `plumb jev status`, which is not owner-only.
+- [LOW] The JEV `choose` and `contradiction` wire shapes are verified against the local stub
+  only; the `jev_live` test covers `entailment`.
+
+## CAPTURE lane review (2026-10-06, lane/capture)
+
+Raised by the review of lane/capture. Both HIGH findings were fixed in the same change: `plumb
+relay --set` now checks every set id against the stated set (`approvals._check_set_shown`),
+and auto-approval refuses a prompt the prompt hook did not log, in `autoapprove.gate` and in
+the validate re-check (`autoapprove.recheck`).
+
+- [RESOLVED, raised to HIGH under R7] (capture review, src/plumb/capture/capture.py) Records captured against an existing escalated INT (`intent: "INT-x"` as a reference) are not added to the anchor's `members`, so they fall outside the set approval and the escalated-set exclusions: `autoapprove.gate` can auto-approve such an SR and triage can put it in the low-risk group, although it belongs to an up-front spec (R8 B: never for an escalated spec set). Scenario: with an escalated INT-021 and auto-approve on, `plumb capture` with intent "INT-021" and one requirement whose examples quote the prompt auto-approves the new SR by: auto-jev instead of waiting for the owner's set approval.
+- [MEDIUM] (capture review, src/plumb/hosts/claude_code/stop.py) R11's one-question-per-message rule rests on a 4-line edit to the PRESENT-owned stop.py, which lane/present rewrote heavily and whose version still computes `open_decisions` over every decision. Fix: PRESENT calls `capture.api.next_question`, and tests/capture/test_clarify_e2e.py runs on the merged result. Scenario: the merge keeps PRESENT's side of stop.py, two matters DECs are asked in one message, and `test_ambiguous_request_yields_exactly_the_questions_that_matter` fails.
+- [MEDIUM] (capture review, src/plumb/contracts.py) Phase 0 never ran: the lanes branch from 9dd86c6, and this lane wrote coordinator-owned contracts.py, config.py and cli.py and PRESENT-owned prompt.py, stop.py, readback.py and install.py while lane/present and lane/hosts edit contracts.py, config.py, cli.py and prompt.py. The frozen interface contracts (plan 3.2, 3.5) are no shared base; integration reconciles the dataclasses and routes by hand. Scenario: choosing either side wholesale drops CAPTURE's TriageView.offer, AutoApproveState and routes, or PRESENT's StatusSnapshot additions.
+- [MEDIUM] (capture review, src/plumb/contracts.py) The same ownership break, seen from the merge: lane/present's IntentCardData has fields (kind, statement, alternatives) this lane lacks, and this lane edits PRESENT-owned stop.py (one DEC per message), prompt.py (`via: hook`), install.py and readback.py, which lane/present rewrote (stop.py +328 lines). The integrate merge needs a careful union. Scenario: resolving stop.py/prompt.py with PRESENT's side drops `via: hook` from prompt-log entries, so every relayed confirmation is labelled "self-recorded message" and auto-approval never fires, and the stop hook asks every matters-DEC at once again.
+- [MEDIUM, membership part RESOLVED] (capture review, src/plumb/capture/autoapprove.py) `recheck()` checks the record kind only by ID prefix. It did not re-check membership of an escalated set (now fixed: see the next section), nor the Q3 rule that the wording and every example were judged (`parts` against the record's examples). Scenario: a hand-written auto-jev approval of an escalated-set member with a valid score, calibration and hook-logged prompt passes `plumb validate`.
+- [MEDIUM] (capture review, src/plumb/capture/cli.py) sp2 8.2 says `plumb capture` and `plumb example` ask the gate for each record they wrote; `cmd_example` never asks it. Not unsafe (it only narrows auto-approval). Scenario: with auto-approve effective, `plumb example SR-x --given .. --when .. --then .. --quote <owner span>` leaves the SR proposed.
+- [LOW] (capture review, src/plumb/capture/triage.py) The triage score cache is keyed by backend|version|record.hash, but the premise also depends on the parent INT's quote and on derives_from links. Scenario: SR-x scored faithful keeps that rating, and its place in the low-risk offer, after its INT's quote is edited or re-linked to say something else.
+- [LOW] (capture review, src/plumb/capture/jevcmd.py) `plumb config show` is refused only under the session marker (plus an installer deny rule), not through the interactive-terminal check. It is read-only, so the risk is small. Scenario: an agent shell on a host whose adapter cannot set the marker runs `plumb config show`.
+- [LOW] (capture review, src/plumb/approvals.py) On lane/capture nothing writes `groups` into .plumb/session/stated.json; only test helpers do, so `plumb relay --group low-risk` (the in-session "ok" of R8 A / Q2) always refuses on this branch. lane/present's stop hook (triage_offer, write_stated(group=...)) supplies the writer: verify it in the integrate phase. Scenario: on lane/capture alone, the agent's `plumb relay --group low-risk` exits 3 with "no group low-risk in the stated set".
+- [LOW] (capture review, src/plumb/capture/hints.py) The hidden-dependency budget (`hints.hidden_deps_s`) is checked only before each backend.ask; the per-subject `git show HEAD:<path>` calls (1 s timeout each) run outside it, and `plumb drift` AST-parses every bare verified_by test file. No hook calls it today. Scenario: twenty changed confirmed records or docs mean twenty sequential `git show` calls before the first deadline check, so drift_hints takes several seconds.
+
+## CAPTURE lane review, round 2 (2026-10-06, lane/capture)
+
+Three HIGH findings were fixed as two classes, each at one choke point with one test per entry
+point:
+
+- Open decisions that matter: `plumb.capture.clarify.open_decisions` (unconfirmed AND not
+  superseded, linked by `decides`/`derives_from`, earliest first) is the one rule read by the
+  stop hook (`stop.matters_decisions`), `next_question` and the escalation trigger. A DEC
+  superseded with `plumb decide --supersede` no longer blocks the one-question-per-message
+  queue (tests/capture/test_open_decisions.py).
+- Escalated-set membership: `plumb.capture.spec.escalated_sets` counts declared members AND
+  every record deriving from or deciding the anchor or another set record (`plumb capture`
+  with `"intent": "INT-x"`, `plumb new`/`decide` against it). The set hash covers them, so the
+  set needs the owner again. Read by `autoapprove.gate`, the validate re-check
+  (`autoapprove.recheck` via `confirm.checked`/`remaining`/`statuses`), triage's exclusion and
+  `spec.set_state` (tests/capture/test_escalated_membership.py).
+
+- [MEDIUM] (capture review 2, src/plumb/merge.py) `merge.approved_ends` still calls
+  `confirm.checked_entries` without the escalated set (merge.py is rewritten on lane/merge, so
+  this lane left it). An auto-jev approval of a record of an escalated set, rejected
+  everywhere else, still lends its `ends` to the owned-ends check. Fix at integrate: call
+  `confirm.checked(core)`. Scenario: a hand-written auto-jev approval of a set member lists
+  ends, and `approved_ends` treats them as owner-confirmed ownership.
+- [LOW] (capture review 2, src/plumb/capture/spec.py) A record joins an escalated set through
+  links, so the owner's set approval of an older set hash no longer holds once a record
+  derives from it. `plumb spec show` lists the joined records, but the stop hook's waiting
+  line does not say which record reopened the set. Scenario: after `plumb new requirement
+  --derives-from INT-021`, the stop hook says only that INT-021 waits for the owner.

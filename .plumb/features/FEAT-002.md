@@ -17,6 +17,7 @@ requirements:
 - SR-044
 - SR-045
 - SR-046
+- SR-069
 links:
 - kind: derives_from
   to: INT-004
@@ -38,4 +39,9 @@ links:
   pin:
     from: sha256:beb2a959c3af1d4ba75720bf1ac607b982782bc6036b8b443da1d2aa036c545a
     to: sha256:1c118c92893effbad86e53e48a7fdcdba9df8c27ca8f54699d2d6ca7591de6d9
+- kind: derives_from
+  to: INT-021
+  pin:
+    from: sha256:5b8f93efe16c4c37ef7c5876f36d9e2c13bc04658dd2642b8b436a02e2e23d2a
+    to: sha256:90ba88266f9d17b0c8d5f8a50cdf25ac5108cc800b6829538460c1dbb46c1fb3
 ---

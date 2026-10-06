@@ -99,6 +99,32 @@ class _FixedBackend:
     def fidelity(self, packet: FidelityPacket) -> Judgment:
         return self._judgment("fidelity", packet.requirement, packet.fingerprint)
 
+    # -- sp2 11.2
+    version = "none"
+
+    def _typed(self, action: str, subject: str, *inputs: object) -> Judgment:
+        import dataclasses
+
+        judgment = self._judgment(action, subject, *inputs)
+        if judgment.verdict == "unsure":
+            judgment = dataclasses.replace(judgment, confidence=0.0)
+        return dataclasses.replace(judgment, probability=judgment.confidence,
+                                   confidence_label="low")
+
+    def entailment(self, premise: str, hypothesis: str, *, subject: str,
+                   claim_kind: str) -> Judgment:
+        return self._typed("faithfulness", subject, claim_kind, premise, hypothesis)
+
+    def contradiction(self, prompt: str, record: Record) -> Judgment:
+        return self._typed("contradiction", record.id, prompt, record.hash)
+
+    def choose(self, question: str, options: Sequence[str], *, subject: str,
+               context: str = "") -> Judgment:
+        return self._typed("ownership", subject, question, list(options), context)
+
+    def ask(self, question: str, context: str, *, subject: str, action: str) -> Judgment:
+        return self._typed(action, subject, question, context)
+
 
 class DisabledBackend(_FixedBackend):
     """Every call returns ``unsure`` with tier ``escalate-llm``."""

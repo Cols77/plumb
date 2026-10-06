@@ -269,3 +269,73 @@ def test_drift_triage_through_jev(jev_repo) -> None:
     backend = get_backend(open_core(repo), hook=False)
     [j] = backend.drift_triage(states, {"SR-004#0": ("a = 1\n", "a = 1  # c\n")})
     assert j.verdict == "cosmetic" and j.tier == "accept"
+
+
+# -- sp2 7.2 and 11.2: the protocol additions over the stub; the credential's NAME (SR-039)
+
+
+@pytest.mark.sr("SR-039")
+def test_entailment_through_jev_carries_probability_and_label(jev_repo) -> None:
+    repo, state = jev_repo
+    core = open_core(repo)
+    backend = get_backend(core, hook=False)
+    j = backend.entailment("add multiply next to add", "multiply returns the product",
+                           subject="INT-017", claim_kind="intent-readback")
+    assert (j.action, j.verdict) == ("faithfulness", "entailed")
+    assert j.probability == pytest.approx(0.95)
+    assert j.confidence_label == "high"
+    assert backend.version == "jev-1.13.0"
+    [request] = state.requests
+    assert "add multiply next to add" in request["body"]["state"]
+    state.noul = 0.2
+    j = backend.entailment("a", "b", subject="INT-017", claim_kind="intent-readback")
+    assert j.verdict == "not-entailed" and j.probability == pytest.approx(0.8)
+    events = [e for e in core.log_read("events", ["judgment"])]
+    assert events and events[-1].payload["model_version"] == "jev-1.13.0"
+    c = backend.contradiction("make add subtract", core.index()["SR-004"])
+    assert c.action == "contradiction" and c.verdict == "contradicts"
+    k = backend.choose("Which owns it?", ["SR-004"], subject="src/mod.py")
+    assert k.verdict == "SR-004"
+    a = backend.ask("Does it serve SR-004?", "diff", subject="SR-004", action="ownership")
+    assert a.verdict == "no"
+
+
+@pytest.mark.sr("SR-039")
+def test_credential_read_from_the_named_variable(jev_repo, monkeypatch) -> None:
+    repo, state = jev_repo
+    monkeypatch.delenv("TYPESAFE_API_KEY")
+    monkeypatch.setenv("MY_JEV_KEY", KEY)
+    config = (repo / ".plumb" / "config.yaml").read_text(encoding="utf-8")
+    (repo / ".plumb" / "config.yaml").write_text(
+        config.replace("jev: {", "jev: {credential_env: MY_JEV_KEY, "), encoding="utf-8")
+    backend = get_backend(open_core(repo), hook=True)
+    assert backend.name == "jev"
+    monkeypatch.delenv("MY_JEV_KEY")
+    assert get_backend(open_core(repo), hook=True).name == "heuristic"
+
+
+@pytest.mark.sr("SR-039")
+def test_heuristic_fallback_answers_the_new_methods(jev_repo) -> None:
+    repo, state = jev_repo
+    state.delay = 1.5
+    core = open_core(repo)
+    backend = get_backend(core, hook=True)
+    j = backend.entailment("add multiply", "add multiply", subject="INT-017",
+                           claim_kind="intent-readback")
+    assert j.backend == "heuristic" and j.confidence_label == "low"
+
+
+@pytest.mark.jev_live
+@pytest.mark.sr("SR-039")
+def test_live_entailment(repo: Path, monkeypatch) -> None:
+    import os
+
+    if not os.environ.get("TYPESAFE_API_KEY"):
+        pytest.skip("jev_live: TYPESAFE_API_KEY is not set")
+    (repo / ".plumb" / "config.yaml").write_text("judgment:\n  backend: jev\n",
+                                                encoding="utf-8")
+    backend = get_backend(open_core(repo), hook=False)
+    j = backend.entailment("add a multiply function next to add",
+                           "a multiply function is added next to add",
+                           subject="INT-001", claim_kind="intent-readback")
+    assert j.verdict in ("entailed", "not-entailed")

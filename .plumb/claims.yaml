@@ -7,3 +7,4 @@ exempt: [CLAUDE.md, README.md]   # CLAUDE.md: written by plumb hooks install, li
 baseline:
 - {commit: e4105c9, path: tests/importer/test_claims.py, nc: NC-0002}
 - {commit: 3a02f02, path: tests/importer/test_claims.py, nc: NC-0002}
+- {commit: 7367172, path: src/plumb/hosts/claude_code/templates/SKILL.md, nc: NC-0001}
