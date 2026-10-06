@@ -49,7 +49,22 @@ class PlumbPaths:
     def session_dir(self, session_id: str) -> Path:
         return self.session / session_id
 
+    # SP6 6.1: one file per entry under .plumb/log/<kind>/ (SR-073); the head pointer and
+    # the per-stream pack caches are gitignored and rebuilt by a scan when missing.
+    def log_kind_dir(self, kind: str) -> Path:
+        return self.log_dir / kind
+
+    @property
+    def log_head(self) -> Path:
+        return self.cache / "log-head.json"
+
+    def log_pack(self, stream: str) -> Path:
+        if stream not in ("events", "evidence"):
+            raise ValueError(f"unknown log stream: {stream}")
+        return self.cache / f"log-{stream}.json"
+
     def log_path(self, stream: str) -> Path:
+        """The legacy JSONL file of a stream (read during the transition, SR-074)."""
         if stream == "events":
             return self.log_events
         if stream == "evidence":

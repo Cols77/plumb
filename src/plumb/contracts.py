@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
@@ -107,7 +107,22 @@ class LogEntry:
     payload: Mapping[str, Any]
     prev: Hash | None
     digest: Hash
-    offset: int = -1                      # byte offset of the line, when read
+    offset: int = -1                      # byte offset of a legacy line; -1 for an entry file
+    name: str = ""                        # "<kind>/<stamp>-<suffix>.json", or
+    #                                       "events.jsonl:<line>" for a legacy line (SP6 6.3)
+
+
+@dataclass(frozen=True)
+class MigrationReport:
+    """``plumb log migrate`` (SP6 6.5, SR-074)."""
+
+    lines: int = 0                        # legacy lines read (both streams)
+    written: tuple[str, ...] = ()         # entry files written (or that would be: dry run)
+    skipped: int = 0                      # lines whose entry file already existed
+    refused: tuple[str, ...] = ()         # bad lines named; nothing was written
+    truncated: tuple[str, ...] = ()       # legacy files emptied
+    remaining: int = 0                    # legacy lines left after the run
+    dry_run: bool = False
 
 
 SelectionReason = Literal["verified_by", "literal", "import", "naming", "sample"]
@@ -226,7 +241,8 @@ class CoreAPI(Protocol):
     def log_append(self, stream: LogStream, kind: str,
                    payload: Mapping[str, Any]) -> LogEntry: ...
     def log_read(self, stream: LogStream, kinds: Iterable[str] | None = None,
-                 since_offset: int = 0) -> Iterator[LogEntry]: ...
+                 since_offset: int = 0, *,
+                 since: Collection[str] | None = None) -> Iterator[LogEntry]: ...
 
 
 @runtime_checkable

@@ -93,10 +93,8 @@ def init_repo(root: Path) -> list[str]:
                         (paths.plumb / ".gitattributes", GITATTRIBUTES_LINES)):
         if _ensure_lines(path, lines):
             changed.append(path.relative_to(root).as_posix())
-    for log in (paths.log_events, paths.log_evidence):
-        if not log.exists():
-            log.touch()
-            changed.append(log.relative_to(root).as_posix())
+    # one file per log entry under .plumb/log/<kind>/ (SP6 6.5): no JSONL file is created;
+    # GITATTRIBUTES_LINES keeps merge=union for legacy files during the transition
     return changed
 
 

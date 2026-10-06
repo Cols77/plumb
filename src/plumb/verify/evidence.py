@@ -1,13 +1,12 @@
 """Test evidence pinned to identity (spec 7.4) and its reuse index.
 
-A ``test-run`` entry in ``evidence.jsonl`` pins every node to its import closure hash, its
+A ``test-run`` entry of the evidence log pins every node to its import closure hash, its
 own normalized source hash and the cheap environment key, and the run to the tree identity.
 A node's evidence is fresh only when all three match now. The reuse index
-(``.plumb/cache/evidence_index.json``) is derived from the log by byte offset, so deleting it
-loses nothing. The index also keeps a digest of the log bytes just before its offset (the
-first and last ``_GUARD_BYTES``): a rebase, branch switch or pull that rewrites the log under
-the offset fails that check, and the index is rebuilt from byte 0. The regression rule (R3)
-reads the same index (``policy.py``).
+(``.plumb/cache/evidence_index.json``) is derived from the log, so deleting it loses nothing.
+Its cursor is the list of entries applied: an entry that arrives out of order (a merge,
+a rebase, a branch switch) or an applied entry that vanished rebuilds it from scratch. The
+regression rule (R3) reads the same index (``policy.py``).
 """
 
 from __future__ import annotations
@@ -23,9 +22,9 @@ from typing import Any
 from plumb.contracts import NodeEvidence
 from plumb.normalize import canonical_json, file_digest, sha256_bytes
 
-INDEX_VERSION = 5  # 3: a full run must collect cleanly to count; 4: its failures are kept;
-# 5: a regression is kept until a pass on the test body that passed before it ("regressed")
-_GUARD_BYTES = 65536
+INDEX_VERSION = 6  # 3: a full run must collect cleanly to count; 4: its failures are kept;
+# 5: a regression is kept until a pass on the test body that passed before it ("regressed");
+# 6: the cursor is the entry names applied (one file per entry, SP6 6.3), not a byte offset
 PASS_OUTCOMES = frozenset({"passed", "flaky"})
 GOOD_OUTCOMES = frozenset({"passed", "flaky", "skipped", "xfailed"})
 _CACHE_PARTS = frozenset({"__pycache__", ".pytest_cache"})
@@ -101,27 +100,8 @@ def payload_checksum(payload: Mapping[str, Any]) -> str:
 
 
 def _empty_index() -> dict[str, Any]:
-    return {"v": INDEX_VERSION, "offset": 0, "prefix": None, "nodes": {}, "full": None,
+    return {"v": INDEX_VERSION, "applied": [], "stamp": None, "nodes": {}, "full": None,
             "removed": {}}
-
-
-def prefix_digest(path: Path, offset: int) -> str | None:
-    """A digest of the log's first and last ``_GUARD_BYTES`` before ``offset`` (bounded read,
-    so the per-turn cost does not grow with the log)."""
-    if offset <= 0:
-        return None
-    head_len = min(offset, _GUARD_BYTES)
-    tail_start = max(head_len, offset - _GUARD_BYTES)
-    try:
-        with open(path, "rb") as handle:
-            head = handle.read(head_len)
-            handle.seek(tail_start)
-            tail = handle.read(offset - tail_start)
-    except OSError:
-        return None
-    if len(head) != head_len or len(tail) != offset - tail_start:
-        return None
-    return sha256_bytes(b"%d:" % offset + head + b":" + tail)
 
 
 MAX_SCALE = 3.0
@@ -213,13 +193,17 @@ def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "")
 
 
 def load_index(core: Any) -> dict[str, Any]:
-    """The reuse index, brought up to date with ``evidence.jsonl`` from its byte offset."""
+    """The reuse index, brought up to date with the evidence stream (SP6 6.3).
+
+    The cursor is the list of entries applied, in read order (by digest: a legacy line's
+    name is its line number, which a rewrite reuses). When the stream's stamp
+    (its directories' and legacy file's size and mtime) is unchanged, nothing is read. New
+    entries that sort after the last one applied are applied incrementally; when an applied
+    entry vanished or a newly listed one sorts before the last one applied (an entry that
+    arrived by a merge, a rebase or a branch switch), the index is rebuilt from scratch."""
+    from plumb import log
+
     paths = core.paths
-    log_path = paths.log_evidence
-    try:
-        size = log_path.stat().st_size
-    except OSError:
-        size = 0
     index: dict[str, Any]
     try:
         index = json.loads(paths.evidence_index.read_text(encoding="utf-8"))
@@ -227,18 +211,19 @@ def load_index(core: Any) -> dict[str, Any]:
             raise ValueError
     except (OSError, ValueError):
         index = _empty_index()
-    start = int(index.get("offset", 0))
-    if start > size or (start > 0 and index.get("prefix") != prefix_digest(log_path, start)):
-        index = _empty_index()  # the log under the offset was rewritten: rebuild from 0
-        start = 0
-    if start == size:
+    stamp = log.stream_stamp(paths, "evidence")
+    if index.get("stamp") == stamp:
         return index
-    for entry in core.log_read("evidence", kinds=["test-run"], since_offset=start):
-        if entry.offset >= size:
-            break
+    entries = list(core.log_read("evidence", kinds=["test-run"]))
+    names = [e.digest for e in entries]
+    applied = list(index.get("applied") or [])
+    if names[:len(applied)] != applied:
+        index = _empty_index()
+        applied = []
+    for entry in entries[len(applied):]:
         apply_entry(index, entry.payload, entry.at)
-    index["offset"] = size
-    index["prefix"] = prefix_digest(log_path, size)
+    index["applied"] = names
+    index["stamp"] = stamp
     try:
         paths.cache.mkdir(parents=True, exist_ok=True)
         paths.evidence_index.write_text(json.dumps(index), encoding="utf-8")

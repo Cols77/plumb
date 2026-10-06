@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from logutil import tamper
 
 from plumb import approvals, cli
 from plumb.api import open_core
@@ -155,12 +156,10 @@ def test_merge_detects_rewritten_log_line(base, capsys) -> None:
     root, _ = base
     approvals.approve(open_core(root), ["INT-001"])
     sha = _commit(root, "approval")
-    events = root / ".plumb" / "log" / "events.jsonl"
-    events.write_text(events.read_text(encoding="utf-8").replace("INT-001", "SR-002"),
-                      encoding="utf-8")
+    name = tamper(root, "events", -1, lambda t: t.replace("INT-001", "SR-002"))
     code, out = _check(root, sha, capsys)
     assert code == 1
-    assert "log integrity" in out and "events.jsonl" in out
+    assert "log integrity" in out and name in out
 
 
 def test_merge_reports_fidelity_and_verification_unavailable(base, capsys, monkeypatch) -> None:
@@ -204,9 +203,7 @@ def test_merge_log_integrity_still_catches_edit_of_merge_base_line(base, capsys)
     _commit(root, "approval")
     git(root, "branch", "trunk")
     git(root, "checkout", "-q", "-b", "feat")
-    events = root / ".plumb" / "log" / "events.jsonl"
-    events.write_text(events.read_text(encoding="utf-8").replace("INT-001", "SR-002"),
-                      encoding="utf-8")
+    tamper(root, "events", -1, lambda t: t.replace("INT-001", "SR-002"))
     _commit(root, "tamper")
     git(root, "checkout", "-q", "trunk")
     (root / "notes.txt").write_text("n\n", encoding="utf-8")

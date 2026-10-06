@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +42,7 @@ class Core:
         return self._config
 
     def events(self) -> list[LogEntry]:
-        """Every entry of ``events.jsonl``, cached for this instance."""
+        """Every entry of the events stream (both formats), cached for this instance."""
         if self._events is None:
             self._events = list(_log.read(self.paths, "events"))
         return self._events
@@ -97,8 +97,9 @@ class Core:
         return entry
 
     def log_read(self, stream: LogStream, kinds: Iterable[str] | None = None,
-                 since_offset: int = 0) -> Iterator[LogEntry]:
-        return _log.read(self.paths, stream, kinds, since_offset)
+                 since_offset: int = 0, *,
+                 since: Collection[str] | None = None) -> Iterator[LogEntry]:
+        return _log.read(self.paths, stream, kinds, since_offset, since=since)
 
 
 def open_core(root: Path) -> Core:

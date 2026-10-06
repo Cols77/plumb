@@ -165,7 +165,9 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
     # the covering tests ran and their evidence was appended
     run = by_name["covering tests"]
     assert "2 passed" in run.stdout
-    evidence = (adopted / ".plumb" / "log" / "evidence.jsonl").read_text("utf-8")
+    from logutil import entries
+
+    evidence = json.dumps(entries(adopted, "evidence"))
     assert "tests/test_mod.py::test_add" in evidence
     assert "test-run" in evidence
 

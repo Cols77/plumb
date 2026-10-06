@@ -70,18 +70,24 @@ def test_index_rebuilds_when_log_prefix_changes(repo: Path) -> None:
         return {"run_id": run_id, "env": {"env_key": "E"},
                 "nodes": [{"id": node, "outcome": "passed", "closure": "C", "test_hash": "T"}]}
 
+    # legacy JSONL lines (readers accept them until the migration, SP6 6.3)
+    from logutil import legacy_entry, write_legacy
+
     log = core.paths.log_evidence
-    core.log_append("evidence", "test-run", payload("r-lane", "t.py::lane_own"))
+    lane = legacy_entry("test-run", payload("r-lane", "t.py::lane_own"), None,
+                        at="2026-10-05T12:00:03Z")
+    write_legacy(repo, "evidence", [lane])
     assert set(load_index(core)["nodes"]) == {"t.py::lane_own"}
-    lane_line = log.read_bytes()
-    core.log_append("evidence", "test-run", payload("r-a", "t.py::main_pass_a"))
-    core.log_append("evidence", "test-run", payload("r-b", "t.py::main_pass_b"))
-    main_lines = log.read_bytes()[len(lane_line):]
-    log.write_bytes(main_lines + lane_line)  # a rebase puts main's lines first
+    a = legacy_entry("test-run", payload("r-a", "t.py::main_pass_a"), None,
+                     at="2026-10-05T12:00:01Z")
+    b = legacy_entry("test-run", payload("r-b", "t.py::main_pass_b"), a["digest"],
+                     at="2026-10-05T12:00:02Z")
+    log.write_bytes(b"")
+    write_legacy(repo, "evidence", [a, b, lane])  # a rebase puts main's lines first
     nodes = load_index(core)["nodes"]
     assert set(nodes) == {"t.py::lane_own", "t.py::main_pass_a", "t.py::main_pass_b"}
     cached = json.loads(core.paths.evidence_index.read_text(encoding="utf-8"))
-    assert cached["offset"] == log.stat().st_size
+    assert cached["applied"] == [a["digest"], b["digest"], lane["digest"]]
 
 
 @pytest.mark.sr("SR-017")

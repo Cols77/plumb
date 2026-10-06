@@ -45,8 +45,9 @@ def test_init_is_idempotent_and_writes_ignore_and_attributes(tmp_path: Path) -> 
     plumb = root / ".plumb"
     for name in ("intents", "requirements", "decisions", "features", "ncs", "log"):
         assert (plumb / name).is_dir()
-    assert (plumb / "log" / "events.jsonl").exists()
-    assert (plumb / "log" / "evidence.jsonl").exists()
+    # one file per entry (SP6 6.5): init creates no JSONL log
+    assert not (plumb / "log" / "events.jsonl").exists()
+    assert not (plumb / "log" / "evidence.jsonl").exists()
     ignore = (plumb / ".gitignore").read_text(encoding="utf-8").split()
     assert {"cache/", "session/", "test_map.txt"} <= set(ignore)
     assert "merge=union" in (plumb / ".gitattributes").read_text(encoding="utf-8")

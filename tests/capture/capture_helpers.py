@@ -41,11 +41,9 @@ def write_stated(repo: Path, records: list[tuple[str, str]], *, at: str = "2026-
 
 
 def event_kinds(repo: Path) -> list[str]:
-    path = repo / ".plumb" / "log" / "events.jsonl"
-    if not path.exists():
-        return []
-    return [json.loads(line)["kind"] for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()]
+    from logutil import kinds
+
+    return kinds(repo, "events")
 
 
 def tree_bytes(repo: Path) -> dict[str, bytes]:
