@@ -139,3 +139,71 @@ def test_session_start_and_stop_route_through_the_emitter(records: Path, hook_in
     assert out.getvalue().strip() == ""  # the resumed session already has the brief
     run_prompt(records, hook_input, "SR-001", session="s9")
     assert "prompt" in calls
+
+
+# --- a one-shot line is never lost to the budget (its source is consumed on read) ----------
+
+
+def _tight(repo: Path, **budgets: int) -> None:
+    text = "hooks:\n" + "".join(f"  {k}: {v}\n" for k, v in budgets.items())
+    (repo / ".plumb" / "config.yaml").write_text(text, encoding="utf-8")
+
+
+def _untraced(repo: Path, session: str = "s1") -> Path:
+    (repo / "src" / "app").mkdir(parents=True, exist_ok=True)
+    (repo / "src" / "app" / "mul.py").write_text("def mul(a, b):\n    return a * b\n",
+                                                 encoding="utf-8")
+    return repo / ".plumb" / "session" / session / "untraced.json"
+
+
+def test_oneshot_lines_are_never_cut(repo: Path) -> None:
+    """The emitter keeps a ``oneshot`` line through the budget, like a ``must`` line."""
+    lines = [delta.Line("plumb: optional " + "x" * 200),
+             delta.Line("plumb: queued once " + "y" * 200, oneshot=True)]
+    out = delta.emit(_ctx(repo), lines, "prompt", budget_tokens=10)
+    assert out == [line.text for line in lines]
+
+
+def test_prompt_untraced_instruction_survives_the_budget(records: Path, hook_input) -> None:
+    """Entry point 1: the prompt hook's queued untraced-change instruction (untraced.json is
+    removed when read) reaches the agent even when records and the compare line fill the
+    budget."""
+    approvals.approve(open_core(records), ["SR-001"])
+    _tight(records, prompt_tokens=10)
+    note = _untraced(records)
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(json.dumps({"paths": ["src/app/mul.py"]}), encoding="utf-8")
+    out = run_prompt(records, hook_input, "SR-001 SR-002 SR-003 numbers and invoices")
+    assert "compare this request" in out  # the budget is already used up
+    assert "src/app/mul.py" in out
+    assert not note.exists()
+
+
+def test_prompt_queued_escalations_survive_the_budget(records: Path, hook_input) -> None:
+    """Entry point 2: every queued escalation reaches the agent (the queue offset moved
+    past them on read), however tight the budget."""
+    _tight(records, prompt_tokens=10)
+    queue = records / ".plumb" / "session" / "escalations.jsonl"
+    queue.parent.mkdir(parents=True, exist_ok=True)
+    queue.write_text("".join(json.dumps({"subject": f"SR-00{i}",
+                                         "instruction": f"judge SR-00{i} with plumb fidelity"})
+                             + "\n" for i in (1, 2, 3)), encoding="utf-8")
+    out = run_prompt(records, hook_input, "SR-001 SR-002 numbers")
+    for i in (1, 2, 3):
+        assert f"plumb: escalation SR-00{i}: judge SR-00{i}" in out
+
+
+def test_blocked_stop_untraced_instruction_survives_the_budget(records: Path,
+                                                               hook_input) -> None:
+    """Entry point 3: the blocked stop removes untraced.json and tells the agent itself;
+    the instruction is in the block whatever ``hooks.stop_tokens`` allows."""
+    from present_helpers import FakeVerify, run_stop, touch
+
+    _tight(records, stop_tokens=5)
+    run_prompt(records, hook_input, "multiply")
+    note = _untraced(records)
+    touch(records, "src/app/mul.py")
+    out = run_stop(records, hook_input, verify=FakeVerify(nodes=("tests/test_x.py::t",)))
+    assert "plumb tests run" in out["reason"]
+    assert "src/app/mul.py" in out["reason"]
+    assert not note.exists()

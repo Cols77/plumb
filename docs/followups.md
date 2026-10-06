@@ -1610,3 +1610,67 @@ then medium and low findings.
   shown text can differ from the record by accents; the stated set still pins the hash.
 - [LOW] `plumb view --open` uses the platform opener on the folder, not the
   `obsidian://open?path=` URI (sp5 7 offers either).
+
+## PRESENT lane review (2026-10-06): HIGH findings fixed, the rest recorded
+
+Fixed in this lane (HIGH, each as a class at one choke point, one test per entry point):
+- One-shot agent lines are never cut by the budget (`present.delta.Line.oneshot`): the
+  prompt hook's untraced-change instruction, its queued cascade escalations and the
+  blocked stop's untraced-change instruction. Their source is consumed when read, so a cut
+  lost them for good. Tests: `tests/present/test_delta.py`.
+- `/plumb confirm` reaches the owner through the confirm turn's stop hook only
+  (`hosts/claude_code/stop.confirm_view`): `plumb confirm` prepares records (`shown:
+  false`) and its triage group (`confirm_groups`, not relayable). Every stop path (no
+  change, with changes) renders each record as a full intent card plus the group's offer
+  line, marks shown exactly what it rendered, and promotes the group to `groups` for
+  `plumb relay --group`. A blocked stop keeps them unshown. Tests:
+  `tests/present/test_confirm.py`.
+- Who confirmed a record has one label (`present.cards.confirmed_label`: you, you
+  (relayed), JEV, plus CAPTURE's "self-recorded message"). It is used by `plumb show`,
+  `plumb explain`, the vault notes and the cards. Tests: `tests/present/test_labels.py`.
+
+Recorded, not fixed:
+- [MEDIUM] `src/plumb/present/__init__.py`: the PRESENT-owned cross-lane interface
+  `plumb.present.api` (sp5 9: brief, relevant, show, explain, impact, drift, resolve) is
+  missing. Phase 0 never ran, so there is no stub or delegation either. HOSTS' MCP server
+  (`src/plumb/mcp/server.py:_resolve` on lane/hosts) imports
+  `plumb.present.api.resolve`, gets ImportError, and silently passes the owner's words
+  through unresolved. The `Resolution` type here has no `best` or `ref` attribute, which
+  HOSTS reads. The impact and explain CLIs resolve plain words themselves, so the loss is
+  limited today, but the plan 3.5 contract is unmet.
+- [MEDIUM] `src/plumb/hosts/claude_code/stop.py`: with `present.card: off`, `summary()`
+  hides the triage offer line (extra lines are kept only when they contain "escalated"),
+  but `write_stated` still pins the triage group. The owner's next "ok" to something else
+  (for example a DEC question card) could be relayed with `--group low-risk` and approve
+  records whose offer was never shown. Fix: pin the group only when its offer line was
+  rendered.
+- [MEDIUM] `src/plumb/align.py`: `collect()` stops at test and code nodes. It does not
+  expand to evidence (sp5 8: "... -> test -> code -> evidence") and never reports the
+  spec's example gap "an example with no evidence". An SR whose example has a
+  verified_by test that never ran shows no gap, so /plumb review and the vault's edge
+  badges present the chain as complete.
+- [LOW] `src/plumb/present/review.py`: `_glance` lists every agent-relayed or auto-jev
+  approval since the last merge evidence, including revoked ones, which suggests they are
+  still in force. It also omits the "self-recorded message" label (R13 Q4) on
+  CLI-fallback confirmations; `present.cards.confirmed_label` is the label path to reuse.
+- [MEDIUM] `src/plumb/hosts/claude_code/session_start.py`: `triage_offer_line` (session
+  brief and `plumb brief`) prints only a count ("N records rated faithful to your words
+  await you"). R13 Q2 (DEC-017) says the offer names up to about 5 records by title, then
+  "+N more (see plumb triage)". The stop summary uses CAPTURE's `offer_line`, which
+  follows Q2. The brief's line pins no group, so it is a pointer rather than a
+  confirmable offer, which limits the risk.
+- [MEDIUM] `src/plumb/hosts/claude_code/prompt.py`: `escalation_lines` advances
+  `escalations.offset` before the lines are emitted, so a budget cut dropped a queued
+  escalation for good. Addressed by the one-shot class fix above (escalation lines are
+  `oneshot`); recorded here for the review trail.
+- [LOW] `src/plumb/contracts.py`: this lane wrote coordinator-owned phase-0 files
+  (`contracts.py`, `config.py`, `cli.py`, the `.plumb/requirements` repins) because phase 0
+  was not done on main. CAPTURE and HOSTS define overlapping dataclasses
+  (`IntentCardData`, `StatusSnapshot`) in the same file. Merging lane/capture then
+  lane/present conflicts on `IntentCardData` (PRESENT adds `kind` and `statement`) and on
+  the `StatusSnapshot` fields; resolve by hand before the focused sets run.
+- [INTEGRATION] `plumb confirm` now writes its triage group under `confirm_groups` with
+  an `offer` key. CAPTURE's `approvals._stated_group` reads only `groups`, which the stop
+  hook fills after it renders the offer. On a host with no stop hook, a prepared group is
+  therefore never relayable, and the owner names the records or uses `plumb triage
+  --approve` in the terminal. This is the intended safe default (R2).

@@ -12,7 +12,9 @@ host-neutral API, which delegates to them) goes through ``Emitter.add``:
   for the stop hook's instructions, 4 characters per token) bounds what one call injects; a
   record line cut by the budget is named with ``plumb show`` and is not marked seen, so a
   later turn brings it; ``must`` lines (the relay line, a trigger question, the covering
-  tests instruction) are never cut;
+  tests instruction) are never cut, nor are ``oneshot`` lines: a line whose source the hook
+  consumes when it reads it (the queued untraced-change instruction, a queued cascade
+  escalation), so a cut would lose it for good;
 - nothing is emitted when nothing is new.
 
 The seen set lives in ``.plumb/session/<session>/seen.json`` and is written only when the
@@ -45,7 +47,13 @@ class Line:
     record: str | None = None      # the record a cut line names with plumb show
     group: str | None = None       # lines sharing a header (printed before the first)
     must: bool = False             # never cut by the budget
+    oneshot: bool = False          # its source is consumed once read: never cut either
     marks: tuple[str, ...] = ()    # further subjects marked seen with this line
+
+    @property
+    def kept(self) -> bool:
+        """Never cut by the budget or the line cap: ``must`` or ``oneshot``."""
+        return self.must or self.oneshot
 
     def key(self) -> tuple[str, str]:
         if self.subject:
@@ -132,7 +140,7 @@ class Emitter:
             cost = len(line.text) + (len(header) if header else 0)
             over = self.budget is not None and used + cost > self.budget
             capped = self.cap_lines is not None and count >= self.cap_lines
-            if not line.must and (capped or (over and progressed)):
+            if not line.kept and (capped or (over and progressed)):
                 if line.record:
                     cut.append(line.record)
                 continue
@@ -142,7 +150,7 @@ class Emitter:
             out.append(line.text)
             used += cost
             count += 1
-            progressed = progressed or not line.must
+            progressed = progressed or not line.kept
             taken.append(line)
         if cut:
             more = f"plumb: +{len(cut)} more relevant: plumb show " + " ".join(cut)

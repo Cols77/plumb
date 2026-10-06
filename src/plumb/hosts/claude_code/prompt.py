@@ -175,12 +175,14 @@ def untraced_line(emitter: Any, paths: Sequence[str]) -> Any:
     new = [p for p in paths if emitter.is_new(f"untraced:{p}")]
     if not new:
         return None
+    # oneshot: the note was consumed when read, so the budget must never cut this line
     return Line(trace_instruction(new), subject="untraced:" + "|".join(sorted(new)),
-                marks=tuple(f"untraced:{p}" for p in new))
+                marks=tuple(f"untraced:{p}" for p in new), oneshot=True)
 
 
 def escalation_lines(ctx: HookContext) -> list[str]:
-    """Escalations queued by the cascade since the last print (printed once each)."""
+    """Escalations queued by the cascade since the last print (printed once each). The
+    offset moves past them on read: their lines are ``oneshot`` (never cut by the budget)."""
     queue = ctx.session_dir / "escalations.jsonl"
     try:
         size = queue.stat().st_size
@@ -302,7 +304,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json")
     trace = untraced_line(emitter, untraced_queued(ctx, core))
     tail = [line for line in (trace, Line(awaiting, must=True) if awaiting else None) if line]
-    queued = [Line(line) for line in escalations]
+    # oneshot: escalation_lines advanced the queue offset past them already
+    queued = [Line(line, oneshot=True) for line in escalations]
     ctx.keep(emitter.add([*queued, *tail], commit=False))
     # no soft-budget check before the intent lines: only the watchdog bounds them
     ids, strong = _relevant_ids(core, text) if text.strip() else ([], [])

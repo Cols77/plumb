@@ -31,15 +31,15 @@ def _clip(text: Any, width: int = 160) -> str:
     return text if len(text) <= width else text[: width - 3] + "..."
 
 
-def _state(status: Any) -> str:
+def _state(core: Any, record_id: str, status: Any) -> str:
+    """The record's state; a confirmed one says who confirmed it, labelled like every other
+    surface (``present.cards.confirmed_label``, R8 B, R13 Q4)."""
+    from plumb.present.cards import confirmed_label
+
     if status is None:
         return "?"
-    state = _STATE.get(status.confirmation, status.confirmation)
-    if status.confirmation == "confirmed":
-        by = getattr(status, "approved_by", None)
-        state += {"owner": " by you", "agent-relayed": " by you (relayed from chat)"}.get(
-            str(by), f" ({by})" if by else "")
-    return state
+    return confirmed_label(core, record_id, status) or _STATE.get(status.confirmation,
+                                                                  status.confirmation)
 
 
 def resolve(core: Any, query: str) -> tuple[list[str], str, str | None]:
@@ -114,7 +114,8 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
     index = core.index()
     record = index[record_id]
     fields = record.fields
-    lines = [f"{record_id} \"{record.title}\" ({_state(statuses.get(record_id))})"]
+    state = _state(core, record_id, statuses.get(record_id))
+    lines = [f"{record_id} \"{record.title}\" ({state})"]
     what = (fields.get("statement") or fields.get("readback") or fields.get("description")
             or fields.get("question"))
     if what:
@@ -136,7 +137,8 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
             parent = index[target]
             quote = parent.fields.get("quote")
             quote = " / ".join(map(str, quote)) if isinstance(quote, list) else quote
-            lines.append(f"  why: {target} \"{parent.title}\" ({_state(statuses.get(target))})"
+            target_state = _state(core, target, statuses.get(target))
+            lines.append(f"  why: {target} \"{parent.title}\" ({target_state})"
                          + (f", your words: \"{_clip(quote, 120)}\"" if quote else ""))
     for other in index.values():
         if other.kind != "decision":
@@ -146,7 +148,7 @@ def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list
             chosen = other.fields.get("chosen")
             lines.append(f"  decided: {other.id} \"{other.title}\""
                          + (f", chosen: {_clip(chosen, 80)}" if chosen else "")
-                         + f" ({_state(statuses.get(other.id))})")
+                         + f" ({_state(core, other.id, statuses.get(other.id))})")
     feature = fields.get("feature")
     if feature and feature in index:
         lines.append(f"  feature: {feature} \"{index[feature].title}\"")

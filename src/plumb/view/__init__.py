@@ -119,12 +119,12 @@ class Vault:
         return status.confirmation if status is not None else "proposed"
 
     def confirmed_by(self, record_id: str) -> str | None:
-        from plumb.present.cards import BY
+        """"you", "JEV", "you (relayed), self-recorded message": the label every surface
+        uses (``present.cards.confirmed_label``, R8 B, R13 Q4), without "confirmed by"."""
+        from plumb.present.cards import confirmed_label
 
-        status = self.statuses.get(record_id)
-        if status is None or status.confirmation != "confirmed" or not status.approved_by:
-            return None
-        return BY.get(str(status.approved_by), str(status.approved_by))
+        label = confirmed_label(self.core, record_id, self.statuses.get(record_id))
+        return label.removeprefix("confirmed by ") if label else None
 
     def badges(self, record_id: str) -> list[str]:
         status = self.statuses.get(record_id)

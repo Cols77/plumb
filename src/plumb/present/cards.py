@@ -118,6 +118,19 @@ def _label(core: Any, record_id: str) -> str:
         else ("" if label.startswith("confirmed by") else label)
 
 
+def confirmed_label(core: Any, record_id: str, status: Any) -> str | None:
+    """Who confirmed a confirmed record, in the owner's terms: "confirmed by you", "confirmed
+    by you (relayed)", "confirmed by JEV", with CAPTURE's extra words such as "self-recorded
+    message" (R8 B, R13 Q4); None for a record that is not confirmed. The one label every
+    surface that states a record's confirmation uses: the cards, ``plumb show``, ``plumb
+    explain`` and the vault."""
+    if status is None or status.confirmation != "confirmed" or not status.approved_by:
+        return None
+    who = BY.get(str(status.approved_by), str(status.approved_by))
+    extra = _label(core, record_id)
+    return f"confirmed by {who}" + (f", {extra}" if extra else "")
+
+
 def card_for(core: Any, record: Any, statuses: Mapping[str, Any], *,
              evidence: Mapping[str, Any] | None = None, verify: Any = None) -> IntentCardData:
     """One record's card data, in full."""

@@ -25,7 +25,9 @@
    ``present.card`` (full | compact | off) and the intent cards of the records that matter
    (sp5 4); proposed records are shown, never asked, and the ones not shown are named with
    the ``plumb show`` command that prints them. The triage offer (R8 A) pins its group in
-   the stated set.
+   the stated set. The records and the triage group ``plumb confirm`` prepared this turn
+   are rendered here, as full intent cards and the group's offer line, and only what is
+   rendered is marked shown (``confirm_view``, sp5 6.3).
 
 The deadline is checked before a step starts, never after it ends (spec 10): a step that
 would start past the soft budget is skipped and named in a ``check skipped (budget)`` notice,
@@ -40,6 +42,7 @@ import os
 import subprocess
 import time
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -236,39 +239,122 @@ def _regression_line(node: str, evidence: Any) -> str:
             "Tell the owner, with a read-back, and ask how to proceed.")
 
 
+@dataclass
+class ConfirmView:
+    """What ``plumb confirm`` prepared this turn and what this stop shows of it (sp5 6.3):
+    the owner-facing lines (the group's offer and a full intent card per record), the
+    records rendered (``id -> hash``) and the groups whose offer was rendered."""
+
+    records: list[dict[str, Any]] = field(default_factory=list)
+    groups: list[dict[str, Any]] = field(default_factory=list)
+    lines: list[str] = field(default_factory=list)
+    shown: dict[str, str] = field(default_factory=dict)
+    shown_groups: list[dict[str, Any]] = field(default_factory=list)
+
+
+CONFIRM_HEADER = ("plumb confirm: say \"ok\" to confirm what is shown below, or name the "
+                  "records; nothing is approved until you do")
+
+
+def confirm_carry(ctx: HookContext, turn: Mapping[str, Any]) -> ConfirmView:
+    """The records and triage groups ``plumb confirm`` put in the stated set during this
+    turn (``via: confirm``), nothing rendered yet."""
+    previous = read_json(ctx.session_dir / "stated.json")
+    if not isinstance(previous, dict):
+        return ConfirmView()
+    start = _iso(float(turn.get("turn_start") or 0)) if turn.get("turn_start") else ""
+    if not start or str(previous.get("at") or "") < start:
+        return ConfirmView()
+    records = [dict(item) for item in previous.get("records") or []
+               if isinstance(item, dict) and item.get("via") == "confirm" and item.get("id")]
+    groups = [dict(item) for item in previous.get("confirm_groups") or []
+              if isinstance(item, dict) and item.get("group")]
+    return ConfirmView(records=records, groups=groups)
+
+
+def confirm_view(core: Any, carry: ConfirmView, skip: Iterable[str] = ()) -> ConfirmView:
+    """The one place ``plumb confirm``'s records reach the owner (sp5 6.3, R2): each
+    prepared record as a full intent card, and each prepared group's offer line when every
+    record it pins is unchanged. Only what is rendered here is marked shown; ``skip`` are
+    records the summary already carded in full (shown by it)."""
+    if not carry.records and not carry.groups:
+        return carry
+    from plumb.present.cards import card_data
+    from plumb.present.render import intent_card
+
+    index = core.index()
+    ascii_only = bool(getattr(getattr(core.config, "present", None), "ascii", False))
+    skip = set(skip)
+    lines: list[str] = []
+    shown_groups: list[dict[str, Any]] = []
+    for group in carry.groups:
+        pinned = [r for r in group.get("records") or [] if isinstance(r, dict)]
+        current = pinned and all(r.get("id") in index and index[r["id"]].hash == r.get("hash")
+                                 for r in pinned)
+        if current and group.get("offer"):
+            lines.append(str(group["offer"]))
+            shown_groups.append({k: v for k, v in group.items() if k not in ("offer", "via")})
+        else:
+            lines.append(f"plumb: the {group.get('group')} group changed since it was "
+                         "prepared; /plumb confirm shows it again")
+    wanted = [str(r["id"]) for r in carry.records if r["id"] in index and r["id"] not in skip]
+    shown: dict[str, str] = {}
+    for data in card_data(core, list(dict.fromkeys(wanted))):
+        if _too_long(data):
+            lines.append(f"plumb: {data.id} is too long to show here (plumb show {data.id}); "
+                         "a confirmation must name it")
+            continue
+        lines.extend(intent_card(data, mode="full", ascii=ascii_only))
+        shown[data.id] = index[data.id].hash
+    if lines:
+        lines.insert(0, CONFIRM_HEADER)
+    return ConfirmView(records=carry.records, groups=carry.groups, lines=lines, shown=shown,
+                       shown_groups=shown_groups)
+
+
 def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
                  stated_ids: Sequence[str], shown: Iterable[str] = (), *,
-                 group: Mapping[str, Any] | None = None) -> None:
+                 group: Mapping[str, Any] | None = None,
+                 confirm: ConfirmView | None = None) -> None:
     """The stated set of this reply: what a bare affirmation of the owner may confirm.
 
-    Records ``plumb confirm`` showed as cards during this turn (each ``via: confirm``, sp5 6.3)
-    stay in it; ``group`` is the triage offer's pinned group (``plumb relay --group``)."""
+    The records and groups ``plumb confirm`` prepared this turn stay in it (``via:
+    confirm``); they are shown, and a group relayable (``groups``), only as ``confirm``
+    rendered them (``confirm_view``). Without ``confirm`` (a blocked stop shows the owner
+    nothing) they are kept unshown for the turn's last stop. ``group`` is the triage offer
+    of this turn's own records (``plumb relay --group``)."""
     from plumb.normalize import utc_now
 
+    carry = confirm if confirm is not None else confirm_carry(ctx, turn)
+    rendered = confirm.shown if confirm is not None else {}
     shown = set(shown)
     records = [{"id": i, "hash": index[i].hash, "shown": i in shown} for i in stated_ids]
-    records += confirmed_this_turn(ctx, turn, {r["id"] for r in records})
+    by_id = {r["id"]: r for r in records}
+    for item in carry.records:
+        record_id = item["id"]
+        if record_id in rendered:
+            if record_id in by_id:  # still prepared by plumb confirm for a later stop
+                by_id[record_id].update(hash=rendered[record_id], shown=True, via="confirm")
+                continue
+            item = {**item, "hash": rendered[record_id], "shown": True}
+        elif record_id in by_id:
+            by_id[record_id]["via"] = "confirm"
+            continue
+        else:
+            item = {**item, "shown": False}
+        by_id[record_id] = item
+        records.append(item)
     data: dict[str, Any] = {"at": utc_now(), "session": ctx.session_id,
                             "reply_after_prompt": turn.get("prompt_digest"),
                             "records": records}
-    if group is not None:
-        data["groups"] = [dict(group)]
+    groups = list(confirm.shown_groups) if confirm is not None else []
+    if group is not None and not carry.groups:
+        groups.append(dict(group))
+    if groups:
+        data["groups"] = groups
+    if carry.groups:
+        data["confirm_groups"] = carry.groups
     write_json_atomic(ctx.session_dir / "stated.json", data)
-
-
-def confirmed_this_turn(ctx: HookContext, turn: Mapping[str, Any],
-                        skip: Iterable[str] = ()) -> list[dict[str, Any]]:
-    """The records ``plumb confirm`` put in the stated set during this turn."""
-    previous = read_json(ctx.session_dir / "stated.json")
-    if not isinstance(previous, dict):
-        return []
-    start = _iso(float(turn.get("turn_start") or 0)) if turn.get("turn_start") else ""
-    if not start or str(previous.get("at") or "") < start:
-        return []
-    skip = set(skip)
-    return [dict(item) for item in previous.get("records") or []
-            if isinstance(item, dict) and item.get("via") == "confirm"
-            and item.get("id") not in skip]
 
 
 def _confirmations(core: Any, since: float) -> list[str]:
@@ -307,10 +393,14 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
 
     core = open_core(ctx.root)
+    # what plumb confirm prepared this turn reaches the owner here, as full cards (sp5 6.3)
+    carry = confirm_carry(ctx, turn)
     if not changed:
-        write_stated(ctx, turn, {}, [])
+        view = confirm_view(core, carry)
+        write_stated(ctx, turn, {}, [], confirm=view)
         # a timed-out git status is no evidence of a turn without changes
-        return HookOutput(system_message=skip_notice(skipped)) if skipped else None
+        text = [*view.lines, *([skip_notice(skipped)] if skipped else [])]
+        return HookOutput(system_message="\n".join(text)) if text else None
     # no soft-budget check before the read-back (R1): only the watchdog bounds it
     index = core.index()
     by_path = core.records_for_paths(changed)
@@ -352,8 +442,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         changed_tests=changed_acceptance(index, all_statuses, touched_ids),
         snapshot=early_snapshot, decisions=decisions, flagged=flagged, escalated=escalated,
         extra_lines=waiting)
-    ctx.keep(early.splitlines())
-    write_stated(ctx, turn, index, stated_ids, early_shown)
+    early_view = confirm_view(core, carry, early_shown)
+    ctx.keep([*early.splitlines(), *early_view.lines])
+    write_stated(ctx, turn, index, stated_ids, early_shown, confirm=early_view)
     note_path = session_dir / "untraced.json"
     queued = [p for p in untraced if p not in told]
     if queued:  # delivered by the next prompt hook, so a cut after this still tells the agent
@@ -430,9 +521,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         if reasons:
             if queued:  # the block tells the agent now; the next prompt need not repeat it
                 new = [p for p in queued if emitter.is_new(f"untraced:{p}")]
+                # oneshot: the note is removed below, so the budget must never cut it
                 reasons += emitter.add([Line(trace_instruction(new),
                                              subject="untraced:" + "|".join(sorted(new)),
-                                             marks=tuple(f"untraced:{p}" for p in new))]
+                                             marks=tuple(f"untraced:{p}" for p in new),
+                                             oneshot=True)]
                                        if new else [])
                 try:
                     note_path.unlink()
@@ -450,7 +543,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     if ctx.deadline.expired():
         skipped.append("confirmations")
         turn_start = 0.0  # _confirmations reads no log without a turn start
-    offer, group = ([], None) if ctx.deadline.expired() else triage_offer(
+    # a group plumb confirm prepared this turn is the offer; this turn's own is not added
+    offer, group = ([], None) if ctx.deadline.expired() or carry.groups else triage_offer(
         core, [i for i in stated_ids if all_statuses[i].confirmation != "confirmed"])
     text, shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
@@ -460,9 +554,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         snapshot=snapshot, decisions=decisions,
         regressions=[*regressions, *(m["node"] for m in masked)], flagged=flagged,
         escalated=escalated, extra_lines=[*waiting, *offer])
-    if shown != early_shown or group is not None:
-        write_stated(ctx, turn, index, stated_ids, shown, group=group)
-    return HookOutput(system_message=text)
+    view = confirm_view(core, carry, shown)
+    write_stated(ctx, turn, index, stated_ids, shown, group=group, confirm=view)
+    return HookOutput(system_message="\n".join([text, *view.lines]) if view.lines else text)
 
 
 def escalated_sets(core: Any, touched_ids: Sequence[str]) -> tuple[list[str], list[str]]:

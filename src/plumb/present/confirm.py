@@ -1,9 +1,13 @@
 """``plumb confirm`` (``/plumb confirm``): prepare a confirmation the owner's own words then
 give (sp5 6.3, SR-065; rulings R1, R2, R8 A, R9).
 
-It never writes an approval. It shows records as intent cards (the "shown" form: each card
-shows its record in full) and puts them in the stated set, so the owner's next affirming
-prompt can confirm exactly them through ``plumb relay`` with the R2 checks:
+It never writes an approval, and it never marks a record shown itself. It prepares records
+and puts them in the stated set as ``via: confirm`` and ``shown: false`` (the triage group in
+``confirm_groups``, which ``plumb relay --group`` does not read). The confirm turn's stop hook
+is the one place they reach the owner: it renders each one as a full intent card (and the
+group's offer line) in the owner-facing summary and marks shown exactly what it rendered
+(``plumb.hosts.claude_code.stop.confirm_view``). The owner's next affirming prompt then
+confirms exactly those through ``plumb relay`` with the R2 checks:
 
 - no words: CAPTURE's triage offer (the low-risk group, every ID named, pinned in the stated
   set as a group) and each riskier record as a card; without CAPTURE, the proposed records
@@ -18,8 +22,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-HEADER = ("plumb confirm: this approves nothing; the owner's own \"ok\" (or \"ok SR-034\") "
-          "on the next prompt confirms what is shown below")
+HEADER = ("plumb confirm: this approves nothing; the end-of-turn summary shows the owner "
+          "these cards, and the owner's own \"ok\" (or \"ok SR-034\") on the next prompt "
+          "confirms what it showed")
 
 
 def _proposed(core: Any) -> list[str]:
@@ -56,19 +61,21 @@ def _group(view: Any) -> dict[str, Any] | None:
         return None
 
 
-def write_stated(core: Any, shown: Sequence[str], group: dict[str, Any] | None) -> None:
-    """The stated set of this reply: the carded records, ``shown`` and ``via: confirm``
-    (the stop hook keeps them for the owner's next prompt)."""
+def write_stated(core: Any, shown: Sequence[str], group: dict[str, Any] | None,
+                 offer: str | None = None) -> None:
+    """The stated set of this reply: the prepared records, ``via: confirm`` and not yet
+    shown; the triage group, with its offer line, in ``confirm_groups``. The confirm turn's
+    stop hook renders them to the owner and only then marks them shown (sp5 6.3, R2)."""
     from plumb.hosts.claude_code.hookio import write_json_atomic
     from plumb.normalize import utc_now
 
     index = core.index()
     data: dict[str, Any] = {"at": utc_now(), "session": None, "reply_after_prompt": None,
                             "via": "confirm",
-                            "records": [{"id": i, "hash": index[i].hash, "shown": True,
+                            "records": [{"id": i, "hash": index[i].hash, "shown": False,
                                          "via": "confirm"} for i in shown]}
     if group is not None:
-        data["groups"] = [group]
+        data["confirm_groups"] = [{**group, "offer": str(offer or ""), "via": "confirm"}]
     write_json_atomic(core.root / ".plumb" / "session" / "stated.json", data)
 
 
@@ -114,6 +121,6 @@ def confirm(core: Any, ids: Sequence[str] | None = None, *, limit: int = 5,
         lines.append(f"the owner's words name {', '.join(shown)}: relay them at once with "
                      f"plumb relay {' '.join(shown)} --prompt <digest> --quote \"<the "
                      "owner's exact words>\"")
-    write_stated(core, shown, group)
+    write_stated(core, shown, group, offer)
     return {"lines": lines, "shown": shown, "not_shown": rest, "group": group,
             "approved": []}
