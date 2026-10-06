@@ -83,7 +83,11 @@ Every adapter installs it, and it is all a host without lifecycle hooks gets:
   final reply: `turn start --prompt-file F` (or the text on stdin) logs the prompt digest and
   prints the delta (the `prompt` event); `turn end` prints the summary and, when the stop
   logic would block, the instruction on stdout with exit 0 (the `stop` event). Both are the
-  same `handle_event` calls;
+  same `handle_event` calls. The owner's chat "ok" logged this way may confirm through
+  `plumb relay` (R13 Q4: "YES, LABELLED"), with the same R2 checks as a hook-logged prompt;
+  every confirmation resting on a message the agent recorded itself is labelled
+  "self-recorded message" in `plumb show`, the merge-boundary glance and `plumb hosts
+  status`, and never supports an auto-approval;
 - the session marker `PLUMB_AGENT_SESSION=<host>` wherever the host lets the adapter set the
   agent's shell environment. The marker is a convenience, not the guard: the owner-terminal
   guard of 3.4 refuses owner-only commands from the agent's shell on every host, marker or

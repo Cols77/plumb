@@ -18,10 +18,12 @@
    the stop hook queued (a changed source path no requirement owns: read it back and record
    a proposed SR).
 
-Every line goes through the one emitter, ``plumb.present.delta`` (sp5 3): the flags, the
-compare line, escalations and the untraced instruction too reach the agent once per session
-per state. The relay line is about this turn (``per_turn``): it reaches the agent in every
-turn whose prompt follows a stated set, even when the prompt repeats earlier words. Every
+Every line goes through the one emitter, ``plumb.present.delta`` (sp5 3): the compare line,
+escalations and the untraced instruction reach the agent once per session per state. The
+relay line and the intent-change flags are about this turn (``per_turn``): the relay line
+reaches the agent in every turn whose prompt follows a stated set, even when the prompt
+repeats earlier words, and every request that may change a confirmed record is flagged,
+not only the first one of the session (decision 5, trigger 1). Every
 line is an intent-translation line computed from the records alone and kept through a
 budget cut (spec 10).
 
@@ -126,7 +128,14 @@ def _relevant_ids(core: Any, text: str) -> tuple[list[str], list[str]]:
 
 
 def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
-                  stated_path: Path) -> str | None:
+                  stated_path: Path, text: str = "") -> str | None:
+    """The relay line for this prompt: the stated records still awaiting the owner, and the
+    ``plumb relay`` form for the ones this prompt can confirm (``approvals.owner_scope``,
+    the check ``plumb relay`` applies): a bare "ok" lists them all; an ok naming records
+    lists only those; a record the prompt objects to is never suggested."""
+    from plumb.approvals import owner_scope
+    from plumb.normalize import normalize_text
+
     data = read_json(stated_path)
     if not isinstance(data, dict):
         return None
@@ -141,9 +150,19 @@ def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
     if not pending:
         return None
     short = digest.removeprefix("sha256:")[:12]
-    shown = [i for i in pending if i not in hidden]
-    unshown = [i for i in pending if i in hidden]
+    named, objected = owner_scope(normalize_text(text), None,
+                                  core.config.approve.affirmations)
+    held = [i for i in pending if i in objected or (named and i not in named)]
+    shown = [i for i in pending if i not in hidden and i not in held]
+    unshown = [i for i in pending if i in hidden and i not in held]
     line = f"plumb: awaiting confirmation: {', '.join(pending)} | prompt sha256:{short} | "
+    against = [i for i in held if i in objected]
+    if against:
+        line += (f"this prompt objects to or asks to change {', '.join(against)}: do not "
+                 "relay them; ")
+    if named and [i for i in held if i not in objected]:
+        line += (f"the owner's ok names only {', '.join(sorted(named))}: relay only the "
+                 "named records; ")
     if shown:
         line += (f"if this prompt affirms them, run plumb relay {' '.join(shown)} --prompt "
                  f"{short} --quote \"<owner's exact words>\"; ")
@@ -245,8 +264,9 @@ def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
                  backend: Any, injected: Sequence[str] | None = None,
                  ) -> tuple[list[Any], list[str]]:
     """``(lines, flagged)``: the trigger-1 flags on every relevant confirmed record (once
-    per session per record state, sp5 3), and the compare line for the confirmed records
-    injected in this prompt (``injected``; all of them when None)."""
+    per turn: each request that may change it is flagged, decision 5), and the compare line
+    for the confirmed records injected in this prompt (``injected``; all of them when
+    None)."""
     from plumb.present.delta import Line
 
     confirmed = [index[i] for i in ids if statuses[i].confirmation == "confirmed"]
@@ -266,7 +286,11 @@ def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
             out.append(Line(f"plumb: this may change {judgment.subject} (confirmed). If it "
                             "does, read back the change and ask before editing; if not, "
                             "proceed.", subject=f"flag:{judgment.subject}",
-                            state=getattr(subject, "hash", "") or "-", must=True))
+                            state=getattr(subject, "hash", "") or "-", must=True,
+                            # trigger 1 is about THIS request (decision 5): each prompt
+                            # that may change the record gets its own instruction; only
+                            # the record lines are deduplicated per session (R9)
+                            per_turn=True))
             _append_jsonl(ctx.session_dir / "intent_flags.jsonl",
                           {"at": _utc_now(), "session": ctx.session_id,
                            "prompt_digest": digest, "subject": judgment.subject,
@@ -309,7 +333,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     hooks = core.config.hooks
     emitter = open_emitter(ctx, "prompt", config=core.config,
                            cap_lines=int(hooks.prompt_lines))
-    awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json")
+    awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json", text)
     trace = untraced_line(emitter, untraced_queued(ctx, core))
     # per_turn: every affirming prompt is told how to relay, even with the same words
     relay = Line(awaiting, must=True, per_turn=True) if awaiting else None

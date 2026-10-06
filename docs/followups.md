@@ -2552,3 +2552,151 @@ medium and low findings:
 - [LOW] In the driven capture flow, "add a subtract helper next to add" also raises the
   intent-change card for confirmed INT-001 (an extension, trigger 1). Correct by the rule;
   the heuristic's extension recall may be broad for "next to X" phrasing.
+
+## Whole-plumb audit after SP2-SP4 and the importer (2026-10-06)
+
+The audit drove the real CLI, the hooks, merge-check and the MCP server on scratch projects
+and on a clone of plumb. Four HIGH findings were fixed in this change, each as a class:
+
+- [FIXED, HIGH] R2 "an objection is not an approval": a relayed "ok" confirmed a record the
+  owner had rejected in the same prompt ("SR-001 is ok but DEC-001 is wrong, use floats" ->
+  `plumb relay DEC-001 INT-001 SR-001 --quote "SR-001 is ok"` confirmed all three, and the
+  prompt hook suggested exactly that command). Guarantee: a relayed confirmation covers only
+  the records the owner's words affirm. One choke point, `approvals.owner_scope`, read by
+  `plumb relay` (IDs, `--group`, `--set`) and by the prompt hook's relay line: when the
+  clause the quote comes from (or the quote) names records, only those are confirmed; a
+  record named next to objection or change words anywhere in the prompt is never confirmed;
+  a group or set relay is refused when the ok objects to one of its records or names records
+  instead. Tests: relay with `--quote`, `--group`, `--set`, the Claude prompt hook's relay
+  line and the CLI-fallback `plumb turn start` path. This also fixes the round's MEDIUM "yes
+  I know SR-007 is wrong, rewrite it" (an objection after the affirmation).
+- [FIXED, HIGH] Decision 5 trigger 1: the intent-change flag was deduplicated per record hash
+  for the whole session (sp5 3 "Instructions too"), so a second, different request that
+  contradicts or extends the same confirmed record reached the agent with no "ask before
+  editing" instruction. The flag line is now `per_turn` at the one emitter; record lines stay
+  deduplicated (R9). sp5 3 and concept 6.2 corrected. Tests: the prompt hook, the
+  host-neutral turn API and `plumb turn start`. This supersedes the round-2 MEDIUM on the
+  same dedup (toy sessions s3/s4).
+- [FIXED, HIGH] R13 Q2 / R1 "say ok to confirm": `find_prompt` kept the FIRST prompt-log
+  entry of a digest, so the second "ok" ever sent in a repository resolved to an old prompt
+  whose time precedes the current stated set, and every later relayed "ok" (IDs, `--group`,
+  `--set`) was refused. `find_prompt` now returns the latest entry of the digest (the log is
+  append-only). Tests: relay IDs, `--group low-risk` and `--set INT` after an earlier
+  identical "ok". Supersedes the host-review MEDIUM above (find_prompt `setdefault`).
+- [FIXED, HIGH] concept.md and sp2 contradicted R13 (the triage offer "names every record of
+  the group by ID"; R13 absent from the reference). Concept: R13 in the preamble, D18 in the
+  decision table with the owner's answers, 4.6 triage paragraph (top 5 titles + "+N more",
+  the ok approves exactly the pinned hashes), Q3 in 4.6 auto-approval, Q4 in 4.6 and 9, Q1
+  in 8 (calibration) and the offer line in 8. sp2 C5, 8.1 offer example, 8.2 (Q3) and 8.3
+  (Q1 split); sp4 3.2 (Q4).
+
+Recorded, not fixed (owner rule: HIGH only):
+
+- [MEDIUM] (R13 Q4, R2) `self_recorded` rests on `via: hook` read from the gitignored
+  `.plumb/session/prompts.jsonl`, a plain file the agent's Edit/Write tools are not denied:
+  appending `{"text": "ok SR-001", "via": "hook"}` and relaying it gives "confirmed by you
+  (relayed)" with `self_recorded: false`. Within the stated trust model (a determined agent
+  can forge a digest), but the Q4 label is lost with a one-line edit. Fix: deny
+  Edit/Write/MultiEdit (and the Bash string match) on `.plumb/session/prompts.jsonl` in the
+  hooks install set; have the prompt hook write a session-scoped HMAC or hook-only nonce per
+  line and relay verify it before trusting `via: hook`, else label `self_recorded`.
+- [MEDIUM] (R3) File-level `verified_by` links attribute a file's failures to every
+  requirement verified by it: breaking `add` and adding a red `test_sub` to
+  `tests/test_mod.py` showed "Regression SR-002 (mul)" while `test_mul` passed, and marked
+  SR-001 and SR-002 "acceptance test changed since you confirmed it". Fix: attribute evidence
+  per test node (marker or example) even for a whole-file end; pin acceptance-test changes to
+  the AST segment of the requirement's own test nodes; teach node-level links in the README
+  Quickstart.
+- [MEDIUM] (latency, decision 5) On plumb's own repository (69 SR, 117 proposed, 726 KB test
+  map) SessionStart took 2.06-2.32 s (watchdog 1.9 s hit, "check skipped (budget): tests")
+  and Stop 1.97-2.09 s ("check skipped (budget): confirmations"; once "regressions not
+  checked (budget)"); the README's 0.55-1.2 s come from the toy project. Fix: profile both
+  paths on plumb, cache the record index, status and test-map parse across hooks (keyed by
+  HEAD and mtimes), never drop the regression check first (it is intent-level), add the
+  dogfood repository to drive_session's timing assertions, update the README timings.
+- [MEDIUM] (R8 A, R13 Q2) The heuristic triage rates every one of plumb's 117 proposed
+  records "riskier" (INT-004..INT-010 and INT-005, whose quote is the owner's verbatim
+  "A / B", score 0.00); a fresh near-verbatim capture scored 0.40/0.36; reasons say "not in
+  the owner's words: power" when the prompt said "power". It compares against the captured
+  quotes only, penalises structural tokens (given, call, return, app, calc), and the 0.8
+  `triage.low_risk_min` suits no paraphrase. So the grouped one-line offer never appears
+  without JEV. Fix: score against the full logged prompt of the record's capture digest plus
+  its quote, will/won't and examples, with stemming, synonyms and numbers; drop
+  given/when/then and code-path boilerplate; calibrate a heuristic-specific threshold on the
+  dogfood records; say "unrated" rather than "riskier" when the heuristic cannot
+  discriminate; add a test where a verbatim capture lands in low_risk and the brief prints
+  the offer.
+- [MEDIUM] (design weight) About 23.5k lines in `src/`, about 45 subcommands in `plumb
+  --help`, and this file at 248 KB with 468 entries (244 MEDIUM). The owner-facing surface
+  is small, but the engine and agent surface approach the weight the owner wanted to leave
+  behind. Fix before SP6: a consolidation pass (merge new/intent/example/decide into capture;
+  status --card/review/brief), cap the agent-facing commands the skill lists, and triage
+  this file into a short ranked list, archiving the rest.
+- [MEDIUM] (R9 card) Stop-summary intent cards show "○ not run" for tests that ran this turn
+  (two regressions `test_mul_ex1/ex2`; a not-yet-passing `test_div`); only the separate
+  regression line is right. Fix: read the node's latest evidence from the turn's run (the
+  regression line's source) when rendering card test states.
+- [MEDIUM] (decision 5) A heuristic false positive ("Also add power ..." flagged INT-001 on
+  "also") renders a full "▸ Intent change INT-001" card in the owner's summary although the
+  request only added intent. Fix: show the card only when the turn confirmed a change (a
+  read-back or decision recorded against the flagged record); otherwise log the flag.
+- [MEDIUM] (R1) `plumb review` section 1 says "awaits you: nothing" while its section 5 and
+  `plumb merge-check main` say SR-001 (extended by `verified_by` links added after
+  confirmation) awaits confirmation. Fix: feed the merge boundary's extended/widened set
+  into review's "awaits you".
+- [MEDIUM] (quality bar, full suite at the merge boundary) `plumb merge-check master` printed
+  "full run: not needed (latest full run ... holds)" and exited 0 after a new untested
+  `mul()` landed under confirmed SR-001 via an agent-run repin; the full run was on an older
+  tree. Fix: run the one full suite whenever the tree differs from the latest full run's
+  tree identity; treat a repinned `implemented_by` link of a confirmed requirement as
+  needing the owner's confirmation at the merge.
+- [MEDIUM] (R12.3) With the heuristic the commit-msg hook says nothing about "does this diff
+  serve its claimed SRs?": a commit adding untraced `src/plumb/statusline.py` claiming SR-002
+  passed with no warning and no "no judgments available". `diff_serves` warns only on a
+  high-confidence "no". Fix: print "plumb: does this diff serve SR-002? no judgments
+  available", or a degraded warning (the claimed SR declares none of the staged paths);
+  non-blocking; a test at the commit-msg entry point.
+- [LOW] README Quickstart step 3 says "This build has no `plumb new` command, so create the
+  file yourself", but `plumb new requirement --title ... --statement ...` exists. Fix: use
+  `plumb new` and `plumb example` there.
+- [LOW] After a relay the status line still reads "3 awaits you · 1 question" until the next
+  hook. Fix: rewrite `status.json` at the end of relay, approve, revoke and triage --approve.
+- [LOW] (R9 status card) The card showed "plumb ✓ aligned · SR 3/3 ok" while confirmed SR-003
+  had no implementation and two uncovered examples. Fix: never "aligned" while a confirmed
+  requirement has uncovered examples or no fresh passing evidence ("confirmed, unbuilt").
+- [LOW] (decision 5) Intent-change heuristic precision: "now make add faster" flagged INT-002
+  (the subtract intent); on plumb, "Add a subtract helper" pulled in five unrelated records
+  (SR-038, SR-030, FEAT-003, ...) and "Add a subtract helper next to add" flagged SR-001 and
+  suggested escalating. Fix: require a subject-term match against the record's statement or
+  examples before flagging; do not read a sibling behaviour as a change; log precision on
+  the dogfood session.
+- [LOW] (R9) `plumb why "the subtract thing"` found exactly one candidate (INT-002) and still
+  asked "which one do you mean?". Fix: answer directly for a single candidate above the
+  threshold.
+- [LOW] `plumb turn start --help` ran a turn start and the session brief (writing session
+  state) instead of printing help. Fix: parse with argparse before acting.
+- [LOW] A later turn's summary repeats "confirmed DEC-001, INT-001, SR-001 on your prompt
+  ..." from an earlier turn, and test links added after confirmation in the same turn force
+  a re-confirmation at merge ("extended"). Fix: emit the confirmation line once, in its
+  turn; consider exempting `verified_by` links added before the merge range was confirmed.
+- [LOW] (R9) In a repository whose default branch is not `main`, `plumb review` prints
+  "merge state against main: exit 2 (0 awaiting you, 0 untraced)" while two records await
+  the owner; `plumb merge-check` prints "fidelity: every touched requirement judged" for an
+  SR with no linked ends. Fix: report a usage error or missing base plainly; say "no linked
+  ends to judge".
+- [LOW] `plumb triage` is a read view but appends a committed `triage` event listing every
+  proposed record (117 hashes on plumb) whenever the view changes; the main checkout carries
+  such an uncommitted `events.jsonl` line now. Fix: keep the snapshot in gitignored cache or
+  session state; log a committed event only when the owner acts (triage --approve or a group
+  relay).
+- [LOW] (R10) Next: SP6 parallel work. Not started, and no SP6 spec yet. Its state: IDs are
+  allocated without `refs/plumb/ids` (no compare-and-swap reservation, no `plumb
+  merge-fix`); `events.jsonl` and `evidence.jsonl` are still single streams (`plumb init`
+  still creates them; the one-file-per-entry layout of concept 4.7 and its chain-keeping
+  migration are pending); no frontmatter-aware merge driver or intent-conflict card; no
+  cross-worktree awareness in the brief and status line; `plumb check --merge` on the merge
+  result is not a hook yet. Everything else of SP2-SP5 was found as specced or explicitly
+  deferred: CLI, hooks (session start 1.8 s, prompt 0.75 s, stop 1.6 s, status line 0.3 s
+  on the toy), the guard (exit 3 without a TTY or under the marker), the commit-msg hook,
+  merge-check (exit 4/5/1, one full run), the MCP server (6 read-only tools), the host
+  adapters, the importer (idempotent, all proposed) and plumb-clarify with its e2e test.

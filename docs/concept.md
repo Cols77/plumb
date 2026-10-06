@@ -11,7 +11,10 @@ The owner's decisions of 2026-10-06, rulings R8 to R12, are newer than the first
 this document and supersede it where they differ: R8 (JEV-assisted confirmation and its
 commands) in 4.2, 4.6, 6.5, 8 and 12; R9 (presentation and context economy) in D13, 6.1,
 6.2 and 6.5; R10 (parallel work) in section 11, item 6; R11 (brainstorming-grade
-clarification) in 5.2 and 9; R12 (the JEV pieces ported from pi-agent-factory) in 8.
+clarification) in 5.2 and 9; R12 (the JEV pieces ported from pi-agent-factory) in 8. R13,
+the owner's direct answers to five checkpoint questions of 2026-10-06 (D18), is applied in
+4.6 (the triage offer, auto-approval eligibility, the "self-recorded message" label), 8
+(calibration and the offer line) and 9 (hosts without a prompt hook).
 
 A plumb line hangs straight under its own weight and shows whether a wall is true. plumb does
 the same for a codebase. It shows, cheaply and on every turn, whether the system being built
@@ -41,7 +44,8 @@ On planning:
 > their system will have their intent succesfully translated?"
 
 The owner's decisions that shape plumb. The numbers follow the owner intent brief (decisions
-1 to 12); D13 to D17 are the owner's rulings R9, R8, R10, R11 and R12 of 2026-10-06:
+1 to 12); D13 to D17 are the owner's rulings R9, R8, R10, R11 and R12 of 2026-10-06, and
+D18 is the owner's checkpoint answers R13 of the same day:
 
 | # | Decision | Owner's words |
 |---|---|---|
@@ -62,6 +66,7 @@ The owner's decisions that shape plumb. The numbers follow the owner intent brie
 | D15 | Parallel work by awareness instead of locks: git is the coordinator and plumb holds no shared mutable runtime state; collision-free IDs, logs that never conflict, a frontmatter-aware merge driver, cross-worktree awareness, and `plumb check --merge` on the merge result (ruling R10; sub-project 6, section 11). | "yes" |
 | D16 | Brainstorming-grade intent clarification: a `plumb-clarify` skill, written for plumb, that scales its depth to the request (trivial, incremental, escalated), asks only the questions whose answer changes what gets built, one per message, multiple choice with a recommendation, each recorded as a `DEC` that matters (ruling R11; sections 5.2 and 9). | "during the intent clarification, claude code should use some kind of brainstorming skill to improve intent capture capability" |
 | D17 | Port the missing JEV pieces from pi-agent-factory: calibration on the owner's own confirmed and revoked records, a prerequisite for D14 B; edge alignment (`plumb align`); ownership proposals for untraced changes; a hidden-dependency scan as drift hints. All work in a degraded form with the heuristic, all are logged and advisory (ruling R12; section 8). | "Ok adopt the missing pieces you're mentionning" |
+| D18 | Checkpoint answers (ruling R13, given directly by the owner). Q1 calibration (DEC-018): mixed evidence, per record kind at least 20 of the owner's past decisions and at least 5 "no" examples, up to half of them generated variations, none wrongly accepted; the real/generated split shown in `plumb jev status` and the calibration entry. Q2 grouped ok (DEC-017): the offer line names up to about 5 records by title, then "+N more (see plumb triage)"; the owner's "ok" approves exactly the pinned list (hashes), which `plumb triage` shows in full. Q3 auto-approval: a requirement qualifies only when JEV judges that the owner's logged words support its wording and every one of its examples. Q4 hosts without a prompt hook: a chat "ok" may confirm, labelled "self-recorded message" in `plumb show`, the merge-boundary glance and the host status. Q5 scope: everything in R8, R11 and R12 is a must (sections 4.6, 8 and 9). | Q1 "MIXED EVIDENCE" / Q2 "TOP 5 + MORE" / Q3 "WORDING + EXAMPLES" / Q4 "YES, LABELLED" / Q5 "EVERYTHING" |
 
 ## 2. Problem
 
@@ -287,14 +292,21 @@ Two forms the owner chose on 2026-10-06 (D14) sit beside these:
   faithfulness rating. The owner confirms the low-risk group in one step, either
   `plumb triage --approve low-risk` in the owner's terminal (`by: owner`, exactly the listed
   hashes) or by affirming the one-line offer in a prompt, which the agent relays as above
-  (`by: agent-relayed`). The offer names every record of the group by ID; the rating never
-  approves anything by itself.
+  (`by: agent-relayed`, `plumb relay --group low-risk`). The offer line names up to about 5
+  records of the group by title, then "+N more (see plumb triage)" (D18, R13 Q2); the stated
+  set pins the whole group's hashes, `plumb triage` shows it in full, and the owner's "ok"
+  approves exactly that pinned list, no more: a record changed since the offer is left out
+  and named. An "ok" that objects to one of the group, or names records instead, does not
+  confirm the group. The rating never approves anything by itself.
 - **Auto-approval (D14 B).** Off by default. Only the owner turns it on, in the owner's
   terminal (`plumb config auto-approve on`, logged as an event; editing `config.yaml` alone
   does not turn it on), and only after a passing calibration for the current JEV model
   version (section 8). Then a record derived directly from the owner's own words (an `INT`
   read-back whose quote is verbatim in the logged prompt, an example restating the owner's
-  given/when/then) that JEV judges entailed by that prompt is approved `by: auto-jev`, with
+  given/when/then) that JEV judges entailed by that prompt is approved `by: auto-jev`. A
+  requirement qualifies only when JEV judges that the owner's logged words support its
+  wording AND every one of its examples; otherwise it waits for the owner (D18, R13 Q3). A
+  prompt the agent recorded itself (no prompt hook) never supports one. It is approved with
   the score, confidence, prompt digest and backend version, hash-pinned like any approval.
   Never for a `DEC` with `matters: true`, an escalated spec set, an edit of a record the owner
   confirmed, or any record when JEV is unavailable; the heuristic never auto-approves. Such
@@ -330,7 +342,15 @@ with four cheap, deterministic checks, none of which calls a model:
    each approved record must have been stated in the agent reply just before that prompt
    (the stated set, section 6.6) and shown there in full, or be named by ID in the quote,
    so an "ok" about one thing cannot approve unrelated records or content the owner was
-   never shown. An approval that fails any check is rejected with a
+   never shown. The owner's words also decide which of those records the "ok" covers: when
+   the clause the quote comes from (or the quote) names records, it confirms only those
+   ("SR-001 is ok but DEC-001 is wrong" confirms SR-001 alone), and a record the prompt
+   names next to objection or change words (wrong, not, instead, change, rewrite, except,
+   ...) is never confirmed by it: an objection is not an approval. The prompt hook's relay
+   suggestion applies the same rule, so it lists every awaiting record only for a bare "ok".
+   The same words sent twice ("ok" today and "ok" last week) share a digest; the check
+   reads the latest logged prompt with that digest, the one the owner just sent, against
+   the reply before it. An approval that fails any check is rejected with a
    non-zero exit and is not stored. The stored entry records the prompt digest, the quote,
    the digest of the quote, the matched affirmation term and the stated set, so the result
    of the check stays inspectable after the session state is deleted.
@@ -363,6 +383,12 @@ and that any edit, deletion or out-of-order insertion of a
 committed entry shows up in `plumb check` and in git history. The merge-boundary list of
 `agent-relayed` approvals with their quotes (section 7.5) is the owner's cheap backstop
 against a relayed approval the owner never gave.
+
+**Self-recorded messages (D18, R13 Q4).** On a host without a prompt hook (the CLI-only
+fallback of section 9), the agent records the owner's message itself with `plumb turn
+start`. A chat "ok" may still confirm through `plumb relay`, but every confirmation resting
+on a message the agent recorded itself is labelled "self-recorded message" in `plumb show`,
+the merge-boundary glance and the host status, and it never supports an auto-approval.
 
 An escalated plan (section 5.2) is approved as a set: one approval pins a set hash over the
 sorted member hashes. The set is anchored on an `INT` with `mode: escalated` and a `members`
@@ -520,9 +546,11 @@ On each prompt, the prompt hook:
    change, should now, don't). When the judgment backend is enabled, it filters these
    candidates first (section 8). A flagged candidate is injected as an instruction to the
    agent: "this may change SR-004 (confirmed). If it does, read back the change and ask
-   before editing; if not, proceed." The agent, which is already running, acts as the
-   cascade's LLM tier at no extra cost. Only a confirmed contradiction or extension reaches
-   the owner.
+   before editing; if not, proceed." The flag is about the request, not the record: every
+   prompt that may change a confirmed record gets its own instruction, also later in the
+   same session (D5, trigger 1); only the record lines of step 2 are deduplicated. The
+   agent, which is already running, acts as the cascade's LLM tier at no extra cost. Only a
+   confirmed contradiction or extension reaches the owner.
 
 ### 6.3 Edit tracking
 
@@ -854,9 +882,10 @@ owner turns on, only with JEV (never the heuristic), and only while a passing ca
 
 - `plumb triage` scores each proposed record for faithfulness to the owner's words (JEV when
   configured, otherwise the heuristic) and groups the low-risk ones; the end-of-turn summary
-  and `plumb brief` offer one line ("approve the N records rated faithful to your words? see
-  plumb triage") that the owner confirms with explicit words; riskier records are shown
-  individually. `plumb triage --approve low-risk` confirms the group from the owner's
+  and `plumb brief` offer one line that names up to about 5 of them by title, then "+N more
+  (see plumb triage)" (D18, R13 Q2), and that the owner confirms with explicit words; the
+  "ok" approves exactly the pinned hashes, which `plumb triage` shows in full; riskier
+  records are shown individually. `plumb triage --approve low-risk` confirms the group from the owner's
   terminal, recorded as an owner approval of exactly the listed hashes.
 - `plumb config auto-approve on|off [--backend jev] [--min-probability 0.9]
   [--min-confidence high]` and `plumb config show` run in the owner's terminal only and are
@@ -871,7 +900,12 @@ and sharper; all judgments are logged and advisory.
 
 1. **Calibration.** `plumb jev calibrate` measures the backend's accuracy on the owner's own
    confirmed and revoked records (a labelled set built from the log) and records thresholds
-   per claim kind with the resolved model version. `plumb config auto-approve on` refuses
+   per claim kind with the resolved model version. The evidence is mixed (D18, R13 Q1): per
+   record kind, at least 20 of the owner's past decisions and at least 5 "no" examples, of
+   which up to half may be generated variations (a will flipped to a won't, a flipped
+   result, a changed number); JEV must wrongly accept none of them. The split between real
+   and generated examples is shown in `plumb jev status` and in the calibration log entry.
+   `plumb config auto-approve on` refuses
    without a passing calibration for the current model version, and a version change
    suspends auto-approval until it is recalibrated.
 2. **Edge alignment.** `plumb align [scope]` collects the scope deterministically (intent ->
@@ -914,7 +948,9 @@ stays the agent's interface (D13).
 
 Later adapters (Codex, Pi, Hermes) are thin layers over one host-neutral turn API, mirroring
 these hooks where the host supports them, with a CLI-only fallback (an instruction file plus
-`plumb turn start` and `plumb turn end`) where it does not; a read-only MCP server on stdio
+`plumb turn start` and `plumb turn end`) where it does not. On such a host the owner's chat
+"ok" may confirm, and each confirmation resting on a message the agent recorded itself is
+labelled "self-recorded message" (D18, R13 Q4; section 4.6); a read-only MCP server on stdio
 exposes the brief, the relevant records, why and impact, and drift
 (`docs/specs/sp4-hosts-mcp.md`).
 

@@ -9,8 +9,10 @@ Only two sources confirm a record:
 2. an agent-relayed approval, ``plumb relay``, which carries the owner's verbatim words: the
    cited prompt must be in the prompt log and hash to its digest, the quote must be a verbatim
    part of it and contain an affirmation that no negation before it in its sentence turns
-   into an objection and that is not in a question, and every record must be in the stated
-   set of the reply before that prompt, shown there in full, or be named in the quote.
+   into an objection and that is not in a question, no record may be named in the prompt
+   next to objection words, an ok whose clause names records confirms only those
+   (``owner_scope``), and every record must be in the stated set of the reply before that
+   prompt, shown there in full, or be named in the quote.
 
 Silence, or a prompt that neither affirms nor objects, confirms nothing.
 """
@@ -254,7 +256,12 @@ def _read_jsonl(path: Any) -> list[Mapping[str, Any]]:
 
 
 def find_prompt(core: Core, given: str) -> Mapping[str, Any]:
-    """The logged prompt a digest (full, or a unique prefix of 12+ hex digits) names."""
+    """The logged prompt a digest (full, or a unique prefix of 12+ hex digits) names.
+
+    The same words sent twice ("ok" in one session, "ok" again later) share a digest; the
+    entry is the LATEST one logged, the prompt the owner just sent, so its time is the one
+    the stated set of the reply before it is checked against (``_stated``,
+    ``_stated_group``). The prompt log is append-only, so the last line is the latest."""
     wanted = given.strip().lower().removeprefix("sha256:")
     if not re.fullmatch(r"[0-9a-f]+", wanted or "x") or len(wanted) < MIN_PREFIX:
         raise Refused(f"prompt digest '{given}' must be at least {MIN_PREFIX} hex digits")
@@ -262,7 +269,7 @@ def find_prompt(core: Core, given: str) -> Mapping[str, Any]:
     for entry in _read_jsonl(core.paths.prompts):
         digest = str(entry.get("digest", ""))
         if digest.removeprefix("sha256:").startswith(wanted):
-            matches.setdefault(digest, entry)
+            matches[digest] = entry  # the latest entry of each digest wins
     if not matches:
         raise Refused(f"prompt {given} is not in the prompt log (.plumb/session/prompts.jsonl)")
     if len(matches) > 1:
@@ -371,6 +378,118 @@ def affirmation_context_problem(quote: str, text: str,
                 return (f"the quote's affirmation is negated by '{word.group()}' before it "
                         "in the prompt; an objection confirms nothing")
     return None
+
+
+# ----------------------------------------------------- whose records the owner's words affirm
+
+# A record ID as the owner writes it (the shape plumb.query reads from prompts).
+_RECORD_ID = re.compile(r"(?<![A-Za-z0-9-])((?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})(?![0-9])")
+# Clause boundaries: punctuation ends a clause after it; a contrastive word starts the next
+# clause ("SR-001 is ok | but DEC-001 is wrong", "ok | except SR-034").
+_CLAUSE_PUNCT = re.compile(r"[.!?;,:]+(?=\s|$)|\n")
+_CLAUSE_WORD = re.compile(r"(?<!\w)(?:but|however|though|although|whereas|while|yet|except"
+                          r"|instead)(?!\w)", re.IGNORECASE)
+# Words that, in the clause naming a record, object to it or ask to change it (R2: "an
+# objection is not an approval"): a record named next to them is never confirmed.
+_OBJECTION = re.compile(
+    r"(?<!\w)(?:no|not|never|nope|nah|nor|wrong|incorrect|instead|change|changed|changes"
+    r"|rewrite|redo|fix|reject|rejected|revert|remove|drop|disagree|except|wait|hold|stop"
+    r"|bad|broken|cannot|dont|cant|wont|isnt|arent|shouldnt|wouldnt|doesnt|didnt)(?!\w)"
+    r"|\w+n['’]t(?!\w)", re.IGNORECASE)
+# What may sit between IDs in a list ("SR-001, SR-002 and DEC-001").
+_ID_LIST_FILLER = re.compile(r"(?:[\s,&+/:;]|(?<!\w)(?:and|or)(?!\w))*", re.IGNORECASE)
+
+
+def _clauses(text: str) -> list[tuple[int, int]]:
+    """``(start, end)`` of each clause of ``text``; a clause holding only record IDs (a
+    list whose predicate follows, "SR-001, DEC-001 are wrong") joins the next clause, or
+    the previous one when it ends the text."""
+    cuts = {0, len(text)}
+    cuts.update(m.end() for m in _CLAUSE_PUNCT.finditer(text))
+    cuts.update(m.start() for m in _CLAUSE_WORD.finditer(text))
+    points = sorted(cuts)
+    spans = [(a, b) for a, b in zip(points, points[1:], strict=False) if text[a:b].strip()]
+    merged: list[tuple[int, int]] = []
+    pending: int | None = None
+    for start, end in spans:
+        if pending is not None:
+            start, pending = pending, None
+        body = _RECORD_ID.sub("", text[start:end])
+        if _RECORD_ID.search(text[start:end]) and _ID_LIST_FILLER.fullmatch(body):
+            pending = start  # an ID-only clause: its predicate is in the next clause
+            continue
+        merged.append((start, end))
+    if pending is not None:
+        if merged:
+            merged[-1] = (merged[-1][0], len(text))
+        else:
+            merged.append((pending, len(text)))
+    return merged
+
+
+def owner_scope(text: str, quote: str | None,
+                affirmations: Sequence[str]) -> tuple[set[str], set[str]]:
+    """``(named, objected)``: the record IDs the owner's affirming words name, and every
+    record ID the prompt names in a clause that objects to it or asks to change it.
+
+    The one place that reads which records a prompt confirms (R2), for ``plumb relay``
+    (IDs, ``--group``, ``--set``) and the relay line the prompt hook suggests. The
+    affirming words are the clauses ``quote`` occurs in (without a quote: the clauses
+    holding an affirmation term). When they name records, an ok confirms only those
+    ("SR-001 is ok but DEC-001 is wrong" confirms SR-001 alone); a record named next to
+    objection words ("wrong", "not", "instead", "change", ...) anywhere in the prompt is
+    never confirmed. Both sets are empty for a bare "ok"."""
+    clauses = _clauses(text)
+    objected: set[str] = set()
+    for start, end in clauses:
+        clause = text[start:end]
+        ids = set(_RECORD_ID.findall(clause))
+        if ids and _OBJECTION.search(_NOT_NEGATING.sub(" ", _RECORD_ID.sub(" ", clause))):
+            objected |= ids
+    if quote:
+        spans = [(m.start(), m.end()) for m in _quote_pattern(quote).finditer(text)]
+    else:
+        spans = [(m, m + 1) for m in _affirmation_offsets(text, affirmations)]
+    affirming = [(a, b) for a, b in clauses if any(s < b and e > a for s, e in spans)]
+    named = {i for a, b in affirming for i in _RECORD_ID.findall(text[a:b])}
+    if quote:
+        named |= set(_RECORD_ID.findall(quote))
+    return named, objected
+
+
+def _check_scope(text: str, quote: str, affirmations: Sequence[str], ids: Sequence[str],
+                 *, group: str | None = None, set_anchor: str | None = None) -> None:
+    """Refused unless the owner's words affirm every record of the relay (``owner_scope``).
+
+    The IDs path: no record the prompt objects to, and, when the affirming words name
+    records, only those. ``--group``: the owner's ok to the offer names no record and objects
+    to none of the group (otherwise the named IDs are relayed one by one). ``--set``: no set
+    id is objected to, and named records include the anchor."""
+    named, objected = owner_scope(text, quote, affirmations)
+    against = sorted(i for i in ids if i in objected)
+    if against:
+        allowed = sorted(i for i in (named or set(ids)) if i not in objected and i in ids)
+        hint = (f"; relay only {' '.join(allowed)}" if allowed and not (group or set_anchor)
+                else "")
+        raise Refused(f"the owner's words object to or ask to change {', '.join(against)}; "
+                      f"an objection is not an approval{hint}")
+    if not named:
+        return
+    if group:
+        raise Refused(f"the owner's words name {', '.join(sorted(named))}; an ok naming "
+                      f"records confirms those records, not group {group}: relay the named "
+                      "IDs instead")
+    if set_anchor:
+        if set_anchor not in named:
+            raise Refused(f"the owner's words name {', '.join(sorted(named))}, not the set "
+                          f"{set_anchor}; relay the named IDs instead")
+        return
+    outside = sorted(i for i in ids if i not in named)
+    if outside:
+        allowed = sorted(i for i in ids if i in named)
+        hint = f"; relay only {' '.join(allowed)}" if allowed else ""
+        raise Refused(f"the owner's words name {', '.join(sorted(named))}, not "
+                      f"{', '.join(outside)}; an ok naming records confirms only those{hint}")
 
 
 def _stated_group(core: Core, group: str, prompt_at: str) -> list[dict[str, Any]]:
@@ -498,6 +617,9 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
             raise ApprovalError(str(exc)) from exc
     elif ids or not extra:
         records = _revoked_records(core, ids) if revoke else _records(core, ids)
+    if not revoke and records:
+        _check_scope(normalize_text(text), normalized_quote, core.config.approve.affirmations,
+                     [str(r["id"]) for r in records], group=group, set_anchor=set_anchor)
     stated, stated_ids = _stated(core, str(entry.get("at") or ""))
     if set_anchor:
         _check_set_shown(set_anchor, records, normalized_quote, stated)

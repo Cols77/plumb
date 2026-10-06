@@ -321,3 +321,86 @@ def test_approval_records_the_ends_a_requirement_owns(setup: Path) -> None:
     items = {r["id"]: r for r in entry.payload["records"]}
     assert items["SR-001"]["ends"] == ["implemented_by src/a.py"]
     assert "ends" not in items["INT-001"]
+
+
+# -- an ok confirms only what the owner's words affirm (R2; concept 6.6) --------------------
+
+MIXED = "SR-001 is ok but INT-001 is wrong, use floats"
+
+
+def test_relay_ok_naming_records_confirms_only_those(setup: Path, monkeypatch,
+                                                     capsys: pytest.CaptureFixture[str]) -> None:
+    """The owner's words name SR-001 as ok and INT-001 as wrong: relaying every stated ID,
+    with the named quote or a bare "ok" cut from it, is refused; SR-001 alone is confirmed."""
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    state_set(setup, ["SR-001", "SR-002", "INT-001"])
+    digest = log_prompt(setup, MIXED)
+    for quote in ("SR-001 is ok", "ok"):
+        with pytest.raises(approvals.Refused, match="INT-001"):
+            approvals.relay(open_core(setup), ["INT-001", "SR-001", "SR-002"],
+                            prompt=digest, quote=quote)
+    root = ["--root", str(setup)]
+    assert cli.main(["relay", "INT-001", "SR-001", "SR-002", "--prompt", digest, "--quote",
+                     "SR-001 is ok", *root]) == 3
+    assert "relay only SR-001" in capsys.readouterr().err
+    # not objected to, but not named by the ok either
+    with pytest.raises(approvals.Refused, match="SR-002"):
+        approvals.relay(open_core(setup), ["SR-001", "SR-002"], prompt=digest, quote="ok")
+    assert list(open_core(setup).log_read("events")) == []
+    assert cli.main(["relay", "SR-001", "--prompt", digest, "--quote", "SR-001 is ok",
+                     *root]) == 0
+    assert _confirmation(setup, "SR-001") == "confirmed"
+    assert _confirmation(setup, "INT-001") == "proposed"
+
+
+@pytest.mark.parametrize("prompt, quote", [
+    ("yes I know SR-001 is wrong, rewrite it", "yes"),
+    ("ok. SR-001, SR-002 are wrong", "ok"),
+    ("ok except SR-001", "ok"),
+    ("SR-002 ok, but SR-001 should change", "SR-002 ok"),
+])
+def test_relay_refuses_a_record_the_prompt_objects_to(setup: Path, prompt: str,
+                                                      quote: str) -> None:
+    state_set(setup, ["SR-001", "SR-002"])
+    digest = log_prompt(setup, prompt)
+    with pytest.raises(approvals.Refused, match="object"):
+        approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote=quote)
+    assert _confirmation(setup, "SR-001") == "proposed"
+
+
+def test_relay_after_an_earlier_identical_ok(setup: Path) -> None:
+    """R13 Q2: the owner's "ok" resolves to the prompt just sent, not to the first prompt
+    with the same words (the prompt log keeps every session's prompts)."""
+    state_set(setup, ["SR-001"], at="2026-10-06T02:59:00Z")
+    digest = log_prompt(setup, "ok", at="2026-10-06T03:00:00Z", session="cap1")
+    approvals.relay(open_core(setup), ["SR-001"], prompt=digest, quote="ok")
+    state_set(setup, ["SR-002", "INT-001"], at="2026-10-06T03:10:00Z")
+    again = log_prompt(setup, "ok", at="2026-10-06T03:11:00Z", session="cap2")
+    assert again == digest
+    approvals.relay(open_core(setup), ["SR-002", "INT-001"], prompt=digest[7:19], quote="ok")
+    assert _confirmation(setup, "SR-002") == _confirmation(setup, "INT-001") == "confirmed"
+
+
+def test_turn_start_relay_line_and_relay_follow_the_owners_words(
+        setup: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str]) -> None:
+    """The CLI-only fallback: ``plumb turn start`` logs the owner's message and suggests the
+    relay of the named records only; that suggestion is what ``plumb relay`` accepts."""
+    import io
+
+    state_set(setup, ["SR-001", "SR-002", "INT-001"], at="2000-01-01T00:00:00Z")
+    monkeypatch.setattr("sys.stdin", io.StringIO(MIXED))
+    root = ["--root", str(setup)]
+    assert cli.main(["turn", "start", "--session", "s1", *root]) == 0
+    out = capsys.readouterr().out
+    [line] = [x for x in out.splitlines() if "awaiting confirmation" in x]
+    assert "run plumb relay SR-001 --prompt" in line
+    assert "objects to or asks to change INT-001" in line
+    digest = approvals.prompt_digest(MIXED)
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "cli")
+    assert cli.main(["relay", "SR-001", "SR-002", "INT-001", "--prompt", digest[7:19],
+                     "--quote", "ok", *root]) == 3
+    assert cli.main(["relay", "SR-001", "--prompt", digest[7:19], "--quote", "SR-001 is ok",
+                     *root]) == 0
+    assert _confirmation(setup, "SR-001") == "confirmed"
+    assert _confirmation(setup, "INT-001") == "proposed"

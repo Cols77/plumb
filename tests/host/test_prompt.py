@@ -383,3 +383,86 @@ def test_session_clear_resets_what_the_agent_has_seen(records: Path, hook_input)
     assert session_start.main(stdin=io.StringIO(payload), stdout=io.StringIO(), root=records,
                               verify=FakeVerify()) == 0
     assert "SR-003 [proposed]" in _run(records, hook_input, "SR-003 stale links")
+
+
+# -- trigger 1 is about each request, not each record (decision 5) -------------------------
+
+CHANGE_1 = "approvals should now stay after an edit, SR-004"
+CHANGE_2 = "approvals should now also expire after a week"
+
+
+def _flag(record_id: str) -> str:
+    return f"plumb: this may change {record_id} (confirmed)."
+
+
+def test_each_request_that_may_change_a_confirmed_record_is_flagged(records: Path,
+                                                                    hook_input) -> None:
+    """Decision 5: a request that contradicts or extends a confirmed requirement asks first.
+    A second, different changing request in the same session gets its own instruction; only
+    the record line is deduplicated (R9)."""
+    _confirm(records, "SR-004")
+    first = _run(records, hook_input, CHANGE_1)
+    assert _flag("SR-004") in first and "SR-004 [confirmed]" in first
+    second = _run(records, hook_input, CHANGE_2 + " (SR-004)")
+    assert _flag("SR-004") in second
+    assert "SR-004 [confirmed]" not in second  # the record line stays deduplicated
+
+
+def test_neutral_turn_api_flags_each_changing_request(records: Path) -> None:
+    from plumb.contracts import TurnEvent
+    from plumb.hosts.neutral import handle_event
+
+    _confirm(records, "SR-004")
+    outputs = []
+    for text in (CHANGE_1, CHANGE_2 + " (SR-004)"):
+        out = handle_event(TurnEvent(kind="prompt", root=records, session_id="s1",
+                                     host="codex", text=text),
+                           verify=FakeVerify(), backend=FakeBackend())
+        outputs.append("\n".join(out.agent_context))
+    assert all(_flag("SR-004") in out for out in outputs)
+
+
+def test_turn_start_flags_each_changing_request(records: Path, monkeypatch,
+                                                capsys) -> None:
+    """The CLI-only fallback (``plumb turn start``) is the same prompt event."""
+    from plumb.cli import main
+
+    monkeypatch.setattr(prompt, "judgment_backend", lambda core, given=None: FakeBackend())
+    _confirm(records, "SR-004")
+    capsys.readouterr()
+    outputs = []
+    for text in (CHANGE_1, CHANGE_2 + " (SR-004)"):
+        monkeypatch.setattr("sys.stdin", io.StringIO(text))
+        assert main(["turn", "start", "--session", "s1", "--root", str(records)]) == 0
+        outputs.append(capsys.readouterr().out)
+    assert all(_flag("SR-004") in out for out in outputs)
+
+
+# -- the relay line suggests only what the owner's words affirm (R2) -----------------------
+
+
+def _stated(repo: Path, ids: list[str]) -> None:
+    index = open_core(repo).index()
+    path = repo / ".plumb" / "session" / "stated.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"at": "2026-10-06T00:00:00Z", "records": [
+        {"id": i, "hash": index[i].hash, "shown": True} for i in ids]}), "utf-8")
+
+
+def _relay_command(out: str) -> list[str]:
+    [line] = [line for line in out.splitlines() if line.startswith("plumb: awaiting")]
+    if "run plumb relay " not in line:
+        return []
+    return line.split("run plumb relay ", 1)[1].split(" --prompt", 1)[0].split()
+
+
+def test_relay_line_lists_only_the_records_the_ok_names(records: Path, hook_input) -> None:
+    _stated(records, ["SR-003", "SR-004", "SR-009"])
+    out = _run(records, hook_input, "SR-003 is ok but SR-004 is wrong, keep floats")
+    assert _relay_command(out) == ["SR-003"]
+    assert "objects to or asks to change SR-004" in out
+
+
+def test_relay_line_lists_every_record_for_a_bare_ok(records: Path, hook_input) -> None:
+    _stated(records, ["SR-003", "SR-004"])
+    assert _relay_command(_run(records, hook_input, "ok")) == ["SR-003", "SR-004"]

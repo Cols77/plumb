@@ -72,9 +72,15 @@ sub-project extends the same rule to every agent-facing output, at one choke poi
   stop hook's agent instructions); a line cut by the budget is named with `plumb show` and is
   not marked seen. The prompt, stop and session-start hooks, and the host-neutral API (9),
   use only this emitter.
-- **Instructions too.** The intent-change instruction, the compare line, the untraced-change
-  instruction, escalation suggestions, ownership proposals and drift hints are deduplicated
-  the same way: the agent gets each once per session per state, not every prompt.
+- **Instructions too.** The compare line, the untraced-change instruction, escalation
+  suggestions, ownership proposals and drift hints are deduplicated the same way: the agent
+  gets each once per session per state, not every prompt. The intent-change instruction is
+  the exception: it judges a request, not a record (decision 5, trigger 1: "a request that
+  contradicts or extends a confirmed requirement"), so it is a `per_turn` line, and every
+  prompt that may change a confirmed record gets its own "ask before editing" instruction;
+  the record's own line stays deduplicated (R9). An earlier version of this spec
+  deduplicated the flag per record hash for the session, which silenced every later
+  changing request; the owner's decision 5 wins over this spec.
 - **Progressive disclosure.** Examples, covering tests and evidence never ride along in the
   delta; the agent pulls them with `plumb show <ID>` or the MCP `plumb_show` tool. The skill
   says so in one line.

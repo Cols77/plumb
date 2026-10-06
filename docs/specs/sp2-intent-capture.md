@@ -69,7 +69,7 @@ calibrated JEV auto-approval of records derived directly from the owner's words 
 | C2 | Set approval pins a set hash over the sorted member hashes (4.6) | The set is anchored on an `INT` with `mode: escalated` and a `members` list; `plumb spec approve INT-###` (owner) or `plumb relay --set INT-### --prompt --quote` (relayed) writes one approval with the set hash and every member's hash | Gives the set an identity the owner can name, inside the existing record model; no new record kind |
 | C3 | "No model ... confirms intent" (concept 8 and 12) | Exception R8 B: `by: auto-jev` approvals, off by default, only for records derived directly from the owner's words, only after a passing calibration for the current model version, and only while the owner's own `plumb config auto-approve on` event stands | Owner decision 2026-10-06 ("Ok for A+B") and R12.1. The concept is updated in the same change (section 8 and 12) |
 | C4 | `.plumb/config.yaml` holds settings (4.1) | `auto_approve` in `config.yaml` is a mirror. The effective state is the latest `config` event written by `plumb config auto-approve` in the owner's terminal (the owner-terminal guard, concept 4.6 check 4: no session marker and a y/N answered in an interactive terminal). A `config.yaml` that says on without that event is off, and `plumb validate` warns | The agent may edit `config.yaml` (the guard denies only `.plumb/log/**`); R8 says the command is "owner-terminal only, logged in the event log". The log event is what the agent cannot write on the normal path |
-| C5 | R8 A: one line "approve the N records rated faithful to your words?" | The line names every record of the group by ID; the stated set records the group with its hashes; a relayed "ok" on the next prompt approves exactly that group (`plumb relay --group low-risk`), even though the records were not each shown in full | The owner chose the grouped one-line confirmation explicitly (R8 A). Naming every ID keeps the owner's words tied to an exact, inspectable set; the full records are one `plumb triage` away |
+| C5 | R8 A: one line "approve the N records rated faithful to your words?" | The line names up to about 5 records of the group by title, then "+N more (see plumb triage)" (R13 Q2, DEC-017); the stated set pins the whole group with its hashes; a relayed "ok" on the next prompt approves exactly that pinned list (`plumb relay --group low-risk`), even though the records were not each shown in full; an "ok" that objects to a record of the group, or names records instead, does not confirm the group | The owner chose the grouped one-line confirmation explicitly (R8 A) and its form directly (R13 Q2: "TOP 5 + MORE ... The owner's 'ok' approves exactly the pinned list (hashes), which `plumb triage` shows in full"); the full list is one `plumb triage` away |
 | C6 | Intent-change detection flags change words on a matched confirmed record (6.2) | Scored against the confirmed record's examples: a contradiction (the request negates or replaces a `then`), an extension (new behaviour next to a confirmed one), or benign (a mention, a tidy-up). Change words alone never flag | The heuristic flagged "also tidy the add docstring for SR-001" and missed "make add subtract" (followups, round 5): a false interruption and a missed trigger 1 |
 | C7 | JEV key in `TYPESAFE_API_KEY` or the user store `~/.config/plumb/jev` (8) | `plumb jev setup` records only the NAME of the environment variable (`judgment.jev.credential_env`, default `TYPESAFE_API_KEY`); the user store remains a fallback read path; no secret is ever written by plumb | R8 commands: "records only the NAME of the environment variable that holds the credential; never stores the secret" |
 
@@ -296,12 +296,15 @@ The client exists (`plumb/judgment/jev.py`, sub-project 1 BS3) and is reached on
    left out and named.
 
 The end-of-turn summary and `plumb brief` carry one line when the group is not empty:
-`plumb: approve the 4 records rated faithful to your words (INT-017, SR-034, SR-035, SR-036)?
-say "ok" or see plumb triage`. The stop hook records the group in the stated set as
+`plumb: approve the 7 records rated faithful to your words: "add multiply" (INT-017),
+"multiply rejects text" (SR-034), ... (5 titles) +2 more (see plumb triage)? say "ok" or see
+plumb triage` (R13 Q2: up to about 5 titles, then "+N more"). The stop hook records the
+whole group in the stated set as
 `{"group": "low-risk", "records": [{"id", "hash"}]}` (C5). On the owner's next prompt, an
 affirming quote is relayed with `plumb relay --group low-risk --prompt D --quote Q`, which
-checks the R2 rules (verbatim quote, affirmation, the group present in the stated set) and
-approves exactly the group's hashes, `by: agent-relayed`. Triage never approves anything by
+checks the R2 rules (verbatim quote, affirmation, the group present in the stated set, no
+record of the group objected to and no record named instead) and approves exactly the
+group's pinned hashes, `by: agent-relayed`. Triage never approves anything by
 itself; with the heuristic it still groups (degraded), and without any backend it reports
 "no judgments available" and shows every record individually.
 
@@ -333,7 +336,10 @@ When effective, `plumb capture` and `plumb example` ask the gate for each record
 - **Eligible** only: an `INT` whose `quote` is a verbatim span of the logged prompt named by
   `--prompt`; an `SR` written in the same capture whose every example carries a `quote` that
   is a verbatim span of that prompt. The gate asks JEV whether the logged prompt text
-  **entails** the record text (11.2 `entailment`).
+  **entails** the record text (11.2 `entailment`). For a requirement that is the wording AND
+  every one of its examples, each judged on its own; one unsupported example and the
+  requirement waits for the owner (R13 Q3: "WORDING + EXAMPLES"). A prompt the agent
+  recorded itself (`via` other than `hook`, R13 Q4) never supports an auto-approval.
 - **Never** eligible: a `DEC` with `matters: true`; a member of an escalated set; an edit of a
   record that has ever had an owner, agent-relayed or import approval; a record of any kind
   when JEV is unavailable, timed out or errored; any record when no `--prompt` is given.
@@ -368,7 +374,10 @@ or above the recorded thresholds, an eligible record kind; any failure is an err
   threshold, and at least half of the positives accepted.
 - It appends one `calibration` event `{model_version, backend, per_kind: {kind: {items,
   negatives, threshold, false_accept, recall, passing}}, labelled_set_digest}` and prints the
-  table. The agent may run it; only the owner can turn auto-approval on.
+  table. The split between the owner's real decisions and the generated variations is shown
+  in that entry and in `plumb jev status` (R13 Q1: "MIXED EVIDENCE": per record kind at least
+  20 past decisions and at least 5 "no" examples, up to half generated, none wrongly
+  accepted). The agent may run it; only the owner can turn auto-approval on.
 - With the heuristic it reports "heuristic: no auto-approval, calibration not applicable";
   without any backend, "no judgments available".
 

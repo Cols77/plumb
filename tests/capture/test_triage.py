@@ -149,3 +149,36 @@ def test_offer_line_names_five_then_more(repo: Path, write_record) -> None:
     assert "(INT-015)" in line and "(INT-016)" not in line
     assert line.endswith("+2 more (see plumb triage)? say \"ok\" or see plumb triage")
     assert len(stated_group(view)["records"]) == 7  # the ok pins the whole list
+
+
+def test_relay_group_refused_when_the_ok_names_or_objects_to_records(
+        project: Path, write_record, monkeypatch, capsys) -> None:
+    """R2 / R13 Q2: the owner's ok to the offer approves exactly the pinned list; an ok
+    that objects to one of them, or names records instead, does not confirm the group."""
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    write_record(project, faithful_intent(21))
+    view = triage(open_core(project))
+    write_stated(project, [], groups=[stated_group(view)])
+    digest = log_prompt(project, "ok but INT-021 is wrong")
+    assert run(project, "relay", "--group", "low-risk", "--prompt", digest, "--quote",
+               "ok") == 3
+    assert "INT-021" in capsys.readouterr().err
+    digest = log_prompt(project, "ok INT-017", at="2026-10-06T10:00:01Z")
+    assert run(project, "relay", "--group", "low-risk", "--prompt", digest, "--quote",
+               "ok INT-017") == 3
+    assert "approval" not in event_kinds(project)
+
+
+def test_relay_group_after_an_earlier_identical_ok(project: Path, write_record,
+                                                   monkeypatch) -> None:
+    """The owner's "ok" to this offer resolves to the prompt just sent, even when an earlier
+    session logged the same words before an earlier reply."""
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    log_prompt(project, "ok", at="2026-10-06T08:00:00Z", session="cap1")
+    write_record(project, faithful_intent(21))
+    view = triage(open_core(project))
+    write_stated(project, [], at="2026-10-06T09:59:00Z", groups=[stated_group(view)])
+    digest = log_prompt(project, "ok", at="2026-10-06T10:00:00Z", session="cap2")
+    assert run(project, "relay", "--group", "low-risk", "--prompt", digest[7:19], "--quote",
+               "ok") == 0
+    assert open_core(project).status(["INT-021"])["INT-021"].confirmation == "confirmed"

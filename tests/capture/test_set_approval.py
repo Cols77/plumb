@@ -150,3 +150,29 @@ def test_not_a_set(spec: Path, write_record, capsys) -> None:
     write_record(spec, record_text("INT-022", "small thing", quote="x", readback="x"))
     assert run(spec, "spec", "show", "INT-022") == 1
     assert "not an escalated spec" in capsys.readouterr().err
+
+
+def test_relay_set_refused_when_the_prompt_objects_to_a_member(spec: Path, monkeypatch,
+                                                               capsys) -> None:
+    """R2: the set approval is one approval of every set id; an ok that objects to a member
+    (or names a member rather than the set) confirms nothing."""
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    index = open_core(spec).index()
+    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
+    digest = log_prompt(spec, "ok, but SR-070 is wrong")
+    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 3
+    assert "SR-070" in capsys.readouterr().err
+    digest = log_prompt(spec, "SR-071 ok", at="2026-10-06T10:00:01Z")
+    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote",
+               "SR-071 ok") == 3
+    assert approvals(spec) == []
+
+
+def test_relay_set_after_an_earlier_identical_ok(spec: Path, monkeypatch) -> None:
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    log_prompt(spec, "ok", at="2026-10-06T08:00:00Z", session="cap1")
+    index = open_core(spec).index()
+    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
+    digest = log_prompt(spec, "ok", at="2026-10-06T10:00:00Z", session="cap2")
+    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 0
+    assert set_state(open_core(spec), "INT-021") == "approved"
