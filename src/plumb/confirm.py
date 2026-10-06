@@ -88,10 +88,11 @@ def checked_entries(entries: Iterable[LogEntry],
     return out
 
 
-def remaining_approvals(entries: Iterable[LogEntry],
-                        affirmations: Sequence[str]) -> dict[str, list[tuple[str, str]]]:
-    """Per record, the valid approvals ``(hash, by)`` left after revocations, in order."""
-    remaining: dict[str, list[tuple[str, str]]] = {}
+def remaining_entries(entries: Iterable[LogEntry], affirmations: Sequence[str]
+                      ) -> dict[str, list[tuple[str, str, LogEntry]]]:
+    """Per record, the valid approvals ``(hash, by, entry)`` left after revocations, in
+    order (the entry carries the labels: ``self_recorded``, the auto-jev score, a set)."""
+    remaining: dict[str, list[tuple[str, str, LogEntry]]] = {}
     for entry, problem in checked_entries(entries, affirmations):
         if problem is not None:
             continue
@@ -102,11 +103,18 @@ def remaining_approvals(entries: Iterable[LogEntry],
             record_id, record_hash = item["id"], str(item.get("hash"))
             approvals = remaining.setdefault(record_id, [])
             if entry.kind == "approval":
-                approvals.append((record_hash, by))
+                approvals.append((record_hash, by, entry))
             elif approvals:
                 kept = [a for a in approvals if a[0] != record_hash]
                 remaining[record_id] = kept if len(kept) < len(approvals) else approvals[:-1]
     return remaining
+
+
+def remaining_approvals(entries: Iterable[LogEntry],
+                        affirmations: Sequence[str]) -> dict[str, list[tuple[str, str]]]:
+    """Per record, the valid approvals ``(hash, by)`` left after revocations, in order."""
+    return {record_id: [(h, by) for h, by, _ in approvals]
+            for record_id, approvals in remaining_entries(entries, affirmations).items()}
 
 
 def verified_end(link: Any) -> str | None:
