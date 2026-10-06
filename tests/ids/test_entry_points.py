@@ -135,3 +135,21 @@ def test_no_module_computes_record_numbers_outside_store_and_ids() -> None:
             if _NUMBERING.search(line) and "EX-" not in line:
                 offenders.append(f"{rel}:{n}: {line.strip()}")
     assert offenders == []
+
+
+def test_plumb_capture_reserves_once_per_prefix(root: Path, tmp_path: Path,
+                                                monkeypatch) -> None:
+    from plumb.ids import ref as ref_mod
+
+    messages: list[str] = []
+    real = ref_mod.update
+
+    def counting(r, data, old, message):
+        messages.append(message)
+        return real(r, data, old, message)
+
+    monkeypatch.setattr(ref_mod, "update", counting)
+    doc = tmp_path / "doc.json"
+    doc.write_text(json.dumps(DOC), encoding="utf-8")
+    assert cli(root, "capture", "--file", str(doc)) == 0
+    assert messages == ["plumb: reserve SR-005, SR-006", "plumb: reserve DEC-003"]

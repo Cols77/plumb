@@ -167,8 +167,22 @@ def checked(core: Core) -> list[tuple[LogEntry, str | None]]:
 
 
 def remaining(core: Core) -> dict[str, list[tuple[str, str, LogEntry]]]:
-    return remaining_entries(core.events(), core.config.approve.affirmations,
-                             escalated_of(core))
+    standing = remaining_entries(core.events(), core.config.approve.affirmations,
+                                 escalated_of(core))
+    return carry_renumbers(core, standing)[0]
+
+
+def carry_renumbers(core: Core, standing: dict[str, list[tuple[str, str, LogEntry]]]
+                    ) -> tuple[dict[str, list[tuple[str, str, LogEntry]]], dict[str, str]]:
+    """The approvals a ``renumber`` carries to the new ID while the words are unchanged
+    (sp6 5.4, R17), and ``{new id: old id}`` for the records confirmed only that way. The
+    one choke point every confirmation reader goes through (``statuses``, ``remaining``);
+    nothing is imported when the log holds no ``renumber`` entry."""
+    if not any(e.kind == "renumber" for e in core.events()):
+        return standing, {}
+    from plumb.ids.aliases import carry, revocations_of
+
+    return carry(core, standing, revocations_of(checked(core)))
 
 
 def remaining_approvals(entries: Iterable[LogEntry], affirmations: Sequence[str],
@@ -256,8 +270,9 @@ def confirmation_of(record: Record,
 def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordStatus]:
     index = core.index()
     selected = list(index) if ids is None else [i for i in ids if i in index]
-    standing = remaining_entries(core.events(), core.config.approve.affirmations,
-                                 escalated_of(core))
+    standing, carried = carry_renumbers(
+        core, remaining_entries(core.events(), core.config.approve.affirmations,
+                                escalated_of(core)))
     approvals = {r: [(h, by) for h, by, _ in items] for r, items in standing.items()}
     pins = approved_test_pins(core.events(), core.config.approve.affirmations, index)
     states = core.link_states(selected)
@@ -296,5 +311,6 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
             approved_by=by,  # type: ignore[arg-type]
             covered=covered, uncovered_examples=uncovered, links=record_states,
             superseded_by=superseded.get(record_id), changed_tests=moved,
-            self_recorded=self_recorded)
+            self_recorded=self_recorded,
+            carried_from=carried.get(record_id) if confirmation == "confirmed" else None)
     return out

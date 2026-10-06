@@ -96,6 +96,9 @@ class RecordStatus:
     # R13 Q4: the standing approval rests on a message the agent recorded itself (an
     # agent-relayed approval citing a prompt logged by `plumb turn start`)
     self_recorded: bool = False
+    # R17: the confirmation stands only through an approval a renumber carried (the old ID
+    # the owner approved, same words); every surface labels it "carried by renumber"
+    carried_from: str | None = None
 
 
 @dataclass(frozen=True)

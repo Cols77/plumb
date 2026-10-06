@@ -276,6 +276,10 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
         lines += [f"{rid} would be updated" for rid, _ in plan.updates]
         return CaptureResult(card=card, lines=tuple(lines), dry_run=True)
 
+    # one reservation per prefix for the whole read-back (sp6 4.2)
+    core.store.prereserve("intent", 1 if plan.intent is not None else 0)
+    core.store.prereserve("requirement", len(plan.requirements))
+    core.store.prereserve("decision", len(plan.decisions))
     statuses_before = core.status([rid for rid, _ in plan.updates]) if plan.updates else {}
     written: list[str] = []
     links: list[str] = []

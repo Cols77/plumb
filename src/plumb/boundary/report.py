@@ -45,6 +45,8 @@ class MergeReport:
     regressions: tuple[str, ...] = ()
     fidelity: tuple[Mapping[str, Any], ...] | None = ()   # None: the judgment lane is absent
     integrity: tuple[str, ...] = ()
+    # sp6 10: two records holding one ID ({id, paths, sides, how}); exit 1
+    id_collisions: tuple[Mapping[str, Any], ...] = ()
     verification: Mapping[str, Any] = field(default_factory=dict)
     run_full: bool = False
     evidence: str | None = None      # digest of the merge-evidence entry (green, run_full)
@@ -67,7 +69,8 @@ def exit_code(report: MergeReport) -> int:
     pre-push hook): each takes its exit from here."""
     if report.error:
         return 2
-    if report.integrity or report.claims.get("holds") or report.links:
+    if report.integrity or report.claims.get("holds") or report.links or \
+            report.id_collisions:
         return 1
     verification = report.verification
     full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
@@ -160,6 +163,15 @@ def _waived(core: Any, fork: str) -> bool:
         return False
 
 
+def _id_collisions(core: Any, fork: str) -> list[dict[str, Any]]:
+    """Two records holding one ID in the merge result (sp6 5.1, 10; SR-072)."""
+    from dataclasses import asdict
+
+    from plumb import ids
+
+    return [asdict(c) for c in ids.collisions(core, fork)]
+
+
 def _validation_errors(core: Any) -> list[str]:
     from plumb.validate import validate
 
@@ -211,6 +223,7 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
 
     problems, base_digests = log_integrity(core, base)
     integrity = list(problems) + _validation_errors(core)
+    id_collisions = _id_collisions(core, fork)
     glance = glance_rows(core, base_digests.get("events", set()))
     claims = claims_gate(core, fork)
     links = link_rows(core, touched)
@@ -247,7 +260,8 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         unverified=verification.get("unverified") or {},
         regressions=tuple(verification.get("regressions") or ()),
         fidelity=None if fidelity is None else tuple(fidelity),
-        integrity=tuple(integrity), verification=verification, run_full=run_full)
+        integrity=tuple(integrity), id_collisions=tuple(id_collisions),
+        verification=verification, run_full=run_full)
     code = exit_code(report)
     evidence = None
     if code == 0 and run_full and identity is not None:
@@ -355,6 +369,7 @@ def render(report: MergeReport) -> list[str]:
             f"{i} (plumb fidelity {i})" for i in report.repinned_unjudged[:CAP]))
     out.extend(_fidelity_lines(report))
     out.extend(_verification_lines(report, failing_line))
+    out.extend(collision_lines(report.id_collisions))
     claims = claims_lines(dict(report.claims))
     if claims:
         out.append("claims hold the merge:")
@@ -370,6 +385,23 @@ def render(report: MergeReport) -> list[str]:
     if report.evidence:
         out.append(f"merge evidence: recorded ({report.evidence[:19]})")
     return out
+
+
+def collision_lines(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The ``id_collisions`` section in the owner's terms (titles, and the fix to say)."""
+    if not rows:
+        return []
+    from plumb.present.owner_text import COLLISION, COLLISIONS_HEADER
+
+    lines = []
+    for row in rows:
+        sides = list(row.get("sides") or ()) + ["", ""]
+        where = ", ".join(row.get("paths") or ())
+        if row.get("how") == "add/add":
+            where += " (both branches added it)"
+        lines.append(COLLISION.format(id=row.get("id"), ours=sides[0], theirs=sides[1],
+                                      where=where))
+    return [COLLISIONS_HEADER, *_capped(lines)]
 
 
 def _awaiting_lines(report: MergeReport) -> list[str]:

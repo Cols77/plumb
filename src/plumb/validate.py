@@ -125,6 +125,13 @@ def validate(core: Core) -> list[Finding]:
                             if isinstance(r, Mapping))
             add("error", "approval", ids or entry.digest[:19],
                 f"{problem} (entry {entry.digest[:19]}); it confirms nothing")
+    # renumber entries (sp6 5.4): the approvals they carry exist and pin the incoming words
+    if any(e.kind == "renumber" for e in core.events()):
+        from plumb import ids
+
+        for problem in ids.renumber_problems(core):
+            subject, _, message = problem.partition(": ")
+            add("error", "renumber", subject, message)
     # by: import approvals across entries (next-plan 9.3; the importer's own re-check)
     from plumb.importer.recheck import recheck_import_approvals
 

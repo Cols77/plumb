@@ -3345,3 +3345,43 @@ or extends that entry.
   ambiguous for lane agents. Same as the round-1 coordinator-row entry. Fix: remove the
   duplicate and spell out the full paths for `prompt.py`, `stop.py`, `post_edit.py`,
   `snapshot.py` and `install.py`.
+
+## SP6 lane IDS (2026-10-07)
+
+Lane IDS (`lane/ids`, worktree `C:/coding/plumb-ids`): SR-070 to SR-072 implemented with
+their tests; R17's renumber label added as SR-071 EX-6 (proposed). Every item of plan 4 (I1
+to I7) is done. Open items, medium and low:
+
+- [MEDIUM] (plan 3.2, phase 0) Phase 0 was not on `main` when the lane started (no
+  `contracts` additions, no `ids` stubs, no `present/owner_text.py`, no `tests/gitrepo.py`).
+  The lane added the IDS pieces itself, additively, against the plan's names: `IdState`,
+  `Collision`, `MergeFixResult` and `RecordStatus.carried_from` in `contracts.py`;
+  `present/owner_text.py` with `bare_cli_verbs` and the IDS constants only (the other lanes'
+  constants still to add); the `merge-fix` and `ids` routes and help lines in `cli.py`;
+  `MergeReport.id_collisions` with its section and exit 1 in `boundary/report.py`; the
+  lane-local `tests/ids/gitrepo.py`. The coordinator reconciles these with the other lanes at
+  Integrate (expect an add/add on `present/owner_text.py`). `tests/ids/` has an
+  `__init__.py` so its `test_owner_text.py` does not clash with the other lanes' files of
+  that name; the other lanes need the same.
+- [MEDIUM] (drift from shared files) The lane's edits of shared modules left other SRs'
+  whole-file `implemented_by` links stale (SR-001, SR-004, SR-005, SR-007, SR-012, SR-015,
+  SR-027, SR-028, SR-030, SR-031, SR-033, SR-034, SR-035, SR-037, SR-039, SR-041, SR-047,
+  SR-048, SR-049, SR-052, SR-053, SR-057, SR-059, SR-060, SR-061, SR-062, SR-063, SR-064,
+  SR-068, SR-069). Lanes repin only their own SRs; the coordinator reviews and repins at
+  Integrate.
+- [LOW] (spec 5.5) `merge.touched_requirements` reads the range's trailers without the
+  renumber map, so an incoming commit's `SR: SR-070` also marks this side's SR-070 as touched
+  at the merge boundary (conservative: one more requirement checked, never one fewer).
+- [LOW] (spec 5.4) A carried approval carries no `verified_by` test pins: the changed-test
+  check of a carried confirmation starts again from the owner's next approval; the escalated
+  set check (`boundary.report._set_confirmed`) and the importer's `_approved_before` ignore
+  carried approvals (both conservative).
+- [LOW] (spec 5.2) A duplicate ID at two paths with no merge in progress and no merge commit
+  at `HEAD` renumbers the later-added file and rewrites only that record's own references;
+  references elsewhere are left for `plumb validate` to report.
+- [LOW] (spec 12 config) `ids.retries` and `ids.retry_s` are read from the config when it
+  has an `ids` section; `config.py` does not have one yet (phase 0), so the defaults (50
+  tries, 3 s) hold.
+- [LOW] (pre-existing, R14) `plumb --help`'s `merge:` category line is cut at its first
+  comma by `help_text` ("one full run, claims"), and the merge report's other sections still
+  print bare `plumb approve` / `plumb tests run` text; neither is SP6 text.

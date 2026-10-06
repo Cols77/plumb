@@ -286,7 +286,9 @@ def claims_check(root: Path, rng: str | None = None) -> dict[str, Any]:
 
     root = Path(root)
     policy = load_policy(root)
-    index = open_core(root).index()
+    core = open_core(root)
+    index = core.index()
+    aliases = _trailer_aliases(core)
     rng = rng or _default_range(root)
     commits = read_range(root, rng)
     baseline = {(b.commit, b.path) for b in policy.baseline if b.nc}
@@ -294,7 +296,7 @@ def claims_check(root: Path, rng: str | None = None) -> dict[str, Any]:
     waived: list[dict[str, str]] = []
     unclaimed: list[str] = []
     for sha, message, paths in commits:
-        ids = parse_sr_trailer(message)
+        ids = _mapped(aliases, sha, parse_sr_trailer(message))
         if not ids:
             if any(exempting_glob(policy, p) is None for p in paths):
                 unclaimed.append(sha)
@@ -314,6 +316,24 @@ def claims_check(root: Path, rng: str | None = None) -> dict[str, Any]:
                            for u in undeclared],
             "baseline": waived, "unclaimed_commits": unclaimed,
             "problems": list(policy.problems)}
+
+
+def _trailer_aliases(core: Any) -> Any:
+    """``{(sha, old id): new id}``: in the incoming commits a ``renumber`` lists, the old
+    ID means the new one (sp6 5.5); history keeps its trailers. Empty without renumbers."""
+    if not any(e.kind == "renumber" for e in core.events()):
+        return {}
+    from plumb import ids
+
+    return ids.trailer_aliases(core)
+
+
+def _mapped(aliases: Any, sha: str, claimed: tuple[str, ...]) -> tuple[str, ...]:
+    if not aliases:
+        return claimed
+    from plumb.ids.aliases import map_trailer
+
+    return map_trailer(aliases, sha, claimed)
 
 
 def _default_range(root: Path) -> str:

@@ -53,6 +53,7 @@ class Store:
         self.paths = paths
         self._index: dict[str, Record] | None = None
         self._problems: list[str] = []
+        self._reserved: dict[str, list[str]] = {}  # IDs reserved ahead, per kind
 
     def invalidate(self) -> None:
         self._index = None
@@ -111,9 +112,23 @@ class Store:
     def next_id(self, kind: str) -> str:
         """A new ID of ``kind``, reserved through ``refs/plumb/ids`` (sp6 4.2): the one
         allocation function every record writer goes through."""
+        queued = self._reserved.get(kind)
+        if queued:
+            return queued.pop(0)
         from plumb import ids
 
         return ids.reserve(self.paths, kind, local=self.index())[0]
+
+    def prereserve(self, kind: str, count: int) -> None:
+        """Reserve ``count`` IDs of ``kind`` in one compare-and-swap for the next
+        ``next_id`` calls (a writer of several records reserves per prefix once, sp6 4.2).
+        An ID reserved and never written leaves a gap; nothing relies on density."""
+        if count <= 0:
+            return
+        from plumb import ids
+
+        self._reserved.setdefault(kind, []).extend(
+            ids.reserve(self.paths, kind, count, local=self.index()))
 
     def peek_id(self, kind: str) -> str:
         """The ID ``next_id`` would hand out, reserving nothing (previews, dry runs)."""
