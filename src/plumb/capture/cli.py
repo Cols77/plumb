@@ -221,7 +221,91 @@ def cmd_decide(command: str, argv: list[str]) -> int:
     return _guarded(act)
 
 
+# --------------------------------------------------------------------------- escalation
+
+
+def cmd_escalate(command: str, argv: list[str]) -> int:
+    from plumb.capture.escalation import TRIGGERS, decline, escalation
+    from plumb.contracts import DiffStats
+
+    parser = _parser(command, "Escalation to an up-front spec: check prints the suggestions "
+                     "(one line each, never a question); decline records the owner's no "
+                     "(relayed with --prompt and --quote, or in the owner's own terminal).")
+    parser.add_argument("action", choices=["check", "decline"])
+    parser.add_argument("request", nargs="?", default=None, help="check: the request text")
+    parser.add_argument("--matched", action="append", default=[], help="record IDs")
+    parser.add_argument("--intent", default=None)
+    parser.add_argument("--lines", type=int, default=None, help="changed lines of the diff")
+    parser.add_argument("--files", type=int, default=None, help="changed files of the diff")
+    parser.add_argument("--path", action="append", default=[], help="changed paths")
+    parser.add_argument("--trigger", action="append", default=[], choices=list(TRIGGERS))
+    parser.add_argument("--prompt", default=None, help="decline: the owner's prompt digest")
+    parser.add_argument("--quote", default=None, help="decline: the owner's exact words")
+    args = parser.parse_args(argv)
+    core = _core(args)
+
+    def act() -> int:
+        if args.action == "decline":
+            entry = decline(core, intent=args.intent, triggers=args.trigger,
+                            prompt=args.prompt, quote=args.quote)
+            print(f"plumb: escalation declined for {entry.payload.get('intent') or 'this work'}"
+                  f" ({', '.join(entry.payload['triggers'])}; {entry.payload['by']}); not "
+                  "suggested again")
+            return 0
+        diff = None
+        if args.lines is not None or args.files is not None or args.path:
+            diff = DiffStats(lines=args.lines or 0, files=args.files or len(args.path),
+                             paths=tuple(args.path))
+        found = escalation(core, prompt=args.request, matched=args.matched, diff=diff,
+                           intent=args.intent)
+        if args.as_json:
+            import dataclasses
+
+            emit([dataclasses.asdict(f) for f in found], True)
+        else:
+            emit([f.line for f in found] or ["plumb: no escalation suggested"], False)
+        return 0
+
+    return _guarded(act)
+
+
+def cmd_spec(command: str, argv: list[str]) -> int:
+    from plumb.capture.spec import SpecError, approve_set, set_state, show_lines
+
+    parser = _parser(command, "An escalated spec (an INT with mode escalated and members): "
+                     "show prints every member in full with the set hash; approve is the "
+                     "owner's one set-hash approval, in the owner's own terminal only.")
+    parser.add_argument("action", choices=["show", "approve", "state"])
+    parser.add_argument("anchor", metavar="INT")
+    parser.add_argument("--note", default="")
+    args = parser.parse_args(argv)
+    core = _core(args)
+
+    def act() -> int:
+        try:
+            if args.action == "show":
+                lines = show_lines(core, args.anchor)
+                emit({"lines": lines} if args.as_json else lines, args.as_json)
+            elif args.action == "state":
+                state = set_state(core, args.anchor)
+                emit({"anchor": args.anchor, "state": state} if args.as_json
+                     else f"{args.anchor}: {state}", args.as_json)
+            else:
+                entry = approve_set(core, args.anchor, note=args.note)  # asks y/N
+                print(f"plumb: approved the escalated spec {args.anchor} "
+                      f"({len(entry.payload['records'])} records, set "
+                      f"{entry.payload['set']['hash'][:19]})")
+        except SpecError as exc:
+            print(f"plumb: {exc}", file=sys.stderr)
+            return EXIT_FINDINGS
+        return 0
+
+    return _guarded(act)
+
+
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
+    "escalate": cmd_escalate,
+    "spec": cmd_spec,
     "capture": cmd_capture,
     "new": cmd_new,
     "intent": cmd_intent,
