@@ -52,7 +52,16 @@ def base(repo: Path, write_record) -> tuple[Path, str]:
     return repo, _commit(repo, "base")
 
 
+def _repin(root: Path) -> None:
+    """The reviewed link ends pinned again: a stale link of a touched requirement holds the
+    merge with exit 1 (sp3 5, tests/merge/test_gates.py), before what these tests check."""
+    from plumb.links import repin
+
+    repin(open_core(root), all_stale=True)
+
+
 def _check(root: Path, sha: str, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
+    _repin(root)
     code = merge_check(open_core(root), sha, as_json=False)
     return code, capsys.readouterr().out
 
@@ -80,7 +89,8 @@ def test_merge_touch_via_implemented_by_end(base, capsys) -> None:
 
 def test_merge_touch_via_sr_trailer(base, capsys) -> None:
     root, sha = base
-    (root / "notes.txt").write_text("n\n", encoding="utf-8")
+    (root / "docs").mkdir()
+    (root / "docs" / "notes.md").write_text("n\n", encoding="utf-8")  # exempt from claims
     _commit(root, "notes\n\nSR: SR-002")
     code, out = _check(root, sha, capsys)
     assert code == 4
@@ -120,12 +130,12 @@ def test_merge_lists_approvals_in_range_with_relayed_marked(base, capsys) -> Non
     assert code == 0, out
     section = out[out.index("approvals in range"):]
     assert "owner" in section and "INT-001" in section
-    assert "agent-relayed" in section and digest[:19] in section
+    assert "AGENT-RELAYED" in section and digest[:19] in section
     assert "SR-001 looks good, approved" in section
     data_code = merge_check(open_core(root), sha, as_json=True)
     data = json.loads(capsys.readouterr().out)
     assert data_code == 0
-    assert [a["by"] for a in data["approvals"]] == ["owner", "agent-relayed"]
+    assert [a["by"] for a in data["glance"]] == ["agent-relayed", "owner"]
 
 
 def test_merge_requires_deciding_matters_dec(base, capsys, write_record) -> None:
@@ -165,6 +175,7 @@ def test_merge_reports_fidelity_and_verification_unavailable(base, capsys, monke
 def test_validate_merge_json_is_one_document(base, capsys) -> None:
     root, sha = base
     (root / "src" / "mod.py").write_text("x = 2\n", encoding="utf-8")
+    _repin(root)
     assert cli.main(["validate", "--merge", sha, "--json", "--root", str(root)]) == 4
     data = json.loads(capsys.readouterr().out)
     assert data["merge"]["awaiting"][0]["id"] == "SR-001"
@@ -278,8 +289,8 @@ def test_link_command_widening_a_confirmed_requirement_waits_for_the_owner(
     assert "confirmation: every touched requirement is confirmed" not in out
     assert merge_check(open_core(root), sha, as_json=True) == 4
     data = json.loads(capsys.readouterr().out)
-    assert {"id": "SR-001", "state": "extended",
-            "new_ends": ["implemented_by src/z.py"]} in data["awaiting"]
+    assert [{k: a[k] for k in ("id", "state", "new_ends")} for a in data["awaiting"]] == [
+        {"id": "SR-001", "state": "extended", "new_ends": ["implemented_by src/z.py"]}]
     monkeypatch.delenv("PLUMB_AGENT_SESSION")
     approvals.approve(open_core(root), ["SR-001"])  # the owner confirms the wider scope
     code, out = _check(root, sha, capsys)
@@ -318,7 +329,7 @@ def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
     capsys.readouterr()
     code, out = _check(root, sha, capsys)
     assert code == 0, out
-    assert "approval owner trace.exempt src/**" in out
+    assert "owner trace.exempt src/**" in out
 
 
 @pytest.mark.sr("SR-028")

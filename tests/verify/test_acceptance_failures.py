@@ -20,6 +20,7 @@ pytestmark = pytest.mark.sr("SR-027")
 
 INT = "---\nid: INT-001\ntitle: Adding\nquote: q\nreadback: Add numbers.\n---\n"
 BROKEN = "def add(a, b):\n    return a - b\n"
+FEAT = "---\nid: FEAT-001\ntitle: Arithmetic\ndescription: d\n---\n"
 
 
 @pytest.fixture
@@ -27,6 +28,7 @@ def confirmed(repo: Path, write_record) -> tuple[Path, str]:
     """SR-001 confirmed, EX-1 verified_by tests/test_mod.py, passing evidence recorded."""
     make_project(repo)
     write_record(repo, INT)
+    write_record(repo, FEAT)
     write_record(repo, SR_TEXT)
     core = open_core(repo)
     core.add_link("SR-001", "derives_from", Target(record="INT-001"))
@@ -38,6 +40,15 @@ def confirmed(repo: Path, write_record) -> tuple[Path, str]:
     approvals.approve(open_core(repo), ["SR-001", "INT-001"])
     assert open_verify(open_core(repo)).run(full=True).ok
     return repo, base
+
+
+def _check(root: Path, base: str, *, as_json: bool = False) -> int:
+    """The merge report after the reviewed link ends are repinned (a stale link of a touched
+    requirement holds the merge with exit 1 before verification is read, sp3 5)."""
+    from plumb.links import repin
+
+    repin(open_core(root), all_stale=True)
+    return merge_check(open_core(root), base, as_json=as_json)
 
 
 def _regress(root: Path) -> None:
@@ -61,20 +72,20 @@ def test_requirement_failures_name_examples_and_regressions(confirmed) -> None:
 def test_merge_exits_nonzero_while_a_regression_is_unresolved(confirmed, capsys) -> None:
     root, base = confirmed
     _regress(root)
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base)
     out = capsys.readouterr().out
     assert code == 5, out
     assert "confirmation: every touched requirement is confirmed" in out
     assert "failing acceptance tests: SR-001 EX-1 tests/test_mod.py (regression)" in out
     assert "regression: tests/test_mod.py::test_add" in out
-    code = merge_check(open_core(root), base, as_json=True)
+    code = _check(root, base, as_json=True)
     data = json.loads(capsys.readouterr().out)
     assert code == 5 and data["exit"] == 5
     assert data["verification"]["failing"]["SR-001"][0]["examples"] == ["EX-1"]
     # fixed and rerun: the regression is resolved and the boundary passes again
     write(root, "src/pkg/mod.py", "def add(a, b):\n    return a + b\n")
     assert open_verify(open_core(root)).run(nodes=["tests/test_mod.py"]).ok
-    assert merge_check(open_core(root), base, as_json=False) == 0
+    assert _check(root, base) == 0
 
 
 def test_drift_and_status_show_the_failing_acceptance_test(confirmed, capsys) -> None:
@@ -93,7 +104,7 @@ def test_drift_and_status_show_the_failing_acceptance_test(confirmed, capsys) ->
 
 
 def _merge(root: Path, base: str, capsys) -> tuple[int, str]:
-    code = merge_check(open_core(root), base, as_json=False)
+    code = _check(root, base)
     return code, capsys.readouterr().out
 
 

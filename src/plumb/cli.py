@@ -29,6 +29,8 @@ ROUTES: dict[str, str] = {
     "trailers": "plumb.claims", "claims": "plumb.claims",
     "import": "plumb.importer.cli", "fidelity": "plumb.judgment.cli",
     "judge": "plumb.judgment.cli", "judgment": "plumb.judgment.cli",
+    # MERGE (sub-project 3)
+    "merge-check": "plumb.boundary.cli",
 }
 
 _HELP = """usage: plumb <command> [options]
@@ -53,6 +55,8 @@ records and integrity:
 verification:  tests (map | select | run), map, verify, impact
 host:          hook, hooks, install, statusline
 bridge:        trailers, claims, fidelity, judge, judgment, import
+merge:         merge-check (the merge boundary: one full run, claims, links, the glance;
+               --install-pre-push for the optional git hook)
 
 Run `plumb <command> --help` for a command's options. Exit codes: 0 ok, 1 findings,
 2 usage, 3 refused by the guard, 4 merge waits for the owner's confirmation, 5 verification
