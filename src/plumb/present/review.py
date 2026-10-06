@@ -149,7 +149,7 @@ def _drift(core: Any, scope: set[str] | None, base: str) -> list[str]:
         from plumb.capture import api
 
         for hint in api.drift_hints(core, changed):
-            lines.append("  hint: " + str(hint).removeprefix("plumb: "))
+            lines.append("  hint: " + str(hint).removeprefix("plumb: ").removeprefix("hint: "))
         from plumb.trace import untraced_paths
 
         untraced = list(untraced_paths(core, changed))

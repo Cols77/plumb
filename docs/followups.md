@@ -1568,3 +1568,45 @@ only add what round 2 found new.
   only raw-ID commands; the plain-language path (say it in chat, the agent relays it) exists
   but is not offered. Fix: after each glance and escalation line, also offer "or say 'revoke
   <title>'" or `/plumb confirm ...`.
+
+## Next lane PRESENT (2026-10-06)
+
+Built: P1 to P6 and PS1, PS2 (all items, R13 Q5). Integration notes for the coordinator first,
+then medium and low findings.
+
+- [INTEGRATION] Phase 0 did not run before the lanes, so PRESENT wrote its own contract
+  pieces; keep the union at merge: `contracts.py` (`StatusSnapshot.state`, `intent_summary`,
+  `confirmed_by`, `auto_approve`; `CardMode`, `Resolved`, `Resolution`; an
+  `IntentCardData` identical to CAPTURE's plus `kind`, `statement`, `alternatives`, all
+  defaulted, which the cards need to show a record in full), `config.py` (`present`,
+  `resolve`, `hooks.stop_tokens`), `cli.py` (status, brief, drift, show, explain, why and
+  impact now route to `plumb.present.cli`; `help_text()` filters `_HELP` to importable
+  verbs, so the other lanes' help lines merge as text; `main` returns a module's argparse
+  exit code instead of raising `SystemExit`).
+- [INTEGRATION] Still to do in CAPTURE-owned `commands.py`: the `init` config template
+  lines for `present`, `resolve` and `hooks.stop_tokens`, and `view/` in
+  `GITIGNORE_LINES` (plumb's own `.plumb/.gitignore` has it already).
+- [INTEGRATION] `tests/integration/test_session_e2e.py` lines 173 and 176 (coordinator
+  file) assume the sp1 summary: the first line is now the status card, and in the default
+  `compact` mode "questions: none" ends the second summary line
+  (`plumb: covering tests ... | questions: none`). Update to `lines[1].startswith("plumb:
+  touched SR-001")` and `"questions: none" in summary`.
+- [INTEGRATION] `hosts/neutral.py` was written by HOSTS; PRESENT left it alone. It
+  delegates to the Claude Code handlers, so every host already gets the emitter, the
+  status card and the cards. HOSTS' own copies of `tests/host/test_statusline.py` and
+  `test_latency.py` assertions on the old status line format are superseded by PRESENT's.
+- [MEDIUM] `plumb confirm` writes the stated set mid-turn. A relay for the current
+  prompt made after `plumb confirm` in the same turn is refused (the set is newer than the
+  prompt). The skill should say "relay before confirm"; fix: keep the previous reply's set
+  under a `previous` key that `approvals._stated` reads.
+- [MEDIUM] The stop hook computes the triage offer for this turn's proposed records only
+  (latency); `plumb confirm`, `plumb review` and the brief's offer line use every proposed
+  record. sp5 3 does not say which set the summary offers.
+- [MEDIUM] `plumb align` with the heuristic reads each code and test file (4000 characters)
+  per edge; on plumb itself `plumb view` (which aligns every requirement) takes about 8 s.
+  Fine on demand; the fingerprint cache makes reruns cheap, but a large repository wants a
+  per-file text cache.
+- [LOW] With `present.ascii`, `to_ascii` drops characters outside ASCII from a card, so the
+  shown text can differ from the record by accents; the stated set still pins the hash.
+- [LOW] `plumb view --open` uses the platform opener on the folder, not the
+  `obsidian://open?path=` URI (sp5 7 offers either).

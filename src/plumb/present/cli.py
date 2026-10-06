@@ -75,6 +75,24 @@ def cmd_status(command: str, argv: list[str]) -> int:
     return 0
 
 
+def cmd_brief(command: str, argv: list[str]) -> int:
+    """The sp1 brief, plus at most one line: the triage offer (R8 A)."""
+    code = _delegate(command, argv)
+    if code == 0 and "--json" not in argv and not any(a in ("-h", "--help") for a in argv):
+        from plumb.hosts.claude_code.session_start import triage_offer_line
+
+        try:
+            root = argv[argv.index("--root") + 1] if "--root" in argv else None
+            from plumb.api import open_core
+
+            offer = triage_offer_line(open_core(resolve_root(root)))
+        except Exception:  # noqa: BLE001 - the offer is advisory
+            offer = None
+        if offer:
+            print(offer)
+    return code
+
+
 def cmd_show(command: str, argv: list[str]) -> int:
     from plumb.readback import show_lines
 
@@ -230,7 +248,7 @@ def cmd_view(command: str, argv: list[str]) -> int:
 
 
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
-    "status": cmd_status, "brief": _delegate, "drift": _delegate, "show": cmd_show,
+    "status": cmd_status, "brief": cmd_brief, "drift": _delegate, "show": cmd_show,
     "explain": cmd_explain, "why": cmd_explain, "impact": cmd_impact,
     "resolve": cmd_resolve, "review": cmd_review, "confirm": cmd_confirm,
     "align": cmd_align, "view": cmd_view,

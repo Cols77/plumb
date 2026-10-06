@@ -121,3 +121,27 @@ def test_snapshot_counts_who_confirmed_and_the_session_intent(repo: Path, write_
     data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert data["intent_summary"] == "add multiply next to add"
     assert data["state"] == "awaits you"
+
+
+def test_brief_and_session_start_offer_the_triage_group(repo: Path, write_record,
+                                                        hook_input, monkeypatch,
+                                                        capsys) -> None:
+    """R8 A: the brief adds at most one line, the triage offer (sp5 3)."""
+    from types import SimpleNamespace
+
+    from present_helpers import FakeVerify, fake_capture
+
+    from plumb import cli
+    from plumb.hosts.claude_code import session_start
+
+    write_all(repo, write_record, SR1, SR2)
+    view = SimpleNamespace(low_risk=(SimpleNamespace(id="SR-001"), SimpleNamespace(
+        id="SR-002")), individual=(), available=True, offer="x")
+    fake_capture(monkeypatch, triage=lambda core, ids: view)
+    assert cli.main(["brief", "--root", str(repo)]) == 0
+    line = "plumb: 2 records rated faithful to your words await you"
+    assert capsys.readouterr().out.count(line) == 1
+    out = io.StringIO()
+    session_start.main(stdin=io.StringIO(hook_input("SessionStart", session_id="b1")),
+                       stdout=out, root=repo, verify=FakeVerify())
+    assert out.getvalue().count(line) == 1

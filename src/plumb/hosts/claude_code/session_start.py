@@ -89,6 +89,25 @@ def brief(core: Any, tests_line: str) -> list[str]:
     return lines[:HARD_CAP]
 
 
+def triage_offer_line(core: Any) -> str | None:
+    """The brief's one triage line (R8 A, sp5 3): the records rated faithful to the owner's
+    words, from CAPTURE's triage; None without CAPTURE or without a low-risk group."""
+    try:
+        from plumb.capture import api
+    except ImportError:
+        return None
+    try:
+        view = api.triage(core, None)
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the brief
+        return None
+    low = list(getattr(view, "low_risk", ()) or ())
+    if not low:
+        return None
+    noun = "record" if len(low) == 1 else "records"
+    return (f"plumb: {len(low)} {noun} rated faithful to your words await you: "
+            "plumb triage lists them; plumb confirm shows them as cards")
+
+
 def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     """The records brief first (kept through any cut), then the tests line."""
     from plumb.api import open_core
@@ -113,6 +132,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     lines = emitter.add([Line(evidence_line(summary) if line == NOT_CHECKED else line)
                          for line in records_brief])
     ctx.keep(lines)
+    if not ctx.deadline.expired():  # R8 A: at most one line, the triage offer
+        offer = triage_offer_line(core)
+        if offer:
+            lines += emitter.add([Line(offer)])
+            ctx.keep(lines)
     emitter.close()
     if not ctx.deadline.expired():
         pending = None if summary is None else FullPending(summary["pending"],
