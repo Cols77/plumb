@@ -37,11 +37,11 @@ HOOKS: tuple[tuple[str, str, str | None, bool], ...] = (
     ("stop", "Stop", None, False),
 )
 GUARDED = ("approve", "revoke", "tests waive", "triage --approve", "spec approve",
-           "config auto-approve")
+           "config auto-approve", "config show")
 STANDARD_PREFIXES = ("plumb", "uv run plumb", "python -m plumb")
 _PLUMB_COMMAND = re.compile(r"(?:^|[\s\"'/\\])plumb(?:\.exe)?[\"']?\s+(?:hook\s|statusline\b)")
 _PLUMB_DENY = re.compile(r"plumb (?:approve|revoke|tests waive|triage --approve|spec approve"
-                         r"|config auto-approve):\*\)$|PLUMB_AGENT_SESSION|"
+                         r"|config auto-approve|config show):\*\)$|PLUMB_AGENT_SESSION|"
                          r"^(?:Edit|Write|MultiEdit)\(\.plumb/log/\*\*\)$")
 
 

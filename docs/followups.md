@@ -1568,3 +1568,88 @@ only add what round 2 found new.
   only raw-ID commands; the plain-language path (say it in chat, the agent relays it) exists
   but is not offered. Fix: after each glance and escalation line, also offer "or say 'revoke
   <title>'" or `/plumb confirm ...`.
+
+## Next lane CAPTURE (2026-10-06, branch lane/capture)
+
+Built: every CAPTURE item of next-plan 4 (C1 to C7 and CS1 to CS6, all MUST under R13 Q5),
+with R13 Q1 to Q4: `plumb capture`, `new`, `intent`, `example`, `decide`, `escalate check|
+decline`, `spec show|approve|state`, `triage [--approve low-risk]`, `relay --group|--set`,
+`config auto-approve on|off|show|card`, `jev status|setup|calibrate`, `clarify`; the skills
+`plumb` and `plumb-clarify`; `plumb.capture.api` (sp2 11.1) and the `JudgmentBackend`
+additions (sp2 11.2). New records: INT-021 (the R13 answers), SR-069 (Q4 "self-recorded
+message"), NC-0001 (claims baseline for the moved skill template); all proposed.
+
+Phase 0 had not run when this lane started (no contracts, routes or installer changes on
+the base 9dd86c6). The lane wrote the phase-0 pieces it needed, kept to small additions,
+and the coordinator should expect conflicts there at merge:
+
+- `contracts.py`: `ApprovalBy` "auto-jev"; `JudgmentAction` values; `Judgment.probability`
+  and `confidence_label`; the protocol methods; `CaptureResult`, `IntentFlag`, `DiffStats`,
+  `EscalationSuggestion`, `TriageItem`, `TriageView` (with `offer`), `IntentCardData`,
+  `AutoApproveState`, `Proposal`, `ClarifyView`. Not written: `TurnEvent`, `TurnOutput`,
+  `MergeReport`, `Resolution`, `CardMode`, the `StatusSnapshot` additions.
+- `config.py`: `triage`, `auto_approve`, `calibration`, `clarify` (answered_min 0.6),
+  `hints`, `escalation.shared_globs|irreversible`, `judgment.jev.credential_env`. Not
+  written: `present`, `resolve`, `merge`, `hooks.stop_tokens`, `capture`.
+- `cli.py`: routes and help for the CAPTURE verbs only.
+- `pyproject.toml`: the `jev_live` marker (shared test infrastructure: full verification
+  pending until the integrate run).
+- `install.py` (PRESENT/HOST): installs every `templates/skills/<name>/SKILL.md` (the skill
+  moved there; SR-015, SR-030 and SR-032 re-pointed and repinned); deny rules for
+  `triage --approve`, `spec approve`, `config auto-approve`, `config show`.
+- `stop.py` (PRESENT): one decision that matters per message (R11), the earliest first.
+- `prompt.py` (PRESENT): prompt-log entries carry `"via": "hook"` (R13 Q4).
+- `readback.py` (PRESENT): `plumb show` labels "confirmed by JEV" and "self-recorded message".
+- `commands.py`: `relay --group|--set`, and `plumb drift` prints hint lines (never signals).
+
+Interfaces the other lanes still have to call (not wired by CAPTURE):
+
+- PRESENT: the stop hook writes `stated.json` `groups` from `capture.api.stated_group(
+  capture.api.triage(core))` and prints `TriageView.offer` (R8 A, Q2), deduplicated; the
+  brief carries the same offer line; the prompt hook prints `capture.api.escalation` lines
+  and may replace its flag lines with `capture.api.intent_flags` + `flags.flag_line` (the
+  heuristic `intent_change` already uses the contradiction scoring); the stop hook names an
+  unapproved escalated set with `capture.spec.waiting_line` (once per set hash); the status
+  line uses `confirmation_counts` ("N by JEV", "self-recorded") and `auto_approve_state`
+  ("auto-approve suspended: model changed, recalibrate"); the untraced instruction can
+  append `ownership_proposals(...)[path].line`; `card.render` is the plain card PRESENT may
+  replace with `present.render.intent_card`.
+- MERGE: `trailers check-msg` calls `capture.api.diff_serves` (MS2); the glance lists
+  approvals whose payload has `by: auto-jev` (with `auto.score`) or `self_recorded: true`
+  ("self-recorded message", Q4); `capture.spec.set_state` gives a set's state.
+- HOSTS: a host whose own hook records the owner's prompt writes `"via": "hook"` in
+  `.plumb/session/prompts.jsonl`; a prompt the agent records itself (CLI fallback) leaves
+  it out, and every confirmation resting on it is labelled "self-recorded message" (Q4),
+  which the host status should show.
+- IMPORT: `confirm.entry_problem` still refuses `by: import`; the phase-0
+  `importer/recheck.py` hook in `validate.py` was not written by this lane.
+
+Medium and low findings, and open notes:
+
+- [MEDIUM] Triage with JEV makes one call per uncached record (no batching): up to 8 s on
+  the command line, 0.6 s in a hook; records not scored in time stay "unrated" and
+  individual. Fix: batch the Noul questions of several records in one request.
+- [MEDIUM] Calibration uses the current content of confirmed and revoked records (the log
+  keeps hashes, not the text the owner saw); a revoked record edited afterwards is labelled
+  by its new text. Fix: keep the approved text digest-addressed in the cache, or calibrate
+  only records unchanged since their approval or revocation.
+- [MEDIUM] The heuristic fixtures (36 intent prompts, the e2e questions) were written with
+  the heuristic in view: they guard against regressions, not real-world precision.
+- [LOW] The pre-existing failure `tests/bridge/test_fidelity.py::
+  test_merge_lists_unjudged_fidelity` also fails on the base 9dd86c6 (merge-check output);
+  MERGE's area.
+- [LOW] The commit-msg hook installed from `C:/coding/plumb/.venv` checks trailer presence,
+  not the claims; three of this lane's commits had undeclared paths, caught by `plumb claims
+  check` and declared afterwards (c2aa6c4). Fix: run the claims check for the commit's own
+  paths in `trailers check-msg`.
+- [LOW] Links of SP1 requirements made stale by this lane's edits (SR-010, SR-017, SR-021,
+  SR-026, SR-027, SR-029, SR-030, SR-032 and others) are left stale for review: the
+  heuristic intent-change behaviour changed on purpose (sp2 C6).
+- [LOW] IDs INT-021, SR-069 and NC-0001 were allocated without the R10 reservation; another
+  lane may have used the same numbers (`plumb merge-fix` is SP6).
+- [LOW] sp2 4's decision field `asked` is not written: writing it would change the record
+  hash and re-ask; the stop hook's session `asked` map keeps that state.
+- [LOW] `plumb config show` is refused under the session marker as sp2 8.2 says; the agent
+  reads the same state through `plumb jev status`, which is not owner-only.
+- [LOW] The JEV `choose` and `contradiction` wire shapes are verified against the local stub
+  only; the `jev_live` test covers `entailment`.

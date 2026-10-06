@@ -50,7 +50,7 @@ def test_skills_uninstalled_and_owner_commands_denied(installed: Path) -> None:
     from plumb.hosts.claude_code.install import Launcher
 
     rules = " ".join(deny_rules(Launcher("plumb", "plumb", "plumb")))
-    for command in ("triage --approve", "spec approve", "config auto-approve"):
+    for command in ("triage --approve", "spec approve", "config auto-approve", "config show"):
         assert f"Bash(plumb {command}:*)" in rules
     uninstall(installed)
     assert not (installed / ".claude" / "skills" / "plumb-clarify").exists()

@@ -77,5 +77,10 @@ def test_precision_fixture_all_contradictions_no_benign(confirmed) -> None:
     recall = counts["tp"] / (counts["tp"] + counts["fn"])
     print(f"intent flags: {len(prompts)} prompts, precision {precision:.2f}, "
           f"recall {recall:.2f} ({counts})")
+    extends = [item for item in prompts if item["label"] == "extends"]
+    found = sum(flags(confirmed, item["text"]).get(item["record"]) == "extends"
+                for item in extends)
+    print(f"extends recall {found / len(extends):.2f}")
+    assert found / len(extends) >= 0.8  # a floor for trigger 1's extensions
     assert not missed, "contradictions not flagged: " + "; ".join(missed)
     assert not wrong, "benign prompts flagged: " + "; ".join(wrong)
