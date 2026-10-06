@@ -205,6 +205,26 @@ class StatusSnapshot:
     intent_summary: str = ""              # the session's intent in plain words (<= 40 chars)
     confirmed_by: Mapping[str, int] = field(default_factory=dict)  # owner, agent-relayed, ...
     auto_approve: str = "off"             # on | off | suspended
+    # sp6 9.4 (SR-078): records also being changed on another worktree or branch, and the
+    # branches named on the card; open intent conflicts awaiting the owner (sp6 8.3)
+    overlaps: int = 0
+    overlap_labels: tuple[str, ...] = ()
+    conflicts: int = 0
+
+
+@dataclass(frozen=True)
+class Overlap:
+    """A record this session works on that another worktree or branch is also changing
+    (sp6 9.3, SR-078). ``how``: edited | new | ends | claimed (intent in flight, R17)."""
+
+    record: str = ""
+    title: str = ""
+    branch: str = ""
+    worktree: str = ""                    # "" for a branch without a worktree
+    how: str = "edited"
+    other_hash: str = ""                  # the other side's version: a new one repeats
+    at: str = ""
+    summary: str = ""                     # a claim's one-line intent, when claimed
 
 
 @runtime_checkable
@@ -427,6 +447,9 @@ class ClarifyView:
     dropped: tuple[Mapping[str, Any], ...] = ()     # each with "dropped_because"
     escalation: tuple[EscalationSuggestion, ...] = ()
     backend: str = "heuristic"
+    # R17 (SR-081): the early intent-conflict cards and warnings against other branches'
+    # intent in flight, shown first: ask a card before any implementation
+    inflight: tuple[str, ...] = ()
 
 
 # --------------------------------------------------------------------------- sp4 HOSTS
