@@ -24,6 +24,7 @@ Run plumb as `.venv/Scripts/python.exe -m plumb`. Context lives in files; read i
 - Only the owner's own affirming words confirm; silence is not a confirmation. Relay them:
   `.venv/Scripts/python.exe -m plumb relay <IDs> --prompt <digest> --quote "<exact words>"`, `--group low-risk` for
   the triage offer (`.venv/Scripts/python.exe -m plumb triage` lists it), `--set INT-###` for an escalated spec.
-- Never run `plumb approve`, `revoke`, `triage --approve`, `spec approve` or
-  `config auto-approve`: they belong to the owner's own terminal.
+- Never run `plumb approve`, `revoke`, `triage --approve`, `spec approve`,
+  `config auto-approve` or `conflict choose`: they belong to the owner's own terminal.
+  A merge conflict's side is relayed only from the owner's words (`/plumb conflicts`).
 - Commits carry an `SR: SR-###` trailer naming the requirements they serve.

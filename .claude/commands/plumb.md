@@ -1,7 +1,7 @@
 ---
 description: plumb in plain words - status, explain anything, review, confirm, what a change would reach, the Obsidian view
 argument-hint: "status | explain <anything> | review [<anything>] | confirm [<anything>] | impact <anything> | view"
-allowed-tools: Bash(.venv/Scripts/python.exe -m plumb status:*), Bash(.venv/Scripts/python.exe -m plumb brief:*), Bash(.venv/Scripts/python.exe -m plumb explain:*), Bash(.venv/Scripts/python.exe -m plumb why:*), Bash(.venv/Scripts/python.exe -m plumb review:*), Bash(.venv/Scripts/python.exe -m plumb confirm:*), Bash(.venv/Scripts/python.exe -m plumb impact:*), Bash(.venv/Scripts/python.exe -m plumb view:*), Bash(.venv/Scripts/python.exe -m plumb show:*), Bash(.venv/Scripts/python.exe -m plumb resolve:*), Bash(.venv/Scripts/python.exe -m plumb align:*)
+allowed-tools: Bash(.venv/Scripts/python.exe -m plumb status:*), Bash(.venv/Scripts/python.exe -m plumb brief:*), Bash(.venv/Scripts/python.exe -m plumb explain:*), Bash(.venv/Scripts/python.exe -m plumb why:*), Bash(.venv/Scripts/python.exe -m plumb review:*), Bash(.venv/Scripts/python.exe -m plumb confirm:*), Bash(.venv/Scripts/python.exe -m plumb impact:*), Bash(.venv/Scripts/python.exe -m plumb view:*), Bash(.venv/Scripts/python.exe -m plumb show:*), Bash(.venv/Scripts/python.exe -m plumb resolve:*), Bash(.venv/Scripts/python.exe -m plumb align:*), Bash(.venv/Scripts/python.exe -m plumb conflicts:*), Bash(.venv/Scripts/python.exe -m plumb conflict relay:*), Bash(.venv/Scripts/python.exe -m plumb conflict propose:*), Bash(.venv/Scripts/python.exe -m plumb merge-check:*), Bash(.venv/Scripts/python.exe -m plumb inflight:*)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -13,7 +13,12 @@ Answer with titles, the owner's own words, examples and test states; mention cod
 only when asked.
 
 - No argument, or `status`: run `.venv/Scripts/python.exe -m plumb status --card` and give the card, what awaits
-  them and drift in one or two lines.
+  them and drift in one or two lines; when it lists records also being changed on another
+  branch or worktree, name them by title and branch ("is anyone else changing X?" is the
+  same request).
+- "what are the other branches working on?": run `.venv/Scripts/python.exe -m plumb inflight` and answer with the
+  branches, their one-line intent and the records by title. "drop that work" (the owner
+  abandoned a branch's intent): `.venv/Scripts/python.exe -m plumb inflight drop <branch>`.
 - `explain <anything>` (also `why <anything>`): run `.venv/Scripts/python.exe -m plumb explain <their words>` and say
   why it exists: the owner's words it comes from, the decisions, the examples and whether
   their tests pass.
@@ -27,5 +32,30 @@ only when asked.
   change would reach.
 - `view`: run `.venv/Scripts/python.exe -m plumb view --open` and tell them the Obsidian vault is open (generated;
   editing a note approves nothing).
+
+- `conflicts` (or "what conflicts?"): run `.venv/Scripts/python.exe -m plumb conflicts [<their words>]`. A merge left
+  two versions of the same intent; the cards reach the owner at the end of your turn. Say
+  in their terms what each side wants. Their next words choose: relay "keep feat-x's",
+  "keep mine" or "ok, the combined one" with `.venv/Scripts/python.exe -m plumb conflict relay <IC> --take
+  <ours|theirs|combined> --prompt <digest> --quote "<exact words>"`. When they describe a
+  combination, write it with `.venv/Scripts/python.exe -m plumb conflict propose <IC> --file <fields.yaml>` (shown as
+  a third version; it applies nothing). Never run `conflict choose`: it is the owner's own
+  terminal.
+- `merge-check`: run `.venv/Scripts/python.exe -m plumb merge-check` and say what holds the merge in their terms. A
+  merge held by the quick merge check (no test run) is finished when they say "finish the
+  merge": `git add .plumb` (their choices and confirmations made during the merge), then
+  `.venv/Scripts/python.exe -m plumb merge-check --hook pre-merge-commit`; when it passes, `git commit -m "Merge
+  <branch>"` with the `SR:` trailers of the merged work. A rebase, cherry-pick or revert
+  step held the same way is continued when they say "continue the rebase" (or cherry-pick,
+  revert): `git add .plumb`, the same check, then `git rebase --continue` (`git cherry-pick
+  --continue`, `git revert --continue`). "check merges before they are recorded": `.venv/Scripts/python.exe -m plumb
+  merge-check --install-pre-merge-commit`; "call plumb from my merge hook" (or "my commit
+  hook"): add the `hook_lines` of `.venv/Scripts/python.exe -m plumb merge-check --install-pre-merge-commit --json`
+  to their own pre-merge-commit (or prepare-commit-msg) hook. "run the tests when I push": `.venv/Scripts/python.exe -m plumb merge-check --install-pre-push`;
+  "call plumb from my push hook": add `<python> -m plumb merge-check --hook pre-push` (git's
+  pushed refs on its stdin) to their own pre-push hook. For a record file left in text-merge form, "keep mine" / "keep theirs" is
+  `git checkout --ours` / `--theirs` on it then `git add`; for one changed on one side and
+  removed on the other, "keep the changed one" is `git add`, "keep it removed" is `git rm`;
+  then `.venv/Scripts/python.exe -m plumb validate`.
 
 Change nothing else.

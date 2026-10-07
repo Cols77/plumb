@@ -262,6 +262,38 @@ uv run plumb validate --merge main   # exit 4: a touched or widened requirement,
 uv run plumb tests run --full        # if "full verification pending"
 ```
 
+## Working in parallel
+
+You can run several agent sessions at once, each in its own git worktree or branch. plumb
+coordinates them through git alone: it holds no locks and no shared runtime state.
+
+- **IDs never clash between worktrees.** Every worktree of a repository takes new record IDs
+  from one shared counter that git keeps (`refs/plumb/ids`), so two sessions proposing
+  requirements at the same moment get, say, SR-082 and SR-083. A collaborator on another
+  clone can still pick the same number; at merge, say "fix the ID clash" (`/plumb merge-fix`)
+  and the incoming record is renumbered with every reference to it, without rewriting
+  history. Your "ok" carries over only while the words are unchanged, and it is labelled
+  "carried by renumber".
+- **Logs never conflict.** Each approval, prompt and test run is its own small file under
+  `.plumb/log/<kind>/`, so branches add log entries side by side. Older one-file logs move
+  over when you say "migrate the logs"; every hash stays the same.
+- **Records merge field by field.** When two branches change different parts of a
+  requirement (one adds a link, the other an example), the merge combines them on its own.
+  When both change the same words differently, the merge does not guess: the requirement
+  becomes an intent conflict, shown as one card with both versions and the branch each came
+  from. You answer in plain words ("keep feat-x's", or how to combine them), and nothing is
+  chosen for you.
+- **You hear about overlaps early.** When another worktree or branch is changing a
+  requirement this session works on, the session brief and the status line say so once, for
+  example `SR-005 "relay checks" is also being changed on branch feat-x`. When a new request
+  contradicts intent another branch has in flight, you are asked right away, before either
+  side builds on it, and your answer holds for both.
+- **The merge waits for you only when it must.** `/plumb init` sets up the record merge and
+  a quick check that holds a merge carrying an open intent conflict, an unconfirmed
+  requirement or an undeclared file, without running the tests. The one full test run
+  happens when you push. Ask `/plumb conflicts` to see what waits, or `/plumb merge-check`
+  for the whole merge report.
+
 ## Command reference
 
 Every command accepts `--root ROOT` (by default, plumb walks up to the first directory that
@@ -362,6 +394,18 @@ during the turn.
 | `plumb merge-check [BASE] [--no-run] [--json]` | The merge boundary: at most one full run, claims, links, log integrity, the glance of approvals you did not type, advisory fidelity. Exit codes as above. |
 | `plumb merge-check --install-pre-push` / `--uninstall-pre-push` | The git pre-push hook, where the one full run happens; `plumb init` and `plumb hooks install` write it by default (R17). |
 
+### Parallel work (the agent's interface)
+
+| Command | What it does |
+|---|---|
+| `plumb ids [sync]` | The IDs reserved in `refs/plumb/ids`, shared by every worktree of a clone; `sync` reseeds from every local branch. |
+| `plumb merge-fix [--from REF] [--dry-run]` | Renumber a record ID a merge brought twice (another clone): the incoming record gets a new ID, every reference the incoming side added follows, trailers are mapped, history is untouched. |
+| `plumb log migrate [--dry-run] [--check]` | Move legacy `events.jsonl`/`evidence.jsonl` lines into one file per entry, digests unchanged. |
+| `plumb merge-driver %O %A %B %P %X %Y` | git's merge driver for record files (git calls it; `plumb init` and `plumb hooks install` configure it). |
+| `plumb conflicts` / `plumb conflict propose\|choose\|relay` | The intent conflicts a merge left, as cards; propose a combined version; record the owner's choice (owner-only, or relayed from the owner's logged words). |
+| `plumb inflight [check\|drop\|sync]` | Intent other branches have in flight (`refs/plumb/claims`), the early intent-conflict check, and dropping an abandoned branch's claims. |
+| `plumb merge-check --hook pre-merge-commit` | The quick merge check git runs before recording a merge (no test run); `plumb init` installs it with the pre-push hook. |
+
 ### Bridge
 
 | Command | What it does |
@@ -387,14 +431,18 @@ for large or cross-cutting work.
 plumb has been dogfooded from day one: this repository is developed with plumb.
 
 - Its own intent is in `.plumb/`. The `INT` records quote the owner's intent brief verbatim.
-  `SR-001` to `SR-069` (features `FEAT-001` to `FEAT-005`: the grounding loop, intent
-  capture, the merge boundary, the importer and other hosts, presentation) carry
+  `SR-001` to `SR-081` (features `FEAT-001` to `FEAT-006`: the grounding loop, intent
+  capture, the merge boundary, the importer and other hosts, presentation, parallel work)
+  carry
   given/when/then examples, and `DEC` records hold the design choices. Every record written
   by an agent stays proposed until the owner confirms it. Each requirement is linked, with hash pins, to the
   modules that implement it and the tests that verify each example.
 - The Claude Code hooks are installed here (`.claude/settings.json`, `.claude/skills/plumb/`),
   so every session on plumb gets the brief, the per-prompt context, the covering-test stop
   hook, the alignment summary and the status line.
+- Its logs are one file per entry (migrated in SP6 with every digest kept), its IDs come
+  from `refs/plumb/ids`, and git uses plumb's record merge driver, the quick merge check
+  (pre-merge-commit and prepare-commit-msg) and the pre-push hook for the one full run.
 - Commits carry `SR: SR-###` trailers. `require_trailer: true` is set in `.plumb/claims.yaml`,
   and the commit-msg hook enforces it. Run `plumb claims check` before committing to make sure
   every touched path is declared.
@@ -413,4 +461,5 @@ Design documents: `docs/concept.md` (the concept spec), `docs/specs/sp1-groundin
 pi-agent-factory to plumb). The next batch: `docs/specs/sp2-intent-capture.md`,
 `docs/specs/sp3-merge-boundary.md`, `docs/specs/sp4-hosts-mcp.md`,
 `docs/specs/sp5-presentation.md` and their one combined plan, `docs/plans/next-plan.md`
-(five lanes, including the pi-agent-factory importer completion).
+(five lanes, including the pi-agent-factory importer completion). Parallel work:
+`docs/specs/sp6-parallel-work.md` and `docs/plans/sp6-plan.md`.

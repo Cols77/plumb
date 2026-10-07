@@ -210,9 +210,13 @@ intent the owner actually affirmed.
 ### 4.3 IDs
 
 IDs are kind prefix plus zero-padded number: `INT-###`, `SR-###`, `DEC-###`, `FEAT-###`,
-`NC-####`. The next ID is the highest existing number plus one. Identity comes from the
-frontmatter `id`, never from the filename. Two records with the same ID (for example after
-parallel branches merge) are an error that `plumb check` reports. Examples are numbered
+`NC-####`. The next ID is reserved through the shared ref `refs/plumb/ids` with git's
+compare-and-swap (`update-ref` with the old value), so the worktrees of one clone never get
+the same ID; outside git it is the highest existing number plus one (SP6, SR-070). Identity
+comes from the frontmatter `id`, never from the filename. Two records with the same ID (two
+clones that numbered independently) are an error that `plumb check` and the merge boundary
+report; `plumb merge-fix` renumbers the incoming record and every reference its side added,
+never rewriting history (SR-071). Examples are numbered
 inside their requirement (`SR-004/EX-2`). Imported acceptance criteria keep their `AC-n` IDs.
 
 ### 4.4 Content hashing and normalization
@@ -453,7 +457,10 @@ missing), so the log is a hash chain. Branches that merge make the chain fork; t
 accepted as long as every `prev` resolves to an existing entry. Corrections are new entries
 that reference the old one. `plumb check` verifies each entry's digest and its `prev` link,
 so a modified entry, or a deleted entry that a later one points to, is reported; at merge
-boundaries, plumb also checks against git that no committed entry was modified or deleted.
+boundaries, plumb also checks against git that no committed entry was modified or deleted. The
+earlier single-file logs (`events.jsonl`, `evidence.jsonl`) were migrated to entry files by
+`plumb log migrate` with every digest and `prev` unchanged (SP6, SR-074); the emptied files
+stay so that branches cut before the migration still merge.
 
 ### 4.8 Claims: `SR:` trailers
 
@@ -851,6 +858,12 @@ failure; it never moves a full run into a turn:
 A merge boundary is where work relies on its records, so it is where the guarantees are
 paid for. `plumb check --merge <base>` (sub-project 1a) gives the owner one short report over
 the change from `<base>`:
+
+- **Parallel work (SP6).** Three more sections hold the merge: ID collisions between clones
+  (exit 1, fixed by `plumb merge-fix`), record paths git left unmerged (exit 1), and open
+  intent conflicts that the record merge driver wrote when two branches changed the same
+  words, each shown as one card with both versions (exit 4, the owner's choice). The quick
+  form runs as git's pre-merge-commit hook without a test run; the one full run is at push.
 
 - **Touched requirements must be confirmed.** A requirement is touched when its record, or
   one of its `implemented_by` or `verified_by` ends, changed in the range, or a commit in the
