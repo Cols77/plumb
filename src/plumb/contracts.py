@@ -386,6 +386,9 @@ class IntentCardData:
     wont: tuple[str, ...] = ()
     assumed: tuple[str, ...] = ()
     examples: tuple[tuple[str, str, str], ...] = ()   # (SR, EX-n, text)
+    # each example's record and its OWN confirmation state (an SR under a confirmed INT may
+    # still be proposed): ``example_groups`` labels examples by these, never by the card's
+    member_states: tuple[tuple[str, str], ...] = ()   # (record, confirmation state)
     tests: tuple[tuple[str, str], ...] = ()           # (test end, state)
     decisions: tuple[str, ...] = ()        # DEC ids deciding it
     # sp5 4.2: a card shows its record in full (the stated-set "shown" form), so PRESENT
@@ -397,6 +400,24 @@ class IntentCardData:
     # R17: an early-conflict decision is answered in the conflict card's own words ("keep
     # feat-x's", "keep this one", "both"), never a bare "ok" to a preset side
     say: str = ""
+
+
+def example_groups(card: IntentCardData, limit: int | None = None
+                   ) -> list[tuple[str, list[tuple[str, str, str]]]]:
+    """The card's examples grouped by the confirmation state of the record each belongs to
+    (R2, R9: "Examples ... (proposed)" says what the owner confirmed, so an example is never
+    labelled with another record's state). The card's own examples carry the card's state;
+    a member whose state is unknown reads "proposed", never "confirmed". Consecutive
+    examples of one state share a group, in order."""
+    states = dict(card.member_states)
+    groups: list[tuple[str, list[tuple[str, str, str]]]] = []
+    for sr, ex, text in card.examples[:limit] if limit is not None else card.examples:
+        state = states.get(sr) or (card.state if sr in (card.id, "") else "proposed")
+        if groups and groups[-1][0] == state:
+            groups[-1][1].append((sr, ex, text))
+        else:
+            groups.append((state, [(sr, ex, text)]))
+    return groups
 
 
 @dataclass(frozen=True)

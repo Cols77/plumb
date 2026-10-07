@@ -25,6 +25,11 @@ never asked again (``premerge.check``, ``plumb conflicts``, the conflict card).
 
 ``plain_relay_problem`` keeps plain ``plumb relay`` honest: an "ok" that names another
 version than the decision's chosen one is refused, never recorded as the opposite answer.
+
+``superseded`` is the losing lane's side (R17: "both lanes build on it"): a record of this
+checkout whose words still differ from the version the owner chose in a confirmed early
+decision (held here, or carried by another branch's claim) is named on every turn (the
+prompt delta, the stop hook, status) until it matches, and no "ok" confirms it meanwhile.
 """
 
 from __future__ import annotations
@@ -545,10 +550,123 @@ def answer_line(core: Any, early: Early, key: str) -> str:
     return text.EARLY_ANSWERED.format(id=early.record, title=title, chosen=option(key))
 
 
+@dataclass(frozen=True)
+class Superseded:
+    """A record of this checkout that still holds another version than the one the owner
+    chose in a confirmed early decision (``dec``)."""
+
+    record: str
+    title: str
+    dec: str
+    chosen: str          # the owner's answer, branch-neutral ("feat-x's version")
+    theirs: str          # the chosen version's words
+    ours: str            # this checkout's words
+    hash: str            # this checkout's version of the record
+
+
+def _differs(record: Any, winner_hash: str, winner_text: str) -> bool:
+    from plumb.awareness.inflight import record_entry
+
+    if winner_hash and record.hash == winner_hash:
+        return False
+    if winner_text:
+        return record_entry(record)["text"] != " ".join(winner_text.split())
+    return bool(winner_hash)
+
+
+def superseded(core: Any) -> dict[str, Superseded]:
+    """``{record: Superseded}``: every record of this checkout whose words differ from the
+    version the owner chose in a CONFIRMED early decision, the ONE place the losing lane is
+    found (R17: the answer is recorded once and both lanes build on it). Two sources: the
+    early decisions this checkout holds (it raised the question, or merged it), and the
+    answers other branches carry in their claims for this branch's work
+    (``inflight.sync_decisions``). An answer naming this branch's own version, "both", or
+    words naming no branch supersedes nothing; a record that matches the chosen version
+    (same hash or same words) is no longer named. No git process (hook path)."""
+    from plumb.awareness import inflight
+
+    index = core.index()
+    current = _current(core)
+    try:
+        my_branch, claims = inflight.others(core)
+    except Exception:  # noqa: BLE001 - the register is advisory here
+        my_branch, claims = current, []
+
+    def claimed(branch: str, record_id: str) -> Mapping[str, Any]:
+        for claim in claims:
+            entry = (claim.get("records") or {}).get(record_id)
+            if claim.get("branch") == branch and isinstance(entry, Mapping):
+                return entry
+        return {}
+
+    out: dict[str, Superseded] = {}
+    earlies = early_decisions(index)
+    statuses = core.status([e.dec for e in earlies]) if earlies else {}
+    for early in earlies:
+        status = statuses.get(early.dec)
+        key = early.chosen_key
+        record = index.get(early.record)
+        if (status is None or status.confirmation != "confirmed" or key in (None, BOTH)
+                or key == current or record is None):
+            continue
+        entry = claimed(key, early.record)
+        winner_text = str(entry.get("text") or early.texts.get(key) or "")
+        winner_hash = str(entry.get("hash") or early.hashes.get(key) or "")
+        if _differs(record, winner_hash, winner_text):
+            out[record.id] = Superseded(
+                record=record.id, title=record.title, dec=early.dec, chosen=option(key),
+                theirs=winner_text, ours=inflight.record_entry(record)["text"],
+                hash=record.hash)
+    for claim in claims:
+        for conflict in claim.get("conflicts") or []:
+            record = index.get(str(conflict.get("record") or ""))
+            if (record is None or record.id in out or conflict.get("state") != "confirmed"
+                    or conflict.get("branch") != my_branch):
+                continue
+            chosen = inflight.neutral_chosen(str(conflict.get("chosen") or ""),
+                                             str(claim.get("branch") or ""))
+            match = _VERSION.fullmatch(chosen)
+            winner = match.group(1) if match else None
+            if not winner or winner == my_branch:
+                continue
+            entry = claimed(winner, record.id)
+            if _differs(record, str(entry.get("hash") or ""), str(entry.get("text") or "")):
+                out[record.id] = Superseded(
+                    record=record.id, title=record.title, dec=str(conflict.get("dec") or ""),
+                    chosen=chosen, theirs=str(entry.get("text") or ""),
+                    ours=inflight.record_entry(record)["text"], hash=record.hash)
+    return out
+
+
+def superseded_line(item: Superseded) -> str:
+    return text.EARLY_SUPERSEDED.format(id=item.record, title=item.title,
+                                        ours=_short(item.ours), chosen=item.chosen,
+                                        theirs=_short(item.theirs) or "its words")
+
+
+def _short(words: str, width: int = 120) -> str:
+    words = " ".join(str(words or "").split())
+    return words if len(words) <= width else words[: width - 3].rstrip() + "..."
+
+
 def plain_relay_problem(core: Any, ids: Iterable[str], quote: str) -> str | None:
     """Plain ``plumb relay`` of an early decision: refused when the owner's words name
     another version than the one the decision holds (their pick goes through ``conflict
-    relay``, which records it); an "ok" naming no version confirms what was shown."""
+    relay``, which records it); an "ok" naming no version confirms what was shown. And
+    any relayed "ok" of a record that still holds the version the owner turned down in a
+    confirmed early decision (``superseded``) is refused, naming that answer: an "ok"
+    never confirms the rejected words over the owner's recorded choice."""
+    ids = list(ids)
+    try:
+        lost = superseded(core)
+    except Exception:  # noqa: BLE001 - the pick check below still runs
+        lost = {}
+    for record_id in ids:
+        item = lost.get(record_id)
+        if item is not None:
+            return text.EARLY_SUPERSEDED_RELAY.format(
+                id=item.record, title=item.title, dec=item.dec, chosen=item.chosen,
+                theirs=_short(item.theirs) or "its words")
     index = core.index()
     current = None
     for record_id in ids:

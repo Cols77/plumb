@@ -103,7 +103,8 @@ def _all_claims(core: Any) -> tuple[str | None, list[dict[str, Any]], list[dict[
 
     my_branch, others = inflight.others(core, allow_git=True)
     _oid, data = inflight.read(core.root, allow_git=True)
-    every = inflight.active(core.root, data, default=default_branch(core), allow_git=True)
+    every = inflight.active(core.root, data, default=default_branch(core), allow_git=True,
+                            paths=inflight.record_paths(core))
     return my_branch, others, every
 
 

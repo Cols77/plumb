@@ -182,7 +182,23 @@ def card_for(core: Any, record: Any, statuses: Mapping[str, Any], *,
         label=label, quote=_flat(fields.get("quote")) if record.kind == "intent" else "",
         will=_items(fields.get("will")), wont=_items(fields.get("wont")), assumed=assumed,
         examples=examples, tests=tuple(tests.items()), decisions=decisions, kind=record.kind,
-        statement=statement, alternatives=alternatives, say=say)
+        statement=statement, alternatives=alternatives, say=say,
+        member_states=_member_states(core, record.id, state, members, statuses))
+
+
+def _member_states(core: Any, own: str, state: str, members: Sequence[Any],
+                   statuses: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
+    """Each member's OWN confirmation state (``IntentCardData.member_states``): an SR under
+    a confirmed INT may still be proposed (R2)."""
+    missing = [m.id for m in members if m.id != own and statuses.get(m.id) is None]
+    known = dict(statuses)
+    if missing:
+        try:
+            known.update(core.status(missing))
+        except Exception:  # noqa: BLE001 - unknown reads "proposed", never "confirmed"
+            pass
+    return tuple((m.id, state if m.id == own else getattr(known.get(m.id), "confirmation",
+                                                          "proposed")) for m in members)
 
 
 def early_say(core: Any, record: Any) -> str:

@@ -11,7 +11,11 @@ every worktree of the clone sees it, and it is written only by git's own compare
 A claim is a signal, never a lock: nothing reads it to refuse anything. It clears when its
 branch is deleted (abandoned), when its branch MERGED (its tip is reachable from the default
 branch AND the branch has commits of its own there: see ``merged``), or when the owner drops
-that work. A branch that only took the default branch's commits (a fast-forward to
+that work. Each RECORD of a claim also clears on its own once it landed (``_unlanded``): the
+commit that wrote it (``commit``, stamped when the claim moves to a tip holding that version)
+is reachable from the default branch, or the default branch holds exactly the claimed
+version (same hash). So a branch merged and then continued never holds its merged records
+against a later change on the default branch. A branch that only took the default branch's commits (a fast-forward to
 ``main``) keeps its claim: its intent is still in flight. Readers on a hook path read the ref
 and the blob from git's files (a loose object) with no git process, through a cache keyed by
 the blob's ID.
@@ -23,7 +27,8 @@ Entry shape::
       "own": "<the branch's own newest commit, or empty>", "at": "...", "summary": "...",
       "intent": "INT-022",
       "records": {"SR-005": {"title": "...", "hash": "sha256:...", "text": "...",
-                             "feature": "FEAT-002"}},
+                             "feature": "FEAT-002", "path": ".plumb/requirements/SR-005.md",
+                             "commit": "<the branch commit first holding this version>"}},
       "features": ["FEAT-002"],
       "conflicts": [{"record": "SR-005", "branch": "main", "with": "main:INT-030",
                      "dec": "DEC-031", "question": "...", "state": "proposed",
@@ -52,6 +57,8 @@ REF = "refs/plumb/claims"
 VERSION = 1
 CACHE = "inflight.json"
 MERGED_CACHE = "inflight-merged.json"
+LANDED_CACHE = "inflight-landed.json"
+LANDED_MAX = 512
 RETRIES = 50
 RETRY_S = 3.0
 GIT_TIMEOUT_S = 5.0
@@ -211,12 +218,16 @@ def _nothing_own(claim: Mapping[str, Any], tip: str) -> bool:
 
 
 def active(root: Path, data: Mapping[str, Any], *, default: str, allow_git: bool = False,
-           deadline: Any = None) -> list[dict[str, Any]]:
+           deadline: Any = None, paths: Mapping[str, str] | None = None
+           ) -> list[dict[str, Any]]:
     """The claims still in flight: a deleted branch's claims are gone (abandoned); a claim
     whose branch ``merged`` is gone; on the default branch itself a claim clears once a
-    commit lands. The merged check runs only with ``allow_git``, cached by the claim's
-    fork point and own commit and the two tips; without it an unknown case keeps its
-    claim."""
+    commit lands; and each record of a claim that landed on the default branch is gone
+    (``_unlanded``; a claim left with no record and no raised conflict goes). The ONE
+    reader every surface uses (capture, the clarify read-back, the stop hook's claim, the
+    brief, status, the writers' pruning). The git checks run only with ``allow_git``,
+    cached; without it an unknown case keeps its claim. ``paths``: record ID -> file, for
+    an older claim whose records do not name their file."""
     common = gitfiles.common_dir(Path(root))
     if common is None:
         return []
@@ -247,6 +258,111 @@ def active(root: Path, data: Mapping[str, Any], *, default: str, allow_git: bool
         out.append(claim)
     if learned:
         _write_json(_cache_path(Path(root), MERGED_CACHE), known)
+    return _unlanded(Path(root), out, default=default, default_tip=default_tip,
+                     allow_git=allow_git, deadline=deadline, paths=paths or {})
+
+
+def _entry_path(record_id: str, entry: Mapping[str, Any], paths: Mapping[str, str]) -> str:
+    return str(entry.get("path") or paths.get(record_id) or "")
+
+
+def versions(root: Path, rev: str, paths: Iterable[str]) -> dict[str, str | None]:
+    """``{path: the record hash of that file at rev, or None}`` (one ``git cat-file
+    --batch``; a missing or unparsable file is None)."""
+    from plumb.model import parse_record
+
+    wanted = sorted({p for p in paths if p})
+    if not wanted or not rev:
+        return {}
+    code, out = _git(Path(root), "cat-file", "--batch",
+                     stdin="".join(f"{rev}:{p}\n" for p in wanted).encode("utf-8"))
+    if code != 0:
+        return {}
+    found: dict[str, str | None] = {}
+    pos = 0
+    for path in wanted:
+        end = out.find(b"\n", pos)
+        if end < 0:
+            break
+        header = out[pos:end].decode("utf-8", "replace").split(" ")
+        pos = end + 1
+        if len(header) != 3 or header[1] != "blob" or not header[2].isdigit():
+            found[path] = None
+            continue
+        size = int(header[2])
+        body = out[pos:pos + size]
+        pos += size + 1
+        try:
+            found[path] = parse_record(body.decode("utf-8"), path).hash
+        except Exception:  # noqa: BLE001 - not a record there
+            found[path] = None
+    return found
+
+
+def _unlanded(root: Path, claims: list[dict[str, Any]], *, default: str,
+              default_tip: str | None, allow_git: bool, deadline: Any,
+              paths: Mapping[str, str]) -> list[dict[str, Any]]:
+    """``claims`` without the records that LANDED on the default branch (R17: a claim
+    clears when its branch merges): the commit stamped as writing that version
+    (``commit``) is reachable from the default tip, or the default tip holds exactly the
+    claimed version (same hash). Cached by the default tip, the file and the hash
+    (``LANDED_CACHE``) and by the two commits (``publish.contains``); learned with
+    ``allow_git`` (one ``git cat-file --batch``, one ``merge-base --is-ancestor`` per
+    stamped commit). Claims of the default branch itself are left as they are."""
+    if not default_tip or not claims:
+        return claims
+    from plumb.awareness.publish import contains
+
+    cache = _cache_path(root, LANDED_CACHE)
+    raw = _read_json(cache)
+    known: dict[str, bool] = ({str(k): bool(v) for k, v in raw.items()}
+                              if isinstance(raw, dict) else {})
+    learn = allow_git and not _expired(deadline)
+
+    def key(path: str, digest: str) -> str:
+        return f"{default_tip}:{path}:{digest}"
+
+    todo: dict[str, tuple[str, str]] = {}
+    for claim in claims:
+        if claim.get("branch") == default:
+            continue
+        for record_id, entry in (claim.get("records") or {}).items():
+            if not isinstance(entry, Mapping):
+                continue
+            path, digest = _entry_path(record_id, entry, paths), str(entry.get("hash") or "")
+            if path and digest and key(path, digest) not in known:
+                todo[key(path, digest)] = (path, digest)
+    if todo and learn:
+        held = versions(root, default_tip, {path for path, _digest in todo.values()})
+        if held:
+            for k, (path, digest) in todo.items():
+                known[k] = held.get(path) == digest
+            _write_json(cache, dict(list(known.items())[-LANDED_MAX:]))
+    out: list[dict[str, Any]] = []
+    for claim in claims:
+        records = claim.get("records") or {}
+        if claim.get("branch") == default or not records:
+            out.append(claim)
+            continue
+        kept: dict[str, Any] = {}
+        for record_id, entry in records.items():
+            if isinstance(entry, Mapping):
+                path = _entry_path(record_id, entry, paths)
+                digest = str(entry.get("hash") or "")
+                if path and digest and known.get(key(path, digest)):
+                    continue            # the default branch holds exactly this version
+                commit = str(entry.get("commit") or "")
+                if commit and contains(root, commit, default_tip, allow_git=learn):
+                    continue            # the commit that wrote this version merged
+            kept[record_id] = entry
+        if len(kept) == len(records):
+            out.append(claim)
+            continue
+        if not kept and not claim.get("conflicts"):
+            continue
+        out.append({**claim, "records": kept,
+                    "features": sorted({str(e["feature"]) for e in kept.values()
+                                        if isinstance(e, Mapping) and e.get("feature")})})
     return out
 
 
@@ -318,6 +434,8 @@ def record_entry(record: Any) -> dict[str, str]:
              "text": _clip(str(text))}
     if fields.get("feature"):
         entry["feature"] = str(fields["feature"])
+    if getattr(record, "path", ""):
+        entry["path"] = str(record.path)
     return entry
 
 
@@ -359,12 +477,15 @@ def record_claim(core: Any, *, records: Mapping[str, Mapping[str, str]], summary
     key = claim_id(me.branch, intent)
     new_conflicts = [dict(c) for c in conflicts]
     where = fork(root, me.head, me.branch, default)
+    paths = record_paths(core)
+    at_tip = _tip_versions(root, me.branch, me.head, default, paths)
 
     def mutate(data: dict[str, Any]) -> dict[str, Any]:
-        live = active(root, data, default=default, allow_git=True)
+        live = active(root, data, default=default, allow_git=True, paths=paths)
         for claim in live:          # every claim of this branch moves with its tip
             if claim.get("branch") == me.branch and me.branch != default:
                 claim.update({"head": me.head, **where})
+                _stamp(claim, me.head, at_tip, paths)
         mine = next((c for c in live if c.get("id") == key), None)
         if mine is None:
             mine = {"id": key, "branch": me.branch, "intent": intent, "records": {},
@@ -396,10 +517,71 @@ def moved_claims(register: Mapping[str, Any], branch: str | None, head: str | No
                for c in register.get("claims") or [])
 
 
-def refresh(core: Any, *, default: str | None = None) -> bool:
+def record_paths(core: Any) -> dict[str, str]:
+    """Record ID -> file, from this checkout's index (for claims whose records do not name
+    their file)."""
+    try:
+        return {i: str(r.path) for i, r in core.index().items() if getattr(r, "path", "")}
+    except Exception:  # noqa: BLE001 - the claims' own paths still serve
+        return {}
+
+
+def _branch_paths(register: Mapping[str, Any], branch: str,
+                  paths: Mapping[str, str]) -> set[str]:
+    return {_entry_path(i, e, paths) for c in register.get("claims") or []
+            if c.get("branch") == branch
+            for i, e in (c.get("records") or {}).items() if isinstance(e, Mapping)} - {""}
+
+
+def _tip_versions(root: Path, branch: str | None, head: str | None, default: str,
+                  paths: Mapping[str, str]) -> dict[str, str | None]:
+    """The version of each record this branch claims, as its tip ``head`` holds it (one git
+    call, and only when one of its claims was written at another commit)."""
+    if not branch or not head or branch == default:
+        return {}
+    _oid, register = read(root)
+    if not moved_claims(register, branch, head, default):
+        return {}
+    return versions(root, head, _branch_paths(register, branch, paths))
+
+
+def _stamp(claim: dict[str, Any], head: str | None, at_tip: Mapping[str, str | None],
+           paths: Mapping[str, str], changing: Mapping[str, Any] | None = None) -> None:
+    """A claim moved to ``head``: each record whose claimed version the tip holds is
+    stamped with the commit that first held it (``commit``, kept when already stamped), so
+    a merge of that commit clears it even after the branch moves on (``_unlanded``). With
+    ``changing`` (the branch's ``changing.json``), a committed record the branch no longer
+    changes since its merge base (the default branch holds that version: it landed, or was
+    never changed) leaves the claim: the claim's records are rebuilt from what the branch
+    still changes, never carried forward."""
+    if not head or not at_tip:
+        return
+    still = None
+    if changing is not None:
+        still = {str(i) for i, item in (changing.get("records") or {}).items()
+                 if isinstance(item, Mapping) and item.get("how") in ("edited", "new")}
+    kept: dict[str, Any] = {}
+    for record_id, entry in (claim.get("records") or {}).items():
+        if isinstance(entry, Mapping):
+            path = _entry_path(record_id, entry, paths)
+            if path in at_tip and at_tip[path] == entry.get("hash"):
+                if still is not None and record_id not in still:
+                    continue                    # committed, and unchanged since the base
+                if not entry.get("commit"):
+                    entry = {**entry, "commit": head}
+        kept[record_id] = entry
+    claim["records"] = kept
+    claim["features"] = sorted({str(e["feature"]) for e in kept.values()
+                                if isinstance(e, Mapping) and e.get("feature")})
+
+
+def refresh(core: Any, *, default: str | None = None,
+            changing: Mapping[str, Any] | None = None) -> bool:
     """Move this branch's claims to its tip: ``head``, the fork point and its own newest
-    commit, so a later merge of that commit clears them (``merged``). Writes only when a
-    claim moved. Returns whether it wrote."""
+    commit, so a later merge of that commit clears them (``merged``); stamp each record the
+    tip holds with its commit and drop the ones the branch no longer changes (``_stamp``,
+    with ``changing``: this worktree's ``changing.json``). Writes only when a claim moved.
+    Returns whether it wrote."""
     from plumb.awareness.publish import default_branch
 
     root = Path(core.root)
@@ -411,14 +593,22 @@ def refresh(core: Any, *, default: str | None = None) -> bool:
     if not moved_claims(register, me.branch, me.head, default):
         return False
     where = fork(root, me.head, me.branch, default)
+    paths = record_paths(core)
+    at_tip = versions(root, str(me.head), _branch_paths(register, me.branch, paths))
+    if changing is not None and (changing.get("branch") != me.branch
+                                 or changing.get("head") != me.head):
+        changing = None                 # not this tip's: stamp only
     wrote = {"done": False}
 
     def mutate(data: dict[str, Any]) -> dict[str, Any]:
-        live = active(root, data, default=default, allow_git=True)
+        live = active(root, data, default=default, allow_git=True, paths=paths)
         for claim in live:
             if claim.get("branch") == me.branch:
                 claim.update({"head": me.head, **where})
+                _stamp(claim, me.head, at_tip, paths, changing)
                 wrote["done"] = True
+        live = [c for c in live if c.get("branch") != me.branch or c.get("records")
+                or c.get("conflicts")]
         data["claims"] = sorted(live, key=lambda c: str(c.get("id")))
         return data
 
@@ -512,7 +702,7 @@ def others(core: Any, *, allow_git: bool = False, deadline: Any = None
     if not data.get("claims"):
         return me.branch, []
     live = active(root, data, default=default_branch(core), allow_git=allow_git,
-                  deadline=deadline)
+                  deadline=deadline, paths=record_paths(core))
     return me.branch, [c for c in live if c.get("branch") != me.branch]
 
 

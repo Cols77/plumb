@@ -79,6 +79,16 @@ def raised_lines(core: Any) -> list[tuple[str, str, str]]:
     return out
 
 
+def superseded_lines(core: Any) -> list[tuple[str, str, str]]:
+    """``(subject, state, line)`` per record of this checkout that still differs from the
+    owner's answer to an early conflict (``answer.superseded``, R17: both lanes build on
+    the one answer). No git process."""
+    from plumb.awareness.answer import superseded, superseded_line
+
+    return [(f"superseded:{item.record}", f"{item.dec}:{item.hash}", superseded_line(item))
+            for item in superseded(core).values()]
+
+
 def brief_entries(core: Any, deadline: Any = None) -> list[Any]:
     """The session brief's awareness lines as ``present.delta.Line`` (keyed like the
     prompt delta's, so a line the brief gave is not repeated by a prompt). The branch scan
@@ -98,6 +108,11 @@ def brief_entries(core: Any, deadline: Any = None) -> list[Any]:
         out += [Line(line, subject=subject, state=state)
                 for subject, state, line in raised_lines(core)]
     except Exception:  # noqa: BLE001 - intent in flight is advisory
+        pass
+    try:
+        out += [Line(line, subject=subject, state=state)
+                for subject, state, line in superseded_lines(core)]
+    except Exception:  # noqa: BLE001 - advisory
         pass
     return out
 
@@ -120,6 +135,12 @@ def delta_lines(core: Any, ids: Iterable[str]) -> list[Any]:
     try:
         out += [Line(line, subject=subject, state=state)
                 for subject, state, line in raised_lines(core)]
+    except Exception:  # noqa: BLE001 - advisory
+        pass
+    try:  # persistent: every turn until the record matches the owner's answer (R17)
+        out += [Line(line, subject=subject, state=state, record=subject.split(":", 1)[1],
+                     per_turn=True)
+                for subject, state, line in superseded_lines(core)]
     except Exception:  # noqa: BLE001 - advisory
         pass
     return out
@@ -172,6 +193,10 @@ def status_section(core: Any) -> list[str]:
         ordered = sorted(found, key=lambda o: (o.record not in mine, o.record, o.branch))
         lines = [text.STATUS_OVERLAPS_HEADER,
                  *("  " + overlap_line(item, worktree=True) for item in ordered)]
+    try:
+        lines += [line for _subject, _state, line in superseded_lines(core)]
+    except Exception:  # noqa: BLE001 - advisory
+        pass
     _me, claims = inflight.others(core, allow_git=True)
     if claims:
         lines.append(text.INFLIGHT_HEADER)

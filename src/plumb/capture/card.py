@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from plumb.contracts import IntentCardData, Record
+from plumb.contracts import IntentCardData, Record, example_groups
 
 if TYPE_CHECKING:
     from plumb.api import Core
@@ -114,7 +114,18 @@ def data_for(core: Core, record: Record, statuses: Mapping[str, Any],
         will=_list(fields.get("will")), wont=_list(fields.get("wont")),
         assumed=_list(fields.get("assumptions")), examples=tuple(examples),
         tests=tuple(tests.items()), decisions=decisions,
+        member_states=_member_states(members, statuses),
         say=early_say(core, record) if record.kind == "decision" else "")
+
+
+def _member_states(members: Sequence[Record], statuses: Mapping[str, Any]
+                   ) -> tuple[tuple[str, str], ...]:
+    """Each card member's own confirmation state (``IntentCardData.member_states``)."""
+    out = []
+    for member in members:
+        status = statuses.get(member.id)
+        out.append((member.id, status.confirmation if status is not None else "proposed"))
+    return tuple(out)
 
 
 def early_say(core: Core, record: Record) -> str:
@@ -167,10 +178,12 @@ def render(cards: Sequence[IntentCardData], *, ascii_only: bool = False) -> str:
         if parts:
             lines.append("  " + f" {dot} ".join(parts))
         if data.examples:
-            shown = "  ".join(f"{ex} {text}" if sr == data.id else f"{sr}/{ex} {text}"
-                              for sr, ex, text in data.examples[:4])
+            shown = "  ".join(
+                "  ".join(f"{ex} {text}" if sr == data.id else f"{sr}/{ex} {text}"
+                          for sr, ex, text in group) + f"   ({state})"
+                for state, group in example_groups(data, 4))
             more = f"  +{len(data.examples) - 4} more" if len(data.examples) > 4 else ""
-            lines.append(f"  Examples  {shown}{more}   ({data.state})")
+            lines.append(f"  Examples  {shown}{more}")
         if data.decisions:
             lines.append("  Decisions  " + ", ".join(data.decisions))
         if data.tests:

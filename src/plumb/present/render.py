@@ -172,9 +172,13 @@ def intent_card(card: IntentCardData, *, mode: str = "compact", why: str | None 
     if second:
         lines.append("  " + f" {dot} ".join(second))
     if card.examples:
-        shown = "  ".join(f"{ex} {text}" if sr in (card.id, "") else f"{sr}/{ex} {text}"
-                          for sr, ex, text in card.examples)
-        lines.append(f"  Examples  {shown}   ({card.state})")
+        from plumb.contracts import example_groups
+
+        shown = "  ".join(
+            "  ".join(f"{ex} {text}" if sr in (card.id, "") else f"{sr}/{ex} {text}"
+                      for sr, ex, text in group) + f"   ({state})"
+            for state, group in example_groups(card))
+        lines.append(f"  Examples  {shown}")
     if card.tests:
         marks = [f"{end}  {TEST_MARKS.get(state, ('', ''))[1 if ascii else 0]} {state}".replace(
             "   ", "  ") for end, state in card.tests]

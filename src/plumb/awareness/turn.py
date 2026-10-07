@@ -97,7 +97,7 @@ def claim_changes(core: Any, data: Mapping[str, Any] | None, *,
 
         if inflight.moved_claims(register, str(data["branch"]), data.get("head"),
                                  default_branch(core)):
-            return inflight.refresh(core)
+            return inflight.refresh(core, changing=data)
         return False
     titles = ", ".join(index[i].title for i in sorted(missing))
     from plumb.awareness.early import claim

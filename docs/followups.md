@@ -4432,3 +4432,129 @@ The audit's medium and low findings, recorded without fixing:
   confirmations, claims and approvals of every pushed commit went unchecked; only the full
   run ran. Already a LOW above. Fix: for a new remote ref (zero oid) use the merge-base with
   the default branch, or the root.
+
+## SP6 audit 3: a merged branch that goes on, the losing lane, example labels (2026-10-07)
+
+The third audit drove two parallel worktrees, a `--no-ff` merge and a merge with an intent
+conflict through the real CLI and hooks. Its three HIGH findings were fixed as one class
+each, at one choke point with one test per entry point:
+
+- a claim clears record by record once that record landed (R17: "A claim clears when its
+  branch merges"): `inflight.active`, the one reader every surface uses, drops a claimed
+  record when the default branch holds exactly its version (same hash, one `git cat-file
+  --batch`, cached) or when the commit stamped as writing it (`commit`, stamped when the
+  claim moves to a tip holding that version) is reachable from the default branch; when
+  `refresh` moves a claim to a new tip it drops the committed records the branch no longer
+  changes since its merge base (`changing.json`), so a branch merged with `--no-ff` and then
+  continued never asks main a made-up question
+  (`tests/awareness/test_merged_continued.py`: capture, the clarify read-back, the stop
+  hook's claim, the brief and status; one test per way a merged record is recognised);
+- the losing lane is told (R17: "both lanes build on it"): `answer.superseded` finds every
+  record of this checkout whose words differ from the version the owner chose in a
+  confirmed early decision (held here, or carried by another branch's claim); the prompt
+  delta and the stop hook name it on every turn, status lists it, and a relayed "ok" of it
+  is refused naming the decision, until the record matches the answer
+  (`tests/awareness/test_early_losing_lane.py`);
+- an intent card labels each example with its own requirement's confirmation state, never
+  the anchor intent's (`contracts.example_groups`, used by the capture card and the
+  presented card; `tests/capture/test_capture.py`, `tests/present/test_intent_card.py`).
+
+Medium and low findings, recorded and not fixed:
+
+- [MEDIUM] (audit 3, R17, stop hook block reason for an early conflict found on the Edit
+  path; reproduced in sp6audit/wt-c) Lane feat-c edited SR-001 with the Edit tool (no
+  `plumb capture`) while feat-d had another statement in flight. The Stop hook raised
+  DEC-002 and blocked, but its reason reads only "DEC-002 holds that question for the
+  agent: show the card above and ask the owner now": no card or question text is above it,
+  so the agent has nothing to show the owner without running another command (on the
+  capture path the card is printed; an earlier Stop block in wt-b carried the question).
+  Fix: make the Stop and prompt hook reasons for an early conflict carry the card itself
+  (both versions labelled by branch, and the "keep X's / keep this one / both" line), built
+  by the renderer capture uses.
+- [MEDIUM] (audit 3, R17 and R14, hook text vs the plain relay; approvals.py plain relay,
+  awareness/answer.py) The hook and capture output tell the agent to "relay those words as
+  the answer to DEC-001"; the natural `plumb relay DEC-001 --quote "keep this one"` is
+  refused with "the quote does not affirm (no affirmation term such as ok...)", which does
+  not name the command that works (`plumb conflict relay DEC-001`). An agent following the
+  hook text literally fails, and the owner's answer may go unrecorded. Fix: name `plumb
+  conflict relay <DEC>` in the hook and capture text, or hand an early-conflict DEC in plain
+  `plumb relay` to `answer.relay`, or refuse naming the right command.
+- [MEDIUM] (audit 3, Decision 5 and R11, capture/clarify.py depth, heuristic backend)
+  "reminders should go out just 2 hours before the deadline" contradicts confirmed SR-001
+  ("24 hours"), yet `plumb clarify` classed it "depth: trivial (maps to confirmed
+  FEAT-001)... no questions"; the same request phrased with "instead of" escalated. Whether
+  a contradiction is caught depends on wording (a heuristic limit; the prompt hook's
+  generic "compare ... if it contradicts, ask" line partly covers it). Fix: when a request
+  names a confirmed requirement's subject and states a different value or behaviour, class
+  it at least INCREMENTAL with the read-back question drafted; add a clarify test for this
+  phrasing.
+- [LOW] (audit 3, R10, plumb init) `plumb init` silently sets `branch.main.mergeoptions
+  --no-ff`, and the post-merge hook moves main back after a held fast-forward. Both work and
+  stay cheap (about 1.5 s, no test run), but they change the owner's git behaviour without
+  saying so, drifting toward guarded publishing. Fix: init's output lists, in plain words,
+  the git settings it changes and how to turn them off (`plumb.mergeHold=false` is already
+  honoured).
+- [LOW] (audit 3, user request on pi-agent-factory intent management; FEAT-023
+  intent-confirmed fast track vs plumb R8/R12) plumb already carries FEAT-023's core
+  (teach-back read-back, calibration before auto-approval, judge unavailable falls back to
+  the human). Not ported, as refinements rather than omissions of the owner's decisions:
+  (1) SHADOW MODE, where the judge records verdicts without acting to build calibration
+  labels before auto-approval is ever on; (2) explicit wrong-fast-track and disagreement
+  records; (3) revising a record invalidates every automatic pass on it, so only changed
+  items return to the owner. Candidate follow-ups: shadow-mode logging of triage verdicts
+  against the owner's later confirm or revoke fits R12's calibration cheaply.
+- [MEDIUM] (audit 3, R10.4, hosts/claude_code/stop.py at_stop, awareness/publish.py) In a
+  worktree whose `changing.json` was never written, a commit followed by `plumb hook stop`
+  published nothing and wrote no claim (no `changing.json`, no `refs/plumb/claims` entry,
+  an empty errors.log); the other worktree reported "also being changed elsewhere: nothing"
+  until a session start ran in the first one. Fix: have the stop hook publish from the
+  committed diff when no `changing.json` exists, as session start does, or log a
+  skipped-step line so the miss is visible.
+- [MEDIUM] (audit 3, R10.3, validate.py) While a merged record carries an open `conflict:`
+  block (IC-001 on SR-001), plain `plumb validate` reports "0 errors" and never mentions it;
+  the record's top-level statement silently shows main's side. Only `check --merge`, the
+  brief and status show the card. A merge completed with the documented
+  `plumb.mergeHold=false` bypass leaves main with an unresolved intent conflict while
+  validate looks clean. Fix: validate reports an open record conflict block as a finding (a
+  warning; an error on the default branch).
+- [MEDIUM] (audit 3, R14, boundary merge-check report used by the pre-push hook and `check
+  --merge`) The quick merge hold names /plumb commands, but the full merge report the
+  pre-push hook prints to the owner still says "`plumb approve SR-001 SR-003 DEC-001`, or
+  say ok" and "(plumb tests waive --merge HEAD --reason ...)". R14 is SP7 scope (R18). Fix:
+  route the merge-check report through the owner-text templates (/plumb confirm <title>,
+  plain words for the waiver) in SP7.
+- [LOW] (audit 3, R15, commands.py init) In a fresh repository `plumb init` installed
+  pre-merge-commit, prepare-commit-msg, post-merge and pre-push plus the merge driver, but no
+  commit-msg hook (recorded twice above). R15 is SP7 scope. Fix: install the commit-msg
+  trailer hook in init (SP7).
+- [MEDIUM] (audit 3, R14 and R17, boundary/prepush.py and boundary/report.py, installed by
+  default by `plumb init`) Pushing a branch carrying a proposed SR, the pre-push output told
+  the owner to run `plumb approve SR-003`, `plumb link SR-003 implemented_by ...` and `plumb
+  repin SR-001#0`, and to "push with --no-verify to bypass the hook"; the quick merge check
+  output is clean. R14 is SP7 scope. Fix: route the pre-push and merge-report owner lines
+  through `plumb.present.owner_text` (/plumb confirm and plain words) and add
+  `bare_cli_verbs` tests for the pre-push surface.
+- [MEDIUM] (audit 3, R17 and "awareness must stay cheap", awareness/early.py check_records
+  and _judge, heuristic path) Without JEV, every new requirement captured in a feature other
+  branches have in flight gets one "could not be judged (a quick word check, 0.60)" line per
+  branch, each telling the agent "If they differ, show the owner both and ask": in wt-k an
+  unrelated "absolute value" SR drew four (div float, div floor, two pow versions).
+  Conversely, two directly contradicting new "divide numbers" requirements (float vs floor
+  int, wt-e vs wt-f) never reached the owner: the stop hook was silent and the status card
+  showed no overlap, so both new IDs would merge side by side with no intent conflict. Fix:
+  stay silent for clearly disjoint statements (no shared subject), raise an early card when
+  titles match within a feature, and cap the lines per capture.
+- [LOW] (audit 3, R17 RENUMBER, merge-boundary glance after `plumb merge-fix`) After
+  merge-fix renumbered the clone's SR-003 "power" to SR-007, the glance correctly shows
+  "carried by renumber SR-003 -> SR-007" but also lists the incoming approval row as "owner
+  SR-003 ... | plumb revoke SR-003", and here SR-003 is another record ("subtract"):
+  following that hint targets the wrong record. Fix: map the glance's approval rows through
+  the renumber aliases, or drop the revoke hint for renumbered rows.
+- [LOW] (audit 3, R10.5, pre-push hook range "<sha>..HEAD plus uncommitted changes") During
+  a held merge, pushing the already clean main (9de2ccb) was refused because of the
+  uncommitted in-progress merge in the working tree, not the pushed commits, and the full
+  suite still ran although the push was already held. Also seen: when the merge driver
+  applies an earlier answer it first prints "waits for your choice" and then "nothing to ask
+  again"; one stop message shows both the DEC Question card and the Conflict card for the
+  same question. Fix: check only the pushed refs' commits, and skip the full run when a
+  cheap hold already refuses the push.

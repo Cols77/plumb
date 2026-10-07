@@ -241,3 +241,20 @@ def test_triage_group_pinned_only_when_its_offer_is_shown(calc: Path, hook_input
     else:
         assert offer in message.splitlines()
         assert [g["group"] for g in groups] == ["low-risk"]
+
+
+def test_examples_carry_their_own_record_state() -> None:
+    """R2, R9: an intent card confirmed by the owner labels a member requirement's
+    examples with that requirement's own state, never the intent's."""
+    from dataclasses import replace
+
+    card = replace(CARD, state="confirmed", confirmed_by="you",
+                   examples=(*CARD.examples, ("SR-017", "EX-1", "given -3, then 3")),
+                   member_states=(("INT-016", "confirmed"), ("SR-016", "confirmed"),
+                                  ("SR-017", "proposed")))
+    [line] = [x for x in intent_card(card) if x.lstrip().startswith("Examples")]
+    assert line.endswith("it returns 0   (confirmed)  SR-017/EX-1 given -3, then 3   "
+                         "(proposed)")
+    unknown = replace(card, member_states=())       # never "confirmed" without knowing
+    [line] = [x for x in intent_card(unknown) if x.lstrip().startswith("Examples")]
+    assert "(confirmed)" not in line and line.endswith("(proposed)")

@@ -136,3 +136,23 @@ def test_escalated_intent_lists_its_members(calc: Path) -> None:
     core = open_core(calc)
     assert core.index()["INT-001"].fields["members"] == ["SR-001", "DEC-001"]
     assert all(s.state == "current" for s in core.link_states())
+
+
+def test_card_labels_a_new_sr_under_a_confirmed_intent_proposed(calc: Path, capsys) -> None:
+    """R2, R9: a capture adding a proposed requirement under an already confirmed intent
+    prints its example as (proposed), never with the intent's (confirmed) state."""
+    from plumb.approvals import approve
+
+    assert capture(calc, DOC) == 0
+    approve(open_core(calc), ["INT-001", "SR-001", "DEC-001"])
+    capsys.readouterr()
+    doc = {"intent": "INT-001", "requirements": [
+        {"title": "absolute value", "statement": "abs(a) returns a without its sign",
+         "examples": [{"given": "a = -3", "when": "abs runs", "then": "it returns 3"}]}]}
+    assert capture(calc, doc) == 0
+    out = capsys.readouterr().out
+    [line] = [x for x in out.splitlines() if x.lstrip().startswith("Examples")]
+    assert "(confirmed)" in line                       # SR-001's own examples
+    assert line.rstrip().endswith("SR-002/EX-1 given a = -3, when abs runs, then it "
+                                  "returns 3   (proposed)")
+    assert line.index("(confirmed)") < line.index("SR-002/EX-1")
