@@ -3492,3 +3492,71 @@ clone with no priming pass). The rest are recorded here.
   0.07 ms each, and a warm sibling's pack cache answers in tens of ms. The usual case (the
   main worktree's hooks have read its log) takes the sibling path. Fix if it matters: run
   `git gc --auto` after a migration, or read loose objects with zlib directly.
+
+## SP6 lane LOGS, review round 2 (2026-10-07): medium and low findings
+
+No HIGH finding. The review checked the hash chain, the migration and the merge and found them
+sound: append (temporary file in the cache, `os.link` with no replace, the head pointer under
+the per-worktree lock), the dual-format read with digest dedup and a topological order (an
+ancestor always comes before its descendant), `verify_chain`, `migrate` (byte-identical
+fields, deterministic names, refuses bad lines, truncates only when nothing is refused),
+`merge.log_integrity` (one `git diff` for entry files, legacy lines accepted as migrated
+digests), the evidence index cursor (a digest prefix that rebuilds on reorder) and the bounded
+cold read (sibling pack, then one `git cat-file --batch`). A simulated migration of plumb's
+own 528 legacy lines (509 `repin`, 1 `triage`, 18 `test-run`) found no line to refuse and no
+duplicate names. Every test named in plan section 5 exists. The edge cases recorded above
+(the false "nothing was migrated" message, the lock held during a long migrate, the 2^-32
+name-collision skip, the `FileExistsError` race, `merge=union` bringing back old lines, the
+import recheck using the read-order neighbour) stand.
+
+- [MEDIUM] (migrate pre-check) `migrate()` treats an existing entry file at a line's migrated
+  name as the same entry when its `digest` field matches the line's digest (`log.py` around
+  lines 808-814); it never checks `entry_digest(existing)`, then truncates the legacy files.
+  If that file's payload was edited but its `digest` field kept, the line counts as skipped,
+  nothing is refused and `events.jsonl` is emptied: the genuine line is lost and only the
+  tampered copy remains. `verify_chain` still flags the digest mismatch, so the tamper is
+  detected, but the original cannot be recovered. Fix: skip only when
+  `existing.get('digest') == entry_digest(existing) == raw['digest']`; otherwise refuse.
+- [MEDIUM] (pack cache trusted) Readers take entry content from the gitignored pack cache
+  (`.plumb/cache/log-<stream>.json`), keyed only on each file's size and mtime and never
+  checked against the entry's digest; a cold read can also take content from a sibling
+  worktree's pack cache (`_read_from_siblings`), matched on name and size. `verify_chain`
+  reads the files themselves, so an edited cache changes what confirm, glance and validate's
+  semantic checks see while `plumb validate` and `merge.log_integrity` stay clean; before this
+  lane any edit to `events.jsonl` was reported by validate. Confirmed in a scratch dir: append
+  an approval of SR-001, read once, rewrite `log-events.json` so the cached payload says
+  SR-999; `log.read` returns an approval of SR-999 and `log.verify_chain` returns `[]`. The
+  edit-tool guard denies writes under `.plumb/log/**` only, not `.plumb/cache/`. Not HIGH: the
+  spec mandates the cache and the threat model already accepts forging uncommitted entries.
+  Fix: check `entry_digest(raw) == raw['digest']` on sibling and pack hits, and let validate
+  compare the pack with the files it already reads.
+- [MEDIUM] (import recheck order, raised from LOW) The read order (`at`, then the chain, then
+  the name) can put an entry merged from another branch between an import event and its
+  `by: import` approval; `recheck_import_approvals` then raises a validate ERROR, which holds
+  the merge. Parallel work (R10) triggers it: worktree A writes the import event at
+  10:00:00.100 and its approval at 10:00:00.150, worktree B logs a prompt at 10:00:00.120;
+  after the merge the prompt sits between the two and validate reports "by: import approval's
+  import event is not the log entry right before it". Fix at Integrate (outside the lane):
+  compare the approval's `prev` with `import_event`, as `import_problem` already does, instead
+  of the read-order neighbour.
+- [MEDIUM] (lane scope, phase 0) Phase 0 never ran: `main` is still at 89f499b, and the IDS,
+  MERGEDRIVER and AWARENESS lanes branch from it too. The contract shapes this lane added match
+  spec 12 (`LogEntry.name`, `MigrationReport`, the read signature with `since`,
+  `MergeReport.legacy_log_lines`), so no contract is broken, but merging LOGS and then another
+  lane that also created `present/owner_text.py` or extended `contracts.py` conflicts. Already
+  recorded above (lane scope); the coordinator reconciles by hand at Integrate.
+- [LOW] (spec edit) The lane rewrote spec section 6.3 in `docs/specs/sp6-parallel-work.md`, a
+  coordinator-owned file (plan 3.1 lets lanes only append to `docs/followups.md`), to describe
+  the cold-read design (sibling pack, `git cat-file --batch`). The lane-scope follow-up above
+  lists the other coordinator files but not this one. At Integrate the coordinator should
+  review that 6.3 text as a spec change before other lanes or verifiers read it as the
+  contract.
+- [LOW] (stray root cache, outside the lane) The lane's focused set fails one test,
+  `tests/core/test_primitives.py::test_find_root_prefers_plumb_dir`, because a `C:/.plumb/`
+  directory now exists on this machine (created 2026-10-07 10:39, holding only
+  `cache/changing.json` and a leftover `.changing.json.<pid>.<ns>.tmp`). `find_root` then
+  resolves any path without a nearer `.plumb/` to `C:/`. `changing.json` is not written by
+  this lane's code; it looks like an AWARENESS-lane writer that ran with no project root and
+  created `.plumb/cache` at the drive root. Fix: writers of `.plumb/cache` must refuse when
+  `find_root` found neither `.plumb/` nor `.git`, and the test should not depend on the drive
+  root being clean. The directory was left in place (not created by this lane).
