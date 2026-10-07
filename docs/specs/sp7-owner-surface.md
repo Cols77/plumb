@@ -497,7 +497,11 @@ complete; `tests/surface/test_matrix.py` checks that every `cli.ROUTES` key and 
 subcommand appears either as an owner entry point or as agent plumbing with the owner words
 that lead to it). "Owner-only" rows go through `owner_actions` (7.2). Status: **exists**
 (route already in the `/plumb` template), **new** (SP7 adds it), **button** (SP7 adds a
-button beside the words).
+button beside the words). Every CLI form in "The agent runs" is also an entry point of the
+owner-level guarantee: 6.6 classifies each by what its answer is to the owner (`owner`: its
+default text is the answer the agent shows; `agent`: its output is the agent's and the
+owner sees a card instead; `none`: plumb prints nothing the owner sees), and
+`test_matrix.py::test_every_route_form_classified` fails on a form without a class.
 
 | # | Feature | The owner says or presses | The agent runs | Owner-only | SP7 |
 |---|---|---|---|---|---|
@@ -565,7 +569,10 @@ frontmatter's `allowed-tools` lists every agent-side form the routes use (never 
 owner-only forms without `--prompt`). Rules stated once at the top: take the owner's words
 as they are; ask "which one do you mean?" in the owner's terms; never ask the owner to type
 or run anything except a `/plumb` route or plain words; answer with titles, the owner's own
-words, examples and test states, explaining any internal concept first (6.3).
+words, examples and test states, explaining any internal concept first (6.3); show the
+owner only the default text of an `owner` form (6.6), or its `--details` text when the
+owner asked for detail; read for yourself with `--agent` or `--json`; never paste an
+`--agent` text, the output of an `agent` form or git's output.
 
 ### 6.3 Owner-visible text: two scanners, one module (SR-089)
 
@@ -605,7 +612,7 @@ The rewrite covers every surface below; each surface's test renders it for real 
 | Status card (band, legacy status line, `plumb status --card`) | IDs, counts by kind | `tests/surface/test_status_text.py` |
 | Session-start owner lines (getting ready, adopt hint, migration line, brief's owner part) | | `tests/surface/test_session_text.py` (and the sh launcher's hint equals `ADOPT_HINT`: `tests/plugin/test_unadopted.py::test_hint_from_owner_text`) |
 | `/plumb` answers drawn by the mod (status, confirm cards, pane tree) | | `tests/mod/test_snapshot.py` (5.10) |
-| Owner views' CLI text the agent shows (`explain`, `review`, `confirm`, `align`, `impact`, `triage`, `spec show`, `conflicts`, `inflight`) | IDs without titles, paths | `tests/surface/test_views_text.py` (one case per view) |
+| Route answers: the default text of every CLI form of 6.1 whose answer the agent shows the owner (every `owner` form of 6.6: the views `explain`, `review`, `confirm`, `align`, `impact`, `triage`, `spec show`, `conflicts`, `inflight`, and `drift`, `show`, `resolve`, `fidelity`, `brief`, `status --root`, `init`, `plugin ignore`, `plugin migrate`, `import`, `merge-fix`, `ids sync`, `log migrate`, `escalate`, the success lines of `relay`, `owner` and `conflict relay`, and the rest of 6.6's list), plus `/plumb help` | `drift`: "SR-082 uncovered examples: EX-1, EX-2 ...", "SR-001 EX-1 is verified by the whole file tests/core/test_model.py; proposed node tests/core/test_model.py::test_identity_...", "stale links: ..."; `fidelity SR-090`: "fidelity packet SR-090 (sha256:520c92add09e)", "tier escalate-llm"; `show DEC-017`: ".plumb/decisions/DEC-017.md", "plumb relay --group ... plumb triage --approve"; `brief`: "(records in .plumb/, test map in .plumb/test_map.txt)" | `tests/surface/test_answers_text.py`, one case per `owner` form, parametrized over `present.answers.FORMS` (6.6) |
 | The Obsidian vault (`plumb view`, the pane's **Open in Obsidian**): every record note, `awaiting-you.md`, `by-feature.md`, `drift.md`, the Canvas labels | each unconfirmed note: `## Confirm (your terminal, or say "ok" in a session)` then `` `plumb approve SR-090` ``; `awaiting-you.md`: "Confirm in your own terminal (copy a command)", `` `plumb triage --approve low-risk` ``, one `` `plumb approve <ID>` `` per waiting record; bare `[[SR-090]]` links; "stale"/"dangling" link wording | `tests/surface/test_view_text.py`: generates the vault for a fixture repository (a confirmed, a proposed, a changed and a conflicted record, a group, a drift entry) and runs both scanners on every generated note and Canvas label; frontmatter (R9 keeps state and hash there) and a section headed `## Details` are scanned with `details=True`, everything else with `details=False`. The notes say "To confirm, type /plumb confirm <title> or say ok in a Claude Code session; editing this note confirms nothing"; wikilinks carry the title as their label (`[[SR-090\|An unrelated request never blocks an ok]]`) (SR-089 EX-6) |
 | Merge report (`merge-check`, `check --merge`, `validate --merge`) | "`plumb approve SR-001 SR-003 DEC-001`, or say ok", "review the change, then plumb repin SR-001#3", "+N more (plumb merge-check --json)", "(plumb fidelity SR-...)", "(plumb tests run --nodes <id>)", "(plumb spec show ...)", "`plumb approve --exempt`", `.plumb/requirements/...` paths | `tests/surface/test_merge_text.py` (one case per report section) |
 | pre-push hook output | the report above plus "push with --no-verify to bypass the hook", "(plumb tests waive --merge <sha> --reason ...)", "plumb link SR-001 implemented_by app.py" | `tests/surface/test_prepush_text.py` (a real `git push` to a bare remote in a temporary repository) |
@@ -621,6 +628,10 @@ The rewrite covers every surface below; each surface's test renders it for real 
 R9 allowed the vault to "carry copyable confirm commands"; R14 ("you should never have to
 tell me to run those bash commands") supersedes that: the vault names `/plumb confirm
 <title>` or "say ok in a Claude Code session", and editing a note still confirms nothing.
+
+The surfaces above are what hooks, the mod and the vault draw. What the agent relays from
+the CLI on any route of 6.1 is the same guarantee's other half, with its own choke point and
+one test per CLI form: 6.6.
 
 Every SP6 constant of `owner_text` gains the `jargon` assertion (`tests/present/
 test_owner_text.py::test_every_constant_passes` checks both scanners).
@@ -655,7 +666,7 @@ typed them), `links`, and the new agent-only field `agent_notes`.
 `agent_notes` (optional string, every kind) is where technical detail goes: the spec
 section, file names, CLI forms, test names. Like `links`, it is outside the record's
 hash (an approval pins the content the owner was shown, and the owner is never shown it);
-it is drawn only by `plumb show --details`, the pane's and the vault's Details, and
+it is drawn only by `plumb show --agent` (6.6), the pane's and the vault's Details, and
 `--json` for the agent.
 
 Choke point: `store.write_record` (every record write goes through it) calls
@@ -687,6 +698,97 @@ the library `api.write_record` (refused), `link`/`repin` of an old record with j
 scanned), a quote holding "uv run" and an `agent_notes` holding paths (both pass, and
 changing `agent_notes` leaves the hash unchanged), `validate` (old records listed as agent
 warnings).
+
+### 6.6 Route answers at the owner's level (every route of 6.1; SR-089 EX-9)
+
+Guarantee: **every CLI answer the agent may show the owner, on any route of 6.1, is at the
+owner's level**: `shell_commands(out) == []` and `jargon(out) == []`. The surfaces of 6.3
+cover what hooks, the mod and the vault draw; this covers what the agent relays from the
+CLI. Measured in plumb's own repository on 2026-10-07, before this rule: `plumb drift`
+printed "SR-082 uncovered examples: EX-1, EX-2 ...", "SR-001 EX-1 is verified by the whole
+file tests/core/test_model.py; proposed node tests/core/test_model.py::test_identity_..."
+and, for out-of-date links, "stale links: ..."; `plumb fidelity SR-090` printed "fidelity
+packet SR-090 (sha256:520c92add09e)" and "tier escalate-llm"; `plumb show DEC-017` printed
+".plumb/decisions/DEC-017.md" and "plumb relay --group ... plumb triage --approve"; `plumb
+brief` printed "(records in .plumb/, test map in .plumb/test_map.txt)". Each is on a route
+the matrix gives the owner ("what drifted?", "does X do what I meant?", `/plumb show`, "what
+are we building?").
+
+**Entry points: every CLI form of 6.1.** `plumb.present.answers.FORMS` (SURFACE; complete
+from phase 0) maps each form in 6.1's "The agent runs" column to its class:
+
+| Class | Forms (6.1 rows) | What the owner sees |
+|---|---|---|
+| `owner` | `init` (2); `plugin ignore [--undo]` (3); `plugin migrate` (4); `status --card` (5, 43; its own row in 6.3); `brief` (6); `status --root <path>` (7); `explain` (8); `impact` (9); `resolve`, `show` (10); `review` (11); `view --open` (13: its answer line; the vault is 6.3's row); `align` (14); `fidelity` (15); `drift` (16); `confirm` and `confirm <words>` (17, 18); the success line (`OwnerActionResult.owner_line`) of `relay` in every form, `owner <action>`, `conflict relay` and `escalate decline` (18 to 23, 26 to 28, 34, 40, 42; their refusals are 6.3's refusal row); `triage` (21); `escalate` (23); `spec show` (24); `config card` (29); `jev setup`, `jev status --probe`, `jev calibrate` (30 to 32); `tests run`, `verify` (33); `merge-check` (35, 52; its own rows in 6.3); `merge-fix` (38); `conflicts` (39); `conflict propose` (41); `inflight`, `inflight drop` (43); `log migrate` (45); `ids sync` (46); `import`, dry run and apply (47); `hosts install` (48); `trailers`, `claims check` (52); `repin` (53) | the command's default text, rendered by `present.answers.render` |
+| `agent` | `clarify`, `capture`, `intent`, `example`, `decide` (and `--supersede`), `new` (19, 50, 51); `spec check` (25); `merge-check --hook ...` (36); `validate` (44); `mod pane` (12) | never the output itself: the card, summary or line the hooks and the mod draw (6.3's stop-hook, merge-hook, `validate` and pane rows) and the record content checked where it is written (6.5) |
+| `none` | Claude Code's `/plugin` commands (1); git (36, 44: the agent says in plain words what git did and never pastes git's output); the hook line the agent adds (37); the MCP configuration (49); help (54) | the agent's own words under the template's rules (6.2); help's plain-words list is scanned in the generated command (`test_answers_text.py::test_help`) |
+
+**Choke point: `plumb.cliutil.answer(args, form, payload, agent_text)`** (coordinator,
+phase 0). Every command of an `owner` form prints its answer through it and nowhere else:
+
+- `--json`: the payload, the agent's structured read (kept where `--json` exists; added
+  where it was missing);
+- `--agent` (new in `add_common`): today's text, the agent's plain read, CLI hints
+  included; never shown to the owner;
+- `--details` (new in `add_common`): `present.answers.render(form, payload, details=True)`,
+  the owner's answer with the internals beside it (record numbers, file names, fingerprints),
+  for an owner who asked for detail ("/plumb show the reminders in detail"); it passes
+  `shell_commands`, and `jargon` with `details=True`;
+- default: `present.answers.render(form, payload)`, the owner's answer (SURFACE), built from
+  `owner_text`'s constants and `CONCEPTS`: titles beside or instead of IDs, examples in
+  their given/when/then words, test states as "passes" or "fails", no file or folder names,
+  no hashes, and the next step as a `/plumb` route or plain words.
+
+A renderer returning `None` (the phase-0 stub) prints today's text. Exit codes are
+unchanged.
+
+First wordings for the measured cases (SURFACE finishes them in `owner_text`):
+
+- drift: "'<title>': 2 of its examples have no check yet (when ..., then ...)"; "'<title>',
+  example 1, is checked only by a broad group of tests; I can point it at the one test that
+  matters"; for an out-of-date link, the concept first: "plumb ties parts of the work
+  together so it notices when one changes and the other may need a look. '<title>' changed
+  after '<other title>' was tied to it; say /plumb review <title> to look."
+- fidelity: the requirement's title, its examples in words, their test states and the
+  judge's word in plain terms ("likely what you meant", "unsure: I will read it myself and
+  tell you"). The packet the host agent judges (R4) is the `--json` and `--agent` form.
+- show: the record's card by title (read-back, will, won't, assumptions, done when,
+  examples with test states) and, when it awaits the owner, "say ok or type /plumb confirm
+  <title>"; never a file path or a CLI command.
+- brief: what is being built, by title, and what awaits the owner; never where plumb keeps
+  its files.
+
+The agent reads with `--agent` or `--json`: the `/plumb` template, the `plumb` skill, the
+prompt hook's delta pointer and the session brief's pointer name those forms, so R9's
+progressive disclosure is unchanged; only the default text changes. Tests that assert
+today's default text of an `owner` form switch to `--agent` in phase 0, while the change is
+still a no-op.
+
+Tests, one per entry point:
+
+- `tests/surface/test_answers_text.py::test_owner_answer[<form>]`, parametrized over every
+  `owner` form of `FORMS`: the command run for real on a fixture repository (a confirmed, a
+  proposed, a changed and a conflicted record, an example without a check, an example
+  checked by a whole test file, an out-of-date link, an ID clash, a fake calibrated JEV), the
+  default output through both scanners, the `--details` output through `shell_commands` and
+  `jargon(details=True)`, and `--agent` equal to today's text; `::test_drift_kinds`, `::test_fidelity_answer`,
+  `::test_show_awaiting`, `::test_brief_no_paths` hold the measured cases above;
+  `::test_help` scans the generated `/plumb help` list.
+- `tests/integration/test_answer_choke_point.py::test_owner_form_emits_through_answer[<form>]`
+  (phase 0): with `present.answers.render` replaced by a sentinel renderer, each `owner`
+  form's default output is the sentinel's, and its `--json` output is the payload; the
+  forms SP7 adds (`plugin ignore`, `plugin migrate`, `owner <action>`) get the same check in
+  their lane's tests.
+- `tests/surface/test_matrix.py::test_every_route_form_classified`: every CLI form of
+  `docs/owner-matrix.md` has a class in `FORMS`, and every `owner` form has its
+  `test_owner_answer` case.
+- `tests/surface/test_command_routes.py::test_agent_forms_never_shown`: each `agent` form's
+  route tells the agent to answer from the card, never by pasting the output; each `owner`
+  form's route says to show the default text (or `--details` when the owner asked for
+  detail) and to read for itself with `--agent` or `--json`.
+- The owner e2e (12 item 2) scans the stdout of every CLI call the scripted agent makes on
+  an `owner` form, and fails when the scripted agent shows the owner an `agent` form's
+  output or an `--agent` text.
 
 ## 7. Owner actions without a shell (R14; SR-088)
 
@@ -1012,10 +1114,18 @@ def record_gaps(kind: str, fields: Mapping[str, Any], previous: Mapping[str, Any
                 ) -> list[Gap]: ...                  # called by store.write_record (6.5)
 CONCEPTS: Mapping[str, str]
 def explain(term: str) -> str: ...
+
 ADOPT_HINT, GETTING_READY, NEEDS_PYTHON, LEGACY_INSTALL, NOT_SET_UP_HERE, PANEL_OFF,
 YOU_SAID_TO, DONE_WHEN, DONE_WHEN_GAP, PREPARING_PLAN, CHANGED_SINCE_SHOWN,
 BUTTON_CONFIRM, BUTTON_SHOW_ALL, BUTTON_HIDE, BUTTON_SHOW, BUTTON_OPEN, BUTTON_OBSIDIAN,
 BUTTON_REVOKE, BUTTON_UNDO, BUTTON_TURN_ON, BUTTON_TURN_OFF, BUTTON_WAIVE, BUTTON_KEEP: str
+
+# plumb.present.answers (SURFACE; phase 0: FORMS complete, render returns None)
+FORMS: Mapping[str, str]          # CLI form of 6.1 -> "owner" | "agent" | "none" (6.6)
+def render(form: str, payload: Any, *, details: bool = False) -> str | None: ...
+
+# plumb.cliutil (coordinator, phase 0; add_common gains --agent and --details)
+def answer(args, form: str, payload: Any, agent_text: Callable[[], Sequence[str]]) -> None: ...
 
 # plumb.capture.assent, plumb.capture.spec, plumb.mergedriver.holds (CAPTURE2)
 def is_bare_assent(quote: str, records: Mapping[str, Any] | None = None) -> bool: ...
@@ -1083,7 +1193,7 @@ once at push (R17).
 ## 12. Definition of done
 
 1. Every SR of FEAT-007 has tests marked with its SR, at least one per example, and the
-   entry-point tests of 4.8, 5.10, 6.3, 6.5, 7.2, 8.1 to 8.6.
+   entry-point tests of 4.8, 5.10, 6.3, 6.5, 6.6, 7.2, 8.1 to 8.6.
 2. **Owner e2e** (`tests/owner/test_owner_flows_e2e.py`, Integrate): a temporary repository
    and a bare remote; the hooks run through `plugin/bin/plumb-hook` exactly as the plugin's
    `hooks.json` names them; a scripted agent runs only the CLI forms the generated
@@ -1092,8 +1202,10 @@ once at push (R17).
    buttons with its key. The owner's inputs are ONLY slash commands, prompts and button
    presses (asserted: each input is a `/plumb` or `/plugin` command, prose with
    `shell_commands(input) == []`, or a press). It covers every owner-facing row of 6.1: adopt
-   with `/plumb init` (and the hint before it), status, explain, show, review, impact, align
-   (with a `done_when` gap), drift, view (written, not opened; every note scanned), the
+   with `/plumb init` (and the hint before it), status, status for another repository,
+   "what are we building?", explain, show, review, impact, align (with a `done_when` gap),
+   drift (each kind of 6.6), "does X do what I meant?", `/plumb help`, "the record numbers
+   look off", view (written, not opened; every note scanned), the
    pane tree, confirm by words (nothing confirmed until the cards were shown) then "ok",
    confirm by **Confirm**, `plumb check` clean after a typed `/plumb confirm`, `/plumb approve DEC-...`, a decision answered
    "A" (assent provenance), revoke by slash and "ok" and by button, triage and the group by
@@ -1109,10 +1221,15 @@ once at push (R17).
    report is read. Every owner-visible output captured (system messages, `present.json`,
    the mod's command rows, snapshots and pane trees, every generated vault note and Canvas
    label, the owner-facing fields of every record the scripted agent wrote, the merge,
-   commit, merge-hook and pre-push outputs from real git) passes `shell_commands` and
-   `jargon`.
+   commit, merge-hook and pre-push outputs from real git, and the stdout of every CLI call
+   the scripted agent makes on an `owner` form of 6.6: the default text with
+   `details=False`, a `--details` call only after the owner asked for detail, with
+   `details=True`) passes `shell_commands` and `jargon`. The harness fails when the scripted
+   agent shows the owner the output of an `agent` form or an `--agent` text, or calls a
+   form `FORMS` does not classify.
 3. **Jargon scan**: the e2e above, the per-surface tests of 6.3 (the vault included),
-   the record-content check of 6.5 on every write entry point, `jargon.test.tsx`, and
+   the route answers of 6.6 (one case per `owner` form), the record-content check of 6.5
+   on every write entry point, `jargon.test.tsx`, and
    `tests/surface/test_docs_text.py` on the README and owner docs. `record_gaps` finds
    nothing in FEAT-007, INT-023, SR-082 to SR-095 and DEC-023 to DEC-025 before they are
    offered to the owner.

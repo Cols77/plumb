@@ -100,7 +100,7 @@ link`, `plumb repin`, `plumb verify`), which write one file per entry and never 
 
 | Owner | Paths |
 |---|---|
-| Coordinator (phases 0, 2, 3) | `src/plumb/contracts.py`, `config.py`, `cli.py`, `api.py`, `store.py`, `model.py` (the `agent_notes` hash exclusion only), `confirm.py`; the phase-0 stub files' API names; `plugin/` skeleton files until the lanes take them (below); `tests/integration/**`, `tests/owner/**` (new: the e2e harness and scenarios), `tests/present/test_owner_text.py`, `tests/test_smoke.py`, `tests/gitrepo.py`; `.plumb/**`, `.claude/**`, `CLAUDE.md`, `docs/concept.md`, `docs/plans/**`, `docs/specs/**` |
+| Coordinator (phases 0, 2, 3) | `src/plumb/contracts.py`, `config.py`, `cli.py`, `cliutil.py`, `api.py`, `store.py`, `model.py` (the `agent_notes` hash exclusion only), `confirm.py`; the phase-0 stub files' API names; `plugin/` skeleton files until the lanes take them (below); `tests/integration/**` (`test_answer_choke_point.py` new), `tests/owner/**` (new: the e2e harness and scenarios), the one-line `cliutil.answer` call in each command module of an `owner` form (spec 6.6; phase 0 only, the lanes keep their modules otherwise), `tests/present/test_owner_text.py`, `tests/test_smoke.py`, `tests/gitrepo.py`; `.plumb/**`, `.claude/**`, `CLAUDE.md`, `docs/concept.md`, `docs/plans/**`, `docs/specs/**` |
 | PLUGIN | `.claude-plugin/marketplace.json`; `plugin/.claude-plugin/**`, `plugin/bin/**`, `plugin/hooks/hooks.json`, `plugin/commands/**`, `plugin/skills/**`, `plugin/vendor/**` (GENERATED or built: only the build script writes `commands/`, `skills/`, `vendor/`, `hooks/*.gen.ts`); `scripts/build_plugin.py`; `src/plumb/plugin/**` (new), `src/plumb/launcher.py` (new), `src/plumb/guard.py` (new), `src/plumb/commands.py` (`init` only), `src/plumb/hosts/claude_code/install.py`, `session_start.py`, `hookio.py`, `hosts/claude_code/cli.py` (the `hook pre-tool` event), `templates/claude-md-block.md`; `tests/plugin/**` (new), `tests/host/test_install.py`, `tests/host/test_session_start.py` |
 | MOD | `plugin/hooks/*.tsx` and `*.ts` except `*.gen.ts`, `plugin/types/**`, `plugin/tsconfig.json`; `src/plumb/mod/**` (new, keeps the phase-0 API names, `handshake.py` included); `tests/mod/**` (new) |
 | SURFACE | `src/plumb/present/**`, `src/plumb/view/**`, `src/plumb/owner_actions.py` (new), `src/plumb/owner_cli.py` (new), `src/plumb/hosts/claude_code/stop.py`, `prompt.py`, `statusline.py`, `snapshot.py`, `templates/plumb-command.md`, `templates/skills/plumb/SKILL.md`; `src/plumb/boundary/**`; `src/plumb/validate.py`, `src/plumb/claims.py` and `src/plumb/trailers.py` (owner text only), `src/plumb/explain.py`, `src/plumb/capture/jevcmd.py` (status rendering only); `README.md`, `docs/owner-matrix.md` (new), `docs/hosts.md`; `tests/surface/**` (new), `tests/present/**` except `test_owner_text.py` and `test_align.py`, `tests/merge/**`, `tests/host/test_stop.py`, `tests/host/test_prompt.py`, `tests/host/test_statusline.py` |
@@ -166,6 +166,20 @@ are written by `plumb.mod` (the stop hook writes `present.json` through
      CLI) in `refuse` mode; `model.record_hash` leaves out `agent_notes` like `links`
      (spec 6.5); `validate.py` lists `record_gaps` of existing records as agent-facing
      `owner-text` warnings.
+   - **Route answers (spec 6.6).** `cliutil.add_common` gains `--agent` and `--details`,
+     and `cliutil.answer(args, form, payload, agent_text)` prints `--json` as the payload,
+     `--agent` as today's text, `--details` as `present.answers.render(form, payload,
+     details=True)` and the default as `present.answers.render(form, payload)`, falling
+     back to today's text when the renderer returns `None`. Every command of an
+     `owner` form of spec 6.6 emits through it (`--json` added where it was missing), so
+     the default output is still today's text; the forms SP7 adds (`plugin ignore`,
+     `plugin migrate`, the success line of `owner <action>`) call it from their first
+     version, and their lane adds the same sentinel check in its own tests
+     (`tests/plugin/test_answers.py`, `tests/surface/test_answers_text.py`). `present/answers.py` holds `FORMS` complete
+     (every CLI form of spec 6.1 with its class) and the `render` stub (`None`). Tests that
+     assert today's default text of an `owner` form switch to `--agent` now, while the
+     change is a no-op; the `/plumb` template, the `plumb` skill, the prompt hook's delta
+     pointer and the brief's pointer name `--agent` or `--json` for the agent's own reads.
    - Approval and event entries carry `via` and `resolved_from`; `plumb check` re-checks
      `via: command` entries by the parse check instead of the affirmation term (spec 7.2;
      stub parse: accept), and keeps "a `by: owner` entry under a marker is an error"
@@ -192,8 +206,11 @@ are written by `plumb.mod` (the stop hook writes `present.json` through
 8. **Test helpers.** `tests/gitrepo.py` gains `bare_remote(tmp_path)`; `tests/owner/
    harness.py` (new): `OwnerSession(root)` with `slash(text)`, `say(text)`, `press(label,
    card=...)`, `agent(route_args)` (runs only CLI forms parsed from the generated
-   `plugin/commands/plumb.md`, failing on any other), `outputs()` (every owner-visible text
-   captured), the hook calls through `plugin/bin/plumb-hook` with Claude Code's JSON payloads,
+   `plugin/commands/plumb.md`, failing on any other or on a form `present.answers.FORMS`
+   does not classify, and returns its stdout), `show(output)` (what the scripted agent
+   relays to the owner; it fails on the output of an `agent` form or an `--agent` text), `outputs()` (every
+   owner-visible text captured, including the stdout of every `owner` form the agent
+   ran), the hook calls through `plugin/bin/plumb-hook` with Claude Code's JSON payloads,
    and a simulated mod (`hello`, `snapshot`, `press`, `typed` with its key).
    `tests/integration/test_contracts.py` checks every stub against its signature.
 9. **Records.** FEAT-007, INT-023, SR-082 to SR-095 and DEC-023 to DEC-025 exist (written
@@ -202,7 +219,7 @@ are written by `plumb.mod` (the stop hook writes `present.json` through
 ### 3.3 Phase-0 gate
 
 ```
-uv run pytest tests/core tests/host tests/merge tests/present/test_owner_text.py tests/integration/test_contracts.py tests/test_smoke.py -q
+uv run pytest tests/core tests/host tests/merge tests/present/test_owner_text.py tests/integration/test_contracts.py tests/integration/test_answer_choke_point.py tests/test_smoke.py -q
 uv run ruff check src tests
 uv run plumb validate && uv run plumb drift
 uv run plumb --help              # lists only importable verbs
@@ -293,10 +310,10 @@ against the phase-0 stub until SURFACE's S2 merges; `test_press.py` uses a local
 |---|---|---|---|
 | S1 | `owner_text`: finish `JARGON`, `CONCEPTS`, the explain-first rule, the SP7 constants' wording; the agent/owner split of refusal and hook texts (`HookOutput` keeps the agent's part in its own field) | `tests/present/test_owner_text.py` (phase-0 cases stay green), `tests/surface/test_refusal_text.py` | S-1 |
 | S2 | `plumb.owner_actions` (`perform`, `require_owner_action`, `parse_command`) and `plumb owner` CLI; route every terminal owner-only command through `perform(via="terminal")`; `auto_approve on` refuses without calibration in plain words; `set` asks `offerable` | `tests/surface/test_owner_actions.py`: per action, `command` accepted (hook-logged and mod-logged), self-recorded refused, no prompt refused (exit 3, nothing written), mismatched words refused; every `command` entry is `by: agent-relayed`, `via: command`, the whole typed command as its quote and the prompt digest, never `by: owner`; `::test_check_clean_after_typed_confirm` (`plumb check` has no error after `/plumb confirm SR-...` under the session marker; the glance lists it under "you typed"); `tests/surface/test_show_first.py`, one case per entry point (`/plumb confirm <words>`, `/plumb approve <decision words>`, `/plumb revoke <words>`, the group's words, the plan's words) against records not shown in the previous reply: nothing written, `show_first`, the cards shown as the stated set, then "ok" (relayed) or a press (`by: owner`) confirms exactly those hashes, a record edited in between left out and named; the same commands by ID, or naming only records shown in the previous reply, act at once (SR-088 EX-3, EX-7); "which one do you mean?" with nothing written on an ambiguous one (SR-088 EX-6); terminal cases with stdin a pipe holding "y" refused | S-1 |
-| S3 | Stop hook, status card, session-start owner lines, owner views: titles instead of IDs, plain test states, decisions by their question, no paths; `in_reply_to` and `done_when` lines on cards; the structure gaps never shown to the owner | `test_summary_text.py` (each card kind), `test_status_text.py`, `test_session_text.py`, `test_views_text.py` (one per view), `tests/host/test_stop.py` kept green | S-2 |
+| S3 | Stop hook, status card, session-start owner lines: titles instead of IDs, plain test states, decisions by their question, no paths; `in_reply_to` and `done_when` lines on cards; the structure gaps never shown to the owner. Route answers (spec 6.6): `present.answers.render` for every `owner` form of `FORMS` (the nine views, `drift` with each drift kind, `show`, `resolve`, `fidelity` without the packet header, `brief` without storage paths, `status --root`, `init`, `plugin ignore` and `migrate`, `import`, `merge-fix`, `ids sync`, `log migrate`, `escalate`, the success lines of `relay`, `owner` and `conflict relay`, and the rest of the list) | `test_summary_text.py` (each card kind), `test_status_text.py`, `test_session_text.py`, `test_answers_text.py` (`test_owner_answer` once per `owner` form: default, `--details` and `--agent`; `test_drift_kinds`, `test_fidelity_answer`, `test_show_awaiting`, `test_brief_no_paths`, `test_help`), `tests/host/test_stop.py` kept green | S-2 |
 | S4 | Merge report, gates, pre-push, pre-merge-commit, prepare-commit-msg, post-merge, commit-msg outputs: no shell command, no `--no-verify` hint, `/plumb confirm <title>`, "say 'waive the full run'", titles not paths; `jev status` and `validate` warnings in plain words | `test_merge_text.py` (each report section), `test_prepush_text.py` (real push to a bare remote), `test_premerge_text.py`, `test_commit_text.py`, `test_jev_text.py`, `test_validate_text.py` | S-2 |
-| S5 | `templates/plumb-command.md`: a route for every owner row of spec 6.1, the rules at the top, `allowed-tools` for every agent form (no owner-only form without `--prompt`); `templates/skills/plumb/SKILL.md`: the owner-level rule, the background, the routes | `test_command_routes.py::test_every_matrix_row_routed`, `::test_allowed_tools_cover_routes`, `::test_no_owner_only_form_without_prompt`; `tests/surface/test_skill_text.py` (the plumb skill states the owner-level rule and the routes) | S-3 |
-| S6 | `docs/owner-matrix.md` from spec 6.1; README split into "Using plumb" and "The agent's interface"; `docs/hosts.md` plugin and mod rows (with PLUGIN's P1 probe answers) | `test_matrix.py::test_every_route_listed`, `test_docs_text.py` (README, matrix, hosts owner parts) | S-3 |
+| S5 | `templates/plumb-command.md`: a route for every owner row of spec 6.1, the rules at the top, `allowed-tools` for every agent form (no owner-only form without `--prompt`); `templates/skills/plumb/SKILL.md`: the owner-level rule, the background, the routes | `test_command_routes.py::test_every_matrix_row_routed`, `::test_allowed_tools_cover_routes`, `::test_no_owner_only_form_without_prompt`, `::test_agent_forms_never_shown` (spec 6.6); `tests/surface/test_skill_text.py` (the plumb skill states the owner-level rule and the routes) | S-3 |
+| S6 | `docs/owner-matrix.md` from spec 6.1; README split into "Using plumb" and "The agent's interface"; `docs/hosts.md` plugin and mod rows (with PLUGIN's P1 probe answers) | `test_matrix.py::test_every_route_listed`, `::test_every_route_form_classified` (spec 6.6), `test_docs_text.py` (README, matrix, hosts owner parts) | S-3 |
 | S7 | `src/plumb/view/**`, the Obsidian vault at the owner's level (spec 6.3, vault row): every record note, `awaiting-you.md`, `by-feature.md`, `drift.md` and the Canvas labels lose the copyable CLI commands ("To confirm, type /plumb confirm <title> or say ok in a Claude Code session; editing this note confirms nothing"), wikilinks carry titles, stale or dangling wording becomes plain words, IDs and hashes stay in frontmatter and `## Details` only; the agent-relayed, typed-command and button labels of spec 7.2 in `plumb show` and the merge-boundary glance | `tests/surface/test_view_text.py` (both scanners on every generated note and Canvas label; frontmatter and `## Details` with `details=True`); `tests/merge/` glance cases for "you typed", "you said", "you pressed Confirm" | S-3 |
 | S8 | `present.owner_text.record_gaps` (spec 6.5): the owner-facing fields per kind, the quote and `agent_notes` exemptions, `Gap.agent_line`; `validate`'s agent-facing `owner-text` warnings for old records | `tests/present/test_record_gaps.py` (each field per kind, the exemptions, unchanged fields not rescanned) | S-1 |
 
@@ -336,7 +353,11 @@ resolved by running `scripts/build_plugin.py`, never by hand.
 
 `tests/owner/test_owner_flows_e2e.py` (spec 12 item 2), on the harness of 3.2 item 8, one
 scenario function per owner-facing row group of spec 6.1, every captured output through
-`shell_commands` and `jargon`. `tests/owner/test_inputs_are_owner_inputs.py` asserts the
+`shell_commands` and `jargon`, including the stdout of every CLI call the scripted agent
+makes on an `owner` form of spec 6.6 (drift, show, fidelity, brief, help, init, plugin
+migrate, the import summary, merge-fix, ids sync, log migrate, status for another
+repository, escalate and the rest); the harness fails when the scripted agent relays an
+`agent` form's output or an `--agent` text. `tests/owner/test_inputs_are_owner_inputs.py` asserts the
 harness never sends the owner anything but slash commands, prose and presses. The live smoke
 (`claude -p --plugin-dir plugin "/plumb status"` in an adopted temporary repository) runs
 once when `claude` is signed in; its output goes through both scanners.

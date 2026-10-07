@@ -4709,3 +4709,105 @@ fixed.
   instead of through the agent, the rewritten hook output says "say 'waive the full run'"
   with no Claude Code session to say it in. Fix: phrase the hook lines as "in Claude Code,
   say ... or type /plumb ...".
+
+## SP7 spec and plan review, round 2 (2026-10-07): medium and low findings
+
+The one HIGH finding of this round was fixed in `docs/specs/sp7-owner-surface.md` (new 6.6,
+6.1, 6.2, 6.3, 9 and 12) and `docs/plans/sp7-plan.md` (3.1, 3.2, 3.3, S3, S5, S6, 8.3):
+every CLI answer the agent may show the owner, on any route of the matrix, is now an entry
+point of the owner-level guarantee. One choke point (`cliutil.answer`: the default text is
+`present.answers.render`, today's text moves behind `--details`, `--json` stays the agent's),
+one class registry (`present.answers.FORMS`, every CLI form of 6.1 as `owner`, `agent` or
+`none`), one test per `owner` form, and the e2e scans the stdout of every routed CLI call.
+New proposed example SR-089 EX-9. The findings below are recorded, not fixed. Several
+repeat entries of the first round; they are noted as such.
+
+- [MEDIUM] (R16 "Objection and change detection must be scoped to the sentences that name,
+  or plainly refer to, the records being approved. An unrelated request in the same message
+  must neither block nor count."; spec 8.1 rule 1 and the dark-mode example; reported twice)
+  Rule 1 keeps every clause of the sentence that holds the ok in scope, whatever it is
+  about, so "ok, and also add a dark mode" or "Ok, confirm DEC-017 and DEC-018, and make
+  plumb a plugin" still holds the ok back: the R16 bug class with a comma where the owner
+  happened to type a period. Defensible (R16 scopes by sentence; refusing is the safe
+  failure; objections after the ok such as "ok, I know SR-007 is wrong, rewrite it" must
+  still count). Fix: inside the ok's sentence, count a clause only when it is a correction
+  without its own object ("except ...", "but ...") or meets rule 2 or rule 3; a clause after
+  "and"/"and also" that names no record of T, has no distinctive word of T and no reference
+  back is out of scope. Add an SR-090 example and a test for "Ok, confirm DEC-017 and
+  DEC-018, and make plumb a plugin"; otherwise record the conservative choice as a known
+  limit.
+- [MEDIUM] (R14 "`/plumb` against a named repository from another session"; spec 6.1 row 7;
+  reported twice this round, three times in round 1) Only status is routed for another
+  repository (`plumb status --root`); init, explain, confirm, merge-check and the other
+  routes cannot target a named repository. Fix: a general "<route> for <that repository>"
+  rule in the `/plumb` template (6.2): the agent resolves the repository and passes
+  `--root` to any agent-side route, with owner-only actions checked against that
+  repository's prompt log; one e2e case beyond status (for example `/plumb init for <path>`
+  or "confirm ... in <other repository>").
+- [MEDIUM] (R15 "status line where plugins allow it"; spec 4.3 "Status line") The spec says
+  plugins have no status-line field, but the mod API of this build exposes
+  `$.ui.status(text)`, which pins a plugin status line under the prompt. The band covers the
+  need, but the spec states the platform limit wrongly. Fix: correct the statement, and
+  either draw the one-line status card with `$.ui.status` when the band is hidden or the
+  card setting is compact, or record why the band alone suffices.
+- [MEDIUM] (Decision 5; R14 "`/plumb confirm <plain words or IDs>` ... relays the owner's
+  typed words"; spec 4.2 "First session" with 7.2) While the first bootstrap runs, every hook
+  but session-start exits at once, so the prompt hook logs nothing; an "ok" or a typed
+  `/plumb confirm` in that window has no logged prompt and is refused during the owner's
+  first session. Fix: have `plumb-hook` keep a minimal prompt-digest log in `sh` during the
+  bootstrap (one sha256 line), or have the mod log typed prompts once ready; otherwise say
+  plainly that confirmations wait for "plumb is ready", and add a test.
+- [MEDIUM] (R14 "error messages NEVER instruct the owner to run a shell command"; R15 "a uv
+  tool install the plugin bootstraps"; spec 4.2) There are owner lines for "getting ready"
+  and for a missing Python, none for a bootstrap that fails (no network, a uv or pip error, a
+  failed wheel install). Every hook exits 0 until `current.json` exists, so the owner sees
+  "plumb is getting ready ..." at every session start and never learns plumb is not working.
+  Fix: record the failure under `PLUMB_HOME`, show one plain line ("plumb could not finish
+  setting itself up; say 'fix plumb's setup'"), add a matrix row and
+  `tests/plugin/test_env.py::test_failed_bootstrap_line`.
+- [MEDIUM] (R14 matrix "covering every plumb feature"; R17 "The single full suite runs at
+  push (pre-push)"; spec 6.1) The matrix has no row for pushing ("push my work"), although
+  the owner never pushes from a shell and the e2e expects "a push whose pre-push report is
+  read"; `test_every_matrix_row_routed` cannot cover it. Fix: add a row "push", "push my
+  work" -> `git push` through the pre-push hook, answered at the owner's level and pointing
+  to rows 34 (waive) and 52 (why was it held).
+- [MEDIUM] (R15 "Existing per-repository installs ... are migrated or remain supported as a
+  fallback"; spec 4.7 band line vs 4.7 last paragraph and 11; repeats a round-1 entry) In
+  plumb's own repository, which keeps its legacy install on purpose, the band invites "move
+  plumb to the plugin" every session, a migration the spec says must not happen there (the
+  hooks would then run the bundled wheel instead of the code under development); 4.7 also
+  says the plugin "stays silent there". Fix: suppress the invitation there through a config
+  key such as `plugin.legacy_on_purpose`, and test it.
+- [MEDIUM] (R18.4 "only question user for intent/tradeoffs related problems" ... "a `will`
+  that cannot be served without breaking a `wont`"; spec 8.5 intent gaps; close to a round-1
+  entry on unsure verdicts) Any member the judge says goes against a won't item, and any
+  unsure verdict, becomes an owner question. A badly worded requirement that could simply be
+  rewritten is the agent's to fix. Fix: treat a won't contradiction as a gap the agent
+  repairs first (reword or drop the member); raise an intent gap only when the will it
+  serves cannot be met without the contradiction, or the reading is ambiguous; bound how
+  often an unsure verdict may fall back to asking.
+- [LOW] (R14 "resolves the records, shows what is being confirmed, and relays the owner's
+  typed words"; spec 7.2 "Show first") For plain words naming records not shown in the
+  previous reply, a typed `/plumb confirm` takes two owner steps (the cards, then "ok" or a
+  press). Justified by the KEEP list ("approvals pinned to exact content"). Fix: keep it,
+  and make the cards' offer line say that one "ok" or Confirm finishes the step.
+- [LOW] (R19 "Render /plumb answers via the CommandOutput site"; spec 5.5; reported twice,
+  repeats a round-1 entry) Only the deterministic routes (status, pane, confirm without
+  words) are drawn on CommandOutput; every other `/plumb` answer is model text. Fix: say
+  explicitly that agent-routed answers stay model text, and why, or draw on CommandOutput
+  the rows whose answer is a deterministic CLI view (6.6's `owner` forms are candidates).
+- [LOW] (R14; spec 5.5 and 7.2) Without the mod, and on a host that does not run the prompt
+  hook for typed slash commands, no prompt is logged and every `/plumb confirm`, revoke,
+  auto-confirm or waive is refused; the spec leaves the check to the MOD lane (M1) with no
+  fallback. Fix: make M1's answer a spec rule: if slash commands are not seen by the prompt
+  hook, owner-only slash routes without the mod send the owner to "ok" after the cards, and
+  the matrix and `docs/hosts.md` say so.
+- [LOW] (R18 "never in plumb's or the codebase's internals (hashes, record kinds, links,
+  file paths, test node ids)"; spec 6.3 JARGON) JARGON lists link kinds and record IDs but
+  not the words "record(s)", "requirement" or "link(s)", so today's status card line "links:
+  current 1033, stale 0" would pass. Some kind words (intent, examples, tests) are in R9's
+  card format the owner liked, so this is calibration. Fix: add "record(s)", "requirement"
+  (where the owner did not use it) and "link(s)" to JARGON with CONCEPTS explanations, or
+  document which kind words are owner-level by R9.
+- [LOW] (R18; spec 3) The principles are numbered 1, 2, 6, 3, 4, 5. Editorial. Fix:
+  renumber them.
