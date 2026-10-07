@@ -206,12 +206,29 @@ def clarify(core: Core, request: str, questions: Sequence[Mapping[str, Any]] = (
         question["rank_score"] = list(score)
         kept.append(question)
     kept.sort(key=lambda q: tuple(-x for x in q["rank_score"]))
+    # R17: other branches' intent in flight, checked before any implementation
+    inflight, conflicted = _inflight(core, request, backend)
+    if conflicted and depth == "trivial":
+        depth, reason = "incremental", "another branch has this intent in flight"
     if depth == "trivial":
         dropped += [{**q, "dropped_because": "trivial: no questions"} for q in kept]
         kept = []
     return ClarifyView(depth=depth, reason=reason, answered=answered,  # type: ignore[arg-type]
                        questions=tuple(kept), dropped=tuple(dropped), escalation=suggestions,
-                       backend=name)
+                       backend=name, inflight=tuple(inflight))
+
+
+def _inflight(core: Core, request: str, backend: Any) -> tuple[list[str], bool]:
+    """The early intent-conflict check of the read-back (R17, SR-081): ``(lines, whether a
+    card is among them)``. Advisory: an error shows nothing."""
+    try:
+        from plumb.awareness.early import card, check_text
+
+        result = check_text(core, request, backend=backend)
+    except Exception:  # noqa: BLE001 - intent in flight never fails the read-back
+        return [], False
+    lines = [line for conflict in result.conflicts for line in card(conflict)]
+    return lines + list(result.lines), bool(result.conflicts)
 
 
 def write_session(core: Core, view: ClarifyView, request: str) -> None:
@@ -231,7 +248,10 @@ def write_session(core: Core, view: ClarifyView, request: str) -> None:
 
 
 def view_lines(view: ClarifyView) -> list[str]:
-    lines = [f"depth: {view.depth} ({view.reason})"]
+    lines = list(getattr(view, "inflight", ()) or ())
+    if any(line.startswith(("▸ Conflict", "> Conflict")) for line in lines):
+        lines.append("ask this conflict first, before any other question or any work")
+    lines.append(f"depth: {view.depth} ({view.reason})")
     if view.answered:
         lines.append("already answered (do not ask):")
         lines += [f"  {a}" for a in view.answered]

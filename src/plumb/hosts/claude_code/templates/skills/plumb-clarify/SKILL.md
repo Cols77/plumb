@@ -9,6 +9,13 @@ Run `{plumb} clarify "<the request>"` first: it says the depth, what confirmed r
 already answer, and (with `--questions q.json`, each `{question, options, recommended}`)
 which of your drafted questions matter, ranked.
 
+Another branch may already have this intent in flight. When `clarify` (or `capture`) prints
+a `▸ Conflict` card, that branch says one thing and this request another: show the owner
+the card and ask it first ("which one, or both?"), before any other question and before any
+work. `capture` records the question once as a decision, so every branch builds on the
+same answer; a line saying the owner was already asked (or settled it) on another branch
+means: build on that answer, ask nothing.
+
 Depth:
 
 - trivial (maps to confirmed intent, or a small unambiguous change): no questions. One line

@@ -97,14 +97,28 @@ def status_card(snapshot: Any, *, ascii: bool = False) -> str:
         parts.append("full pending")
     if data.get("auto_approve") == "suspended":
         parts.append("auto-approve suspended")
-    conflicts = _int(data, "conflicts")
-    if conflicts:  # sp6 8.3: an intent conflict a merge left awaits the owner's choice
-        from plumb.present.owner_text import conflicts_card
-
-        parts.append(conflicts_card(conflicts))
+    parts += overlap_parts(data, ascii=ascii)
     if ascii:
         return to_ascii("plumb | " + " | ".join(parts))
     return f"plumb {GLYPHS[state]} " + " · ".join(parts)
+
+
+def overlap_parts(data: Mapping[str, Any], *, ascii: bool = False) -> list[str]:
+    """sp6 8.3, 9.4: ``1 also changed on feat-x`` (``overlap 1 (feat-x)`` in ASCII) and
+    ``1 conflict awaits you``; nothing when zero."""
+    from plumb.present import owner_text as text
+
+    parts: list[str] = []
+    overlaps = _int(data, "overlaps")
+    if overlaps:
+        labels = ", ".join(str(b) for b in data.get("overlap_labels") or ()) or "elsewhere"
+        parts.append((text.OVERLAP_CARD_ASCII if ascii else text.OVERLAP_CARD)
+                     .format(n=overlaps, labels=labels))
+    conflicts = _int(data, "conflicts")
+    if conflicts:
+        parts.append((text.CONFLICTS_CARD if conflicts == 1 else text.CONFLICTS_CARD_PLURAL)
+                     .format(n=conflicts))
+    return parts
 
 
 # --------------------------------------------------------------------------- intent card

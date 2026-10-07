@@ -49,6 +49,8 @@ ROUTES: dict[str, str] = {
     # MERGEDRIVER (sub-project 6): record files merge field by field; intent conflicts
     "merge-driver": "plumb.mergedriver.cli", "conflict": "plumb.mergedriver.cli",
     "conflicts": "plumb.mergedriver.cli",
+    # AWARENESS (sub-project 6, R17): intent other branches have in flight
+    "inflight": "plumb.awareness.cli",
     # HOSTS (sub-project 4)
     "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
 }
@@ -113,6 +115,8 @@ parallel work:
   merge-fix    renumber an ID a merge brought twice: the incoming record gets a new ID and
                every reference the incoming side added follows; history is never rewritten
   ids          the IDs reserved in refs/plumb/ids (sync rescans every local branch)
+in flight:     inflight (what other branches are changing, from refs/plumb/claims; check
+               a request for an early intent conflict; drop; sync)
 
 Run `plumb <command> --help` for a command's options. Exit codes: 0 ok, 1 findings,
 2 usage, 3 refused by the guard, 4 merge waits for the owner's confirmation, 5 verification

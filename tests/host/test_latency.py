@@ -161,7 +161,7 @@ def _contended_turn(busy_repo: Path, hook_input, call) -> None:
     stated.write_text(json.dumps({"records": [
         {"id": "SR-002", "hash": index["SR-002"].hash, "shown": True}]}), "utf-8")
     out, _ = call("hook", "prompt", payload=hook_input("UserPromptSubmit",
-                                                       prompt="ok, and SR-002 needs work"))
+                                                       prompt="ok, confirm SR-002"))
     assert "SR-002 [proposed]" in out
     assert "plumb relay SR-002 --prompt" in out
     record = busy_repo / ".plumb" / "requirements" / "SR-002.md"

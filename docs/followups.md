@@ -4014,3 +4014,162 @@ Notes for Integrate and open items from round 2:
   put a repr in the driver command); the module is `gitconfig.py`, not the plan's
   `mergedriver/install.py`; `merge.premerge_run_full`, dropped per R17, is still named in
   spec 10 and 12.
+## SP6 lane AWARENESS (2026-10-07)
+
+Built: sp6 9 (SR-078, SR-079) and ruling R17's early intent conflicts (new proposed records
+SR-080 "Intent in flight is shared through refs/plumb/claims" and SR-081 "Intent conflicts
+are caught at capture, before any implementation", FEAT-006, derived from INT-022). Nothing
+unfinished in the lane's rows A1 to A6. Medium and low findings:
+
+- [MEDIUM, Integrate] Phase 0 had not run when this lane started, so the lane wrote its own
+  call sites in coordinator files: `contracts.py` (`Overlap`, `StatusSnapshot.overlaps`,
+  `overlap_labels`, `conflicts`, `ClarifyView.inflight`), `config.py` (`AwarenessConfig`),
+  `cli.py` (route `inflight` and its help line), `commands.py` (`plumb status` section and
+  `--json` `elsewhere`), the four hooks, `snapshot.py`, `present/render.py`
+  (`overlap_parts`), `present/report.py`, `capture/capture.py` and `capture/clarify.py`
+  (the R17 choke points), the `/plumb` command template and the plumb-clarify skill
+  template. `present/owner_text.py` was created by IDS, LOGS and this lane separately
+  (add/add at merge): keep one `bare_cli_verbs` and the union of the constants. `plumb
+  init`'s commented `config.yaml` does not list the `awareness` keys yet (LOGS owns that
+  hunk of `commands.py`).
+- [MEDIUM] The early intent-conflict check runs at `plumb capture` and `plumb clarify`
+  (R17 names those two). `plumb new`, `plumb intent`, `plumb example` and `plumb decide`
+  write records without it: their records are claimed in `refs/plumb/claims` by the stop
+  hook (any writer, one choke point) and the overlap line reaches the agent, but no early
+  card is shown. Routing those commands through `early.after_capture` would close it.
+- [MEDIUM, Integrate] Editing the shared files above left other requirements' links stale
+  (`plumb validate`: 66 warnings, 0 errors), e.g. SR-017, SR-026, SR-034, SR-043, SR-061 to
+  SR-063 on `config.py`, `contracts.py`, `capture.py`, `clarify.py`, the hooks. The lane
+  repinned only its own SR-078 to SR-081; the rest wait for review at Integrate.
+- [LOW] `awareness/inflight.py` has its own compare-and-swap helpers for
+  `refs/plumb/claims`; IDS's `ids/ref.py` does the same for `refs/plumb/ids`. Fold them into
+  one ref module after both lanes merge.
+- [LOW] A claim recorded on the default branch clears as soon as a commit lands there (the
+  branch tip moved and is trivially reachable); other branches then meet that intent at
+  merge through the record merge driver.
+- [LOW] The warm overlap check measures about 30 ms for five worktrees (budget 50 ms): the
+  register is read twice per prompt (`claim_overlaps`, `raised_lines`) and
+  `gitfiles.current` runs three times. Memoize per hook call if it gets close.
+- [LOW] The same-record early card says "the same requirement is being changed on both
+  branches"; with JEV configured it could add the advisory compatibility line the merge
+  card has. The feature-overlap card already shows it.
+- [LOW] `StatusSnapshot.conflicts` is not filled by this lane (MERGEDRIVER's
+  `open_conflicts`); an early conflict counts as a question and a proposed record.
+- [LOW] Spec 9.4 keys the stop hook's owner line like the prompt delta's agent line, so a
+  record the prompt hook already named to the agent this session is not repeated to the
+  owner at the stop; the owner still sees the status card's "N also changed on <branch>".
+- [LOW] `record_claim` prunes merged claims with one `git merge-base --is-ancestor` per
+  moved claim tip, cached, without the hook's deadline (the stop hook starts it only with
+  0.4 s left).
+- [LOW, pre-existing] `tests/host/test_latency.py::test_intent_lines_survive_cpu_contention`
+  fails on `main` as on this branch (LOGS lane's note above). `present/report.py`'s "awaits
+  you" line and the session brief's triage line still name bare `plumb confirm`/`plumb
+  triage` (R14, not SP6 text).
+- [R14 matrix, Integrate] New owner entry points: "what are the other branches working on?"
+  (`plumb inflight`), "drop that work" (`plumb inflight drop <branch>`), "is anyone else
+  changing X?" and `/plumb status` (overlaps), the early conflict card's answer ("keep
+  feat-x's", "keep this one", "both") relayed like any decision.
+
+## SP6 lane AWARENESS, review round (2026-10-07): medium and low findings
+
+The four HIGH findings of this round are fixed on `lane/awareness` (a claim clears exactly
+when its branch merges; the owner's answer is stored and shown branch-neutrally; "the same
+version" means the same record hash). These were recorded, not fixed:
+
+- [MEDIUM] `awareness/early.py` `check_text` (the clarify read-back) turns any record the
+  request names, or relevance-matches at score >= 1.0, into a deterministic conflict card
+  when another branch claims it, without asking JEV whether the request changes that record.
+  A merely related or compatible mention should get only the one-line warning (R17, R18.4).
+  Probe: feat-x claims SR-005; on main, `clarify('add a status card colour; do not touch
+  SR-005')` returns `conflicts=[('SR-005', '')]` and the skill says to ask it first.
+- [MEDIUM] Same function, second reading: it also skips the same-version check and raises
+  the depth from trivial to incremental, so a request that only mentions a claimed record
+  ("add a test for the relay checks") asks the owner "which one, or both?", against R11's
+  "ask only questions that change what gets built".
+- [MEDIUM] `awareness/publish.py`: when HEAD moved, `publish()` replaces `pending` with only
+  this turn's `changed_paths`, so uncommitted edits from earlier turns drop out of
+  `changing.json` and other worktrees stop being warned about them (turn 1 edits SR-005
+  uncommitted; turn 2 commits other files and touches SR-006; SR-005 disappears).
+- [MEDIUM] `contracts.py` and the other coordinator-owned files: the lane edits
+  `contracts.py`, `config.py`, `cli.py`, `commands.py`, `capture/capture.py`,
+  `capture/clarify.py`, the hooks and `present/*`; plan 3.1 gives AWARENESS only
+  `src/plumb/awareness/**` and `tests/awareness/**`. With phase 0 not on main, the IDS,
+  LOGS and MERGEDRIVER lanes add overlapping wiring (StatusSnapshot fields, `Overlap`,
+  `config._NESTED`, the hooks): expect textual conflicts or duplicated fields at Integrate.
+- [MEDIUM] `.plumb/requirements/SR-080.md`, `SR-081.md`: the lane created two records,
+  which plan 3.1 and section 1 reserve to the coordinator. IDS reservation is not merged, so
+  a parallel lane (MERGEDRIVER for R17's merge hold, IDS for renumbering) could take SR-080
+  from local numbering and collide add/add at Integrate.
+- [MEDIUM] `awareness/early.py` `raise_conflicts` creates the DEC with `chosen` already set
+  to this branch's version, so a bare "ok" or a relayed confirmation picks this branch's
+  side although the card asks "which one, or both?": the default comes from the agent, not
+  from the owner's choice.
+- [LOW] `awareness/early.py`: two branches capturing the same record within the window
+  between `check_records` and `record_claim` each raise a DEC (neither sees the other's
+  conflict entry yet), so the conflict is asked twice instead of once.
+- [LOW] `capture/capture.py`: if `after_capture` raises anything but `InflightBusy` after
+  `raise_conflicts` wrote DECs, `_inflight_check` returns `written=[]`: the DECs exist but are
+  not in the capture's written list or its intent set, and the capture reports "intent in
+  flight not checked".
+- [LOW] `awareness/turn.py`: the stop hook's register write is gated only by the initial
+  0.4 s check; `update()` then retries for up to 3 s, each git call has a 5 s timeout, and
+  the merged check inside `record_claim` (and now `refresh`) ignores the deadline. Two
+  sessions stopping together on the two-core machine can exceed the 2 s guidance.
+- [LOW] `awareness/inflight.py`: a claim on the default branch clears as soon as any commit
+  lands there (another branch's merge included) while the main worktree's captured intent
+  is still uncommitted; main's claim then disappears for every other branch.
+- [LOW, residual of the merge fix] A branch whose own commits were made with no plumb write
+  after them (no capture, no stop hook on that branch: commits from a bare terminal) and
+  that is then merged by FAST-FORWARD keeps its claim until the branch is deleted or the
+  work dropped (`plumb inflight drop`): the graph alone cannot tell that fast-forward from a
+  branch fast-forwarding to `main`, and the second must keep its claim. A `--no-ff` merge,
+  or any plumb write on the branch after its commits, clears it.
+
+## SP6 lane AWARENESS, review round 2 (2026-10-07): medium and low findings
+
+The two HIGH findings of this round are fixed on `lane/awareness` (a branch holds each
+record in one claim, at the version it wrote last; a branch the default branch has
+taken whole has nothing committed in flight, so its claim does not come back). These
+were recorded, not fixed:
+
+- [MEDIUM] `capture/capture.py`: capture runs the R8 B auto-approval gate on `written`
+  before `_inflight_check`, so a new requirement that JEV judges to contradict another
+  branch's intent in flight can be auto-confirmed in the same capture; the owner is asked
+  the early-conflict DEC only afterwards ("asked immediately, before anything" does not hold
+  for auto-approved records). Scenario: auto-approve on with a passing calibration; feat-x
+  claims FEAT-002 with "A relay confirms a group"; on main the owner's words support "A
+  relay confirms one record at a time"; `gate()` confirms the new SR, then `after_capture`
+  judges it "contradicts" and raises a proposed DEC. If the owner later picks feat-x's
+  version, a confirmed requirement contradicts the decision.
+- [MEDIUM] `awareness/early.py` `check_text` (the clarify read-back) treats any record that
+  `core.relevant()` ranks at score >= 1.0 as "the same record being changed": it shows a
+  deterministic Conflict card and raises the depth from trivial with no JEV judgment,
+  although R17 reserves the deterministic path for the same record actually being changed.
+  Scenario: feat-x claims SR-005 "relay checks"; on main the owner asks for something that
+  only mentions relays (a docs typo near the relay wording); clarify shows the Conflict card
+  and "ask this conflict first": an intent question nobody raised.
+- [MEDIUM] `awareness/inflight.py`: every writer prunes the shared register through
+  `active()` inside the CAS mutate, and a claim whose branch is missing from
+  `gitfiles.branch_tips` is dropped for every worktree for good. `branch_tips` reads
+  packed-refs first and then the loose refs, so a concurrent `git pack-refs` or `gc`
+  (packed-refs read before the rewrite, loose ref deleted before the walk) makes a live
+  branch look deleted, and its claim and raised-conflict answers are lost.
+- [MEDIUM] `awareness/inflight.py` `merged()`: a fast-forward merge clears a claim only when
+  its `own` field holds the branch's own commit (set by `record_claim`, or by `refresh` in
+  the stop hook after a commit). A branch whose commits were made outside a plumb session
+  (CLI commit, no Stop hook) keeps `own=''` and `base` at the claim; after
+  `git merge --ff-only feat-x` its commits sit on main's first-parent line, so the claim
+  never clears until the branch is deleted, and other branches keep raising or naming
+  conflicts for work that has landed (extends the round-1 residual note).
+- [LOW] `capture/capture.py` and the coordinator-owned files: the lane edits
+  `capture/capture.py`, `capture/clarify.py`, `cli.py`, `commands.py`, `config.py`,
+  `contracts.py`, the `hosts/claude_code` hooks, templates and `present/render.py`, while
+  plan 3.1 gives AWARENESS only `src/plumb/awareness/**` and `tests/awareness/**`. R17's
+  wiring was added to this lane's task with no recorded coordinator contract change, so
+  expect textual conflicts at Integrate with MERGEDRIVER's or the coordinator's phase-0
+  edits to `stop.py`, `session_start.py` or `contracts.py`.
+- [MEDIUM] `awareness/publish.py`: `note_edit` (the async post-edit hook) and `publish`
+  (stop and session start) both read `changing.json`, modify it and write it back with no
+  coordination. Both are atomic replaces, so an edit path that lands between the stop hook's
+  read and its write is lost from `pending`, and other worktrees stop hearing that the record
+  is being edited until the path is published again.

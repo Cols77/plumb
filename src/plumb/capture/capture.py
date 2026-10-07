@@ -67,6 +67,31 @@ def _examples(raw: Any, name: str, start: int = 1) -> list[dict[str, Any]]:
     return out
 
 
+def _inflight_check(core: Core, written: Sequence[str], updated: Sequence[str],
+                    intent_id: str | None, backend: Any) -> dict[str, list[str]]:
+    """``plumb.awareness.early.after_capture``; the DECs it raised join ``written``. An
+    error never fails the capture: it is named in one line."""
+    before = set(core.index())
+    try:
+        from plumb.awareness.early import after_capture
+
+        lines = after_capture(core, written=written, updated=updated, intent=intent_id,
+                              backend=backend)
+    except Exception as exc:  # noqa: BLE001 - intent in flight is advisory
+        return {"written": [], "lines": [f"plumb: intent in flight not checked ({exc})"]}
+    raised = sorted(set(core.index()) - before)
+    return {"written": raised, "lines": lines}
+
+
+def _inflight_preview(core: Core, plan: _Plan, backend: Any) -> list[str]:
+    try:
+        from plumb.awareness.early import preview
+
+        return preview(core, plan.requirements, plan.updates, backend=backend)
+    except Exception as exc:  # noqa: BLE001 - advisory
+        return [f"plumb: intent in flight not checked ({exc})"]
+
+
 class _Plan:
     """The checked document: what will be written, before anything is."""
 
@@ -274,6 +299,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
                   for r in plan.requirements]
         lines += [f"DEC (new) would be proposed: {d['fields']['title']}" for d in plan.decisions]
         lines += [f"{rid} would be updated" for rid, _ in plan.updates]
+        lines += _inflight_preview(core, plan, backend)
         return CaptureResult(card=card, lines=tuple(lines), dry_run=True)
 
     # one reservation per prefix for the whole read-back (sp6 4.2)
@@ -340,6 +366,11 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
     lines += [f"{rid} was confirmed; this edit needs the owner again" for rid in again]
     if unchecked:
         lines.append(UNCHECKED_NOTE)
+    # R17: other branches' intent in flight, checked at capture before any implementation;
+    # a contradiction is shown as an early card and asked once (a DEC)
+    early = _inflight_check(core, written, updated, intent_id, backend)
+    written += [i for i in early["written"] if i not in written]
+    lines += early["lines"]
     if plan.intent_ref is not None and written:
         from plumb.capture.spec import set_of
 

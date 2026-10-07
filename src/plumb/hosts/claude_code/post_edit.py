@@ -1,8 +1,10 @@
 """PostToolUse on Edit, Write, MultiEdit and NotebookEdit: edit tracking (spec 6.3).
 
 Appends the edited file's repository-relative path to
-``.plumb/session/<session_id>/touched.txt``. Standard library only: no YAML, no record
-index. Registered with ``"async": true`` so it adds no blocking latency.
+``.plumb/session/<session_id>/touched.txt``, and to this worktree's
+``.plumb/cache/changing.json`` (``plumb.awareness.publish.note_edit``, sp6 9.2), so a
+session in another worktree hears of the edit before the turn ends. Standard library only:
+no YAML, no record index. Registered with ``"async": true`` so it adds no blocking latency.
 """
 
 from __future__ import annotations
@@ -50,6 +52,12 @@ def handle(ctx: HookContext) -> HookOutput | None:
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / "touched.txt").open("a", encoding="utf-8", newline="\n") as handle_:
         handle_.write(rel + "\n")
+    try:  # sp6 9.2: another worktree's session sees the edit before this turn ends
+        from plumb.awareness.publish import note_edit
+
+        note_edit(ctx.root, rel)
+    except Exception:  # noqa: BLE001 - awareness never fails the hook
+        pass
     return None
 
 

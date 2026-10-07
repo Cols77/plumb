@@ -138,6 +138,18 @@ class PresentConfig:
 
 
 @dataclass(frozen=True)
+class AwarenessConfig:
+    # sp6 9 (SR-078, SR-079): what other worktrees and branches are changing, read-only
+    enabled: bool = True
+    branches: bool = True        # local branches without a worktree, scanned at session start
+    remotes: bool = False        # remote-tracking branches (off: other clones meet at merge)
+    max_age_days: int = 7        # another worktree's changing.json older than this is ignored
+    branch_max: int = 8          # branches scanned per session start
+    branch_scan_ms: int = 400    # time cap of that scan
+    brief_lines: int = 3         # overlap lines in the session brief, then "+N more"
+
+
+@dataclass(frozen=True)
 class ResolveConfig:
     # sp5 5: the owner's words resolve to one thing only when its score is at least
     # min_score and more than margin ahead of the next candidate; otherwise plumb asks
@@ -165,13 +177,15 @@ class Config:
     hints: HintsConfig = field(default_factory=HintsConfig)
     present: PresentConfig = field(default_factory=PresentConfig)
     resolve: ResolveConfig = field(default_factory=ResolveConfig)
+    awareness: AwarenessConfig = field(default_factory=AwarenessConfig)
 
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
            "judgment": JudgmentConfig, "escalation": EscalationConfig, "trace": TraceConfig,
            "triage": TriageConfig, "auto_approve": AutoApproveConfig,
            "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig,
-           "present": PresentConfig, "resolve": ResolveConfig}
+           "present": PresentConfig, "resolve": ResolveConfig,
+           "awareness": AwarenessConfig}
 
 
 def _build(cls: type, data: Mapping[str, Any]) -> Any:

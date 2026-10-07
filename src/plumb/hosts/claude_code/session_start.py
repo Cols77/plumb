@@ -148,6 +148,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     if conflicts:
         lines += emitter.add([Line(conflicts)])
         ctx.keep(lines)
+    if not ctx.deadline.expired():  # sp6 9.4: other worktrees and branches, R17 conflicts
+        from plumb.awareness.turn import at_session_start
+
+        lines += emitter.add(at_session_start(core, ctx.deadline))
+        ctx.keep(lines)
     if not ctx.deadline.expired():  # R8 A: at most one line, the triage offer
         offer = triage_offer_line(core)
         if offer:

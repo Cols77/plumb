@@ -320,6 +320,18 @@ def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
     return out, flagged
 
 
+def awareness_lines(core: Any, ids: Sequence[str]) -> list[Any]:
+    """sp6 9.4: one line per relevant record another worktree or branch is changing (and
+    the intent conflicts other branches raised against this one, R17), from git's and the
+    other worktrees' files only: no git process on the prompt path."""
+    try:
+        from plumb.awareness.lines import delta_lines
+
+        return list(delta_lines(core, ids))
+    except Exception:  # noqa: BLE001 - awareness is advisory
+        return []
+
+
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
     """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
@@ -372,7 +384,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
         if isinstance(turn, dict):
             write_json_atomic(turn_path, {**turn, "flagged": list(flagged), "flags": flagged})
     hint = escalation_hint(core, index, strong, list(flagged)) if strong else None
-    rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []), *tail])
+    rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []),
+                        *awareness_lines(core, ids), *tail])
     out = [*records, *rest]
     ctx.keep(out)
     emitter.close()
