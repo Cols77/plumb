@@ -360,7 +360,7 @@ during the turn.
 | Command | What it does |
 |---|---|
 | `plumb merge-check [BASE] [--no-run] [--json]` | The merge boundary: at most one full run, claims, links, log integrity, the glance of approvals you did not type, advisory fidelity. Exit codes as above. |
-| `plumb merge-check --install-pre-push` / `--uninstall-pre-push` | The optional git pre-push hook. |
+| `plumb merge-check --install-pre-push` / `--uninstall-pre-push` | The git pre-push hook, where the one full run happens; `plumb init` and `plumb hooks install` write it by default (R17). |
 
 ### Bridge
 

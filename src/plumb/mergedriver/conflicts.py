@@ -561,6 +561,17 @@ class _CachedOnly:
 
 CACHED_ONLY = _CachedOnly()
 SHOWN_FILE = "conflicts-shown.json"
+
+
+def conflict_rows(core: Any, *, hook: bool) -> list[dict[str, Any]]:
+    """``[{ic, record, title, card}]`` of every open conflict, for the merge boundary. The one
+    place the merge-time checks build cards: inside a git hook (``hook``: pre-merge-commit,
+    pre-push) the card never calls a judgment backend and never writes the log; it shows a
+    judgment only when one is already logged. ``/plumb merge-check`` and ``/plumb conflicts``
+    judge live."""
+    backend = CACHED_ONLY if hook else None
+    return [{"ic": c.ic, "record": c.record, "title": c.title,
+             "card": conflict_card(core, c, backend=backend)} for c in open_conflicts(core)]
 REQUESTED_FILE = "conflicts-requested.json"
 
 

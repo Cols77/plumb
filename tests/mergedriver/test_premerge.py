@@ -13,6 +13,7 @@ from mergedriver.mdhelpers import (
     THEIRS_STATEMENT,
     commit_all,
     conflicted,
+    events,
     ex,
     install_driver,
     make_repo,
@@ -170,16 +171,104 @@ def test_uninstall_removes_only_plumb_hook(repo: Path) -> None:
 
 @pytest.mark.sr("SR-077")
 def test_hooks_install_and_init_install_the_quick_check(repo: Path, tmp_path: Path) -> None:
-    """SR-077 EX-5 (R17): /plumb init (and hooks install) set up the quick merge check by
-    default; the pre-push hook (the one full run) stays as it was."""
+    """SR-077 EX-5 (R17): /plumb init and hooks install set up the quick merge check AND the
+    pre-push hook (the one full run) by default: the merge runs no tests because push does."""
+    from plumb.boundary.prepush import HOOK_MARKER as PUSH_MARKER
+
+    push = repo / ".git" / "hooks" / "pre-push"
     assert cli.main(["hooks", "install", "--root", str(repo), "--launcher", "uv"]) == 0
     text = _hook(repo).read_text(encoding="utf-8")
     assert HOOK_MARKER in text and "merge-check --hook pre-merge-commit" in text
+    pushed = push.read_text(encoding="utf-8")
+    assert PUSH_MARKER in pushed and "merge-check --hook pre-push" in pushed
     other = tmp_path / "fresh"
     other.mkdir()
     run_git(other, "init", "-q", "-b", "main")
     assert cli.main(["init", "--root", str(other)]) == 0
     assert HOOK_MARKER in _hook(other).read_text(encoding="utf-8")
-    assert not (other / ".git" / "hooks" / "pre-push").exists()
+    assert PUSH_MARKER in (other / ".git" / "hooks" / "pre-push").read_text(encoding="utf-8")
     assert cli.main(["hooks", "uninstall", "--root", str(repo)]) == 0
-    assert not _hook(repo).exists()
+    assert not _hook(repo).exists() and not push.exists()
+
+
+@pytest.mark.sr("SR-077")
+@pytest.mark.parametrize("argv", [["hooks", "install"], ["init"]])
+def test_adoption_keeps_a_foreign_pre_push_hook(repo: Path, argv: list[str],
+                                                capsys: pytest.CaptureFixture) -> None:
+    """A pre-push hook plumb did not write is left byte-identical and named in plain words;
+    the quick merge check is still installed."""
+    push = repo / ".git" / "hooks" / "pre-push"
+    push.parent.mkdir(parents=True, exist_ok=True)
+    push.write_text(FOREIGN, encoding="utf-8")
+    assert cli.main([*argv, "--root", str(repo)]) == 0
+    assert push.read_text(encoding="utf-8") == FOREIGN
+    assert HOOK_MARKER in _hook(repo).read_text(encoding="utf-8")
+    assert "your own pre-push hook was kept" in capsys.readouterr().out
+
+
+class _CountingJev:
+    """A configured non-heuristic backend that counts its calls."""
+
+    name = "jev"
+    version = "jev-test-1"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def contradiction(self, prompt: str, rec: object):
+        from plumb.contracts import Judgment
+
+        self.calls += 1
+        return Judgment(action="intent_change", subject="SR-005", verdict="benign",
+                        confidence=0.8, tier="accept", backend="jev:test", fingerprint="f",
+                        reasons=("both can hold",), probability=0.82)
+
+
+def _jev_configured(monkeypatch: pytest.MonkeyPatch) -> _CountingJev:
+    import plumb.judgment as judgment
+
+    backend = _CountingJev()
+    monkeypatch.setattr(judgment, "get_backend", lambda core, hook: backend)
+    return backend
+
+
+@pytest.mark.sr("SR-077")
+def test_quick_check_never_calls_a_judgment_backend(
+        repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """R17 CHEAP: with JEV configured, the pre-merge-commit check shows the card without a
+    backend call and writes nothing to the log."""
+    import plumb.boundary.premerge as premerge
+
+    backend = _jev_configured(monkeypatch)
+    conflicted(repo)
+    head = run_git(repo, "rev-parse", "HEAD").stdout.strip()
+    monkeypatch.setattr(premerge, "incoming_heads", lambda root: [(head, "feat-x")])
+    report = check(open_core(repo))
+    assert report.exit == 4 and report.intent_conflicts
+    assert backend.calls == 0
+    assert "  Compatible? no judgment available" in report.intent_conflicts[0]["card"]
+    assert [p for p in events(repo, "judgment") if p.get("subject") == "IC-001"] == []
+
+
+@pytest.mark.sr("SR-077")
+def test_pre_push_hook_never_calls_a_judgment_backend(
+        repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    """The pre-push hook's report shows conflict cards from logged judgments only; the
+    owner's /plumb merge-check still judges live."""
+    import io
+
+    from plumb.boundary import merge_report
+    from plumb.boundary.cli import _hook_pre_push
+
+    backend = _jev_configured(monkeypatch)
+    conflicted(repo)
+    head = run_git(repo, "rev-parse", "HEAD").stdout.strip()
+    monkeypatch.setattr(sys, "stdin", io.StringIO(
+        f"refs/heads/main {head} refs/heads/main {'0' * 40}\n"))
+    assert _hook_pre_push(open_core(repo), False) != 0
+    out = capsys.readouterr().out
+    assert "Conflict  IC-001 on SR-005" in out and "Compatible? no judgment available" in out
+    assert backend.calls == 0
+    assert [p for p in events(repo, "judgment") if p.get("subject") == "IC-001"] == []
+    merge_report(open_core(repo), head, run_full=False)  # interactive: live
+    assert backend.calls == 1

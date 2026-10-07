@@ -1,11 +1,12 @@
-"""The optional git ``pre-push`` hook (sp3 8, SR-051).
+"""The git ``pre-push`` hook (sp3 8, SR-051; installed by default since R17).
 
 ``plumb merge-check --install-pre-push`` writes ``pre-push`` in the shared hooks directory
 (``git rev-parse --git-path hooks/pre-push``, which honours ``core.hooksPath`` and is shared by
 every worktree), running ``<interpreter> -m plumb merge-check --hook pre-push``. A hook plumb
-did not write is left untouched and reported. ``plumb hooks install`` never installs it; the
-owner (or the agent on the owner's request) does. ``git push --no-verify`` bypasses it, like
-any git hook: tamper-evident, not tamper-proof.
+did not write is left untouched and reported. ``plumb init`` and ``plumb hooks install`` install
+it by default with the quick merge check (R17: the merge hook runs no tests because the single
+full suite runs here, at push); ``plumb hooks uninstall`` removes it. ``git push --no-verify``
+bypasses it, like any git hook: tamper-evident, not tamper-proof.
 """
 
 from __future__ import annotations
@@ -65,6 +66,20 @@ def uninstall_pre_push_hook(root: Path) -> bool:
         return False
     path.unlink()
     return True
+
+
+def hook_state(root: Path) -> str:
+    """``plumb`` | ``non-plumb`` | ``not installed``."""
+    try:
+        path = hook_path(Path(root))
+    except (OSError, subprocess.CalledProcessError):
+        return "not installed"
+    if not path.exists():
+        return "not installed"
+    try:
+        return "plumb" if _is_plumb(path) else "non-plumb"
+    except ForeignHookError:
+        return "non-plumb"
 
 
 def _git(root: Path, *args: str) -> str | None:

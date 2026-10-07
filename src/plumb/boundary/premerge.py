@@ -8,11 +8,13 @@ single full suite runs at push (the pre-push hook). Never run the suite twice.
 against ``HEAD`` (the first parent) and the incoming commits ``HEAD..MERGE_HEAD``: the open
 intent conflicts (exit 4), the touched requirements not yet confirmed (exit 4), the files the
 incoming commits changed without a requirement declaring them (exit 1) and two records
-holding one ID (exit 1). No test run, no verification evidence, no judgment backend, no
-log-integrity diff: a few git calls and the record index. A non-zero exit refuses the merge
-commit; the merge stays in progress until it is settled, then the owner says "finish the
-merge". git runs this hook only when ``git merge`` commits on its own; a merge finished with
-``git commit`` is covered by the pre-push hook and ``/plumb merge-check``.
+holding one ID (exit 1). No test run, no verification evidence, no judgment backend call
+(cards show a judgment only when one is already logged: ``conflict_rows(hook=True)``), no
+log write, no log-integrity diff: a few git calls and the record index. A non-zero exit
+refuses the merge commit; the merge stays in progress until it is settled, then the owner
+says "finish the merge". git runs this hook only when ``git merge`` commits on its own;
+a merge finished with ``git commit`` is covered by the pre-push hook (installed with this
+one) and ``/plumb merge-check``.
 
 ``plumb hooks install`` and ``plumb init`` install it by default (R17); ``plumb merge-check
 --install-pre-merge-commit`` and ``--uninstall-pre-merge-commit`` mirror the pre-push hook: the
@@ -179,7 +181,7 @@ def check(core: Any) -> PremergeReport:
     ``MERGE_HEAD``)."""
     from plumb.claims import claims_check, load_policy
     from plumb.merge import required_records, touched_requirements
-    from plumb.mergedriver.conflicts import conflict_card, open_conflicts
+    from plumb.mergedriver.conflicts import conflict_rows
     from plumb.mergedriver.driver import labels_of
 
     root = Path(core.root)
@@ -215,8 +217,7 @@ def check(core: Any) -> PremergeReport:
         except Exception as exc:  # noqa: BLE001 - an unreadable range holds, never crashes
             undeclared.append({"commit": "", "path": None, "claims": [], "error": str(exc)})
 
-    conflicts = [{"ic": c.ic, "record": c.record, "title": c.title,
-                  "card": conflict_card(core, c)} for c in open_conflicts(core)]
+    conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
     code = 1 if (undeclared or collisions) else 4 if (conflicts or unconfirmed) else 0
     report = PremergeReport(merging=theirs, into=ours, touched=tuple(touched),

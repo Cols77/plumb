@@ -170,21 +170,21 @@ def _validation_errors(core: Any) -> list[str]:
     return [f"validate: {f.line()}" for f in validate(core) if f.severity == "error"]
 
 
-def _merge_state(core: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """``(unmerged, intent_conflicts)`` of the working tree (sp6 10)."""
-    from plumb.mergedriver.conflicts import conflict_card, open_conflicts
+def _merge_state(core: Any, hook: bool) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """``(unmerged, intent_conflicts)`` of the working tree (sp6 10); inside a git hook the
+    cards use logged judgments only (``conflict_rows``)."""
+    from plumb.mergedriver.conflicts import conflict_rows
     from plumb.mergedriver.unmerged import unmerged_rows
 
-    conflicts = [{"ic": c.ic, "record": c.record, "title": c.title,
-                  "card": conflict_card(core, c)} for c in open_conflicts(core)]
-    return unmerged_rows(core), conflicts
+    return unmerged_rows(core), conflict_rows(core, hook=hook)
 
 
 def merge_report(core: Any, base: str, *, run_full: bool = True,
-                 runner: Runner | None = None) -> MergeReport:
+                 runner: Runner | None = None, hook: bool = False) -> MergeReport:
     """Every section of the merge boundary against ``base``; runs the full suite at most once
     (only with ``run_full``) and records the merge evidence on green (only with
-    ``run_full``)."""
+    ``run_full``). ``hook`` (the pre-push hook): intent-conflict cards use logged judgments
+    only, never a live backend call."""
     from plumb.approvals import approved_exempt
     from plumb.boundary.fidelity import fidelity_rows, jev_scores, repinned_unjudged
     from plumb.boundary.fullrun import full_run, record_merge_evidence
@@ -262,7 +262,7 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         regressions=tuple(verification.get("regressions") or ()),
         fidelity=None if fidelity is None else tuple(fidelity),
         integrity=tuple(integrity), verification=verification, run_full=run_full)
-    unmerged, conflicts = _merge_state(core)
+    unmerged, conflicts = _merge_state(core, hook)
     report = _replace(report, unmerged=tuple(unmerged), intent_conflicts=tuple(conflicts))
     code = exit_code(report)
     evidence = None

@@ -3,8 +3,9 @@
 git calls it for a record file both sides changed (``merge=plumb-record`` in
 ``.plumb/.gitattributes``), in the top directory of the worktree, while it holds the index
 lock: it reads the three temporary files, writes the result to ``OURS`` and exits 0 (merged,
-possibly carrying an intent conflict) or 1 (git must stop: an add/add of one ID, or a side
-that is not a record and did not merge as text). Import-light: the frontmatter helpers only,
+possibly carrying an intent conflict) or 1 (git must stop: an add/add of one ID, a side
+that is not a record and did not merge as text, or a record whose open intent conflict a
+new one would replace). Import-light: the frontmatter helpers only,
 never the record index. git runs only to reserve an ``IC`` ID (and, with a git older than
 2.44, to name the two sides).
 """

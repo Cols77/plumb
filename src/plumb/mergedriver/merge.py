@@ -12,7 +12,10 @@ Rules (every field compared as parsed values, so formatting never conflicts):
   string lists three-way set merge (a conflict only when both sides rewrote one item);
   ``examples`` per example (a clashing new ``EX-n`` from theirs renumbered, with theirs's
   added links that name it); the body through ``git merge-file``; anything else is a
-  conflict on that field. A conflict keeps ours's value and writes a ``conflict`` block.
+  conflict on that field. A conflict keeps ours's value and writes a ``conflict`` block;
+- a side's open ``conflict`` block is never replaced: when both sides carry different blocks,
+  or one carries a block and the merge conflicts again, the file is text-merged and exit 1
+  leaves it unmerged (the block is the only copy of an earlier side's intent).
 """
 
 from __future__ import annotations
@@ -361,8 +364,14 @@ def merge_texts(base: str, ours: str, theirs: str, *, labels: tuple[str, str],
                                                what=what or "no change")
         return DriverResult(text=render_record(result, body), exit=0, notes=(line,),
                             merged=tuple(notes))
+    if "conflict" in conflicts or isinstance(result.get("conflict"), Mapping):
+        # An open block is the only copy of an earlier side's intent: never replaced. Both
+        # sides carry different blocks, or one carries a block and this merge conflicts
+        # again: git keeps the file unmerged with both versions, for the owner to settle.
+        text, _ = text_merge(base, ours, theirs, labels)
+        return DriverResult(text=text, exit=1, notes=(owner_text.STILL_OPEN.format(
+            record=record, title=title, ours=ours_label, theirs=theirs_label),))
     ic = reserve_ic()
-    result.pop("conflict", None)
     result["conflict"] = {
         "id": ic,
         "base": record_hash(b_data, b_body),

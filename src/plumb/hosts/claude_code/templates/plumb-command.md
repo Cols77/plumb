@@ -42,7 +42,9 @@ only when asked.
   -m "Merge <branch>"` with the `SR:` trailers of the merged work. "check merges before they
   are recorded": `{plumb} merge-check --install-pre-merge-commit`; "call plumb from my merge
   hook": add the `hook_line` of `{plumb} merge-check --install-pre-merge-commit --json` to
-  their own hook. For a record file left in text-merge form, "keep mine" / "keep theirs" is
+  their own hook. "run the tests when I push": `{plumb} merge-check --install-pre-push`;
+  "call plumb from my push hook": add `<python> -m plumb merge-check --hook pre-push` (git's
+  pushed refs on its stdin) to their own pre-push hook. For a record file left in text-merge form, "keep mine" / "keep theirs" is
   `git checkout --ours` / `--theirs` on it then `git add`; for one changed on one side and
   removed on the other, "keep the changed one" is `git add`, "keep it removed" is `git rm`;
   then `{plumb} validate`.

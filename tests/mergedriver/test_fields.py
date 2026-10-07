@@ -224,3 +224,68 @@ def test_no_ic_reserved_without_a_conflict() -> None:
     merge_texts(record(statement="a"), record(statement="b"), record(statement="a"),
                 labels=LABELS, reserve_ic=counter)
     assert counter.n == 0
+
+
+def _with_open_block(statement_ours: str, statement_theirs: str) -> str:
+    """SR-005 after main merged feat-x: IC-001 open on the statement (ours B, theirs C)."""
+    first = merge(record(statement="A", title="relay checks"),
+                  record(statement=statement_ours, title="relay checks"),
+                  record(statement=statement_theirs, title="relay checks"))
+    assert fm(first)["conflict"]["id"] == "IC-001"
+    return first.text
+
+
+def _assert_held(result, *kept: str) -> None:
+    """Exit 1 (git leaves the file unmerged), every earlier version still in the file, no
+    new IC reserved, and the owner told in plain words."""
+    assert result.exit == 1 and result.conflict is None
+    for text in kept:
+        assert text in result.text
+    assert "IC-001" in result.text and "IC-002" not in result.text
+    assert result.notes and "still waits for your choice on an earlier conflict" in \
+        result.notes[0]
+
+
+@pytest.mark.sr("SR-076")
+def test_open_block_on_ours_is_never_replaced() -> None:
+    """ours carries IC-001 (statement B vs C); feat-y changes the title while main did too:
+    the merge never drops IC-001 or feat-x's C for a new IC-002."""
+    ours = _with_open_block("B", "C").replace("title: relay checks", "title: relay pins")
+    theirs = record(statement="A", title="relay guards")
+    counter = Counter()
+    result = merge_texts(record(statement="A"), ours, theirs, labels=("main", "feat-y"),
+                         reserve_ic=counter)
+    _assert_held(result, "theirs: C", "relay guards")
+    assert counter.n == 0
+
+
+@pytest.mark.sr("SR-076")
+def test_open_block_on_theirs_is_never_replaced() -> None:
+    """theirs carries IC-001 and ours changed the same field again: held, nothing lost."""
+    theirs = _with_open_block("B", "C")
+    ours = record(statement="D", title="relay checks")
+    counter = Counter()
+    result = merge_texts(record(statement="A"), ours, theirs, labels=("main", "feat-x"),
+                         reserve_ic=counter)
+    _assert_held(result, "theirs: C", "statement: D")
+    assert counter.n == 0
+
+
+@pytest.mark.sr("SR-076")
+def test_different_open_blocks_on_both_sides_are_held() -> None:
+    """Both sides carry their own open block: neither is folded into a new one."""
+    ours = _with_open_block("B", "C")
+    theirs = _with_open_block("B", "E").replace("IC-001", "IC-009")
+    result = merge(record(statement="A"), ours, theirs)
+    assert result.exit == 1 and "IC-009" in result.text and "IC-001" in result.text
+    assert "theirs: C" in result.text and "theirs: E" in result.text
+
+
+@pytest.mark.sr("SR-076")
+def test_open_block_kept_when_the_merge_is_otherwise_clean() -> None:
+    """A block on one side and an unrelated clean change on the other: the block stays."""
+    ours = _with_open_block("B", "C")
+    theirs = record(statement="A", domain="relay")
+    result = merge(record(statement="A"), ours, theirs)
+    assert result.exit == 0 and fm(result)["conflict"]["id"] == "IC-001"
+    assert fm(result)["domain"] == "relay"

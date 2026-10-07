@@ -50,7 +50,10 @@ def test_driver_stderr() -> None:
                        reserve_ic=Counter())
     conflict = merge_texts(record(statement="a"), record(statement="b"),
                            record(statement="c"), labels=LABELS, reserve_ic=Counter())
-    for result in (merged, add_add, text, conflict):
+    held = merge_texts(record(statement="a"), conflict.text, record(statement="d"),
+                       labels=LABELS, reserve_ic=Counter())
+    assert held.exit == 1
+    for result in (merged, add_add, text, conflict, held):
         _clean("\n".join(result.notes))
 
 
@@ -62,8 +65,12 @@ def test_driver_status(tmp_path: Path, capsys) -> None:
     _clean(status(root))
     assert cli.main(["hooks", "status", "--root", str(root)]) == 0
     out = [line for line in capsys.readouterr().out.splitlines()
-           if "merge driver" in line or "pre-merge-commit" in line]
+           if "merge driver" in line or "pre-merge-commit" in line or "pre-push" in line]
     _clean("\n".join(out))
+    from plumb.present import owner_text
+
+    _clean(owner_text.PREPUSH_INSTALLED)
+    _clean(owner_text.FOREIGN_PREPUSH_HOOK)
 
 
 @pytest.mark.sr("SR-077")

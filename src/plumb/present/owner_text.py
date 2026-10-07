@@ -21,6 +21,9 @@ ADD_ADD = ("plumb: {record} was created on both sides as different records; /plu
            "renumbers the incoming one")
 UNPARSABLE = ("plumb: the record file of {record} \"{title}\" holds both versions of a text "
               "merge; say \"keep mine\" or \"keep theirs\" for it")
+STILL_OPEN = ("plumb: {record} \"{title}\" still waits for your choice on an earlier conflict "
+              "and was changed again on {ours} and {theirs}; git keeps both versions of it: "
+              "say \"keep mine\" or \"keep theirs\" for it")
 NO_DRIVER = ("plumb: the record file of {record} \"{title}\" was merged as plain text; "
              "/plumb init installs the record merge")
 
@@ -68,6 +71,10 @@ FOREIGN_HOOK = ("plumb: your own pre-merge-commit hook was kept; say \"call plum
                 "hook\" to add it")
 PREMERGE_INSTALLED = ("plumb: merges are checked before git records them (a quick check, no "
                       "test run; the full test run happens when you push)")
+PREPUSH_INSTALLED = ("plumb: pushes run the full test run once before git sends them (the "
+                     "one full run; merges stay quick)")
+FOREIGN_PREPUSH_HOOK = ("plumb: your own pre-push hook was kept; say \"call plumb from my push "
+                        "hook\" to add the full test run to it")
 PREMERGE_REMOVED = "plumb: merges are no longer checked before git records them"
 PREMERGE_UNCONFIRMED = "  {record} \"{title}\" is not confirmed yet; /plumb confirm {title}"
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "

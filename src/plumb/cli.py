@@ -96,7 +96,7 @@ hosts:         hosts (install|uninstall|status codex|pi|hermes), turn (start|end
                CLI-only fallback), mcp (serve: the read-only MCP server on stdio)
 bridge:        trailers, claims, fidelity, judge, judgment, import
 merge:         merge-check (the merge boundary: one full run, claims, links, the glance;
-               --install-pre-push for the optional git hook)
+               --install-pre-push: the git hook init installs)
 
 record merges (parallel work):
   conflicts    the intent conflicts a merge left, as cards (both versions; nothing chosen)

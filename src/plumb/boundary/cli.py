@@ -39,12 +39,13 @@ def merge_settings(core: Any) -> dict[str, Any]:
     return out
 
 
-def _print_report(core: Any, base: str, *, run_full: bool, as_json: bool) -> Any:
-    """Compute, print and return one ``MergeReport``."""
+def _print_report(core: Any, base: str, *, run_full: bool, as_json: bool,
+                  hook: bool = False) -> Any:
+    """Compute, print and return one ``MergeReport`` (``hook``: inside the pre-push hook)."""
     from plumb.boundary import as_dict, merge_report, render
     from plumb.cliutil import emit
 
-    report = merge_report(core, base, run_full=run_full)
+    report = merge_report(core, base, run_full=run_full, hook=hook)
     if as_json:
         emit(as_dict(report), True)
     else:
@@ -73,7 +74,7 @@ def _hook_pre_push(core: Any, run_full: bool) -> int:
             continue
         seen.add(base)
         print(f"plumb pre-push: {ref}")
-        report = _print_report(core, base, run_full=may_run, as_json=False)
+        report = _print_report(core, base, run_full=may_run, as_json=False, hook=True)
         if (report.full_run or {}).get("ran"):
             may_run = False
         worst = max(worst, report.exit)
@@ -140,7 +141,8 @@ def run(command: str, argv: list[str]) -> int:
                              "(no test run, R17)")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--install-pre-push", action="store_true",
-                       help="write the optional git pre-push hook running this check")
+                       help="write the git pre-push hook running this check (init and hooks "
+                       "install write it by default)")
     group.add_argument("--uninstall-pre-push", action="store_true",
                        help="remove plumb's pre-push hook (a foreign hook is left)")
     group.add_argument("--install-pre-merge-commit", action="store_true",
