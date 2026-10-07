@@ -2,9 +2,10 @@
 
 ``.plumb/cache/changing.json`` (gitignored) holds the paths this worktree's branch changed
 since its merge base with the default branch (``committed``, recomputed only when ``HEAD``
-moved: one ``git merge-base`` and one ``git diff``), the paths changed since (``pending``:
-the stop hook's turn paths and the post-edit hook's edits), and the records those paths
-change. Other worktrees read it; nothing here ever writes outside this worktree.
+or the default branch's tip moved: one ``git merge-base`` and one ``git diff``; once the
+default branch holds ``HEAD`` nothing committed is in flight), the paths changed since
+(``pending``: the stop hook's turn paths and the post-edit hook's edits), and the records
+those paths change. Other worktrees read it; nothing here ever writes outside this worktree.
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ from plumb.awareness import gitfiles
 
 VERSION = 1
 CHANGING = "changing.json"
+LANDED = "awareness-landed.json"
+LANDED_MAX = 256
 GIT_TIMEOUT_S = 2.0
 
 
@@ -151,29 +154,81 @@ def changed_records(core: Any, paths: Iterable[str], added: Iterable[str] = ()
     return out
 
 
+def tip(root: Path, branch: str) -> str | None:
+    """The commit ``branch`` names, from git's files (no git process)."""
+    common = gitfiles.common_dir(root)
+    return gitfiles.resolve_ref(common, f"refs/heads/{branch}") if common is not None else None
+
+
+def landed(root: Path, data: Mapping[str, Any], default_tip: str | None, *,
+           allow_git: bool = False) -> bool:
+    """Whether a worktree's published ``changing.json`` (``data``) describes a branch the
+    default branch (now at ``default_tip``) has taken whole since: its ``head`` is reachable
+    from the default tip, so nothing it committed is in flight any more (R17). Known without
+    git when the default tip has not moved since it published; otherwise from a cache keyed
+    by the two commits, learned with ``allow_git`` (one ``git merge-base --is-ancestor``)."""
+    head = str(data.get("head") or "")
+    if (not head or not default_tip or not data.get("committed")
+            or data.get("default_head") == default_tip):
+        return False
+    cache = Path(root) / ".plumb" / "cache" / LANDED
+    try:
+        known = json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        known = {}
+    known = known if isinstance(known, dict) else {}
+    key = f"{head}:{default_tip}"
+    if key not in known:
+        if not allow_git:
+            return False
+        import subprocess
+
+        try:
+            code = subprocess.run(["git", "merge-base", "--is-ancestor", head, default_tip],
+                                  cwd=root, capture_output=True,
+                                  timeout=GIT_TIMEOUT_S).returncode
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if code not in (0, 1):
+            return False
+        known = dict(list(known.items())[-(LANDED_MAX - 1):])
+        known[key] = code == 0
+        try:
+            _write(cache, known)
+        except OSError:
+            pass
+    return bool(known.get(key))
+
+
 def publish(core: Any, changed_paths: Sequence[str], *, head_moved: bool | None = None
             ) -> dict[str, Any] | None:
     """Write this worktree's ``changing.json``; returns what it holds (None outside git).
 
     ``head_moved`` None: compare with the ``head`` the file holds. The committed part is
-    recomputed only when HEAD moved; otherwise ``changed_paths`` join the pending paths. The
-    file is rewritten only when its content changed."""
+    recomputed only when HEAD moved (the pending paths restart from ``changed_paths``) or
+    the default branch's tip moved (a merge of this branch empties it); otherwise
+    ``changed_paths`` join the pending paths. The file is rewritten only when its content
+    changed."""
     root = Path(core.root)
     me = gitfiles.current(root)
     if me is None:
         return None
     path = changing_path(root)
     old = read_changing(path) or {}
+    default = default_branch(core)
+    default_head = tip(root, default)
     moved = head_moved if head_moved is not None else (
         old.get("head") != me.head or "committed" not in old
         or old.get("branch") != me.branch)
-    if moved:
-        default = default_branch(core)
+    if moved or old.get("default_head") != default_head:
+        # HEAD moved, or the default branch did (it may have merged this branch: then the
+        # merge base is HEAD and nothing committed is in flight any more, R17)
         if me.branch == default:
             base, committed, added = me.head, [], []
         else:
             base, committed, added = committed_changes(root, default, me.head)
-        pending = sorted(set(changed_paths))
+        pending = (sorted(set(changed_paths)) if moved else
+                   sorted(set(old.get("pending") or []) | set(changed_paths)))
     else:
         base = old.get("base")
         committed = list(old.get("committed") or [])
@@ -182,7 +237,8 @@ def publish(core: Any, changed_paths: Sequence[str], *, head_moved: bool | None 
     paths = sorted(set(committed) | set(pending))
     data: dict[str, Any] = {
         "v": VERSION, "worktree": root.resolve().as_posix(), "branch": me.branch,
-        "head": me.head, "base": base, "committed": committed, "added": added,
+        "head": me.head, "default_head": default_head, "base": base,
+        "committed": committed, "added": added,
         "pending": pending, "paths": paths,
         "records": changed_records(core, paths, added)}
     if {k: v for k, v in old.items() if k != "at"} == data:

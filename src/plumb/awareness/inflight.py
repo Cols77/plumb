@@ -321,6 +321,28 @@ def record_entry(record: Any) -> dict[str, str]:
     return entry
 
 
+def _one_holder(live: list[dict[str, Any]], mine: Mapping[str, Any],
+                records: Iterable[str]) -> list[dict[str, Any]]:
+    """A branch holds each record in ONE claim, at the version it wrote last: the records
+    ``mine`` just wrote leave the branch's other claims (a capture claims under its intent,
+    the stop hook under none, so one record could otherwise sit in two claims at two
+    versions and be asked about twice, or against a stale version). A claim left with no
+    record and no raised conflict goes."""
+    written = set(records)
+    out: list[dict[str, Any]] = []
+    for claim in live:
+        if claim is not mine and claim.get("branch") == mine.get("branch") and written:
+            held = {k: v for k, v in (claim.get("records") or {}).items() if k not in written}
+            if len(held) != len(claim.get("records") or {}):
+                if not held and not claim.get("conflicts"):
+                    continue
+                claim["records"] = held
+                claim["features"] = sorted({str(e["feature"]) for e in held.values()
+                                            if isinstance(e, Mapping) and e.get("feature")})
+        out.append(claim)
+    return out
+
+
 def record_claim(core: Any, *, records: Mapping[str, Mapping[str, str]], summary: str,
                  intent: str | None, conflicts: Iterable[Mapping[str, Any]] = (),
                  default: str | None = None) -> dict[str, Any] | None:
@@ -353,6 +375,7 @@ def record_claim(core: Any, *, records: Mapping[str, Mapping[str, str]], summary
         mine["records"] = {**(mine.get("records") or {}), **{k: dict(v)
                                                              for k, v in records.items()}}
         mine["features"] = sorted(set(mine.get("features") or []) | set(features))
+        live = _one_holder(live, mine, records)
         known = {(c.get("record"), c.get("with")) for c in mine.get("conflicts") or []}
         mine["conflicts"] = list(mine.get("conflicts") or []) + [
             c for c in new_conflicts if (c.get("record"), c.get("with")) not in known]

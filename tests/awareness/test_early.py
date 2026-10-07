@@ -283,3 +283,66 @@ def test_preview_of_a_different_tail_shows_the_card(tmp_path: Path) -> None:
     result = change(main, _LONG + "Then only the affirmed records are pinned.", dry_run=True)
     assert any(line.startswith("▸ Conflict") for line in result.lines)
     assert _decisions(main) == []
+
+
+# -- a branch holds each record ONCE, at the version it wrote last (R17: asked once; the same
+#    words ask nothing): one test per entry point that reads a branch's claims
+
+
+_SR005 = ".plumb/requirements/SR-005.md"
+
+
+def _edited_outside_capture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+                            ) -> tuple[Path, Path]:
+    """feat-x claims SR-005 by a capture (claim ``feat-x:INT-001``), then changes it again
+    with no claim written (an edit outside capture); its stop hook claims the new version
+    (claim ``feat-x:-``)."""
+    from plumb.awareness.publish import publish
+    from plumb.awareness.turn import claim_changes
+
+    main, other = setup(tmp_path)
+    change(other, "feat-x version one")
+    with monkeypatch.context() as patched:
+        patched.setattr(inflight, "record_claim", lambda *a, **k: None)
+        change(other, "feat-x version two")
+    assert claim_changes(open_core(other), publish(open_core(other), [_SR005])) is True
+    return main, other
+
+
+def test_stop_hook_claim_moves_the_record_out_of_the_older_claim(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    main, other = _edited_outside_capture(tmp_path, monkeypatch)
+    holders = [c for c in inflight.read(main, allow_git=True)[1]["claims"]
+               if "SR-005" in (c.get("records") or {})]
+    assert [c["id"] for c in holders] == ["feat-x:-"]
+    assert holders[0]["records"]["SR-005"]["hash"] == open_core(other).index()["SR-005"].hash
+
+
+def test_capture_asks_once_against_the_newest_version(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """check_records: one card and one decision, not one per claim of feat-x."""
+    main, _other = _edited_outside_capture(tmp_path, monkeypatch)
+    result = change(main, "main version")
+    cards = [line for line in result.lines if line.startswith("▸ Conflict")]
+    assert len(cards) == 1
+    assert "  feat-x      feat-x version two" in result.lines
+    assert len(_decisions(main)) == 1
+
+
+def test_capture_of_the_newest_version_asks_nothing(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """check_records: the same words feat-x now holds are no conflict (no stale claim)."""
+    main, _other = _edited_outside_capture(tmp_path, monkeypatch)
+    result = change(main, "feat-x version two")
+    assert not any("Conflict" in line for line in result.lines)
+    assert _decisions(main) == []
+
+
+def test_read_back_asks_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """check_text: one card for the record, with feat-x's newest words."""
+    from plumb.awareness import early
+
+    main, _other = _edited_outside_capture(tmp_path, monkeypatch)
+    check = early.check_text(open_core(main), "make SR-005 pin only the affirmed records")
+    assert [(c.record, c.branch, c.theirs) for c in check.conflicts] == [
+        ("SR-005", "feat-x", "feat-x version two")]

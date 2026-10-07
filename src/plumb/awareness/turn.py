@@ -1,7 +1,8 @@
 """The hooks' awareness steps, each bounded by the hook's deadline (sp6 9.2, 9.4, 9.5; R17).
 
-- session start: refresh this worktree's ``changing.json`` when HEAD moved, then the brief's
-  lines (the branch scan runs here, within its cap);
+- session start: refresh this worktree's ``changing.json`` when HEAD (or the default
+  branch's tip) moved; learn which claimed branches and which other worktrees' branches
+  merged (git, cached); then the brief's lines (the branch scan runs here, within its cap);
 - stop: publish this turn's paths; keep this branch's claim in ``refs/plumb/claims`` in step
   with the records it changed (whatever wrote them: capture, ``plumb new``, an edit) and
   carry the owner's answers to raised conflicts to the other branches; then the overlap lines
@@ -52,6 +53,12 @@ def at_session_start(core: Any, deadline: Any = None) -> list[Any]:
         inflight.others(core, allow_git=True, deadline=deadline)
     except Exception as exc:  # noqa: BLE001
         _log(core, "claims", exc)
+    try:  # learn which other worktrees' branches were merged (cached), likewise
+        from plumb.awareness.scan import learn_landed
+
+        learn_landed(core, deadline=deadline)
+    except Exception as exc:  # noqa: BLE001
+        _log(core, "merged worktrees", exc)
     try:
         return brief_entries(core, deadline)
     except Exception as exc:  # noqa: BLE001

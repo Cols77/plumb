@@ -3456,3 +3456,52 @@ version" means the same record hash). These were recorded, not fixed:
   work dropped (`plumb inflight drop`): the graph alone cannot tell that fast-forward from a
   branch fast-forwarding to `main`, and the second must keep its claim. A `--no-ff` merge,
   or any plumb write on the branch after its commits, clears it.
+
+## SP6 lane AWARENESS, review round 2 (2026-10-07): medium and low findings
+
+The two HIGH findings of this round are fixed on `lane/awareness` (a branch holds each
+record in one claim, at the version it wrote last; a branch the default branch has
+taken whole has nothing committed in flight, so its claim does not come back). These
+were recorded, not fixed:
+
+- [MEDIUM] `capture/capture.py`: capture runs the R8 B auto-approval gate on `written`
+  before `_inflight_check`, so a new requirement that JEV judges to contradict another
+  branch's intent in flight can be auto-confirmed in the same capture; the owner is asked
+  the early-conflict DEC only afterwards ("asked immediately, before anything" does not hold
+  for auto-approved records). Scenario: auto-approve on with a passing calibration; feat-x
+  claims FEAT-002 with "A relay confirms a group"; on main the owner's words support "A
+  relay confirms one record at a time"; `gate()` confirms the new SR, then `after_capture`
+  judges it "contradicts" and raises a proposed DEC. If the owner later picks feat-x's
+  version, a confirmed requirement contradicts the decision.
+- [MEDIUM] `awareness/early.py` `check_text` (the clarify read-back) treats any record that
+  `core.relevant()` ranks at score >= 1.0 as "the same record being changed": it shows a
+  deterministic Conflict card and raises the depth from trivial with no JEV judgment,
+  although R17 reserves the deterministic path for the same record actually being changed.
+  Scenario: feat-x claims SR-005 "relay checks"; on main the owner asks for something that
+  only mentions relays (a docs typo near the relay wording); clarify shows the Conflict card
+  and "ask this conflict first": an intent question nobody raised.
+- [MEDIUM] `awareness/inflight.py`: every writer prunes the shared register through
+  `active()` inside the CAS mutate, and a claim whose branch is missing from
+  `gitfiles.branch_tips` is dropped for every worktree for good. `branch_tips` reads
+  packed-refs first and then the loose refs, so a concurrent `git pack-refs` or `gc`
+  (packed-refs read before the rewrite, loose ref deleted before the walk) makes a live
+  branch look deleted, and its claim and raised-conflict answers are lost.
+- [MEDIUM] `awareness/inflight.py` `merged()`: a fast-forward merge clears a claim only when
+  its `own` field holds the branch's own commit (set by `record_claim`, or by `refresh` in
+  the stop hook after a commit). A branch whose commits were made outside a plumb session
+  (CLI commit, no Stop hook) keeps `own=''` and `base` at the claim; after
+  `git merge --ff-only feat-x` its commits sit on main's first-parent line, so the claim
+  never clears until the branch is deleted, and other branches keep raising or naming
+  conflicts for work that has landed (extends the round-1 residual note).
+- [LOW] `capture/capture.py` and the coordinator-owned files: the lane edits
+  `capture/capture.py`, `capture/clarify.py`, `cli.py`, `commands.py`, `config.py`,
+  `contracts.py`, the `hosts/claude_code` hooks, templates and `present/render.py`, while
+  plan 3.1 gives AWARENESS only `src/plumb/awareness/**` and `tests/awareness/**`. R17's
+  wiring was added to this lane's task with no recorded coordinator contract change, so
+  expect textual conflicts at Integrate with MERGEDRIVER's or the coordinator's phase-0
+  edits to `stop.py`, `session_start.py` or `contracts.py`.
+- [MEDIUM] `awareness/publish.py`: `note_edit` (the async post-edit hook) and `publish`
+  (stop and session start) both read `changing.json`, modify it and write it back with no
+  coordination. Both are atomic replaces, so an edit path that lands between the stop hook's
+  read and its write is lost from `pending`, and other worktrees stop hearing that the record
+  is being edited until the path is published again.

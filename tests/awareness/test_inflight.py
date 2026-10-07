@@ -272,3 +272,87 @@ def test_fast_forward_to_main_survives_the_stop_hook_and_session_start(tmp_path:
     at_session_start(open_core(main))
     assert _branches(main, allow_git=False) == ["feat-x"]
     assert _branches(main) == ["feat-x"]
+
+
+# -- a merged branch has nothing committed in flight (R17: a claim clears when its branch
+#    merges, and stays cleared): one test per entry point that writes a claim or reads what a
+#    worktree is changing
+
+
+def _merged_and_pruned(tmp_path: Path) -> tuple[Path, Path]:
+    """feat-x claims SR-005, commits, its stop hook runs; main merges feat-x; the next
+    writer prunes the merged claim. feat-x's worktree stays open."""
+    from plumb.awareness import publish as pub
+    from plumb.awareness.turn import claim_changes
+
+    main, other = setup(tmp_path)
+    change(other, "feat-x's version")
+    commit_all(other, "feat-x work")
+    claim_changes(open_core(other), pub.publish(open_core(other), []))
+    run_git(main, "merge", "-q", "--no-ff", "-m", "merge feat-x", "feat-x")
+    inflight.record_claim(open_core(main), records={"SR-006": {"title": "status card"}},
+                          summary="main work", intent="INT-009")
+    assert [c["branch"] for c in _claims(main)] == ["main"]
+    return main, other
+
+
+def test_stop_hook_after_the_merge_claims_nothing(tmp_path: Path) -> None:
+    """The stop hook (claim_changes): the merged records are not claimed again, so a later
+    change on main asks nothing."""
+    from plumb.awareness import publish as pub
+    from plumb.awareness.turn import claim_changes
+
+    main, other = _merged_and_pruned(tmp_path)
+    data = pub.publish(open_core(other), [])
+    assert data is not None and data["committed"] == [] and data["records"] == {}
+    assert claim_changes(open_core(other), data) is False
+    assert _branches(main) == []
+    result = change(main, "main's later version")
+    assert not any("Conflict" in line for line in result.lines)
+
+
+def test_inflight_sync_after_the_merge_claims_nothing(tmp_path: Path) -> None:
+    """``plumb inflight sync``."""
+    import contextlib
+    import io
+
+    from plumb.cli import main as cli_main
+
+    main, other = _merged_and_pruned(tmp_path)
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert cli_main(["inflight", "sync", "--root", str(other)]) == 0
+    assert _branches(main) == []
+
+
+def test_capture_after_the_merge_claims_only_what_it_changed(tmp_path: Path) -> None:
+    """Capture (after_capture): new intent on feat-x is claimed; the merged record is not."""
+    main, other = _merged_and_pruned(tmp_path)
+    change(other, "feat-x's next status card", record="SR-006")
+    [claim] = [c for c in _claims(main) if c["branch"] == "feat-x"]
+    assert set(claim["records"]) == {"SR-006"}
+
+
+def test_publish_keeps_pending_edits_when_only_main_moved(tmp_path: Path) -> None:
+    """``changing.json``: main moving (here: merging feat-x) empties the committed part and
+    keeps the edits since the last commit."""
+    from plumb.awareness import publish as pub
+
+    main, other = _merged_and_pruned(tmp_path)
+    (other / "notes.txt").write_text("after the merge\n", encoding="utf-8")
+    pub.note_edit(other, "notes.txt")
+    data = pub.publish(open_core(other), [])
+    assert data is not None and data["committed"] == [] and data["pending"] == ["notes.txt"]
+
+
+def test_other_worktrees_stop_naming_a_merged_branch(tmp_path: Path) -> None:
+    """The overlap read of another worktree's ``changing.json``: feat-x's file still lists
+    SR-005 as committed (feat-x ran no hook since the merge); main's session start learns
+    the merge (one git call, cached) and every later hook read ignores it."""
+    from plumb.awareness import scan
+    from plumb.awareness.turn import at_session_start
+
+    main, _other = _merged_and_pruned(tmp_path)
+    assert {o.branch for o in scan.overlaps(open_core(main), ["SR-005"])} == {"feat-x"}
+    at_session_start(open_core(main))
+    assert [o for o in scan.overlaps(open_core(main), ["SR-005"])
+            if o.branch == "feat-x"] == []
