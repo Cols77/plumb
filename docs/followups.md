@@ -3345,3 +3345,59 @@ or extends that entry.
   ambiguous for lane agents. Same as the round-1 coordinator-row entry. Fix: remove the
   duplicate and spell out the full paths for `prompt.py`, `stop.py`, `post_edit.py`,
   `snapshot.py` and `install.py`.
+
+## SP6 lane AWARENESS (2026-10-07)
+
+Built: sp6 9 (SR-078, SR-079) and ruling R17's early intent conflicts (new proposed records
+SR-080 "Intent in flight is shared through refs/plumb/claims" and SR-081 "Intent conflicts
+are caught at capture, before any implementation", FEAT-006, derived from INT-022). Nothing
+unfinished in the lane's rows A1 to A6. Medium and low findings:
+
+- [MEDIUM, Integrate] Phase 0 had not run when this lane started, so the lane wrote its own
+  call sites in coordinator files: `contracts.py` (`Overlap`, `StatusSnapshot.overlaps`,
+  `overlap_labels`, `conflicts`, `ClarifyView.inflight`), `config.py` (`AwarenessConfig`),
+  `cli.py` (route `inflight` and its help line), `commands.py` (`plumb status` section and
+  `--json` `elsewhere`), the four hooks, `snapshot.py`, `present/render.py`
+  (`overlap_parts`), `present/report.py`, `capture/capture.py` and `capture/clarify.py`
+  (the R17 choke points), the `/plumb` command template and the plumb-clarify skill
+  template. `present/owner_text.py` was created by IDS, LOGS and this lane separately
+  (add/add at merge): keep one `bare_cli_verbs` and the union of the constants. `plumb
+  init`'s commented `config.yaml` does not list the `awareness` keys yet (LOGS owns that
+  hunk of `commands.py`).
+- [MEDIUM] The early intent-conflict check runs at `plumb capture` and `plumb clarify`
+  (R17 names those two). `plumb new`, `plumb intent`, `plumb example` and `plumb decide`
+  write records without it: their records are claimed in `refs/plumb/claims` by the stop
+  hook (any writer, one choke point) and the overlap line reaches the agent, but no early
+  card is shown. Routing those commands through `early.after_capture` would close it.
+- [MEDIUM, Integrate] Editing the shared files above left other requirements' links stale
+  (`plumb validate`: 66 warnings, 0 errors), e.g. SR-017, SR-026, SR-034, SR-043, SR-061 to
+  SR-063 on `config.py`, `contracts.py`, `capture.py`, `clarify.py`, the hooks. The lane
+  repinned only its own SR-078 to SR-081; the rest wait for review at Integrate.
+- [LOW] `awareness/inflight.py` has its own compare-and-swap helpers for
+  `refs/plumb/claims`; IDS's `ids/ref.py` does the same for `refs/plumb/ids`. Fold them into
+  one ref module after both lanes merge.
+- [LOW] A claim recorded on the default branch clears as soon as a commit lands there (the
+  branch tip moved and is trivially reachable); other branches then meet that intent at
+  merge through the record merge driver.
+- [LOW] The warm overlap check measures about 30 ms for five worktrees (budget 50 ms): the
+  register is read twice per prompt (`claim_overlaps`, `raised_lines`) and
+  `gitfiles.current` runs three times. Memoize per hook call if it gets close.
+- [LOW] The same-record early card says "the same requirement is being changed on both
+  branches"; with JEV configured it could add the advisory compatibility line the merge
+  card has. The feature-overlap card already shows it.
+- [LOW] `StatusSnapshot.conflicts` is not filled by this lane (MERGEDRIVER's
+  `open_conflicts`); an early conflict counts as a question and a proposed record.
+- [LOW] Spec 9.4 keys the stop hook's owner line like the prompt delta's agent line, so a
+  record the prompt hook already named to the agent this session is not repeated to the
+  owner at the stop; the owner still sees the status card's "N also changed on <branch>".
+- [LOW] `record_claim` prunes merged claims with one `git merge-base --is-ancestor` per
+  moved claim tip, cached, without the hook's deadline (the stop hook starts it only with
+  0.4 s left).
+- [LOW, pre-existing] `tests/host/test_latency.py::test_intent_lines_survive_cpu_contention`
+  fails on `main` as on this branch (LOGS lane's note above). `present/report.py`'s "awaits
+  you" line and the session brief's triage line still name bare `plumb confirm`/`plumb
+  triage` (R14, not SP6 text).
+- [R14 matrix, Integrate] New owner entry points: "what are the other branches working on?"
+  (`plumb inflight`), "drop that work" (`plumb inflight drop <branch>`), "is anyone else
+  changing X?" and `/plumb status` (overlaps), the early conflict card's answer ("keep
+  feat-x's", "keep this one", "both") relayed like any decision.

@@ -166,3 +166,11 @@ def test_capture_never_fails_on_an_inflight_error(tmp_path: Path,
                             "updates": [{"id": "SR-005", "statement": "still written"}]})
     assert "SR-005" in result.updated
     assert any("not checked" in line for line in result.lines)
+
+
+def test_same_version_on_both_branches_asks_nothing(tmp_path: Path) -> None:
+    main, other = setup(tmp_path)
+    change(other, "A relay pins the stated group.")
+    result = change(main, "A relay pins the stated group.")
+    assert not any("Conflict" in line for line in result.lines)
+    assert _decisions(main) == []

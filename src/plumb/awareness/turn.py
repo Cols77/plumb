@@ -48,6 +48,10 @@ def at_session_start(core: Any, deadline: Any = None) -> list[Any]:
         publish(core, [])            # git only when HEAD moved since the file was written
     except Exception as exc:  # noqa: BLE001
         _log(core, "publish", exc)
+    try:  # learn which claims' branches were merged (cached), so the brief drops them
+        inflight.others(core, allow_git=True, deadline=deadline)
+    except Exception as exc:  # noqa: BLE001
+        _log(core, "claims", exc)
     try:
         return brief_entries(core, deadline)
     except Exception as exc:  # noqa: BLE001

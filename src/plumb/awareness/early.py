@@ -118,6 +118,8 @@ def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | N
         for claim in claims:
             entry = (claim.get("records") or {}).get(record.id)
             if entry is not None and record.id not in new_set:
+                if _same_words(entry, our_text, record):
+                    continue  # both branches hold the same version: nothing to choose
                 known = _known(my_branch, every, record.id, claim)
                 if known is not None:
                     result.lines.append(_known_line(record.id, record.title, known))
@@ -149,6 +151,13 @@ def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | N
                         id=record.id, title=record.title, branch=claim["branch"],
                         summary=_clip(str(claim.get("summary") or ""), 80)))
     return result
+
+
+def _same_words(entry: Mapping[str, Any], ours: str, record: Any) -> bool:
+    """The other branch's claimed version is this one (same hash, or the same words)."""
+    if entry.get("hash") and entry.get("hash") == getattr(record, "hash", None):
+        return True
+    return " ".join(str(entry.get("text") or "").split()) == " ".join(ours.split())
 
 
 def _judge(backend: Any, theirs: str, record: Any) -> tuple[str, str]:

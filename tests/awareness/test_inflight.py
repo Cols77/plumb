@@ -141,3 +141,18 @@ def test_hook_read_needs_no_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(subprocess, "run", refuse)
     _oid, data = inflight.read(main)
     assert [c["branch"] for c in data["claims"]] == ["feat-x"]
+
+
+def test_session_start_drops_a_merged_branch_claim(tmp_path: Path) -> None:
+    """The hook path keeps a claim whose reachability it cannot know without git; the
+    session start learns (with git, cached) that its branch merged, and every later hook
+    read drops it."""
+    from plumb.awareness.turn import at_session_start
+
+    main, other = setup(tmp_path)
+    change(other, "feat-x's version")
+    commit_all(other, "feat-x work")
+    run_git(main, "merge", "-q", "--no-ff", "-m", "merge feat-x", "feat-x")
+    assert [c["branch"] for c in inflight.others(open_core(main))[1]] == ["feat-x"]
+    at_session_start(open_core(main))
+    assert inflight.others(open_core(main))[1] == []
