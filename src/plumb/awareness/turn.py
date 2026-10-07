@@ -61,16 +61,15 @@ def at_session_start(core: Any, deadline: Any = None) -> list[Any]:
 
 def claim_changes(core: Any, data: Mapping[str, Any] | None) -> bool:
     """Record (or refresh) this branch's claim for the records it changed that no claim of
-    this branch holds at their current version. Reads git's files first; writes only when
-    something is missing. Returns whether it wrote."""
+    this branch holds at their current version, and move this branch's claims to its tip
+    when it committed since. Reads git's files first; writes only when something is missing
+    or moved. Returns whether it wrote."""
     if not data or not data.get("branch"):
         return False
     index = core.index()
     changed = {i: item for i, item in (data.get("records") or {}).items()
                if isinstance(item, Mapping) and item.get("how") in ("edited", "new")
                and i in index and index[i].kind in CLAIMED_KINDS}
-    if not changed:
-        return False
     _oid, register = inflight.read(Path(core.root))
     held: dict[str, str] = {}
     for claim in register.get("claims") or []:
@@ -81,6 +80,13 @@ def claim_changes(core: Any, data: Mapping[str, Any] | None) -> bool:
     missing = {i: inflight.record_entry(index[i]) for i in changed
                if held.get(i) != index[i].hash}
     if not missing:
+        # the branch committed since its claims were written: move them to its tip, so they
+        # clear once that commit merges (R17), and not before (one write per commit)
+        from plumb.awareness.publish import default_branch
+
+        if inflight.moved_claims(register, str(data["branch"]), data.get("head"),
+                                 default_branch(core)):
+            return inflight.refresh(core)
         return False
     titles = ", ".join(index[i].title for i in sorted(missing))
     inflight.record_claim(core, records=missing, summary=titles, intent=None)

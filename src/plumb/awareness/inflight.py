@@ -9,21 +9,28 @@ every worktree of the clone sees it, and it is written only by git's own compare
 (``git update-ref <ref> <new> <old>``): two writers never lose each other's claim.
 
 A claim is a signal, never a lock: nothing reads it to refuse anything. It clears when its
-branch is deleted (abandoned), when its branch's tip moved past the claim and is reachable
-from the default branch (merged), or when the owner drops that work. Readers on a hook path
-read the ref and the blob from git's files (a loose object) with no git process, through a
-cache keyed by the blob's ID.
+branch is deleted (abandoned), when its branch MERGED (its tip is reachable from the default
+branch AND the branch has commits of its own there: see ``merged``), or when the owner drops
+that work. A branch that only took the default branch's commits (a fast-forward to
+``main``) keeps its claim: its intent is still in flight. Readers on a hook path read the ref
+and the blob from git's files (a loose object) with no git process, through a cache keyed by
+the blob's ID.
 
 Entry shape::
 
     {"v": 1, "claims": [{"id": "feat-x:INT-022", "branch": "feat-x", "worktree": "...",
-      "head": "<sha at the claim>", "at": "...", "summary": "...", "intent": "INT-022",
+      "head": "<sha at the claim>", "base": "<fork point from the default branch>",
+      "own": "<the branch's own newest commit, or empty>", "at": "...", "summary": "...",
+      "intent": "INT-022",
       "records": {"SR-005": {"title": "...", "hash": "sha256:...", "text": "...",
                              "feature": "FEAT-002"}},
       "features": ["FEAT-002"],
       "conflicts": [{"record": "SR-005", "branch": "main", "with": "main:INT-030",
                      "dec": "DEC-031", "question": "...", "state": "proposed",
                      "chosen": ""}]}]}
+
+``chosen`` is always branch-neutral ("feat-x's version", "both, combined" or the owner's own
+words), never "this request's version": every branch reads the one answer the same way.
 """
 
 from __future__ import annotations
@@ -151,19 +158,71 @@ def _merged_cache(root: Path) -> dict[str, bool]:
     return {str(k): bool(v) for k, v in data.items()} if isinstance(data, dict) else {}
 
 
+def _expired(deadline: Any) -> bool:
+    try:
+        return bool(deadline is not None and deadline.expired())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _first_parents(root: Path, lower: str, tip: str) -> list[str] | None:
+    code, out = _git(root, "rev-list", "--first-parent", f"{lower}..{tip}")
+    return out.decode().split() if code == 0 else None
+
+
+def merged(root: Path, claim: Mapping[str, Any], tip: str, default_tip: str) -> bool:
+    """Whether ``claim``'s branch (now at ``tip``) MERGED into the default branch (now at
+    ``default_tip``): its tip is reachable from the default tip AND the branch has commits of
+    its own there. Its own commits are ``own`` (recorded when the claim was written on a
+    commit the default branch did not hold), else the commits on the branch's first-parent
+    line since its fork point (``base``; ``head`` for an older claim) that are not on the
+    default branch's first-parent line: a branch that only fast-forwarded to the default
+    branch has none, and keeps its claim. At most four git calls."""
+    root = Path(root)
+    code, _ = _git(root, "merge-base", "--is-ancestor", tip, default_tip)
+    if code != 0:
+        return False
+    own = str(claim.get("own") or "")
+    if own:
+        code, _ = _git(root, "merge-base", "--is-ancestor", own, default_tip)
+        if code == 0:
+            return True
+    lower = str(claim.get("base") or claim.get("head") or "")
+    if not lower:
+        return True
+    branch_line = _first_parents(root, lower, tip)
+    if not branch_line:
+        return False
+    default_line = set(_first_parents(root, lower, default_tip) or ())
+    return any(commit not in default_line for commit in branch_line)
+
+
+def _merged_key(claim: Mapping[str, Any], tip: str, default_tip: str | None) -> str:
+    return ":".join([tip, str(default_tip), str(claim.get("base") or claim.get("head") or ""),
+                     str(claim.get("own") or "")])
+
+
+def _nothing_own(claim: Mapping[str, Any], tip: str) -> bool:
+    """Known without git: the branch has no commit of its own since the claim (its tip is
+    its fork point, or it has not moved and held none when the claim was written)."""
+    if "base" not in claim:
+        return False                # an older claim: only git can tell
+    return tip == claim.get("base") or (tip == claim.get("head") and not claim.get("own"))
+
+
 def active(root: Path, data: Mapping[str, Any], *, default: str, allow_git: bool = False,
            deadline: Any = None) -> list[dict[str, Any]]:
     """The claims still in flight: a deleted branch's claims are gone (abandoned); a claim
-    whose branch tip moved past it and is reachable from ``default`` is gone (merged); on
-    the default branch itself a claim clears once a commit lands. Reachability is one
-    ``git merge-base --is-ancestor`` per moved tip, only with ``allow_git``, cached by
-    ``(tip, default tip)``; without it an unknown tip keeps its claim."""
+    whose branch ``merged`` is gone; on the default branch itself a claim clears once a
+    commit lands. The merged check runs only with ``allow_git``, cached by the claim's
+    fork point and own commit and the two tips; without it an unknown case keeps its
+    claim."""
     common = gitfiles.common_dir(Path(root))
     if common is None:
         return []
     tips = gitfiles.branch_tips(common)
     default_tip = tips.get(default)
-    merged = _merged_cache(Path(root))
+    known = _merged_cache(Path(root))
     learned = False
     out: list[dict[str, Any]] = []
     for claim in data.get("claims") or []:
@@ -171,26 +230,41 @@ def active(root: Path, data: Mapping[str, Any], *, default: str, allow_git: bool
         tip = tips.get(branch)
         if tip is None:
             continue  # the branch was deleted: the work was abandoned (or merged and removed)
-        if tip != claim.get("head"):
-            if branch == default:
+        if branch == default:
+            if tip != claim.get("head"):
                 continue
-            key = f"{tip}:{default_tip}"
-            if key not in merged and allow_git and default_tip is not None:
-                expired = False
-                try:
-                    expired = bool(deadline is not None and deadline.expired())
-                except Exception:  # noqa: BLE001
-                    expired = False
-                if not expired:
-                    code, _ = _git(Path(root), "merge-base", "--is-ancestor", tip, default_tip)
-                    merged[key] = code == 0
-                    learned = True
-            if merged.get(key):
-                continue
+            out.append(claim)
+            continue
+        if default_tip is None or _nothing_own(claim, tip):
+            out.append(claim)
+            continue
+        key = _merged_key(claim, tip, default_tip)
+        if key not in known and allow_git and not _expired(deadline):
+            known[key] = merged(Path(root), claim, tip, default_tip)
+            learned = True
+        if known.get(key):
+            continue
         out.append(claim)
     if learned:
-        _write_json(_cache_path(Path(root), MERGED_CACHE), merged)
+        _write_json(_cache_path(Path(root), MERGED_CACHE), known)
     return out
+
+
+def fork(root: Path, head: str | None, branch: str | None, default: str
+         ) -> dict[str, str]:
+    """``{"base": fork point, "own": head when it holds commits the default branch does
+    not, else ""}`` for a claim written at ``head`` (one git call)."""
+    if not head:
+        return {"base": "", "own": ""}
+    common = gitfiles.common_dir(Path(root))
+    default_tip = gitfiles.branch_tips(common).get(default) if common is not None else None
+    if branch == default or not default_tip:
+        return {"base": head, "own": ""}
+    code, out = _git(Path(root), "merge-base", head, default_tip)
+    base = out.decode().strip() if code == 0 else ""
+    if not base:
+        return {"base": head, "own": head}
+    return {"base": base, "own": head if base != head else ""}
 
 
 # ------------------------------------------------------------------ writing
@@ -262,16 +336,20 @@ def record_claim(core: Any, *, records: Mapping[str, Mapping[str, str]], summary
     features = sorted({str(r["feature"]) for r in records.values() if r.get("feature")})
     key = claim_id(me.branch, intent)
     new_conflicts = [dict(c) for c in conflicts]
+    where = fork(root, me.head, me.branch, default)
 
     def mutate(data: dict[str, Any]) -> dict[str, Any]:
         live = active(root, data, default=default, allow_git=True)
+        for claim in live:          # every claim of this branch moves with its tip
+            if claim.get("branch") == me.branch and me.branch != default:
+                claim.update({"head": me.head, **where})
         mine = next((c for c in live if c.get("id") == key), None)
         if mine is None:
             mine = {"id": key, "branch": me.branch, "intent": intent, "records": {},
                     "features": [], "conflicts": []}
             live.append(mine)
-        mine.update({"worktree": root.resolve().as_posix(), "head": me.head, "at": _now(),
-                     "summary": _clip(summary, 120) or mine.get("summary", "")})
+        mine.update({"worktree": root.resolve().as_posix(), "head": me.head, **where,
+                     "at": _now(), "summary": _clip(summary, 120) or mine.get("summary", "")})
         mine["records"] = {**(mine.get("records") or {}), **{k: dict(v)
                                                              for k, v in records.items()}}
         mine["features"] = sorted(set(mine.get("features") or []) | set(features))
@@ -283,6 +361,46 @@ def record_claim(core: Any, *, records: Mapping[str, Mapping[str, str]], summary
 
     data = update(root, mutate)
     return next((c for c in data["claims"] if c.get("id") == key), None)
+
+
+def moved_claims(register: Mapping[str, Any], branch: str | None, head: str | None,
+                 default: str) -> bool:
+    """Whether a claim of ``branch`` (not the default branch) was written at another commit
+    than ``head`` (no git process)."""
+    if not branch or not head or branch == default:
+        return False
+    return any(c.get("branch") == branch and c.get("head") != head
+               for c in register.get("claims") or [])
+
+
+def refresh(core: Any, *, default: str | None = None) -> bool:
+    """Move this branch's claims to its tip: ``head``, the fork point and its own newest
+    commit, so a later merge of that commit clears them (``merged``). Writes only when a
+    claim moved. Returns whether it wrote."""
+    from plumb.awareness.publish import default_branch
+
+    root = Path(core.root)
+    me = gitfiles.current(root)
+    if me is None or not me.branch:
+        return False
+    default = default or default_branch(core)
+    _oid, register = read(root)
+    if not moved_claims(register, me.branch, me.head, default):
+        return False
+    where = fork(root, me.head, me.branch, default)
+    wrote = {"done": False}
+
+    def mutate(data: dict[str, Any]) -> dict[str, Any]:
+        live = active(root, data, default=default, allow_git=True)
+        for claim in live:
+            if claim.get("branch") == me.branch:
+                claim.update({"head": me.head, **where})
+                wrote["done"] = True
+        data["claims"] = sorted(live, key=lambda c: str(c.get("id")))
+        return data
+
+    update(root, mutate)
+    return wrote["done"]
 
 
 def drop(core: Any, what: str) -> list[str]:
@@ -302,6 +420,19 @@ def drop(core: Any, what: str) -> list[str]:
 
     update(Path(core.root), mutate)
     return removed
+
+
+def neutral_chosen(chosen: str, raised_on: str | None) -> str:
+    """The owner's answer in words every branch reads the same way: words naming "this
+    side" (``owner_text.EARLY_RELATIVE``, as an older register or a relayed "keep this one"
+    holds them) become ``"<raising branch>'s version"``. The one translation of an answer,
+    used where it is written to the register and where any surface shows it."""
+    from plumb.present import owner_text as text
+
+    words = " ".join(str(chosen or "").split())
+    if raised_on and words.strip(" .\"'").lower() in text.EARLY_RELATIVE:
+        return text.EARLY_THEIRS.format(branch=raised_on)
+    return words
 
 
 def sync_decisions(core: Any) -> bool:
@@ -324,7 +455,7 @@ def sync_decisions(core: Any) -> bool:
                 continue
             status = core.status([dec]).get(dec)
             state = getattr(status, "confirmation", "proposed")
-            chosen = str(index[dec].fields.get("chosen") or "")
+            chosen = neutral_chosen(str(index[dec].fields.get("chosen") or ""), me.branch)
             if conflict.get("state") != state or conflict.get("chosen") != chosen:
                 pending[(str(claim.get("id")), dec)] = {"state": state, "chosen": chosen}
     if not pending:

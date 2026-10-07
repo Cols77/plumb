@@ -3401,3 +3401,58 @@ unfinished in the lane's rows A1 to A6. Medium and low findings:
   (`plumb inflight`), "drop that work" (`plumb inflight drop <branch>`), "is anyone else
   changing X?" and `/plumb status` (overlaps), the early conflict card's answer ("keep
   feat-x's", "keep this one", "both") relayed like any decision.
+
+## SP6 lane AWARENESS, review round (2026-10-07): medium and low findings
+
+The four HIGH findings of this round are fixed on `lane/awareness` (a claim clears exactly
+when its branch merges; the owner's answer is stored and shown branch-neutrally; "the same
+version" means the same record hash). These were recorded, not fixed:
+
+- [MEDIUM] `awareness/early.py` `check_text` (the clarify read-back) turns any record the
+  request names, or relevance-matches at score >= 1.0, into a deterministic conflict card
+  when another branch claims it, without asking JEV whether the request changes that record.
+  A merely related or compatible mention should get only the one-line warning (R17, R18.4).
+  Probe: feat-x claims SR-005; on main, `clarify('add a status card colour; do not touch
+  SR-005')` returns `conflicts=[('SR-005', '')]` and the skill says to ask it first.
+- [MEDIUM] Same function, second reading: it also skips the same-version check and raises
+  the depth from trivial to incremental, so a request that only mentions a claimed record
+  ("add a test for the relay checks") asks the owner "which one, or both?", against R11's
+  "ask only questions that change what gets built".
+- [MEDIUM] `awareness/publish.py`: when HEAD moved, `publish()` replaces `pending` with only
+  this turn's `changed_paths`, so uncommitted edits from earlier turns drop out of
+  `changing.json` and other worktrees stop being warned about them (turn 1 edits SR-005
+  uncommitted; turn 2 commits other files and touches SR-006; SR-005 disappears).
+- [MEDIUM] `contracts.py` and the other coordinator-owned files: the lane edits
+  `contracts.py`, `config.py`, `cli.py`, `commands.py`, `capture/capture.py`,
+  `capture/clarify.py`, the hooks and `present/*`; plan 3.1 gives AWARENESS only
+  `src/plumb/awareness/**` and `tests/awareness/**`. With phase 0 not on main, the IDS,
+  LOGS and MERGEDRIVER lanes add overlapping wiring (StatusSnapshot fields, `Overlap`,
+  `config._NESTED`, the hooks): expect textual conflicts or duplicated fields at Integrate.
+- [MEDIUM] `.plumb/requirements/SR-080.md`, `SR-081.md`: the lane created two records,
+  which plan 3.1 and section 1 reserve to the coordinator. IDS reservation is not merged, so
+  a parallel lane (MERGEDRIVER for R17's merge hold, IDS for renumbering) could take SR-080
+  from local numbering and collide add/add at Integrate.
+- [MEDIUM] `awareness/early.py` `raise_conflicts` creates the DEC with `chosen` already set
+  to this branch's version, so a bare "ok" or a relayed confirmation picks this branch's
+  side although the card asks "which one, or both?": the default comes from the agent, not
+  from the owner's choice.
+- [LOW] `awareness/early.py`: two branches capturing the same record within the window
+  between `check_records` and `record_claim` each raise a DEC (neither sees the other's
+  conflict entry yet), so the conflict is asked twice instead of once.
+- [LOW] `capture/capture.py`: if `after_capture` raises anything but `InflightBusy` after
+  `raise_conflicts` wrote DECs, `_inflight_check` returns `written=[]`: the DECs exist but are
+  not in the capture's written list or its intent set, and the capture reports "intent in
+  flight not checked".
+- [LOW] `awareness/turn.py`: the stop hook's register write is gated only by the initial
+  0.4 s check; `update()` then retries for up to 3 s, each git call has a 5 s timeout, and
+  the merged check inside `record_claim` (and now `refresh`) ignores the deadline. Two
+  sessions stopping together on the two-core machine can exceed the 2 s guidance.
+- [LOW] `awareness/inflight.py`: a claim on the default branch clears as soon as any commit
+  lands there (another branch's merge included) while the main worktree's captured intent
+  is still uncommitted; main's claim then disappears for every other branch.
+- [LOW, residual of the merge fix] A branch whose own commits were made with no plumb write
+  after them (no capture, no stop hook on that branch: commits from a bare terminal) and
+  that is then merged by FAST-FORWARD keeps its claim until the branch is deleted or the
+  work dropped (`plumb inflight drop`): the graph alone cannot tell that fast-forward from a
+  branch fast-forwarding to `main`, and the second must keep its claim. A `--no-ff` merge,
+  or any plumb write on the branch after its commits, clears it.

@@ -63,6 +63,8 @@ def _config(core: Any) -> Any:
 def raised_lines(core: Any) -> list[tuple[str, str, str]]:
     """``(subject, state, line)`` for every intent conflict another branch raised against
     this branch's work (R17: both branches build on the one answer). No git process."""
+    from plumb.awareness.early import known_line
+
     my_branch, claims = inflight.others(core)
     index = core.index()
     out: list[tuple[str, str, str]] = []
@@ -72,12 +74,8 @@ def raised_lines(core: Any) -> list[tuple[str, str, str]]:
         branch = str(conflict.get("raised_on") or "")
         state = str(conflict.get("state") or "proposed")
         chosen = str(conflict.get("chosen") or "")
-        if state == "confirmed" and chosen:
-            line = text.EARLY_SETTLED.format(id=record_id, title=title, branch=branch,
-                                             chosen=_clip(chosen, 120))
-        else:
-            line = text.EARLY_KNOWN.format(id=record_id, title=title, branch=branch)
-        out.append((f"inflight:{branch}:{conflict.get('dec')}", f"{state}|{chosen}", line))
+        out.append((f"inflight:{branch}:{conflict.get('dec')}", f"{state}|{chosen}",
+                    known_line(record_id, title, conflict)))
     return out
 
 

@@ -156,3 +156,119 @@ def test_session_start_drops_a_merged_branch_claim(tmp_path: Path) -> None:
     assert [c["branch"] for c in inflight.others(open_core(main))[1]] == ["feat-x"]
     at_session_start(open_core(main))
     assert inflight.others(open_core(main))[1] == []
+
+
+# -- a claim clears exactly when its branch merges (R17): one test per way a claim is read
+#    or pruned (the hook-free read, the git read, a writer's pruning, the session start)
+
+
+def _branches(root: Path, *, allow_git: bool = True) -> list[str]:
+    return [c["branch"] for c in inflight.others(open_core(root), allow_git=allow_git)[1]]
+
+
+def _refreshed_at_tip(tmp_path: Path) -> tuple[Path, Path]:
+    """feat-x claims SR-005, commits, then refreshes its claim at the commit (as a capture
+    or the stop hook does after a commit in the same turn)."""
+    main, other = setup(tmp_path)
+    change(other, "feat-x's version")
+    head = commit_all(other, "feat-x work")
+    inflight.record_claim(open_core(other), records={}, summary="", intent="INT-001")
+    [claim] = _claims(main)
+    assert claim["head"] == head and claim["own"] == head
+    return main, other
+
+
+def test_claim_refreshed_at_the_tip_clears_on_merge(tmp_path: Path) -> None:
+    """The git read: a claim written at the branch tip clears once that tip merges."""
+    main, _other = _refreshed_at_tip(tmp_path)
+    assert _branches(main) == ["feat-x"]
+    run_git(main, "merge", "-q", "--no-ff", "-m", "merge feat-x", "feat-x")
+    assert _branches(main) == []
+
+
+def test_claim_refreshed_at_the_tip_clears_on_fast_forward_merge(tmp_path: Path) -> None:
+    main, _other = _refreshed_at_tip(tmp_path)
+    run_git(main, "merge", "-q", "--ff-only", "feat-x")
+    assert _branches(main) == []
+
+
+def test_merged_claim_is_pruned_by_the_next_writer(tmp_path: Path) -> None:
+    """A writer's pruning: the next claim from any branch drops the merged one."""
+    main, _other = _refreshed_at_tip(tmp_path)
+    run_git(main, "merge", "-q", "--no-ff", "-m", "merge feat-x", "feat-x")
+    inflight.record_claim(open_core(main), records={"SR-006": {"title": "status card"}},
+                          summary="main work", intent="INT-009")
+    assert [c["branch"] for c in _claims(main)] == ["main"]
+
+
+def test_session_start_drops_a_claim_refreshed_at_the_tip(tmp_path: Path) -> None:
+    """The hook-free read keeps what it cannot know; the session start learns it."""
+    from plumb.awareness.turn import at_session_start
+
+    main, _other = _refreshed_at_tip(tmp_path)
+    run_git(main, "merge", "-q", "--no-ff", "-m", "merge feat-x", "feat-x")
+    assert _branches(main, allow_git=False) == ["feat-x"]
+    at_session_start(open_core(main))
+    assert _branches(main, allow_git=False) == []
+
+
+def test_stop_hook_moves_the_claim_to_a_new_commit(tmp_path: Path) -> None:
+    """The stop hook after a commit with no record change moves the branch's claims to its
+    tip, so a fast-forward merge of that commit clears them."""
+    from plumb.awareness import publish as pub
+    from plumb.awareness.turn import claim_changes
+
+    main, other = setup(tmp_path)
+    change(other, "feat-x's version")
+    head = commit_all(other, "feat-x work")
+    data = pub.publish(open_core(other), [])
+    assert claim_changes(open_core(other), data) is True
+    assert _claims(main)[0]["own"] == head
+    assert claim_changes(open_core(other), data) is False        # nothing moved since
+    run_git(main, "merge", "-q", "--ff-only", "feat-x")
+    assert _branches(main) == []
+
+
+def _fast_forwarded_to_main(tmp_path: Path) -> tuple[Path, Path]:
+    """feat-x captured intent (uncommitted); main moved on; feat-x fast-forwards to main."""
+    main, other = setup(tmp_path)
+    change(other, "feat-x's version")
+    (main / "README.md").write_text("main moved on\n", encoding="utf-8")
+    commit_all(main, "main work")
+    run_git(other, "merge", "-q", "--ff-only", "main")
+    return main, other
+
+
+def test_fast_forward_to_main_keeps_the_claim(tmp_path: Path) -> None:
+    """The git read: a branch that only took main's commits has merged nothing."""
+    main, _other = _fast_forwarded_to_main(tmp_path)
+    assert _branches(main) == ["feat-x"]
+
+
+def test_fast_forward_to_main_survives_another_writer(tmp_path: Path) -> None:
+    """A writer's pruning keeps it too, with its raised conflicts."""
+    main, _other = _fast_forwarded_to_main(tmp_path)
+
+    def note(data: dict) -> dict:
+        data["claims"][0]["conflicts"] = [{"record": "SR-005", "branch": "main",
+                                           "dec": "DEC-001", "state": "confirmed",
+                                           "chosen": "feat-x's version"}]
+        return data
+
+    inflight.update(main, note)
+    inflight.record_claim(open_core(main), records={"SR-006": {"title": "status card"}},
+                          summary="main work", intent="INT-009")
+    [kept] = [c for c in _claims(main) if c["branch"] == "feat-x"]
+    assert kept["conflicts"][0]["dec"] == "DEC-001"
+
+
+def test_fast_forward_to_main_survives_the_stop_hook_and_session_start(tmp_path: Path
+                                                                       ) -> None:
+    from plumb.awareness import publish as pub
+    from plumb.awareness.turn import at_session_start, claim_changes
+
+    main, other = _fast_forwarded_to_main(tmp_path)
+    claim_changes(open_core(other), pub.publish(open_core(other), []))
+    at_session_start(open_core(main))
+    assert _branches(main, allow_git=False) == ["feat-x"]
+    assert _branches(main) == ["feat-x"]

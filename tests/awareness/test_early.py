@@ -114,7 +114,7 @@ def test_conflict_raised_once_for_both_branches(tmp_path: Path) -> None:
     result = change(main, "main's version, third wording")
     settled = [line for line in result.lines if "settled it on branch feat-x" in line]
     assert settled == ['plumb: SR-005 "relay checks": the owner settled it on branch feat-x: '
-                       "\"this request's version\"; build on that"]
+                       "\"feat-x's version\"; build on that"]
 
 
 def test_clarify_shows_the_card_before_anything_is_written(tmp_path: Path) -> None:
@@ -173,4 +173,113 @@ def test_same_version_on_both_branches_asks_nothing(tmp_path: Path) -> None:
     change(other, "A relay pins the stated group.")
     result = change(main, "A relay pins the stated group.")
     assert not any("Conflict" in line for line in result.lines)
+    assert _decisions(main) == []
+
+
+# -- the owner's answer reads the same on every branch (R17: both lanes build on one answer):
+#    one test per surface that shows it
+
+
+def _settled(tmp_path: Path) -> tuple[Path, Path]:
+    """main and feat-x both change SR-005; feat-x raises the decision; the owner confirms
+    it on feat-x, which keeps feat-x's version."""
+    from plumb import approvals
+
+    main, other = setup(tmp_path)
+    change(main, "main's version of the relay")
+    change(other, "feat-x's version of the relay")
+    [dec] = _decisions(other)
+    assert dec.fields["chosen"] == "feat-x's version"       # named by branch at the source
+    approvals.approve(open_core(other), [dec.id])
+    inflight.sync_decisions(open_core(other))
+    return main, other
+
+
+_SETTLED = ('plumb: SR-005 "relay checks": the owner settled it on branch feat-x: '
+            "\"feat-x's version\"; build on that")
+
+
+def test_settled_answer_on_the_capture_line(tmp_path: Path) -> None:
+    main, _other = _settled(tmp_path)
+    result = change(main, "main's version, reworded")
+    assert _SETTLED in result.lines
+    assert not any("this request's version" in line for line in result.lines)
+
+
+def test_settled_answer_on_the_clarify_read_back(tmp_path: Path) -> None:
+    from plumb.awareness import early
+
+    main, _other = _settled(tmp_path)
+    check = early.check_text(open_core(main), "make SR-005 pin only the affirmed records")
+    assert check.lines == [_SETTLED] and check.conflicts == []
+
+
+def test_settled_answer_on_the_brief_line(tmp_path: Path) -> None:
+    from plumb import awareness
+
+    main, _other = _settled(tmp_path)
+    assert _SETTLED in awareness.brief_lines(open_core(main))
+
+
+def test_settled_answer_on_the_prompt_delta_line(tmp_path: Path) -> None:
+    from plumb import awareness
+
+    main, _other = _settled(tmp_path)
+    assert _SETTLED in [line.text for line in awareness.delta_lines(open_core(main),
+                                                                    ["SR-005"])]
+
+
+def test_an_answer_in_relative_words_is_shown_by_branch(tmp_path: Path) -> None:
+    """A register (or a relayed answer) holding "this request's version" or "keep this one"
+    is shown on the other branch as the raising branch's version."""
+    from plumb import awareness
+
+    main, _other = _settled(tmp_path)
+
+    def relative(data: dict) -> dict:
+        for claim in data["claims"]:
+            for conflict in claim.get("conflicts") or []:
+                conflict["chosen"] = "this request's version"
+        return data
+
+    inflight.update(main, relative)
+    assert _SETTLED in awareness.brief_lines(open_core(main))
+    assert inflight.neutral_chosen("Keep this one.", "feat-x") == "feat-x's version"
+    assert inflight.neutral_chosen("both, combined", "feat-x") == "both, combined"
+
+
+# -- the same record is caught whatever part of it changed (R17): the record's whole content
+#    decides "the same version", never the clipped words a claim keeps for the card
+
+
+def _examples(then: str) -> dict:
+    return {"intent": "INT-001", "updates": [{"id": "SR-005", "examples": [
+        {"given": "a relay of SR-005", "when": "the owner says ok", "then": then}]}]}
+
+
+def test_different_examples_are_a_conflict(tmp_path: Path) -> None:
+    main, other = setup(tmp_path)
+    capture(other, _examples("the group is pinned"))
+    result = capture(main, _examples("only the affirmed records are pinned"))
+    assert any(line.startswith('▸ Conflict  SR-005 "relay checks"') for line in result.lines)
+    assert len(_decisions(main)) == 1
+
+
+_LONG = "A relay pins the stated records. " * 8          # longer than a claim keeps
+
+
+def test_different_tails_of_a_long_statement_are_a_conflict(tmp_path: Path) -> None:
+    main, other = setup(tmp_path)
+    change(other, _LONG + "Then the group is pinned.")
+    result = change(main, _LONG + "Then only the affirmed records are pinned.")
+    assert any(line.startswith("▸ Conflict") for line in result.lines)
+    assert len(_decisions(main)) == 1
+
+
+def test_preview_of_a_different_tail_shows_the_card(tmp_path: Path) -> None:
+    """The dry-run entry point (``preview``): a planned version is never 'the same'."""
+    main, other = setup(tmp_path)
+    change(other, _LONG + "Then the group is pinned.")
+    result = change(main, _LONG + "Then only the affirmed records are pinned.", dry_run=True)
+    assert any(line.startswith("▸ Conflict") for line in result.lines)
     assert _decisions(main) == []

@@ -34,8 +34,12 @@ EARLY_CARD_SAME = "the same requirement is being changed on both branches"
 EARLY_CARD_SAY = ('  Say: "keep {branch}\'s", "keep this one", or "both" (and how they '
                   "combine)")
 EARLY_QUESTION = 'Branch {branch} says "{theirs}"; this request says "{ours}": which one, or both?'
-EARLY_CHOSEN = "this request's version"
-EARLY_THEIRS = "{branch}'s version"
+EARLY_THEIRS = "{branch}'s version"          # every option names its branch: the answer
+EARLY_CHOSEN = EARLY_THEIRS                   # reads the same on every branch (R17)
+# words that name "this side" only from the raising branch's point of view: shown on another
+# branch, they become "<raising branch>'s version"
+EARLY_RELATIVE = ("this request's version", "this request", "this work's version", "this work",
+                  "this one", "keep this one", "this version", "ours", "mine")
 EARLY_BOTH = "both, combined"
 EARLY_RECORDED = ("plumb: asked once for every branch working on {id} \"{title}\"; the answer "
                   "settles it there too")

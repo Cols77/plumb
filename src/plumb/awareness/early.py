@@ -82,11 +82,15 @@ def _known(my_branch: str | None, claims: Sequence[Mapping[str, Any]],
     return None
 
 
-def _known_line(record_id: str, title: str, known: Mapping[str, Any]) -> str:
+def known_line(record_id: str, title: str, known: Mapping[str, Any]) -> str:
+    """The one line every surface (capture, the clarify read-back, the session brief, the
+    prompt delta) shows for a conflict already raised: asked on that branch, or the owner's
+    answer, always in branch-neutral words (``inflight.neutral_chosen``)."""
     branch = str(known.get("raised_on") or known.get("branch") or "")
-    if known.get("state") == "confirmed" and known.get("chosen"):
+    chosen = inflight.neutral_chosen(str(known.get("chosen") or ""), branch)
+    if known.get("state") == "confirmed" and chosen:
         return text.EARLY_SETTLED.format(id=record_id, title=title, branch=branch,
-                                         chosen=_clip(str(known["chosen"]), 120))
+                                         chosen=_clip(chosen, 120))
     return text.EARLY_KNOWN.format(id=record_id, title=title, branch=branch)
 
 
@@ -101,15 +105,18 @@ def _all_claims(core: Any) -> tuple[str | None, list[dict[str, Any]], list[dict[
 
 
 def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | None = None,
-                  new: Iterable[str] = (), backend: Any = None) -> EarlyCheck:
+                  new: Iterable[str] = (), planned: Iterable[str] = (),
+                  backend: Any = None) -> EarlyCheck:
     """``mine``: this work's records (``Record``). ``ours``: each record's version in the
     owner's words (default: its statement); ``new``: the IDs this work created (only those
-    are judged by feature: an existing record is matched by ID)."""
+    are judged by feature: an existing record is matched by ID); ``planned``: the IDs whose
+    new version is only planned (a preview), so ``mine`` holds their old version."""
     result = EarlyCheck()
     my_branch, claims, every = _all_claims(core)
     if not claims:
         return result
     new_set = set(new)
+    planned = set(planned)
     ours = dict(ours or {})
     judge = None
     for record in mine:
@@ -118,11 +125,11 @@ def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | N
         for claim in claims:
             entry = (claim.get("records") or {}).get(record.id)
             if entry is not None and record.id not in new_set:
-                if _same_words(entry, our_text, record):
+                if _same_version(entry, record, planned=record.id in planned):
                     continue  # both branches hold the same version: nothing to choose
                 known = _known(my_branch, every, record.id, claim)
                 if known is not None:
-                    result.lines.append(_known_line(record.id, record.title, known))
+                    result.lines.append(known_line(record.id, record.title, known))
                     continue
                 result.conflicts.append(EarlyConflict(
                     record=record.id, title=record.title, branch=str(claim["branch"]),
@@ -140,7 +147,7 @@ def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | N
                 if verdict == "contradicts":
                     known = _known(my_branch, every, record.id, claim)
                     if known is not None:
-                        result.lines.append(_known_line(record.id, record.title, known))
+                        result.lines.append(known_line(record.id, record.title, known))
                         continue
                     result.conflicts.append(EarlyConflict(
                         record=record.id, title=record.title, branch=str(claim["branch"]),
@@ -153,11 +160,15 @@ def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | N
     return result
 
 
-def _same_words(entry: Mapping[str, Any], ours: str, record: Any) -> bool:
-    """The other branch's claimed version is this one (same hash, or the same words)."""
-    if entry.get("hash") and entry.get("hash") == getattr(record, "hash", None):
-        return True
-    return " ".join(str(entry.get("text") or "").split()) == " ".join(ours.split())
+def _same_version(entry: Mapping[str, Any], record: Any, *, planned: bool) -> bool:
+    """The other branch's claimed version IS this one: the same record hash (every field,
+    examples and title included, and the whole statement), never the clipped words a claim
+    keeps for the card. A version only planned (a preview: not written, so not hashed) is
+    never the same."""
+    if planned:
+        return False
+    theirs = str(entry.get("hash") or "")
+    return bool(theirs) and theirs == str(getattr(record, "hash", "") or "")
 
 
 def _judge(backend: Any, theirs: str, record: Any) -> tuple[str, str]:
@@ -202,7 +213,7 @@ def check_text(core: Any, request: str, *, backend: Any = None) -> EarlyCheck:
         for record_id in same:
             known = _known(my_branch, every, record_id, claim)
             if known is not None:
-                result.lines.append(_known_line(record_id, index[record_id].title, known))
+                result.lines.append(known_line(record_id, index[record_id].title, known))
                 continue
             result.conflicts.append(EarlyConflict(
                 record=record_id, title=index[record_id].title, branch=str(claim["branch"]),
@@ -251,9 +262,13 @@ def raise_conflicts(core: Any, conflicts: Sequence[EarlyConflict], *,
                     intent: str | None) -> list[dict[str, Any]]:
     """Record each conflict once as a proposed decision that matters (it decides the
     record); returns the claim's conflict entries."""
+    from plumb.awareness import gitfiles
     from plumb.capture.records import decide
 
     index = core.index()
+    me = gitfiles.current(core.root)
+    mine = (text.EARLY_THEIRS.format(branch=me.branch) if me is not None and me.branch
+            else "the version captured with this decision")
     entries: list[dict[str, Any]] = []
     for conflict in conflicts:
         derives = [intent] if intent and intent in index else []
@@ -261,7 +276,7 @@ def raise_conflicts(core: Any, conflicts: Sequence[EarlyConflict], *,
         if not decides and not derives:
             continue
         theirs = text.EARLY_THEIRS.format(branch=conflict.branch)
-        record = decide(core, question(conflict), text.EARLY_CHOSEN,
+        record = decide(core, question(conflict), mine,
                         [theirs, text.EARLY_BOTH], matters=True, decides=decides,
                         derives_from=derives,
                         rationale=(f"Raised at capture (R17): branch {conflict.branch} has "
@@ -319,9 +334,11 @@ def preview(core: Any, requirements: Sequence[Mapping[str, Any]],
     mine: list[Any] = []
     ours: dict[str, str] = {}
     new: list[str] = []
+    planned: list[str] = []
     for record_id, changes in updates:
         if record_id in index:
             mine.append(index[record_id])
+            planned.append(record_id)
             words = changes.get("statement") or changes.get("readback") or changes.get("title")
             if words:
                 ours[record_id] = _clip(str(words), 240)
@@ -333,7 +350,7 @@ def preview(core: Any, requirements: Sequence[Mapping[str, Any]],
         if fields.get("feature"):
             mine[-1] = _with_feature(mine[-1], str(fields["feature"]))
         new.append(record_id)
-    result = check_records(core, mine, ours=ours, new=new, backend=backend)
+    result = check_records(core, mine, ours=ours, new=new, planned=planned, backend=backend)
     lines = [line for conflict in result.conflicts for line in card(conflict)] + result.lines
     return [*lines, text.EARLY_DRY_RUN] if lines else []
 
