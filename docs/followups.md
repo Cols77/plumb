@@ -4643,3 +4643,69 @@ started; the owner's answer settles the later merge. New proposed example SR-081
   lists every requirement main changed since the fork, which can be long on an old branch.
   Fix: refresh the cache from the post-commit and post-merge points too, and cap status's
   list with "+N more".
+
+## SP7 spec and plan review (2026-10-07): medium and low findings
+
+The five HIGH findings of this review were fixed in `docs/specs/sp7-owner-surface.md`,
+`docs/plans/sp7-plan.md` and the SP7 records (typed-command approvals recorded as
+`agent-relayed`; plain words never approve records the owner has not been shown; the R16
+scope filter for a bare ok too; the Obsidian vault as an owner surface; record content
+checked at the owner's level where it is written). The findings below are recorded, not
+fixed.
+
+- [MEDIUM] (R14 "jev setup/status/calibrate"; R8 `plumb jev setup` stores only the variable
+  NAME; spec 6.1 row 30, 6.3 `jev status` row; `src/plumb/capture/jevcmd.py:185-191`; reported
+  twice) Using JEV needs a secret in an environment variable, and the spec gives the owner no
+  shell-free way to put it there or to learn how. `jev setup` answers "set
+  OPENROUTER_API_KEY in your own environment ... or name an env file outside it", a
+  system-internals instruction that `shell_commands` does not catch, and the 6.3 table does
+  not scan the `jev setup` output. Fix: explain the credential idea in one plain sentence
+  first, then offer an owner-level route ("tell me where your key file is", or where to
+  enter the key in the operating system's or Claude Code's settings) instead of "set <VAR> in
+  your environment"; the agent never handles the secret. Add `jev setup`'s owner lines to
+  `tests/surface/test_jev_text.py`.
+- [MEDIUM] (R18.4 refinement "only question user for intent/tradeoffs related problems";
+  spec 8.5 "an unsure verdict is an intent gap, never a pass") JEV is optional, so the
+  heuristic is the default judge; if it returns "unsure" for many member and won't pairs,
+  each becomes an owner question about plumb's own uncertainty rather than a real intent or
+  tradeoff. Fix: the agent first tries to settle an unsure won't judgment (restating the
+  member, or asking the host agent through the fidelity packet) and raises a question only
+  for a confirmed tension; cap such questions per set.
+- [MEDIUM] (R19 "Render /plumb answers via the CommandOutput site"; spec 5.5) Only the
+  deterministic routes (status, pane, confirm without words) are drawn on CommandOutput;
+  every other /plumb answer goes to the agent and appears as ordinary model output. Fix:
+  state this limit as a decision, or have the agent's /plumb answers end in a structured
+  `--json` view the mod draws on CommandOutput once the agent finishes.
+- [MEDIUM] (R14 "`/plumb` against a named repository from another session"; spec 6.1 row 7;
+  reported three times, once as low) Only status is routed for another repository (`plumb
+  status --root`). Confirm, explain, review, init, merge-check and the other routes cannot
+  target a named repository from another session. The plugin makes /plumb available inside
+  every repository, so this is a partial omission. Fix: let every route take "for
+  <repository>" / "in <repository>" and resolve it to `--root`, with owner-only actions
+  still checked against that repository's prompt log; or name the scope limit as a
+  decision.
+- [MEDIUM, superseded] (R14 "resolves the records, shows what is being confirmed, and relays
+  the owner's typed words"; spec 7.2, matrix rows 18 and 20) Plain words resolved to one set
+  were confirmed at once and shown afterwards with Undo. Fixed with the HIGH finding on the
+  same point: spec 7.2's show-first rule (at once only by ID or for records shown in the
+  previous reply; otherwise shown first, confirmed on "ok" or a press), SR-088 EX-3 and EX-7.
+- [MEDIUM] (R19 "CONFIRM BUTTONS ([Confirm] [Show all]) in the band and pane"; spec 4.7 and
+  11; plan 8.4 and 10 item 5) plumb's own repository keeps its per-repository install, so
+  the mod stays idle there apart from one migration line, yet plan DoD item 5 says the owner
+  confirms the SP7 records "by pressing Confirm once the plugin is installed". In the one
+  repository where those records await him no band, pane or Confirm button appears, and the
+  migration line keeps offering "move plumb to the plugin", which spec 11 says not to do
+  there. Fix: either state that in plumb's own repository confirmation is by "ok" or
+  /plumb confirm only and suppress the migration line there, or let the mod draw (read-only
+  plus buttons) when the legacy install is plumb's own development install.
+- [MEDIUM] (R9 card format "Examples  EX-1 ...  EX-2 ...   (proposed)"; R18 "SR-/INT-/DEC-/EX-
+  ids without titles" are jargon; spec 6.3 `jargon()` rule) Examples have no titles, so the
+  R9 card layout ("EX-1 ...") would fail the scanner, and the spec does not say how example
+  lines are labelled. Fix: state the card wording for examples (for example "Example 1:
+  given ... when ... then ..." without the EX- prefix) and add it to
+  `tests/surface/test_summary_text.py`.
+- [LOW] (R14: hook outputs "name the /plumb command or the plain words to say"; spec 6.3
+  pre-push and merge hook rows) When the owner pushes or merges from a terminal or an IDE
+  instead of through the agent, the rewritten hook output says "say 'waive the full run'"
+  with no Claude Code session to say it in. Fix: phrase the hook lines as "in Claude Code,
+  say ... or type /plumb ...".
