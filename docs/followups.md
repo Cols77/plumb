@@ -4558,3 +4558,47 @@ Medium and low findings, recorded and not fixed:
   again"; one stop message shows both the DEC Question card and the Conflict card for the
   same question. Fix: check only the pushed refs' commits, and skip the full run when a
   cheap hold already refuses the push.
+
+## SP6 audit round-3 verification (2026-10-07, commit 5ca928b)
+
+Two real worktrees, the real CLI and hooks. The HIGH finding (an early answer became a
+permanent lock: `answer.superseded` compared every record with the chosen text, so a record
+the owner later changed and confirmed was refused and named on every turn, also on a fresh
+branch made from main) is fixed at the one choke point: a record is named only while it
+still holds the version the owner turned down (its hash or its words as asked; the
+register's conflict entries now carry both versions). The three 5ca928b fixes behaved as
+claimed: a merged and continued claim cleared on main with no false card, the losing lane
+was told through the prompt delta and status and its relayed ok was refused, and examples
+were labelled by their own requirement's state.
+
+- [MEDIUM] (R16 and R2, approvals.py owner_scope/_check_scope, the reservation check via
+  `_ASSENT`) Plain affirmations that restate exactly the record shown are refused as
+  objections: "ok, SR-001 reminder timing at three days is right" and "ok, four days it is,
+  SR-001 is right" both fail with "the owner's words object to or ask to change SR-001",
+  while "ok, SR-001 is right" is accepted. An owner who restates the confirmed content is
+  treated as making a reservation, which forces a second prompt. Fix: treat words that
+  restate the record's own current content as assent, not a reservation (next to the R16
+  objection-scope work).
+- [MEDIUM] (R14, hosts/claude_code/stop.py:158, present/owner_text.py:182, the refusal of
+  `approvals.relay`) The stop hook's block and the capture instruction tell the agent to
+  "relay those words as the answer to DEC-001". The natural call, `plumb relay DEC-001
+  --quote "keep this one"`, is refused with "the quote does not affirm (no affirmation term
+  such as ok ...)", and the refusal does not point to `plumb conflict relay`, the call that
+  works. The agent can stall on the owner's conflict answer or ask the owner to repeat
+  themselves with "ok". Fix: route a plain `plumb relay` of an early decision to the
+  conflict relay, or have its refusal name `plumb conflict relay DEC-### --prompt ...
+  --quote ...`; name that exact command in the stop-hook instruction.
+- [LOW] (R18, the stop hook's owner-visible systemMessage and the intent cards) Stop
+  summaries say "touched DEC-001", "confirmed DEC-001 on your prompt \"keep this one\"" and
+  "covering tests 0: 0 fresh pass..."; cards label examples "(unconfirmed-edit)" and
+  "SR-001/EX-1" without titles. This is R18 scope not yet implemented (not a regression of
+  5ca928b). No `.claude-plugin` exists yet, so `claude plugin validate/test` had nothing to
+  exercise. Fix: the SP7 R18/R19 work.
+- [LOW] (R17, answer.superseded, found while fixing the HIGH finding) Two narrow edges of the
+  losing-lane signal: (a) when the owner later deliberately returns to the version once
+  turned down (a later confirmation of those exact words), every branch holding it is still
+  named, because the signal does not compare against confirmations newer than the decision;
+  (b) a branch made from the losing lane before it adopted the answer hears nothing, since
+  the register's conflict entry names only the losing branch itself. Conflict entries written
+  before this fix carry no versions and supersede nothing. Fix: compare against the record's
+  newest owner confirmation, and match descendants of the losing branch.

@@ -435,10 +435,18 @@ def raise_conflicts(core: Any, conflicts: Sequence[EarlyConflict], *,
                         title=f"{conflict.record} {conflict.title}: which version holds",
                         extra=extra)
         index = core.index()
-        entries.append({"record": conflict.record, "branch": conflict.branch,
-                        "with": conflict.claim, "dec": record.id,
-                        "question": record.fields.get("question", ""), "state": "proposed",
-                        "chosen": ""})
+        entry = {"record": conflict.record, "branch": conflict.branch,
+                 "with": conflict.claim, "dec": record.id,
+                 "question": record.fields.get("question", ""), "state": "proposed",
+                 "chosen": ""}
+        block = extra.get("early")
+        if block:
+            # each side's version as asked, so the side the owner turns down can tell
+            # whether it still holds that version (``answer.superseded``)
+            entry["versions"] = {branch: {"hash": block["hashes"].get(branch, ""),
+                                          "text": block["texts"].get(branch, "")}
+                                 for branch in (block["raised_on"], block["other"])}
+        entries.append(entry)
     return entries
 
 

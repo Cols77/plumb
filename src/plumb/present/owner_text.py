@@ -197,7 +197,7 @@ EARLY_UNJUDGED = ('plumb: {id} "{title}" shares its feature with intent in fligh
 EARLY_ANSWERED = ('plumb: {id} "{title}": your answer is recorded: {chosen}; every branch '
                   "working on it builds on that")
 # a merge-time conflict the owner already answered before work began (answer.apply_settled)
-# R17, the losing lane: this checkout's record still differs from the owner's recorded pick
+# R17, the losing lane: this checkout's record still holds the version the owner turned down
 EARLY_SUPERSEDED = ('plumb: {id} "{title}" here still says "{ours}", but the owner chose '
                     '{chosen}: "{theirs}"; change it to match that answer before building on it')
 EARLY_SUPERSEDED_RELAY = ('{id} "{title}" still holds the version the owner turned down when '

@@ -15,10 +15,10 @@ that work. Each RECORD of a claim also clears on its own once it landed (``_unla
 commit that wrote it (``commit``, stamped when the claim moves to a tip holding that version)
 is reachable from the default branch, or the default branch holds exactly the claimed
 version (same hash). So a branch merged and then continued never holds its merged records
-against a later change on the default branch. A branch that only took the default branch's commits (a fast-forward to
-``main``) keeps its claim: its intent is still in flight. Readers on a hook path read the ref
-and the blob from git's files (a loose object) with no git process, through a cache keyed by
-the blob's ID.
+against a later change on the default branch. A branch that only took the default
+branch's commits (a fast-forward to ``main``) keeps its claim: its intent is still in
+flight. Readers on a hook path read the ref and the blob from git's files (a loose object)
+with no git process, through a cache keyed by the blob's ID.
 
 Entry shape::
 

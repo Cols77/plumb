@@ -27,9 +27,11 @@ never asked again (``premerge.check``, ``plumb conflicts``, the conflict card).
 version than the decision's chosen one is refused, never recorded as the opposite answer.
 
 ``superseded`` is the losing lane's side (R17: "both lanes build on it"): a record of this
-checkout whose words still differ from the version the owner chose in a confirmed early
-decision (held here, or carried by another branch's claim) is named on every turn (the
-prompt delta, the stop hook, status) until it matches, and no "ok" confirms it meanwhile.
+checkout that still holds the version the owner turned down in a confirmed early decision
+(held here, or carried by another branch's claim) is named on every turn (the prompt delta,
+the stop hook, status) until it moves off that version, and no "ok" confirms it meanwhile.
+A record that moved past it (a later request and "ok", a branch made after the answer
+merged) is never named: the answer is a signal, never a lock.
 """
 
 from __future__ import annotations
@@ -564,25 +566,33 @@ class Superseded:
     hash: str            # this checkout's version of the record
 
 
-def _differs(record: Any, winner_hash: str, winner_text: str) -> bool:
+def _holds(record: Any, lost_hash: str, lost_text: str) -> bool:
+    """The record still holds the version the owner turned down: the same hash, or the
+    same words (as a claim keeps them). An unknown version is held by nothing."""
+    from plumb.awareness.early import _clip
     from plumb.awareness.inflight import record_entry
 
-    if winner_hash and record.hash == winner_hash:
-        return False
-    if winner_text:
-        return record_entry(record)["text"] != " ".join(winner_text.split())
-    return bool(winner_hash)
+    if lost_hash and record.hash == lost_hash:
+        return True
+    if lost_text:
+        return record_entry(record)["text"] == _clip(lost_text)
+    return False
 
 
 def superseded(core: Any) -> dict[str, Superseded]:
-    """``{record: Superseded}``: every record of this checkout whose words differ from the
-    version the owner chose in a CONFIRMED early decision, the ONE place the losing lane is
+    """``{record: Superseded}``: every record of this checkout that still holds the version
+    the owner TURNED DOWN in a confirmed early decision, the ONE place the losing lane is
     found (R17: the answer is recorded once and both lanes build on it). Two sources: the
     early decisions this checkout holds (it raised the question, or merged it), and the
     answers other branches carry in their claims for this branch's work
     (``inflight.sync_decisions``). An answer naming this branch's own version, "both", or
-    words naming no branch supersedes nothing; a record that matches the chosen version
-    (same hash or same words) is no longer named. No git process (hook path)."""
+    words naming no branch supersedes nothing.
+
+    The answer is compared with the LOSING version (its hash or its words as asked), never
+    with "anything but the winner": a record that matches the chosen version, or that moved
+    on past the turned-down one (a later request, a later "ok", a branch made after the
+    answer merged), is no longer named. The answer is a signal, never a lock (R17). No git
+    process (hook path)."""
     from plumb.awareness import inflight
 
     index = core.index()
@@ -609,14 +619,14 @@ def superseded(core: Any) -> dict[str, Superseded]:
         if (status is None or status.confirmation != "confirmed" or key in (None, BOTH)
                 or key == current or record is None):
             continue
+        loser = early.other if key == early.raised_on else early.raised_on
+        if not _holds(record, early.hashes.get(loser, ""), early.texts.get(loser, "")):
+            continue
         entry = claimed(key, early.record)
         winner_text = str(entry.get("text") or early.texts.get(key) or "")
-        winner_hash = str(entry.get("hash") or early.hashes.get(key) or "")
-        if _differs(record, winner_hash, winner_text):
-            out[record.id] = Superseded(
-                record=record.id, title=record.title, dec=early.dec, chosen=option(key),
-                theirs=winner_text, ours=inflight.record_entry(record)["text"],
-                hash=record.hash)
+        out[record.id] = Superseded(
+            record=record.id, title=record.title, dec=early.dec, chosen=option(key),
+            theirs=winner_text, ours=inflight.record_entry(record)["text"], hash=record.hash)
     for claim in claims:
         for conflict in claim.get("conflicts") or []:
             record = index.get(str(conflict.get("record") or ""))
@@ -629,12 +639,19 @@ def superseded(core: Any) -> dict[str, Superseded]:
             winner = match.group(1) if match else None
             if not winner or winner == my_branch:
                 continue
-            entry = claimed(winner, record.id)
-            if _differs(record, str(entry.get("hash") or ""), str(entry.get("text") or "")):
-                out[record.id] = Superseded(
-                    record=record.id, title=record.title, dec=str(conflict.get("dec") or ""),
-                    chosen=chosen, theirs=str(entry.get("text") or ""),
-                    ours=inflight.record_entry(record)["text"], hash=record.hash)
+            versions = conflict.get("versions")
+            versions = versions if isinstance(versions, Mapping) else {}
+            lost = versions.get(my_branch)
+            lost = lost if isinstance(lost, Mapping) else {}
+            if not _holds(record, str(lost.get("hash") or ""), str(lost.get("text") or "")):
+                continue
+            won = versions.get(winner)
+            won = won if isinstance(won, Mapping) else {}
+            theirs = str(claimed(winner, record.id).get("text") or won.get("text") or "")
+            out[record.id] = Superseded(
+                record=record.id, title=record.title, dec=str(conflict.get("dec") or ""),
+                chosen=chosen, theirs=theirs, ours=inflight.record_entry(record)["text"],
+                hash=record.hash)
     return out
 
 

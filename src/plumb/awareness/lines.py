@@ -80,9 +80,9 @@ def raised_lines(core: Any) -> list[tuple[str, str, str]]:
 
 
 def superseded_lines(core: Any) -> list[tuple[str, str, str]]:
-    """``(subject, state, line)`` per record of this checkout that still differs from the
-    owner's answer to an early conflict (``answer.superseded``, R17: both lanes build on
-    the one answer). No git process."""
+    """``(subject, state, line)`` per record of this checkout that still holds the version
+    the owner turned down when answering an early conflict (``answer.superseded``, R17:
+    both lanes build on the one answer). No git process."""
     from plumb.awareness.answer import superseded, superseded_line
 
     return [(f"superseded:{item.record}", f"{item.dec}:{item.hash}", superseded_line(item))
