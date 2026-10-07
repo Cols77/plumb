@@ -205,8 +205,16 @@ def _merge(core: Any, base: str) -> list[str]:
                5: "verification holds it"}.get(code, f"exit {code}")
     awaiting = len(getattr(report, "awaiting", ()) or ())
     untraced = len(getattr(report, "untraced", ()) or ())
-    return [f"5. merge state against {base}: {meaning} ({awaiting} awaiting you, "
-            f"{untraced} untraced; plumb merge-check {base})"]
+    lines = [f"5. merge state against {base}: {meaning} ({awaiting} awaiting you, "
+             f"{untraced} untraced; plumb merge-check {base})"]
+    conflicts = getattr(report, "intent_conflicts", ()) or ()
+    if conflicts:  # sp6 8.3: each intent conflict a merge left, as its card
+        from plumb.present.owner_text import CONFLICTS_HEADER
+
+        lines.append("  " + CONFLICTS_HEADER)
+        for conflict in conflicts:
+            lines.extend("  " + str(line) for line in conflict.get("card") or [])
+    return lines
 
 
 def review(core: Any, ids: Sequence[str] | None = None) -> dict[str, Any]:

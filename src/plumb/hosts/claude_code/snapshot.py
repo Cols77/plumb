@@ -41,6 +41,16 @@ def tests_state(evidence: Mapping[str, NodeEvidence] | None
     return "ok", failing, regressions
 
 
+def open_conflict_count(core: Any) -> int:
+    """sp6 8.3: the open intent conflicts (the record index only; no git, no log)."""
+    try:
+        from plumb.mergedriver import open_conflicts
+
+        return len(open_conflicts(core))
+    except Exception:  # noqa: BLE001 - a lane failure never breaks the snapshot
+        return 0
+
+
 def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
                    evidence: Mapping[str, NodeEvidence] | None = None,
                    full_pending: FullPending | None = None,
@@ -89,6 +99,7 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
         intent_summary=intent_summary,
         confirmed_by=confirmed_by,
         auto_approve=auto_approve if auto_approve is not None else auto_approve_state(core),
+        conflicts=open_conflict_count(core),
     )
     from plumb.present.render import card_state
 

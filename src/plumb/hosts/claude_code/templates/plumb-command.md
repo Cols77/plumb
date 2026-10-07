@@ -1,7 +1,7 @@
 ---
 description: plumb in plain words - status, explain anything, review, confirm, what a change would reach, the Obsidian view
 argument-hint: "status | explain <anything> | review [<anything>] | confirm [<anything>] | impact <anything> | view"
-allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} confirm:*), Bash({plumb} impact:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*)
+allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} confirm:*), Bash({plumb} impact:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} conflicts:*), Bash({plumb} conflict relay:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -27,5 +27,30 @@ only when asked.
   change would reach.
 - `view`: run `{plumb} view --open` and tell them the Obsidian vault is open (generated;
   editing a note approves nothing).
+
+- `conflicts` (or "what conflicts?"): run `{plumb} conflicts [<their words>]`. A merge left
+  two versions of the same intent; the cards reach the owner at the end of your turn. Say
+  in their terms what each side wants. Their next words choose: relay "keep feat-x's",
+  "keep mine" or "ok, the combined one" with `{plumb} conflict relay <IC> --take
+  <ours|theirs|combined> --prompt <digest> --quote "<exact words>"`. When they describe a
+  combination, write it with `{plumb} conflict propose <IC> --file <fields.yaml>` (shown as
+  a third version; it applies nothing). Never run `conflict choose`: it is the owner's own
+  terminal.
+- `merge-check`: run `{plumb} merge-check` and say what holds the merge in their terms. A
+  merge held by the quick merge check (no test run) is finished when they say "finish the
+  merge": `git add .plumb` (their choices and confirmations made during the merge), then
+  `{plumb} merge-check --hook pre-merge-commit`; when it passes, `git commit -m "Merge
+  <branch>"` with the `SR:` trailers of the merged work. A rebase, cherry-pick or revert
+  step held the same way is continued when they say "continue the rebase" (or cherry-pick,
+  revert): `git add .plumb`, the same check, then `git rebase --continue` (`git cherry-pick
+  --continue`, `git revert --continue`). "check merges before they are recorded": `{plumb}
+  merge-check --install-pre-merge-commit`; "call plumb from my merge hook" (or "my commit
+  hook"): add the `hook_lines` of `{plumb} merge-check --install-pre-merge-commit --json`
+  to their own pre-merge-commit (or prepare-commit-msg) hook. "run the tests when I push": `{plumb} merge-check --install-pre-push`;
+  "call plumb from my push hook": add `<python> -m plumb merge-check --hook pre-push` (git's
+  pushed refs on its stdin) to their own pre-push hook. For a record file left in text-merge form, "keep mine" / "keep theirs" is
+  `git checkout --ours` / `--theirs` on it then `git add`; for one changed on one side and
+  removed on the other, "keep the changed one" is `git add`, "keep it removed" is `git rm`;
+  then `{plumb} validate`.
 
 Change nothing else.

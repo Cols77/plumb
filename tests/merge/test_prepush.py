@@ -50,10 +50,12 @@ def test_uninstall_removes_only_plumb_hook(repo: Path, capsys) -> None:
     assert not _hook(repo).exists()
 
 
-def test_hooks_install_does_not_install_pre_push(repo: Path) -> None:
+def test_hooks_install_installs_pre_push(repo: Path) -> None:
+    """R17: the merge-time check runs no tests because the one full run happens at push, so
+    hooks install writes the pre-push hook by default."""
     assert cli.main(["hooks", "install", "--root", str(repo), "--launcher", "uv"]) == 0
     assert (repo / ".git" / "hooks" / "commit-msg").exists()
-    assert not _hook(repo).exists()
+    assert HOOK_MARKER in _hook(repo).read_text(encoding="utf-8")
 
 
 def test_hook_blocks_push_on_nonzero(repo: Path, tmp_path: Path) -> None:

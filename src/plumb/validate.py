@@ -32,6 +32,25 @@ class Finding:
         return f"{self.severity}: [{self.code}] {self.subject}: {self.message}"
 
 
+def _text_merged(core: Core, rel: str) -> str | None:
+    """sp6 7.6: a record file holding both versions of a text merge, in the owner's terms."""
+    try:
+        text = (core.root / rel).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    lines = text.splitlines()
+    if not any(line.startswith("<<<<<<< ") for line in lines) or \
+            not any(line.startswith(">>>>>>> ") for line in lines):
+        return None
+    from plumb.mergedriver.merge import _guess_id
+    from plumb.present.owner_text import UNPARSABLE
+
+    record, title = _guess_id(text)
+    if record == "this record":
+        record = rel.rsplit("/", 1)[-1].removesuffix(".md")
+    return UNPARSABLE.format(record=record, title=title)
+
+
 def validate(core: Core) -> list[Finding]:
     findings: list[Finding] = []
 
@@ -40,7 +59,8 @@ def validate(core: Core) -> list[Finding]:
 
     for problem in core.store.problems():
         code = "duplicate" if problem.startswith("duplicate id") else "load"
-        add("error", code, problem.split(":", 1)[0], problem)
+        subject = problem.split(":", 1)[0]
+        add("error", code, subject, _text_merged(core, subject) or problem)
     index = core.index()
 
     # relations

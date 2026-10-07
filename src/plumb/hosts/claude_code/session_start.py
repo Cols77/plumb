@@ -108,6 +108,18 @@ def triage_offer_line(core: Any) -> str | None:
             "plumb triage lists them; plumb confirm shows them as cards")
 
 
+def conflicts_line(core: Any) -> str | None:
+    """One line counting the open intent conflicts (sp6 8.3); the cards come with
+    /plumb conflicts or the stop hook."""
+    try:
+        from plumb.hosts.claude_code.snapshot import open_conflict_count
+        from plumb.present.owner_text import CONFLICTS_BRIEF
+    except ImportError:
+        return None
+    count = open_conflict_count(core)
+    return CONFLICTS_BRIEF.format(n=count) if count else None
+
+
 def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     """The records brief first (kept through any cut), then the tests line."""
     from plumb.api import open_core
@@ -132,6 +144,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     lines = emitter.add([Line(evidence_line(summary) if line == NOT_CHECKED else line)
                          for line in records_brief])
     ctx.keep(lines)
+    conflicts = conflicts_line(core)  # sp6 8.3: a merge left intent awaiting the owner
+    if conflicts:
+        lines += emitter.add([Line(conflicts)])
+        ctx.keep(lines)
     if not ctx.deadline.expired():  # R8 A: at most one line, the triage offer
         offer = triage_offer_line(core)
         if offer:
