@@ -45,3 +45,21 @@ def test_unparsable_side_clean_text_merge_exits_0() -> None:
     theirs = "theirs\nnot a record\nline\n"
     result = merge_texts(base, ours, theirs, labels=LABELS, reserve_ic=Counter())
     assert result.exit == 0 and result.text == "theirs\nnot a record\nline\nours\n"
+
+
+@pytest.mark.sr("SR-075")
+def test_validate_names_a_text_merged_record(repo) -> None:
+    """sp6 7.6: a record file left with conflict markers is named in the owner's terms."""
+    from mergedriver.mdhelpers import plumb, write_record
+    from plumb.present.owner_text import bare_cli_verbs
+
+    path = write_record(repo, record(statement="a"))
+    text = merge_texts(record(statement="a"), record(statement="b"),
+                       "---\nid: SR-005\ntitle: [x\n---\n", labels=LABELS,
+                       reserve_ic=Counter()).text
+    path.write_text(text, encoding="utf-8")
+    out = plumb(repo, "validate")
+    assert out.returncode == 1
+    line = next(x for x in out.stdout.splitlines() if "both versions of a text merge" in x)
+    assert 'say "keep mine" or "keep theirs"' in line and "SR-005" in line
+    assert bare_cli_verbs(line) == []

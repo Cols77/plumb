@@ -3345,3 +3345,63 @@ or extends that entry.
   ambiguous for lane agents. Same as the round-1 coordinator-row entry. Fix: remove the
   duplicate and spell out the full paths for `prompt.py`, `stop.py`, `post_edit.py`,
   `snapshot.py` and `install.py`.
+
+## SP6 lane MERGEDRIVER (2026-10-07)
+
+Delivered on `lane/mergedriver`: the record merge driver (SR-075), intent conflicts with their
+card, the owner's choice and the stop-hook, brief and status-card surfaces (SR-076), the merge
+report's `unmerged` and `intent_conflicts` sections and the quick merge check at git's
+pre-merge-commit, installed by default (SR-077, R17). Notes for Integrate and open items:
+
+- [INTEGRATE] Phase 0 had not run when the lane started, so the lane wrote its own part of
+  the coordinator files: `present/owner_text.py` (new in IDS, LOGS and this lane: an add/add
+  to join by hand; `bare_cli_verbs` is the IDS lane's version), `contracts.py`
+  (`DriverResult`, `IntentConflict`, `StatusSnapshot.conflicts`), `cli.py` (routes and help
+  for `merge-driver`, `conflict`, `conflicts`), `boundary/report.py` (`unmerged`,
+  `intent_conflicts`, their exits and sections), `boundary/cli.py`
+  (`--hook pre-merge-commit`, `--install/--uninstall-pre-merge-commit`), `commands.py`
+  (`plumb init` adopts git: driver and quick check), `hosts/claude_code/install.py`
+  (`git_adoption`, status lines, the `conflict choose` deny rule), `stop.py`,
+  `session_start.py`, `snapshot.py`, `present/render.py`, `present/review.py`,
+  `present/cli.py` (`plumb show IC-###`), `validate.py` (text-merged record named in the
+  owner's terms) and the `/plumb` command and skill templates.
+- [INTEGRATE] `IC` IDs come from `plumb.ids.reserve(kind="conflict")` once the IDS lane is
+  merged (the driver calls it when importable); until then the driver uses the highest IC
+  this worktree knows (record files, resolution entries in both log layouts, and its own
+  `.plumb/cache/ic-reserved.json`) plus one, which is unique within one clone's worktree only.
+- [INTEGRATE] R17 says plumb's own repository gets the quick merge check after Integrate:
+  `plumb hooks install` now installs it with the driver. It holds every merge that touches a
+  requirement the owner has not confirmed, and every plumb record is still proposed, so the
+  coordinator's own merges will be held until the owner confirms them (or are made with
+  `git merge --no-verify`, which bypasses the hook like any git hook). Decide the order
+  (install after the lane merges) and tell the owner.
+- [MEDIUM] (spec 8.4, deny rules) Claude Code's deny rules match a command prefix, so "deny
+  `plumb conflict choose` without `--prompt`" cannot be written. The lane denies
+  `conflict choose` entirely and gives the agent `plumb conflict relay` (the relay; `choose
+  --prompt ... --quote ...` stays accepted as the spec's form). The owner's terminal path is
+  unchanged. Fix: update spec 8.4 and 11 to name `conflict relay` as the agent's form.
+- [MEDIUM] (R17, spec 10) The pre-merge-commit hook runs only when `git merge` commits on its
+  own; a merge stopped by a text conflict and finished with `git commit` is covered only at
+  push and by `/plumb merge-check`. Fix: let the commit-msg hook run the same quick check
+  when `MERGE_HEAD` exists (one more git call per merge commit, no test run).
+- [MEDIUM] (spec 7.2 latency) The driver itself merges a record in a few milliseconds
+  (tested under 300 ms in process), but one `python -m plumb merge-driver` process takes about
+  0.4 s here, 0.25 s of it the interpreter start and 0.11 s importing `plumb.contracts`. Fix:
+  if it matters, let the driver import only `plumb.model`'s helpers without `contracts`.
+- [LOW] (git behaviour) When the quick check refuses a merge, git has not yet written the
+  merge message, so `git commit --no-edit` aborts with an empty message; the `/plumb`
+  command tells the agent to finish with `git commit -m "Merge <branch>"` and the merged
+  work's `SR:` trailers.
+- [LOW] (spec 7.3) A record that already carries an open `conflict` block and is merged
+  again with another conflicting change gets a new block; the older block's versions are
+  kept only if that field did not conflict. Rare (a conflict is resolved before the next
+  merge). Fix: nest or refuse with exit 1 when both sides carry different blocks.
+- [LOW] (relay reader) The choice relay reads the quote with `approvals.objection_clauses`,
+  so "use feat-x's instead" is refused ("instead" reads as a change clause); "keep feat-x's"
+  works. Conservative by design (R2).
+- [LOW] (config) `merge.premerge_run_full` (spec 10, 12) was not added: R17 rules that the
+  merge-time check never runs the suite, so the key would contradict the owner. Fix: drop it
+  from spec 10 and 12.
+- [LOW] (drift) The lane extended files other requirements are implemented by (SR-012,
+  SR-015, SR-027, SR-047, SR-061, SR-063, SR-064, SR-066 to SR-068 among them); their links are
+  stale until the coordinator reviews and repins them (lanes repin only their own records).

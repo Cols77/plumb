@@ -98,3 +98,11 @@ def test_show_ic_and_show_record(repo: Path) -> None:
         assert "Conflict  IC-001 on SR-005" in out.stdout
     listed = plumb(repo, "conflicts")
     assert listed.returncode == 0 and "Conflict  IC-001" in listed.stdout
+
+
+def test_review_shows_the_card(repo: Path) -> None:
+    """SR-076 EX-2: /plumb review shows the conflict card in its merge section."""
+    conflicted(repo)
+    out = plumb(repo, "review")
+    assert "intent conflicts wait for your choice (/plumb conflicts):" in out.stdout
+    assert "Conflict  IC-001 on SR-005" in out.stdout
