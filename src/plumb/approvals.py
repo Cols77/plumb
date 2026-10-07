@@ -26,7 +26,7 @@ import sys
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from plumb.confirm import affirmation_in, escalated_of, remaining_approvals
+from plumb.confirm import affirmation_in
 from plumb.contracts import LogEntry
 from plumb.normalize import normalize_text, sha256_bytes, sha256_text
 from plumb.trace import owning_ends
@@ -215,9 +215,13 @@ def approve(core: Core, ids: Iterable[str], *, note: str = "",
 
 
 def _revoked_records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
-    """Each record with the hash of the approval being revoked (its latest one)."""
-    approvals = remaining_approvals(core.events(), core.config.approve.affirmations,
-                                    escalated_of(core))
+    """Each record with the hash of the approval being revoked (its latest one), read
+    through the confirmation choke point (``confirm.remaining``: an approval a renumber
+    carried to a new ID is revoked under that ID, sp6 5.4)."""
+    from plumb.confirm import remaining
+
+    approvals = {rid: [(h, by) for h, by, _ in items]
+                 for rid, items in remaining(core).items()}
     out = []
     for item in _records(core, ids):
         remaining = approvals.get(item["id"], [])

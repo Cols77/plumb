@@ -5,11 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 from collections.abc import Mapping
 from typing import Any
 
-from plumb.contracts import KIND_DIR, KIND_PREFIX, Record
+from plumb.contracts import KIND_DIR, Record
 from plumb.model import RecordError, load_yaml, parse_record, split_frontmatter
 from plumb.paths import PlumbPaths
 
@@ -54,6 +53,7 @@ class Store:
         self.paths = paths
         self._index: dict[str, Record] | None = None
         self._problems: list[str] = []
+        self._reserved: dict[str, list[str]] = {}  # IDs reserved ahead, per kind
 
     def invalidate(self) -> None:
         self._index = None
@@ -110,11 +110,31 @@ class Store:
             _write_index_cache(self.paths.index_cache, fresh)
 
     def next_id(self, kind: str) -> str:
-        prefix = KIND_PREFIX[kind]
-        width = 4 if kind == "nc" else 3
-        pattern = re.compile(rf"^{prefix}-(\d+)$")
-        numbers = [int(m.group(1)) for rid in self.index() if (m := pattern.match(rid))]
-        return f"{prefix}-{(max(numbers) + 1 if numbers else 1):0{width}d}"
+        """A new ID of ``kind``, reserved through ``refs/plumb/ids`` (sp6 4.2): the one
+        allocation function every record writer goes through."""
+        queued = self._reserved.get(kind)
+        if queued:
+            return queued.pop(0)
+        from plumb import ids
+
+        return ids.reserve(self.paths, kind, local=self.index())[0]
+
+    def prereserve(self, kind: str, count: int) -> None:
+        """Reserve ``count`` IDs of ``kind`` in one compare-and-swap for the next
+        ``next_id`` calls (a writer of several records reserves per prefix once, sp6 4.2).
+        An ID reserved and never written leaves a gap; nothing relies on density."""
+        if count <= 0:
+            return
+        from plumb import ids
+
+        self._reserved.setdefault(kind, []).extend(
+            ids.reserve(self.paths, kind, count, local=self.index()))
+
+    def peek_id(self, kind: str) -> str:
+        """The ID ``next_id`` would hand out, reserving nothing (previews, dry runs)."""
+        from plumb import ids
+
+        return ids.peek(self.paths, kind, local=self.index())
 
     def write_record(self, kind: str, fields: Mapping[str, Any], body: str = "",
                      *, record_id: str | None = None) -> Record:

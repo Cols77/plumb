@@ -158,13 +158,27 @@ def glance_rows(core: Any, base_digests: Iterable[str]) -> list[dict[str, Any]]:
         if isinstance(payload.get("upstream"), Mapping):
             row["consent"] = payload["upstream"].get("consent_path")
         rows.append(row)
+    rows += _renumber_rows(core, known)
     rank = {name: n for n, name in enumerate(GROUP_ORDER)}
     rows.sort(key=lambda r: rank.get(r["by"], len(GROUP_ORDER)))  # stable: log order kept
     return rows
 
 
+def _renumber_rows(core: Any, known: set[str]) -> list[dict[str, Any]]:
+    """R17: the approvals a renumber in the range carried, for the owner's glance."""
+    if not any(e.kind == "renumber" for e in core.events()):
+        return []
+    from plumb.ids.aliases import glance_rows
+
+    return glance_rows(core, known)
+
+
 def glance_line(row: Mapping[str, Any]) -> str:
     """One line per row, ending with the revoke command for an approval."""
+    if row.get("kind") == "renumber":
+        from plumb.present.owner_text import CARRIED_GLANCE
+
+        return CARRIED_GLANCE.format(old=row["from"], new=row["to"], title=row["title"])
     what = ", ".join(row["records"] + [f"trace.exempt {' '.join(row['exempt'])}"]
                      if row["exempt"] else row["records"]) or "(nothing)"
     kind = "" if row["kind"] == "approval" else "revocation "

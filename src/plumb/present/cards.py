@@ -128,6 +128,11 @@ def confirmed_label(core: Any, record_id: str, status: Any) -> str | None:
         return None
     who = BY.get(str(status.approved_by), str(status.approved_by))
     extra = _label(core, record_id)
+    carried_from = getattr(status, "carried_from", None)
+    if carried_from:  # R17: an ok carried across a renumber, words unchanged
+        from plumb.present.owner_text import carried
+
+        extra = ", ".join(x for x in (extra, carried(carried_from, record_id)) if x)
     return f"confirmed by {who}" + (f", {extra}" if extra else "")
 
 

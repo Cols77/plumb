@@ -96,6 +96,9 @@ class RecordStatus:
     # R13 Q4: the standing approval rests on a message the agent recorded itself (an
     # agent-relayed approval citing a prompt logged by `plumb turn start`)
     self_recorded: bool = False
+    # R17: the confirmation stands only through an approval a renumber carried (the old ID
+    # the owner approved, same words); every surface labels it "carried by renumber"
+    carried_from: str | None = None
 
 
 @dataclass(frozen=True)
@@ -470,3 +473,42 @@ class TurnOutput:
     owner_lines: tuple[str, ...] = ()     # status card, summary, intent card (owner-facing)
     block: str | None = None              # one instruction that keeps the agent working
     status_line: str = ""                 # the one-line status card
+
+
+# --------------------------------------------------------------------------- sp6 IDS
+# Collision-free IDs (sp6 4, 5, 12): ``plumb.ids``. Every field has a default.
+
+
+@dataclass(frozen=True)
+class IdState:
+    """``refs/plumb/ids`` as read: the high-water mark per prefix and recent reservations."""
+
+    high: Mapping[str, int] = field(default_factory=dict)
+    recent: tuple[Mapping[str, Any], ...] = ()
+    reserved: bool = False                 # False outside git: IDs are local numbers only
+    oid: str | None = None                 # the blob the ref points to; None when absent
+
+
+@dataclass(frozen=True)
+class Collision:
+    """Two different records holding one ID (sp6 5.1)."""
+
+    id: str = ""
+    paths: tuple[str, ...] = ()
+    sides: tuple[str, ...] = ()            # the titles, the kept (first-parent) side first
+    how: Literal["add/add", "duplicate", "kept-one", "preview"] = "duplicate"
+
+
+@dataclass(frozen=True)
+class MergeFixResult:
+    """``plumb merge-fix`` (sp6 5.6). ``renumbered`` rows: {from, to, title, kind,
+    references, files, approvals, commits}. ``blocked``: the files naming a colliding ID
+    that are still unmerged or do not read; while any is left nothing is renumbered and
+    every collision remains."""
+
+    renumbered: tuple[Mapping[str, Any], ...] = ()
+    remaining: tuple[Collision, ...] = ()
+    blocked: tuple[str, ...] = ()
+    staged: tuple[str, ...] = ()
+    dry_run: bool = False
+    lines: tuple[str, ...] = ()

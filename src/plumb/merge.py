@@ -36,7 +36,6 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from plumb.hashing import clean_rel_path, target_path
-from plumb.trailers import parse_sr_trailer
 
 if TYPE_CHECKING:
     from plumb.api import Core
@@ -59,19 +58,29 @@ def _git(core: Core, *args: str, check: bool = True) -> str:
     return result.stdout if result.returncode == 0 else ""
 
 
-def changed_paths(core: Core, base: str) -> tuple[list[str], list[str]]:
-    """(paths changed between the merge base and the working tree, commit messages)."""
+def changed_paths(core: Core, base: str) -> tuple[list[str], list[tuple[str, str]]]:
+    """(paths changed between the merge base and the working tree, ``(sha, message)`` of
+    each commit in the range)."""
     merge_base = _git(core, "merge-base", base, "HEAD").strip()
     diff = _git(core, "diff", "--relative", "--name-only", "-z", merge_base)
     untracked = _git(core, "ls-files", "--others", "--exclude-standard", "-z")
     paths = sorted({p for p in (diff + "\0" + untracked).split("\0") if p})
-    log_out = _git(core, "log", "--format=%B%x00", f"{base}..HEAD")
-    messages = [m for m in log_out.split("\0") if m.strip()]
+    log_out = _git(core, "log", "--format=%H%x1f%B%x00", f"{base}..HEAD")
+    messages = []
+    for chunk in log_out.split("\0"):
+        sha, _, message = chunk.strip("\n").partition("\x1f")
+        if sha and message.strip():
+            messages.append((sha, message))
     return paths, messages
 
 
 def touched_requirements(core: Core, paths: Sequence[str],
-                         messages: Sequence[str]) -> list[str]:
+                         messages: Sequence[tuple[str, str]]) -> list[str]:
+    """Requirements whose record or owning end changed, and those the range's ``SR:``
+    trailers claim, read through every ``renumber`` (``claims.claimed_ids``, sp6 5.5): an
+    incoming commit's ``SR-070`` means the renumbered ``SR-081``."""
+    from plumb.claims import claimed_ids, trailer_aliases
+
     index = core.index()
     changed = {clean_rel_path(p) or p for p in paths}
     touched: set[str] = set()
@@ -87,8 +96,9 @@ def touched_requirements(core: Core, paths: Sequence[str],
                 if end and (clean_rel_path(end) or end) in changed:
                     touched.add(record.id)
                     break
-    for message in messages:
-        for claimed in parse_sr_trailer(message):
+    aliases = trailer_aliases(core) if messages else {}
+    for sha, message in messages:
+        for claimed in claimed_ids(aliases, sha, message):
             if claimed in index and index[claimed].kind == "requirement":
                 touched.add(claimed)
     return sorted(touched)
@@ -148,17 +158,17 @@ def base_config(core: Core, fork: str) -> Any:
 
 def approved_ends(core: Core) -> dict[str, set[str]]:
     """``{SR: ends}``: the owning ends listed by valid approvals of each requirement at its
-    current hash (what the owner confirmed it owns)."""
-    from plumb.confirm import checked_entries
+    current hash (what the owner confirmed it owns), an approval a renumber carried
+    included (R17)."""
+    from plumb.confirm import checked_entries, pinned_through_renumbers
 
     index = core.index()
     out: dict[str, set[str]] = {}
-    for entry, problem in checked_entries(core.events(), core.config.approve.affirmations):
+    pairs = checked_entries(core.events(), core.config.approve.affirmations)
+    for entry, problem, items in pinned_through_renumbers(core, pairs):
         if problem is not None or entry.kind != "approval":
             continue
-        for item in entry.payload.get("records") or []:
-            if not isinstance(item, Mapping):
-                continue
+        for item in items:
             record = index.get(str(item.get("id")))
             if record is None or item.get("hash") != record.hash:
                 continue

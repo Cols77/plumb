@@ -3560,3 +3560,246 @@ import recheck using the read-order neighbour) stand.
   created `.plumb/cache` at the drive root. Fix: writers of `.plumb/cache` must refuse when
   `find_root` found neither `.plumb/` nor `.git`, and the test should not depend on the drive
   root being clean. The directory was left in place (not created by this lane).
+## SP6 lane IDS (2026-10-07)
+
+Lane IDS (`lane/ids`, worktree `C:/coding/plumb-ids`): SR-070 to SR-072 implemented with
+their tests; R17's renumber label added as SR-071 EX-6 (proposed). Every item of plan 4 (I1
+to I7) is done. Open items, medium and low:
+
+- [MEDIUM] (plan 3.2, phase 0) Phase 0 was not on `main` when the lane started (no
+  `contracts` additions, no `ids` stubs, no `present/owner_text.py`, no `tests/gitrepo.py`).
+  The lane added the IDS pieces itself, additively, against the plan's names: `IdState`,
+  `Collision`, `MergeFixResult` and `RecordStatus.carried_from` in `contracts.py`;
+  `present/owner_text.py` with `bare_cli_verbs` and the IDS constants only (the other lanes'
+  constants still to add); the `merge-fix` and `ids` routes and help lines in `cli.py`;
+  `MergeReport.id_collisions` with its section and exit 1 in `boundary/report.py`; the
+  lane-local `tests/ids/gitrepo.py`. The coordinator reconciles these with the other lanes at
+  Integrate (expect an add/add on `present/owner_text.py`). `tests/ids/` has an
+  `__init__.py` so its `test_owner_text.py` does not clash with the other lanes' files of
+  that name; the other lanes need the same.
+- [MEDIUM] (drift from shared files) The lane's edits of shared modules left other SRs'
+  whole-file `implemented_by` links stale (SR-001, SR-004, SR-005, SR-007, SR-012, SR-015,
+  SR-027, SR-028, SR-030, SR-031, SR-033, SR-034, SR-035, SR-037, SR-039, SR-041, SR-047,
+  SR-048, SR-049, SR-052, SR-053, SR-057, SR-059, SR-060, SR-061, SR-062, SR-063, SR-064,
+  SR-068, SR-069). Lanes repin only their own SRs; the coordinator reviews and repins at
+  Integrate.
+- [LOW] (spec 5.5) `merge.touched_requirements` reads the range's trailers without the
+  renumber map, so an incoming commit's `SR: SR-070` also marks this side's SR-070 as touched
+  at the merge boundary (conservative: one more requirement checked, never one fewer).
+- [LOW] (spec 5.4) A carried approval carries no `verified_by` test pins: the changed-test
+  check of a carried confirmation starts again from the owner's next approval; the escalated
+  set check (`boundary.report._set_confirmed`) and the importer's `_approved_before` ignore
+  carried approvals (both conservative).
+- [LOW] (spec 5.2) A duplicate ID at two paths with no merge in progress and no merge commit
+  at `HEAD` renumbers the later-added file and rewrites only that record's own references;
+  references elsewhere are left for `plumb validate` to report.
+- [LOW] (spec 12 config) `ids.retries` and `ids.retry_s` are read from the config when it
+  has an `ids` section; `config.py` does not have one yet (phase 0), so the defaults (50
+  tries, 3 s) hold.
+- [LOW] (pre-existing, R14) `plumb --help`'s `merge:` category line is cut at its first
+  comma by `help_text` ("one full run, claims"), and the merge report's other sections still
+  print bare `plumb approve` / `plumb tests run` text; neither is SP6 text.
+
+## SP6 lane IDS review (2026-10-07)
+
+The review's two HIGH findings are fixed on `lane/ids`. (1) A merge that a person resolved
+by hand to one file (a `kept-one` collision) is now reported by `ids.collisions`, the one
+choke point that `plumb check --merge`, `plumb merge-check`, the pre-push hook and
+`plumb merge-fix` all read. It is reported for a merge in progress (`MERGE_HEAD`) and for
+every merge commit in `base..HEAD`. `merge-fix` restores the lost incoming record under a
+new ID. (2) The reference rewrite now decides which side added each reference by its
+place: a test marker belongs to the test node it decorates, and a body wikilink is placed
+by its line's position. It no longer goes by identical line text. The open review findings
+follow, medium and low:
+
+- [MEDIUM] (`ids/reservation.py`, spec 4.3) Seeding scans only this worktree's record files
+  and the local branch tips. It misses the uncommitted records of other linked worktrees
+  that were created before `refs/plumb/ids` existed. The first reservation can then hand
+  out an ID that another worktree already wrote. This is the reuse SR-070 exists to
+  prevent, open for one upgrade window. Example: worktree A has an uncommitted SR-080 from
+  the old local numbering, and worktree B runs `plumb new requirement` first after the
+  upgrade. The seed sees SR-079 as the highest and reserves SR-080. A cheap fix: when
+  seeding and in `ids sync`, also read the `.plumb/` directories listed by
+  `git worktree list --porcelain`.
+- [MEDIUM] (`ids/mergefix.py`) A duplicate with no merge context (no `MERGE_HEAD`, and
+  `HEAD` is not a merge commit) gives an empty `_Context`. `_candidates` then returns
+  nothing, so only the incoming file is renamed: no references are rewritten and no
+  commits are mapped, yet the output still reports success ("0 references"). If
+  SR-005-imported.md had incoming DEC or test references, they would still point at
+  SR-005 without any warning. Fix by deriving a base from `git log --diff-filter=A` of the
+  later file, or by reporting a remaining collision or a warning that the references could
+  not be classified.
+- [MEDIUM] (`merge.py`, spec 5.5) `touched_requirements` gives the merge boundary its set
+  of touched requirements, which feeds the R1 confirmations. It reads `SR:` trailers with
+  plain `parse_sr_trailer`, not through `ids.trailer_aliases`, because only `claims_check`
+  was rewired. After merge-fix, an incoming commit's `SR: SR-002` marks the first parent's
+  SR-002 as touched, so the owner is asked to confirm the wrong record. The renumbered
+  SR-003 is caught only through its path. This supersedes the LOW entry above.
+- [MEDIUM] (`ids/aliases.py`, spec 5.4) `renumber_problems` checks neither that the listed
+  approvals "come from the incoming side" nor that the `to` record exists. `carry()` still
+  moves listed approvals off the old ID whenever the old record's current hash differs
+  from the pin. Two failure cases:
+  - A hand-written renumber entry (from SR-005 to an ID that does not exist) lists an owner
+    approval of SR-005's earlier words, after SR-005 was edited. `plumb validate` accepts
+    the entry, and `carry()` then drops that approval from SR-005's standing approvals.
+    SR-005 then reads as never owner-confirmed, which matters for checks such as R8 B
+    ("never auto-approve an edit to an owner-confirmed record").
+  - A hand-written entry can move an approval of stale words onto a byte-identical copy
+    under a new ID.
+
+  The record is tamper-evident only, which R2 accepts, so this stays medium. Separately,
+  the abbreviated-sha fallback of `map_trailer` (`s.startswith(sha) or sha.startswith(s)`)
+  can match the wrong commit when the sha is short.
+- [MEDIUM] (`ids/mergefix.py`) `rewrite.trailers` maps every `SR:` occurrence of the old
+  ID in MERGE_MSG and SQUASH_MSG, including trailers that name the first parent's record.
+  The spec allows only those for the incoming side's work. Squash-merging a branch whose
+  message lists both sides' work under SR-070 rewrites them all to SR-081, so the commit
+  claims the wrong requirement for our side's paths.
+- [MEDIUM] (`ids/reservation.py`) Two rough edges:
+  - `_swap` lets a `NoGit` from `hash-object` or `update-ref` (for example a read-only
+    object store) escape as a traceback, with no exit code.
+  - A ref that points at a non-blob, or at a blob that does not parse, reads as missing or
+    empty. A non-blob makes every compare-and-swap fail until `IdBusy`. An unparsable blob
+    resets `high` to the local maximum, so the next reservation starts from local files
+    only and can reuse an ID that another worktree reserved.
+- [MEDIUM] (`ids/mergefix.py`, spec 5.1) merge-fix only half-works during a rebase or a
+  cherry-pick. `context()` looks only at `MERGE_HEAD` and `HEAD^2`, so an add/add left by a
+  rebase or cherry-pick gets an empty `_Context`. The record is renamed, but no other
+  file's references are rewritten, nothing is staged, no commits are mapped, and `held`
+  covers only the working tree. Example: during `git rebase`, a replayed commit adds SR-070
+  and upstream also added SR-070. merge-fix renames the incoming record to SR-081 and
+  prints "now SR-081 (0 references ...)", but the markers, links and trailers that the
+  replayed commits carry still name SR-070. Later replayed commits may already use the
+  reserved number, which causes a fresh collision. Spec 5.1 limits merge-fix to
+  `MERGE_HEAD`, but the command neither refuses nor warns.
+- [MEDIUM] (`ids/rewrite.py`) `rewrite.record()` returns the file unchanged, counting 0
+  references, when the merged record file does not parse, for example when git left text
+  conflict markers because no merge driver was installed. The incoming side's references
+  in that file are skipped without a word, and merge-fix still reports success. Example:
+  without the driver, both sides edit FEAT-001 near the same lines and the incoming side
+  adds `requirements: [SR-070]` (its own SR-070). merge-fix renumbers that record to SR-081
+  but skips FEAT-001, which still has conflict markers. Once the owner resolves the
+  conflict, FEAT-001 points at this side's SR-070, the wrong record, and a second run
+  finds nothing to fix. merge-fix should list such files as remaining, or refuse while
+  record paths are unmerged. The same applies to `rewrite.markers` on a test file that does
+  not parse.
+- [MEDIUM] (`ids/ref.py`) `update()` raises `Moved` on any `update-ref` failure, including
+  a stale `refs/plumb/ids.lock` left by a crashed process. From then on, every `plumb new`,
+  capture or decide retries for 3 s and exits 2 with "another session is creating records;
+  try again in a moment", and that message stays true until someone deletes the `.lock`
+  file by hand. A fix would tell "cannot lock ref" apart from a real old-value mismatch and
+  name the lock file in the message.
+- [MEDIUM] (`ids/collision.py`, kept-one, new with this fix) merge-fix fixes a `kept-one`
+  collision only for the merge it works on: the merge in progress, or `HEAD` as a merge
+  commit. `merge-check` reports a `kept-one` from an older merge commit in `base..HEAD`,
+  but `merge-fix` does not see it ("nothing to fix"), so the owner must restore that record
+  by hand. Scanning `base..HEAD` also costs about three git calls for each merge commit in
+  the range, which is cheap for usual pushes but grows with long-lived branches that merge
+  `main` often.
+- [LOW] (`merge.py`, spec 5.4) `approved_ends()` reads approvals through `checked_entries`
+  without the renumber carry, so a carried requirement's owner-approved code ends are not
+  recognised. After a pure renumber from SR-070 to SR-081, SR-081 shows as confirmed
+  (carried), yet the merge boundary lists its `implemented_by` ends as "extended" and waits
+  for the owner (exit 4). This errs on the safe side but contradicts "a renumber alone keeps
+  the owner's confirmation".
+- [LOW] (`boundary/report.py`, spec 10 and R18) `collision_lines()` puts raw `.plumb` file
+  paths in the owner-facing merge report, for example
+  `SR-070: "a" and "b" hold one ID (.plumb/requirements/SR-070.md (both branches added it)); /plumb merge-fix fixes it`.
+  The spec asks for titles and "/plumb merge-fix fixes it", and R18 counts `.plumb` paths as
+  internals the owner should not see.
+- [LOW] (`ids/reservation.py`, spec 4.3) The first seed reads only branch tips and this
+  worktree's files (see the MEDIUM seeding entry above). Right after the upgrade, a
+  reservation can hand out a pre-SP6 ID from another worktree's uncommitted files, and
+  nothing flags it until the merge.
+- [LOW] (`ids/cli.py`, spec 5.6) `plumb merge-fix --dry-run` exits 0 even when it would
+  renumber collisions, because only sides that do not parse end up in `remaining`. Spec 5.6
+  ties exit 1 to "a collision remains", and a dry run fixes nothing. An agent that runs the
+  dry run as a check sees exit 0 and treats the merge as collision-free.
+- [LOW] (sp6-plan 3.1 and 4, ownership) The modules are named `reservation.py` and
+  `collision.py`, not `reserve.py` and `collisions.py`. Because phase 0 was not on `main`,
+  the lane also edits files the coordinator owns: `contracts.py`, `owner_text.py`, `cli.py`,
+  `store.py`, `confirm.py`, `claims.py`, `validate.py`, `boundary/report.py`, `glance.py`,
+  `cards.py`, `importer/apply.py`, `capture.py` and `approvals.py`. The other lanes did the
+  same. Integration will hit add/add or text conflicts in `present/owner_text.py`,
+  `contracts.py` (the `MergeReport` and `Collision.how` fields), `boundary/report.py` and
+  `cli.ROUTES` across all four lanes. The lane gate's check that every path is in the
+  lane's row of 3.1 fails.
+
+## SP6 lane IDS review, round 2 (2026-10-07)
+
+The round's three HIGH findings are fixed on `lane/ids`, each at one choke point with one
+test per entry point:
+
+1. Same record, not a collision (spec 5.1, concept 4.4). `collision.same_record` compares
+   record hashes, which leave `links` and their pins out, and is the only "same content"
+   test that `unmerged_add_add`, `duplicates`, `kept_one` and `preview` make. A side that
+   only ran `plumb link` or `plumb repin` on a record both sides imported, or a merge driver
+   resolution that is equal after parsing, is no longer renumbered into a second copy
+   (`tests/ids/test_same_record.py`).
+2. A carried approval counts in every reader at the merge boundary (R17). What an approval
+   pinned is read through `confirm.pinned_through_renumbers` (backed by
+   `ids.aliases.carried_items`, the same conditions as `carry`), in `merge.approved_ends`
+   and `boundary.report._set_confirmed`. A past commit's `SR:` trailer is read through
+   `claims.claimed_ids`, in `claims_check` and `merge.touched_requirements`
+   (`changed_paths` now returns `(sha, message)` pairs). After a pure renumber, merge-check
+   no longer lists the carried requirement as "extended", no longer holds an escalated set
+   whose member was renumbered, and no longer counts the first parent's record as touched by
+   the incoming commits (`tests/ids/test_carried_readers.py`). This supersedes the earlier
+   LOW and MEDIUM `touched_requirements` entries, the LOW `approved_ends()` entry, and the
+   "escalated set check ignores carried approvals" part of the LOW carried-pins entry.
+3. merge-fix renumbers nothing while a file naming the ID cannot be read (spec 5.3, 5.6).
+   `mergefix._unresolved` is the one gate before any reservation or write, dry run
+   included. It covers each record, test or claims file whose incoming version names a
+   colliding ID and that is still unmerged (`git ls-files -u`) or does not read
+   (`rewrite.readable`: conflict markers, a broken record, Python or YAML). merge-fix then
+   prints `owner_text.FIX_BLOCKED`, lists the files in `MergeFixResult.blocked`, keeps every
+   collision in `remaining` and exits 1 (`tests/ids/test_unresolved.py`). This supersedes
+   the MEDIUM `rewrite.record()` entry.
+
+Open, medium and low (from the review, restated where an earlier entry already had them):
+
+- [MEDIUM] (`ids/cli.py`, spec 5.6) `plumb merge-fix --dry-run` exits 0 when it would
+  renumber collisions: `remaining` holds only the sides that do not parse, and spec 5.6
+  ties exit 1 to "a collision remains". An agent that runs the dry run as a check during an
+  add/add merge gets exit 0 and treats the merge as collision-free, while merge-check still
+  holds it with exit 1. (A blocked dry run now exits 1.)
+- [MEDIUM] (`ids/rewrite.py`, spec 5.3) `rewrite.trailers` maps every old-ID token in the
+  `SR:` lines of MERGE_MSG and SQUASH_MSG, including trailers that name the first parent's
+  record; the spec limits the rewrite to the incoming side's work. A squash merge whose
+  message carries `SR: SR-070` for both sides' work is rewritten to `SR-081` only, so the
+  commit claims the wrong requirement for our side's paths, and claims check attributes
+  them to the incoming record.
+- [MEDIUM] (`ids/ref.py`) `update()` turns every `update-ref` failure into `Moved`,
+  including a stale `refs/plumb/ids.lock` left by a crashed process. Every reservation then
+  retries for 3 s and fails with the misleading `ID_BUSY` text ("another session is
+  creating records; try again in a moment") until someone deletes the `.lock` file by hand.
+- [MEDIUM] (`contracts.py`, plan 3.1 ownership) Phase 0 was not on `main`, so the lane wrote
+  coordinator-owned files itself: `contracts.py`, `cli.py` ROUTES, `store.py`,
+  `confirm.py`, `claims.py`, `validate.py`, `boundary/report.py`, `glance.py`, `cards.py`,
+  `approvals.py`, `capture.py`, `importer/apply.py` and a new `present/owner_text.py`
+  (this round adds `MergeFixResult.blocked`, `owner_text.FIX_BLOCKED`,
+  `confirm.pinned_through_renumbers`, `claims.claimed_ids` and `claims.trailer_aliases`).
+  The lane gate's "every path in the lane's row" check fails. At Integrate the four lanes
+  each create `present/owner_text.py` and edit `MergeReport`, `cli.ROUTES` and contracts:
+  expect add/add and text conflicts that the coordinator reconciles by hand, with a risk of
+  dropping one lane's constants or fields.
+- [MEDIUM] (`ids/aliases.py`, R17, found while fixing item 2) Only the renumbered record's
+  approvals are carried. Another incoming record that the rewrite changes (a decision whose
+  body or `rationale` names `SR-070`, an escalated anchor's `members`, a feature's
+  `requirements`) gets a new hash, so its own approval no longer pins it. A matters-true
+  decision that decides the renumbered requirement then waits at the merge boundary, and
+  `capture.spec.set_state` (the stop hook, `/plumb review`) reads an escalated set whose
+  anchor lists the renumbered member as unconfirmed. The owner is asked again about words
+  that changed only by the ID. A fix in the same spirit as `approval_aliases`: the
+  `renumber` entry records each rewritten record's hash before and after the rewrite, and
+  the carry accepts an approval of the "before" hash while the record still hashes to the
+  "after" one.
+- [LOW] (`confirm.approved_test_pins`, spec 5.4) Still reads approvals without the carry,
+  on purpose: the rewrite changes the `mark.sr` argument inside the acceptance test, so
+  carrying the pinned test hashes verbatim would turn every carried confirmation with tests
+  into "acceptance test changed". A carried confirmation therefore has no changed-test
+  check until the owner's next approval (the earlier LOW carried-pins entry, still open).
+- [LOW] (`boundary/report.py`, spec 10 and R18) `collision_lines()` puts raw
+  `.plumb/requirements/...` paths in the owner-facing merge report; spec 10 and R18 ask for
+  titles, without internals. The owner sees `SR-070: "a" and "b" hold one ID
+  (.plumb/requirements/SR-070.md (both branches added it))`.
