@@ -42,6 +42,8 @@ ROUTES: dict[str, str] = {
     "clarify": "plumb.capture.cli",
     # MERGE (sub-project 3)
     "merge-check": "plumb.boundary.cli",
+    # SP6 LOGS: one file per log entry; the migration of the legacy JSONL lines
+    "log": "plumb.logcmd",
     # HOSTS (sub-project 4)
     "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
 }
@@ -64,6 +66,7 @@ records and integrity:
   relay        record an owner approval the agent relays, with the owner's quote
   revoke       owner revocation
   drift        drift signals only
+  log          migrate: move legacy JSONL log lines into one file per entry (digests kept)
 
 intent capture:
   capture      record a whole read-back (INT, SR with examples, DEC) in one call, proposed

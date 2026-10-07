@@ -3345,3 +3345,218 @@ or extends that entry.
   ambiguous for lane agents. Same as the round-1 coordinator-row entry. Fix: remove the
   duplicate and spell out the full paths for `prompt.py`, `stop.py`, `post_edit.py`,
   `snapshot.py` and `install.py`.
+
+## SP6 lane LOGS (2026-10-07)
+
+State: L1 to L7 done on branch `lane/logs` (worktree `C:/coding/plumb-logs`); SR-073 and
+SR-074 linked to their modules and tests and still proposed (no agent approved them);
+SR-006's statement and EX-2 restated for per-entry files through `plumb capture` (proposed).
+plumb's own logs are NOT migrated here: that is Integrate (plan 8.1), and it must run
+`plumb log migrate` after merging this lane.
+
+- [MEDIUM] (coordination) Phase 0 had not run when the lane started (no `tests/logutil.py`,
+  no `present/owner_text.py`, no `log` route). The lane wrote the minimum it needed in
+  coordinator files: `LogEntry.name`, `MigrationReport` (`contracts.py`), `since` on
+  `CoreAPI.log_read` (`contracts.py`, `api.py`), the `log` route and help line (`cli.py`),
+  `present/owner_text.py` with only `LEGACY_LOG` and `bare_cli_verbs`, the legacy-log warning
+  in `validate.py`, `MergeReport.legacy_log_lines` and its render line (`boundary/report.py`),
+  `tests/logutil.py` and the rewiring of the ten test files. Fix at Integrate: merge LOGS
+  first, then reconcile the other lanes' copies of `owner_text.py` (an add/add) and of the
+  contract classes.
+- [MEDIUM] (outside the lane's row, fixed because it broke a guarantee) `verify/api.py`'s
+  derived-cache fingerprint used the size and mtime of `evidence.jsonl`; with one file per
+  entry that file never changes again, so the cached verify views would never see new
+  evidence. It now uses `log.stream_stamp(paths, "evidence")` (per kind directory: mtime,
+  entry count, last name). `load_index` uses the same stamp to skip reading when nothing
+  changed.
+- [MEDIUM] (spec 6.5 step 3 wording) "with `merge=union`, base lines removed on one side and
+  lines appended on the other leave exactly the appended lines" is not what git does: the
+  emptied base lines and the appended lines form one adjacent hunk, and union keeps both
+  sides, so the old lines come back next to the new ones. Nothing breaks: readers dedupe by
+  digest, `verify_chain` accepts them, and the next migration skips the lines that already
+  have files and writes only the new ones (`tests/logs/test_migrate.py::
+  test_pre_migration_branch_merges_then_migrates`). Fix: correct the spec sentence.
+- [LOW] (design notes, deviations from the spec's letter, not its contract) The temporary
+  file of an append lives in the gitignored `.plumb/cache/`, not in the kind directory, so a
+  crash never leaves a committable stray file; new entries never use the `.000000`
+  microsecond stamp, which marks a migrated name; reads order entries with a heap-ordered
+  walk of the chain, so a skewed clock never puts an entry before the entry it chains to;
+  the evidence index cursor is the list of applied digests, because a legacy line's name
+  (`evidence.jsonl:<line>`) is reused when the file is rewritten.
+- [LOW] (latency, owner rule "Hook latency stays in seconds") A warm read of 2000 events
+  costs about 35 to 45 ms on this machine when it is quiet, and up to about 75 ms while other
+  lanes run tests on the two cores; `tests/logs/test_read_cost.py` takes the best of ten.
+  The first open of a freshly written file costs about 7 ms on this Windows machine (on-access
+  scanning), once per file: migrating plumb's ~530 legacy entries costs a few seconds once.
+  The evidence pack cache keeps every test-run payload (about 50 KB each); if evidence grows
+  to hundreds of runs, slim the cache to the fields readers use.
+- [LOW] (test layout) `tests/logs/` has an `__init__.py`, so its modules import as
+  `logs.test_owner_text` and `logs.test_two_worktrees`. The plan gives the same basenames to
+  other lanes (`test_owner_text.py` in ids, mergedriver, awareness and present;
+  `test_two_worktrees.py` in awareness; `test_install.py` in mergedriver and host); in
+  pytest's default import mode, two test files with one basename and no package collide at
+  collection. Fix: each new test directory gets an `__init__.py`, or the files are renamed.
+- [LOW] (drift) Editing shared files left links of other requirements stale (SR-003, SR-008,
+  SR-010, SR-017, SR-018, SR-025, SR-027, SR-030, SR-034, SR-047 to SR-049 among them); the
+  lane repinned only its own SR-006, SR-073 and SR-074. Fix: the coordinator reviews and
+  repins them at Integrate.
+- [LOW] (pre-existing, not this lane) `tests/host/test_latency.py::
+  test_intent_lines_survive_cpu_contention` fails on `main` (89f499b) as on this branch: the
+  prompt "ok, and SR-002 needs work" is now read as an objection to SR-002, so the relay line
+  the test expects is not offered. It comes from the audit-round-5 objection scoping, not from
+  the log format.
+- [LOW] (ordering edge) `importer/recheck.py` checks that an import approval's import event is
+  "the log entry right before it" in read order. Reads now order by `at`, then the chain, then
+  the name: the approval always follows its import event, but an entry merged from another
+  branch with a stamp between the two could sit in between. Fix: compare the approval's
+  `prev` with the cited import event instead of the read-order neighbour.
+
+## SP6 lane LOGS, review (2026-10-07): medium and low findings
+
+The review's HIGH finding (a cold read in a new worktree or clone opened every entry file:
+seconds past the 2 s hook ceiling) is fixed in `log._read_uncached`, the one place a reader
+reads an entry file: many misses come from another worktree's pack cache, then from one
+`git cat-file --batch`, and only the rest from disk (`tests/logs/test_cold_read.py`, one test
+per entry point; `tests/logs/test_read_cost.py` times a real `git worktree add` and a fresh
+clone with no priming pass). The rest are recorded here.
+
+- [MEDIUM] (migrate message) `migrate()` can return refused entries after it has written
+  files: the "<name>: exists with other content" case is found inside the write loop in
+  `log.py`, after earlier lines were written, yet `logcmd` prints "refused; nothing was
+  migrated". No data is lost (truncation is skipped when anything is refused), but the
+  owner-facing message is false. Fix: say what was written, or check every existing name
+  before writing anything.
+- [MEDIUM] (migrate holds the lock) `migrate()` holds the per-worktree log lock while it writes
+  every entry file, about 7 ms per new file on this Windows machine. Above about 1400 legacy
+  lines the run passes `LOCK_STALE_S` (10 s): a concurrent appender may delete the lock as
+  stale and append against a head pointer migrate is about to rebuild (a silent fork; every
+  `prev` still resolves), and meanwhile every hook append waits `LOCK_WAIT_S` (2 s) and raises
+  `LogLockTimeout` (a lost prompt or test-run entry plus 2 s of hook latency). Rare and done
+  once. Fix: refresh the lock's mtime during long runs, or write the files before taking the
+  lock and take it only for truncation and the head rebuild.
+- [MEDIUM] (lane scope) The lane wrote to files plan 3.1 gives to the coordinator:
+  `contracts.py` (`LogEntry.name`, `MigrationReport`, `CoreAPI.log_read` `since`), `api.py`,
+  `cli.py` (the `log` route), `validate.py`, `boundary/report.py`, `verify/api.py`,
+  `present/owner_text.py` (new), `tests/logutil.py` and the ten rewired test files; phase 0
+  had not run. At Integrate `owner_text.py` becomes an add/add against the coordinator's or
+  other lanes' copies, and the contract classes may diverge from what
+  `tests/integration/test_contracts.py` and the other lanes expect. Fix: merge LOGS first and
+  reconcile the contracts by hand.
+- [MEDIUM] (spec 6.5 step 3) The spec says merging an emptied legacy file under `merge=union`
+  leaves exactly the appended lines. It does not: union keeps the old lines too. A lane
+  branched before the migration and merged after it brings back all ~510 old lines plus the
+  new ones; the legacy file is then "present", the warm order cache is off, every read parses
+  the 570 KB JSONL again and validate warns until `plumb log migrate` runs again. Readers'
+  digest dedup and the next migration absorb it. Fix: Integrate (8.1) runs the migration
+  after every lane merge, as the plan says; correct the spec's sentence.
+- [LOW] (migrate dedup) `migrate()` dedupes planned lines by file name (the `seen` set), not by
+  digest, then truncates. Two distinct legacy lines with the same `at` second and the same
+  `digest[8:16]` get one name; the second is counted as skipped and lost when the legacy files
+  are emptied (about 2^-32 per same-second pair). Fix: refuse, rather than skip, when `seen`
+  holds a different digest for that name.
+- [LOW] (migrate race) A `FileExistsError` race in `_write_new` during `migrate()` counts the
+  line as skipped without comparing digests, and the legacy files are then truncated: a
+  concurrent writer's file at the same name is trusted. Fix: compare the digest of the file
+  found, as the pre-check does.
+- [LOW] (head pointer) `_write_json_atomic` swallows a failed `os.replace` of
+  `.plumb/cache/log-head.json` (a Windows sharing violation, say an antivirus scanner holding
+  it). The old pointer still names an existing file, so the next append chains to a stale
+  `prev` and forks the chain inside one worktree. `verify_chain` accepts it and ordering falls
+  back to `at` then the name: no data loss, only a needless fork. Fix: on a failed replace,
+  remove the pointer so the next append rebuilds it by a scan.
+- [LOW] (read order at Integrate) The read order (`at`, then the chain, then the name) differs
+  from the legacy file order on plumb's own events log: `main`'s `events.jsonl` has four
+  non-monotonic union-merge seams (lines 122, 199, 262, 271, all `repin`), and the digest
+  sequences first differ at index 98, before and after migration. By design (spec 6.3); only
+  `repin` entries move today, so state is unaffected. Fix: at Integrate, check that status,
+  confirm and claims output is unchanged after `plumb log migrate`.
+- [LOW] (import recheck order) `recheck_import_approvals` requires the import event to be the
+  read-order neighbour of its approval; an entry merged from another branch with a stamp
+  between the two (same or adjacent second) sits in between and gives a spurious validate
+  error. Already recorded above; fix: compare the approval's `prev` with the cited event.
+- [LOW] (line endings) `GITATTRIBUTES_LINES` has no rule for the entry files. With
+  `core.autocrlf=true` (set on this machine and in C:/coding/plumb) `git add .plumb/log` warns
+  "LF will be replaced by CRLF" once per entry file and checkouts write CRLF. Readers are
+  unaffected (the digest is computed from the fields; the cold read accepts a blob whose size
+  differs by the CRLF conversion), but the noise and size differences remain. Fix: add
+  `log/**/*.json -text` (or `eol=lf`) to `.plumb/.gitattributes`.
+- [LOW] (validate in a new worktree) `log.verify_chain` (plumb validate, the merge check)
+  reads every entry file itself, by design: it is the tamper check of the files on disk. In a
+  worktree or clone git has just written, the first `plumb validate` therefore pays the
+  on-access scan once per file (seconds for ~500 entries). It is not on a hook path. Fix if it
+  matters: compare each file's size and mtime with the pack cache and git's index, and read
+  only files git reports as modified (`git diff-files`) or untracked.
+- [LOW] (cold read with loose objects) The cold read's git path costs about 0.5 ms per loose
+  object on this machine (about 1 s for 2000 entries committed moments before and never
+  packed, with no warm sibling worktree); packed objects (a clone, after `git gc`) cost about
+  0.07 ms each, and a warm sibling's pack cache answers in tens of ms. The usual case (the
+  main worktree's hooks have read its log) takes the sibling path. Fix if it matters: run
+  `git gc --auto` after a migration, or read loose objects with zlib directly.
+
+## SP6 lane LOGS, review round 2 (2026-10-07): medium and low findings
+
+No HIGH finding. The review checked the hash chain, the migration and the merge and found them
+sound: append (temporary file in the cache, `os.link` with no replace, the head pointer under
+the per-worktree lock), the dual-format read with digest dedup and a topological order (an
+ancestor always comes before its descendant), `verify_chain`, `migrate` (byte-identical
+fields, deterministic names, refuses bad lines, truncates only when nothing is refused),
+`merge.log_integrity` (one `git diff` for entry files, legacy lines accepted as migrated
+digests), the evidence index cursor (a digest prefix that rebuilds on reorder) and the bounded
+cold read (sibling pack, then one `git cat-file --batch`). A simulated migration of plumb's
+own 528 legacy lines (509 `repin`, 1 `triage`, 18 `test-run`) found no line to refuse and no
+duplicate names. Every test named in plan section 5 exists. The edge cases recorded above
+(the false "nothing was migrated" message, the lock held during a long migrate, the 2^-32
+name-collision skip, the `FileExistsError` race, `merge=union` bringing back old lines, the
+import recheck using the read-order neighbour) stand.
+
+- [MEDIUM] (migrate pre-check) `migrate()` treats an existing entry file at a line's migrated
+  name as the same entry when its `digest` field matches the line's digest (`log.py` around
+  lines 808-814); it never checks `entry_digest(existing)`, then truncates the legacy files.
+  If that file's payload was edited but its `digest` field kept, the line counts as skipped,
+  nothing is refused and `events.jsonl` is emptied: the genuine line is lost and only the
+  tampered copy remains. `verify_chain` still flags the digest mismatch, so the tamper is
+  detected, but the original cannot be recovered. Fix: skip only when
+  `existing.get('digest') == entry_digest(existing) == raw['digest']`; otherwise refuse.
+- [MEDIUM] (pack cache trusted) Readers take entry content from the gitignored pack cache
+  (`.plumb/cache/log-<stream>.json`), keyed only on each file's size and mtime and never
+  checked against the entry's digest; a cold read can also take content from a sibling
+  worktree's pack cache (`_read_from_siblings`), matched on name and size. `verify_chain`
+  reads the files themselves, so an edited cache changes what confirm, glance and validate's
+  semantic checks see while `plumb validate` and `merge.log_integrity` stay clean; before this
+  lane any edit to `events.jsonl` was reported by validate. Confirmed in a scratch dir: append
+  an approval of SR-001, read once, rewrite `log-events.json` so the cached payload says
+  SR-999; `log.read` returns an approval of SR-999 and `log.verify_chain` returns `[]`. The
+  edit-tool guard denies writes under `.plumb/log/**` only, not `.plumb/cache/`. Not HIGH: the
+  spec mandates the cache and the threat model already accepts forging uncommitted entries.
+  Fix: check `entry_digest(raw) == raw['digest']` on sibling and pack hits, and let validate
+  compare the pack with the files it already reads.
+- [MEDIUM] (import recheck order, raised from LOW) The read order (`at`, then the chain, then
+  the name) can put an entry merged from another branch between an import event and its
+  `by: import` approval; `recheck_import_approvals` then raises a validate ERROR, which holds
+  the merge. Parallel work (R10) triggers it: worktree A writes the import event at
+  10:00:00.100 and its approval at 10:00:00.150, worktree B logs a prompt at 10:00:00.120;
+  after the merge the prompt sits between the two and validate reports "by: import approval's
+  import event is not the log entry right before it". Fix at Integrate (outside the lane):
+  compare the approval's `prev` with `import_event`, as `import_problem` already does, instead
+  of the read-order neighbour.
+- [MEDIUM] (lane scope, phase 0) Phase 0 never ran: `main` is still at 89f499b, and the IDS,
+  MERGEDRIVER and AWARENESS lanes branch from it too. The contract shapes this lane added match
+  spec 12 (`LogEntry.name`, `MigrationReport`, the read signature with `since`,
+  `MergeReport.legacy_log_lines`), so no contract is broken, but merging LOGS and then another
+  lane that also created `present/owner_text.py` or extended `contracts.py` conflicts. Already
+  recorded above (lane scope); the coordinator reconciles by hand at Integrate.
+- [LOW] (spec edit) The lane rewrote spec section 6.3 in `docs/specs/sp6-parallel-work.md`, a
+  coordinator-owned file (plan 3.1 lets lanes only append to `docs/followups.md`), to describe
+  the cold-read design (sibling pack, `git cat-file --batch`). The lane-scope follow-up above
+  lists the other coordinator files but not this one. At Integrate the coordinator should
+  review that 6.3 text as a spec change before other lanes or verifiers read it as the
+  contract.
+- [LOW] (stray root cache, outside the lane) The lane's focused set fails one test,
+  `tests/core/test_primitives.py::test_find_root_prefers_plumb_dir`, because a `C:/.plumb/`
+  directory now exists on this machine (created 2026-10-07 10:39, holding only
+  `cache/changing.json` and a leftover `.changing.json.<pid>.<ns>.tmp`). `find_root` then
+  resolves any path without a nearer `.plumb/` to `C:/`. `changing.json` is not written by
+  this lane's code; it looks like an AWARENESS-lane writer that ran with no project root and
+  created `.plumb/cache` at the drive root. Fix: writers of `.plumb/cache` must refuse when
+  `find_root` found neither `.plumb/` nor `.git`, and the test should not depend on the drive
+  root being clean. The directory was left in place (not created by this lane).

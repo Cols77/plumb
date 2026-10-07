@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -92,8 +93,10 @@ def test_exit_precedence_1_5_4(confirmed) -> None:
     write(root, ".plumb/claims.yaml", "exempt: [notes.txt]\n")
     report = merge_report(open_core(root), sha, run_full=False)
     assert report.exit == 5, _text(report)
-    events = root / ".plumb" / "log" / "events.jsonl"
-    events.write_text(events.read_text(encoding="utf-8").replace("INT-001", "SR-009", 1),
-                      encoding="utf-8")
+    from logutil import entries, tamper
+
+    index = next(i for i, e in enumerate(entries(root, "events"))
+                 if "INT-001" in json.dumps(e["payload"]))
+    tamper(root, "events", index, lambda t: t.replace("INT-001", "SR-009", 1))
     report = merge_report(open_core(root), sha, run_full=False)
     assert report.integrity and report.exit == 1

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from logutil import tamper
 
 from plumb import approvals, cli, log
 from plumb.api import open_core
@@ -113,9 +114,7 @@ def test_relayed_approval_without_prompt_event_is_error(clean: Path) -> None:
 
 def test_tampered_log_line_is_error(clean: Path) -> None:
     approvals.approve(open_core(clean), ["SR-001"])
-    events = clean / ".plumb" / "log" / "events.jsonl"
-    events.write_text(events.read_text(encoding="utf-8").replace('"owner"', '"import"'),
-                      encoding="utf-8")
+    tamper(clean, "events", -1, lambda t: t.replace('"owner"', '"import"'))
     assert "log" in _codes(clean, "error")
 
 

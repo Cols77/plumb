@@ -225,6 +225,7 @@ def required_records(core: Core, touched: Sequence[str]) -> list[str]:
 
 
 def _base_lines(core: Core, commit: str, stream: str) -> list[str]:
+    """The legacy JSONL lines of ``stream`` at ``commit`` (the format before SP6)."""
     rel = f"./.plumb/log/{stream}.jsonl"
     result = subprocess.run(["git", "show", f"{commit}:{rel}"], cwd=core.root,
                             capture_output=True)
@@ -234,15 +235,42 @@ def _base_lines(core: Core, commit: str, stream: str) -> list[str]:
             if line.strip()]
 
 
-def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]]:
-    """Problems (merge-base lines missing or changed) and the digests present there.
+_LOG_PREFIX = ".plumb/log/"
 
-    Lines are read at ``git merge-base <base> HEAD``, not at the tip of ``base``: entries the
-    base appended after the branch diverged are not part of this branch's history, so their
-    absence is not tampering.
+
+def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]]:
+    """Problems (log entries present at the merge base and since modified or deleted) and the
+    digests present there (SP6 6.4).
+
+    Entry files: one ``git diff --name-status --no-renames <fork> -- .plumb/log/`` reports
+    every entry file modified or deleted since the fork, in the working tree. Legacy JSONL
+    lines at the fork must still be present, as a line or as a migrated entry file with the
+    same verified digest. The fork is ``git merge-base <base> HEAD``, not the tip of ``base``:
+    entries the base appended after the branch diverged are not part of this branch's
+    history, so their absence is not tampering.
     """
+    from plumb import log
+
     fork = _git(core, "merge-base", base, "HEAD").strip()
     problems: list[str] = []
+    diff = _git(core, "diff", "--relative", "--name-status", "--no-renames", "-z", fork,
+                "--", _LOG_PREFIX)
+    fields = [f for f in diff.split("\0") if f]
+    gone: set[str] = set()
+    for status, path in zip(fields[0::2], fields[1::2], strict=False):
+        name = path[len(_LOG_PREFIX):] if path.startswith(_LOG_PREFIX) else path
+        if "/" not in name or not name.endswith(".json"):
+            continue  # the legacy files are checked line by line below
+        if status[:1] in ("M", "T"):
+            problems.append(f"{path}: entry modified since merge-base {fork[:12]}")
+            gone.add(name)
+        elif status[:1] == "D":
+            problems.append(f"{path}: entry deleted since merge-base {fork[:12]}")
+            gone.add(name)
+    listed = _git(core, "ls-tree", "-r", "--name-only", "-z", fork, "--", _LOG_PREFIX,
+                  check=False)
+    at_fork = {p[len(_LOG_PREFIX):] for p in listed.split("\0")
+               if p.startswith(_LOG_PREFIX) and p.endswith(".json")}
     base_digests: dict[str, set[str]] = {}
     for stream in ("events", "evidence"):
         path = core.paths.log_path(stream)
@@ -250,13 +278,17 @@ def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]
             current = {line.strip() for line in path.read_text(encoding="utf-8").splitlines()}
         except OSError:
             current = set()
-        digests: set[str] = set()
+        files = log.valid_entries(core.paths, stream)  # type: ignore[arg-type]
+        migrated = set(files.values())
+        digests = {d for name, d in files.items() if name in at_fork and name not in gone}
         for number, line in enumerate(_base_lines(core, fork, stream), start=1):
             try:
-                digests.add(str(json.loads(line).get("digest")))
-            except ValueError:
-                pass
-            if line not in current:
+                digest = str(json.loads(line).get("digest"))
+            except (ValueError, AttributeError):
+                digest = ""
+            if digest:
+                digests.add(digest)
+            if line not in current and digest not in migrated:
                 problems.append(f"{path.name}: line {number} at merge-base {fork[:12]} is "
                                 "missing or changed")
         base_digests[stream] = digests

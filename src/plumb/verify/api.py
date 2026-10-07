@@ -267,6 +267,7 @@ class Verify:
         import json
         import os
 
+        from plumb.log import stream_stamp
         from plumb.model import link_to_dict
         from plumb.normalize import sha256_text
         from plumb.verify.testmap import scan_files
@@ -285,7 +286,8 @@ class Verify:
                  if not any(ch in p for ch in "*?[")}
         parts = {"v": DERIVED_VERSION, "scan": scan_files(self.root, core.config),
                  "map": stat(core.paths.test_map_json),
-                 "records": records, "evidence": stat(core.paths.log_evidence),
+                 "records": records,
+                 "evidence": stream_stamp(core.paths, "evidence"),  # SP6 6.3
                  "config": stat(core.paths.config), "env": self.env_key(),
                  "identity": stat(core.paths.env_identity), "infra": infra}
         return sha256_text(json.dumps(parts, sort_keys=True, default=str))

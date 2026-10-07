@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -22,8 +21,9 @@ def project(repo: Path) -> Path:
 
 
 def _entries(root: Path) -> list[dict]:
-    text = (root / ".plumb" / "log" / "evidence.jsonl").read_text(encoding="utf-8")
-    return [json.loads(line) for line in text.splitlines() if line.strip()]
+    from logutil import entries
+
+    return entries(root, "evidence")
 
 
 @pytest.mark.sr("SR-018")

@@ -294,12 +294,19 @@ fork; that is accepted while every `prev` resolves (concept 4.7).
 A pack cache per stream (`.plumb/cache/log-<stream>.json`: parsed entries keyed by file
 name) makes a warm read cost one directory listing per kind plus the new files: entries are
 immutable, so a name seen once never needs reading again; a vanished name is dropped. The
-cache is plain JSON, gitignored and deletable. `LogEntry` gains `name` (the file name, or
-`events.jsonl:<line>` for a legacy line); `offset` stays for legacy lines and is `-1`
-otherwise. `since` (a set of names already applied) replaces `since_offset` for incremental
-readers. The evidence reuse index (`verify/evidence.load_index`) keys its incremental update
-on the names applied and the last name, and rebuilds from scratch when a newly listed entry
-sorts before the last one applied (an entry that arrived by a merge).
+cache is plain JSON, gitignored and deletable. A cold read (a worktree or clone git has just
+written, a merge, pull or checkout that brought many entries, a deleted cache) never opens
+those files one by one, since the first open of a freshly written file pays the operating
+system's on-access scan (about 7 ms per file on Windows): from 16 misses on, entries come
+from another worktree's pack cache (same name, same size), then from git's object store in
+one `git cat-file --batch` (the blob's size matching the file, with or without CRLF), and
+only the rest (untracked new entries) from disk. `verify_chain` still reads the files
+themselves. `LogEntry` gains `name` (the file name, or `events.jsonl:<line>` for a legacy
+line); `offset` stays for legacy lines and is `-1` otherwise. `since` (a set of names
+already applied) replaces `since_offset` for incremental readers. The evidence reuse index
+(`verify/evidence.load_index`) keys its incremental update on the names applied and the last
+name, and rebuilds from scratch when a newly listed entry sorts before the last one applied
+(an entry that arrived by a merge).
 
 ### 6.4 Verify
 

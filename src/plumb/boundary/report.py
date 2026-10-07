@@ -50,6 +50,7 @@ class MergeReport:
     evidence: str | None = None      # digest of the merge-evidence entry (green, run_full)
     error: str | None = None         # the range could not be read (exit 2)
     exit: int = 0
+    legacy_log_lines: int = 0        # SP6 6.5: legacy JSONL lines not migrated (a warning)
 
 
 def as_dict(report: MergeReport) -> dict[str, Any]:
@@ -166,6 +167,12 @@ def _validation_errors(core: Any) -> list[str]:
     return [f"validate: {f.line()}" for f in validate(core) if f.severity == "error"]
 
 
+def _legacy_log_lines(core: Any) -> int:
+    from plumb.log import legacy_count
+
+    return legacy_count(core.paths)
+
+
 def merge_report(core: Any, base: str, *, run_full: bool = True,
                  runner: Runner | None = None) -> MergeReport:
     """Every section of the merge boundary against ``base``; runs the full suite at most once
@@ -247,7 +254,8 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         unverified=verification.get("unverified") or {},
         regressions=tuple(verification.get("regressions") or ()),
         fidelity=None if fidelity is None else tuple(fidelity),
-        integrity=tuple(integrity), verification=verification, run_full=run_full)
+        integrity=tuple(integrity), verification=verification, run_full=run_full,
+        legacy_log_lines=_legacy_log_lines(core))
     code = exit_code(report)
     evidence = None
     if code == 0 and run_full and identity is not None:
@@ -367,6 +375,10 @@ def render(report: MergeReport) -> list[str]:
         out.extend(_capped([f"  {problem}" for problem in report.integrity]))
     else:
         out.append("log integrity: ok")
+    if report.legacy_log_lines:
+        from plumb.present.owner_text import LEGACY_LOG
+
+        out.append(LEGACY_LOG.format(n=report.legacy_log_lines))
     if report.evidence:
         out.append(f"merge evidence: recorded ({report.evidence[:19]})")
     return out
