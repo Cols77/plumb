@@ -165,12 +165,23 @@ def landed(root: Path, data: Mapping[str, Any], default_tip: str | None, *,
     """Whether a worktree's published ``changing.json`` (``data``) describes a branch the
     default branch (now at ``default_tip``) has taken whole since: its ``head`` is reachable
     from the default tip, so nothing it committed is in flight any more (R17). Known without
-    git when the default tip has not moved since it published; otherwise from a cache keyed
-    by the two commits, learned with ``allow_git`` (one ``git merge-base --is-ancestor``)."""
+    git when the default tip has not moved since it published; otherwise ``contains``."""
     head = str(data.get("head") or "")
     if (not head or not default_tip or not data.get("committed")
             or data.get("default_head") == default_tip):
         return False
+    return contains(root, head, default_tip, allow_git=allow_git)
+
+
+def contains(root: Path, head: str | None, default_tip: str | None, *,
+             allow_git: bool = False) -> bool:
+    """Whether the default branch (at ``default_tip``) holds the commit ``head``: from a
+    cache keyed by the two commits, learned with ``allow_git`` (one ``git merge-base
+    --is-ancestor``); unknown without it reads as False."""
+    if not head or not default_tip:
+        return False
+    if head == default_tip:
+        return True
     cache = Path(root) / ".plumb" / "cache" / LANDED
     try:
         known = json.loads(cache.read_text(encoding="utf-8"))
@@ -198,6 +209,16 @@ def landed(root: Path, data: Mapping[str, Any], default_tip: str | None, *,
         except OSError:
             pass
     return bool(known.get(key))
+
+
+def moved_since(data: Mapping[str, Any], branch: str | None, head: str | None) -> bool:
+    """Whether a worktree is no longer where its ``changing.json`` (``data``) describes it:
+    its branch or its HEAD (read from git's files) changed since it published: a commit or a
+    checkout no session saw, so what it listed (its pending edits included) is history."""
+    published = str(data.get("head") or "")
+    if data.get("branch") and branch and data.get("branch") != branch:
+        return True
+    return bool(published and head and published != head)
 
 
 def publish(core: Any, changed_paths: Sequence[str], *, head_moved: bool | None = None

@@ -4322,3 +4322,113 @@ compatible" (`early.overlap_line`). The medium and low findings below were not f
   the uncommitted fixture records as this turn's changes) and passed on rerun, alone and in
   the same set. It depends on file times against the turn start. Fix: commit the fixture
   records before the turn, or start the turn after writing them.
+
+## SP6 audit 2: fast-forwards, the default branch and idle worktrees (2026-10-07)
+
+The second audit drove `plumb init`, two parallel worktrees and merges carrying an intent
+conflict through the real CLI and git hooks. Its four HIGH findings were fixed as one class
+each, at one choke point with one test per entry point:
+
+- a merge into the default branch that git would fast-forward is held: `plumb init` and
+  `hooks install` set `branch.<default>.mergeoptions` to `--no-ff` (`premerge.ff_hold`), so
+  a plain `git merge` or `git pull` records a merge commit the quick check holds, and the new
+  post-merge hook runs the same check after an explicit fast-forward (`--ff-only`,
+  `pull.ff=only`) and puts the default branch back (`git reset --keep`) when it holds
+  (`tests/mergedriver/test_fast_forward.py`);
+- every early-conflict card is built by `answer.card_conflict`: on a branch that is neither
+  side both versions are labelled by branch from the decision's pinned words (or the live
+  claims), "this one" and "theirs" are refused there (`relay`, `choose`), and a decision
+  whose record a merge left in conflict is asked by that merge card alone, its relay routed
+  to it (`tests/awareness/test_early_off_side.py`);
+- every claim goes through `early.claim` (capture, the stop hook's `claim_changes` after a
+  direct edit or `plumb new`, `plumb inflight sync`), which runs the same-record check and
+  raises the decision once with its card; a read-back card answered before anything is
+  written is raised as its decision at the answer (`answer.raise_shown`)
+  (`tests/awareness/test_claim_check.py`);
+- another worktree whose HEAD or branch moved since it last published counts for nothing
+  once the default branch holds that HEAD (`publish.moved_since`, `publish.contains`), for
+  every reader (`tests/awareness/test_idle_merged.py`).
+
+Residuals of the fixes, not fixed:
+
+- [MEDIUM] (audit 2, fast-forward) A move of the default branch that is not a merge (`git
+  rebase feat-x` or `git pull --rebase` on main, `git reset --hard feat-x`, `git
+  update-ref`) still goes unchecked: git runs no merge hook for them, and a
+  reference-transaction hook costs about 0.5 s per checkout on this machine (measured), too
+  much for every ref update. The pre-push hook still checks the pushed range. Fix candidate:
+  a `/plumb` route that does those moves through `git merge --no-ff`.
+- [LOW] (audit 2, fast-forward) With `branch.<default>.mergeoptions=--no-ff`, a `git pull`
+  of a collaborator's main into main records a merge commit even when it could
+  fast-forward. The owner can set `--ff` there (plumb keeps an owner's own option, and the
+  post-merge hook still checks the fast-forward).
+- [LOW] (audit 2, early check at the stop hook) The stop hook judges a new record in a
+  feature another branch claims with the hook-mode backend; with JEV configured that is one
+  call of up to its hook timeout per new record. Records changed elsewhere are matched
+  deterministically and never judged.
+- [LOW] (audit 2, stop hook question) `stop._dec_question` still tells the agent the owner
+  may answer "keep this one" for an early decision; off both branches the relay refuses
+  those words and names the branches to use, so nothing is recorded wrongly, but the line
+  could name the branches instead.
+
+The audit's medium and low findings, recorded without fixing:
+
+- [MEDIUM] (audit 2, R17, relay / stop.py, prompt.py) After the owner answered DEC-001 with
+  "keep feat-a's" on feat-b, feat-b's SR-001 still held the losing wording (mod 256); the
+  next prompt hook ("carry on") and the stop hook gave the feat-b agent no signal that its
+  own record now contradicts the owner's answer (only the relay's one-time output said so).
+  The lane can build the rejected behaviour for the rest of the session; the merge restores
+  the record from the earlier answer, but code built meanwhile drifts. Fix: in the prompt or
+  stop delta, when this worktree's version of a record differs from a settled early answer
+  that chose another branch's version, emit one line telling the agent to adopt the chosen
+  wording first; once, deduplicated by hash (R9).
+- [MEDIUM] (audit 2, Decision 5, early card rendering) After feat-a fast-forwarded into main,
+  `/plumb conflicts` and the stop hook showed a second card next to IC-001 whose two sides
+  were identical ("feat-a: add(a, b) returns min(a + b, 100) ... / this work: the same"): a
+  meaningless question. The root cause (a claim surviving a fast-forward) is already a
+  MEDIUM above; the spurious owner question was not. Fix: suppress an early card whose two
+  sides have the same hash or text; when the record is also under an IC, show only the IC
+  card noting it also answers the decision. (Partly addressed by the HIGH fix: a decision
+  whose record holds an open merge conflict is now asked by that card alone.)
+- [MEDIUM] (audit 2, R9 and R17, clarify.py / early.check_text) `plumb clarify "Make add
+  wrap around modulo 256 instead of overflowing."` and `plumb inflight check` with the same
+  words found no conflict ("terms no record covers: add"), although `plumb resolve add` maps
+  those words to SR-001 at score 1.00 and feat-a had SR-001 in flight; the read-back check
+  fired only when the request named SR-001 or echoed its title (capture still caught it).
+  Fix: use the `plumb resolve` resolver with per-term matching in the clarify early check.
+- [LOW] (audit 2, R14, README Quickstart step 3) The README says "This build has no `plumb
+  new` command", but `plumb new` exists and works; the Quickstart and "At a merge boundary"
+  still give the owner `uv run plumb ...` commands. Fix: remove the stale sentence; leave the
+  R14 rewrite of owner docs to SP7.
+- [MEDIUM] (audit 2, R17, early.check_text) In two fresh worktrees, feat-c captured
+  "Reminders are delivered by email only" (a new SR in FEAT-001); on feat-d, `plumb clarify
+  "Reminders must never be sent by email, only by SMS"` did not mention feat-c, flagged
+  feat-a and feat-b (an unrelated timing change) and set "depth: escalated (contradicts
+  confirmed SR-001)", a spurious contradiction; capture later caught the overlap only as
+  "could not be judged (0.60)", with no card and no DEC. Already recorded as LOW and MEDIUM
+  above; consider raising its priority. Fix: match the request against other branches'
+  claimed records' words before judging; reserve the deterministic "contradicts" depth for
+  the same record actually being changed.
+- [MEDIUM] (audit 2, R15, init) In a fresh repository `plumb init` installed
+  pre-merge-commit, pre-push and prepare-commit-msg (now also post-merge) plus the merge
+  driver, but no commit-msg hook; a commit with no SR trailer went through. Already a LOW
+  above. Fix: install the commit-msg trailer hook in init with the merge hooks, or carry it
+  explicitly into the SP7 R15 lane.
+- [LOW] (audit 2, R17, early.raise_conflicts) The early DEC is written with `chosen:
+  feat-b's version` (the raising branch's side) before the owner answers, so every view
+  before the answer (plumb show, the brief) shows a choice the owner never made. Already a
+  MEDIUM above. Fix: write early DECs with no chosen side ("awaiting your choice") until the
+  owner's words pick one.
+- [MEDIUM] (audit 2, R9 and R17, early.check_text word resolution) In wtD, `plumb clarify
+  "subtraction must allow negative results"` reported "no record covers it yet" and no
+  conflict although feat-c had SR-002 "subtract numbers" in flight; the record's own words
+  ("change subtract numbers so negative results are allowed") produced the card. An
+  inflection ("subtraction" against "subtract") silently disables the read-back's early
+  check. Fix: normalize word stems in record resolution, or fall back to the claims of the
+  touched feature and the records the agent then edits (the stop hook's claim check now
+  catches the edit itself).
+- [MEDIUM] (audit 2, R10.5, merge-check --hook pre-push base selection) The first push of
+  main to an empty bare remote read "07d2773..HEAD plus uncommitted changes", "touched
+  requirements: none", "approvals in range: none": the base was HEAD itself, so the
+  confirmations, claims and approvals of every pushed commit went unchecked; only the full
+  run ran. Already a LOW above. Fix: for a new remote ref (zero oid) use the merge-base with
+  the default branch, or the root.

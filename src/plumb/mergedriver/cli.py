@@ -89,16 +89,17 @@ def _apply_settled(core: Any) -> list[str]:
 def _early_open(core: Any, words: str) -> list[tuple[str, str, list[str]]]:
     """``[(DEC, record, card)]``: the early intent conflicts still waiting for the owner's
     answer (R17), as the card capture showed, and asked of the stop hook so the owner sees
-    them at the end of the turn."""
+    them at the end of the turn. A decision whose record a merge left in conflict is asked
+    by that merge card alone (one card per record; its answer answers the decision)."""
     try:
         from plumb.awareness import early as early_mod
-        from plumb.awareness.answer import card_conflict, early_decisions
+        from plumb.awareness.answer import card_conflict, early_decisions, waiting_on_conflict
     except ImportError:
         return []
     index = core.index()
     pending = [e for e in early_decisions(index)
-               if e.record in index and core.status([e.dec])[e.dec].confirmation
-               != "confirmed"]
+               if e.record in index and not waiting_on_conflict(index, e.dec)
+               and core.status([e.dec])[e.dec].confirmation != "confirmed"]
     if words.strip():
         wanted = words.strip().upper()
         pending = [e for e in pending if wanted in (e.dec, e.record)
@@ -159,8 +160,31 @@ def _conflict(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     core = open_core(resolve_root(args.root))
     ref = " ".join(args.ref)
-    if args.action != "propose" and _is_early(core, ref, mod):
-        return _early_answer(core, args, ref)
+    if args.action != "propose":
+        try:
+            from plumb.awareness.answer import merge_conflict_of
+        except ImportError:
+            merge_conflict_of = None  # noqa: N806
+        ic = merge_conflict_of(core, ref) if merge_conflict_of is not None else None
+        if ic:
+            ref = ic  # the merge card asks this question; its answer answers the decision
+            if not args.take and args.quote:  # the early path needs no --take: the words
+                from plumb.normalize import normalize_text  # name the merge card's side
+
+                try:
+                    named = mod.named_takes(mod.find(core, ic), normalize_text(args.quote))
+                except mod.ConflictError:
+                    named = set()
+                if len(named) == 1:
+                    args.take = next(iter(named))
+                else:
+                    labels = mod.find(core, ic).labels
+                    print(f"plumb: answer refused: the merge card {ic} asks this question "
+                          f"now; the owner's words must name one of its versions (\"keep "
+                          f"{labels[0]}'s\" or \"keep {labels[1]}'s\")", file=sys.stderr)
+                    return 3
+        elif _is_early(core, ref, mod):
+            return _early_answer(core, args, ref)
     try:
         if args.action == "propose":
             conflict = mod.propose(core, ref, _values(args.file))
@@ -210,12 +234,14 @@ def _is_early(core: Any, ref: str, mod: Any) -> bool:
     """The reference names an early intent conflict (a DEC capture raised, R17), or no
     merge-time conflict is open and plain words may name one."""
     try:
-        from plumb.awareness.answer import early_decisions, is_early_ref
+        from plumb.awareness.answer import early_decisions, is_early_ref, shown_cards
     except ImportError:
         return False
     if is_early_ref(core, ref):
         return True
-    return not mod.open_conflicts(core) and bool(early_decisions(core.index()))
+    if mod.open_conflicts(core):
+        return False
+    return bool(early_decisions(core.index())) or bool(shown_cards(core, ref))
 
 
 def _early_answer(core: Any, args: Any, ref: str) -> int:

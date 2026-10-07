@@ -54,7 +54,10 @@ only when asked.
   <branch>"` with the `SR:` trailers of the merged work. A rebase, cherry-pick or revert
   step held the same way is continued when they say "continue the rebase" (or cherry-pick,
   revert): `git add .plumb`, the same check, then `git rebase --continue` (`git cherry-pick
-  --continue`, `git revert --continue`). "check merges before they are recorded": `.venv/Scripts/python.exe -m plumb
+  --continue`, `git revert --continue`). "merge <branch>" into the main branch is
+  `git merge --no-ff <branch>` (never a fast-forward: the post-merge hook puts the main
+  branch back when a fast-forward brings in what the quick check holds, and says so);
+  "undo the merge of <branch>" right after one is `git reset --keep ORIG_HEAD`. "check merges before they are recorded": `.venv/Scripts/python.exe -m plumb
   merge-check --install-pre-merge-commit`; "call plumb from my merge hook" (or "my commit
   hook"): add the `hook_lines` of `.venv/Scripts/python.exe -m plumb merge-check --install-pre-merge-commit --json`
   to their own pre-merge-commit (or prepare-commit-msg) hook. "run the tests when I push": `.venv/Scripts/python.exe -m plumb merge-check --install-pre-push`;

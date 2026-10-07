@@ -103,10 +103,16 @@ def _sync(argv: list[str]) -> int:
     args = _parser("Carry this branch's changes and answers into the register.") \
         .parse_args(argv)
     core = _core(args)
-    claimed = claim_changes(core, publish(core, []))
+    asked: list[str] = []
+    claimed = claim_changes(core, publish(core, []), asked=asked)
     synced = inflight.sync_decisions(core)
-    emit({"claimed": claimed, "synced": synced} if args.as_json else
-         [f"plumb: intent in flight {'updated' if claimed or synced else 'already current'}"],
+    from plumb.awareness.early import turn_cards
+
+    cards = turn_cards(core.paths.session)[0] if asked else []
+    emit({"claimed": claimed, "synced": synced, "asked": asked, "cards": cards}
+         if args.as_json else
+         [*cards, *asked,
+          f"plumb: intent in flight {'updated' if claimed or synced else 'already current'}"],
          args.as_json)
     return 0
 

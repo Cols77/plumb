@@ -171,9 +171,12 @@ def matters_decisions(index: Mapping[str, Any], statuses: Mapping[str, Any],
     """Open DECs with ``matters: true`` that are touched or decide a touched record, earliest
     first: ``plumb.capture.clarify.open_decisions`` (unconfirmed and not superseded), the one
     rule the clarify queue and the escalation trigger share."""
+    from plumb.awareness.answer import waiting_on_conflict
     from plumb.capture.clarify import open_decisions
 
-    return open_decisions(index, statuses, touched)
+    # an early decision whose record a merge left in conflict is asked by that merge card
+    return [d for d in open_decisions(index, statuses, touched)
+            if not waiting_on_conflict(index, d)]
 
 
 def changed_acceptance(index: Mapping[str, Any], statuses: Mapping[str, Any],
@@ -544,6 +547,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     from plumb.awareness.turn import at_stop
 
     aware = at_stop(core, changed, touched_ids, ctx.deadline)
+    # R17: an early conflict this turn's claim raised is asked now (the agent shows the
+    # card the owner then sees in the reply, and asks before any further work)
+    early_ask = [line for line in aware if line.must]
+    aware = [line for line in aware if not line.must]
 
     if not active:
         from plumb.present.delta import Line, open_emitter
@@ -556,6 +563,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
             wanted.append(Line(tests_instruction(changed,
                                                  float(core.config.verify.turn_budget_s)),
                                subject="tests", must=True, per_turn=True))
+        wanted.extend(early_ask)
         for d in open_decisions:
             wanted.append(Line(_dec_question(index[d]), subject=f"question:{d}",
                                state=index[d].hash, must=True))

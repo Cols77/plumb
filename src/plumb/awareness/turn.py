@@ -66,11 +66,15 @@ def at_session_start(core: Any, deadline: Any = None) -> list[Any]:
         return []
 
 
-def claim_changes(core: Any, data: Mapping[str, Any] | None) -> bool:
+def claim_changes(core: Any, data: Mapping[str, Any] | None, *,
+                  asked: list[str] | None = None, backend: Any = None) -> bool:
     """Record (or refresh) this branch's claim for the records it changed that no claim of
     this branch holds at their current version, and move this branch's claims to its tip
     when it committed since. Reads git's files first; writes only when something is missing
-    or moved. Returns whether it wrote."""
+    or moved. The claim goes through ``early.claim``, the same check capture runs: another
+    branch claiming one of these records at another version raises the early decision once
+    and asks for its card (its "ask the owner now" lines are appended to ``asked``).
+    Returns whether it wrote."""
     if not data or not data.get("branch"):
         return False
     index = core.index()
@@ -96,8 +100,58 @@ def claim_changes(core: Any, data: Mapping[str, Any] | None) -> bool:
             return inflight.refresh(core)
         return False
     titles = ", ".join(index[i].title for i in sorted(missing))
-    inflight.record_claim(core, records=missing, summary=titles, intent=None)
+    from plumb.awareness.early import claim
+
+    new = _created(core, register, data, {i: changed[i] for i in missing})
+    done = claim(core, sorted(missing), summary=titles, intent=None, new=new,
+                 backend=backend if backend is not None else _hook_backend(core) if new
+                 else None)
+    if asked is not None:
+        asked.extend(done.ask)
     return True
+
+
+def _created(core: Any, register: Mapping[str, Any], data: Mapping[str, Any],
+             changed: Mapping[str, Mapping[str, Any]]) -> list[str]:
+    """The records this branch created (``plumb new``, a new file), so the claim judges them
+    against the intent other branches have in flight in their feature: committed as added
+    (``how: new``), or a file git does not track yet. A record another branch claims is an
+    existing record (matched by ID, never judged). At most one git call, and only when a
+    record of a feature another branch claims is not known to be new."""
+    claimed = {i for c in register.get("claims") or [] if c.get("branch") != data.get("branch")
+               for i in (c.get("records") or {})}
+    features = {f for c in register.get("claims") or [] if c.get("branch") != data.get("branch")
+                for f in c.get("features") or []}
+    index = core.index()
+    new = [i for i, item in changed.items() if item.get("how") == "new" and i not in claimed]
+    unsure = [i for i, item in changed.items()
+              if item.get("how") != "new" and i not in claimed
+              and str(index[i].fields.get("feature") or "") in features]
+    if unsure:
+        import subprocess
+
+        paths = [index[i].path for i in unsure]
+        try:
+            out = subprocess.run(["git", "ls-files", "-z", "--", *paths], cwd=core.root,
+                                 capture_output=True, timeout=5).stdout.decode("utf-8",
+                                                                                "replace")
+        except (OSError, subprocess.SubprocessError):
+            out = None
+        if out is not None:
+            tracked = {p for p in out.split(chr(0)) if p}
+            new += [i for i in unsure if index[i].path not in tracked]
+    return sorted(new)
+
+
+def _hook_backend(core: Any) -> Any:
+    """The judgment backend in its hook mode (a new record in a feature another branch
+    claims is judged; the same record changed elsewhere never needs it)."""
+    try:
+        from plumb.judgment import get_backend
+
+        return get_backend(core, hook=True)
+    except Exception:  # noqa: BLE001 - no backend: overlaps stay warnings
+        return None
 
 
 def at_stop(core: Any, changed: Sequence[str], touched: Iterable[str],
@@ -111,9 +165,10 @@ def at_stop(core: Any, changed: Sequence[str], touched: Iterable[str],
         data = publish(core, changed)
     except Exception as exc:  # noqa: BLE001
         _log(core, "publish", exc)
+    asked: list[str] = []
     if _remaining(deadline) >= MIN_GIT_S:
         try:
-            claim_changes(core, data)
+            claim_changes(core, data, asked=asked)
             if _remaining(deadline) >= MIN_GIT_S:
                 inflight.sync_decisions(core)
         except inflight.InflightBusy as exc:
@@ -122,8 +177,14 @@ def at_stop(core: Any, changed: Sequence[str], touched: Iterable[str],
             _log(core, "claims", exc)
     else:
         skipped(Path(core.root), "intent in flight")
+    from plumb.present.delta import Line
+
+    # R17: a conflict this claim raised is asked at once: the agent must show the card
+    # (the stop hook shows it to the owner) and ask before any further work
+    ask = [Line(line, subject=f"early-ask:{n}", state=line, must=True)
+           for n, line in enumerate(asked)]
     try:
-        return delta_lines(core, list(touched))
+        return [*ask, *delta_lines(core, list(touched))]
     except Exception as exc:  # noqa: BLE001
         _log(core, "delta", exc)
-        return []
+        return ask

@@ -405,6 +405,15 @@ def git_adoption(root: Path, interpreter: str, lines: list[str], dry_run: bool) 
                 premerge.commit_hook_path, premerge.commit_hook_text,
                 premerge.install_commit_hook, owner_text.COMMIT_HOLD_INSTALLED,
                 owner_text.FOREIGN_COMMIT_HOOK)
+    _adopt_hook(root, interpreter, lines, dry_run,
+                "the quick check of fast-forwards into the main branch",
+                premerge.post_hook_path, premerge.post_hook_text, premerge.install_post_hook,
+                owner_text.POST_HOOK_INSTALLED, owner_text.FOREIGN_POST_HOOK)
+    try:  # every merge into the default branch records a merge commit (R17, ff_hold)
+        if premerge.ff_hold(root, dry_run=dry_run):
+            lines.append(owner_text.FF_HOLD_SET.format(branch=premerge.default_branch_of(root)))
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal
+        lines.append(f"plumb: merges into the main branch may still fast-forward: {exc}")
     _adopt_hook(root, interpreter, lines, dry_run, "the push check",
                 prepush.hook_path, prepush.hook_text, prepush.install_pre_push_hook,
                 owner_text.PREPUSH_INSTALLED, owner_text.FOREIGN_PREPUSH_HOOK)
@@ -490,7 +499,7 @@ def uninstall(root: Path, *, dry_run: bool = False) -> InstallReport:
 
 def _git_unadoption(root: Path, report: InstallReport, dry_run: bool) -> None:
     try:
-        from plumb.boundary.premerge import hook_state, uninstall_hook
+        from plumb.boundary.premerge import ff_release, hook_state, uninstall_hook
         from plumb.mergedriver import uninstall as uninstall_driver
     except ImportError:
         return
@@ -500,7 +509,15 @@ def _git_unadoption(root: Path, report: InstallReport, dry_run: bool) -> None:
         removed = []
     report.lines.extend(removed)
     report.changed.extend("merge driver" for _ in removed[:1])
-    for hook in ("pre-merge-commit", "prepare-commit-msg"):
+    try:
+        released = ff_release(root, dry_run=dry_run)
+    except Exception:  # noqa: BLE001 - nothing to remove outside git
+        released = False
+    if released:
+        report.changed.append("merge option")
+        report.lines.append(f"plumb: {'would let' if dry_run else 'lets'} merges into the "
+                            "main branch fast-forward again")
+    for hook in ("pre-merge-commit", "prepare-commit-msg", "post-merge"):
         if hook_state(root, hook) == "plumb":
             report.changed.append(hook)
             if not dry_run:
@@ -591,6 +608,11 @@ def status(root: Path) -> list[str]:
     lines.append("pre-merge-commit hook (quick merge check): " + hook_state(root))
     lines.append("prepare-commit-msg hook (quick check of merges finished by hand, rebases "
                  "and cherry-picks): " + hook_state(root, "prepare-commit-msg"))
+    from plumb.boundary.premerge import ff_hold_state
+
+    lines.append("post-merge hook (quick check of fast-forwards into the main branch): "
+                 + hook_state(root, "post-merge")
+                 + ("; merges into it record a merge commit" if ff_hold_state(root) else ""))
     from plumb.boundary.prepush import hook_state as push_hook_state
 
     lines.append("pre-push hook (the full test run): " + push_hook_state(root))

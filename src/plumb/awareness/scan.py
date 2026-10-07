@@ -8,7 +8,9 @@ SR-079).
   paths are mapped with this reader's own index too, so a stale ``records`` map does not hide
   a changed end; once the default branch holds that worktree's HEAD (``publish.landed``:
   learned at the session start, one git call per pair of commits, cached) only its pending
-  edits count;
+  edits count; a worktree whose HEAD or branch moved since it published (a commit no
+  session saw) counts for nothing once the default branch holds its HEAD
+  (``publish.moved_since``, ``publish.contains``), however idle it stays;
 - branches without a worktree, from ``.plumb/cache/awareness-branches.json``; with
   ``scan_branches`` (the session start only) the branches whose tip moved are rescanned first,
   newest first, one ``git diff`` each, at most ``awareness.branch_max`` and
@@ -34,7 +36,15 @@ from pathlib import Path
 from typing import Any
 
 from plumb.awareness import gitfiles
-from plumb.awareness.publish import CHANGING, default_branch, landed, read_changing, tip
+from plumb.awareness.publish import (
+    CHANGING,
+    contains,
+    default_branch,
+    landed,
+    moved_since,
+    read_changing,
+    tip,
+)
 from plumb.contracts import Overlap
 
 BRANCH_CACHE = "awareness-branches.json"
@@ -86,6 +96,15 @@ def _from_worktree(core: Any, wt: gitfiles.Worktree, mine: set[str], max_age_s: 
     data = read_changing(path)
     if data is None:
         return []
+    if moved_since(data, wt.branch, wt.head):
+        # the worktree committed (or switched branches) since its last session published:
+        # its list, pending edits included, is older than its HEAD. Once the default
+        # branch holds that HEAD (or the worktree left the branch it described), nothing it
+        # listed is in flight (R17: a merged branch claims nothing); otherwise the branch
+        # is still unmerged and its list stays a fair signal
+        if data.get("branch") != wt.branch or contains(Path(core.root), wt.head, default_tip,
+                                                         allow_git=True):
+            return []
     raw_records = data.get("records")
     records: Mapping[str, Any] = raw_records if isinstance(raw_records, Mapping) else {}
     paths = [str(p) for p in data.get("paths") or [] if isinstance(p, str)]
@@ -144,6 +163,8 @@ def learn_landed(core: Any, *, deadline: Any = None) -> None:
         data = read_changing(wt.path / ".plumb" / "cache" / CHANGING)
         if data is not None:
             landed(root, data, default_tip, allow_git=True)
+            if moved_since(data, wt.branch, wt.head):
+                contains(root, wt.head, default_tip, allow_git=True)
 
 
 # ------------------------------------------------------------------ branches without a worktree

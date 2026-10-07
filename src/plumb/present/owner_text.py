@@ -124,6 +124,21 @@ PREMERGE_UNREADABLE_HEADER = "records plumb cannot read, so it cannot check them
 STEP_HELD = ("plumb: this {operation} step is not recorded yet; once this is settled, say "
              "\"continue the {operation}\"")
 STEP_OK = "plumb: {operation} check: nothing holds this step"
+# R17 at a fast-forward (no merge commit, so git runs no pre-merge-commit hook): the
+# post-merge hook checks what came in and puts the default branch back when it holds
+FF_HEADER = ("plumb: quick merge check (no test run): {merging} into {into} (git moved {into} "
+             "straight to it, without a merge commit)")
+FF_UNDONE = ("plumb: so {into} was put back where it was and nothing is recorded yet; say "
+             "\"merge {merging}\" to bring it in as a merge that waits until this is settled")
+FF_NOT_UNDONE = ("plumb: {into} could not be put back ({why}); say \"undo the merge of "
+                 "{merging}\" before anything else")
+FOREIGN_POST_HOOK = ("plumb: your own post-merge hook was kept; say \"call plumb from my "
+                     "post-merge hook\" so a fast-forward of the main branch is checked too")
+POST_HOOK_INSTALLED = ("plumb: a fast-forward of the main branch gets the same quick check "
+                       "(it is put back when the check holds)")
+FF_HOLD_SET = ("plumb: merges into {branch} always record a merge commit, so the quick check "
+               "sees every one")
+FF_HOLD_REMOVED = "plumb: merges into {branch} may fast-forward again"
 
 
 def conflicts_card(n: int) -> str:
@@ -148,6 +163,10 @@ EARLY_CARD_JUDGED = "  Compatible? {judgment}"
 EARLY_CARD_SAME = "the same requirement is being changed on both branches"
 EARLY_CARD_SAY = ('  Say: "keep {branch}\'s", "keep this one", or "both" (and how they '
                   "combine)")
+# the same card shown on a branch that is neither side (the default branch after one side
+# merged): both versions are labelled by branch, and only a branch's name answers it
+EARLY_CARD_SAY_NAMED = ('  Say: "keep {a}\'s", "keep {b}\'s", or "both" (and how they '
+                        "combine)")
 EARLY_QUESTION = 'Branch {branch} says "{theirs}"; this request says "{ours}": which one, or both?'
 EARLY_THEIRS = "{branch}'s version"          # every option names its branch: the answer
 EARLY_CHOSEN = EARLY_THEIRS                   # reads the same on every branch (R17)

@@ -1,14 +1,14 @@
-"""The merge-time safety net: git's ``pre-merge-commit`` and ``prepare-commit-msg`` hooks
-(sp6 10, R17; SR-077).
+"""The merge-time safety net: git's ``pre-merge-commit``, ``prepare-commit-msg`` and
+``post-merge`` hooks (sp6 10, R17; SR-077).
 
 R17 (owner, 2026-10-07): a CHEAP merge-time check holds a merge carrying a leftover intent
 conflict, unconfirmed requirements or undeclared files, WITHOUT running the test suite; the
 single full suite runs at push (the pre-push hook). Never run the suite twice.
 
-The guarantee: no commit that records another line's work is made while what it records
-carries an open intent conflict (and, for a merge, a touched requirement not yet confirmed,
-a file no requirement declares or two records holding one ID). Its entry points, all
-through ``check``:
+The guarantee: no commit that records another line's work is made (or, for a fast-forward
+of the default branch, stays) while what it records carries an open intent conflict (and,
+for a merge, a touched requirement not yet confirmed, a file no requirement declares or two
+records holding one ID). Its entry points, all through ``check``:
 
 - ``git merge`` (and ``git pull``) committing on its own: the ``pre-merge-commit`` hook.
 - ``git commit`` or ``git merge --continue`` finishing a merge (after a text conflict or
@@ -20,6 +20,14 @@ through ``check``:
 - Under a rebase, a cherry-pick or a revert the record merge driver exits 1 on an intent
   conflict, so git stops on the record (``driver.main``); the commit that continues it is
   checked here.
+- A merge into the default branch that git would FAST-FORWARD (no merge commit, so no
+  pre-merge-commit hook): ``ff_hold`` (the one choke point, installed with the hooks) sets
+  ``branch.<default>.mergeoptions`` to ``--no-ff``, so a plain ``git merge`` or ``git pull``
+  into the default branch records a merge commit and meets the check above; and the
+  ``post-merge`` hook, the one hook git runs after a fast-forward (``--ff-only``,
+  ``pull.ff=only``), runs the same check over what came in and, when it holds, puts the
+  default branch back where it was (``git reset --keep ORIG_HEAD``): nothing held stays
+  recorded (``run_post_merge``).
 
 The check judges what git will record: it reads the work tree, so it first holds when a
 file under ``.plumb/`` differs from the index being committed (``git status``, which reads
@@ -58,8 +66,13 @@ HOOK = "pre-merge-commit"
 HOOK_MARKER = "# plumb pre-merge-commit hook"
 COMMIT_HOOK = "prepare-commit-msg"
 COMMIT_HOOK_MARKER = "# plumb prepare-commit-msg hook"
-MARKERS = {HOOK: HOOK_MARKER, COMMIT_HOOK: COMMIT_HOOK_MARKER}
+POST_HOOK = "post-merge"
+POST_HOOK_MARKER = "# plumb post-merge hook"
+MARKERS = {HOOK: HOOK_MARKER, COMMIT_HOOK: COMMIT_HOOK_MARKER, POST_HOOK: POST_HOOK_MARKER}
 HOLD_KEY = "plumb.mergeHold"
+NL = "\n"
+NO_FF = "--no-ff"
+NO_FF_KEY = "plumb.noFastForward"   # set when plumb added --no-ff (so uninstall removes it)
 CAP = 10
 
 
@@ -116,6 +129,21 @@ def commit_hook_text(interpreter: str) -> str:
             f'exec "{_exe(interpreter)}" -m plumb merge-check --hook {COMMIT_HOOK}\n')
 
 
+def post_hook_text(interpreter: str) -> str:
+    """post-merge: git runs it after a merge it recorded, a fast-forward included. Its shell
+    lines exit at once for a squash, with ``plumb.mergeHold`` false, and for the merge
+    commit this merge just made (its first parent is ``ORIG_HEAD``: pre-merge-commit
+    already checked it); only a fast-forward starts Python."""
+    return (f"#!/bin/sh{NL}{POST_HOOK_MARKER} (written by plumb; puts the default branch back "
+            f"when a fast-forward brings in what the quick merge check holds; no test run){NL}"
+            f'[ "$1" = 1 ] && exit 0{NL}'
+            f'[ "$(git config --bool {HOLD_KEY})" = false ] && exit 0{NL}'
+            f"o=$(git rev-parse -q --verify ORIG_HEAD) || exit 0{NL}"
+            '[ -n "$(git rev-parse -q --verify HEAD^2)" ] && '
+            f'[ "$(git rev-parse -q --verify HEAD^1)" = "$o" ] && exit 0{NL}'
+            f'exec "{_exe(interpreter)}" -m plumb merge-check --hook {POST_HOOK}{NL}')
+
+
 def _is_plumb(path: Path, hook: str = HOOK) -> bool:
     try:
         return MARKERS[hook] in path.read_text(encoding="utf-8", errors="replace")
@@ -129,7 +157,8 @@ def _install(root: Path, interpreter: str, hook: str) -> Path:
         raise ForeignHookError(owner_text.FOREIGN_HOOK if hook == HOOK
                                else owner_text.FOREIGN_COMMIT_HOOK)
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = hook_text(interpreter) if hook == HOOK else commit_hook_text(interpreter)
+    text = {HOOK: hook_text, COMMIT_HOOK: commit_hook_text,
+            POST_HOOK: post_hook_text}[hook](interpreter)
     path.write_bytes(text.encode("utf-8"))
     try:
         path.chmod(0o755)
@@ -148,6 +177,78 @@ def install_commit_hook(root: Path, interpreter: str) -> Path:
     """Write plumb's prepare-commit-msg hook (idempotent); a foreign hook raises
     ``ForeignHookError`` and is left untouched."""
     return _install(root, interpreter, COMMIT_HOOK)
+
+
+def install_post_hook(root: Path, interpreter: str) -> Path:
+    """Write plumb's post-merge hook (idempotent) and make merges into the default branch
+    record a merge commit (``ff_hold``); a foreign hook raises ``ForeignHookError`` and is
+    left untouched (the merge option is still set)."""
+    ff_hold(root)
+    return _install(root, interpreter, POST_HOOK)
+
+
+def post_hook_path(root: Path) -> Path:
+    return hook_path(root, POST_HOOK)
+
+
+def default_branch_of(root: Path) -> str:
+    """``merge.default_base`` (``main``) read from ``.plumb/config.yaml`` without a core."""
+    from types import SimpleNamespace
+
+    from plumb.boundary.cli import merge_settings
+
+    try:
+        return str(merge_settings(SimpleNamespace(root=Path(root), config=None))
+                   ["default_base"])
+    except Exception:  # noqa: BLE001 - a broken config keeps the default
+        return "main"
+
+
+def _ff_key(root: Path) -> str:
+    return f"branch.{default_branch_of(root)}.mergeoptions"
+
+
+def ff_hold(root: Path, *, dry_run: bool = False) -> bool:
+    """The choke point that keeps every merge into the default branch checkable (R17): a
+    fast-forward records no merge commit, so git runs no pre-merge-commit hook for it.
+    ``branch.<default>.mergeoptions`` gains ``--no-ff`` (``git merge`` and ``git pull`` into
+    the default branch then record a merge commit, which the quick check holds), unless the
+    owner set a fast-forward option there themselves (``--ff``, ``--ff-only``): the
+    post-merge hook still checks those. Idempotent; returns whether it changed the config."""
+    root = Path(root)
+    key = _ff_key(root)
+    current = (_git(root, "config", "--get", key) or "").strip()
+    words = current.split()
+    if NO_FF in words or "--ff" in words or "--ff-only" in words:
+        return False
+    if dry_run:
+        return True
+    _git(root, "config", key, " ".join([*words, NO_FF]), check=True)
+    _git(root, "config", "--bool", NO_FF_KEY, "true", check=True)
+    return True
+
+
+def ff_hold_state(root: Path) -> bool:
+    words = (_git(Path(root), "config", "--get", _ff_key(Path(root))) or "").split()
+    return NO_FF in words
+
+
+def ff_release(root: Path, *, dry_run: bool = False) -> bool:
+    """Remove the ``--no-ff`` plumb added (``plumb.noFastForward``); an owner's own option
+    stays. Returns whether it changed the config."""
+    root = Path(root)
+    if (_git(root, "config", "--bool", "--get", NO_FF_KEY) or "").strip() != "true":
+        return False
+    key = _ff_key(root)
+    words = [w for w in (_git(root, "config", "--get", key) or "").split() if w != NO_FF]
+    if dry_run:
+        return True
+    if words:
+        _git(root, "config", key, " ".join(words))
+    else:
+        _git(root, "config", "--unset", key)
+    _git(root, "config", "--unset", NO_FF_KEY)
+    return True
 
 
 def uninstall_hook(root: Path, hook: str = HOOK) -> bool:
@@ -190,7 +291,7 @@ class PremergeReport:
     unstaged: tuple[str, ...] = ()       # .plumb/ paths that differ from the index committed
     unreadable: tuple[Mapping[str, Any], ...] = ()       # {path, line}
     settled: tuple[str, ...] = ()        # R17: conflicts the owner's earlier answer settled
-    operation: str = "merge"             # merge | rebase | cherry-pick | revert
+    operation: str = "merge"     # merge | fast-forward | rebase | cherry-pick | revert
     skipped: str | None = None
     exit: int = 0
     lines: tuple[str, ...] = field(default_factory=tuple)
@@ -273,8 +374,8 @@ def _unreadable(core: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def check(core: Any, operation: str | None = None, *, hook: str | None = None
-          ) -> PremergeReport:
+def check(core: Any, operation: str | None = None, *, hook: str | None = None,
+          fast_forward: tuple[str, str, str] | None = None) -> PremergeReport:
     """The quick check of the merge, rebase, cherry-pick or revert in progress
     (``GITHEAD_*`` in the pre-merge-commit hook, else ``MERGE_HEAD`` and git's state
     files).
@@ -284,25 +385,30 @@ def check(core: Any, operation: str | None = None, *, hook: str | None = None
     (``answer.apply_settled``: the chosen version, its log entry, both staged), never
     asked again. git wrote the commit's tree before its hook ran, so the commit is held
     once; the owner's "finish the merge" records the settled version (no new question).
-    ``hook`` names the git hook running the check (for the report only)."""
-    from plumb.claims import claims_check, load_policy
-    from plumb.merge import required_records, touched_requirements
+    ``hook`` names the git hook running the check (for the report only).
+
+    ``fast_forward`` ``(before, after, name)``: git already moved the default branch from
+    ``before`` to ``after`` (``name``'s work) without a merge commit (the post-merge hook):
+    the same check of ``before..after``, nothing settled or staged (``run_post_merge``
+    undoes the move when it holds)."""
     from plumb.mergedriver.conflicts import conflict_rows
     from plumb.mergedriver.driver import git_operation, labels_of
 
     root = Path(core.root)
+    if fast_forward is not None:
+        before, after, name = fast_forward
+        return _merge_check(core, before, [(after, name)], operation="fast-forward")
     operation = operation or git_operation(root)
     if operation is None:
         return PremergeReport(skipped="no merge in progress")
     settled = tuple(_apply_settled(core))
-    # git wrote this commit's tree before its hook ran: hold it once, so the commit that
-    # finishes it ("finish the merge") records the settled version
-    settled_hold = bool(settled)
     unstaged = tuple(unstaged_plumb(root))
     unreadable = tuple(_unreadable(core))
     if operation != "merge":
         conflicts = conflict_rows(core, hook=True)
-        code = 1 if (unstaged or unreadable or settled_hold) else 4 if conflicts else 0
+        # git wrote this commit's tree before its hook ran: hold it once, so the commit
+        # that finishes it records the settled version
+        code = 1 if (unstaged or unreadable or settled) else 4 if conflicts else 0
         return _with_lines(PremergeReport(
             into=labels_of(root, [])[0], operation=operation,
             intent_conflicts=tuple(conflicts), unstaged=unstaged, unreadable=unreadable,
@@ -310,14 +416,35 @@ def check(core: Any, operation: str | None = None, *, hook: str | None = None
     heads = incoming_heads(root)
     if not heads:
         return PremergeReport(skipped="no merge in progress")
+    return _merge_check(core, "HEAD", heads, unstaged=unstaged, unreadable=unreadable,
+                        settled=settled)
+
+
+def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
+                 operation: str = "merge", unstaged: tuple[str, ...] = (),
+                 unreadable: tuple[Mapping[str, Any], ...] | None = None,
+                 settled: tuple[str, ...] = ()) -> PremergeReport:
+    """The check of ``heads`` merging into ``base``: ``HEAD`` and the staged result while a
+    merge is in progress; for a fast-forward, the commit it left against the one before."""
+    from plumb.claims import claims_check, load_policy
+    from plumb.merge import required_records, touched_requirements
+    from plumb.mergedriver.conflicts import conflict_rows
+    from plumb.mergedriver.driver import labels_of
+
+    root = Path(core.root)
+    if unreadable is None:
+        unreadable = tuple(_unreadable(core))
     ours = labels_of(root, [])[0]
     theirs = ", ".join(name for _, name in heads)
-    staged = _git(root, "diff", "--cached", "--name-only", "-z", "HEAD") or ""
-    paths = sorted({p for p in staged.split("\0") if p})
+    if operation == "fast-forward":
+        changed = _git(root, "diff", "--name-only", "-z", base, heads[0][0]) or ""
+    else:
+        changed = _git(root, "diff", "--cached", "--name-only", "-z", base) or ""
+    paths = sorted({p for p in changed.split("\0") if p})
     # (commit, message) pairs: an incoming commit's trailers are read through any renumber
     messages: list[tuple[str, str]] = []
     for sha, _ in heads:
-        log = _git(root, "log", "--format=%H%x1f%B%x00", f"HEAD..{sha}") or ""
+        log = _git(root, "log", "--format=%H%x1f%B%x00", f"{base}..{sha}") or ""
         for entry in log.split("\0"):
             commit, _sep, message = entry.strip("\n").partition("\x1f")
             if message.strip():
@@ -338,7 +465,7 @@ def check(core: Any, operation: str | None = None, *, hook: str | None = None
     undeclared: list[dict[str, Any]] = []
     for sha, _ in heads:
         try:
-            result = claims_check(root, f"HEAD..{sha}")
+            result = claims_check(root, f"{base}..{sha}")
             for item in result.get("undeclared") or []:
                 undeclared.append({"commit": str(item.get("commit")), "path": item.get("path"),
                                    "claims": list(item.get("claims") or [])})
@@ -350,13 +477,15 @@ def check(core: Any, operation: str | None = None, *, hook: str | None = None
 
     conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
-    held = bool(undeclared or collisions or unstaged or unreadable or settled_hold)
+    # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
+    # the commit that finishes it ("finish the merge") records the settled version
+    held = bool(undeclared or collisions or unstaged or unreadable or settled)
     code = 1 if held else 4 if (conflicts or unconfirmed) else 0
     report = PremergeReport(merging=theirs, into=ours, touched=tuple(touched),
                             unconfirmed=tuple(unconfirmed), undeclared=tuple(undeclared),
                             intent_conflicts=tuple(conflicts), collisions=tuple(collisions),
                             unstaged=unstaged, unreadable=unreadable, settled=settled,
-                            exit=code)
+                            operation=operation, exit=code)
     return _with_lines(report)
 
 
@@ -378,8 +507,11 @@ def render(report: PremergeReport) -> list[str]:
     ``MERGE_HELD`` when the merge is held."""
     if report.skipped:
         return [f"plumb: merge check skipped ({report.skipped})"]
-    merge = report.operation == "merge"
-    if merge:
+    merge = report.operation in ("merge", "fast-forward")
+    if report.operation == "fast-forward":
+        out = [owner_text.FF_HEADER.format(merging=report.merging, into=report.into)]
+        finish = "finish the merge"
+    elif merge:
         out = [f"plumb: quick merge check (no test run): {report.merging} into {report.into}"]
         finish = "finish the merge"
     else:
@@ -412,7 +544,9 @@ def render(report: PremergeReport) -> list[str]:
         out.append(owner_text.PREMERGE_UNSTAGED_HEADER)
         out.extend(_capped([owner_text.PREMERGE_UNSTAGED.format(path=path, finish=finish)
                             for path in report.unstaged]))
-    if report.exit:
+    if report.exit and report.operation == "fast-forward":
+        out.append(owner_text.FF_UNDONE.format(merging=report.merging, into=report.into))
+    elif report.exit:
         out.append(owner_text.MERGE_HELD if merge else
                    owner_text.STEP_HELD.format(operation=report.operation))
     else:
@@ -443,6 +577,68 @@ def _apply_settled(core: Any) -> list[str]:
         return apply_settled(core)
     except Exception:  # noqa: BLE001 - the conflict then holds, and its card asks
         return []
+
+
+def fast_forward_of(root: Path) -> tuple[str, str, str] | None:
+    """``(before, after, name)`` when the merge git just recorded moved the default branch
+    to another line's commit without a merge commit of its own (a fast-forward); None for
+    any other merge, another branch, a squash or an up-to-date merge. A few git calls."""
+    root = Path(root)
+    branch = (_git(root, "symbolic-ref", "--short", "-q", "HEAD") or "").strip()
+    if not branch or branch != default_branch_of(root):
+        return None
+    before = (_git(root, "rev-parse", "-q", "--verify", "ORIG_HEAD") or "").strip()
+    after = (_git(root, "rev-parse", "-q", "--verify", "HEAD") or "").strip()
+    if not before or not after or before == after:
+        return None
+    parents = (_git(root, "rev-list", "--parents", "-n", "1", after) or "").split()[1:]
+    if len(parents) > 1 and parents[0] == before:
+        return None  # the merge commit this merge made: pre-merge-commit checked it
+    if _git(root, "merge-base", "--is-ancestor", before, after) is None:
+        return None
+    name = (_git(root, "name-rev", "--name-only", f"--exclude=refs/heads/{branch}",
+                 "--exclude=refs/tags/*", after) or "").strip()
+    name = name.removeprefix("remotes/").split("~")[0].split("^")[0]
+    if not name or name == "undefined":
+        subject = (_git(root, "reflog", "-1", "--format=%gs") or "").strip()
+        words = subject.split(":", 1)[0].split()
+        name = words[-1] if len(words) > 1 and words[0] in ("merge", "pull") else after[:12]
+    return before, after, name
+
+
+def run_post_merge(root: Path) -> int:
+    """``plumb merge-check --hook post-merge``: when git fast-forwarded the default branch,
+    run the quick check over what came in; when it holds, put the branch back where it was
+    (``git reset --keep``: local changes stay) so nothing held stays recorded (R17). git
+    ignores this hook's exit; the lines tell the owner what happened."""
+    from plumb.api import open_core
+    from plumb.mergedriver.driver import labels_of
+
+    root = Path(root)
+    if (_git(root, "config", "--bool", HOLD_KEY) or "").strip() == "false":
+        return 0
+    found = fast_forward_of(root)
+    if found is None:
+        return 0
+    before, _after, name = found
+    try:
+        report = check(open_core(root), fast_forward=found)
+    except Exception as exc:  # noqa: BLE001 - a check that cannot run holds (fail closed)
+        into = labels_of(root, [])[0]
+        report = _with_lines(PremergeReport(
+            merging=name, into=into, operation="fast-forward", exit=1,
+            unreadable=({"path": "", "line": f"  the check could not run: {exc}"},)))
+    for line in report.lines:
+        print(line)
+    if not report.exit:
+        return 0
+    try:
+        _git(root, "reset", "-q", "--keep", before, check=True)
+    except subprocess.CalledProcessError as exc:
+        why = (exc.stderr or exc.stdout or "").strip().splitlines()
+        print(owner_text.FF_NOT_UNDONE.format(into=report.into, merging=name,
+                                              why=why[-1] if why else "git refused"))
+    return report.exit
 
 
 def run_hook(core: Any, hook: str = HOOK) -> int:

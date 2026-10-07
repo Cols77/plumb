@@ -588,6 +588,10 @@ Each worktree writes `.plumb/cache/changing.json`, gitignored, in its own `.plum
 - The session-start hook refreshes it when `HEAD` moved since it was written.
 - A reader maps `paths` to records with its own index as well (`records_for_paths`), so a
   stale `records` map does not hide a changed end.
+- A worktree whose HEAD or branch (read from git's files) moved since it published (a
+  commit no session saw) counts for nothing once the default branch holds that HEAD: its
+  list, pending edits included, is history (audit 2; R17 "a claim clears when its branch
+  merges").
 
 ### 9.3 Reading the others (read only)
 
@@ -683,6 +687,17 @@ read, and a choice made during the operation is staged with its log entry. A reb
 cherry-pick or revert step is checked for open intent conflicts only. `git -c
 plumb.mergeHold=false` bypasses the prepare-commit-msg hook, since git has no
 `--no-verify` for it. The R17 note: the full suite never runs here; it runs at push.)
+
+**Fast-forwards (audit 2, R17).** A merge git fast-forwards records no merge commit, so git
+runs neither hook above. `plumb init` and `plumb hooks install` therefore set
+`branch.<merge.default_base>.mergeoptions` to `--no-ff` (kept when the owner set a
+fast-forward option there themselves; removed by uninstall only when plumb added it), so a
+plain `git merge` or `git pull` into the default branch records a merge commit the quick
+check holds; and they install a `post-merge` hook, the one hook git runs after a
+fast-forward (`--ff-only`, `pull.ff=only`): it runs the same quick check over what came in
+and, when it holds, puts the default branch back (`git reset --keep ORIG_HEAD`, local
+changes kept) and tells the owner to say "merge <branch>". A move of the default branch
+that is not a merge (a rebase, a reset) is left to the pre-push check (docs/followups.md).
 
 ## 11. Owner entry points (R14, R15)
 

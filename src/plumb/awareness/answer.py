@@ -62,6 +62,10 @@ class AnswerError(ValueError):
     """No early decision matches, or an option that does not exist (exit 1 or 2)."""
 
 
+class NoEarly(AnswerError):
+    """No early decision matches the words (none raised yet, or none for that record)."""
+
+
 @dataclass(frozen=True)
 class Early:
     """An early-conflict decision: the record it decides, the branch that raised it, the
@@ -74,6 +78,7 @@ class Early:
     other: str
     chosen: str
     hashes: Mapping[str, str] = field(default_factory=dict)
+    texts: Mapping[str, str] = field(default_factory=dict)  # each branch's words, as asked
 
     @property
     def branches(self) -> tuple[str, str]:
@@ -109,9 +114,13 @@ def early_of(record: Any) -> Early | None:
     block = fields.get(FIELD)
     if isinstance(block, Mapping) and block.get("record") and block.get("raised_on"):
         hashes = block.get("hashes") if isinstance(block.get("hashes"), Mapping) else {}
-        return Early(dec=record.id, record=str(block["record"]),
-                     raised_on=str(block["raised_on"]), other=str(block.get("other") or ""),
-                     chosen=chosen, hashes={str(k): str(v) for k, v in hashes.items()})
+        texts = block.get("texts") if isinstance(block.get("texts"), Mapping) else {}
+        raised_on, other = str(block["raised_on"]), str(block.get("other") or "")
+        return Early(dec=record.id, record=str(block["record"]), raised_on=raised_on,
+                     other=other, chosen=chosen,
+                     hashes={str(k): str(v) for k, v in hashes.items()},
+                     texts={**_asked_texts(fields, raised_on, other),
+                            **{str(k): str(v) for k, v in texts.items() if v}})
     alternatives = fields.get("alternatives") or []
     if isinstance(alternatives, str):
         alternatives = [alternatives]
@@ -124,7 +133,21 @@ def early_of(record: Any) -> Early | None:
     if len(branches) != 2 or len(decides) != 1:
         return None
     return Early(dec=record.id, record=decides[0], raised_on=branches[0], other=branches[1],
-                 chosen=chosen)
+                 chosen=chosen, texts=_asked_texts(fields, branches[0], branches[1]))
+
+
+_QUESTION = re.compile(r'Branch (?P<branch>.+?) says "(?P<theirs>.*)"; this request says '
+                       r'"(?P<ours>.*)": which one, or both\?$', re.DOTALL)
+
+
+def _asked_texts(fields: Mapping[str, Any], raised_on: str, other: str) -> dict[str, str]:
+    """Each branch's words as the decision asked them (``owner_text.EARLY_QUESTION``: the
+    other branch's version, then the raising request's), for a decision written before it
+    kept them by branch."""
+    match = _QUESTION.match(" ".join(str(fields.get("question") or "").split()))
+    if match is None or match.group("branch") != other:
+        return {}
+    return {other: match.group("theirs"), raised_on: match.group("ours")}
 
 
 def early_decisions(index: Mapping[str, Any], record_id: str | None = None) -> list[Early]:
@@ -144,24 +167,37 @@ def _pattern(words: Iterable[str]) -> re.Pattern[str]:
     return re.compile(rf"(?<![\w-])(?:{alternatives})(?![\w-])", re.IGNORECASE)
 
 
-def _here(early: Early, current: str | None) -> str:
-    """The branch "this one" names: the session's own branch when it is a side, else the
-    branch that raised the card (the one whose session showed it)."""
-    return current if current in early.branches else early.raised_on
+def _here(early: Early, current: str | None) -> str | None:
+    """The branch "this one" names: the session's own branch when it is one of the two
+    sides, else None. On any other branch (the default branch after one side merged) the
+    words "this one", "mine" or "theirs" name no version: the card labels both sides by
+    branch and only a branch's name (or "both") answers it."""
+    return current if current and current in early.branches else None
+
+
+def _there(early: Early, here: str | None) -> str | None:
+    if here is None:
+        return None
+    return early.other if here == early.raised_on else early.raised_on
+
+
+def relative_words(quote: str) -> bool:
+    """The words name a side relative to the reader ("this one", "mine", "theirs")."""
+    return bool(_pattern(_RELATIVE).search(quote) or _pattern(_OTHER).search(quote))
 
 
 def named_keys(early: Early, quote: str, current: str | None = None) -> set[str]:
-    """The options the owner's words name: a branch (its name, "keep this one" for the
-    branch whose session shows the card, "theirs" for the other one) or ``both``."""
+    """The options the owner's words name: a branch (its name; on one of the two branches
+    also "keep this one" for that branch and "theirs" for the other one) or ``both``."""
     here = _here(early, current)
-    there = early.other if here == early.raised_on else early.raised_on
+    there = _there(early, here)
     found: set[str] = set()
     for branch in early.branches:
         if branch and _pattern([branch]).search(quote):
             found.add(branch)
-    if _pattern(_RELATIVE).search(quote):
+    if here is not None and _pattern(_RELATIVE).search(quote):
         found.add(here)
-    if _pattern(_OTHER).search(quote):
+    if there is not None and _pattern(_OTHER).search(quote):
         found.add(there)
     if _pattern(_BOTH).search(quote):
         found.add(BOTH)
@@ -199,21 +235,27 @@ def normalize_take(early: Early, take: str, current: str | None = None) -> str:
     for branch in early.branches:
         if wanted == branch.lower():
             return branch
-    if wanted in ("ours", "mine", "this", "this one", "here"):
-        return here
-    if wanted in ("theirs", "other", "the other one", "there"):
-        return early.other if here == early.raised_on else early.raised_on
     if wanted in ("both", "combined", "both, combined"):
         return BOTH
+    mine = wanted in ("ours", "mine", "this", "this one", "here")
+    other = wanted in ("theirs", "other", "the other one", "there")
+    if (mine or other) and here is None:
+        raise AnswerError(f"plumb: on {current or 'this checkout'}, which is neither side, "
+                          f"--take names a branch: {early.raised_on}, {early.other} or both")
+    if mine:
+        return str(here)
+    if other:
+        return str(_there(early, here))
     raise AnswerError(f"plumb: --take is {early.raised_on}, {early.other} or both")
 
 
 def say_line(early: Early, current: str | None = None) -> str:
-    """The card's answer line from the session's point of view: "keep this one" names the
-    branch whose session shows it."""
+    """The card's answer line from the session's point of view: on one of the two branches
+    "keep this one" names it; on any other branch both are named by branch."""
     here = _here(early, current)
-    there = early.other if here == early.raised_on else early.raised_on
-    return text.EARLY_CARD_SAY.format(branch=there).strip()
+    if here is None:
+        return text.EARLY_CARD_SAY_NAMED.format(a=early.raised_on, b=early.other).strip()
+    return text.EARLY_CARD_SAY.format(branch=_there(early, here)).strip()
 
 
 # --------------------------------------------------------------------------- finding it
@@ -242,13 +284,16 @@ def find(core: Any, ref: str) -> Early:
         record_id = ""
     candidates = early_decisions(index)
     if not candidates:
-        raise AnswerError(text.NO_CONFLICTS)
+        raise NoEarly(text.NO_CONFLICTS)
     if record_id:
         matches = [e for e in candidates if e.record == record_id]
     else:
         words = set(re.findall(r"\w+", wanted.lower()))
         matches = [e for e in candidates if words & set(
             re.findall(r"\w+", str(index[e.record].title if e.record in index else "").lower()))]
+    if not matches and wanted:
+        raise NoEarly(f"plumb: which conflict do you mean? "
+                      f"{', '.join(e.dec for e in candidates)}")
     if len(matches) > 1:
         statuses = core.status([e.dec for e in matches])
         open_ = [e for e in matches if statuses[e.dec].confirmation != "confirmed"]
@@ -258,6 +303,66 @@ def find(core: Any, ref: str) -> Early:
     if not wanted and len(candidates) == 1:
         return candidates[0]
     raise AnswerError(f"plumb: which conflict do you mean? {', '.join(e.dec for e in candidates)}")
+
+
+def shown_cards(core: Any, ref: str) -> list[Any]:
+    """The early conflict cards the owner was shown (the stated set of the last reply) that
+    ``ref`` names (a record ID, its title's words, or nothing for the only one) and that no
+    decision holds yet: a card the clarify read-back showed before anything was written."""
+    from plumb.awareness import early as early_mod
+
+    data = _stated(core, "")
+    items = [e for e in data.get("early") or [] if isinstance(e, Mapping)]
+    if not items:
+        return []
+    cards = early_mod.requested(core.paths.session)
+    index = core.index()
+    wanted = " ".join(ref.split())
+    words = set(re.findall(r"\w+", wanted.lower()))
+    decided = {e.record for e in early_decisions(index)}
+    out = []
+    for item in items:
+        conflict = early_mod.from_stated(item, cards)
+        if conflict is None or conflict.record not in index or conflict.record in decided:
+            continue
+        title = set(re.findall(r"\w+", index[conflict.record].title.lower()))
+        if not wanted or wanted.upper() == conflict.record or words & title:
+            out.append(conflict)
+    return out
+
+
+def raise_shown(core: Any, ref: str) -> Early | None:
+    """The one card shown and not decided yet that ``ref`` names, raised now as its
+    decision (``early.raise_conflicts``, noted in this branch's claim), so the owner's
+    answer to the card is recorded once like any other (R17: every card the owner sees has
+    a decision the answer records). None when no card, or several, match."""
+    from plumb.awareness import early as early_mod
+    from plumb.awareness import inflight
+
+    found = shown_cards(core, ref)
+    if len(found) != 1:
+        return None
+    entries = early_mod.raise_conflicts(core, found, intent=None)
+    if not entries:
+        return None
+    try:
+        inflight.record_claim(core, records={}, summary=found[0].title, intent=None,
+                              conflicts=entries)
+    except Exception:  # noqa: BLE001 - the stop hook's sync carries it later
+        pass
+    return early_of(core.index().get(str(entries[0]["dec"])))
+
+
+def find_or_raise(core: Any, ref: str) -> Early:
+    """``find``, else the card the owner was shown and no decision holds yet
+    (``raise_shown``)."""
+    try:
+        return find(core, ref)
+    except NoEarly:
+        raised = raise_shown(core, ref)
+        if raised is None:
+            raise
+        return raised
 
 
 def is_early_ref(core: Any, ref: str) -> bool:
@@ -315,8 +420,10 @@ def record_answer(core: Any, early: Early, key: str, *, by: str, quote: str | No
     keys = [early.raised_on, early.other, BOTH]
     chosen = option(key)
     alternatives = [option(k) for k in keys if k != key]
-    block = {"record": early.record, "raised_on": early.raised_on, "other": early.other,
-             "hashes": _hashes(core, early, current)}
+    block: dict[str, Any] = {"record": early.record, "raised_on": early.raised_on,
+                             "other": early.other, "hashes": _hashes(core, early, current)}
+    if early.texts:
+        block["texts"] = dict(early.texts)
     rewrite(core, record, {"chosen": chosen, "alternatives": alternatives, FIELD: block})
     from plumb.approvals import approval_items
 
@@ -326,8 +433,7 @@ def record_answer(core: Any, early: Early, key: str, *, by: str, quote: str | No
         "stated_set": None, "note": note or "the owner's answer to the early conflict card",
         "choice": {"take": key, "option": chosen, "names": list(names),
                    "here": _here(early, current),
-                   "there": early.other if _here(early, current) == early.raised_on
-                   else early.raised_on}}
+                   "there": _there(early, _here(early, current))}}
     if by == "agent-relayed":
         assert prompt is not None and quote is not None
         digest = str(prompt["digest"])
@@ -384,7 +490,7 @@ def relay(core: Any, ref: str, take: str | None, *, prompt: str,
     from plumb.approvals import Refused, objection_clauses, owner_prompt, quote_in_prompt
     from plumb.normalize import normalize_text
 
-    early = find(core, ref)
+    early = find_or_raise(core, ref)
     current = _current(core)
     try:
         entry = owner_prompt(core, prompt)
@@ -393,6 +499,12 @@ def relay(core: Any, ref: str, take: str | None, *, prompt: str,
     said = normalize_text(quote)
     if not said or not quote_in_prompt(said, normalize_text(str(entry.get("text") or ""))):
         raise AnswerRefused("the quote is not a verbatim part of that prompt (whole words)")
+    if _here(early, current) is None and relative_words(said):
+        raise AnswerRefused(
+            f"on {current or 'this checkout'}, which is neither {early.raised_on} nor "
+            f"{early.other}, words like \"this one\" or \"theirs\" name no version; the "
+            "owner answers with a branch's name ("
+            + say_line(early, current).removeprefix("Say: ") + ")")
     named = named_keys(early, said, current)
     key = chosen_key(named)
     if take:
@@ -422,7 +534,7 @@ def choose_owner(core: Any, ref: str, take: str) -> tuple[Early, dict[str, Any]]
     marker and without an interactive terminal, exit 3, nothing written)."""
     from plumb.approvals import require_owner
 
-    early = find(core, ref)
+    early = find_or_raise(core, ref)
     key = normalize_take(early, take, _current(core))
     require_owner("conflict choose", f"Keep {option(key)} of {early.record}?")
     return early, record_answer(core, early, key, by="owner")
@@ -557,28 +669,60 @@ def waiting_on_conflict(index: Mapping[str, Any], dec: str) -> bool:
 
 
 def card_conflict(core: Any, early: Early) -> Any:
-    """The early conflict card of an unanswered decision, from this session's branch: the
-    other branch's version (its claim's words, else the decision's question) beside this
-    checkout's version of the record."""
+    """The early conflict card of an unanswered decision, the one place every surface
+    builds it (/plumb conflicts, the stop hook's card): each branch's version from its live
+    claim, else the words the decision pinned when it asked. On one of the two branches the
+    session's own side is "this work" (this checkout's version); on any other branch (the
+    default branch after one side merged, which is neither) both sides are labelled by
+    branch and never by this checkout's content, so "this one" can never point at the
+    opposite version."""
     from plumb.awareness.early import EarlyConflict
 
     index = core.index()
     current = _current(core)
     here = _here(early, current)
-    there = early.other if here == early.raised_on else early.raised_on
-    theirs = ""
+    live: dict[str, str] = {}
     try:
         from plumb.awareness import inflight
 
         _me, claims = inflight.others(core, allow_git=True)
         for claim in claims:
             entry = (claim.get("records") or {}).get(early.record)
-            if claim.get("branch") == there and isinstance(entry, Mapping):
-                theirs = str(entry.get("text") or "")
-    except Exception:  # noqa: BLE001 - the question still names both versions
-        theirs = ""
-    record = index.get(early.record)
+            branch = str(claim.get("branch") or "")
+            if branch in early.branches and isinstance(entry, Mapping) and entry.get("text"):
+                live[branch] = str(entry["text"])
+    except Exception:  # noqa: BLE001 - the decision's own words still name both versions
+        live = {}
     question = str(index[early.dec].fields.get("question") or "") if early.dec in index else ""
-    ours = str(record.fields.get("statement") or record.title) if record is not None else ""
-    return EarlyConflict(record=early.record, title=record.title if record is not None else "",
-                         branch=there, claim="", theirs=theirs or question, ours=ours)
+
+    def words(branch: str) -> str:
+        return live.get(branch) or early.texts.get(branch) or question
+
+    record = index.get(early.record)
+    title = record.title if record is not None else ""
+    if here is None:
+        return EarlyConflict(record=early.record, title=title, branch=early.raised_on,
+                             claim="", theirs=words(early.raised_on), ours=words(early.other),
+                             ours_label=early.other)
+    there = str(_there(early, here))
+    ours = (str(record.fields.get("statement") or record.title) if record is not None
+            else words(here))
+    return EarlyConflict(record=early.record, title=title, branch=there, claim="",
+                         theirs=words(there), ours=ours)
+
+
+def merge_conflict_of(core: Any, ref: str) -> str | None:
+    """The open merge-time conflict (``IC-###``) that asks the question of the early
+    decision ``ref`` names (the decision or its record): when a merge left one on the same
+    record, its card is the one question shown, and its answer answers the decision
+    (``answer_from_conflict``)."""
+    index = core.index()
+    wanted = " ".join(ref.split()).upper()
+    early = early_of(index.get(wanted))
+    record_id = early.record if early is not None else wanted
+    if record_id not in index or (early is None and not early_decisions(index, record_id)):
+        return None
+    block = index[record_id].fields.get("conflict")
+    if isinstance(block, Mapping) and block.get("id"):
+        return str(block["id"])
+    return None

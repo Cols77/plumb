@@ -1,9 +1,10 @@
 """The EARLY intent-conflict check, at capture and read-back time (ruling R17, SR-081).
 
 Conflicts are caught when intent is captured, not at merge, so two branches never build two
-incompatible versions of one requirement. ``plumb capture`` (after its records are written)
-and ``plumb clarify`` (before anything is written) compare this work with the intent other
-branches have in flight (``refs/plumb/claims``):
+incompatible versions of one requirement. ``plumb clarify`` (before anything is written)
+and every write of this branch's claim (``claim``: ``plumb capture``, and the stop hook after
+a direct edit or ``plumb new``) compare this work with the intent other branches have in
+flight (``refs/plumb/claims``):
 
 - the SAME record claimed on another branch is a conflict, caught deterministically;
 - new intent in a feature another branch claims is judged for compatibility by the judgment
@@ -11,7 +12,7 @@ branches have in flight (``refs/plumb/claims``):
   conflict, anything else a one-line awareness warning.
 
 A conflict is the owner's "real intent change" trigger: an early conflict card ("feat-x says
-A, this request says B: which one, or both?") is shown at once, and ``capture`` records it
+A, this request says B: which one, or both?") is shown at once, and ``claim`` records it
 ONCE as a proposed decision that matters (a DEC deciding the record), noted in this branch's
 claim so every other branch sees the question and, through ``inflight.sync_decisions``, the
 owner's answer. A conflict another branch already raised is never raised twice: the line
@@ -38,6 +39,7 @@ class EarlyConflict:
     ours: str                        # this request's version
     judgment: str = ""               # "" for the same record (deterministic)
     theirs_hash: str = ""            # the other branch's version of the record, when claimed
+    ours_label: str = ""             # "" (this work) or, off both branches, the 2nd branch
 
 
 @dataclass
@@ -270,12 +272,17 @@ def check_text(core: Any, request: str, *, backend: Any = None) -> EarlyCheck:
 
 
 def card(conflict: EarlyConflict) -> list[str]:
-    """The early intent-conflict card, in the owner's terms (R9 card format, sp5 4.2)."""
+    """The early intent-conflict card, in the owner's terms (R9 card format, sp5 4.2). On a
+    branch that is neither side (``ours_label`` names the second branch) both versions are
+    labelled by branch and the answer names a branch, never "this one"."""
+    say = (text.EARLY_CARD_SAY_NAMED.format(a=conflict.branch, b=conflict.ours_label)
+           if conflict.ours_label else text.EARLY_CARD_SAY.format(branch=conflict.branch))
     return [text.EARLY_CARD_HEAD.format(id=conflict.record, title=conflict.title),
             text.EARLY_CARD_SIDE.format(label=conflict.branch, text=_clip(conflict.theirs)),
-            text.EARLY_CARD_SIDE.format(label="this work", text=_clip(conflict.ours)),
+            text.EARLY_CARD_SIDE.format(label=conflict.ours_label or "this work",
+                                        text=_clip(conflict.ours)),
             text.EARLY_CARD_JUDGED.format(judgment=conflict.judgment or text.EARLY_CARD_SAME),
-            text.EARLY_CARD_SAY.format(branch=conflict.branch)]
+            say]
 
 
 REQUESTED_FILE = "early-requested.json"
@@ -294,12 +301,20 @@ def request_cards(core: Any, conflicts: Sequence[EarlyConflict]) -> None:
     from plumb.normalize import utc_now
 
     path = core.paths.session / REQUESTED_FILE
+    now = utc_now()
     cards = [{"record": c.record, "title": c.title, "branch": c.branch, "claim": c.claim,
-              "theirs": c.theirs, "ours": c.ours, "judgment": c.judgment} for c in conflicts]
+              "theirs": c.theirs, "ours": c.ours, "judgment": c.judgment,
+              "theirs_hash": c.theirs_hash, "ours_label": c.ours_label, "at": now}
+             for c in conflicts]
+    # several steps of one turn may ask (the clarify read-back, capture, the stop hook's
+    # claim): each card keeps its own time, and a newer one of the same pair replaces it
+    fresh = {(c["record"], c["branch"]) for c in cards}
+    kept = [c for c in requested(core.paths.session)
+            if (c.get("record"), c.get("branch")) not in fresh][-20:]
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        tmp.write_text(json.dumps({"at": utc_now(), "cards": cards}), encoding="utf-8")
+        tmp.write_text(json.dumps({"at": now, "cards": [*kept, *cards]}), encoding="utf-8")
         os.replace(tmp, path)
     except OSError:
         pass
@@ -322,14 +337,58 @@ def turn_cards(session_dir: Any, turn_start: str = "") -> tuple[list[str], list[
     for item in data.get("cards") or []:
         if not isinstance(item, Mapping) or not item.get("record"):
             continue
+        if str(item.get("at") or data.get("at") or "") < turn_start:
+            continue  # asked in an earlier turn
         conflict = EarlyConflict(
             record=str(item["record"]), title=str(item.get("title") or ""),
             branch=str(item.get("branch") or ""), claim=str(item.get("claim") or ""),
             theirs=str(item.get("theirs") or ""), ours=str(item.get("ours") or ""),
-            judgment=str(item.get("judgment") or ""))
+            judgment=str(item.get("judgment") or ""),
+            theirs_hash=str(item.get("theirs_hash") or ""),
+            ours_label=str(item.get("ours_label") or ""))
         lines += card(conflict)
-        entries.append({"record": conflict.record, "branch": conflict.branch})
+        entries.append(stated_entry(conflict))
     return lines, entries
+
+
+def stated_entry(conflict: EarlyConflict) -> dict[str, Any]:
+    """What the stated set keeps of a card the owner was shown: its record and branch (the
+    relay's check that the card was shown; with ``requested`` they rebuild the card, so an
+    answer given before any decision was written is still recorded as one,
+    ``answer.raise_shown``) and, off both branches, the second branch's label."""
+    entry: dict[str, Any] = {"record": conflict.record, "branch": conflict.branch}
+    if conflict.ours_label:
+        entry["ours_label"] = conflict.ours_label
+    return entry
+
+
+def from_stated(item: Mapping[str, Any], cards: Sequence[Mapping[str, Any]] = ()
+                ) -> EarlyConflict | None:
+    """The card a stated entry names, rebuilt from the cards the session asked for."""
+    for found in cards:
+        if found.get("record") == item.get("record") and found.get("branch") == item.get(
+                "branch"):
+            return EarlyConflict(
+                record=str(found["record"]), title=str(found.get("title") or ""),
+                branch=str(found.get("branch") or ""), claim=str(found.get("claim") or ""),
+                theirs=str(found.get("theirs") or ""), ours=str(found.get("ours") or ""),
+                judgment=str(found.get("judgment") or ""),
+                theirs_hash=str(found.get("theirs_hash") or ""),
+                ours_label=str(found.get("ours_label") or ""))
+    return None
+
+
+def requested(session_dir: Any) -> list[Mapping[str, Any]]:
+    """The early cards the session last asked the stop hook to show (any age)."""
+    import json
+    from pathlib import Path
+
+    try:
+        data = json.loads((Path(session_dir) / REQUESTED_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    cards = data.get("cards") if isinstance(data, Mapping) else None
+    return [c for c in cards or [] if isinstance(c, Mapping) and c.get("record")]
 
 
 def question(conflict: EarlyConflict) -> str:
@@ -357,13 +416,16 @@ def raise_conflicts(core: Any, conflicts: Sequence[EarlyConflict], *,
         theirs = text.EARLY_THEIRS.format(branch=conflict.branch)
         extra: dict[str, Any] = {}
         if me is not None and me.branch and decides:
-            # which question this is and, by branch, the two versions it chooses between:
-            # the owner's answer then settles a merge of exactly these versions (answer.py)
+            # which question this is and, by branch, the two versions it chooses between
+            # (their hashes and their words): the owner's answer then settles a merge of
+            # exactly these versions, and the card reads the same on any branch (answer.py)
             hashes = {me.branch: index[conflict.record].hash}
             if conflict.theirs_hash:
                 hashes[conflict.branch] = conflict.theirs_hash
             extra["early"] = {"record": conflict.record, "raised_on": me.branch,
-                              "other": conflict.branch, "hashes": hashes}
+                              "other": conflict.branch, "hashes": hashes,
+                              "texts": {conflict.branch: _clip(conflict.theirs, 240),
+                                        me.branch: _clip(conflict.ours, 240)}}
         record = decide(core, question(conflict), mine,
                         [theirs, text.EARLY_BOTH], matters=True, decides=decides,
                         derives_from=derives,
@@ -379,41 +441,77 @@ def raise_conflicts(core: Any, conflicts: Sequence[EarlyConflict], *,
     return entries
 
 
+CLAIMED_KINDS = ("requirement", "intent", "feature")
+
+
+@dataclass
+class Claimed:
+    """What ``claim`` did: the check, the decisions it raised (the claim's conflict
+    entries) and the lines telling the agent to ask the owner now."""
+
+    check: EarlyCheck
+    entries: list[dict[str, Any]] = field(default_factory=list)
+    ask: list[str] = field(default_factory=list)
+
+
+def claim(core: Any, ids: Sequence[str], *, summary: str, intent: str | None,
+          new: Iterable[str] = (), backend: Any = None) -> Claimed:
+    """The ONE place a branch's claim on records is written (R17): ``plumb capture``
+    (``after_capture``) and the stop hook (``turn.claim_changes``: a direct edit, ``plumb
+    new``, an edit after the clarify read-back; ``plumb inflight sync`` too) both come here.
+    Before the claim is recorded, the records are checked against the other branches'
+    claims (``check_records``): the same record claimed elsewhere at another version is a
+    conflict, caught deterministically; a new record in a feature another branch claims is
+    judged (``backend``). Each conflict is raised ONCE as a proposed decision that matters
+    and its card is asked of the stop hook, so every card the owner sees has a decision the
+    owner's words answer. Raises ``inflight.InflightBusy`` when the register kept moving."""
+    index = core.index()
+    ids = [i for i in ids if i in index]
+    mine = [index[i] for i in ids if index[i].kind != "decision"]
+    result = check_records(core, mine, new=new, backend=backend)
+    request_cards(core, result.conflicts)
+    entries = raise_conflicts(core, result.conflicts, intent=intent)
+    ask: list[str] = []
+    for entry in entries:
+        ask.append(text.EARLY_RECORDED.format(id=entry["record"],
+                                              title=index[entry["record"]].title
+                                              if entry["record"] in index else ""))
+        ask.append(text.EARLY_ASK.format(dec=entry["dec"]))
+    claimed = {i: inflight.record_entry(index[i]) for i in ids
+               if index[i].kind in CLAIMED_KINDS}
+    done = Claimed(check=result, entries=entries, ask=ask)
+    if claimed or entries:
+        inflight.record_claim(core, records=claimed, summary=summary or "", intent=intent,
+                              conflicts=entries)
+    return done
+
+
 def after_capture(core: Any, *, written: Sequence[str], updated: Sequence[str],
                   intent: str | None, summary: str = "", dry_run: bool = False,
                   backend: Any = None) -> list[str]:
     """``plumb capture``'s check (R17): compare this capture with other branches' intent in
     flight, show each conflict as an early card, record it once as a DEC and record this
-    branch's claim (nothing is recorded on a dry run). Returns the lines to print."""
+    branch's claim (``claim``; nothing is recorded on a dry run). Returns the lines to
+    print."""
     index = core.index()
     ids = [i for i in [*updated, *written] if i in index]
     if not ids:
         return []
-    mine = [index[i] for i in ids if index[i].kind != "decision"]
-    result = check_records(core, mine, new=written, backend=backend)
-    lines: list[str] = []
-    for conflict in result.conflicts:
-        lines += card(conflict)
-    lines += result.lines
     if dry_run:
+        mine = [index[i] for i in ids if index[i].kind != "decision"]
+        result = check_records(core, mine, new=written, backend=backend)
+        lines = [line for conflict in result.conflicts for line in card(conflict)]
+        lines += result.lines
         return [*lines, text.EARLY_DRY_RUN] if lines else []
-    request_cards(core, result.conflicts)
-    entries = raise_conflicts(core, result.conflicts, intent=intent)
-    for entry in entries:
-        lines.append(text.EARLY_RECORDED.format(id=entry["record"],
-                                                title=index[entry["record"]].title
-                                                if entry["record"] in index else ""))
-        lines.append(text.EARLY_ASK.format(dec=entry["dec"]))
-    claimed = {i: inflight.record_entry(index[i]) for i in ids
-               if index[i].kind in ("requirement", "intent", "feature")}
     if not summary and intent and intent in index:
         summary = index[intent].title
     try:
-        inflight.record_claim(core, records=claimed, summary=summary or "", intent=intent,
-                              conflicts=entries)
+        done = claim(core, ids, summary=summary, intent=intent, new=written,
+                     backend=backend)
     except inflight.InflightBusy:
-        lines.append(text.INFLIGHT_BUSY)
-    return lines
+        return [text.INFLIGHT_BUSY]
+    lines = [line for conflict in done.check.conflicts for line in card(conflict)]
+    return [*lines, *done.check.lines, *done.ask]
 
 
 def preview(core: Any, requirements: Sequence[Mapping[str, Any]],
