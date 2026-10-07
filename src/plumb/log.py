@@ -25,6 +25,7 @@ import heapq
 import json
 import os
 import re
+import subprocess
 import time
 import uuid
 from collections.abc import Collection, Iterable, Iterator, Mapping
@@ -39,6 +40,12 @@ SCHEMA = 1
 LOCK_WAIT_S = 2.0
 LOCK_STALE_S = 10.0
 PACK_VERSION = 1
+# A cold read takes the entry files the pack cache misses from git's object store in one
+# process once there are this many: one git process costs about as much as this many first
+# opens of freshly written files (SR-073; _read_uncached).
+GIT_BATCH_MIN = 16
+GIT_BATCH_TIMEOUT_S = 10.0
+SIBLING_MAX = 16  # other worktrees whose pack caches a cold read may consult
 STREAMS: tuple[LogStream, ...] = ("events", "evidence")
 STREAM_OF_KIND: dict[str, LogStream] = {"test-run": "evidence", "merge-evidence": "evidence"}
 
@@ -282,8 +289,8 @@ def _scan(paths: PlumbPaths, stream: LogStream) -> _Scan:
         if isinstance(pack.get("order"), list):
             order = pack["order"]
     fresh: dict[str, Any] = {}
-    changed = False
     out: dict[str, dict[str, Any]] = {}
+    misses: list[tuple[str, str, int]] = []
     for kind, directory in _kind_dirs(paths, stream):
         prefix = kind + "/"
         for item in _entry_files(directory):
@@ -295,22 +302,167 @@ def _scan(paths: PlumbPaths, stream: LogStream) -> _Scan:
             size, mtime = st.st_size, st.st_mtime_ns
             hit = cached.get(name)
             if type(hit) is list and len(hit) == 3 and hit[0] == size and hit[1] == mtime:
-                raw = hit[2]  # immutable entry, unchanged on disk: never read again
-            else:
-                if parse_name(item.name) is None:
-                    continue
-                changed = True
-                try:
-                    raw = json.loads(Path(item.path).read_bytes())
-                except (OSError, ValueError):
-                    raw = None
-                if not isinstance(raw, dict):
-                    raw = None
-            fresh[name] = [size, mtime, raw]
+                fresh[name] = hit  # immutable entry, unchanged on disk: never read again
+                if hit[2] is not None:
+                    out[name] = hit[2]
+            elif parse_name(item.name) is not None:
+                fresh[name] = [size, mtime, None]
+                misses.append((name, item.path, size))
+    if misses:  # read in one place, git's object store first (_read_uncached)
+        for name, raw in _read_uncached(paths, stream, misses).items():
+            fresh[name][2] = raw
             if raw is not None:
                 out[name] = raw
-    changed = changed or len(fresh) != len(cached)
+    changed = bool(misses) or len(fresh) != len(cached)
     return _Scan(out, fresh, changed, None if changed else order)
+
+
+def _parse_entry(data: bytes) -> dict[str, Any] | None:
+    try:
+        raw = json.loads(data)
+    except ValueError:
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _read_uncached(paths: PlumbPaths, stream: LogStream,
+                   misses: list[tuple[str, str, int]]) -> dict[str, dict[str, Any] | None]:
+    """The parsed content of the entry files the pack cache does not hold (``kind/file``,
+    path, size on disk): the one place a reader reads an entry file.
+
+    Guarantee (SR-073, the hook ceiling): a read in a worktree whose entry files git has just
+    written (a ``git worktree add``, a ``git clone``, a merge, pull or checkout that brought
+    many entries, a deleted or outdated pack cache) does not open those files one by one.
+    The first open of a freshly written file pays the operating system's on-access scan
+    (about 7 ms per file on Windows with Defender): seconds for a few hundred entries, more
+    than a hook may spend. From ``GIT_BATCH_MIN`` misses on, an entry is taken, in order:
+
+    1. from the pack cache of another worktree of the repository (entries are immutable and
+       a name is unique, so the same name with the same size is the same entry; read-only,
+       found through git's files, no process);
+    2. from git's object store, in ONE ``git cat-file --batch`` by index path, when the
+       blob's size matches the file on disk (with or without CRLF conversion);
+    3. from the file itself (untracked new entries, a size mismatch, no git).
+
+    An entry edited in place to the same size reads as the other copy; ``verify_chain``
+    reads the files themselves and reports the edit."""
+    out: dict[str, dict[str, Any] | None] = {}
+    if len(misses) >= GIT_BATCH_MIN:
+        out.update(_read_from_siblings(paths, stream, misses))
+        rest = [miss for miss in misses if miss[0] not in out]
+        if len(rest) >= GIT_BATCH_MIN:
+            out.update(_read_from_git(paths, rest))
+    for name, path, _size in misses:
+        if name not in out:
+            try:
+                out[name] = _parse_entry(_read_file(path))
+            except OSError:
+                out[name] = None
+    return out
+
+
+def _worktree_roots(paths: PlumbPaths) -> list[Path]:
+    """The plumb roots of the repository's other worktrees, read from git's own files (the
+    ``.git`` file or directory, ``commondir``, ``worktrees/*/gitdir``); no process."""
+    try:
+        root = paths.root.resolve()
+    except OSError:
+        return []
+    top = next((d for d in (root, *root.parents) if (d / ".git").exists()), None)
+    if top is None:
+        return []
+    dotgit = top / ".git"
+    try:
+        if dotgit.is_file():
+            text = dotgit.read_text(encoding="utf-8").strip()
+            if not text.startswith("gitdir:"):
+                return []
+            gitdir = Path(text[len("gitdir:"):].strip())
+            gitdir = gitdir if gitdir.is_absolute() else top / gitdir
+            try:
+                common = gitdir / (gitdir / "commondir").read_text(encoding="utf-8").strip()
+            except OSError:
+                common = gitdir
+        else:
+            common = dotgit
+        common = common.resolve()
+    except OSError:
+        return []
+    tops: list[Path] = [common.parent] if common.name == ".git" else []
+    try:
+        with os.scandir(common / "worktrees") as it:
+            for item in it:
+                try:
+                    pointer = Path(item.path, "gitdir").read_text(encoding="utf-8").strip()
+                except OSError:
+                    continue
+                tops.append(Path(pointer).parent)
+    except OSError:
+        pass
+    rel = root.relative_to(top)
+    own = os.path.normcase(str(top))
+    return [t / rel for t in tops if os.path.normcase(str(t)) != own][:SIBLING_MAX]
+
+
+def _read_from_siblings(paths: PlumbPaths, stream: LogStream,
+                        misses: list[tuple[str, str, int]]) -> dict[str, dict[str, Any]]:
+    """The misses another worktree's pack cache holds with the same size on disk."""
+    out: dict[str, dict[str, Any]] = {}
+    for other in _worktree_roots(paths):
+        pack = _read_json(PlumbPaths(other).log_pack(stream))
+        valid = isinstance(pack, dict) and pack.get("v") == PACK_VERSION
+        files = pack.get("files") if valid else None
+        if not isinstance(files, dict):
+            continue
+        for name, _path, size in misses:
+            hit = files.get(name)
+            if (name not in out and type(hit) is list and len(hit) == 3 and hit[0] == size
+                    and isinstance(hit[2], dict)):
+                out[name] = hit[2]
+        if len(out) == len(misses):
+            break
+    return out
+
+
+def _read_file(path: str) -> bytes:
+    """One entry file read from disk (the direct path of ``_read_uncached``)."""
+    return Path(path).read_bytes()
+
+
+def _read_from_git(paths: PlumbPaths,
+                   misses: list[tuple[str, str, int]]) -> dict[str, dict[str, Any] | None]:
+    """The misses git's index holds with a blob the size of the file on disk; {} when git is
+    unavailable, the root is not in a work tree, or anything goes wrong."""
+    try:
+        prefix = paths.log_dir.relative_to(paths.root).as_posix()
+    except ValueError:
+        return {}
+    request = "".join(f":./{prefix}/{name}\n" for name, _, _ in misses).encode("ascii")
+    try:
+        result = subprocess.run(["git", "cat-file", "--batch"], cwd=paths.root, input=request,
+                                capture_output=True, timeout=GIT_BATCH_TIMEOUT_S,
+                                check=False)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {}
+    data = result.stdout
+    out: dict[str, dict[str, Any] | None] = {}
+    pos = 0
+    for name, _path, disk_size in misses:
+        end = data.find(b"\n", pos)
+        if end < 0:
+            break
+        header = data[pos:end].split()
+        pos = end + 1
+        if len(header) != 3 or header[1] != b"blob" or not header[2].isdigit():
+            continue  # "<request> missing": untracked or not in this index
+        size = int(header[2])
+        blob = data[pos:pos + size]
+        pos += size + 1
+        if len(blob) != size:
+            break
+        if disk_size in (size, size + blob.count(b"\n")):  # same file, maybe with CRLF
+            out[name] = _parse_entry(blob)
+    return out
 
 
 def _legacy_lines(paths: PlumbPaths, stream: LogStream,
@@ -332,10 +484,15 @@ def _legacy_lines(paths: PlumbPaths, stream: LogStream,
 
 
 def _to_entry(stream: LogStream, raw: Mapping[str, Any], offset: int, name: str) -> LogEntry:
+    """A ``LogEntry`` built without the frozen dataclass's per-field ``__setattr__`` (a
+    third of a warm read of 2000 entries); same class, same fields."""
     get = raw.get
-    return LogEntry(stream, str(get("kind", "")), str(get("at", "")),
-                    str(get("marker", "none")), get("payload") or {}, get("prev"),
-                    str(get("digest", "")), offset, name)
+    entry = object.__new__(LogEntry)
+    entry.__dict__.update(stream=stream, kind=str(get("kind", "")), at=str(get("at", "")),
+                          marker=str(get("marker", "none")), payload=get("payload") or {},
+                          prev=get("prev"), digest=str(get("digest", "")), offset=offset,
+                          name=name)
+    return entry
 
 
 def _ordered(items: list[tuple[tuple[Any, ...], LogEntry]]) -> list[LogEntry]:
