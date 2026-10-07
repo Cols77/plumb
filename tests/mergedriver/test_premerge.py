@@ -86,12 +86,13 @@ def test_hook_refuses_merge_commit_on_ic(tmp_path: Path) -> None:
 
 @pytest.mark.sr("SR-077")
 def test_commit_completes_after_choice(tmp_path: Path) -> None:
-    """SR-077 EX-6: the owner's choice settles the held merge; it can be finished."""
+    """SR-077 EX-6: the owner's choice settles the held merge; it can be finished. The
+    choice made during the merge is staged with its log entry (no ``git add`` here)."""
     root, _ = _diverged(tmp_path, approve_theirs=True)
     run_git(root, "merge", "--no-edit", "feat-x", check=False)
     assert cli.main(["conflict", "choose", "IC-001", "--take", "feat-x",
                      "--root", str(root)]) == 0
-    run_git(root, "add", "-A")
+    assert run_git(root, "diff", "--name-only", "--", ".plumb").stdout == ""  # all staged
     report = check(open_core(root))
     assert report.exit == 0, report.lines
     run_git(root, "commit", "-q", "-m", "Merge branch feat-x")
@@ -157,6 +158,26 @@ def test_foreign_hook_untouched(repo: Path, capsys) -> None:
 
 
 @pytest.mark.sr("SR-077")
+def test_foreign_commit_hook_untouched(repo: Path, capsys) -> None:
+    """SR-077 EX-3: a foreign prepare-commit-msg hook is kept; --json names the line that
+    calls plumb from it; the pre-merge-commit hook is still installed."""
+    hook = repo / ".git" / "hooks" / "prepare-commit-msg"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text(FOREIGN, encoding="utf-8")
+    assert cli.main(["merge-check", "--install-pre-merge-commit", "--json",
+                     "--root", str(repo)]) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["foreign_hooks"] == ["prepare-commit-msg"]
+    assert data["hook_lines"]["prepare-commit-msg"].endswith(
+        "-m plumb merge-check --hook prepare-commit-msg || exit $?")
+    assert hook.read_text(encoding="utf-8") == FOREIGN
+    assert HOOK_MARKER in _hook(repo).read_text(encoding="utf-8")
+    assert cli.main(["hooks", "install", "--root", str(repo), "--launcher", "uv"]) == 0
+    assert hook.read_text(encoding="utf-8") == FOREIGN
+    assert "your own prepare-commit-msg hook was kept" in capsys.readouterr().out
+
+
+@pytest.mark.sr("SR-077")
 def test_uninstall_removes_only_plumb_hook(repo: Path) -> None:
     _hook(repo).parent.mkdir(parents=True, exist_ok=True)
     _hook(repo).write_text(FOREIGN, encoding="utf-8")
@@ -165,8 +186,10 @@ def test_uninstall_removes_only_plumb_hook(repo: Path) -> None:
     _hook(repo).unlink()
     assert cli.main(["merge-check", "--install-pre-merge-commit", "--root", str(repo)]) == 0
     assert HOOK_MARKER in _hook(repo).read_text(encoding="utf-8")
+    assert (repo / ".git" / "hooks" / "prepare-commit-msg").exists()
     assert cli.main(["merge-check", "--uninstall-pre-merge-commit", "--root", str(repo)]) == 0
     assert not _hook(repo).exists()
+    assert not (repo / ".git" / "hooks" / "prepare-commit-msg").exists()
 
 
 @pytest.mark.sr("SR-077")
@@ -179,6 +202,8 @@ def test_hooks_install_and_init_install_the_quick_check(repo: Path, tmp_path: Pa
     assert cli.main(["hooks", "install", "--root", str(repo), "--launcher", "uv"]) == 0
     text = _hook(repo).read_text(encoding="utf-8")
     assert HOOK_MARKER in text and "merge-check --hook pre-merge-commit" in text
+    commit_hook = repo / ".git" / "hooks" / "prepare-commit-msg"
+    assert "merge-check --hook prepare-commit-msg" in commit_hook.read_text(encoding="utf-8")
     pushed = push.read_text(encoding="utf-8")
     assert PUSH_MARKER in pushed and "merge-check --hook pre-push" in pushed
     other = tmp_path / "fresh"
@@ -187,8 +212,9 @@ def test_hooks_install_and_init_install_the_quick_check(repo: Path, tmp_path: Pa
     assert cli.main(["init", "--root", str(other)]) == 0
     assert HOOK_MARKER in _hook(other).read_text(encoding="utf-8")
     assert PUSH_MARKER in (other / ".git" / "hooks" / "pre-push").read_text(encoding="utf-8")
+    assert (other / ".git" / "hooks" / "prepare-commit-msg").exists()
     assert cli.main(["hooks", "uninstall", "--root", str(repo)]) == 0
-    assert not _hook(repo).exists() and not push.exists()
+    assert not _hook(repo).exists() and not push.exists() and not commit_hook.exists()
 
 
 @pytest.mark.sr("SR-077")
@@ -241,9 +267,10 @@ def test_quick_check_never_calls_a_judgment_backend(
 
     backend = _jev_configured(monkeypatch)
     conflicted(repo)
+    run_git(repo, "add", "-A")  # the merge result, as git stages it
     head = run_git(repo, "rev-parse", "HEAD").stdout.strip()
     monkeypatch.setattr(premerge, "incoming_heads", lambda root: [(head, "feat-x")])
-    report = check(open_core(repo))
+    report = check(open_core(repo), "merge")
     assert report.exit == 4 and report.intent_conflicts
     assert backend.calls == 0
     assert "  Compatible? no judgment available" in report.intent_conflicts[0]["card"]

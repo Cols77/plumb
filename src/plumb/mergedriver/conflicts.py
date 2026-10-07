@@ -405,7 +405,28 @@ def apply_choice(core: Any, conflict: IntentConflict, take: str, *, by: str,
     if self_recorded:
         payload["self_recorded"] = True
     core.log_append("events", "conflict-resolution", payload)
+    stage_choice(core, record.path)
     return payload
+
+
+def stage_choice(core: Any, record_path: str) -> None:
+    """While a merge, rebase, cherry-pick or revert is in progress, stage the chosen record
+    and the log that records the choice, so the commit that finishes it carries them (and an
+    unmerged record is resolved). Outside one, nothing is staged. The quick check
+    (``premerge``) still holds a commit whose ``.plumb/`` files differ from the index."""
+    import subprocess
+
+    from plumb.mergedriver.driver import git_operation
+
+    root = core.root
+    if git_operation(root) is None:
+        return
+    paths = [record_path] + [rel for rel in (".plumb/log",) if (root / rel).exists()]
+    try:
+        subprocess.run(["git", "add", "-A", "--", *paths], cwd=root, capture_output=True,
+                       timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def chosen_line(core: Any, conflict: IntentConflict, take: str,

@@ -5,7 +5,10 @@ git calls it for a record file both sides changed (``merge=plumb-record`` in
 lock: it reads the three temporary files, writes the result to ``OURS`` and exits 0 (merged,
 possibly carrying an intent conflict) or 1 (git must stop: an add/add of one ID, a side
 that is not a record and did not merge as text, or a record whose open intent conflict a
-new one would replace). Import-light: the frontmatter helpers only,
+new one would replace). An intent conflict exits 0 only under ``git merge`` (and ``git
+pull``), whose commit the quick merge check holds; under a rebase, a cherry-pick, a revert or
+any other merge it exits 1, so git stops on the record instead of committing the block
+(R17). Import-light: the frontmatter helpers only,
 never the record index. git runs only to reserve an ``IC`` ID (and, with a git older than
 2.44, to name the two sides).
 """
@@ -32,6 +35,30 @@ def _git(root: Path, *args: str) -> str | None:
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout.strip() if out.returncode == 0 else None
+
+
+def under_git_merge() -> bool:
+    """True inside ``git merge`` (``git pull`` included): it names each incoming head in a
+    ``GITHEAD_<sha>`` variable; rebase, cherry-pick, revert and stash set none."""
+    return any(re.fullmatch(r"GITHEAD_[0-9a-fA-F]{40,64}", key) for key in os.environ)
+
+
+def git_operation(root: Path) -> str | None:
+    """The git operation in progress that records another line's work: ``merge``,
+    ``rebase``, ``cherry-pick`` or ``revert``; None outside one. One git call."""
+    if under_git_merge():
+        return "merge"
+    found = _git(Path(root), "rev-parse", "--absolute-git-dir")
+    if not found:
+        return None
+    gitdir = Path(found)
+    if (gitdir / "rebase-merge").is_dir() or (gitdir / "rebase-apply").is_dir():
+        return "rebase"
+    for name, operation in (("MERGE_HEAD", "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"),
+                            ("REVERT_HEAD", "revert")):
+        if (gitdir / name).is_file():
+            return operation
+    return None
 
 
 def _numbers(text: str) -> set[int]:
@@ -150,9 +177,13 @@ def _read(path: str) -> str:
 
 
 def main(argv: list[str]) -> int:
+    usage = "usage: plumb merge-driver BASE OURS THEIRS [PATH [OURS_LABEL THEIRS_LABEL]]"
+    if argv[:1] in (["-h"], ["--help"]):
+        print(usage)
+        print(__doc__.split("\n\n", 1)[1].strip())
+        return 0
     if len(argv) < 3:
-        print("usage: plumb merge-driver BASE OURS THEIRS [PATH [OURS_LABEL THEIRS_LABEL]]",
-              file=sys.stderr)
+        print(usage, file=sys.stderr)
         return 2
     base_path, ours_path, theirs_path = argv[:3]
     root = Path.cwd()
@@ -165,4 +196,6 @@ def main(argv: list[str]) -> int:
         handle.write(result.text.encode("utf-8"))
     for note in result.notes:
         print(note, file=sys.stderr)
+    if result.conflict and result.exit == 0 and not under_git_merge():
+        return 1  # no merge commit to hold: git stops on the record (R17)
     return result.exit

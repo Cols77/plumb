@@ -376,7 +376,8 @@ def install(root: Path, *, launcher: Launcher | str = "auto", dry_run: bool = Fa
 
 def git_adoption(root: Path, interpreter: str, lines: list[str], dry_run: bool) -> None:
     """The git side of adopting a repository (sp6 7.1, 10; R15, R17): the record merge
-    driver, the quick merge check (the pre-merge-commit hook, no test run) and the push check
+    driver, the quick merge check (the pre-merge-commit and prepare-commit-msg hooks, no test
+    run) and the push check
     (the pre-push hook, where the single full suite runs). R17 moves the full suite off the
     merge on the condition that it runs at push, so both hooks are installed together. They
     use the commit-msg hook's launcher; a hook plumb did not write is left untouched.
@@ -399,6 +400,11 @@ def git_adoption(root: Path, interpreter: str, lines: list[str], dry_run: bool) 
     _adopt_hook(root, interpreter, lines, dry_run, "the quick merge check",
                 premerge.hook_path, premerge.hook_text, premerge.install_hook,
                 owner_text.PREMERGE_INSTALLED, owner_text.FOREIGN_HOOK)
+    _adopt_hook(root, interpreter, lines, dry_run,
+                "the quick check of merges finished by hand, rebases and cherry-picks",
+                premerge.commit_hook_path, premerge.commit_hook_text,
+                premerge.install_commit_hook, owner_text.COMMIT_HOLD_INSTALLED,
+                owner_text.FOREIGN_COMMIT_HOOK)
     _adopt_hook(root, interpreter, lines, dry_run, "the push check",
                 prepush.hook_path, prepush.hook_text, prepush.install_pre_push_hook,
                 owner_text.PREPUSH_INSTALLED, owner_text.FOREIGN_PREPUSH_HOOK)
@@ -494,12 +500,13 @@ def _git_unadoption(root: Path, report: InstallReport, dry_run: bool) -> None:
         removed = []
     report.lines.extend(removed)
     report.changed.extend("merge driver" for _ in removed[:1])
-    if hook_state(root) == "plumb":
-        report.changed.append("pre-merge-commit")
-        if not dry_run:
-            uninstall_hook(root)
-        report.lines.append(f"plumb: {'would remove' if dry_run else 'removed'} the "
-                            "pre-merge-commit hook")
+    for hook in ("pre-merge-commit", "prepare-commit-msg"):
+        if hook_state(root, hook) == "plumb":
+            report.changed.append(hook)
+            if not dry_run:
+                uninstall_hook(root, hook)
+            report.lines.append(f"plumb: {'would remove' if dry_run else 'removed'} the "
+                                f"{hook} hook")
     from plumb.boundary import prepush
 
     if prepush.hook_state(root) == "plumb":
@@ -582,6 +589,8 @@ def status(root: Path) -> list[str]:
         return lines
     lines.append(driver_status(root))
     lines.append("pre-merge-commit hook (quick merge check): " + hook_state(root))
+    lines.append("prepare-commit-msg hook (quick check of merges finished by hand, rebases "
+                 "and cherry-picks): " + hook_state(root, "prepare-commit-msg"))
     from plumb.boundary.prepush import hook_state as push_hook_state
 
     lines.append("pre-push hook (the full test run): " + push_hook_state(root))

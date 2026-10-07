@@ -38,11 +38,15 @@ only when asked.
   terminal.
 - `merge-check`: run `{plumb} merge-check` and say what holds the merge in their terms. A
   merge held by the quick merge check (no test run) is finished when they say "finish the
-  merge": run `{plumb} merge-check --hook pre-merge-commit`; when it passes, `git commit
-  -m "Merge <branch>"` with the `SR:` trailers of the merged work. "check merges before they
-  are recorded": `{plumb} merge-check --install-pre-merge-commit`; "call plumb from my merge
-  hook": add the `hook_line` of `{plumb} merge-check --install-pre-merge-commit --json` to
-  their own hook. "run the tests when I push": `{plumb} merge-check --install-pre-push`;
+  merge": `git add .plumb` (their choices and confirmations made during the merge), then
+  `{plumb} merge-check --hook pre-merge-commit`; when it passes, `git commit -m "Merge
+  <branch>"` with the `SR:` trailers of the merged work. A rebase, cherry-pick or revert
+  step held the same way is continued when they say "continue the rebase" (or cherry-pick,
+  revert): `git add .plumb`, the same check, then `git rebase --continue` (`git cherry-pick
+  --continue`, `git revert --continue`). "check merges before they are recorded": `{plumb}
+  merge-check --install-pre-merge-commit`; "call plumb from my merge hook" (or "my commit
+  hook"): add the `hook_lines` of `{plumb} merge-check --install-pre-merge-commit --json`
+  to their own pre-merge-commit (or prepare-commit-msg) hook. "run the tests when I push": `{plumb} merge-check --install-pre-push`;
   "call plumb from my push hook": add `<python> -m plumb merge-check --hook pre-push` (git's
   pushed refs on its stdin) to their own pre-push hook. For a record file left in text-merge form, "keep mine" / "keep theirs" is
   `git checkout --ours` / `--theirs` on it then `git add`; for one changed on one side and

@@ -85,35 +85,63 @@ def _hook_pre_push(core: Any, run_full: bool) -> int:
 
 
 def _premerge_install(root: Path, args: Any) -> int:
-    """``--install-pre-merge-commit`` / ``--uninstall-pre-merge-commit`` (sp6 10)."""
-    from plumb.boundary.premerge import hook_line, install_hook, uninstall_hook
+    """``--install-pre-merge-commit`` / ``--uninstall-pre-merge-commit`` (sp6 10): the quick
+    merge check's two hooks, pre-merge-commit and prepare-commit-msg (``premerge``)."""
+    from plumb.boundary.premerge import (
+        COMMIT_HOOK,
+        HOOK,
+        hook_line,
+        install_commit_hook,
+        install_hook,
+        uninstall_hook,
+    )
     from plumb.boundary.prepush import ForeignHookError
     from plumb.cliutil import emit
     from plumb.present import owner_text
 
-    out: dict[str, Any] = {"hook": "pre-merge-commit"}
+    out: dict[str, Any] = {"hook": HOOK, "hooks": [HOOK, COMMIT_HOOK]}
+    lines: list[str] = []
     code = 0
-    try:
-        if args.install_pre_merge_commit:
-            out["path"] = str(install_hook(root, args.interpreter))
-            out["installed"] = True
-            line = owner_text.PREMERGE_INSTALLED
-        else:
-            removed = uninstall_hook(root)
-            out["removed"] = removed
-            line = owner_text.PREMERGE_REMOVED if removed else (
-                "plumb: no merge check of plumb's to remove (your own hook is left)")
-    except ForeignHookError:
-        out.update(installed=False, foreign=True, hook_line=hook_line(args.interpreter))
-        line, code = owner_text.FOREIGN_HOOK, 1
-    except (OSError, subprocess.CalledProcessError) as exc:
-        out.update(installed=False, error=str(exc))
-        line, code = f"plumb: the merge check was not changed: {exc}", 1
-    out["line"] = line
+    if args.install_pre_merge_commit:
+        for hook, install, foreign in (
+                (HOOK, install_hook, owner_text.FOREIGN_HOOK),
+                (COMMIT_HOOK, install_commit_hook, owner_text.FOREIGN_COMMIT_HOOK)):
+            try:
+                out.setdefault("paths", {})[hook] = str(install(root, args.interpreter))
+            except ForeignHookError:
+                out["foreign"] = True
+                out.setdefault("foreign_hooks", []).append(hook)
+                out.setdefault("hook_lines", {})[hook] = hook_line(args.interpreter, hook)
+                lines.append(foreign)
+                code = 1
+            except (OSError, subprocess.CalledProcessError) as exc:
+                out.setdefault("errors", {})[hook] = str(exc)
+                lines.append(f"plumb: the merge check was not changed: {exc}")
+                code = 1
+        out["installed"] = code == 0
+        if HOOK in out.get("paths", {}):
+            out["path"] = out["paths"][HOOK]
+        if HOOK in out.get("hook_lines", {}):
+            out["hook_line"] = out["hook_lines"][HOOK]
+        if code == 0:
+            lines.append(owner_text.PREMERGE_INSTALLED)
+    else:
+        try:
+            removed = [hook for hook in (HOOK, COMMIT_HOOK) if uninstall_hook(root, hook)]
+        except (OSError, subprocess.CalledProcessError) as exc:
+            removed, code = [], 1
+            out["error"] = str(exc)
+            lines.append(f"plumb: the merge check was not changed: {exc}")
+        out["removed"] = bool(removed)
+        if not code:
+            lines.append(owner_text.PREMERGE_REMOVED if removed else (
+                "plumb: no merge check of plumb's to remove (your own hook is left)"))
+    out["line"] = "\n".join(lines)
     if args.as_json:
         emit(out, True)
     else:
-        print(line)
+        for line in lines:
+            print(line)
     return code
 
 
@@ -135,10 +163,13 @@ def run(command: str, argv: list[str]) -> int:
                              "merge.default_base, main)")
     parser.add_argument("--no-run", action="store_true",
                         help="never run the full suite; report what would hold")
-    parser.add_argument("--hook", choices=["pre-push", "pre-merge-commit"], default=None,
+    parser.add_argument("--hook", choices=["pre-push", "pre-merge-commit",
+                                           "prepare-commit-msg"], default=None,
                         help="git hook mode: pre-push reads the pushed refs on stdin; "
                              "pre-merge-commit is the quick check of the merge in progress "
-                             "(no test run, R17)")
+                             "(no test run, R17); prepare-commit-msg the same check of a "
+                             "merge finished by hand and of each rebase, cherry-pick or "
+                             "revert step")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--install-pre-push", action="store_true",
                        help="write the git pre-push hook running this check (init and hooks "
@@ -146,10 +177,12 @@ def run(command: str, argv: list[str]) -> int:
     group.add_argument("--uninstall-pre-push", action="store_true",
                        help="remove plumb's pre-push hook (a foreign hook is left)")
     group.add_argument("--install-pre-merge-commit", action="store_true",
-                       help="write the git pre-merge-commit hook (the quick merge check; "
-                            "plumb hooks install writes it by default)")
+                       help="write the git pre-merge-commit and prepare-commit-msg hooks "
+                            "(the quick merge check; plumb hooks install writes them by "
+                            "default)")
     group.add_argument("--uninstall-pre-merge-commit", action="store_true",
-                       help="remove plumb's pre-merge-commit hook (a foreign hook is left)")
+                       help="remove plumb's pre-merge-commit and prepare-commit-msg hooks "
+                            "(a foreign hook is left)")
     parser.add_argument("--interpreter", default=sys.executable,
                         help="Python that runs the pre-push hook (default: this one)")
     add_common(parser)
@@ -179,8 +212,13 @@ def run(command: str, argv: list[str]) -> int:
             print(f"plumb: pre-push hook not changed: {exc}", file=sys.stderr)
             return 1
         return 0
+    if args.hook == "prepare-commit-msg":
+        from plumb.boundary.premerge import commit_hook_skips
+
+        if commit_hook_skips(root):
+            return 0
     core = open_core(root)
-    if args.hook == "pre-merge-commit":
+    if args.hook in ("pre-merge-commit", "prepare-commit-msg"):
         from plumb.boundary.premerge import run_hook
 
         return run_hook(core)

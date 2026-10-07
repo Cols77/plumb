@@ -65,7 +65,8 @@ def test_driver_status(tmp_path: Path, capsys) -> None:
     _clean(status(root))
     assert cli.main(["hooks", "status", "--root", str(root)]) == 0
     out = [line for line in capsys.readouterr().out.splitlines()
-           if "merge driver" in line or "pre-merge-commit" in line or "pre-push" in line]
+           if "merge driver" in line or "pre-merge-commit" in line or "pre-push" in line
+           or "prepare-commit-msg" in line]
     _clean("\n".join(out))
     from plumb.present import owner_text
 
@@ -162,3 +163,26 @@ def test_premerge_hook_output(tmp_path: Path) -> None:
     foreign = plumb(root, "merge-check", "--install-pre-merge-commit")
     assert foreign.returncode == 1
     _clean(foreign.stdout + foreign.stderr)
+
+
+@pytest.mark.sr("SR-077")
+@pytest.mark.parametrize("operation", ["merge", "rebase", "cherry-pick"])
+def test_commit_hold_output(operation: str) -> None:
+    """The quick check's lines for a step held on what git will not record, a record it
+    cannot read and an open conflict, for a merge and for a rebase or cherry-pick step;
+    and the commit hook's install texts."""
+    from plumb.boundary.premerge import PremergeReport, render
+
+    report = PremergeReport(
+        merging="feat-x", into="main", operation=operation, exit=1,
+        unstaged=(".plumb/requirements/SR-005.md",),
+        unreadable=({"path": ".plumb/requirements/SR-006.md",
+                     "line": "  " + owner_text.UNPARSABLE.format(record="SR-006",
+                                                                 title="totals")},))
+    lines = render(report)
+    _clean("\n".join(lines))
+    finish = "finish the merge" if operation == "merge" else f"continue the {operation}"
+    assert any(finish in line for line in lines)
+    _clean(render(PremergeReport(into="main", operation=operation))[-1])
+    _clean(owner_text.COMMIT_HOLD_INSTALLED)
+    _clean(owner_text.FOREIGN_COMMIT_HOOK)

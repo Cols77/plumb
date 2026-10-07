@@ -75,6 +75,8 @@ PREPUSH_INSTALLED = ("plumb: pushes run the full test run once before git sends 
                      "one full run; merges stay quick)")
 FOREIGN_PREPUSH_HOOK = ("plumb: your own pre-push hook was kept; say \"call plumb from my push "
                         "hook\" to add the full test run to it")
+COMMIT_HOLD_INSTALLED = ("plumb: merges finished by hand, rebases and cherry-picks get the same "
+                         "quick check before git records them")
 PREMERGE_REMOVED = "plumb: merges are no longer checked before git records them"
 PREMERGE_UNCONFIRMED = "  {record} \"{title}\" is not confirmed yet; /plumb confirm {title}"
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "
@@ -82,6 +84,15 @@ PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it;
 PREMERGE_COLLISION = ("  {record}: two different records hold this ID; /plumb merge-fix fixes "
                       "it")
 PREMERGE_OK = "plumb: merge check: nothing holds this merge"
+FOREIGN_COMMIT_HOOK = ("plumb: your own prepare-commit-msg hook was kept; say \"call plumb from "
+                       "my commit hook\" to add the check of merges finished by hand, rebases "
+                       "and cherry-picks")
+PREMERGE_UNSTAGED_HEADER = "plumb's files changed but are not part of what git will record:"
+PREMERGE_UNSTAGED = "  {path} is left out; say \"{finish}\" to include it"
+PREMERGE_UNREADABLE_HEADER = "records plumb cannot read, so it cannot check them:"
+STEP_HELD = ("plumb: this {operation} step is not recorded yet; once this is settled, say "
+             "\"continue the {operation}\"")
+STEP_OK = "plumb: {operation} check: nothing holds this step"
 
 
 def conflicts_card(n: int) -> str:

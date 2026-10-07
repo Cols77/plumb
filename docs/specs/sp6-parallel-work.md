@@ -464,8 +464,9 @@ neither side's hash, and no approval made on either side confirms it. The record
 
 ### 8.2 git's merge goes on (DEC-021)
 
-The driver exits 0 after writing an intent conflict. git completes the merge (or continues
-the rebase) with the record carrying the conflict. Parallel work is not stopped by plumb;
+The driver exits 0 after writing an intent conflict under `git merge` (and `git pull`),
+whose commit the quick merge check holds; under a rebase, cherry-pick or revert it exits 1,
+so git stops on the record (R17; see 10). Parallel work is not stopped by plumb;
 the merge boundary holds instead (10): `plumb check --merge`, `plumb merge-check`, the
 pre-push hook and the optional pre-merge-commit hook report every open intent conflict and
 exit 4 until the owner has chosen. With the pre-merge-commit hook installed, git does not
@@ -664,8 +665,17 @@ refuses the merge commit; the merge stays in progress, and the report ends with
 "plumb: the merge is not recorded yet; once this is settled, say "finish the merge""
 (`owner_text.MERGE_HELD`, 11.1) after the sections' own pointers (`/plumb conflicts`,
 `/plumb merge-fix`). git runs this hook only when
-`git merge` commits on its own; a merge stopped by a conflict and finished with
-`git commit` is covered by the pre-push hook and by `/plumb merge-check`.
+`git merge` commits on its own. (Lane fix, SP6 review 2, R17: every other way of recording
+another line's work is held too. The install also writes a `prepare-commit-msg` hook, the
+one hook git runs for `git commit` and `git merge --continue` finishing a merge, and for
+every rebase, cherry-pick and revert step; its shell lines exit at once outside those
+operations. The record merge driver exits 1 on an intent conflict outside `git merge`, so a
+rebase, cherry-pick or revert stops on the record. The check judges what git will record:
+it holds while a `.plumb/` file differs from the index being committed or a record cannot be
+read, and a choice made during the operation is staged with its log entry. A rebase,
+cherry-pick or revert step is checked for open intent conflicts only. `git -c
+plumb.mergeHold=false` bypasses the prepare-commit-msg hook, since git has no
+`--no-verify` for it. The R17 note: the full suite never runs here; it runs at push.)
 
 ## 11. Owner entry points (R14, R15)
 
