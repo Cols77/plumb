@@ -480,7 +480,7 @@ class Collision:
     id: str = ""
     paths: tuple[str, ...] = ()
     sides: tuple[str, ...] = ()            # the titles, the kept (first-parent) side first
-    how: Literal["add/add", "duplicate", "preview"] = "duplicate"
+    how: Literal["add/add", "duplicate", "kept-one", "preview"] = "duplicate"
 
 
 @dataclass(frozen=True)

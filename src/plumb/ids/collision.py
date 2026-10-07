@@ -3,7 +3,13 @@
 1. An in-progress merge leaves a record path unmerged because both sides added it
    (``git ls-files -u``: stages 2 and 3, no stage 1).
 2. The working tree holds two record files declaring the same ``id`` at different paths.
-3. ``preview(core, ref)``: records added on both ``HEAD`` and ``ref`` since their merge base
+3. A merge (in progress, or a merge commit at or after ``base``) whose two parents both added
+   one record path since their merge base with different content, resolved by hand to a
+   single file (``kept-one``): the other record is lost from the tree, so the path is still
+   a collision until ``plumb merge-fix`` renumbers the incoming record (its ``renumber``
+   event names it). Every entry point (``plumb check --merge``, ``plumb merge-check``, the
+   pre-push hook, ``plumb merge-fix``) reads collisions through ``collisions`` only.
+4. ``preview(core, ref)``: records added on both ``HEAD`` and ``ref`` since their merge base
    with the same ID and different content (read only).
 
 Two files with the same ID and the same content are not a collision.
@@ -131,11 +137,98 @@ def kept_first(root: Path, paths: list[str]) -> list[str]:
     return [p for _, p in sorted(added)]
 
 
+def _added(root: Path, fork: str, tip: str) -> set[str]:
+    """Record paths ``tip`` added since ``fork``."""
+    result = git(root, "diff", "--name-only", "--diff-filter=A", "--no-renames", "-z", fork,
+                 tip, "--", ".plumb/")
+    return {p for p in result.stdout.decode("utf-8", "replace").split("\0")
+            if RECORD_PATH.match(p)}
+
+
+def _rev(root: Path, name: str) -> str | None:
+    result = git(root, "rev-parse", "-q", "--verify", f"{name}^{{commit}}")
+    return result.stdout.decode().strip() or None if result.returncode == 0 else None
+
+
+def merges(root: Path, base: str | None) -> list[tuple[str, str]]:
+    """``(first parent, incoming parent)`` of the merge in progress (``MERGE_HEAD``) and of
+    every merge commit after ``base`` (``base..HEAD``); without ``base``, the merge in
+    progress, else ``HEAD`` when it is a merge commit (the pair ``plumb merge-fix`` fixes)."""
+    out: list[tuple[str, str]] = []
+    merge_head = _rev(root, "MERGE_HEAD")
+    if merge_head:
+        out.append(("HEAD", merge_head))
+    if base is None:
+        second = None if merge_head else _rev(root, "HEAD^2")
+        if second:
+            out.append(("HEAD^1", second))
+        return out
+    listed = git(root, "rev-list", "--merges", "--parents", f"{base}..HEAD")
+    for line in listed.stdout.decode().splitlines():
+        parts = line.split()
+        out.extend((parts[1], other) for other in parts[2:])
+    return out
+
+
+def renumbered(core: Any) -> set[tuple[str, str]]:
+    """``(old id, incoming record hash)`` of every ``renumber`` event: the collisions
+    ``plumb merge-fix`` already fixed."""
+    out: set[tuple[str, str]] = set()
+    for entry in core.events():
+        if entry.kind == "renumber":
+            old, pinned = entry.payload.get("from"), entry.payload.get("old_hash")
+            if isinstance(old, str) and isinstance(pinned, str):
+                out.add((old, pinned))
+    return out
+
+
+def _hash(text: str) -> str | None:
+    from plumb.ids.rewrite import parse
+    from plumb.model import record_hash
+
+    parsed = parse(text)
+    return record_hash(parsed[0], parsed[1]) if parsed is not None else None
+
+
+def kept_one(core: Any, base: str | None, reported: set[str]) -> list[Collision]:
+    """Record paths both parents of a merge added with different content that the merge
+    resolved to one file, unless a ``renumber`` already moved the incoming record."""
+    root = Path(core.root)
+    pairs = merges(root, base)
+    if not pairs:
+        return []
+    fixed = renumbered(core)
+    out: list[Collision] = []
+    seen = set(reported)
+    for ours, theirs in pairs:
+        fork = git(root, "merge-base", ours, theirs)
+        if fork.returncode != 0:
+            continue
+        start = fork.stdout.decode().strip()
+        both = sorted((_added(root, start, ours) & _added(root, start, theirs)) - seen)
+        if not both:
+            continue
+        texts = blobs(root, [f"{side}:{p}" for p in both for side in (ours, theirs)])
+        for n, path in enumerate(both):
+            kept, incoming = texts[2 * n], texts[2 * n + 1]
+            if kept is None or incoming is None or kept == incoming:
+                continue
+            if (id_of(incoming, path), _hash(incoming)) in fixed:
+                continue
+            seen.add(path)
+            out.append(Collision(id=id_of(kept, path), paths=(path,),
+                                 sides=(title_of(kept), title_of(incoming)), how="kept-one"))
+    return out
+
+
 def collisions(core: Any, base: str | None = None) -> tuple[Collision, ...]:
-    """Every ID collision of the working tree (sections 1 and 2 of 5.1). ``base`` is
-    accepted for the merge report's signature; the working tree is what is checked."""
-    del base
-    return tuple(unmerged_add_add(Path(core.root)) + duplicates(core))
+    """Every ID collision of the merge result (5.1): unmerged add/add paths, two files with
+    one ID in the working tree, and add/add paths a merge (in progress, or committed after
+    ``base``; without ``base``, ``HEAD``'s) resolved to a single file."""
+    root = Path(core.root)
+    unmerged = unmerged_add_add(root)
+    found = unmerged + duplicates(core)
+    return tuple(found + kept_one(core, base, {c.paths[0] for c in unmerged}))
 
 
 def preview(core: Any, ref: str) -> tuple[Collision, ...]:

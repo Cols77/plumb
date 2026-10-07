@@ -3,7 +3,10 @@
 A reference is rewritten when the incoming side introduced it: it is in the incoming
 (``theirs``) version of a file and not in the merge base's version. A reference our side
 introduced still names the old ID. When both sides introduced the same reference, both stay:
-the old ID for ours, the new ID for the incoming record. The places:
+the old ID for ours, the new ID for the incoming record. Who introduced a reference is
+decided per place, never by its text alone (identical text added on both sides is common):
+a link or list entry by count (``owed``), a test marker by the test node it decorates
+(``_marker_owners``), a body line by its position (``incoming_lines``). The places:
 
 - the incoming record itself (``incoming_record``): every reference, since the whole file
   is the incoming side's;
@@ -284,8 +287,42 @@ def _rewrite_strings(value: Any, sides: _Sides, old: str, new: str,
     return value, 0
 
 
-def _lines(text: str | None) -> set[str]:
-    return set(text.splitlines()) if text else set()
+def _inserted(base: list[str], side: list[str]) -> set[int]:
+    """Indexes of ``side``'s lines that are not ``base``'s (by a line diff)."""
+    from difflib import SequenceMatcher
+
+    matched: set[int] = set()
+    for _, b, size in SequenceMatcher(None, base, side, autojunk=False).get_matching_blocks():
+        matched.update(range(b, b + size))
+    return set(range(len(side))) - matched
+
+
+def _aligned(merged: list[str], side: list[str], wanted: set[int],
+             skip: set[int]) -> set[int]:
+    """Indexes of ``merged``'s lines (``skip`` left out) that align with ``wanted`` lines of
+    ``side``."""
+    from difflib import SequenceMatcher
+
+    keep = [i for i in range(len(merged)) if i not in skip]
+    out: set[int] = set()
+    matcher = SequenceMatcher(None, [merged[i] for i in keep], side, autojunk=False)
+    for a, b, size in matcher.get_matching_blocks():
+        out.update(keep[a + k] for k in range(size) if b + k in wanted)
+    return out
+
+
+def incoming_lines(merged: str, base: str | None, ours: str | None,
+                   theirs: str | None) -> set[int]:
+    """0-based indexes of ``merged``'s lines that the incoming side inserted and ours did
+    not, decided by position: ours' insertions are aligned first, then the incoming
+    side's among the remaining lines. Two identical lines, one added on each side, give
+    one to each."""
+    lines = merged.splitlines()
+    b = (base or "").splitlines()
+    o = (ours or "").splitlines()
+    t = (theirs or "").splitlines()
+    from_ours = _aligned(lines, o, _inserted(b, o), set())
+    return _aligned(lines, t, _inserted(b, t), from_ours)
 
 
 def _rewrite_body(body: str, base: str | None, ours: str | None, theirs: str | None,
@@ -293,15 +330,13 @@ def _rewrite_body(body: str, base: str | None, ours: str | None, theirs: str | N
     pattern = _wikilink(old)
     if not pattern.search(body):
         return body, 0
-    introduced_t = _lines(theirs) - _lines(base)
-    introduced_o = _lines(ours) - _lines(base)
+    incoming = incoming_lines(body, base, ours, theirs)
     out: list[str] = []
     count = 0
-    for line in body.splitlines(keepends=True):
-        bare = line.rstrip("\r\n")
-        if pattern.search(bare) and bare in introduced_t and bare not in introduced_o:
-            line, n = pattern.subn("[[" + new, line)
-            count += n
+    for n, line in enumerate(body.splitlines(keepends=True)):
+        if n in incoming and pattern.search(line):
+            line, k = pattern.subn("[[" + new, line)
+            count += k
         out.append(line)
     return "".join(out), count
 
@@ -345,44 +380,88 @@ def _dotted(node: ast.AST) -> str:
     return ".".join(reversed(parts))
 
 
-def _marker_positions(text: str, old: str) -> list[tuple[int, int, int]]:
-    """``(line, start col, end col)`` of every ``mark.sr("<old>")`` argument."""
+_Owner = tuple[str | None, ast.AST | None, tuple[int, int, int]]
+
+
+def _marker_owners(text: str | None, old: str) -> list[_Owner] | None:
+    """``(qualified name, node, (line, start col, end col))`` of every ``mark.sr("<old>")``
+    argument, owned by the innermost function or class it decorates or sits in (``None`` at
+    module level); ``None`` when the text does not parse."""
+    if text is None:
+        return []
     try:
         tree = ast.parse(text)
     except (SyntaxError, ValueError):
-        return []
-    out: list[tuple[int, int, int]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        name = _dotted(node.func)
-        if not (name == "mark.sr" or name.endswith(".mark.sr")):
-            continue
-        for arg in node.args:
-            if isinstance(arg, ast.Constant) and arg.value == old and \
-                    arg.end_col_offset is not None and arg.lineno == arg.end_lineno:
-                out.append((arg.lineno, arg.col_offset, arg.end_col_offset))
+        return None
+    out: list[_Owner] = []
+    owners = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+    def visit(node: ast.AST, qual: str | None, owner: ast.AST | None) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, owners):
+                visit(child, f"{qual}.{child.name}" if qual else child.name, child)
+                continue
+            if isinstance(child, ast.Call):
+                name = _dotted(child.func)
+                if name == "mark.sr" or name.endswith(".mark.sr"):
+                    for arg in child.args:
+                        if isinstance(arg, ast.Constant) and arg.value == old and \
+                                arg.end_col_offset is not None and \
+                                arg.lineno == arg.end_lineno:
+                            out.append((qual, owner,
+                                        (arg.lineno, arg.col_offset, arg.end_col_offset)))
+            visit(child, qual, owner)
+
+    visit(tree, None, None)
+    return out
+
+
+def _carriers(text: str | None, old: str) -> dict[str, set[str]]:
+    """``{qualified name: source of each node so named}`` carrying a ``mark.sr("<old>")``."""
+    out: dict[str, set[str]] = {}
+    for qual, node, _ in _marker_owners(text, old) or []:
+        if qual is not None and node is not None:
+            out.setdefault(qual, set()).add(ast.get_source_segment(text or "", node) or "")
     return out
 
 
 def markers(merged: str, base: str | None, ours: str | None, theirs: str | None,
             mapping: Mapping[str, str]) -> tuple[str, int]:
-    """Test markers on lines the incoming side introduced (and ours did not)."""
-    introduced_t = _lines(theirs) - _lines(base)
-    introduced_o = _lines(ours) - _lines(base)
+    """Test markers the incoming side introduced, attributed to the test node they decorate
+    (a function or class whose marker theirs added and ours did not; when both sides added
+    a node of that name, the merged node whose source is the incoming one). A marker outside
+    any function or class goes by its line's position (``incoming_lines``)."""
     lines = merged.splitlines(keepends=True)
     count = 0
     for old, new in mapping.items():
-        positions = _marker_positions("".join(lines), old)
-        for lineno, start, end in sorted(positions, key=lambda p: (p[0], -p[1])):
-            line = lines[lineno - 1]
-            bare = line.rstrip("\r\n")
-            if bare not in introduced_t or bare in introduced_o:
+        text = "".join(lines)
+        found = _marker_owners(text, old)
+        if not found:
+            continue
+        t_nodes, b_nodes, o_nodes = (_carriers(theirs, old), _carriers(base, old),
+                                     _carriers(ours, old))
+        by_line: set[int] | None = None
+        chosen: list[tuple[int, int, int]] = []
+        for qual, node, position in found:
+            if qual is None:
+                if by_line is None:
+                    by_line = incoming_lines(text, base, ours, theirs)
+                if position[0] - 1 in by_line:
+                    chosen.append(position)
                 continue
+            if qual not in t_nodes or qual in b_nodes:
+                continue
+            if qual in o_nodes:  # both added a node of that name: by its source
+                source = ast.get_source_segment(text, node) if node is not None else None
+                if source not in t_nodes[qual] or source in o_nodes[qual]:
+                    continue
+            chosen.append(position)
+        for lineno, start_col, end_col in sorted(chosen, key=lambda p: (p[0], -p[1])):
+            line = lines[lineno - 1]
             # ast columns count UTF-8 bytes
             raw = line.encode("utf-8")
-            quote = raw[start:start + 1].decode()
-            raw = raw[:start] + f"{quote}{new}{quote}".encode() + raw[end:]
+            quote = raw[start_col:start_col + 1].decode()
+            raw = raw[:start_col] + f"{quote}{new}{quote}".encode() + raw[end_col:]
             lines[lineno - 1] = raw.decode("utf-8")
             count += 1
     return "".join(lines), count

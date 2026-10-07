@@ -85,6 +85,22 @@ def _plan(core: Any, found: Collision, ctx: _Context) -> _Plan | None:
             return None
         return _Plan(found, found.id, KIND_OF_PREFIX.get(found.id.split("-")[0], ""),
                      _collision.title_of(incoming), incoming, path, kept_text=kept)
+    if found.how == "kept-one":  # resolved to one file by hand: restore the incoming record
+        if not (ctx.ours and ctx.theirs):
+            return None
+        path = found.paths[0]
+        first, incoming = _collision.blobs(root, [f"{ctx.ours}:{path}", f"{ctx.theirs}:{path}"])
+        try:
+            current: str | None = (root / path).read_bytes().decode("utf-8", "replace")
+        except OSError:
+            current = None
+        # the first parent keeps the ID (DEC-022): the resolved text, unless it is the
+        # incoming record's, in which case the first parent's own text
+        kept = current if current is not None and current != incoming else first
+        if kept is None or incoming is None or rewrite.parse(incoming) is None:
+            return None
+        return _Plan(found, found.id, KIND_OF_PREFIX.get(found.id.split("-")[0], ""),
+                     _collision.title_of(incoming), incoming, path, kept_text=kept)
     if len(found.paths) != 2:
         return None
     incoming_path = found.paths[1]  # kept_first ordered the first parent's file first

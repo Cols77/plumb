@@ -92,3 +92,80 @@ def test_no_collision_after_fix(tmp_path: Path, capsys, command) -> None:
     main([*command, "--json", "--root", str(s.origin)])
     out = capsys.readouterr().out
     assert '"id_collisions": []' in out
+
+
+# --------------------------------------------------------------------------- kept one
+# A merge stopped on an add/add of one record and someone resolved it by hand to one text:
+# the incoming record is lost from the tree. Every entry point still reports the collision
+# (they all read ``ids.collisions``), and merge-fix restores the incoming record renumbered.
+
+SR_PATH = ".plumb/requirements/SR-002.md"
+
+
+def _resolved_by_hand(tmp_path: Path, *, commit: bool = True) -> scenario.Scenario:
+    s = scenario.build(tmp_path, approve=False, trailer_in_message=False)
+    run_git(s.origin, "checkout", "--ours", "--", SR_PATH)
+    run_git(s.origin, "add", "-A")
+    if commit:
+        run_git(s.origin, "commit", "-q", "--no-verify", "--no-edit")
+    return s
+
+
+def test_kept_one_merge_in_progress_is_a_collision(tmp_path: Path) -> None:
+    s = _resolved_by_hand(tmp_path, commit=False)
+    [found] = ids.collisions(open_core(s.origin))
+    assert (found.id, found.how, found.paths) == ("SR-002", "kept-one", (SR_PATH,))
+    assert found.sides == ("relay checks", "export csv")
+
+
+@pytest.mark.parametrize("command", [["check", "--merge", "HEAD^1"],
+                                     ["merge-check", "HEAD^1", "--no-run"]])
+def test_kept_one_committed_merge_holds_the_report(tmp_path: Path, capsys, command) -> None:
+    s = _resolved_by_hand(tmp_path)
+    assert ids.collisions(open_core(s.origin), "HEAD^1")[0].how == "kept-one"
+    code = main([*command, "--root", str(s.origin)])
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "ID collisions hold the merge" in out
+    assert '"relay checks" and "export csv"' in out and "the merge kept only one" in out
+
+
+def test_kept_one_committed_merge_holds_the_pre_push_hook(tmp_path: Path, capsys,
+                                                          monkeypatch) -> None:
+    import io
+    import sys
+
+    s = _resolved_by_hand(tmp_path)
+    head = run_git(s.origin, "rev-parse", "HEAD").strip()
+    first = run_git(s.origin, "rev-parse", "HEAD^1").strip()
+    monkeypatch.setattr(sys, "stdin", io.StringIO(
+        f"refs/heads/main {head} refs/heads/main {first}\n"))
+    code = main(["merge-check", "--hook", "pre-push", "--no-run", "--root", str(s.origin)])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "ID collisions hold the merge" in captured.out
+    assert "the push is refused" in captured.err
+
+
+def test_kept_one_committed_merge_is_fixed_by_merge_fix(tmp_path: Path, capsys) -> None:
+    s = _resolved_by_hand(tmp_path)
+    assert main(["merge-fix", "--root", str(s.origin)]) == 0
+    assert "now SR-003" in capsys.readouterr().out
+    index = open_core(s.origin).index()
+    assert index["SR-002"].title == "relay checks"
+    assert index["SR-003"].title == "export csv"
+    dec = index["DEC-001"]
+    assert [lk.target.record for lk in dec.links if lk.kind == "decides"] == ["SR-003"]
+    marker = (s.origin / "tests" / "test_export.py").read_text(encoding="utf-8")
+    assert marker.count('mark.sr("SR-003")') == 2
+    assert ids.collisions(open_core(s.origin), "HEAD^1") == ()
+    assert main(["merge-fix", "--root", str(s.origin)]) == 0
+    assert "nothing to fix" in capsys.readouterr().out
+
+
+def test_kept_one_merge_in_progress_is_fixed_and_staged(tmp_path: Path) -> None:
+    s = _resolved_by_hand(tmp_path, commit=False)
+    result = ids.merge_fix(open_core(s.origin))
+    assert [r["to"] for r in result.renumbered] == ["SR-003"] and result.remaining == ()
+    assert ".plumb/requirements/SR-003.md" in result.staged
+    assert ids.collisions(open_core(s.origin)) == ()

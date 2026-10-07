@@ -161,6 +161,35 @@ def test_duplicate_without_merge_renumbers_the_later_file(tmp_path: Path) -> Non
     assert not path.exists()
 
 
+def test_both_sides_add_tests_to_one_file(tmp_path: Path) -> None:
+    from ids.gitrepo import commit_all, make_repo, write
+
+    root = make_repo(tmp_path / "r")
+    write(root, "SR-001", "base")
+    shared = root / "tests" / "test_shared.py"
+    shared.parent.mkdir()
+    head = "import pytest\n\n\ndef test_a():\n    pass\n"
+    tail = "\n\ndef test_b():\n    pass\n"
+    shared.write_text(head + tail, encoding="utf-8")
+    commit_all(root, "base")
+    marked = '\n\n@pytest.mark.sr("SR-002")\ndef test_{}():\n    pass\n'
+    run_git(root, "checkout", "-q", "-b", "side")
+    write(root, "SR-002", "export csv")
+    shared.write_text(head + tail + marked.format("export"), encoding="utf-8")
+    commit_all(root, "export")
+    run_git(root, "checkout", "-q", "main")
+    write(root, "SR-002", "relay checks")
+    shared.write_text(head + marked.format("relay") + tail, encoding="utf-8")
+    commit_all(root, "relay")
+    run_git(root, "merge", "--no-edit", "side", check=False)
+    result = ids.merge_fix(open_core(root))
+    assert [r["to"] for r in result.renumbered] == ["SR-003"]
+    text = shared.read_text(encoding="utf-8")
+    assert '@pytest.mark.sr("SR-002")\ndef test_relay' in text
+    assert '@pytest.mark.sr("SR-003")\ndef test_export' in text
+    assert "tests/test_shared.py" in result.staged
+
+
 def test_from_ref_preview_names_the_coming_collision(tmp_path: Path) -> None:
     s = scenario.build(tmp_path, merge=False)
     run_git(s.origin, "fetch", "-q", str(s.clone), "main:incoming")
@@ -234,12 +263,51 @@ def test_rewrites_incoming_test_markers_only() -> None:
     merged = base + ('\n@pytest.mark.sr("SR-070")\ndef test_ours():\n    pass\n'
                      '\n@pytest.mark.sr("SR-070")\ndef test_theirs():\n'
                      '    assert "SR-070"\n')
-    # the marker line is identical on both sides: both introduced it, so it stays
+    # the marker line is identical on both sides: it goes by the test it decorates
     out, count = rewrite.markers(merged, base, ours, theirs, MAP)
-    assert count == 0 and out == merged
+    assert count == 1
+    assert '@pytest.mark.sr("SR-070")\ndef test_ours' in out
+    assert '@pytest.mark.sr("SR-081")\ndef test_theirs' in out
+    assert 'assert "SR-070"' in out  # a string that is not a marker is left alone
     theirs2 = base + "\npytestmark = pytest.mark.sr('SR-070')\n"
     out, count = rewrite.markers(theirs2, base, base, theirs2, MAP)
     assert count == 1 and "pytest.mark.sr('SR-081')" in out
+
+
+def test_markers_same_test_name_on_both_sides_go_by_source() -> None:
+    base = "import pytest\n"
+    ours = base + '\n@pytest.mark.sr("SR-070")\ndef test_it():\n    assert relay()\n'
+    theirs = base + '\n@pytest.mark.sr("SR-070")\ndef test_it():\n    assert export()\n'
+    merged = ours + theirs[len(base):]
+    out, count = rewrite.markers(merged, base, ours, theirs, MAP)
+    assert count == 1
+    assert '"SR-070")\ndef test_it():\n    assert relay()' in out
+    assert '"SR-081")\ndef test_it():\n    assert export()' in out
+
+
+def test_markers_on_classes_and_methods() -> None:
+    base = "import pytest\n\n\nclass TestA:\n    def test_a(self):\n        pass\n"
+    theirs = base + ('\n    @pytest.mark.sr("SR-070")\n    def test_b(self):\n        pass\n'
+                     '\n\n@pytest.mark.sr("SR-070")\nclass TestC:\n    pass\n')
+    ours = base.replace("class TestA:", '@pytest.mark.sr("SR-070")\nclass TestA:')
+    merged = theirs.replace("class TestA:", '@pytest.mark.sr("SR-070")\nclass TestA:')
+    out, count = rewrite.markers(merged, base, ours, theirs, MAP)
+    assert count == 2
+    assert '@pytest.mark.sr("SR-070")\nclass TestA:' in out
+    assert '@pytest.mark.sr("SR-081")\n    def test_b' in out
+    assert '@pytest.mark.sr("SR-081")\nclass TestC:' in out
+
+
+def test_body_wikilink_line_added_on_both_sides_goes_by_place() -> None:
+    base = _rec("INT-001", "i", "Intro.\n\n## Relays\n\n## Export\n")
+    ours = _rec("INT-001", "i", "Intro.\n\n## Relays\nSee [[SR-070]].\n\n## Export\n")
+    theirs = _rec("INT-001", "i", "Intro.\n\n## Relays\n\n## Export\nSee [[SR-070]].\n")
+    merged = _rec("INT-001", "i",
+                  "Intro.\n\n## Relays\nSee [[SR-070]].\n\n## Export\nSee [[SR-070]].\n")
+    out, count = rewrite.record(merged, base, ours, theirs, MAP)
+    assert count == 1
+    body = rewrite.parse(out)[1]
+    assert "## Relays\nSee [[SR-070]].\n\n## Export\nSee [[SR-081]].\n" in body
 
 
 def test_rewrites_claims_baseline_nc() -> None:

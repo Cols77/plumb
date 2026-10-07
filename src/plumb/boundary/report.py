@@ -399,6 +399,8 @@ def collision_lines(rows: Sequence[Mapping[str, Any]]) -> list[str]:
         where = ", ".join(row.get("paths") or ())
         if row.get("how") == "add/add":
             where += " (both branches added it)"
+        elif row.get("how") == "kept-one":
+            where += " (both branches added it; the merge kept only one)"
         lines.append(COLLISION.format(id=row.get("id"), ours=sides[0], theirs=sides[1],
                                       where=where))
     return [COLLISIONS_HEADER, *_capped(lines)]
