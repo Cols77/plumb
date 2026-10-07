@@ -26,7 +26,7 @@ def test_json_shape(tmp_path: Path, capsys) -> None:
     s = scenario.build(tmp_path)
     assert main(["merge-fix", "--json", "--root", str(s.origin)]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert set(data) == {"renumbered", "remaining", "staged", "dry_run", "lines"}
+    assert set(data) == {"renumbered", "remaining", "blocked", "staged", "dry_run", "lines"}
     [row] = data["renumbered"]
     assert set(row) == {"from", "to", "title", "kind", "references", "files", "approvals",
                         "commits"}

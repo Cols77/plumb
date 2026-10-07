@@ -28,6 +28,8 @@ NOTHING_TO_FIX = "plumb: no ID collision; nothing to fix"
 WOULD_RENUMBER = "plumb: {old} \"{title}\" from the merged branch would become {new}"
 FIX_REMAINS = ("plumb: {id} still has two records ({where}); say \"keep mine\" or \"keep "
                "theirs\" for it, then /plumb merge-fix")
+FIX_BLOCKED = ("plumb: {id} \"{title}\" is not renumbered yet: {files} files that name it "
+               "still hold merge conflicts; resolve them, then /plumb merge-fix")
 PREVIEW = ("plumb: merging {ref} would bring {id} \"{theirs}\" while this branch holds {id} "
            "\"{ours}\"; /plumb merge-fix renumbers it after the merge")
 # R17: an "ok" carried across a renumber is labelled wherever the confirmation is shown

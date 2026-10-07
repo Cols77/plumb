@@ -486,10 +486,13 @@ class Collision:
 @dataclass(frozen=True)
 class MergeFixResult:
     """``plumb merge-fix`` (sp6 5.6). ``renumbered`` rows: {from, to, title, kind,
-    references, files, approvals, commits}."""
+    references, files, approvals, commits}. ``blocked``: the files naming a colliding ID
+    that are still unmerged or do not read; while any is left nothing is renumbered and
+    every collision remains."""
 
     renumbered: tuple[Mapping[str, Any], ...] = ()
     remaining: tuple[Collision, ...] = ()
+    blocked: tuple[str, ...] = ()
     staged: tuple[str, ...] = ()
     dry_run: bool = False
     lines: tuple[str, ...] = ()

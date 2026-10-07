@@ -98,19 +98,20 @@ def _escalated_sets(index: Mapping[str, Any]) -> dict[str, list[str]]:
 
 
 def _set_confirmed(core: Any, members: Sequence[str]) -> bool:
-    """Whether a valid approval, not revoked since, pins every member's current hash."""
-    from plumb.confirm import checked_entries
+    """Whether a valid approval, not revoked since, pins every member's current hash (an
+    approval a renumber carried pins the renumbered member: R17)."""
+    from plumb.confirm import checked_entries, pinned_through_renumbers
 
     index = core.index()
     want = {m: index[m].hash for m in members if m in index}
     if len(want) != len(set(members)):
         return False
     confirmed = False
-    for entry, problem in checked_entries(core.events(), core.config.approve.affirmations):
+    pairs = checked_entries(core.events(), core.config.approve.affirmations)
+    for entry, problem, items in pinned_through_renumbers(core, pairs):
         if problem is not None:
             continue
-        pinned = {str(r.get("id")): str(r.get("hash"))
-                  for r in entry.payload.get("records") or [] if isinstance(r, Mapping)}
+        pinned = {str(r.get("id")): str(r.get("hash")) for r in items}
         if entry.kind == "approval" and all(pinned.get(m) == h for m, h in want.items()):
             confirmed = True
         elif entry.kind == "revocation" and any(pinned.get(m) == h for m, h in want.items()):

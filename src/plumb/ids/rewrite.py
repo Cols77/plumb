@@ -61,6 +61,32 @@ def parse(text: str | None) -> tuple[dict[str, Any], str] | None:
     return (data, body) if isinstance(data, dict) else None
 
 
+_CONFLICT_MARKER = re.compile(r"^(?:<{7}|>{7})(?: |$)", re.MULTILINE)
+
+
+def readable(path: str, text: str) -> bool:
+    """Whether ``merge-fix`` can read ``text`` (the file at ``path``) to rewrite its
+    references: a record parses, ``claims.yaml`` is YAML, a test file is Python. A file
+    still holding conflict markers is not."""
+    if _CONFLICT_MARKER.search(text):
+        return False
+    if path.endswith(".py"):
+        try:
+            ast.parse(text)
+        except (SyntaxError, ValueError):
+            return False
+        return True
+    if path == ".plumb/claims.yaml":
+        import yaml
+
+        try:
+            yaml.safe_load(text)
+        except yaml.YAMLError:
+            return False
+        return True
+    return parse(text) is not None
+
+
 def dump(data: Mapping[str, Any], body: str) -> str:
     from plumb.store import dump_frontmatter
 

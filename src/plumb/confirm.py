@@ -185,6 +185,31 @@ def carry_renumbers(core: Core, standing: dict[str, list[tuple[str, str, LogEntr
     return carry(core, standing, revocations_of(checked(core)))
 
 
+def pinned_through_renumbers(core: Core, pairs: Iterable[tuple[LogEntry, str | None]]
+                             ) -> list[tuple[LogEntry, str | None, list[Mapping[str, Any]]]]:
+    """``pairs`` (``checked_entries`` output), each entry with the records it pins read
+    through every ``renumber`` (sp6 5.4, R17): an approval a renumber carries pins the new ID
+    at its current hash too, the old item's other fields (``ends``, ``verified``) kept. The
+    one choke point for the readers of what an approval pinned outside the confirmation
+    states (``merge.approved_ends``, ``boundary.report._set_confirmed``); nothing is
+    imported when the log holds no ``renumber`` entry."""
+    carried: Mapping[tuple[str, str, str], tuple[str, str]] = {}
+    if any(e.kind == "renumber" for e in core.events()):
+        from plumb.ids.aliases import carried_items
+
+        carried = carried_items(core)
+    out: list[tuple[LogEntry, str | None, list[Mapping[str, Any]]]] = []
+    for entry, problem in pairs:
+        items = [r for r in entry.payload.get("records") or [] if isinstance(r, Mapping)]
+        if carried and entry.kind == "approval":
+            for item in list(items):
+                hit = carried.get((entry.digest, str(item.get("id")), str(item.get("hash"))))
+                if hit is not None:
+                    items.append({**item, "id": hit[0], "hash": hit[1]})
+        out.append((entry, problem, items))
+    return out
+
+
 def remaining_approvals(entries: Iterable[LogEntry], affirmations: Sequence[str],
                         escalated: Collection[str] = ()) -> dict[str, list[tuple[str, str]]]:
     """Per record, the valid approvals ``(hash, by)`` left after revocations, in order."""

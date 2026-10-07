@@ -8,6 +8,8 @@
   ``confirm.remaining``): it adds the carried approvals to the new ID and says which
   records are confirmed only by a carried approval, so every surface labels them
   "carried by renumber SR-070 -> SR-081" (``present.owner_text.CARRIED``).
+- ``carried_items``: the same carry for the readers of what an approval pinned (its owning
+  ``ends``, a set approval's members): ``confirm.pinned_through_renumbers``.
 - ``trailer_aliases``: in the incoming commits a ``renumber`` lists, ``SR-070`` means
   ``SR-081``; history is never rewritten.
 - ``renumber_problems``: ``plumb validate``'s re-check of every ``renumber`` entry.
@@ -119,6 +121,31 @@ def carry(core: Any, standing: Mapping[str, list[tuple[str, str, LogEntry]]],
         if not direct:
             labels[new] = old
     return out, labels
+
+
+def carried_items(core: Any) -> dict[tuple[str, str, str], tuple[str, str]]:
+    """``{(approval digest, old id, pinned hash): (new id, current hash)}``: each record an
+    approval pinned that a ``renumber`` carries to the new ID while its words are unchanged
+    (``approval_aliases``, the same conditions as ``carry``). What
+    ``confirm.pinned_through_renumbers`` reads every approval's records through."""
+    found = entries(core)
+    if not found:
+        return {}
+    index = core.index()
+    aliases = approval_aliases(core)
+    out: dict[tuple[str, str, str], tuple[str, str]] = {}
+    for entry in found:
+        payload = entry.payload
+        old, new, pinned = payload.get("from"), payload.get("to"), payload.get("old_hash")
+        if not (isinstance(old, str) and isinstance(new, str) and isinstance(pinned, str)):
+            continue
+        kept, record = index.get(old), index.get(new)
+        if old == new or (kept is not None and kept.hash == pinned) or record is None or \
+                aliases.get((new, record.hash)) != (old, pinned):
+            continue
+        for digest in payload.get("approvals") or []:
+            out[(str(digest), old, pinned)] = (new, record.hash)
+    return out
 
 
 def revocations_of(checked_entries: Sequence[tuple[LogEntry, str | None]]

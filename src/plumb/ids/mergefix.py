@@ -161,6 +161,37 @@ def _candidates(root: Path, ctx: _Context, skip: set[str]) -> list[str]:
     return out
 
 
+def _unresolved(root: Path, ctx: _Context, olds: Sequence[str], skip: set[str]) -> list[str]:
+    """The files the rewrite would have to read but cannot: a candidate whose incoming
+    version names a renumbered ID and that is still unmerged (``git ls-files -u``), or whose
+    merged text does not read (conflict markers, a broken record, test or claims file).
+    Rewriting around them would leave an incoming reference on the first parent's record,
+    so ``merge_fix`` renumbers nothing while any is left."""
+    paths = _candidates(root, ctx, skip)
+    if not paths:
+        return []
+    listed = _git(root, "ls-files", "-u", "-z")
+    unmerged = {entry.partition("\t")[2]
+                for entry in listed.stdout.decode("utf-8", "replace").split("\0") if entry}
+    patterns = [rewrite.token(old) for old in olds]
+    out = []
+    for path, theirs in zip(paths, _collision.blobs(root, [f"{ctx.theirs}:{p}" for p in paths]),
+                            strict=True):
+        if theirs is None or not any(p.search(theirs) for p in patterns):
+            continue
+        if path.endswith(".py") and "mark.sr" not in theirs:
+            continue
+        if path in unmerged:
+            out.append(path)
+            continue
+        full = root / path
+        if not full.is_file():
+            continue
+        if not rewrite.readable(path, full.read_bytes().decode("utf-8", "replace")):
+            out.append(path)
+    return out
+
+
 def _rewrite_others(core: Any, ctx: _Context, mapping: Mapping[str, str], skip: set[str],
                     before: dict[str, str], ends_before: dict[Any, str | None]
                     ) -> dict[str, int]:
@@ -335,6 +366,12 @@ def merge_fix(core: Any, *, dry_run: bool = False,
     if not plans:
         return MergeFixResult(remaining=tuple(remaining), dry_run=dry_run,
                               lines=tuple(_lines([], remaining, dry_run)))
+    blocked = _unresolved(root, ctx, [p.old for p in plans], {p.incoming_path for p in plans})
+    if blocked:  # the one gate before any reservation or write, dry run included
+        lines = [text.FIX_BLOCKED.format(id=p.old, title=p.title, files=len(blocked))
+                 for p in plans]
+        return MergeFixResult(remaining=tuple(found), blocked=tuple(blocked), dry_run=dry_run,
+                              lines=tuple(lines))
     held = _held_ids(core, ctx) + [p.old for p in plans]
     _assign(core, plans, held, dry_run)
     mapping = {p.old: p.new for p in plans}

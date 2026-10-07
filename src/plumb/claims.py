@@ -296,7 +296,7 @@ def claims_check(root: Path, rng: str | None = None) -> dict[str, Any]:
     waived: list[dict[str, str]] = []
     unclaimed: list[str] = []
     for sha, message, paths in commits:
-        ids = _mapped(aliases, sha, parse_sr_trailer(message))
+        ids = claimed_ids(aliases, sha, message)
         if not ids:
             if any(exempting_glob(policy, p) is None for p in paths):
                 unclaimed.append(sha)
@@ -326,6 +326,18 @@ def _trailer_aliases(core: Any) -> Any:
     from plumb import ids
 
     return ids.trailer_aliases(core)
+
+
+def trailer_aliases(core: Any) -> Any:
+    """The renumber map every reader of past ``SR:`` trailers uses (``claimed_ids``)."""
+    return _trailer_aliases(core)
+
+
+def claimed_ids(aliases: Any, sha: str, message: str) -> tuple[str, ...]:
+    """The IDs commit ``sha``'s ``SR:`` trailer claims, read through every ``renumber``
+    (sp6 5.5): the one reader of a past commit's trailers (``claims_check``, the merge
+    boundary's touched requirements)."""
+    return _mapped(aliases, sha, parse_sr_trailer(message))
 
 
 def _mapped(aliases: Any, sha: str, claimed: tuple[str, ...]) -> tuple[str, ...]:

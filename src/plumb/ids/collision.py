@@ -4,15 +4,18 @@
    (``git ls-files -u``: stages 2 and 3, no stage 1).
 2. The working tree holds two record files declaring the same ``id`` at different paths.
 3. A merge (in progress, or a merge commit at or after ``base``) whose two parents both added
-   one record path since their merge base with different content, resolved by hand to a
+   one record path since their merge base as two records, resolved by hand to a
    single file (``kept-one``): the other record is lost from the tree, so the path is still
    a collision until ``plumb merge-fix`` renumbers the incoming record (its ``renumber``
    event names it). Every entry point (``plumb check --merge``, ``plumb merge-check``, the
    pre-push hook, ``plumb merge-fix``) reads collisions through ``collisions`` only.
 4. ``preview(core, ref)``: records added on both ``HEAD`` and ``ref`` since their merge base
-   with the same ID and different content (read only).
+   with the same ID holding two records (read only).
 
-Two files with the same ID and the same content are not a collision.
+Two files with the same ID holding the same record are not a collision: "the same" is
+``same_record``, the one comparison every check above makes. It compares record hashes
+(concept 4.4: every field but ``links``), so a side that only linked or repinned the
+record, or a merge-driver resolution equal after parsing (7.5), is one record, not two.
 """
 
 from __future__ import annotations
@@ -75,7 +78,7 @@ def id_of(text: str | None, path: str) -> str:
 
 
 def unmerged_add_add(root: Path) -> list[Collision]:
-    """Record paths both sides added (stages 2 and 3 without 1) with different content."""
+    """Record paths both sides added (stages 2 and 3 without 1) holding two records."""
     result = git(root, "ls-files", "-u", "-z", "--", ".plumb/")
     if result.returncode != 0 or not result.stdout:
         return []
@@ -92,6 +95,8 @@ def unmerged_add_add(root: Path) -> list[Collision]:
         if 1 in found or 2 not in found or 3 not in found or found[2] == found[3]:
             continue
         ours, theirs = blobs(root, [found[2], found[3]])
+        if same_record(ours, theirs):
+            continue
         out.append(Collision(id=id_of(ours, path), paths=(path,),
                              sides=(title_of(ours), title_of(theirs)), how="add/add"))
     return out
@@ -113,7 +118,7 @@ def duplicates(core: Any) -> list[Collision]:
                 texts[path] = (Path(core.root) / path).read_text(encoding="utf-8")
             except OSError:
                 texts[path] = ""
-        if texts[first] == texts[second]:
+        if same_record(texts[first], texts[second]):
             continue
         paths = kept_first(core.root, paths)
         out.append(Collision(id=record_id, paths=tuple(paths),
@@ -190,8 +195,21 @@ def _hash(text: str) -> str | None:
     return record_hash(parsed[0], parsed[1]) if parsed is not None else None
 
 
+def same_record(first: str | None, second: str | None) -> bool:
+    """Whether two record files' texts hold one record (5.1): equal record hashes, which
+    leave ``links`` (and their pins) out (concept 4.4); equal text when either does not
+    parse. The one "same content" test of ``unmerged_add_add``, ``duplicates``,
+    ``kept_one`` and ``preview``."""
+    if first == second:
+        return True
+    if first is None or second is None:
+        return False
+    first_hash = _hash(first)
+    return first_hash is not None and first_hash == _hash(second)
+
+
 def kept_one(core: Any, base: str | None, reported: set[str]) -> list[Collision]:
-    """Record paths both parents of a merge added with different content that the merge
+    """Record paths both parents of a merge added as two records that the merge
     resolved to one file, unless a ``renumber`` already moved the incoming record."""
     root = Path(core.root)
     pairs = merges(root, base)
@@ -211,7 +229,7 @@ def kept_one(core: Any, base: str | None, reported: set[str]) -> list[Collision]
         texts = blobs(root, [f"{side}:{p}" for p in both for side in (ours, theirs)])
         for n, path in enumerate(both):
             kept, incoming = texts[2 * n], texts[2 * n + 1]
-            if kept is None or incoming is None or kept == incoming:
+            if kept is None or incoming is None or same_record(kept, incoming):
                 continue
             if (id_of(incoming, path), _hash(incoming)) in fixed:
                 continue
@@ -233,7 +251,7 @@ def collisions(core: Any, base: str | None = None) -> tuple[Collision, ...]:
 
 def preview(core: Any, ref: str) -> tuple[Collision, ...]:
     """Records added on both ``HEAD`` and ``ref`` since their merge base with the same ID
-    and different content: what merging ``ref`` would bring (read only)."""
+    holding two records: what merging ``ref`` would bring (read only)."""
     root = Path(core.root)
     base = git(root, "merge-base", "HEAD", ref)
     if base.returncode != 0:
@@ -250,7 +268,7 @@ def preview(core: Any, ref: str) -> tuple[Collision, ...]:
     out: list[Collision] = []
     for path in both:
         ours, theirs = blobs(root, [f"HEAD:{path}", f"{ref}:{path}"])
-        if ours == theirs:
+        if same_record(ours, theirs):
             continue
         out.append(Collision(id=id_of(ours, path), paths=(path,),
                              sides=(title_of(ours), title_of(theirs)), how="preview"))

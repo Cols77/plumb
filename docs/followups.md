@@ -3510,3 +3510,82 @@ follow, medium and low:
   `contracts.py` (the `MergeReport` and `Collision.how` fields), `boundary/report.py` and
   `cli.ROUTES` across all four lanes. The lane gate's check that every path is in the
   lane's row of 3.1 fails.
+
+## SP6 lane IDS review, round 2 (2026-10-07)
+
+The round's three HIGH findings are fixed on `lane/ids`, each at one choke point with one
+test per entry point:
+
+1. Same record, not a collision (spec 5.1, concept 4.4). `collision.same_record` compares
+   record hashes, which leave `links` and their pins out, and is the only "same content"
+   test that `unmerged_add_add`, `duplicates`, `kept_one` and `preview` make. A side that
+   only ran `plumb link` or `plumb repin` on a record both sides imported, or a merge driver
+   resolution that is equal after parsing, is no longer renumbered into a second copy
+   (`tests/ids/test_same_record.py`).
+2. A carried approval counts in every reader at the merge boundary (R17). What an approval
+   pinned is read through `confirm.pinned_through_renumbers` (backed by
+   `ids.aliases.carried_items`, the same conditions as `carry`), in `merge.approved_ends`
+   and `boundary.report._set_confirmed`. A past commit's `SR:` trailer is read through
+   `claims.claimed_ids`, in `claims_check` and `merge.touched_requirements`
+   (`changed_paths` now returns `(sha, message)` pairs). After a pure renumber, merge-check
+   no longer lists the carried requirement as "extended", no longer holds an escalated set
+   whose member was renumbered, and no longer counts the first parent's record as touched by
+   the incoming commits (`tests/ids/test_carried_readers.py`). This supersedes the earlier
+   LOW and MEDIUM `touched_requirements` entries, the LOW `approved_ends()` entry, and the
+   "escalated set check ignores carried approvals" part of the LOW carried-pins entry.
+3. merge-fix renumbers nothing while a file naming the ID cannot be read (spec 5.3, 5.6).
+   `mergefix._unresolved` is the one gate before any reservation or write, dry run
+   included. It covers each record, test or claims file whose incoming version names a
+   colliding ID and that is still unmerged (`git ls-files -u`) or does not read
+   (`rewrite.readable`: conflict markers, a broken record, Python or YAML). merge-fix then
+   prints `owner_text.FIX_BLOCKED`, lists the files in `MergeFixResult.blocked`, keeps every
+   collision in `remaining` and exits 1 (`tests/ids/test_unresolved.py`). This supersedes
+   the MEDIUM `rewrite.record()` entry.
+
+Open, medium and low (from the review, restated where an earlier entry already had them):
+
+- [MEDIUM] (`ids/cli.py`, spec 5.6) `plumb merge-fix --dry-run` exits 0 when it would
+  renumber collisions: `remaining` holds only the sides that do not parse, and spec 5.6
+  ties exit 1 to "a collision remains". An agent that runs the dry run as a check during an
+  add/add merge gets exit 0 and treats the merge as collision-free, while merge-check still
+  holds it with exit 1. (A blocked dry run now exits 1.)
+- [MEDIUM] (`ids/rewrite.py`, spec 5.3) `rewrite.trailers` maps every old-ID token in the
+  `SR:` lines of MERGE_MSG and SQUASH_MSG, including trailers that name the first parent's
+  record; the spec limits the rewrite to the incoming side's work. A squash merge whose
+  message carries `SR: SR-070` for both sides' work is rewritten to `SR-081` only, so the
+  commit claims the wrong requirement for our side's paths, and claims check attributes
+  them to the incoming record.
+- [MEDIUM] (`ids/ref.py`) `update()` turns every `update-ref` failure into `Moved`,
+  including a stale `refs/plumb/ids.lock` left by a crashed process. Every reservation then
+  retries for 3 s and fails with the misleading `ID_BUSY` text ("another session is
+  creating records; try again in a moment") until someone deletes the `.lock` file by hand.
+- [MEDIUM] (`contracts.py`, plan 3.1 ownership) Phase 0 was not on `main`, so the lane wrote
+  coordinator-owned files itself: `contracts.py`, `cli.py` ROUTES, `store.py`,
+  `confirm.py`, `claims.py`, `validate.py`, `boundary/report.py`, `glance.py`, `cards.py`,
+  `approvals.py`, `capture.py`, `importer/apply.py` and a new `present/owner_text.py`
+  (this round adds `MergeFixResult.blocked`, `owner_text.FIX_BLOCKED`,
+  `confirm.pinned_through_renumbers`, `claims.claimed_ids` and `claims.trailer_aliases`).
+  The lane gate's "every path in the lane's row" check fails. At Integrate the four lanes
+  each create `present/owner_text.py` and edit `MergeReport`, `cli.ROUTES` and contracts:
+  expect add/add and text conflicts that the coordinator reconciles by hand, with a risk of
+  dropping one lane's constants or fields.
+- [MEDIUM] (`ids/aliases.py`, R17, found while fixing item 2) Only the renumbered record's
+  approvals are carried. Another incoming record that the rewrite changes (a decision whose
+  body or `rationale` names `SR-070`, an escalated anchor's `members`, a feature's
+  `requirements`) gets a new hash, so its own approval no longer pins it. A matters-true
+  decision that decides the renumbered requirement then waits at the merge boundary, and
+  `capture.spec.set_state` (the stop hook, `/plumb review`) reads an escalated set whose
+  anchor lists the renumbered member as unconfirmed. The owner is asked again about words
+  that changed only by the ID. A fix in the same spirit as `approval_aliases`: the
+  `renumber` entry records each rewritten record's hash before and after the rewrite, and
+  the carry accepts an approval of the "before" hash while the record still hashes to the
+  "after" one.
+- [LOW] (`confirm.approved_test_pins`, spec 5.4) Still reads approvals without the carry,
+  on purpose: the rewrite changes the `mark.sr` argument inside the acceptance test, so
+  carrying the pinned test hashes verbatim would turn every carried confirmation with tests
+  into "acceptance test changed". A carried confirmation therefore has no changed-test
+  check until the owner's next approval (the earlier LOW carried-pins entry, still open).
+- [LOW] (`boundary/report.py`, spec 10 and R18) `collision_lines()` puts raw
+  `.plumb/requirements/...` paths in the owner-facing merge report; spec 10 and R18 ask for
+  titles, without internals. The owner sees `SR-070: "a" and "b" hold one ID
+  (.plumb/requirements/SR-070.md (both branches added it))`.
