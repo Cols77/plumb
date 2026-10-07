@@ -519,6 +519,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         ask=len(questions), skipped=", ".join(skipped) or None,
         intent_summary=intent_summary)
     write_snapshot(ctx.root, snapshot, present=getattr(core.config, "present", None))
+    # sp6 9.2, 9.4, R17: publish this worktree's changes, keep its intent in flight in step,
+    # and the overlap lines of the records this turn touched (each once per other version)
+    from plumb.awareness.turn import at_stop
+
+    aware = at_stop(core, changed, touched_ids, ctx.deadline)
 
     if not active:
         from plumb.present.delta import Line, open_emitter
@@ -559,6 +564,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                     pass
             if skipped:
                 reasons += emitter.add([Line(skip_notice(skipped), per_turn=True)])
+            reasons += emitter.add(aware)
             emitter.close()
             # a blocked stop shows the owner nothing: a bare "ok" relays no record
             write_stated(ctx, turn, index, stated_ids)
@@ -572,6 +578,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     # a group plumb confirm prepared this turn is the offer; this turn's own is not added
     offer, group = ([], None) if ctx.deadline.expired() or carry.groups else triage_offer(
         core, [i for i in stated_ids if all_statuses[i].confirmation != "confirmed"])
+    if aware:
+        from plumb.present.delta import emit
+
+        offer = [*offer, *emit(ctx, aware, "stop", config=core.config)]
     text, shown = summary(
         core, index, all_statuses, changed, touched_ids, stated_ids, selection, evidence,
         pending, questions, fidelity, turn_start, verify is not None, skipped,

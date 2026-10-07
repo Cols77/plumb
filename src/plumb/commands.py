@@ -403,11 +403,28 @@ def status_data(core) -> dict:
     }
 
 
+def _awareness_section(args: argparse.Namespace) -> list[str]:
+    """sp6 9.4 (SR-078): every record other worktrees and branches are changing, with the
+    worktree paths, and other branches' intent in flight."""
+    try:
+        from plumb.awareness.lines import status_section
+
+        return status_section(_core(args))
+    except Exception:  # noqa: BLE001 - awareness is advisory
+        return []
+
+
 def cmd_status(command: str, argv: list[str]) -> int:
     parser = _parser(command, "Counts, drift and records awaiting your confirmation.")
     args = parser.parse_args(argv)
     data = status_data(_core(args))
     if args.as_json:
+        try:
+            from plumb.awareness.lines import status_data as elsewhere
+
+            data["elsewhere"] = elsewhere(_core(args))["overlaps"]
+        except Exception:  # noqa: BLE001 - awareness is advisory
+            pass
         emit(data, True)
         return 0
     kinds = ", ".join(f"{k} {v}" for k, v in data["records"].items())
@@ -442,6 +459,7 @@ def cmd_status(command: str, argv: list[str]) -> int:
                      + ", ".join(verification["full_pending_reasons"]) + ")")
     else:
         lines.append("verification: no full verification pending")
+    lines += _awareness_section(args)
     emit(lines, False)
     return 0
 

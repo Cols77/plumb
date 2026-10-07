@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -50,7 +49,39 @@ def _now() -> str:
 
 
 def default_branch(core: Any) -> str:
-    """``merge.default_base`` (``main``), the base every branch is compared with."""
+    """``merge.default_base`` (``main``), the base every branch is compared with: from the
+    config when it carries the section, else from the parsed config cache (no YAML on the
+    prompt path), else ``plumb.boundary.cli.merge_settings``. Remembered per core."""
+    known = getattr(core, "_plumb_default_branch", None)
+    if isinstance(known, str):
+        return known
+    name = _default_branch(core)
+    try:
+        core._plumb_default_branch = name
+    except (AttributeError, TypeError):
+        pass
+    return name
+
+
+def _default_branch(core: Any) -> str:
+    section = getattr(getattr(core, "config", None), "merge", None)
+    value = getattr(section, "default_base", None) if section is not None else None
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    root = Path(core.root) / ".plumb"
+    try:
+        config = root / "config.yaml"
+        stat = config.stat()
+    except OSError:
+        return "main"
+    try:
+        cached = json.loads((root / "cache" / "config.json").read_text(encoding="utf-8"))
+        if cached.get("key") == f"{stat.st_size}:{stat.st_mtime_ns}":
+            merge = (cached.get("data") or {}).get("merge")
+            base = merge.get("default_base") if isinstance(merge, dict) else None
+            return base.strip() if isinstance(base, str) and base.strip() else "main"
+    except (OSError, ValueError, AttributeError):
+        pass
     try:
         from plumb.boundary.cli import merge_settings
 
@@ -60,6 +91,8 @@ def default_branch(core: Any) -> str:
 
 
 def _git(root: Path, *args: str) -> str | None:
+    import subprocess  # here: the post-edit hook imports this module and must stay light
+
     try:
         result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True,
                                 encoding="utf-8", errors="replace", timeout=GIT_TIMEOUT_S)

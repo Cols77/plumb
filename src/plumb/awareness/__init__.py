@@ -13,8 +13,9 @@ from __future__ import annotations
 
 from typing import Any
 
-_API = {"brief_lines": "lines", "card_text": "lines", "delta_lines": "lines",
-        "snapshot_fields": "lines", "status_section": "lines", "status_data": "lines",
+_API = {"brief_entries": "lines", "brief_lines": "lines", "card_text": "lines",
+        "delta_lines": "lines", "snapshot_fields": "lines", "status_section": "lines",
+        "status_data": "lines",
         "note_edit": "publish", "publish": "publish", "overlaps": "scan"}
 
 __all__ = sorted(_API)

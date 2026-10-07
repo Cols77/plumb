@@ -64,15 +64,28 @@ def common_dir(root: Path) -> Path | None:
     return Path(os.path.normpath(common))
 
 
+_PACKED: dict[str, tuple[float, dict[str, str]]] = {}
+
+
 def _packed_refs(common: Path) -> dict[str, str]:
+    """``packed-refs`` parsed, remembered while its mtime holds."""
+    path = common / "packed-refs"
+    try:
+        mtime = path.stat().st_mtime_ns
+    except OSError:
+        return {}
+    known = _PACKED.get(str(path))
+    if known is not None and known[0] == mtime:
+        return known[1]
     out: dict[str, str] = {}
-    text = _read(common / "packed-refs")
+    text = _read(path)
     for line in (text or "").splitlines():
         if not line or line[0] in "#^":
             continue
         parts = line.split(" ", 1)
         if len(parts) == 2 and len(parts[0]) >= 40:
             out[parts[1].strip()] = parts[0]
+    _PACKED[str(path)] = (mtime, out)
     return out
 
 

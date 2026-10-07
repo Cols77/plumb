@@ -81,21 +81,32 @@ def raised_lines(core: Any) -> list[tuple[str, str, str]]:
     return out
 
 
-def brief_lines(core: Any, deadline: Any = None) -> list[str]:
-    """The session brief's awareness lines (the branch scan runs here, within its cap)."""
+def brief_entries(core: Any, deadline: Any = None) -> list[Any]:
+    """The session brief's awareness lines as ``present.delta.Line`` (keyed like the
+    prompt delta's, so a line the brief gave is not repeated by a prompt). The branch scan
+    runs here, within its cap."""
+    from plumb.present.delta import Line
+
     config = _config(core)
     if not config.enabled:
         return []
     found = overlaps(core, changing_ids(core), deadline=deadline, scan_branches=True)
-    lines = [overlap_line(item) for item in found]
     cap = max(int(config.brief_lines), 0)
-    if len(lines) > cap:
-        lines = [*lines[:cap], text.MORE_OVERLAPS.format(n=len(lines) - cap)]
+    out = [Line(overlap_line(item), subject=f"overlap:{item.record}:{item.branch}",
+                state=item.other_hash or item.at or "-") for item in found[:cap]]
+    if len(found) > cap:
+        out.append(Line(text.MORE_OVERLAPS.format(n=len(found) - cap)))
     try:
-        lines += [line for _s, _st, line in raised_lines(core)]
+        out += [Line(line, subject=subject, state=state)
+                for subject, state, line in raised_lines(core)]
     except Exception:  # noqa: BLE001 - intent in flight is advisory
         pass
-    return lines
+    return out
+
+
+def brief_lines(core: Any, deadline: Any = None) -> list[str]:
+    """The session brief's awareness lines, as text."""
+    return [line.text for line in brief_entries(core, deadline)]
 
 
 def delta_lines(core: Any, ids: Iterable[str]) -> list[Any]:
@@ -186,6 +197,7 @@ def status_data(core: Any) -> dict[str, Any]:
                               worktree=o.worktree, how=o.how) for o in found]}
 
 
-__all__: Sequence[str] = ("brief_lines", "card_text", "changing_ids", "delta_lines",
+__all__: Sequence[str] = ("brief_entries", "brief_lines", "card_text", "changing_ids",
+                          "delta_lines",
                           "overlap_line", "raised_lines", "snapshot_fields", "status_data",
                           "status_section")

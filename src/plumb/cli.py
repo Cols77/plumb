@@ -42,6 +42,8 @@ ROUTES: dict[str, str] = {
     "clarify": "plumb.capture.cli",
     # MERGE (sub-project 3)
     "merge-check": "plumb.boundary.cli",
+    # AWARENESS (sub-project 6, R17): intent other branches have in flight
+    "inflight": "plumb.awareness.cli",
     # HOSTS (sub-project 4)
     "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
 }
@@ -94,6 +96,8 @@ hosts:         hosts (install|uninstall|status codex|pi|hermes), turn (start|end
 bridge:        trailers, claims, fidelity, judge, judgment, import
 merge:         merge-check (the merge boundary: one full run, claims, links, the glance;
                --install-pre-push for the optional git hook)
+in flight:     inflight (what other branches are changing, from refs/plumb/claims; check
+               a request for an early intent conflict; drop; sync)
 
 Run `plumb <command> --help` for a command's options. Exit codes: 0 ok, 1 findings,
 2 usage, 3 refused by the guard, 4 merge waits for the owner's confirmation, 5 verification

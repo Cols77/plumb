@@ -48,13 +48,15 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
                    deferred: int = 0, fidelity_unjudged: Sequence[str] = (), ask: int = 0,
                    skipped: str | None = None,
                    tests_summary: tuple[str, tuple[str, ...], tuple[str, ...]] | None = None,
-                   intent_summary: str = "", auto_approve: str | None = None
+                   intent_summary: str = "", auto_approve: str | None = None,
+                   awareness: Mapping[str, Any] | None = None
                    ) -> StatusSnapshot:
     """``tests_summary`` is a precomputed ``tests_state`` (the cached brief) used in place
     of ``evidence``. The status card's fields (sp5 4.1): ``confirmed_by`` counts the
     confirmed requirements by who confirmed them, ``state`` is the card's state,
     ``intent_summary`` the session's intent in plain words, ``auto_approve`` on, off or
-    suspended (CAPTURE's state when that lane is built)."""
+    suspended (CAPTURE's state when that lane is built). ``awareness``: the overlap fields
+    (sp6 9.4); None reads them (``plumb.awareness.snapshot_fields``: no git process)."""
     index = core.index()
     statuses = core.status() if statuses is None else statuses
     requirements = [s for i, s in statuses.items()
@@ -89,10 +91,28 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
         intent_summary=intent_summary,
         confirmed_by=confirmed_by,
         auto_approve=auto_approve if auto_approve is not None else auto_approve_state(core),
+        **overlap_fields(core, awareness),
     )
     from plumb.present.render import card_state
 
     return dataclasses.replace(snapshot, state=card_state(snapshot))
+
+
+def overlap_fields(core: CoreAPI, given: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """``overlaps`` and ``overlap_labels`` (sp6 9.4); nothing when none or on any error."""
+    fields = given
+    if fields is None:
+        try:
+            from plumb.awareness.lines import snapshot_fields
+
+            fields = snapshot_fields(core)
+        except Exception:  # noqa: BLE001 - awareness is advisory
+            fields = {}
+    out: dict[str, Any] = {}
+    if fields.get("overlaps"):
+        out["overlaps"] = int(fields["overlaps"])
+        out["overlap_labels"] = tuple(str(b) for b in fields.get("overlap_labels") or ())
+    return out
 
 
 def auto_approve_state(core: CoreAPI) -> str:

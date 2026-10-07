@@ -52,5 +52,17 @@ def status_card_lines(core: Any) -> dict[str, Any]:
     if stale or dangling:
         lines.append(f"drift: {len(stale)} stale, {len(dangling)} dangling link(s) "
                      "(plumb drift, plumb review)")
+    overlaps = _overlap_lines(core)
+    lines += overlaps
     return {"lines": lines, "state": snapshot.state, "awaiting": awaiting,
-            "stale": stale, "dangling": dangling}
+            "stale": stale, "dangling": dangling, "elsewhere": overlaps}
+
+
+def _overlap_lines(core: Any) -> list[str]:
+    """sp6 9.4: what other worktrees and branches are changing (``/plumb status``)."""
+    try:
+        from plumb.awareness.lines import status_section
+
+        return status_section(core)
+    except Exception:  # noqa: BLE001 - awareness is advisory
+        return []

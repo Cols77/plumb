@@ -1,7 +1,7 @@
 ---
 description: plumb in plain words - status, explain anything, review, confirm, what a change would reach, the Obsidian view
 argument-hint: "status | explain <anything> | review [<anything>] | confirm [<anything>] | impact <anything> | view"
-allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} confirm:*), Bash({plumb} impact:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*)
+allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} confirm:*), Bash({plumb} impact:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} inflight:*)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -13,7 +13,12 @@ Answer with titles, the owner's own words, examples and test states; mention cod
 only when asked.
 
 - No argument, or `status`: run `{plumb} status --card` and give the card, what awaits
-  them and drift in one or two lines.
+  them and drift in one or two lines; when it lists records also being changed on another
+  branch or worktree, name them by title and branch ("is anyone else changing X?" is the
+  same request).
+- "what are the other branches working on?": run `{plumb} inflight` and answer with the
+  branches, their one-line intent and the records by title. "drop that work" (the owner
+  abandoned a branch's intent): `{plumb} inflight drop <branch>`.
 - `explain <anything>` (also `why <anything>`): run `{plumb} explain <their words>` and say
   why it exists: the owner's words it comes from, the decisions, the examples and whether
   their tests pass.
