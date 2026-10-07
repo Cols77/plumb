@@ -4173,3 +4173,75 @@ were recorded, not fixed:
   coordination. Both are atomic replaces, so an edit path that lands between the stop hook's
   read and its write is lost from `pending`, and other worktrees stop hearing that the record
   is being edited until the path is published again.
+
+## SP6 Integrate (2026-10-07)
+
+Merged on `main`: LOGS (39cbe73), the migration of plumb's own logs (6957d1b: 528 legacy
+lines, digests and `prev` unchanged, `plumb status --json` identical before and after),
+IDS (50c4d62), MERGEDRIVER (d4aec25), AWARENESS (3f978d5), then the e2e test, the hooks and
+the docs (882e53c). Phase 0 never ran: each lane wrote its own part of the coordinator's
+contracts, routes and `owner_text`, and the merges joined them.
+
+- [MEDIUM] (merge report, stale links from an intent conflict) A record the driver leaves
+  in an intent conflict no longer matches its links' pins, so `merge-check` holds the merge
+  with exit 1 ("links of touched requirements hold the merge") before the conflict card's
+  exit 4. The agent's repin pins the conflicted content, and the owner's choice makes the
+  links stale again. Fix: report links whose source holds an open intent conflict under
+  that conflict, not as stale holds, and repin them when the choice is recorded. The e2e
+  test (`tests/integration/test_parallel_e2e.py`) repins after the merge and asserts exit 4.
+- [MEDIUM, R14, pre-existing SP3 text; for the review phase to grade] The merge report and
+  its gates still name bare commands that reach the owner (the pre-push hook prints the
+  report at `git push`): "merge waits for your confirmation: `plumb approve ...`", "review
+  the change, then plumb repin SR-001#3" (`boundary/gates.py`), "+N more (plumb merge-check
+  --json)", "(plumb fidelity SR-...)", "(plumb tests run --nodes <id>)", "(plumb spec show
+  ...)", "`plumb approve --exempt`". Fix: route every merge-report line through
+  `present.owner_text` with one `bare_cli_verbs` test per surface, as SP6 did for its own
+  sections.
+- [LOW] (find_root) A stray `C:/.plumb/` (created 10:39 by an earlier test run, holding
+  only `cache/changing.json`) made `plumb init` in a fresh repository under the temp
+  directory resolve to `C:/`, because `find_root` prefers any ancestor `.plumb/` over a
+  nearer `.git`; the first e2e run wrote record folders there. The directory was removed.
+  Fix: stop the upward `.plumb/` search at the first `.git`, and make `.plumb/cache`
+  writers refuse when no root was found.
+- [LOW] (log integrity, line endings) `merge.log_integrity` compares entry files by blob, so
+  a CRLF-only rewrite of an entry (a Windows clone checked out with `core.autocrlf=true`,
+  then switched to `false`) is reported as "entry modified" although its digest is
+  unchanged. The IDS test helper `clone` did exactly that; it now clones with
+  `core.autocrlf=false`. Fix: for an `M` entry, compare the parsed digest before reporting.
+- [LOW] (signature drift between lanes) IDS changed `merge.touched_requirements` to take
+  `(commit, message)` pairs; MERGEDRIVER's `boundary/premerge.py` still passed messages and
+  crashed the quick merge check on every held merge. Fixed at Integrate; the frozen phase-0
+  contract would have caught it.
+- [LOW] (tests) `test_intent_lines_survive_cpu_contention` prompted "ok, and SR-002 needs
+  work", which the audit-round-5 scoping rightly reads as an objection; it now says "ok,
+  confirm SR-002". `tests/logs/test_single_writer.py` lists `ids/mergefix.py` (it only
+  stages entries). `test_template_steps_commit_the_choice` looks for the committed
+  `conflict-resolution` entry file.
+- [LOW] (owner_text) MERGEDRIVER and AWARENESS each defined the status card's conflict
+  wording; `CONFLICTS_CARD_PLURAL` is now an alias of `CONFLICTS_CARD_MANY`, and the status
+  card draws both overlap and conflict parts from `render.overlap_parts` only.
+- [LOW] (test economy) pytest-xdist is not installed, so `-n 2` is unavailable: the focused
+  sets took 5 to 8 minutes each and the single full run is serial.
+- [LOW] (lane helpers) Each lane carries its own `tests/<lane>/gitrepo.py`; the phase-0
+  `tests/gitrepo.py` was never written. Fold them into one helper.
+- [NOTE] R17 (later than plan 8.2) installs the quick merge check on plumb's own repository
+  after Integrate: `plumb hooks install` wrote the record merge driver, pre-merge-commit,
+  prepare-commit-msg and pre-push hooks beside commit-msg. `plumb ids sync` seeded
+  `refs/plumb/ids` (DEC 22, FEAT 6, INT 22, NC 3, SR 81). `plumb repin --all-stale` (with a
+  note; never a confirmation) refreshed the 205 pins the lane merges and earlier work left
+  stale, as the LOGS lane's follow-up asked.
+- [LOW] (R14 matrix) No feature -> owner entry point matrix document exists on `main` yet
+  (an R14/SP7 deliverable); the SP6 rows live in spec 11 and in the AWARENESS lane's note
+  above. Fold them into the matrix when it is written.
+- [NOTE] The single full run (`plumb merge-check 89f499b`, run 20261007T032404Z-f69bfd3a,
+  serial, 28 min 49 s): 1311 tests, 1307 passed, 4 failed, all real cross-lane or stale
+  expectations, none flaky: `test_every_route_names_a_module_path` (the SP6 routes),
+  `test_no_module_computes_record_numbers_outside_store_and_ids` (the driver formatted and
+  computed `IC` numbers itself; it now goes through `ids.format_id` and `ids.local_next`,
+  the one allocator), `test_only_log_py_writes_under_plumb_log` (`mergedriver/conflicts.py`
+  only stages entries) and `test_explain_by_id` (stale since audit round 2: an unchecked
+  quote is not called "your words"). Per the failure policy the failed tests plus the
+  covering modules reran with evidence (run 20261007T033517Z-bd1ea609: 132 passed). Those
+  fixes touch modules most tests import, so the full run's evidence is now stale on the
+  current tree and `plumb merge-check` reports exit 5 (unverified acceptance tests) besides
+  exit 4 for the 134 proposed records; the next full run is the pre-push hook's.

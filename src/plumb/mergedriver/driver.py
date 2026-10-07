@@ -119,21 +119,17 @@ def _remember(root: Path, ic: str) -> None:
 
 def reserve_ic(root: Path) -> str:
     """A new ``IC-###``: through ``plumb.ids.reserve(kind="conflict")`` (``refs/plumb/ids``,
-    unique across the clone's worktrees) when this build has it, else the highest number
-    this worktree knows plus one."""
-    root = Path(root)
-    known = known_ics(root)
-    ic: str | None = None
-    try:
-        from plumb import ids  # the IDS lane's allocator (sp6 4)
-        from plumb.paths import PlumbPaths
+    unique across the clone's worktrees); when the ref cannot be updated, the number after
+    the highest this worktree knows (``ids.local_next``), so a merge never fails on it."""
+    from plumb import ids  # the one allocator (sp6 4)
+    from plumb.paths import PlumbPaths
 
-        ic = ids.reserve(PlumbPaths(root), "conflict",
-                         local=[f"IC-{n:03d}" for n in known])[0]
-    except Exception:  # noqa: BLE001 - no allocator in this build, or it failed: local
-        ic = None
-    if ic is None:
-        ic = f"IC-{max(known, default=0) + 1:03d}"
+    root = Path(root)
+    local = [ids.format_id("conflict", n) for n in known_ics(root)]
+    try:
+        ic = ids.reserve(PlumbPaths(root), "conflict", local=local)[0]
+    except Exception:  # noqa: BLE001 - the ref is busy or unreadable: a merge never fails
+        ic = ids.local_next("conflict", local)
     _remember(root, ic)
     return ic
 

@@ -61,7 +61,10 @@ def test_explain_by_id(records: Path, capsys) -> None:
     assert data["how"] == "id" and data["records"] == ["SR-001"]
     text = "\n".join(data["lines"])
     assert 'SR-001 "Invoice totals are rounded to the cent" (proposed' in text
-    assert 'your words: "invoice totals should be rounded to the cent"' in text
+    # the fixture's quote was never checked against a logged prompt, so it is not called
+    # "your words" (audit round 2, text.quote_label)
+    assert ('quoted, not checked against your logged prompt: "invoice totals should be '
+            'rounded to the cent"') in text
     assert "example EX-1: given lines 0.105 and 0.2, when totalled, then the total is 0.31" \
         in text
     assert "code: src/billing.py" in text

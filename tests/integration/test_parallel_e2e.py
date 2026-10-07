@@ -15,6 +15,11 @@ JSON Claude Code sends):
    conflict, which git's pre-merge-commit hook holds (no merge commit). Once the agent has
    repinned the links whose source the merge changed, ``plumb merge-check`` reports exit 4
    with the conflict card: the merge waits for the owner, and nothing is chosen for him.
+   The owner's choice, in his own terminal, then settles it: the check no longer lists it.
+
+A second scenario covers clones (spec 14 item 3): a clone and its origin both create
+SR-002; the merge stops on the add/add, and ``plumb merge-fix`` renumbers the incoming
+record, carries the clone owner's ok of its unchanged words and leaves history untouched.
 
 Every owner-visible SP6 text captured here names no bare ``plumb <verb>`` (spec 11.1, R14).
 """
@@ -32,7 +37,8 @@ import pytest
 from plumb.present.owner_text import bare_cli_verbs
 
 pytestmark = [pytest.mark.sr(sr) for sr in (
-    "SR-070", "SR-073", "SR-075", "SR-076", "SR-077", "SR-078", "SR-079")]
+    "SR-070", "SR-071", "SR-072", "SR-073", "SR-075", "SR-076", "SR-077", "SR-078",
+    "SR-079")]
 
 BASE_STATEMENT = "A relay pins every stated record."
 A_STATEMENT = "A relay pins only the records the owner's words affirm."
@@ -214,3 +220,41 @@ def test_two_worktrees_propose_change_and_merge(repo: Path, tmp_path: Path) -> N
     assert bare_cli_verbs(conflicts) == [], conflicts
     status = open_core(repo).status(["SR-001"])["SR-001"]
     assert status.confirmation != "confirmed"                # no side is chosen for the owner
+
+    # the owner chooses a side in his own terminal (spec 14 item 2): the conflict is gone
+    from plumb import cli
+
+    assert cli.main(["conflict", "choose", "IC-001", "--take", "feat-b",
+                     "--root", str(repo)]) == 0
+    sr1 = frontmatter(records / "SR-001.md")
+    assert "conflict" not in sr1 and sr1["statement"] == B_STATEMENT, sr1
+    after = json.loads(plumb(repo, "merge-check", "main", "--no-run", "--json").stdout)
+    after = after.get("merge", after)
+    assert after["intent_conflicts"] == [], after["intent_conflicts"]
+
+
+def test_clone_collision_is_renumbered_at_merge(tmp_path: Path) -> None:
+    """Spec 14 item 3: a clone and its origin both create SR-002; the merge stops on the
+    add/add; merge-fix renumbers the incoming record, carries the clone owner's ok of its
+    unchanged words, and the merge boundary shows no collision, all through the CLI."""
+    from ids import scenario
+
+    s = scenario.build(tmp_path)                             # merge stopped on SR-002
+    held = plumb(s.origin, "merge-check", "main", "--no-run", "--json")
+    data = json.loads(held.stdout)
+    data = data.get("merge", data)
+    assert [c["id"] for c in data["id_collisions"]] == ["SR-002"], data["id_collisions"]
+    fixed = plumb(s.origin, "merge-fix")
+    assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+    assert '"export csv"' in fixed.stdout and "SR-003" in fixed.stdout, fixed.stdout
+    assert "approval carried" in fixed.stdout, fixed.stdout
+    assert bare_cli_verbs(fixed.stdout) == [], fixed.stdout
+    from plumb.api import open_core
+
+    core = open_core(s.origin)
+    assert core.index()["SR-003"].title == "export csv"
+    assert core.status(["SR-003"])["SR-003"].carried_from == "SR-002"
+    after = json.loads(plumb(s.origin, "merge-check", "main", "--no-run", "--json").stdout)
+    after = after.get("merge", after)
+    assert after["id_collisions"] == [] and after["unmerged"] == []
+    assert git(s.clone, "log", "--format=%H %B", "main").stdout == s.clone_log  # history

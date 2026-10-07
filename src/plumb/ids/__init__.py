@@ -21,9 +21,9 @@ if TYPE_CHECKING:
     from plumb.contracts import Collision, IdState, MergeFixResult
     from plumb.paths import PlumbPaths
 
-__all__ = ["REF", "IdBusy", "approval_aliases", "carried", "collisions", "merge_fix",
-           "observe", "peek", "renumber_problems", "reserve", "state", "sync",
-           "trailer_aliases"]
+__all__ = ["REF", "IdBusy", "approval_aliases", "carried", "collisions", "format_id",
+           "local_next", "merge_fix", "observe", "peek", "renumber_problems", "reserve",
+           "state", "sync", "trailer_aliases"]
 
 
 def __getattr__(name: str) -> Any:
@@ -39,6 +39,22 @@ def reserve(paths: PlumbPaths, kind: str, count: int = 1, *,
     from plumb.ids.reservation import reserve as _reserve
 
     return _reserve(paths, kind, count, local=local)
+
+
+def format_id(kind: str, number: int) -> str:
+    """``kind``'s ID for ``number`` (``IC-007``, ``NC-0003``): the one formatter."""
+    from plumb.ids.reservation import fmt, prefix_of
+
+    return fmt(prefix_of(kind), number)
+
+
+def local_next(kind: str, local: Iterable[str]) -> str:
+    """The ID after the highest of ``local``, reserving nothing: the fallback of a caller
+    that must not fail (git's merge driver) when the shared ref cannot be updated."""
+    from plumb.ids.reservation import fmt, highest, prefix_of
+
+    prefix = prefix_of(kind)
+    return fmt(prefix, highest(local).get(prefix, 0) + 1)
 
 
 def peek(paths: PlumbPaths, kind: str, *, local: Iterable[str] | None = None) -> str:
