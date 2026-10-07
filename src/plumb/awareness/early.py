@@ -4,7 +4,9 @@ Conflicts are caught when intent is captured, not at merge, so two branches neve
 incompatible versions of one requirement. ``plumb clarify`` (before anything is written)
 and every write of this branch's claim (``claim``: ``plumb capture``, and the stop hook after
 a direct edit or ``plumb new``) compare this work with the intent other branches have in
-flight (``refs/plumb/claims``):
+flight (``refs/plumb/claims``, and the default branch's changes since this branch started
+from it: ``inflight.since_fork``, so a claim cleared by landing still reaches a branch that
+holds the words it replaced):
 
 - the SAME record claimed on another branch is a conflict, caught deterministically;
 - new intent in a feature another branch claims is judged for compatibility by the judgment
@@ -131,6 +133,8 @@ def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | N
             if entry is not None and record.id not in new_set:
                 if _same_version(entry, record, planned=record.id in planned):
                     continue  # both branches hold the same version: nothing to choose
+                if _not_changed_here(claim, entry, record, planned=record.id in planned):
+                    continue  # this branch still holds the version the default replaced
                 known = _known(my_branch, every, record.id, claim)
                 if known is not None:
                     result.lines.append(known_line(record.id, record.title, known))
@@ -177,6 +181,17 @@ def overlap_line(record_id: str, title: str, branch: str, summary: str, theirs: 
     return text.EARLY_UNJUDGED.format(id=record_id, title=title, branch=branch,
                                       who=who or "no judgment available",
                                       theirs=_clip(theirs, 120), ours=_clip(ours, 120))
+
+
+def _not_changed_here(claim: Mapping[str, Any], entry: Mapping[str, Any], record: Any, *,
+                      planned: bool) -> bool:
+    """A change the default branch made after this branch started (``inflight.fork_claim``)
+    is a conflict only when this work changes the record too: a record still at the version
+    this branch started from is merely behind (its new version, only planned, always
+    counts)."""
+    if planned or not claim.get("since_fork"):
+        return False
+    return bool(entry.get("base")) and entry.get("base") == str(getattr(record, "hash", ""))
 
 
 def _same_version(entry: Mapping[str, Any], record: Any, *, planned: bool) -> bool:
@@ -238,6 +253,8 @@ def check_text(core: Any, request: str, *, backend: Any = None) -> EarlyCheck:
     for claim in claims:
         records = claim.get("records") or {}
         same = [i for i in ids if i in records]
+        if claim.get("since_fork"):     # this checkout already took the default's version
+            same = [i for i in same if index[i].hash != records[i].get("hash")]
         for record_id in same:
             known = _known(my_branch, every, record_id, claim)
             if known is not None:
@@ -450,7 +467,7 @@ def raise_conflicts(core: Any, conflicts: Sequence[EarlyConflict], *,
     return entries
 
 
-CLAIMED_KINDS = ("requirement", "intent", "feature")
+CLAIMED_KINDS = inflight.CLAIMED_KINDS
 
 
 @dataclass

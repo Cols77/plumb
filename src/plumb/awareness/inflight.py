@@ -266,37 +266,48 @@ def _entry_path(record_id: str, entry: Mapping[str, Any], paths: Mapping[str, st
     return str(entry.get("path") or paths.get(record_id) or "")
 
 
-def versions(root: Path, rev: str, paths: Iterable[str]) -> dict[str, str | None]:
-    """``{path: the record hash of that file at rev, or None}`` (one ``git cat-file
-    --batch``; a missing or unparsable file is None)."""
+def _records_at(root: Path, wanted: Iterable[tuple[str, str]]
+                ) -> dict[tuple[str, str], Any] | None:
+    """``{(rev, path): the parsed record of that file at rev, or None}`` (one ``git cat-file
+    --batch``; a missing or unparsable file is None). None when git could not answer."""
     from plumb.model import parse_record
 
-    wanted = sorted({p for p in paths if p})
-    if not wanted or not rev:
+    specs = sorted({(rev, p) for rev, p in wanted if rev and p})
+    if not specs:
         return {}
     code, out = _git(Path(root), "cat-file", "--batch",
-                     stdin="".join(f"{rev}:{p}\n" for p in wanted).encode("utf-8"))
+                     stdin="".join(f"{rev}:{p}\n" for rev, p in specs).encode("utf-8"))
     if code != 0:
-        return {}
-    found: dict[str, str | None] = {}
+        return None
+    found: dict[tuple[str, str], Any] = {}
     pos = 0
-    for path in wanted:
+    for rev, path in specs:
         end = out.find(b"\n", pos)
         if end < 0:
             break
         header = out[pos:end].decode("utf-8", "replace").split(" ")
         pos = end + 1
         if len(header) != 3 or header[1] != "blob" or not header[2].isdigit():
-            found[path] = None
+            found[(rev, path)] = None
             continue
         size = int(header[2])
         body = out[pos:pos + size]
         pos += size + 1
         try:
-            found[path] = parse_record(body.decode("utf-8"), path).hash
+            found[(rev, path)] = parse_record(body.decode("utf-8"), path)
         except Exception:  # noqa: BLE001 - not a record there
-            found[path] = None
+            found[(rev, path)] = None
     return found
+
+
+def versions(root: Path, rev: str, paths: Iterable[str]) -> dict[str, str | None]:
+    """``{path: the record hash of that file at rev, or None}`` (one ``git cat-file
+    --batch``; a missing or unparsable file is None)."""
+    if not rev:
+        return {}
+    found = _records_at(root, ((rev, p) for p in paths)) or {}
+    return {path: (record.hash if record is not None else None)
+            for (_rev, path), record in found.items()}
 
 
 def _unlanded(root: Path, claims: list[dict[str, Any]], *, default: str,
@@ -686,12 +697,122 @@ def sync_decisions(core: Any) -> bool:
     return True
 
 
+# ------------------------------------------------------------------ the default branch since
+
+
+SINCE_FORK = "since-fork"
+SINCE_FORK_CACHE = "inflight-since-fork.json"
+CLAIMED_KINDS = ("requirement", "intent", "feature")
+
+
+def _changed_since_fork(core: Any, head: str, default_tip: str
+                        ) -> tuple[str, dict[str, dict[str, str]]] | None:
+    """``(merge base, records)``: each record the default branch changed since this
+    branch's merge base with it (its version there differs from the base's), as a claim
+    entry of the default branch's version plus ``base`` (the base's hash). Three git calls
+    at most (merge-base, diff, one ``cat-file --batch`` for both versions); None when git
+    could not answer."""
+    root = Path(core.root)
+    code, out = _git(root, "merge-base", head, default_tip)
+    base = out.decode().strip() if code == 0 else ""
+    if not base:
+        return None
+    if base == default_tip:
+        return base, {}                 # this branch holds every default-branch commit
+    try:
+        dirs = sorted({Path(r.path).parent.as_posix() for r in core.index().values()
+                       if getattr(r, "path", "")})
+    except Exception:  # noqa: BLE001 - fall back on plumb's own directory
+        dirs = []
+    code, out = _git(root, "diff", "--name-only", "--no-renames", "-z", base, default_tip,
+                     "--", *(dirs or [".plumb"]))
+    if code != 0:
+        return None
+    paths = [p for p in out.decode("utf-8", "replace").split("\0") if p.endswith(".md")]
+    found = _records_at(root, [(rev, p) for p in paths for rev in (base, default_tip)])
+    if found is None:
+        return None
+    records: dict[str, dict[str, str]] = {}
+    for path in paths:
+        old, new = found.get((base, path)), found.get((default_tip, path))
+        if old is None or new is None or old.id != new.id or old.hash == new.hash \
+                or new.kind not in CLAIMED_KINDS:
+            continue                    # new there, removed there, or not changed
+        records[new.id] = {**record_entry(new), "path": path, "base": str(old.hash)}
+    return base, records
+
+
+def since_fork(core: Any, *, allow_git: bool = False, deadline: Any = None
+               ) -> dict[str, dict[str, str]]:
+    """The records the DEFAULT branch changed since this branch started from it (R17): a
+    claim clears once its version lands on the default branch, yet a branch that started
+    before still builds on the replaced words, so the landed change stays in flight for
+    every branch that has not taken it. ``{record ID: claim entry}`` (the default branch's
+    version, and ``base``: the version this branch started from). Empty on the default
+    branch itself and once this branch holds the default branch's tip. Cached by this
+    branch's tip and the default branch's (``SINCE_FORK_CACHE``); learned only with
+    ``allow_git``. Without it (a hook path) a cache of the same default tip still serves
+    after this branch committed, minus the records this checkout already holds at the
+    default branch's version."""
+    from plumb.awareness.publish import default_branch
+
+    root = Path(core.root)
+    me = gitfiles.current(root)
+    if me is None or not me.branch or not me.head:
+        return {}
+    default = default_branch(core)
+    if me.branch == default:
+        return {}
+    common = gitfiles.common_dir(root)
+    default_tip = gitfiles.branch_tips(common).get(default) if common is not None else None
+    if not default_tip:
+        return {}
+    path = _cache_path(root, SINCE_FORK_CACHE)
+    cached = _read_json(path)
+    same = (isinstance(cached, dict) and cached.get("branch") == me.branch
+            and cached.get("default_tip") == default_tip
+            and isinstance(cached.get("records"), dict))
+    if same and cached.get("head") == me.head:
+        return {str(k): dict(v) for k, v in cached["records"].items() if isinstance(v, dict)}
+    if not allow_git or _expired(deadline):
+        if not same:
+            return {}
+        index = core.index()
+        return {str(k): dict(v) for k, v in cached["records"].items()
+                if isinstance(v, dict) and not (k in index and index[k].hash == v.get("hash"))}
+    learned = _changed_since_fork(core, me.head, default_tip)
+    if learned is None:
+        return {}
+    base, records = learned
+    _write_json(path, {"branch": me.branch, "head": me.head, "default_tip": default_tip,
+                       "base": base, "records": records})
+    return records
+
+
+def fork_claim(core: Any, default: str, records: Mapping[str, Mapping[str, str]]
+               ) -> dict[str, Any]:
+    """The default branch's changes since this branch started, as one claim of the default
+    branch (``since_fork: True``): every reader of other branches' intent (the capture
+    check, the clarify read-back, the stop hook's claim, the brief, status, the prompt
+    delta, the owner's answer) sees them as intent this branch has not taken. Only the
+    same record is checked against it (no feature, so nothing is judged)."""
+    from plumb.present import owner_text as text
+
+    worktree = next((wt.path.as_posix() for wt in gitfiles.worktrees(Path(core.root))
+                     if wt.branch == default), "")
+    return {"id": f"{default}:{SINCE_FORK}", "branch": default, "since_fork": True,
+            "worktree": worktree, "summary": text.SINCE_FORK_SUMMARY,
+            "records": {k: dict(v) for k, v in records.items()}, "features": [],
+            "conflicts": []}
+
+
 # ------------------------------------------------------------------ what other branches see
 
 
 def others(core: Any, *, allow_git: bool = False, deadline: Any = None
            ) -> tuple[str | None, list[dict[str, Any]]]:
-    """``(this branch, the active claims of every other branch)``."""
+    """``(this branch, the active claims of every other branch)``, the default branch's
+    changes since this branch started included (``fork_claim``)."""
     from plumb.awareness.publish import default_branch
 
     root = Path(core.root)
@@ -699,11 +820,19 @@ def others(core: Any, *, allow_git: bool = False, deadline: Any = None
     if me is None:
         return None, []
     _oid, data = read(root, allow_git=allow_git)
-    if not data.get("claims"):
-        return me.branch, []
-    live = active(root, data, default=default_branch(core), allow_git=allow_git,
-                  deadline=deadline, paths=record_paths(core))
-    return me.branch, [c for c in live if c.get("branch") != me.branch]
+    default = default_branch(core)
+    live = (active(root, data, default=default, allow_git=allow_git, deadline=deadline,
+                   paths=record_paths(core)) if data.get("claims") else [])
+    out = [c for c in live if c.get("branch") != me.branch]
+    landed = since_fork(core, allow_git=allow_git, deadline=deadline)
+    if landed:
+        # a record the default branch still claims (an edit not committed yet) is read
+        # from that claim, its newest version
+        held = {i for c in out if c.get("branch") == default for i in c.get("records") or {}}
+        records = {i: e for i, e in landed.items() if i not in held}
+        if records:
+            out.append(fork_claim(core, default, records))
+    return me.branch, out
 
 
 def claim_overlaps(core: Any, mine: Iterable[str], my_branch: str | None) -> list[Overlap]:
@@ -719,7 +848,8 @@ def claim_overlaps(core: Any, mine: Iterable[str], my_branch: str | None) -> lis
                 continue
             out.append(Overlap(record=record_id, title=str(entry.get("title") or ""),
                                branch=str(claim.get("branch")),
-                               worktree=str(claim.get("worktree") or ""), how="claimed",
+                               worktree=str(claim.get("worktree") or ""),
+                               how=SINCE_FORK if claim.get("since_fork") else "claimed",
                                other_hash=str(entry.get("hash") or claim.get("at") or ""),
                                at=str(claim.get("at") or ""),
                                summary=str(claim.get("summary") or "")))

@@ -233,7 +233,8 @@ class StatusSnapshot:
 @dataclass(frozen=True)
 class Overlap:
     """A record this session works on that another worktree or branch is also changing
-    (sp6 9.3, SR-078). ``how``: edited | new | ends | claimed (intent in flight, R17)."""
+    (sp6 9.3, SR-078). ``how``: edited | new | ends | claimed (intent in flight, R17) |
+    since-fork (changed on the default branch after this branch started from it)."""
 
     record: str = ""
     title: str = ""

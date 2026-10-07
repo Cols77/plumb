@@ -41,12 +41,22 @@ def changing_ids(core: Any) -> set[str]:
 
 
 def overlap_line(item: Overlap, *, worktree: bool = False) -> str:
+    if item.how == inflight.SINCE_FORK:
+        return text.OVERLAP_SINCE_FORK.format(id=item.record, title=item.title,
+                                              branch=item.branch)
     line = text.OVERLAP.format(id=item.record, title=item.title, branch=item.branch)
     if item.how == "claimed" and item.summary:
         line += text.OVERLAP_CLAIMED.format(summary=_clip(item.summary, 80))
     if worktree and item.worktree:
         line += text.OVERLAP_WORKTREE.format(worktree=item.worktree)
     return line
+
+
+def overlap_subject(item: Overlap) -> str:
+    """The delta key of an overlap line: a change that landed on the default branch is its
+    own fact, apart from that branch still changing the record."""
+    kind = "since-fork" if item.how == inflight.SINCE_FORK else "overlap"
+    return f"{kind}:{item.record}:{item.branch}"
 
 
 def _clip(value: str, width: int) -> str:
@@ -100,7 +110,7 @@ def brief_entries(core: Any, deadline: Any = None) -> list[Any]:
         return []
     found = overlaps(core, changing_ids(core), deadline=deadline, scan_branches=True)
     cap = max(int(config.brief_lines), 0)
-    out = [Line(overlap_line(item), subject=f"overlap:{item.record}:{item.branch}",
+    out = [Line(overlap_line(item), subject=overlap_subject(item),
                 state=item.other_hash or item.at or "-") for item in found[:cap]]
     if len(found) > cap:
         out.append(Line(text.MORE_OVERLAPS.format(n=len(found) - cap)))
@@ -129,7 +139,7 @@ def delta_lines(core: Any, ids: Iterable[str]) -> list[Any]:
 
     if not _config(core).enabled:
         return []
-    out = [Line(overlap_line(item), subject=f"overlap:{item.record}:{item.branch}",
+    out = [Line(overlap_line(item), subject=overlap_subject(item),
                 state=item.other_hash or item.at or "-", record=item.record)
            for item in overlaps(core, ids)]
     try:
@@ -198,6 +208,8 @@ def status_section(core: Any) -> list[str]:
     except Exception:  # noqa: BLE001 - advisory
         pass
     _me, claims = inflight.others(core, allow_git=True)
+    # the default branch's landed changes are named above, one line per record
+    claims = [c for c in claims if not c.get("since_fork")]
     if claims:
         lines.append(text.INFLIGHT_HEADER)
         for claim in claims:

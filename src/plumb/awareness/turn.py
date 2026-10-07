@@ -167,6 +167,10 @@ def at_stop(core: Any, changed: Sequence[str], touched: Iterable[str],
         _log(core, "publish", exc)
     asked: list[str] = []
     if _remaining(deadline) >= MIN_GIT_S:
+        try:  # the default branch's changes since this branch started (git when it moved)
+            inflight.since_fork(core, allow_git=True, deadline=deadline)
+        except Exception as exc:  # noqa: BLE001
+            _log(core, "since fork", exc)
         try:
             claim_changes(core, data, asked=asked)
             if _remaining(deadline) >= MIN_GIT_S:

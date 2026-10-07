@@ -322,12 +322,13 @@ def overlaps(core: Any, mine: Iterable[str], *, deadline: Any = None,
             out.extend(inflight.claim_overlaps(core, mine_set, me.branch))
         except Exception:  # noqa: BLE001 - intent in flight is advisory
             pass
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str, bool]] = set()
     unique: list[Overlap] = []
     for item in out:
-        key = (item.record, item.branch)
+        # a change already landed on the default branch is its own line
+        key = (item.record, item.branch, item.how == "since-fork")
         if key in seen:
             continue
         seen.add(key)
         unique.append(item)
-    return tuple(sorted(unique, key=lambda o: (o.record, o.branch)))
+    return tuple(sorted(unique, key=lambda o: (o.record, o.branch, o.how)))

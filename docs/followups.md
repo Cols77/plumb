@@ -4602,3 +4602,44 @@ were labelled by their own requirement's state.
   the register's conflict entry names only the losing branch itself. Conflict entries written
   before this fix carry no versions and supersede nothing. Fix: compare against the record's
   newest owner confirmation, and match descendants of the losing branch.
+
+## SP6 audit round-4 verification (2026-10-07, commits 5ca928b and c7b1343)
+
+Two real worktrees, the real CLI and hooks. The HIGH finding (a change that landed on main
+cleared its claim, and with it the only signal capture checked: feat-x, made before, then
+captured different words for the same requirement with no card, no decision and silent
+status, brief, prompt and stop hooks, until the merge asked) is fixed at the one choke point
+every reader of other branches' intent shares, `inflight.others`: the default branch's
+changes since this branch's merge base (`inflight.since_fork`: merge-base, one diff, one
+`git cat-file --batch`, cached by both tips) join the other branches' claims as one claim of
+the default branch. Capture, the clarify read-back and the stop hook's claim raise the early
+card and one decision when this work changes such a record differently; status, the session
+brief and the prompt delta say the requirement was changed on main after this branch
+started; the owner's answer settles the later merge. New proposed example SR-081 EX-14.
+
+- [MEDIUM] (R17 "the answer is recorded once (a DEC) and both lanes build on it"; owner
+  decision 5 "a short alignment summary at the end of each turn"; awareness/turn.py
+  `at_stop` -> lines.delta_lines, whose per_turn superseded line the session emitter
+  deduplicates; tests/awareness/test_early_losing_lane.py::test_stop_hook_names_it) On the
+  losing lane (the owner kept main's version), the prompt hook names the record that still
+  holds the turned-down words on every turn, and status, the session-start brief and the
+  relay refusal (exit 3, naming DEC-001) all work, but the stop hook's end-of-turn summary
+  never names it in a real turn: the prompt hook runs first and emits that line, so the
+  stop hook's emitter treats it as already shown, and the owner's summary read only "plumb
+  ● awaits you · SR 0/1 ok · 3 awaits you / touched 1 file(s)...". The test writes
+  turn.json by hand and never runs the prompt hook. The agent is still told, so this stays
+  MEDIUM. Fix: show the superseded line in the stop hook's owner summary as an owner-visible
+  line not deduplicated against the agent-facing prompt delta, and make the test run the
+  prompt hook before the stop hook.
+- [LOW] (c7b1343 "a record is named (prompt delta, stop hook, status, brief)"; commands.py
+  `brief` vs awareness.lines.brief_entries) On the losing lane the CLI brief does not name
+  the superseded record; only the session-start hook's brief does, through brief_entries.
+  Fix: add the superseded lines to query.brief_lines, or document that only the session
+  brief carries them.
+- [LOW] (found while fixing the HIGH finding; awareness/inflight.py `since_fork`) Without
+  git (the prompt hook), the since-fork list is read from its cache only while the default
+  branch's tip is unchanged; after main moves, the prompt delta is silent about main's newer
+  changes until the next stop hook, session start, capture or status refreshes it. Status
+  lists every requirement main changed since the fork, which can be long on an old branch.
+  Fix: refresh the cache from the post-commit and post-merge points too, and cap status's
+  list with "+N more".

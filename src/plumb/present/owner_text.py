@@ -152,6 +152,12 @@ OVERLAP_CLAIMED = ' (intent in flight there: "{summary}")'
 MORE_OVERLAPS = "plumb: +{n} more also being changed elsewhere (/plumb status)"
 OVERLAP_CARD = "{n} also changed on {labels}"
 OVERLAP_CARD_ASCII = "overlap {n} ({labels})"
+# R17: a change that already landed on the default branch after this branch started from
+# it (its claim cleared there, but this branch still holds the words it replaced)
+OVERLAP_SINCE_FORK = ('plumb: {id} "{title}" was changed on {branch} after this branch '
+                      "started from it; build on {branch}'s words, or ask the owner which "
+                      "holds before changing it here")
+SINCE_FORK_SUMMARY = "changed there after this branch started"
 CONFLICTS_CARD_PLURAL = CONFLICTS_CARD_MANY
 STATUS_OVERLAPS_HEADER = "also being changed elsewhere (ask \"is anyone else changing X?\"):"
 STATUS_NO_OVERLAPS = "also being changed elsewhere: nothing"
