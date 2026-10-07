@@ -1122,6 +1122,19 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
         records = _revoked_records(core, ids) if revoke else _records(core, ids)
     stated, stated_ids = _stated(core, str(entry.get("at") or ""))
     if not revoke and records:
+        # R17: an "ok" naming another version of an early conflict than the decision holds
+        # is the owner's pick, never a confirmation of the opposite answer
+        from plumb.awareness.answer import plain_relay_problem
+
+        full = normalize_text(text)
+        spans = [(m.start(), m.end()) for m in _quote_pattern(normalized_quote).finditer(full)]
+        around = " ".join(full[a:b] for a, b in _statements(full)
+                          if any(s < b and e > a for s, e in spans))
+        problem = plain_relay_problem(core, [str(r["id"]) for r in records],
+                                      f"{normalized_quote} {around}")
+        if problem is not None:
+            raise Refused(problem)
+    if not revoke and records:
         relayed = [str(r["id"]) for r in records]
         _check_scope(normalize_text(text), normalized_quote, core.config.approve.affirmations,
                      relayed, group=group, set_anchor=set_anchor,

@@ -113,7 +113,14 @@ def data_for(core: Core, record: Record, statuses: Mapping[str, Any],
         quote=_flat(fields.get("quote") or fields.get("statement") or ""),
         will=_list(fields.get("will")), wont=_list(fields.get("wont")),
         assumed=_list(fields.get("assumptions")), examples=tuple(examples),
-        tests=tuple(tests.items()), decisions=decisions)
+        tests=tuple(tests.items()), decisions=decisions,
+        say=early_say(core, record) if record.kind == "decision" else "")
+
+
+def early_say(core: Core, record: Record) -> str:
+    from plumb.present.cards import early_say as say
+
+    return say(core, record)
 
 
 def card_data(core: Core, ids: Iterable[str]) -> list[IntentCardData]:
@@ -132,6 +139,10 @@ def _state_text(data: IntentCardData) -> str:
     if data.state == "confirmed":
         text = f"confirmed by {data.confirmed_by or 'you'}"
         return text + (f", {data.label}" if data.label else "")
+    if getattr(data, "say", ""):
+        from plumb.present.owner_text import EARLY_DEC_STATE
+
+        return EARLY_DEC_STATE.format(say=data.say)
     if data.state == "unconfirmed-edit":
         return "edited since you confirmed it — say \"ok\" to confirm"
     return "proposed — say \"ok\" to confirm"

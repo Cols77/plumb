@@ -16,6 +16,17 @@ work. `capture` records the question once as a decision, so every branch builds 
 same answer; a line saying the owner was already asked (or settled it) on another branch
 means: build on that answer, ask nothing.
 
+The owner answers in the card's own words: "keep feat-x's", "keep this one" or "both" (and
+how they combine). Record that answer as it is, once `capture` has raised the decision:
+`.venv/Scripts/python.exe -m plumb conflict relay <the DEC, or the requirement> --prompt <digest> --quote "<their exact
+words>"` (add `--take <branch>|both` when you are sure which they chose). It sets the
+decision to their pick and confirms it, and every other branch hears it at once. Never relay
+their pick as a plain "ok" (`relay`): an ok confirms only the option the decision already
+holds, and words naming the other version are refused there. When `clarify` showed the card
+before anything was written, run `capture` first, then relay the answer. When the backend
+could not judge an overlap ("whether they agree could not be judged"), read both versions
+yourself; if they differ, ask the owner which holds, or both, like any conflict card.
+
 Depth:
 
 - trivial (maps to confirmed intent, or a small unambiguous change): no questions. One line

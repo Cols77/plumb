@@ -29,10 +29,11 @@ incoming commits); a rebase, cherry-pick or revert step only for open intent con
 own requirements are its branch's business until that branch merges).
 
 No test run, no verification evidence, no judgment backend call (cards show a judgment only
-when one is already logged: ``conflict_rows(hook=True)``), no log write, no log-integrity
-diff: a few git calls and the record index. A non-zero exit refuses the commit; the
-operation stays in progress until it is settled, then the owner says "finish the merge" (or
-"continue the rebase").
+when one is already logged: ``conflict_rows(hook=True)``), no log-integrity diff: a few
+git calls and the record index. Its one write: an intent conflict the owner already
+answered before work began is settled with that answer (R17, ``check``). A non-zero exit
+refuses the commit; the operation stays in progress until it is settled, then the owner says
+"finish the merge" (or "continue the rebase").
 
 ``plumb hooks install`` and ``plumb init`` install both hooks by default (R17); ``plumb
 merge-check --install-pre-merge-commit`` and ``--uninstall-pre-merge-commit`` install and
@@ -188,6 +189,7 @@ class PremergeReport:
     collisions: tuple[Mapping[str, Any], ...] = ()       # {id, line}
     unstaged: tuple[str, ...] = ()       # .plumb/ paths that differ from the index committed
     unreadable: tuple[Mapping[str, Any], ...] = ()       # {path, line}
+    settled: tuple[str, ...] = ()        # R17: conflicts the owner's earlier answer settled
     operation: str = "merge"             # merge | rebase | cherry-pick | revert
     skipped: str | None = None
     exit: int = 0
@@ -271,10 +273,18 @@ def _unreadable(core: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def check(core: Any, operation: str | None = None) -> PremergeReport:
+def check(core: Any, operation: str | None = None, *, hook: str | None = None
+          ) -> PremergeReport:
     """The quick check of the merge, rebase, cherry-pick or revert in progress
     (``GITHEAD_*`` in the pre-merge-commit hook, else ``MERGE_HEAD`` and git's state
-    files)."""
+    files).
+
+    R17: an intent conflict the owner already answered before work began (a confirmed
+    early decision between exactly these two versions) is settled by that answer first
+    (``answer.apply_settled``: the chosen version, its log entry, both staged), never
+    asked again. git wrote the commit's tree before its hook ran, so the commit is held
+    once; the owner's "finish the merge" records the settled version (no new question).
+    ``hook`` names the git hook running the check (for the report only)."""
     from plumb.claims import claims_check, load_policy
     from plumb.merge import required_records, touched_requirements
     from plumb.mergedriver.conflicts import conflict_rows
@@ -284,15 +294,19 @@ def check(core: Any, operation: str | None = None) -> PremergeReport:
     operation = operation or git_operation(root)
     if operation is None:
         return PremergeReport(skipped="no merge in progress")
+    settled = tuple(_apply_settled(core))
+    # git wrote this commit's tree before its hook ran: hold it once, so the commit that
+    # finishes it ("finish the merge") records the settled version
+    settled_hold = bool(settled)
     unstaged = tuple(unstaged_plumb(root))
     unreadable = tuple(_unreadable(core))
     if operation != "merge":
         conflicts = conflict_rows(core, hook=True)
-        code = 1 if (unstaged or unreadable) else 4 if conflicts else 0
+        code = 1 if (unstaged or unreadable or settled_hold) else 4 if conflicts else 0
         return _with_lines(PremergeReport(
             into=labels_of(root, [])[0], operation=operation,
             intent_conflicts=tuple(conflicts), unstaged=unstaged, unreadable=unreadable,
-            exit=code))
+            settled=settled, exit=code))
     heads = incoming_heads(root)
     if not heads:
         return PremergeReport(skipped="no merge in progress")
@@ -313,8 +327,13 @@ def check(core: Any, operation: str | None = None) -> PremergeReport:
     required = required_records(core, touched)
     statuses = core.status(required)
     index = core.index()
+    from plumb.awareness.answer import waiting_on_conflict
+
+    # an early decision whose record carries an open conflict is asked once, by that
+    # conflict's card (its answer answers the decision too)
     unconfirmed = [{"id": i, "title": index[i].title, "state": statuses[i].confirmation}
-                   for i in required if statuses[i].confirmation != "confirmed"]
+                   for i in required if statuses[i].confirmation != "confirmed"
+                   and not waiting_on_conflict(index, i)]
 
     undeclared: list[dict[str, Any]] = []
     for sha, _ in heads:
@@ -331,12 +350,13 @@ def check(core: Any, operation: str | None = None) -> PremergeReport:
 
     conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
-    held = bool(undeclared or collisions or unstaged or unreadable)
+    held = bool(undeclared or collisions or unstaged or unreadable or settled_hold)
     code = 1 if held else 4 if (conflicts or unconfirmed) else 0
     report = PremergeReport(merging=theirs, into=ours, touched=tuple(touched),
                             unconfirmed=tuple(unconfirmed), undeclared=tuple(undeclared),
                             intent_conflicts=tuple(conflicts), collisions=tuple(collisions),
-                            unstaged=unstaged, unreadable=unreadable, exit=code)
+                            unstaged=unstaged, unreadable=unreadable, settled=settled,
+                            exit=code)
     return _with_lines(report)
 
 
@@ -366,6 +386,7 @@ def render(report: PremergeReport) -> list[str]:
         out = [f"plumb: quick check of this {report.operation} step (no test run): "
                f"{report.into}"]
         finish = f"continue the {report.operation}"
+    out.extend(report.settled)
     if report.intent_conflicts:
         out.append(owner_text.CONFLICTS_HEADER)
         for conflict in report.intent_conflicts:
@@ -415,10 +436,19 @@ def commit_hook_skips(root: Path) -> bool:
     return under_git_merge() and hook_state(Path(root), HOOK) == "plumb"
 
 
-def run_hook(core: Any) -> int:
+def _apply_settled(core: Any) -> list[str]:
+    try:
+        from plumb.awareness.answer import apply_settled
+
+        return apply_settled(core)
+    except Exception:  # noqa: BLE001 - the conflict then holds, and its card asks
+        return []
+
+
+def run_hook(core: Any, hook: str = HOOK) -> int:
     """``plumb merge-check --hook pre-merge-commit`` (or ``prepare-commit-msg``): print the
     report, return its exit."""
-    report = check(core)
+    report = check(core, hook=hook)
     for line in report.lines or render(report):
         print(line)
     return report.exit

@@ -148,6 +148,15 @@ def _iso(epoch: float) -> str:
 
 
 def _dec_question(record: Any) -> str:
+    from plumb.awareness.answer import early_of
+
+    early = early_of(record)
+    if early is not None:  # R17: the early conflict card's own question and answers
+        question = " ".join(str(record.fields.get("question") or record.title).split())
+        return (f"plumb: {record.id} is unconfirmed and this work relies on it. Show the owner "
+                f"the conflict card and ask: \"{question}\" They answer in the card's words "
+                "(\"keep <branch>'s\", \"keep this one\" or \"both\"); relay those words as "
+                f"the answer to {record.id}")
     chosen = str(record.fields.get("chosen") or "A").strip()
     alternatives = record.fields.get("alternatives") or []
     if isinstance(alternatives, str):
@@ -312,7 +321,8 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
                  stated_ids: Sequence[str], shown: Iterable[str] = (), *,
                  group: Mapping[str, Any] | None = None, offer: Sequence[str] = (),
                  message: str = "", confirm: ConfirmView | None = None,
-                 conflicts: Sequence[Mapping[str, Any]] = ()) -> None:
+                 conflicts: Sequence[Mapping[str, Any]] = (),
+                 early: Sequence[Mapping[str, Any]] = ()) -> None:
     """The stated set of this reply: what a bare affirmation of the owner may confirm.
 
     The records and groups ``plumb confirm`` prepared this turn stay in it (``via:
@@ -366,6 +376,8 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
         data["confirm_groups"] = carry.groups
     if seen and conflicts:  # sp6 8.4: the conflict cards this reply showed the owner
         data["conflicts"] = [dict(c) for c in conflicts]
+    if seen and early:  # R17: the early conflict cards this reply showed the owner
+        data["early"] = [dict(c) for c in early]
     write_json_atomic(ctx.session_dir / "stated.json", data)
 
 
@@ -415,9 +427,14 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     carry = confirm_carry(ctx, turn)
     if not changed:
         view = confirm_view(core, carry)
-        write_stated(ctx, turn, {}, [], confirm=view)
+        # the cards plumb conflicts, capture or the clarify read-back asked for this turn
+        # reach the owner even when the turn changed no file (R17: asked at once)
+        conflict_lines, conflicts = conflict_cards(ctx, core, turn)
+        early_lines, early = early_cards(ctx, turn)
+        write_stated(ctx, turn, {}, [], confirm=view, conflicts=conflicts, early=early)
         # a timed-out git status is no evidence of a turn without changes
-        text = [*view.lines, *([skip_notice(skipped)] if skipped else [])]
+        text = [*view.lines, *conflict_lines, *early_lines,
+                *([skip_notice(skipped)] if skipped else [])]
         return HookOutput(system_message="\n".join(text)) if text else None
     # no soft-budget check before the read-back (R1): only the watchdog bounds it
     index = core.index()
@@ -599,9 +616,26 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     conflict_lines, conflicts = conflict_cards(ctx, core, turn)
     if conflict_lines:
         message = "\n".join([message, *conflict_lines])
+    early_lines, early = early_cards(ctx, turn)
+    if early_lines:
+        message = "\n".join([message, *early_lines])
     write_stated(ctx, turn, index, stated_ids, shown, group=group, offer=offer,
-                 message=message, confirm=view, conflicts=conflicts)
+                 message=message, confirm=view, conflicts=conflicts, early=early)
     return HookOutput(system_message=message)
+
+
+def early_cards(ctx: HookContext,
+                turn: Mapping[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
+    """R17: the early intent-conflict cards ``capture`` or ``plumb clarify`` asked for this
+    turn, shown to the owner with their stated entries, so the owner's answer in the card's
+    words ("keep feat-x's") is relayed against a card the owner saw. Never fails the stop."""
+    start = _iso(float(turn.get("turn_start") or 0)) if turn.get("turn_start") else ""
+    try:
+        from plumb.awareness.early import turn_cards
+
+        return turn_cards(ctx.session_dir, start)
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        return [], []
 
 
 def conflict_cards(ctx: HookContext, core: Any,

@@ -209,11 +209,25 @@ def conflict_card(core: Any, conflict: IntentConflict, *, backend: Any = None) -
             lines.extend(_side_rows(conflict, name, conflict.fields[name], "    "))
     if conflict.merged:
         lines.append(owner_text.CARD_MERGED.format(what=_merged_text(conflict.merged)))
-    lines.append(judgment_line(core, conflict, backend))
     ours, theirs = conflict.labels
+    settled = _settled(core, conflict)
+    if settled is not None:  # R17: answered before work began; nothing to ask again
+        side = ours if settled.take == "ours" else theirs
+        lines.append(owner_text.CARD_SETTLED.format(chosen=settled.chosen, side=side))
+        return lines
+    lines.append(judgment_line(core, conflict, backend))
     say = owner_text.CARD_SAY_COMBINED if conflict.proposed else owner_text.CARD_SAY
     lines.append(say.format(ours=ours, theirs=theirs))
     return lines
+
+
+def _settled(core: Any, conflict: IntentConflict) -> Any:
+    try:
+        from plumb.awareness.answer import settling
+
+        return settling(core, conflict)
+    except Exception:  # noqa: BLE001 - the card still asks
+        return None
 
 
 def _side_text(conflict: IntentConflict, side: str) -> str:
@@ -381,9 +395,13 @@ def _side_values(conflict: IntentConflict, take: str,
 def apply_choice(core: Any, conflict: IntentConflict, take: str, *, by: str,
                  quote: str | None = None, prompt: str | None = None,
                  self_recorded: bool = False,
-                 values: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                 values: Mapping[str, Any] | None = None,
+                 decision: str | None = None) -> dict[str, Any]:
     """Write the choice and log it. The chosen side's values for the conflicting fields,
-    the merged values for every other field, links kept, the block removed."""
+    the merged values for every other field, links kept, the block removed. ``decision``:
+    the confirmed early decision whose answer this applies (``by: owner-decision``). The
+    owner's own pick also answers an unanswered early decision on the same record
+    (``answer.answer_from_conflict``): one question, one answer (R17)."""
     chosen = _side_values(conflict, take, values)
     record, data, body = _read_record(core, conflict)
     data.pop("conflict", None)
@@ -404,7 +422,16 @@ def apply_choice(core: Any, conflict: IntentConflict, take: str, *, by: str,
         payload["combined_hash"] = _values_hash(chosen)
     if self_recorded:
         payload["self_recorded"] = True
+    if decision:
+        payload["decision"] = decision
     core.log_append("events", "conflict-resolution", payload)
+    if by in ("owner", "agent-relayed"):
+        from plumb.awareness.answer import answer_from_conflict
+
+        answered = answer_from_conflict(core, conflict, take, by=by, quote=quote,
+                                        prompt=prompt, self_recorded=self_recorded)
+        if answered:
+            payload["answered"] = answered
     stage_choice(core, record.path)
     return payload
 

@@ -71,6 +71,15 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
             return f"agent-relayed {entry.kind} carries no owner quote"
         if payload.get("quote_digest") != sha256_text(quote):
             return f"agent-relayed {entry.kind} quote does not match its quote_digest"
+        choice = payload.get("choice")
+        if entry.kind == "approval" and isinstance(choice, Mapping):
+            # the owner's pick between the options a conflict card showed ("keep feat-x's",
+            # "keep this one", "both"): the quote names the chosen option (R17)
+            from plumb.awareness.answer import choice_named
+
+            if not choice_named(quote, choice):
+                return "agent-relayed approval quote does not name the option chosen"
+            return None
         if entry.kind == "approval" and affirmation_in(quote, affirmations) is None:
             return "agent-relayed approval quote contains no affirmation"
         return None

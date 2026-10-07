@@ -222,9 +222,10 @@ def _inflight(core: Core, request: str, backend: Any) -> tuple[list[str], bool]:
     """The early intent-conflict check of the read-back (R17, SR-081): ``(lines, whether a
     card is among them)``. Advisory: an error shows nothing."""
     try:
-        from plumb.awareness.early import card, check_text
+        from plumb.awareness.early import card, check_text, request_cards
 
         result = check_text(core, request, backend=backend)
+        request_cards(core, result.conflicts)  # the owner sees them at the end of the turn
     except Exception:  # noqa: BLE001 - intent in flight never fails the read-back
         return [], False
     lines = [line for conflict in result.conflicts for line in card(conflict)]

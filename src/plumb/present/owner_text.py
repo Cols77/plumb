@@ -159,13 +159,31 @@ EARLY_BOTH = "both, combined"
 EARLY_RECORDED = ("plumb: asked once for every branch working on {id} \"{title}\"; the answer "
                   "settles it there too")
 EARLY_ASK = ("plumb: {dec} holds that question for the agent: show the card above and ask the "
-             "owner now, before any implementation, then build on the answer")
+             "owner now, before any implementation; the owner's own words (\"keep ...'s\", "
+             "\"keep this one\" or \"both\") answer it as they are (relay them as the "
+             "answer to {dec}), then build on the answer")
 EARLY_KNOWN = ('plumb: {id} "{title}": the owner is asked on branch {branch} whether this work '
                "or that branch's holds; build on the answer")
 EARLY_SETTLED = ('plumb: {id} "{title}": the owner settled it on branch {branch}: "{chosen}"; '
                  "build on that")
 EARLY_COMPATIBLE = ('plumb: {id} "{title}" shares its feature with intent in flight on branch '
                     '{branch} ("{summary}"); judged compatible, nothing to ask')
+# R12/R17: only a confident JEV verdict may say "compatible"; a word check or an unsure
+# verdict names both versions and leaves the call to the agent's reading
+EARLY_UNJUDGED = ('plumb: {id} "{title}" shares its feature with intent in flight on branch '
+                  '{branch}; whether they agree could not be judged ({who}): {branch} says '
+                  '"{theirs}"; this says "{ours}". If they differ, show the owner both and ask '
+                  "which holds, or both")
+# the owner's answer to an early conflict card, once recorded (answer.record_answer)
+EARLY_ANSWERED = ('plumb: {id} "{title}": your answer is recorded: {chosen}; every branch '
+                  "working on it builds on that")
+# a merge-time conflict the owner already answered before work began (answer.apply_settled)
+EARLY_APPLIED = ('plumb: {id} "{title}" now holds {chosen}, as you answered before work '
+                 'began; nothing to ask again (say "finish the merge" to record it)')
+CARD_SETTLED = ("  Already answered by you before work began: {chosen} ({side}'s side); "
+                "nothing to choose again")
+# the state of an early-conflict decision's card (a DEC that asks which version holds)
+EARLY_DEC_STATE = "awaits your choice — {say}"
 EARLY_DRY_RUN = "plumb: nothing recorded (a preview)"
 INFLIGHT_BUSY = ("plumb: could not record this work's intent for the other branches (another "
                  "session is recording at the same moment); it is retried at the end of the "

@@ -153,7 +153,8 @@ def add_example(core: Core, sr_id: str, given: str, when: str, then: str,
 def decide(core: Core, question: str, chosen: str, alternatives: Sequence[str], *,
            matters: bool = False, recommended: str | None = None,
            decides: Sequence[str] = (), derives_from: Sequence[str] = (),
-           supersede: str | None = None, rationale: str = "", title: str = "") -> Record:
+           supersede: str | None = None, rationale: str = "", title: str = "",
+           extra: Mapping[str, Any] | None = None) -> Record:
     """``plumb decide``: "I assumed A; B also fits" as a DEC. With ``supersede``, a new DEC
     with a ``supersedes`` link; the superseded decision is never edited in place."""
     index = core.index()
@@ -182,6 +183,8 @@ def decide(core: Core, question: str, chosen: str, alternatives: Sequence[str], 
         fields["rationale"] = " ".join(rationale.split())
     if recommended is not None:
         fields["recommended"] = recommended
+    for key, value in (extra or {}).items():  # e.g. ``early``: the early conflict it asks
+        fields.setdefault(key, value)
     record = core.write_record("decision", fields)
     for target in derives_from:
         core.add_link(record.id, "derives_from", Target(record=target))

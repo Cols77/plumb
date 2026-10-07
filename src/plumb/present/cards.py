@@ -174,12 +174,29 @@ def card_for(core: Any, record: Any, statuses: Mapping[str, Any], *,
         chosen = _flat(fields.get("chosen"))
         assumed = (chosen,) if chosen else ()
         alternatives = _items(fields.get("alternatives"))
+    say = early_say(core, record)
+    if say:
+        statement = _flat(fields.get("question"))
     return IntentCardData(
         id=record.id, title=_flat(record.title), state=state, confirmed_by=confirmed_by,
         label=label, quote=_flat(fields.get("quote")) if record.kind == "intent" else "",
         will=_items(fields.get("will")), wont=_items(fields.get("wont")), assumed=assumed,
         examples=examples, tests=tuple(tests.items()), decisions=decisions, kind=record.kind,
-        statement=statement, alternatives=alternatives)
+        statement=statement, alternatives=alternatives, say=say)
+
+
+def early_say(core: Any, record: Any) -> str:
+    """The answer words of an early-conflict decision's card (R17), from this session's
+    branch; "" for any other record."""
+    try:
+        from plumb.awareness.answer import _current, early_of, say_line
+
+        early = early_of(record)
+        if early is None:
+            return ""
+        return say_line(early, _current(core)).replace("Say:", "say", 1)
+    except Exception:  # noqa: BLE001 - the card falls back to its plain state
+        return ""
 
 
 def card_data(core: Any, ids: Iterable[str], *, evidence: Mapping[str, Any] | None = None,

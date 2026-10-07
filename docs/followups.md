@@ -4245,3 +4245,80 @@ contracts, routes and `owner_text`, and the merges joined them.
   fixes touch modules most tests import, so the full run's evidence is now stale on the
   current tree and `plumb merge-check` reports exit 5 (unverified acceptance tests) besides
   exit 4 for the 134 proposed records; the next full run is the pre-push hook's.
+
+## SP6 audit: early intent conflicts in two real worktrees (2026-10-07)
+
+The audit exercised the real CLI and hooks in scratch repositories with parallel worktrees
+and merges carrying an intent conflict. Its five HIGH findings were fixed in the same change
+as one class each: the owner's answer to an early conflict card is recorded through one
+choke point (`plumb.awareness.answer`: `plumb conflict relay|choose DEC-###`, the capture,
+clarify, stop-hook and /plumb conflicts cards; a plain `relay` naming the other version is
+refused); a merge-time conflict between the two versions a confirmed early decision chose
+between is settled by that answer (`answer.apply_settled` in the quick merge check and
+/plumb conflicts, the card says "already answered"), and the owner's pick on a merge card
+answers a still-open early decision; only a confident JEV verdict may say "judged
+compatible" (`early.overlap_line`). The medium and low findings below were not fixed.
+
+- [MEDIUM] (SP6 audit, stop hook) `stop.handle` returns before `at_stop` when the turn
+  changed no file, so `inflight.sync_decisions` never runs for a turn whose only change is
+  the owner's answer. The new early-answer path (`answer.record_answer`) now syncs the
+  register itself, but an answer confirmed through plain `relay` ("ok") or `approve` still
+  reaches the other lanes only after a later turn changes a file (or `plumb inflight sync`).
+  Fix: run `inflight.sync_decisions` on every stop (it is cheap and writes only on change),
+  or call it from `relay` and `approve` after an approval of a DEC a claim references; add a
+  hook-level test (relay, stop, the other worktree's prompt line says "settled"). Reported
+  twice by the audit.
+- [MEDIUM] (SP6 audit, early.py) One DEC per branch pair: with three lanes changing SR-001,
+  capture raised two pairwise decisions (and printed "asked once for every branch" twice),
+  and the owner could answer them inconsistently. Fix: one open conflict DEC per record that
+  lists every in-flight version as an option; a later lane joins it as a new alternative.
+- [MEDIUM] (SP6 audit, awareness) Stale awareness after a merge: feat-b's prompt hook still
+  warned that SR-001 "is also being changed on branch feat-c" after feat-c merged, and an
+  early DEC raised against a merged branch was still listed. Fix: base the overlap scan on
+  the merged-branch test the claims use; retarget or supersede an early DEC whose
+  counterpart merged (its question then reads "main's version"). Partly addressed: the
+  quick merge check no longer lists an early DEC beside the open conflict card on its record.
+- [MEDIUM] (SP6 audit, R14, pre-push) The pre-push hook output (`merge-check --hook
+  pre-push`) still gives shell instructions and internal IDs: "merge waits for your
+  confirmation: `plumb approve SR-001 SR-003 DEC-001`, or say ok in the session", "push with
+  --no-verify to bypass the hook", "(plumb tests waive --merge <sha> --reason ...)", "plumb
+  link SR-001 implemented_by app.py". The pre-merge-commit path already says "/plumb confirm
+  <title>". Fix: route the merge report's confirmation and refusal lines through
+  `present.owner_text` ("/plumb confirm <title>", "say 'waive the full run'"), drop the
+  --no-verify hint from owner text. R14 is SP7 scope (R18); reported three times.
+- [MEDIUM] (SP6 audit, merge-check) A confirmed early DEC whose chosen side differs from
+  the record's merged content (the owner answered the merge card differently) passes the
+  quick check and surfaces only as a stale link in `plumb drift`. Fix: treat it as an open
+  intent conflict in merge-check and cite the early answer on the merge card. (A merge
+  meeting exactly the two versions the DEC chose between is now settled by it.)
+- [LOW] (SP6 audit, pre-push range) The first push of a ref new on the remote checks
+  `<HEAD>..HEAD` ("touched requirements: none"), so confirmations and claims of the merged
+  work are never verified at push. Fix: for a new remote ref, take the base from the remote
+  default branch's merge-base, or the root commit when the remote is empty. Reported twice.
+- [LOW] (SP6 audit, init) `plumb init` in a fresh repository installs pre-merge-commit,
+  pre-push and prepare-commit-msg but no commit-msg hook (the SR-trailer check). R15 is SP7
+  scope: install it in init, or record it with the plugin work.
+- [LOW] (SP6 audit, spec drift) docs/specs/sp6-parallel-work.md section 10 still says the
+  pre-merge-commit hook runs the full suite unless `merge.premerge_run_full: false`; the
+  implementation follows R17 (no test run). Fix: drop that sentence and state that the hook
+  never runs tests.
+- [LOW] (SP6 audit, inflight summary) An update-only capture (no INT, no new SR) records an
+  empty claim summary (`feat-b: "" (SR-001 ...)`). Fix: fall back to the updated record's
+  title or new statement.
+- [LOW] (SP6 audit, README) "Logs never conflict" says each prompt is a small file under
+  `.plumb/log/<kind>/`; prompts live in the untracked `.plumb/session/prompts.jsonl`. Fix:
+  say prompts are local session state and keep the per-entry claim for the tracked logs.
+- [LOW] (early-answer fix, clarify) `early.check_text` matches a request only against this
+  worktree's records, so a request about a requirement that exists only on the other branch
+  (a new SR there) is not checked at read-back; capture still checks it by feature. Fix:
+  also match the request against the claimed records' words (term overlap) before judging.
+- [LOW] (early-answer fix, merge driver) A settled conflict is applied by the quick merge
+  check after git wrote the merge tree, so the merge is held once and "finish the merge"
+  records it. Settling inside the record merge driver (reading the confirmed decision from
+  both sides) would let the merge commit on its own.
+- [LOW] (flaky, seen once) `tests/present/test_present_confirm.py::
+  test_relayed_ok_then_confirms_exactly_the_shown` failed once inside a larger focused run
+  (the prompt hook listed FEAT-001 and FEAT-002 beside SR-010, as if the stop hook had seen
+  the uncommitted fixture records as this turn's changes) and passed on rerun, alone and in
+  the same set. It depends on file times against the turn start. Fix: commit the fixture
+  records before the turn, or start the turn after writing them.

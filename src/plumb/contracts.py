@@ -394,6 +394,9 @@ class IntentCardData:
     kind: str = ""
     statement: str = ""
     alternatives: tuple[str, ...] = ()
+    # R17: an early-conflict decision is answered in the conflict card's own words ("keep
+    # feat-x's", "keep this one", "both"), never a bare "ok" to a preset side
+    say: str = ""
 
 
 @dataclass(frozen=True)

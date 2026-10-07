@@ -221,7 +221,7 @@ def run(command: str, argv: list[str]) -> int:
     if args.hook in ("pre-merge-commit", "prepare-commit-msg"):
         from plumb.boundary.premerge import run_hook
 
-        return run_hook(core)
+        return run_hook(core, args.hook)
     if args.hook == "pre-push":
         return _hook_pre_push(core, not args.no_run)
     base = args.base or str(merge_settings(core)["default_base"])

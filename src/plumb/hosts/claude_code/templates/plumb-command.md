@@ -40,7 +40,13 @@ only when asked.
   <ours|theirs|combined> --prompt <digest> --quote "<exact words>"`. When they describe a
   combination, write it with `{plumb} conflict propose <IC> --file <fields.yaml>` (shown as
   a third version; it applies nothing). Never run `conflict choose`: it is the owner's own
-  terminal.
+  terminal. The same command lists the intent conflicts caught before any work (another
+  branch has a different version of the same intent in flight; the card says "keep
+  feat-x's", "keep this one" or "both"): relay the owner's answer, in their exact words,
+  with `{plumb} conflict relay <the DEC or the requirement> --prompt <digest> --quote
+  "<exact words>"`; it records their pick once for every branch. A conflict the owner already
+  answered that way is settled by that answer when the merge meets it ("already answered by
+  you"): never ask it again; the merge then only needs "finish the merge".
 - `merge-check`: run `{plumb} merge-check` and say what holds the merge in their terms. A
   merge held by the quick merge check (no test run) is finished when they say "finish the
   merge": `git add .plumb` (their choices and confirmations made during the merge), then

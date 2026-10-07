@@ -287,7 +287,9 @@ coordinates them through git alone: it holds no locks and no shared runtime stat
   requirement this session works on, the session brief and the status line say so once, for
   example `SR-005 "relay checks" is also being changed on branch feat-x`. When a new request
   contradicts intent another branch has in flight, you are asked right away, before either
-  side builds on it, and your answer holds for both.
+  side builds on it ("keep feat-x's", "keep this one" or "both"), and your answer holds for
+  both. When those two versions later meet at merge, your earlier answer settles them: you
+  are not asked again.
 - **The merge waits for you only when it must.** `/plumb init` sets up the record merge and
   a quick check that holds a merge carrying an open intent conflict, an unconfirmed
   requirement or an undeclared file, without running the tests. The one full test run

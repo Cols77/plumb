@@ -130,6 +130,10 @@ def _state_text(card: IntentCardData) -> str:
         text = f"confirmed by {by}"
         if by == "JEV":
             text += ' — say "revoke" to undo'
+    elif getattr(card, "say", ""):
+        from plumb.present.owner_text import EARLY_DEC_STATE
+
+        text = EARLY_DEC_STATE.format(say=card.say)
     elif card.state == "unconfirmed-edit":
         text = 'changed since you confirmed it — say "ok" to confirm'
     else:

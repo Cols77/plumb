@@ -37,6 +37,7 @@ class EarlyConflict:
     theirs: str                      # the other branch's version, in the owner's words
     ours: str                        # this request's version
     judgment: str = ""               # "" for the same record (deterministic)
+    theirs_hash: str = ""            # the other branch's version of the record, when claimed
 
 
 @dataclass
@@ -135,7 +136,7 @@ def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | N
                     record=record.id, title=record.title, branch=str(claim["branch"]),
                     claim=str(claim.get("id")), theirs=str(entry.get("text") or
                                                           claim.get("summary") or ""),
-                    ours=our_text))
+                    ours=our_text, theirs_hash=str(entry.get("hash") or "")))
                 continue
             if record.id in new_set and feature and feature in (claim.get("features") or []):
                 judge = judge if judge is not None else _backend(core, backend)
@@ -143,7 +144,7 @@ def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | N
                                    (claim.get("records") or {}).values()
                                    if isinstance(e, Mapping) and e.get("feature") == feature)
                 theirs = theirs or str(claim.get("summary") or "")
-                verdict, why = _judge(judge, theirs, record)
+                verdict, why, sure = _judge(judge, theirs, record)
                 if verdict == "contradicts":
                     known = _known(my_branch, every, record.id, claim)
                     if known is not None:
@@ -154,10 +155,25 @@ def check_records(core: Any, mine: Sequence[Any], *, ours: Mapping[str, str] | N
                         claim=str(claim.get("id")), theirs=_clip(theirs, 240), ours=our_text,
                         judgment=why))
                 else:
-                    result.lines.append(text.EARLY_COMPATIBLE.format(
-                        id=record.id, title=record.title, branch=claim["branch"],
-                        summary=_clip(str(claim.get("summary") or ""), 80)))
+                    result.lines.append(overlap_line(
+                        record.id, record.title, str(claim["branch"]),
+                        str(claim.get("summary") or ""), theirs, our_text, why, sure))
     return result
+
+
+def overlap_line(record_id: str, title: str, branch: str, summary: str, theirs: str,
+                 ours: str, why: str, sure: bool) -> str:
+    """The one line for an overlap judged not contradictory (R17, R12), wherever it is
+    checked (capture, the clarify read-back): "judged compatible, nothing to ask" only on a
+    confident JEV verdict; a word check, an unsure verdict or no judgment names both
+    versions so the agent can still ask."""
+    if sure:
+        return text.EARLY_COMPATIBLE.format(id=record_id, title=title, branch=branch,
+                                            summary=_clip(summary, 80))
+    who = why[why.find("(") + 1:why.rfind(")")] if "(" in why else why
+    return text.EARLY_UNJUDGED.format(id=record_id, title=title, branch=branch,
+                                      who=who or "no judgment available",
+                                      theirs=_clip(theirs, 120), ours=_clip(ours, 120))
 
 
 def _same_version(entry: Mapping[str, Any], record: Any, *, planned: bool) -> bool:
@@ -171,22 +187,31 @@ def _same_version(entry: Mapping[str, Any], record: Any, *, planned: bool) -> bo
     return bool(theirs) and theirs == str(getattr(record, "hash", "") or "")
 
 
-def _judge(backend: Any, theirs: str, record: Any) -> tuple[str, str]:
+# a JEV verdict at or above this confidence may say "compatible" on its own (R12, R17)
+CONFIDENT = 0.8
+
+
+def _judge(backend: Any, theirs: str, record: Any) -> tuple[str, str, bool]:
     """The backend's compatibility verdict on ``record`` against the other branch's words:
-    ``(verdict, the card's "Compatible?" text)``."""
+    ``(verdict, the card's "Compatible?" text, whether the verdict is confident)``. Only
+    JEV, above ``CONFIDENT`` and not escalating, is confident; the heuristic (a word check)
+    never is."""
     if backend is None:
-        return "unsure", "no judgment available"
+        return "unsure", "no judgment available", False
     try:
         judgment = backend.contradiction(theirs, record)
     except Exception:  # noqa: BLE001 - advisory
-        return "unsure", "no judgment available"
+        return "unsure", "no judgment available", False
     verdict = str(getattr(judgment, "verdict", "unsure"))
     name = str(getattr(judgment, "backend", "") or getattr(backend, "name", ""))
     confidence = float(getattr(judgment, "confidence", 0.0) or 0.0)
     label = {"contradicts": "likely not", "extends": "likely yes (it adds beside it)",
              "benign": "likely yes"}.get(verdict, "unsure")
-    who = "JEV" if name == "jev" else ("a quick word check" if name == "heuristic" else name)
-    return verdict, f"{label} ({who}, {confidence:.2f})"
+    jev = name == "jev" or name.startswith("jev:")
+    who = "JEV" if jev else ("a quick word check" if name == "heuristic" else name)
+    tier = str(getattr(judgment, "tier", "") or "")
+    sure = jev and confidence >= CONFIDENT and not tier.startswith("escalate")
+    return verdict, f"{label} ({who}, {confidence:.2f})", sure
 
 
 def check_text(core: Any, request: str, *, backend: Any = None) -> EarlyCheck:
@@ -230,7 +255,7 @@ def check_text(core: Any, request: str, *, backend: Any = None) -> EarlyCheck:
                 continue
             synthetic = _synthetic(record_id, str(entry.get("title") or ""),
                                    str(entry.get("text") or ""))
-            verdict, why = _judge(judge, request, synthetic)
+            verdict, why, sure = _judge(judge, request, synthetic)
             title = str(entry.get("title") or record_id)
             if verdict == "contradicts":
                 result.conflicts.append(EarlyConflict(
@@ -238,9 +263,9 @@ def check_text(core: Any, request: str, *, backend: Any = None) -> EarlyCheck:
                     claim=str(claim.get("id")), theirs=str(entry.get("text") or ""),
                     ours=ours, judgment=why))
             else:
-                result.lines.append(text.EARLY_COMPATIBLE.format(
-                    id=record_id, title=title, branch=claim["branch"],
-                    summary=_clip(str(claim.get("summary") or ""), 80)))
+                result.lines.append(overlap_line(
+                    record_id, title, str(claim["branch"]), str(claim.get("summary") or ""),
+                    str(entry.get("text") or ""), ours, why, sure))
     return result
 
 
@@ -251,6 +276,60 @@ def card(conflict: EarlyConflict) -> list[str]:
             text.EARLY_CARD_SIDE.format(label="this work", text=_clip(conflict.ours)),
             text.EARLY_CARD_JUDGED.format(judgment=conflict.judgment or text.EARLY_CARD_SAME),
             text.EARLY_CARD_SAY.format(branch=conflict.branch)]
+
+
+REQUESTED_FILE = "early-requested.json"
+
+
+def request_cards(core: Any, conflicts: Sequence[EarlyConflict]) -> None:
+    """Ask the stop hook to show these cards to the owner at the end of the turn and to put
+    them in the stated set (``turn_cards``), so the owner's answer ("keep feat-x's") is
+    relayed against a card the owner saw, even when nothing is written yet (the clarify
+    read-back)."""
+    if not conflicts:
+        return
+    import json
+    import os
+
+    from plumb.normalize import utc_now
+
+    path = core.paths.session / REQUESTED_FILE
+    cards = [{"record": c.record, "title": c.title, "branch": c.branch, "claim": c.claim,
+              "theirs": c.theirs, "ours": c.ours, "judgment": c.judgment} for c in conflicts]
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"at": utc_now(), "cards": cards}), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def turn_cards(session_dir: Any, turn_start: str = "") -> tuple[list[str], list[dict[str, Any]]]:
+    """``(lines, stated entries)``: the early cards ``capture`` or ``clarify`` asked for this
+    turn, for the stop hook's reply. Reads one small session file; never fails."""
+    import json
+    from pathlib import Path
+
+    try:
+        data = json.loads((Path(session_dir) / REQUESTED_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return [], []
+    if not isinstance(data, Mapping) or str(data.get("at") or "") < turn_start:
+        return [], []
+    lines: list[str] = []
+    entries: list[dict[str, Any]] = []
+    for item in data.get("cards") or []:
+        if not isinstance(item, Mapping) or not item.get("record"):
+            continue
+        conflict = EarlyConflict(
+            record=str(item["record"]), title=str(item.get("title") or ""),
+            branch=str(item.get("branch") or ""), claim=str(item.get("claim") or ""),
+            theirs=str(item.get("theirs") or ""), ours=str(item.get("ours") or ""),
+            judgment=str(item.get("judgment") or ""))
+        lines += card(conflict)
+        entries.append({"record": conflict.record, "branch": conflict.branch})
+    return lines, entries
 
 
 def question(conflict: EarlyConflict) -> str:
@@ -276,12 +355,22 @@ def raise_conflicts(core: Any, conflicts: Sequence[EarlyConflict], *,
         if not decides and not derives:
             continue
         theirs = text.EARLY_THEIRS.format(branch=conflict.branch)
+        extra: dict[str, Any] = {}
+        if me is not None and me.branch and decides:
+            # which question this is and, by branch, the two versions it chooses between:
+            # the owner's answer then settles a merge of exactly these versions (answer.py)
+            hashes = {me.branch: index[conflict.record].hash}
+            if conflict.theirs_hash:
+                hashes[conflict.branch] = conflict.theirs_hash
+            extra["early"] = {"record": conflict.record, "raised_on": me.branch,
+                              "other": conflict.branch, "hashes": hashes}
         record = decide(core, question(conflict), mine,
                         [theirs, text.EARLY_BOTH], matters=True, decides=decides,
                         derives_from=derives,
                         rationale=(f"Raised at capture (R17): branch {conflict.branch} has "
                                    f"this requirement in flight; asked once for both."),
-                        title=f"{conflict.record} {conflict.title}: which version holds")
+                        title=f"{conflict.record} {conflict.title}: which version holds",
+                        extra=extra)
         index = core.index()
         entries.append({"record": conflict.record, "branch": conflict.branch,
                         "with": conflict.claim, "dec": record.id,
@@ -308,6 +397,7 @@ def after_capture(core: Any, *, written: Sequence[str], updated: Sequence[str],
     lines += result.lines
     if dry_run:
         return [*lines, text.EARLY_DRY_RUN] if lines else []
+    request_cards(core, result.conflicts)
     entries = raise_conflicts(core, result.conflicts, intent=intent)
     for entry in entries:
         lines.append(text.EARLY_RECORDED.format(id=entry["record"],
