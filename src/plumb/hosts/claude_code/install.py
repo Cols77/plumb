@@ -398,6 +398,13 @@ def git_adoption(root: Path, interpreter: str, lines: list[str], dry_run: bool) 
         lines.append("plumb: would install the quick merge check (git pre-merge-commit hook)")
         return
     try:
+        from plumb.boundary.premerge import hook_path, hook_text
+
+        path = hook_path(root)
+        current = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        if current == hook_text(interpreter):
+            lines.append("plumb: quick merge check unchanged")
+            return
         install_hook(root, interpreter)
     except ForeignHookError:
         lines.append(owner_text.FOREIGN_HOOK)

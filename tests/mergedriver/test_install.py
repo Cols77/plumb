@@ -76,10 +76,13 @@ def test_launcher_matches_commit_msg_hook(tmp_path: Path) -> None:
     assert driver.startswith(f'"{exe}" -m plumb merge-driver ')
 
 
-def test_init_installs_the_driver(tmp_path: Path) -> None:
+def test_init_installs_the_driver(tmp_path: Path, capsys) -> None:
     """R15, R17: /plumb init (``plumb init``) adopts a repository with the record merge."""
     root = tmp_path / "r"
     root.mkdir()
     run_git(root, "init", "-q", "-b", "main")
     assert cli.main(["init", "--root", str(root)]) == 0
     assert status(root) == "merge driver: installed"
+    capsys.readouterr()
+    assert cli.main(["init", "--root", str(root)]) == 0
+    assert capsys.readouterr().out.strip() == "plumb: already initialized"

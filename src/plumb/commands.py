@@ -121,6 +121,7 @@ def cmd_init(command: str, argv: list[str]) -> int:
     git_lines: list[str] = []
     if (root / ".git").exists():
         git_adoption(root, sys.executable, git_lines, False)
+        git_lines = [line for line in git_lines if not line.endswith("unchanged")]
     if args.as_json:
         emit({"root": str(root), "changed": changed, "git": git_lines}, True)
     elif changed or git_lines:
