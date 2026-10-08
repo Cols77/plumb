@@ -226,8 +226,8 @@ def test_model_change_suspends_until_recalibrated(ready) -> None:
     [intent] = new_ids(repo, before)
     assert state_of(repo, intent) == "proposed"
     state = auto_approve_state(open_core(repo))
-    assert state.suspended and state.reason == "auto-approve suspended: model changed, " \
-                                               "recalibrate"
+    assert state.suspended and state.reason.startswith("auto-approve suspended")
+    assert "/plumb jev calibrate" in state.reason  # R14: the slash command, never the CLI
 
 
 def test_revoke_returns_the_record_to_proposed(ready, monkeypatch) -> None:
@@ -284,3 +284,20 @@ def test_show_and_off(ready, monkeypatch, capsys) -> None:
     assert run(repo, "config", "auto-approve", "off") == 0
     assert not auto_approve_state(open_core(repo)).configured
     assert "enabled: false" in (repo / ".plumb" / "config.yaml").read_text(encoding="utf-8")
+
+
+@pytest.mark.sr("SR-039")
+def test_an_equivalent_model_name_does_not_suspend(ready) -> None:
+    """OpenRouter names the calibrated jev-1.13.0 typesafe/jev-1.13-20260917: same version."""
+    repo, stub = ready
+    stub.model = "typesafe/jev-1.13-20260917"
+    before = set(open_core(repo).index())
+    digest = log_prompt(repo, PROMPT)
+    assert capture(repo, {"intent": INTENT}, "--prompt", digest) == 0
+    [intent] = new_ids(repo, before)
+    assert state_of(repo, intent) == "confirmed"
+    state = auto_approve_state(open_core(repo))
+    assert not state.suspended and state.reason == "on"
+    from plumb.validate import validate
+
+    assert not [f for f in validate(open_core(repo)) if f.severity == "error"]

@@ -917,10 +917,20 @@ deterministic **heuristic by default**, which needs no key, makes no network cal
 fully reproducible.
 
 JEV (TypeSafe's typed-judgment model, which answers with `Choice`, `Score` or `Noul` in about
-70 to 500 ms) can be enabled as an **optional** backend through `.plumb/config.yaml`, with the
-key in the environment variable named by `judgment.jev.credential_env` (default
-`TYPESAFE_API_KEY`; `plumb jev setup` records only that name, never the secret) or the user
-store `~/.config/plumb/jev` (never inside the repository). It is used for:
+70 to 500 ms) can be enabled as an **optional** backend through `.plumb/config.yaml`, reached
+at TypeSafe (`provider: typesafe`, the default: `POST https://api.typesafe.ai/v1/systemone`)
+or through OpenRouter (`provider: openrouter`: `POST
+https://openrouter.ai/api/alpha/decisions`, model `typesafe/jev-1.13`), the same Decisions
+wire format; a preset supplies the endpoint, path, model, validated version and variable
+name, and explicit `judgment.jev` values win. The key is read from the environment variable
+named by `judgment.jev.credential_env` (default `TYPESAFE_API_KEY`, or `OPENROUTER_API_KEY`
+with the OpenRouter preset): first the process environment, then the env file that the
+user-level `~/.config/plumb/jev.json` names (read in place, never copied; refused inside the
+repository), then the older user store `~/.config/plumb/jev`. The owner sets it up by saying
+`/plumb jev setup openrouter` (the agent runs `plumb jev setup`, which records only the
+provider, model and variable NAME, never the secret) and checks it with `/plumb jev status`.
+The key never reaches a repository file, log entry, judgment record, notice or output. It is
+used for:
 
 - intent-change detection on candidate prompts;
 - drift triage (cosmetic or material) on stale links;
@@ -940,7 +950,11 @@ The cascade is the one already validated in pi-agent-factory:
   (section 6.6); otherwise it is logged.
 
 When the resolved model version differs from the version the thresholds were validated
-against, automatic acceptance is suspended. In the hook path, the call has a hard timeout of
+against, automatic acceptance is suspended. Versions are compared through one normalizer (no
+vendor prefix, no leading `~`, no trailing `-YYYYMMDD` snapshot date, no zero patch), so
+`jev-1.13.0` and OpenRouter's `typesafe/jev-1.13-20260917` are one version; `jev-1.14` is a
+change. The same comparison serves tier routing, the logged `version_drift`, `plumb jev
+status` and the calibration checks of auto-approval. In the hook path, the call has a hard timeout of
 about 800 ms; a timeout, missing key or error falls back to the heuristic with one logged
 notice. State sent to the service is assembled only from tracked files, with secret-bearing
 paths excluded and deterministic truncation. Every judgment is an append-only log entry with
@@ -962,9 +976,13 @@ owner turns on, only with JEV (never the heuristic), and only while a passing ca
 - `plumb config auto-approve on|off [--backend jev] [--min-probability 0.9]
   [--min-confidence high]` and `plumb config show` run in the owner's terminal only and are
   logged in the event log; `on` refuses when JEV is not configured or not calibrated.
-- `plumb jev status` (configured? reachable? backend version) and `plumb jev setup`, which
-  records only the NAME of the environment variable that holds the credential and never
-  stores the secret.
+- `plumb jev status` (configured? provider, endpoint, key source label, reachable?
+  normalized resolved version) and `plumb jev setup`, which records only the provider, model
+  and the NAME of the environment variable that holds the credential (with `--env-file`, the
+  user-level `jev.json` that names where it is read) and never stores the secret. The owner
+  reaches them, and calibration, through `/plumb jev status`, `/plumb jev setup openrouter`
+  and `/plumb jev calibrate`. Setting a provider replaces the earlier provider's endpoint,
+  path and validated version.
 
 **Ported from pi-agent-factory's FEAT-022 (D17, ruling R12).** All four work with the
 heuristic in a degraded form, or report "no judgments available"; with JEV they are cheaper
@@ -977,6 +995,7 @@ and sharper; all judgments are logged and advisory.
    which up to half may be generated variations (a will flipped to a won't, a flipped
    result, a changed number); JEV must wrongly accept none of them. The split between real
    and generated examples is shown in `plumb jev status` and in the calibration log entry.
+   The owner reaches it as `/plumb jev calibrate`; the agent runs it.
    `plumb config auto-approve on` refuses
    without a passing calibration for the current model version, and a version change
    suspends auto-approval until it is recalibrated.

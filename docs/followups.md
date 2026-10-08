@@ -4643,3 +4643,20 @@ started; the owner's answer settles the later merge. New proposed example SR-081
   lists every requirement main changed since the fork, which can be long on an old branch.
   Fix: refresh the cache from the post-commit and post-merge points too, and cap status's
   list with "+N more".
+
+## Merge of feat/jev-openrouter (2026-10-07)
+
+- [MEDIUM] (R14; capture/jevcmd.py `auto_approve`, `config_show`) The owner has no /plumb
+  route for turning automatic confirmation on or off or for seeing the settings: `config
+  auto-approve on|off` and `config show` still need the owner's own terminal
+  (`require_owner`). jev status and its refusals now say "only you can turn it on" instead
+  of naming the CLI, but they cannot name a slash command yet. Fix: a /plumb route whose
+  owner action is the typed slash command (logged by the prompt hook) or a confirm button
+  (R19), recorded as `by: owner`.
+- [LOW] (R14/R18; validate.py, the `auto-approve-mirror` warning) validate's warning still
+  says "plumb config auto-approve on, in the owner's own terminal". validate output is the
+  agent's interface, but the agent may repeat it. Fix with the route above.
+- [LOW] (R18; capture/jevcmd.py `status_lines`) jev status prints config keys
+  ("judgment.backend", "validated against") for the agent to translate; the /plumb template
+  tells the agent to answer in plain words. A plain-words rendering for the owner would
+  remove the reliance on the agent.

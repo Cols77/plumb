@@ -404,8 +404,14 @@ def cmd_jev(command: str, argv: list[str]) -> int:
                      "on your own decisions before any auto-approval).")
     parser.add_argument("action", choices=["status", "setup", "calibrate"])
     parser.add_argument("--probe", action="store_true", help="status: one call, 2 s limit")
-    parser.add_argument("--env-var", default="TYPESAFE_API_KEY",
-                        help="setup: the variable that holds the credential")
+    parser.add_argument("--provider", default=None, choices=["typesafe", "openrouter"],
+                        help="setup: the provider preset (endpoint, model, variable name)")
+    parser.add_argument("--env-var", default=None,
+                        help="setup: the variable that holds the credential (default: the "
+                        "provider's, TYPESAFE_API_KEY or OPENROUTER_API_KEY)")
+    parser.add_argument("--env-file", default=None,
+                        help="setup: an env file OUTSIDE the repository the key is read from "
+                        "in place (recorded in ~/.config/plumb/jev.json, never copied)")
     parser.add_argument("--base-url", default=None)
     args = parser.parse_args(argv)
     core = _core(args)
@@ -416,14 +422,14 @@ def cmd_jev(command: str, argv: list[str]) -> int:
             emit(data if args.as_json else jevcmd.status_lines(data), args.as_json)
             return 0
         if args.action == "setup":
-            emit(jevcmd.jev_setup(core, env_var=args.env_var, base_url=args.base_url),
-                 False)
+            emit(jevcmd.jev_setup(core, env_var=args.env_var, base_url=args.base_url,
+                                  provider=args.provider, env_file=args.env_file), False)
             return 0
         try:
             entry, results = calibrate(core)
         except CalibrationUnavailable as exc:
             emit({"calibrated": False, "reason": str(exc)} if args.as_json
-                 else f"plumb jev calibrate: {exc}", args.as_json)
+                 else f"calibration: {exc}", args.as_json)
             return EXIT_FINDINGS
         if args.as_json:
             emit(dict(entry.payload), True)

@@ -39,6 +39,7 @@ class Stub:
         self.noul = 0.95
         self.model = "jev-1.13.0"
         self.status = 200
+        self.usage: dict = {"input_tokens": 10, "output_tokens": 2}
 
 
 @pytest.fixture
@@ -70,7 +71,7 @@ def stub() -> Iterator[tuple[Stub, str]]:
                                      "probabilities": {"0": 0.0, "1": 0.1, "2": 0.9},
                                      "confidence": 0.92}
             payload = json.dumps({"model": state.model, "answers": answers,
-                                  "usage": {"input_tokens": 10, "output_tokens": 2}}).encode()
+                                  "usage": state.usage}).encode()
             try:
                 self.send_response(state.status)
                 self.send_header("Content-Type", "application/json")
@@ -325,17 +326,199 @@ def test_heuristic_fallback_answers_the_new_methods(jev_repo) -> None:
     assert j.backend == "heuristic" and j.confidence_label == "low"
 
 
+# -- OpenRouter: a provider preset, a configurable path, one version normalizer, the
+#    credential read from a user-level env file (SR-039)
+
+OR_KEY = "sk-or-test-key-0123456789abcdef"
+
+
+def _or_config(repo: Path, url: str, extra: str = "") -> None:
+    (repo / ".plumb" / "config.yaml").write_text(
+        "judgment:\n  backend: jev\n  hook_timeout_ms: 2000\n"
+        f"  jev: {{provider: openrouter, base_url: '{url}'{extra}}}\n", encoding="utf-8")
+
+
+def _repo_bytes(repo: Path) -> bytes:
+    return b"".join(p.read_bytes() for p in repo.rglob("*")
+                    if p.is_file() and ".git" not in p.parts)
+
+
+@pytest.mark.sr("SR-039")
+def test_provider_preset_defaults_and_explicit_values_win() -> None:
+    from plumb.config import config_from_mapping
+
+    default = config_from_mapping({}).judgment.jev
+    assert (default["provider"], default["base_url"], default["path"]) == (
+        "typesafe", "https://api.typesafe.ai", "/v1/systemone")
+    jev = config_from_mapping({"judgment": {"jev": {"provider": "openrouter"}}}).judgment.jev
+    assert jev["base_url"] == "https://openrouter.ai"
+    assert jev["path"] == "/api/alpha/decisions"
+    assert jev["model"] == "typesafe/jev-1.13"
+    assert jev["validated_against"] == "typesafe/jev-1.13"
+    assert jev["credential_env"] == "OPENROUTER_API_KEY"
+    assert jev["thresholds"] == {"accept": 0.9, "escalate_llm": 0.5}
+    jev = config_from_mapping({"judgment": {"jev": {
+        "provider": "openrouter", "model": "~typesafe/jev-latest", "credential_env": "MY_OR",
+        "path": "/api/beta/decisions"}}}).judgment.jev
+    assert (jev["model"], jev["credential_env"], jev["path"]) == (
+        "~typesafe/jev-latest", "MY_OR", "/api/beta/decisions")
+    assert jev["base_url"] == "https://openrouter.ai"
+
+
+@pytest.mark.sr("SR-039")
+def test_openrouter_request_path_model_and_dated_version(repo: Path, stub, monkeypatch) -> None:
+    state, url = stub
+    state.model = "typesafe/jev-1.13-20260917"
+    state.usage = {"input_tokens": 63, "output_tokens": 1, "cost": 2.1e-05}
+    _or_config(repo, url)
+    monkeypatch.setenv("OPENROUTER_API_KEY", OR_KEY)
+    core = open_core(repo)
+    backend = get_backend(core, hook=False)
+    assert backend.name == "jev"
+    j = backend.entailment("ok", "ok", subject="probe", claim_kind="probe")
+    [request] = state.requests
+    assert request["path"] == "/api/alpha/decisions"
+    headers = {k.lower(): v for k, v in request["headers"].items()}
+    assert headers["authorization"] == f"Bearer {OR_KEY}"
+    assert request["body"]["model"] == "typesafe/jev-1.13"
+    assert j.tier == "accept"  # the dated snapshot is the validated version: no drift
+    [event] = list(open_core(repo).log_read("events", ["judgment"]))
+    assert event.payload["version_drift"] is False
+    assert event.payload["model_version"] == "typesafe/jev-1.13-20260917"
+    state.model = "typesafe/jev-1.14-20261001"
+    j = get_backend(open_core(repo), hook=False).entailment("ok", "ok", subject="probe",
+                                                             claim_kind="probe")
+    assert j.tier == "escalate-llm"
+    events = list(open_core(repo).log_read("events", ["judgment"]))
+    assert events[-1].payload["version_drift"] is True
+    assert OR_KEY.encode() not in _repo_bytes(repo)
+
+
+@pytest.mark.sr("SR-039")
+def test_explicit_path_and_float_usage(repo: Path, stub) -> None:
+    state, url = stub
+    state.usage = {"input_tokens": 63, "output_tokens": 1, "cost": 2.1e-05}
+    client = jev_mod.JevClient(base_url=url + "/", path="/custom/decide", key=KEY, timeout_s=5)
+    record = client.judge(JudgmentRequest(state="s", questions=(
+        ("n", JudgmentQuestion.noul("i", "t", "f")),)))
+    assert state.requests[0]["path"] == "/custom/decide"
+    assert record.outcome == "ok"
+    assert record.usage == {"input_tokens": 63, "output_tokens": 1, "cost": 2.1e-05}
+    assert isinstance(record.usage["input_tokens"], int)
+
+
+def _user_files(tmp_path: Path, monkeypatch, env_file: Path,
+                name: str = "OPENROUTER_API_KEY") -> Path:
+    home = tmp_path / "userhome"
+    home.mkdir(exist_ok=True)
+    config = home / "jev.json"
+    config.write_text(json.dumps({"credential_env": name, "env_file": str(env_file)}),
+                      encoding="utf-8")
+    monkeypatch.setattr(jev_mod, "user_config_path", lambda: config)
+    monkeypatch.setattr(jev_mod, "user_store_path", lambda: home / "jev")
+    return home
+
+
+ENV_FILE = f"""# local secrets
+OTHER=1
+export TYPESAFE_API_KEY='{KEY}'
+OPENROUTER_API_KEY="{OR_KEY}"  # the gateway
+EMPTY=
+"""
+
+
+@pytest.mark.sr("SR-039")
+def test_key_from_the_user_env_file(repo: Path, tmp_path: Path, monkeypatch) -> None:
+    outside = tmp_path / "elsewhere" / ".env"
+    outside.parent.mkdir()
+    outside.write_text(ENV_FILE, encoding="utf-8")
+    home = _user_files(tmp_path, monkeypatch, outside)
+    assert jev_mod.resolve_key(repo, env={}, name="OPENROUTER_API_KEY") == OR_KEY
+    assert jev_mod.key_source(repo, env={}, name="OPENROUTER_API_KEY") == "env-file"
+    assert jev_mod.resolve_key(repo, env={}, name="TYPESAFE_API_KEY") == KEY
+    # the process environment wins over the file
+    env = {"OPENROUTER_API_KEY": "sk-or-from-env-123456"}
+    assert jev_mod.resolve_key(repo, env=env, name="OPENROUTER_API_KEY") == env[
+        "OPENROUTER_API_KEY"]
+    assert jev_mod.key_source(repo, env=env, name="OPENROUTER_API_KEY") == "env"
+    # a name the file lacks falls back to the legacy raw-key store
+    assert jev_mod.resolve_key(repo, env={}, name="MISSING_KEY") is None
+    (home / "jev").write_text("legacy-raw-key-0123456789\n", encoding="utf-8")
+    assert jev_mod.resolve_key(repo, env={}, name="MISSING_KEY") == "legacy-raw-key-0123456789"
+    assert jev_mod.key_source(repo, env={}, name="MISSING_KEY") == "user-store"
+    assert jev_mod.key_source(repo, env={}, name="EMPTY") == "user-store"
+
+
+@pytest.mark.sr("SR-039")
+def test_env_file_inside_the_repository_is_refused(repo: Path, tmp_path: Path,
+                                                    monkeypatch) -> None:
+    inside = repo / ".env"
+    inside.write_text(ENV_FILE, encoding="utf-8")
+    _user_files(tmp_path, monkeypatch, inside)
+    assert jev_mod.resolve_key(repo, env={}, name="OPENROUTER_API_KEY") is None
+    assert jev_mod.key_source(repo, env={}, name="OPENROUTER_API_KEY") is None
+    _user_files(tmp_path, monkeypatch, Path("secrets.env"))  # relative: refused
+    assert jev_mod.resolve_key(repo, env={}, name="OPENROUTER_API_KEY") is None
+
+
+@pytest.mark.sr("SR-039")
+def test_backend_through_the_env_file_never_writes_the_key(repo: Path, stub, tmp_path: Path,
+                                                           monkeypatch) -> None:
+    state, url = stub
+    outside = tmp_path / "elsewhere" / ".env"
+    outside.parent.mkdir()
+    outside.write_text(ENV_FILE, encoding="utf-8")
+    _user_files(tmp_path, monkeypatch, outside)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    _or_config(repo, url)
+    backend = get_backend(open_core(repo), hook=False)
+    assert backend.name == "jev"
+    backend.entailment("add multiply", "add multiply", subject="INT-001",
+                       claim_kind="intent-readback")
+    headers = {k.lower(): v for k, v in state.requests[0]["headers"].items()}
+    assert headers["authorization"] == f"Bearer {OR_KEY}"
+    assert OR_KEY not in json.dumps(state.requests[0]["body"])
+    assert OR_KEY.encode() not in _repo_bytes(repo)
+    assert not any(OR_KEY in n for n in backend.notices)
+
+
+def _live_provider(repo: Path) -> str | None:
+    """The provider whose credential resolves (environment, env file or legacy store)."""
+    for provider, name in (("openrouter", "OPENROUTER_API_KEY"),
+                           ("typesafe", "TYPESAFE_API_KEY")):
+        source = jev_mod.key_source(repo, name=name)
+        if source in ("env", "env-file") or (source and provider == "typesafe"):
+            return provider
+    return None
+
+
 @pytest.mark.jev_live
 @pytest.mark.sr("SR-039")
-def test_live_entailment(repo: Path, monkeypatch) -> None:
-    import os
+def test_live_entailment(repo: Path, capsys) -> None:
+    """One tiny synthetic request (no repository content) through whichever credential
+    resolves, the env file included; skipped when none does."""
+    from plumb.judgment.tiers import normalize_version, same_version
 
-    if not os.environ.get("TYPESAFE_API_KEY"):
-        pytest.skip("jev_live: TYPESAFE_API_KEY is not set")
-    (repo / ".plumb" / "config.yaml").write_text("judgment:\n  backend: jev\n",
-                                                encoding="utf-8")
+    provider = _live_provider(repo)
+    if provider is None:
+        pytest.skip("jev_live: no JEV credential resolves (OPENROUTER_API_KEY, "
+                    "TYPESAFE_API_KEY, ~/.config/plumb/jev.json)")
+    (repo / ".plumb" / "config.yaml").write_text(
+        f"judgment:\n  backend: jev\n  jev: {{provider: {provider}}}\n", encoding="utf-8")
     backend = get_backend(open_core(repo), hook=False)
-    j = backend.entailment("add a multiply function next to add",
-                           "a multiply function is added next to add",
-                           subject="INT-001", claim_kind="intent-readback")
-    assert j.verdict in ("entailed", "not-entailed")
+    assert backend.name == "jev"
+    request = JudgmentRequest(state="Owner: add a multiply function next to add.", questions=(
+        ("entailment", JudgmentQuestion.noul(
+            "Does the claim 'a multiply function is added next to add' follow from the "
+            "owner's words?", "it follows", "it does not follow")),), model=backend.model)
+    started = time.monotonic()
+    record = backend.client.judge(request)
+    latency_ms = (time.monotonic() - started) * 1000
+    assert record.outcome == "ok", backend.client.last_error
+    assert normalize_version(record.resolved_version)
+    with capsys.disabled():
+        print(f"\njev_live: provider {provider}, resolved {record.resolved_version} "
+              f"(normalized {normalize_version(record.resolved_version)}; drift "
+              f"{not same_version(record.resolved_version, backend.validated_against)}), "
+              f"latency {latency_ms:.0f} ms, usage {record.usage}, "
+              f"answer {record.answers['entailment'].value}")

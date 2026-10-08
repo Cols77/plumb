@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+from plumb.capture.autoapprove import CALIBRATE_HINT, RECALIBRATE_HINT
+
 if TYPE_CHECKING:
     from plumb.api import Core
 
@@ -44,23 +46,32 @@ def _probe(core: Core) -> tuple[bool, str | None, str]:
 def jev_status(core: Core, *, probe: bool = False) -> dict[str, Any]:
     from plumb.capture.autoapprove import auto_approve_state
     from plumb.capture.calibrate import latest_calibration
-    from plumb.judgment.jev import credential_env, key_source
+    from plumb.judgment.jev import SYSTEM_ONE_PATH, credential_env, endpoint_url, key_source
+    from plumb.judgment.tiers import normalize_version, same_version
 
     judgment = core.config.judgment
+    jev = dict(judgment.jev or {})
     name = credential_env(core.config)
     source = key_source(core.root, name=name)
     configured = str(judgment.backend).strip().lower() == "jev"
     out: dict[str, Any] = {
         "configured": configured, "backend": judgment.backend,
+        "provider": jev.get("provider"),
+        "endpoint": endpoint_url(str(jev.get("base_url") or ""),
+                                 str(jev.get("path") or SYSTEM_ONE_PATH)),
         "credential_env": name, "credential": "present" if source else "absent",
-        "model": (judgment.jev or {}).get("model"),
+        "model": jev.get("model"), "validated_against": jev.get("validated_against"),
     }
     if source:
-        out["credential_source"] = source
+        out["credential_source"] = source  # a label (env, env-file, user-store), never a key
     if probe:
         reachable, version, note = _probe(core) if configured and source else \
             (False, None, "not configured" if not configured else "no credential")
-        out.update({"reachable": reachable, "resolved_version": version, "probe": note})
+        out.update({"reachable": reachable, "resolved_version": normalize_version(version),
+                    "resolved_model": version, "probe": note})
+        if version:
+            validated = jev.get("validated_against")
+            out["version_drift"] = bool(validated) and not same_version(version, validated)
     calibration = latest_calibration(core)
     if calibration is not None:
         per_kind = calibration.payload.get("per_kind") or {}
@@ -72,25 +83,33 @@ def jev_status(core: Core, *, probe: bool = False) -> dict[str, Any]:
                    "generated_counted": r.get("generated_counted")}
             for kind, r in per_kind.items() if isinstance(r, Mapping)}
     else:
-        out["calibration"] = "none (plumb jev calibrate)"
+        out["calibration"] = f"none yet ({CALIBRATE_HINT})"
     state = auto_approve_state(core)
     out["auto_approve"] = state.reason if state.configured else "off"
     if state.mirror_mismatch:
-        out["auto_approve_mirror"] = ("config.yaml says on, but no owner config event: off "
-                                      "(plumb config auto-approve on, in your terminal)")
+        out["auto_approve_mirror"] = ("the settings file says automatic confirmation is on, "
+                                      "but you never turned it on yourself, so it stays off "
+                                      "(only you can turn it on)")
     return out
 
 
 def status_lines(data: Mapping[str, Any]) -> list[str]:
+    source = f", from {data['credential_source']}" if data.get("credential_source") else ""
     lines = [f"configured: {'yes' if data['configured'] else 'no'} (judgment.backend: "
              f"{data['backend']})",
-             f"credential: {data['credential']} (variable {data['credential_env']}; the "
-             "value is never shown)"]
+             f"provider: {data.get('provider')}",
+             f"endpoint: {data.get('endpoint')}",
+             f"credential: {data['credential']} (variable {data['credential_env']}{source}; "
+             "the value is never shown)"]
     if "reachable" in data:
         lines.append(f"reachable: {'yes' if data['reachable'] else 'no'} ({data['probe']})"
-                     + (f", resolved version {data['resolved_version']}"
-                        if data.get("resolved_version") else ""))
-    lines.append(f"model: {data.get('model')}")
+                     + (f", resolved version {data['resolved_version']} "
+                        f"({data['resolved_model']})" if data.get("resolved_version") else ""))
+        if data.get("version_drift"):
+            lines.append(f"version drift: validated against {data.get('validated_against')}; "
+                         "confident answers are escalated until it is revalidated")
+    lines.append(f"model: {data.get('model')} (validated against "
+                 f"{data.get('validated_against')})")
     calibration = data["calibration"]
     if isinstance(calibration, Mapping):
         lines.append(f"calibrated against: {data.get('calibrated_version')}")
@@ -107,25 +126,70 @@ def status_lines(data: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-def jev_setup(core: Core, *, env_var: str, base_url: str | None = None) -> list[str]:
+def jev_setup(core: Core, *, env_var: str | None = None, base_url: str | None = None,
+              provider: str | None = None, env_file: str | None = None) -> list[str]:
+    """Record the provider, its model and the credential variable's NAME in the repository
+    config; with ``env_file``, write the user-level ``jev.json`` that names the env file the
+    key is read from in place. The key itself is never read into output, copied or logged."""
+    import json
+    from pathlib import Path
+
     from plumb.capture.configfile import update_section
+    from plumb.capture.records import CaptureError
+    from plumb.config import DEFAULT_JEV_PROVIDER, JEV_PROVIDERS, PROVIDER_KEYS
+    from plumb.judgment.jev import parse_env_value, user_config_path
 
-    name = env_var.strip()
+    chosen = (provider or "").strip().lower() or None
+    if chosen is not None and chosen not in JEV_PROVIDERS:
+        raise CaptureError(f"'{provider}' is not a JEV provider "
+                           f"({', '.join(sorted(JEV_PROVIDERS))})")
+    preset = JEV_PROVIDERS[chosen or DEFAULT_JEV_PROVIDER]
+    name = (env_var or "").strip() or preset["credential_env"]
     if not name or not name.replace("_", "").isalnum() or name[0].isdigit():
-        from plumb.capture.records import CaptureError
-
         raise CaptureError(f"'{env_var}' is not an environment variable name")
+    root = Path(core.root).resolve()
+    env_path: Path | None = None
+    if env_file:
+        env_path = Path(env_file).expanduser().resolve()
+        if env_path.is_relative_to(root):
+            raise CaptureError(f"the env file {env_path} is inside the repository; keys are "
+                               "never repository state: keep it outside")
+        if user_config_path().resolve().is_relative_to(root):
+            raise CaptureError("the user-level jev.json would be inside the repository")
     jev: dict[str, Any] = {"credential_env": name}
+    if chosen is not None:
+        jev = {"provider": chosen, "model": preset["model"], "credential_env": name}
     if base_url:
         jev["base_url"] = base_url
-    update_section(core.root, "judgment", {"backend": "jev", "jev": jev})
-    core.log_append("events", "jev-setup", {"credential_env": name,
-                                            "base_url": base_url})
-    return [f"plumb: judgment.backend jev; the credential is read from {name}",
-            "plumb: set it in your own shell, never in the repository:",
-            f"  bash:        export {name}=<your key>",
-            f"  PowerShell:  $env:{name} = \"<your key>\"",
-            "plumb: then plumb jev status --probe, and plumb jev calibrate"]
+    # a provider choice replaces every provider-specific value an earlier setup left (its
+    # endpoint, path, model and validated version), so a switch never keeps the old endpoint
+    stale = PROVIDER_KEYS if chosen is not None else frozenset()
+    update_section(core.root, "judgment", {"backend": "jev", "jev": jev},
+                   drop={"jev": stale})
+    lines = [f"plumb: judgment.backend jev, provider {chosen or DEFAULT_JEV_PROVIDER} "
+             f"(model {jev.get('model') or preset['model']}); the credential is read from "
+             f"{name}"]
+    if env_path is not None:
+        config = user_config_path()
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text(json.dumps({"credential_env": name, "env_file": str(env_path)},
+                                     indent=2) + "\n", encoding="utf-8")
+        try:
+            present = parse_env_value(env_path.read_text(encoding="utf-8-sig"), name)
+        except (OSError, UnicodeDecodeError):
+            present = None
+        lines += [f"plumb: {name} is read in place from the env file {env_path} "
+                  f"({'found' if present else 'not found'} there); the value is never copied",
+                  f"plumb: wrote {config} (user-level, outside the repository)"]
+    else:
+        lines.append(f"plumb: set {name} in your own environment, never in the repository, or "
+                     "name an env file outside it (\"/plumb jev setup "
+                     f"{chosen or DEFAULT_JEV_PROVIDER} with the env file <path>\")")
+    core.log_append("events", "jev-setup", {"credential_env": name, "base_url": base_url,
+                                            "provider": chosen or DEFAULT_JEV_PROVIDER,
+                                            "env_file": env_path is not None})
+    lines.append("plumb: then check it with /plumb jev status")
+    return lines
 
 
 def _mirror(core: Core, settings: Mapping[str, Any]) -> None:
@@ -158,14 +222,16 @@ def auto_approve(core: Core, on: bool, *, backend: str = "jev", min_probability:
         calibration = latest_calibration(core)
         per_kind = (calibration.payload.get("per_kind") or {}) if calibration else {}
         if not any(isinstance(r, Mapping) and r.get("passing") for r in per_kind.values()):
-            raise ConfigRefused("no passing calibration (plumb jev calibrate)")
+            raise ConfigRefused(f"no passing calibration ({CALIBRATE_HINT})")
         reachable, version, note = _probe(core)
         if not reachable:
             raise ConfigRefused(f"JEV did not answer ({note})")
         measured = calibration.payload.get("model_version")
-        if version != measured:
+        from plumb.judgment.tiers import same_version
+
+        if not same_version(version, measured):
             raise ConfigRefused(f"the calibration measured {measured}, JEV now resolves "
-                                f"{version}: recalibrate first")
+                                f"{version} ({RECALIBRATE_HINT})")
     require_owner(command, f"turn auto-approval {'ON' if on else 'off'}"
                   + (f" (jev, min probability {min_probability}, min confidence "
                      f"{min_confidence}) for records restating your own words" if on else "")

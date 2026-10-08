@@ -279,8 +279,9 @@ def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> N
     assert "why <ID|path>" not in text
     assert "uv run --no-sync plumb explain <their words>" in text
     advertised = {part.split()[0] for part in hint.split('"')[1].split("|")}
-    # sp5 6.1: the six owner verbs, plain words accepted (SR-064 EX-3)
-    assert advertised == {"status", "explain", "review", "confirm", "impact", "view"}
+    # sp5 6.1: the six owner verbs, plain words accepted (SR-064 EX-3), plus the JEV judge
+    # (setup, status, calibrate: SR-039, R14)
+    assert advertised == {"status", "explain", "review", "confirm", "impact", "view", "jev"}
     for name in advertised | {"why", "show"}:
         assert name in cli.ROUTES, name
     assert "not available in this build" not in cli._HELP

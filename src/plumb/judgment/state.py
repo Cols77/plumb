@@ -56,8 +56,11 @@ def estimate_tokens(text: str) -> int:
 
 def context_limits(version: str | None) -> ContextLimits:
     """A version's limits, or the smallest known limits for an unknown version."""
-    if version is not None and version in VERSION_LIMITS:
-        return VERSION_LIMITS[version]
+    from plumb.judgment.tiers import same_version
+
+    for known, limits in VERSION_LIMITS.items():
+        if same_version(version, known):
+            return limits
     return min(VERSION_LIMITS.values(), key=lambda lim: lim.state_and_longest_question_tokens)
 
 

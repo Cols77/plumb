@@ -26,6 +26,13 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from plumb.contracts import AutoApproveState, LogEntry
+from plumb.judgment.tiers import same_version
+
+# R14/R18: owner-visible JEV and auto-approval text names the /plumb command or plain words,
+# never a CLI command (jev status, config show, the refusals of config auto-approve on).
+CALIBRATE_HINT = "say /plumb jev calibrate to measure it"
+RECALIBRATE_HINT = "say /plumb jev calibrate to measure it again"
+SETUP_HINT = "say /plumb jev setup openrouter, or /plumb jev setup typesafe"
 
 if TYPE_CHECKING:
     from plumb.api import Core
@@ -59,7 +66,7 @@ def jev_ready(core: Core) -> tuple[bool, str]:
     """Whether JEV is configured with its credential present (never reads the value
     beyond presence)."""
     if str(core.config.judgment.backend).strip().lower() != "jev":
-        return False, "JEV is not configured (plumb jev setup)"
+        return False, f"JEV is not set up ({SETUP_HINT})"
     from plumb.judgment.jev import credential_env, key_source
 
     name = credential_env(core.config)
@@ -81,16 +88,17 @@ def auto_approve_state(core: Core) -> AutoApproveState:
         k.get("passing") for k in (calibration.payload.get("per_kind") or {}).values()
         if isinstance(k, Mapping)))
     seen = _last_model_version(entries)
-    suspended = bool(configured and calibrated and seen and seen != calibrated)
+    suspended = bool(configured and calibrated and seen
+                     and not same_version(seen, calibrated))
     ready, why = jev_ready(core)
     if not configured:
         reason = "off"
     elif not ready:
         reason = why
     elif not passing:
-        reason = "no passing calibration (plumb jev calibrate)"
+        reason = f"no passing calibration ({CALIBRATE_HINT})"
     elif suspended:
-        reason = "auto-approve suspended: model changed, recalibrate"
+        reason = f"auto-approve suspended: the JEV model changed ({RECALIBRATE_HINT})"
     else:
         reason = "on"
     settings = settings or {}
@@ -176,7 +184,7 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
         if not judgments or any(not j.backend.startswith("jev:") for j in judgments):
             return out  # JEV unavailable or errored: nothing more is auto-approved
         version = judgments[0].backend.split(":", 1)[1]
-        if version != calibration.payload.get("model_version"):
+        if not same_version(version, calibration.payload.get("model_version")):
             return out  # model changed since calibration: suspended
         floor = max(state.min_probability, threshold)
         need = CONFIDENCE_RANK.get(state.min_confidence, 2)
@@ -223,7 +231,7 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
     calibration = calibrations.get(str(auto.get("calibration")))
     if calibration is None:
         return "auto-jev approval cites no earlier calibration"
-    if calibration.payload.get("model_version") != auto.get("model_version"):
+    if not same_version(calibration.payload.get("model_version"), auto.get("model_version")):
         return "auto-jev approval by a model version its calibration did not measure"
     kind = str(auto.get("claim_kind"))
     threshold = _kind_threshold(calibration, kind)

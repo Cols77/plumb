@@ -72,3 +72,23 @@ def test_help_lists_only_importable_verbs(monkeypatch) -> None:
     assert "ghost" not in text and "haunts" not in text and "still" not in text
     assert "  init " in text and "host:          hook, hooks" in text
     assert cli.main(["ghost"]) == 2
+
+
+@pytest.mark.sr("SR-039")
+def test_plumb_command_routes_jev_setup_and_status() -> None:
+    """R14: the owner reaches JEV setup and status through /plumb, never a shell."""
+    text = TEMPLATE.read_text(encoding="utf-8")
+    assert "Bash({plumb} jev status:*)" in text and "Bash({plumb} jev setup:*)" in text
+    assert "`jev status`" in text and "`jev setup" in text
+    assert "{plumb} jev setup --provider openrouter" in text
+    assert "{plumb} jev status --probe" in text
+
+
+@pytest.mark.sr("SR-039")
+def test_plumb_command_routes_jev_calibrate() -> None:
+    """R14: the owner reaches calibration as /plumb jev calibrate; the agent runs the CLI."""
+    text = TEMPLATE.read_text(encoding="utf-8")
+    hint = next(line for line in text.splitlines() if line.startswith("argument-hint:"))
+    assert "jev calibrate" in hint
+    assert "Bash({plumb} jev calibrate:*)" in text and "`jev calibrate`" in text
+    assert "run `{plumb} jev calibrate`" in text

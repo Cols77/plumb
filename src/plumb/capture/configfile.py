@@ -32,9 +32,29 @@ def _merge(base: Any, changes: Mapping[str, Any]) -> dict[str, Any]:
     return out
 
 
-def update_section(root: Path, section: str, changes: Mapping[str, Any]) -> dict[str, Any]:
+def _without(base: Any, drop: Mapping[str, Any]) -> Any:
+    """``base`` less the keys ``drop`` names: a mapping value recurses, a collection of
+    names removes those keys of the nested mapping, anything else removes the key itself."""
+    if not isinstance(base, Mapping):
+        return base
+    out = dict(base)
+    for key, inner in drop.items():
+        if isinstance(inner, Mapping):
+            if key in out:
+                out[key] = _without(out[key], inner)
+        elif isinstance(inner, (list, tuple, set, frozenset)):
+            if isinstance(out.get(key), Mapping):
+                out[key] = {k: v for k, v in out[key].items() if k not in inner}
+        else:
+            out.pop(key, None)
+    return out
+
+
+def update_section(root: Path, section: str, changes: Mapping[str, Any], *,
+                   drop: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Merge ``changes`` into the top-level ``section`` of ``.plumb/config.yaml`` and return
-    the section's new value."""
+    the section's new value. ``drop`` names keys removed from the section before the merge
+    (``{"jev": ["base_url"]}`` removes ``section.jev.base_url``)."""
     import yaml
 
     path = Path(root) / ".plumb" / "config.yaml"
@@ -42,7 +62,7 @@ def update_section(root: Path, section: str, changes: Mapping[str, Any]) -> dict
         text = path.read_text(encoding="utf-8")
     except OSError:
         text = ""
-    value = _merge(_load(text).get(section), changes)
+    value = _merge(_without(_load(text).get(section), drop or {}), changes)
     lines = text.splitlines(keepends=True)
     start = next((n for n, line in enumerate(lines)
                   if re.match(rf"^{re.escape(section)}\s*:", line)), None)

@@ -30,3 +30,9 @@
 verify:
   infra_globs: ["**/conftest.py", pyproject.toml, uv.lock, pytest.ini, tox.ini, setup.cfg,
                 src/plumb/verify/pytest_plugin.py]
+judgment:
+  backend: jev
+  jev:
+    provider: openrouter
+    model: typesafe/jev-1.13
+    credential_env: OPENROUTER_API_KEY

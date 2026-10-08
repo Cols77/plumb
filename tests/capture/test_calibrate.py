@@ -54,7 +54,10 @@ def test_fewer_than_twenty_decisions_is_not_passing(repo: Path, write_record, mo
     assert not result["passing"] and "18 of your decisions, 20 needed" in result["reasons"]
     capsys.readouterr()
     assert run(repo, "config", "auto-approve", "on") == 1  # EX-1: on refuses
-    assert "no passing calibration" in capsys.readouterr().err
+    refused = capsys.readouterr().err
+    assert "no passing calibration" in refused
+    assert "/plumb jev calibrate" in refused  # R14: the slash command, never the CLI
+    assert "plumb jev calibrate" not in refused.replace("/plumb jev calibrate", "")
     assert "config" not in event_kinds(repo)
 
 

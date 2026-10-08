@@ -340,7 +340,7 @@ exact change).
 | `plumb spec show\|approve\|state INT` | An escalated up-front spec; `approve` (your terminal) pins the set hash. |
 | `plumb triage [--approve low-risk]` | Proposed records grouped by faithfulness to your words; `--approve low-risk` confirms exactly the listed hashes in one step (your terminal). |
 | `plumb config auto-approve on\|off`, `config show`, `config card full\|compact\|off` | The opt-in auto-approval (off by default; refused without a passing calibration) and the card verbosity. Your terminal only. |
-| `plumb jev status\|setup\|calibrate` | The optional JEV backend: reachability and version, the name of the credential variable (never the secret), calibration on your own decisions. |
+| `plumb jev status [--probe]\|setup [--provider typesafe\|openrouter] [--env-var NAME] [--env-file PATH]\|calibrate` | The optional JEV backend (the agent runs it when you say `/plumb jev status`, `/plumb jev setup openrouter` or `/plumb jev calibrate`): provider, endpoint, where the key comes from (a label, never the key), reachability and the normalized resolved version; setup records the provider, model and the credential variable's NAME; calibration on your own decisions. |
 | `plumb relay IDS... --group low-risk` / `--set INT` | Relay your "ok" for a triage group or an escalated set that was shown. |
 
 ### Owner views (plain words; none approves anything)
@@ -427,6 +427,42 @@ budget a selection's estimate fills, scaled by the pace observed in earlier runs
 `sample_size`, `workers` of 2 at most, `flaky_rerun`, `infra_globs`); `hooks` (per-hook budgets in ms and brief length); the
 `judgment` backend; and the `escalation` thresholds that make plumb suggest an up-front spec
 for large or cross-cutting work.
+
+### The optional JEV judge
+
+plumb answers its judgment questions with a local heuristic by default. JEV, TypeSafe's fast
+typed-judgment model, is optional, reached directly at TypeSafe or through OpenRouter. You set
+it up in plain words in Claude Code; the agent runs plumb for you:
+
+- `/plumb jev setup openrouter` (or "use OpenRouter for JEV"): records `provider:
+  openrouter` and the name of the variable that holds your key, `OPENROUTER_API_KEY`. If the
+  key already lives in an env file outside the repository, say so ("my key is in
+  C:/secrets/.env"): plumb records that path in your user-level `~/.config/plumb/jev.json`
+  and reads the key there in place each time. It never copies the key into the repository, a
+  log, a record, a notice or any output, and it refuses an env file inside the repository.
+  `/plumb jev setup typesafe` does the same for TypeSafe's own endpoint and
+  `TYPESAFE_API_KEY`.
+- `/plumb jev status`: the provider, the endpoint, where the key comes from (`env`,
+  `env-file` or `user-store`; never the key), whether JEV answered one tiny probe, and the
+  model version it resolved.
+- `/plumb jev calibrate` (or "is JEV good enough to confirm for me?"): tries JEV on your own
+  past yes and no answers and tells you, for each kind of record, whether it can be trusted
+  to confirm records that only restate your words. It approves nothing and turns nothing on.
+- Setting a provider again replaces the earlier provider's endpoint, path and validated
+  version, so a switch from TypeSafe to OpenRouter (or back) never keeps the old endpoint.
+
+The key is looked up in the process environment first, then in the env file that
+`jev.json` names (`KEY=VALUE` lines, optional quotes, comments ignored), then in the older
+user store `~/.config/plumb/jev`. With `provider: openrouter` the defaults are endpoint
+`https://openrouter.ai/api/alpha/decisions`, model `typesafe/jev-1.13` and validated version
+`typesafe/jev-1.13`; any `judgment.jev` key you set (`base_url`, `path`, `model`,
+`validated_against`, `credential_env`) wins over the preset. Model names are compared through
+one normalizer, so `jev-1.13`, `jev-1.13.0` and OpenRouter's dated
+`typesafe/jev-1.13-20260917` are the same version, while `jev-1.14` counts as a version change
+(confident answers are escalated and auto-approval waits for a recalibration).
+
+For the agent, the underlying commands are `plumb jev setup --provider openrouter --env-var
+OPENROUTER_API_KEY [--env-file PATH]`, `plumb jev status --probe` and `plumb jev calibrate`.
 
 ## How plumb develops itself
 
