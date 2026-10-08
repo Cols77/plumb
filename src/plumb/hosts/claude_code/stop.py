@@ -40,7 +40,9 @@ watchdog's hard limit bounds them, and it prints whatever was kept.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
 import time
 from collections.abc import Iterable, Mapping, Sequence
@@ -320,6 +322,55 @@ def confirm_view(core: Any, carry: ConfirmView, skip: Iterable[str] = ()) -> Con
                        shown_groups=shown_groups)
 
 
+_ASKED = re.compile(
+    r"^[ \t>#*_-]*Question[ \t]*\([ \t]*\**(DEC-\d+)\**[ \t]*\)", re.MULTILINE)
+
+
+def reply_text(ctx: HookContext) -> str:
+    """The agent's last reply as the host gave it: ``last_assistant_message``, else the last
+    assistant entry of the transcript. Empty when neither is available."""
+    text = ctx.data.get("last_assistant_message")
+    if isinstance(text, str):
+        return text
+    path = ctx.data.get("transcript_path")
+    if not isinstance(path, str) or not path:
+        return ""
+    last = ""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                message = entry.get("message") if isinstance(entry, dict) else None
+                if not isinstance(message, dict) or message.get("role") != "assistant":
+                    continue
+                content = message.get("content")
+                if isinstance(content, str):
+                    last = content
+                elif isinstance(content, list):
+                    last = "\n".join(str(b.get("text")) for b in content
+                                     if isinstance(b, dict) and b.get("type") == "text")
+    except OSError:
+        return ""
+    return last
+
+
+def asked_decisions(ctx: HookContext) -> dict[str, str]:
+    """Decisions the reply asked as plain text, "Question (DEC-026): ..." at a line start.
+
+    A decision named in passing ("see DEC-002") is not asked. Only a decision that exists is
+    returned, with its current hash."""
+    found = list(dict.fromkeys(_ASKED.findall(reply_text(ctx))))
+    if not found:
+        return {}
+    from plumb.api import open_core
+
+    known = open_core(ctx.root).index()
+    return {i: known[i].hash for i in found if i in known}
+
+
 def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
                  stated_ids: Sequence[str], shown: Iterable[str] = (), *,
                  group: Mapping[str, Any] | None = None, offer: Sequence[str] = (),
@@ -353,6 +404,11 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     shown = set(shown) if seen else set()
     records = [{"id": i, "hash": index[i].hash, "shown": i in shown} for i in stated_ids]
     by_id = {r["id"]: r for r in records}
+    if seen:  # a question asked as plain text is the whole of what the owner answers
+        for record_id, current in asked_decisions(ctx).items():
+            if record_id not in by_id:
+                by_id[record_id] = {"id": record_id, "hash": current, "shown": True}
+                records.append(by_id[record_id])
     for item in carry.records:
         record_id = item["id"]
         if record_id in rendered:

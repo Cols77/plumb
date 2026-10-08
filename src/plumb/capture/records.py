@@ -93,9 +93,27 @@ def new_record(core: Core, kind: str, fields: Mapping[str, Any], body: str = "",
     return core.index()[record.id]
 
 
+SHORT_ANSWERS = frozenset({
+    "yes", "no", "ok", "okay", "yep", "yeah", "nope", "sure", "fine", "agreed", "go",
+    "do it", "go ahead", "sounds good", "looks good", "lgtm", "y", "n"})
+ANSWER_NEEDS_QUESTION = ("the quote is a short answer: record the question it answered "
+                         "(question) so the read-back is judged against both")
+
+
+def is_short_answer(quote: Any) -> bool:
+    """Whether ``quote`` is a short answer (a letter, yes, ok and the like) that means
+    nothing without the question it answered (SR-097)."""
+    words = "".join(c if c.isalnum() else " " for c in str(quote or "").lower()).split()
+    if not words:
+        return False
+    # "A", "A / B", "A+B": option letters alone
+    return all(len(w) == 1 for w in words) or " ".join(words) in SHORT_ANSWERS
+
+
 def intent_fields(quote: str, readback: str, *, will: Any = (), wont: Any = (),
                   assumptions: Any = (), mode: str = "incremental", title: str = "",
-                  members: Sequence[str] = (), prompt: str | None = None) -> dict[str, Any]:
+                  members: Sequence[str] = (), prompt: str | None = None,
+                  question: str | None = None) -> dict[str, Any]:
     quote = str(quote or "").strip()
     if not quote:
         raise CaptureError("an intent needs the owner's verbatim words (quote)")
@@ -110,6 +128,8 @@ def intent_fields(quote: str, readback: str, *, will: Any = (), wont: Any = (),
         fields["members"] = list(members)
     if prompt:
         fields["prompt"] = prompt.removeprefix("sha256:")[:16]
+    if question and str(question).strip():
+        fields["question"] = " ".join(str(question).split())
     return fields
 
 

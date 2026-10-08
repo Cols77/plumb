@@ -14,9 +14,11 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from plumb.capture.records import (
+    ANSWER_NEEDS_QUESTION,
     CaptureError,
     example_entry,
     intent_fields,
+    is_short_answer,
     new_record,
     record_fields,
     rewrite,
@@ -116,7 +118,8 @@ class _Plan:
                 will=raw_intent.get("will"), wont=raw_intent.get("wont"),
                 assumptions=raw_intent.get("assumptions"),
                 mode=str(raw_intent.get("mode") or "incremental"),
-                title=str(raw_intent.get("title") or ""))
+                title=str(raw_intent.get("title") or ""),
+                question=raw_intent.get("question"))
         elif raw_intent is not None:
             raise CaptureError("intent must be a mapping or an INT ID")
         self.requirements: list[dict[str, Any]] = []
@@ -279,6 +282,12 @@ def _entry(core: Core, prompt: str) -> Mapping[str, Any]:
         raise CaptureError(str(exc)) from exc
 
 
+def _lacks_question(plan: _Plan) -> bool:
+    """A new intent quoting a short answer without the question it answered (SR-097)."""
+    return (plan.intent is not None and is_short_answer(plan.intent["quote"])
+            and not plan.intent.get("question"))
+
+
 def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = None,
             dry_run: bool = False, backend: Any = None) -> CaptureResult:
     """Write the read-back ``doc`` as proposed records; see the module docstring."""
@@ -299,6 +308,8 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
                   for r in plan.requirements]
         lines += [f"DEC (new) would be proposed: {d['fields']['title']}" for d in plan.decisions]
         lines += [f"{rid} would be updated" for rid, _ in plan.updates]
+        if _lacks_question(plan):
+            lines.append(ANSWER_NEEDS_QUESTION)
         lines += _inflight_preview(core, plan, backend)
         return CaptureResult(card=card, lines=tuple(lines), dry_run=True)
 
@@ -366,6 +377,8 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
     lines += [f"{rid} was confirmed; this edit needs the owner again" for rid in again]
     if unchecked:
         lines.append(UNCHECKED_NOTE)
+    if _lacks_question(plan):
+        lines.append(ANSWER_NEEDS_QUESTION)
     # R17: other branches' intent in flight, checked at capture before any implementation;
     # a contradiction is shown as an early card and asked once (a DEC)
     early = _inflight_check(core, written, updated, intent_id, backend)

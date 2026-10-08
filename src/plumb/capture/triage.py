@@ -27,6 +27,7 @@ import time
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from plumb.capture.records import is_short_answer
 from plumb.contracts import Record, TriageItem, TriageView
 
 if TYPE_CHECKING:
@@ -73,7 +74,11 @@ def claim(index: Mapping[str, Record], record: Record) -> tuple[str, str, str]:
         lines += [f"will: {w}" for w in _items(fields.get("will"))]
         lines += [f"won't: {w}" for w in _items(fields.get("wont"))]
         lines += [f"assumed: {a}" for a in _items(fields.get("assumptions"))]
-        return "intent-readback", _flat(fields.get("quote")), "\n".join(lines)
+        premise = _flat(fields.get("quote"))
+        question = _flat(fields.get("question"))
+        if question and is_short_answer(premise):  # SR-097: judged with what it answered
+            premise = f"{question}\n{premise}"
+        return "intent-readback", premise, "\n".join(lines)
     if record.kind == "requirement":
         premise = _intent_quotes(index, record)
         raw = fields.get("examples") or []

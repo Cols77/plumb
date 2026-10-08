@@ -429,6 +429,24 @@ def affirmation_context_problem(quote: str, text: str,
 
 # A record ID as the owner writes it (the shape plumb.query reads from prompts).
 _RECORD_ID = re.compile(r"(?<![A-Za-z0-9-])((?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})(?![0-9])")
+# A mistyped record ID ("INT-24", too few digits): not a record, so neither an objection nor a
+# plain-words reference to other records.
+_MALFORMED_ID = re.compile(
+    r"(?<![A-Za-z0-9-])(?:(?:INT|SR|DEC|FEAT)-\d{1,2}|NC-\d{1,3})(?![0-9])")
+# A record ID that labels an answer item: at the start of its line or item, before a colon
+# ("INT-016: We don't want ...").
+_LABEL = re.compile(r"^[\s\-*>\d.)(]*((?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})\s*:")
+# Words that speak of the whole answer, not of the item before them ("Actually I'd rather sleep
+# on all of this"): such a clause never continues a label, so it holds back every record.
+_WHOLE = re.compile(r"\b(?:all|every\w*|whole|rest|these|those|them|both|anything|any of)\b",
+                    re.IGNORECASE)
+
+
+def _blank_malformed(text: str) -> str:
+    """``text`` with each mistyped record ID blanked out (same length: offsets still hold)."""
+    return _MALFORMED_ID.sub(lambda m: " " * len(m.group()), text)
+
+
 # Clause boundaries: punctuation ends a clause after it; a contrastive word starts the next
 # clause ("SR-001 is ok | but DEC-001 is wrong", "ok | except SR-034").
 _CLAUSE_PUNCT = re.compile(r"[.!?;,:]+(?=\s|$)|\n")
@@ -814,6 +832,7 @@ def change_clauses(text: str, records: Mapping[str, Any] | None = None,
     affirmation always yields a clause here."""
     wanted = list(scope or ())
     origin = _reserving_from(text, affirmations)
+    text = _blank_malformed(text)
     return [text[a:b].strip() for a, b in _clauses(text)
             if _asks_change(text[a:b], records, wanted, affirmations,
                             origin is not None and b > origin)]
@@ -866,12 +885,19 @@ def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
     objected: set[str] = set()
     wanted = set(scope or ())
     origin = _reserving_from(text, affirmations)
+    body = _blank_malformed(text)
     objecting = False
     placed = False
+    label: str | None = None  # the record whose correcting answer item is being read
     for start, end in clauses:
-        clause = text[start:end]
+        clause = body[start:end]
         reserving = origin is not None and end > origin
         ids = set(_RECORD_ID.findall(clause))
+        led = _LABEL.match(clause)
+        continued = (label if led is None and not ids and not _WHOLE.search(clause)
+                     and not _refers_generally(clause) else None)
+        if led is not None:
+            label = None
         if reserving:
             kept = _narrowed(clause, wanted)
             if kept is not None:  # "ok for the intent": everything else is held back
@@ -880,6 +906,16 @@ def owner_scope(text: str, quote: str | None, affirmations: Sequence[str],
         if not _asks_change(clause, records, wanted, affirmations, reserving):
             continue
         objecting = True
+        if led is not None:
+            label = led.group(1)  # the item's later clauses continue this correction
+        if led is not None or continued is not None:
+            # a correction placed by the ID that labels its item holds back that record
+            # alone, whatever plain words it shares with the others
+            objected |= ids | ({continued} if continued else set())
+            placed = True
+            continue
+        if not ids and _WHOLE.search(clause):
+            objected |= wanted  # it speaks of the whole answer, whatever else was placed
         named_here = set(ids)
         if records:
             plain = _plain_named(clause, records, affirmations)
@@ -1054,10 +1090,63 @@ def _check_set_shown(anchor: str, records: Sequence[Mapping[str, Any]], quote: s
         _check_shown(record_id, current, quote, stated)
 
 
+REJECTION_REASONS = ("capture-error", "intent-change")
+
+
+def _relay_rejection(core: Core, ids: Sequence[str], entry: Mapping[str, Any], quote: str,
+                     reason: str, *, note: str, revoke: bool, exempt: bool,
+                     group: str | None, set_anchor: str | None) -> LogEntry:
+    """Log the owner's rejection of proposed records as an append-only ``rejection`` event
+    (SR-096, DEC-026 A). Each record is pinned at its current hash with the text of the
+    version rejected (so ``plumb jev calibrate`` can label it after a recapture), and the
+    quote must name it. The reason is ``capture-error`` (the read-back misread the owner's
+    words: a real calibration 'no') or ``intent-change`` (no label); any other reason is an
+    intent change, as is one the owner's words do not give."""
+    from plumb.capture.calibrate import snapshot
+
+    if revoke or exempt or group or set_anchor:
+        raise ApprovalError("--reject takes record IDs only, not --revoke, --exempt, "
+                            "--group or --set")
+    index = core.index()
+    statuses = core.status([i for i in ids if i in index])
+    records: list[dict[str, Any]] = []
+    for record_id in dict.fromkeys(ids):
+        record = index.get(record_id)
+        if record is None:
+            raise ApprovalError(f"no record {record_id}")
+        if statuses[record_id].confirmation == "confirmed":
+            raise ApprovalError(f"{record_id} is confirmed; reject a proposed record, or "
+                                "relay the owner's revocation")
+        if not _named(record_id, quote):
+            raise Refused(f"the quote does not name {record_id}; a rejection is relayed "
+                          "only on words that name the record")
+        item: dict[str, Any] = {"id": record_id, "hash": record.hash}
+        item.update(snapshot(index, record))
+        records.append(item)
+    if not records:
+        raise ApprovalError("name at least one record")
+    digest = str(entry["digest"])
+    known = {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}
+    if digest not in known:
+        core.log_append("events", "prompt", {"digest": digest,
+                                             "session": entry.get("session"),
+                                             "at": entry.get("at")})
+    payload = {"records": records,
+               "reason": reason if reason in REJECTION_REASONS else "intent-change",
+               "by": "agent-relayed", "prompt_digest": digest, "quote": quote,
+               "quote_digest": sha256_text(quote),
+               "self_recorded": entry.get("via") != "hook", "note": note}
+    return core.log_append("events", "rejection", payload)
+
+
 def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bool = False,
           note: str = "", exempt: bool = False, group: str | None = None,
-          set_anchor: str | None = None) -> LogEntry:
+          set_anchor: str | None = None, reject: str | None = None) -> LogEntry:
     """Record an approval (or revocation) the agent relays from the owner's own words.
+
+    With ``reject`` (SR-096, DEC-026 A), it relays the owner's rejection of proposed
+    records instead (``_relay_rejection``): the same prompt-log and quote checks, no
+    affirmation, and the record stays proposed.
 
     With ``exempt``, the approval also confirms the current ``trace.exempt`` globs; the quote
     must then name the exemption (the word "exempt" or one of the globs). With ``group``
@@ -1076,6 +1165,10 @@ def relay(core: Core, ids: Sequence[str], *, prompt: str, quote: str, revoke: bo
     normalized_quote = normalize_text(quote)
     if not normalized_quote or not quote_in_prompt(normalized_quote, normalize_text(text)):
         raise Refused("the quote is not a verbatim part of that prompt (whole words)")
+    if reject is not None:
+        return _relay_rejection(core, ids, entry, normalized_quote, reject, note=note,
+                                revoke=revoke, exempt=exempt, group=group,
+                                set_anchor=set_anchor)
     affirmation = None
     if not revoke:
         affirmation = affirmation_in(normalized_quote, core.config.approve.affirmations)

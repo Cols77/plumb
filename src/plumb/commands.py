@@ -279,6 +279,11 @@ def cmd_relay(command: str, argv: list[str]) -> int:
                         help="the group the last reply offered (low-risk, from plumb triage)")
     parser.add_argument("--set", default=None, dest="set_anchor", metavar="INT",
                         help="the escalated spec whose set the reply presented")
+    parser.add_argument("--reject", nargs="?", const="intent-change", default=None,
+                        choices=("capture-error", "intent-change"),
+                        help="relay the owner's rejection of the proposed records instead: "
+                        "capture-error when the read-back misread their words (a calibration "
+                        "'no'), intent-change otherwise (no label; also the bare flag)")
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
     if not args.ids and not args.exempt and not args.group and not args.set_anchor:
@@ -288,7 +293,13 @@ def cmd_relay(command: str, argv: list[str]) -> int:
     def act() -> None:
         entry = approvals.relay(core, args.ids, prompt=args.prompt, quote=args.quote,
                                 revoke=args.revoke, note=args.note, exempt=args.exempt,
-                                group=args.group, set_anchor=args.set_anchor)
+                                group=args.group, set_anchor=args.set_anchor,
+                                reject=args.reject)
+        if args.reject:
+            names = ", ".join(r["id"] for r in entry.payload["records"])
+            print(f"plumb: rejected {names} ({args.reject}, agent-relayed); still proposed, "
+                  f"recapture it on the owner's words \"{args.quote}\"")
+            return
         verb = "revoked" if args.revoke else "confirmed"
         names = _approved_names(entry)
         what = (f" (group {args.group})" if args.group else

@@ -143,20 +143,25 @@ def cmd_intent(command: str, argv: list[str]) -> int:
     parser.add_argument("--assume", action="append", default=[], dest="assumptions")
     parser.add_argument("--title", default="")
     parser.add_argument("--prompt", default=None, help="the logged prompt's digest")
+    parser.add_argument("--question", default=None,
+                        help="the question the quote answered (for a short answer)")
     args = parser.parse_args(argv)
     core = _core(args)
 
     def act() -> int:
         from plumb.capture.capture import UNCHECKED_NOTE, check_quote
+        from plumb.capture.records import ANSWER_NEEDS_QUESTION, is_short_answer
 
         prompt = (str(check_quote(core, args.prompt, args.quote)["digest"]) if args.prompt
                   else None)
         record = write_intent(core, args.quote, args.readback, will=args.will,
                               wont=args.wont, assumptions=args.assumptions, title=args.title,
-                              prompt=prompt)
+                              prompt=prompt, question=args.question)
         lines = [f"plumb: {record.id} proposed ({record.path})"]
         if prompt is None:
             lines.append("plumb: " + UNCHECKED_NOTE)
+        if is_short_answer(args.quote) and not (args.question or "").strip():
+            lines.append("plumb: " + ANSWER_NEEDS_QUESTION)
         emit({"id": record.id, "path": record.path, "quote_checked": prompt is not None}
              if args.as_json else lines, args.as_json)
         return 0

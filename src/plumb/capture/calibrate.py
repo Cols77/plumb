@@ -6,7 +6,9 @@ INT read-backs, ``example-restatement`` for requirements: their wording and ever
 
 - yes: records the owner confirmed (``by: owner`` or ``agent-relayed``) at their current
   content and never revoked;
-- no (real): records the owner revoked, and records edited after an auto-approval;
+- no (real): records the owner revoked, records edited after an auto-approval, and read-backs
+  the owner rejected as a misreading of their words (a ``capture-error`` rejection, pinned at
+  its hash; an ``intent-change`` rejection gets no label, SR-096, DEC-026 A);
 - no (generated): deterministic variations of the yes records (a will flipped to won't, a
   flipped result, a changed number), labelled ``generated``.
 
@@ -77,6 +79,13 @@ def _hypotheses(index: Mapping[str, Any], record: Any) -> tuple[str, tuple[str, 
     return premise, tuple(parts)
 
 
+def snapshot(index: Mapping[str, Any], record: Any) -> dict[str, Any]:
+    """The read-back of ``record`` as it stands now (kind, premise, parts), kept in a
+    rejection event so the rejected version can be labelled after a recapture."""
+    premise, parts = _hypotheses(index, record)
+    return {"kind": KINDS.get(record.kind), "premise": premise, "hypotheses": list(parts)}
+
+
 _NUMBER = re.compile(r"\d+")
 
 
@@ -122,6 +131,25 @@ def labelled_set(core: Core) -> list[Item]:
             auto |= ids
     standing = remaining(core)
     items: list[Item] = []
+    seen_rejected: set[tuple[str, str]] = set()
+    for entry in core.events():
+        if entry.kind != "rejection" or entry.payload.get("reason") != "capture-error":
+            continue  # an intent change gets no label (SR-096, DEC-026 A)
+        for pinned in entry.payload.get("records") or []:
+            if not isinstance(pinned, Mapping):
+                continue
+            record_id, pin = str(pinned.get("id")), str(pinned.get("hash"))
+            kind, premise = pinned.get("kind"), str(pinned.get("premise") or "")
+            parts = tuple(str(p) for p in pinned.get("hypotheses") or [])
+            if kind not in KINDS.values() or not premise.strip() or not parts \
+                    or (record_id, pin) in seen_rejected:
+                continue
+            current = index.get(record_id)
+            if current is not None and current.hash == pin and \
+                    statuses[record_id].confirmation == "confirmed":
+                continue  # the owner went on to confirm this very version
+            seen_rejected.add((record_id, pin))
+            items.append(Item(record_id, str(kind), "no", "rejected", premise, parts))
     for record_id in sorted(index):
         record = index[record_id]
         kind = KINDS.get(record.kind)
