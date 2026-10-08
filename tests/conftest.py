@@ -30,6 +30,9 @@ def owner_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb import approvals
 
     monkeypatch.setattr(approvals, "owner_terminal_answer", lambda question: "y")
+    # The agent's session marker, set by the host for every command an agent runs, must not
+    # leak in: a test that needs it sets it itself.
+    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
 
 
 @pytest.fixture(autouse=True)
