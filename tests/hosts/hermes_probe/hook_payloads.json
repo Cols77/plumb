@@ -1,0 +1,77 @@
+{
+  "provenance": {
+    "runtime_version": "Hermes Agent v0.21.0 (2026.8.31)",
+    "upstream_banner": "6005aa1f",
+    "source_checkout": "b20cc5f787ea816ea8645603b7b2ac8234dcb8b4",
+    "credentials_removed": true
+  },
+  "events": {
+    "on_session_start": {
+      "session_id": "synthetic-session",
+      "model": "synthetic-model",
+      "platform": "cli",
+      "parent_session_id": "ABSENT_FROM_RUNTIME_CALL_SITE",
+      "cwd": "ABSENT_FROM_RUNTIME_CALL_SITE"
+    },
+    "pre_llm_call": {
+      "session_id": "synthetic-session",
+      "task_id": "synthetic-task",
+      "turn_id": "synthetic-turn",
+      "user_message": "synthetic user text",
+      "conversation_history": [],
+      "is_first_turn": true,
+      "model": "synthetic-model",
+      "platform": "cli",
+      "parent_session_id": "",
+      "sender_id": "synthetic-user",
+      "cwd": "ABSENT_FROM_RUNTIME_CALL_SITE",
+      "workspace": "ABSENT_FROM_RUNTIME_CALL_SITE"
+    },
+    "post_tool_call": {
+      "tool_name": "write_file",
+      "args": {"path": "relative/example.txt"},
+      "result": "synthetic result",
+      "task_id": "synthetic-task",
+      "session_id": "synthetic-session",
+      "tool_call_id": "synthetic-tool-call",
+      "turn_id": "synthetic-turn",
+      "api_request_id": "synthetic-api-request",
+      "duration_ms": 1,
+      "status": "ok",
+      "error_type": null,
+      "error_message": null,
+      "middleware_trace": []
+    },
+    "pre_verify": {
+      "session_id": "synthetic-session",
+      "platform": "cli",
+      "model": "synthetic-model",
+      "coding": true,
+      "attempt": 0,
+      "final_response": "synthetic response",
+      "changed_paths": ["relative/example.txt"],
+      "cwd": "ABSENT_FROM_RUNTIME_CALL_SITE",
+      "workspace": "ABSENT_FROM_RUNTIME_CALL_SITE"
+    },
+    "transform_llm_output": {
+      "response_text": "synthetic response",
+      "session_id": "synthetic-session",
+      "model": "synthetic-model",
+      "platform": "cli",
+      "parent_session_id": "ABSENT_FROM_RUNTIME_CALL_SITE",
+      "cwd": "ABSENT_FROM_RUNTIME_CALL_SITE"
+    },
+    "post_llm_call": {
+      "session_id": "synthetic-session",
+      "task_id": "synthetic-task",
+      "turn_id": "synthetic-turn",
+      "user_message": "synthetic user text",
+      "assistant_response": "synthetic response",
+      "conversation_history": [],
+      "model": "synthetic-model",
+      "platform": "cli",
+      "parent_session_id": "ABSENT_FROM_RUNTIME_CALL_SITE",
+      "cwd": "ABSENT_FROM_RUNTIME_CALL_SITE"
+    }
+  }
+}
