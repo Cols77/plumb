@@ -17,12 +17,14 @@ certify provenance for every synthetic or scheduled turn.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
 PLUMB: list[str] = ["plumb"]  # plumb:argv (set by plumb hosts install hermes)
+SKILL_DIGESTS: dict[str, str] = {}  # plumb:skill-digests (set by installer)
 MARKER = "PLUMB_AGENT_SESSION"
 TIMEOUT_S = 5.0
 EDIT_TOOLS = {"write_file", "patch"}
@@ -224,6 +226,21 @@ def register(ctx: Any) -> None:
             try:
                 register_hook(name, callback)
             except Exception:  # noqa: BLE001 - an older Hermes without this hook
+                pass
+
+    register_skill = getattr(ctx, "register_skill", None)
+    if callable(register_skill):
+        for name, description in {
+            "plumb": "Ground work in this repository's plumb records.",
+            "plumb-clarify": "Clarify the owner's intent before building.",
+        }.items():
+            path = Path(__file__).parent / "skills" / name / "SKILL.md"
+            try:
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                if digest != SKILL_DIGESTS.get(name):
+                    continue
+                register_skill(name, path, description)
+            except (OSError, ValueError):
                 pass
 
     def command(raw_args: str = "") -> str:

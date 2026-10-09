@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -42,6 +43,7 @@ class FakeCtx:
     def __init__(self, hooks: bool = True) -> None:
         self.hooks: dict[str, object] = {}
         self.commands: dict[str, object] = {}
+        self.skills: dict[str, tuple[Path, str, dict]] = {}
         self.injected: list[str] = []
         if hooks:
             self.register_hook = lambda name, fn: self.hooks.__setitem__(name, fn)
@@ -52,6 +54,9 @@ class FakeCtx:
     def inject_message(self, content: str, role: str = "user") -> bool:
         self.injected.append(content)
         return True
+
+    def register_skill(self, name, path, description="", frontmatter=None):
+        self.skills[name] = (path, description, frontmatter or {})
 
 
 def _load_plugin(directory: Path, name: str):
@@ -69,6 +74,77 @@ def test_install_idempotent_preserves_foreign(project: Path) -> None:
     assert ".hermes/plugins/plumb/plugin.py" in first
     assert first["AGENTS.md"].decode().startswith("# Owner's notes")
     assert b"name: other" in first[".hermes/plugins/other/plugin.yaml"]
+
+
+def test_install_generates_canonical_namespaced_skills(project: Path) -> None:
+    report = hermes.install(project, launcher="path")
+    assert any("skills/plumb/SKILL.md" in item for item in report.changed)
+    skill_dir = project / hermes.PLUGIN_DIR / "skills"
+    assert (skill_dir / "plumb" / "SKILL.md").read_text("utf-8") == (
+        (hermes.CANONICAL_SKILLS / "plumb" / "SKILL.md")
+        .read_text("utf-8").replace("{plumb}", "plumb")
+    )
+    assert (skill_dir / "plumb-clarify" / "SKILL.md").read_text("utf-8") == (
+        (hermes.CANONICAL_SKILLS / "plumb-clarify" / "SKILL.md")
+        .read_text("utf-8").replace("{plumb}", "plumb")
+    )
+    assert not (project / ".hermes" / "skills").exists()
+
+
+def test_skill_update_is_idempotent_and_preserves_foreign(project: Path) -> None:
+    hermes.install(project, launcher="path")
+    skill = project / hermes.PLUGIN_DIR / "skills" / "plumb" / "SKILL.md"
+    original = skill.read_text("utf-8")
+    assert hermes.install(project, launcher="path").changed == []
+    assert skill.read_text("utf-8") == original
+    skill.write_text("---\nname: plumb\n---\nforeign\n", "utf-8")
+    report = hermes.install(project, launcher="uv")
+    assert skill.read_text("utf-8") == "---\nname: plumb\n---\nforeign\n"
+    assert any("skills/plumb/SKILL.md" in line and "not plumb's" in line
+               for line in report.lines)
+
+
+def test_dry_run_and_uninstall_cover_owned_skills_only(project: Path) -> None:
+    hermes.install(project, launcher="path")
+    foreign = project / hermes.PLUGIN_DIR / "skills" / "foreign" / "SKILL.md"
+    foreign.parent.mkdir(parents=True)
+    foreign.write_text("foreign\n", "utf-8")
+    before = snapshot(project)
+    assert hermes.install(project, launcher="uv", dry_run=True).changed
+    assert snapshot(project) == before
+    hermes.uninstall(project)
+    assert not (project / hermes.PLUGIN_DIR / "skills" / "plumb").exists()
+    assert foreign.exists()
+
+
+def test_plugin_registers_bare_skills_only_when_files_match(project: Path) -> None:
+    hermes.install(project, launcher="path")
+    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "plumb_skill_guard")
+    ctx = FakeCtx()
+    plugin.register(ctx)
+    assert set(ctx.skills) == {"plumb", "plumb-clarify"}
+    skill = project / hermes.PLUGIN_DIR / "skills" / "plumb" / "SKILL.md"
+    skill.write_text("foreign\n", "utf-8")
+    ctx = FakeCtx()
+    plugin.register(ctx)
+    assert set(ctx.skills) == {"plumb-clarify"}
+
+
+def test_pinned_hermes_skill_view_resolves_only_qualified_names(project: Path,
+                                                               tmp_path: Path) -> None:
+    hermes.install(project, launcher="path")
+    env = os.environ.copy()
+    env["HERMES_HOME"] = str(tmp_path / "hermes-home")
+    env["PYTHONPATH"] = ("C:/coding/plumb-wt/hermes-compat/src;"
+                          "C:/Users/33630/AppData/Local/hermes/hermes-agent")
+    probe = Path(__file__).parent / "hermes_probe" / "skill_resolution.py"
+    result = subprocess.run([sys.executable, str(probe), str(project / hermes.PLUGIN_DIR)],
+                            capture_output=True, text=True, env=env)
+    assert result.returncode == 0, result.stderr
+    data = json.loads(result.stdout)
+    assert data["registered"] == ["plumb:plumb", "plumb:plumb-clarify"]
+    assert data["plumb"]["success"] and data["clarify"]["success"]
+    assert not data["flat"]["success"]
 
 
 def test_block_goes_to_hermes_md_when_present(project: Path) -> None:
@@ -508,6 +584,17 @@ def test_register_without_hook_api_registers_only_the_command(tmp_path: Path) ->
     ctx = FakeCtx(hooks=False)
     plugin.register(ctx)
     assert list(ctx.commands) == ["plumb"] and ctx.hooks == {}
+
+
+def test_register_without_optional_skill_api_is_safe(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "plugin.py").write_text(hermes.render("plugin.py", ["plumb"]), "utf-8")
+    plugin = _load_plugin(plugin_dir, "plumb_hermes_noskills")
+    ctx = FakeCtx()
+    ctx.register_skill = None
+    plugin.register(ctx)
+    assert list(ctx.commands) == ["plumb"]
 
 
 @pytest.mark.sr("SR-053")

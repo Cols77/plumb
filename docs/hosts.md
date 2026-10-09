@@ -108,8 +108,12 @@ discovery prerequisites, not callback evidence. Delegated children are excluded 
 supplies `parent_session_id`; that metadata is conditional, so desktop, background and cron
 provenance are not certified. `/plumb`
 injection outside the CLI requires supported routing and grants, and there is no native status
-bar or streaming transport receipt. Native `plumb`/`plumb-clarify` skills and MCP registration
-are follow-on work, not installed by Release A.
+bar or streaming transport receipt. Native `plumb`/`plumb-clarify` skills are installed by this follow-up as
+plugin-owned files under `.hermes/plugins/plumb/skills/`. The plugin registers
+the bare names `plumb` and `plumb-clarify`; Hermes resolves them explicitly as
+`plumb:plumb` and `plumb:plumb-clarify`. They are not copied to `.hermes/skills`
+and are not entries in the flat available-skills index. MCP registration remains
+separate and is not performed by this adapter.
 
 Owner-run installation
 

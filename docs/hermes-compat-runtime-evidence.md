@@ -32,6 +32,15 @@ Plugin registration is real and general: `PluginContext.register_hook` stores ca
 
 `PluginContext.inject_message` has a supported interface, but its boundary is explicit: CLI injection queues/interupts the local CLI; gateway injection requires an existing `session_key`, `plugins.entries.<plugin_id>.allow_gateway_injection: true`, and a live gateway. A true return means asynchronous queue acceptance, not platform delivery completion.
 
+## Original requirement aliases
+
+The original plan's B-numbers are preserved here: B1 is trusted origin and
+session/project routing; B2 is native skill lifecycle; B3 is the approval threat
+boundary; B4 is latency ordering; B5 is direct-tool defense; B6 is native UX,
+transport and composition. Earlier investigation notes used a different
+investigation-gate numbering; those aliases are not requirements and must not
+be read as additional acceptance gates.
+
 ## B1 — trusted origin and session/project routing
 
 Result: not certified; remain on the labelled CLI/project-local fallback for affected surfaces.
@@ -44,7 +53,7 @@ Offline evidence is limited to source inspection and registration. No live callb
 
 ## B2 — native skill lifecycle
 
-Result: the exact supported API is known, but no native skill installation was performed.
+Result: implemented and offline-verified for the pinned runtime; live profile activation remains unverified.
 
 Official plugin documentation describes Python plugins as a supported extension surface. Installed source provides `ctx.register_skill(name, path, description, frontmatter)`. The path must exist, the name cannot contain `:`, and the result is opt-in namespaced resolution rather than automatic availability indexing. This rules out inventing `.hermes/skills` as a discovery path and rules out claiming that copying Claude skill files makes them globally available.
 
@@ -55,7 +64,12 @@ Minimal follow-up can be implemented without Hermes core changes:
 3. Test install, idempotent update, foreign-file preservation, dry-run, uninstall, missing-file failure, and explicit `skill_view("plumb:<name>")` resolution in a temporary Hermes home/plugin manager.
 4. Document that namespaced plugin skills are explicit loads, not entries in the flat available-skills prompt.
 
-This follow-up needs a new implementation card and an independent review card; it is not part of this read-only investigation.
+The plugin owns the generated `skills/<name>/SKILL.md` files and registers bare
+names only when their recorded digest matches. Explicit qualified loads are
+`plumb:plumb` and `plumb:plumb-clarify`; flat discovery is intentionally not
+claimed. The installer preserves foreign files, supports idempotent updates,
+dry-run and owned-only uninstall. Actual PluginManager/skill_view resolution is
+covered in a temporary-home subprocess with no network or model call.
 
 ## B3 — approval threat boundary
 

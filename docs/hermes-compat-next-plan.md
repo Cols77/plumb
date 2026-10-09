@@ -1,10 +1,10 @@
 # Hermes compatibility next plan
 
-Status: proposed follow-up plan from the bounded runtime investigation. This is not approval to enable Hermes, change Hermes core/security contracts, run live models, install MCP, merge, or push.
+Status: proposed follow-up plan from the bounded runtime investigation. The namespaced skill slice below is implemented offline; this document is not approval to enable Hermes, change Hermes core/security contracts, run live models, install MCP, merge, or push.
 
 ## Support boundary to carry forward
 
-Release A is a project-local Python plugin bridge validated by offline adapter tests and Plugin Doctor against Hermes Agent v0.21.0 (`b20cc5f787ea816ea8645603b7b2ac8234dcb8b4`). It is not authenticated owner capture for parentless scheduled turns, not session-scoped routing for a globally loaded plugin, not automatic native skill discovery, not adversarial approval protection, and not native desktop/streaming UX.
+Release A is a project-local Python plugin bridge validated by offline adapter tests and Plugin Doctor against Hermes Agent v0.21.0 (`b20cc5f787ea816ea8645603b7b2ac8234dcb8b4`). It is not authenticated owner capture for parentless scheduled turns, not session-scoped routing for a globally loaded plugin, not adversarial approval protection, and not native desktop/streaming UX. The implemented skill slice is explicit namespaced resolution, not automatic skill discovery.
 
 The runtime facts that constrain every follow-up are captured in `docs/hermes-compat-runtime-evidence.md` and `tests/hosts/hermes_probe/hook_payloads.json`. Do not invent `cwd`, `workspace`, `origin`, `is_owner`, or delivery-receipt fields in plugin callbacks.
 
@@ -24,21 +24,23 @@ Allowed paths:
 
 Prohibited paths: installed Hermes source/config, real profile homes, `.env`/credentials, `src/plumb/approvals.py`, unrelated adapters, MCP installer, and desktop SDK files.
 
-Work:
+Work completed in this slice:
 
-1. Add a plugin-owned `skills/` fixture containing the canonical behavioral content of `plumb` and `plumb-clarify`, preserving unchanged content byte-for-byte from the Claude templates or document the exact intentional adapter wrapper.
-2. Render `ctx.register_skill(name, path, description, frontmatter)` with namespaced names. Do not copy files to `.hermes/skills` and do not claim flat available-skills indexing.
-3. Test a temporary plugin manager: explicit qualified resolution, missing-file failure, invalid names, idempotent registration/update, foreign plugin preservation, dry-run no-write, and uninstall.
-4. Keep all tests offline and synthetic; Plugin Doctor remains registration-only evidence.
+1. Installer-generated plugin-owned `skills/` files reuse the canonical Claude templates with the same launcher substitution; no duplicate canonical production source is maintained.
+2. `ctx.register_skill` receives bare `plumb` and `plumb-clarify` names. Hermes resolves these as `plumb:plumb` and `plumb:plumb-clarify`; there is no flat available-skills claim.
+3. Offline tests cover install, idempotent launcher update, missing/foreign preservation, dry-run, owned-only uninstall, digest-guarded registration, byte parity, and a temporary-home pinned PluginManager/`skill_view` subprocess.
+4. Keep all validation offline and synthetic; Plugin Doctor remains registration-only evidence.
 
 Acceptance commands:
 
 ```text
-set PYTHONPATH=C:/coding/plumb-wt/hermes-compat/src
+export PYTHONPATH=C:/coding/plumb-wt/hermes-compat/src
 C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/hosts/test_hermes.py -o addopts= -q --tb=short
 C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/hosts -o addopts= -q --tb=short
 hermes plugins doctor src/plumb/hosts/hermes/templates --ci
 ```
+
+On cmd.exe, use `set PYTHONPATH=...` instead; the commands above are Git Bash syntax.
 
 The worker must print `plumb.__file__` before tests, record exact counts, and commit only the allowlisted paths. The separate reviewer must verify byte parity and the no-global-skill claim.
 
