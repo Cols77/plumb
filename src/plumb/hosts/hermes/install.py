@@ -16,7 +16,9 @@ import re
 from pathlib import Path
 
 from plumb.hosts.common import (
+    FALLBACK_PROMPT_LINE,
     InstallReport,
+    NO_MARKER_LINE,
     context_file,
     has_block,
     instruction_block,
@@ -110,14 +112,12 @@ def status(root: Path) -> list[str]:
         "instruction block: " + ("present" if has_block(where) else "missing")
         + f" ({rel(root, where)}, plumb turn start/end)",
     ]
-    lines.append("CLI fallback (runtime marker unverified): owner-only commands require an "
-                 "interactive terminal; marker status is not verified")
+    lines.append(f"CLI fallback (runtime marker unverified): {NO_MARKER_LINE}")
     lines.append("trust model: plumb's log is hash-chained and tamper-evident, not tamper-proof "
                  "against a malicious agent; relayed approvals are listed at the merge boundary "
                  "for your glance")
     lines.append("prompts: CLI fallback (runtime marker unverified; the agent runs plumb turn "
-                 "start): a chat \"ok\" still confirms, and every such confirmation is "
-                 "labelled \"self-recorded message\"")
+                 f"start): {FALLBACK_PROMPT_LINE}")
     count = self_recorded_count(root)
     lines.append(f"confirmations resting on a self-recorded message: {count}")
     return lines

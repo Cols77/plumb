@@ -234,9 +234,16 @@ def test_status_does_not_infer_activation(project: Path, monkeypatch, capsys,
 
 def test_status_qualifies_unknown_marker_and_preserves_trust(project: Path) -> None:
     text = "\n".join(hermes.status(project))
+    baseline_marker = ("no session marker on this host: owner-only commands require an "
+                       "interactive terminal")
+    baseline_prompt = ("prompts: CLI-only fallback (the agent runs plumb turn start): a chat "
+                       "\"ok\" still confirms, and every such confirmation is labelled "
+                       "\"self-recorded message\"")
     assert "runtime activation: unverified" in text
     assert "CLI fallback (runtime marker unverified):" in text
     assert "prompts: CLI fallback (runtime marker unverified;" in text
+    assert baseline_marker in text
+    assert baseline_prompt in text
     assert "trust model: plumb's log is hash-chained" in text
 
 
@@ -252,9 +259,16 @@ def test_status_unknown_marker_for_missing_foreign_partial_install(project: Path
         (target / "plugin.yaml").write_text(hermes.render("plugin.yaml", ["plumb"]),
                                                "utf-8")
     text = "\n".join(hermes.status(project))
+    baseline_marker = ("no session marker on this host: owner-only commands require an "
+                       "interactive terminal")
+    baseline_prompt = ("prompts: CLI-only fallback (the agent runs plumb turn start): a chat "
+                       "\"ok\" still confirms, and every such confirmation is labelled "
+                       "\"self-recorded message\"")
     assert "runtime activation: unverified" in text
     assert "CLI fallback (runtime marker unverified):" in text
     assert "prompts: CLI fallback (runtime marker unverified;" in text
+    assert baseline_marker in text
+    assert baseline_prompt in text
 
 
 def test_pi_and_codex_keep_baseline_fallback_literals(project: Path) -> None:

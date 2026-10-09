@@ -12,8 +12,10 @@ Every adapter is thin: it turns the host's event into a `TurnEvent`, calls
 and renders the `TurnOutput`. The guard against self-approval is the same on every host:
 every owner-only command writes through `approvals.require_owner`, which refuses under the
 session marker and refuses, marker or not, unless stdin and stdout are an interactive
-terminal where the owner answers `y`. An agent's shell has no terminal, so `plumb approve`
-run by an agent exits 3 and writes nothing on every host.
+terminal where the owner answers `y`. In the tested marked/noninteractive shell boundary,
+`plumb approve` exits 3 and writes nothing on every host. This is not a guarantee about
+every agent shell: PTYs, removable markers, and direct file writes are outside that tested
+boundary. Marker and TTY checks are defense in depth, not authenticated owner provenance.
 
 Prompts and the "self-recorded message" label (R13 Q4): a prompt that reaches plumb through
 a host's prompt hook is logged `via: hook`. A prompt the agent records itself with
