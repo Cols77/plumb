@@ -9,7 +9,9 @@ appended to the reply (`transform_llm_output`), the status in `plumb status`. A 
 did not reach the owner is recorded as unseen (`--unseen`). Child agents (delegation,
 background review, cron) are skipped: their messages are never the owner's words.
 `register(ctx)` sets the session marker in Hermes' environment, which its local terminal
-tool inherits; the owner-terminal guard holds whether or not it is set.
+tool inherits; the owner-terminal guard holds whether or not it is set. Sessions with
+`parent_session_id` are excluded; this does not certify provenance for every synthetic or
+scheduled turn.
 """
 
 from __future__ import annotations
@@ -17,16 +19,19 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from pathlib import Path
 from typing import Any
 
 PLUMB: list[str] = ["plumb"]  # plumb:argv (set by plumb hosts install hermes)
 MARKER = "PLUMB_AGENT_SESSION"
 TIMEOUT_S = 5.0
 EDIT_TOOLS = {"write_file", "patch"}
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 EMPTY: dict[str, Any] = {"agent_context": [], "owner_lines": [], "block": None,
                          "status_line": ""}
 
 _briefs: dict[str, list[str]] = {}
+_started: set[str] = set()
 _stopped: set[str] = set()
 _children: set[str] = set()     # sessions of in-process child agents (delegation, review)
 _summaries: dict[str, str] = {}  # session -> the summary appended to its reply, not yet seen
@@ -53,7 +58,9 @@ def _parse(stdout: str) -> dict[str, Any]:
 
 def _run(event: str, payload: dict[str, Any], *flags: str,
          background: bool = False) -> dict[str, Any]:
-    cwd = os.getcwd()
+    if not (PROJECT_ROOT / ".plumb").is_dir():
+        return dict(EMPTY)
+    cwd = str(PROJECT_ROOT)
     data = json.dumps({**payload, "cwd": cwd})
     try:
         if background:
@@ -112,6 +119,9 @@ def on_session_start(**kwargs: Any) -> None:
     session = _owner_session(kwargs)
     if session is None:
         return
+    if session in _started:
+        return
+    _started.add(session)
     out = _run("session-start", {"session_id": session, "source": "startup"})
     _briefs[session] = list(out["agent_context"])  # rides on the first pre_llm_call
 
@@ -120,6 +130,8 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
     session = _owner_session(kwargs)
     if session is None:  # a child agent's goal is not the owner's prompt
         return None
+    if session not in _started:
+        on_session_start(**kwargs)
     _settle(session, None)  # the last reply ended without showing its summary
     _stopped.discard(session)  # a new owner message starts a new turn
     out = _run("prompt", {"session_id": session, "text": str(kwargs.get("user_message") or "")})

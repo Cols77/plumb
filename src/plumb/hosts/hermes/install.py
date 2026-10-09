@@ -5,7 +5,8 @@ Renders the project plugin ``.hermes/plugins/plumb/{plugin.yaml,__init__.py,plug
 ``pre_verify``, ``transform_llm_output``, ``post_llm_call`` and the ``/plumb`` command, and
 sets the session marker) and the instruction block of the CLI-only fallback in the context
 file Hermes loads (``.hermes.md`` or ``HERMES.md`` when the project has one, else
-``AGENTS.md``). Hermes loads project plugins only with ``HERMES_ENABLE_PROJECT_PLUGINS=1``.
+the first nonempty root-local recognized context file). Hermes loads project plugins only
+with ``HERMES_ENABLE_PROJECT_PLUGINS=1``; installation cannot prove runtime activation.
 """
 
 from __future__ import annotations
@@ -66,8 +67,15 @@ def install(root: Path, *, launcher: str = "auto", dry_run: bool = False) -> Ins
                                 "written there")
             continue
         write_file(root, target, render(name, argv), report, dry_run)
-    report.lines.append(f"Hermes loads project plugins only with {ENABLE_ENV}=1; until then "
-                        "the context-file fallback applies")
+    report.lines.append(
+        f"Activation requires {ENABLE_ENV}=1 and `hermes plugins enable plumb`; "
+        "restart Hermes and verify callbacks. Installation does not enable trust or "
+        "prove runtime activation; the context-file fallback remains available."
+    )
+    report.lines.append(
+        "Support: project-bound event bridge; delegated children are excluded when "
+        "parent metadata is supplied. Desktop/cron provenance is not yet certified."
+    )
     return report
 
 
@@ -78,7 +86,14 @@ def uninstall(root: Path, *, dry_run: bool = False) -> InstallReport:
         target = root / PLUGIN_DIR / name
         if target.exists() and _ours(target):
             remove_file(root, target, report, dry_run)
-    remove_shared_block(root, HOST, report, dry_run)
+    context = context_file(root, HOST)
+    if context.name.lower() == "claude.md":
+        if has_block(context):
+            report.lines.append(
+                f"{rel(root, context)} block kept: Claude ownership is shared or unknown"
+            )
+    else:
+        remove_shared_block(root, HOST, report, dry_run)
     return report
 
 
@@ -86,12 +101,16 @@ def status(root: Path) -> list[str]:
     root = Path(root)
     installed = all(_ours(root / PLUGIN_DIR / name) for name in FILES)
     enabled = os.environ.get(ENABLE_ENV, "").strip().lower() in ("1", "true", "yes", "on")
-    active = installed and enabled
     where = context_file(root, HOST)
-    lines = ["plugin: " + (PLUGIN_DIR.as_posix() if installed else "not installed")
-             + (f" ({ENABLE_ENV}=1 set)" if enabled else f" (needs {ENABLE_ENV}=1)"),
-             "instruction block: " + ("present" if has_block(where) else "missing")
-             + f" ({rel(root, where)}, plumb turn start/end)"]
-    lines += marker_lines(active, "by the plugin in Hermes' environment (local terminal)")
-    lines += prompt_lines(root, active, "pre_llm_call")
+    lines = [
+        "plugin files: " + (PLUGIN_DIR.as_posix() if installed else "not installed"),
+        f"project discovery: {ENABLE_ENV}=" + ("1" if enabled else "not enabled"),
+        "runtime activation: unverified (file presence is not callback evidence)",
+        f"activation requires {ENABLE_ENV}=1 and `hermes plugins enable plumb`; "
+        "restart Hermes after enabling, then verify a hook-delivered prompt",
+        "instruction block: " + ("present" if has_block(where) else "missing")
+        + f" ({rel(root, where)}, plumb turn start/end)",
+    ]
+    lines += marker_lines(False, "runtime activation unverified")
+    lines += prompt_lines(root, False, "runtime activation unverified")
     return lines

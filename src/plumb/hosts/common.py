@@ -339,12 +339,16 @@ def adapter_installed(root: Path, host: str) -> bool:
 
 
 def context_file(root: Path, host: str) -> Path:
-    """The always-loaded instruction file: ``AGENTS.md`` (Codex, Pi; Hermes too unless the
-    project uses ``.hermes.md`` or ``HERMES.md``, which Hermes loads first)."""
+    """Select a nonempty root-local context without shadowing another host's rules."""
     if host == "hermes":
-        for name in (".hermes.md", "HERMES.md"):
-            if (root / name).exists():
-                return root / name
+        for name in (".hermes.md", "HERMES.md", "AGENTS.md", "agents.md",
+                     "CLAUDE.md", "claude.md"):
+            candidate = root / name
+            try:
+                if candidate.read_text(encoding="utf-8").strip():
+                    return candidate
+            except (OSError, UnicodeDecodeError):
+                continue
     return root / "AGENTS.md"
 
 
