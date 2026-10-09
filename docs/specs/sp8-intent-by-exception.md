@@ -2,7 +2,8 @@
 
 Status: proposed, 2026-10-09, written from a brainstorming session with the owner (answers
 quoted in section 2). Records: `INT-028` (approval understood from meaning or a button),
-`INT-029` (models, not fixed rules, wherever plumb interprets words), `DEC-027` (which model
+`INT-029` (models, not fixed rules, wherever plumb interprets words; both reworded by this
+spec, section 10, so that neither promises a fallback), `DEC-027` (which model
 reads the owner), `SR-096` and `SR-097` (rejections and short answers, kept), `SR-012`
 (the summary shows what awaits the owner as an answerable card). When this spec and the
 owner's quoted words disagree, the words win.
@@ -72,20 +73,45 @@ questions and suggested answers). Output, one entry per shown record or card que
  "evidence": "the owner's words that carry this answer", "confidence": "high|medium|low"}
 ```
 
+Card answers map onto these four answers; the schema has no other. For a card's resolutions:
+keep = `accepted`, drop it = `rejected`, reword = `change` (the new words in `change`), pick a
+version or combine = `change` with the chosen version, or the combination, in `change`; a
+trial batch's yes = `accepted`, no = `rejected`; the Couldn't check card's "build anyway" =
+`accepted`, "wait" = `rejected` (4.3). Each card kind has an SR-105 example.
+
 plumb then applies only exact checks: the message is in the prompt log (via the hook); each
 id was in that stated set at that hash; `evidence` occurs in the message. An `accepted`
 entry with high confidence confirms the record as "you said: <evidence>" (`by:
 owner-words`, with the digest and the reader's job id). A `rejected` entry is logged as an
 SR-096 rejection (`misread` is the calibration "no"). A `change` entry becomes a recapture
 task for the agent (read back at the next turn). `open`, or any confidence below high,
-confirms nothing. Records named in the message but not shown are never confirmed: plumb
-shows them as cards first (SR-088's rule, kept).
+confirms nothing. Records named in free prose but not shown are never confirmed: plumb shows
+them as cards first (SR-088's rule, kept for prose).
+
+Two paths, not one. A typed `/plumb approve|confirm <ID...>` command is an exact owner action
+(SR-088, SR-065): it names IDs, needs no reading, bypasses the reader and confirms at once,
+recorded as passed on from the owner's typed command. The reader handles free prose only. An
+ID named in prose but not shown becomes a card; the same ID in a typed command is confirmed.
+Owner-only settings (settling on or off, automatic confirmation) and Undo change only by a
+typed command (`/plumb settle on|off`, `/plumb undo <ID>`) or a button, never by a model's
+reading of prose; a prose "turn settling on" or "undo that" has no effect, and plumb replies
+with the command or button to use. The one prose-reachable release is the Couldn't check
+card's "build anyway" question (4.3), which opens a guard and changes no setting.
 
 This replaces, as the way approvals are understood, the affirmation-term list, the
 objection words, the clause splitting and the plain-words matching of `approvals.py`
-(`owner_scope`, `change_clauses`, `_plain_named`, `affirmation_in`). They are removed, not
-kept as a fallback (principle 2). `plumb relay` remains for the owner's own terminal and for
-tests, with the reader's output as its input instead of a quote parse.
+(`owner_scope`, `change_clauses`, `objection_clauses`, `affirmation_context_problem`,
+`_plain_named`) and of `confirm.py` (`affirmation_in`). They are removed, not kept as a
+fallback (principle 2). Every caller of a removed rule is listed in section 10.
+
+**`plumb relay` for prose is removed.** Without the word rules, an agent-run relay would let
+the agent confirm any logged prompt with any quote, including a message that says no, which
+breaks principle 3. The only agent-run paths that reach a confirmation are the exact typed
+command (parsed to exact IDs, SP7 7.2, `via: command`) and the worker (4.4). `plumb relay`
+keeps a terminal-only form (an interactive y/N, as for `plumb approve`) for the owner's own
+terminal and for tests; run from the agent's shell under the session marker it is refused.
+Typed `/plumb confirm <words>` is not supported: `confirm` takes IDs only; words go to the
+reader as prose, on the records the previous reply showed.
 
 ### 4.2 Judge: can this be settled?
 
@@ -111,15 +137,56 @@ claim()`), which rated faithful elaborations as unfaithful.
 
 ### 4.3 Clarifier: is the request clear and complete?
 
-Runs when the prompt hook flags a message as new or changed intent. Input: the message, the
-confirmed and settled records it touches. Output: a draft read-back (will, won't, assumptions,
+Runs on every owner message; the clarifier itself decides whether the message carries new or
+changed intent and returns `no intent` when it does not (a question, an answer, a remark),
+which produces no card. No hook, keyword or heuristic flags intent (principle 1). Input: the
+message, the confirmed and settled records it touches. Output: `intent: yes|no`, then a draft
+read-back (will, won't, assumptions,
 two or three concrete examples) and the gaps that change what gets built, ranked, each with
 two or three suggested answers and a recommended one. plumb shows one card with at most
 three questions (section 6); the remaining gaps become assumptions on the same card. More
 than three questions that change what gets built escalate to a short structured session
 ending in an up-front spec (INT-004). A request with no such gap produces no card: work
-starts at once. The plumb-clarify skill tells the agent to present the card and wait for it
-before building (the owner chose "clarify up front").
+starts at once.
+
+**The gate (clarify up front, before building).** The prompt hook closes the gate (it writes a
+small state file `.plumb/session/<id>/gate` naming the latest owner message) and queues the
+clarify job, idempotently, so it starts early; the hook does not wait. The first action the
+plumb-clarify skill gives the agent is `plumb clarify --wait`, an agent-initiated, bounded
+collection step outside any hook: it returns the clarify result, waiting for the job up to a
+timeout (default 45 s), or runs the job itself when none was queued (same inputs, same job
+id, so it never runs twice). Ordering: the clarify job for a message runs only after that
+message's read job has been applied, and its input includes the open cards with the answers
+the read job just mapped, so a card the owner has just answered is not asked again. Exactly
+one of these opens the gate, each written by plumb and never by the agent: the clarify
+result says `no intent` or has no gap; the result carries a card and all the card's
+questions are mapped by the reader; the owner releases a failed check (below). Outcomes: `no
+intent` or no gap, the guard opens and work starts at once; a card, the guard stays closed
+until all its questions are mapped, and answering the card does not produce a second card for
+the same questions; a job still running, `--wait` waits and edits stay refused; a late result
+is collected by the next `--wait`, never after the build; a timeout or an error, a Couldn't
+check card (section 6) and no build until the owner releases it.
+
+**Release of a failed check.** The Couldn't check card carries one question, "Build without
+the check?", with two resolutions, Build anyway and Wait. The owner answers by a button, by
+the typed `/plumb go`, or in prose, which the reader maps (`accepted` with high confidence
+opens the guard, `rejected` keeps it closed). A failed clarify job blocks edits whatever the
+message was, since the failed model is the one that would say whether it carried intent; this
+is the cost of principle 2, and it lasts only until the release or until the next turn's
+retry succeeds. This is the one place plumb blocks work: the owner's "clarify up front"
+overrides INT-004's "block work on a proposed read-back (R1)" only for gaps that change what
+gets built. INT-004 and INT-003 are otherwise unchanged: every other edit stays unblocked.
+
+**What the gate runs on.** The refusal is a PreToolUse check, which today's install does not
+have (its guard is static permissions). The gate therefore depends on SP7's pre-tool hook
+(PLUGIN lane) and is Claude Code only. It adds one fast path to that hook: when the tool is
+an edit (Edit, Write, NotebookEdit), read the one small state file and refuse while it says
+closed, in shell with no Python, within the hook's 50 ms budget. Edits made through Bash
+(redirects, `sed -i`) are out of scope: the gate refuses the edit tools only, and says so.
+Other hosts (Hermes, Pi, Codex) have no pre-tool hook (Hermes's direct-tool defence is an
+optional follow-on): they get the skill-level instruction to run `plumb clarify --wait` first
+and the visible card, but no hard refusal. The state file is tamper-evident, not
+tamper-proof (SP7 5.7).
 
 ### 4.4 Worker and jobs
 
@@ -127,11 +194,29 @@ A job is a file `.plumb/session/<id>/jobs/<job-id>.json`: kind (`read`, `judge`,
 `clarify`), inputs with their hashes, the answer schema, created-at. A result is
 `.../results/<job-id>.json`: the validated answer, the model used, timings, or an error.
 Jobs are idempotent: the same inputs give the same job id, so a retried hook never runs a
-job twice. The prompt hook queues `read` (when the previous reply stated anything) and
-`clarify` (when the message is flagged as intent); `plumb capture` queues `judge` for every
-record it writes or changes. The worker is started detached by the hook that queued (the
+job twice. The prompt hook queues `read` (when the previous reply stated anything) and `clarify` (for
+every owner message); `plumb capture` queues `judge` for every record it writes or changes. The worker is started detached by the hook that queued (the
 hook returns within its budget); a running worker picks up new jobs; at most one worker per
 session.
+
+**Who writes a confirmation.** Only the hook-started worker applies reader and judge results,
+and only the worker writes these entries. They are not new event kinds: `owner-words` and
+`settled` are `by` values on the existing `approval` kind (and `undone` on `revocation`), so
+one log reader, `confirm.py`, decides record status (section 10). The worker trusts no job
+file. It recomputes every job's inputs from the logs: the prompt log (the message and its
+digest), the shown set at its hash, the record at its hash, the premise from its logged
+sources. It applies only what it computed itself, so a job file carries no authority and no
+signature. A `judge` job queued by the agent (such as the one `plumb capture` queues for each
+record it writes) is therefore safe, because its inputs are recomputed; and the model's
+answer is applied in memory when the model returns, not by reading result files later. A
+result file written by the agent confirms nothing and is reported. Each by value has its own
+re-check at status and `validate` time: `owner-words` (the prompt digest is in the log, the
+evidence occurs in the message, the record hash is the one shown); `settled` (the judgment is
+logged with its job id, model and score, and the premise digest is unchanged); `undone` (the
+owner's typed command or button). Independence is tamper-evident, not tamper-proof, as in SP7
+5.7: the agent runs as the same OS user. This is how an owner-derived write happens without a
+terminal, replacing SR-005's interactive y/N for reader confirmations (SR-005's terminal path
+stays for typed commands).
 
 ## 5. Dispatch through the host
 
@@ -141,7 +226,7 @@ the job fails with an error (principle 2). There is no automatic second route.
 
 | Host | Dispatcher | How |
 |---|---|---|
-| Claude Code | `claude-code` (default there) | `claude -p` with a plumb-shipped agent (`--agents` file, a prompt per job kind), `--model` from config (default `haiku`), `--tools ""` (no tools), `--json-schema` with the job's answer schema, `--output-format json`, `--no-session-persistence`. Run without `--bare`, so the owner's Claude login is used; plumb's own hooks see `PLUMB_JOB=<job-id>` in the environment and exit at once, so a job never queues jobs. With an API key configured the adapter may add `--bare`. |
+| Claude Code | `claude-code` (default there) | `claude -p` with a plumb-shipped agent defined by `--agents` and selected by `--agent <name>` (the prompt per job kind is its `--system-prompt`), `--model` from config (default `haiku`), `--tools ""` (no tools), `--json-schema` with the job's answer schema, `--output-format json`, `--no-session-persistence`, and isolation from the owner's setup: `--setting-sources ""`, `--strict-mcp-config` with no MCP config, `--disable-slash-commands`, and a neutral working directory (an empty temporary directory, never the repository), so the job sees only its inputs (principle 3). Run without `--bare`, so the owner's Claude login is used; plumb's own hooks see `PLUMB_JOB=<job-id>` in the environment and exit at once, so a job never queues jobs (other plugins' hooks are not plumb's to stop; `--setting-sources` keeps them out). With an API key configured the adapter may add `--bare`. A test asserts the job's context contains no CLAUDE.md text. |
 | Hermes | `hermes` | A delegated child session (Hermes's own delegation, the same mechanism the Hermes adapter already excludes from plumb's hooks by `parent_session_id`), given the job prompt and schema, without tools. The exact call follows SR-099's assessment and the Hermes adapter plan (`.hermes/plans/2026-10-09_120026-plumb-hermes-spec-and-plan.md`). |
 | Any | `openrouter` | A direct call through the credential plumb already reads for JEV, with the same schema. A configured choice, never a silent fallback. |
 
@@ -159,29 +244,48 @@ with a button per resolution and Accept / Reject.
 
 | Card | When | The owner's answer does |
 |---|---|---|
-| Clarify | 4.3 found gaps that change what gets built | answers become part of the read-back; assumptions not contradicted are settled with it |
+| Clarify | 4.3 found gaps that change what gets built | the answers the reader maps to the card's questions are confirmed; assumptions on the card stay labelled and proposed, and settle only through the judge and trial path, or by an owner yes the reader finds on them. Silence settles nothing (INT-028) |
 | Trial batch | during the trial (section 7), up to five items the judge would settle | yes settles the item and labels it "yes" for calibration; no rejects it (`misread`) |
-| Goes beyond your words | judge `beyond` | keep (the owner confirms the addition), drop it, or reword |
-| Contradicts | judge `contradicts`, or an answer conflicting with a confirmed record | pick a version, or combine |
-| Couldn't check | a job failed (model unreachable, malformed answer) | nothing to answer; says what was not done and that it will retry |
+| Goes beyond your words | judge `beyond` | keep (`accepted`: the owner confirms the addition), drop it (`rejected`), or reword (`change`) |
+| Contradicts | judge `contradicts`, or an answer conflicting with a confirmed record | pick a version, or combine (`change`, carrying the chosen version) |
+| Couldn't check | a job failed (model unreachable, malformed answer) | says what was not done and that it will retry; for a failed clarify job it asks "build without the check?" (4.3): Build anyway or Wait. Other failures need no answer |
 
 The end-of-turn summary shows, in this order: confirmations from the owner's words ("you
 said ..."), the settled line ("Settled from your words: <title>; <title>", each with Undo),
-the cards. Undo is plain words or a button; it reopens the item as a card.
+the cards. Undo is a button or the typed `/plumb undo <ID>` (owner-only, 4.1); it reopens the item as
+a card.
 
 ## 7. Trial, calibration and settling
 
 - **Trial (default when no passing calibration exists).** Every judged `supported` item is
   offered in a trial batch instead of being settled. The owner's yes and no are the labelled
   examples; `misread` rejections (SR-096) are real "no" examples. SR-042's thresholds apply
-  per kind, with the judge's verdict as the score.
+  per kind. The judge's score is its confidence for a `supported` verdict and 0 for any other,
+  logged at judgment time so that recalibration is offline. The labels are the owner's yes and
+  no in a trial batch, `misread` rejections, and `by: owner-words` confirmations (a trial yes
+  is recorded as an owner confirmation via the button, not as a plumb settlement); the
+  `labelled_set` of `capture/calibrate.py` counts these as well as `owner` and
+  `agent-relayed`. Because only supported items are offered, the threshold would be learned on
+  a censored range: one item per batch is drawn from below the threshold ("plumb would not
+  settle this; right?"), and the report states the remaining limit. Settle eligibility keeps
+  SR-040's and SR-041's exclusions: a decision is never settled (decisions that matter are
+  always individual, and `calibrate.KINDS` has no decision kind), nor a set member, an
+  escalated set member, or an edit of an owner-confirmed record.
 - **Calibration** reruns after each trial batch answered, cheaply, from logged judgments
-  (no new model calls). When it passes for a kind, the summary says so once and offers to
-  turn settling on for that kind; the owner turns it on with words or a button (an
-  owner-only setting, SR-041).
+  (no new model calls; `calibrate()` reads the logged score instead of rescoring through JEV). When it passes for a kind, the summary says so once and offers to
+  turn settling on for that kind; the owner turns it on with the typed
+  `/plumb settle on <kind>` or a button (an owner-only setting, SR-041; prose cannot, 4.1).
 - **Settling** marks a record `settled` (`by: plumb-judge`, with the job id, the model and
   the premise digest). A settled record counts as confirmed for the merge boundary, is listed
   separately at the merge, and returns to proposed if its text or its premise changes.
+- **One mechanism.** Settling replaces SR-041's automatic approval and
+  `capture/autoapprove.py` (superseded; its revocation, undo and re-check parts are kept and
+  move to settling; the owner-only on/off switch is kept). There is no second route.
+- **Bare option answers.** The judge's premise for a short answer is the question it answered
+  (the `in_reply_to` of SR-091, which is the "stored question" of SR-097: one thing). A
+  `supported` verdict on a record whose premise is an option picked among several (SR-091 EX-3)
+  is never settled; it goes to a trial or confirm card. A "yes" to one proposal shown whole
+  (SR-091 EX-4) may settle like any other item.
 - **Model or prompt change** (a new model version, an edited job prompt) suspends settling
   until the evaluation set (9.3) passes again and calibration is rerun.
 
@@ -203,22 +307,27 @@ or correct.
   "couldn't check" line; nothing is confirmed, settled or rejected; the job is retried on the
   next turn; three consecutive failures show in the status line.
 - An answer that fails the schema: an error for that job, never a reading.
-- A job not finished at the end of the turn: collected at the next turn.
+- A read or judge job not finished at the end of the turn: collected at the next turn. A
+  clarify job is not left to the next turn: see the gate in 4.3.
 - A record edited after it was shown: an answer about the old version confirms nothing.
 
 ### 9.2 Safety (exact, deterministic)
 
 Kept from today and checked in code: the owner's message is in the prompt log; a record is
 confirmed only at the version shown; the agent cannot confirm, settle or turn settling on by
-itself (the session marker and the guard); owner-only settings change only on the owner's
-words read by the reader or a button; every confirmation and settlement records how it
+itself (the session marker and the guard); owner-only settings and Undo change only by a typed
+command or a button; results are applied only by the worker of 4.4, from inputs it recomputed
+from the logs; every confirmation and settlement records how it
 happened and can be undone.
 
 ### 9.3 Tests
 
 - Unit tests with a fake dispatcher returning scripted answers: each reader outcome, each
   judge verdict, the clarifier's three-question cap and escalation, the trial flow, settling,
-  undo, and every failure of 9.1. No network.
+  undo, and every failure of 9.1. No network. Also: the word rules of
+  `approvals.py` are not called when the dispatcher fails; a result file written by the agent
+  confirms nothing; the clarify gate (pending job refuses edits, late result, timeout); a
+  message that is not intent (a question) produces no card.
 - One end-to-end test per dispatcher (`claude-code`, `hermes`, `openrouter`), marked to run
   only where that host or credential is present.
 - An evaluation set of real cases, run against the configured model before calibration and
@@ -231,16 +340,49 @@ happened and can be undone.
 
 ## 10. What changes in existing records and code
 
-- `SR-005` (only the owner's explicit words confirm) is superseded by a requirement that
-  states the reader's rule: the owner's logged words, as read by the reader, or a button.
-- `SR-098` (mixed answer lists by clause rules) is superseded: the reader handles mixed
-  answers; its examples become evaluation cases.
-- `SR-040` and `SR-042` (triage and calibration) are reworded around the judge's verdicts.
-- `SR-012` keeps its new example (answerable cards).
-- New requirements: the reader (4.1), the judge (4.2), the clarifier (4.3), the worker and
-  dispatch (4.4, 5), cards (6), trial and settling (7), the backlog (8).
-- SP7's CAPTURE2 lane (approvals, `owner_scope`) is re-scoped: SP8 replaces the parsing it
-  was going to extend; SP7's panel draws SP8's cards and buttons.
+The owner confirms every change below; the agent applies none by itself.
+
+| Record or module | Fate | Note |
+|---|---|---|
+| `INT-028`, `INT-029` | reworded | Drop the labelled fallback (owner, 9 Oct: "No labelled falback. If a model is unreachable, throw an error"); an unreachable model is an error that confirms nothing. Recaptured with that answer as their source. |
+| `SR-005` | superseded | By the reader's rule (4.1) and the worker's write path (4.4); the terminal y/N stays. Its EX-3, EX-4, EX-7 and EX-9 to EX-13 (the affirmation, objection, scope and reservation checks of an agent-run relay) are removed; an agent-run prose relay no longer exists (4.1). |
+| `SR-088`, `SR-065` | narrowed | Kept for typed `/plumb` commands naming IDs; their plain-words matching (SR-088 EX-3, EX-6 and EX-7) is removed (INT-029); typed `/plumb confirm` takes IDs only (4.1). |
+| `SR-098` | superseded | The reader handles mixed answers; its examples become evaluation cases. |
+| `SR-090` | superseded | Its `owner_scope` sentence rule is what the reader replaces; dropped from CAPTURE2. `SR-091` is kept (EX-3 and EX-4 resolved in section 7). |
+| `SR-041`, `capture/autoapprove.py` | superseded | By settling (section 7); SR-041's exclusions move to SR-106. |
+| `SR-040`, `SR-042` | reworded | Around the judge's verdicts. |
+| `SR-043` | narrowed | One question per message stays outside a card; a card question (SR-103, up to three) is a DEC that matters, recorded by plumb. |
+| `SR-081` | kept, reworded | Early-conflict cards show before a read-back; the clarify card shows after them. Its answers (EX-6, EX-7, EX-9, EX-10) go through the reader instead of `relay_choice`'s word rules. |
+| `SR-086` | kept | Its buttons are reused by 4.4 and 9.2 (its secret is not: the worker holds none, 4.4). |
+| `SR-014` | corrected | Its hook budgets (600 ms prompt, 800 ms stop) already differ from the code (1200, 1400); the record is brought to the code, and the settled line must fit the stop budget. |
+| `SR-012` | kept | Keeps its new example (answerable cards). |
+| `INT-004`, `INT-003` | unchanged | Except the one gate of 4.3. |
+| New | | The reader (4.1), the judge (4.2), the clarifier and its gate (4.3), the worker and dispatch (4.4, 5), cards (6), trial and settling (7), the backlog (8). |
+
+Code. The word rules of `approvals.py` (`owner_scope`, `change_clauses`, `objection_clauses`,
+`affirmation_context_problem`, `_plain_named`) and `confirm.affirmation_in` are removed. Every
+caller of a removed rule, and what replaces it:
+
+| Caller | Replacement |
+|---|---|
+| `hosts/claude_code/prompt.py` (`awaiting_line`, the relay line) | The relay line is removed; the line names the shown records and the typed command. A reader job reads the answer. |
+| `boundary/glance._message` (the "message also objects" flag, from `change_clauses`) | Removed; the reader's `change` and `rejected` answers on a record are shown on its merge line. |
+| `confirm.entry_problem` (`affirmation_in` re-check of each agent-relayed approval) | Removed with agent-run relay; existing agent-relayed entries stay valid by their other checks. New by values are re-checked as in 4.4. |
+| `mergedriver/conflicts.relay_choice` (SR-081; `affirmation_in`, `objection_clauses`, `affirmation_context_problem`, `named_takes`) | A reader job maps the answer to the merge card's question; an exact typed pick (the branch's name) stays. |
+| `awareness/answer.choice_named` and `answer.py` (`objection_clauses`) | A reader job on the card's question; an exact typed pick stays. |
+| `capture/clarify.py` (`AMBIGUITY_TERMS`, the unmatched-term depth) | The clarifier model's gaps (4.3). |
+| `capture/assent` (assent words) | Removed; the reader. |
+
+`stop.py` changes (cards, settled line). `confirm.py` is the one reader of the log for record
+status and changes with it: `entry_problem`, `checked_entries`, `remaining_entries`,
+`carry_renumbers` and the api `status` accept the `by` values `owner-words` and `settled` on
+`approval` and `undone` on `revocation`, each with its re-check (4.4). `capture/calibrate.py`
+(`labelled_set`, `KINDS`, `calibrate`) changes as section 7 says. `log.py` accepts the new
+`by` values; the model contracts gain the status `settled` (schema, `status` counts,
+`owner_text`, `boundary/glance.py`, premerge and `validate`, which treat it as confirmed and
+list it apart). SP7's CAPTURE2 lane (approvals, `owner_scope`) is re-scoped: SP8 replaces the
+parsing it was going to extend; SP7's panel draws SP8's cards and buttons, and its pre-tool
+hook carries the gate of 4.3.
 
 ## 11. Out of scope
 
