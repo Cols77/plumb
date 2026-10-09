@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -12,7 +13,6 @@ import pytest
 from hosts_helpers import approvals_written, approve_in_agent_shell, make_project, snapshot
 
 from plumb.cli import main
-from plumb.hosts.common import FALLBACK_PROMPT_LINE, NO_MARKER_LINE
 from plumb.hosts.hermes import install as hermes
 
 pytestmark = pytest.mark.sr("SR-056")
@@ -110,6 +110,34 @@ def test_empty_first_hermes_name_does_not_select_second_name(project: Path) -> N
     assert second.read_text("utf-8") == "# Second Hermes rules\n"
 
 
+def test_both_nonempty_hermes_names_select_first(project: Path) -> None:
+    (project / "AGENTS.md").unlink()
+    (project / ".hermes.md").write_text("# First Hermes rules\n", "utf-8")
+    second = project / "HERMES.md"
+    second.write_text("# Second Hermes rules\n", "utf-8")
+    hermes.install(project)
+    assert "plumb:begin" in (project / ".hermes.md").read_text("utf-8")
+    assert second.read_text("utf-8") == "# Second Hermes rules\n"
+
+
+def test_unreadable_selected_hermes_file_falls_through(project: Path) -> None:
+    (project / "AGENTS.md").unlink()
+    (project / ".hermes.md").write_bytes(b"\xff\xfe")
+    claude = project / "CLAUDE.md"
+    claude.write_text("# Claude rules\n", "utf-8")
+    hermes.install(project)
+    assert "plumb:begin" in claude.read_text("utf-8")
+    assert (project / ".hermes.md").read_bytes() == b"\xff\xfe"
+
+
+def test_lowercase_agents_context_is_selected(project: Path) -> None:
+    (project / "AGENTS.md").unlink()
+    agents = project / "agents.md"
+    agents.write_text("# Lowercase owner rules\n", "utf-8")
+    hermes.install(project)
+    assert "plumb:begin" in agents.read_text("utf-8")
+
+
 def test_agents_override_wins_over_agents_and_claude(project: Path) -> None:
     (project / "AGENTS.override.md").write_text("# Override\n", "utf-8")
     (project / "CLAUDE.md").write_text("# Claude\n", "utf-8")
@@ -138,6 +166,18 @@ def test_uninstall_keeps_agents_override_block(project: Path) -> None:
     hermes.install(project)
     before = path.read_bytes()
     report = hermes.uninstall(project)
+    assert path.read_bytes() == before
+    assert any("ownership is shared or unknown" in line for line in report.lines)
+
+
+@pytest.mark.parametrize("name", ["CLAUDE.md", "AGENTS.override.md"])
+def test_uninstall_dry_run_preserves_shared_context(project: Path, name: str) -> None:
+    (project / "AGENTS.md").unlink()
+    path = project / name
+    path.write_text("# Existing rules\n", "utf-8")
+    hermes.install(project)
+    before = path.read_bytes()
+    report = hermes.uninstall(project, dry_run=True)
     assert path.read_bytes() == before
     assert any("ownership is shared or unknown" in line for line in report.lines)
 
@@ -188,8 +228,46 @@ def test_status_does_not_infer_activation(project: Path, monkeypatch, capsys,
     assert "runtime activation: unverified" in out
     assert "hermes plugins enable plumb" in out
     assert "restart" in out.lower()
-    assert NO_MARKER_LINE in out
-    assert FALLBACK_PROMPT_LINE in out
+    assert "CLI fallback (runtime marker unverified):" in out
+    assert "prompts: CLI fallback (runtime marker unverified;" in out
+
+
+def test_status_qualifies_unknown_marker_and_preserves_trust(project: Path) -> None:
+    text = "\n".join(hermes.status(project))
+    assert "runtime activation: unverified" in text
+    assert "CLI fallback (runtime marker unverified):" in text
+    assert "prompts: CLI fallback (runtime marker unverified;" in text
+    assert "trust model: plumb's log is hash-chained" in text
+
+
+@pytest.mark.parametrize("kind", ["missing", "foreign", "partial"])
+def test_status_unknown_marker_for_missing_foreign_partial_install(project: Path,
+                                                                    kind: str) -> None:
+    target = project / hermes.PLUGIN_DIR
+    if kind == "foreign":
+        target.mkdir(parents=True)
+        (target / "plugin.yaml").write_text("name: foreign\n", "utf-8")
+    elif kind == "partial":
+        target.mkdir(parents=True)
+        (target / "plugin.yaml").write_text(hermes.render("plugin.yaml", ["plumb"]),
+                                               "utf-8")
+    text = "\n".join(hermes.status(project))
+    assert "runtime activation: unverified" in text
+    assert "CLI fallback (runtime marker unverified):" in text
+    assert "prompts: CLI fallback (runtime marker unverified;" in text
+
+
+def test_pi_and_codex_keep_baseline_fallback_literals(project: Path) -> None:
+    from plumb.hosts.codex import install as codex
+    from plumb.hosts.pi import install as pi
+
+    baseline_marker = ("no session marker on this host: owner-only commands require an "
+                       "interactive terminal")
+    baseline_prompt = "prompts: CLI-only fallback (the agent runs plumb turn start)"
+    assert baseline_marker in "\n".join(codex.status(project))
+    assert baseline_marker in "\n".join(pi.status(project))
+    assert baseline_prompt in "\n".join(codex.status(project))
+    assert baseline_prompt in "\n".join(pi.status(project))
 
 
 FAKE_PLUMB = r'''
@@ -251,7 +329,10 @@ def test_uninstalled_template_does_not_spawn(tmp_path: Path, monkeypatch) -> Non
     plugin = _load_plugin(loose, "plumb_no_project")
     calls = []
     monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append(kw))
+    monkeypatch.setattr(plugin.subprocess, "Popen", lambda *a, **kw: calls.append(kw))
     assert plugin._run("prompt", {"session_id": "s", "text": "hello"}) == plugin.EMPTY
+    assert plugin._run("post-edit", {"session_id": "s", "path": "a.py"},
+                       background=True) == plugin.EMPTY
     assert calls == []
 
 
@@ -265,6 +346,36 @@ def test_invalid_plugin_layout_is_inert(tmp_path: Path, relative: str, monkeypat
     monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append(kw))
     monkeypatch.setattr(plugin.subprocess, "Popen", lambda *a, **kw: calls.append(kw))
     assert plugin._run("prompt", {"session_id": "s", "text": "hello"}) == plugin.EMPTY
+    assert plugin._run("post-edit", {"session_id": "s", "path": "a.py"},
+                       background=True) == plugin.EMPTY
+    assert calls == []
+
+
+def test_resolve_failure_imports_and_dispatches_inertly(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "plugin.py"
+    path.write_text(hermes.render("plugin.py", ["plumb"]), "utf-8")
+    monkeypatch.setattr(Path, "resolve", lambda _self: (_ for _ in ()).throw(OSError("no resolve")))
+    plugin = _load_plugin(path.parent, "plumb_resolve_failure")
+    calls = []
+    monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append("run"))
+    monkeypatch.setattr(plugin.subprocess, "Popen", lambda *a, **kw: calls.append("popen"))
+    plugin.register(FakeCtx())
+    assert plugin._run("prompt", {"session_id": "s", "text": "hello"}) == plugin.EMPTY
+    assert plugin._run("post-edit", {"session_id": "s", "path": "a.py"},
+                       background=True) == plugin.EMPTY
+    assert calls == []
+
+
+def test_dispatch_rechecks_sentinel_after_valid_import(project: Path, monkeypatch) -> None:
+    hermes.install(project)
+    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "plumb_dead_project")
+    calls = []
+    monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append("run"))
+    monkeypatch.setattr(plugin.subprocess, "Popen", lambda *a, **kw: calls.append("popen"))
+    shutil.rmtree(project / ".plumb")
+    assert plugin._run("prompt", {"session_id": "s", "text": "hello"}) == plugin.EMPTY
+    assert plugin._run("post-edit", {"session_id": "s", "path": "a.py"},
+                       background=True) == plugin.EMPTY
     assert calls == []
 
 
@@ -284,8 +395,29 @@ def test_observer_without_parent_then_child_never_starts(project: Path, tmp_path
     for _ in range(2):
         assert ctx.hooks["pre_llm_call"](session_id="child-2", parent_session_id="h1",
                                           user_message="child") is None
+        ctx.hooks["post_tool_call"](session_id="child-2", parent_session_id="h1",
+                                     tool_name="write_file", args={"path": "a.py"})
+        assert ctx.hooks["pre_verify"](session_id="child-2", parent_session_id="h1",
+                                        attempt=0) is None
+        assert ctx.hooks["transform_llm_output"](session_id="child-2",
+                                                  parent_session_id="h1",
+                                                  response_text="child reply") is None
         ctx.hooks["post_llm_call"](session_id="child-2", assistant_response="reply")
+        ctx.hooks["on_session_start"](session_id="child-2", platform="cli")
     assert calls() == []
+
+
+def test_repeated_and_delayed_observers_do_not_duplicate_start(project: Path, tmp_path: Path,
+                                                               monkeypatch) -> None:
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_observer_order")
+    ctx.hooks["on_session_start"](session_id="owner", platform="cli")
+    first = ctx.hooks["pre_llm_call"](session_id="owner", user_message="one")
+    ctx.hooks["on_session_start"](session_id="owner", platform="cli")
+    second = ctx.hooks["pre_llm_call"](session_id="owner", user_message="two")
+    ctx.hooks["on_session_start"](session_id="owner", platform="cli")
+    assert first == {"context": "ctx session-start\nctx prompt"}
+    assert second == {"context": "ctx prompt"}
+    assert [item["event"] for item in calls()] == ["session-start", "prompt", "prompt"]
 
 
 def test_hermes_register_drives_callbacks(project: Path, tmp_path: Path, monkeypatch) -> None:

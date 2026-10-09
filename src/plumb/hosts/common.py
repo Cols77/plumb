@@ -26,14 +26,13 @@ BLOCK_END = "<!-- plumb:end -->"
 HOSTS = ("codex", "pi", "hermes")
 
 # sp4 3.2: said by `plumb hosts status` on a host whose adapter cannot set the marker
-NO_MARKER_LINE = ("CLI fallback (runtime marker unverified): owner-only commands require "
-                  "an interactive terminal; marker status is not verified")
+NO_MARKER_LINE = ("no session marker on this host: owner-only commands require an "
+                  "interactive terminal")
 TRUST_LINE = ("trust model: plumb's log is hash-chained and tamper-evident, not tamper-proof "
               "against a malicious agent; relayed approvals are listed at the merge boundary "
               "for your glance")
 # R13 Q4: a chat "ok" confirms on a host without a prompt hook, labelled everywhere
-FALLBACK_PROMPT_LINE = ("prompts: CLI fallback (runtime marker unverified; the agent runs plumb "
-                        "turn start): a chat "
+FALLBACK_PROMPT_LINE = ("prompts: CLI-only fallback (the agent runs plumb turn start): a chat "
                         "\"ok\" still confirms, and every such confirmation is labelled "
                         f"\"{SELF_RECORDED}\"")
 

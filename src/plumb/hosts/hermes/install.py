@@ -21,11 +21,10 @@ from plumb.hosts.common import (
     has_block,
     instruction_block,
     launcher_argv,
-    marker_lines,
-    prompt_lines,
     rel,
     remove_file,
     remove_shared_block,
+    self_recorded_count,
     upsert_block,
     write_file,
 )
@@ -111,6 +110,14 @@ def status(root: Path) -> list[str]:
         "instruction block: " + ("present" if has_block(where) else "missing")
         + f" ({rel(root, where)}, plumb turn start/end)",
     ]
-    lines += marker_lines(False, "runtime activation unverified")
-    lines += prompt_lines(root, False, "runtime activation unverified")
+    lines.append("CLI fallback (runtime marker unverified): owner-only commands require an "
+                 "interactive terminal; marker status is not verified")
+    lines.append("trust model: plumb's log is hash-chained and tamper-evident, not tamper-proof "
+                 "against a malicious agent; relayed approvals are listed at the merge boundary "
+                 "for your glance")
+    lines.append("prompts: CLI fallback (runtime marker unverified; the agent runs plumb turn "
+                 "start): a chat \"ok\" still confirms, and every such confirmation is "
+                 "labelled \"self-recorded message\"")
+    count = self_recorded_count(root)
+    lines.append(f"confirmations resting on a self-recorded message: {count}")
     return lines

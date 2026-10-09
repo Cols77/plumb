@@ -86,14 +86,16 @@ interpreter, so the plugin calls the plumb CLI (`--format json`) rather than imp
 | child agents | sessions with `parent_session_id` are skipped (including startup deferred until after filtering); this does not certify provenance for parentless synthetic or scheduled turns | yes | n/a |
 | owner commands | `/plumb <words>` (`ctx.register_command`): the words are passed to the agent with `ctx.inject_message` | yes | CLI |
 | tools | the read-only MCP server in Hermes' `mcp_servers` (`plumb mcp install hermes`, user configuration) | on request | CLI |
-| guard | owner-terminal guard (always); `register(ctx)` sets `PLUMB_AGENT_SESSION=hermes` in Hermes' environment, which its local terminal tool inherits (not remote terminal backends) | yes | `plumb hosts status hermes` names the missing marker |
+| guard | owner-terminal guard (always); `register(ctx)` sets `PLUMB_AGENT_SESSION=hermes` in Hermes' environment, which its local terminal tool inherits (not remote terminal backends) | yes | `plumb hosts status hermes` labels the CLI fallback and marker status as runtime-unverified |
 
 Release A support boundary
 
 The tested surface is a project-bound event bridge. The generated plugin binds subprocesses
 to the exact installed project root and refuses to run outside a valid `.hermes/plugins/plumb/plugin.py`
-layout with a root-local `.plumb` directory; this does not
-provide multi-project routing for a globally loaded plugin. Installation is idempotent,
+layout with a root-local `.plumb` directory; this does not provide multi-project routing for a
+globally loaded plugin. Context selection is root-only and follows Hermes' selected current
+target; ancestor/nested files, Cursor rules and other context sources are not universally
+preserved, and uninstall does not chase historical block locations. Installation is idempotent,
 preserves foreign plugin files and recognized existing context, and conservatively keeps
 Claude-named and `AGENTS.override.md` instruction blocks on uninstall because ownership is
 shared or unknown.
@@ -101,7 +103,8 @@ shared or unknown.
 Runtime activation remains unverified until the owner enables the trusted project plugin and
 observes a delivered hook prompt. File presence and `HERMES_ENABLE_PROJECT_PLUGINS=1` are
 discovery prerequisites, not callback evidence. Delegated children are excluded when Hermes
-supplies `parent_session_id`; desktop and cron provenance are not certified. `/plumb`
+supplies `parent_session_id`; that metadata is conditional, so desktop, background and cron
+provenance are not certified. `/plumb`
 injection outside the CLI requires supported routing and grants, and there is no native status
 bar or streaming transport receipt. Native `plumb`/`plumb-clarify` skills and MCP registration
 are follow-on work, not installed by Release A.
@@ -110,7 +113,7 @@ Owner-run installation
 
 ```bash
 plumb hosts install hermes
-# For a trusted project only; launch Hermes from this project:
+# For an owner-run profile allowlist, independently of project discovery:
 export HERMES_ENABLE_PROJECT_PLUGINS=1
 hermes plugins enable plumb
 # Restart the intended Hermes process after enabling.
@@ -118,7 +121,10 @@ plumb hosts status hermes
 ```
 
 These commands are Git Bash syntax on Windows; use the equivalent environment assignment in
-other shells. The status command intentionally reports runtime activation as unverified.
+other shells. `hermes plugins enable plumb` changes the owner's selected Hermes profile
+allowlist; it does not discover projects or prove that a project plugin is active. Project
+discovery is the separate `HERMES_ENABLE_PROJECT_PLUGINS=1` prerequisite. The status command
+intentionally reports runtime activation as unverified.
 The CLI fallback remains in the selected context file and covers `turn start`/`turn end`,
 owner words, proposed intent, and unseen-summary limitations.
 
