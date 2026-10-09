@@ -110,7 +110,7 @@ def test_prompt_hook_names_it_on_every_turn(tmp_path: Path, hook_input: Any) -> 
 
 def test_stop_hook_names_it(tmp_path: Path, hook_input: Any) -> None:
     main, _other = _main_lost(tmp_path, hook_input)
-    start_turn(main)
+    start_turn(main, ago=5.0)
     shown = stop_hook(main, hook_input, active=True)
     assert LINE in shown and "the owner chose feat-x's version" in shown
 

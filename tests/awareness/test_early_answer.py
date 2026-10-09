@@ -31,10 +31,12 @@ def _later(seconds: float = 5.0) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + seconds))
 
 
-def _start_turn(root: Path, session: str = "s1") -> None:
+def _start_turn(root: Path, session: str = "s1", ago: float = 0.5) -> None:
+    """``ago``: how far back the turn began; a turn that holds a relay needs seconds of room,
+    because the stop hook compares whole seconds and a slow machine stretches the relay."""
     path = root / ".plumb" / "session" / session / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"turn_start": time.time() - 0.5,
+    path.write_text(json.dumps({"turn_start": time.time() - ago,
                                 "prompt_digest": "sha256:" + "a" * 64, "asked": {}}),
                     encoding="utf-8")
 

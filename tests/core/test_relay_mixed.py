@@ -164,7 +164,10 @@ def test_ex3_reservation_after_two_yes_items_holds_back_both(project: Path) -> N
 
 def test_ex3_reservation_after_a_correction_holds_back_every_record(project: Path) -> None:
     _state(project, IDS)
-    words = "INT-006: yes. INT-016: We don't want token budget. Actually I'd rather sleep on all of this."
+    words = (
+        "INT-006: yes. INT-016: We don't want token budget. "
+        "Actually I'd rather sleep on all of this."
+    )
     with pytest.raises(approvals.Refused, match="INT-006"):
         _relay(project, ["INT-006"], words, "INT-006: yes")
     assert _confirmation(project, "INT-006") == "proposed"

@@ -76,7 +76,9 @@ def test_full_sentence_without_question_does_not_warn(repo: Path, capsys) -> Non
     assert "short answer" not in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("quote", ["A", "b.", "Yes", "ok!", "go ahead", "Sounds good", "A / B", "A+B"])
+@pytest.mark.parametrize(
+    "quote", ["A", "b.", "Yes", "ok!", "go ahead", "Sounds good", "A / B", "A+B"]
+)
 def test_short_answers_are_recognised(quote: str) -> None:
     assert is_short_answer(quote)
 

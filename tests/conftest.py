@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from collections.abc import Callable
@@ -33,6 +34,32 @@ def owner_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     # The agent's session marker, set by the host for every command an agent runs, must not
     # leak in: a test that needs it sets it itself.
     monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+
+
+# Variable families the machine running the tests may set; none may reach a test.
+_ISOLATED_PREFIXES = ("CLAUDE_", "PLUMB_", "CODEX_", "HERMES_", "GITHEAD_")
+_CREDENTIAL_PREFIXES = ("TYPESAFE_", "OPENROUTER_")
+
+
+@pytest.fixture(autouse=True)
+def isolated_environment(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory,
+                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """The one choke point for where a test runs: every host and plumb variable of the outer
+    environment is removed, and the home directory (HOME, USERPROFILE, PLUMB_HOME) points
+    into a temp dir, so no test reads the machine's real settings or credentials. The
+    ``jev_live`` tests alone keep the real credentials and home (they call the live service)."""
+    live = request.node.get_closest_marker("jev_live") is not None
+    prefixes = _ISOLATED_PREFIXES if live else _ISOLATED_PREFIXES + _CREDENTIAL_PREFIXES
+    for name in list(os.environ):
+        if name.upper().startswith(prefixes):
+            monkeypatch.delenv(name)
+    if live:
+        return
+    home = tmp_path_factory.mktemp("home")
+    for name in ("HOME", "USERPROFILE", "PLUMB_HOME"):
+        monkeypatch.setenv(name, str(home))
+    monkeypatch.delenv("HOMEDRIVE", raising=False)
+    monkeypatch.delenv("HOMEPATH", raising=False)
 
 
 @pytest.fixture(autouse=True)
