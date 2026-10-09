@@ -87,10 +87,10 @@ def uninstall(root: Path, *, dry_run: bool = False) -> InstallReport:
         if target.exists() and _ours(target):
             remove_file(root, target, report, dry_run)
     context = context_file(root, HOST)
-    if context.name.lower() == "claude.md":
+    if context.name.lower() in {"claude.md", "agents.override.md"}:
         if has_block(context):
             report.lines.append(
-                f"{rel(root, context)} block kept: Claude ownership is shared or unknown"
+                f"{rel(root, context)} block kept: ownership is shared or unknown"
             )
     else:
         remove_shared_block(root, HOST, report, dry_run)

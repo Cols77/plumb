@@ -6,8 +6,8 @@ Hermes runs its own interpreter, so each event runs one `plumb hook <event> --ho
 --format json` process and renders its TurnOutput: agent_context as the turn's context
 (`pre_llm_call`), a block at most once per turn (`pre_verify`, attempt 0), owner_lines
 appended to the reply (`transform_llm_output`), the status in `plumb status`. A summary that
-did not reach the owner is recorded as unseen (`--unseen`). Child agents (delegation,
-background review, cron) are skipped: their messages are never the owner's words.
+did not reach the owner is recorded as unseen (`--unseen`). Child agents are skipped when Hermes supplies parent metadata; parentless synthetic turns
+are not certified as owner-originated.
 `register(ctx)` sets the session marker in Hermes' environment, which its local terminal
 tool inherits; the owner-terminal guard holds whether or not it is set. Sessions with
 `parent_session_id` are excluded; this does not certify provenance for every synthetic or
@@ -26,12 +26,23 @@ PLUMB: list[str] = ["plumb"]  # plumb:argv (set by plumb hosts install hermes)
 MARKER = "PLUMB_AGENT_SESSION"
 TIMEOUT_S = 5.0
 EDIT_TOOLS = {"write_file", "patch"}
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+def _project_root() -> Path | None:
+    try:
+        plugin = Path(__file__).resolve()
+        root = plugin.parents[3]
+        expected = root / ".hermes" / "plugins" / "plumb" / "plugin.py"
+        return root if plugin == expected and (root / ".plumb").is_dir() else None
+    except (OSError, IndexError, RuntimeError):
+        return None
+
+
+PROJECT_ROOT = _project_root()
 EMPTY: dict[str, Any] = {"agent_context": [], "owner_lines": [], "block": None,
                          "status_line": ""}
 
 _briefs: dict[str, list[str]] = {}
 _started: set[str] = set()
+_pending_start: set[str] = set()
 _stopped: set[str] = set()
 _children: set[str] = set()     # sessions of in-process child agents (delegation, review)
 _summaries: dict[str, str] = {}  # session -> the summary appended to its reply, not yet seen
@@ -58,7 +69,7 @@ def _parse(stdout: str) -> dict[str, Any]:
 
 def _run(event: str, payload: dict[str, Any], *flags: str,
          background: bool = False) -> dict[str, Any]:
-    if not (PROJECT_ROOT / ".plumb").is_dir():
+    if PROJECT_ROOT is None:
         return dict(EMPTY)
     cwd = str(PROJECT_ROOT)
     data = json.dumps({**payload, "cwd": cwd})
@@ -119,9 +130,14 @@ def on_session_start(**kwargs: Any) -> None:
     session = _owner_session(kwargs)
     if session is None:
         return
+    _pending_start.add(session)
+
+
+def _initialize(session: str) -> None:
     if session in _started:
         return
-    _started.add(session)
+    _started.add(session)  # mark before dispatch, including when dispatch fails
+    _pending_start.discard(session)
     out = _run("session-start", {"session_id": session, "source": "startup"})
     _briefs[session] = list(out["agent_context"])  # rides on the first pre_llm_call
 
@@ -131,7 +147,7 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
     if session is None:  # a child agent's goal is not the owner's prompt
         return None
     if session not in _started:
-        on_session_start(**kwargs)
+        _initialize(session)
     _settle(session, None)  # the last reply ended without showing its summary
     _stopped.discard(session)  # a new owner message starts a new turn
     out = _run("prompt", {"session_id": session, "text": str(kwargs.get("user_message") or "")})

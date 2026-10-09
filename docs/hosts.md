@@ -78,12 +78,12 @@ interpreter, so the plugin calls the plumb CLI (`--format json`) rather than imp
 
 | plumb event | Hermes mechanism | Installed | Fallback |
 |---|---|---|---|
-| session-start | `on_session_start` cannot inject context: the brief rides on the first `pre_llm_call` | yes | `AGENTS.md` (or `.hermes.md`) block |
+| session-start | `on_session_start` only records a pending session; after ancestry filtering, the brief rides on the first `pre_llm_call` | yes | selected root-local context block |
 | prompt | `pre_llm_call` (`user_message`): `plumb hook prompt --host hermes --format json`, `agent_context` returned as context (logged `via: hook`) | yes | `plumb turn start` |
 | edit | `post_tool_call` for `write_file` and `patch`: `plumb hook post-edit` in the background | yes | stop's `git status` |
 | stop | `pre_verify` (edited turns): the stop event, `block` returned once (`attempt == 0`); `transform_llm_output` (other turns): the stop event, never a block | yes | `plumb turn end` |
 | stop (owner summary) | `transform_llm_output` appends `owner_lines` to the reply the owner reads; `post_llm_call` checks the reply carries them, else (interrupted turn, empty reply, another plugin's transform won, an older Hermes) reruns the stop event `--unseen`, so no stated record stays marked shown | yes | `plumb status` |
-| child agents | sessions with `parent_session_id` are skipped (no prompt logged, no stop, no summary); this does not certify provenance for every synthetic or scheduled turn | yes | n/a |
+| child agents | sessions with `parent_session_id` are skipped (including startup deferred until after filtering); this does not certify provenance for parentless synthetic or scheduled turns | yes | n/a |
 | owner commands | `/plumb <words>` (`ctx.register_command`): the words are passed to the agent with `ctx.inject_message` | yes | CLI |
 | tools | the read-only MCP server in Hermes' `mcp_servers` (`plumb mcp install hermes`, user configuration) | on request | CLI |
 | guard | owner-terminal guard (always); `register(ctx)` sets `PLUMB_AGENT_SESSION=hermes` in Hermes' environment, which its local terminal tool inherits (not remote terminal backends) | yes | `plumb hosts status hermes` names the missing marker |
@@ -91,10 +91,12 @@ interpreter, so the plugin calls the plumb CLI (`--format json`) rather than imp
 Release A support boundary
 
 The tested surface is a project-bound event bridge. The generated plugin binds subprocesses
-to the installed project root and refuses to run outside a valid `.plumb` root; this does not
+to the exact installed project root and refuses to run outside a valid `.hermes/plugins/plumb/plugin.py`
+layout with a root-local `.plumb` directory; this does not
 provide multi-project routing for a globally loaded plugin. Installation is idempotent,
-preserves foreign plugin files and recognized existing context, and conservatively keeps a
-Claude-named instruction block on uninstall because ownership is shared or unknown.
+preserves foreign plugin files and recognized existing context, and conservatively keeps
+Claude-named and `AGENTS.override.md` instruction blocks on uninstall because ownership is
+shared or unknown.
 
 Runtime activation remains unverified until the owner enables the trusted project plugin and
 observes a delivered hook prompt. File presence and `HERMES_ENABLE_PROJECT_PLUGINS=1` are

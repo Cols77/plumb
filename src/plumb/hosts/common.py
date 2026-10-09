@@ -26,13 +26,14 @@ BLOCK_END = "<!-- plumb:end -->"
 HOSTS = ("codex", "pi", "hermes")
 
 # sp4 3.2: said by `plumb hosts status` on a host whose adapter cannot set the marker
-NO_MARKER_LINE = ("no session marker on this host: owner-only commands require an "
-                  "interactive terminal")
+NO_MARKER_LINE = ("CLI fallback (runtime marker unverified): owner-only commands require "
+                  "an interactive terminal; marker status is not verified")
 TRUST_LINE = ("trust model: plumb's log is hash-chained and tamper-evident, not tamper-proof "
               "against a malicious agent; relayed approvals are listed at the merge boundary "
               "for your glance")
 # R13 Q4: a chat "ok" confirms on a host without a prompt hook, labelled everywhere
-FALLBACK_PROMPT_LINE = ("prompts: CLI-only fallback (the agent runs plumb turn start): a chat "
+FALLBACK_PROMPT_LINE = ("prompts: CLI fallback (runtime marker unverified; the agent runs plumb "
+                        "turn start): a chat "
                         "\"ok\" still confirms, and every such confirmation is labelled "
                         f"\"{SELF_RECORDED}\"")
 
@@ -341,9 +342,31 @@ def adapter_installed(root: Path, host: str) -> bool:
 def context_file(root: Path, host: str) -> Path:
     """Select a nonempty root-local context without shadowing another host's rules."""
     if host == "hermes":
-        for name in (".hermes.md", "HERMES.md", "AGENTS.md", "agents.md",
-                     "CLAUDE.md", "claude.md"):
+        # Hermes first selects the first regular Hermes-named file, then falls
+        # through to the AGENTS context type if that file is empty/unreadable.
+        for name in (".hermes.md", "HERMES.md"):
             candidate = root / name
+            if not candidate.is_file():
+                continue
+            try:
+                if candidate.read_text(encoding="utf-8").strip():
+                    return candidate
+            except (OSError, UnicodeDecodeError):
+                pass
+            break
+        for name in ("AGENTS.override.md", "AGENTS.md", "agents.md"):
+            candidate = root / name
+            if not candidate.is_file():
+                continue
+            try:
+                if candidate.read_text(encoding="utf-8").strip():
+                    return candidate
+            except (OSError, UnicodeDecodeError):
+                continue
+        for name in ("CLAUDE.md", "claude.md"):
+            candidate = root / name
+            if not candidate.is_file():
+                continue
             try:
                 if candidate.read_text(encoding="utf-8").strip():
                     return candidate

@@ -99,6 +99,26 @@ def test_empty_hermes_file_does_not_shadow_claude(project: Path) -> None:
     assert (project / ".hermes.md").read_text("utf-8") == " \n"
 
 
+def test_empty_first_hermes_name_does_not_select_second_name(project: Path) -> None:
+    (project / "AGENTS.md").unlink()
+    (project / ".hermes.md").write_text(" \n", "utf-8")
+    second = project / "HERMES.md"
+    second.write_text("# Second Hermes rules\n", "utf-8")
+    (project / "CLAUDE.md").write_text("# Claude rules\n", "utf-8")
+    hermes.install(project)
+    assert "plumb:begin" in (project / "CLAUDE.md").read_text("utf-8")
+    assert second.read_text("utf-8") == "# Second Hermes rules\n"
+
+
+def test_agents_override_wins_over_agents_and_claude(project: Path) -> None:
+    (project / "AGENTS.override.md").write_text("# Override\n", "utf-8")
+    (project / "CLAUDE.md").write_text("# Claude\n", "utf-8")
+    hermes.install(project)
+    assert "plumb:begin" in (project / "AGENTS.override.md").read_text("utf-8")
+    assert "plumb:begin" not in (project / "AGENTS.md").read_text("utf-8")
+    assert "plumb:begin" not in (project / "CLAUDE.md").read_text("utf-8")
+
+
 def test_uninstall_keeps_claude_shared_block(project: Path) -> None:
     (project / "AGENTS.md").unlink()
     path = project / "CLAUDE.md"
@@ -109,6 +129,17 @@ def test_uninstall_keeps_claude_shared_block(project: Path) -> None:
     assert path.read_bytes() == before
     assert any("ownership is shared or unknown" in line for line in report.lines)
     assert not (project / hermes.PLUGIN_DIR / "plugin.py").exists()
+
+
+def test_uninstall_keeps_agents_override_block(project: Path) -> None:
+    (project / "AGENTS.md").unlink()
+    path = project / "AGENTS.override.md"
+    path.write_text("# Override\n", "utf-8")
+    hermes.install(project)
+    before = path.read_bytes()
+    report = hermes.uninstall(project)
+    assert path.read_bytes() == before
+    assert any("ownership is shared or unknown" in line for line in report.lines)
 
 
 def test_uninstall_removes_only_plumb(project: Path) -> None:
@@ -162,11 +193,12 @@ def test_status_does_not_infer_activation(project: Path, monkeypatch, capsys,
 
 
 FAKE_PLUMB = r'''
-import json, sys
+import json, os, sys
 event = sys.argv[sys.argv.index("hook") + 1]
 data = json.loads(sys.stdin.read() or "{}")
 with open(sys.argv[1], "a", encoding="utf-8") as log:
-    log.write(json.dumps({"event": event, "unseen": "--unseen" in sys.argv, **data}) + "\n")
+    log.write(json.dumps({"event": event, "unseen": "--unseen" in sys.argv,
+                          "process_cwd": os.getcwd(), **data}) + "\n")
 out = {"agent_context": [f"ctx {event}"],
        "owner_lines": ["plumb: summary"] if event == "stop" else [], "block": None,
        "status_line": "plumb | ok"}
@@ -207,15 +239,31 @@ def test_hook_root_is_not_process_cwd(project: Path, tmp_path: Path, monkeypatch
     logged = calls()
     assert logged
     assert all(Path(item["cwd"]).resolve() == project.resolve() for item in logged)
+    assert all(Path(item["process_cwd"]).resolve() == project.resolve() for item in logged)
 
 
 def test_uninstalled_template_does_not_spawn(tmp_path: Path, monkeypatch) -> None:
-    loose = tmp_path / "loose" / "plugins" / "plumb"
+    adopted = tmp_path / "adopted"
+    (adopted / ".plumb").mkdir(parents=True)
+    loose = adopted / "loose" / "plugins" / "plumb"
     loose.mkdir(parents=True)
     (loose / "plugin.py").write_text(hermes.render("plugin.py", ["plumb"]), "utf-8")
     plugin = _load_plugin(loose, "plumb_no_project")
     calls = []
     monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append(kw))
+    assert plugin._run("prompt", {"session_id": "s", "text": "hello"}) == plugin.EMPTY
+    assert calls == []
+
+
+@pytest.mark.parametrize("relative", ["plugin.py", "plugins/plumb/plugin.py"])
+def test_invalid_plugin_layout_is_inert(tmp_path: Path, relative: str, monkeypatch) -> None:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(hermes.render("plugin.py", ["plumb"]), "utf-8")
+    plugin = _load_plugin(path.parent, "plumb_invalid_layout_" + relative.replace("/", "_"))
+    calls = []
+    monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append(kw))
+    monkeypatch.setattr(plugin.subprocess, "Popen", lambda *a, **kw: calls.append(kw))
     assert plugin._run("prompt", {"session_id": "s", "text": "hello"}) == plugin.EMPTY
     assert calls == []
 
@@ -227,6 +275,17 @@ def test_first_prompt_lazily_loads_brief(project: Path, tmp_path: Path, monkeypa
     assert first == {"context": "ctx session-start\nctx prompt"}
     assert second == {"context": "ctx prompt"}
     assert [x["event"] for x in calls()] == ["session-start", "prompt", "prompt"]
+
+
+def test_observer_without_parent_then_child_never_starts(project: Path, tmp_path: Path,
+                                                          monkeypatch) -> None:
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_child_observer")
+    ctx.hooks["on_session_start"](session_id="child-2", platform="cli")
+    for _ in range(2):
+        assert ctx.hooks["pre_llm_call"](session_id="child-2", parent_session_id="h1",
+                                          user_message="child") is None
+        ctx.hooks["post_llm_call"](session_id="child-2", assistant_response="reply")
+    assert calls() == []
 
 
 def test_hermes_register_drives_callbacks(project: Path, tmp_path: Path, monkeypatch) -> None:
