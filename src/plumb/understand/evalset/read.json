@@ -1,1 +1,524 @@
-[]
+[
+ {
+  "name": "int008-ok-sr088-change",
+  "inputs": {
+   "message": {
+    "digest": "sha256:4c8332127b7471c6ee42cb602614b7daff62c403ace655a5d9b8741eb27ae543",
+    "text": "INT-008 ok, I am not sure I agree with SR-088. In terms of UX, some features might have to remain internal to plumb."
+   },
+   "shown": [
+    {
+     "id": "INT-008",
+     "hash": "sha256:frozen-INT-008",
+     "text": "Tell the owner what plumb understood, in their own words"
+    },
+    {
+     "id": "SR-088",
+     "hash": "sha256:frozen-SR-088",
+     "text": "Typed /plumb commands and plain-words matching confirm records"
+    }
+   ],
+   "cards": []
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "INT-008",
+     "hash": "sha256:frozen-INT-008",
+     "answer": "accepted",
+     "evidence": "INT-008 ok"
+    },
+    {
+     "id": "SR-088",
+     "hash": "sha256:frozen-SR-088",
+     "answer": "change",
+     "evidence": "I am not sure I agree with SR-088",
+     "change": "some features stay internal to plumb"
+    }
+   ]
+  }
+ },
+ {
+  "name": "confirm-three-int24-loose",
+  "inputs": {
+   "message": {
+    "digest": "sha256:6076e623ec2fecee2da5558866dc4e50c7efb8e869e499cd38d2ca8a75f74df2",
+    "text": "Confirm SR-097, SR-098, INT-24"
+   },
+   "shown": [
+    {
+     "id": "SR-097",
+     "hash": "sha256:frozen-SR-097",
+     "text": "The status card lists what awaits the owner"
+    },
+    {
+     "id": "SR-098",
+     "hash": "sha256:frozen-SR-098",
+     "text": "The merge check names what holds a merge"
+    },
+    {
+     "id": "INT-024",
+     "hash": "sha256:frozen-INT-024",
+     "text": "Owner-facing text never shows plumb internals"
+    }
+   ],
+   "cards": []
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "SR-097",
+     "hash": "sha256:frozen-SR-097",
+     "answer": "accepted",
+     "evidence": "Confirm SR-097"
+    },
+    {
+     "id": "SR-098",
+     "hash": "sha256:frozen-SR-098",
+     "answer": "accepted",
+     "evidence": "SR-098"
+    },
+    {
+     "id": "INT-024",
+     "hash": "sha256:frozen-INT-024",
+     "answer": "accepted",
+     "evidence": "INT-24"
+    }
+   ]
+  }
+ },
+ {
+  "name": "reject-all-g-ten-variations",
+  "inputs": {
+   "message": {
+    "digest": "sha256:6dc009613297d580077cd9af40ace3fd43eb8703455cc8a66b8bcd7f4b919cb2",
+    "text": "Reject all G"
+   },
+   "shown": [
+    {
+     "id": "SR-900",
+     "hash": "sha256:frozen-SR-900",
+     "text": "G1: will: remind the owner on Fridays"
+    },
+    {
+     "id": "SR-901",
+     "hash": "sha256:frozen-SR-901",
+     "text": "G2: won't: remind the owner on Fridays"
+    },
+    {
+     "id": "SR-902",
+     "hash": "sha256:frozen-SR-902",
+     "text": "G3: will: remind the owner on Saturdays"
+    },
+    {
+     "id": "SR-903",
+     "hash": "sha256:frozen-SR-903",
+     "text": "G4: will: remind nobody"
+    },
+    {
+     "id": "SR-904",
+     "hash": "sha256:frozen-SR-904",
+     "text": "G5: then the reminder is not sent"
+    },
+    {
+     "id": "SR-905",
+     "hash": "sha256:frozen-SR-905",
+     "text": "G6: will: remind the owner every 7 days"
+    },
+    {
+     "id": "SR-906",
+     "hash": "sha256:frozen-SR-906",
+     "text": "G7: will: remind the owner every 70 days"
+    },
+    {
+     "id": "SR-907",
+     "hash": "sha256:frozen-SR-907",
+     "text": "G8: won't: store the reminder"
+    },
+    {
+     "id": "SR-908",
+     "hash": "sha256:frozen-SR-908",
+     "text": "G9: will: delete the reminder after sending"
+    },
+    {
+     "id": "SR-909",
+     "hash": "sha256:frozen-SR-909",
+     "text": "G10: then it is not true that the reminder is shown"
+    }
+   ],
+   "cards": []
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "SR-900",
+     "hash": "sha256:frozen-SR-900",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    },
+    {
+     "id": "SR-901",
+     "hash": "sha256:frozen-SR-901",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    },
+    {
+     "id": "SR-902",
+     "hash": "sha256:frozen-SR-902",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    },
+    {
+     "id": "SR-903",
+     "hash": "sha256:frozen-SR-903",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    },
+    {
+     "id": "SR-904",
+     "hash": "sha256:frozen-SR-904",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    },
+    {
+     "id": "SR-905",
+     "hash": "sha256:frozen-SR-905",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    },
+    {
+     "id": "SR-906",
+     "hash": "sha256:frozen-SR-906",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    },
+    {
+     "id": "SR-907",
+     "hash": "sha256:frozen-SR-907",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    },
+    {
+     "id": "SR-908",
+     "hash": "sha256:frozen-SR-908",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    },
+    {
+     "id": "SR-909",
+     "hash": "sha256:frozen-SR-909",
+     "answer": "rejected",
+     "evidence": "Reject all G",
+     "rejection": "misread"
+    }
+   ]
+  }
+ },
+ {
+  "name": "yes-yes-no",
+  "inputs": {
+   "message": {
+    "digest": "sha256:9b892dd79832e64e92ae902ac2dad862f947de6bc1f07a43e1ab552807051c82",
+    "text": "yes to the first two, no to the third"
+   },
+   "shown": [
+    {
+     "id": "SR-950",
+     "hash": "sha256:frozen-SR-950",
+     "text": "Reminders are sent on the day"
+    },
+    {
+     "id": "SR-951",
+     "hash": "sha256:frozen-SR-951",
+     "text": "Reminders can be snoozed once"
+    },
+    {
+     "id": "SR-952",
+     "hash": "sha256:frozen-SR-952",
+     "text": "Reminders are sent by text message"
+    }
+   ],
+   "cards": []
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "SR-950",
+     "hash": "sha256:frozen-SR-950",
+     "answer": "accepted",
+     "evidence": "yes to the first two"
+    },
+    {
+     "id": "SR-951",
+     "hash": "sha256:frozen-SR-951",
+     "answer": "accepted",
+     "evidence": "yes to the first two"
+    },
+    {
+     "id": "SR-952",
+     "hash": "sha256:frozen-SR-952",
+     "answer": "rejected",
+     "evidence": "no to the third",
+     "rejection": "misread"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bare-ok-covers-what-was-shown",
+  "inputs": {
+   "message": {
+    "digest": "sha256:2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df",
+    "text": "ok"
+   },
+   "shown": [
+    {
+     "id": "SR-950",
+     "hash": "sha256:frozen-SR-950",
+     "text": "Reminders are sent on the day"
+    },
+    {
+     "id": "SR-951",
+     "hash": "sha256:frozen-SR-951",
+     "text": "Reminders can be snoozed once"
+    }
+   ],
+   "cards": []
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "SR-950",
+     "hash": "sha256:frozen-SR-950",
+     "answer": "accepted",
+     "evidence": "ok"
+    },
+    {
+     "id": "SR-951",
+     "hash": "sha256:frozen-SR-951",
+     "answer": "accepted",
+     "evidence": "ok"
+    }
+   ]
+  }
+ },
+ {
+  "name": "ok-first-change-second",
+  "inputs": {
+   "message": {
+    "digest": "sha256:8ddd5944a987467d237b8837f7ab8fa4d51fb5617c817edd5c788a30ed2e72d8",
+    "text": "ok for the first, but the second is not what I meant, I want snoozing twice"
+   },
+   "shown": [
+    {
+     "id": "SR-950",
+     "hash": "sha256:frozen-SR-950",
+     "text": "Reminders are sent on the day"
+    },
+    {
+     "id": "SR-951",
+     "hash": "sha256:frozen-SR-951",
+     "text": "Reminders can be snoozed once"
+    }
+   ],
+   "cards": []
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "SR-950",
+     "hash": "sha256:frozen-SR-950",
+     "answer": "accepted",
+     "evidence": "ok for the first"
+    },
+    {
+     "id": "SR-951",
+     "hash": "sha256:frozen-SR-951",
+     "answer": "change",
+     "evidence": "I want snoozing twice",
+     "change": "reminders can be snoozed twice"
+    }
+   ]
+  }
+ },
+ {
+  "name": "hesitation-is-open",
+  "inputs": {
+   "message": {
+    "digest": "sha256:bdd7f6b9225aa2ed8180600cd5e1753a528686d3010393483c16b6d0b0015ae6",
+    "text": "hmm, let me think about it"
+   },
+   "shown": [
+    {
+     "id": "SR-950",
+     "hash": "sha256:frozen-SR-950",
+     "text": "Reminders are sent on the day"
+    }
+   ],
+   "cards": []
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "SR-950",
+     "hash": "sha256:frozen-SR-950",
+     "answer": "open",
+     "evidence": "let me think about it"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a-question-is-not-an-answer",
+  "inputs": {
+   "message": {
+    "digest": "sha256:2b2f5bde5c40324d0ffa9934aee308dcf567e82c28e742b66b8de57ef2208245",
+    "text": "can you explain what the third one does?"
+   },
+   "shown": [
+    {
+     "id": "SR-950",
+     "hash": "sha256:frozen-SR-950",
+     "text": "Reminders are sent on the day"
+    },
+    {
+     "id": "SR-951",
+     "hash": "sha256:frozen-SR-951",
+     "text": "Reminders can be snoozed once"
+    },
+    {
+     "id": "SR-952",
+     "hash": "sha256:frozen-SR-952",
+     "text": "Reminders are sent by text message"
+    }
+   ],
+   "cards": []
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "SR-952",
+     "hash": "sha256:frozen-SR-952",
+     "answer": "open",
+     "evidence": "explain what the third one does"
+    }
+   ]
+  }
+ },
+ {
+  "name": "card-keep-it",
+  "inputs": {
+   "message": {
+    "digest": "sha256:e39d4726283c832fda1a7a7793b5954af07a91d1a475f7e3b9dd2d14d563acb6",
+    "text": "keep it"
+   },
+   "shown": [],
+   "cards": [
+    {
+     "id": "beyond-1/q",
+     "card": "beyond-1",
+     "question": "q",
+     "kind": "beyond",
+     "text": "Text reminders go beyond your words: keep it, drop it, or reword?",
+     "resolutions": [
+      "keep it",
+      "drop it",
+      "reword"
+     ],
+     "record": null,
+     "hash": ""
+    }
+   ]
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "beyond-1/q",
+     "hash": "",
+     "answer": "accepted",
+     "evidence": "keep it"
+    }
+   ]
+  }
+ },
+ {
+  "name": "card-second-plus-first-date",
+  "inputs": {
+   "message": {
+    "digest": "sha256:771f2a195a2aeee6f647a17e738f97a5609648c25eae43b631c969beaa546efb",
+    "text": "the second, plus the first's date"
+   },
+   "shown": [],
+   "cards": [
+    {
+     "id": "contradicts-1/q",
+     "card": "contradicts-1",
+     "question": "q",
+     "kind": "contradicts",
+     "text": "Two versions of the reminder rule disagree: which?",
+     "resolutions": [
+      "the first version",
+      "the second version"
+     ],
+     "record": null,
+     "hash": ""
+    }
+   ]
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "contradicts-1/q",
+     "hash": "",
+     "answer": "change",
+     "evidence": "the second, plus the first's date",
+     "change": "the second version with the first's date"
+    }
+   ]
+  }
+ },
+ {
+  "name": "couldnt-check-no-wait",
+  "inputs": {
+   "message": {
+    "digest": "sha256:4c52ccac6f223e3b35ef07da8bca448bc7aee5a261ecd2298acb46f904d1486b",
+    "text": "no, wait"
+   },
+   "shown": [],
+   "cards": [
+    {
+     "id": "check-1/q",
+     "card": "check-1",
+     "question": "q",
+     "kind": "couldnt_check",
+     "text": "I could not check your request: build anyway, or wait?",
+     "resolutions": [
+      "Build anyway",
+      "Wait"
+     ],
+     "record": null,
+     "hash": ""
+    }
+   ]
+  },
+  "expect": {
+   "entries": [
+    {
+     "id": "check-1/q",
+     "hash": "",
+     "answer": "rejected",
+     "evidence": "no, wait"
+    }
+   ]
+  }
+ }
+]

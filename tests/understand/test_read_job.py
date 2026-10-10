@@ -159,3 +159,25 @@ def test_schema_has_only_four_answers() -> None:
     assert read.schema["properties"]["entries"] == schema["properties"]["entries"]
     system = (Path(read.__file__).parent / "agents" / "read.md").read_text(encoding="utf-8")
     assert "accepted" in system and "evidence" in system
+
+
+def test_evalset_reader_cases_load_and_run_on_the_fake() -> None:
+    from plumb.understand import evalrun, read
+
+    cases = evalrun.load_cases("read")
+    names = {c["name"] for c in cases}
+    assert {"int008-ok-sr088-change", "confirm-three-int24-loose",
+            "reject-all-g-ten-variations"} <= names
+    results = evalrun.run_cases(evalrun.FakeEvalDispatcher(), cases, "read")
+    assert len(results) == len(cases) and all(r["passed"] for r in results)
+    for each in cases:
+        inputs, entries = each["inputs"], each["expect"]["entries"]
+        shown = {i["id"] for i in inputs["shown"]}
+        card_ids = {i["id"] for i in inputs["cards"]}
+        text = inputs["message"]["text"]
+        for answer in entries:
+            assert answer["id"] in shown | card_ids, each["name"]
+            assert read.evidence_in(answer["evidence"], text), each["name"]
+            assert answer["answer"] in ("accepted", "rejected", "change", "open")
+    (ten,) = [c for c in cases if c["name"] == "reject-all-g-ten-variations"]
+    assert len(ten["inputs"]["shown"]) == 10 and len(ten["expect"]["entries"]) == 10
