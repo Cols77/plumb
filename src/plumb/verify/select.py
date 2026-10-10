@@ -291,6 +291,21 @@ def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
     total = 0.0
     for entry in ordered.items:
         cost = scale * expected_duration(entry, tmap.nodes_of, durations, vcfg.default_test_s)
+        if not chosen and not deferred and cost > budget + 1e-9 and "::" not in entry:
+            # one file longer than the whole turn: take the nodes that fit the fill (at
+            # least one), so the run ends inside its budget and the rest is deferred
+            parts = tmap.nodes_of(entry)
+            if len(parts) > 1:
+                for node in parts:
+                    node_cost = scale * expected_duration(node, tmap.nodes_of, durations,
+                                                          vcfg.default_test_s)
+                    ordered.reasons[node] = ordered.reasons[entry]
+                    if deferred or (chosen and total + node_cost > fill + 1e-9):
+                        deferred.append(node)
+                        continue
+                    chosen.append(node)
+                    total += node_cost
+                continue
         if deferred or (chosen and total + cost > fill + 1e-9):
             deferred.append(entry)
             continue

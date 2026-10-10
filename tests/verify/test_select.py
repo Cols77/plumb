@@ -144,3 +144,14 @@ def test_verify_is_a_verify_api(project: Path) -> None:
     from plumb.verify import open_verify
 
     assert isinstance(open_verify(open_core(project)), VerifyAPI)
+
+
+@pytest.mark.sr("SR-017")
+def test_a_file_longer_than_the_whole_budget_is_taken_in_parts(project: Path) -> None:
+    """A lone test file whose estimate exceeds the turn budget runs only the nodes that fit
+    the fill (never the whole file into the hard limit); the rest is deferred."""
+    durations = {"tests/test_mod.py::test_add": 4.0, "tests/test_mod.py::test_add_zero": 4.0}
+    sel = _select(project, ["tests/test_mod.py"], budget_s=5, durations=durations)
+    assert sel.nodes == ("tests/test_mod.py::test_add",)
+    assert sel.deferred[0] == "tests/test_mod.py::test_add_zero"
+    assert sel.expected_s == 4.0
