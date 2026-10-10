@@ -27,7 +27,14 @@ def _count(repo: Path, session: str = "s1") -> int:
     return len(list(files.jobs_dir(repo, session).glob("*.json")))
 
 
-def test_ex4_same_inputs_queued_twice_run_once(repo: Path, spawned) -> None:
+def test_ex4_same_inputs_queued_twice_run_once(repo: Path, spawned,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.understand import dispatch
+    from understand.fakes import FakeDispatcher, FakeKind, fake_kinds
+
+    fake = FakeDispatcher({"read": {"ok": True}})
+    monkeypatch.setattr(dispatch, "configured", lambda core: fake)
+    fake_kinds(monkeypatch, {"read": FakeKind("read")})
     core = Core(repo)
     one = jobs.new_job("read", "s1", "read.v1", {"n": 1})
     queue.enqueue(core, one)
@@ -37,6 +44,8 @@ def test_ex4_same_inputs_queued_twice_run_once(repo: Path, spawned) -> None:
     assert on_disk["id"] == one.id and on_disk["inputs"] == {"n": 1} and on_disk["created"]
     assert on_disk["needs"] is None and on_disk["v"] == 1
     assert spawned and spawned[0][1] == "s1"        # the worker is asked for, never waited for
+    assert worker.run_once(core, "s1") == [one.id]
+    assert worker.run_once(core, "s1") == [] and len(fake.jobs) == 1
 
 
 def test_changed_inputs_new_job(repo: Path, spawned) -> None:
