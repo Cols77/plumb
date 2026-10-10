@@ -4848,3 +4848,12 @@ repeat entries of the first round; they are noted as such.
   for it broke `tests/host/test_latency.py::test_intent_lines_survive_cpu_contention`.
 - [LOW] (SR-111, HA5) The stale cards are STALE's own file until JUDGE's J7: `stop.py` prints
   `stale.card_lines` directly (`stale_card_lines`), which J7 removes.
+- [MEDIUM] (SR-111, install) `scripts/drive_session.py` keeps one hook command per event (the
+  last wins), so with `edit-check` installed after `post-edit` the e2e drive runs only the
+  checker and no `touched.txt` is written; and it ends the turn with a link it made stale
+  still unresolved, which the hold now keeps open. `tests/integration/test_session_e2e.py::
+  test_session_through_installed_hooks` fails until the drive runs every PostToolUse command
+  and repins (or cards) the stale link before its last stop. Not STALE's files.
+- [LOW] (SR-111, HA4) Hosts on the host-neutral path (`plumb hook --host`, `plumb turn end`)
+  hold a turn once, like their other blocks (`hosts.neutral` never blocks while continuing);
+  only Claude Code's own hook holds up to `hooks.stale_holds_max` times.
