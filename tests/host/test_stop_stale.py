@@ -212,3 +212,11 @@ def test_prompt_hook_writes_the_turn_baseline(project: Path, hook_input) -> None
     assert baseline["turn"] == turn["turn_id"]
     assert list(baseline["links"]) == ["SR-001#0"]
     assert set(baseline["links"]["SR-001#0"]) == {"pin", "now"}
+
+
+def test_rewording_the_requirement_alone_is_not_held(project: Path, hook_input) -> None:
+    start_turn(project)
+    path = project / ".plumb" / "requirements" / "SR-001.md"
+    edit(project, ".plumb/requirements/SR-001.md",
+         path.read_text("utf-8").replace("add returns the sum.", "add returns the total."))
+    assert _block(run_stop(project, hook_input, verify=_verify(), active=True)) is None

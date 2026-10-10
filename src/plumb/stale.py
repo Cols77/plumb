@@ -334,6 +334,8 @@ def turn_state(core: Core, session: str, turn_id: str | None) -> TurnState:
     links = data.get("links") if isinstance(data.get("links"), dict) else {}
     new, before = [], []
     for row in stale_rows(core):
+        if row.now[1] == row.pin[1]:
+            continue  # only the requirement moved: the agent rewording it is its resolution
         old = links.get(row.link)
         if isinstance(old, dict) and old.get("now") == list(row.now):
             before.append(row)
@@ -351,8 +353,8 @@ def unresolved(core: Core, session: str, state: TurnState) -> list[Row]:
 
 HOLD_LINE = "plumb: {record}'s link to {what} is stale and unresolved ({link})"
 HOLD_HOW = ("plumb: resolve each before ending the turn: rerun its tests and repin it "
-            "(plumb repin --after-tests <link>), reword the record so it agrees, or bring it "
-            "to the owner as a card (plumb stale card <link> --topic \"<requirement title>\" "
+            "(plumb repin --after-tests <link>), reword the record so it agrees and repin it, or "
+            "bring it to the owner as a card (plumb stale card <link> --topic \"<requirement title>\" "
             "--issue \"<what changed, in words>\" --options \"a|b|c\"). Held {n} of {max}.")
 BEFORE_LINE = ("plumb: {n} links were already stale before this turn and are not held: "
                "{links}")
