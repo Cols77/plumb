@@ -740,8 +740,6 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
     then the turn is let go with a stale card per link. The links stale before the turn are
     listed once per session and never block. Without a baseline of this turn nothing is
     held. Never fails the stop."""
-    if ctx.extra.get("host") not in (None, "", "claude-code"):
-        return [], []  # a host without Claude Code's stop loop keeps its one block per turn
     try:
         from plumb import stale
 
@@ -760,6 +758,8 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
                 stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), 0)
             return [], before
         limit = int(core.config.hooks.stale_holds_max)
+        if ctx.extra.get("host"):
+            limit = min(limit, 1)  # the host-neutral path blocks at most once per turn
         if held < limit:
             stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), held + 1)
             return [*stale.hold_lines(open_rows, held + 1, limit), *before], []
