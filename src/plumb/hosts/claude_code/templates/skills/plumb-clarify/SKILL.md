@@ -5,9 +5,26 @@ description: Clarify the owner's intent before building, scaled to the request. 
 # plumb-clarify
 
 Your job is to make what gets built match what the owner means, with the fewest questions.
-Run `{plumb} clarify "<the request>"` first: it says the depth, what confirmed records
-already answer, and (with `--questions q.json`, each `{question, options, recommended}`)
-which of your drafted questions matter, ranked.
+
+Your first action on every owner request is `{plumb} clarify --wait`. Do it before you read
+code, plan or edit anything: edits are refused until it has answered, and you do not build
+until the owner has answered any card it returns. It waits for the check plumb started on the
+owner's message and tells you which of four things happened:
+
+- ready (nothing in the request is unclear, or it was only a question or an answer): go ahead.
+- a card (up to three questions, the smaller gaps listed as assumptions): show the owner the
+  card in your reply, as it is, and stop. Build nothing until they answer it; their answers,
+  read by plumb, are what open the way. Never answer the questions yourself.
+- a spec session offered (more than three things change what gets built): show the offer and
+  stop; if they accept, run the escalated depth below.
+- couldn't check (the check did not finish): show the card ("Build without the check?" with
+  Build anyway and Wait) and stop. Only the owner can say to build anyway, with the button, by
+  typing `/plumb go` themselves, or in plain words; you never do it for them. If they say wait,
+  the check is tried again on their next message.
+
+Once you are past that, `{plumb} clarify "<the request>"` says the depth, what confirmed
+records already answer, and (with `--questions q.json`, each `{question, options,
+recommended}`) which of your drafted questions matter, ranked.
 
 Another branch may already have this intent in flight. When `clarify` (or `capture`) prints
 a `▸ Conflict` card, that branch says one thing and this request another: show the owner

@@ -152,6 +152,7 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
             worker.run_once(core, session, ours.id)
     else:
         worker.start_detached(root, session)
+    shown_at = clock()
     while True:
         result = result_of(root, session, ours.id)
         if result is not None:
@@ -163,7 +164,9 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
         if clock() - started >= limit:
             reporter.failed(owner_text.STEP_CHECKING)
             return _couldnt(core, session, digest, clarify.COULDNT_TIMEOUT)
-        reporter.update(owner_text.STEP_CHECKING)
+        if clock() - shown_at >= 0.5:
+            shown_at = clock()
+            reporter.update(owner_text.STEP_CHECKING)
         sleep(POLL_S)
 
 

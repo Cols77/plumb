@@ -151,3 +151,21 @@ def test_a_typed_go_is_not_a_request_to_check(repo: Path, engine_standins: Any) 
     logged = cmd_clarify.latest_prompt(core, SESSION)
     assert logged is not None and logged["digest"] == digest
     assert clarify.is_typed_go("/plumb go") and not clarify.is_typed_go("go")
+
+
+def test_skill_first_action_is_clarify_wait(repo: Path) -> None:
+    from plumb.hosts.claude_code.install import install
+
+    install(repo, launcher="path", commit_hook=False)
+    text = (repo / ".claude" / "skills" / "plumb-clarify" / "SKILL.md").read_text(
+        encoding="utf-8")
+    body = text.split("---", 2)[2]
+    opening = body.split("# plumb-clarify", 1)[1].strip().split("\n\n")
+    first = " ".join(opening[0:2])
+    assert "first action" in first and "plumb clarify --wait" in first
+    assert "do not build" in first.lower() and "answered" in first
+    assert "{plumb}" not in text
+    # what the command returns, and what to do with each outcome
+    for words in ("couldn't check", "Build anyway", "spec session", "ready"):
+        assert words.lower() in text.lower(), words
+    assert "plumb go" not in text.replace("`/plumb go`", "")      # the agent never types it
