@@ -1,5 +1,11 @@
 """Covering-test selection for a set of changed paths (spec 7.2, ruling R5).
 
+Priority (SR-110, when a function record exists and ``verify.coverage`` is not ``off``): for a
+changed source file the record has seen, the tests that executed a changed function come
+first; the import-closure rules below then apply only to a file no recorded test executed, to a
+change outside every function, and to a file with a changed function no recorded test executes
+(``Selection.unrecorded``, said in ``Selection.notes``). Otherwise, and after those:
+
 Priority: tests ``verified_by`` requirements whose ``implemented_by`` ends or record files
 changed; tests that mention a changed path literally; tests whose import closure reaches a
 changed file, nearest first; tests matched by naming. Documentation selects nothing; shared
@@ -27,6 +33,12 @@ from plumb.contracts import Selection, SelectionReason
 _DOC_SUFFIXES = frozenset({".md", ".rst"})
 _PRIORITY: Mapping[str, int] = {"verified_by": 0, "literal": 1, "import": 2, "naming": 3,
                                 "sample": 4}
+
+
+def coverage_off(vcfg: Any) -> bool:
+    """``verify.coverage: off`` (YAML reads an unquoted ``off`` as false: both mean off)."""
+    value = getattr(vcfg, "coverage", "auto")
+    return value is False or str(value).strip().lower() in ("off", "false", "no")
 
 
 def normalize_path(raw: str) -> str | None:
@@ -149,11 +161,34 @@ def expected_duration(entry: str, nodes_of: Callable[[str], list[str]],
     return round(total, 6)
 
 
+def _function_tests(funcmap: Any, env_key: str | None, path: str, test_set: set[str]
+                    ) -> tuple[list[str], list[str], bool]:
+    """``(tests that executed a changed function of path, unrecorded changed functions,
+    the module part changed)`` for a file the record has seen."""
+    from plumb.verify.funcmap import MODULE
+
+    tests: list[str] = []
+    unrecorded: list[str] = []
+    module = False
+    for change in funcmap.functions_changed([path]):
+        if change.qualname == MODULE:
+            module = True
+            continue
+        found = [n for n in funcmap.tests_executing(path, change.qualname, env_key)
+                 if n.split("::", 1)[0] in test_set]
+        if found:
+            tests += [n for n in found if n not in tests]
+        else:
+            unrecorded.append(change.qualname)
+    return tests, unrecorded, module
+
+
 def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
                  budget_s: float | None = None,
                  durations: Mapping[str, float] | None = None,
-                 scale: float = 1.0) -> Selection:
-    """The covering selection of ``changed`` (spec 7.2)."""
+                 scale: float = 1.0, funcmap: Any = None,
+                 env_key: str | None = None) -> Selection:
+    """The covering selection of ``changed`` (spec 7.2; SR-110 with a ``funcmap``)."""
     config = core.config
     vcfg = config.verify
     budget = float(vcfg.turn_budget_s if budget_s is None else budget_s)
@@ -188,12 +223,29 @@ def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
 
     candidates: list[tuple[int, int, str, str, SelectionReason]] = []
     covered: dict[str, bool] = {p: False for p in rest}
+    use_funcs = funcmap is not None and not coverage_off(vcfg)
+    unrecorded: list[str] = []
+    notes: list[str] = []
     for path in rest:
+        by_function = False  # the function record decides this file; the closure is a fallback
+        if use_funcs and path not in test_set and funcmap.is_recorded(path, env_key):
+            tests, missing, module = _function_tests(funcmap, env_key, path, test_set)
+            for test in tests:
+                candidates.append((0, -1, test, test, "executed"))
+                covered[path] = True
+            for name in missing:
+                unrecorded.append(f"{path}::{name}")
+                notes.append(f"no recorded test executes {name} ({path}): selected by the "
+                             "import closure of the file")
+            by_function = not missing and not module
+            covered[path] = covered[path] or by_function
         for rid in tmap.implemented.get(path, ()):
             for test in tmap.records.get(rid, ()):
                 if test.split("::", 1)[0] in test_set:
                     candidates.append((0, 0, "", test, "verified_by"))
                     covered[path] = True
+        if by_function:
+            continue
         for test in tmap.mentions(path):
             candidates.append((1, 0, test, test, "literal"))
             covered[path] = True
@@ -235,4 +287,5 @@ def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
                      deferred=tuple(deferred), sampled=tuple(sampled),
                      unknown_coverage=unknown, infra_changed=tuple(infra),
                      doc_only=bool(norm) and len(docs) == len(norm),
-                     expected_s=round(total, 6))
+                     expected_s=round(total, 6), unrecorded=tuple(unrecorded),
+                     notes=tuple(notes))

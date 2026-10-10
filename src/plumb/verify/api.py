@@ -188,8 +188,9 @@ class Verify:
         """``off`` (verify.coverage is off), ``absent`` (the coverage package is missing) or
         ``auto``."""
         from plumb.verify.runner import coverage_available
+        from plumb.verify.select import coverage_off
 
-        if str(getattr(self.core.config.verify, "coverage", "auto")) == "off":
+        if coverage_off(self.core.config.verify):
             return "off"
         return "auto" if coverage_available() else "absent"
 
@@ -299,8 +300,21 @@ class Verify:
             tmap = self.test_map()
         except MapUnavailable:
             return self.unknown_selection(changed)
-        return select_tests(self.core, tmap, changed, budget_s=budget_s,
-                            durations=durations(index), scale=float(index.get("scale") or 1.0))
+        funcmap = None
+        extra: tuple[str, ...] = ()
+        if self.coverage_mode() == "auto":
+            candidate = self.funcmap()
+            if candidate.exists():
+                funcmap = candidate
+        if funcmap is not None and not funcmap.is_recorded_anywhere(self.env_key()):
+            funcmap = None
+            if self.funcmap().stats()["tests"]:
+                extra = ("the function record is for another environment: tests are selected "
+                         "by their import closure (plumb tests map --coverage records it again)",)
+        sel = select_tests(self.core, tmap, changed, budget_s=budget_s,
+                           durations=durations(index), scale=float(index.get("scale") or 1.0),
+                           funcmap=funcmap, env_key=self.env_key() if funcmap else None)
+        return replace(sel, notes=sel.notes + extra) if extra else sel
 
     def unknown_selection(self, changed: Sequence[str]) -> Selection:
         """R5 without a test map: the changed test files themselves plus a bounded,

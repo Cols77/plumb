@@ -238,6 +238,14 @@ class FuncMap:
             args.append(env_key)
         return self.db.execute(sql + " LIMIT 1", args).fetchone() is not None
 
+    def is_recorded_anywhere(self, env_key: str | None = None) -> bool:
+        sql = "SELECT 1 FROM tests"
+        args: list[Any] = []
+        if env_key is not None:
+            sql += " WHERE env_key = ?"
+            args.append(env_key)
+        return self.db.execute(sql + " LIMIT 1", args).fetchone() is not None
+
     def functions_changed(self, paths: Iterable[str]) -> list[ChangedFunction]:
         """Functions of ``paths`` whose current hash differs from the recorded one, or that
         the record has never seen (a file the record has never seen has no entries)."""
