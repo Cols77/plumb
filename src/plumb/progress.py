@@ -204,8 +204,23 @@ def _age(updated: str, now: float) -> float:
 
 
 def _alive(pid: Any) -> bool:
+    """Whether a process with this id is still running. Never signals it: on Windows
+    ``os.kill`` would terminate the process, so it is asked politely there."""
     if not isinstance(pid, int) or pid <= 0:
         return False
+    if os.name == "nt":
+        import ctypes
+
+        kernel = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        handle = kernel.OpenProcess(0x1000, False, pid)     # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            return bool(kernel.GetExitCodeProcess(handle, ctypes.byref(code))
+                        and code.value == 259)               # STILL_ACTIVE
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except PermissionError:

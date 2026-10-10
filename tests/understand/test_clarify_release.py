@@ -142,7 +142,7 @@ def test_ex11_failed_job_for_ok_message_still_refuses_edits(
     from plumb.hosts.claude_code import pretool
 
     answer = pretool.decide(repo, SESSION, "Edit")
-    assert answer["permissionDecision"] == "deny"
+    assert answer["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_go_without_typed_prompt_in_log_refused(repo: Path, engine_standins: Any,

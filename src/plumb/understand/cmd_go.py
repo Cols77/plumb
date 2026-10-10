@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from plumb.present.owner_text import NOT_AVAILABLE
 from plumb.understand import clarify, gate
 
 EXIT_NOTHING = 1
@@ -55,8 +56,8 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("--prompt", default=None, help="the digest of the owner's typed message")
     args = parser.parse_args(argv)
     if not args.prompt:
-        print("plumb: go needs the digest of the owner's typed message (--prompt)",
-              file=sys.stderr)
+        print(f"plumb: go: {NOT_AVAILABLE} without the digest of the owner's typed message; "
+              "the part that is: plumb go --prompt DIGEST", file=sys.stderr)
         return EXIT_USAGE
     from plumb.api import open_core
 

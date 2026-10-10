@@ -147,11 +147,16 @@ def snapshot_dict(snapshot: StatusSnapshot) -> dict[str, Any]:
     return data
 
 
-def write_snapshot(root: Path, snapshot: StatusSnapshot, *, present: Any = None) -> Path:
+def write_snapshot(root: Path, snapshot: StatusSnapshot, *, present: Any = None,
+                   failures: int | None = None) -> Path:
     """Write ``status.json``; ``present`` (``config.present``) carries the display
-    preferences the status line reads with it (``ascii``, ``card``)."""
+    preferences the status line reads with it (``ascii``, ``card``); ``failures`` is how many
+    checks in a row failed (``queue.consecutive_failures``), which the line flags at three
+    (SHOW P2, spec 9.1)."""
     path = Path(root) / ".plumb" / "session" / "status.json"
     data = snapshot_dict(snapshot)
+    if failures:
+        data["understand_failures"] = int(failures)
     if present is not None:
         data["present"] = {"ascii": bool(getattr(present, "ascii", False)),
                            "card": str(getattr(present, "card", "compact"))}
