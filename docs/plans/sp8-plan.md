@@ -18,6 +18,14 @@ Records: `FEAT-008`, `INT-028` to `INT-030`, `SR-101` to `SR-108`, `SR-110`, `SR
 | L. SP8 lanes | ENGINE, READ, JUDGE, SHOW (parallel) | SR-104, SR-101, SR-102 + SR-105 + SR-106 + SR-107, SR-103 + SR-108 | 4 to 9 |
 | I. Integrate, R. Review | coordinator, verifiers | all | 9.3, 12 |
 
+**Status at 10 Oct.** Phase H0 (the two config keys, `56a165f`) and phase C (contracts, file formats, stubs,
+call sites and test helpers, `a6e1ace`, plus the route set in `f3e8198`) are already on `main`; they landed before
+the phase H lanes. That order is safe because the stale-card adapter of phase C only reads STALE's
+`stale_cards.json` and does nothing while the file is absent; the phase C gate's two STALE test files
+(`tests/host/test_stop_stale.py`, and the adapter test's fixture use of it) are checked again at the H gate. What remains: the
+phase H lanes (STALE, SELECT, START), then the four phase L lanes, integrate and review, in the order of the
+table above with H0 and C marked done.
+
 **Spec 11 says "any change to how tests are selected or run" is out of scope of SP8.** SR-110
 is therefore not an SP8 lane: it is a phase H lane, recorded here because the owner asked for
 it first (DEC-031's hooks fix). Nothing in phase L changes selection or the runner except the
