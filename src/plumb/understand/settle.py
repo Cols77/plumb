@@ -377,7 +377,8 @@ def _labels_since_calibration(entries: Sequence[LogEntry]) -> bool:
 
 def _eval_passed(entries: Sequence[LogEntry], now: Mapping[str, Any]) -> bool:
     for entry in reversed(entries):
-        if entry.kind == "eval-run" and entry.payload.get("model") == now.get("model") \
+        if entry.kind == "eval-run" and not entry.payload.get("compare") \
+                and entry.payload.get("model") == now.get("model") \
                 and entry.payload.get("prompt_digest") == now.get("prompt_digest"):
             cases = entry.payload.get("cases") or ()
             return bool(cases) and int(entry.payload.get("passed") or 0) >= len(cases)

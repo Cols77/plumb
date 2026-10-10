@@ -412,6 +412,14 @@ class JevBackend:
         return self._judgment(record, "entailment", "faithfulness", subject, verdict,
                               claim_kind=claim_kind)
 
+    def yes_probability(self, instructions: str, context: str, *, true: str = "yes",
+                        false: str = "no") -> float | None:
+        """The probability of ``yes`` for one typed yes/no question over ``context``, or None
+        when JEV could not answer. No heuristic fallback (the side-by-side evaluation)."""
+        record = self._ask([("yes_no", JudgmentQuestion.noul(instructions, true, false))],
+                           context)
+        return None if record is None else float(record.answers["yes_no"].value)
+
     def contradiction(self, prompt: str, record: Record) -> Judgment:
         from plumb.judgment.heuristic import record_text
 
