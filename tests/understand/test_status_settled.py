@@ -89,4 +89,6 @@ def test_validate_reports_a_hand_written_settled_entry(core) -> None:
 
     _settle(core)
     errors = [f for f in validate(open_core(core.root)) if f.severity == "error"]
-    assert any(owner_text.NOT_AVAILABLE in f.message for f in errors)
+    # the landed re-check says what the entry lacks and that it confirms nothing
+    assert any("settled SR-001" in f.message and "confirms nothing" in f.message
+               for f in errors)

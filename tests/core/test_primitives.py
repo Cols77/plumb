@@ -147,7 +147,9 @@ def test_every_route_names_a_module_path() -> None:
                 "log", "merge-fix", "ids", "merge-driver", "conflict", "conflicts",
                 "inflight",
                 # sub-project 8 (understanding layer, phase C stubs)
-                "understand", "go", "settle", "undo"}
+                "understand", "go", "settle", "undo",
+                # sp8 STALE: `plumb stale card`
+                "stale"}
     assert set(cli.ROUTES) == expected
     for module in cli.ROUTES.values():
         assert re.fullmatch(r"plumb(\.[a-z_]+)+", module)

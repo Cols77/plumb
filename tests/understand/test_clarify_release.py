@@ -124,7 +124,9 @@ def test_ex10_no_wait_keeps_gate_closed_next_turn_retries(
     assert gate.is_closed(repo, SESSION)
     retried: list[str] = []
     monkeypatch.setattr(queue, "retry_failed", lambda c, session: retried.append(session) or [])
-    engine_standins.dispatcher.script = {"clarify": {"intent": "no"}}
+    # the open card makes the turn's read job (it answers nothing), which the check waits for
+    engine_standins.dispatcher.script = {"clarify": {"intent": "no", "gap": False, "gaps": []},
+                                         "read": {"entries": []}}
     text = "are you there?"
     again = log_prompt(repo, text, session=SESSION)
     hooks.on_prompt(_ctx(), open_core(repo), {"digest": again, "text": text})

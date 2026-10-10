@@ -175,7 +175,9 @@ def test_ex5_summary_names_requirement_change_and_resolutions_and_the_card_waits
     lines = _summary(out).splitlines()
     head = lines.index('Something you confirmed may have changed, "Adds numbers": add now '
                        "sums its arguments in the other order")
-    assert lines[head + 1:head + 4] == ["  1. Reword it to match the change",
+    # the summary of the understanding layer draws the card: the evidence line, then the options
+    assert lines[head + 1] == "  Evidence: src/calc.py"
+    assert lines[head + 2:head + 5] == ["  1. Reword it to match the change",
                                         "  2. Keep the wording as it is",
                                         "  3. Undo the change"]
 

@@ -63,7 +63,7 @@ def test_hook_gives_the_clarify_job_the_read_job_as_needs(repo: Path, engine_sta
 
 def test_opens_on_no_intent(repo: Path, engine_standins: Any) -> None:
     core, digest = _say(repo, "what does plumb status show?")
-    engine_standins.dispatcher.script = {"clarify": {"intent": "no"}}
+    engine_standins.dispatcher.script = {"clarify": {"intent": "no", "gap": False, "gaps": []}}
     worker.run_once(core, SESSION)
     assert not gate.is_closed(repo, SESSION)
     (entry,) = [e.payload for e in open_core(repo).events() if e.kind == "gate"]

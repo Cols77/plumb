@@ -125,7 +125,8 @@ def test_ex1_prompt_hook_returns_within_budget_without_waiting(
                            stdout=out, root=repo) == 0
         best = min(best, (time.perf_counter() - start) * 1000)
     assert best < 0.9 * budget
-    assert _count(repo) == 4 and started                      # queued, worker asked for
+    reads = list(files.jobs_dir(repo, "s1").glob("read-*.json"))   # (a clarify job each too)
+    assert len(reads) == 4 and started                        # queued, worker asked for
     assert blocked.jobs == []                                 # and the hook never ran a job
 
 
@@ -172,4 +173,4 @@ def test_one_job_per_turn_one_per_capture_with_fake_kinds(
     for digest in ("sha256:aa", "sha256:bb"):
         capture_module._understand_after(core, {}, object(), digest)
     assert len([j for j in jobs.queued(repo, "s1") if j.kind == "judge"]) == 2
-    assert len(jobs.queued(repo, "s1")) == 5
+    assert len([j for j in jobs.queued(repo, "s1") if j.kind in ("read", "judge")]) == 5

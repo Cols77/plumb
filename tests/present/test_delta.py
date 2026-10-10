@@ -16,6 +16,15 @@ from plumb.present import delta
 pytestmark = pytest.mark.sr("SR-063")
 
 
+@pytest.fixture(autouse=True)
+def _without_the_understanding_layer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests are about the records the hook injects. The understanding layer closes its
+    gate on every owner message and says so (tests/understand covers that line)."""
+    from plumb.hosts.claude_code import prompt
+
+    monkeypatch.setattr(prompt, "understand_lines", lambda ctx, core, digest, text: [])
+
+
 @pytest.fixture
 def records(repo: Path, write_record) -> Path:
     return write_all(repo, write_record, SR1, SR2, SR3, FEAT1, FEAT2)

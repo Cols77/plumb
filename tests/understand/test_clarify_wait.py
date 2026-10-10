@@ -19,10 +19,10 @@ from plumb.understand import cardstore, clarify, cmd_clarify, files, gate, hooks
 pytestmark = pytest.mark.sr("SR-103")
 
 SESSION = "s1"
-CARD = {"intent": "yes", "topic": "exporting data",
+CARD = {"intent": "yes", "topic": "exporting data", "gap": True,
         "gaps": [{"id": "format", "question": "Which format?", "suggestions": ["csv", "json"]},
                  {"id": "scope", "question": "Which data?", "suggestions": ["all", "mine"]}]}
-NO_GAP = {"intent": "yes", "topic": "export", "gaps": []}
+NO_GAP = {"intent": "yes", "topic": "export", "gap": False, "gaps": []}
 
 
 def _say(repo: Path, text: str = "let users export their data") -> tuple[Any, str]:

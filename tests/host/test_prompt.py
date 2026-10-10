@@ -16,6 +16,15 @@ from plumb.hosts.claude_code import prompt
 
 pytestmark = pytest.mark.sr("SR-010")
 
+
+@pytest.fixture(autouse=True)
+def _without_the_understanding_layer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests are about the records the hook injects. The understanding layer closes its
+    gate on every owner message and says so (tests/understand covers that line)."""
+    from plumb.hosts.claude_code import prompt
+
+    monkeypatch.setattr(prompt, "understand_lines", lambda ctx, core, digest, text: [])
+
 SR3 = """---
 id: SR-003
 title: Links pin both ends
