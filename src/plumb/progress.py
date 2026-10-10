@@ -10,10 +10,14 @@ line that names the step; ``done(final)`` keeps an end line. With no ``stream`` 
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import os
+import sys
 import threading
 import time
 from calendar import timegm
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -52,9 +56,10 @@ def bar(done: int, total: int, width: int = BAR_WIDTH) -> str:
 class Reporter:
     def __init__(self, root: Path, session: str | None = None, kind: str = "", *,
                  stream: TextIO | None = None, clock: Any = time.monotonic,
-                 min_s: float = MIN_S, interval_s: float = INTERVAL_S,
-                 plain_interval_s: float = PLAIN_INTERVAL_S,
-                 max_lines: int = MAX_PLAIN_LINES, tty: bool | None = None) -> None:
+                 min_s: float | None = None, interval_s: float | None = None,
+                 plain_interval_s: float | None = None,
+                 max_lines: int | None = None, tty: bool | None = None,
+                 lazy: bool = False) -> None:
         from plumb.understand import files
 
         self._files = files
@@ -64,8 +69,10 @@ class Reporter:
         self.stream = stream
         self._clock = clock
         self._t0 = clock()
-        self._min_s, self._interval_s = float(min_s), float(interval_s)
-        self._plain_s, self._max_lines = float(plain_interval_s), int(max_lines)
+        self._min_s = float(MIN_S if min_s is None else min_s)
+        self._interval_s = float(INTERVAL_S if interval_s is None else interval_s)
+        self._plain_s = float(PLAIN_INTERVAL_S if plain_interval_s is None else plain_interval_s)
+        self._max_lines = int(MAX_PLAIN_LINES if max_lines is None else max_lines)
         if tty is None:
             try:
                 tty = bool(stream is not None and stream.isatty())
@@ -79,9 +86,16 @@ class Reporter:
         self._lines = 0
         self._lock = threading.RLock()
         self._beat: threading.Event | None = None
+        self._lazy = lazy                     # no file, no line, before ``min_s`` (an execution)
+        self._live = not lazy                 # the file has been written
+        self._ended = False
 
     # ------------------------------------------------------------------ the file
     def _write(self, step: str, done: int, total: int, state: str) -> None:
+        if not self._live:
+            if state != "running" or self._clock() - self._t0 < self._min_s:
+                return
+            self._live = True
         data = self._files.progress_to_json(Progress(
             step=step, done=done, total=total, started=self.started, updated=_now(),
             state=state, kind=self.kind))  # type: ignore[arg-type]
@@ -153,8 +167,15 @@ class Reporter:
         """End the execution; a non-empty ``final`` is an end line the status line shows. It is
         also the last thing drawn, but only when something was drawn before."""
         with self._lock:
+            if self._lazy and self._ended:
+                return
+            self._ended = True
             self.stop_beat()
-            self._write(final, 0, 0, "done")
+            if self._lazy and not final and self._live:
+                with contextlib.suppress(OSError):    # an execution leaves no line behind
+                    self.path.unlink()
+            else:
+                self._write(final, 0, 0, "done")
             if self._drawn:
                 self._emit(final or FINISHED.format(step=self._step), final=True)
 
@@ -162,6 +183,9 @@ class Reporter:
         """The execution stopped midway: one line names the step that failed (drawn at any
         time), and the progress file no longer says it runs."""
         with self._lock:
+            if self._lazy and self._ended:
+                return
+            self._ended = True
             self.stop_beat()
             self._write(step, self._done, self._total, "failed")
             self._emit(step or FAILED.format(step=self._step), final=True)
@@ -191,6 +215,61 @@ class Reporter:
 
     def __exit__(self, *exc: object) -> None:
         self.stop_beat()
+
+
+# ---------------------------------------------------------------------- executions
+
+FAILED_RUN = "{step} stopped"
+_scope: contextvars.ContextVar[Any] = contextvars.ContextVar("plumb_progress_scope",
+                                                            default=None)
+
+
+def default_stream() -> TextIO | None:
+    """Where an execution draws its progress when nobody said: standard error, unless this
+    process is a hook or a background job (they have no screen), or ``PLUMB_PROGRESS=off``."""
+    if os.environ.get("PLUMB_JOB") or os.environ.get("PLUMB_PROGRESS") == "off":
+        return None
+    verify = sys.modules.get("plumb.verify")
+    if verify is not None and getattr(verify, "HOOK_PROCESS", False):
+        return None
+    return sys.stderr
+
+
+class _Scope:
+    def __init__(self, reporter: Reporter) -> None:
+        self.reporter = reporter
+        self.ended = False
+
+
+@contextlib.contextmanager
+def scope(root: Path, kind: str, *, stream: TextIO | None = None, **options: Any
+          ) -> Iterator[Reporter]:
+    """One reporter for a whole execution (a merge check: several steps, one line, one
+    clock). Inside it, ``acquire`` hands out this reporter. A failure that leaves the block
+    ends it as failed; otherwise it ends as done unless the block ended it itself."""
+    reporter = Reporter(root, None, kind, stream=default_stream() if stream is None else stream,
+                        lazy=True, **options)
+    mine = _Scope(reporter)
+    token = _scope.set(mine)
+    try:
+        yield reporter
+    except BaseException:
+        reporter.failed(FAILED_RUN.format(step=reporter._step or kind))
+        raise
+    else:
+        reporter.done()
+    finally:
+        reporter.stop_beat()
+        _scope.reset(token)
+
+
+def acquire(root: Path, kind: str, **options: Any) -> tuple[Reporter, bool]:
+    """``(reporter, owned)``: the reporter of the enclosing ``scope``, else a new one for this
+    step alone (``owned``: the caller ends it)."""
+    current = _scope.get()
+    if current is not None:
+        return current.reporter, False
+    return Reporter(root, None, kind, stream=default_stream(), lazy=True, **options), True
 
 
 # ---------------------------------------------------------------------- reading it back

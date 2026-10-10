@@ -21,6 +21,21 @@ from typing import Any
 
 Runner = Callable[[Any], Any]
 
+# SR-108: the steps a merge check says it is on
+STEP_DECIDE = "checking the earlier full run"
+STEP_RUN = "running the full suite"
+
+
+def _say(core: Any, step: str) -> None:
+    """Name the step on the merge check's progress line (nothing outside a progress scope
+    changes: the reporter is the enclosing execution's, or a new quiet one)."""
+    from plumb import progress
+
+    reporter, owned = progress.acquire(core.root, "merge-check")
+    reporter.update(step)
+    if owned:
+        reporter.done()
+
 
 def default_runner(core: Any) -> Any:
     """``plumb tests run --full``, in this process (its pytest runs as one child)."""
@@ -81,6 +96,7 @@ def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unver
              waived: bool, run_full: bool, runner: Runner | None) -> dict[str, Any]:
     """Decide, reuse or run once. Returns ``{needed, ran, reused, run_id, verdict, reasons,
     identity}``; ``identity`` is the current tree and environment."""
+    _say(core, STEP_DECIDE)
     now = current_identity(core, verify)
     out: dict[str, Any] = {"needed": False, "ran": False, "reused": False, "run_id": None,
                            "verdict": "not-run", "reasons": list(reasons),
@@ -94,6 +110,7 @@ def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unver
         out["run_id"] = latest.get("run_id")  # the run that satisfied full verification
     if not out["needed"] or not run_full:
         return out
+    _say(core, STEP_RUN)
     result = (runner or default_runner)(core)  # the ONE run: never repeated below
     out.update({"ran": True, "run_id": getattr(result, "run_id", None),
                 "verdict": verdict_of(result),

@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Any
 
 
+STEP_CHECK = "checking the merge"       # SR-108
+MERGE_END = "merge check finished"
+
+
 def merge_settings(core: Any) -> dict[str, Any]:
     """``merge.default_base`` (main) and ``merge.prepush_run_full`` (true), from the config
     when it carries the section, else read from ``.plumb/config.yaml`` directly."""
@@ -42,10 +46,14 @@ def merge_settings(core: Any) -> dict[str, Any]:
 def _print_report(core: Any, base: str, *, run_full: bool, as_json: bool,
                   hook: bool = False) -> Any:
     """Compute, print and return one ``MergeReport`` (``hook``: inside the pre-push hook)."""
+    from plumb import progress
     from plumb.boundary import as_dict, merge_report, render
     from plumb.cliutil import emit
 
-    report = merge_report(core, base, run_full=run_full, hook=hook)
+    with progress.scope(core.root, "merge-check") as reporter:
+        reporter.update(STEP_CHECK)
+        report = merge_report(core, base, run_full=run_full, hook=hook)
+        reporter.done(MERGE_END)
     if as_json:
         emit(as_dict(report), True)
     else:

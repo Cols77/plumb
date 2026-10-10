@@ -247,7 +247,25 @@ def judge(core: Any, nodes: Mapping[str, str], edges: Sequence[tuple[str, str]],
     name = str(getattr(backend, "name", "none")) if backend is not None else "none"
     heuristic = backend is not None and (name == "heuristic" or not hasattr(backend, "ask"))
     out: list[Edge] = []
-    for source, target in edges:
+    from plumb import progress
+
+    reporter, owned = progress.acquire(core.root, "align")
+    try:
+        _judge_edges(core, nodes, edges, backend, name, heuristic, out, reporter)
+    finally:
+        if owned:
+            reporter.done()
+    return out, name
+
+
+STEP_ALIGN = "judging how well the records fit"       # SR-108
+
+
+def _judge_edges(core: Any, nodes: Mapping[str, str], edges: Sequence[tuple[str, str]],
+                 backend: Any, name: str, heuristic: bool, out: list[Edge],
+                 reporter: Any) -> None:
+    for count, (source, target) in enumerate(edges, 1):
+        reporter.update(STEP_ALIGN, count - 1, len(edges))
         edge_class = (nodes[source], nodes[target])
         question = QUESTIONS.get(edge_class, "Do these two belong together?")
         label = f"{edge_class[0]}->{edge_class[1]}"
@@ -283,7 +301,6 @@ def judge(core: Any, nodes: Mapping[str, str], edges: Sequence[tuple[str, str]],
                 "action": "alignment", "subject": f"{source}->{target}", "verdict": verdict,
                 "confidence": judgment.confidence, "probability": probability,
                 "backend": judgment.backend, "question": question})
-    return out, name
 
 
 def _weakest_first(edges: Sequence[Edge]) -> list[Edge]:
