@@ -78,6 +78,17 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
             return f"agent-relayed {entry.kind} carries no owner quote"
         if payload.get("quote_digest") != sha256_text(quote):
             return f"agent-relayed {entry.kind} quote does not match its quote_digest"
+        if entry.kind == "approval" and payload.get("via") == "command":
+            # SP8: a typed /plumb approve|confirm is checked by the parse, not by words
+            from plumb.understand.typed import parse
+
+            parsed = parse(quote)
+            named = {str(r.get("id")) for r in payload.get("records") or []
+                     if isinstance(r, Mapping)}
+            if parsed is None or parsed.command not in ("approve", "confirm") \
+                    or not named <= set(parsed.ids):
+                return "agent-relayed command approval: the quote is not the typed command"
+            return None
         choice = payload.get("choice")
         if entry.kind == "approval" and isinstance(choice, Mapping):
             # the owner's pick between the options a conflict card showed ("keep feat-x's",

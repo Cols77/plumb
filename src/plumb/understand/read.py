@@ -202,6 +202,15 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> str | None:
     if core is None or not isinstance(entry, Mapping):
         return None
     session = str(getattr(ctx, "session_id", "") or "")
+    from plumb.understand import typed
+
+    parsed = typed.parse(entry.get("text"))
+    if parsed is not None:
+        if parsed.command in ("approve", "confirm") and parsed.ids:
+            typed.confirm_now(core, parsed, str(entry.get("digest") or ""), session)
+            return None                   # exact: the reader is not called
+        if parsed.command not in ("approve", "confirm"):
+            return None                   # undo, settle and go are their own commands
     job = build(core, session, message=entry)
     if job is None:
         return None
@@ -244,11 +253,15 @@ def _confidence(raw: Any) -> float:
         return 0.0
 
 
-def _approval(job: Job, digest: str, message: str, record_id: str, record_hash: str,
-              evidence: str, confidence: float, *, label: str | None = None) -> dict[str, Any]:
+def _approval(core: Any, job: Job, digest: str, message: str, record_id: str,
+              record_hash: str, evidence: str, confidence: float, *,
+              label: str | None = None) -> dict[str, Any]:
+    from plumb.approvals import approval_items
+
+    (item,) = approval_items(core, [record_id])   # with the owned ends and test pins
     payload: dict[str, Any] = {
         "by": "owner-words", "session": job.session, "job": job.id,
-        "records": [{"id": record_id, "hash": record_hash}], "prompt_digest": digest,
+        "records": [{**item, "hash": record_hash}], "prompt_digest": digest,
         "message": message, "evidence": evidence, "confidence": confidence}
     if label:
         payload["label"] = label
@@ -297,8 +310,10 @@ def owner_only_reply(card: CardState, question: Any) -> str:
         record = getattr(question, "record", None) or card.topic
         return owner_text.OWNER_ONLY_REPLY.format(action="undo anything",
                                                   command=f"/plumb undo {record}".strip())
+    kind = next((w.rstrip("s") for w in card.topic.lower().replace(",", " ").split()
+                 if w.rstrip("s") in ("intent", "requirement")), "")
     return owner_text.OWNER_ONLY_REPLY.format(
-        action="switch settling on or off", command=f"/plumb settle on {card.topic}".strip())
+        action="switch settling on or off", command=f"/plumb settle on {kind}".strip())
 
 
 def _open_cards(core: Any, session: str) -> list[CardState]:
@@ -329,8 +344,9 @@ class _Applying:
         if self.statuses[record_id].confirmation == "confirmed":
             return
         self.confirmed.add(record_id)
-        self.entries.append(_approval(self.job, self.digest, self.message, record_id, record_hash, evidence,
-                                      confidence, label=label))
+        self.entries.append(_approval(self.core, self.job, self.digest, self.message,
+                                      record_id, record_hash, evidence, confidence,
+                                      label=label))
 
     def reject(self, record: Any, evidence: str, confidence: float, rejection: Any) -> None:
         if self.statuses[record.id].confirmation != "confirmed":
@@ -506,8 +522,14 @@ def confirmation_lines(core: Any, turn: Any = None) -> list[str]:
     lines: list[str] = []
     for entry in core.events():
         payload = entry.payload
-        if entry.kind != "approval" or payload.get("by") != "owner-words" \
-                or payload.get("prompt_digest") != digest:
+        if entry.kind != "approval" or payload.get("prompt_digest") != digest:
+            continue
+        if payload.get("by") == "agent-relayed" and payload.get("via") == "command":
+            titles = ", ".join(index[str(r.get("id"))].title for r in payload["records"]
+                               if str(r.get("id")) in index)
+            lines.append(owner_text.TYPED_CONFIRMED.format(titles=titles))
+            continue
+        if payload.get("by") != "owner-words":
             continue
         said = owner_text.CONFIRM_YOU_SAID.format(evidence=payload.get("evidence", ""))
         for record in payload.get("records") or ():
