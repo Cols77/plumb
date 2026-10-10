@@ -353,6 +353,8 @@ class TriageItem:
     kind: str = ""
     score: float | None = None             # faithfulness, 0..1; None without a judgment
     rating: Literal["faithful", "riskier", "unrated"] = "unrated"
+    # what the judgment says, in words: faithful | contradicts | beyond | unverified | unrated
+    outcome: str = ""
     reason: str = ""
     excluded: str | None = None            # why it is always shown individually
     backend: str = ""

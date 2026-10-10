@@ -1121,7 +1121,7 @@ def _relay_rejection(core: Core, ids: Sequence[str], entry: Mapping[str, Any], q
             raise Refused(f"the quote does not name {record_id}; a rejection is relayed "
                           "only on words that name the record")
         item: dict[str, Any] = {"id": record_id, "hash": record.hash}
-        item.update(snapshot(index, record))
+        item.update(snapshot(index, record, core))
         records.append(item)
     if not records:
         raise ApprovalError("name at least one record")

@@ -66,12 +66,15 @@ class KindResult:
     reasons: list[str] = field(default_factory=list)
 
 
-def _hypotheses(index: Mapping[str, Any], record: Any) -> tuple[str, tuple[str, ...]]:
-    """``(premise, parts)``: an INT's read-back is one claim; a requirement's wording and
-    each of its examples are separate parts, all of which must be supported."""
+def _hypotheses(index: Mapping[str, Any], record: Any,
+                prompts: Any = None) -> tuple[str, tuple[str, ...]]:
+    """``(premise, parts)``: the claim triage judges (SR-040), with the same premise (the
+    owner's whole logged prompt when ``prompts`` has it). An INT's read-back is one claim; a
+    requirement's wording and each of its examples are separate parts, all of which must be
+    supported."""
     from plumb.capture.triage import claim
 
-    _, premise, hypothesis = claim(index, record)
+    _, premise, hypothesis = claim(index, record, prompts)
     if record.kind != "requirement":
         return premise, (hypothesis,)
     parts = [" ".join(str(record.fields.get("statement") or record.title).split())]
@@ -79,10 +82,19 @@ def _hypotheses(index: Mapping[str, Any], record: Any) -> tuple[str, tuple[str, 
     return premise, tuple(parts)
 
 
-def snapshot(index: Mapping[str, Any], record: Any) -> dict[str, Any]:
+def _prompts(core: Core | None) -> Any:
+    if core is None:
+        return None
+    from plumb.capture.triage import _Prompts
+
+    return _Prompts(core)
+
+
+def snapshot(index: Mapping[str, Any], record: Any, core: Core | None = None
+             ) -> dict[str, Any]:
     """The read-back of ``record`` as it stands now (kind, premise, parts), kept in a
     rejection event so the rejected version can be labelled after a recapture."""
-    premise, parts = _hypotheses(index, record)
+    premise, parts = _hypotheses(index, record, _prompts(core))
     return {"kind": KINDS.get(record.kind), "premise": premise, "hypotheses": list(parts)}
 
 
@@ -117,6 +129,7 @@ def labelled_set(core: Core) -> list[Item]:
 
     index = core.index()
     statuses = core.status()
+    prompts = _prompts(core)
     revoked: set[str] = set()
     auto: set[str] = set()
     for entry, problem in checked(core):
@@ -155,7 +168,7 @@ def labelled_set(core: Core) -> list[Item]:
         kind = KINDS.get(record.kind)
         if kind is None:
             continue
-        premise, parts = _hypotheses(index, record)
+        premise, parts = _hypotheses(index, record, prompts)
         if not premise.strip():
             continue
         status = statuses[record_id]

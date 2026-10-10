@@ -56,39 +56,66 @@ def _items(raw: Any) -> list[str]:
     return out
 
 
-def _intent_quotes(index: Mapping[str, Record], record: Record) -> list[str]:
+def _intent_premise(prompts: _Prompts | None, record: Record) -> str:
+    """The owner's words an intent is judged against (SR-040): the whole logged prompt that
+    holds the quote when the prompt log has it, else the quote; a short answer is kept with
+    the question it answered (SR-097)."""
+    quote = _flat(record.fields.get("quote"))
+    if not quote:
+        return ""
+    premise = quote
+    if prompts is not None:
+        text = _verified_intent(prompts, record)
+        if text is not None and text.strip():
+            premise = text.strip()
+    question = _flat(record.fields.get("question"))
+    if question and is_short_answer(quote):
+        premise = f"{question}\n{premise}"
+    return premise
+
+
+def _intent_premises(index: Mapping[str, Record], record: Record,
+                     prompts: _Prompts | None) -> list[str]:
     out = []
     for link in record.links:
         if link.kind == "derives_from" and link.target.record in index:
             parent = index[link.target.record]
-            if parent.kind == "intent" and _flat(parent.fields.get("quote")):
-                out.append(_flat(parent.fields.get("quote")))
+            if parent.kind == "intent":
+                text = _intent_premise(prompts, parent)
+                if text and text not in out:
+                    out.append(text)
     return out
 
 
-def claim(index: Mapping[str, Record], record: Record) -> tuple[str, str, str]:
-    """``(claim kind, premise, hypothesis)`` of a record (sp2 8.1 step 2)."""
+def claim(index: Mapping[str, Record], record: Record,
+          prompts: _Prompts | None = None) -> tuple[str, str, str]:
+    """``(claim kind, premise, hypothesis)`` of a record (sp2 8.1 step 2).
+
+    An intent is judged on what its read-back asserts as the owner's: the read-back, will
+    and won't lines. Its labelled assumptions are the agent's own, shown to the owner and
+    never claimed as the owner's words, so they stay out. The premise is the owner's words in
+    full (``_intent_premise``); a requirement's is its parent intents' premise."""
     fields = record.fields
     if record.kind == "intent":
         lines = [_flat(fields.get("readback") or record.title)]
         lines += [f"will: {w}" for w in _items(fields.get("will"))]
         lines += [f"won't: {w}" for w in _items(fields.get("wont"))]
-        lines += [f"assumed: {a}" for a in _items(fields.get("assumptions"))]
-        premise = _flat(fields.get("quote"))
-        question = _flat(fields.get("question"))
-        if question and is_short_answer(premise):  # SR-097: judged with what it answered
-            premise = f"{question}\n{premise}"
-        return "intent-readback", premise, "\n".join(lines)
+        return "intent-readback", _intent_premise(prompts, record), "\n".join(lines)
     if record.kind == "requirement":
-        premise = _intent_quotes(index, record)
+        premise = _intent_premises(index, record, prompts)
+        held = "\n".join(premise)
         raw = fields.get("examples") or []
-        premise += [_flat(e.get("quote")) for e in raw
-                    if isinstance(e, Mapping) and _flat(e.get("quote"))]
+        premise += [q for q in (_flat(e.get("quote")) for e in raw
+                                if isinstance(e, Mapping)) if q and q not in held]
         lines = [_flat(fields.get("statement") or record.title)]
         lines += [f"given {e.given}, when {e.when}, then {e.then}" for e in record.examples]
         return "example-restatement", "\n".join(premise), "\n".join(lines)
     if record.kind == "decision":
-        premise = [_flat(fields.get("question"))] + _intent_quotes(index, record)
+        premise = [_flat(fields.get("question"))] + [
+            _flat(parent.fields.get("quote")) for parent in
+            (index[link.target.record] for link in record.links
+             if link.kind == "derives_from" and link.target.record in index)
+            if parent.kind == "intent" and _flat(parent.fields.get("quote"))]
         return ("decision", "\n".join(p for p in premise if p),
                 _flat(fields.get("chosen")))
     return record.kind, "", record.title
@@ -96,6 +123,8 @@ def claim(index: Mapping[str, Record], record: Record) -> tuple[str, str, str]:
 
 UNVERIFIED = "quote not verified"
 CONTRADICTS = "contradicts your words"
+BEYOND = "goes beyond your words"
+CLAIM_VERSION = "claim2"  # the cache key changes when what is judged changes
 
 
 class _Prompts:
@@ -242,7 +271,7 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
     prompts = _Prompts(core)
     for record_id in wanted:
         record = index[record_id]
-        kind, premise, hypothesis = claim(index, record)
+        kind, premise, hypothesis = claim(index, record, prompts)
         excluded = exclusion(core, record, statuses, before, members, premise)
         # the one low-risk admission (R8 A): the premise must be the owner's verified words
         # and nothing in the record may contradict them, whatever the backend scored
@@ -251,11 +280,13 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
         score: float | None = None
         reason = ""
         used = name
+        judged_against = False  # the judge itself found the claim contrary to the words
         if available and premise.strip():
-            key = f"{name}|{getattr(backend, 'version', '')}|{record.hash}"
+            key = f"{CLAIM_VERSION}|{name}|{getattr(backend, 'version', '')}|{record.hash}"
             hit = cache.get(key)
-            if isinstance(hit, list) and len(hit) == 3:
+            if isinstance(hit, list) and len(hit) == 4:
                 score, reason, used = float(hit[0]), str(hit[1]), str(hit[2])
+                judged_against = bool(hit[3])
             elif name == "heuristic" or time.monotonic() < deadline:
                 judgment = backend.entailment(premise, hypothesis, subject=record_id,
                                               claim_kind=kind)
@@ -268,15 +299,20 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
                         score = 1.0 - score  # the probability of the not-entailed verdict
                     reason = "; ".join(judgment.reasons)[:200]
                     used = judgment.backend
-                    cache[key] = [score, reason, used]
+                    judged_against = judgment.verdict in ("contradicts", "contradiction")
+                    cache[key] = [score, reason, used, judged_against]
                     dirty = True
         rating = "unrated" if score is None else ("faithful" if score >= threshold
                                                   else "riskier")
+        if unfaithful is None and judged_against and excluded is None:
+            unfaithful = f"{CONTRADICTS}: the judge found it contrary to them"
+        outcome = _outcome(rating, unfaithful)
         if unfaithful is not None:
             rating, excluded = "riskier", unfaithful
         item = TriageItem(id=record_id, hash=record.hash, title=record.title, kind=record.kind,
                           score=None if score is None else round(score, 3),
-                          rating=rating, reason=reason, excluded=excluded, backend=used)
+                          rating=rating, outcome=outcome, reason=reason, excluded=excluded,
+                          backend=used)
         if rating == "faithful" and excluded is None:
             low.append(item)
         else:
@@ -285,6 +321,25 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
         _save_cache(core, cache)
     return TriageView(backend=name, available=available, low_risk=tuple(low),
                       individual=tuple(single), offer=offer_line(low))
+
+
+def _outcome(rating: str, unfaithful: str | None) -> str:
+    """What the judgment says of the record, in the owner's terms: ``faithful`` (the owner's
+    words support it), ``contradicts`` (they say otherwise), ``beyond`` (it goes beyond
+    them: not supported, not contradicted), ``unverified`` (the quote is not the owner's
+    verified words) or ``unrated``."""
+    if unfaithful is not None:
+        return "contradicts" if unfaithful.startswith(CONTRADICTS) else "unverified"
+    return {"faithful": "faithful", "riskier": "beyond"}.get(rating, "unrated")
+
+
+def outcome_words(item: TriageItem) -> str:
+    """The outcome of a triage item in words (never a probability next to a risk)."""
+    outcome = getattr(item, "outcome", "") or {"faithful": "faithful",
+                                               "riskier": "riskier"}.get(item.rating, "")
+    return {"faithful": "faithful to your words", "contradicts": CONTRADICTS,
+            "beyond": BEYOND, "unverified": UNVERIFIED,
+            "unrated": "not rated"}.get(outcome, outcome or item.rating)
 
 
 def _contradiction(premise: str, hypothesis: str) -> str | None:
@@ -339,15 +394,16 @@ def view_lines(view: TriageView) -> list[str]:
     if view.low_risk:
         lines.append(f"low-risk group: {len(view.low_risk)} records rated faithful to your "
                      "words")
-        lines += [f"  {i.id} {i.hash[:19]} {i.score:.2f}  {i.title}" for i in view.low_risk]
+        lines += [f"  {i.id} {i.hash[:19]}  {i.title}" for i in view.low_risk]
         lines.append("  approve them: plumb triage --approve low-risk (your terminal), or "
                      "say \"ok\" to the offer in a session")
     if view.individual:
         lines.append(f"individually: {len(view.individual)} records")
         for item in view.individual:
-            rating = item.rating if item.score is None else f"{item.rating} {item.score:.2f}"
-            why = f"; {item.excluded}" if item.excluded else ""
-            lines.append(f"  {item.id} ({rating}{why})  {item.title}")
+            words = outcome_words(item)
+            kept = item.excluded and not item.excluded.startswith(words)
+            why = f"; {item.excluded}" if kept else ""
+            lines.append(f"  {item.id} ({words}{why})  {item.title}")
     if not view.low_risk and not view.individual:
         lines.append("nothing awaits your confirmation")
     return lines
@@ -393,7 +449,7 @@ def approve_low_risk(core: Core, *, backend: Any = None, note: str = "",
     if not view.low_risk:
         raise ApprovalError("the low-risk group is empty: nothing to approve")
     for item in view.low_risk:
-        echo(f"  {item.id} {item.hash[:19]} {item.score:.2f}  {item.title}")
+        echo(f"  {item.id} {item.hash[:19]}  {item.title}")
     require_owner("triage --approve", f"approve these {len(view.low_risk)} records at the "
                   "listed content, as yourself (by: owner)?")
     from plumb.api import open_core

@@ -44,7 +44,16 @@ def _awaiting(core: Any, scope: set[str] | None) -> list[str]:
         if view.offer:
             lines.append("  " + str(view.offer).removeprefix("plumb: "))
         for item in view.individual:
-            rating = item.rating if item.score is None else f"{item.rating} {item.score:.2f}"
+            outcome = getattr(item, "outcome", "")
+            if outcome:  # in words, never a probability next to a risk
+                from plumb.capture.triage import outcome_words
+
+                words = outcome_words(item)
+                held = str(getattr(item, "excluded", None) or "").startswith(words)
+                rating = item.rating if held else f"{item.rating}: {words}"
+            else:
+                rating = (item.rating if item.score is None
+                          else f"{item.rating} {item.score:.2f}")
             why = f"; {item.excluded}" if getattr(item, "excluded", None) else ""
             lines.append(f"  {item.id} \"{item.title}\" ({rating}{why}): plumb confirm "
                          f"{item.id} shows it")
