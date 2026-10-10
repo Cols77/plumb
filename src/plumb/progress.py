@@ -29,8 +29,9 @@ class Reporter:
             step=step, done=done, total=total, started=self.started, updated=_now(),
             state=state, kind=self.kind)))  # type: ignore[arg-type]
 
-    def done(self) -> None:
-        self.update("", state="done")
+    def done(self, final: str = "") -> None:
+        """End the execution; a non-empty ``final`` is an end line the status line shows."""
+        self.update(final, state="done")
 
     def failed(self, step: str = "") -> None:
         self.update(step, state="failed")

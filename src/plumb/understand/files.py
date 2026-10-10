@@ -53,6 +53,10 @@ def gate_path(root: Path, session: str) -> Path:
     return session_dir(root, session) / "gate"
 
 
+def failures_path(root: Path, session: str) -> Path:
+    return session_dir(root, session) / "failures.json"
+
+
 def progress_path(root: Path, session: str | None) -> Path:
     return session_dir(root, session or CLI_SESSION) / "progress"
 

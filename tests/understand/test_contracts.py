@@ -451,3 +451,208 @@ def test_evalrun_fake_writes_an_eval_run_entry(repo: Path, capsys: pytest.Captur
     cases = [{"name": "c1", "inputs": {}, "expect": {"answer": "yes"}}]
     results = evalrun.run_cases(evalrun.FakeEvalDispatcher(), cases, "read")
     assert results[0]["passed"] is True
+
+
+# ---- phase C2: the contract gaps (plan 3.2a) ----------------------------------------------
+
+def test_c2_stubs_have_final_signatures_and_are_marked() -> None:
+    from plumb.understand import queue, worker
+
+    assert _params(worker.run_once) == ["core", "session", "job_id"]
+    assert _params(worker.run_loop) == ["core", "session"]
+    assert _params(queue.failures) == ["core", "session"]
+    assert _params(queue.consecutive_failures) == ["root", "session"]
+    for func in (worker.run_once, worker.run_loop, queue.failures, queue.consecutive_failures):
+        assert func.__stub__ is True
+    assert worker.run_once(None, "s1") == [] and worker.run_loop(None, "s1") is None
+    assert queue.failures(None, "s1") == []
+    assert queue.consecutive_failures(Path("."), "s1") == 0
+    assert getattr(queue.enqueue, "__stub__", False) is False
+
+
+def test_failures_file_has_its_path_in_the_session_folder(tmp_path: Path) -> None:
+    assert files.failures_path(tmp_path, "s1") == (
+        files.session_dir(tmp_path, "s1") / "failures.json")
+
+
+def test_handler_for_imports_the_kind_modules(tmp_path: Path,
+                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.understand import effects, kinds
+
+    (tmp_path / "c2_lane_kind.py").write_text(
+        "from plumb.understand import effects\n"
+        "effects.register('c2_card', lambda *a, **k: 'handled')\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setitem(kinds.KIND_MODULES, "c2lane", "c2_lane_kind")
+    monkeypatch.setitem(effects.HANDLERS, "c2_card", None)
+    monkeypatch.delitem(effects.HANDLERS, "c2_card")
+    monkeypatch.delitem(sys.modules, "c2_lane_kind", raising=False)
+    handler = effects.handler_for("c2_card")
+    assert handler is not None and handler() == "handled"
+    assert effects.handler_for("no_such_kind") is None
+
+
+def test_handler_for_raises_an_import_error_of_a_lane_module(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.understand import effects, kinds
+
+    monkeypatch.setitem(kinds.KIND_MODULES, "broken", "plumb.understand.no_such_module")
+    with pytest.raises(ImportError):
+        effects.handler_for("anything")
+
+
+def test_no_effect_kinds_are_the_owner_only_ones() -> None:
+    from plumb.understand import effects
+
+    assert effects.NO_EFFECT == {"settle_offer", "settled_item"}
+
+
+C2_TEXT = ("CONFIRM_YOU_SAID", "READBACK_CHANGE", "CARD_SHOW_FIRST", "TYPED_CONFIRMED",
+           "TYPED_NEEDS_IDS", "OWNER_ONLY_REPLY", "BACKLOG_DONE")
+
+
+@pytest.mark.parametrize("name", C2_TEXT)
+def test_c2_owner_text_passes_the_owner_level_scan(name: str) -> None:
+    from plumb.present import owner_text
+    from understand.fakes import owner_level
+
+    assert owner_level(getattr(owner_text, name)) == []
+
+
+def test_owner_text_constants_have_their_fields() -> None:
+    from plumb.present import owner_text
+
+    assert owner_text.CONFIRM_YOU_SAID.format(evidence="ok") == "you said: ok"
+    assert owner_text.BACKLOG_DONE.format(judged=160, cards=3) == (
+        "160 records judged, 3 cards waiting for you")
+
+
+def test_owner_level_flags_commands_ids_and_internal_words() -> None:
+    from understand.fakes import owner_level
+
+    assert owner_level("run plumb status") != []
+    assert owner_level("SR-012 is settled") != []
+    assert owner_level("the worker queued a job") != []
+    assert owner_level("Settled from your words: the login") == []
+
+
+def test_reporter_done_can_carry_an_end_line(tmp_path: Path) -> None:
+    from plumb.progress import Reporter
+
+    reporter = Reporter(tmp_path, "s1", "judge")
+    reporter.done()
+    got = files.progress_from_json(files.read_json(files.progress_path(tmp_path, "s1")))
+    assert got.state == "done" and got.step == ""
+    reporter.done("160 records judged, 3 cards waiting for you")
+    got = files.progress_from_json(files.read_json(files.progress_path(tmp_path, "s1")))
+    assert got.state == "done" and got.step == "160 records judged, 3 cards waiting for you"
+
+
+def _job(kind: str, n: int, session: str = "s1", needs: str | None = None, created: str = ""):
+    return files.make_job(kind, session, f"{kind}.v1", {"n": n}, needs=needs, created=created)
+
+
+def test_standins_run_a_queued_job_once_and_write_results_and_ledger(
+        repo: Path, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.api import Core
+    from plumb.understand import queue, worker
+    from understand.fakes import FakeKind, fake_kinds
+
+    seen: list[str] = []
+    fake_kinds(monkeypatch, {"a": FakeKind(
+        "a", apply=lambda core, job, answer: seen.append(job.id) or Applied(job=job.id))})
+    engine_standins.dispatcher.script = {"a": {"ok": True}}
+    core = Core(repo)
+    job = _job("a", 1)
+    queue.enqueue(core, job)
+    queue.enqueue(core, job)                      # idempotent
+    assert len(list(files.jobs_dir(repo, "s1").glob("*.json"))) == 1
+    assert worker.run_once(core, "s1") == [job.id]
+    assert worker.run_once(core, "s1") == []
+    assert seen == [job.id]
+    result = files.result_from_json(
+        files.read_json(files.results_dir(repo, "s1") / f"{job.id}.json"))
+    assert result.status == "ok" and result.answer == {"ok": True}
+    assert (files.ran_dir(repo, "s1") / job.id).exists()
+    assert queue.consecutive_failures(repo, "s1") == 0
+
+
+def test_standins_honour_needs_in_either_queue_order(
+        repo: Path, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.api import Core
+    from plumb.understand import queue, worker
+    from understand.fakes import FakeKind, fake_kinds
+
+    fake_kinds(monkeypatch, {"a": FakeKind("a"), "b": FakeKind("b")})
+    core = Core(repo)
+    first = _job("a", 1, created="2026-01-02T00:00:00Z")
+    second = _job("b", 1, needs=first.id, created="2026-01-01T00:00:00Z")
+    queue.enqueue(core, second)
+    queue.enqueue(core, first)
+    assert worker.run_once(core, "s1") == [first.id, second.id]
+
+
+def test_standins_failed_needs_makes_dependent_an_error_without_a_model_call(
+        repo: Path, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.api import Core
+    from plumb.understand import queue, worker
+    from understand.fakes import FakeKind, fake_kinds
+
+    fake_kinds(monkeypatch, {"a": FakeKind("a"), "b": FakeKind("b")})
+    engine_standins.dispatcher.failing()
+    core = Core(repo)
+    first = _job("a", 1)
+    second = _job("b", 1, needs=first.id)
+    queue.enqueue(core, first)
+    queue.enqueue(core, second)
+    worker.run_once(core, "s1")
+    assert [j.id for j in engine_standins.dispatcher.jobs] == [first.id]
+    found = {r.job: r for r in queue.failures(core, "s1")}
+    assert found[second.id].error.step == "needs" and found[first.id].status == "error"
+    assert queue.consecutive_failures(repo, "s1") == 2
+
+
+def test_standins_failure_counter_resets_on_an_ok_result(
+        repo: Path, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.api import Core
+    from plumb.understand import queue, worker
+    from understand.fakes import FakeKind, fake_kinds
+
+    fake_kinds(monkeypatch, {"a": FakeKind("a")})
+    core = Core(repo)
+    engine_standins.dispatcher.failing()
+    queue.enqueue(core, _job("a", 1))
+    worker.run_once(core, "s1")
+    assert queue.consecutive_failures(repo, "s1") == 1
+    data = files.read_json(files.failures_path(repo, "s1"))
+    assert data["v"] == 1 and data["consecutive"] == 1 and data["last"]["kind"] == "a"
+    engine_standins.dispatcher.script = {"a": {}}
+    queue.enqueue(core, _job("a", 2))
+    worker.run_once(core, "s1")
+    assert queue.consecutive_failures(repo, "s1") == 0
+    assert [r.job for r in queue.failures(core, "s1")] == [_job("a", 1).id]
+
+
+def test_standins_step_aside_when_a_name_is_no_longer_a_stub(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.understand import queue, worker
+    from understand.fakes import install_engine_standins
+
+    def real(core, session, job_id=None):
+        return ["real"]
+
+    monkeypatch.setattr(worker, "run_once", real)
+    install_engine_standins(monkeypatch)
+    assert worker.run_once(None, "s1") == ["real"]
+    assert queue.failures.__stub__ is False       # the other names were replaced
+
+
+def test_fake_kinds_installs_a_module_for_a_job_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.understand.kinds import KIND_MODULES, KINDS
+    from understand.fakes import FakeKind, fake_kinds
+
+    fake_kinds(monkeypatch, {"zz": FakeKind("zz")})
+    module = KINDS["zz"]
+    assert isinstance(module, JobKind) and module.kind == "zz"
+    assert module.apply(None, Job(id="x"), {}) == Applied(job="x")
+    assert "zz" in KIND_MODULES

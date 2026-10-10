@@ -252,6 +252,16 @@ GATE_CLOSED = "Waiting for your answer before building: {reason}"
 SETTLE_REPLY = ('Settling is {state}. Say "settle on" to let confirmed wording settle by '
                 'itself, "undo" to take a settled record back, or use the buttons.')
 NOT_AVAILABLE = "not available in this build"
+CONFIRM_YOU_SAID = "you said: {evidence}"
+READBACK_CHANGE = ('To be sure I have it: "{title}" should change so that {change}. Say yes, '
+                   'or tell me what to fix.')
+CARD_SHOW_FIRST = 'Look at this first, "{topic}": {issue}'
+TYPED_CONFIRMED = "Confirmed: {titles}"
+TYPED_NEEDS_IDS = ("I could not tell which records you meant from those words alone, so they "
+                   "went to the reader; I will confirm what it finds.")
+OWNER_ONLY_REPLY = ("Nothing changed: saying that in a message does not {action}. Use the "
+                    "button, or type {command}.")
+BACKLOG_DONE = "{judged} records judged, {cards} cards waiting for you"
 
 
 _PLUMB_VERB = re.compile(r"(?<![\w/.-])plumb[ \t]+([a-z][a-z-]*)(?![\w-]*:)")
