@@ -5,14 +5,25 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from collections.abc import Mapping
 from typing import Any
 
 from plumb.contracts import KIND_DIR, Record
-from plumb.model import RecordError, load_yaml, parse_record, split_frontmatter
+from plumb.model import (
+    RecordError,
+    load_yaml,
+    parse_record,
+    record_from_parts,
+    split_frontmatter,
+)
 from plumb.paths import PlumbPaths
 
-INDEX_CACHE_VERSION = 1
+INDEX_CACHE_VERSION = 2
+# a file modified within this many seconds of the load is never trusted on size and mtime
+# alone (a same-size rewrite within the clock's resolution would be missed), like git's racy
+# index entries
+_RACY_S = 2.0
 
 FIELD_ORDER: Mapping[str, tuple[str, ...]] = {
     "intent": ("quote", "readback", "will", "wont", "assumptions", "mode", "source"),
@@ -76,26 +87,30 @@ class Store:
         root = self.paths.root
         cached = _read_index_cache(self.paths.index_cache)
         fresh: dict[str, dict[str, object]] = {}
+        now = time.time()
         for dirname, kind in sorted(DIR_KIND.items()):
             directory = self.paths.plumb / dirname
             if not directory.is_dir():
                 continue
-            for file in sorted(directory.glob("*.md")):
-                rel = file.relative_to(root).as_posix()
+            prefix = directory.relative_to(root).as_posix()
+            for name, stat in _md_files(directory):
+                file = directory / name
+                rel = f"{prefix}/{name}"
+                stamp = [stat.st_size, stat.st_mtime_ns]
+                entry = cached.get(rel)
                 try:
-                    text = file.read_text(encoding="utf-8")
-                    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-                    entry = cached.get(rel)
-                    hit = isinstance(entry, dict) and entry.get("digest") == digest
-                    data = entry.get("data") if hit else None  # type: ignore[union-attr]
-                    if not isinstance(data, dict):
-                        data = load_yaml(split_frontmatter(text)[0])
-                    record = parse_record(text, rel, data)
+                    record = _from_stamp(entry, stamp, rel)
+                    if record is not None:  # size and mtime as cached: nothing read or hashed
+                        fresh[rel] = entry  # type: ignore[assignment]
+                    else:
+                        record, kept = self._read(file, rel, entry)
+                        if kept is not None:
+                            if now - stat.st_mtime_ns / 1e9 > _RACY_S:
+                                kept["stamp"] = stamp
+                            fresh[rel] = kept
                 except (RecordError, UnicodeDecodeError, OSError) as exc:
                     problems.append(f"{rel}: {exc}")
                     continue
-                if _json_safe(data):
-                    fresh[rel] = {"digest": digest, "data": data}
                 if record.kind != kind:
                     problems.append(f"{rel}: {record.id} is a {record.kind} record but sits in "
                                     f"{dirname}/ (expected {KIND_DIR[record.kind]}/)")
@@ -108,6 +123,26 @@ class Store:
         self._problems = problems
         if fresh != cached:
             _write_index_cache(self.paths.index_cache, fresh)
+
+    @staticmethod
+    def _read(file: Any, rel: str, entry: object) -> tuple[Record, dict[str, object] | None]:
+        """Read and parse one record file; the cache entry to keep (None when JSON cannot
+        keep its frontmatter exactly). The entry's digest of the text spares the YAML."""
+        text = file.read_text(encoding="utf-8")
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        hit = isinstance(entry, dict) and entry.get("digest") == digest
+        data = entry.get("data") if hit else None  # type: ignore[union-attr]
+        if not isinstance(data, dict):
+            data = load_yaml(split_frontmatter(text)[0])
+            hit = False
+        record = parse_record(text, rel, data)
+        if hit:  # validated when it was cached
+            return record, {"digest": digest, "data": data, "body": record.body,
+                            "hash": record.hash}
+        if not _json_safe(data):
+            return record, None
+        return record, {"digest": digest, "data": data, "body": record.body,
+                        "hash": record.hash}
 
     def next_id(self, kind: str) -> str:
         """A new ID of ``kind``, reserved through ``refs/plumb/ids`` (sp6 4.2): the one
@@ -173,6 +208,27 @@ class Store:
 
 # -- the index cache (spec 10): parsed frontmatter keyed by each file's content digest, so a
 # warm hook never imports or runs YAML. Plain JSON in .plumb/cache/, rebuilt on any change.
+
+
+def _md_files(directory: Any) -> list[tuple[str, os.stat_result]]:
+    """The ``*.md`` files of a directory with their stat, in name order."""
+    try:
+        with os.scandir(directory) as scan:
+            found = [(e.name, e.stat()) for e in scan
+                     if e.name.endswith(".md") and e.is_file()]
+    except OSError:
+        return []
+    return sorted(found, key=lambda item: os.path.normcase(item[0]))
+
+
+def _from_stamp(entry: object, stamp: list[int], rel: str) -> Record | None:
+    """The cached record when the entry's size and mtime are the file's, else None."""
+    if not isinstance(entry, dict) or entry.get("stamp") != stamp:
+        return None
+    data, body, digest = entry.get("data"), entry.get("body"), entry.get("hash")
+    if not isinstance(data, dict) or not isinstance(body, str) or not isinstance(digest, str):
+        return None
+    return record_from_parts(data, body, rel, digest)
 
 
 def _json_safe(data: object) -> bool:

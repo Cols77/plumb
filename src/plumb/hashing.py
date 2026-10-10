@@ -14,14 +14,16 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import functools
 import hashlib
 import json
 import os
 import re
+import sys
 import textwrap
 import time
 from collections.abc import Iterator, Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from plumb.contracts import Record, Target
@@ -40,8 +42,12 @@ _PARSED: dict[str, tuple[list[str], ast.Module] | None] = {}
 # and the merge boundary never enter the cache: they hash every end exactly.
 _RACY_S = 2.0
 _STAT_CACHE: dict[str, Any] | None = None  # {"root": ..., "entries": {key: [stat..., hash]}}
+# bumped whenever what the open block remembers of the link ends is dropped; the core keeps
+# its statuses only while this and its record index and events are unchanged
+_GENERATION = 0
 
 
+@functools.lru_cache(maxsize=16384)
 def clean_rel_path(raw: str) -> str | None:
     """A repository-relative POSIX path, or None when absolute or escaping the root.
 
@@ -53,7 +59,7 @@ def clean_rel_path(raw: str) -> str | None:
     text = raw.replace("\\", "/").strip()
     if text.startswith("/") or (len(text) > 1 and text[1] == ":"):
         return None
-    parts = [p for p in PurePosixPath(text).parts if p != "."]
+    parts = [p for p in text.split("/") if p and p != "."]
     if not parts or ".." in parts:
         return None
     return "/".join(parts)
@@ -65,6 +71,17 @@ def hash_path(root: Path, raw: str) -> str | None:
     if rel is None:
         return None
     full = Path(root) / rel
+    cache = _STAT_CACHE
+    if cache is None:
+        return _file_digest_of(full)
+    files = cache["digests"]  # one hook process: a file is read once for its whole-file end
+    memo_key = str(full)
+    if memo_key not in files:
+        files[memo_key] = _file_digest_of(full)
+    return files[memo_key]
+
+
+def _file_digest_of(full: Path) -> str | None:
     if not full.is_file():
         return None
     try:
@@ -86,6 +103,17 @@ def split_test_node(node: str) -> tuple[str, str]:
 
 
 def _parse(full: Path) -> tuple[list[str], ast.Module] | None:
+    cache = _STAT_CACHE
+    if cache is not None:  # one hook process: a file's symbol and test ends share one read
+        files = cache["parsed"]
+        memo_key = str(full)
+        if memo_key not in files:
+            files[memo_key] = _parse_bytes(full)
+        return files[memo_key]
+    return _parse_bytes(full)
+
+
+def _parse_bytes(full: Path) -> tuple[list[str], ast.Module] | None:
     try:
         raw = full.read_bytes()
     except OSError:
@@ -182,7 +210,7 @@ def _cache_file(root: Path) -> Path:
 def stat_cached(root: Path) -> Iterator[None]:
     """Reuse file-end hashes from ``.plumb/cache/hashes.json`` while the block runs, and save
     what it learned when it ends (the hooks' snapshot only; see ``_STAT_CACHE``)."""
-    global _STAT_CACHE
+    global _STAT_CACHE, _GENERATION
     if _STAT_CACHE is not None:  # nested: the outer block owns the cache
         yield
         return
@@ -192,12 +220,55 @@ def stat_cached(root: Path) -> Iterator[None]:
     except (OSError, ValueError):
         entries = None
     _STAT_CACHE = {"root": Path(root).resolve(), "same": {}, "dirty": False, "memo": {},
+                   "parsed": {}, "digests": {}, "stamps": {},
                    "entries": entries if isinstance(entries, dict) else {}}
+    _GENERATION += 1
     try:
         yield
     finally:
         flush_stat_cache()
         _STAT_CACHE = None
+        _GENERATION += 1
+
+
+def _open_for_hook() -> None:
+    """Open ``stat_cached`` for the hook running in this process, at the first hash (the hook
+    runner only names the root: this module is not imported before a hook needs it)."""
+    hookio = sys.modules.get("plumb.hosts.claude_code.hookio")
+    root = getattr(hookio, "STAT_CACHE_ROOT", None)
+    if root is None or getattr(hookio, "STAT_CACHE_STACK", None) is not None:
+        return
+    stack = contextlib.ExitStack()
+    try:
+        stack.enter_context(stat_cached(root))
+    except Exception:  # noqa: BLE001 - no cache never blocks the turn
+        return
+    hookio.STAT_CACHE_STACK = stack  # the hook runner closes it (saving what was learned)
+
+
+def ends_memo_active() -> bool:
+    """True inside ``stat_cached``: link-end hashes are then fixed for the process (until
+    ``forget_ends``), so the core may keep what it derived from them."""
+    if _STAT_CACHE is None:
+        _open_for_hook()
+    return _STAT_CACHE is not None
+
+
+def ends_generation() -> int:
+    """Changes whenever the remembered link-end hashes are dropped or a block opens/closes."""
+    return _GENERATION
+
+
+def forget_ends() -> None:
+    """Drop what the open block remembers of the files (a code file changed in this process)."""
+    global _GENERATION
+    cache = _STAT_CACHE
+    if cache is not None:
+        cache["memo"].clear()
+        cache["parsed"].clear()
+        cache["digests"].clear()
+        cache["stamps"].clear()
+    _GENERATION += 1
 
 
 def flush_stat_cache() -> None:
@@ -240,6 +311,20 @@ def _cached_file_end(root: Path, target: Target) -> str | None:
     return digest
 
 
+def _file_stamp(cache: dict[str, Any], full: Path) -> list[int] | None:
+    """A file's [size, mtime, ctime, inode], stat'ed once per process (symbol and test ends
+    of one file share it); None when it cannot be stat'ed."""
+    stamps = cache["stamps"]
+    key = str(full)
+    if key not in stamps:
+        try:
+            st = os.stat(full)
+            stamps[key] = [st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino]
+        except OSError:
+            stamps[key] = None
+    return stamps[key]
+
+
 def _stat_cached_end(cache: dict[str, Any], root: Path, target: Target) -> str | None:
     rel = clean_rel_path(target_path(target) or "")
     if rel is None:
@@ -249,17 +334,16 @@ def _stat_cached_end(cache: dict[str, Any], root: Path, target: Target) -> str |
         same = cache["same"][str(root)] = Path(root).resolve() == cache["root"]
     if not same:
         return _hash_file_end(root, target)
-    try:
-        st = os.stat(Path(root) / rel)
-    except OSError:
+    stamp = _file_stamp(cache, Path(root) / rel)
+    if stamp is None:
         return _hash_file_end(root, target)
-    stamp = [st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino]
+    mtime_ns = stamp[1]
     key = f"{target.test or ''}|{rel}|{target.symbol or ''}"
     hit = cache["entries"].get(key)
     if isinstance(hit, list) and len(hit) == 5 and hit[:4] == stamp:
         return hit[4]
     digest = _hash_file_end(root, target)
-    if time.time() - st.st_mtime_ns / 1e9 > _RACY_S:
+    if time.time() - mtime_ns / 1e9 > _RACY_S:
         cache["entries"][key] = [*stamp, digest]
         cache["dirty"] = True
     return digest
@@ -270,6 +354,8 @@ def hash_target(root: Path, index: Mapping[str, Record], target: Target) -> str 
     if target.record is not None:
         record = index.get(target.record)
         return record.hash if record is not None else None
+    if _STAT_CACHE is None:
+        _open_for_hook()
     if _STAT_CACHE is not None:
         return _cached_file_end(root, target)
     if target.test:

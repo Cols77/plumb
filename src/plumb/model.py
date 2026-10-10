@@ -122,6 +122,12 @@ def parse_record(text: str, path: str, data: Any = None) -> Record:
     yaml_text, body = split_frontmatter(text)
     if data is None:
         data = load_yaml(yaml_text)
+    return record_from_parts(data, body, path)
+
+
+def record_from_parts(data: Any, body: str, path: str, digest: str = "") -> Record:
+    """The record of already parsed frontmatter and body (``digest``: its known hash, which
+    the store's index cache keeps, else computed). Raises RecordError on any malformed part."""
     if not isinstance(data, dict):
         raise RecordError("frontmatter must be a mapping")
     record_id = data.get("id")
@@ -139,4 +145,4 @@ def parse_record(text: str, path: str, data: Any = None) -> Record:
     fields = {k: v for k, v in data.items() if k not in _ID_FIELDS}
     return Record(id=record_id, kind=kind, title=title, path=path,  # type: ignore[arg-type]
                   fields=fields, body=body, links=links, examples=examples,
-                  hash=record_hash(data, body))
+                  hash=digest or record_hash(data, body))

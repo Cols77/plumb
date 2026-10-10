@@ -47,9 +47,10 @@ def _scan(root: Path, dirs: Iterable[str]) -> dict[str, str]:
         base = root / d
         if not base.is_dir():
             continue
-        stack = [base]
+        top = Path(d).as_posix().strip("/")
+        stack = [(base, "" if top == "." else top)]
         while stack:
-            cur = stack.pop()
+            cur, prefix = stack.pop()
             try:
                 entries = list(os.scandir(cur))
             except OSError:
@@ -57,13 +58,14 @@ def _scan(root: Path, dirs: Iterable[str]) -> dict[str, str]:
             for entry in entries:
                 if entry.is_dir(follow_symlinks=False):
                     if entry.name not in _SKIP_DIRS and not entry.name.startswith("."):
-                        stack.append(Path(entry.path))
+                        sub = f"{prefix}/{entry.name}" if prefix else entry.name
+                        stack.append((Path(entry.path), sub))
                 elif entry.name.endswith(".py"):
                     try:
                         st = entry.stat()
                     except OSError:
                         continue
-                    rel = Path(entry.path).relative_to(root).as_posix()
+                    rel = f"{prefix}/{entry.name}" if prefix else entry.name
                     out[rel] = f"{st.st_size}:{st.st_mtime_ns}"
     return out
 
@@ -215,8 +217,9 @@ class TestMap:
         for path, info in sorted(self.files.items()):
             if info.get("test"):
                 continue
-            tests = self.verified_tests(path) + [t for t in self.covering(path)
-                                                 if t not in self.verified_tests(path)]
+            verified = self.verified_tests(path)
+            seen = set(verified)  # a list lookup per covering test made this quadratic
+            tests = verified + [t for t in self.covering(path) if t not in seen]
             if tests:
                 sources[path] = tests
         return {
@@ -228,9 +231,11 @@ class TestMap:
 
     def verified_tests(self, path: str) -> list[str]:
         out: list[str] = []
+        seen: set[str] = set()
         for rid in self.implemented.get(path, ()):
             for test in self.records.get(rid, ()):
-                if test not in out:
+                if test not in seen:
+                    seen.add(test)
                     out.append(test)
         return out
 

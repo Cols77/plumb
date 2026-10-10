@@ -226,15 +226,24 @@ def records_for_paths(core: Core, paths: Iterable[str]) -> dict[str, tuple[str, 
     """Each path mapped to the records it is a link end of, or whose record file it is."""
     from plumb.hashing import target_path
 
-    ends: dict[str, set[str]] = {}
-    for record in core.index().values():
-        ends.setdefault(record.path, set()).add(record.id)
-        for link in record.links:
-            path = target_path(link.target)
-            if path:
-                rel = clean_rel_path(path)
-                if rel:
-                    ends.setdefault(rel, set()).add(record.id)
+    index = core.index()
+    memo = getattr(core, "_ends_memo", None)  # kept while the record index is the same one
+    if memo is not None and memo[0] is index:
+        ends = memo[1]
+    else:
+        ends = {}
+        for record in index.values():
+            ends.setdefault(record.path, set()).add(record.id)
+            for link in record.links:
+                path = target_path(link.target)
+                if path:
+                    rel = clean_rel_path(path)
+                    if rel:
+                        ends.setdefault(rel, set()).add(record.id)
+        try:
+            core._ends_memo = (index, ends)
+        except AttributeError:
+            pass
     out: dict[str, tuple[str, ...]] = {}
     for raw in paths:
         rel = clean_rel_path(raw) or raw

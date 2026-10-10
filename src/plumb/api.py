@@ -6,6 +6,7 @@ from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from plumb import hashing as _hashing
 from plumb import log as _log
 from plumb.config import Config, load_config
 from plumb.contracts import (
@@ -33,6 +34,41 @@ class Core:
         self.store = Store(self.paths)
         self._config: Config | None = None
         self._events: list[LogEntry] | None = None
+        # inside one hook process (hashing.stat_cached) statuses and link states are computed
+        # once: kept while the record index, the events and the link-end hashes are the same
+        self._ends_memo: tuple[Any, dict[str, set[str]]] | None = None
+        self._link_basis: tuple[Any, int] | None = None
+        self._link_memo: dict[str, list[LinkState]] = {}
+        self._status_basis: tuple[Any, Any, int] | None = None
+        self._status_memo: dict[str, RecordStatus] | None = None
+
+    def _links_memo_valid(self) -> bool:
+        """True when link states may be kept (a hook process); drops them once the record
+        index or the link-end hashes moved."""
+        if not _hashing.ends_memo_active():
+            self._link_basis = None
+            self._link_memo = {}
+            return False
+        basis = (self.store.index(), _hashing.ends_generation())
+        old = self._link_basis
+        if old is None or old[0] is not basis[0] or old[1] != basis[1]:
+            self._link_basis = basis
+            self._link_memo = {}
+        return True
+
+    def _status_memo_valid(self) -> bool:
+        """The same for statuses, which also rest on the events."""
+        if not self._links_memo_valid():
+            self._status_basis = None
+            self._status_memo = None
+            return False
+        basis = (self.store.index(), self.events(), _hashing.ends_generation())
+        old = self._status_basis
+        if (old is None or old[0] is not basis[0] or old[1] is not basis[1]
+                or old[2] != basis[2]):
+            self._status_basis = basis
+            self._status_memo = None
+        return True
 
     # -- configuration and caches
     @property
@@ -54,12 +90,31 @@ class Core:
     def status(self, ids: Iterable[str] | None = None) -> Mapping[str, RecordStatus]:
         from plumb.confirm import statuses
 
-        return statuses(self, ids)
+        if not self._status_memo_valid():
+            return statuses(self, ids)
+        if self._status_memo is None:
+            if ids is not None:
+                return statuses(self, ids)
+            self._status_memo = statuses(self, None)
+        if ids is None:
+            return dict(self._status_memo)
+        return {i: self._status_memo[i] for i in ids if i in self._status_memo}
 
     def link_states(self, ids: Iterable[str] | None = None) -> Sequence[LinkState]:
         from plumb.links import link_states
 
-        return link_states(self, ids)
+        if not self._links_memo_valid():
+            return link_states(self, ids)
+        index = self.index()
+        selected = list(index) if ids is None else [i for i in ids if i in index]
+        missing = [i for i in selected if i not in self._link_memo]
+        if missing:
+            computed = link_states(self, missing)
+            for record_id in missing:
+                self._link_memo[record_id] = []
+            for state in computed:
+                self._link_memo[state.link.source].append(state)
+        return [state for i in selected for state in self._link_memo[i]]
 
     def records_for_paths(self, paths: Iterable[str]) -> Mapping[str, tuple[str, ...]]:
         from plumb.links import records_for_paths

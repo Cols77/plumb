@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -204,6 +202,9 @@ class JevClient:
         self.last_error: str | None = None
 
     def judge(self, request: JudgmentRequest) -> JudgmentRecord:
+        import urllib.error  # imported here: the hooks only look for the credential, and
+        import urllib.request  # the network modules cost import time
+
         from plumb.normalize import utc_now
 
         body = json.dumps({"state": request.state, "model": request.model,

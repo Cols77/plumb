@@ -30,6 +30,7 @@
 verify:
   infra_globs: ["**/conftest.py", pyproject.toml, uv.lock, pytest.ini, tox.ini, setup.cfg,
                 src/plumb/verify/pytest_plugin.py]
+  workers: 2  # pytest-xdist (a dev dependency): the cap plumb's rules allow
 judgment:
   backend: jev
   jev:

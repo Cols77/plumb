@@ -89,6 +89,13 @@ def brief(core: Any, tests_line: str) -> list[str]:
     return lines[:HARD_CAP]
 
 
+def _judgment_timeout_s(core: Any) -> float:
+    try:
+        return max(float(core.config.judgment.hook_timeout_ms), 0.0) / 1000.0
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
+
+
 def triage_offer_line(core: Any) -> str | None:
     """The brief's one triage line (R8 A, sp5 3): the records rated faithful to the owner's
     words, from CAPTURE's triage; None without CAPTURE or without a low-risk group."""
@@ -170,7 +177,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
 
         lines += emitter.add(at_session_start(core, ctx.deadline))
         ctx.keep(lines)
-    if not ctx.deadline.expired():  # R8 A: at most one line, the triage offer
+    # R8 A: at most one line, the triage offer. Its judgment may call the network for up to
+    # the hook timeout, so it runs only when that much of the budget is left (the cached
+    # judgments of an earlier session make it free; a cold one waits for a roomier hook)
+    if ctx.deadline.remaining_s() > _judgment_timeout_s(core):
         offer = triage_offer_line(core)
         if offer:
             lines += emitter.add([Line(offer)])

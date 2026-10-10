@@ -14,15 +14,14 @@ Standard library only, so the post-edit fast path stays cheap.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import sys
 import threading
 import time
-import traceback
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -57,13 +56,26 @@ class Deadline:
             raise BudgetExceeded(step)
 
 
-@dataclass
 class HookOutput:
-    """What a hook answers: context text, a system message, or a block."""
+    """What a hook answers: context text, a system message, or a block. (Plain classes, not
+    dataclasses: the module costs import time on every hook.)"""
 
-    text: str = ""
-    system_message: str = ""
-    block_reason: str = ""
+    __slots__ = ("text", "system_message", "block_reason")
+
+    def __init__(self, text: str = "", system_message: str = "", block_reason: str = "") -> None:
+        self.text = text
+        self.system_message = system_message
+        self.block_reason = block_reason
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, HookOutput):
+            return NotImplemented
+        return (self.text, self.system_message, self.block_reason) == (
+            other.text, other.system_message, other.block_reason)
+
+    def __repr__(self) -> str:
+        return (f"HookOutput(text={self.text!r}, system_message={self.system_message!r}, "
+                f"block_reason={self.block_reason!r})")
 
     def render(self) -> str:
         if self.block_reason:
@@ -84,15 +96,20 @@ class Kept:
         return list(self.lines)
 
 
-@dataclass
 class HookContext:
-    name: str
-    data: Mapping[str, Any]
-    root: Path
-    session_id: str
-    deadline: Deadline
-    extra: dict[str, Any] = field(default_factory=dict)
-    kept: Kept = field(default_factory=Kept)
+    """One hook run: its name, the host's JSON, the repository root, the session, the
+    deadline and the kept lines."""
+
+    def __init__(self, name: str, data: Mapping[str, Any], root: Path, session_id: str,
+                 deadline: Deadline, extra: dict[str, Any] | None = None,
+                 kept: Kept | None = None) -> None:
+        self.name = name
+        self.data = data
+        self.root = root
+        self.session_id = session_id
+        self.deadline = deadline
+        self.extra = {} if extra is None else extra
+        self.kept = Kept() if kept is None else kept
 
     def keep(self, lines: list[str]) -> None:
         """Replace the output printed if a later step is cut (budget, error, watchdog)."""
@@ -195,6 +212,32 @@ def skip_line(step: str = "") -> str:
     return f"{SKIP_BUDGET}: {step}" if step else SKIP_BUDGET
 
 
+def _format_exc() -> str:
+    import traceback  # only on a failure: the module costs import time on every hook
+
+    return traceback.format_exc()
+
+
+# hooks that never hash link ends (the post-edit fast path stays standard library only)
+NO_HASHING = frozenset({"post-edit"})
+# The hook running in this process: ``plumb.hashing`` opens its ``stat_cached`` block for
+# ``STAT_CACHE_ROOT`` at the first link-end hash (file-end hashes reused across processes,
+# each end hashed once per process, statuses kept by the core) and parks the block in
+# ``STAT_CACHE_STACK``, which ``run_hook`` closes. Nothing imports hashing before it is needed.
+STAT_CACHE_ROOT: Path | None = None
+STAT_CACHE_STACK: contextlib.ExitStack | None = None
+
+
+def _close_hash_cache() -> None:
+    global STAT_CACHE_ROOT, STAT_CACHE_STACK
+    stack, STAT_CACHE_STACK, STAT_CACHE_ROOT = STAT_CACHE_STACK, None, None
+    if stack is not None:
+        try:
+            stack.close()
+        except Exception:  # noqa: BLE001 - a cache that cannot be saved never fails the hook
+            pass
+
+
 def _cut_output(kept: Kept, notice: str, json_output: bool) -> str:
     """The kept lines plus the notice; the bare notice when nothing was kept."""
     lines = kept.snapshot()
@@ -234,6 +277,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
 
     ``grace_s``: a hook whose whole answer is lines it keeps (R1) waits this much longer when
     the hard limit finds nothing kept yet, since the bare notice would say nothing."""
+    global STAT_CACHE_ROOT
     if stdin is None or stdout is None:
         use_utf8_stdio()
     stdin = sys.stdin if stdin is None else stdin
@@ -273,6 +317,8 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
             timer = threading.Timer(max(HARD_LIMIT_S - elapsed, 0.05), fire)
             timer.daemon = True
             timer.start()
+        if name not in NO_HASHING:
+            STAT_CACHE_ROOT = found
         ctx = HookContext(name=name, data=data, root=found,
                           session_id=safe_session_id(data.get("session_id")),
                           deadline=Deadline(budget, start), kept=kept)
@@ -284,7 +330,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
         writer.write(_cut_output(kept, skip_line(step) if kept.lines else SKIP_BUDGET,
                                  json_output))
     except Exception:  # noqa: BLE001 - plumb never blocks work on its own failure
-        log_error(found, name, traceback.format_exc())
+        log_error(found, name, _format_exc())
         try:
             writer.write(_cut_output(kept, SKIP_ERROR, json_output))
         except Exception:  # noqa: BLE001 - nothing more can be said on a broken stdout
@@ -292,6 +338,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     finally:
         if timer is not None:
             timer.cancel()
+        _close_hash_cache()
         if lane is not None:
             lane.HOOK_PROCESS = was_hook
     return 0

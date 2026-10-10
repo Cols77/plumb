@@ -34,5 +34,6 @@ select = ["E", "F", "W", "I", "B", "UP"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.16.10",
 ]

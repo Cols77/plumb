@@ -108,3 +108,39 @@ def test_index_cache_never_stores_values_json_cannot_keep(repo: Path, write_reco
     cold = Store(PlumbPaths(repo)).index()["INT-001"]
     warm = Store(PlumbPaths(repo)).index()["INT-001"]
     assert warm == cold and warm.hash == cold.hash
+
+
+def test_index_cache_keys_on_size_and_mtime_before_the_digest(
+        repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-014: a warm index trusts a file whose (size, mtime) matches the cache: it reads no
+    record file, hashes no text and does not revalidate the cached JSON."""
+    import os
+    import time
+
+    import plumb.store
+
+    for i in range(1, 4):
+        path = write_record(repo, SR_TEXT.replace("SR-001", f"SR-00{i}"))
+        old = time.time() - 60  # outside the racy window
+        os.utime(path, (old, old))
+    cold = Store(PlumbPaths(repo)).index()
+    Store(PlumbPaths(repo)).index()  # the first warm load stamps what it re-read
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("record file or JSON revalidated on a stamp match")
+
+    monkeypatch.setattr(Path, "read_text", forbidden)
+    monkeypatch.setattr(Path, "read_bytes", forbidden)
+    monkeypatch.setattr(plumb.store, "_json_safe", forbidden)
+    monkeypatch.setattr(plumb.store.hashlib, "sha256", forbidden)
+    warm = Store(PlumbPaths(repo)).index()
+    assert warm == cold
+
+
+def test_index_cache_rereads_a_file_modified_just_now(repo: Path, write_record) -> None:
+    """A rewrite of the same size within the clock's resolution is still seen."""
+    write_record(repo, SR_TEXT)
+    Store(PlumbPaths(repo)).index()
+    Store(PlumbPaths(repo)).index()
+    write_record(repo, SR_TEXT.replace("statement: s", "statement: y"))
+    assert Store(PlumbPaths(repo)).index()["SR-001"].fields["statement"] == "y"
