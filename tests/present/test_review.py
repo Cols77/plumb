@@ -44,8 +44,8 @@ def test_review_has_the_five_sections(records: Path, capsys) -> None:
     for heading in ("1. awaits you:", "2. approvals you did not type", "3. drift:",
                     "4. alignment:", "5. merge state"):
         assert heading in out
-    # CAPTURE's triage rates each awaiting record (heuristic backend once merged)
-    assert 'INT-001 "add multiply next to add" (riskier' in out
+    # with no judge configured, CAPTURE's triage rates nothing and says why (INT-029)
+    assert "judging unavailable: no judge: judgment.backend is not set" in out
     assert 'question DEC-001 "Rounding mode": assumed half-up' in out
     assert "gap: SR-002 has no code" in out
     assert "it approves nothing" in out

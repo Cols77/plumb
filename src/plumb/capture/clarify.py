@@ -138,11 +138,15 @@ def clarify(core: Core, request: str, questions: Sequence[Mapping[str, Any]] = (
     index = core.index()
     statuses = core.status()
     matched = matched_ids(core, request, ())
+    unavailable: str | None = None
     if backend is None:
-        from plumb.judgment import get_backend
+        from plumb.judgment import JudgmentUnavailable, get_backend
 
-        backend = get_backend(core, hook=False)
-    name = str(getattr(backend, "name", "none"))
+        try:
+            backend = get_backend(core, hook=False)
+        except JudgmentUnavailable as exc:  # INT-029: said, never answered by rules
+            unavailable = str(exc)
+    name = str(getattr(backend, "name", "none")) if backend is not None else "none"
     confirmed_ids = [i for i in matched if statuses[i].confirmation == "confirmed"]
     relevant_confirmed = [index[i] for i, _ in core.relevant(request, 8)
                           if statuses[i].confirmation == "confirmed"]
@@ -151,20 +155,23 @@ def clarify(core: Core, request: str, questions: Sequence[Mapping[str, Any]] = (
                                + relevant_confirmed}.values())
     suggestions = tuple(s for s in escalation(core, prompt=request, matched=matched,
                                               backend=backend) if s.trigger != "diff")
-    flags = intent_flags(core, request, matched, backend) if confirmed_ids else []
+    flags = intent_flags(core, request, matched, backend) \
+        if confirmed_ids and backend is not None else []
     covered = set().union(*(stems(_record_text(index[i])) for i in matched)) if matched \
         else set()
     unmatched = sorted(stems(request) - covered)
     ambiguous = len(unmatched) > AMBIGUITY_TERMS
-    judged = backend.ask("Is this request ambiguous given these records: could two "
-                         "reasonable readings build different things?",
-                         request + "\n" + "\n".join(answered), subject="request",
-                         action="ambiguity")
-    if judged.verdict in ("yes", "no") and judged.confidence >= 0.7:
-        ambiguous = judged.verdict == "yes"
+    if backend is not None:
+        judged = backend.ask("Is this request ambiguous given these records: could two "
+                             "reasonable readings build different things?",
+                             request + "\n" + "\n".join(answered), subject="request",
+                             action="ambiguity")
+        if judged.verdict in ("yes", "no") and judged.confidence >= 0.7:
+            ambiguous = judged.verdict == "yes"
     if suggestions:
         depth, reason = "escalated", "; ".join(s.reason for s in suggestions)
-    elif matched and len(confirmed_ids) == len(matched) and not flags and not ambiguous:
+    elif (matched and len(confirmed_ids) == len(matched) and not flags and not ambiguous
+          and unavailable is None):
         depth, reason = "trivial", "maps to confirmed " + ", ".join(confirmed_ids)
     else:
         why = []
@@ -177,6 +184,8 @@ def clarify(core: Core, request: str, questions: Sequence[Mapping[str, Any]] = (
         if ambiguous:
             why.append("terms no record covers: " + ", ".join(unmatched[:5]))
         depth, reason = "incremental", "; ".join(why) or "new or partly specified intent"
+    if unavailable is not None:
+        reason += f"; judging unavailable: {unavailable}"
 
     kept: list[dict[str, Any]] = []
     dropped: list[dict[str, Any]] = []
@@ -194,14 +203,15 @@ def clarify(core: Core, request: str, questions: Sequence[Mapping[str, Any]] = (
             question["dropped_because"] = "every option builds the same thing"
             dropped.append(question)
             continue
-        judgment = backend.ask("Does the answer to this question change what gets built?",
-                               json.dumps(question, ensure_ascii=False), subject="question",
-                               action="ambiguity")
-        if judgment.verdict == "no" and judgment.confidence >= 0.7:
+        judgment = None if backend is None else backend.ask(
+            "Does the answer to this question change what gets built?",
+            json.dumps(question, ensure_ascii=False), subject="question", action="ambiguity")
+        if judgment is not None and judgment.verdict == "no" and judgment.confidence >= 0.7:
             question["dropped_because"] = "the backend judges every answer builds the same"
             dropped.append(question)
             continue
-        score = (judgment.confidence if judgment.verdict == "yes" else 0.0,
+        score = (judgment.confidence if judgment is not None and judgment.verdict == "yes"
+                 else 0.0,
                  _distinct_builds(question), 1 if question.get("recommended") else 0)
         question["rank_score"] = list(score)
         kept.append(question)

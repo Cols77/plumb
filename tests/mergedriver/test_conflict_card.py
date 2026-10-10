@@ -50,11 +50,13 @@ def test_card_in_owner_terms_example_as_given_when_then(repo: Path) -> None:
 
 
 def test_no_backend_says_no_judgment_available(repo: Path) -> None:
-    """SR-076 EX-5: no JEV: "no judgment available", and choosing works the same."""
+    """SR-076 EX-5, SR-021 EX-1: no judge: the card says judging is unavailable and why, and
+    choosing works the same."""
     conflicted(repo)
     core = open_core(repo)
     card = conflict_card(core, open_conflicts(core)[0])
-    assert "  Compatible? no judgment available" in card
+    assert ("  Compatible? judging unavailable: no judge: judgment.backend is not set in "
+            ".plumb/config.yaml; set it to jev") in card
     assert cli.main(["conflict", "choose", "IC-001", "--take", "theirs",
                      "--root", str(repo)]) == 0
     assert open_conflicts(open_core(repo)) == ()

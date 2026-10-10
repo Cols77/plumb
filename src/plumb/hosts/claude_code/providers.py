@@ -31,15 +31,19 @@ def verify_api(core: Any, given: Any = LAZY) -> Any:
 
 
 def judgment_backend(core: Any, given: Any = LAZY) -> Any:
-    """``plumb.judgment.get_backend(core, hook=True)``, or None when unavailable."""
+    """``plumb.judgment.get_backend(core, hook=True)``, or None when the judgment modules are
+    missing. A judge that is not configured or has no key raises ``JudgmentUnavailable``
+    (INT-029): the caller reports it; no rule-based judge stands in."""
     if given is not LAZY:
         return given
     try:
-        from plumb.judgment import get_backend
+        from plumb.judgment import JudgmentUnavailable, get_backend
     except ImportError:
         return None
     try:
         return get_backend(core, hook=True)
+    except JudgmentUnavailable:
+        raise
     except Exception:  # noqa: BLE001
         return None
 

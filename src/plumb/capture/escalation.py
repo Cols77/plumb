@@ -113,9 +113,13 @@ def escalation(core: Core, *, prompt: str | None = None, matched: Sequence[str] 
 
     if prompt:
         from plumb.capture.flags import intent_flags
+        from plumb.judgment import JudgmentUnavailable
 
-        contradicted = [f.record for f in intent_flags(core, prompt, ids, backend)
-                        if f.kind == "contradicts"]
+        try:
+            contradicted = [f.record for f in intent_flags(core, prompt, ids, backend)
+                            if f.kind == "contradicts"]
+        except JudgmentUnavailable:  # no judge: no contradiction is claimed (INT-029)
+            contradicted = []
         if contradicted:
             found.append(("contradiction", "contradicts confirmed "
                                            + ", ".join(sorted(set(contradicted)))))

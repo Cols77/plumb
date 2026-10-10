@@ -147,9 +147,9 @@ def _hook_backend(core: Any) -> Any:
     """The judgment backend in its hook mode (a new record in a feature another branch
     claims is judged; the same record changed elsewhere never needs it)."""
     try:
-        from plumb.judgment import get_backend
+        from plumb.judgment import optional_backend
 
-        return get_backend(core, hook=True)
+        return optional_backend(core, hook=True)
     except Exception:  # noqa: BLE001 - no backend: overlaps stay warnings
         return None
 

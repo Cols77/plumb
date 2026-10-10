@@ -247,11 +247,27 @@ def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
     flagged: dict[str, dict[str, Any]] = {}
     if not confirmed:
         return out, flagged
-    backend = judgment_backend(core, backend)
-    if backend is None:
-        out.append(Line("plumb: intent check unavailable"))
+    judgments: list[Any] | None = None
+    try:
+        backend = judgment_backend(core, backend)
+        if backend is not None:
+            judgments = list(backend.intent_change(text, confirmed))
+    except Exception as exc:  # noqa: BLE001 - a hook never crashes on its judge
+        from plumb.judgment import JudgmentUnavailable
+
+        judgments = None
+        if isinstance(exc, JudgmentUnavailable):
+            # INT-029: the cause in one line, once per session (the Line is deduplicated by
+            # its subject and state); no rule-based judge answers in its place
+            out.append(Line(f"plumb: judging unavailable: {exc}", subject="judging-unavailable",
+                            state=str(exc)))
+        else:
+            out.append(Line("plumb: intent check unavailable"))
+    if judgments is None:
+        if backend is None and not out:
+            out.append(Line("plumb: intent check unavailable"))
     else:
-        for judgment in backend.intent_change(text, confirmed):
+        for judgment in judgments:
             if judgment.verdict != "change":
                 continue
             flagged[judgment.subject] = {"backend": judgment.backend, "tier": judgment.tier,

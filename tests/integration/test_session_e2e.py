@@ -138,12 +138,13 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
     assert "tests:" in brief and "plumb show <ID>" in brief
     assert len(brief.splitlines()) <= 6
 
-    # the contradicting prompt is flagged on the confirmed requirement
+    # no judge is configured here (INT-029): the hook says so in one line, flags nothing by
+    # rules, and still gives the prompt its record
     change = by_name["UserPromptSubmit (contradicts)"].stdout
     assert "SR-001 [confirmed]" in change
-    assert "plumb: this may change SR-001 (confirmed)" in change
-    flags = (adopted / ".plumb" / "session" / "intent_flags.jsonl").read_text("utf-8")
-    assert '"subject": "SR-001"' in flags
+    assert change.count("plumb: judging unavailable:") == 1 and "judgment.backend" in change
+    assert "this may change" not in change
+    assert not (adopted / ".plumb" / "session" / "intent_flags.jsonl").exists()
 
     # a turn that changed nothing prints nothing
     assert by_name["Stop (no change)"].stdout.strip() == ""

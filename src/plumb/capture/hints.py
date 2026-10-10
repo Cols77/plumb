@@ -5,7 +5,8 @@ When a confirmed record (or one the owner confirmed before and that is now edite
 authoritative document (``hints.authoritative_docs``), changes, a bounded scan (at most
 ``hints.hidden_deps_max`` candidates, at most ``hints.hidden_deps_s`` seconds) proposes the
 records with no link to it whose text overlaps its changed terms; the backend confirms each
-with one ``ask``. With the heuristic, the overlap alone proposes them (degraded). Hints are
+with one ``ask``. With no judge the hints are not made: the line says
+"judging unavailable: <cause>" (INT-029). Hints are
 never staleness marks, never edges, and never interrupt.
 """
 
@@ -150,7 +151,12 @@ def drift_hints(core: Core, changed: Sequence[str], *, backend: Any = None,
     ids = [i for i in dict.fromkeys(touched) if i]
     if all_nodes:
         ids = sorted(index)
-    lines = hidden_dependency_hints(core, changed, backend=backend)
+    from plumb.judgment import JudgmentUnavailable
+
+    try:
+        lines = hidden_dependency_hints(core, changed, backend=backend)
+    except JudgmentUnavailable as exc:
+        lines = [f"plumb: hint: judging unavailable: {exc} (hidden dependencies not checked)"]
     nodes = [p.line for p in node_proposals(core, ids)]
     if len(nodes) > NODE_LINES:
         nodes = nodes[:NODE_LINES] + [f"plumb: hint: +{len(nodes) - NODE_LINES} more proposed "

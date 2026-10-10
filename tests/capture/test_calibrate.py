@@ -103,10 +103,12 @@ def test_a_generated_no_accepted_fails(repo: Path, write_record, monkeypatch) ->
     assert not results["intent-readback"].passing  # no positive clears the threshold
 
 
-def test_heuristic_reports_not_applicable(repo: Path, write_record, capsys) -> None:
+def test_no_judge_reports_judging_unavailable(repo: Path, write_record, capsys) -> None:
+    """INT-029: with no judge configured, calibration says so; nothing stands in."""
     owner_decisions(repo, write_record, intents=2, revoked=0)
     assert run(repo, "jev", "calibrate") == 1
-    assert "heuristic: no auto-approval, calibration not applicable" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "judging unavailable" in out and "judgment.backend" in out
     assert "calibration" not in event_kinds(repo)
 
 

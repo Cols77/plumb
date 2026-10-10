@@ -10,6 +10,7 @@ from capture_helpers import agent_shell_setup, event_kinds, log_prompt, record_t
 from plumb.api import open_core
 from plumb.capture.escalation import escalation
 from plumb.contracts import DiffStats
+from plumb.judgment import FakeBackend
 
 pytestmark = pytest.mark.sr("SR-036")
 
@@ -51,7 +52,10 @@ def test_contradiction_of_confirmed_triggers(project: Path) -> None:
     from plumb.approvals import approve
 
     approve(open_core(project), ["SR-001"])
-    found = escalation(open_core(project), prompt="make add subtract", matched=["SR-001"])
+    backend = FakeBackend({("intent-change", "SR-001"): ("change", 0.95),
+                           ("contradiction", "SR-001"): ("contradicts", 0.95)})
+    found = escalation(open_core(project), prompt="make add subtract", matched=["SR-001"],
+                       backend=backend)
     assert "contradiction" in triggers(found)
     assert "contradicts confirmed SR-001" in [f.reason for f in found]
 

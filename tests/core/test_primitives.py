@@ -74,7 +74,7 @@ def test_config_defaults_without_file(tmp_path: Path) -> None:
     assert config.verify.hard_limit_factor == 1.5
     assert config.hooks.brief_lines == 30
     assert "ok" in config.approve.affirmations
-    assert config.judgment.backend == "heuristic"
+    assert config.judgment.backend == ""  # no judge configured: judging raises (INT-029)
     assert config.source_dirs == ("src", "tests")
 
 

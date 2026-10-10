@@ -177,6 +177,33 @@ def test_backend_unavailable_degrades(records: Path, hook_input) -> None:
     assert "plumb: compare this request" in out
 
 
+@pytest.mark.sr("SR-021")
+def test_unreachable_judge_is_one_line_once_per_session_and_never_blocks(
+        records: Path, hook_input) -> None:
+    """SR-021 EX-1: a jev judge with no key. The hook says so in one line, once per session,
+    judges nothing by rules, and still lets the prompt through (exit 0)."""
+    _confirm(records, "SR-004")
+    (records / ".plumb" / "config.yaml").write_text("judgment:\n  backend: jev\n",
+                                                   encoding="utf-8")
+    text = "approvals should now stay after an edit, SR-004"
+    first = _run(records, hook_input, text, backend=prompt.LAZY)
+    unavailable = [ln for ln in first.splitlines() if "judging unavailable" in ln]
+    assert len(unavailable) == 1
+    assert "JEV" in unavailable[0] and "TYPESAFE_API_KEY" in unavailable[0]
+    assert "this may change" not in first  # no rule-based flag in its place
+    assert "plumb: compare this request" in first  # the prompt still gets its records
+    second = _run(records, hook_input, text, backend=prompt.LAZY)
+    assert "judging unavailable" not in second  # once per session
+
+
+@pytest.mark.sr("SR-021")
+def test_no_judge_configured_names_the_setting(records: Path, hook_input) -> None:
+    _confirm(records, "SR-004")
+    out = _run(records, hook_input, "SR-004 should now change", backend=prompt.LAZY)
+    [line] = [ln for ln in out.splitlines() if "judging unavailable" in ln]
+    assert "judgment.backend" in line
+
+
 def test_needs_no_verification(records: Path, hook_input) -> None:
     """Covering tests are pulled on demand (plumb show), so the hook never asks VERIFY."""
     out = _run(records, hook_input, "SR-003 stale links", verify=None)

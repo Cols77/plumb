@@ -41,7 +41,14 @@ def calc(repo: Path, write_record) -> Path:
     return repo
 
 
-def test_untraced_change_names_a_proposed_owner_and_writes_no_link(calc: Path) -> None:
+OWNER = FakeBackend({("ownership", "src/app/mul.py"): ("SR-001: add returns the sum", 0.9)})
+
+
+def test_untraced_change_names_a_proposed_owner_and_writes_no_link(
+        calc: Path, monkeypatch) -> None:
+    import plumb.judgment
+
+    monkeypatch.setattr(plumb.judgment, "get_backend", lambda core, hook: OWNER)
     before = tree_bytes(calc)
     proposals = ownership_proposals(open_core(calc), ["src/app/mul.py", "src/app/calc.py"])
     assert list(proposals) == ["src/app/mul.py"]  # calc.py is owned already
@@ -54,11 +61,19 @@ def test_untraced_change_names_a_proposed_owner_and_writes_no_link(calc: Path) -
         .proposed == "SR-001"
 
 
+def test_no_judge_names_the_candidates_and_the_cause(calc: Path) -> None:
+    """INT-029: no rule-based owner is proposed when no judge can choose."""
+    proposal = ownership_proposals(open_core(calc), ["src/app/mul.py"])["src/app/mul.py"]
+    assert proposal.proposed is None and proposal.candidates == ("SR-001",)
+    assert "judging unavailable" in proposal.line and "judgment.backend" in proposal.line
+
+
 def test_no_clear_lead_reports_no_judgments(calc: Path, write_record) -> None:
     write_record(calc, record_text("SR-002", "sub returns the difference",
                                    statement="sub(a, b) returns the difference"))
     open_core(calc).add_link("SR-002", "implemented_by", Target(path="src/app/calc.py"))
-    proposal = ownership_proposals(open_core(calc), ["src/app/mul.py"])["src/app/mul.py"]
+    proposal = ownership_proposals(open_core(calc), ["src/app/mul.py"],
+                                   backend=FakeBackend())["src/app/mul.py"]
     assert proposal.proposed is None and set(proposal.candidates) == {"SR-001", "SR-002"}
     assert "no judgments available" in proposal.line
 
@@ -67,7 +82,8 @@ def test_diff_not_serving_a_claimed_sr_warns(calc: Path) -> None:
     backend = FakeBackend({("ownership", "SR-004"): ("no", 0.95)})
     lines = diff_serves(open_core(calc), ["SR-004"], ["src/app/report.py"], backend=backend)
     assert lines == ["plumb: warning: SR-004 may not be served by src/app/report.py"]
-    assert diff_serves(open_core(calc), ["SR-004"], ["src/app/report.py"]) == []  # heuristic
+    [unavailable] = diff_serves(open_core(calc), ["SR-004"], ["src/app/report.py"])
+    assert unavailable.startswith("plumb: judging unavailable:")  # no judge, no rule
     sure = FakeBackend({("ownership", "SR-004"): ("yes", 0.95)})
     assert diff_serves(open_core(calc), ["SR-004"], ["src/app/report.py"], backend=sure) == []
 

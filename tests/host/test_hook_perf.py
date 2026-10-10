@@ -118,6 +118,8 @@ def test_the_triage_offer_is_skipped_when_its_judgment_could_outlast_the_hook(
     from plumb.capture import api as capture_api
     from plumb.hosts.claude_code import session_start
 
+    (repo / ".plumb" / "config.yaml").write_text("judgment:\n  backend: fake\n",
+                                                encoding="utf-8")
     asked: list[int] = []
 
     def triage(core, ids):

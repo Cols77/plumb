@@ -140,3 +140,48 @@ def use_jev(repo: Path, stub: JevStub, monkeypatch, *, extra: str = "") -> None:
         f"  jev: {{base_url: '{stub.url}'}}\n" + extra, encoding="utf-8")
     monkeypatch.setenv("TYPESAFE_API_KEY", KEY)
     monkeypatch.setattr(jev_mod, "user_store_path", lambda: repo.parent / "home" / "jev")
+
+
+class CoverageJudge:
+    """A test double for the configured judge: it rates how much of a restatement the owner's
+    words cover, by term overlap. It stands in for JEV in tests that need a judgment; plumb
+    itself has no rule-based judge (INT-029)."""
+
+    name = "double"
+    version = "double-1"
+
+    def entailment(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str):
+        from plumb.contracts import Judgment
+        from plumb.judgment.textjudge import _LABEL, stems
+
+        supported = stems(premise)
+        wanted: set[str] = set()
+        penalty = 0.0
+        for line in hypothesis.splitlines():
+            label = _LABEL.match(line)
+            terms = stems(line[label.end():] if label else line)
+            wanted |= terms
+            if label and label.group(1).lower() != "will" and terms and not terms & supported:
+                penalty += 0.15
+        score = 0.0 if not supported or not wanted else max(
+            0.0, round(len(wanted & supported) / len(wanted) - penalty, 4))
+        verdict = "entailed" if score >= 0.8 else ("not-entailed" if score < 0.5 else "unsure")
+        probability = score if verdict == "entailed" else 1.0 - score
+        return Judgment(action="faithfulness", subject=subject, verdict=verdict,
+                        confidence=0.5, tier="escalate-llm", backend=self.name,
+                        fingerprint="sha256:" + "0" * 64, probability=probability,
+                        confidence_label="low")
+
+
+def use_coverage_judge(monkeypatch) -> CoverageJudge:
+    """``get_backend`` answers with the double unless the repository configures a judge."""
+    import plumb.judgment as judgment
+
+    real = judgment.get_backend
+    double = CoverageJudge()
+
+    def pick(core, hook):
+        return real(core, hook=hook) if core.config.judgment.backend else double
+
+    monkeypatch.setattr(judgment, "get_backend", pick)
+    return double

@@ -135,6 +135,8 @@ def test_brief_and_session_start_offer_the_triage_group(repo: Path, write_record
     from plumb.hosts.claude_code import session_start
 
     write_all(repo, write_record, SR1, SR2)
+    (repo / ".plumb" / "config.yaml").write_text("judgment:\n  backend: fake\n",
+                                                 encoding="utf-8")
     view = SimpleNamespace(low_risk=(SimpleNamespace(id="SR-001"), SimpleNamespace(
         id="SR-002")), individual=(), available=True, offer="x")
     fake_capture(monkeypatch, triage=lambda core, ids: view)

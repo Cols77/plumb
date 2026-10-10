@@ -75,6 +75,21 @@ def project(repo: Path, write_record, monkeypatch) -> Path:
     git(repo, "commit", "-q", "-m", "setup")
     monkeypatch.chdir(repo)
     monkeypatch.setenv("PLUMB_NO_BACKGROUND_MAP", "1")
+    import plumb.judgment as judgment
+    from plumb.contracts import Judgment
+
+    class Flagging(judgment.FakeBackend):
+        """The configured judge, scripted (INT-029): a low-confidence flag on a prompt that
+        asks for a float."""
+
+        def intent_change(self, prompt, records):
+            verdict = "change" if "float" in prompt else "no-change"
+            return [Judgment(action="intent-change", subject=r.id, verdict=verdict,
+                             confidence=0.6, tier="escalate-llm", backend="scripted",
+                             fingerprint="sha256:" + "0" * 64) for r in records]
+
+    judge = Flagging()
+    monkeypatch.setattr(judgment, "get_backend", lambda core, hook: judge)
     return repo
 
 

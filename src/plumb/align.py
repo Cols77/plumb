@@ -6,8 +6,8 @@
    evidence. The collection has a fingerprint (sorted node hashes and edges). Empty families
    are named gaps ("SR-034/EX-2 has no test").
 2. **Judge each edge once**, with one question phrased for its edge class (Noul, the
-   backend's ``ask``). With the heuristic backend each edge gets a term-overlap score labelled
-   ``heuristic``; with no backend, "no judgments available" and only the gaps.
+   backend's ``ask``). With no judge (none configured, no key, unreachable) the edges are
+   listed unjudged under "judging unavailable: <cause>" (INT-029: no rule-based score).
 3. **Edges stay deterministic.** Whether an edge exists comes from the links only: a judgment
    never creates or removes an edge, never marks staleness and never confirms.
 
@@ -58,11 +58,13 @@ class AlignResult:
     gaps: list[str] = field(default_factory=list)
     backend: str = "none"
     available: bool = False
+    unavailable: str = ""                       # why no judge answered, when none did
 
     def as_dict(self) -> dict[str, Any]:
         return {"scope": self.scope, "fingerprint": self.fingerprint, "nodes": self.nodes,
                 "edges": [asdict(e) for e in self.edges], "gaps": self.gaps,
-                "backend": self.backend, "available": self.available}
+                "backend": self.backend, "available": self.available,
+                "unavailable": self.unavailable}
 
 
 # --------------------------------------------------------------------------- collection
@@ -218,40 +220,35 @@ def node_text(core: Any, node: str, kind: str) -> str:
     return node.replace("/", " ").replace("_", " ") + " " + text
 
 
-def _overlap(source: str, target: str) -> float:
-    from plumb.present.resolve import stems
-
-    a, b = stems(source), stems(target)
-    if not a or not b:
-        return 0.0
-    return round(len(a & b) / len(a), 4)
-
-
-def _backend(core: Any, given: Any) -> Any:
+def _backend(core: Any, given: Any) -> tuple[Any, str]:
+    """``(the judge or None, why there is none)``: no rule-based judge stands in (INT-029)."""
     if given is not None:
-        return given
-    if str(getattr(core.config.judgment, "backend", "heuristic")) == "disabled":
-        return None
+        return given, ""
+    if str(getattr(core.config.judgment, "backend", "")).strip().lower() == "disabled":
+        return None, "judgment.backend is disabled"
     try:
-        from plumb.judgment import get_backend
+        from plumb.judgment import JudgmentUnavailable, get_backend
 
         chosen = get_backend(core, hook=False)
-    except Exception:  # noqa: BLE001 - "no judgments available"
-        return None
-    return None if str(getattr(chosen, "name", "")) == "disabled" else chosen
+    except JudgmentUnavailable as exc:
+        return None, str(exc)
+    except Exception as exc:  # noqa: BLE001 - "judging unavailable"
+        return None, type(exc).__name__
+    if str(getattr(chosen, "name", "")) == "disabled":
+        return None, "judgment.backend is disabled"
+    return chosen, ""
 
 
 def judge(core: Any, nodes: Mapping[str, str], edges: Sequence[tuple[str, str]],
           backend: Any) -> tuple[list[Edge], str]:
     """One judgment per edge; the edges themselves are never changed."""
     name = str(getattr(backend, "name", "none")) if backend is not None else "none"
-    heuristic = backend is not None and (name == "heuristic" or not hasattr(backend, "ask"))
     out: list[Edge] = []
     from plumb import progress
 
     reporter, owned = progress.acquire(core.root, "align")
     try:
-        _judge_edges(core, nodes, edges, backend, name, heuristic, out, reporter)
+        _judge_edges(core, nodes, edges, backend, name, out, reporter)
     finally:
         if owned:
             reporter.done()
@@ -262,8 +259,7 @@ STEP_ALIGN = "judging how well the records fit"       # SR-108
 
 
 def _judge_edges(core: Any, nodes: Mapping[str, str], edges: Sequence[tuple[str, str]],
-                 backend: Any, name: str, heuristic: bool, out: list[Edge],
-                 reporter: Any) -> None:
+                 backend: Any, name: str, out: list[Edge], reporter: Any) -> None:
     for count, (source, target) in enumerate(edges, 1):
         reporter.update(STEP_ALIGN, count - 1, len(edges))
         edge_class = (nodes[source], nodes[target])
@@ -274,10 +270,6 @@ def _judge_edges(core: Any, nodes: Mapping[str, str], edges: Sequence[tuple[str,
             continue
         source_text = node_text(core, source, nodes[source])
         target_text = node_text(core, target, nodes[target])
-        if heuristic:
-            out.append(Edge(source, target, label, question,
-                            _overlap(source_text, target_text), "heuristic", "heuristic"))
-            continue
         try:
             judgment = backend.ask(question, f"A: {source_text}\nB: {target_text}",
                                    subject=f"{source}->{target}", action="alignment")
@@ -314,10 +306,10 @@ def align(core: Any, scope: Sequence[str] | None = None, *, backend: Any = None,
     scope = sorted(scope) if scope else default_scope(core)
     nodes, edges, gaps = collect(core, scope)
     fp = fingerprint(core, nodes, edges)
-    chosen = _backend(core, backend)
+    chosen, cause = _backend(core, backend)
     name = str(getattr(chosen, "name", "none")) if chosen is not None else "none"
     cache = Path(core.root) / ".plumb" / "cache" / f"align-{fp.split(':')[1][:24]}-{name}.json"
-    if use_cache and backend is None:
+    if use_cache and backend is None and chosen is not None:
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
             return AlignResult(scope, fp, nodes, [Edge(**e) for e in data["edges"]], gaps,
@@ -326,8 +318,8 @@ def align(core: Any, scope: Sequence[str] | None = None, *, backend: Any = None,
             pass
     judged, name = judge(core, nodes, edges, chosen)
     result = AlignResult(scope, fp, nodes, _weakest_first(judged), gaps, name,
-                         chosen is not None)
-    if backend is None:
+                         chosen is not None, cause)
+    if backend is None and chosen is not None:
         try:
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps({"edges": [asdict(e) for e in result.edges],
@@ -355,10 +347,12 @@ def align_lines(result: AlignResult, *, limit: int | None = None) -> list[str]:
     for gap in result.gaps:
         lines.append(f"gap: {gap}")
     if not result.available:
-        lines.append("no judgments available (edges listed, not judged)")
+        why = f"judging unavailable: {result.unavailable}" if result.unavailable \
+            else "no judgments available"
+        lines.append(f"{why} (edges listed, not judged)")
     else:
-        what = "term overlap, heuristic" if result.backend == "heuristic" else result.backend
-        lines.append(f"edges, weakest first ({what}; advisory, edges are never changed):")
+        lines.append(f"edges, weakest first ({result.backend}; advisory, edges are never "
+                     "changed):")
     edges = result.edges if limit is None else result.edges[:limit]
     for edge in edges:
         score = "-" if edge.score is None else f"{edge.score:.2f}"

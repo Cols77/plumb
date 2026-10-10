@@ -77,6 +77,7 @@ CARD_MERGED = "  Merged on their own: {what}"
 CARD_COMBINED = "  combined (proposed)"
 CARD_JUDGED = "  Compatible? JEV: {verdict} ({probability:.2f}){reason}"
 CARD_NO_JUDGMENT = "  Compatible? no judgment available"
+CARD_UNAVAILABLE = "  Compatible? judging unavailable: {cause}"
 CARD_SAY = "  Say: \"keep {ours}'s\", \"keep {theirs}'s\", or how to combine them"
 CARD_SAY_COMBINED = ("  Say: \"keep {ours}'s\", \"keep {theirs}'s\", \"ok, the combined one\", "
                      "or how to combine them")

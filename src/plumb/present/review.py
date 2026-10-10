@@ -60,7 +60,10 @@ def _awaiting(core: Any, scope: set[str] | None) -> list[str]:
     else:
         pending = [i for i, s in sorted(statuses.items()) if s.confirmation != "confirmed"
                    and _in_scope(i, scope)]
+        cause = str(getattr(view, "unavailable", "") or "")
         lines.append("  triage unavailable" if api is None else
+                     f"  judging unavailable: {cause}: every record is shown individually"
+                     if cause else
                      "  no judgments available: every record is shown individually")
         if pending:
             names = ", ".join(pending[:8]) + (f" +{len(pending) - 8} more"
