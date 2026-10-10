@@ -492,3 +492,33 @@ def default_card(row: Row, record_title: str, other_title: str = "") -> dict[str
     return {"link": row.link, "record": row.record, "path": row.what, "topic": record_title,
             "issue": issue, "options": [words.STALE_OPTION_KEEP, words.STALE_OPTION_REWORD,
                                         words.STALE_OPTION_UNDO], "recommended": 0}
+
+
+def current_session(root: Path | str) -> str:
+    """The session a shell command belongs to: ``PLUMB_SESSION_ID``, else the session whose
+    turn file is newest, else ``cli``."""
+    named = os.environ.get("PLUMB_SESSION_ID")
+    if named:
+        return named
+    best, newest = "cli", -1
+    try:
+        entries = list(os.scandir(Path(root) / ".plumb" / "session"))
+    except OSError:
+        return best
+    for entry in entries:
+        try:
+            stamp = (Path(entry.path) / "turn.json").stat().st_mtime_ns
+        except OSError:
+            continue
+        if stamp > newest:
+            best, newest = entry.name, stamp
+    return best
+
+
+def turn_number(root: Path | str, session: str) -> int:
+    """The turn's start time in seconds: the number a card is ordered by."""
+    data = _read_json(session_path(root, session) / "turn.json")
+    try:
+        return int(float(data.get("turn_start") or 0)) if isinstance(data, dict) else 0
+    except (TypeError, ValueError):
+        return 0
