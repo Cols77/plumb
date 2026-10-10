@@ -83,8 +83,15 @@ def tests_summary(core: Any, verify: Any) -> dict[str, Any]:
         "pending": bool(pending.pending), "reasons": list(pending.reasons)}
 
 
+BACKGROUND = "tests: not checked (checking in the background)"
+
+
 def cached_summary(core: Any, verify: Any) -> dict[str, Any]:
     derived = getattr(verify, "derived", None)
+    if derived is not None:
+        verify.full_pending()  # a cold test map raises inside and starts its detached build
+        if getattr(verify, "map_missing", None) is not None:
+            return {"background": True}  # never cached: the next start reads the built map
     if derived is None:  # a VerifyAPI without the cache (tests' fakes)
         return tests_summary(core, verify)
     return derived("brief_tests", lambda: tests_summary(core, verify))
@@ -93,6 +100,8 @@ def cached_summary(core: Any, verify: Any) -> dict[str, Any]:
 def evidence_line(summary: Mapping[str, Any] | None) -> str:
     if summary is None:
         return "tests: verification unavailable"
+    if summary.get("background"):
+        return BACKGROUND
     parts: list[str] = []
     regressions, failing = list(summary["regressions"]), list(summary["not_yet"])
     if regressions:
@@ -131,9 +140,29 @@ def _judgment_timeout_s(core: Any) -> float:
         return 0.0
 
 
+LOCAL_BACKENDS = ("heuristic", "disabled", "fake")
+
+
 def triage_offer_line(core: Any) -> str | None:
     """The brief's one triage line (R8 A, sp5 3): the records rated faithful to the owner's
-    words, from CAPTURE's triage; None without CAPTURE or without a low-risk group."""
+    words, from CAPTURE's triage; None without CAPTURE or without a low-risk group.
+
+    Read from the last whole triage's cache when there is one (no judgment, no import of the
+    judgment modules); with none, only a backend that runs on this machine is asked, never
+    one that calls the network: a cold start waits for a triage run (SR-014)."""
+    try:
+        from plumb.capture import triage as cached
+    except ImportError:
+        return None
+    try:
+        known, line = cached.cached_offer(core)
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the brief
+        known, line = False, None
+    if known:
+        return line
+    if str(getattr(getattr(core.config, "judgment", None), "backend", "heuristic")
+           ).strip().lower() not in LOCAL_BACKENDS:
+        return None
     try:
         from plumb.capture import api
     except ImportError:
@@ -148,6 +177,16 @@ def triage_offer_line(core: Any) -> str | None:
     noun = "record" if len(low) == 1 else "records"
     return (f"plumb: {len(low)} {noun} rated faithful to your words await you: "
             "plumb triage lists them; plumb confirm shows them as cards")
+
+
+def auto_approve_off(core: Any) -> str | None:
+    """``off`` when the owner never turned auto-approve on (no owner ``config`` event), known
+    without the judgment modules the full state would import; None when it must be worked
+    out (CAPTURE's ``auto_approve_state``, which snapshot defaults to)."""
+    for entry in core.events():
+        if entry.kind == "config" and entry.marker == "none"                 and entry.payload.get("by") == "owner"                 and isinstance(entry.payload.get("auto_approve"), Mapping):
+            return None
+    return None if core.config.auto_approve.enabled else "off"
 
 
 def conflicts_line(core: Any) -> str | None:
@@ -198,7 +237,8 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
     # the status line's snapshot as soon as the records are read, tests unknown: the tests
     # check can outlast the hook's watchdog, which must not leave the line on an older session
     present = getattr(core.config, "present", None)
-    write_snapshot(ctx.root, build_snapshot(core), present=present)
+    auto_off = auto_approve_off(core)
+    write_snapshot(ctx.root, build_snapshot(core, auto_approve=auto_off), present=present)
     timer.mark("snapshot")
     verify = verify_api(core, verify)
     summary = None
@@ -213,10 +253,12 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
     if conflicts:
         lines += emitter.add([Line(conflicts)])
         ctx.keep(lines)
-    if summary is not None:  # the tests known: the snapshot again, before the optional lines
+    if summary is not None and not summary.get("background"):
+        # the tests known: the snapshot again, before the optional lines
         pending = FullPending(summary["pending"], tuple(summary["reasons"]))
         tests = (summary["state"], tuple(summary["failing"]), tuple(summary["regressions"]))
-        write_snapshot(ctx.root, build_snapshot(core, full_pending=pending, tests_summary=tests),
+        write_snapshot(ctx.root, build_snapshot(core, full_pending=pending, tests_summary=tests,
+                                      auto_approve=auto_off),
                        present=present)
     timer.mark("snapshot")
     leftover = None if scan is None else scan.line(min(GIT_TIMEOUT_S, ctx.deadline.remaining_s()))

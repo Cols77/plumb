@@ -100,3 +100,167 @@ def test_timing_off_writes_nothing(repo: Path, hook_input,
     session_start.main(stdin=io.StringIO(hook_input("SessionStart")), stdout=io.StringIO(),
                        root=repo, verify=FakeVerify())
     assert not list((repo / ".plumb" / "session").glob("*/timing.json"))
+
+
+# -- HC2: what a session start imports ---------------------------------------------------
+
+_MODULES = """
+import io, json, sys
+from plumb.hosts.claude_code import session_start
+out = io.StringIO()
+session_start.main(stdin=io.StringIO(sys.argv[2]), stdout=out, root=sys.argv[1], watchdog=False)
+print(json.dumps(sorted(sys.modules)))
+"""
+# plumb.judgment.tiers stays: the status of a record rechecks auto-approvals with it
+FORBIDDEN = ("plumb.judgment.jev", "plumb.judgment.model", "plumb.judgment.heuristic",
+             "plumb.judgment.textjudge", "plumb.judgment.fidelity", "plumb.capture.calibrate",
+             "plumb.verify.runner", "plumb.verify.cov_plugin", "urllib.request", "yaml")
+
+
+def test_hook_import_set_has_no_judgment_or_verify_runner(own_copy: Path) -> None:
+    payload = json.dumps({**PAYLOAD, "cwd": str(own_copy)})
+    for _ in range(2):  # the second run is warm: nothing builds a cache by importing
+        result = subprocess.run([sys.executable, "-c", _MODULES, str(own_copy), payload],
+                                capture_output=True, text=True, encoding="utf-8", check=False,
+                                timeout=60)
+        assert result.returncode == 0, result.stderr
+    loaded = json.loads(result.stdout)
+    found = [m for m in loaded if any(m == bad or m.startswith(bad + ".") for bad in FORBIDDEN)]
+    assert not found, f"session start imports {found}"
+
+
+# -- HC3: cold-state work leaves the hook -------------------------------------------------
+
+def _start(repo: Path, hook_input, **kwargs) -> list[str]:
+    from plumb.hosts.claude_code import session_start
+
+    out = io.StringIO()
+    session_start.main(stdin=io.StringIO(hook_input("SessionStart", source="startup")),
+                       stdout=out, root=repo, **kwargs)
+    return out.getvalue().splitlines()
+
+
+@pytest.fixture
+def roomy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.hosts.claude_code import session_start
+
+    monkeypatch.setattr(session_start, "hook_budget", lambda name: (lambda root: 60000.0))
+
+
+def test_cold_start_spawns_map_build_does_not_wait(repo: Path, hook_input, write_record,
+                                                   roomy, monkeypatch) -> None:
+    import plumb.verify.api as verify_api
+
+    write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
+    (repo / "tests").mkdir()
+    for n in range(verify_api.HOOK_PARSE_MAX + 5):  # more files than a hook may parse
+        (repo / "tests" / f"test_{n}.py").write_text(f"def test_{n}():\n    pass\n", "utf-8")
+    started: list[object] = []
+    monkeypatch.setattr(verify_api, "spawn_map_build", lambda root: started.append(root))
+    lines = _start(repo, hook_input)
+    assert len(started) == 1
+    assert "tests: not checked (checking in the background)" in lines
+    assert not any("no mapped tests yet" in line for line in lines)
+    # the line is not cached as an answer: once the map exists the next start reports it
+    assert not list((repo / ".plumb" / "cache").glob("**/brief_tests*"))
+
+
+def test_no_network_call_cold(repo: Path, hook_input, write_record, roomy,
+                              monkeypatch) -> None:
+    """A network judgment backend and no cached triage: the brief makes no judgment call."""
+    import socket
+
+    from fakes import FakeVerify
+
+    import plumb.judgment as judgment
+
+    (repo / ".plumb" / "config.yaml").write_text(
+        "judgment:\n  backend: jev\n  jev:\n    provider: openrouter\n", "utf-8")
+    write_record(repo, "---\nid: INT-001\ntitle: One\nquote: q\n---\n")
+    calls: list[str] = []
+    monkeypatch.setattr(judgment, "get_backend", lambda *a, **k: calls.append("backend"))
+    monkeypatch.setattr(socket.socket, "connect",
+                        lambda *a, **k: calls.append("connect"))
+    lines = _start(repo, hook_input, verify=FakeVerify())
+    assert calls == []
+    assert lines[0].startswith("plumb brief")
+    assert not any("rated faithful" in line for line in lines)
+
+
+def test_cached_triage_offer_is_read_without_judgment(repo: Path, hook_input, write_record,
+                                                      roomy, monkeypatch) -> None:
+    from fakes import FakeVerify
+
+    import plumb.judgment as judgment
+    from plumb.api import open_core
+
+    write_record(repo, "---\nid: INT-001\ntitle: One\nquote: q\n---\n")
+    core = open_core(repo)
+    record = core.index()["INT-001"]
+    cache = repo / ".plumb" / "cache"
+    cache.mkdir(exist_ok=True)
+    (cache / "triage_offer.json").write_text(json.dumps(
+        {"items": [{"id": "INT-001", "hash": record.hash, "title": "One"}]}), "utf-8")
+    monkeypatch.setattr(judgment, "get_backend",
+                        lambda *a, **k: pytest.fail("a judgment backend was opened"))
+    lines = _start(repo, hook_input, verify=FakeVerify())
+    assert any("rated faithful to your words" in line and "INT-001" in line for line in lines)
+    record_file = next((repo / ".plumb" / "intents").glob("INT-001*"))
+    record_file.write_text(record_file.read_text("utf-8").replace("title: One", "title: Two"),
+                           "utf-8")
+    assert not any("rated faithful" in line
+                   for line in _start(repo, hook_input, verify=FakeVerify()))  # it changed
+
+
+def test_git_called_once(repo: Path, hook_input, roomy, monkeypatch) -> None:
+    """One git status pass for the whole start, however many steps want the tree."""
+    from fakes import FakeVerify
+
+    real = subprocess.run
+    seen: list[list[str]] = []
+
+    def spy(args, *a, **k):
+        if isinstance(args, list) and args[:1] == ["git"]:
+            seen.append(args)
+        return real(args, *a, **k)
+
+    monkeypatch.setattr(subprocess, "run", spy)
+    _start(repo, hook_input, verify=FakeVerify())
+    assert len([a for a in seen if a[1] == "status"]) == 1, seen
+
+
+def test_brief_kept_when_cut(repo: Path, hook_input, write_record, monkeypatch) -> None:
+    """The cut falls on the tests line: the records brief is printed whole."""
+    from fakes import FakeVerify
+
+    from plumb.hosts.claude_code import session_start
+
+    write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
+    monkeypatch.setattr(session_start, "hook_budget", lambda name: (lambda root: 0.001))
+    lines = _start(repo, hook_input, verify=FakeVerify())
+    assert lines[0].startswith("plumb brief")
+    assert "awaiting your confirmation: 1 proposed (SR-001)" in lines
+    assert "tests: not checked (budget)" in lines
+
+
+def test_cold_branch_scan_is_bounded_and_continues_next_start(repo: Path, monkeypatch) -> None:
+    import time
+
+    from plumb.awareness import scan
+    from plumb.api import open_core
+
+    for n in range(8):
+        _git(repo, "branch", f"topic-{n}")
+    diffs: list[str] = []
+
+    def slow(root, default, tip):
+        diffs.append(tip)
+        time.sleep(0.1)
+        return ["README.md"]
+
+    monkeypatch.setattr(scan, "_diff", slow)
+    core = open_core(repo)
+    first = scan.refresh_branches(core)
+    assert 1 <= len(diffs) <= 3 and len(first["branches"]) == len(diffs)  # cut, not all 8
+    scan.refresh_branches(core)
+    assert len(diffs) > 3  # the next start goes on from the cache
