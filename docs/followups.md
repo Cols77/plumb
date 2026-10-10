@@ -4828,3 +4828,13 @@ repeat entries of the first round; they are noted as such.
   document which kind words are owner-level by R9.
 - [LOW] (R18; spec 3) The principles are numbered 1, 2, 6, 3, 4, 5. Editorial. Fix:
   renumber them.
+
+## SP8 lane SELECT (2026-10-10)
+
+- HB1 probe (coverage 7.16.2, contexts switched per test node, 5 of plumb's verify test files,
+  32 tests): 24.8 s plain against 37.1 s under coverage (about 1.5 times, dominated by tests
+  that start subprocesses, which coverage does not follow); the data file for those 32 tests
+  is 90 KB with 13 460 (line, test) pairs, about 420 executed lines a test. The suite is about
+  1 400 tests, so an inverted function-to-tests map is several megabytes as JSON: the store
+  is SQLite (`.plumb/cache/funcmap.sqlite`, in the gitignored cache). Final numbers of the
+  whole-suite map are added under HB6 below.
