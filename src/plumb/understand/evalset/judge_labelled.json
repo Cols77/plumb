@@ -290,9 +290,35 @@
    "source": "The owner chose option A with \"DEC-026: A. Confirm SR-096, SR-098, INT-024\" and DEC-026 was confirmed at this hash (approval 2026-10-07T23:34:17Z, relayed)."
   },
   {
+   "id": "conf-int-001-v1",
+   "record_id": "INT-001",
+   "record_hash": "sha256:c0290ec00c2a25d17ead34b5e02c8740b526b667e47e92bb92f0d8924d4a2362",
+   "kind": "intent-readback",
+   "record_text": "INT-001: plumb exists to keep what you intend, and what you understand you are building, lined up with what the system actually is right now.\nINT-001 will: Hold your intent as records in the repository, next to the code.; Show where the code, the tests and the records no longer match.\nINT-001 won't: Decide on your behalf what the system should be.\nINT-001/A-1 assumption: Alignment is checked against records you can read in git, not hidden state.",
+   "owner_words": "INT-018 and INT-001: those seem correct together. But i guess the plumb clarify skill should be invoked anytime the intent needs to be captured and makes the connection to keeping the intent as a record in git. This needs to be clear.",
+   "owner_words_digest": "0524160b166ba1e2",
+   "context_ids": [],
+   "expected": "supported",
+   "calibration": "yes",
+   "source": "The owner on 7 Oct (prompt 0524160b166ba1e2): \"INT-018 and INT-001: those seem correct together.\" Supported but incomplete: he added that the plumb clarify skill should be invoked whenever intent needs capturing and tie it to keeping intent as a record in git (\"This needs to be clear\"). Version shown then recovered from git (commit 4c08b64)."
+  },
+  {
+   "id": "conf-int-018-v1",
+   "record_id": "INT-018",
+   "record_hash": "sha256:e864979db5ebe4297297d77b4dd86f2a575695bed69a9ebce3e160113374e2d0",
+   "kind": "intent-readback",
+   "record_text": "INT-018: When a request creates or changes intent, the agent uses a plumb skill, plumb-clarify, that scales to the request: no questions for a clear one; a read-back with proposed examples and only the questions that change what gets built, one at a time with a recommended option, for a new one; a short structured session ending in an up-front spec for a big one.\nINT-018 will: Ship a plumb-clarify skill written for plumb, loaded whenever a request creates or changes intent.; Ask only questions whose answer changes what gets built, one per message, multiple choice with a recommendation, each recorded as a decision that matters.; Measure it with an end-to-end test on one ambiguous request.\nINT-018 won't: Ask what the repository, the records or sensible defaults already answer.; Ask mid-implementation unless a contradiction appears.\nINT-018/A-1 assumption: Once you say \"go\" or \"ok\", remaining unknowns become labelled assumptions, never more questions.",
+   "owner_words": "INT-018 and INT-001: those seem correct together. But i guess the plumb clarify skill should be invoked anytime the intent needs to be captured and makes the connection to keeping the intent as a record in git. This needs to be clear.",
+   "owner_words_digest": "0524160b166ba1e2",
+   "context_ids": [],
+   "expected": "supported",
+   "calibration": "yes",
+   "source": "The owner on 7 Oct (prompt 0524160b166ba1e2): \"INT-018 and INT-001: those seem correct together.\" Supported but incomplete: he added that the plumb clarify skill should be invoked whenever intent needs capturing and tie it to keeping intent as a record in git (\"This needs to be clear\"). Version shown then recovered from git (commit 2471dee)."
+  },
+  {
    "id": "rej-int-016-v1",
    "record_id": "INT-016",
-   "record_hash": "",
+   "record_hash": "sha256:8c3e9ffdf366d5bd3e06bd26e41824e0570ce7852988278d1e0988e30f754692",
    "kind": "intent-readback",
    "record_text": "INT-016: Hooks give the agent a short delta: one line per record, only when the record is new to the session or has changed, within a token budget; details are pulled on demand. Owner-facing commands take plain words (a feature, a behaviour, a file) and answer in the owner's terms; /plumb explain replaces the broken /plumb why.\nINT-016 will: Inject one line per record (ID, state, title) only when it is newly relevant this session or its hash or state changed; nothing when nothing is new; a per-prompt token budget.; Keep the session-start brief to a few lines and a pointer.; Add plumb explain <plain words|path|ID> and route /plumb explain to it; keep why as an alias.\nINT-016 won't: Ship the user card (full|compact|off) or plumb view (the Obsidian vault) in this change; they are the next R9 lane.\nINT-016/A-1 assumption: A record's line comes again after /clear or a compaction, since the agent lost it.",
    "owner_words": "Each prompt you inject relevant records with state, examples and covering tests? isnt there a smarter way to do this? Isnt the risk to bloat the context way too fast with redundant tokens? / Plumb why file|ID seems not very user friendly, don't forget the user don't necessarily know the code ... All the commands should be designed to handle this properly / and fix the /plumb why bug",
@@ -305,7 +331,7 @@
   {
    "id": "rej-int-013-v1",
    "record_id": "INT-013",
-   "record_hash": "",
+   "record_hash": "sha256:6f8d4988bca39e126055d3a91a166e5691d016b4e8228bb3d2490074b5d73496",
    "kind": "intent-readback",
    "record_text": "INT-013: pi-agent-factory goes into maintenance mode after its current integration batch lands; new feature work moves to plumb, and a fork plan is required.\nINT-013 will: Write a fork plan (docs/fork-plan.md).\nINT-013 won't: Start new feature work in pi-agent-factory.\nINT-013/A-1 assumption: The current pi-agent-factory integration batch lands first.",
    "owner_words": "consider stopping developments on pi-agent-factory if it takes too much RAM",
@@ -318,7 +344,7 @@
   {
    "id": "rej-int-008-v1",
    "record_id": "INT-008",
-   "record_hash": "",
+   "record_hash": "sha256:922f9f785371b7f5fd2225278d314833d5135d86c632a8e930c51bf0e6f473d4",
    "kind": "intent-readback",
    "record_text": "INT-008: plumb works mostly in the background: a status-line indicator, a short alignment summary at the end of each turn, and a question only on a real intent change, an unconfirmed decision that matters, or a regression. Everything else is logged for you to read when you want.\nINT-008 will: Show a status line and a short end-of-turn summary.; Ask only on an intent change, an unconfirmed decision that matters, or a regression.; Log everything else for on-demand reading.\nINT-008 won't: Interrupt for a new test that starts red (R3).\nINT-008/A-1 assumption: A regression is a test that previously passed with recorded evidence and now fails (R3).",
    "owner_words": "A (answering: How much should the tool interrupt you during normal work? A. Mostly in the background (recommended): a status-line indicator shows alignment (the active intent, any stale links, the covering tests); a short alignment summary appears at the end of each turn; it only asks you something on a real change in intent, an unconfirmed decision that matters, or a regression; everything else is logged for you to read whenever you want. B. A checkpoint every turn you approve before the next one. C. Only when asked: silent unless you run a command.)",
@@ -326,7 +352,20 @@
    "context_ids": [],
    "expected": "beyond",
    "calibration": "no",
-   "source": "The owner found the INT-008 read-back insufficient on 7 Oct: \"You sad that it lists a status line and an end-of-turn summary as a deliverable. this is not written in your intent line ... INT-008 seems indeed insufficient.\" (prompt 0524160b166ba1e2); text taken from the current record, because the exact version shown then was not recovered."
+   "source": "The owner found the INT-008 read-back insufficient on 7 Oct: \"You sad that it lists a status line and an end-of-turn summary as a deliverable. this is not written in your intent line ... INT-008 seems indeed insufficient.\" (prompt 0524160b166ba1e2); version recovered from git (commit 4c08b64, the INT-008 record as it stood on 7 Oct, before it was given the question it answered)."
+  },
+  {
+   "id": "rej-sr-088-v1",
+   "record_id": "SR-088",
+   "record_hash": "sha256:2f96f5bb0ac77413dbe8d74fde46f18f613b997f7809d7b4681b2cef4043f9b2",
+   "kind": "requirement",
+   "record_text": "SR-088: Every owner-facing plumb capability is reachable through a /plumb command, plain words or a button, and the agent does the rest. Owner-only actions (confirming and undoing, a group, a big plan, picking one of two versions, automatic confirmation on or off, the settings view, skipping the full test run) come only from the owner: words or a /plumb command the owner typed, which plumb saw arrive, or a button press. An action the agent starts on its own is refused. When the agent carries out the owner's typed words or command, plumb records it as passed on by the agent with the owner's exact words, so the owner can tell it apart from a button press. /plumb confirm with plain words never confirms anything the owner has not seen: it confirms at once only records named by number or shown in full in the agent's previous answer; otherwise plumb finds the records the words mean, shows them, and confirms them on the owner's next \"ok\" or press, or asks \"which one do you mean?\" when the words fit several. One table lists every plumb feature with the owner's way to reach it, and an end-to-end test drives every owner flow only through /plumb commands, messages and button presses (ruling R14).",
+   "owner_words": "INT-008 ok, I am not sure I agree with SR-088. In terms of UX, some features might have to remain internal to plumb.",
+   "owner_words_digest": "4c8332127b7471c6",
+   "context_ids": [],
+   "expected": "contradicts",
+   "calibration": "no",
+   "source": "The owner turned down the first SR-088 on 9 Oct (prompt 4c8332127b7471c6): \"I am not sure I agree with SR-088. In terms of UX, some features might have to remain internal to plumb.\" The version shown (commit e418f7f) said every plumb feature has an owner entry point and no owner step needs a shell, against the owner's view that some features stay internal; narrowed afterwards in 1e157ed."
   },
   {
    "id": "con-int-011",
