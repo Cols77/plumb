@@ -226,6 +226,34 @@ INFLIGHT_HEADER = "intent in flight on other branches:"
 INFLIGHT_LINE = '  {branch}: "{summary}" ({records})'
 
 
+# --------------------------------------------------------------------------- SP8 UNDERSTAND
+# First wordings (JUDGE finishes them): the six card kinds, the settled line, the steps of the
+# worker, the gate's two choices and the reply that names the settle switch and the buttons.
+CARD_CLARIFY = 'Before I build this, one question about "{topic}": {issue}'
+CARD_TRIAL = 'A trial run on "{topic}": {issue}'
+CARD_BACKLOG = 'An older record to look at again, "{topic}": {issue}'
+CARD_BEYOND = 'This goes beyond your words, "{topic}": {issue}'
+CARD_CONTRADICTS = 'This seems to contradict what you said, "{topic}": {issue}'
+CARD_COULDNT_CHECK = 'I could not check "{topic}": {issue}'
+CARD_STALE_LINK = 'Something you confirmed may have changed, "{topic}": {issue}'
+CARD_EVIDENCE = "  Evidence: {evidence}"
+CARD_RESOLUTION = "  {n}. {text}"
+SETTLED_LINE = "Settled from your words: {titles}"
+SETTLED_GLANCE = "settled from your words"
+SETTLED_COUNT = "{n} settled from your words"
+SETTLED_UNDO ="{title} (say undo to take it back)"
+STEP_READING = "reading your answer"
+STEP_CHECKING = "checking your request"
+STEP_JUDGING = "judging {n} records"
+STEP_JUDGING_BACKLOG = "judging the backlog"
+GATE_BUILD_ANYWAY = "Build anyway"
+GATE_WAIT = "Wait"
+GATE_CLOSED = "Waiting for your answer before building: {reason}"
+SETTLE_REPLY = ('Settling is {state}. Say "settle on" to let confirmed wording settle by '
+                'itself, "undo" to take a settled record back, or use the buttons.')
+NOT_AVAILABLE = "not available in this build"
+
+
 _PLUMB_VERB = re.compile(r"(?<![\w/.-])plumb[ \t]+([a-z][a-z-]*)(?![\w-]*:)")
 
 

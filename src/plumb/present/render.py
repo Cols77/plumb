@@ -80,7 +80,13 @@ def status_card(snapshot: Any, *, ascii: bool = False) -> str:
     summary = clip(data.get("intent_summary") or "", SUMMARY_WIDTH)
     if summary:
         parts.append(f'"{summary}"')
-    parts.append(f"SR {confirmed}/{total} ok" + (f" ({jev} by JEV)" if jev else ""))
+    notes = ([f"{jev} by JEV"] if jev else [])
+    settled = _int(by, "settled")
+    if settled:  # counted as confirmed, listed apart (SP8)
+        from plumb.present.owner_text import SETTLED_COUNT
+
+        notes.append(SETTLED_COUNT.format(n=settled))
+    parts.append(f"SR {confirmed}/{total} ok" + (f" ({', '.join(notes)})" if notes else ""))
     proposed = _int(data, "proposed")
     if proposed:
         parts.append(f"{proposed} awaits you")

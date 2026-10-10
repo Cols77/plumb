@@ -332,6 +332,17 @@ def awareness_lines(core: Any, ids: Sequence[str]) -> list[Any]:
         return []
 
 
+def understand_lines(ctx: HookContext, core: Any, digest: str, text: str) -> list[str]:
+    """The understanding layer's agent-facing lines for this prompt (queues its jobs); a
+    failing layer never blocks the prompt."""
+    try:
+        from plumb.understand.hooks import on_prompt
+
+        return list(on_prompt(ctx, core, {"digest": digest, "text": text}))
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
     """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
@@ -357,6 +368,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
         pass
     core = open_core(ctx.root)
     hooks = core.config.hooks
+    understood = understand_lines(ctx, core, digest, text)
     emitter = open_emitter(ctx, "prompt", config=core.config,
                            cap_lines=int(hooks.prompt_lines))
     awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json", text)
@@ -386,7 +398,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     hint = escalation_hint(core, index, strong, list(flagged)) if strong else None
     rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []),
                         *awareness_lines(core, ids), *tail])
-    out = [*records, *rest]
+    out = [*records, *rest, *understood]
     ctx.keep(out)
     emitter.close()
     return HookOutput(text="\n".join(out))

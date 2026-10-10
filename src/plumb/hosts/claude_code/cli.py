@@ -15,6 +15,7 @@ HOOK_MODULES: dict[str, str] = {
     "prompt": "plumb.hosts.claude_code.prompt",
     "post-edit": "plumb.hosts.claude_code.post_edit",
     "stop": "plumb.hosts.claude_code.stop",
+    "pre-tool": "plumb.hosts.claude_code.pretool",  # SHOW's module; until then it allows
 }
 
 _HOOK_USAGE = ("usage: plumb hook {session-start|prompt|post-edit|stop} [--root PATH]\n"
@@ -56,6 +57,8 @@ def _hook(argv: list[str]) -> int:
     try:
         module = importlib.import_module(module_name)
     except ImportError:
+        if event == "pre-tool":
+            return 0  # stub: allow (no output)
         # a hook missing from this build never blocks the turn
         sys.stderr.write(f"plumb: hook '{event}' is not available in this build\n")
         return 0

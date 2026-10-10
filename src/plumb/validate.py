@@ -123,6 +123,15 @@ def validate(core: Core) -> list[Finding]:
         add("warning", "proposed", f"{len(proposed)} records",
             f"proposed, awaiting the owner's confirmation: {shown}")
 
+    # SP8: the understanding layer's own checks (stubs report none)
+    try:
+        from plumb.understand import gate, premise
+
+        for problem in (*premise.problems(core), *gate.problems(core)):
+            add("error", "understand", "understand", problem)
+    except ImportError:
+        pass
+
     # auto-approval (sp2 C4): config.yaml is a mirror; only the owner's config event counts
     try:
         from plumb.capture.autoapprove import auto_approve_state

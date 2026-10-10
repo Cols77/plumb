@@ -278,6 +278,8 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     ``grace_s``: a hook whose whole answer is lines it keeps (R1) waits this much longer when
     the hard limit finds nothing kept yet, since the bare notice would say nothing."""
     global STAT_CACHE_ROOT
+    if os.environ.get("PLUMB_JOB"):
+        return 0  # SR-104 EX-2: a hook inside a worker's job prints and queues nothing
     if stdin is None or stdout is None:
         use_utf8_stdio()
     stdin = sys.stdin if stdin is None else stdin

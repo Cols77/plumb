@@ -53,6 +53,10 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
                                      "prev": entry.prev}):
         return f"{entry.kind} entry does not match its digest (modified)"
     by = payload.get("by")
+    if by in ("owner-words", "settled", "undone"):  # SP8: re-checked by the understand layer
+        from plumb.understand.recheck import problem
+
+        return problem(entry, None)
     if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)
         from plumb.importer.recheck import import_problem
 
@@ -346,5 +350,6 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
             covered=covered, uncovered_examples=uncovered, links=record_states,
             superseded_by=superseded.get(record_id), changed_tests=moved,
             self_recorded=self_recorded,
+            settled=confirmation == "confirmed" and by == "settled",
             carried_from=carried.get(record_id) if confirmation == "confirmed" else None)
     return out

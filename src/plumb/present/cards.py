@@ -27,7 +27,8 @@ from typing import Any
 
 from plumb.contracts import IntentCardData
 
-BY = {"owner": "you", "agent-relayed": "you (relayed)", "auto-jev": "JEV", "import": "import"}
+BY = {"owner": "you", "agent-relayed": "you (relayed)", "auto-jev": "JEV", "import": "import",
+      "owner-words": "you", "settled": "settled from your words"}
 INTENT_FILE = "intent.json"
 
 

@@ -59,6 +59,35 @@ class LogLockTimeout(RuntimeError):
     pass
 
 
+class LogError(RuntimeError):
+    """An entry the log refuses to write (the reason is a plain sentence)."""
+
+
+# approvals written from the owner's words or from a settled judgment come from the worker
+WORKER_ONLY_BY = frozenset({"owner-words", "settled"})
+
+
+def worker_token_problem(root: Path | str, session: str | None, by: str) -> str | None:
+    """Why a ``by`` value may not be written here, or None. ``owner-words`` and ``settled``
+    approvals need ``PLUMB_WORKER`` equal to the ``token`` of the session's ``worker.lock``
+    (tamper-evident, not tamper-proof). Other ``by`` values are not checked."""
+    if by not in WORKER_ONLY_BY:
+        return None
+    token = os.environ.get("PLUMB_WORKER")
+    if not token:
+        return f"a {by} approval is written by the worker only (no worker token)"
+    base = Path(root) / ".plumb" / "session"
+    locks = [base / session / "worker.lock"] if session else sorted(base.glob("*/worker.lock"))
+    for lock in locks:
+        try:
+            held = json.loads(lock.read_text(encoding="utf-8")).get("token")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if held and held == token:
+            return None
+    return f"a {by} approval is written by the worker only (the token does not match)"
+
+
 def current_marker() -> str:
     return os.environ.get("PLUMB_AGENT_SESSION") or "none"
 
@@ -609,6 +638,12 @@ def append(paths: PlumbPaths, stream: LogStream, kind: str,
     if stream_of(kind) != stream:
         raise ValueError(f"a {kind} entry belongs to the {stream_of(kind)} stream, "
                          f"not {stream}")
+    if kind == "approval" and payload.get("by") in WORKER_ONLY_BY:
+        session = payload.get("session")
+        problem = worker_token_problem(paths.root, session if isinstance(session, str)
+                                       else None, str(payload.get("by")))
+        if problem:
+            raise LogError(problem)
     directory = paths.log_kind_dir(kind)
     with _Lock(paths):
         prev = _head(paths, stream)

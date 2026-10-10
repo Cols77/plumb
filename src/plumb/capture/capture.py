@@ -393,9 +393,24 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
             lines.append(f"{plan.intent_ref} is an escalated spec: {', '.join(joined)} joined "
                          "its set, which waits for the owner's set approval (plumb spec show "
                          f"{plan.intent_ref})")
-    return CaptureResult(written=tuple(written), updated=tuple(updated),
-                         needs_owner_again=tuple(again), links=tuple(links),
-                         auto_approved=tuple(auto), card=card, lines=tuple(lines))
+    result = CaptureResult(written=tuple(written), updated=tuple(updated),
+                           needs_owner_again=tuple(again), links=tuple(links),
+                           auto_approved=tuple(auto), card=card, lines=tuple(lines))
+    _understand_after(core, doc, result, prompt_digest)
+    return result
+
+
+def _understand_after(core: Core, doc: Mapping[str, Any], result: CaptureResult,
+                      prompt_digest: str | None) -> None:
+    """SP8: queue the judge job and commit the premise after the records are written; a
+    failing understanding layer never fails a capture."""
+    try:
+        from plumb.understand import judge, premise
+
+        judge.queue_for_capture(core, result, prompt_digest=prompt_digest)
+        premise.commit(core, doc, result, prompt_digest=prompt_digest)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def repin_own_target(core: Core, source: str, target: str) -> None:

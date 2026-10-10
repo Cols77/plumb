@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 WIDTH = 60
 LABELS = {"owner": "you", "agent-relayed": "you (relayed)", "auto-jev": "JEV",
-          "import": "import"}
+          "import": "import", "owner-words": "you", "settled": "settled from your words"}
 
 
 def _flat(value: Any) -> str:

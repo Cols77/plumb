@@ -39,7 +39,10 @@ ROUTES: dict[str, str] = {
     "example": "plumb.capture.cli", "decide": "plumb.capture.cli",
     "escalate": "plumb.capture.cli", "spec": "plumb.capture.cli",
     "triage": "plumb.capture.cli", "config": "plumb.capture.cli", "jev": "plumb.capture.cli",
-    "clarify": "plumb.capture.cli",
+    "clarify": "plumb.understand.cli",
+    # SP8 UNDERSTAND: the model-backed layer (a thin router; listed only when importable)
+    "understand": "plumb.understand.cli", "settle": "plumb.understand.cli",
+    "undo": "plumb.understand.cli", "go": "plumb.understand.cli",
     # MERGE (sub-project 3)
     "merge-check": "plumb.boundary.cli",
     # SP6 LOGS: one file per log entry; the migration of the legacy JSONL lines

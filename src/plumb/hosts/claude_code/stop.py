@@ -706,6 +706,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         escalated=escalated, extra_lines=[*waiting, *offer])
     view = confirm_view(core, carry, shown)
     message = "\n".join([text, *view.lines]) if view.lines else text
+    understood = understand_parts(ctx, core, turn)
+    if understood:
+        message = "\n".join([message, *understood])
     conflict_lines, conflicts = conflict_cards(ctx, core, turn)
     if conflict_lines:
         message = "\n".join([message, *conflict_lines])
@@ -715,6 +718,18 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     write_stated(ctx, turn, index, stated_ids, shown, group=group, offer=offer,
                  message=message, confirm=view, conflicts=conflicts, early=early)
     return HookOutput(system_message=message)
+
+
+def understand_parts(ctx: HookContext, core: Any, turn: Mapping[str, Any]) -> list[str]:
+    """SR-105: what the owner confirmed by their words, the settled line, then the cards
+    (``understand.summary.stop_parts``). Never fails the stop."""
+    try:
+        from plumb.understand.summary import stop_parts
+
+        parts = stop_parts(ctx, core, turn)
+        return [*parts.confirmations, *parts.settled, *parts.cards]
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        return []
 
 
 def early_cards(ctx: HookContext,

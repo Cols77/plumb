@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
@@ -19,7 +19,7 @@ ID_RE = r"^(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})$"
 LinkKind = Literal["derives_from", "decides", "upstream", "relates_to", "implemented_by",
                    "verified_by", "corrects", "supersedes"]
 Confirmation = Literal["proposed", "confirmed", "unconfirmed-edit"]
-ApprovalBy = Literal["owner", "agent-relayed", "import", "auto-jev"]
+ApprovalBy = Literal["owner", "agent-relayed", "import", "auto-jev", "owner-words", "settled"]
 LogStream = Literal["events", "evidence"]
 
 
@@ -99,6 +99,9 @@ class RecordStatus:
     # R17: the confirmation stands only through an approval a renumber carried (the old ID
     # the owner approved, same words); every surface labels it "carried by renumber"
     carried_from: str | None = None
+    # SP8: the confirmation rests on a judge's settled verdict (approval ``by: settled``);
+    # it counts as confirmed everywhere and is listed apart ("settled from your words")
+    settled: bool = False
 
 
 @dataclass(frozen=True)
@@ -596,3 +599,219 @@ class IntentConflict:
     merged: tuple[str, ...] = ()
     proposed: Mapping[str, Any] | None = None
     path: str = ""
+
+
+# --------------------------------------------------------------------------- SP8 UNDERSTAND
+# The model-backed understanding layer (docs/plans/sp8-plan.md 3.2): jobs a worker runs, the
+# cards the owner answers, the gate and the progress. Every field has a default.
+
+JobKindName = Literal["read", "judge", "clarify"]
+CardKind = Literal["clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check",
+                   "show_first", "settle_offer", "settled_item", "link", "stale_link"]
+CARD_KINDS: tuple[str, ...] = ("clarify", "trial", "backlog", "beyond", "contradicts",
+                               "couldnt_check", "show_first", "settle_offer", "settled_item",
+                               "link", "stale_link")
+JOB_KINDS: tuple[str, ...] = ("read", "judge", "clarify")
+JOB_VERSION = 1
+GateStateName = Literal["closed", "open"]
+ProgressState = Literal["running", "failed", "done"]
+
+
+@dataclass(frozen=True)
+class Job:
+    """One queued unit of model work. ``id`` is ``<kind>-`` plus 16 hex of the sha256 of the
+    canonical JSON of ``(kind, schema, inputs, needs)``. ``needs`` is the id of one job that
+    must have been applied first (a clarify job sets it to its message's read job)."""
+
+    id: str = ""
+    kind: str = "read"
+    session: str = ""
+    created: str = ""
+    schema: str = ""                       # "read.v1"
+    needs: str | None = None
+    inputs: Mapping[str, Any] = field(default_factory=dict)
+    inputs_digest: str = ""
+    v: int = JOB_VERSION
+
+
+@dataclass(frozen=True)
+class JobError:
+    step: str = ""
+    message: str = ""
+
+
+@dataclass(frozen=True)
+class JobResult:
+    """What the worker did with a job: a record, never an input (nothing confirms from it)."""
+
+    job: str = ""
+    status: Literal["ok", "error"] = "ok"
+    answer: Mapping[str, Any] | None = None
+    error: JobError | None = None
+    model: str = ""
+    dispatcher: str = ""
+    started: str = ""
+    finished: str = ""
+    run_s: float = 0.0
+    v: int = JOB_VERSION
+
+
+@dataclass(frozen=True)
+class ReadItem:
+    """One record the reader judged the owner's message to answer."""
+
+    id: str = ""
+    hash: str = ""
+    answer: str = "none"                   # yes | no | change | none
+    confidence: float = 0.0
+    evidence: str = ""
+
+
+@dataclass(frozen=True)
+class ReadCard:
+    card: str = ""
+    answers: tuple[Mapping[str, Any], ...] = ()
+    confidence: float = 0.0
+    evidence: str = ""
+
+
+@dataclass(frozen=True)
+class ReaderEntry:
+    """A ``read-entry`` log entry: one calibration label."""
+
+    job: str = ""
+    id: str = ""
+    hash: str = ""
+    answer: str = "none"
+    confidence: float = 0.0
+    evidence: str = ""
+    message_digest: str = ""
+
+
+@dataclass(frozen=True)
+class JudgeVerdict:
+    job: str = ""
+    id: str = ""
+    hash: str = ""
+    verdict: str = "unsure"                # supported | unsupported | unsure
+    beyond: tuple[str, ...] = ()
+    contradicts: tuple[str, ...] = ()
+    score: float = 0.0                     # confidence for supported, 0 otherwise
+    model: str = ""
+    premise_digest: str = ""
+
+
+@dataclass(frozen=True)
+class ClarifyQuestion:
+    id: str = ""
+    text: str = ""
+    resolutions: tuple[str, ...] = ()
+    record: str | None = None
+
+
+@dataclass(frozen=True)
+class ClarifyAnswer:
+    question: str = ""
+    answer: str = ""
+    message_digest: str = ""
+
+
+@dataclass(frozen=True)
+class CardState:
+    """One open card of ``.plumb/session/<id>/cards.json``."""
+
+    id: str = ""
+    kind: str = "clarify"
+    topic: str = ""
+    issue: str = ""
+    evidence: str = ""
+    resolutions: tuple[str, ...] = ()
+    questions: tuple[ClarifyQuestion, ...] = ()
+    status: Literal["open", "answered", "closed"] = "open"
+    answers: tuple[ClarifyAnswer, ...] = ()
+    owner_only: bool = False
+    turn: int = 0
+
+
+@dataclass(frozen=True)
+class Applied:
+    """What applying a job's answer changed, in memory (the caller writes it)."""
+
+    job: str = ""
+    cards: tuple[CardState, ...] = ()
+    closed: tuple[str, ...] = ()           # card ids answered or retired
+    entries: tuple[Mapping[str, Any], ...] = ()   # ({"kind", "payload"}) log entries to write
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class GateState:
+    state: GateStateName = "open"
+    message_digest: str = ""
+    reason: str = ""
+    since: str = ""
+
+
+@dataclass(frozen=True)
+class SettleState:
+    kind: str = ""
+    on: bool = False
+    via: Literal["typed", "button", "calibration", ""] = ""
+    calibration: str = ""
+
+
+@dataclass(frozen=True)
+class Progress:
+    step: str = ""
+    done: int = 0
+    total: int = 0
+    started: str = ""
+    updated: str = ""
+    state: ProgressState = "running"
+    kind: str = ""
+
+
+class DispatchError(Exception):
+    """A dispatcher could not get an answer: ``step`` names where, ``message`` says why."""
+
+    def __init__(self, step: str, message: str) -> None:
+        super().__init__(f"{step}: {message}")
+        self.step = step
+        self.message = message
+
+
+class NoModel(Exception):
+    """No model is configured for the understanding layer."""
+
+
+@runtime_checkable
+class Dispatcher(Protocol):
+    name: str
+
+    def available(self) -> str | None: ...        # None = ready, else a plain reason
+
+    def run(self, job: Job, *, system: str, user: str, schema: Mapping[str, Any],
+            on_step: Callable[[str], None]) -> Mapping[str, Any]: ...  # raises DispatchError
+
+
+@runtime_checkable
+class JobKind(Protocol):
+    kind: str
+    schema: Mapping[str, Any]
+
+    def build(self, core: Any, session: str, **context: Any) -> Job | None: ...
+    # context may carry after=<job id>: the read job of the same message (clarify: Job.needs)
+
+    def recompute(self, core: Any, job: Job) -> Mapping[str, Any] | None: ...
+    def apply(self, core: Any, job: Job, answer: Mapping[str, Any]) -> Applied: ...
+    def describe(self, job: Job) -> str: ...
+
+
+@dataclass(frozen=True)
+class StopParts:
+    """The three parts the stop hook places, in the order of SR-105: what the owner confirmed
+    by their words, the one settled line, then the cards."""
+
+    confirmations: tuple[str, ...] = ()
+    settled: tuple[str, ...] = ()
+    cards: tuple[str, ...] = ()

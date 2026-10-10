@@ -185,6 +185,21 @@ class ResolveConfig:
 
 
 @dataclass(frozen=True)
+class UnderstandConfig:
+    """SP8: the model-backed understanding layer."""
+
+    dispatch: str = "auto"       # auto | claude-code | hermes | openrouter
+    model: str = "haiku"
+    timeout_s: float = 120
+    clarify_wait_s: float = 45
+    reader_threshold_start: float = 0.9
+    backlog_cards_per_turn: int = 3
+    progress_min_s: float = 2
+    progress_interval_s: float = 1
+    max_consecutive_failures: int = 3
+
+
+@dataclass(frozen=True)
 class Config:
     source_dirs: tuple[str, ...] = ("src", "tests")
     # whether config.yaml names source_dirs; when it does not, plumb.trace also counts a code
@@ -205,6 +220,7 @@ class Config:
     present: PresentConfig = field(default_factory=PresentConfig)
     resolve: ResolveConfig = field(default_factory=ResolveConfig)
     awareness: AwarenessConfig = field(default_factory=AwarenessConfig)
+    understand: UnderstandConfig = field(default_factory=UnderstandConfig)
 
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
@@ -212,7 +228,7 @@ _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfi
            "triage": TriageConfig, "auto_approve": AutoApproveConfig,
            "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig,
            "present": PresentConfig, "resolve": ResolveConfig,
-           "awareness": AwarenessConfig}
+           "awareness": AwarenessConfig, "understand": UnderstandConfig}
 
 
 def _build(cls: type, data: Mapping[str, Any]) -> Any:

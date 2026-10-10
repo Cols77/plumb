@@ -69,6 +69,18 @@ def find_root(root: Path | str | None, data: dict[str, Any]) -> Path | None:
     return None
 
 
+def _with_progress(line: str, root: Path, session: str | None) -> str:
+    """The line with the running execution's plain step text appended (a missing or
+    unreadable progress file adds nothing)."""
+    try:
+        from plumb.progress import status_text
+
+        step = status_text(root, session)
+    except Exception:  # noqa: BLE001 - the status line never fails
+        return line
+    return f"{line} | {step}" if step else line
+
+
 def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
          stdout: TextIO | None = None) -> int:
     if stdin is None or stdout is None:
@@ -77,8 +89,12 @@ def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
         use_utf8_stdio()
     stdin = sys.stdin if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
+    session = None
     try:
-        found = find_root(root, _read_stdin(stdin))
+        stdin_data = _read_stdin(stdin)
+        if isinstance(stdin_data.get("session_id"), str):
+            session = stdin_data["session_id"]
+        found = find_root(root, stdin_data)
         data = None
         if found is not None:
             try:
@@ -87,6 +103,8 @@ def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
             except (OSError, ValueError):
                 data = None
         line = render(data)
+        if found is not None:
+            line = _with_progress(line, found, session)
     except Exception:  # noqa: BLE001 - the status line never fails
         data, line = None, NO_STATUS
     try:
