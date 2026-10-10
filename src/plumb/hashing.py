@@ -13,11 +13,16 @@ so its link dangles. Directories, globs and line numbers are never ends (concept
 from __future__ import annotations
 
 import ast
+import contextlib
 import hashlib
+import json
+import os
 import re
 import textwrap
-from collections.abc import Mapping
+import time
+from collections.abc import Iterator, Mapping
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from plumb.contracts import Record, Target
 from plumb.normalize import file_digest, sha256_text
@@ -28,6 +33,13 @@ _LINE_BREAK = re.compile(r"\r\n|\r|\n")  # the line breaks ast counts
 # same-size rewrite can leave unchanged): one parse per content per process, however many
 # symbol or test-node ends a file holds (an import pins hundreds of them)
 _PARSED: dict[str, tuple[list[str], ast.Module] | None] = {}
+# The hooks' snapshot reads every link end each turn; inside ``stat_cached`` a file end's hash
+# is reused while the file's size, mtime, ctime and inode are unchanged (git's index check),
+# from ``.plumb/cache/hashes.json``. A file modified within ``_RACY_S`` of the check is never
+# cached, so a same-size rewrite within the clock's resolution is still seen. validate, drift
+# and the merge boundary never enter the cache: they hash every end exactly.
+_RACY_S = 2.0
+_STAT_CACHE: dict[str, Any] | None = None  # {"root": ..., "entries": {key: [stat..., hash]}}
 
 
 def clean_rel_path(raw: str) -> str | None:
@@ -162,11 +174,104 @@ def target_path(target: Target) -> str | None:
     return None
 
 
+def _cache_file(root: Path) -> Path:
+    return Path(root) / ".plumb" / "cache" / "hashes.json"
+
+
+@contextlib.contextmanager
+def stat_cached(root: Path) -> Iterator[None]:
+    """Reuse file-end hashes from ``.plumb/cache/hashes.json`` while the block runs, and save
+    what it learned when it ends (the hooks' snapshot only; see ``_STAT_CACHE``)."""
+    global _STAT_CACHE
+    if _STAT_CACHE is not None:  # nested: the outer block owns the cache
+        yield
+        return
+    try:
+        data = json.loads(_cache_file(root).read_text(encoding="utf-8"))
+        entries = data.get("entries") if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        entries = None
+    _STAT_CACHE = {"root": Path(root).resolve(), "same": {}, "dirty": False, "memo": {},
+                   "entries": entries if isinstance(entries, dict) else {}}
+    try:
+        yield
+    finally:
+        flush_stat_cache()
+        _STAT_CACHE = None
+
+
+def flush_stat_cache() -> None:
+    """Save what the open ``stat_cached`` block learned (the hook watchdog calls this just
+    before it ends the process, so a hook too slow to finish still warms the next one)."""
+    cache = _STAT_CACHE
+    if cache is None or not cache["dirty"]:
+        return
+    path = _cache_file(cache["root"])
+    try:
+        cache["dirty"] = False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"entries": dict(cache["entries"])}), encoding="utf-8")
+        os.replace(tmp, path)  # concurrent hooks: the last writer wins, never torn
+    except (OSError, RuntimeError, ValueError):
+        pass  # a cache that cannot be saved costs time, never correctness
+
+
+def _hash_file_end(root: Path, target: Target) -> str | None:
+    if target.test:
+        return hash_test_node(root, target.test)
+    if target.path and target.symbol:
+        return hash_symbol(root, target.path, target.symbol)
+    path = target_path(target)
+    if path is None:
+        return None
+    return hash_path(root, path)
+
+
+def _cached_file_end(root: Path, target: Target) -> str | None:
+    cache = _STAT_CACHE
+    if cache is None:
+        return _hash_file_end(root, target)
+    memo_key = (str(root), target.test, target.path, target.symbol)
+    memo = cache["memo"]  # one hook process: the brief and the snapshot ask for the same ends
+    if memo_key in memo:
+        return memo[memo_key]
+    digest = memo[memo_key] = _stat_cached_end(cache, root, target)
+    return digest
+
+
+def _stat_cached_end(cache: dict[str, Any], root: Path, target: Target) -> str | None:
+    rel = clean_rel_path(target_path(target) or "")
+    if rel is None:
+        return _hash_file_end(root, target)
+    same = cache["same"].get(str(root))
+    if same is None:  # the hooks pass the root in more than one spelling
+        same = cache["same"][str(root)] = Path(root).resolve() == cache["root"]
+    if not same:
+        return _hash_file_end(root, target)
+    try:
+        st = os.stat(Path(root) / rel)
+    except OSError:
+        return _hash_file_end(root, target)
+    stamp = [st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino]
+    key = f"{target.test or ''}|{rel}|{target.symbol or ''}"
+    hit = cache["entries"].get(key)
+    if isinstance(hit, list) and len(hit) == 5 and hit[:4] == stamp:
+        return hit[4]
+    digest = _hash_file_end(root, target)
+    if time.time() - st.st_mtime_ns / 1e9 > _RACY_S:
+        cache["entries"][key] = [*stamp, digest]
+        cache["dirty"] = True
+    return digest
+
+
 def hash_target(root: Path, index: Mapping[str, Record], target: Target) -> str | None:
     """Current hash of a link end, or None when it does not exist (dangling)."""
     if target.record is not None:
         record = index.get(target.record)
         return record.hash if record is not None else None
+    if _STAT_CACHE is not None:
+        return _cached_file_end(root, target)
     if target.test:
         return hash_test_node(root, target.test)
     if target.path and target.symbol:

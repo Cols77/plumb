@@ -162,3 +162,127 @@ def test_warm_brief_skips_the_test_map(repo: Path, write_record, hook_input,
     warm = _run(repo, hook_input)
     assert warm == cold
     assert "tests: 0/1 mapped tests with fresh passing evidence" in warm
+
+
+def test_status_snapshot_survives_a_budget_cut_of_the_tests_line(
+        repo: Path, write_record, hook_input, monkeypatch) -> None:
+    """The status line reads this snapshot: when the tests check is cut by the budget the
+    snapshot is still written (tests unknown), so the line never keeps an older session's
+    state."""
+    import plumb.api
+    from plumb.hosts.claude_code import hookio
+
+    clock = _Clock()
+    monkeypatch.setattr(hookio, "time", clock)
+    write_record(repo, "---\nid: SR-001\ntitle: Links pin both ends\nstatement: s\n---\n")
+    real_open = plumb.api.open_core
+
+    class SlowCore:
+        def __init__(self, core) -> None:
+            self._core = core
+
+        def status(self, *args, **kwargs):
+            clock.now += 5.0
+            return self._core.status(*args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._core, name)
+
+    monkeypatch.setattr(plumb.api, "open_core", lambda root: SlowCore(real_open(root)))
+    out = _run(repo, hook_input, verify=FakeVerify()).splitlines()
+    assert out[-1] == "plumb: check skipped (budget): tests"
+    data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert data["requirements_total"] == 1 and data["proposed"] == 1
+
+
+# --- the working tree's leftovers, told once at the start (INT-027) -----------------------
+
+def _git(root: Path, *args: str, check: bool = True) -> str:
+    import subprocess
+
+    result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True,
+                            encoding="utf-8", check=False)
+    if check and result.returncode:
+        raise AssertionError(result.stderr)
+    return result.stdout
+
+
+def _notice(out: str) -> list[str]:
+    return [line for line in out.splitlines() if "before this session" in line]
+
+
+def _conflicting_branches(repo: Path) -> None:
+    """main and side both change README.md on top of the initial commit."""
+    _git(repo, "checkout", "-q", "-b", "side")
+    (repo / "README.md").write_text("side\n", "utf-8")
+    _git(repo, "commit", "-qam", "side change")
+    _git(repo, "checkout", "-q", "main")
+    (repo / "README.md").write_text("main\n", "utf-8")
+    _git(repo, "commit", "-qam", "main change")
+
+
+def test_a_clean_tree_adds_no_line(repo: Path, hook_input) -> None:
+    (repo / "scratch.txt").write_text("untracked files are not work in progress\n", "utf-8")
+    assert _notice(_run(repo, hook_input, verify=FakeVerify())) == []
+
+
+def test_staged_and_modified_files_are_told_in_one_plain_line(repo: Path, hook_input) -> None:
+    (repo / "staged.txt").write_text("x\n", "utf-8")
+    _git(repo, "add", "staged.txt")
+    (repo / "README.md").write_text("edited since the last commit\n", "utf-8")
+    lines = _notice(_run(repo, hook_input, verify=FakeVerify()))
+    assert len(lines) == 1
+    assert "1 file staged" in lines[0] and "1 file modified" in lines[0]
+    assert "git " not in lines[0] and "plumb " not in lines[0].replace("plumb:", "")
+
+
+@pytest.mark.parametrize(("start", "word"), [("merge", "merge"), ("cherry-pick", "cherry-pick"),
+                                              ("rebase", "rebase")])
+def test_an_unfinished_operation_is_named(repo: Path, hook_input, start: str,
+                                          word: str) -> None:
+    _conflicting_branches(repo)
+    if start == "merge":
+        _git(repo, "merge", "side", check=False)
+    elif start == "cherry-pick":
+        _git(repo, "cherry-pick", "side", check=False)
+    else:
+        _git(repo, "rebase", "side", check=False)
+    lines = _notice(_run(repo, hook_input, verify=FakeVerify()))
+    assert len(lines) == 1
+    assert f"An earlier {word} was left unfinished" in lines[0].replace("plumb: ", "")
+    assert "1 file in conflict" in lines[0]
+
+
+def test_a_resumed_session_is_not_told(repo: Path, hook_input) -> None:
+    (repo / "README.md").write_text("this session's own edit\n", "utf-8")
+    out = io.StringIO()
+    session_start.main(stdin=io.StringIO(hook_input("SessionStart", source="resume")),
+                       stdout=out, root=repo, verify=FakeVerify())
+    assert _notice(out.getvalue()) == []
+
+
+def test_no_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> None:
+    from plumb.hosts.claude_code import hygiene
+
+    def missing(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    (repo / "README.md").write_text("edited\n", "utf-8")
+    monkeypatch.setattr(hygiene.subprocess, "run", missing)
+    out = _run(repo, hook_input, verify=FakeVerify())
+    assert _notice(out) == [] and out.startswith("plumb brief")
+    assert not (repo / ".plumb" / "session" / "errors.log").exists()
+
+
+def test_a_slow_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> None:
+    import subprocess
+
+    from plumb.hosts.claude_code import hygiene
+
+    def slow(*args, **kwargs):
+        raise subprocess.TimeoutExpired("git", 0.1)
+
+    (repo / "README.md").write_text("edited\n", "utf-8")
+    monkeypatch.setattr(hygiene.subprocess, "run", slow)
+    out = _run(repo, hook_input, verify=FakeVerify())
+    assert _notice(out) == [] and out.startswith("plumb brief")

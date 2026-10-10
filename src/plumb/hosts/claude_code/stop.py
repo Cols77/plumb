@@ -66,6 +66,7 @@ IGNORED_PREFIXES = (".plumb/session/", ".plumb/cache/", ".plumb/log/", ".plumb/v
 IGNORED_FILES = (".plumb/test_map.txt",)
 SUMMARY_LINES = 5
 GIT_TIMEOUT_S = 1.0  # most of the soft budget: under load git status alone can take 0.6 s
+STOP_GRACE_S = 1.0  # past the hard limit, only while the read-back is not yet kept (R1)
 GIT_SKIPPED = "change detection (git status)"
 MAX_INSTRUCTION_PATHS = 8
 MAX_PROPOSED_LINE = 400
@@ -121,16 +122,40 @@ def _git_status(root: Path, timeout: float) -> list[str] | None:
     return out
 
 
+class GitStatusJob:
+    """``git status`` running beside the work that does not need it (the record index), so
+    a loaded machine pays for the two at once; ``changed_paths`` collects the answer."""
+
+    def __init__(self, root: Path, timeout: float = GIT_TIMEOUT_S) -> None:
+        import threading
+
+        self.result: list[str] | None = None
+        self._thread = threading.Thread(target=self._run, args=(root, timeout), daemon=True)
+        self._thread.start()
+
+    def _run(self, root: Path, timeout: float) -> None:
+        try:
+            self.result = _git_status(root, timeout)
+        except Exception:  # noqa: BLE001 - no answer reads as a timeout, named in the notice
+            self.result = None
+
+    def wait(self) -> list[str] | None:
+        self._thread.join()
+        return self.result
+
+
 def changed_paths(root: Path, touched_file: Path, turn_start: float,
                   timeout: float = GIT_TIMEOUT_S,
-                  skipped: list[str] | None = None) -> list[str]:
-    """This turn's paths. A ``git status`` that timed out is named in ``skipped``."""
+                  skipped: list[str] | None = None,
+                  job: GitStatusJob | None = None) -> list[str]:
+    """This turn's paths. A ``git status`` that timed out is named in ``skipped``; ``job`` is
+    a ``git status`` already started."""
     seen: dict[str, None] = {}
     for rel in _touched(touched_file):
         if not _ignored(rel):
             seen.setdefault(rel, None)
     if turn_start > 0:
-        status = _git_status(root, timeout)
+        status = job.wait() if job is not None else _git_status(root, timeout)
         if status is None and skipped is not None:
             skipped.append(GIT_SKIPPED)
         for rel in status or ():
@@ -475,13 +500,15 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         turn_start = 0.0
     asked = turn.get("asked") if isinstance(turn.get("asked"), dict) else {}
     skipped: list[str] = []
-    changed = changed_paths(ctx.root, session_dir / "touched.txt", turn_start,
-                            min(GIT_TIMEOUT_S, max(ctx.deadline.remaining_s(), 0.05)),
-                            skipped)
+    git_timeout = min(GIT_TIMEOUT_S, max(ctx.deadline.remaining_s(), 0.05))
+    job = GitStatusJob(ctx.root, git_timeout) if turn_start > 0 else None
     from plumb.api import open_core
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
 
     core = open_core(ctx.root)
+    core.index()  # read while git status runs; both turn paths need it
+    changed = changed_paths(ctx.root, session_dir / "touched.txt", turn_start, git_timeout,
+                            skipped, job)
     # what plumb confirm prepared this turn reaches the owner here, as full cards (sp5 6.3)
     carry = confirm_carry(ctx, turn)
     if not changed:
@@ -542,6 +569,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     early_view = confirm_view(core, carry, early_shown)
     ctx.keep([*early.splitlines(), *early_view.lines])
     write_stated(ctx, turn, index, stated_ids, early_shown, confirm=early_view)
+    # then the status line: a later cut (budget, watchdog) must not leave it on an older turn
+    write_snapshot(ctx.root, early_snapshot, present=getattr(core.config, "present", None))
     note_path = session_dir / "untraced.json"
     queued = [p for p in untraced if p not in told]
     if queued:  # delivered by the next prompt hook, so a cut after this still tells the agent
@@ -953,4 +982,4 @@ def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,
          verify: Any = LAZY, unjudged: Any = LAZY) -> int:
     return run_hook("stop", lambda ctx: handle(ctx, verify=verify, unjudged=unjudged),
                     stdin=stdin, stdout=stdout, root=root, budget_ms=hook_budget("stop"),
-                    json_output=True, watchdog=watchdog, start=start)
+                    json_output=True, watchdog=watchdog, start=start, grace_s=STOP_GRACE_S)

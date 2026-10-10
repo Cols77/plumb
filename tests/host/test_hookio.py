@@ -181,3 +181,34 @@ def test_default_budgets_sit_just_under_the_hard_limit(repo: Path) -> None:
     for name in ("session_start", "prompt", "stop"):
         assert 1200 <= budgets[name] < hookio.HARD_LIMIT_S * 1000, name
         assert hookio.hook_budget(name)(repo) == budgets[name]
+
+
+_GRACE_SCRIPT = (
+    "import io, sys, time\n"
+    "from plumb.hosts.claude_code import hookio\n"
+    "def h(ctx):\n"
+    "    time.sleep(0.5)\n"  # the hard limit (0.3 s from start) passes before anything is kept
+    "    ctx.keep(['plumb: read-back'])\n"
+    "    time.sleep(0.3)\n"
+    "    return hookio.HookOutput(text='plumb: read-back')\n"
+    "hookio.HARD_LIMIT_S = 0.3\n"
+    "hookio.run_hook('t', h, stdin=io.StringIO('{{}}'), stdout=sys.stdout, root=r'{repo}',\n"
+    "                 budget_ms=100, watchdog=True, start=time.monotonic(), grace_s={grace})\n")
+
+
+@pytest.mark.parametrize(("grace", "expected"), [
+    (1.0, ["plumb: read-back"]),  # nothing kept at the limit: wait for the read-back
+    (0.0, [hookio.SKIP_BUDGET]),  # no grace: the bare notice, as before
+])
+def test_watchdog_grace_waits_for_the_first_kept_line(repo: Path, tmp_path: Path, grace: float,
+                                                      expected: list[str]) -> None:
+    """R1: a hook cut before it kept anything has nothing to say; a hook with a grace lets the
+    read-back through if it arrives within the grace."""
+    import subprocess
+    import sys
+
+    script = tmp_path / "grace.py"
+    script.write_text(_GRACE_SCRIPT.format(repo=repo, grace=grace), encoding="utf-8")
+    result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
+                            timeout=30, check=False)
+    assert result.stdout.splitlines() == expected

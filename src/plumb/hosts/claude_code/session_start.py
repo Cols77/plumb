@@ -124,9 +124,12 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     """The records brief first (kept through any cut), then the tests line."""
     from plumb.api import open_core
     from plumb.contracts import FullPending
+    from plumb.hosts.claude_code.hygiene import TreeScan
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
     from plumb.present.delta import Line, open_emitter, reset
 
+    # work left in the tree from before is told only at the start of a conversation
+    scan = TreeScan(ctx.root) if ctx.data.get("source") not in ("resume", "compact") else None
     core = open_core(ctx.root)
     if ctx.data.get("source") != "resume":
         # a new conversation, /clear or compaction: the agent's context lost what earlier
@@ -136,6 +139,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     # no soft-budget check before the records brief: only the watchdog bounds it
     records_brief = brief(core, NOT_CHECKED)
     ctx.keep(emitter.add([Line(line) for line in records_brief], commit=False))
+    # the status line's snapshot as soon as the records are read, tests unknown: the tests
+    # check can outlast the hook's watchdog, which must not leave the line on an older session
+    present = getattr(core.config, "present", None)
+    write_snapshot(ctx.root, build_snapshot(core), present=present)
     verify = verify_api(core, verify)
     summary = None
     if verify is not None:
@@ -148,6 +155,16 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     if conflicts:
         lines += emitter.add([Line(conflicts)])
         ctx.keep(lines)
+    if summary is not None:  # the tests known: the snapshot again, before the optional lines
+        pending = FullPending(summary["pending"], tuple(summary["reasons"]))
+        tests = (summary["state"], tuple(summary["failing"]), tuple(summary["regressions"]))
+        write_snapshot(ctx.root, build_snapshot(core, full_pending=pending, tests_summary=tests),
+                       present=present)
+    leftover = None if scan is None else scan.line(min(0.3, ctx.deadline.remaining_s()))
+    if leftover:  # INT-027: work from before this session, said before any new work
+        del lines[HARD_CAP - 1:]  # the cap holds: at worst the brief's last line makes room
+        lines += emitter.add([Line(leftover)])
+        ctx.keep(lines)
     if not ctx.deadline.expired():  # sp6 9.4: other worktrees and branches, R17 conflicts
         from plumb.awareness.turn import at_session_start
 
@@ -159,13 +176,6 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
             lines += emitter.add([Line(offer)])
             ctx.keep(lines)
     emitter.close()
-    if not ctx.deadline.expired():
-        pending = None if summary is None else FullPending(summary["pending"],
-                                                           tuple(summary["reasons"]))
-        tests = None if summary is None else (summary["state"], tuple(summary["failing"]),
-                                              tuple(summary["regressions"]))
-        write_snapshot(ctx.root, build_snapshot(core, full_pending=pending, tests_summary=tests),
-                       present=getattr(core.config, "present", None))
     return HookOutput(text="\n".join(lines))
 
 

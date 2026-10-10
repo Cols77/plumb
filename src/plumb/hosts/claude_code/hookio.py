@@ -229,8 +229,11 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
              stdin: TextIO | None = None, stdout: TextIO | None = None,
              root: Path | str | None = None, budget_ms: float | Callable[[Path], float] = 800,
              json_output: bool = False, watchdog: bool = False,
-             start: float | None = None) -> int:
-    """Run one hook handler with the deadline and the catch-all. Always returns 0."""
+             start: float | None = None, grace_s: float = 0.0) -> int:
+    """Run one hook handler with the deadline and the catch-all. Always returns 0.
+
+    ``grace_s``: a hook whose whole answer is lines it keeps (R1) waits this much longer when
+    the hard limit finds nothing kept yet, since the bare notice would say nothing."""
     if stdin is None or stdout is None:
         use_utf8_stdio()
     stdin = sys.stdin if stdin is None else stdin
@@ -249,10 +252,21 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
         if found is None:
             return 0  # repository not adopted by plumb: nothing to do
         budget = budget_ms(found) if callable(budget_ms) else budget_ms
+        graced: list[bool] = []
         if watchdog:
             def fire() -> None:
+                nonlocal timer
+                if grace_s > 0 and not kept.lines and not graced:
+                    graced.append(True)  # nothing to show yet: give the read-back a last chance
+                    timer = threading.Timer(grace_s, fire)
+                    timer.daemon = True
+                    timer.start()
+                    return
                 if writer.write(_cut_output(kept, SKIP_BUDGET, json_output)):
                     log_error(found, name, f"watchdog: hard limit {HARD_LIMIT_S}s reached")
+                    flush = getattr(sys.modules.get("plumb.hashing"), "flush_stat_cache", None)
+                    if flush is not None:
+                        flush()  # the hash cache learned so far warms the next hook
                     os._exit(0)
 
             elapsed = 0.0 if start is None else time.monotonic() - start

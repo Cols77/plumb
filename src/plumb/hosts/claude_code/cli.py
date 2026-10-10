@@ -7,8 +7,10 @@ beyond the standard library: each route imports only the module it needs, and
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import time
+from pathlib import Path
 
 HOOK_MODULES: dict[str, str] = {
     "session-start": "plumb.hosts.claude_code.session_start",
@@ -59,7 +61,15 @@ def _hook(argv: list[str]) -> int:
         # a hook missing from this build never blocks the turn
         sys.stderr.write(f"plumb: hook '{event}' is not available in this build\n")
         return 0
-    return int(module.main(root=root, watchdog=True, start=start) or 0)
+    from plumb.hashing import stat_cached
+    from plumb.paths import find_root
+
+    try:  # file-end hashes reused while files are unchanged: the hooks stay in budget
+        cached = stat_cached(Path(root) if root else find_root(Path.cwd()))
+    except Exception:  # noqa: BLE001 - no cache never blocks the turn
+        cached = contextlib.nullcontext()
+    with cached:
+        return int(module.main(root=root, watchdog=True, start=start) or 0)
 
 
 def _statusline(argv: list[str]) -> int:
