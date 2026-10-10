@@ -4828,3 +4828,23 @@ repeat entries of the first round; they are noted as such.
   document which kind words are owner-level by R9.
 - [LOW] (R18; spec 3) The principles are numbered 1, 2, 6, 3, 4, 5. Editorial. Fix:
   renumber them.
+
+## SP8 lane STALE (2026-10-10)
+
+- [MEDIUM] (SR-111, HA4) The stop hook cannot reach the agent without blocking, so the
+  once-per-session list of links stale before the turn goes to the block reasons when the
+  turn is held, and to the summary line otherwise (the owner sees it, the agent does not).
+  Fix: let the prompt hook (START or READ) print it at the first prompt of a session.
+- [MEDIUM] (SR-111, HA5) `repin --after-tests` finds the version a pin saw among the file's
+  last 30 committed versions (git). A link pinned to an uncommitted version, or older than 30
+  commits, refuses ("the earlier version could not be found"): the agent then rewords or
+  brings the link to the owner as a card. Fix: store a short text snapshot per code end in the
+  link map at pin time, or pin the commit.
+- [LOW] (SR-111, HA2) The edit check opens the core when a record file is newer than the link
+  map (a cold path, cut by the hook deadline). On a repository with thousands of records the
+  first edit after a record write can pass the 300 ms budget; the stop hook is the backstop.
+- [LOW] (SR-111, HA4) Only a moved target (code or upstream record) holds the turn; a
+  requirement the agent reworded is left to the usual proposed-record flow, because holding
+  for it broke `tests/host/test_latency.py::test_intent_lines_survive_cpu_contention`.
+- [LOW] (SR-111, HA5) The stale cards are STALE's own file until JUDGE's J7: `stop.py` prints
+  `stale.card_lines` directly (`stale_card_lines`), which J7 removes.
