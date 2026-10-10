@@ -131,6 +131,8 @@ def _replay_callbacks(data: dict) -> dict:
         plugin_a.register(ctx_a)
         plugin_b.register(ctx_b)
         capture = _DispatchCapture()
+        real_run = plugin_a.subprocess.run
+        real_popen = plugin_a.subprocess.Popen
         plugin_a.subprocess.run = capture.run
         plugin_a.subprocess.Popen = capture.popen
         plugin_b.subprocess.run = capture.run
@@ -139,12 +141,17 @@ def _replay_callbacks(data: dict) -> dict:
         replay = {event: dict(entry["kwargs"]) for event, entry in data["events"].items()}
         cwd_before = Path.cwd()
         try:
-            for module, context, root, session in (
-                (plugin_a, ctx_a, root_a, "session-a"),
-                (plugin_b, ctx_b, root_b, "session-b"),
-            ):
-                for event in ("on_session_start", "pre_llm_call", "post_tool_call",
-                              "pre_verify", "transform_llm_output", "post_llm_call"):
+            projects = {
+                "session-a": (plugin_a, ctx_a, root_a),
+                "session-b": (plugin_b, ctx_b, root_b),
+            }
+            events = ("on_session_start", "pre_llm_call", "post_tool_call",
+                      "pre_verify", "transform_llm_output", "post_llm_call")
+            # Alternate callback turns while both plugins have pending state. This is
+            # deliberately not a pair of complete per-project replays: a swapped plugin
+            # root must be observable from the captured session/cwd association.
+            for event in events:
+                for session, (module, context, root) in projects.items():
                     kwargs = dict(replay[event])
                     kwargs["session_id"] = session
                     if event == "post_tool_call":
@@ -175,15 +182,22 @@ def _replay_callbacks(data: dict) -> dict:
             ctx_a.hooks["post_llm_call"](**cron)
         finally:
             os.chdir(cwd_before)
+            plugin_a.subprocess.run = real_run
+            plugin_a.subprocess.Popen = real_popen
 
         for call in capture.calls:
             assert "absent_fields" not in call["payload"]
             assert call["payload"]["cwd"] == call["cwd"]
-        a_calls = [call for call in capture.calls if call["cwd"] == str(root_a)]
-        b_calls = [call for call in capture.calls if call["cwd"] == str(root_b)]
+        a_calls = [call for call in capture.calls if call["payload"].get("session_id") == "session-a"]
+        b_calls = [call for call in capture.calls if call["payload"].get("session_id") == "session-b"]
         assert a_calls and b_calls
-        assert all(call["payload"]["cwd"] == str(root_a) for call in a_calls)
-        assert all(call["payload"]["cwd"] == str(root_b) for call in b_calls)
+        assert all(call["cwd"] == str(root_a) and call["payload"]["cwd"] == str(root_a)
+                   for call in a_calls), "session-a dispatched outside project A"
+        assert all(call["cwd"] == str(root_b) and call["payload"]["cwd"] == str(root_b)
+                   for call in b_calls), "session-b dispatched outside project B"
+        assert [call["payload"]["session_id"] for call in capture.calls[:8]] == [
+            "session-a", "session-a", "session-b", "session-b",
+            "session-a", "session-b", "session-a", "session-b"]
         return {"dispatches": len(capture.calls),
                 "explicit_parent_child_excluded": explicit_parent_child_excluded,
                 "parentless_cron_dispatched": any(

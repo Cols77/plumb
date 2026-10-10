@@ -33,10 +33,10 @@ Work completed in this slice:
 
 The committed `tests/hosts/hermes_probe/hook_contract.py` consumer validates the
 actual pinned producer dispatch calls and absent fields, replays only those kwargs
-into generated installed plugins, captures subprocess payloads and cwd during a
-two-project interleave, and records explicit-parent exclusion plus a parentless-
-cron non-authentication counterexample. It does not claim live routing or owner
-certification.
+into generated installed plugins, alternates A/B callbacks while asserting each
+session-to-project dispatch binding, and records explicit-parent exclusion plus a
+parentless-cron non-authentication counterexample. It does not claim live routing
+or owner certification.
 
 Acceptance commands:
 

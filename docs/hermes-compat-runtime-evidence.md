@@ -23,9 +23,10 @@ The sanitized fixture `tests/hosts/hermes_probe/hook_payloads.json` records repr
 fixture. It checks the actual installed source checkout, selects each producer's
 named dispatch call, replays only fixture kwargs into two generated installed
 plugins, captures their real subprocess payloads and project-bound cwd while
-interleaving callbacks, and exercises the explicit-parent and parentless-cron
-boundaries. This remains offline callback replay evidence, not live runtime
-routing, authentication proof, or desktop/cron certification.
+alternating A/B callbacks, and asserts the expected session-to-project binding.
+It also exercises the explicit-parent and parentless-cron boundaries. This remains
+offline callback replay evidence, not live runtime routing, authentication proof,
+or desktop/cron certification.
 
 | Hook | Producer and observed kwargs | Frequency / result semantics | Provenance and workspace finding |
 |---|---|---|---|

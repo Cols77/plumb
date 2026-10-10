@@ -244,6 +244,24 @@ def test_hook_contract_rejects_invented_absent_field() -> None:
         hook_contract._assert_fixture(data)
 
 
+def test_hook_contract_rejects_swapped_project_plugins(monkeypatch) -> None:
+    from hosts.hermes_probe import hook_contract
+
+    data = json.loads((Path(__file__).parent / "hermes_probe" /
+                       "hook_payloads.json").read_text("utf-8"))
+    original = hook_contract._load_plugin
+
+    def swapped(root: Path, name: str):
+        plugin = original(root, name)
+        sibling = root.parent / ("B" if root.name == "A" else "A")
+        plugin.PROJECT_ROOT = sibling
+        return plugin
+
+    monkeypatch.setattr(hook_contract, "_load_plugin", swapped)
+    with pytest.raises(AssertionError, match="session-a dispatched"):
+        hook_contract._replay_callbacks(data)
+
+
 def test_block_goes_to_hermes_md_when_present(project: Path) -> None:
     (project / ".hermes.md").write_text("# Hermes notes\n", "utf-8")
     hermes.install(project)
