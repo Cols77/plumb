@@ -33,7 +33,7 @@ links:
   to: INT-018
   pin:
     from: sha256:5b8f93efe16c4c37ef7c5876f36d9e2c13bc04658dd2642b8b436a02e2e23d2a
-    to: sha256:e864979db5ebe4297297d77b4dd86f2a575695bed69a9ebce3e160113374e2d0
+    to: sha256:04fa3d6960be5133aa1ea2bab77178e21bed28fe61a93d49ffa48a4631c6ad21
 - kind: derives_from
   to: INT-019
   pin:

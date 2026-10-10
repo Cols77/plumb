@@ -10,5 +10,5 @@ links:
   to: INT-028
   pin:
     from: sha256:ad92818565bcd4da3279e33ee981120f9e1302bd31f026a959d7e159e4a1cfaf
-    to: sha256:775099f50f59a32bbffee9a8fa1a6c028b0f3687d9c8c74caecc1763b84bcc76
+    to: sha256:d61a9800c2c271d0ab71517aa2d14376c92ed1458d9fff99bec052bfb890ec45
 ---
