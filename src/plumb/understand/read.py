@@ -7,13 +7,15 @@ confirms only after exact checks (task R2)."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import re
 import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import Applied, Job
+from plumb.contracts import Applied, CardState, ClarifyAnswer, ClarifyQuestion, Job
 from plumb.present import owner_text
 from plumb.understand import files
 
@@ -210,5 +212,305 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> str | None:
     return job.id
 
 
+# --------------------------------------------------------------------------- applying
+
+ANSWERS = ("accepted", "rejected", "change", "open")
+_LOOSE_ID = re.compile(r"^(INT|SR|DEC|FEAT)-0*(\d+)$")
+
+
+def normalize_id(raw: str, index: Mapping[str, Any]) -> str:
+    """The record id the reader meant: ``INT-24`` is ``INT-024``."""
+    raw = raw.strip()
+    if raw in index:
+        return raw
+    match = _LOOSE_ID.match(raw.upper())
+    return f"{match.group(1)}-{int(match.group(2)):03d}" if match else raw
+
+
+def _collapse(text: str) -> str:
+    return " ".join(text.split())
+
+
+def evidence_in(evidence: str, message: str) -> bool:
+    """The reader's evidence occurs in the owner's message (whitespace-collapsed)."""
+    found = _collapse(evidence)
+    return bool(found) and found in _collapse(message)
+
+
+def _confidence(raw: Any) -> float:
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _approval(job: Job, digest: str, record_id: str, record_hash: str, evidence: str,
+              confidence: float, *, label: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "by": "owner-words", "session": job.session, "job": job.id,
+        "records": [{"id": record_id, "hash": record_hash}], "prompt_digest": digest,
+        "evidence": evidence, "confidence": confidence}
+    if label:
+        payload["label"] = label
+    return {"kind": "approval", "payload": payload}
+
+
+def _rejection(core: Any, job: Job, digest: str, record: Any, evidence: str, confidence: float,
+               rejection: Any) -> dict[str, Any]:
+    from plumb.capture.calibrate import snapshot
+    from plumb.normalize import sha256_text
+
+    item = {"id": record.id, "hash": record.hash, **snapshot(core.index(), record, core)}
+    return {"kind": "rejection", "payload": {
+        "by": "owner-words", "session": job.session, "job": job.id, "records": [item],
+        "reason": "capture-error" if rejection == "misread" else "intent-change",
+        "prompt_digest": digest, "quote": evidence, "quote_digest": sha256_text(evidence),
+        "confidence": confidence}}
+
+
+def show_first_card(record: Any, evidence: str) -> CardState:
+    """The card that shows a record the owner named but never saw, before it can be
+    confirmed on the next answer (SR-088's rule, kept for prose)."""
+    text = record_text(record)
+    issue = owner_text.CARD_SHOW_FIRST.format(topic=record.title, issue=text)
+    question = ClarifyQuestion(id="confirm", text=issue,
+                               resolutions=("Yes, that is right", "No"), record=record.id)
+    return CardState(id=f"show_first:{record.id}", kind="show_first", topic=record.title,
+                     issue=issue, evidence=evidence, resolutions=question.resolutions,
+                     questions=(question,), status="open")
+
+
+def change_card(record: Any, change: str, evidence: str, digest: str) -> CardState:
+    """A change the owner asked for in words, read back at the next turn."""
+    issue = owner_text.READBACK_CHANGE.format(title=record.title, change=change)
+    question = ClarifyQuestion(id="change", text=issue,
+                               resolutions=("Yes, that is it", "Not quite"), record=record.id)
+    return CardState(id=f"change:{record.id}:{digest.removeprefix('sha256:')[:12]}",
+                     kind="clarify", topic=record.title, issue=issue, evidence=evidence,
+                     resolutions=question.resolutions, questions=(question,), status="open")
+
+
+def owner_only_reply(card: CardState, question: Any) -> str:
+    """What a prose answer to an owner-only card is told: nothing changed, and the button
+    or the typed command that does it."""
+    if card.kind == "settled_item":
+        record = getattr(question, "record", None) or card.topic
+        return owner_text.OWNER_ONLY_REPLY.format(action="undo anything",
+                                                  command=f"/plumb undo {record}".strip())
+    return owner_text.OWNER_ONLY_REPLY.format(
+        action="switch settling on or off", command=f"/plumb settle on {card.topic}".strip())
+
+
+def _open_cards(core: Any, session: str) -> list[CardState]:
+    from plumb.understand import cardstore
+
+    return cardstore.load(core.root, session)
+
+
+class _Applying:
+    """The state of one ``apply`` (in memory; the caller writes the result)."""
+
+    def __init__(self, core: Any, job: Job, digest: str, message: str) -> None:
+        self.core, self.job, self.digest, self.message = core, job, digest, message
+        self.index = core.index()
+        self.statuses = core.status(list(self.index))
+        self.entries: list[Mapping[str, Any]] = []
+        self.cards: dict[str, CardState] = {}
+        self.closed: list[str] = []
+        self.notes: list[str] = []
+        self.confirmed: set[str] = set()
+        self.open_cards = {c.id: c for c in _open_cards(core, job.session)}
+
+    def confirm(self, record_id: str, record_hash: str, evidence: str, confidence: float,
+                label: str | None = None) -> None:
+        record = self.index.get(record_id)
+        if record is None or record.hash != record_hash or record_id in self.confirmed:
+            return
+        if self.statuses[record_id].confirmation == "confirmed":
+            return
+        self.confirmed.add(record_id)
+        self.entries.append(_approval(self.job, self.digest, record_id, record_hash, evidence,
+                                      confidence, label=label))
+
+    def reject(self, record: Any, evidence: str, confidence: float, rejection: Any) -> None:
+        if self.statuses[record.id].confirmation != "confirmed":
+            self.entries.append(_rejection(self.core, self.job, self.digest, record, evidence,
+                                           confidence, rejection))
+
+
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
-    return Applied(job=job.id)
+    """Apply the reader's entries after exact checks only (nothing here reads the words):
+    the message is in the prompt log; the record was shown at that version and is still that
+    version; the evidence occurs in the message; an ``accepted`` entry at or above the
+    threshold confirms (``by: owner-words``). Every entry is logged as a ``read-entry``."""
+    if core is None:
+        return Applied(job=job.id)
+    from plumb.understand.threshold import reader_threshold
+
+    inputs = job.inputs if isinstance(job.inputs, Mapping) else {}
+    claimed = inputs.get("message") if isinstance(inputs.get("message"), Mapping) else {}
+    digest = str(claimed.get("digest") or "")
+    logged = logged_prompt(core, digest)
+    if logged is None:
+        return Applied(job=job.id, notes=("the message is not in the prompt log; "
+                                          "nothing was confirmed",))
+    work = _Applying(core, job, digest, str(logged["text"]))
+    if digest not in {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}:
+        work.entries.append({"kind": "prompt", "payload": {
+            "digest": digest, "session": logged.get("session"), "at": logged.get("at")}})
+    threshold = reader_threshold(core)
+    shown = {str(i["id"]): str(i.get("hash") or "") for i in inputs.get("shown") or ()
+             if isinstance(i, Mapping)}
+    items = [i for i in inputs.get("cards") or () if isinstance(i, Mapping)]
+    by_id = {str(i["id"]): i for i in items}
+    by_record = {str(i["record"]): i for i in items if i.get("record")}
+    raw_entries = answer.get("entries") if isinstance(answer, Mapping) else None
+    for raw in raw_entries or ():
+        if not isinstance(raw, Mapping):
+            continue
+        raw_id = str(raw.get("id") or "")
+        name = normalize_id(raw_id, work.index)
+        said = str(raw.get("answer")) if raw.get("answer") in ANSWERS else "open"
+        confidence = _confidence(raw.get("confidence"))
+        evidence = str(raw.get("evidence") or "")
+        claimed_hash = str(raw.get("hash") or "")
+        work.entries.append({"kind": "read-entry", "payload": {
+            "job": job.id, "id": name, "hash": claimed_hash, "answer": said,
+            "confidence": confidence, "evidence": evidence, "message_digest": digest}})
+        if said == "open":
+            continue
+        if not evidence_in(evidence, work.message):
+            work.notes.append(f"the words quoted for {name} are not in the message; "
+                              "nothing was changed")
+            continue
+        passes = confidence >= threshold
+        item = by_id.get(raw_id) or by_id.get(name)
+        if item is None and name not in shown:
+            item = by_record.get(name)
+        if item is not None and name not in shown:
+            _apply_card(work, item, raw, said, confidence, evidence, passes)
+            continue
+        record = work.index.get(name)
+        if record is None:
+            continue
+        if name in shown and claimed_hash and claimed_hash != shown[name]:
+            work.notes.append(f"{name} was answered at a version that was not shown")
+            continue
+        if name not in shown or shown[name] != record.hash:
+            work.cards[f"show_first:{name}"] = show_first_card(record, evidence)
+            continue
+        if said == "accepted" and passes:
+            work.confirm(name, record.hash, evidence, confidence)
+        elif said == "rejected":
+            work.reject(record, evidence, confidence, raw.get("rejection"))
+        elif said == "change":
+            card = change_card(record, str(raw.get("change") or evidence), evidence, digest)
+            work.cards[card.id] = card
+    return Applied(job=job.id, cards=tuple(work.cards.values()), closed=tuple(work.closed),
+                   entries=tuple(work.entries), notes=tuple(work.notes))
+
+
+def _apply_card(work: _Applying, item: Mapping[str, Any], raw: Mapping[str, Any], said: str,
+                confidence: float, evidence: str, passes: bool) -> None:
+    """An answer to a card question: recorded on the card, then the effect of the card's
+    kind. A prose answer to an owner-only card changes nothing and says what does."""
+    from plumb.understand import effects
+
+    card = work.cards.get(str(item.get("card"))) or work.open_cards.get(str(item.get("card")))
+    if card is None:
+        return
+    question = next((q for q in card.questions if q.id == item.get("question")), None)
+    if card.kind in effects.NO_EFFECT or card.owner_only:
+        work.notes.append(owner_only_reply(card, question))
+        return
+    if said == "accepted" and not passes:
+        return
+    record_id = str(item.get("record") or "")
+    record = work.index.get(record_id) if record_id else None
+    if record is not None and card.kind in ("trial", "backlog") \
+            and record.hash == item.get("hash"):
+        if said == "accepted":
+            work.confirm(record_id, record.hash, evidence, confidence, label="yes")
+        elif said == "rejected":
+            work.reject(record, evidence, confidence, raw.get("rejection"))
+    text = said if said != "change" else f"change: {raw.get('change') or evidence}"
+    answers = (*card.answers, ClarifyAnswer(str(item.get("question") or card.id), text,
+                                            work.digest))
+    answered = {a.question for a in answers}
+    done = all(q.id in answered for q in card.questions) if card.questions else True
+    card = dataclasses.replace(card, answers=answers, status="answered" if done else "open")
+    work.cards[card.id] = card
+    if done:
+        work.closed.append(card.id)
+    handler = effects.handler_for(card.kind)
+    if handler is None:
+        return
+    result = handler(
+        core=work.core, job=work.job, card=card, question=item.get("question"),
+        entry={"answer": said, "change": raw.get("change"), "confidence": confidence,
+               "evidence": evidence, "record": record_id, "hash": item.get("hash")},
+        message=work.message, digest=work.digest, accepted=said == "accepted" and passes,
+        confirm=work.confirm)
+    if isinstance(result, Applied):
+        work.entries.extend(result.entries)
+        for extra in result.cards:
+            work.cards[extra.id] = extra
+        work.closed.extend(result.closed)
+        work.notes.extend(result.notes)
+
+
+# --------------------------------------------------------------------------- card kinds
+# An effect handler is called with keywords: core, job, card, question (the question id),
+# entry ({answer, change, confidence, evidence, record, hash}), message, digest, accepted
+# (accepted at or above the threshold) and confirm (confirm(record, hash, evidence,
+# confidence, label=None), the one way an owner-words approval is queued). It returns an
+# ``Applied`` or None, and takes ``**_`` for what a later version adds.
+
+
+def _show_first_effect(*, entry: Mapping[str, Any], accepted: bool = False,
+                       confirm: Any = None, **_: Any) -> Applied | None:
+    """A show_first card answered: the owner has now seen the record, so an accepted answer
+    confirms it (at the version the card showed)."""
+    if accepted and entry.get("record") and entry.get("hash") and confirm is not None:
+        confirm(str(entry["record"]), str(entry["hash"]), str(entry.get("evidence") or ""),
+                float(entry.get("confidence") or 0))
+    return None
+
+
+def _acknowledge_effect(**_: Any) -> Applied | None:
+    """A link or stale-link card answered: the answer is recorded on the card and the agent
+    resolves it; nothing is confirmed or changed here."""
+    return None
+
+
+def _register() -> None:
+    from plumb.understand import effects
+
+    effects.register("show_first", _show_first_effect)
+    effects.register("link", _acknowledge_effect)
+    effects.register("stale_link", _acknowledge_effect)
+
+
+_register()
+
+
+def confirmation_lines(core: Any, turn: Any = None) -> list[str]:
+    """``<title>: you said: <evidence>`` for each record the owner's words confirmed for a
+    message (``turn``: its prompt digest, or a mapping holding ``prompt_digest``; default:
+    the latest prompt)."""
+    digest = turn.get("prompt_digest") if isinstance(turn, Mapping) else turn
+    if not digest:
+        logged = _prompt_entries(core)
+        digest = logged[-1].get("digest") if logged else None
+    index = core.index()
+    lines: list[str] = []
+    for entry in core.events():
+        payload = entry.payload
+        if entry.kind != "approval" or payload.get("by") != "owner-words" \
+                or payload.get("prompt_digest") != digest:
+            continue
+        said = owner_text.CONFIRM_YOU_SAID.format(evidence=payload.get("evidence", ""))
+        for record in payload.get("records") or ():
+            item = index.get(str(record.get("id")))
+            lines.append(f"{item.title}: {said}" if item is not None else said)
+    return lines
