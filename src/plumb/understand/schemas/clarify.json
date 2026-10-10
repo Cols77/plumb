@@ -1,0 +1,38 @@
+{
+  "id": "clarify.v1",
+  "title": "Is the request clear and complete?",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["intent"],
+  "properties": {
+    "intent": {"type": "string", "enum": ["yes", "no"],
+               "description": "yes when the message starts or changes what is to be built; no for a question, an answer, a remark."},
+    "topic": {"type": "string", "description": "A few words naming the request in the person's own terms."},
+    "readback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "will": {"type": "array", "items": {"type": "string"}},
+        "wont": {"type": "array", "items": {"type": "string"}},
+        "assumptions": {"type": "array", "items": {"type": "string"},
+                        "description": "Small gaps that change nothing important about what gets built, each as a plain assumption."},
+        "examples": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Only the gaps that change what gets built, the most important first.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question", "suggestions"],
+        "properties": {
+          "id": {"type": "string", "description": "A short stable key for the question, such as format or scope."},
+          "question": {"type": "string"},
+          "suggestions": {"type": "array", "items": {"type": "string"}, "minItems": 2},
+          "recommended": {"type": "integer", "minimum": 0, "description": "Position in suggestions of the one you recommend."}
+        }
+      }
+    }
+  }
+}
