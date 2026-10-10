@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from understand.test_judge_job import intent_text, log_prompt, requirement_text
 
 from plumb.api import open_core
 from plumb.contracts import DispatchError
+from understand.test_judge_job import intent_text, log_prompt, requirement_text
 
 pytestmark = pytest.mark.sr("SR-101", "SR-106", "SR-107", "SR-108")
 
@@ -192,3 +192,21 @@ def test_a_late_confirmation_is_told_once_at_the_next_turn(repo: Path, write_rec
     third = summary.stop_parts(ctx, fresh, {"prompt_digest": "sha256:turn3",
                                             "turn_start": 3.0})
     assert third.confirmations == ()
+
+
+def test_the_claude_command_is_given_a_schema_without_our_label() -> None:
+    """The real claude command refuses a schema that carries ``id`` ("use $id"): the label
+    names the schema in plumb and is left off the command line (found against the real model)."""
+    from plumb.understand.dispatch.claude_code import ClaudeCodeDispatcher, cli_schema
+    from plumb.understand.kinds import KINDS
+
+    for module in (KINDS[name] for name in ("read", "judge", "clarify")):
+        schema = dict(module.schema)
+        assert "id" in schema or not schema
+        assert "id" not in cli_schema(schema)
+        assert cli_schema(schema).get("type") == schema.get("type")
+    job = __import__("plumb.understand.files", fromlist=["x"]).make_job(
+        "clarify", SESSION, "clarify.v1", {})
+    argv = ClaudeCodeDispatcher(model="haiku").command("claude", job, "system", {
+        "id": "x.v1", "type": "object"})
+    assert json.loads(argv[argv.index("--json-schema") + 1]) == {"type": "object"}

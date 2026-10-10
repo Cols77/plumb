@@ -68,7 +68,8 @@ def _answers_match(kind: str, answer: Mapping[str, Any], expect: Mapping[str, An
 def _real_answer(dispatcher: Any, job: Job, kind: str) -> Mapping[str, Any]:
     """What the worker would send for ``job``: the kind's agent prompt, its inputs as the user
     message, its schema; an answer that fails the schema is an error, never a reading."""
-    from plumb.understand import agents, schema as schema_check
+    from plumb.understand import agents
+    from plumb.understand import schema as schema_check
     from plumb.understand.kinds import KINDS
 
     module = KINDS[kind]

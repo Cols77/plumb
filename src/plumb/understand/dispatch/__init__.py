@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import DispatchError, Dispatcher, Job, NoModel
+from plumb.contracts import Dispatcher, DispatchError, Job, NoModel
 
 
 class ScriptedDispatcher:

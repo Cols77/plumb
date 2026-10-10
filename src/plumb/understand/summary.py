@@ -77,7 +77,8 @@ def _confirmations(core: Any, turn: Any, told: Told | None = None) -> tuple[str,
     index = core.index()
     for entry in core.events():
         payload = entry.payload
-        if entry.kind != "approval" or payload.get("by") != "owner-words"                 or entry.digest in told.confirmed:
+        if (entry.kind != "approval" or payload.get("by") != "owner-words"
+                or entry.digest in told.confirmed):
             continue
         told.confirmed.add(entry.digest)
         told.dirty = True

@@ -264,6 +264,14 @@ the status line stops showing it as running. A job that finishes within two seco
 nothing. The agent never waits on a read or judge job: it proceeds with nothing confirmed and
 the result is applied when the job returns.
 
+**As shipped (progress and `go`).** The line is the `progress` file of the session. The worker
+writes it every second while a model call is out and removes it when the job ends, except an end
+line a job left itself (state done) and the count of a pass of many jobs (the backlog), which the
+next job goes on from, so the status line reads "judging the backlog · 10/160" between jobs too
+(a count older than two minutes is not the pass in progress). `plumb go --prompt DIGEST` is the
+typed release of a failed check: it opens the gate only when the logged message with that digest,
+written by the host's prompt hook, is exactly `/plumb go`; the agent's own attempt is refused (exit 3).
+
 **Who writes a confirmation.** Only the hook-started worker applies reader and judge results,
 and only the worker writes these entries. They are not new event kinds: `owner-words` and
 `settled` are `by` values on the existing `approval` kind (and `undone` on `revocation`), so

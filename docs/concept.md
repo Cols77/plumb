@@ -556,6 +556,44 @@ the suggestion when any of these triggers fires:
 The thresholds are configurable. A declined suggestion is logged and is not repeated for
 the same intent.
 
+### 5.3 Understanding what the owner said (intent by exception)
+
+Three model-backed readers sit between the owner's words and the records, so the owner
+confirms by exception instead of one record at a time (`docs/specs/sp8-intent-by-exception.md`).
+None of them is a keyword rule; each runs as a **job**, and the part that decides what counts
+is exact code.
+
+- **The reader** maps one owner message onto the records the previous reply showed and the
+  cards that are open: accepted, rejected, change or open, with the owner's exact words as
+  evidence. An accepted answer at or above the learned threshold, at the version shown, with
+  its words found in the message, is written as an `approval` with `by: owner-words`. The
+  typed commands (`/plumb approve ...`, `/plumb undo ...`, `/plumb settle on|off ...`,
+  `/plumb go`) stay an exact grammar; prose never turns an owner-only setting on.
+- **The judge** asks, for every record a capture wrote, whether the owner would object given
+  their words. Until the trial teaches a threshold it only offers the supported records in
+  batches of at most five (one drawn from below the line); an answered batch is the labelled
+  set that `calibrate` reads, from the logged scores and with no model call. Where calibration
+  passes, settling switches itself on for requirements and their examples (`by: settled`,
+  one line each turn with Undo); for intents the owner turns it on by typing; decisions are
+  never settled. The ~150 records proposed before this are judged in one background pass and
+  offered as one card per feature (or per intent when there is no feature).
+- **The clarifier** runs on every owner message and says whether it carries intent and which
+  gaps change what gets built. A request with such a gap closes the **gate**: edits are
+  refused (Claude Code only, the edit tools only) until `plumb clarify --wait` has returned the
+  card and the owner has answered it, or has released a failed check (`/plumb go`).
+
+Jobs are files under `.plumb/session/<id>/` and carry no authority. The prompt hook and
+`plumb capture` queue them (one read job per turn, one clarify job per message, one judge job
+per capture); one worker per session, started by the hook, recomputes each job's inputs from the
+logs, asks the one configured dispatcher, checks the answer against the job's schema and
+applies it. A result file or a job file written by anything else confirms nothing and is
+reported. Every failure (no model, an unreadable answer, a timeout) confirms nothing, shows as
+"couldn't check", and is retried on the next turn; three in a row show on the status line.
+The end-of-turn summary lists, in order, what the owner's words confirmed (also for a read that
+finished after its turn), the settled line, and the cards. While a job runs the status line
+says so in plain words ("reading your answer", "checking your request", "judging the
+backlog · 10/160").
+
 ## 6. The grounding loop
 
 The loop is four hooks plus a status line, with one more hook that guards approvals

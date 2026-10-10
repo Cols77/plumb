@@ -22,6 +22,12 @@ from plumb.understand import agents
 from plumb.understand import schema as schema_check
 
 
+def cli_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
+    """The schema as the claude command accepts it: our own ``id`` label (``read.v1``) is not
+    a JSON Schema keyword there (it asks for ``$id``, a URI), so it is left off."""
+    return {key: value for key, value in schema.items() if key != "id"}
+
+
 class ClaudeCodeDispatcher:
     name = "claude-code"
 
@@ -45,7 +51,7 @@ class ClaudeCodeDispatcher:
         return [binary, "-p", "--agent", agents.name(kind),
                 "--agents", json.dumps(agents.definition(kind, system), ensure_ascii=False),
                 "--model", self.model, "--tools", "",
-                "--json-schema", json.dumps(dict(schema), ensure_ascii=False),
+                "--json-schema", json.dumps(cli_schema(schema), ensure_ascii=False),
                 "--output-format", "json", "--no-session-persistence",
                 "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands"]
 

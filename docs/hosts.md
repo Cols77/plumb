@@ -142,3 +142,22 @@ and lists six read-only tools: `plumb_brief`, `plumb_relevant`, `plumb_show`,
 no write tool: no capture, link, approval, relay, revocation, test run or waiver.
 `plumb mcp install claude-code|codex|hermes` registers it (`.mcp.json`, `.codex/config.toml`,
 Hermes' `config.yaml`), preserving foreign entries.
+
+## The understanding layer's dispatchers and the gate (SR-104, SR-103)
+
+The jobs of the understanding layer (read, judge, clarify; `docs/specs/sp8-intent-by-exception.md`
+section 4.4) each need one model call. `understand.dispatch` names the one dispatcher that makes
+it; when it fails the job fails and nothing is confirmed (there is no second route).
+
+| Host | Dispatcher | How |
+|---|---|---|
+| Claude Code | `claude-code` (the default there) | `claude -p` with the kind's agent from `understand/agents/<kind>.md`, no tools, the kind's answer schema (without plumb's own `id` label, which the command refuses), no session kept, none of the owner's settings, from a neutral directory; `understand.model` defaults to `haiku` |
+| Hermes | `hermes` (the default there) | one delegated session behind `HermesDelegate`; a CLI one-shot fallback keeps Hermes' memory tool, as no toolless mode exists |
+| any | `openrouter` | a direct chat-completions call with the answer schema, through the credential that JEV reads; chosen only by configuration |
+
+The gate that refuses edits while a request's check is open is **Claude Code only**: it is a
+`PreToolUse` hook on the edit tools (Edit, Write, NotebookEdit), a shell script that reads one
+small state file. Edits made through a shell command are not checked, and the hook says so.
+Other hosts get the skill's instruction to run `plumb clarify --wait` first and the visible
+card, but no refusal. The end-of-turn summary of the understanding layer (what the owner's words
+confirmed, the settled line, the cards) is written by the same stop hook on every host that has one.

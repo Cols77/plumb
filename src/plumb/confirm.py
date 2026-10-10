@@ -57,7 +57,8 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
         from plumb.understand.recheck import problem
 
         reason = problem(entry, core)
-        if reason is None and by == "owner-words"                 and payload.get("prompt_digest") not in prompt_digests:
+        if (reason is None and by == "owner-words"
+                and payload.get("prompt_digest") not in prompt_digests):
             return f"owner-words {entry.kind} cites no earlier prompt event"
         return reason
     if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)

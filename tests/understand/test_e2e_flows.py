@@ -17,15 +17,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from understand.fakes import owner_level
-from understand.harness import Session
-from understand.test_read_job import int_text, record_text
 
 from plumb import links, stale
 from plumb.api import open_core
 from plumb.judgment import FakeBackend
 from plumb.present import owner_text
 from plumb.understand import files
+from understand.fakes import owner_level
+from understand.harness import Session
+from understand.test_read_job import int_text, record_text
 
 pytestmark = pytest.mark.sr("SR-101", "SR-102", "SR-103", "SR-104", "SR-105", "SR-106",
                             "SR-107", "SR-108", "SR-111")
@@ -370,7 +370,8 @@ def test_flow_4_backlog_pass_failure_midway_and_resume(repo: Path, write_record)
 
     # the third intent's job failed; the others were judged; nothing was confirmed or settled
     judged = {e.payload["id"] for e in events(repo, "verdict")}
-    assert judged == set(ids) - {i for i in ids if i in {"INT-003", *(f"SR-03{n}" for n in range(1, 8))}}
+    third = {"INT-003", *(f"SR-03{n}" for n in range(1, 8))}
+    assert judged == set(ids) - third
     assert owner_words_approvals(repo) == {} and settled_ids(repo) == []
     held = text_of(s.stop())
     assert "could not check" in held.lower() or "couldn't check" in held.lower()
