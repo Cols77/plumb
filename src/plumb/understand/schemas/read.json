@@ -1,0 +1,27 @@
+{
+  "id": "read.v1",
+  "title": "What the owner answered",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries"],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "description": "One entry for each shown record and each open card question the message answers; nothing for the ones it does not touch.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "answer", "evidence", "confidence"],
+        "properties": {
+          "id": {"type": "string", "description": "The record id as shown, or the card question id as given."},
+          "hash": {"type": "string", "description": "The hash of the record as shown; empty for a card question."},
+          "answer": {"type": "string", "enum": ["accepted", "rejected", "change", "open"]},
+          "rejection": {"type": ["string", "null"], "enum": ["misread", "intent-changed", null]},
+          "change": {"type": ["string", "null"], "description": "What the owner asked to change, or the chosen version or combination."},
+          "evidence": {"type": "string", "description": "The owner's exact words that carry this answer, copied from the message."},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    }
+  }
+}
