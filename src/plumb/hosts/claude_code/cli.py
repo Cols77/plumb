@@ -19,7 +19,7 @@ HOOK_MODULES: dict[str, str] = {
     "pre-tool": "plumb.hosts.claude_code.pretool",  # SHOW's module; until then it allows
 }
 
-_HOOK_USAGE = ("usage: plumb hook {session-start|prompt|post-edit|edit-check|stop} [--root PATH]\n"
+_HOOK_USAGE = ("usage: plumb hook {session-start|prompt|post-edit|edit-check|stop|pre-tool} [--root PATH]\n"
                "Claude Code hook entry points: read the host's JSON on stdin, answer on "
                "stdout, always exit 0.\n")
 

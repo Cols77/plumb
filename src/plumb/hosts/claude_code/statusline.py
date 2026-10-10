@@ -69,16 +69,43 @@ def find_root(root: Path | str | None, data: dict[str, Any]) -> Path | None:
     return None
 
 
-def _with_progress(line: str, root: Path, session: str | None) -> str:
-    """The line with the running execution's plain step text appended (a missing or
-    unreadable progress file adds nothing)."""
-    try:
-        from plumb.progress import status_text
+def _progress_parts(root: Path, session: str | None, data: Any) -> tuple[str, str, str]:
+    """``(shell, session, flag)``: what an execution started from a shell is doing (it replaces
+    the card while it runs), what the session's worker is doing (it follows the card), and the
+    note that checks keep failing. Each is empty when there is nothing to say; a missing or
+    unreadable file adds nothing."""
+    from plumb.progress import FAILURES_FLAG, shown
 
-        step = status_text(root, session)
+    try:
+        shell = shown(root, None)
+        worker = shown(root, session) if session else ""
+        flag = ""
+        if session and (root / ".plumb" / "session" / session / "failures.json").exists():
+            from plumb.progress import failure_flag
+
+            flag = failure_flag(root, session)
+        elif isinstance(data, dict) and int(data.get("understand_failures") or 0) >= 3:
+            flag = FAILURES_FLAG.format(n=int(data["understand_failures"]))
+        return shell, worker, flag
     except Exception:  # noqa: BLE001 - the status line never fails
-        return line
-    return f"{line} | {step}" if step else line
+        return "", "", ""
+
+
+def compose(data: Any, parts: tuple[str, str, str], *, ascii: bool | None = None) -> str:
+    shell, worker, flag = parts
+    card = render(data, ascii=ascii)
+    if ascii is None:
+        prefs = data.get("present") if isinstance(data, dict) and isinstance(
+            data.get("present"), dict) else {}
+        ascii = bool(prefs.get("ascii"))
+    if ascii:
+        from plumb.present.render import to_ascii
+
+        shell, worker, flag = (to_ascii(t) for t in (shell, worker, flag))
+    if shell:
+        card = f"plumb | {shell}" if ascii else f"plumb ⏳ {shell}"
+    extras = [e for e in (worker, flag) if e]
+    return " | ".join([card, *extras])
 
 
 def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
@@ -90,6 +117,7 @@ def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
     stdin = sys.stdin if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
     session = None
+    parts = ("", "", "")
     try:
         stdin_data = _read_stdin(stdin)
         if isinstance(stdin_data.get("session_id"), str):
@@ -102,16 +130,15 @@ def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
                                   .read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 data = None
-        line = render(data)
-        if found is not None:
-            line = _with_progress(line, found, session)
+            parts = _progress_parts(found, session, data)
+        line = compose(data, parts)
     except Exception:  # noqa: BLE001 - the status line never fails
         data, line = None, NO_STATUS
     try:
         stdout.write(line + "\n")
     except (OSError, ValueError):  # UnicodeEncodeError included: the ASCII card
         try:
-            stdout.write(render(data, ascii=True) + "\n")
+            stdout.write(compose(data, parts, ascii=True) + "\n")
         except Exception:  # noqa: BLE001
             stdout.write(NO_STATUS + "\n")
     return 0

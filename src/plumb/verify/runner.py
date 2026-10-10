@@ -17,11 +17,13 @@ that passed before and can no longer even be imported is a regression (R3), neve
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import threading
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,6 +33,17 @@ PLUGIN = "plumb.verify.pytest_plugin"
 COV_PLUGIN = "plumb.verify.cov_plugin"  # SR-110: coverage contexts, one per test node
 STREAM_SUFFIX = ".stream"  # the plugin's phase stream, next to its report
 _FAIL_RANK = {"setup": 0, "call": 1, "teardown": 2}
+# SR-108: what a run says it is doing, and how it says it ended
+STEP_FULL = "running the full suite"
+STEP_COVERING = "running the covering tests"
+STEP_RECORDING = "recording which code each test runs"
+END_BY_STEP = {STEP_FULL: "the full suite finished", STEP_COVERING: "the covering tests finished",
+               STEP_RECORDING: "recording finished"}
+STOPPED = "{step} stopped at the time limit"
+# the reporter and step of the run in progress, set by ``run_selection`` (a context, not an
+# argument: ``run_pytest`` keeps its signature for everything that calls or replaces it)
+_PROGRESS: contextvars.ContextVar[tuple[Any, str] | None] = contextvars.ContextVar(
+    "plumb_run_progress", default=None)
 
 
 @dataclass
@@ -192,10 +205,74 @@ def finished_nodes(phases: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, A
     return _node_outcomes([p for p in phases if str(p["nodeid"]) in done])
 
 
+class StreamWatch:
+    """Follows the plugin's phase stream while pytest runs: tests finished (a teardown) of the
+    total the plugin announced once, and the file the latest test belongs to (SR-108)."""
+
+    def __init__(self, path: str, reporter: Any, step: str, interval_s: float = 0.2) -> None:
+        self.path, self.reporter, self.step = path, reporter, step
+        self.interval_s = interval_s
+        self.offset = 0
+        self.pending = b""
+        self.done: set[str] = set()
+        self.total = 0
+        self.current = ""
+        self.stop = threading.Event()
+        self.thread: threading.Thread | None = None
+
+    def poll(self) -> None:
+        try:
+            with open(self.path, "rb") as handle:
+                handle.seek(self.offset)
+                chunk = handle.read()
+        except OSError:
+            chunk = b""
+        self.offset += len(chunk)
+        *lines, self.pending = (self.pending + chunk).split(b"\n")
+        for raw in lines:
+            try:
+                phase = json.loads(raw.decode("utf-8", errors="replace"))
+            except ValueError:
+                continue
+            if not isinstance(phase, dict):
+                continue
+            if isinstance(phase.get("total"), int):
+                self.total = max(self.total, phase["total"])
+            node = str(phase.get("nodeid") or "")
+            if node:
+                self.current = node.split("::", 1)[0]
+                if phase.get("when") == "teardown":
+                    self.done.add(node)
+        self.reporter.update(self.step, len(self.done), self.total, item=self.current)
+
+    def start(self) -> None:
+        def run() -> None:
+            while not self.stop.wait(self.interval_s):
+                try:
+                    self.poll()
+                except Exception:  # noqa: BLE001 - progress never stops a run
+                    return
+
+        self.thread = threading.Thread(target=run, daemon=True)
+        self.thread.start()
+
+    def finish(self) -> None:
+        self.stop.set()
+        if self.thread is not None:
+            self.thread.join(2)
+        try:
+            self.poll()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = None,
-               workers: int = 0, cov: CovSpec | None = None) -> RunResult:
+               workers: int = 0, cov: CovSpec | None = None, progress: Any = None,
+               step: str | None = None) -> RunResult:
     """Run pytest once in ``root`` and read the plugin's report. With ``cov`` the coverage
-    plugin writes one data file per process (``result.cov_files``)."""
+    plugin writes one data file per process (``result.cov_files``). With ``progress`` (a
+    ``progress.Reporter``) the run says ``step``, how many tests have finished of the total and
+    the test file it is in; nothing it decides changes."""
     import glob
     import time
 
@@ -223,8 +300,16 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
             env["PLUMB_COV_SKIP"] = skip_file
     cmd = build_command(args, workers=workers, cov=cov is not None)
     start = time.monotonic()
+    if progress is None and _PROGRESS.get() is not None:
+        progress, step = _PROGRESS.get()
+    step = step or STEP_FULL
+    watch = StreamWatch(report_path + STREAM_SUFFIX, progress, step) if progress else None
+    if progress is not None:
+        progress.update(step)
     proc = subprocess.Popen(cmd, cwd=root, env=env, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+    if watch is not None:
+        watch.start()
     try:
         out, _ = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
@@ -235,6 +320,8 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
         except subprocess.TimeoutExpired:
             proc.kill()
             out, _ = proc.communicate()
+    if watch is not None:
+        watch.finish()
     result.elapsed_s = round(time.monotonic() - start, 3)
     if cov is not None:
         result.cov_files = sorted(f for f in glob.glob(glob.escape(cov.data_base) + ".*")
@@ -288,10 +375,20 @@ def closure_inputs(tmap: Any, test_files: Iterable[str]) -> set[str]:
     return files
 
 
+def _end_line(step: str, result: RunResult) -> str:
+    passed = sum(1 for d in result.nodes.values() if d.get("outcome") == "passed")
+    failed = sum(1 for d in result.nodes.values() if d.get("outcome") == "failed")
+    counts = f"{passed} passed" + (f", {failed} failed" if failed else "")
+    return f"{END_BY_STEP.get(step, step)}: {counts}"
+
+
 def run_selection(core: Any, nodes: Sequence[str], *, full: bool = False,
                   timeout_s: float | None = None, tmap: Any = None,
                   cov: CovSpec | None = None) -> RunOutcome:
-    """Run ``nodes`` (or the whole suite when ``full``) and check the inputs did not move."""
+    """Run ``nodes`` (or the whole suite when ``full``) and check the inputs did not move.
+    The run reports its progress (SR-108) on the reporter of the enclosing execution, or its
+    own."""
+    from plumb import progress as progress_module
     from plumb.verify.testmap import build_map
 
     root = Path(core.root)
@@ -300,8 +397,23 @@ def run_selection(core: Any, nodes: Sequence[str], *, full: bool = False,
     watched = closure_inputs(tmap, test_files)
     before = input_hashes(root, watched)
     workers = int(getattr(core.config.verify, "workers", 0) or 0)
-    result = run_pytest(root, [] if full else list(nodes), timeout_s=timeout_s,
-                        workers=workers, cov=cov)
+    step = STEP_RECORDING if cov is not None else STEP_FULL if full else STEP_COVERING
+    reporter, owned = progress_module.acquire(root, "tests")
+    token = _PROGRESS.set((reporter, step))
+    try:
+        result = run_pytest(root, [] if full else list(nodes), timeout_s=timeout_s,
+                            workers=workers, cov=cov)
+    except BaseException:
+        if owned:
+            reporter.failed(f"{step} stopped")
+        raise
+    finally:
+        _PROGRESS.reset(token)
+    if owned:
+        if result.timed_out:
+            reporter.failed(STOPPED.format(step=step))
+        else:
+            reporter.done(_end_line(step, result))
     after = input_hashes(root, watched)
     discarded = "inputs changed" if after != before else None
     return RunOutcome(result=result, discarded=discarded, inputs=before)

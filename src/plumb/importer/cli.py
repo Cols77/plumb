@@ -9,6 +9,7 @@ import sys
 from plumb.cliutil import EXIT_USAGE, add_common, emit, resolve_root
 
 TOOLS = ("pi-agent-factory",)
+STEP_IMPORT = "reading the other tool's records"      # SR-108
 
 
 def run(command: str, argv: list[str]) -> int:
@@ -37,9 +38,14 @@ def run(command: str, argv: list[str]) -> int:
     from plumb.importer.pi_factory import ImportRefused, import_pi_factory
 
     only = [k for k in args.only.split(",") if k.strip()] if args.only else None
+    from plumb import progress
+
+    core = open_core(resolve_root(args.root))
     try:
-        report = import_pi_factory(open_core(resolve_root(args.root)), args.source,
-                                   dry_run=args.dry_run, only=only, diff=args.diff)
+        with progress.scope(core.root, "import") as reporter:
+            reporter.update(STEP_IMPORT)         # the total is unknown: elapsed time only
+            report = import_pi_factory(core, args.source, dry_run=args.dry_run, only=only,
+                                       diff=args.diff)
     except (FileNotFoundError, ImportRefused) as exc:
         print(f"plumb import: {exc}", file=sys.stderr)
         return EXIT_USAGE

@@ -5025,3 +5025,13 @@ untouched and `tests/capture/test_triage.py`, `test_auto_approve.py` are green a
 - [LOW] (SR-111, HA4) Hosts on the host-neutral path (`plumb hook --host`, `plumb turn end`)
   hold a turn once, like their other blocks (`hosts.neutral` never blocks while continuing);
   only Claude Code's own hook holds up to `hooks.stale_holds_max` times.
+
+## SP8 lane SHOW (2026-10-10)
+
+- `plumb clarify --wait` is not reachable yet: `understand/cli.py` (coordinator) still sends every `clarify` to `capture.cli`. Route `clarify` to `plumb.understand.cmd_clarify` (it forwards to the old helper when `--wait` is absent).
+- `tests/understand/test_contracts.py::test_evalrun_fake_writes_an_eval_run_entry` expects 0 cases (phase C placeholder); filling `evalset/clarify.json` (S6) makes it read 17 cases, by design (READ's `read.json` does the same).
+- `evalrun.run_cases` passes the expected answer inside the job inputs and measures the false-gap rate through a `gap` flag; the clarify schema carries that flag. A run against the real model (Integrate) needs the expectation kept out of the inputs.
+- S5: the replacement of `AMBIGUITY_TERMS` in `capture/clarify.py` waits for the owner's confirmation of the SR-043 narrowing (question 1); only the skill changed.
+- The stop hook does not yet report `gate.problems` (only `plumb validate` does); `stop.py` is not SHOW's.
+- `snapshot.write_snapshot(..., failures=)` carries the three-failures flag; the session-start and stop hooks should pass `queue.consecutive_failures` (the status line also reads it live).
+- ENGINE's real `queue.consecutive_failures` replaces the stand-in in `test_three_failures_flag` on merge; re-run SHOW's set after ENGINE lands (3.5).

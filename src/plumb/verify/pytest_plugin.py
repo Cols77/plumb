@@ -19,9 +19,12 @@ import os
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 _report: dict[str, Any] = {}
 _worker_id: str | None = None
 _stream: Any = None
+_total_sent = False
 STREAM_SUFFIX = ".stream"
 
 
@@ -38,8 +41,9 @@ def _publish() -> None:
 
 
 def pytest_configure(config: Any) -> None:
-    global _report, _worker_id, _stream
+    global _report, _worker_id, _stream, _total_sent
     _report = _empty()
+    _total_sent = False
     _worker_id = getattr(config, "workerinput", {}).get("workerid")
     target = os.environ.get("PLUMB_REPORT")
     if target and _worker_id is None:
@@ -62,6 +66,23 @@ def _stream_phase(phase: dict[str, Any]) -> None:
 
 def pytest_collection_finish(session: Any) -> None:
     _report["collected"] = [item.nodeid for item in session.items]
+    _stream_total(len(session.items))
+
+
+def _stream_total(count: int) -> None:
+    """Say once how many tests the run has, for the runner's progress (done of total). A line
+    with a ``total`` and no node id: the readers of the stream skip it."""
+    global _total_sent
+    if _total_sent or _worker_id is not None or count <= 0:
+        return
+    _total_sent = True
+    _stream_phase({"total": count})
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_node_collection_finished(node: Any, ids: Any) -> None:
+    """With xdist the controller collects nothing itself: the first worker's list is the total."""
+    _stream_total(len(ids))
 
 
 def pytest_collectreport(report: Any) -> None:

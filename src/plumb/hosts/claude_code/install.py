@@ -37,7 +37,15 @@ HOOKS: tuple[tuple[str, str, str | None, bool], ...] = (
     # SR-111: synchronous, after the async tracker, so what it prints reaches the agent
     ("edit-check", "PostToolUse", POST_EDIT_MATCHER, False),
     ("stop", "Stop", None, False),
+    # SHOW S4: refuses the edit tools while the gate of the session is closed (a shell script,
+    # `templates/gate.sh`, copied to `.claude/plumb/gate.sh`; `plumb hook pre-tool` is the
+    # Python route of the same decision)
+    ("pre-tool", "PreToolUse", POST_EDIT_MATCHER, False),
 )
+GATE_SCRIPT = ".claude/plumb/gate.sh"
+GATE_COMMAND = 'sh "$CLAUDE_PROJECT_DIR/' + GATE_SCRIPT + '"'
+# hook names whose module is not named after them
+HOOK_MODULE = {"pre-tool": "pretool"}
 GUARDED = ("approve", "revoke", "tests waive", "triage --approve", "spec approve",
            "config auto-approve", "config show",
            # the agent never logs a prompt itself where the prompt hook runs: `turn start`
@@ -48,7 +56,8 @@ GUARDED = ("approve", "revoke", "tests waive", "triage --approve", "spec approve
            # the owner's words with `conflict relay`, never `conflict choose`
            "conflict choose")
 STANDARD_PREFIXES = ("plumb", "uv run plumb", "python -m plumb")
-_PLUMB_COMMAND = re.compile(r"(?:^|[\s\"'/\\])plumb(?:\.exe)?[\"']?\s+(?:hook\s|statusline\b)")
+_PLUMB_COMMAND = re.compile(r"(?:^|[\s\"'/\\])plumb(?:\.exe)?[\"']?\s+(?:hook\s|statusline\b)"
+                            r"|\.claude/plumb/gate\.sh")
 _PLUMB_DENY = re.compile(r"plumb (?:approve|revoke|tests waive|triage --approve|spec approve"
                          r"|config auto-approve|config show|turn start|hook prompt"
                          r"|conflict choose):\*\)$"
@@ -132,7 +141,7 @@ def available_hooks() -> list[str]:
     """The hooks whose modules exist in this build."""
     out = []
     for name, *_ in HOOKS:
-        module = "plumb.hosts.claude_code." + name.replace("-", "_")
+        module = "plumb.hosts.claude_code." + HOOK_MODULE.get(name, name.replace("-", "_"))
         try:
             found = importlib.util.find_spec(module) is not None
         except (ImportError, ValueError):
@@ -194,8 +203,8 @@ def merge_settings(settings: dict[str, Any], launcher: Launcher, hooks: Sequence
     for name, event, matcher, is_async in HOOKS:
         if name not in wanted:
             continue
-        hook: dict[str, Any] = {"type": "command",
-                                "command": f"{launcher.hook_prefix} hook {name}"}
+        command = GATE_COMMAND if name == "pre-tool" else f"{launcher.hook_prefix} hook {name}"
+        hook: dict[str, Any] = {"type": "command", "command": command}
         if is_async:
             hook["async"] = True
         group: dict[str, Any] = {"matcher": matcher} if matcher else {}
@@ -363,6 +372,8 @@ def install(root: Path, *, launcher: Launcher | str = "auto", dry_run: bool = Fa
                template(f"skills/{name}/SKILL.md", chosen), report, root, dry_run)
     _write(claude / "commands" / "plumb.md", template("plumb-command.md", chosen), report,
            root, dry_run)
+    if "pre-tool" in names:
+        _write(root / GATE_SCRIPT, template("gate.sh", chosen), report, root, dry_run)
     claude_md = root / "CLAUDE.md"
     try:
         text = claude_md.read_text(encoding="utf-8")
@@ -457,12 +468,12 @@ def uninstall(root: Path, *, dry_run: bool = False) -> InstallReport:
             _write(settings_path, _dump(cleaned), report, root, dry_run)
     claude = root / ".claude"
     skills = [claude / "skills" / name / "SKILL.md" for name in skill_names()]
-    for path in (*skills, claude / "commands" / "plumb.md"):
+    for path in (*skills, claude / "commands" / "plumb.md", root / GATE_SCRIPT):
         if path.exists():
             report.changed.append(path.relative_to(root).as_posix())
             if not dry_run:
                 path.unlink()
-                if path.name == "SKILL.md":
+                if path.name in ("SKILL.md", "gate.sh"):
                     try:
                         path.parent.rmdir()
                     except OSError:
@@ -565,7 +576,8 @@ def status(root: Path) -> list[str]:
     for name, event, *_ in HOOKS:
         commands = [h.get("command") for g in hooks.get(event, []) if isinstance(g, dict)
                     for h in g.get("hooks", []) if isinstance(h, dict)]
-        if any(is_plumb_command(c) and f" hook {name}" in str(c) for c in commands):
+        marker = "plumb/gate.sh" if name == "pre-tool" else f" hook {name}"
+        if any(is_plumb_command(c) and marker in str(c) for c in commands):
             installed.append(name)
     missing = [name for name, *_ in HOOKS if name not in installed]
     lines.append("hooks: " + (", ".join(installed) or "none")
