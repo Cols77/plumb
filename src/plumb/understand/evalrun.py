@@ -123,11 +123,24 @@ def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="plumb understand eval")
     parser.add_argument("--fake", action="store_true")
     parser.add_argument("--root", default=None)
+    parser.add_argument("--compare", default=None,
+                        help="judges side by side on the labelled set, e.g. haiku,jev")
+    parser.add_argument("--set", dest="set_path", default=None)
     args = parser.parse_args(argv)
     from plumb.api import open_core
     from plumb.paths import find_root
 
     core = open_core(find_root(Path(args.root or ".")))
+    if args.compare:
+        from plumb.understand import evalcompare
+
+        names = [n.strip().lower() for n in args.compare.split(",") if n.strip()]
+        try:
+            print(evalcompare.run_compare(core, names, args.set_path))
+        except evalcompare.CompareError as exc:
+            print(f"plumb: eval --compare: {exc}", file=sys.stderr)
+            return 2
+        return 0
     if args.fake:
         dispatcher: Any = FakeEvalDispatcher()
     else:
