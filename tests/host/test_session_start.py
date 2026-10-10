@@ -16,6 +16,18 @@ from plumb.hosts.claude_code import session_start
 pytestmark = pytest.mark.sr("SR-009")
 
 
+@pytest.fixture(autouse=True)
+def _roomy_hook_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests check what the brief says, not how fast the machine is: a real hook
+    budget (1.4 s) is overrun by any load on a shared machine and adds a 'check skipped'
+    line. The cut itself is tested on a fake clock that jumps 5 s, past this budget; the
+    hook's real speed is held by test_hook_perf."""
+    monkeypatch.setattr(session_start, "hook_budget", lambda name: (lambda root: 4000.0))
+    # the triage offer fires whenever the budget leaves room for its judgment; it is held by
+    # test_hook_perf, and here would make the line count depend on how much budget is left
+    monkeypatch.setattr(session_start, "triage_offer_line", lambda core: None)
+
+
 def _run(repo: Path, hook_input, **kwargs) -> str:
     out = io.StringIO()
     code = session_start.main(stdin=io.StringIO(hook_input("SessionStart", source="startup")),

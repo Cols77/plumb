@@ -131,7 +131,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     """The records brief first (kept through any cut), then the tests line."""
     from plumb.api import open_core
     from plumb.contracts import FullPending
-    from plumb.hosts.claude_code.hygiene import TreeScan
+    from plumb.hosts.claude_code.hygiene import GIT_TIMEOUT_S, TreeScan
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
     from plumb.present.delta import Line, open_emitter, reset
 
@@ -167,7 +167,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
         tests = (summary["state"], tuple(summary["failing"]), tuple(summary["regressions"]))
         write_snapshot(ctx.root, build_snapshot(core, full_pending=pending, tests_summary=tests),
                        present=present)
-    leftover = None if scan is None else scan.line(min(0.3, ctx.deadline.remaining_s()))
+    leftover = None if scan is None else scan.line(min(GIT_TIMEOUT_S, ctx.deadline.remaining_s()))
     if leftover:  # INT-027: work from before this session, said before any new work
         del lines[HARD_CAP - 1:]  # the cap holds: at worst the brief's last line makes room
         lines += emitter.add([Line(leftover)])
