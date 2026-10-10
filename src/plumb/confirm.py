@@ -45,7 +45,7 @@ def affirmation_in(quote: str, affirmations: Sequence[str]) -> str | None:
 
 
 def entry_problem(entry: LogEntry, prompt_digests: set[str],
-                  affirmations: Sequence[str]) -> str | None:
+                  affirmations: Sequence[str], core: Any = None) -> str | None:
     """Why an approval or revocation entry fails its re-check, or None (spec 5.6)."""
     payload: Mapping[str, Any] = entry.payload
     if entry.digest != entry_digest({"v": 1, "kind": entry.kind, "at": entry.at,
@@ -56,7 +56,7 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
     if by in ("owner-words", "settled", "undone"):  # SP8: re-checked by the understand layer
         from plumb.understand.recheck import problem
 
-        reason = problem(entry, None)
+        reason = problem(entry, core)
         if reason is None and by == "owner-words"                 and payload.get("prompt_digest") not in prompt_digests:
             return f"owner-words {entry.kind} cites no earlier prompt event"
         return reason
@@ -109,7 +109,8 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
 
 
 def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
-                    escalated: Collection[str] = ()) -> list[tuple[LogEntry, str | None]]:
+                    escalated: Collection[str] = (), core: Any = None
+                    ) -> list[tuple[LogEntry, str | None]]:
     """Approval and revocation entries in log order, each with its re-check problem.
     ``escalated``: the records of escalated spec sets (``escalated_of``), which no auto-jev
     approval confirms; callers holding a Core use ``checked``/``remaining``."""
@@ -133,7 +134,7 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
         elif entry.kind == "calibration":
             calibrations[entry.digest] = entry
         elif entry.kind in ("approval", "revocation"):
-            problem = entry_problem(entry, prompts, affirmations)
+            problem = entry_problem(entry, prompts, affirmations, core)
             by = entry.payload.get("by")
             if problem is None and by == "auto-jev":
                 problem = recheck(entry, config, calibrations, prompts, approved, escalated)
@@ -157,12 +158,12 @@ def is_self_recorded(payload: Mapping[str, Any]) -> bool:
 
 
 def remaining_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
-                      escalated: Collection[str] = ()
+                      escalated: Collection[str] = (), core: Any = None
                       ) -> dict[str, list[tuple[str, str, LogEntry]]]:
     """Per record, the valid approvals ``(hash, by, entry)`` left after revocations, in
     order (the entry carries the labels: ``self_recorded``, the auto-jev score, a set)."""
     remaining: dict[str, list[tuple[str, str, LogEntry]]] = {}
-    for entry, problem in checked_entries(entries, affirmations, escalated):
+    for entry, problem in checked_entries(entries, affirmations, escalated, core):
         if problem is not None:
             continue
         by = str(entry.payload.get("by"))
@@ -190,12 +191,13 @@ def escalated_of(core: Core) -> frozenset[str]:
 def checked(core: Core) -> list[tuple[LogEntry, str | None]]:
     """``checked_entries`` of ``core``'s event log with every re-check input (the one entry
     point for callers holding a Core)."""
-    return checked_entries(core.events(), core.config.approve.affirmations, escalated_of(core))
+    return checked_entries(core.events(), core.config.approve.affirmations, escalated_of(core),
+                           core)
 
 
 def remaining(core: Core) -> dict[str, list[tuple[str, str, LogEntry]]]:
     standing = remaining_entries(core.events(), core.config.approve.affirmations,
-                                 escalated_of(core))
+                                 escalated_of(core), core)
     return carry_renumbers(core, standing)[0]
 
 
@@ -262,12 +264,13 @@ def verified_end(link: Any) -> str | None:
 
 
 def approved_test_pins(entries: Iterable[LogEntry], affirmations: Sequence[str],
-                       index: Mapping[str, Record]) -> dict[str, dict[str, set[str]]]:
+                       index: Mapping[str, Record], core: Any = None
+                       ) -> dict[str, dict[str, set[str]]]:
     """``{SR: {verified_by end: content hashes}}``: what the owner's approvals of each
     requirement at its current hash pinned for its acceptance tests (approvals still standing
     after revocations). An approval written before ends were pinned pins nothing."""
     standing: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
-    for entry, problem in checked_entries(entries, affirmations):
+    for entry, problem in checked_entries(entries, affirmations, core=core):
         if problem is not None:
             continue
         for item in entry.payload.get("records") or []:
@@ -324,9 +327,9 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
     selected = list(index) if ids is None else [i for i in ids if i in index]
     standing, carried = carry_renumbers(
         core, remaining_entries(core.events(), core.config.approve.affirmations,
-                                escalated_of(core)))
+                                escalated_of(core), core))
     approvals = {r: [(h, by) for h, by, _ in items] for r, items in standing.items()}
-    pins = approved_test_pins(core.events(), core.config.approve.affirmations, index)
+    pins = approved_test_pins(core.events(), core.config.approve.affirmations, index, core)
     states = core.link_states(selected)
     by_record: dict[str, list] = {}
     for state in states:

@@ -15,14 +15,18 @@ ROUTES: dict[str, str] = {
 
 def run(command: str, argv: list[str]) -> int:
     if command == "clarify":
-        # today's function, unchanged, until SHOW's cmd_clarify replaces it
-        from plumb.capture import cli as capture_cli
+        # `--wait` collects the check of the request; without it, today's helper
+        from plumb.understand import cmd_clarify
 
-        return int(capture_cli.run(command, argv) or 0)
+        return int(cmd_clarify.run(command, argv) or 0)
     if command == "understand" and argv and argv[0] == "eval":
         from plumb.understand import evalrun
 
         return evalrun.run("eval", argv[1:])
+    if command == "understand" and argv and argv[0] == "backlog":
+        from plumb.understand import backlog
+
+        return int(backlog.run("backlog", argv[1:]) or 0)
     module_name = ROUTES.get(command)
     if module_name is None:
         print(f"plumb: unknown command '{command}'", file=sys.stderr)

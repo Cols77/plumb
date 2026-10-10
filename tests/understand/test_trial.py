@@ -151,6 +151,10 @@ def test_ex6_yes_is_a_labelled_yes_and_recalibration_makes_no_model_call(
     assert [i["id"] for i in log["payload"]["items"]] == ["SR-003", "SR-001", "SR-002"]
     # the yes itself is recorded by the reader as an owner-words approval, label yes
     monkeypatch.setattr(recheck_words, "problem", lambda entry, core: None)
+    # the reader logs the owner's message as a prompt event before it writes a confirmation
+    # by their words (READ's re-check refuses an approval citing no earlier prompt event)
+    core.log_append("events", "prompt", {"digest": "sha256:0", "session": SESSION,
+                                         "at": "2026-10-10T10:00:00Z"})
     with as_worker(core.root, SESSION):
         for record_id in ids:
             core.log_append("events", "approval", {

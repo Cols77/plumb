@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,9 @@ from plumb.contracts import DispatchError, Dispatcher, Job, NoModel
 
 class ScriptedDispatcher:
     """``PLUMB_FAKE_DISPATCH=<file>``: answers each job kind with the file's ``{kind: answer}``
-    (the test harness's way of giving a worker process a fake model). It never reaches a
+    (the test harness's way of giving a worker process a fake model). A number under
+    ``"$delay"`` makes every run wait that many seconds first, and ``"$fail_when": {"kind":
+    ..., "contains": text}`` fails the runs whose inputs hold ``text``. It never reaches a
     model; its results say ``fake`` as the dispatcher."""
 
     name = "fake"
@@ -28,12 +31,29 @@ class ScriptedDispatcher:
     def available(self) -> str | None:
         return None if self.script.is_file() else "the scripted answers file is missing"
 
+    def _log(self, job: Job) -> None:
+        """One line per call in ``<script>.calls`` (a test counts the model calls)."""
+        try:
+            path = self.script.with_name(self.script.name + ".calls")
+            with path.open("a", encoding="utf-8") as out:
+                out.write(json.dumps({"kind": job.kind, "job": job.id}) + "\n")
+        except OSError:
+            pass
+
     def run(self, job: Job, *, system: str, user: str, schema: Mapping[str, Any],
             on_step: Callable[[str], None]) -> Mapping[str, Any]:
         try:
             data = json.loads(self.script.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise DispatchError("run", f"the scripted answers cannot be read: {exc}") from exc
+        pause = data.get("$delay") if isinstance(data, Mapping) else None
+        if isinstance(pause, (int, float)) and 0 < pause <= 30:
+            time.sleep(float(pause))  # lets a test look at the status line meanwhile
+        self._log(job)
+        fail = data.get("$fail_when") if isinstance(data, Mapping) else None
+        if (isinstance(fail, Mapping) and fail.get("kind", job.kind) == job.kind
+                and str(fail.get("contains", "")) in json.dumps(job.inputs, default=str)):
+            raise DispatchError("run", "the model could not be reached")
         answer = data.get(job.kind, {}) if isinstance(data, Mapping) else {}
         if isinstance(answer, Mapping) and "error" in answer and len(answer) == 1:
             raise DispatchError("run", str(answer["error"]))

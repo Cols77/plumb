@@ -272,7 +272,10 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
     source_logged = any((i.record, i.hash) in logged for i in items
                         if not i.source.startswith("gen"))
     if source_logged:
-        items = [i for i in items if (i.record, i.hash) in logged]
+        # generated 'no' examples share their source record's id and hash, so a logged verdict
+        # would score them as the record they were made from; no verdict covers them
+        items = [i for i in items if not i.source.startswith("gen")
+                 and (i.record, i.hash) in logged]
         scores = [logged[(i.record, i.hash)] for i in items]
         name, version = "judge", model
     else:

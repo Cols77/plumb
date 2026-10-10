@@ -519,7 +519,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         early_lines, early = early_cards(ctx, turn)
         write_stated(ctx, turn, {}, [], confirm=view, conflicts=conflicts, early=early)
         # a timed-out git status is no evidence of a turn without changes
-        text = [*view.lines, *conflict_lines, *early_lines,
+        # what the owner's words confirmed, the settled line and the cards need no edit
+        understood = understand_parts(ctx, core, turn)
+        text = [*view.lines, *conflict_lines, *early_lines, *understood,
                 *([skip_notice(skipped)] if skipped else [])]
         return HookOutput(system_message="\n".join(text)) if text else None
     # no soft-budget check before the read-back (R1): only the watchdog bounds it
@@ -714,7 +716,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         escalated=escalated, extra_lines=[*waiting, *offer])
     view = confirm_view(core, carry, shown)
     message = "\n".join([text, *view.lines]) if view.lines else text
-    stale_text = [*stale_notes, *stale_card_lines(ctx)]
+    # the stale cards are rendered once, by the understanding summary below (J7)
+    stale_text = [*stale_notes]
     if stale_text:
         message = "\n".join([message, *stale_text])
     understood = understand_parts(ctx, core, turn)
@@ -775,16 +778,6 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         return [], [*before, *notes]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return [], []
-
-
-def stale_card_lines(ctx: HookContext) -> list[str]:
-    """The stale cards waiting for the owner, as owner-level lines."""
-    try:
-        from plumb.stale import card_lines
-
-        return card_lines(ctx.root, ctx.session_id)
-    except Exception:  # noqa: BLE001
-        return []
 
 
 def understand_parts(ctx: HookContext, core: Any, turn: Mapping[str, Any]) -> list[str]:

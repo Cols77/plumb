@@ -112,7 +112,7 @@ def _set_confirmed(core: Any, members: Sequence[str]) -> bool:
     if len(want) != len(set(members)):
         return False
     confirmed = False
-    pairs = checked_entries(core.events(), core.config.approve.affirmations)
+    pairs = checked_entries(core.events(), core.config.approve.affirmations, core=core)
     for entry, problem, items in pinned_through_renumbers(core, pairs):
         if problem is not None:
             continue

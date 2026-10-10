@@ -222,7 +222,7 @@ def test_couldnt_check_line_after_a_failed_job(repo: Path, write_record,
 
 def test_a_failed_clarify_job_asks_to_build_without_the_check(repo: Path,
                                                               engine_standins) -> None:
-    from plumb.understand import files, summary
+    from plumb.understand import files, ledger, summary
 
     path = files.results_dir(repo, SESSION) / "clarify-0000000000000001.json"
     files.write_json_atomic(files.jobs_dir(repo, SESSION) / "clarify-0000000000000001.json",
@@ -233,6 +233,8 @@ def test_a_failed_clarify_job_asks_to_build_without_the_check(repo: Path,
                                    "answer": None, "error": {"step": "run", "message": "down"},
                                    "model": "", "dispatcher": "fake", "started": "t",
                                    "finished": "t", "run_s": 0})
+    # a result counts when the worker wrote it (the real queue looks for its ledger entry)
+    ledger.record(repo, SESSION, "clarify-0000000000000001")
     line = "\n".join(summary.stop_parts(context(repo), open_core(repo), {}).cards)
     assert owner_text.GATE_BUILD_ANYWAY in line and owner_text.GATE_WAIT in line
 

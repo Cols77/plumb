@@ -34,7 +34,9 @@ def _asked(text: str, answer: dict[str, Any], repo: Path, engine_standins: Any, 
     core = open_core(repo)
     digest = log_prompt(repo, text, session=SESSION)
     gate.close(repo, SESSION, digest, "your request is being checked")
-    engine_standins.dispatcher.script = {"clarify": answer}
+    # the real worker checks the answer against the schema: it always carries the gap flag
+    engine_standins.dispatcher.script = {"clarify": {"gap": bool(answer.get("gaps")),
+                                                     "gaps": [], **answer}}
     job = clarify.build(core, SESSION, message={"digest": digest, "text": text}, after=after)
     assert job is not None
     worker.run_once(core, SESSION)
@@ -159,7 +161,7 @@ def test_ex9_clarify_job_needs_the_read_job_and_its_inputs_hold_the_answered_car
     assert inputs is not None
     assert {a["question"] for a in inputs["answered"]} == {"format", "scope"}
     # the model repeats a question the owner just answered, and one new thing it does not ask
-    engine_standins.dispatcher.script = {"clarify": {"intent": "yes", "gaps": [
+    engine_standins.dispatcher.script = {"clarify": {"intent": "yes", "gap": True, "gaps": [
         _gap("format", "Which format?")]}}
     worker.run_once(core, SESSION, job.id)
     assert [c.id for c in _cards(repo) if c.status == "open"] == []     # no second card

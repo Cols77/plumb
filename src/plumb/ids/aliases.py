@@ -192,7 +192,7 @@ def carried(core: Any) -> dict[str, tuple[str, str]]:
     from plumb.confirm import carry_renumbers, escalated_of, remaining_entries
 
     standing = remaining_entries(core.events(), core.config.approve.affirmations,
-                                 escalated_of(core))
+                                 escalated_of(core), core)
     _, labels = carry_renumbers(core, standing)
     return {new: (old, new) for new, old in labels.items()}
 

@@ -241,9 +241,10 @@ def test_run_loop_picks_up_jobs_queued_while_it_runs(
 
 def test_start_detached_runs_the_queue_in_another_process(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A real detached worker: the stub ``read`` kind has nothing to ask, so the job ends ok."""
+    """A real detached worker runs the queued job in another process and it ends ok."""
     script = repo / "script.json"
-    script.write_text("{}", encoding="utf-8")
+    # READ landed: its answer must hold the entries list the schema asks for (none here)
+    script.write_text('{"read": {"entries": []}}', encoding="utf-8")
     monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))   # under pytest only then it spawns
     core = Core(repo)
     job = jobs.new_job("read", "s1", "read.v1", {"n": 1})

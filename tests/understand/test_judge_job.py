@@ -446,7 +446,9 @@ def test_evalset_judge_cases_load_and_run_on_the_fake(repo: Path, capsys) -> Non
     assert evalrun.run("eval", ["--fake", "--root", str(repo)]) == 0
     (run,) = [e for e in open_core(repo).events() if e.kind == "eval-run"]
     assert run.payload["passed"] >= 6 and run.payload["model"] == "fake"
-    assert "6 cases" in capsys.readouterr().out
+    # the run holds every lane's cases now (read, judge, clarify): the judge's six are in it
+    assert len([c for c in run.payload["cases"] if c["kind"] == "judge"]) == 6
+    assert f"{len(run.payload['cases'])} cases" in capsys.readouterr().out
 
 
 def _answers(*items: dict[str, Any]) -> dict[str, Any]:

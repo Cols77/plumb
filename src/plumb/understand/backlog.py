@@ -113,6 +113,11 @@ def features(core: Any) -> dict[str, str]:
             parent = group_of(index, record)
             if parent in out:
                 out[record.id] = out[parent]
+    for record in index.values():          # no feature on the way: grouped by the intent
+        if record.id not in out and record.kind in KINDS_JUDGED:
+            parent = group_of(index, record)
+            if parent in index and index[parent].kind == "intent":
+                out[record.id] = index[parent].title
     return out
 
 

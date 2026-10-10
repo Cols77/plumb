@@ -11,6 +11,7 @@ The worker makes the token of ``worker.lock`` and holds it in its own environmen
 
 from __future__ import annotations
 
+import calendar
 import contextlib
 import dataclasses
 import json
@@ -30,6 +31,7 @@ from plumb.understand import schema as schema_check
 
 STALE_S = 30.0                  # a lock whose heartbeat is older is taken over
 HEARTBEAT_S = 5.0
+MIDWAY_S = 120.0     # a count older than this is not the pass in progress
 _HELD: dict[tuple[str, str], str] = {}     # the locks this process holds: (root, session) -> token
 
 
@@ -212,16 +214,18 @@ class _Ticker:
     """Says the step again every ``interval`` seconds while a model call is out, and keeps the
     lock's heartbeat fresh."""
 
-    def __init__(self, pass_: _Pass, reporter: Any, step: str, interval: float) -> None:
+    def __init__(self, pass_: _Pass, reporter: Any, step: str, interval: float,
+                 counts: tuple[int, int] = (0, 0)) -> None:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True, args=(
-            pass_, reporter, step, max(0.05, interval)))
+            pass_, reporter, step, max(0.05, interval), counts))
 
-    def _loop(self, pass_: _Pass, reporter: Any, step: str, interval: float) -> None:
+    def _loop(self, pass_: _Pass, reporter: Any, step: str, interval: float,
+              counts: tuple[int, int]) -> None:
         last_beat = time.monotonic()
         while not self._stop.wait(interval):
             try:
-                reporter.update(step)
+                reporter.update(step, *counts)
                 if time.monotonic() - last_beat >= HEARTBEAT_S:
                     heartbeat(pass_.root, pass_.session, pass_.token)
                     last_beat = time.monotonic()
@@ -331,8 +335,9 @@ class _Pass:
             return
         reporter = self._progress(job)
         step = self._step_text(job)
+        counts = self._carried(reporter)
         with contextlib.suppress(Exception):
-            reporter.update(step)
+            reporter.update(step, *counts)
         try:
             recomputed = module.recompute(self.core, job)
         except Exception as exc:  # noqa: BLE001 - a kind that fails is an error result
@@ -353,7 +358,7 @@ class _Pass:
                                       inputs_digest=files.digest_of(recomputed))
         step = self._step_text(job)
         with contextlib.suppress(Exception):
-            reporter.update(step)
+            reporter.update(step, *counts)
         try:
             dispatcher = dispatch.configured(self.core)
         except NoModel as exc:
@@ -365,7 +370,7 @@ class _Pass:
             return
         interval = float(getattr(self.core.config.understand, "progress_interval_s", 1) or 1)
         try:
-            with _Ticker(self, reporter, step, interval):
+            with _Ticker(self, reporter, step, interval, counts):
                 answer = dispatcher.run(
                     job, system=agents.load(job.kind),
                     user=json.dumps(job.inputs, ensure_ascii=False, sort_keys=True, indent=1),
@@ -394,11 +399,32 @@ class _Pass:
             job=job.id, status="ok", answer=dict(answer), dispatcher=dispatcher.name,
             started=started, finished=jobs.now(), run_s=round(time.perf_counter() - t0, 3)))
 
+    def _carried(self, reporter: Any) -> tuple[int, int]:
+        """The count a pass of many jobs (the backlog) left on the line a moment ago, so the
+        next job goes on from it instead of starting the count again."""
+        shown = files.progress_from_json(files.read_json(reporter.path))
+        if shown is None or not self._midway(shown, reporter.kind):
+            return 0, 0
+        return shown.done, shown.total
+
+    @staticmethod
+    def _midway(shown: Any, kind: str) -> bool:
+        if shown.state != "running" or shown.kind != kind or not 0 <= shown.done < shown.total:
+            return False
+        try:
+            age = time.time() - calendar.timegm(time.strptime(shown.updated, "%Y-%m-%dT%H:%M:%SZ"))
+        except (TypeError, ValueError):
+            return False
+        return age < MIDWAY_S
+
     def _clear(self, reporter: Any) -> None:
         """The line goes when the job ends, unless the job's own ``apply`` left an end line
-        (state done, words in the step): that one is for the status line to show."""
+        (state done, words in the step) or a count of a pass with more jobs to run: those are
+        for the status line to show."""
         shown = files.progress_from_json(files.read_json(reporter.path))
         if shown is not None and shown.state == "done" and shown.step:
+            return
+        if shown is not None and self._midway(shown, reporter.kind):
             return
         with contextlib.suppress(OSError):
             reporter.path.unlink()

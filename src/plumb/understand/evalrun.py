@@ -47,22 +47,74 @@ class FakeEvalDispatcher:
         return dict(job.inputs.get("expect") or {})
 
 
+def _answers_match(kind: str, answer: Mapping[str, Any], expect: Mapping[str, Any]) -> bool:
+    """Whether a model's answer meets a frozen case, the way that kind reads its answer."""
+    if kind == "judge":
+        from plumb.understand import judge
+
+        return judge.matches(answer, expect)
+    if kind == "read":
+        got = {str(e.get("id")): e for e in answer.get("entries") or () if isinstance(e, Mapping)}
+        wanted = {str(e.get("id")): e for e in expect.get("entries") or ()}
+        for name, item in wanted.items():
+            if name not in got or got[name].get("answer") != item.get("answer"):
+                return False
+        # a confirmation nobody asked for is the worst mistake a reader can make
+        return not any(e.get("answer") == "accepted" and name not in wanted
+                       for name, e in got.items())
+    return all(answer.get(k) == v for k, v in expect.items())
+
+
+def _real_answer(dispatcher: Any, job: Job, kind: str) -> Mapping[str, Any]:
+    """What the worker would send for ``job``: the kind's agent prompt, its inputs as the user
+    message, its schema; an answer that fails the schema is an error, never a reading."""
+    from plumb.understand import agents, schema as schema_check
+    from plumb.understand.kinds import KINDS
+
+    module = KINDS[kind]
+    answer = dict(dispatcher.run(
+        job, system=agents.load(kind),
+        user=json.dumps(job.inputs, ensure_ascii=False, sort_keys=True, indent=1),
+        schema=module.schema, on_step=lambda step: None))
+    found = schema_check.problems(answer, module.schema)
+    if found:
+        raise DispatchError("schema", "; ".join(found[:3]))
+    return answer
+
+
 def run_cases(dispatcher: Any, cases: Sequence[Mapping[str, Any]],
               kind: str) -> list[dict[str, Any]]:
+    """Run each case. The fake dispatcher is handed the expected answer inside the inputs (the
+    harness without a model); any other dispatcher gets the real prompt, inputs and schema, and
+    never sees the expectation."""
+    fake = isinstance(dispatcher, FakeEvalDispatcher)
     results: list[dict[str, Any]] = []
     for n, case in enumerate(cases):
         expect = dict(case.get("expect") or {})
-        job = Job(id=f"eval-{kind}-{n}", kind=kind,
-                  inputs={**dict(case.get("inputs") or {}), "expect": expect})
+        inputs = dict(case.get("inputs") or {})
+        job = Job(id=f"eval-{kind}-{n}", kind=kind, schema=f"{kind}.v1",
+                  inputs={**inputs, "expect": expect} if fake else inputs)
+        error = ""
         try:
-            answer = dict(dispatcher.run(job, system="", user=json.dumps(job.inputs),
-                                         schema={}, on_step=lambda step: None))
-            passed = all(answer.get(k) == v for k, v in expect.items())
+            if fake:
+                answer = dict(dispatcher.run(job, system="", user=json.dumps(job.inputs),
+                                             schema={}, on_step=lambda step: None))
+                passed = all(answer.get(k) == v for k, v in expect.items())
+            else:
+                try:
+                    answer = dict(_real_answer(dispatcher, job, kind))
+                except KeyError:                 # a kind with no module: the plain protocol
+                    answer = dict(dispatcher.run(job, system="", user=json.dumps(inputs),
+                                                 schema={}, on_step=lambda step: None))
+                passed = _answers_match(kind, answer, expect)
             false_gap = bool(answer.get("gap")) and not expect.get("gap")
-        except DispatchError:
-            passed, false_gap = False, False
-        results.append({"kind": kind, "case": case.get("name", str(n)), "passed": passed,
-                        "false_gap": false_gap})
+        except DispatchError as exc:
+            passed, false_gap, error = False, False, f"{exc.step}: {exc.message}"
+        row = {"kind": kind, "case": case.get("name", str(n)), "passed": passed,
+               "false_gap": false_gap}
+        if error:
+            row["error"] = error
+        results.append(row)
     return results
 
 

@@ -44,13 +44,15 @@ class Told:
         self.since = str(data.get("since") or now)
         self.settled = set(str(d) for d in data.get("settled") or ())
         self.notices = set(str(d) for d in data.get("notices") or ())
+        self.confirmed = set(str(d) for d in data.get("confirmed") or ())
         self.dirty = not data
 
     def save(self) -> None:
         if self.dirty:
             files.write_json_atomic(self.path, {"since": self.since,
                                                 "settled": sorted(self.settled),
-                                                "notices": sorted(self.notices)})
+                                                "notices": sorted(self.notices),
+                                                "confirmed": sorted(self.confirmed)})
 
 
 def _iso(epoch: float) -> str:
@@ -60,14 +62,32 @@ def _iso(epoch: float) -> str:
 # --------------------------------------------------------------------------- the parts
 
 
-def _confirmations(core: Any, turn: Any) -> tuple[str, ...]:
+def _confirmations(core: Any, turn: Any, told: Told | None = None) -> tuple[str, ...]:
+    """What the owner's words confirmed for this turn's message, then what they confirmed for
+    an earlier message whose read finished after that turn ended (told once)."""
     try:
         from plumb.understand import read
 
-        lines = read.confirmation_lines(core, turn)   # READ's: "<title>: you said: <words>"
+        lines = [str(line) for line in read.confirmation_lines(core, turn)]  # READ's wording
     except (ImportError, AttributeError):
         return ()
-    return tuple(str(line) for line in lines)
+    if told is None:
+        return tuple(lines)
+    digest = turn.get("prompt_digest") if isinstance(turn, Mapping) else turn
+    index = core.index()
+    for entry in core.events():
+        payload = entry.payload
+        if entry.kind != "approval" or payload.get("by") != "owner-words"                 or entry.digest in told.confirmed:
+            continue
+        told.confirmed.add(entry.digest)
+        told.dirty = True
+        if payload.get("prompt_digest") == digest or entry.at < told.since:
+            continue                      # this turn's own (above), or older than the session
+        said = owner_text.CONFIRM_YOU_SAID.format(evidence=payload.get("evidence", ""))
+        for record in payload.get("records") or ():
+            item = index.get(str(record.get("id")))
+            lines.append(f"{item.title}: {said}" if item is not None else said)
+    return tuple(lines)
 
 
 def settled_line(core: Any, told: Told) -> tuple[list[str], list[str]]:
@@ -151,7 +171,8 @@ def stop_parts(ctx: Any, core: Any, turn: Any) -> StopParts:
     started = float(turn.get("turn_start") or 0) or time.time()
     deadline = getattr(ctx, "deadline", None)
     roomy = deadline is None or deadline.remaining_s() > UNDER_BUDGET_S
-    confirmations = _confirmations(core, turn)
+    told = Told(core.root, session, _iso(started))
+    confirmations = _confirmations(core, turn, told)
     refreshed = None
     if roomy:
         try:
@@ -167,7 +188,6 @@ def stop_parts(ctx: Any, core: Any, turn: Any) -> StopParts:
             backlog.resume(core, session)    # a pass a failure interrupted goes on (spec 8)
         except Exception:  # noqa: BLE001 - queueing never costs the owner their summary
             pass
-    told = Told(core.root, session, _iso(started))
     settled: list[str] = []
     titles, digests = settled_line(core, told)
     if titles:
