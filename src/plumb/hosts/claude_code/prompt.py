@@ -344,12 +344,17 @@ def understand_lines(ctx: HookContext, core: Any, digest: str, text: str) -> lis
 
 
 def stale_turn_start(ctx: HookContext, core: Any) -> None:
-    """SR-111: keep the link map current for the edit check; a failure here never blocks the
-    prompt."""
+    """SR-111: keep the link map current for the edit check and write the baseline of this
+    turn (the links stale now, which the stop hook does not hold the turn for); a failure
+    here never blocks the prompt."""
     try:
-        from plumb.stale import ensure_linkmap
+        from plumb.stale import ensure_linkmap, write_baseline
 
         ensure_linkmap(core)
+        turn = read_json(ctx.session_dir / ctx.session_id / "turn.json")
+        turn_id = turn.get("turn_id") if isinstance(turn, dict) else None
+        if turn_id and not ctx.deadline.expired():
+            write_baseline(core, ctx.session_id, str(turn_id))
     except Exception:  # noqa: BLE001 - advisory
         pass
 

@@ -636,6 +636,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     # card the owner then sees in the reply, and asks before any further work)
     early_ask = [line for line in aware if line.must]
     aware = [line for line in aware if not line.must]
+    stale_reasons, stale_notes = stale_hold(ctx, core, index, turn, turn_start)
 
     if not active:
         from plumb.present.delta import Line, open_emitter
@@ -662,6 +663,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                                state=str(m.get("masked_by") or "?"), must=True))
             asked[f"masked:{m['node']}"] = str(m.get("masked_by") or "?")
         reasons = emitter.add(wanted)
+        if stale_reasons:  # SR-111: a link this turn made stale is still unresolved
+            reasons = [*stale_reasons, *reasons]
         if reasons:
             if queued:  # the block tells the agent now; the next prompt need not repeat it
                 new = [p for p in queued if emitter.is_new(f"untraced:{p}")]
@@ -684,6 +687,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
             write_json_atomic(turn_path, {**turn, "asked": asked,
                                           "untraced_told": sorted(told | set(queued))})
             return HookOutput(block_reason="\n".join(reasons))
+    elif stale_reasons:
+        # the host says this stop already followed a block: only the stale hold repeats, up to
+        # hooks.stale_holds_max times (stale.hold_count), so a turn is never held forever
+        write_stated(ctx, turn, index, stated_ids)
+        return HookOutput(block_reason="\n".join(stale_reasons))
 
     if ctx.deadline.expired():
         skipped.append("confirmations")
@@ -706,6 +714,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         escalated=escalated, extra_lines=[*waiting, *offer])
     view = confirm_view(core, carry, shown)
     message = "\n".join([text, *view.lines]) if view.lines else text
+    stale_text = [*stale_notes, *stale_card_lines(ctx)]
+    if stale_text:
+        message = "\n".join([message, *stale_text])
     understood = understand_parts(ctx, core, turn)
     if understood:
         message = "\n".join([message, *understood])
@@ -718,6 +729,60 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     write_stated(ctx, turn, index, stated_ids, shown, group=group, offer=offer,
                  message=message, confirm=view, conflicts=conflicts, early=early)
     return HookOutput(system_message=message)
+
+
+def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
+               turn: Mapping[str, Any], turn_start: float) -> tuple[list[str], list[str]]:
+    """SR-111 EX-3: ``(block reasons, summary lines)`` for the links this turn made stale.
+
+    A stale link the turn caused (against the baseline the prompt hook wrote) that no card
+    holds keeps the turn open, naming it, up to ``hooks.stale_holds_max`` consecutive holds;
+    then the turn is let go with a stale card per link. The links stale before the turn are
+    listed once per session and never block. Without a baseline of this turn nothing is
+    held. Never fails the stop."""
+    try:
+        from plumb import stale
+
+        turn_id = turn.get("turn_id")
+        state = stale.turn_state(core, ctx.session_id, str(turn_id) if turn_id else None)
+        if not state.valid:
+            return [], []
+        before = []
+        if state.before and stale.once_per_session(
+                ctx.root, ctx.session_id, "before:" + ",".join(r.link for r in state.before)):
+            before = [stale.before_line(state.before)]
+        open_rows = stale.unresolved(core, ctx.session_id, state)
+        held = stale.hold_count(ctx.root, ctx.session_id, str(turn_id))
+        if not open_rows:
+            if held:
+                stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), 0)
+            return [], before
+        limit = int(core.config.hooks.stale_holds_max)
+        if held < limit:
+            stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), held + 1)
+            return [*stale.hold_lines(open_rows, held + 1, limit), *before], []
+        from plumb.present.owner_text import STALE_HOLD_ENDED
+
+        notes = []
+        for row in open_rows:
+            title = index[row.record].title if row.record in index else row.record
+            other = index[row.what].title if row.what in index else ""
+            stale.add_card(ctx.root, ctx.session_id, turn=int(turn_start),
+                           **stale.default_card(row, title, other))
+            notes.append(STALE_HOLD_ENDED.format(n=held, title=title))
+        return [], [*before, *notes]
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        return [], []
+
+
+def stale_card_lines(ctx: HookContext) -> list[str]:
+    """The stale cards waiting for the owner, as owner-level lines."""
+    try:
+        from plumb.stale import card_lines
+
+        return card_lines(ctx.root, ctx.session_id)
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def understand_parts(ctx: HookContext, core: Any, turn: Mapping[str, Any]) -> list[str]:
