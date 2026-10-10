@@ -13,6 +13,8 @@ The tests line is cached under the verify fingerprint, so a warm start builds no
 
 from __future__ import annotations
 
+import os
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TextIO
@@ -22,6 +24,39 @@ from plumb.hosts.claude_code.providers import LAZY, verify_api
 
 HARD_CAP = 40
 NOT_CHECKED = "tests: not checked (budget)"
+
+
+class StepTimer:
+    """Milliseconds per step, written to ``.plumb/session/<id>/timing.json`` only with
+    ``PLUMB_HOOK_TIMING=1`` (a measurement aid; the hook records nothing otherwise)."""
+
+    def __init__(self, ctx: HookContext) -> None:
+        self.ctx = ctx
+        self.on = os.environ.get("PLUMB_HOOK_TIMING") == "1"
+        self.steps: dict[str, float] = {}
+        if self.on:  # interpreter start and the hook module's imports, before the handler
+            self.steps["imports"] = round(ctx.deadline.elapsed_s() * 1000, 1)
+        self._last = time.monotonic()
+
+    def mark(self, name: str) -> None:
+        """Close the step ``name``: the time since the previous mark."""
+        if not self.on:
+            return
+        now = time.monotonic()
+        self.steps[name] = round(self.steps.get(name, 0.0) + (now - self._last) * 1000, 1)
+        self._last = now
+
+    def write(self) -> None:
+        if not self.on:
+            return
+        from plumb.hosts.claude_code.hookio import write_json_atomic
+
+        try:
+            write_json_atomic(self.ctx.session_dir / self.ctx.session_id / "timing.json",
+                              {"steps": self.steps, "total_ms": round(
+                                  self.ctx.deadline.elapsed_s() * 1000, 1)})
+        except OSError:
+            pass
 
 
 def _clip_list(items: list[str], shown: int = 2) -> str:
@@ -129,32 +164,48 @@ def conflicts_line(core: Any) -> str | None:
 
 def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     """The records brief first (kept through any cut), then the tests line."""
+    timer = StepTimer(ctx)
+    try:
+        return _handle(ctx, verify, timer)
+    finally:
+        timer.write()
+
+
+def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
     from plumb.api import open_core
     from plumb.contracts import FullPending
     from plumb.hosts.claude_code.hygiene import GIT_TIMEOUT_S, TreeScan
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
     from plumb.present.delta import Line, open_emitter, reset
 
+    timer.mark("imports")
     # work left in the tree from before is told only at the start of a conversation
     scan = TreeScan(ctx.root) if ctx.data.get("source") not in ("resume", "compact") else None
     core = open_core(ctx.root)
+    timer.mark("core_open")
     if ctx.data.get("source") != "resume":
         # a new conversation, /clear or compaction: the agent's context lost what earlier
         # hooks injected, so records come again (R9); a resumed one keeps its transcript
         reset(ctx.session_dir, ctx.session_id)
     emitter = open_emitter(ctx, "session-start", config=core.config)
+    if timer.on:
+        core.index()
+        timer.mark("index")
     # no soft-budget check before the records brief: only the watchdog bounds it
     records_brief = brief(core, NOT_CHECKED)
     ctx.keep(emitter.add([Line(line) for line in records_brief], commit=False))
+    timer.mark("brief")
     # the status line's snapshot as soon as the records are read, tests unknown: the tests
     # check can outlast the hook's watchdog, which must not leave the line on an older session
     present = getattr(core.config, "present", None)
     write_snapshot(ctx.root, build_snapshot(core), present=present)
+    timer.mark("snapshot")
     verify = verify_api(core, verify)
     summary = None
     if verify is not None:
         ctx.deadline.check("tests")
         summary = cached_summary(core, verify)
+    timer.mark("tests_summary")
     lines = emitter.add([Line(evidence_line(summary) if line == NOT_CHECKED else line)
                          for line in records_brief])
     ctx.keep(lines)
@@ -167,7 +218,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
         tests = (summary["state"], tuple(summary["failing"]), tuple(summary["regressions"]))
         write_snapshot(ctx.root, build_snapshot(core, full_pending=pending, tests_summary=tests),
                        present=present)
+    timer.mark("snapshot")
     leftover = None if scan is None else scan.line(min(GIT_TIMEOUT_S, ctx.deadline.remaining_s()))
+    timer.mark("tree_scan")
     if leftover:  # INT-027: work from before this session, said before any new work
         del lines[HARD_CAP - 1:]  # the cap holds: at worst the brief's last line makes room
         lines += emitter.add([Line(leftover)])
@@ -177,6 +230,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
 
         lines += emitter.add(at_session_start(core, ctx.deadline))
         ctx.keep(lines)
+    timer.mark("awareness")
     # R8 A: at most one line, the triage offer. Its judgment may call the network for up to
     # the hook timeout, so it runs only when that much of the budget is left (the cached
     # judgments of an earlier session make it free; a cold one waits for a roomier hook)
@@ -185,6 +239,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
         if offer:
             lines += emitter.add([Line(offer)])
             ctx.keep(lines)
+    timer.mark("triage_offer")
     emitter.close()
     return HookOutput(text="\n".join(lines))
 

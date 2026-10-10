@@ -4828,3 +4828,20 @@ repeat entries of the first round; they are noted as such.
   document which kind words are owner-level by R9.
 - [LOW] (R18; spec 3) The principles are numbered 1, 2, 6, 3, 4, 5. Editorial. Fix:
   renumber them.
+
+## SP8 lane START (2026-10-10)
+
+HC1 step timings of session start on plumb's own records (`PLUMB_HOOK_TIMING=1`, ms, one run each; a loaded machine, so read them as orders of magnitude). Budget 1400, target cold at most 1260, warm at most 900.
+
+| Step | Cold (cache wiped) | Warm |
+|---|---|---|
+| interpreter and imports | 375 | 282 to 390 |
+| core open | 0 | 0 to 15 |
+| index | 437 | 47 to 78 |
+| brief | 531 | 203 to 235 |
+| tests summary | 219 | 47 to 63 |
+| snapshot (twice) | 47 | 62 to 78 |
+| tree scan | 16 | 0 |
+| awareness (branches, worktrees) | 0 | 141 to 453 |
+| triage offer | 0 | 0 |
+| total | 1640 (best of four before the lane: 1844) | 906 to 1125 |
