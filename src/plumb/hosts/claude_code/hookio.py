@@ -57,30 +57,39 @@ class Deadline:
 
 
 class HookOutput:
-    """What a hook answers: context text, a system message, or a block. (Plain classes, not
-    dataclasses: the module costs import time on every hook.)"""
+    """What a hook answers: context text, a system message, a block, or additional context
+    for the agent after a tool call (``additional_context``, the PostToolUse form). (Plain
+    classes, not dataclasses: the module costs import time on every hook.)"""
 
-    __slots__ = ("text", "system_message", "block_reason")
+    __slots__ = ("text", "system_message", "block_reason", "additional_context")
 
-    def __init__(self, text: str = "", system_message: str = "", block_reason: str = "") -> None:
+    def __init__(self, text: str = "", system_message: str = "", block_reason: str = "",
+                 additional_context: str = "") -> None:
         self.text = text
         self.system_message = system_message
         self.block_reason = block_reason
+        self.additional_context = additional_context
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, HookOutput):
             return NotImplemented
-        return (self.text, self.system_message, self.block_reason) == (
-            other.text, other.system_message, other.block_reason)
+        return (self.text, self.system_message, self.block_reason,
+                self.additional_context) == (
+            other.text, other.system_message, other.block_reason, other.additional_context)
 
     def __repr__(self) -> str:
         return (f"HookOutput(text={self.text!r}, system_message={self.system_message!r}, "
-                f"block_reason={self.block_reason!r})")
+                f"block_reason={self.block_reason!r}, "
+                f"additional_context={self.additional_context!r})")
 
     def render(self) -> str:
         if self.block_reason:
             return json.dumps({"decision": "block", "reason": self.block_reason},
                               ensure_ascii=False)
+        if self.additional_context:
+            return json.dumps({"hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": self.additional_context}}, ensure_ascii=False)
         if self.system_message:
             return json.dumps({"systemMessage": self.system_message}, ensure_ascii=False)
         return self.text

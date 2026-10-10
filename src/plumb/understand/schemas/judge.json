@@ -1,0 +1,22 @@
+{
+  "id": "judge.v1",
+  "title": "The judge's answer: one verdict per record",
+  "type": "object",
+  "required": ["verdicts"],
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "verdict", "confidence"],
+        "properties": {
+          "id": {"type": "string"},
+          "verdict": {"type": "string", "enum": ["supported", "beyond", "contradicts"]},
+          "beyond": {"type": "array", "items": {"type": "string"}},
+          "contradicts": {"type": "array", "items": {"type": "string"}},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    }
+  }
+}

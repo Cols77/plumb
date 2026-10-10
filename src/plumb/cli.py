@@ -16,7 +16,8 @@ from plumb import __version__
 ROUTES: dict[str, str] = {
     # CORE
     "init": "plumb.commands",
-    "link": "plumb.commands", "repin": "plumb.commands", "validate": "plumb.commands",
+    "link": "plumb.commands", "repin": "plumb.commands", "stale": "plumb.commands",
+    "validate": "plumb.commands",
     "check": "plumb.commands",
     "approve": "plumb.commands", "relay": "plumb.commands", "revoke": "plumb.commands",
     # PRESENT (sub-project 5): the owner's commands, plain words accepted
@@ -66,7 +67,9 @@ records and integrity:
   init         adopt this repository (.plumb/)
   show         print records in full (read-back, examples, assumptions, alternatives)
   link         add a hash-pinned link between a record and a record, file or test
-  repin        refresh link pins (never confirms)
+  repin        refresh link pins (never confirms); --after-tests: only when the linked tests
+               pass and a model judges the meaning unchanged
+  stale        card: bring a stale link to the owner as a card
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
   status       counts, drift and records awaiting your confirmation (--card: the card)
   brief        the short intent brief

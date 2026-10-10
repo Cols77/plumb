@@ -1,1 +1,225 @@
-[]
+[
+ {
+  "name": "int016-first-readback-beyond",
+  "note": "SR-102 EX-1: the first read-back states one line per record and a token budget as the owner's; the owner asked for a smarter way that does not bloat the context",
+  "inputs": {
+   "records": [
+    {
+     "id": "INT-016",
+     "hash": "sha256:frozen-INT-016",
+     "kind": "intent",
+     "text": "Hooks give the agent a short delta: one line per record, only when the record is new to the session or has changed, within a token budget; details are pulled on demand. Owner-facing commands take plain words (a feature, a behaviour, a file) and answer in the owner's terms; /plumb explain replaces the broken /plumb why.\nwill: Inject one line per record (ID, state, title) only when it is newly relevant this session or its hash or state changed; nothing when nothing is new; a per-prompt token budget.\nwill: Keep the session-start brief to a few lines and a pointer.\nwill: Add plumb explain <plain words|path|ID> and route /plumb explain to it; keep why as an alias.\nwon't: Ship the user card (full|compact|off) or plumb view (the Obsidian vault) in this change; they are the next R9 lane.",
+     "assumptions": [
+      "A record's line comes again after /clear or a compaction, since the agent lost it."
+     ],
+     "premise": {
+      "messages": [
+       {
+        "digest": "sha256:frozen-message-INT-016",
+        "text": "Each prompt you inject relevant records with state, examples and covering tests? isnt there a smarter way to do this? Isnt the risk to bloat the context way too fast with redundant tokens? / Plumb why file|ID seems not very user friendly, don't forget the user don't necessarily know the code ... All the commands should be designed to handle this properly / and fix the /plumb why bug"
+       }
+      ],
+      "question": "",
+      "parent": null
+     },
+     "related": []
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "id": "INT-016",
+     "verdict": "beyond",
+     "beyond_mentions": [
+      "one line",
+      "token"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "int013-first-readback-beyond",
+  "note": "SR-102 EX-2: maintenance mode is stated as decided; the owner only said to consider stopping if it takes too much RAM",
+  "inputs": {
+   "records": [
+    {
+     "id": "INT-013",
+     "hash": "sha256:frozen-INT-013",
+     "kind": "intent",
+     "text": "pi-agent-factory goes into maintenance mode after its current integration batch lands; new feature work moves to plumb, and a fork plan is required.\nwill: Write a fork plan (docs/fork-plan.md).\nwon't: Start new feature work in pi-agent-factory.",
+     "assumptions": [
+      "The current pi-agent-factory integration batch lands first."
+     ],
+     "premise": {
+      "messages": [
+       {
+        "digest": "sha256:frozen-message-INT-013",
+        "text": "consider stopping developments on pi-agent-factory if it takes too much RAM"
+       }
+      ],
+      "question": "",
+      "parent": null
+     },
+     "related": []
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "id": "INT-013",
+     "verdict": "beyond",
+     "beyond_mentions": [
+      "maintenance"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "int004-supported",
+  "note": "",
+  "inputs": {
+   "records": [
+    {
+     "id": "INT-004",
+     "hash": "sha256:frozen-INT-004",
+     "kind": "intent",
+     "text": "Planning stays, in mode C: intent is captured incrementally by default, and large, risky or cross-cutting work escalates to an explicit up-front spec you approve. The same records serve both modes and plumb suggests when to escalate. Your intent is translated through a read-back in your terms, examples you confirm, decisions made explicit, traceable links and drift signals.\nwill: Read back what will and won't be done, with assumptions labelled.\nwill: Anchor requirements in given/when/then examples that become tests.\nwill: Make ambiguity an explicit decision (I assumed A; B also fits).\nwill: Link intent to requirement to examples and tests to code.\nwill: Suggest escalation to an up-front spec for large or risky work.\nwon't: Block work on a proposed read-back or example (R1).",
+     "assumptions": [
+      "Every requirement touched by a change is confirmed at the merge boundary (R1)."
+     ],
+     "premise": {
+      "messages": [
+       {
+        "digest": "sha256:frozen-message-INT-004",
+        "text": "Don't you think that we'd need planning features still? how do you ensure that people defining their system will have their intent succesfully translated? / C"
+       }
+      ],
+      "question": "Planning: how should plumb handle planning? A. Drop planning, capture intent as you go. B. Always write an up-front spec. C. Capture incrementally by default, and escalate to an up-front spec you approve for large, risky or cross-cutting work.",
+      "parent": null
+     },
+     "related": []
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "id": "INT-004",
+     "verdict": "supported"
+    }
+   ]
+  }
+ },
+ {
+  "name": "int006-answer-b-supported",
+  "note": "SR-102 EX-3: answer B with its stored question",
+  "inputs": {
+   "records": [
+    {
+     "id": "INT-006",
+     "hash": "sha256:frozen-INT-006",
+     "kind": "intent",
+     "text": "Use a new, simpler record model with a pi-agent-factory importer, without losing the important features: content hashes and staleness on records and links, approvals pinned to exact content, append-only evidence and decision records, SR: trailers and claims checks, relation validation, NCs as first-class records, feature grouping, test evidence pinned to code and environment identity with the failure policy, and advisory fidelity judging scoped to changed requirements.\nwill: Hash every record and pin both ends of every link; a change on either end makes the link stale.\nwill: Pin approvals to exact content.\nwill: Keep evidence and decisions in append-only, hash-chained logs.\nwill: Check SR: trailers and claimed against declared paths.\nwill: Validate relations: no dangling links.\nwill: Keep NCs and features as first-class records.\nwill: Pin test evidence to code and environment identity, with the failure policy.\nwill: Judge fidelity advisorily, scoped to changed requirements.\nwon't: The planning run state machine, consent phrases, manifests and handoff hashes, review swarms, and governed execution as the default.",
+     "assumptions": [
+      "Familiar IDs stay: FEAT-###, SR-###, NC-#### and SR: trailers."
+     ],
+     "premise": {
+      "messages": [
+       {
+        "digest": "sha256:frozen-message-INT-006",
+        "text": "B. can be the way to go but be careful about loosing some important features, for example the hash is important for staleness detection. / Keep list looks fine"
+       }
+      ],
+      "question": "Artifacts: how should plumb's records relate to pi-agent-factory's? A. Use pi-agent-factory's artifacts as they are. B. A new, simpler record model with an importer from pi-agent-factory, keeping familiar IDs and a list of features to keep.",
+      "parent": null
+     },
+     "related": []
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "id": "INT-006",
+     "verdict": "supported"
+    }
+   ]
+  }
+ },
+ {
+  "name": "int007-answer-b-supported",
+  "note": "",
+  "inputs": {
+   "records": [
+    {
+     "id": "INT-007",
+     "hash": "sha256:frozen-INT-007",
+     "kind": "intent",
+     "text": "A host-neutral core (CLI and library) with thin host adapters; Claude Code ships first, Codex, Pi, Hermes and MCP later. pi-agent-factory code is reused by extraction (copied and simplified with its tests), not forked, and without its per-turn admission and coordination weight.\nwill: Ship a Claude Code adapter first, over the same core CLI and library.\nwill: Copy selected pi-agent-factory modules with their tests and simplify them.\nwon't: Fork pi-agent-factory.\nwon't: Bring its per-turn admission or coordination weight.",
+     "assumptions": [
+      "Other hosts come in later sub-projects."
+     ],
+     "premise": {
+      "messages": [
+       {
+        "digest": "sha256:frozen-message-INT-007",
+        "text": "B. I guess the CLI / lib can be re-used from pi-agent-factory?"
+       }
+      ],
+      "question": "Hosts: what should the core be? A. Built for Claude Code only. B. A host-neutral core (CLI and library) with thin host adapters; Claude Code first, other hosts later; reuse pi-agent-factory code where it helps.",
+      "parent": null
+     },
+     "related": []
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "id": "INT-007",
+     "verdict": "supported"
+    }
+   ]
+  }
+ },
+ {
+  "name": "int008-answer-a-supported",
+  "note": "a bare option answer judged with its stored question",
+  "inputs": {
+   "records": [
+    {
+     "id": "INT-008",
+     "hash": "sha256:frozen-INT-008",
+     "kind": "intent",
+     "text": "plumb works mostly in the background: a status-line indicator, a short alignment summary at the end of each turn, and a question only on a real intent change, an unconfirmed decision that matters, or a regression. Everything else is logged for you to read when you want.\nwill: Show a status line and a short end-of-turn summary.\nwill: Ask only on an intent change, an unconfirmed decision that matters, or a regression.\nwill: Log everything else for on-demand reading.\nwon't: Interrupt for a new test that starts red (R3).",
+     "assumptions": [
+      "A regression is a test that previously passed with recorded evidence and now fails (R3)."
+     ],
+     "premise": {
+      "messages": [
+       {
+        "digest": "sha256:frozen-message-INT-008",
+        "text": "A"
+       }
+      ],
+      "question": "How much should the tool interrupt you during normal work? A. Mostly in the background (recommended): a status-line indicator shows alignment (the active intent, any stale links, the covering tests); a short alignment summary appears at the end of each turn; it only asks you something on a real change in intent, an unconfirmed decision that matters, or a regression; everything else is logged for you to read whenever you want. B. A checkpoint every turn you approve before the next one. C. Only when asked: silent unless you run a command.",
+      "parent": null
+     },
+     "related": []
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "id": "INT-008",
+     "verdict": "supported"
+    }
+   ]
+  }
+ }
+]

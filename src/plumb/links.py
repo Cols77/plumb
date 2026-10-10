@@ -7,11 +7,13 @@ Repinning refreshes pins, logs a ``repin`` event and never confirms anything.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from plumb.contracts import Link, LinkState, Pin, Record, Target
-from plumb.hashing import clean_rel_path, hash_target
+from plumb.hashing import clean_rel_path, hash_target, target_path
 from plumb.model import ID_PATTERN, kind_of, link_to_dict
 
 if TYPE_CHECKING:
@@ -251,6 +253,176 @@ def records_for_paths(core: Core, paths: Iterable[str]) -> dict[str, tuple[str, 
     return out
 
 
-__all__ = ["ALLOWED", "LinkError", "LinkUsageError", "add_link", "hash_target",
+# --------------------------------------------------------------------------- repin after tests
+# SR-111 EX-4: a stale link whose tests pass and whose end a model judges unchanged in meaning
+# is repinned without the owner. The reading is the model's alone (INT-029): no rule-based
+# fallback, so a backend that is the heuristic, disabled or unreachable refuses.
+
+REPIN_NOTE = "tests pass, meaning unchanged"
+NO_MODEL = ("no model could judge whether the meaning changed (the judgment backend is "
+            "unreachable or rule-based); nothing was repinned")
+HISTORY_DEPTH = 30
+
+
+@dataclass
+class AfterTests:
+    changes: list[dict[str, Any]] = field(default_factory=list)
+    refused: list[tuple[str, str]] = field(default_factory=list)   # (link id, why)
+
+
+def _segment(text: str, qualname: str | None) -> str | None:
+    """The text of a whole file, or of one definition (as ``hashing`` cuts it)."""
+    if not qualname:
+        return text
+    import ast
+    import textwrap
+
+    from plumb.hashing import _LINE_BREAK, find_definition
+
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+    node = find_definition(tree, qualname)
+    if node is None or getattr(node, "end_lineno", None) is None:
+        return None
+    start = min([node.lineno] + [d.lineno for d in getattr(node, "decorator_list", [])])
+    return textwrap.dedent("\n".join(_LINE_BREAK.split(text)[start - 1:node.end_lineno]))
+
+
+def _git_text(root: Path, args: list[str]) -> str | None:
+    import subprocess
+
+    try:
+        result = subprocess.run(["git", *args], cwd=root, capture_output=True, timeout=10,
+                                check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        return result.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
+    """``(the end as the pin saw it, the end now)``: the pinned version is looked for among
+    the file's committed versions (newest first); None when it is not found."""
+    from plumb.hashing import split_test_node, symbol_qualname, target_path
+    from plumb.normalize import sha256_text
+
+    target = link.target
+    path = target_path(target)
+    rel = clean_rel_path(path) if path else None
+    if rel is None or link.pin is None:
+        return None
+    qualname = None
+    if target.test:
+        qualname = split_test_node(target.test)[1]
+    elif target.symbol:
+        qualname = symbol_qualname(target.symbol)
+    try:
+        now = _segment((Path(root) / rel).read_text(encoding="utf-8"), qualname)
+    except (OSError, UnicodeDecodeError):
+        return None
+    listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", "--", rel])
+    for sha in (listing or "").split():
+        text = _git_text(root, ["show", f"{sha}:{rel}"])
+        before = None if text is None else _segment(text, qualname)
+        if before is not None and sha256_text(before) == link.pin.target:
+            return before, now or ""
+    return None
+
+
+def default_runner(core: Core) -> Callable[[list[str]], tuple[bool, str]]:
+    """Run the covering tests of the changed paths through the verification lane."""
+
+    def run(paths: list[str]) -> tuple[bool, str]:
+        from plumb.verify import open_verify
+
+        report = open_verify(core).run(changed=paths)
+        if report.run_id is None:
+            return False, "no test covers " + ", ".join(paths)
+        return report.ok, ("passed" if report.ok else "failed: " + ", ".join(report.failed))
+
+    return run
+
+
+def _select_stale(core: Core, selector: str) -> list[LinkState]:
+    index = core.index()
+    if "#" in selector:
+        record_id, _, position = selector.partition("#")
+        record = index.get(record_id)
+        if record is None or not position.isdigit() or int(position) >= len(record.links):
+            raise LinkError(f"no link {selector}")
+        return [s for s in core.link_states([record_id])
+                if s.link.index == int(position) and s.state == "stale"]
+    if selector not in index:
+        raise LinkError(f"no record {selector}")
+    return [s for s in core.link_states([selector]) if s.state == "stale"]
+
+
+def repin_after_tests(core: Core, selector: str, *,
+                      runner: Callable[[list[str]], tuple[bool, str]] | None = None,
+                      backend: Any = None) -> AfterTests:
+    """Repin the stale links of ``selector`` (a link id or a record id) whose linked tests
+    pass and whose end a model judges unchanged in meaning; refuse the others, with why.
+    Never confirms anything."""
+    result = AfterTests()
+    states = _select_stale(core, selector)
+    candidates: list[LinkState] = []
+    for state in states:
+        link = state.link
+        if link.target.record is not None:
+            result.refused.append((link.id, "it points at a record, not code: reword the "
+                                   "record so it agrees, or bring it to the owner as a card"))
+        elif state.moved != "target":
+            result.refused.append((link.id, "the requirement itself was reworded since the "
+                                   "pin: a test run cannot settle that; bring it to the owner "
+                                   "as a card"))
+        else:
+            candidates.append(state)
+    if not candidates:
+        return result
+    if backend is None:
+        from plumb.judgment import get_backend
+
+        try:
+            backend = get_backend(core, hook=False)
+        except Exception:  # noqa: BLE001
+            backend = None
+    if backend is None or getattr(backend, "name", "") in ("heuristic", "disabled"):
+        result.refused += [(s.link.id, NO_MODEL) for s in candidates]
+        return result
+    paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
+    ok, detail = (runner or default_runner(core))(paths)
+    if not ok:
+        result.refused += [(s.link.id, f"its linked tests do not pass ({detail})")
+                           for s in candidates]
+        return result
+    for state in candidates:
+        link = state.link
+        texts = end_texts(core.root, link)
+        if texts is None:
+            result.refused.append((link.id, "the earlier version of the end could not be "
+                                   "found in git, so there is nothing to compare"))
+            continue
+        try:
+            judgments = list(backend.drift_triage([state], {link.id: texts}))
+        except Exception:  # noqa: BLE001 - an unreachable model refuses
+            judgments = []
+        verdict = judgments[0] if judgments else None
+        if verdict is None or verdict.backend in ("heuristic", "disabled") \
+                or verdict.tier != "accept" or verdict.verdict not in ("cosmetic", "material"):
+            result.refused.append((link.id, NO_MODEL))
+        elif verdict.verdict == "material":
+            result.refused.append((link.id, "the model says the meaning changed"))
+        else:
+            result.changes += repin(core, link.id, note=REPIN_NOTE)
+    return result
+
+
+__all__ = ["ALLOWED", "AfterTests", "LinkError", "LinkUsageError", "add_link", "hash_target",
            "kind_allowed", "kind_problem", "link_states", "parse_cli_target",
-           "records_for_paths", "repin"]
+           "records_for_paths", "repin", "repin_after_tests"]
