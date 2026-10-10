@@ -28,13 +28,15 @@ Work completed in this slice:
 
 1. Installer-generated plugin-owned `skills/` files reuse the canonical Claude templates with the same launcher substitution; no duplicate canonical production source is maintained.
 2. `ctx.register_skill` receives bare `plumb` and `plumb-clarify` names. Hermes resolves these as `plumb:plumb` and `plumb:plumb-clarify`; there is no flat available-skills claim.
-3. Offline tests cover install, idempotent launcher update, missing/foreign preservation, dry-run, owned-only uninstall, digest-guarded registration, byte parity, and a temporary-home pinned PluginManager/`skill_view` subprocess.
+3. Offline tests cover install, idempotent launcher update, owned path-to-uv byte parity, missing/foreign preservation, dry-run, owned-only uninstall, digest-guarded registration, and a temporary-home pinned PluginManager/`skill_view` subprocess.
 4. Keep all validation offline and synthetic; Plugin Doctor remains registration-only evidence.
 
 The committed `tests/hosts/hermes_probe/hook_contract.py` consumer validates the
-pinned producer kwargs and absent fields, replays only those kwargs, and records
-two-project interleave/project binding plus a parentless-cron non-authentication
-counterexample. It does not claim live routing or callback capture.
+actual pinned producer dispatch calls and absent fields, replays only those kwargs
+into generated installed plugins, captures subprocess payloads and cwd during a
+two-project interleave, and records explicit-parent exclusion plus a parentless-
+cron non-authentication counterexample. It does not claim live routing or owner
+certification.
 
 Acceptance commands:
 

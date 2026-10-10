@@ -15,6 +15,7 @@ import pytest
 from hosts_helpers import approvals_written, approve_in_agent_shell, make_project, snapshot
 
 from plumb.cli import main
+from plumb.hosts.common import command_line, launcher_argv
 from plumb.hosts.hermes import install as hermes
 
 pytestmark = pytest.mark.sr("SR-056")
@@ -103,6 +104,27 @@ def test_skill_update_is_idempotent_and_preserves_foreign(project: Path) -> None
     assert skill.read_text("utf-8") == "---\nname: plumb\n---\nforeign\n"
     assert any("skills/plumb/SKILL.md" in line and "not plumb's" in line
                for line in report.lines)
+
+
+def test_owned_skill_launcher_update_matches_canonical_uv_bytes(project: Path) -> None:
+    hermes.install(project, launcher="path")
+    report = hermes.install(project, launcher="uv")
+    skill = project / hermes.PLUGIN_DIR / "skills" / "plumb" / "SKILL.md"
+    expected = ((hermes.CANONICAL_SKILLS / "plumb" / "SKILL.md")
+                .read_text("utf-8").replace("{plumb}",
+                                             command_line(launcher_argv(project, "uv"))))
+    assert skill.read_text("utf-8") == expected
+    assert any("skills/plumb/SKILL.md" in item for item in report.changed)
+    assert hermes.install(project, launcher="uv").changed == []
+
+
+def test_missing_owned_skill_is_not_registered(project: Path) -> None:
+    hermes.install(project, launcher="path")
+    (project / hermes.PLUGIN_DIR / "skills" / "plumb" / "SKILL.md").unlink()
+    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "plumb_missing_skill")
+    ctx = FakeCtx()
+    plugin.register(ctx)
+    assert set(ctx.skills) == {"plumb-clarify"}
 
 
 def test_foreign_plugin_metadata_cannot_authorize_skill_overwrite(project: Path) -> None:
@@ -204,8 +226,22 @@ def test_hook_contract_probe_consumes_source_fixture() -> None:
                             text=True, env=os.environ.copy())
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)
-    assert data == {"boundary_cases": 4, "events": 6,
-                    "parentless_cron_authenticated": False}
+    assert data["boundary_cases"] == 4
+    assert data["events"] == 6
+    assert data["explicit_parent_child_excluded"]
+    assert data["parentless_cron_dispatched"]
+    assert data["parentless_cron_authenticated"] is False
+
+
+def test_hook_contract_rejects_invented_absent_field() -> None:
+    from hosts.hermes_probe import hook_contract
+
+    data = json.loads((Path(__file__).parent / "hermes_probe" /
+                       "hook_payloads.json").read_text("utf-8"))
+    data["events"]["pre_llm_call"]["absent_fields"].append(
+        "entirely_invented_absent_field")
+    with pytest.raises(AssertionError, match="absent_fields"):
+        hook_contract._assert_fixture(data)
 
 
 def test_block_goes_to_hermes_md_when_present(project: Path) -> None:

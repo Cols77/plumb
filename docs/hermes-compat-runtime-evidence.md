@@ -17,13 +17,15 @@ The source checkout had a pre-existing unrelated modified file. It was not read 
 
 ## Runtime hook contract (source-backed)
 
-The sanitized fixture `tests/hosts/hermes_probe/hook_payloads.json` records representative shapes with credentials and user content replaced. `ABSENT_FROM_RUNTIME_CALL_SITE` means the field is not passed at the inspected call site; it is not a claim that no other subsystem has that value.
+The sanitized fixture `tests/hosts/hermes_probe/hook_payloads.json` records representative shapes with credentials and user content replaced. Its `kwargs` are the fields passed at the inspected call site; `absent_fields` are fields explicitly not passed there, not a claim that no other subsystem has that value.
 
 `tests/hosts/hermes_probe/hook_contract.py` is the executable consumer for this
-fixture. It AST-checks each pinned producer's explicit kwargs, replays only the
-fixture kwargs, and exercises the project-bound interleave plus a parentless-cron
-counterexample. This remains source-derived offline evidence, not a captured
-callback, authentication proof, or desktop/cron certification.
+fixture. It checks the actual installed source checkout, selects each producer's
+named dispatch call, replays only fixture kwargs into two generated installed
+plugins, captures their real subprocess payloads and project-bound cwd while
+interleaving callbacks, and exercises the explicit-parent and parentless-cron
+boundaries. This remains offline callback replay evidence, not live runtime
+routing, authentication proof, or desktop/cron certification.
 
 | Hook | Producer and observed kwargs | Frequency / result semantics | Provenance and workspace finding |
 |---|---|---|---|
@@ -63,12 +65,11 @@ Result: implemented and offline-verified for the pinned runtime; live profile ac
 
 Official plugin documentation describes Python plugins as a supported extension surface. Installed source provides `ctx.register_skill(name, path, description, frontmatter)`. The path must exist, the name cannot contain `:`, and the result is opt-in namespaced resolution rather than automatic availability indexing. This rules out inventing `.hermes/skills` as a discovery path and rules out claiming that copying Claude skill files makes them globally available.
 
-Minimal follow-up can be implemented without Hermes core changes:
-
-1. Add canonical-content parity tests that read the existing Claude skill sources and a project-local plugin fixture.
-2. Register `plumb` and `plumb-clarify` through `ctx.register_skill` from a plugin-owned `skills/` directory, with namespaced names and no global copy.
-3. Test install, idempotent update, foreign-file preservation, dry-run, uninstall, missing-file failure, and explicit `skill_view("plumb:<name>")` resolution in a temporary Hermes home/plugin manager.
-4. Document that namespaced plugin skills are explicit loads, not entries in the flat available-skills prompt.
+The committed regression surface includes canonical-content parity, owned
+path-to-uv updates, missing-skill registration safety, foreign-file preservation,
+dry-run, uninstall, and explicit `skill_view("plumb:<name>")` resolution in a
+temporary Hermes home/plugin manager. Namespaced plugin skills are explicit
+loads, not entries in the flat available-skills prompt.
 
 The plugin owns the generated `skills/<name>/SKILL.md` files and registers bare
 names only when their recorded digest matches. Explicit qualified loads are
@@ -127,8 +128,8 @@ Official desktop plugins are a separate JavaScript/ESM SDK loaded from `$HERMES_
 | A6 lazy brief / child filtering | Accepted for supplied parent metadata | Parentless synthetic turns remain unsupported |
 | A7 support boundary | Accepted in docs/status | Keep fallback labels |
 | A8 existing behavior | Accepted focused/conformance coverage | Full regression remains incomplete |
-| B1 origin and routing | Not certified; payload gap confirmed | Core/session metadata or fallback; no global enablement |
-| B2 session/project routing | Not certified; no callback workspace identity | Keep project-local fallback; no global enablement |
+| B1 trusted origin | Not certified; parentless callbacks lack authentication fields | Keep explicit fallback; no global enablement |
+| B2 session/project routing | Offline interleave replay binds each installed plugin to its own project cwd; runtime callback has no workspace identity | Core/session metadata or fallback; no global enablement |
 | B3 native skills | Implemented and offline-verified for pinned runtime; live activation unverified | Separate skill review; no flat discovery claim |
 | B4 optional read-only MCP | Deferred/not investigated in this adapter slice; no setup performed | Preserve as a separate consent and registration gate |
 | B5 direct-tool defense | Observation surface exists; containment unproven | Offline matrix; no regex security claim |
@@ -136,10 +137,10 @@ Official desktop plugins are a separate JavaScript/ESM SDK loaded from `$HERMES_
 
 ## Exact follow-up graph
 
-1. B2 implementation card: only the Hermes plugin template/installer, canonical skill fixture/tests, and Hermes-temp-home probes; no Hermes runtime/config edits. Acceptance: namespaced `register_skill`, explicit `skill_view`, idempotent lifecycle, foreign preservation, dry-run, and byte parity. Separate review card.
-2. B4 implementation card: only the latency hook/test paths needed by the accepted plan; RED first, then minimal ordering fix. Acceptance: contention test preserves read-back and normal hook/host suites pass; separate review card.
-3. B1 capability/core proposal card: read-only design unless the owner authorizes a Hermes core contract amendment. Acceptance: two-project interleave and parentless cron fixtures either route/exclude correctly using actual fields or remain explicitly unsupported.
-4. B5 threat-model card: read-only fixture matrix first. Any approval/security contract change is a human decision, not an adapter follow-up.
-5. B6 desktop card: separate JavaScript desktop-plugin design and review; do not mix with Python project-plugin support.
+1. Investigation Gate B2 (original B3): the namespaced skill bridge is implemented and offline-verified; retain the separate read-only review boundary.
+2. Investigation Gate B4 (separate latency investigation): only the latency hook/test paths needed by the accepted plan; RED first, then minimal ordering fix.
+3. Investigation Gate B1 (original B1/B2) capability/core proposal: read-only design unless the owner authorizes a Hermes core contract amendment. Current callback replay demonstrates project-local binding, not runtime session routing.
+4. Investigation Gate B3 (original B5) threat-model card: read-only fixture matrix first. Any approval/security contract change is a human decision, not an adapter follow-up.
+5. Original B6 desktop/transport: separate JavaScript desktop-plugin design and review; do not mix with Python project-plugin support.
 
 No card in this report authorizes live model calls, real profile activation, MCP installation, Hermes configuration writes, merge, or push.
