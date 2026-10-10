@@ -255,3 +255,18 @@ def test_start_detached_runs_the_queue_in_another_process(
     result = jobs.result(repo, "s1", job.id)
     assert result is not None and result.status == "ok"
     assert os.environ.get("PLUMB_WORKER") is None
+
+
+def test_cmd_worker_runs_the_session_in_the_foreground(
+        repo: Path, fake: FakeDispatcher, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture) -> None:
+    from plumb.understand import cmd_worker
+
+    fake_kinds(monkeypatch, {"a": FakeKind("a")})
+    core = Core(repo)
+    job = _job("a")
+    queue.enqueue(core, job)
+    assert cmd_worker.run("understand", ["worker", "--session", "s1", "--root", str(repo)]) == 0
+    assert jobs.result(repo, "s1", job.id).status == "ok"
+    assert cmd_worker.run("understand", []) == 2
+    assert "not available in this build" in capsys.readouterr().err
