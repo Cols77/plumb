@@ -198,3 +198,68 @@ def test_same_message_same_job_id(repo: Path, engine_standins: Any) -> None:
 
 def test_fake_dispatcher_is_the_one_in_use(engine_standins: Any) -> None:
     assert isinstance(engine_standins.dispatcher, FakeDispatcher)
+
+
+# ---------------------------------------------------------------- S6: the clarifier's cases
+
+
+def test_evalset_clarify_cases_load_and_run_on_the_fake() -> None:
+    from plumb.understand import evalrun
+
+    cases = evalrun.load_cases("clarify")
+    assert len(cases) >= 12
+    quiet = [c for c in cases if not c["expect"]["gap"]]
+    gappy = [c for c in cases if c["expect"]["gap"]]
+    assert len(quiet) >= 10                                  # requests that need no clarification
+    texts = {c["inputs"]["message"]["text"] for c in gappy}
+    assert "let users export their data" in texts
+    five = [c for c in gappy if len(c.get("known_gaps") or ()) == 5]
+    assert five, "a request with five known gaps"
+    for case in cases:
+        message = case["inputs"]["message"]
+        import hashlib
+
+        assert message["digest"] == "sha256:" + hashlib.sha256(
+            message["text"].encode("utf-8")).hexdigest()      # frozen copies, digest honest
+        assert set(case["expect"]) == {"intent", "gap"}
+        assert (case["expect"]["intent"] == "no") <= (not case["expect"]["gap"])
+    results = evalrun.run_cases(evalrun.FakeEvalDispatcher(), cases, "clarify")
+    assert len(results) == len(cases) and all(r["passed"] for r in results)
+    assert not any(r["false_gap"] for r in results)
+
+
+class _AlwaysAsks:
+    """A clarifier that asks about everything: every question on a quiet request is a false gap."""
+
+    name = "asks-everything"
+
+    def available(self) -> None:
+        return None
+
+    def run(self, job: Any, **_: Any) -> dict[str, Any]:
+        return {"intent": "yes", "gap": True, "gaps": [_gap("x", "Really?")]}
+
+
+def test_ex12_false_gap_rate_measured_and_reported_with_calibration_results(
+        repo: Path) -> None:
+    from plumb.understand import evalrun
+
+    cases = evalrun.load_cases("clarify")
+    quiet = sum(1 for c in cases if not c["expect"]["gap"])
+    results = evalrun.run_cases(_AlwaysAsks(), cases, "clarify")
+    assert sum(r["false_gap"] for r in results) == quiet     # measured: the questions that
+    # change nothing about what gets built
+    assert evalrun.run("eval", ["--fake", "--root", str(repo)]) == 0
+    entries = [dict(e.payload) for e in open_core(repo).events() if e.kind == "eval-run"]
+    (entry,) = entries
+    assert entry["false_gap_rate"] == 0.0                    # reported beside the results
+    assert entry["cases"] and entry["passed"] == len(entry["cases"])
+    assert any(c["kind"] == "clarify" for c in entry["cases"])
+
+
+def test_the_schema_and_the_agent_ask_for_the_gap_flag_and_the_list() -> None:
+    assert clarify.schema["id"] == "clarify.v1"
+    assert set(clarify.schema["required"]) == {"intent", "gap", "gaps"}
+    prompt = (Path(clarify.__file__).parent / "agents" / "clarify.md").read_text(
+        encoding="utf-8")
+    assert "false gap" not in prompt and "changes nothing" in prompt

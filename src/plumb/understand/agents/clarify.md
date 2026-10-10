@@ -22,4 +22,6 @@ Decide:
   settled: never ask it again, whatever the wording.
 - No gap at all is the usual case for a clear request. Do not invent gaps to look careful.
 
+Always give `gaps` (an empty list when there is none) and `gap` (true when `gaps` is not empty).
+
 Answer with the JSON object the schema describes and nothing else.

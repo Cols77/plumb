@@ -1,1 +1,274 @@
-[]
+[
+ {
+  "name": "question-jev-low-risk",
+  "inputs": {
+   "message": {
+    "digest": "sha256:bd6c5822bd28ff8afa28c48ade7b609b0b0549d4a9b9d7e84f18a70bd7e6317e",
+    "text": "so why isnt JEV able to approve low risk ones? did you execute JEV?"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "present-the-records",
+  "inputs": {
+   "message": {
+    "digest": "sha256:249f6710e1d33f2c6e92502d3b51b62af3b1f3d5a5a6d5b9dc3d819e222c6afd",
+    "text": "ok present me the 20 records"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "present-them",
+  "inputs": {
+   "message": {
+    "digest": "sha256:ee745c7a54e14d2c6beda99c30580a198d9877990caf96941481e8b4f2d3922a",
+    "text": "ok present them to me"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "question-how-approvals-relayed",
+  "inputs": {
+   "message": {
+    "digest": "sha256:0039f87082aa2a4108333dff0091379ef7b7b19958f180b5e53d6607de363d98",
+    "text": "how are approvals relayed?"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "question-agents-context",
+  "inputs": {
+   "message": {
+    "digest": "sha256:b3cf08544d7a85a4b426b430ba120dce4ed4d6f4ad9fcf62381f32f8c6704880",
+    "text": "are all the agents injected with all the relevant context? intent, SR, tests and Idk what else"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "greeting",
+  "inputs": {
+   "message": {
+    "digest": "sha256:12998c017066eb0d2a70b94e6ed3192985855ce390f321bbdb832022888bd251",
+    "text": "hello there"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "continue-workflows",
+  "inputs": {
+   "message": {
+    "digest": "sha256:2b48b17b597ba3dee86da866c0520a632e3588f3268868163f0f8ba9794409ed",
+    "text": "continue the workflows that were interupted"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "keep-going",
+  "inputs": {
+   "message": {
+    "digest": "sha256:8f974730aaf346739817ddd8ea7cc02f1f598227042c600ff9e086abbf93f860",
+    "text": "keept going"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "remark-sr098",
+  "inputs": {
+   "message": {
+    "digest": "sha256:f4d1d01bb3a168cc4bba9c17555020e287f6bc9f3bdaed779e3600e7decf7054",
+    "text": "Wow that SR-098 sounds like complicated. I don't understand"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "answer-write-the-spec",
+  "inputs": {
+   "message": {
+    "digest": "sha256:6939685dbf5d29e7ce2c1539ff9cf556cd89ccbde5b072dcb76f07d9cd679b50",
+    "text": "yes, write the spec"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "lets-go",
+  "inputs": {
+   "message": {
+    "digest": "sha256:4cb98d06688b2277fcbdb2571b79001c5e9365822f47a80c47d22d562e1902dc",
+    "text": "let's go"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "tidy-readme",
+  "inputs": {
+   "message": {
+    "digest": "sha256:940ae6aa42ca4eae45176d72c0b8ee36bbf78a19e6e7bdac025c251547b51b02",
+    "text": "tidy the README wording"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": false
+  }
+ },
+ {
+  "name": "tidy-status-line",
+  "inputs": {
+   "message": {
+    "digest": "sha256:1e79b7dbed08f3d437a5d7950fd5cedef502ce74eae0f7cd767c30e9620c8502",
+    "text": "Tidy the status line rendering for SR-013 without changing its output."
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": false
+  }
+ },
+ {
+  "name": "export-user-data",
+  "inputs": {
+   "message": {
+    "digest": "sha256:63e37784291471d497869f0827f4e27e8754f41508651d228b684b4d7074a375",
+    "text": "let users export their data"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": true
+  },
+  "known_gaps": [
+   "format",
+   "scope"
+  ]
+ },
+ {
+  "name": "vague-tweak-hashing",
+  "inputs": {
+   "message": {
+    "digest": "sha256:95e8398fa6c219ad7e4afb27dc25e65f62d4287d477cb3721be2d78782034d68",
+    "text": "tweak hashing"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": true
+  },
+  "known_gaps": [
+   "what to change"
+  ]
+ },
+ {
+  "name": "vague-refactor-links",
+  "inputs": {
+   "message": {
+    "digest": "sha256:9db60c2828a2c0d7c4b2b799af76c7b814695875036f3102cec6489fe797d4c6",
+    "text": "refactor links"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": true
+  },
+  "known_gaps": [
+   "what to change"
+  ]
+ },
+ {
+  "name": "five-gaps-billing",
+  "inputs": {
+   "message": {
+    "digest": "sha256:11ba37c50d402f979b0f7ed08896950ec06202e8a826021ca1aaa711e2c01ac1",
+    "text": "Rebuild billing: let customers pay by card or bank transfer, in any currency, with refunds, taxes by country and a portal where they download invoices."
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": true
+  },
+  "known_gaps": [
+   "payment methods",
+   "currencies",
+   "refund rules",
+   "tax rules",
+   "portal access"
+  ]
+ }
+]
