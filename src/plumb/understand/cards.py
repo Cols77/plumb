@@ -87,6 +87,40 @@ def contradicts_card(index: Mapping[str, Any], record: Any, contradicts: Sequenc
                        owner_text.CONTRADICTS_COMBINE))
 
 
+HEADS = {"clarify": owner_text.CARD_CLARIFY, "trial": owner_text.CARD_TRIAL,
+         "backlog": owner_text.CARD_BACKLOG, "beyond": owner_text.CARD_BEYOND,
+         "contradicts": owner_text.CARD_CONTRADICTS,
+         "couldnt_check": owner_text.CARD_COULDNT_CHECK,
+         "show_first": owner_text.CARD_SHOW_FIRST, "stale_link": owner_text.CARD_STALE_LINK,
+         "settle_offer": owner_text.CARD_SETTLE_OFFER}
+ORDER = ("clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check")
+RESOLUTIONS_MAX = 3
+ITEMS_MAX = 30
+
+
+def render(card: CardState) -> str:
+    """A card as the owner reads it: its head (the topic and the issue), the items a batch or
+    a feature card covers, the evidence, and two or three suggested resolutions, the
+    recommended one first."""
+    head = HEADS.get(card.kind, owner_text.CARD_GENERIC)
+    lines = [head.format(topic=card.topic, issue=card.issue)]
+    items = [q.text for q in card.questions if q.text and q.text != card.issue]
+    if len(items) >= 2:
+        lines += [owner_text.CARD_ITEM.format(text=t) for t in items[:ITEMS_MAX]]
+        if len(items) > ITEMS_MAX:
+            lines.append(owner_text.CARD_ITEM.format(
+                text=owner_text.CARD_MORE.format(n=len(items) - ITEMS_MAX)))
+    if card.evidence:
+        lines.append(owner_text.CARD_EVIDENCE.format(evidence=card.evidence))
+    lines += [owner_text.CARD_RESOLUTION.format(n=n, text=text)
+              for n, text in enumerate(card.resolutions[:RESOLUTIONS_MAX], start=1)]
+    return "\n".join(lines)
+
+
+def kind_rank(card: CardState) -> int:
+    return ORDER.index(card.kind) if card.kind in ORDER else len(ORDER)
+
+
 def undone_cards(core: Any, session: str, *, turn: int = 0) -> list[CardState]:
     """A card for each settled record the owner took back (SR-105 EX-3): it is proposed again
     and shown as a card. One card per record, made once: a card the session already holds (open,

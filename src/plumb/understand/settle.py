@@ -384,12 +384,12 @@ def _eval_passed(entries: Sequence[LogEntry], now: Mapping[str, Any]) -> bool:
     return False
 
 
-def refresh(core: Any, session: str) -> Refreshed:
+def refresh(core: Any, session: str, *, recalibrate: bool = True) -> Refreshed:
     """The upkeep of the turn's end, from the logs alone (no model): withdraw settlings that no
     longer stand, rerun the calibration from the logged scores after an owner label (or after a
     model or prompt change once the evaluation set passed), switch settling on by itself for
     the kinds the agent derives, offer the owner the switch for intents once, and top up the
-    trial cards."""
+    trial cards. ``recalibrate=False`` leaves the calibration for a hook with more time."""
     from plumb.capture import calibrate
     from plumb.understand import trial
 
@@ -398,7 +398,9 @@ def refresh(core: Any, session: str) -> Refreshed:
     now = calibrate.fingerprint(core)
     changed = any(judge_calibration(entries, k) is not None
                   and not same_fingerprint(judge_calibration(entries, k), now) for k in KINDS)
-    if _labels_since_calibration(entries) or (changed and _eval_passed(entries, now)):
+    judged = any(e.kind == "verdict" for e in entries)          # a score to calibrate on
+    if recalibrate and judged and (_labels_since_calibration(entries)
+                                   or (changed and _eval_passed(entries, now))):
         try:
             calibrate.calibrate(core)
             out.calibrated = True

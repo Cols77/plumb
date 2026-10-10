@@ -28,6 +28,14 @@ def configs(repo: Path, kind: str) -> list[Any]:
             if e.kind == "settle-config" and e.payload["kind"] == kind]
 
 
+def judged_once(repo: Path) -> None:
+    """The judge has logged a score (what a calibration is made of)."""
+    open_core(repo).log_append("events", "verdict", {
+        "job": "judge-1", "id": "SR-001", "hash": "sha256:1", "verdict": "supported",
+        "beyond": [], "contradicts": [], "score": 0.9, "model": "haiku",
+        "premise_digest": "sha256:2"})
+
+
 def owner_says(repo: Path, kind: str, on: bool) -> None:
     """The owner's switch, as their own terminal writes it (no agent marker)."""
     open_core(repo).log_append("events", "settle-config", {
@@ -126,6 +134,7 @@ def test_ex10_model_change_suspends_then_requirements_return_intents_only_if_own
     from plumb.capture import calibrate
     from plumb.understand import settle
 
+    judged_once(repo)
     calibration_passing(open_core(repo), kinds=(REQ, INT))
     owner_says(repo, "intent", True)
     settle.refresh(open_core(repo), SESSION)
@@ -169,6 +178,7 @@ def test_ex10_intents_the_owner_never_switched_on_stay_off_and_owner_off_require
     from plumb.capture import calibrate
     from plumb.understand import settle
 
+    judged_once(repo)
     calibration_passing(open_core(repo), kinds=(REQ, INT))
     owner_says(repo, "requirement", False)
     settle.refresh(open_core(repo), SESSION)               # the owner is offered the intent switch
