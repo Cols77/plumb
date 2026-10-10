@@ -18,6 +18,7 @@ import os
 import secrets
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterator, Mapping
 from pathlib import Path
@@ -204,6 +205,38 @@ def _write_applied(core: Any, session: str, applied: Applied) -> None:
         _note(core, "worker", applied.job, text)
 
 
+FAILED_STEP = "{step} did not finish"
+
+
+class _Ticker:
+    """Says the step again every ``interval`` seconds while a model call is out, and keeps the
+    lock's heartbeat fresh."""
+
+    def __init__(self, pass_: _Pass, reporter: Any, step: str, interval: float) -> None:
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True, args=(
+            pass_, reporter, step, max(0.05, interval)))
+
+    def _loop(self, pass_: _Pass, reporter: Any, step: str, interval: float) -> None:
+        last_beat = time.monotonic()
+        while not self._stop.wait(interval):
+            try:
+                reporter.update(step)
+                if time.monotonic() - last_beat >= HEARTBEAT_S:
+                    heartbeat(pass_.root, pass_.session, pass_.token)
+                    last_beat = time.monotonic()
+            except Exception:  # noqa: BLE001 - a missed tick is made up by the next one
+                pass
+
+    def __enter__(self) -> _Ticker:
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        self._thread.join(5)
+
+
 class _Pass:
     """One pass over a session's queue (the worker holds the lock)."""
 
@@ -244,8 +277,25 @@ class _Pass:
         self._count(job, result)
         self.ran.append(job.id)
 
+    def _step_text(self, job: Job) -> str:
+        from plumb.understand.kinds import KINDS
+
+        try:
+            return str(KINDS[job.kind].describe(job))
+        except Exception:  # noqa: BLE001 - a kind with no words says its name
+            return job.kind
+
+    def _progress(self, job: Job) -> Any:
+        from plumb.progress import Reporter
+
+        return Reporter(self.root, self.session, job.kind)
+
     def _error(self, job: Job, step: str, message: str, started: str, t0: float,
                dispatcher: str = "") -> None:
+        try:
+            self._progress(job).failed(FAILED_STEP.format(step=self._step_text(job)))
+        except Exception:  # noqa: BLE001 - the line is a courtesy
+            pass
         self._finish(job, JobResult(
             job=job.id, status="error", error=JobError(step, message), dispatcher=dispatcher,
             started=started, finished=jobs.now(), run_s=round(time.perf_counter() - t0, 3)))
@@ -279,12 +329,17 @@ class _Pass:
         except (KeyError, ImportError) as exc:
             self._error(job, "kind", f"no job kind {job.kind!r} ({exc})", started, t0)
             return
+        reporter = self._progress(job)
+        step = self._step_text(job)
+        with contextlib.suppress(Exception):
+            reporter.update(step)
         try:
             recomputed = module.recompute(self.core, job)
         except Exception as exc:  # noqa: BLE001 - a kind that fails is an error result
             self._error(job, "inputs", f"{type(exc).__name__}: {exc}", started, t0)
             return
         if recomputed is None:
+            self._clear(reporter)
             _note(self.core, job.kind, job.id, "nothing left to check; no model was asked")
             self._finish(job, JobResult(job=job.id, status="ok", started=started,
                                         finished=jobs.now(),
@@ -296,6 +351,9 @@ class _Pass:
                   "the recomputed ones are used")
             job = dataclasses.replace(job, inputs=dict(recomputed),
                                       inputs_digest=files.digest_of(recomputed))
+        step = self._step_text(job)
+        with contextlib.suppress(Exception):
+            reporter.update(step)
         try:
             dispatcher = dispatch.configured(self.core)
         except NoModel as exc:
@@ -305,11 +363,13 @@ class _Pass:
         if reason:
             self._error(job, "dispatch", reason, started, t0, dispatcher.name)
             return
+        interval = float(getattr(self.core.config.understand, "progress_interval_s", 1) or 1)
         try:
-            answer = dispatcher.run(
-                job, system=agents.load(job.kind),
-                user=json.dumps(job.inputs, ensure_ascii=False, sort_keys=True, indent=1),
-                schema=module.schema, on_step=lambda step: None)
+            with _Ticker(self, reporter, step, interval):
+                answer = dispatcher.run(
+                    job, system=agents.load(job.kind),
+                    user=json.dumps(job.inputs, ensure_ascii=False, sort_keys=True, indent=1),
+                    schema=module.schema, on_step=lambda text: None)
         except DispatchError as exc:
             self._error(job, exc.step, exc.message, started, t0, dispatcher.name)
             return
@@ -329,9 +389,19 @@ class _Pass:
             self._error(job, "apply", f"{type(exc).__name__}: {exc}", started, t0,
                         dispatcher.name)
             return
+        self._clear(reporter)
         self._finish(job, JobResult(
             job=job.id, status="ok", answer=dict(answer), dispatcher=dispatcher.name,
             started=started, finished=jobs.now(), run_s=round(time.perf_counter() - t0, 3)))
+
+    def _clear(self, reporter: Any) -> None:
+        """The line goes when the job ends, unless the job's own ``apply`` left an end line
+        (state done, words in the step): that one is for the status line to show."""
+        shown = files.progress_from_json(files.read_json(reporter.path))
+        if shown is not None and shown.state == "done" and shown.step:
+            return
+        with contextlib.suppress(OSError):
+            reporter.path.unlink()
 
     def run(self, job_id: str | None) -> list[str]:
         self.report_unledgered()
