@@ -124,7 +124,8 @@ class RunReport:
             "selection": None if sel is None else {
                 "nodes": list(sel.nodes), "deferred": list(sel.deferred),
                 "sampled": list(sel.sampled), "unknown_coverage": list(sel.unknown_coverage),
-                "infra_changed": list(sel.infra_changed), "doc_only": sel.doc_only},
+                "infra_changed": list(sel.infra_changed), "doc_only": sel.doc_only,
+                "unrecorded": list(sel.unrecorded), "notes": list(sel.notes)},
             "full_pending": None if self.full_pending is None else {
                 "pending": self.full_pending.pending,
                 "reasons": list(self.full_pending.reasons)},

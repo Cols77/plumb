@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,10 @@ WORKER_TESTS = "".join(
     "        f.write(os.environ.get('PYTEST_XDIST_WORKER', 'main') + '\\n')\n" for i in range(6))
 
 
-def _project(repo: Path, workers: int) -> Path:
+def _project(repo: Path, workers: int, monkeypatch: pytest.MonkeyPatch) -> Path:
+    for name in list(os.environ):  # the outer run may itself be an xdist worker
+        if name.startswith("PYTEST_XDIST"):
+            monkeypatch.delenv(name)
     make_project(repo)
     write(repo, ".plumb/config.yaml", f"verify:\n  flaky_rerun: false\n  workers: {workers}\n")
     write(repo, "tests/test_workers.py",
@@ -30,8 +34,8 @@ def _seen(root: Path) -> set[str]:
 
 
 @pytest.mark.sr("SR-110")
-def test_ex3_two_workers_with_xdist(repo: Path) -> None:
-    root = _project(repo, 2)
+def test_ex3_two_workers_with_xdist(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _project(repo, 2, monkeypatch)
     verify = open_verify(open_core(root), hook=False)
     report = verify.run(nodes=["tests/test_workers.py"])
     assert report.ok, str(report.as_dict())[:1500]
@@ -44,7 +48,7 @@ def test_ex3_two_workers_with_xdist(repo: Path) -> None:
 def test_xdist_missing_runs_serial_and_says_so(repo: Path,
                                                 monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "xdist_available", lambda: False)
-    root = _project(repo, 2)
+    root = _project(repo, 2, monkeypatch)
     result = runner.run_pytest(root, ["tests/test_workers.py::test_w0"], workers=2)
     assert result.workers == 0
     assert any("pytest-xdist is not installed" in note for note in result.notes)
@@ -58,7 +62,7 @@ def test_xdist_missing_runs_serial_and_says_so(repo: Path,
 
 @pytest.mark.sr("SR-110")
 def test_run_selection_passes_workers(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    root = _project(repo, 2)
+    root = _project(repo, 2, monkeypatch)
     seen: list[int] = []
 
     def fake(root_: Path, args, *, timeout_s=None, workers=0, cov=None):

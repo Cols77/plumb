@@ -71,7 +71,13 @@ def _selection_dict(sel: Any) -> dict[str, Any]:
             "deferred": list(sel.deferred), "sampled": list(sel.sampled),
             "unknown_coverage": list(sel.unknown_coverage),
             "infra_changed": list(sel.infra_changed), "doc_only": sel.doc_only,
-            "expected_s": sel.expected_s}
+            "expected_s": sel.expected_s, "unrecorded": list(sel.unrecorded),
+            "notes": list(sel.notes)}
+
+
+# what `plumb tests select` says for each reason a test was chosen (SR-110)
+_REASON_WORDS = {"executed": "executed", "verified_by": "linked", "literal": "closure",
+                 "import": "closure", "naming": "closure", "sample": "sample"}
 
 
 def cmd_select(prog: str, argv: list[str]) -> int:
@@ -89,7 +95,8 @@ def cmd_select(prog: str, argv: list[str]) -> int:
         return EXIT_OK
     lines = _selection_lines(sel)
     for node in sel.nodes:
-        lines.append(f"  {node}  ({sel.reasons.get(node)})")
+        reason = sel.reasons.get(node)
+        lines.append(f"  {node}  ({_REASON_WORDS.get(str(reason), reason)})")
     emit(lines, False)
     return EXIT_OK
 
@@ -102,6 +109,7 @@ def _selection_lines(sel: Any) -> list[str]:
     if sel.infra_changed:
         lines.append("plumb: full verification pending (shared test infrastructure changed: "
                      + ", ".join(sel.infra_changed) + ")")
+    lines += [f"plumb: {note}" for note in sel.notes]
     if sel.unknown_coverage:
         lines.append("plumb: unknown coverage for " + ", ".join(sel.unknown_coverage)
                      + f": sampled {len(sel.sampled)}; full verification pending")
