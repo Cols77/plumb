@@ -195,6 +195,9 @@ def _write_branch_cache(root: Path, data: Mapping[str, Any]) -> None:
         pass
 
 
+COLD_SCAN_S = 0.15  # with no branch cache yet, one session start scans no longer than this
+
+
 def _diff(root: Path, default: str, tip: str) -> list[str] | None:
     try:
         result = subprocess.run(["git", "diff", "--name-only", "--no-renames", "-z",
@@ -228,6 +231,8 @@ def refresh_branches(core: Any, *, deadline: Any = None, skip: Iterable[str] = (
                    key=lambda b: (-gitfiles.ref_mtime(common, b), b))
     start = time.monotonic()
     cap_s = max(int(config.branch_scan_ms), 0) / 1000.0
+    if not cache["branches"]:  # cold: the cache fills over the next session starts
+        cap_s = min(cap_s, COLD_SCAN_S)
     scanned = 0
     for branch in moved:
         if scanned >= int(config.branch_max):

@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterable, Mapping, Sequence
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from plumb.capture.records import is_short_answer
@@ -231,6 +232,43 @@ def _save_cache(core: Core, cache: Mapping[str, Any]) -> None:
         pass
 
 
+def _offer_path(core: Core) -> Any:
+    return core.paths.cache / "triage_offer.json"
+
+
+def _save_offer(core: Core, low: Sequence[TriageItem]) -> None:
+    """The records the last whole triage rated faithful, kept for the session-start brief,
+    which must not judge anything itself (a cold start reads this and nothing else)."""
+    path = _offer_path(core)
+    items = [{"id": i.id, "hash": i.hash, "title": i.title} for i in low]
+    try:
+        if path.exists() or items:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"items": items}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def cached_offer(core: Core) -> tuple[bool, str | None]:
+    """``(known, offer line)`` from the last whole triage, with no judgment: ``known`` is
+    False when no triage has run (a cold start), the line is None when nothing it rated
+    faithful still awaits (a record since changed or confirmed drops out)."""
+    try:
+        data = json.loads(_offer_path(core).read_text(encoding="utf-8"))
+        raw = data.get("items") if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return False, None
+    if not isinstance(raw, list):
+        return False, None
+    index = core.index()
+    statuses = core.status() if raw else {}
+    left = [SimpleNamespace(id=str(r["id"]), title=str(r.get("title") or ""))
+            for r in raw if isinstance(r, Mapping) and r.get("id") in index
+            and index[r["id"]].hash == r.get("hash")
+            and statuses[r["id"]].confirmation != "confirmed"]
+    return True, offer_line(left)  # type: ignore[arg-type]
+
+
 def approved_before(core: Core) -> set[str]:
     """Records with any valid approval in the log, by anyone (an edit of them is never
     low-risk, sp2 8.1)."""
@@ -318,6 +356,8 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
             single.append(item)
     if dirty:
         _save_cache(core, cache)
+    if ids is None:
+        _save_offer(core, low)
     return TriageView(backend=name, available=available, low_risk=tuple(low),
                       individual=tuple(single), offer=offer_line(low))
 

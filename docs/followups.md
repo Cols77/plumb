@@ -5035,3 +5035,23 @@ untouched and `tests/capture/test_triage.py`, `test_auto_approve.py` are green a
 - The stop hook does not yet report `gate.problems` (only `plumb validate` does); `stop.py` is not SHOW's.
 - `snapshot.write_snapshot(..., failures=)` carries the three-failures flag; the session-start and stop hooks should pass `queue.consecutive_failures` (the status line also reads it live).
 - ENGINE's real `queue.consecutive_failures` replaces the stand-in in `test_three_failures_flag` on merge; re-run SHOW's set after ENGINE lands (3.5).
+
+## SP8 lane START (2026-10-10)
+
+HC1 step timings of session start on plumb's own records (`PLUMB_HOOK_TIMING=1`, ms, one run each; a loaded machine, so read them as orders of magnitude). Budget 1400, target cold at most 1260, warm at most 900.
+
+| Step | Cold (cache wiped) | Warm |
+|---|---|---|
+| interpreter and imports | 375 | 282 to 390 |
+| core open | 0 | 0 to 15 |
+| index | 437 | 47 to 78 |
+| brief | 531 | 203 to 235 |
+| tests summary | 219 | 47 to 63 |
+| snapshot (twice) | 47 | 62 to 78 |
+| tree scan | 16 | 0 |
+| awareness (branches, worktrees) | 0 | 141 to 453 |
+| triage offer | 0 | 0 |
+| total | 1640 (best of four before the lane: 1844) | 906 to 1125 |
+
+After HC2 to HC5 (same machine, loaded by other sessions, so noisy): warm session start passes its target (best of four at most 900 ms, clone of plumb's own records). Cold does not: best of four about 1500 ms against the 1260 target; the cut falls on the tests line ("check skipped (budget)"), the records brief is kept. Done in the lane: no judgment module and no network call in a start (triage offer read from `.plumb/cache/triage_offer.json`, written by every whole triage; a network backend with no such cache offers nothing), auto-approve "off" known without the judgment modules, map build detached with the line "tests: not checked (checking in the background)", cold branch scan capped at 150 ms. What is left sits in files outside the lane: cold index parse of 183 records with YAML (about 300 to 400 ms, `store.py` stays on the C loader already), the status pass that hashes every link end and rebuilds the event log cache (about 700 to 1000 ms together, `log.py`, `links.py`, `confirm.py`), and `plumb.contracts` (about 100 ms of dataclass creation, `contracts.py`).
+- [MEDIUM] (SR-014 cold target) Cold start needs the event log and link-end hashes persisted in a form that survives a wiped cache or costs less to rebuild (for example a single combined log snapshot, and a lazy status pass limited to the records the brief names), and `contracts.py` needs fewer dataclass definitions at import. Owners: coordinator (`contracts.py`) and whoever holds `log.py`, `links.py`, `confirm.py`.
