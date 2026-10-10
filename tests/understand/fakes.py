@@ -351,6 +351,11 @@ def install_engine_standins(monkeypatch: pytest.MonkeyPatch,
     box = EngineStandins(dispatcher or FakeDispatcher())
     modules = {"queue": queue, "worker": worker}
     engine_landed = not getattr(worker.run_once, "__stub__", False)
+    if engine_landed:
+        # the real worker runs; it only gets the fake model (the one configured dispatcher)
+        from plumb.understand import dispatch
+
+        monkeypatch.setattr(dispatch, "configured", lambda core: box.dispatcher)
     for (module_name, name), func in _standin_functions(box).items():
         module = modules[module_name]
         if name == "enqueue":
