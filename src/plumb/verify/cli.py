@@ -169,6 +169,7 @@ def report_lines(report: Any) -> list[str]:
         lines.append(f"plumb: flaky (failed, then passed on a same-tree rerun): {node}")
     for node in report.removed_after_passing:
         lines.append(f"plumb: removed after passing: {node}")
+    lines += [f"plumb: {note}" for note in report.notes]
     if sel is not None:
         lines += [line for line in _selection_lines(sel)[1:]]
     if report.full_pending is not None and report.full_pending.pending and not report.full:

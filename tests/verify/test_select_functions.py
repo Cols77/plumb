@@ -51,6 +51,7 @@ def _select(root: Path, fm: FuncMap | None, changed, **kw):
 
 
 EXEC_NODES = [f"tests/test_exec.py::test_alpha_{i:02d}" for i in range(12)]
+IMPORTERS = {f"tests/test_imports_{i:02d}.py::test_present": [] for i in range(30)}
 
 
 @pytest.mark.sr("SR-110")
@@ -58,8 +59,7 @@ def test_ex1_twelve_executing_tests_not_the_import_closure(project: Path) -> Non
     core = open_core(project)
     core.add_link("SR-001", "implemented_by", Target(path=CORE))
     core.add_link("SR-001", "verified_by", Target(test="tests/test_helper.py::test_twice"))
-    fm = _record(core, {n: ["alpha"] for n in EXEC_NODES}
-                 | {"tests/test_imports_00.py::test_present": []})
+    fm = _record(core, {n: ["alpha"] for n in EXEC_NODES} | IMPORTERS)
     write(project, CORE, CORE_TEXT.replace("x + 1", "1 + x"))
     sel = _select(project, fm, [CORE])
     assert set(sel.nodes) == set(EXEC_NODES) | {"tests/test_helper.py::test_twice",
@@ -86,7 +86,8 @@ def test_ex2_new_function_falls_back_to_closure_and_says_so(project: Path) -> No
 def test_requirement_linked_tests_added(project: Path) -> None:
     core = open_core(project)
     core.add_link("SR-001", "implemented_by", Target(path=CORE))
-    fm = _record(core, {EXEC_NODES[0]: ["beta"]})
+    fm = _record(core, {EXEC_NODES[0]: ["beta"]} | {n: [] for n in EXEC_NODES[1:]}
+                 | IMPORTERS)
     write(project, CORE, CORE_TEXT.replace("x * 2", "2 * x"))
     sel = _select(project, fm, [CORE])
     assert sel.nodes[0] == EXEC_NODES[0]
@@ -112,13 +113,27 @@ def test_nothing_recorded_never_runs_everything(project: Path) -> None:
 
 
 @pytest.mark.sr("SR-110")
-def test_comment_only_change_selects_no_function_tests(project: Path) -> None:
+def test_no_function_changed_uses_the_closure(project: Path) -> None:
+    """A path whose functions are all as recorded (a comment, a reformat, an explicit
+    --paths) keeps today's covering tests: never nothing."""
     core = open_core(project)
     fm = _record(core, {n: ["alpha"] for n in EXEC_NODES})
-    write(project, CORE, "# a comment\n" + CORE_TEXT.replace("x + 1", "(x + 1)"))
+    write(project, CORE, "# a comment" + chr(10) + CORE_TEXT.replace("x + 1", "(x + 1)"))
     sel = _select(project, fm, [CORE])
-    assert sel.nodes == ()
-    assert sel.unknown_coverage == ()
+    assert sel.reasons["tests/test_imports_03.py"] == "import"
+    assert sel.unrecorded == ()
+
+
+@pytest.mark.sr("SR-110")
+def test_tests_with_no_record_still_come_by_closure(project: Path) -> None:
+    core = open_core(project)
+    fm = _record(core, {n: ["alpha"] for n in EXEC_NODES} | {
+        k: v for k, v in IMPORTERS.items() if not k.startswith("tests/test_imports_0")})
+    write(project, CORE, CORE_TEXT.replace("x + 1", "1 + x"))
+    sel = _select(project, fm, [CORE])
+    unknown = {f"tests/test_imports_0{i}.py" for i in range(10)}
+    assert set(sel.nodes) == set(EXEC_NODES) | unknown
+    assert all(sel.reasons[n] == "import" for n in unknown)
 
 
 @pytest.mark.sr("SR-110")

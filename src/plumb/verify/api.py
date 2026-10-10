@@ -100,6 +100,7 @@ class RunReport:
     elapsed_s: float = 0.0
     full_pending: FullPending | None = None
     notes: list[str] = field(default_factory=list)  # lines the run says (SR-110)
+    workers: int = 0                                 # xdist workers the run used (0: serial)
 
     @property
     def failed(self) -> list[str]:
@@ -119,7 +120,7 @@ class RunReport:
             "removed_after_passing": self.removed_after_passing,
             "collection_errors": self.collection_errors, "discarded": self.discarded,
             "aborted": self.aborted, "timed_out": self.timed_out, "exit_status": self.exit_status,
-            "elapsed_s": self.elapsed_s, "notes": self.notes,
+            "elapsed_s": self.elapsed_s, "notes": self.notes, "workers": self.workers,
             "selection": None if sel is None else {
                 "nodes": list(sel.nodes), "deferred": list(sel.deferred),
                 "sampled": list(sel.sampled), "unknown_coverage": list(sel.unknown_coverage),
@@ -218,7 +219,8 @@ class Verify:
                        skip=frozenset(fresh), deselect=deselect)
         return spec, tmp, len(fresh)
 
-    def _cov_end(self, outcome: Any, tmap: Any, tmp: Path, spec: Any) -> list[str]:
+    def _cov_end(self, outcome: Any, tmap: Any, tmp: Path, spec: Any, *,
+                 refresh: bool = False) -> list[str]:
         """Write the record of the nodes that passed with coverage on; returns them."""
         import shutil
 
@@ -237,7 +239,8 @@ class Verify:
             digests = {f: tmap.closure_hash(f) for f in set(nodes.values())}
             test_dirs = tuple(self.core.config.test_dirs)
             return ingest_coverage(self.funcmap(), data, nodes, digests, self.env_key(),
-                                   skip_file=lambda rel: is_test_file(rel, test_dirs))
+                                   skip_file=lambda rel: is_test_file(rel, test_dirs),
+                                   refresh=refresh)
         except Exception as exc:  # noqa: BLE001 - a recording failure never fails a run
             outcome.result.notes.append(f"coverage record not written: {exc}")
             return []
@@ -279,7 +282,9 @@ class Verify:
         report.ran = sorted(result.nodes)
         report.failed = sorted(n for n, d in result.nodes.items()
                                if d.get("outcome") == "failed")
-        report.recorded = self._cov_end(outcome, tmap, tmp, spec)
+        report.recorded = self._cov_end(outcome, tmap, tmp, spec, refresh=True)
+        if not outcome.discarded and not result.timed_out:
+            self.funcmap().refresh_all()  # what changed has now been recorded: new baseline
         if outcome.discarded:
             report.notes.append(f"record discarded ({outcome.discarded} during the run)")
         report.stats = self.funcmap().stats() if self.funcmap().exists() else {}
@@ -884,6 +889,7 @@ class Verify:
         if cov_spec is not None:
             self._cov_end(outcome, tmap, cov_tmp, cov_spec)
         report.notes = list(result.notes)
+        report.workers = result.workers
         targets = tmap.test_files if full else args
         aborted = None
         if not outcome.discarded and not result.timed_out:

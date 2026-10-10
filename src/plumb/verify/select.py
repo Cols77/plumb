@@ -162,15 +162,16 @@ def expected_duration(entry: str, nodes_of: Callable[[str], list[str]],
 
 
 def _function_tests(funcmap: Any, env_key: str | None, path: str, test_set: set[str]
-                    ) -> tuple[list[str], list[str], bool]:
+                    ) -> tuple[list[str], list[str], bool, bool]:
     """``(tests that executed a changed function of path, unrecorded changed functions,
-    the module part changed)`` for a file the record has seen."""
+    the module part changed, anything changed at all)`` for a file the record has seen."""
     from plumb.verify.funcmap import MODULE
 
     tests: list[str] = []
     unrecorded: list[str] = []
     module = False
-    for change in funcmap.functions_changed([path]):
+    changes = funcmap.functions_changed([path])
+    for change in changes:
         if change.qualname == MODULE:
             module = True
             continue
@@ -180,7 +181,7 @@ def _function_tests(funcmap: Any, env_key: str | None, path: str, test_set: set[
             tests += [n for n in found if n not in tests]
         else:
             unrecorded.append(change.qualname)
-    return tests, unrecorded, module
+    return tests, unrecorded, module, bool(changes)
 
 
 def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
@@ -226,10 +227,14 @@ def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
     use_funcs = funcmap is not None and not coverage_off(vcfg)
     unrecorded: list[str] = []
     notes: list[str] = []
+    recorded_files: set[str] | None = None
     for path in rest:
-        by_function = False  # the function record decides this file; the closure is a fallback
+        # "closure": every test the import rules name; "unknown": only the tests nothing
+        # was recorded for (the function record decides about the others)
+        closure = "closure"
         if use_funcs and path not in test_set and funcmap.is_recorded(path, env_key):
-            tests, missing, module = _function_tests(funcmap, env_key, path, test_set)
+            tests, missing, module, any_change = _function_tests(funcmap, env_key, path,
+                                                                 test_set)
             for test in tests:
                 candidates.append((0, -1, test, test, "executed"))
                 covered[path] = True
@@ -237,27 +242,36 @@ def select_tests(core: Any, tmap: Any, changed: Iterable[str], *,
                 unrecorded.append(f"{path}::{name}")
                 notes.append(f"no recorded test executes {name} ({path}): selected by the "
                              "import closure of the file")
-            by_function = not missing and not module
-            covered[path] = covered[path] or by_function
+            if any_change and not missing and not module:
+                closure = "unknown"
+                if recorded_files is None:
+                    recorded_files = funcmap.recorded_files(env_key)
+                covered[path] = True
         for rid in tmap.implemented.get(path, ()):
             for test in tmap.records.get(rid, ()):
                 if test.split("::", 1)[0] in test_set:
                     candidates.append((0, 0, "", test, "verified_by"))
                     covered[path] = True
-        if by_function:
-            continue
+
+        def named(test: str, closure: str = closure,
+                  known: set[str] = recorded_files or set()) -> bool:
+            return closure == "closure" or test not in known
+
         for test in tmap.mentions(path):
-            candidates.append((1, 0, test, test, "literal"))
-            covered[path] = True
+            if named(test):
+                candidates.append((1, 0, test, test, "literal"))
+                covered[path] = True
         if path in test_set:
             candidates.append((2, 0, path, path, "import"))
             covered[path] = True
         for test, depth in tmap.importers.get(path, {}).items():
-            candidates.append((2, depth, test, test, "import"))
-            covered[path] = True
+            if named(test):
+                candidates.append((2, depth, test, test, "import"))
+                covered[path] = True
         for test in tmap.naming.get(path, ()):
-            candidates.append((3, 0, test, test, "naming"))
-            covered[path] = True
+            if named(test):
+                candidates.append((3, 0, test, test, "naming"))
+                covered[path] = True
     candidates.sort(key=lambda c: (c[0], c[1], c[2]))
     ordered = _Ordered()
     for _, _, _, entry, reason in candidates:

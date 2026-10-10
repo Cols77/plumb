@@ -175,17 +175,28 @@ class FuncMap:
         self.db.commit()
 
     # -- writing
-    def register_file(self, rel: str, hashes: Mapping[str, str] | None = None) -> bool:
-        """Store the current hash of every function of ``rel``; drop functions it lost."""
+    def register_file(self, rel: str, hashes: Mapping[str, str] | None = None, *,
+                      refresh: bool = True) -> bool:
+        """Store the current hash of every function of ``rel``; drop functions it lost.
+
+        ``refresh=False`` only adds the functions the record has not seen: the hashes already
+        stored stay the baseline a change is measured against, so a run that records the tests
+        of a changed function does not make the change disappear from the next selection."""
         if hashes is None:
             hashes = file_functions(self.root, rel)
         if not hashes:
             return False
         db = self.db
         for qualname, digest in hashes.items():
-            db.execute("INSERT INTO funcs (path, qualname, hash) VALUES (?, ?, ?) "
-                       "ON CONFLICT (path, qualname) DO UPDATE SET hash = excluded.hash",
-                       (rel, qualname, digest))
+            if refresh:
+                db.execute("INSERT INTO funcs (path, qualname, hash) VALUES (?, ?, ?) "
+                           "ON CONFLICT (path, qualname) DO UPDATE SET hash = excluded.hash",
+                           (rel, qualname, digest))
+            else:
+                db.execute("INSERT OR IGNORE INTO funcs (path, qualname, hash) "
+                           "VALUES (?, ?, ?)", (rel, qualname, digest))
+        if not refresh:
+            return True
         keep = set(hashes)
         for fid, qualname in db.execute("SELECT id, qualname FROM funcs WHERE path = ?",
                                         (rel,)).fetchall():
@@ -193,6 +204,31 @@ class FuncMap:
                 db.execute("DELETE FROM hits WHERE func = ?", (fid,))
                 db.execute("DELETE FROM funcs WHERE id = ?", (fid,))
         return True
+
+    def refresh_all(self) -> int:
+        """Move the baseline of every recorded file to the tree as it is now (the tests
+        that executed what changed have just been recorded). Returns the files refreshed."""
+        paths = [r[0] for r in self.db.execute("SELECT DISTINCT path FROM funcs")]
+        count = 0
+        for rel in paths:
+            if self.register_file(rel):
+                count += 1
+            else:  # the file is gone or does not parse: its functions go with it
+                for (fid,) in self.db.execute("SELECT id FROM funcs WHERE path = ?",
+                                              (rel,)).fetchall():
+                    self.db.execute("DELETE FROM hits WHERE func = ?", (fid,))
+                self.db.execute("DELETE FROM funcs WHERE path = ?", (rel,))
+        self.commit()
+        return count
+
+    def recorded_files(self, env_key: str | None = None) -> set[str]:
+        """Test files with at least one recorded node (under ``env_key``)."""
+        sql = "SELECT DISTINCT file FROM tests"
+        args: list[Any] = []
+        if env_key is not None:
+            sql += " WHERE env_key = ?"
+            args.append(env_key)
+        return {r[0] for r in self.db.execute(sql, args)}
 
     def record_test(self, node: str, test_file: str, closure_digest: str, env_key: str,
                     executed: Iterable[tuple[str, str]], recorded_at: str | None = None) -> None:
@@ -333,13 +369,13 @@ def executed_functions(root: Path, data: Any, *,
 
 def ingest_coverage(fm: FuncMap, data: Any, nodes: Mapping[str, str],
                     digests: Mapping[str, str | None], env_key: str, *,
-                    skip_file: Any = None) -> list[str]:
+                    skip_file: Any = None, refresh: bool = False) -> list[str]:
     """Record the test nodes in ``nodes`` (``{node: test file}``) from combined coverage
     ``data``; a node that executed nothing measured is recorded with no hits (so it is not
     stale). Returns the recorded nodes."""
     executed, hashes = executed_functions(fm.root, data, skip_file=skip_file)
     for rel, table in hashes.items():
-        fm.register_file(rel, table)
+        fm.register_file(rel, table, refresh=refresh)
     recorded: list[str] = []
     for node, test_file in sorted(nodes.items()):
         digest = digests.get(test_file)
