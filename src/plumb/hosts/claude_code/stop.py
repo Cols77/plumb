@@ -740,6 +740,8 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
     then the turn is let go with a stale card per link. The links stale before the turn are
     listed once per session and never block. Without a baseline of this turn nothing is
     held. Never fails the stop."""
+    if ctx.extra.get("host") not in (None, "", "claude-code"):
+        return [], []  # a host without Claude Code's stop loop keeps its one block per turn
     try:
         from plumb import stale
 
