@@ -118,6 +118,43 @@ def test_jev_judge_maps_no_to_not_supported() -> None:
     assert "REQ-1" in asked[0] and "words 1" in asked[0]
 
 
+def test_jev_choice_judge_keeps_the_verdict_and_scores_supported() -> None:
+    from plumb.judgment.model import JudgmentAnswer
+
+    asked: list[Any] = []
+
+    class Record:
+        def __init__(self, answer: JudgmentAnswer) -> None:
+            self.answers = {"verdict": answer}
+
+    class Backend:
+        version = "v1"
+
+        def _ask(self, questions: Any, prefix: str) -> Record | None:
+            asked.append((questions, prefix))
+            return Record(JudgmentAnswer.from_vendor(
+                "choice", "beyond", {"supported": 0.3, "beyond": 0.6, "contradicts": 0.1}, 0.6))
+
+    verdict = evalcompare.JevChoiceJudge(Backend()).judge(_item(1, "beyond"), [])
+    assert verdict == Verdict("beyond", 0.3)
+    (key, question), = asked[0][0]
+    assert key == "verdict" and question.kind == "choice"
+    assert {o for o, _ in question.criteria} == {"supported", "beyond", "contradicts"}
+    assert "words 1" in asked[0][1]
+
+
+def test_jev_choice_judge_unreachable_is_an_error() -> None:
+    class Backend:
+        version = "v1"
+        client = None
+
+        def _ask(self, questions: Any, prefix: str) -> None:
+            return None
+
+    with pytest.raises(CompareError, match="jev-choice"):
+        evalcompare.JevChoiceJudge(Backend()).judge(_item(1, "supported"), [])
+
+
 def test_haiku_judge_confidence_becomes_probability_of_supported() -> None:
     class D:
         name = "d"

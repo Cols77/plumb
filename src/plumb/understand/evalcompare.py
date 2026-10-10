@@ -23,12 +23,21 @@ from plumb.contracts import DispatchError, Job, NoModel
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_SET = HERE / "evalset" / "judge_labelled.json"
-JUDGES = ("haiku", "jev")
+JUDGES = ("haiku", "jev", "jev-choice")
 EXPECTED = ("supported", "beyond", "contradicts")
 JEV_QUESTION = ("Is this record faithful to the owner's words and consistent with the "
                 "confirmed records? yes means supported: it says what the owner said, with "
                 "nothing added, dropped or changed, and it does not conflict with the "
                 "confirmed records.")
+JEV_CHOICE_QUESTION = ("Compare the record with the owner's words and the confirmed records. "
+                       "Which describes the record?")
+JEV_CHOICES = {
+    "supported": "it says what the owner said; rewording, concrete examples and labelled "
+                 "assumptions are fine; nothing is added, dropped or changed",
+    "beyond": "it adds a commitment (behaviour, scope or constraint) the owner did not ask "
+              "for and that is not a labelled assumption",
+    "contradicts": "it conflicts with the owner's words or with a confirmed record",
+}
 
 
 class CompareError(Exception):
@@ -139,19 +148,45 @@ class JevJudge:
     def model(self) -> str:
         return str(self.backend.version)
 
-    def judge(self, item: Mapping[str, Any], context: Sequence[Mapping[str, str]]) -> Verdict:
+    @staticmethod
+    def prompt(item: Mapping[str, Any], context: Sequence[Mapping[str, str]]) -> str:
         lines = [f"Owner's words:\n{item['owner_words']}\n",
                  f"Record {item.get('record_id') or item['id']} ({item.get('kind')}):\n"
                  f"{item['record_text']}\n"]
         if context:
             lines.append("Confirmed records:\n" + "\n".join(
                 f"{c['id']}: {c['text']}" for c in context) + "\n")
-        p = self.backend.yes_probability(JEV_QUESTION, "\n".join(lines),
+        return "\n".join(lines)
+
+    def unreachable(self) -> CompareError:
+        err = getattr(getattr(self.backend, "client", None), "last_error", None)
+        return CompareError(self.name, f"unreachable ({err or 'no answer'})")
+
+    def judge(self, item: Mapping[str, Any], context: Sequence[Mapping[str, str]]) -> Verdict:
+        p = self.backend.yes_probability(JEV_QUESTION, self.prompt(item, context),
                                          true="supported", false="not supported")
         if p is None:
-            err = getattr(getattr(self.backend, "client", None), "last_error", None)
-            raise CompareError(self.name, f"unreachable ({err or 'no answer'})")
+            raise self.unreachable()
         return Verdict("supported" if p >= 0.5 else "not-supported", p)
+
+
+class JevChoiceJudge(JevJudge):
+    """JEV asked one choice over the three verdicts: the label is JEV's choice and the score
+    its probability of ``supported``, so beyond and contradicts are told apart."""
+
+    name = "jev-choice"
+
+    def judge(self, item: Mapping[str, Any], context: Sequence[Mapping[str, str]]) -> Verdict:
+        from plumb.judgment.model import JudgmentQuestion
+
+        question = JudgmentQuestion.choice(JEV_CHOICE_QUESTION, JEV_CHOICES)
+        record = self.backend._ask([("verdict", question)], self.prompt(item, context))
+        if record is None:
+            raise self.unreachable()
+        answer = record.answers["verdict"]
+        label = str(answer.value)
+        p = answer.probabilities.get("supported", 1.0 if label == "supported" else 0.0)
+        return Verdict(label if label in EXPECTED else "not-supported", float(p))
 
 
 def open_judges(core: Any, names: Sequence[str]) -> list[Any]:
@@ -169,7 +204,7 @@ def open_judges(core: Any, names: Sequence[str]) -> list[Any]:
             if reason:
                 raise CompareError("haiku", f"unavailable ({reason})")
             judges.append(HaikuJudge(dispatcher, core.config.understand.model))
-        elif name == "jev":
+        elif name in ("jev", "jev-choice"):
             from plumb.judgment.jev import JevBackend, open_jev
             from plumb.judgment.tiers import Thresholds
 
@@ -177,7 +212,7 @@ def open_judges(core: Any, names: Sequence[str]) -> list[Any]:
                                thresholds=Thresholds.from_config(core.config.judgment.jev))
             if not isinstance(backend, JevBackend):
                 raise CompareError("jev", "no JEV key (the heuristic is not used)")
-            judges.append(JevJudge(backend))
+            judges.append(JevJudge(backend) if name == "jev" else JevChoiceJudge(backend))
         else:
             raise CompareError(name, f"unknown judge (use {', '.join(JUDGES)})")
     return judges
