@@ -3,7 +3,7 @@
 - ``open_conflicts``: every open block, from the record index (no git, no log read);
 - ``conflict_card``: one card in the intent-card format of R9, both versions in the owner's
   terms, what merged on its own, an optional advisory compatibility judgment (once per pair
-  of hashes, logged, 5 s limit; "no judgment available" with the heuristic or none);
+  of hashes, logged, 5 s limit; "no judgment available" with none configured);
 - ``stated_entries``: the stated set's ``conflicts`` entries for the cards a reply showed;
 - ``propose``: the agent's combined version, shown in the card, never applied by itself;
 - ``choose_owner`` and ``relay_choice``: only the owner chooses. The owner's own terminal
@@ -270,6 +270,10 @@ def _judge(core: Any, conflict: IntentConflict, backend: Any) -> Mapping[str, An
     worker.join(JUDGE_TIMEOUT_S)
     judgment = box.get("judgment")
     if judgment is None:
+        from plumb.judgment import JudgmentUnavailable
+
+        if isinstance(box.get("error"), JudgmentUnavailable):
+            raise box["error"]
         return None
     verdict = "likely incompatible" if judgment.verdict == "contradicts" else \
         "likely compatible"
@@ -285,8 +289,10 @@ def _judge(core: Any, conflict: IntentConflict, backend: Any) -> Mapping[str, An
 
 
 def judgment_line(core: Any, conflict: IntentConflict, backend: Any = None) -> str:
-    """"Compatible? JEV: ..." when a non-heuristic backend judged this pair (once per pair of
+    """"Compatible? JEV: ..." when a real backend judged this pair (once per pair of
     hashes, logged); otherwise "Compatible? no judgment available"."""
+    from plumb.judgment import JudgmentUnavailable
+
     try:
         cached = _cached_judgment(core, conflict)
         if cached is None:
@@ -295,10 +301,11 @@ def judgment_line(core: Any, conflict: IntentConflict, backend: Any = None) -> s
 
                 backend = get_backend(core, hook=False)
             name = str(getattr(backend, "name", "") or "")
-            version = str(getattr(backend, "version", "") or "")
-            if name in ("", "heuristic", "disabled") or version == "heuristic":
+            if name in ("", "cached-only", "disabled"):
                 return owner_text.CARD_NO_JUDGMENT
             cached = _judge(core, conflict, backend)
+    except JudgmentUnavailable as exc:  # the cause is shown, never a rule-based answer
+        return owner_text.CARD_UNAVAILABLE.format(cause=exc)
     except Exception:  # noqa: BLE001 - advisory only
         cached = None
     if not cached:
@@ -587,8 +594,8 @@ class _CachedOnly:
     """A backend that never calls out: inside a hook the card shows a judgment only when
     one is already logged for this pair (the 5 s call belongs to /plumb conflicts)."""
 
-    name = "heuristic"
-    version = "heuristic"
+    name = "cached-only"
+    version = "none"
 
 
 CACHED_ONLY = _CachedOnly()

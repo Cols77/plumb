@@ -12,12 +12,18 @@ import json
 from pathlib import Path
 
 import pytest
-from capture_helpers import log_prompt, record_text, run
+from capture_helpers import log_prompt, record_text, run, use_coverage_judge
 
 from plumb.api import open_core
 from plumb.capture.triage import CONTRADICTS, UNVERIFIED, triage
 
 pytestmark = pytest.mark.sr("SR-040")
+
+
+@pytest.fixture(autouse=True)
+def judge(monkeypatch) -> None:
+    """A judge double rates the claims (INT-029: plumb has no rule-based judge)."""
+    use_coverage_judge(monkeypatch)
 
 NEG = "Given 2, when neg is called, then it returns -2. Do not change add."
 

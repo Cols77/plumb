@@ -143,7 +143,7 @@ session_start.main(stdin=io.StringIO(sys.argv[2]), stdout=out, root=sys.argv[1],
 print(json.dumps(sorted(sys.modules)))
 """
 # plumb.judgment.tiers stays: the status of a record rechecks auto-approvals with it
-FORBIDDEN = ("plumb.judgment.jev", "plumb.judgment.model", "plumb.judgment.heuristic",
+FORBIDDEN = ("plumb.judgment.jev", "plumb.judgment.model", "plumb.judgment.common",
              "plumb.judgment.textjudge", "plumb.judgment.fidelity", "plumb.capture.calibrate",
              "plumb.verify.runner", "plumb.verify.cov_plugin", "urllib.request", "yaml")
 

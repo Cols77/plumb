@@ -10,7 +10,7 @@ holds the words it replaced):
 
 - the SAME record claimed on another branch is a conflict, caught deterministically;
 - new intent in a feature another branch claims is judged for compatibility by the judgment
-  backend (``contradiction``: JEV when configured, else the heuristic); ``contradicts`` is a
+  backend (``contradiction``: the configured judge); ``contradicts`` is a
   conflict, anything else a one-line awareness warning.
 
 A conflict is the owner's "real intent change" trigger: an early conflict card ("feat-x says
@@ -66,9 +66,9 @@ def _backend(core: Any, backend: Any) -> Any:
     if backend is not None:
         return backend
     try:
-        from plumb.judgment import get_backend
+        from plumb.judgment import optional_backend
 
-        return get_backend(core, hook=False)
+        return optional_backend(core, hook=False)
     except Exception:  # noqa: BLE001 - no backend: overlaps stay warnings
         return None
 
@@ -212,13 +212,17 @@ CONFIDENT = 0.8
 def _judge(backend: Any, theirs: str, record: Any) -> tuple[str, str, bool]:
     """The backend's compatibility verdict on ``record`` against the other branch's words:
     ``(verdict, the card's "Compatible?" text, whether the verdict is confident)``. Only
-    JEV, above ``CONFIDENT`` and not escalating, is confident; the heuristic (a word check)
-    never is."""
+    JEV, above ``CONFIDENT`` and not escalating, is confident; no rule-based judge stands in
+    for an unreachable one (INT-029): the card says why it could not judge."""
     if backend is None:
         return "unsure", "no judgment available", False
     try:
         judgment = backend.contradiction(theirs, record)
-    except Exception:  # noqa: BLE001 - advisory
+    except Exception as exc:  # noqa: BLE001 - advisory
+        from plumb.judgment import JudgmentUnavailable
+
+        if isinstance(exc, JudgmentUnavailable):
+            return "unsure", f"judging unavailable: {exc}", False
         return "unsure", "no judgment available", False
     verdict = str(getattr(judgment, "verdict", "unsure"))
     name = str(getattr(judgment, "backend", "") or getattr(backend, "name", ""))
@@ -226,7 +230,7 @@ def _judge(backend: Any, theirs: str, record: Any) -> tuple[str, str, bool]:
     label = {"contradicts": "likely not", "extends": "likely yes (it adds beside it)",
              "benign": "likely yes"}.get(verdict, "unsure")
     jev = name == "jev" or name.startswith("jev:")
-    who = "JEV" if jev else ("a quick word check" if name == "heuristic" else name)
+    who = "JEV" if jev else name
     tier = str(getattr(judgment, "tier", "") or "")
     sure = jev and confidence >= CONFIDENT and not tier.startswith("escalate")
     return verdict, f"{label} ({who}, {confidence:.2f})", sure

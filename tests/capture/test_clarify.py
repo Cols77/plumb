@@ -11,6 +11,7 @@ from capture_helpers import record_text, run
 
 from plumb.api import open_core
 from plumb.capture.clarify import clarify, next_question
+from plumb.judgment import FakeBackend
 
 pytestmark = pytest.mark.sr("SR-043")
 
@@ -30,10 +31,18 @@ def project(repo: Path, write_record) -> Path:
 
 def test_maps_to_confirmed_record_is_trivial(project: Path) -> None:
     view = clarify(open_core(project), "rerun the SR-004 approval checks",
-                   [{"question": "Which color?", "options": ["red", "blue"]}])
+                   [{"question": "Which color?", "options": ["red", "blue"]}],
+                   backend=FakeBackend())
     assert view.depth == "trivial"
     assert view.questions == ()
     assert view.answered and view.answered[0].startswith("SR-004 (confirmed)")
+
+
+def test_no_judge_is_said_and_is_never_trivial(project: Path) -> None:
+    """INT-029: with no judge the depth is not claimed trivial, and the reason says why."""
+    view = clarify(open_core(project), "rerun the SR-004 approval checks")
+    assert view.depth == "incremental"
+    assert "judging unavailable" in view.reason and view.backend == "none"
 
 
 def test_new_intent_is_incremental(project: Path) -> None:

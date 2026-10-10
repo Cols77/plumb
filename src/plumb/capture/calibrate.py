@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from plumb.api import Core
 
 KINDS = {"intent": "intent-readback", "requirement": "example-restatement"}
-NOT_APPLICABLE = "heuristic: no auto-approval, calibration not applicable"
+NOT_APPLICABLE = "only the jev judge is calibrated; calibration not applicable"
 NO_JUDGMENTS = "no judgments available"
 STEP = 0.001
 
@@ -280,9 +280,12 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
         name, version = "judge", model
     else:
         if backend is None:
-            from plumb.judgment import get_backend
+            from plumb.judgment import JudgmentUnavailable, get_backend
 
-            backend = get_backend(core, hook=False)
+            try:
+                backend = get_backend(core, hook=False)
+            except JudgmentUnavailable as exc:  # INT-029: said, nothing stands in
+                raise CalibrationUnavailable(f"judging unavailable: {exc}") from exc
         name = str(getattr(backend, "name", "none"))
         if name in ("disabled", "none"):
             raise CalibrationUnavailable(NO_JUDGMENTS)
@@ -290,7 +293,15 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
             raise CalibrationUnavailable(NOT_APPLICABLE)
         scores = []
         for item in items:
-            value, used = score(backend, item)
+            try:
+                value, used = score(backend, item)
+            except Exception as exc:  # noqa: BLE001
+                from plumb.judgment import JudgmentUnavailable
+
+                if not isinstance(exc, JudgmentUnavailable):
+                    raise
+                raise CalibrationUnavailable(f"judging unavailable: {exc}; no calibration "
+                                             "written") from exc
             if not used.startswith("jev:"):
                 raise CalibrationUnavailable(f"jev unavailable during calibration ({used} "
                                              "answered); no calibration written")

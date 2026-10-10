@@ -64,10 +64,17 @@ def cmd_fidelity(argv: list[str]) -> int:
     except KeyError as exc:
         print(f"plumb: {exc.args[0]}", file=sys.stderr)
         return EXIT_FINDINGS
-    backend = get_backend(core, hook=False)
+    from plumb.judgment import JudgmentUnavailable
+
     scored = None
-    if backend.name not in ("heuristic", "disabled"):
-        scored = backend.fidelity(packet)  # a JEV score logs its own judgment event
+    unavailable = None
+    backend = None
+    try:
+        backend = get_backend(core, hook=False)
+        if backend.name != "disabled":
+            scored = backend.fidelity(packet)  # a JEV score logs its own judgment event
+    except JudgmentUnavailable as exc:  # INT-029: the packet is still built; no score
+        unavailable = str(exc)
     if args.as_json:
         data = dataclasses.asdict(packet)
         if scored is not None:
@@ -77,6 +84,8 @@ def cmd_fidelity(argv: list[str]) -> int:
     lines = packet_lines(packet)
     for notice in getattr(backend, "notices", ()):
         lines.append(notice)
+    if unavailable is not None:
+        lines.append(f"judging unavailable: {unavailable}")
     if scored is not None:
         lines.append(f"score ({scored.backend}): {scored.verdict}, confidence "
                      f"{scored.confidence:.2f}, tier {scored.tier} (advisory)")
@@ -114,12 +123,16 @@ def cmd_judge(argv: list[str]) -> int:
 
 def judgment_status(core: Any) -> dict[str, Any]:
     """Backend in use and key state; never the key itself."""
-    from plumb.judgment import get_backend
+    from plumb.judgment import JudgmentUnavailable, get_backend
 
-    backend = get_backend(core, hook=False)
     config = core.config.judgment
-    out: dict[str, Any] = {"configured": config.backend, "backend": backend.name,
-                           "notices": list(getattr(backend, "notices", ()))}
+    try:
+        backend = get_backend(core, hook=False)
+        out: dict[str, Any] = {"configured": config.backend, "backend": backend.name,
+                               "notices": list(getattr(backend, "notices", ()))}
+    except JudgmentUnavailable as exc:
+        out = {"configured": config.backend, "backend": "none",
+               "notices": [f"judging unavailable: {exc}"]}
     try:
         from plumb.judgment.jev import credential_env, key_source
     except ImportError:

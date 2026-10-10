@@ -291,12 +291,16 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
     statuses = core.status()
     wanted = [i for i in (ids if ids is not None else sorted(index, key=_order))
               if i in index and statuses[i].confirmation != "confirmed"]
+    unavailable = ""
     if backend is None:
-        from plumb.judgment import get_backend
+        from plumb.judgment import JudgmentUnavailable, get_backend
 
-        backend = get_backend(core, hook=hook)
-    name = str(getattr(backend, "name", "none"))
-    available = name not in ("disabled", "none")
+        try:
+            backend = get_backend(core, hook=hook)
+        except JudgmentUnavailable as exc:  # INT-029: said, never rated by rules
+            unavailable = str(exc)
+    name = str(getattr(backend, "name", "none")) if backend is not None else "none"
+    available = name not in ("disabled", "none", "unavailable")
     before = approved_before(core)
     members = set_of(core)
     threshold = float(core.config.triage.low_risk_min)
@@ -324,15 +328,22 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
             if isinstance(hit, list) and len(hit) == 4:
                 score, reason, used = float(hit[0]), str(hit[1]), str(hit[2])
                 judged_against = bool(hit[3])
-            elif name == "heuristic" or time.monotonic() < deadline:
-                judgment = backend.entailment(premise, hypothesis, subject=record_id,
-                                              claim_kind=kind)
-                probability = judgment.probability
-                if probability is not None and judgment.verdict != "unsure" or \
-                        judgment.backend == "heuristic":
-                    score = float(probability if probability is not None
-                                  else judgment.confidence)
-                    if judgment.verdict == "not-entailed" and judgment.backend != "heuristic":
+            elif time.monotonic() < deadline:
+                try:
+                    judgment = backend.entailment(premise, hypothesis, subject=record_id,
+                                                  claim_kind=kind)
+                except Exception as exc:  # noqa: BLE001
+                    from plumb.judgment import JudgmentUnavailable
+
+                    if not isinstance(exc, JudgmentUnavailable):
+                        raise
+                    unavailable, available, deadline = str(exc), False, 0.0
+                    judgment = None
+                probability = judgment.probability if judgment is not None else None
+                if judgment is not None and probability is not None \
+                        and judgment.verdict != "unsure":
+                    score = float(probability)
+                    if judgment.verdict == "not-entailed":
                         score = 1.0 - score  # the probability of the not-entailed verdict
                     reason = "; ".join(judgment.reasons)[:200]
                     used = judgment.backend
@@ -359,7 +370,8 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
     if ids is None:
         _save_offer(core, low)
     return TriageView(backend=name, available=available, low_risk=tuple(low),
-                      individual=tuple(single), offer=offer_line(low))
+                      individual=tuple(single), offer=offer_line(low),
+                      unavailable=unavailable)
 
 
 def _outcome(rating: str, unfaithful: str | None) -> str:
@@ -426,8 +438,9 @@ def stated_group(view: TriageView) -> dict[str, Any] | None:
 def view_lines(view: TriageView) -> list[str]:
     lines: list[str] = []
     if not view.available:
-        lines.append("plumb triage: no judgments available; every record is shown "
-                     "individually")
+        why = f"judging unavailable: {view.unavailable}" if view.unavailable \
+            else "no judgments available"
+        lines.append(f"plumb triage: {why}; every record is shown individually")
     else:
         lines.append(f"plumb triage ({view.backend}; advisory, it approves nothing)")
     if view.low_risk:

@@ -13,7 +13,7 @@ import pytest
 
 from plumb.api import open_core
 from plumb.contracts import Link, LinkState, Pin, Target
-from plumb.judgment import get_backend
+from plumb.judgment import JudgmentUnavailable, get_backend
 from plumb.judgment import jev as jev_mod
 from plumb.judgment.model import JudgmentQuestion, JudgmentRequest
 from plumb.judgment.state import assemble_state, is_secret_path
@@ -173,27 +173,30 @@ def test_fidelity_score_with_version_drift(jev_repo) -> None:
     assert unjudged(open_core(repo), ["SR-004"]) == ("SR-004",)
 
 
-def test_timeout_falls_back_to_heuristic_with_one_notice(jev_repo) -> None:
+def test_timeout_raises_an_error_naming_jev_and_the_timeout(jev_repo) -> None:
+    """SR-021 EX-2: nothing falls back to a rule-based answer."""
     repo, state = jev_repo
     state.delay = 1.5
     core = open_core(repo)
     backend = get_backend(core, hook=True)
     started = time.monotonic()
-    [j] = backend.intent_change("instead, SR-004 should change", [core.index()["SR-004"]])
+    with pytest.raises(JudgmentUnavailable) as caught:
+        backend.intent_change("instead, SR-004 should change", [core.index()["SR-004"]])
     assert time.monotonic() - started < 1.2  # 300 ms hook timeout, no retry
-    assert j.backend == "heuristic" and j.verdict == "change"
-    assert len(backend.notices) == 1 and "jev" in backend.notices[0]
-    [j] = backend.intent_change("instead, SR-004 should change", [core.index()["SR-004"]])
-    assert len(backend.notices) == 1
+    assert caught.value.judge == "JEV" and "timeout" in caught.value.cause
+    with pytest.raises(JudgmentUnavailable):  # the rest of the process raises the same error
+        backend.intent_change("instead, SR-004 should change", [core.index()["SR-004"]])
     assert len(state.requests) <= 2
 
 
-def test_missing_key_uses_heuristic(jev_repo, monkeypatch) -> None:
+def test_missing_key_raises_an_error_naming_jev_and_the_variable(jev_repo,
+                                                                 monkeypatch) -> None:
+    """SR-021 EX-1, SR-039 EX-1."""
     repo, state = jev_repo
     monkeypatch.delenv("TYPESAFE_API_KEY")
-    backend = get_backend(open_core(repo), hook=True)
-    assert backend.name == "heuristic"
-    assert any("key" in n for n in backend.notices)
+    with pytest.raises(JudgmentUnavailable) as caught:
+        get_backend(open_core(repo), hook=True)
+    assert caught.value.judge == "JEV" and "TYPESAFE_API_KEY" in caught.value.cause
     assert state.requests == []
 
 
@@ -217,7 +220,8 @@ def test_key_never_read_from_repository(jev_repo, monkeypatch) -> None:
     (repo / ".plumb" / "jev").write_text(KEY, encoding="utf-8")
     monkeypatch.setattr(jev_mod, "user_store_path", lambda: inside)
     assert jev_mod.resolve_key(repo) is None
-    assert get_backend(open_core(repo), hook=True).name == "heuristic"
+    with pytest.raises(JudgmentUnavailable):
+        get_backend(open_core(repo), hook=True)
 
 
 def test_state_excludes_secret_paths_and_truncates(repo: Path) -> None:
@@ -312,18 +316,26 @@ def test_credential_read_from_the_named_variable(jev_repo, monkeypatch) -> None:
     backend = get_backend(open_core(repo), hook=True)
     assert backend.name == "jev"
     monkeypatch.delenv("MY_JEV_KEY")
-    assert get_backend(open_core(repo), hook=True).name == "heuristic"
+    with pytest.raises(JudgmentUnavailable) as caught:
+        get_backend(open_core(repo), hook=True)
+    assert "MY_JEV_KEY" in str(caught.value)
 
 
 @pytest.mark.sr("SR-039")
-def test_heuristic_fallback_answers_the_new_methods(jev_repo) -> None:
+def test_the_new_methods_raise_when_jev_times_out(jev_repo) -> None:
     repo, state = jev_repo
     state.delay = 1.5
     core = open_core(repo)
     backend = get_backend(core, hook=True)
-    j = backend.entailment("add multiply", "add multiply", subject="INT-017",
+    with pytest.raises(JudgmentUnavailable) as caught:
+        backend.entailment("add multiply", "add multiply", subject="INT-017",
                            claim_kind="intent-readback")
-    assert j.backend == "heuristic" and j.confidence_label == "low"
+    assert caught.value.judge == "JEV"
+    for call in (lambda: backend.contradiction("x", core.index()["SR-004"]),
+                 lambda: backend.choose("Which?", ["SR-004"], subject="p"),
+                 lambda: backend.ask("Q?", "c", subject="SR-004", action="ownership")):
+        with pytest.raises(JudgmentUnavailable):
+            call()
 
 
 # -- OpenRouter: a provider preset, a configurable path, one version normalizer, the

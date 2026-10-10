@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.cli import main
 from plumb.contracts import Target
 from plumb.judgment import DisabledBackend, FakeBackend
-from plumb.judgment.heuristic import HeuristicBackend
+from plumb.judgment import JudgmentUnavailable, UnavailableBackend
 
 pytestmark = pytest.mark.sr("SR-111")
 
@@ -107,7 +107,7 @@ def test_failing_tests_refused(project: Path) -> None:
     assert _state(project) == "stale"
 
 
-@pytest.mark.parametrize("backend", [DisabledBackend(), HeuristicBackend(), None])
+@pytest.mark.parametrize("backend", [DisabledBackend(), UnavailableBackend(JudgmentUnavailable("JEV", "timeout")), None])
 def test_model_unreachable_refuses_and_repins_nothing(project: Path, backend) -> None:
     _edit(project, REFORMATTED)
 

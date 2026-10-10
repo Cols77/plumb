@@ -140,7 +140,7 @@ def _judgment_timeout_s(core: Any) -> float:
         return 0.0
 
 
-LOCAL_BACKENDS = ("heuristic", "disabled", "fake")
+LOCAL_BACKENDS = ("disabled", "fake")
 
 
 def triage_offer_line(core: Any) -> str | None:
@@ -160,7 +160,7 @@ def triage_offer_line(core: Any) -> str | None:
         known, line = False, None
     if known:
         return line
-    if str(getattr(getattr(core.config, "judgment", None), "backend", "heuristic")
+    if str(getattr(getattr(core.config, "judgment", None), "backend", "")
            ).strip().lower() not in LOCAL_BACKENDS:
         return None
     try:

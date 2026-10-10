@@ -10,9 +10,10 @@ pi-agent-factory's vendor verification record (``POST {base_url}{path}`` with
 ``{state, model, questions}``; ``/v1/systemone`` at TypeSafe, ``/api/alpha/decisions`` at
 OpenRouter) through
 ``urllib.request``: hard timeout ``judgment.hook_timeout_ms`` in hooks, 10 s on the command
-line, no retries. A missing key, a timeout or any error falls back to the heuristic with one
-notice per session window. Every JEV judgment is logged as a ``judgment`` event carrying its
-request fingerprint. Judgments stay advisory: they never confirm or freshen anything.
+line, no retries. A missing key, a timeout or any error raises ``JudgmentUnavailable`` naming
+JEV and the cause; nothing answers in its place (INT-029). Every JEV judgment is logged as a
+``judgment`` event carrying its request fingerprint. Judgments stay advisory: they never
+confirm or freshen anything.
 """
 
 from __future__ import annotations
@@ -243,23 +244,20 @@ class JevClient:
 
 
 class JevBackend:
-    """``JudgmentBackend`` over JEV, with the heuristic as its fallback."""
+    """``JudgmentBackend`` over JEV. A call JEV cannot answer raises ``JudgmentUnavailable``."""
 
     name = "jev"
 
     def __init__(self, core: Any, client: JevClient, *, model: str,
                  validated_against: str | None, thresholds: Thresholds) -> None:
-        from plumb.judgment.heuristic import HeuristicBackend
-
         self.core = core
         self.root = Path(core.root)
         self.client = client
         self.model = model
         self.validated_against = validated_against
         self.thresholds = thresholds
-        self.fallback = HeuristicBackend(thresholds)
         self.notices: tuple[str, ...] = ()
-        self._down = False
+        self._down: str | None = None
         self.resolved_version: str | None = None
 
     @property
@@ -269,16 +267,17 @@ class JevBackend:
 
     @property
     def available(self) -> bool:
-        """False once a call failed: the rest of this process uses the heuristic."""
-        return not self._down
+        """False once a call failed: the rest of this process raises the same error."""
+        return self._down is None
 
     # -- plumbing
     def _ask(self, questions: Sequence[tuple[str, JudgmentQuestion]], prefix: str,
-             paths: Sequence[str] = ()) -> JudgmentRecord | None:
+             paths: Sequence[str] = ()) -> JudgmentRecord:
+        from plumb.judgment import JudgmentUnavailable
         from plumb.judgment.state import assemble_state, context_limits
 
-        if self._down or not questions:
-            return None
+        if self._down is not None:
+            raise JudgmentUnavailable("JEV", self._down)
         state = assemble_state(self.root, paths, questions, prefix=prefix,
                                tracked=None if paths else (),
                                limits=context_limits(self.validated_against))
@@ -286,23 +285,15 @@ class JevBackend:
                                   model=self.model, truncation=state.truncation)
         record = self.client.judge(request)
         if record.outcome != "ok":
-            self._down = True  # no retries: the rest of this process uses the heuristic
-            self._notice(self.client.last_error or record.outcome)
-            return None
+            # no retries: the rest of this process raises the same error
+            self._down = str(self.client.last_error or record.outcome)
+            raise JudgmentUnavailable("JEV", self._down)
         self.resolved_version = record.resolved_version
         return record
 
-    def _notice(self, reason: str) -> None:
-        from plumb.judgment import notice_once
-
-        note = notice_once(self.root, "jev-unavailable",
-                           f"plumb: jev unavailable ({reason}); using the heuristic")
-        if note:
-            self.notices = (*self.notices, note)
-
     def _judgment(self, record: JudgmentRecord, name: str, action: str, subject: str,
                   verdict: str, **extra: Any) -> Judgment:
-        from plumb.judgment.heuristic import confidence_label
+        from plumb.judgment.common import confidence_label
 
         answer = record.answers[name]
         tier = route(answer.confidence, self.thresholds,
@@ -333,8 +324,10 @@ class JevBackend:
 
     # -- JudgmentBackend
     def intent_change(self, prompt: str, records: Sequence[Record]) -> Sequence[Judgment]:
-        from plumb.judgment.heuristic import record_text
+        from plumb.judgment.common import record_text
 
+        if not records:
+            return []
         questions = [(r.id, JudgmentQuestion.noul(
             f"Does the user's request change, contradict or extend the confirmed "
             f"requirement {r.id}?", "the request changes, contradicts or extends it",
@@ -342,8 +335,6 @@ class JevBackend:
         prefix = "Request:\n" + prompt + "\n\n" + "\n".join(
             f"{r.id}: {record_text(r)}" for r in records) + "\n"
         record = self._ask(questions, prefix)
-        if record is None:
-            return self.fallback.intent_change(prompt, records)
         return [self._judgment(record, r.id, "intent-change", r.id,
                                "change" if float(record.answers[r.id].value) >= 0.5
                                else "no-change") for r in records]
@@ -356,7 +347,7 @@ class JevBackend:
         chosen = [s for s in states if s.link.id in texts
                   and not is_secret_path(target_path(s.link.target) or "")]
         if not chosen:
-            return self.fallback.drift_triage(states, texts)
+            return []
         questions = [(s.link.id, JudgmentQuestion.noul(
             f"Is the change of link end {s.link.id} material (behaviour or meaning), rather "
             "than cosmetic (comments, docstrings, formatting)?", "material", "cosmetic"))
@@ -364,8 +355,6 @@ class JevBackend:
         prefix = "".join(f"--- {s.link.id} before ---\n{texts[s.link.id][0]}\n"
                          f"--- {s.link.id} after ---\n{texts[s.link.id][1]}\n" for s in chosen)
         record = self._ask(questions, prefix)
-        if record is None:
-            return self.fallback.drift_triage(states, texts)
         return [self._judgment(record, s.link.id, "drift-triage", s.link.id,
                                "material" if float(record.answers[s.link.id].value) >= 0.5
                                else "cosmetic") for s in chosen]
@@ -383,8 +372,6 @@ class JevBackend:
             f"How well do the linked code and tests fit requirement {packet.requirement} and "
             "its examples?", list(FIDELITY_LEVELS))
         record = self._ask([("fidelity", question)], prefix, paths)
-        if record is None:
-            return self.fallback.fidelity(packet)
         level = max(0, min(len(FIDELITY_LEVELS) - 1,
                            round(float(record.answers["fidelity"].value))))
         hashes = {str(e["link"]): e.get("hash") for e in packet.ends}
@@ -404,9 +391,6 @@ class JevBackend:
         prefix = (f"Owner's words:\n{premise}\n\nClaim ({claim_kind}, {subject}):\n"
                   f"{hypothesis}\n")
         record = self._ask([("entailment", question)], prefix)
-        if record is None:
-            return self.fallback.entailment(premise, hypothesis, subject=subject,
-                                            claim_kind=claim_kind)
         p = float(record.answers["entailment"].value)
         verdict = "entailed" if p >= 0.5 else "not-entailed"
         return self._judgment(record, "entailment", "faithfulness", subject, verdict,
@@ -415,13 +399,18 @@ class JevBackend:
     def yes_probability(self, instructions: str, context: str, *, true: str = "yes",
                         false: str = "no") -> float | None:
         """The probability of ``yes`` for one typed yes/no question over ``context``, or None
-        when JEV could not answer. No heuristic fallback (the side-by-side evaluation)."""
-        record = self._ask([("yes_no", JudgmentQuestion.noul(instructions, true, false))],
-                           context)
-        return None if record is None else float(record.answers["yes_no"].value)
+        when JEV could not answer (the side-by-side evaluation counts that as no answer)."""
+        from plumb.judgment import JudgmentUnavailable
+
+        try:
+            record = self._ask([("yes_no", JudgmentQuestion.noul(instructions, true, false))],
+                               context)
+        except JudgmentUnavailable:
+            return None
+        return float(record.answers["yes_no"].value)
 
     def contradiction(self, prompt: str, record: Record) -> Judgment:
-        from plumb.judgment.heuristic import record_text
+        from plumb.judgment.common import record_text
 
         question = JudgmentQuestion.choice(
             f"Does the request contradict the confirmed requirement {record.id} (negate, "
@@ -432,8 +421,6 @@ class JevBackend:
              "benign": "a mention, a question or a tidy-up; the behaviour stays"})
         prefix = f"Request:\n{prompt}\n\n{record.id}: {record_text(record)}\n"
         answer = self._ask([("contradiction", question)], prefix)
-        if answer is None:
-            return self.fallback.contradiction(prompt, record)
         return self._judgment(answer, "contradiction", "contradiction", record.id,
                               str(answer.answers["contradiction"].value))
 
@@ -443,16 +430,12 @@ class JevBackend:
         choices["none"] = "none of these"
         record = self._ask([("choose", JudgmentQuestion.choice(question, choices))],
                            f"Context:\n{context}\n")
-        if record is None:
-            return self.fallback.choose(question, options, subject=subject, context=context)
         return self._judgment(record, "choose", "ownership", subject,
                               str(record.answers["choose"].value))
 
     def ask(self, question: str, context: str, *, subject: str, action: str) -> Judgment:
         record = self._ask([("ask", JudgmentQuestion.noul(question, "yes", "no"))],
                            f"Context:\n{context}\n")
-        if record is None:
-            return self.fallback.ask(question, context, subject=subject, action=action)
         p = float(record.answers["ask"].value)
         return self._judgment(record, "ask", action, subject, "yes" if p >= 0.5 else "no")
 
@@ -471,18 +454,16 @@ def _probability(answer: JudgmentAnswer, verdict: str) -> float:
 
 
 def open_jev(core: Any, config: Any, *, hook: bool, thresholds: Thresholds) -> Any:
-    """The JEV backend when a key exists, else the heuristic with one notice."""
-    from plumb.judgment import notice_once
-    from plumb.judgment.heuristic import HeuristicBackend
+    """The JEV backend when a key exists; else ``JudgmentUnavailable`` naming JEV and the
+    missing key (INT-029: no rule-based judge answers in its place)."""
+    from plumb.judgment import JudgmentUnavailable
 
     root = Path(core.root)
     name = credential_env(config)
     key = resolve_key(root, name=name)
     if key is None:
-        note = notice_once(root, "jev-no-key", f"plumb: no JEV key ({name} in the "
-                           "environment, or the env file ~/.config/plumb/jev.json names); "
-                           "using the heuristic")
-        return HeuristicBackend(thresholds, [note] if note else [])
+        raise JudgmentUnavailable("JEV", f"no JEV key ({name} is not in the environment, "
+                                  "nor in the env file ~/.config/plumb/jev.json names)")
     jev = dict(config.judgment.jev or {})
     timeout = (max(0.05, float(config.judgment.hook_timeout_ms) / 1000.0) if hook
                else CLI_TIMEOUT_S)

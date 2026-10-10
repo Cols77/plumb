@@ -5,7 +5,7 @@ Effective only when all of these hold:
 - the latest ``config`` event says on, written by the owner with no session marker through
   ``approvals.require_owner`` (``plumb config auto-approve on``). ``config.yaml``'s
   ``auto_approve`` is a mirror: on without that event is off, and ``plumb validate`` warns;
-- JEV is configured and its credential is present (the heuristic never auto-approves);
+- JEV is configured and its credential is present (nothing else auto-approves);
 - a passing ``calibration`` exists for the resolved model version; a different resolved
   version suspends auto-approval until it is recalibrated.
 
@@ -145,11 +145,14 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
         return []
     text = normalize_text(str(prompt["text"]))
     if backend is None:
-        from plumb.judgment import get_backend
+        from plumb.judgment import JudgmentUnavailable, get_backend
 
-        backend = get_backend(core, hook=False)
+        try:
+            backend = get_backend(core, hook=False)
+        except JudgmentUnavailable:
+            return []  # no judge, no auto-approval
     if getattr(backend, "name", "") != "jev":
-        return []  # the heuristic never auto-approves
+        return []  # only JEV auto-approves
     calibration = latest_calibration(core)
     if calibration is None:
         return []
@@ -179,8 +182,13 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
         from plumb.capture.calibrate import _hypotheses
 
         _, parts = _hypotheses(index, record)
-        judgments = [backend.entailment(str(prompt["text"]), part, subject=record_id,
-                                        claim_kind=kind) for part in parts]
+        from plumb.judgment import JudgmentUnavailable
+
+        try:
+            judgments = [backend.entailment(str(prompt["text"]), part, subject=record_id,
+                                            claim_kind=kind) for part in parts]
+        except JudgmentUnavailable:
+            return out  # JEV unavailable: nothing more is auto-approved (INT-029)
         if not judgments or any(not j.backend.startswith("jev:") for j in judgments):
             return out  # JEV unavailable or errored: nothing more is auto-approved
         version = judgments[0].backend.split(":", 1)[1]

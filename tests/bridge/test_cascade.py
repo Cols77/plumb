@@ -71,9 +71,9 @@ def test_judgment_status_never_prints_key(repo: Path, capsys, monkeypatch) -> No
     monkeypatch.setenv("TYPESAFE_API_KEY", secret)
     assert cli.main(["judgment", "status", "--root", str(repo)]) == 0
     out = capsys.readouterr().out
-    assert "backend: heuristic" in out
+    assert "backend: none" in out and "judging unavailable" in out
     assert secret not in out
     assert cli.main(["judgment", "status", "--json", "--root", str(repo)]) == 0
     raw = capsys.readouterr().out
     assert secret not in raw
-    assert json.loads(raw)["backend"] == "heuristic"
+    assert json.loads(raw)["backend"] == "none"

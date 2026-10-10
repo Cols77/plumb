@@ -256,7 +256,7 @@ def records_for_paths(core: Core, paths: Iterable[str]) -> dict[str, tuple[str, 
 # --------------------------------------------------------------------------- repin after tests
 # SR-111 EX-4: a stale link whose tests pass and whose end a model judges unchanged in meaning
 # is repinned without the owner. The reading is the model's alone (INT-029): no rule-based
-# fallback, so a backend that is the heuristic, disabled or unreachable refuses.
+# fallback, so a backend that is disabled or unreachable refuses.
 
 REPIN_NOTE = "tests pass, meaning unchanged"
 NO_MODEL = ("no model could judge whether the meaning changed (the judgment backend is "
@@ -392,7 +392,7 @@ def repin_after_tests(core: Core, selector: str, *,
             backend = get_backend(core, hook=False)
         except Exception:  # noqa: BLE001
             backend = None
-    if backend is None or getattr(backend, "name", "") in ("heuristic", "disabled"):
+    if backend is None or getattr(backend, "name", "") in ("unavailable", "disabled"):
         result.refused += [(s.link.id, NO_MODEL) for s in candidates]
         return result
     paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
@@ -413,7 +413,7 @@ def repin_after_tests(core: Core, selector: str, *,
         except Exception:  # noqa: BLE001 - an unreachable model refuses
             judgments = []
         verdict = judgments[0] if judgments else None
-        if verdict is None or verdict.backend in ("heuristic", "disabled") \
+        if verdict is None or verdict.backend in ("unavailable", "disabled") \
                 or verdict.tier != "accept" or verdict.verdict not in ("cosmetic", "material"):
             result.refused.append((link.id, NO_MODEL))
         elif verdict.verdict == "material":

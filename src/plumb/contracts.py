@@ -182,7 +182,7 @@ class Judgment:
     verdict: str                          # change|no-change, cosmetic|material, fits|drifts|unsure
     confidence: float
     tier: Tier
-    backend: str                          # heuristic | jev:<version> | host-agent | disabled | fake
+    backend: str                          # jev:<version> | host-agent | disabled | fake
     fingerprint: Hash
     reasons: tuple[str, ...] = ()
     probability: float | None = None      # the answer's probability (JEV), when it has one
@@ -294,7 +294,7 @@ class JudgmentBackend(Protocol):
     def fidelity(self, packet: FidelityPacket) -> Judgment: ...
     # sp2 11.2: typed judgments for capture, triage, ownership and hints (advisory, except
     # the gated entailment of auto-approval, sp2 8.2)
-    version: str                          # resolved model version, "heuristic" otherwise
+    version: str                          # resolved model version, "none" otherwise
     def entailment(self, premise: str, hypothesis: str, *, subject: str,
                    claim_kind: str) -> Judgment: ...       # entailed | not-entailed | unsure
     def contradiction(self, prompt: str, record: Record) -> Judgment: ...
@@ -333,7 +333,7 @@ class IntentFlag:
     confidence: float = 0.0
     example: str | None = None             # the example it is about (EX-n), when one
     reason: str = ""
-    backend: str = "heuristic"
+    backend: str = "none"
 
 
 @dataclass(frozen=True)
@@ -374,6 +374,7 @@ class TriageView:
     low_risk: tuple[TriageItem, ...] = ()
     individual: tuple[TriageItem, ...] = ()
     offer: str | None = None               # the one-line offer (R13 Q2), when low_risk
+    unavailable: str = ""                  # why no judge rated them (INT-029), when none did
 
 
 # --------------------------------------------------------------------------- sp5 PRESENT
@@ -486,7 +487,7 @@ class Proposal:
     proposed: str | None = None            # the proposed owner (record ID or test node)
     candidates: tuple[str, ...] = ()
     confidence: float = 0.0
-    backend: str = "heuristic"
+    backend: str = "none"
     reason: str = ""
     line: str = ""
 
@@ -499,7 +500,7 @@ class ClarifyView:
     questions: tuple[Mapping[str, Any], ...] = ()   # kept, ranked; ask the first
     dropped: tuple[Mapping[str, Any], ...] = ()     # each with "dropped_because"
     escalation: tuple[EscalationSuggestion, ...] = ()
-    backend: str = "heuristic"
+    backend: str = "none"
     # R17 (SR-081): the early intent-conflict cards and warnings against other branches'
     # intent in flight, shown first: ask a card before any implementation
     inflight: tuple[str, ...] = ()

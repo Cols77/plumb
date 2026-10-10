@@ -46,11 +46,19 @@ def project(repo: Path, write_record) -> Path:
 def test_changed_confirmed_record_hints_at_an_unlinked_dependent(project: Path) -> None:
     core = open_core(project)
     states_before = [(s.link.id, s.state) for s in core.link_states()]
-    lines = drift_hints(core, [SR4])
+    backend = FakeBackend({("dependency", "SR-012"): ("yes", 0.9)})
+    lines = drift_hints(core, [SR4], backend=backend)
     assert lines and lines[0].startswith(
         "plumb: hint: SR-012 may depend on the change to SR-004 (no link)")
     assert not any("SR-013" in line for line in lines)
     assert [(s.link.id, s.state) for s in open_core(project).link_states()] == states_before
+
+
+def test_no_judge_says_hidden_dependencies_were_not_checked(project: Path) -> None:
+    """INT-029: no rule-based overlap proposes them in place of a judge."""
+    lines = drift_hints(open_core(project), [SR4])
+    assert lines and lines[0].startswith("plumb: hint: judging unavailable:")
+    assert not any("may depend" in line for line in lines)
 
 
 def test_backend_no_drops_the_hint(project: Path) -> None:

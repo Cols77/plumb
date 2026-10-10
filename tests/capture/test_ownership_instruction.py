@@ -31,6 +31,16 @@ DEC1 = record_text("DEC-001", "Integers only", question="Should add accept float
                    links=[{"kind": "decides", "to": "SR-001"}])
 
 
+@pytest.fixture(autouse=True)
+def owner_judge(monkeypatch) -> None:
+    """The configured judge chooses SR-001 (INT-029: no rule-based judge stands in)."""
+    import plumb.judgment
+    from plumb.judgment import FakeBackend
+
+    judge = FakeBackend({("ownership", "src/app/mod.py"): ("SR-001: add returns the sum", 0.9)})
+    monkeypatch.setattr(plumb.judgment, "get_backend", lambda core, hook: judge)
+
+
 @pytest.fixture
 def calc(repo: Path, write_record) -> Path:
     (repo / "src" / "app").mkdir(parents=True)

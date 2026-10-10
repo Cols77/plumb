@@ -170,13 +170,17 @@ def open_judges(core: Any, names: Sequence[str]) -> list[Any]:
                 raise CompareError("haiku", f"unavailable ({reason})")
             judges.append(HaikuJudge(dispatcher, core.config.understand.model))
         elif name == "jev":
+            from plumb.judgment import JudgmentUnavailable
             from plumb.judgment.jev import JevBackend, open_jev
             from plumb.judgment.tiers import Thresholds
 
-            backend = open_jev(core, core.config, hook=False,
-                               thresholds=Thresholds.from_config(core.config.judgment.jev))
+            try:
+                backend = open_jev(core, core.config, hook=False,
+                                   thresholds=Thresholds.from_config(core.config.judgment.jev))
+            except JudgmentUnavailable as exc:
+                raise CompareError("jev", str(exc)) from exc
             if not isinstance(backend, JevBackend):
-                raise CompareError("jev", "no JEV key (the heuristic is not used)")
+                raise CompareError("jev", "no JEV key")
             judges.append(JevJudge(backend))
         else:
             raise CompareError(name, f"unknown judge (use {', '.join(JUDGES)})")

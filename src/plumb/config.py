@@ -64,7 +64,7 @@ class ApproveConfig:
 
 @dataclass(frozen=True)
 class JudgmentConfig:
-    backend: str = "heuristic"
+    backend: str = ""
     hook_timeout_ms: int = 800
     jev: Mapping[str, Any] = field(default_factory=lambda: jev_settings({}))
 

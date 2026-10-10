@@ -36,7 +36,7 @@ CONFIG_TEMPLATE = """\
 #   affirmations: [ok, okay, yes, approve, approved, confirm, confirmed, agreed, lgtm,
 #                  go ahead, sounds good]
 # judgment:
-#   backend: heuristic         # heuristic | jev | disabled
+#   backend: jev               # jev | disabled; none set: judging raises an error
 #   hook_timeout_ms: 800
 # escalation: {max_requirements: 3, max_features: 1, diff_lines: 400, diff_files: 10}
 # trace:

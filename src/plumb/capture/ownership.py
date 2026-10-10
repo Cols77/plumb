@@ -79,19 +79,29 @@ def ownership_proposals(core: Core, paths: Sequence[str], *,
     untraced = untraced_paths(core, paths)
     if not untraced:
         return {}
+    unavailable = ""
     if backend is None:
-        from plumb.judgment import get_backend
+        from plumb.judgment import JudgmentUnavailable, get_backend
 
-        backend = get_backend(core, hook=True)
+        try:
+            backend = get_backend(core, hook=True)
+        except JudgmentUnavailable as exc:  # INT-029: said, never answered by rules
+            unavailable = str(exc)
     index = core.index()
     out: dict[str, Proposal] = {}
     for path in untraced:
         found = candidates(core, path)
         if not found:
-            out[path] = Proposal(path=path, backend=getattr(backend, "name", ""),
+            out[path] = Proposal(path=path, backend=getattr(backend, "name", "none"),
                                  reason="no requirement near it",
                                  line=f"plumb: {path}: no requirement owns it; record a new "
                                       "SR (proposed)")
+            continue
+        if backend is None:
+            out[path] = Proposal(path=path, candidates=tuple(found), backend="none",
+                                 reason=f"judging unavailable: {unavailable}",
+                                 line=f"plumb: {path}: candidates {', '.join(found)}; judging "
+                                      f"unavailable: {unavailable}; read it back and choose")
             continue
         options = {f"{i}: {index[i].title}": i for i in found}
         judgment = backend.choose(f"Which requirement owns the change to {path}?",
@@ -99,9 +109,6 @@ def ownership_proposals(core: Core, paths: Sequence[str], *,
         chosen = options.get(judgment.verdict)
         confidence = judgment.confidence
         reason = "; ".join(judgment.reasons)
-        if chosen is None and len(found) == 1 and judgment.backend == "heuristic":
-            chosen, confidence = found[0], 0.5
-            reason = "the only requirement owning code in its package or imports"
         if chosen is None:
             out[path] = Proposal(path=path, candidates=tuple(found),
                                  backend=judgment.backend, reason=reason or
@@ -120,15 +127,18 @@ def ownership_proposals(core: Core, paths: Sequence[str], *,
 def diff_serves(core: Core, sr_ids: Sequence[str], paths: Sequence[str], *,
                 backend: Any = None) -> list[str]:
     """One warning line per claimed SR the backend judges, with high confidence, not served
-    by the diff's paths. Never blocks; the heuristic answers nothing."""
+    by the diff's paths. Never blocks; with no judge it says nothing."""
     index = core.index()
     wanted = [i for i in sr_ids if i in index and index[i].kind == "requirement"]
     if not wanted or not paths:
         return []
     if backend is None:
-        from plumb.judgment import get_backend
+        from plumb.judgment import JudgmentUnavailable, get_backend
 
-        backend = get_backend(core, hook=True)
+        try:
+            backend = get_backend(core, hook=True)
+        except JudgmentUnavailable as exc:
+            return [f"plumb: judging unavailable: {exc}"]
     shown = ", ".join(list(paths)[:6])
     out: list[str] = []
     for record_id in wanted:
@@ -191,7 +201,7 @@ def node_proposals(core: Core, ids: Sequence[str]) -> list[Proposal]:
             node = f"{path}::{scored[0][1]}"
             out.append(Proposal(
                 path=path, proposed=node, confidence=round(scored[0][0], 3),
-                backend="heuristic", reason=f"name overlap {scored[0][0]:.2f}",
+                backend="name-overlap", reason=f"name overlap {scored[0][0]:.2f}",
                 line=f"plumb: hint: {record_id} {link.example} is verified by the whole file "
                      f"{path}; proposed node {node} (not written)"))
     return out

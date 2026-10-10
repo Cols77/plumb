@@ -29,15 +29,21 @@ class ConfigRefused(ValueError):
 
 def _probe(core: Core) -> tuple[bool, str | None, str]:
     """One cheap JEV call with a 2 s limit: ``(reachable, resolved version, note)``."""
-    from plumb.judgment import get_backend
+    from plumb.judgment import JudgmentUnavailable, get_backend
 
-    backend = get_backend(core, hook=False)
+    try:
+        backend = get_backend(core, hook=False)
+    except JudgmentUnavailable as exc:
+        return False, None, str(exc)
     if getattr(backend, "name", "") != "jev":
         return False, None, "; ".join(getattr(backend, "notices", ())) or "not configured"
     client = getattr(backend, "client", None)
     if client is not None:
         client.timeout_s = PROBE_TIMEOUT_S
-    judgment = backend.entailment("ok", "ok", subject="probe", claim_kind="probe")
+    try:
+        judgment = backend.entailment("ok", "ok", subject="probe", claim_kind="probe")
+    except JudgmentUnavailable as exc:
+        return False, None, str(exc)
     if judgment.backend.startswith("jev:"):
         return True, judgment.backend.split(":", 1)[1], "ok"
     return False, None, getattr(client, "last_error", None) or "no answer"
@@ -213,7 +219,7 @@ def auto_approve(core: Core, on: bool, *, backend: str = "jev", min_probability:
                 "min_confidence": min_confidence}
     if on:
         if backend != "jev":
-            raise ConfigRefused("only the jev backend auto-approves; the heuristic never does")
+            raise ConfigRefused("only the jev backend auto-approves")
         if min_confidence not in ("low", "medium", "high"):
             raise ConfigRefused("--min-confidence is low, medium or high")
         ready, why = jev_ready(core)

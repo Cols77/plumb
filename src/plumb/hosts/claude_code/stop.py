@@ -830,12 +830,12 @@ def concluded_flags(index: Mapping[str, Any], turn: Mapping[str, Any],
                     edited_ids: Sequence[str]) -> list[str]:
     """The prompt hook's intent-change flags (trigger 1) the owner sees as a card: only
     those the turn shows a change for. The prompt hook's flag is an instruction to the agent,
-    which is the cascade's LLM tier (concept 6.2); a heuristic flag alone never reaches the
+    which is the cascade's LLM tier (concept 6.2); a flag alone never reaches the
     owner (decision 5: "few, meaningful interruptions").
 
     A flag counts when the agent edited the flagged record this turn, or wrote or edited a
     record that links to it (supersedes, corrects, relates to, derives from or decides it),
-    or when a judgment backend other than the heuristic rated it ``accept`` (confident)."""
+    or when the judge rated it ``accept`` (confident)."""
     raw = [str(i) for i in turn.get("flagged") or [] if str(i) in index]
     if not raw:
         return []
@@ -847,7 +847,7 @@ def concluded_flags(index: Mapping[str, Any], turn: Mapping[str, Any],
     for record_id in raw:
         info = details.get(record_id) if isinstance(details.get(record_id), Mapping) else {}
         confident = info.get("tier") == "accept" and info.get("backend") not in (
-            None, "", "heuristic")
+            None, "")
         if record_id in edited or record_id in linked or confident:
             out.append(record_id)
     return out

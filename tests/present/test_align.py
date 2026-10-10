@@ -77,14 +77,18 @@ def test_judgments_never_change_edges(records: Path) -> None:
     assert {p: p.read_bytes() for p in (records / ".plumb").rglob("*.md")} == files
 
 
-def test_heuristic_labels_overlap_and_no_backend_reports_only_gaps(records: Path,
-                                                                    capsys) -> None:
+def test_no_judge_reports_only_gaps_and_says_why(records: Path, capsys) -> None:
+    """INT-029: no judge configured: edges listed unjudged, no term-overlap score."""
     assert cli.main(["align", "--root", str(records), "--json", "SR-002"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["backend"] == "heuristic"
-    assert all(e["verdict"] == "heuristic" for e in data["edges"])
+    assert data["backend"] == "none" and not data["available"]
+    assert "judgment.backend" in data["unavailable"]
+    assert all(e["verdict"] == "unjudged" and e["score"] is None for e in data["edges"])
+    assert cli.main(["align", "--root", str(records), "SR-002"]) == 0
+    assert "judging unavailable: no judge" in capsys.readouterr().out
     (records / ".plumb" / "config.yaml").write_text("judgment:\n  backend: disabled\n",
                                                     "utf-8")
     assert cli.main(["align", "--root", str(records), "the", "divide", "quotient"]) == 0
     out = capsys.readouterr().out
-    assert "no judgments available" in out and "gap: SR-002/EX-2 has no test" in out
+    assert "judging unavailable: judgment.backend is disabled" in out
+    assert "gap: SR-002/EX-2 has no test" in out

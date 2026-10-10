@@ -12,12 +12,19 @@ from capture_helpers import (
     log_prompt,
     record_text,
     run,
+    use_coverage_judge,
 )
 
 from plumb.api import open_core
 from plumb.capture.triage import offer_line, stated_group, triage
 
 pytestmark = pytest.mark.sr("SR-040")
+
+
+@pytest.fixture(autouse=True)
+def judge(monkeypatch) -> None:
+    """A judge double rates the claims (INT-029: plumb has no rule-based judge)."""
+    use_coverage_judge(monkeypatch)
 
 
 def _prompt(text: str) -> str:
@@ -63,7 +70,7 @@ def ids(items) -> list[str]:
 
 def test_groups_low_risk_first(project: Path, capsys) -> None:
     view = triage(open_core(project))
-    assert view.available and view.backend == "heuristic"
+    assert view.available and view.backend == "double"
     assert ids(view.low_risk) == ["INT-017"]
     assert "DEC-001" in ids(view.individual)
     assert run(project, "triage") == 0
@@ -128,6 +135,17 @@ def test_no_backend_reports_no_judgments(project: Path, capsys) -> None:
     assert set(ids(view.individual)) == {"INT-017", "INT-018", "DEC-001", "FEAT-001"}
     assert run(project, "triage") == 0
     assert "no judgments available" in capsys.readouterr().out
+
+
+def test_no_judge_says_judging_unavailable(project: Path, monkeypatch, capsys) -> None:
+    """SR-021 EX-1: a repository with a jev judge and no key rates nothing and says why."""
+    (project / ".plumb" / "config.yaml").write_text("judgment:\n  backend: jev\n",
+                                                   encoding="utf-8")
+    view = triage(open_core(project))
+    assert not view.available and view.low_risk == ()
+    assert "TYPESAFE_API_KEY" in view.unavailable
+    assert run(project, "triage") == 0
+    assert "judging unavailable" in capsys.readouterr().out
 
 
 def test_offer_line_names_five_then_more(repo: Path, write_record) -> None:
