@@ -85,3 +85,33 @@ def contradicts_card(index: Mapping[str, Any], record: Any, contradicts: Sequenc
     return issue_card("contradicts", record, issue, words_of(premise),
                       (owner_text.CONTRADICTS_KEEP_OLD, owner_text.CONTRADICTS_KEEP_NEW,
                        owner_text.CONTRADICTS_COMBINE))
+
+
+def undone_cards(core: Any, session: str, *, turn: int = 0) -> list[CardState]:
+    """A card for each settled record the owner took back (SR-105 EX-3): it is proposed again
+    and shown as a card. One card per record, made once: a card the session already holds (open,
+    answered or closed) is not made again, and a record the owner confirmed since needs none."""
+    from plumb.understand import cardstore, premise, recheck_settled
+
+    undone = recheck_settled.undone_records(core)
+    if not undone:
+        return []
+    index = core.index()
+    wanted = [rid for rid, _ in undone if rid in index]
+    held = {c.id for c in cardstore.load(core.root, session, open_only=False)}
+    statuses = core.status(wanted)
+    known = premise.committed(core)
+    out: list[CardState] = []
+    for rid in dict.fromkeys(wanted):
+        record = index[rid]
+        cid = f"show_first:{rid}"
+        if cid in held or statuses[rid].confirmation == "confirmed":
+            continue
+        given = premise.premise_of(core, record, known=known).as_input()
+        options = (owner_text.UNDONE_CONFIRM, owner_text.UNDONE_CHANGE, owner_text.UNDONE_DROP)
+        out.append(CardState(
+            id=cid, kind="show_first", topic=record.title, issue=owner_text.UNDONE_ISSUE,
+            evidence=words_of(given), resolutions=options,
+            questions=(ClarifyQuestion(id=f"{cid}#1", text=owner_text.UNDONE_ISSUE,
+                                       resolutions=options, record=rid),), turn=turn))
+    return out

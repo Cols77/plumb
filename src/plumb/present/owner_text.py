@@ -309,6 +309,10 @@ SETTLE_REFUSED_PROSE = ("Nothing changed: saying that in a message does not swit
                         "Use the button, or type /plumb settle {state} {kind}.")
 SETTLE_REFUSED_AGENT = ("Only you switch settling, from the button or by typing /plumb settle "
                         "{state} {kind} yourself.")
+UNDONE_ISSUE = "you took this back after plumb had settled it; it waits for you again"
+UNDONE_CONFIRM = "Confirm it as it reads"
+UNDONE_CHANGE = "Change it (say how)"
+UNDONE_DROP = "Drop it"
 UNDO_DONE = "{title} is proposed again and waits for you."
 UNDO_REFUSED = ("Only you undo a settled record: use its Undo button, or type /plumb undo "
                 "followed by its title.")
