@@ -410,3 +410,44 @@ def test_turn_start_flags_each_changing_request(records: Path, monkeypatch,
         assert main(["turn", "start", "--session", "s1", "--root", str(records)]) == 0
         outputs.append(capsys.readouterr().out)
     assert all(_flag("SR-004") in out for out in outputs)
+
+
+def _logged(repo: Path) -> list[dict]:
+    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+
+
+@pytest.mark.sr("SR-112")
+@pytest.mark.parametrize("note", [
+    "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>",
+    "<system-reminder>\nthe task tools have not been used\n</system-reminder>",
+    "[SYSTEM NOTIFICATION - NOT USER INPUT]\nbackground task finished",
+])
+def test_harness_notification_is_not_logged_and_queues_no_job(
+        records: Path, hook_input, monkeypatch: pytest.MonkeyPatch, note: str) -> None:
+    seen = []
+    monkeypatch.setattr(prompt, "understand_lines",
+                        lambda ctx, core, digest, text: seen.append(text) or [])
+    out = _run(records, hook_input, note)
+    assert _logged(records) == [] and seen == [] and out.strip() == ""
+    assert not (records / ".plumb" / "session" / "s1" / "turn.json").exists()
+
+
+@pytest.mark.sr("SR-112")
+@pytest.mark.parametrize("note", [
+    "<task-notification>\n<status>done</status>\n</task-notification>",
+    "<system-reminder>\nnoise\n</system-reminder>",
+    "[SYSTEM NOTIFICATION - NOT USER INPUT]\nbackground task finished",
+])
+def test_owner_text_with_appended_notification_logs_only_the_owner_text(
+        records: Path, hook_input, monkeypatch: pytest.MonkeyPatch, note: str) -> None:
+    seen = []
+    monkeypatch.setattr(prompt, "understand_lines",
+                        lambda ctx, core, digest, text: seen.append(text) or [])
+    _run(records, hook_input, "please fix the stale links\n\n" + note)
+    entries = _logged(records)
+    assert [e["text"] for e in entries] == ["please fix the stale links"]
+    assert entries[0]["digest"] == approvals.prompt_digest("please fix the stale links")
+    assert seen == ["please fix the stale links"]

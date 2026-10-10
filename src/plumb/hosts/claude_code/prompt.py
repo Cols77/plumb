@@ -36,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -68,6 +69,19 @@ def _append_jsonl(path: Path, item: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+
+# SR-112: text the harness injects into a user-role turn is not the owner's. Its envelope is
+# structural and exact: these tags (an unclosed one runs to the end) and this marker line.
+_ENVELOPE = re.compile(
+    r"<(task-notification|system-reminder)>.*?(?:</\1>|\Z)"
+    r"|^[ \t]*\[SYSTEM NOTIFICATION - NOT USER INPUT\].*\Z",
+    re.DOTALL | re.MULTILINE)
+
+
+def owner_text(text: str) -> str:
+    """The owner's own words: ``text`` without harness-injected notification blocks."""
+    return _ENVELOPE.sub("", text).strip() if _ENVELOPE.search(text) else text
 
 
 def log_prompt(ctx: HookContext, text: str) -> str:
@@ -320,6 +334,10 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
 
     text = ctx.data.get("prompt")
     text = text if isinstance(text, str) else ""
+    if text.strip():
+        text = owner_text(text)
+        if not text.strip():  # SR-112: a harness notification: no log, no job, no turn
+            return HookOutput(text="")
     digest = log_prompt(ctx, text)
     from plumb.api import open_core
 
