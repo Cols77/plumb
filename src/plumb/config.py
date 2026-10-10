@@ -29,6 +29,8 @@ class VerifyConfig:
     workers: int = 0
     flaky_rerun: bool = True
     infra_globs: tuple[str, ...] = DEFAULT_INFRA_GLOBS
+    # SR-110: tests chosen by the functions they execute (auto), or by imports only (off)
+    coverage: str = "auto"
 
 
 # Soft budgets per hook, from process start. Near the 2-second ceiling on purpose: on a
@@ -51,6 +53,8 @@ class HooksConfig:
     summary_proposed_cap: int = 3
     # sp5 3: the most the stop hook's agent instructions inject (4 characters per token)
     stop_tokens: int = 150
+    # SR-111: how many times a turn is held open for stale links before it is let go
+    stale_holds_max: int = 3
 
 
 @dataclass(frozen=True)
