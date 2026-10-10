@@ -298,6 +298,8 @@ SETTLED_HOW = ("To take one back, use its Undo button or type /plumb undo follow
 SETTLE_OFFER_INTENT = ("plumb can now settle your intent read-backs from your words when it is "
                        "sure. It is off until you turn it on: type /plumb settle on intent or "
                        "use the button. You can turn it off the same way.")
+SETTLE_TURN_ON = "Turn it on: type /plumb settle on {kind}, or use the button"
+SETTLE_LEAVE_OFF = "Leave it off"
 SETTLE_ON_REQUIREMENTS = ("plumb now settles requirements and their examples from your words "
                           "when it is sure, and tells you in one line each turn. To switch it "
                           "off, type /plumb settle off requirement or use the button.")

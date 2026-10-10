@@ -243,8 +243,8 @@ def problems(core: Any) -> list[str]:
             if digest and digest not in held:
                 ids = ", ".join(str(r.get("id")) for r in entry.payload.get("records") or ()
                                 if isinstance(r, Mapping))
-                out.append(f"settled {ids}: its premise {str(digest)[:19]} is not in the "
-                           "committed log")
+                out.append(f"{ids} rests on a premise ({str(digest)[:19]}) that is not in "
+                           "the committed log")
     return out
 
 
