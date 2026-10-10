@@ -56,7 +56,10 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
     if by in ("owner-words", "settled", "undone"):  # SP8: re-checked by the understand layer
         from plumb.understand.recheck import problem
 
-        return problem(entry, None)
+        reason = problem(entry, None)
+        if reason is None and by == "owner-words"                 and payload.get("prompt_digest") not in prompt_digests:
+            return f"owner-words {entry.kind} cites no earlier prompt event"
+        return reason
     if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)
         from plumb.importer.recheck import import_problem
 
@@ -75,6 +78,17 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
             return f"agent-relayed {entry.kind} carries no owner quote"
         if payload.get("quote_digest") != sha256_text(quote):
             return f"agent-relayed {entry.kind} quote does not match its quote_digest"
+        if entry.kind == "approval" and payload.get("via") == "command":
+            # SP8: a typed /plumb approve|confirm is checked by the parse, not by words
+            from plumb.understand.typed import parse
+
+            parsed = parse(quote)
+            named = {str(r.get("id")) for r in payload.get("records") or []
+                     if isinstance(r, Mapping)}
+            if parsed is None or parsed.command not in ("approve", "confirm") \
+                    or not named <= set(parsed.ids):
+                return "agent-relayed command approval: the quote is not the typed command"
+            return None
         choice = payload.get("choice")
         if entry.kind == "approval" and isinstance(choice, Mapping):
             # the owner's pick between the options a conflict card showed ("keep feat-x's",
