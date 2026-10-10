@@ -34,6 +34,8 @@ HOOKS: tuple[tuple[str, str, str | None, bool], ...] = (
     ("session-start", "SessionStart", None, False),
     ("prompt", "UserPromptSubmit", None, False),
     ("post-edit", "PostToolUse", POST_EDIT_MATCHER, True),
+    # SR-111: synchronous, after the async tracker, so what it prints reaches the agent
+    ("edit-check", "PostToolUse", POST_EDIT_MATCHER, False),
     ("stop", "Stop", None, False),
 )
 GUARDED = ("approve", "revoke", "tests waive", "triage --approve", "spec approve",

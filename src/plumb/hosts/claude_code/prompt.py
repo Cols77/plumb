@@ -343,6 +343,22 @@ def understand_lines(ctx: HookContext, core: Any, digest: str, text: str) -> lis
         return []
 
 
+def stale_turn_start(ctx: HookContext, core: Any) -> None:
+    """SR-111: keep the link map current for the edit check and write the baseline of this
+    turn (the links stale now, which the stop hook does not hold the turn for); a failure
+    here never blocks the prompt."""
+    try:
+        from plumb.stale import ensure_linkmap, write_baseline
+
+        ensure_linkmap(core)
+        turn = read_json(ctx.session_dir / ctx.session_id / "turn.json")
+        turn_id = turn.get("turn_id") if isinstance(turn, dict) else None
+        if turn_id and not ctx.deadline.expired():
+            write_baseline(core, ctx.session_id, str(turn_id))
+    except Exception:  # noqa: BLE001 - advisory
+        pass
+
+
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
     """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
@@ -368,6 +384,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
         pass
     core = open_core(ctx.root)
     hooks = core.config.hooks
+    stale_turn_start(ctx, core)
     understood = understand_lines(ctx, core, digest, text)
     emitter = open_emitter(ctx, "prompt", config=core.config,
                            cap_lines=int(hooks.prompt_lines))

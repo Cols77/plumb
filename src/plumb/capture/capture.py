@@ -375,6 +375,10 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
     lines = [f"{rid} {statuses[rid].confirmation}" + (" (confirmed by JEV)" if rid in auto
                                                       else "") for rid in written + updated]
     lines += [f"{rid} was confirmed; this edit needs the owner again" for rid in again]
+    if updated:  # SR-111 EX-2: the records that derive from a reworded one may disagree now
+        from plumb.stale import derived_lines
+
+        lines += derived_lines(core, updated)
     if unchecked:
         lines.append(UNCHECKED_NOTE)
     if _lacks_question(plan):

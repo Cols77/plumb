@@ -164,27 +164,89 @@ def cmd_link(command: str, argv: list[str]) -> int:
 
 
 def cmd_repin(command: str, argv: list[str]) -> int:
-    from plumb.links import LinkError, repin
+    from plumb.links import LinkError, repin, repin_after_tests
 
     parser = _parser(command, "Refresh link pins (and pin unpinned links). Never confirms.")
     parser.add_argument("selector", nargs="?", help="link id (SR-003#2) or record ID")
     parser.add_argument("--all-stale", action="store_true", help="every stale or unpinned link")
+    parser.add_argument("--after-tests", action="store_true",
+                        help="rerun the linked tests and repin only when they pass and a model "
+                             "judges the meaning unchanged; refuses otherwise")
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
     if not args.selector and not args.all_stale:
         parser.error("name a link id, a record ID, or --all-stale")
+    if args.after_tests and (not args.selector or args.all_stale):
+        parser.error("--after-tests takes one link id or record ID")
     core = _core(args)
+    refused: list[tuple[str, str]] = []
     try:
-        changes = repin(core, args.selector, all_stale=args.all_stale, note=args.note)
+        if args.after_tests:
+            outcome = repin_after_tests(core, args.selector)
+            changes, refused = outcome.changes, outcome.refused
+        else:
+            changes = repin(core, args.selector, all_stale=args.all_stale, note=args.note)
     except LinkError as exc:
         print(f"plumb: {exc}", file=sys.stderr)
         return 1
     if args.as_json:
-        emit({"repinned": changes}, True)
+        emit({"repinned": changes, "refused": [{"link": link, "why": why}
+                                               for link, why in refused]}, True)
     elif changes:
         emit([f"plumb: repinned {c['link']}" for c in changes], False)
-    else:
+    elif not refused:
         print("plumb: nothing to repin")
+    if not args.as_json:
+        for link, why in refused:
+            print(f"plumb: refused to repin {link}: {why}", file=sys.stderr)
+    return 1 if refused else 0
+
+
+def cmd_stale(command: str, argv: list[str]) -> int:
+    """``plumb stale card <link>``: bring a stale link to the owner as a card."""
+    from plumb import stale
+
+    if not argv or argv[0] in ("-h", "--help"):
+        sys.stdout.write("usage: plumb stale card <link> --topic TITLE --issue WORDS "
+                         "--options a|b|c [--recommended N] [--session ID]" + chr(10) +
+                         "Records a stale card for an owner-intent question: the link then "
+                         "counts as resolved for the end-of-turn hold, and the end-of-turn "
+                         "summary shows the card to the owner." + chr(10))
+        return 0 if argv else EXIT_USAGE
+    if argv[0] != "card":
+        print(f"plumb: unknown stale command '{argv[0]}' (card)", file=sys.stderr)
+        return EXIT_USAGE
+    parser = _parser("plumb stale card", "Bring a stale link to the owner as a card.")
+    parser.add_argument("link", help="the stale link id (SR-003#2)")
+    parser.add_argument("--topic", required=True, help="the requirement's title")
+    parser.add_argument("--issue", required=True, help="what changed, in the owner's words")
+    parser.add_argument("--options", required=True,
+                        help="the suggested resolutions, separated by |")
+    parser.add_argument("--recommended", type=int, default=0,
+                        help="which option (from 0) to suggest first")
+    parser.add_argument("--session", default=None)
+    args = parser.parse_args(argv[1:])
+    options = [o.strip() for o in args.options.split("|") if o.strip()]
+    if len(options) < 2 or not 0 <= args.recommended < len(options):
+        print("plumb: give at least two --options separated by |, and a --recommended that "
+              "is one of them", file=sys.stderr)
+        return EXIT_USAGE
+    core = _core(args)
+    record_id, _, position = args.link.partition("#")
+    record = core.index().get(record_id)
+    if record is None or not position.isdigit() or int(position) >= len(record.links):
+        print(f"plumb: no link {args.link}", file=sys.stderr)
+        return 1
+    from plumb.hashing import target_path
+
+    target = record.links[int(position)].target
+    path = target.record or target_path(target) or ""
+    session = args.session or stale.current_session(core.root)
+    card = stale.add_card(core.root, session, link=args.link, record=record_id, path=path,
+                          topic=args.topic, issue=args.issue, options=options,
+                          recommended=args.recommended, turn=stale.turn_number(core.root, session))
+    emit({"card": card} if args.as_json else f"plumb: card recorded for {args.link}; the "
+         "turn may end with it waiting for the owner", args.as_json)
     return 0
 
 
@@ -656,6 +718,7 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "show": cmd_show,
     "link": cmd_link,
     "repin": cmd_repin,
+    "stale": cmd_stale,
     "approve": cmd_approve,
     "revoke": cmd_revoke,
     "relay": cmd_relay,

@@ -347,3 +347,18 @@ def bare_cli_verbs(text: str) -> list[str]:
 # the SP6 verbs, recognised even before their routes exist in this build
 _SP6_VERBS = frozenset({"merge-fix", "ids", "log", "merge-driver", "conflict", "conflicts",
                         "inflight"})
+
+
+# --------------------------------------------------------------------------- SP8 STALE
+# The stale-link card (SR-111): what the owner reads when what they confirmed may have changed
+# and the agent could not settle it alone. Titles, never record IDs; no commands.
+STALE_ISSUE_CODE = ('{path} changed after you confirmed "{title}", and I could not settle '
+                    "whether it still does what you asked")
+STALE_ISSUE_RECORD = ('"{title}" rests on "{other}", which was reworded since, and I could '
+                      "not settle whether the two still agree")
+STALE_OPTION_KEEP = "Keep the wording as it is"
+STALE_OPTION_REWORD = "Reword it to match the change"
+STALE_OPTION_UNDO = "Undo the change"
+STALE_CARD_WAITS = "  This waits for your answer; the turn does not."
+STALE_HOLD_ENDED = ('I held the turn open {n} times for "{title}" and then let it go; it waits '
+                    "for your answer below.")

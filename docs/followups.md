@@ -4938,3 +4938,32 @@ untouched and `tests/capture/test_triage.py`, `test_auto_approve.py` are green a
 - [LOW] (J1) The judge's `related` records are those it links to, those linking to it and the
   same kind in the same feature, confirmed or settled only, at most 12, each clipped to 600
   characters; a larger neighbourhood is not shown to the model.
+
+## SP8 lane STALE (2026-10-10)
+
+- [MEDIUM] (SR-111, HA4) The stop hook cannot reach the agent without blocking, so the
+  once-per-session list of links stale before the turn goes to the block reasons when the
+  turn is held, and to the summary line otherwise (the owner sees it, the agent does not).
+  Fix: let the prompt hook (START or READ) print it at the first prompt of a session.
+- [MEDIUM] (SR-111, HA5) `repin --after-tests` finds the version a pin saw among the file's
+  last 30 committed versions (git). A link pinned to an uncommitted version, or older than 30
+  commits, refuses ("the earlier version could not be found"): the agent then rewords or
+  brings the link to the owner as a card. Fix: store a short text snapshot per code end in the
+  link map at pin time, or pin the commit.
+- [LOW] (SR-111, HA2) The edit check opens the core when a record file is newer than the link
+  map (a cold path, cut by the hook deadline). On a repository with thousands of records the
+  first edit after a record write can pass the 300 ms budget; the stop hook is the backstop.
+- [LOW] (SR-111, HA4) Only a moved target (code or upstream record) holds the turn; a
+  requirement the agent reworded is left to the usual proposed-record flow, because holding
+  for it broke `tests/host/test_latency.py::test_intent_lines_survive_cpu_contention`.
+- [LOW] (SR-111, HA5) The stale cards are STALE's own file until JUDGE's J7: `stop.py` prints
+  `stale.card_lines` directly (`stale_card_lines`), which J7 removes.
+- [MEDIUM] (SR-111, install) `scripts/drive_session.py` keeps one hook command per event (the
+  last wins), so with `edit-check` installed after `post-edit` the e2e drive runs only the
+  checker and no `touched.txt` is written; and it ends the turn with a link it made stale
+  still unresolved, which the hold now keeps open. `tests/integration/test_session_e2e.py::
+  test_session_through_installed_hooks` fails until the drive runs every PostToolUse command
+  and repins (or cards) the stale link before its last stop. Not STALE's files.
+- [LOW] (SR-111, HA4) Hosts on the host-neutral path (`plumb hook --host`, `plumb turn end`)
+  hold a turn once, like their other blocks (`hosts.neutral` never blocks while continuing);
+  only Claude Code's own hook holds up to `hooks.stale_holds_max` times.
