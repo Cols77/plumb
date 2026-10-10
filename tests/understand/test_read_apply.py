@@ -240,3 +240,36 @@ def test_confirmation_readback_and_show_first_text_pass_the_owner_level_scan(cor
     (card,) = applied.cards
     assert owner_level(card.issue) == [] and owner_level(card.topic) == []
     _ = json, files, FakeDispatcher, ctx_for, open_card
+
+
+def _forge(core, record_id: str, **changes) -> None:
+    """An owner-words approval written the way the worker writes it, then altered."""
+    from plumb.approvals import prompt_digest
+
+    message = changes.pop("message", "SR-040 ok")
+    payload = {"by": "owner-words", "session": SESSION, "job": "read-0123456789abcdef",
+               "records": [{"id": record_id, "hash": core.index()[record_id].hash}],
+               "prompt_digest": prompt_digest(message), "message": message,
+               "evidence": "SR-040 ok", "confidence": 0.95, **changes}
+    if payload["prompt_digest"] not in {e.payload.get("digest") for e in core.events()
+                                        if e.kind == "prompt"}:
+        core.log_append("events", "prompt", {"digest": payload["prompt_digest"],
+                                             "session": SESSION, "at": "2026-10-10T10:00:00Z"})
+    with as_worker(core.root, SESSION):
+        core.log_append("events", "approval", payload)
+
+
+def test_recheck_owner_words_catches_forged_entry(core) -> None:
+    from plumb.confirm import checked
+
+    _forge(core, "SR-040")                                         # a true entry
+    _forge(core, "SR-041", evidence="yes, definitely")             # evidence not in message
+    _forge(core, "SR-002", message="SR-040 ok", prompt_digest="sha256:" + "0" * 64)
+    _forge(core, "SR-003", confidence=7)                           # not a confidence
+    after = open_core(core.root)
+    status = after.status(["SR-040", "SR-041", "SR-002", "SR-003"])
+    assert status["SR-040"].confirmation == "confirmed"
+    assert {i: status[i].confirmation for i in ("SR-041", "SR-002", "SR-003")} == {
+        "SR-041": "proposed", "SR-002": "proposed", "SR-003": "proposed"}
+    problems = [p for _, p in checked(after) if p]
+    assert len(problems) == 3

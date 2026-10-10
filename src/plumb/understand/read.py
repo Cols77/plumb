@@ -244,12 +244,12 @@ def _confidence(raw: Any) -> float:
         return 0.0
 
 
-def _approval(job: Job, digest: str, record_id: str, record_hash: str, evidence: str,
-              confidence: float, *, label: str | None = None) -> dict[str, Any]:
+def _approval(job: Job, digest: str, message: str, record_id: str, record_hash: str,
+              evidence: str, confidence: float, *, label: str | None = None) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "by": "owner-words", "session": job.session, "job": job.id,
         "records": [{"id": record_id, "hash": record_hash}], "prompt_digest": digest,
-        "evidence": evidence, "confidence": confidence}
+        "message": message, "evidence": evidence, "confidence": confidence}
     if label:
         payload["label"] = label
     return {"kind": "approval", "payload": payload}
@@ -329,7 +329,7 @@ class _Applying:
         if self.statuses[record_id].confirmation == "confirmed":
             return
         self.confirmed.add(record_id)
-        self.entries.append(_approval(self.job, self.digest, record_id, record_hash, evidence,
+        self.entries.append(_approval(self.job, self.digest, self.message, record_id, record_hash, evidence,
                                       confidence, label=label))
 
     def reject(self, record: Any, evidence: str, confidence: float, rejection: Any) -> None:
