@@ -263,6 +263,54 @@ OWNER_ONLY_REPLY = ("Nothing changed: saying that in a message does not {action}
                     "button, or type {command}.")
 BACKLOG_DONE = "{judged} records judged, {cards} cards waiting for you"
 
+# -- JUDGE: the cards, the trial and the summary
+TRIAL_ISSUE = "plumb would settle {what} from your words; is that right?"
+TRIAL_ISSUE_ONE = "plumb would settle this from your words; is that right?"
+TRIAL_BELOW = "plumb would not settle this; right?"
+CONFIRM_ISSUE = "this one is always asked on its own, never settled for you; is it what you meant?"
+OPTION_ISSUE = "you picked one option among several; is it what you meant?"
+EDIT_ISSUE = "you had confirmed this and it was changed; is the new wording what you mean?"
+TRIAL_YES = "Yes, that is what I meant"
+TRIAL_NO = "No, that is not what I meant"
+BEYOND_KEEP = "Keep it: this is what I meant"
+BEYOND_DROP = "Drop it"
+BEYOND_REWORD = "Reword it (say how)"
+CONTRADICTS_KEEP_OLD = "Keep what you confirmed before"
+CONTRADICTS_KEEP_NEW = "Keep the new wording"
+CONTRADICTS_COMBINE = "Combine them (say how)"
+BACKLOG_FEATURE = "these {n} about {topic} would be settled; right?"
+BACKLOG_FEATURE_TOPIC = "{topic}"
+BACKLOG_YES = "Yes, all of them"
+BACKLOG_EXCEPT = "Yes, except the ones I name"
+BACKLOG_NO = "No, none of them"
+NO_ORIGINAL_WORDS = ("your original words are not on file for this one; here is how it reads "
+                     "now: {readback}")
+NO_ORIGINAL_ACCEPT = "Accept it as it reads"
+NO_ORIGINAL_CORRECT = "Correct it (say how)"
+EXAMPLE_N = "example {n}"
+COULDNT_CHECK_ISSUE = "the check did not finish ({step}); I will try again on your next message"
+COULDNT_CHECK_WAIT = "Wait for the check"
+COULDNT_CHECK_GO = "Build anyway"
+SETTLED_UNDO_LINE = "{title} (Undo)"
+SETTLED_HOW = ("To take one back, use its Undo button or type /plumb undo followed by its "
+               "title.")
+SETTLE_OFFER_INTENT = ("plumb can now settle your intent read-backs from your words when it is "
+                       "sure. It is off until you turn it on: type /plumb settle on intent or "
+                       "use the button. You can turn it off the same way.")
+SETTLE_ON_REQUIREMENTS = ("plumb now settles requirements and their examples from your words "
+                          "when it is sure, and tells you in one line each turn. To switch it "
+                          "off, type /plumb settle off requirement or use the button.")
+SETTLE_SWITCHED = "Settling for {kind} is now {state}."
+SETTLE_STATE_LINE = "Settling for {kind}: {state}"
+SETTLE_REFUSED_PROSE = ("Nothing changed: saying that in a message does not switch settling. "
+                        "Use the button, or type /plumb settle {state} {kind}.")
+SETTLE_REFUSED_AGENT = ("Only you switch settling, from the button or by typing /plumb settle "
+                        "{state} {kind} yourself.")
+UNDO_DONE = "{title} is proposed again and waits for you."
+UNDO_REFUSED = ("Only you undo a settled record: use its Undo button, or type /plumb undo "
+                "followed by its title.")
+UNDO_UNKNOWN = "Nothing settled is called \"{what}\"."
+
 
 _PLUMB_VERB = re.compile(r"(?<![\w/.-])plumb[ \t]+([a-z][a-z-]*)(?![\w-]*:)")
 
