@@ -18,6 +18,7 @@ pytestmark = pytest.mark.sr("SR-014")
 
 REPO = Path(__file__).resolve().parents[2]
 BUDGET_MS = 1400.0
+WARM_TARGET_MS = 900.0
 STEPS = ("imports", "core_open", "index", "brief", "tests_summary", "snapshot", "tree_scan",
          "awareness", "triage_offer")
 
@@ -72,14 +73,44 @@ def _wipe_cache(root: Path) -> None:
     shutil.rmtree(root / ".plumb" / "cache", ignore_errors=True)
 
 
+_COLD: dict[str, tuple[float, str]] = {}
+
+
+def _cold_best(own_copy: Path) -> tuple[float, str]:
+    """The best of four cold runs (``.plumb/cache`` wiped before each) and its output."""
+    key = str(own_copy)
+    if key not in _COLD:
+        runs = []
+        for _ in range(4):
+            _wipe_cache(own_copy)
+            out, ms = _call(own_copy)
+            runs.append((ms, out))
+        _COLD[key] = min(runs)
+    return _COLD[key]
+
+
 def test_cold_start_over_budget_today(own_copy: Path) -> None:
     """The plan's target: the best of four cold runs at most 0.9 of the budget."""
-    runs = []
-    for _ in range(4):
-        _wipe_cache(own_copy)
-        runs.append(_call(own_copy))
-    best = min(ms for _, ms in runs)
+    best, _ = _cold_best(own_copy)
     assert best <= BUDGET_MS * 0.9, f"cold session start {best:.0f} ms against {BUDGET_MS:.0f}"
+
+
+def test_cold_best_of_four_inside_90_percent_of_budget(own_copy: Path) -> None:
+    best, _ = _cold_best(own_copy)
+    assert best <= BUDGET_MS * 0.9, f"cold session start {best:.0f} ms against {BUDGET_MS:.0f}"
+
+
+def test_cold_has_no_check_skipped_line(own_copy: Path) -> None:
+    _, out = _cold_best(own_copy)
+    assert "check skipped" not in out, out
+    assert out.splitlines()[0].startswith("plumb brief")
+
+
+def test_warm_start_inside_target(own_copy: Path) -> None:
+    """Best of four warm runs at most 900 ms, on plumb's own records."""
+    _call(own_copy)  # fills the caches
+    best = min(_call(own_copy)[1] for _ in range(4))
+    assert best <= WARM_TARGET_MS, f"warm session start {best:.0f} ms against {WARM_TARGET_MS:.0f}"
 
 
 def test_timing_file_names_every_step(own_copy: Path) -> None:
