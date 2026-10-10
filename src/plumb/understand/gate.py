@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -47,12 +48,13 @@ def refresh(root: Path, session: str, digest: str, reason: str) -> bool:
     return True
 
 
-def open(core: Any, session: str, digest: str, by: str, reason: str = "") -> bool:  # noqa: A001
+def open(core: Any, session: str, digest: str, by: str, reason: str = "",  # noqa: A001
+         proof: Mapping[str, Any] | None = None) -> bool:
     """Open the gate that is closed for the message ``digest``, with a ``gate`` log entry.
 
     Returns True when the gate is open for that message afterwards. A gate closed for a newer
     message stays closed (a late answer never opens a later message's gate); an open gate is
-    left as it is and logs nothing."""
+    left as it is and logs nothing. ``proof``: the typed message a release rests on."""
     root = Path(core.root)
     current = state(root, session)
     if current.state == "open":
@@ -60,7 +62,7 @@ def open(core: Any, session: str, digest: str, by: str, reason: str = "") -> boo
     if digest != current.message_digest:
         return False
     core.log_append("events", "gate", {"digest": digest, "state": "open", "by": by,
-                                       "reason": reason})
+                                       "reason": reason, **(proof or {})})
     files.write_json_atomic(files.gate_path(root, session), files.gate_to_json(GateState(
         state="open", message_digest=digest, reason=reason, since=_now())))
     return True
@@ -105,6 +107,12 @@ def problems(core: Any) -> list[str]:
     return out
 
 
+def _used(core: Any, digest: str, prompt_seq: int) -> bool:
+    from plumb.understand import proof
+
+    return proof.used(core, digest, prompt_seq)
+
+
 RELEASE_WORDS = {"typed": "the owner typed the release", "button": "the owner pressed Build anyway",
                  "owner-words": "the owner's words, read at the reader's threshold"}
 
@@ -122,16 +130,34 @@ def failed_check_open(root: Path, session: str) -> bool:
                for c in cardstore.own_cards(Path(root), session))
 
 
-def release(core: Any, session: str, via: str, *, digest: str = "") -> bool:
+def typed_is_late(core: Any, session: str, prompt_seq: int) -> bool:
+    """Whether a typed message at ``prompt_seq`` of the prompt log came before the message the
+    gate is closed for: an old ``/plumb go`` cannot release a check that failed after it."""
+    from plumb.understand import proof
+
+    held = state(Path(core.root), session).message_digest
+    closed_at = proof.seq_of(core, held)
+    return closed_at >= 0 and prompt_seq <= closed_at
+
+
+def release(core: Any, session: str, via: str, *, digest: str = "",
+            prompt_seq: int | None = None) -> bool:
     """Open the gate of a failed check because the owner said so: ``via`` is ``typed`` (the
     caller checked the logged prompt is exactly ``/plumb go``), ``button`` or ``owner-words``
     (the caller checked the reader's answer is accepted at or above its threshold). No other
-    route exists, and a gate closed by a card's questions is not released this way."""
+    route exists, and a gate closed by a card's questions is not released this way. A typed
+    release presented from the log (``prompt_seq``: the position of the typed message) must
+    come after the message the gate is closed for, and is used once."""
     if via not in RELEASE_WORDS or not failed_check_open(Path(core.root), session):
+        return False
+    if prompt_seq is not None and (typed_is_late(core, session, prompt_seq)
+                                   or _used(core, digest, prompt_seq)):
         return False
     held = state(Path(core.root), session).message_digest
     note = RELEASE_WORDS[via] + (f" ({digest.removeprefix('sha256:')[:12]})" if digest else "")
-    if not open(core, session, held, f"release:{via}", note):
+    proof = ({"prompt_digest": digest, "prompt_seq": prompt_seq}
+             if prompt_seq is not None else None)
+    if not open(core, session, held, f"release:{via}", note, proof):
         return False
     from plumb.understand import cardstore
 

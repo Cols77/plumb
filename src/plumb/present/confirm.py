@@ -118,9 +118,9 @@ def confirm(core: Any, ids: Sequence[str] | None = None, *, limit: int = 5,
         lines.append("nothing awaits your confirmation" if ids is None else
                      "nothing to confirm in those words")
     if named and shown:
-        lines.append(f"the owner's words name {', '.join(shown)}: relay them at once with "
-                     f"plumb relay {' '.join(shown)} --prompt <digest> --quote \"<the "
-                     "owner's exact words>\"")
+        lines.append(f"the owner's words name {', '.join(shown)}: they are confirmed by the "
+                     "owner's typed /plumb approve naming them, or by plumb reading the "
+                     "owner's answer; you confirm nothing yourself")
     write_stated(core, shown, group, offer)
     return {"lines": lines, "shown": shown, "not_shown": rest, "group": group,
             "approved": []}

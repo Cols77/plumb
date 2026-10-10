@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from plumb.present.owner_text import NOT_AVAILABLE
-from plumb.understand import clarify, gate
+from plumb.understand import clarify, gate, proof
 
 EXIT_NOTHING = 1
 EXIT_USAGE = 2
@@ -23,6 +23,8 @@ EXIT_REFUSED = 3
 NOTHING_TO_RELEASE = "Nothing is waiting for you to say build anyway."
 REFUSED_AGENT = ("Only the owner can say to build without the check; this was refused and "
                  "nothing changed.")
+REFUSED_OLD = ("That typed go is older than the check that failed, or was already used; type go "
+               "again to build without the check.")
 REFUSED_NOT_TYPED = ("The message with that digest is not exactly the typed go; nothing "
                      "changed.")
 
@@ -41,7 +43,12 @@ def release(core: Any, digest: str) -> tuple[int, str]:
     if entry.get("via") != "hook" or not clarify.is_typed_go(str(entry.get("text") or "")):
         return EXIT_REFUSED, REFUSED_NOT_TYPED
     session = str(entry.get("session") or "")
-    if session and gate.release(core, session, "typed", digest=str(entry["digest"])):
+    seq = proof.seq_of(core, str(entry["digest"]))
+    if session and gate.failed_check_open(core.root, session) and (
+            gate.typed_is_late(core, session, seq) or proof.used(core, str(entry["digest"]), seq)):
+        return EXIT_REFUSED, REFUSED_OLD
+    if session and gate.release(core, session, "typed", digest=str(entry["digest"]),
+                                prompt_seq=seq):
         return 0, clarify.GATE_RELEASED
     return EXIT_NOTHING, NOTHING_TO_RELEASE
 

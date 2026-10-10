@@ -711,6 +711,7 @@ class ClarifyQuestion:
     text: str = ""
     resolutions: tuple[str, ...] = ()
     record: str | None = None
+    hash: str = ""        # the version of ``record`` the card showed: a yes confirms only that
 
 
 @dataclass(frozen=True)

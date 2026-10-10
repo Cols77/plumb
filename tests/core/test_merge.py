@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from logutil import tamper
+from logutil import legacy_relay, tamper
 
 from plumb import approvals, cli
 from plumb.api import open_core
@@ -124,8 +124,7 @@ def test_merge_lists_approvals_in_range_with_relayed_marked(base, capsys) -> Non
     digest = approvals.prompt_digest(text)
     prompts.write_text(json.dumps({"digest": digest, "session": "s", "at": "t",
                                    "text": text, "via": "hook"}) + "\n", encoding="utf-8")
-    approvals.relay(open_core(root), ["SR-001"], prompt=digest, quote="SR-001 looks good, "
-                    "approved")
+    legacy_relay(root, ["SR-001"], digest, "SR-001 looks good, approved")
     (root / "src" / "mod.py").write_text("x = 2\n", encoding="utf-8")
     code, out = _check(root, sha, capsys)
     assert code == 0, out

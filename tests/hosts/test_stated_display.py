@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 from hosts_helpers import make_project
 
-from plumb import approvals
 from plumb.api import open_core
 from plumb.cli import main
 from plumb.hosts.common import instruction_block
@@ -69,10 +68,11 @@ def _turn_end_then_ok(repo: Path, monkeypatch, capsys, *, notify: bool) -> None:
     capsys.readouterr()
     monkeypatch.setattr("sys.stdin", io.StringIO("ok"))
     assert main(["turn", "start", "--session", "s1"]) == 0
-    approvals.relay(open_core(repo), ["SR-001"], prompt=_last_prompt(repo)["digest"],
-                    quote="ok")
-    [entry] = open_core(repo).log_read("events", ["approval"])
-    assert entry.payload["self_recorded"] is True  # R13 Q4: labelled on the fallback
+    from plumb.understand import read
+
+    last = _last_prompt(repo)
+    assert last["via"] == "turn"  # R13 Q4: the fallback's message is labelled as such
+    assert [i["id"] for i in read.shown_items(open_core(repo), last["at"])] == ["SR-001"]
 
 
 def test_turn_end_marks_the_shown_summary(project: Path, monkeypatch, capsys) -> None:
@@ -111,9 +111,9 @@ def test_unseen_stop_marks_nothing_shown(project: Path, monkeypatch, capsys) -> 
     assert [(r["id"], r["shown"]) for r in _stated(project)["records"]] == [("SR-001", False)]
     _hook(monkeypatch, capsys, ["prompt", "--host", "hermes", "--format", "json"],
           {"session_id": "h1", "text": "ok", "cwd": str(project)})
-    with pytest.raises(approvals.Refused):
-        approvals.relay(open_core(project), ["SR-001"],
-                        prompt=_last_prompt(project)["digest"], quote="ok")
+    from plumb.understand import read
+
+    assert read.shown_items(open_core(project), _last_prompt(project)["at"]) == []
 
 
 def test_fallback_block_tells_the_agent_to_show_the_summary() -> None:

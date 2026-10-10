@@ -20,12 +20,13 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 from plumb.cliutil import EXIT_OK, EXIT_REFUSED, EXIT_USAGE, add_common, resolve_root
 from plumb.present import owner_text
+from plumb.understand import proof as typed_proof
 from plumb.understand import settle
 
 _ID = re.compile(r"^(?:INT|SR|DEC|FEAT)-\d{3,}$", re.IGNORECASE)
@@ -48,10 +49,15 @@ def _record_prompt(core: Any, prompt: Any) -> None:
 
 
 def _authorize(core: Any, prompt_digest: str | None, command_text: str, name: str,
-               refusal_prose: str, refusal_agent: str) -> dict[str, Any]:
+               refusal_prose: str, refusal_agent: str,
+               overtaken: Callable[[str], bool] | None = None) -> dict[str, Any]:
     """The proof of an owner-only command, or ``Refusal``: the owner's typed command (the
-    logged prompt is exactly ``command_text``) or their own terminal."""
-    from plumb.approvals import Declined, Refused, find_prompt, require_owner
+    logged prompt is exactly ``command_text``) or their own terminal.
+
+    A typed command is the owner's for the turn it was typed in and once (``proof``): the
+    agent presents it only while it is the owner's latest message, never twice, and not after
+    ``overtaken(time of the message)`` says the owner changed the same thing since."""
+    from plumb.approvals import Declined, Refused, find_prompt, marker, require_owner
 
     if prompt_digest:
         try:
@@ -61,8 +67,14 @@ def _authorize(core: Any, prompt_digest: str | None, command_text: str, name: st
         text = " ".join(str(prompt["text"]).split())
         if prompt.get("via") != "hook" or _normalized(text) != _normalized(command_text):
             raise Refusal(refusal_prose)
+        digest, seq = str(prompt["digest"]), typed_proof.seq_of(core, str(prompt["digest"]))
+        if marker() and not typed_proof.is_current_turn(core, digest):
+            raise Refusal(owner_text.TYPED_NOT_LATEST)
+        if typed_proof.used(core, digest, seq) or (
+                overtaken is not None and overtaken(str(prompt.get("at") or ""))):
+            raise Refusal(owner_text.TYPED_USED)
         _record_prompt(core, prompt)
-        return {"via": "typed", "prompt_digest": str(prompt["digest"]), "quote": text}
+        return {"via": "typed", "prompt_digest": digest, "quote": text, "prompt_seq": seq}
     try:
         require_owner(name, f"{command_text} ?")
     except Declined as exc:
@@ -96,7 +108,9 @@ def _settle(core: Any, words: Sequence[str], prompt: str | None) -> int:
         proof = _authorize(
             core, prompt, command, "settle",
             owner_text.SETTLE_REFUSED_PROSE.format(state=word, kind=shown_kind),
-            owner_text.SETTLE_REFUSED_AGENT.format(state=word, kind=shown_kind))
+            owner_text.SETTLE_REFUSED_AGENT.format(state=word, kind=shown_kind),
+            lambda at: typed_proof.superseded(core, ("settle-config",), at,
+                                        subject=kinds or settle.KINDS, via=settle.OWNER_VIA))
     except Refusal as exc:
         print(f"plumb: {exc}", file=sys.stderr)
         return EXIT_REFUSED

@@ -21,7 +21,7 @@ def test_plumb_skill_names_capture_helpers(installed: Path) -> None:
     skill = (installed / ".claude" / "skills" / "plumb" / "SKILL.md").read_text(
         encoding="utf-8")
     for words in ("plumb capture", "plumb decide", "plumb clarify", "plumb triage",
-                  "plumb relay", "--group low-risk", "--set INT-###", "plumb-clarify"):
+                  "plumb relay` is refused", "plumb-clarify"):
         assert words in skill, words
     body = skill.split("---", 2)[2].strip().splitlines()
     assert len(body) <= 30  # about 25 lines of context, not procedure

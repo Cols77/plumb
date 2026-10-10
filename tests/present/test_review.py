@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from logutil import legacy_relay
 from present_helpers import FEAT1, INT1, SR1, SR2, fake_capture, run_prompt, write_all
 
 from plumb import approvals, cli
@@ -54,8 +55,7 @@ def test_glance_lists_relayed_approvals_with_the_revoke_form(records: Path, hook
                                                              capsys) -> None:
     text = "ok SR-001"
     run_prompt(records, hook_input, text)
-    approvals.relay(open_core(records), ["SR-001"], prompt=approvals.prompt_digest(text),
-                    quote="ok SR-001")
+    legacy_relay(records, ["SR-001"], approvals.prompt_digest(text), "ok SR-001")
     out = _review(records, capsys)
     assert 'SR-001 "add returns the sum of two numbers" relayed from your words "ok SR-001"' \
         in out

@@ -163,7 +163,7 @@ def _contended_turn(busy_repo: Path, hook_input, call) -> None:
     out, _ = call("hook", "prompt", payload=hook_input("UserPromptSubmit",
                                                        prompt="ok, confirm SR-002"))
     assert "SR-002 [proposed]" in out
-    assert "plumb relay SR-002 --prompt" in out
+    assert "plumb relay" not in out     # the agent is never told to confirm on its own reading
     record = busy_repo / ".plumb" / "requirements" / "SR-002.md"
     record.write_text(record.read_text("utf-8").replace("statement 2", "statement two"),
                       "utf-8")

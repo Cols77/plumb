@@ -162,7 +162,7 @@ def batch_card(items: Sequence[Candidate], limit: float) -> CardState:
         text = (f"{owner_text.TRIAL_BELOW} {item.record.title}" if item.score < limit
                 else item.record.title)
         questions.append(ClarifyQuestion(id=f"{cid}#{n}", text=text, resolutions=options,
-                                         record=item.record.id))
+                                         record=item.record.id, hash=item.record.hash))
         evidence.append(f"{item.record.title}: {_words(item.premise)}")
     below = any(i.score < limit for i in items)
     if len(items) == 1:
@@ -186,7 +186,8 @@ def individual_card(item: Candidate) -> CardState:
         id=cid, kind="trial", topic=item.record.title, issue=issue,
         evidence=cards.words_of(item.premise), resolutions=options,
         questions=(ClarifyQuestion(id=f"{cid}#1", text=item.record.title,
-                                   resolutions=options, record=item.record.id),))
+                                   resolutions=options, record=item.record.id,
+                                   hash=item.record.hash),))
 
 
 def cards_for(core: Any, session: str, waiting: Sequence[settle.Waiting]) -> list[CardState]:
@@ -230,9 +231,7 @@ def effect(*, core: Any = None, card: CardState | None = None, **_: Any) -> Appl
     answered = {a.question: a.answer for a in card.answers}
     if not card.questions or any(q.id not in answered for q in card.questions):
         return None
-    index = core.index()
-    items = [{"id": q.record, "hash": index[q.record].hash if q.record in index else ""}
-             for q in card.questions]
+    items = [{"id": q.record, "hash": q.hash} for q in card.questions]
     answers = [{"question": q.id, "answer": answered[q.id]} for q in card.questions]
     return Applied(entries=({"kind": "trial", "payload": {
         "card": card.id, "items": items, "answers": answers}},))

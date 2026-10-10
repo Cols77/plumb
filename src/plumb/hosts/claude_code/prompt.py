@@ -2,9 +2,10 @@
 (spec 6.2, ruling R9 context economy).
 
 1. Log the prompt (digest, session, time, text) to ``.plumb/session/prompts.jsonl`` and
-   start the turn (``turn.json``). This comes first: ``plumb relay`` relies on it.
-2. List the stated records of the previous reply still awaiting the owner, with the relay
-   form for this prompt's digest.
+   start the turn (``turn.json``). This comes first: the reader job and typed commands rely on it.
+2. Queue the read of the owner's answer and say so (``understand_lines``). Nothing here
+   reads the owner's words for approval, and the agent is told to confirm nothing: the
+   worker applies the model's reading (INT-028, INT-029).
 3. Print the relevant records (named IDs first) as one line each (ID, state, title), ONLY
    when the record is newly relevant this session or changed (its content hash or its
    confirmation state) since it was last injected (``.plumb/session/<id>/seen.json``), within
@@ -20,10 +21,9 @@
 
 Every line goes through the one emitter, ``plumb.present.delta`` (sp5 3): the compare line,
 escalations and the untraced instruction reach the agent once per session per state. The
-relay line and the intent-change flags are about this turn (``per_turn``): the relay line
-reaches the agent in every turn whose prompt follows a stated set, even when the prompt
-repeats earlier words, and every request that may change a confirmed record is flagged,
-not only the first one of the session (decision 5, trigger 1). Every
+intent-change flags are about this turn (``per_turn``): every request that may change a
+confirmed record is flagged, not only the first one of the session (decision 5, trigger 1).
+Every
 line is an intent-translation line computed from the records alone and kept through a
 budget cut (spec 10).
 
@@ -128,60 +128,6 @@ def _relevant_ids(core: Any, text: str) -> tuple[list[str], list[str]]:
     strong = [record_id for record_id, score in ranked
               if record_id in named or score >= STRONG_MATCH]
     return ids, strong
-
-
-def awaiting_line(core: Any, statuses: Mapping[str, Any], digest: str,
-                  stated_path: Path, text: str = "") -> str | None:
-    """The relay line for this prompt: the stated records still awaiting the owner, and the
-    ``plumb relay`` form for the ones this prompt can confirm (``approvals.owner_scope``,
-    the check ``plumb relay`` applies): a bare "ok" lists them all; an ok naming records
-    lists only those; a record the prompt objects to is never suggested."""
-    from plumb.approvals import owner_scope
-    from plumb.normalize import normalize_text
-
-    data = read_json(stated_path)
-    if not isinstance(data, dict):
-        return None
-    items = [item for item in data.get("records") or []
-             if isinstance(item, dict) and item.get("id")]
-    wanted = [str(item["id"]) for item in items]
-    hidden = {str(item["id"]) for item in items if item.get("shown") is False}
-    if not wanted:
-        return None
-    current = core.status([i for i in wanted if i in core.index()])
-    pending = [i for i in wanted if i in current and current[i].confirmation != "confirmed"]
-    if not pending:
-        return None
-    short = digest.removeprefix("sha256:")[:12]
-    named, objected = owner_scope(normalize_text(text), None,
-                                  core.config.approve.affirmations, core.index(),
-                                  scope=wanted)
-    held = [i for i in pending if i in objected or (named and i not in named)]
-    shown = [i for i in pending if i not in hidden and i not in held]
-    unshown = [i for i in pending if i in hidden and i not in held]
-    line = f"plumb: awaiting confirmation: {', '.join(pending)} | prompt sha256:{short} | "
-    against = [i for i in held if i in objected]
-    if against:
-        line += (f"this prompt objects to or asks to change {', '.join(against)}: do not "
-                 "relay them; ")
-    if named and [i for i in held if i not in objected]:
-        line += (f"the owner's ok names only {', '.join(sorted(named))}: relay only the "
-                 "named records; ")
-    if shown:
-        from plumb.approvals import change_clauses
-
-        words = ("owner's whole sentence"
-                 if change_clauses(normalize_text(text), core.index(), wanted,
-                                   core.config.approve.affirmations)
-                 else "owner's exact words")
-        line += (f"if this prompt affirms them, run plumb relay {' '.join(shown)} --prompt "
-                 f"{short} --quote \"<{words}>\"; ")
-    if unshown:
-        verb = "was" if len(unshown) == 1 else "were"
-        pronoun = "it" if len(unshown) == 1 else "them"
-        line += (f"{', '.join(unshown)} {verb} not shown in full: relay {pronoun} only if the "
-                 f"owner's words name {pronoun}; ")
-    return line + "otherwise leave them proposed."
 
 
 def untraced_queued(ctx: HookContext, core: Any) -> list[str]:
@@ -362,7 +308,7 @@ def stale_turn_start(ctx: HookContext, core: Any) -> None:
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
     """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
-    Every line goes through the one emitter (``plumb.present.delta``): the relay line, the
+    Every line goes through the one emitter (``plumb.present.delta``): the
     new or changed relevant records (one line each), the intent-change flags, the compare
     line, escalations and the untraced-change instruction, each once per session per state,
     within ``hooks.prompt_tokens``. They are computed from the records alone and kept
@@ -388,11 +334,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     understood = understand_lines(ctx, core, digest, text)
     emitter = open_emitter(ctx, "prompt", config=core.config,
                            cap_lines=int(hooks.prompt_lines))
-    awaiting = awaiting_line(core, {}, digest, ctx.session_dir / "stated.json", text)
     trace = untraced_line(emitter, untraced_queued(ctx, core), core)
-    # per_turn: every affirming prompt is told how to relay, even with the same words
-    relay = Line(awaiting, must=True, per_turn=True) if awaiting else None
-    tail = [line for line in (trace, relay) if line]
+    tail = [line for line in (trace,) if line]
     # oneshot: escalation_lines advanced the queue offset past them already
     queued = [Line(line, oneshot=True) for line in escalations]
     ctx.keep(emitter.add([*queued, *tail], commit=False))

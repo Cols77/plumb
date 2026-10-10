@@ -187,7 +187,7 @@ def fragment_card(record: Any) -> CardState:
         id=cid, kind="backlog", topic=record.title, issue=issue,
         evidence=cards.clip(fragment, DRAWN_WORDS), resolutions=options,
         questions=(ClarifyQuestion(id=f"{cid}#1", text=record.title, resolutions=options,
-                                   record=record.id),))
+                                   record=record.id, hash=record.hash),))
 
 
 def feature_card(topic: str, above: Sequence[Any], drawn: Any | None) -> CardState:
@@ -198,11 +198,12 @@ def feature_card(topic: str, above: Sequence[Any], drawn: Any | None) -> CardSta
     cid = "backlog:" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
     options = (owner_text.BACKLOG_YES, owner_text.BACKLOG_EXCEPT, owner_text.BACKLOG_NO)
     questions = [ClarifyQuestion(id=f"{cid}#{n}", text=i.record.title, resolutions=options,
-                                 record=i.record.id) for n, i in enumerate(above, start=1)]
+                                 record=i.record.id, hash=i.record.hash)
+                 for n, i in enumerate(above, start=1)]
     if drawn is not None:
         questions.append(ClarifyQuestion(
             id=f"{cid}#{len(above) + 1}", resolutions=options, record=drawn.record.id,
-            text=f"{owner_text.TRIAL_BELOW} {drawn.record.title}"))
+            hash=drawn.record.hash, text=f"{owner_text.TRIAL_BELOW} {drawn.record.title}"))
     sample: list[str] = []
     for item in above:
         words = cards.words_of(item.premise)
@@ -292,18 +293,26 @@ def effect(*, core: Any = None, card: CardState | None = None, question: Any = N
            entry: Mapping[str, Any] | None = None, accepted: bool = False,
            confirm: Any = None, **_: Any) -> Applied | None:
     """A backlog card answered. A yes that is the card's as a whole confirms every record on
-    it, each labelled yes (calibration reads the label); an answer to one record is applied by
-    the reader, which maps the exceptions the owner names ("yes, except ...") per record."""
+    it, each labelled yes (calibration reads the label) and each at the version the card
+    showed; a record changed since is shown again instead. An answer to one record is applied
+    by the reader, which maps the exceptions the owner names ("yes, except ...") per record."""
     if card is None or core is None or confirm is None or not accepted or question:
         return None
+    from plumb.understand import read
+
     entry = entry or {}
     index = core.index()
     answered = {a.question for a in card.answers}
+    fresh: list[CardState] = []
     for q in card.questions:
-        if q.record in index and q.id not in answered:
-            confirm(q.record, index[q.record].hash, str(entry.get("evidence") or ""),
-                    float(entry.get("confidence") or 0), label="yes")
-    return None
+        if q.record not in index or q.id in answered:
+            continue
+        if index[q.record].hash != q.hash:      # changed since the card showed it: show it again
+            fresh.append(read.show_first_card(index[q.record], str(entry.get("evidence") or "")))
+            continue
+        confirm(q.record, q.hash, str(entry.get("evidence") or ""),
+                float(entry.get("confidence") or 0), label="yes")
+    return Applied(cards=tuple(fresh)) if fresh else None
 
 
 def run(command: str, argv: list[str]) -> int:

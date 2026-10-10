@@ -106,3 +106,28 @@ def entry_files(root: Path) -> list[str]:
 
 def dump(raw: dict[str, Any]) -> str:
     return json.dumps(raw, sort_keys=True)
+
+
+def legacy_relay(root: Path, ids: list[str], digest: str, quote: str, *,
+                 self_recorded: bool = False, stated: list[str] | None = None,
+                 revoke: bool = False, **extra: Any) -> None:
+    """Write an agent-relayed approval (or revocation) as the prose relay wrote it.
+
+    The relay no longer exists (SR-101 EX-9), but the entries it wrote stay in the log, and the
+    surfaces that show, count, re-check and label them keep working. Tests of those surfaces
+    write such an entry here instead of running the relay."""
+    from plumb.api import open_core
+    from plumb.approvals import approval_items
+    from plumb.normalize import sha256_text
+
+    core = open_core(root)
+    if digest not in {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}:
+        core.log_append("events", "prompt", {"digest": digest, "session": "s1",
+                                             "at": "2026-10-06T03:00:00Z"})
+    payload: dict[str, Any] = {"records": approval_items(core, ids), "by": "agent-relayed",
+                               "prompt_digest": digest, "quote": quote,
+                               "quote_digest": sha256_text(quote), "self_recorded": self_recorded}
+    if not revoke:
+        payload.update({"affirmation": "ok", "stated_set": stated, "note": ""})
+    payload.update(extra)
+    core.log_append("events", "revocation" if revoke else "approval", payload)

@@ -170,41 +170,6 @@ def test_compare_line_when_confirmed_records_injected(records: Path, hook_input)
     assert "this may change" not in out
 
 
-def test_awaiting_confirmation_lists_stated_set_with_digest(records: Path,
-                                                             hook_input) -> None:
-    core = open_core(records)
-    index = core.index()
-    stated = {"at": "2026-10-06T03:00:00Z", "session": "s1", "reply_after_prompt": None,
-              "records": [{"id": "SR-009", "hash": index["SR-009"].hash},
-                          {"id": "SR-003", "hash": index["SR-003"].hash}]}
-    _confirm(records, "SR-003")
-    (records / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
-    (records / ".plumb" / "session" / "stated.json").write_text(json.dumps(stated), "utf-8")
-    text = "ok, go on"
-    out = _run(records, hook_input, text)
-    short = approvals.prompt_digest(text).removeprefix("sha256:")[:12]
-    assert (f"plumb: awaiting confirmation: SR-009 | prompt sha256:{short} | if this prompt "
-            f"affirms them, run plumb relay SR-009 --prompt {short} --quote \"<owner's exact "
-            "words>\"; otherwise leave them proposed.") in out
-
-
-def test_awaiting_confirmation_separates_records_not_shown(records: Path,
-                                                           hook_input) -> None:
-    index = open_core(records).index()
-    stated = {"at": "2026-10-06T03:00:00Z", "session": "s1", "reply_after_prompt": None,
-              "records": [{"id": "SR-009", "hash": index["SR-009"].hash, "shown": True},
-                          {"id": "SR-004", "hash": index["SR-004"].hash, "shown": False}]}
-    (records / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
-    (records / ".plumb" / "session" / "stated.json").write_text(json.dumps(stated), "utf-8")
-    text = "ok, go on"
-    out = _run(records, hook_input, text)
-    short = approvals.prompt_digest(text).removeprefix("sha256:")[:12]
-    assert (f"plumb: awaiting confirmation: SR-009, SR-004 | prompt sha256:{short} | if this "
-            f"prompt affirms them, run plumb relay SR-009 --prompt {short} --quote \"<owner's "
-            "exact words>\"; SR-004 was not shown in full: relay it only if the owner's "
-            "words name it; otherwise leave them proposed.") in out
-
-
 def test_backend_unavailable_degrades(records: Path, hook_input) -> None:
     _confirm(records, "SR-004")
     out = _run(records, hook_input, "SR-004 should now change", backend=None)
@@ -298,7 +263,7 @@ def test_intent_lines_survive_a_budget_cut(records: Path, hook_input, monkeypatc
     assert lines[1].startswith("SR-003 [confirmed]")
     assert "plumb: this may change SR-003 (confirmed)." in out
     assert "plumb: compare this request with the confirmed examples of SR-003" in out
-    assert "plumb: awaiting confirmation: SR-009" in out and "plumb relay SR-009" in out
+    assert "plumb relay" not in out and "awaiting confirmation" not in out
     assert not any("covering tests" in line for line in lines)
     assert calls == []
 
@@ -445,33 +410,3 @@ def test_turn_start_flags_each_changing_request(records: Path, monkeypatch,
         assert main(["turn", "start", "--session", "s1", "--root", str(records)]) == 0
         outputs.append(capsys.readouterr().out)
     assert all(_flag("SR-004") in out for out in outputs)
-
-
-# -- the relay line suggests only what the owner's words affirm (R2) -----------------------
-
-
-def _stated(repo: Path, ids: list[str]) -> None:
-    index = open_core(repo).index()
-    path = repo / ".plumb" / "session" / "stated.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"at": "2026-10-06T00:00:00Z", "records": [
-        {"id": i, "hash": index[i].hash, "shown": True} for i in ids]}), "utf-8")
-
-
-def _relay_command(out: str) -> list[str]:
-    [line] = [line for line in out.splitlines() if line.startswith("plumb: awaiting")]
-    if "run plumb relay " not in line:
-        return []
-    return line.split("run plumb relay ", 1)[1].split(" --prompt", 1)[0].split()
-
-
-def test_relay_line_lists_only_the_records_the_ok_names(records: Path, hook_input) -> None:
-    _stated(records, ["SR-003", "SR-004", "SR-009"])
-    out = _run(records, hook_input, "SR-003 is ok but SR-004 is wrong, keep floats")
-    assert _relay_command(out) == ["SR-003"]
-    assert "objects to or asks to change SR-004" in out
-
-
-def test_relay_line_lists_every_record_for_a_bare_ok(records: Path, hook_input) -> None:
-    _stated(records, ["SR-003", "SR-004"])
-    assert _relay_command(_run(records, hook_input, "ok")) == ["SR-003", "SR-004"]

@@ -196,7 +196,7 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
 def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
     """The capture flow (sp2, R1, R2, R11): a read-back shown as an intent card, a proposed
     example, the decision that matters asked once, and the owner's "ok" relayed for exactly
-    what the summary showed."""
+    what the summary showed is left for plumb's own reader: the agent is told to relay nothing."""
     from plumb.api import open_core
 
     driver = _driver()
@@ -230,24 +230,17 @@ def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
     assert again.get("decision") != "block"
     assert "is unconfirmed" not in json.dumps(again)
 
-    # the owner's "ok": the prompt hook names exactly the records the summary showed
+    # the owner's "ok": the summary showed these records, and the prompt hook no longer tells
+    # the agent to confirm them (the reader of the answer does, INT-028)
     stated = json.loads((adopted / ".plumb" / "session" / "stated.json").read_text("utf-8"))
     shown_ids = [r["id"] for r in stated["records"] if r.get("shown")]
     assert shown_ids == ["DEC-001", "INT-002", "SR-003"]
     answer = by_name["UserPromptSubmit (owner ok)"].stdout
-    assert f"run plumb relay {' '.join(shown_ids)} --prompt" in answer
-
-    # the relay confirms exactly those, at the hashes shown, on the owner's words
-    assert "confirmed DEC-001, INT-002, SR-003 (agent-relayed)" in by_name["plumb relay"].stdout
+    assert "plumb relay" not in answer and "awaiting confirmation" not in answer
+    assert "plumb relay" not in by_name
     core = open_core(adopted)
-    [relayed] = [e for e in core.events()
-                 if e.kind == "approval" and e.payload.get("by") == "agent-relayed"]
-    assert relayed.payload["quote"] == "ok"
-    assert relayed.payload["self_recorded"] is False  # logged by the prompt hook (R13 Q4)
-    assert {(r["id"], r["hash"]) for r in relayed.payload["records"]} == {
-        (r["id"], r["hash"]) for r in stated["records"] if r.get("shown")}
-    statuses = core.status(shown_ids)
-    assert {statuses[i].confirmation for i in shown_ids} == {"confirmed"}
+    assert not [e for e in core.events()
+                if e.kind == "approval" and e.payload.get("by") == "agent-relayed"]
 
     hooks = [s for s in steps if s.name.startswith(("SessionStart", "UserPromptSubmit",
                                                      "Stop", "statusline"))]

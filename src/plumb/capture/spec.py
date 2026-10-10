@@ -167,9 +167,7 @@ def show_lines(core: Core, anchor: str) -> list[str]:
         lines.append(f"{record_id} ({record.kind}, {statuses[record_id].confirmation})")
         lines.extend("  " + line for line in record_lines(record))
     lines.append(f"set hash: {current_set_hash(core, anchor)}")
-    lines.append(f"approve (owner's terminal): plumb spec approve {anchor}; in a session the "
-                 f"agent relays your words: plumb relay --set {anchor} --prompt <digest> "
-                 "--quote \"<your words>\"")
+    lines.append(f"approve (owner's terminal): plumb spec approve {anchor}")
     return lines
 
 

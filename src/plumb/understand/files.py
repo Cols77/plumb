@@ -170,7 +170,8 @@ def progress_from_json(data: Any) -> Progress | None:
 
 
 def question_to_json(q: ClarifyQuestion) -> dict[str, Any]:
-    return {"id": q.id, "text": q.text, "resolutions": list(q.resolutions), "record": q.record}
+    return {"id": q.id, "text": q.text, "resolutions": list(q.resolutions), "record": q.record,
+            "hash": q.hash}
 
 
 def answer_to_json(a: ClarifyAnswer) -> dict[str, Any]:

@@ -16,8 +16,7 @@ the record "riskier" and shows it individually, whatever the backend scored.
 
 Triage never approves anything by itself. ``plumb triage --approve low-risk`` is the owner's
 one step from the owner's own terminal (``approvals.require_owner``) and approves exactly the
-listed hashes; in a session, the owner's "ok" to the offer line is relayed with ``plumb relay
---group low-risk``, which approves exactly the group the reply offered (DEC-017).
+listed hashes. The agent relays no "ok" to the offer line (``plumb relay`` is refused, SR-101).
 """
 
 from __future__ import annotations

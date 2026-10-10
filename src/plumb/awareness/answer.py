@@ -23,9 +23,6 @@ other branch at once (``inflight.sync_decisions``).
 versions are the ones a confirmed early decision chose between is settled by that answer,
 never asked again (``premerge.check``, ``plumb conflicts``, the conflict card).
 
-``plain_relay_problem`` keeps plain ``plumb relay`` honest: an "ok" that names another
-version than the decision's chosen one is refused, never recorded as the opposite answer.
-
 ``superseded`` is the losing lane's side (R17: "both lanes build on it"): a record of this
 checkout that still holds the version the owner turned down in a confirmed early decision
 (held here, or carried by another branch's claim) is named on every turn (the prompt delta,
@@ -494,7 +491,7 @@ def was_shown(core: Any, early: Early, prompt_at: str, quote: str) -> bool:
 def relay(core: Any, ref: str, take: str | None, *, prompt: str,
           quote: str) -> tuple[Early, dict[str, Any]]:
     """The owner's answer, relayed from their logged words (``plumb conflict relay``)."""
-    from plumb.approvals import Refused, objection_clauses, owner_prompt, quote_in_prompt
+    from plumb.approvals import Refused, owner_prompt, quote_in_prompt
     from plumb.normalize import normalize_text
 
     early = find_or_raise(core, ref)
@@ -522,12 +519,6 @@ def relay(core: Any, ref: str, take: str | None, *, prompt: str,
     if key is None:
         raise AnswerRefused("the quote names no version: the owner answers with the card's "
                             f"words ({say_line(early, current).removeprefix('Say: ')})")
-    if key != BOTH:
-        held = objection_clauses(said)
-        if held:
-            raise AnswerRefused("the quote holds a reservation or asks for a change ("
-                                + "; ".join(held) + "); an answer must be the owner's "
-                                "plain pick")
     if not was_shown(core, early, str(entry.get("at") or ""), said):
         raise AnswerRefused(f"the conflict card of {early.record} was not shown in the reply "
                             "before that prompt; show it (/plumb conflicts) and let the owner "
@@ -664,40 +655,6 @@ def superseded_line(item: Superseded) -> str:
 def _short(words: str, width: int = 120) -> str:
     words = " ".join(str(words or "").split())
     return words if len(words) <= width else words[: width - 3].rstrip() + "..."
-
-
-def plain_relay_problem(core: Any, ids: Iterable[str], quote: str) -> str | None:
-    """Plain ``plumb relay`` of an early decision: refused when the owner's words name
-    another version than the one the decision holds (their pick goes through ``conflict
-    relay``, which records it); an "ok" naming no version confirms what was shown. And
-    any relayed "ok" of a record that still holds the version the owner turned down in a
-    confirmed early decision (``superseded``) is refused, naming that answer: an "ok"
-    never confirms the rejected words over the owner's recorded choice."""
-    ids = list(ids)
-    try:
-        lost = superseded(core)
-    except Exception:  # noqa: BLE001 - the pick check below still runs
-        lost = {}
-    for record_id in ids:
-        item = lost.get(record_id)
-        if item is not None:
-            return text.EARLY_SUPERSEDED_RELAY.format(
-                id=item.record, title=item.title, dec=item.dec, chosen=item.chosen,
-                theirs=_short(item.theirs) or "its words")
-    index = core.index()
-    current = None
-    for record_id in ids:
-        early = early_of(index.get(record_id))
-        if early is None:
-            continue
-        current = current or _current(core)
-        key = chosen_key(named_keys(early, quote, current))
-        if key is not None and key != early.chosen_key:
-            return (f"the owner's words choose {option(key)} for {record_id}, which holds "
-                    f"{early.chosen or 'another option'}; record the owner's pick with "
-                    f"`plumb conflict relay {record_id} --prompt <digest> --quote "
-                    '"<exact words>"`')
-    return None
 
 
 # --------------------------------------------------------------------------- the merge side

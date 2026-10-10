@@ -65,7 +65,7 @@ def issue_card(kind: str, record: Any, issue: str, evidence: str,
         id=cid, kind=kind, topic=record.title, issue=issue, evidence=evidence,
         resolutions=tuple(resolutions),
         questions=(ClarifyQuestion(id=f"{cid}#1", text=issue, resolutions=tuple(resolutions),
-                                   record=record.id),),
+                                   record=record.id, hash=record.hash),),
         turn=turn)
 
 
@@ -147,5 +147,6 @@ def undone_cards(core: Any, session: str, *, turn: int = 0) -> list[CardState]:
             id=cid, kind="show_first", topic=record.title, issue=owner_text.UNDONE_ISSUE,
             evidence=words_of(given), resolutions=options,
             questions=(ClarifyQuestion(id=f"{cid}#1", text=owner_text.UNDONE_ISSUE,
-                                       resolutions=options, record=rid),), turn=turn))
+                                       resolutions=options, record=rid,
+                                       hash=record.hash),), turn=turn))
     return out

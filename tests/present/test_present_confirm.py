@@ -21,7 +21,7 @@ from present_helpers import (
     write_all,
 )
 
-from plumb import approvals, cli
+from plumb import cli
 from plumb.api import open_core
 
 pytestmark = pytest.mark.sr("SR-065")
@@ -75,37 +75,33 @@ def test_plain_words_put_records_in_stated_set_prepared(records: Path, capsys) -
                                   "shown": False, "via": "confirm"}]
 
 
-def test_relayed_ok_then_confirms_exactly_the_shown(records: Path, hook_input,
-                                                    capsys) -> None:
-    """The owner's next affirming prompt confirms exactly the carded records (R2), even
-    after the stop hook of the confirm turn ran."""
+def test_the_ok_after_the_confirm_turn_is_read_against_exactly_the_shown(
+        records: Path, hook_input, capsys) -> None:
+    """The owner's next prompt is read against exactly the carded records (R2), even after
+    the stop hook of the confirm turn ran; the agent is told to confirm nothing."""
     run_prompt(records, hook_input, "/plumb confirm the login thing")
     assert cli.main(["confirm", "--root", str(records), "the", "login", "thing"]) == 0
     message = run_stop(records, hook_input)["systemMessage"]  # no change this turn
     assert '▸ Requirement  SR-010 "the login form checks the password"' in message
     text = "ok, that's right"
     out = run_prompt(records, hook_input, text)
-    assert "plumb relay SR-010" in out
-    approvals.relay(open_core(records), ["SR-010"], prompt=approvals.prompt_digest(text),
-                    quote="ok")
-    statuses = open_core(records).status()
-    assert statuses["SR-010"].confirmation == "confirmed"
-    assert statuses["SR-010"].approved_by == "agent-relayed"
-    with pytest.raises(approvals.Refused):
-        approvals.relay(open_core(records), ["SR-002"],
-                        prompt=approvals.prompt_digest(text), quote="ok")
+    assert "plumb relay" not in out
+    from plumb.understand import read
+
+    shown = read.shown_items(open_core(records), "2999-01-01T00:00:00Z")
+    assert [item["id"] for item in shown] == ["SR-010"]
+    assert open_core(records).status(["SR-010"])["SR-010"].confirmation != "confirmed"
 
 
-def test_ids_with_confirm_relay_directly(records: Path, hook_input, capsys) -> None:
-    """EX-2: "/plumb confirm SR-002" names the ID and affirms: relayed at once."""
+def test_ids_with_confirm_are_left_to_the_typed_command(records: Path, hook_input,
+                                                        capsys) -> None:
+    """EX-2: "/plumb confirm SR-002" names the ID: the typed command confirms it, never the
+    agent relaying the words."""
     text = "/plumb confirm SR-002"
     run_prompt(records, hook_input, text)
     assert cli.main(["confirm", "--root", str(records), "SR-002"]) == 0
-    assert "relay them at once with plumb relay SR-002" in capsys.readouterr().out
-    approvals.relay(open_core(records), ["SR-002"], prompt=approvals.prompt_digest(text),
-                    quote=text)
-    status = open_core(records).status(["SR-002"])["SR-002"]
-    assert status.confirmation == "confirmed" and status.approved_by == "agent-relayed"
+    out = capsys.readouterr().out
+    assert "plumb relay" not in out and "you confirm nothing yourself" in out
 
 
 def test_no_words_shows_proposed_records_up_to_the_limit(records: Path, capsys) -> None:
@@ -175,10 +171,10 @@ def test_unrendered_confirm_record_is_not_relayed_on_a_bare_ok(records: Path, ho
     assert cli.main(["confirm", "--root", str(records), "the", "login", "thing"]) == 0
     text = "ok"
     out = run_prompt(records, hook_input, text)
-    assert "relay it only if the owner's words name it" in out
-    with pytest.raises(approvals.Refused):
-        approvals.relay(open_core(records), ["SR-010"], prompt=approvals.prompt_digest(text),
-                        quote="ok")
+    assert "plumb relay" not in out
+    from plumb.understand import read
+
+    assert read.shown_items(open_core(records), "2999-01-01T00:00:00Z") == []
 
 
 def _fake_triage(records: Path, monkeypatch) -> list[dict]:

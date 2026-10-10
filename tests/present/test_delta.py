@@ -248,15 +248,3 @@ def test_stop_blocks_every_turn_with_unrun_covering_tests(records: Path, hook_in
         reasons.append(out.get("reason") if out.get("decision") == "block" else None)
     assert all(r and "plumb tests run --paths src/app/calc.py" in r for r in reasons), reasons
 
-
-def test_relay_line_reaches_every_affirming_prompt(records: Path, hook_input) -> None:
-    """Entry point 2, the prompt hook: SR-001 is stated as shown and the owner types "ok"
-    twice (the first relay did not land); both prompts carry the relay instruction."""
-    stated = records / ".plumb" / "session" / "stated.json"
-    stated.parent.mkdir(parents=True, exist_ok=True)
-    stated.write_text(json.dumps({"records": [{"id": "SR-001", "shown": True}]}),
-                      encoding="utf-8")
-    outputs = [run_prompt(records, hook_input, "ok") for _ in range(2)]
-    for out in outputs:
-        assert "plumb: awaiting confirmation: SR-001" in out
-        assert "run plumb relay SR-001 --prompt" in out

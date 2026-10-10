@@ -25,9 +25,9 @@ only when asked.
 - `review [<anything>]`: run `{plumb} review [<their words>]` and walk them through what
   awaits them, the approvals they did not type, drift, alignment and the merge state.
 - `confirm [<anything>]`: run `{plumb} confirm [<their words>]` and show the cards it prints,
-  in full. It approves nothing: their next "ok" confirms exactly what was shown (relay it
-  with `{plumb} relay`). When their words already name IDs and affirm ("/plumb confirm
-  SR-034"), relay them at once with their exact words as the quote.
+  in full. It approves nothing: plumb reads their next answer itself and confirms what it
+  finds; you confirm nothing and never relay their words. A typed "/plumb approve SR-034"
+  naming record numbers confirms at once, without you.
 - `impact <anything>`: run `{plumb} impact <their words>` and say in plain terms what a
   change would reach.
 - `view`: run `{plumb} view --open` and tell them the Obsidian vault is open (generated;

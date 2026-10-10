@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
+from logutil import legacy_relay
 from merge_helpers import INT, SR2, commit, repin_all, write
 
 from plumb import approvals
@@ -52,8 +53,7 @@ def _glance_text(report) -> str:
 def test_lists_agent_relayed_with_quote(base) -> None:
     root, sha = base
     digest = _prompt(root, "SR-002 looks good, approved")
-    approvals.relay(open_core(root), ["SR-002"], prompt=digest, quote="SR-002 looks good, "
-                    "approved")
+    legacy_relay(root, ["SR-002"], digest, "SR-002 looks good, approved")
     approvals.approve(open_core(root), ["INT-001"])
     report = merge_report(open_core(root), sha, run_full=False)
     groups = [row["by"] for row in report.glance]
@@ -118,7 +118,7 @@ def test_self_recorded_message_labelled(base) -> None:
     prompt hook) is labelled "self-recorded message"."""
     root, sha = base
     digest = _prompt(root, "ok SR-002", self_recorded=True, host="cli")
-    approvals.relay(open_core(root), ["SR-002"], prompt=digest, quote="ok SR-002")
+    legacy_relay(root, ["SR-002"], digest, "ok SR-002", self_recorded=True)
     report = merge_report(open_core(root), sha, run_full=False)
     assert report.glance[0]["self_recorded"] is True
     assert "self-recorded message" in _glance_text(report)

@@ -23,8 +23,9 @@ Usage: ``python scripts/drive_session.py --root . --edit src/plumb/text.py
 
 ``--capture`` drives the capture flow instead (``drive_capture``): the owner's new intent,
 ``plumb capture`` (an INT read-back, an SR with proposed examples, a DEC that matters), the
-decision asked once, the read-back shown as an intent card, and the owner's "ok" relayed for
-exactly what was shown. It writes records and an approval, so run it on a scratch copy.
+decision asked once, the read-back shown as an intent card, and the owner's "ok" answered: the
+prompt hook queues the reading of it and tells the agent to confirm nothing. It writes
+proposed records, so run it on a scratch copy.
 ``--merge-check BASE`` runs ``plumb merge-check BASE --no-run --json`` (never the full run).
 """
 
@@ -178,18 +179,6 @@ CAPTURE_DOC: dict = {
 }
 
 
-def relay_command(prompt_stdout: str) -> list[str]:
-    """The ``plumb relay ...`` arguments (after ``plumb``) that the prompt hook's
-    "awaiting confirmation" line names for the records the owner was shown, with the
-    owner's words left for the agent to quote."""
-    marker = "run plumb relay "
-    for line in prompt_stdout.splitlines():
-        if marker in line:
-            words = line.split(marker, 1)[1].split(" --quote", 1)[0]
-            return ["relay", *shlex.split(words, posix=True)]
-    return []
-
-
 def drive_capture(root: Path, *, prompt: str = CAPTURE_PROMPT, doc: dict | None = None,
                   affirm: str = "ok", session_id: str = "plumb-driven-capture") -> list[Step]:
     """The capture flow through the installed hooks (sp2, R1, R2, R11):
@@ -202,10 +191,9 @@ def drive_capture(root: Path, *, prompt: str = CAPTURE_PROMPT, doc: dict | None 
     4. ``Stop`` with ``stop_hook_active``: the end-of-turn summary shows the read-back as an
        intent card with its proposed examples;
     5. ``Stop`` again in the same turn: the decision is not asked a second time;
-    6. the owner answers ``affirm`` (``UserPromptSubmit``): the prompt hook names the shown
-       records and the relay command;
-    7. the agent relays exactly those (``plumb relay ... --quote <the owner's words>``);
-    8. the status line.
+    6. the owner answers ``affirm`` (``UserPromptSubmit``): the prompt hook tells the agent
+       to confirm nothing (no relay line); plumb reads the answer itself;
+    7. the status line.
     """
     import hashlib
 
@@ -239,10 +227,7 @@ def drive_capture(root: Path, *, prompt: str = CAPTURE_PROMPT, doc: dict | None 
     hook("Stop (read-back shown)", "Stop", stop_hook_active=True)
     hook("Stop (not asked again)", "Stop", stop_hook_active=False)
     hook("Stop (summary again)", "Stop", stop_hook_active=True)
-    answer = hook("UserPromptSubmit (owner ok)", "UserPromptSubmit", prompt=affirm)
-    relay = relay_command(answer.stdout)
-    if relay:
-        plumb("plumb relay", *relay, "--quote", affirm)
+    hook("UserPromptSubmit (owner ok)", "UserPromptSubmit", prompt=affirm)
     steps.append(_run("statusline", status_argv, root, env,
                       {**base, "hook_event_name": "Status"}))
     return steps
@@ -268,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--restore", action="store_true", help="undo the edit afterwards")
     parser.add_argument("--capture", action="store_true",
                         help="drive the capture flow instead (writes proposed records and "
-                             "relays the owner's 'ok': use a scratch copy)")
+                             "answers the owner's 'ok': use a scratch copy)")
     parser.add_argument("--merge-check", metavar="BASE", default=None,
                         help="also run plumb merge-check BASE --no-run --json")
     parser.add_argument("--json", action="store_true")

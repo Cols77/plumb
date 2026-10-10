@@ -1,5 +1,6 @@
 """R13 Q4: a confirmation resting on a message the agent recorded itself is labelled
-"self-recorded message" (SR-069)."""
+"self-recorded message" (SR-069). The prose relay that wrote the flag no longer exists
+(SR-101 EX-9); the entries it wrote stay in the log, and the tests write one by hand."""
 
 from __future__ import annotations
 
@@ -7,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from capture_helpers import log_prompt, record_text, run, write_stated
+from logutil import legacy_relay
 
 from plumb.api import open_core
 from plumb.capture.confirmations import confirmation_counts, confirmation_label
@@ -27,8 +29,7 @@ def project(repo: Path, write_record, monkeypatch) -> Path:
 
 def test_self_recorded_message_is_labelled(project: Path, capsys) -> None:
     digest = log_prompt(project, "ok for both", via=None)  # no prompt hook recorded it
-    assert run(project, "relay", "SR-001", "--prompt", digest, "--quote", "ok") == 0
-    assert "self-recorded message" in capsys.readouterr().out
+    legacy_relay(project, ["SR-001"], digest, "ok", self_recorded=True)
     core = open_core(project)
     [entry] = list(core.log_read("events", ["approval"]))
     assert entry.payload["self_recorded"] is True
@@ -43,7 +44,7 @@ def test_self_recorded_message_is_labelled(project: Path, capsys) -> None:
 
 def test_hook_recorded_prompt_carries_no_label(project: Path) -> None:
     digest = log_prompt(project, "ok for both")  # via: hook, as the prompt hook logs it
-    assert run(project, "relay", "SR-002", "--prompt", digest, "--quote", "ok") == 0
+    legacy_relay(project, ["SR-002"], digest, "ok")
     core = open_core(project)
     [entry] = list(core.log_read("events", ["approval"]))
     assert entry.payload["self_recorded"] is False

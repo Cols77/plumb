@@ -130,7 +130,7 @@ def test_skill_about_20_lines_names_test_map_and_relay(repo: Path, no_claims) ->
     body = skill.split("---", 2)[2].strip().splitlines()
     assert 12 <= len(body) <= 26
     assert ".plumb/test_map.txt" in skill
-    assert "uv run --no-sync plumb relay" in skill
+    assert "uv run --no-sync plumb relay` is refused" in skill
     assert "uv run --no-sync plumb tests run --changed" in skill
     assert "never" in skill.lower() and "plumb approve" in skill
     assert "{plumb}" not in skill

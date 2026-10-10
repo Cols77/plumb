@@ -117,10 +117,11 @@ def card_item_id(card: Any, question: Any | None) -> str:
 
 
 def card_items(core: Any, session: str) -> list[dict[str, Any]]:
-    """The open cards as read inputs: one item per card question (one for a card with none)."""
+    """The open cards as read inputs: one item per card question (one for a card with none).
+    An item's ``hash`` is the version of its record the card showed (stored with the question
+    when the card was made), never the record's version today."""
     from plumb.understand import cardstore
 
-    index = core.index()
     items: list[dict[str, Any]] = []
     for card in cardstore.load(core.root, session):
         questions = list(card.questions) or [None]
@@ -131,7 +132,7 @@ def card_items(core: Any, session: str) -> list[dict[str, Any]]:
                 "question": getattr(question, "id", ""), "kind": card.kind,
                 "text": getattr(question, "text", "") or card.issue or card.topic,
                 "resolutions": list(getattr(question, "resolutions", ()) or card.resolutions),
-                "record": record, "hash": index[record].hash if record in index else ""})
+                "record": record, "hash": getattr(question, "hash", "") or ""})
     return items
 
 
@@ -291,7 +292,8 @@ def show_first_card(record: Any, evidence: str) -> CardState:
     text = record_text(record)
     issue = owner_text.CARD_SHOW_FIRST.format(topic=record.title, issue=text)
     question = ClarifyQuestion(id="confirm", text=issue,
-                               resolutions=("Yes, that is right", "No"), record=record.id)
+                               resolutions=("Yes, that is right", "No"), record=record.id,
+                               hash=record.hash)
     return CardState(id=f"show_first:{record.id}", kind="show_first", topic=record.title,
                      issue=issue, evidence=evidence, resolutions=question.resolutions,
                      questions=(question,), status="open")
@@ -301,7 +303,8 @@ def change_card(record: Any, change: str, evidence: str, digest: str) -> CardSta
     """A change the owner asked for in words, read back at the next turn."""
     issue = owner_text.READBACK_CHANGE.format(title=record.title, change=change)
     question = ClarifyQuestion(id="change", text=issue,
-                               resolutions=("Yes, that is it", "Not quite"), record=record.id)
+                               resolutions=("Yes, that is it", "Not quite"), record=record.id,
+                               hash=record.hash)
     return CardState(id=f"change:{record.id}:{digest.removeprefix('sha256:')[:12]}",
                      kind="clarify", topic=record.title, issue=issue, evidence=evidence,
                      resolutions=question.resolutions, questions=(question,), status="open")
@@ -430,6 +433,21 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                    entries=tuple(work.entries), notes=tuple(work.notes))
 
 
+# the kinds of card whose yes confirms a record: the version the card showed
+PINNED_KINDS = ("trial", "backlog", "show_first")
+
+
+def _close_stale(work: _Applying, card: CardState, record: Any, evidence: str) -> None:
+    """The record changed after the card showed it: the answer confirms nothing, the card is
+    closed, and the version it has now is shown as a fresh card."""
+    fresh = show_first_card(record, evidence)
+    if card.id != fresh.id:
+        work.cards[card.id] = dataclasses.replace(card, status="closed")
+        work.closed.append(card.id)
+    work.cards[fresh.id] = fresh
+    work.notes.append(owner_text.CARD_CHANGED_SINCE.format(title=record.title))
+
+
 def _apply_card(work: _Applying, item: Mapping[str, Any], raw: Mapping[str, Any], said: str,
                 confidence: float, evidence: str, passes: bool) -> None:
     """An answer to a card question: recorded on the card, then the effect of the card's
@@ -447,8 +465,10 @@ def _apply_card(work: _Applying, item: Mapping[str, Any], raw: Mapping[str, Any]
         return
     record_id = str(item.get("record") or "")
     record = work.index.get(record_id) if record_id else None
-    if record is not None and card.kind in ("trial", "backlog") \
-            and record.hash == item.get("hash"):
+    if record is not None and card.kind in PINNED_KINDS and record.hash != item.get("hash"):
+        _close_stale(work, card, record, evidence)      # the owner answered an older version
+        return
+    if record is not None and card.kind in ("trial", "backlog"):
         if said == "accepted":
             work.confirm(record_id, record.hash, evidence, confidence, label="yes")
         elif said == "rejected":

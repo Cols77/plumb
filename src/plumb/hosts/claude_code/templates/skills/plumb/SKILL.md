@@ -21,9 +21,9 @@ Run plumb as `{plumb}`. Context lives in files; read it before acting.
   `{plumb} decide --question Q --chosen A --alt B [--matters]`.
 - Ask the owner only on a contradiction or extension of a confirmed record, an unconfirmed
   decision that matters (one per message), or a regression.
-- Only the owner's own affirming words confirm; silence is not a confirmation. Relay them:
-  `{plumb} relay <IDs> --prompt <digest> --quote "<exact words>"`, `--group low-risk` for
-  the triage offer (`{plumb} triage` lists it), `--set INT-###` for an escalated spec.
+- You never decide that the owner approved: only their typed `/plumb approve <IDs>` or plumb's
+  own reader of their next message confirms; `{plumb} relay` is refused whatever the words
+  (`{plumb} triage` lists the low-risk group). Silence confirms nothing.
 - Never run `plumb approve`, `revoke`, `triage --approve`, `spec approve`,
   `config auto-approve` or `conflict choose`: they belong to the owner's own terminal.
   A merge conflict's side is relayed only from the owner's words (`/plumb conflicts`).

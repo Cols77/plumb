@@ -8,10 +8,8 @@ import pytest
 from capture_helpers import (
     agent_shell_setup,
     event_kinds,
-    log_prompt,
     record_text,
     run,
-    write_stated,
 )
 
 from plumb.api import open_core
@@ -68,70 +66,9 @@ def test_spec_approve_refused_without_terminal(spec: Path, monkeypatch, capsys) 
     assert "approval" not in event_kinds(spec)
 
 
-def test_relay_set_checks_r2(spec: Path, monkeypatch) -> None:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
-    index = open_core(spec).index()
-    digest = log_prompt(spec, "ok, go with that spec", at="2026-10-06T10:00:00Z")
-    # the anchor was not in the reply before the prompt, and the quote does not name it
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 3
-    # the anchor alone in the stated set: its members were never shown (sp2 6.2, R2)
-    write_stated(spec, [("INT-021", index["INT-021"].hash)])
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 3
-    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
-    # a quote that does not affirm confirms nothing
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote",
-               "go with that spec") == 3
-    assert approvals(spec) == []
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 0
-    [entry] = approvals(spec)
-    assert entry.payload["by"] == "agent-relayed" and entry.payload["set"]["anchor"] == "INT-021"
-    assert set_state(open_core(spec), "INT-021") == "approved"
-    # named in the quote, the anchor needs no stated set
-    digest2 = log_prompt(spec, "INT-021 is ok", at="2026-10-06T10:05:00Z")
-    (spec / ".plumb" / "session" / "stated.json").unlink()
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest2, "--quote",
-               "INT-021 is ok") == 0
-
-
 def edit_member(repo: Path, record_id: str, old: str, new: str) -> None:
     path = repo / ".plumb" / "requirements" / f"{record_id}.md"
     path.write_text(path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
-
-
-def test_relay_set_refuses_member_edited_after_shown(spec: Path, monkeypatch, capsys) -> None:
-    """Through the stated set: a member edited after the reply showed it is not approved at
-    content the owner never saw (KEEP "approvals pinned to exact content", R2)."""
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
-    index = open_core(spec).index()
-    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
-    digest = log_prompt(spec, "ok", at="2026-10-06T10:00:00Z")
-    edit_member(spec, "SR-070", "rule 70", "rule never shown")
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 3
-    assert "SR-070" in capsys.readouterr().err
-    assert approvals(spec) == []
-    core = open_core(spec)
-    assert core.status(["SR-070"])["SR-070"].confirmation == "proposed"
-    assert set_state(core, "INT-021") == "unapproved"
-
-
-def test_relay_set_named_anchor_refuses_member_edited_after_shown(spec: Path, monkeypatch,
-                                                                  capsys) -> None:
-    """The quote names the anchor: a member the reply showed at another hash was edited after
-    the owner saw it and is refused unless the quote names it too."""
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
-    index = open_core(spec).index()
-    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
-    digest = log_prompt(spec, "INT-021 is ok", at="2026-10-06T10:00:00Z")
-    edit_member(spec, "SR-071", "rule 71", "rule never shown")
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote",
-               "INT-021 is ok") == 3
-    assert "SR-071" in capsys.readouterr().err
-    assert approvals(spec) == []
-    # unchanged since shown, the same named quote approves the whole set
-    edit_member(spec, "SR-071", "rule never shown", "rule 71")
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote",
-               "INT-021 is ok") == 0
-    assert set_state(open_core(spec), "INT-021") == "approved"
 
 
 def test_member_edit_unconfirms_member_and_set(spec: Path) -> None:
@@ -151,28 +88,3 @@ def test_not_a_set(spec: Path, write_record, capsys) -> None:
     assert run(spec, "spec", "show", "INT-022") == 1
     assert "not an escalated spec" in capsys.readouterr().err
 
-
-def test_relay_set_refused_when_the_prompt_objects_to_a_member(spec: Path, monkeypatch,
-                                                               capsys) -> None:
-    """R2: the set approval is one approval of every set id; an ok that objects to a member
-    (or names a member rather than the set) confirms nothing."""
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
-    index = open_core(spec).index()
-    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
-    digest = log_prompt(spec, "ok, but SR-070 is wrong")
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 3
-    assert "SR-070" in capsys.readouterr().err
-    digest = log_prompt(spec, "SR-071 ok", at="2026-10-06T10:00:01Z")
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote",
-               "SR-071 ok") == 3
-    assert approvals(spec) == []
-
-
-def test_relay_set_after_an_earlier_identical_ok(spec: Path, monkeypatch) -> None:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
-    log_prompt(spec, "ok", at="2026-10-06T08:00:00Z", session="cap1")
-    index = open_core(spec).index()
-    write_stated(spec, [(i, index[i].hash) for i in ("INT-021", "SR-070", "SR-071")])
-    digest = log_prompt(spec, "ok", at="2026-10-06T10:00:00Z", session="cap2")
-    assert run(spec, "relay", "--set", "INT-021", "--prompt", digest, "--quote", "ok") == 0
-    assert set_state(open_core(spec), "INT-021") == "approved"

@@ -385,16 +385,17 @@ def test_writes_stated_set(project: Path, hook_input) -> None:
     assert stated["records"] == [{"id": "SR-002", "hash": index["SR-002"].hash,
                                   "shown": True}]
     assert stated["session"] == "s1" and stated["reply_after_prompt"] == "sha256:" + "a" * 64
-    # the stated set is what plumb relay accepts on the owner's next "ok"
+    # the stated set is what the reader takes as shown for the owner's next answer
     text = "ok, sounds right"
     prompts = project / ".plumb" / "session" / "prompts.jsonl"
     prompts.write_text(json.dumps({"digest": approvals.prompt_digest(text), "session": "s1",
                                    "at": "2999-01-01T00:00:00Z", "text": text,
                                    "via": "hook"}) + "\n",
                        "utf-8")
-    approvals.relay(open_core(project), ["SR-002"], prompt=approvals.prompt_digest(text),
-                    quote="ok")
-    assert open_core(project).status(["SR-002"])["SR-002"].confirmation == "confirmed"
+    from plumb.understand import read
+
+    shown = read.shown_items(open_core(project), "2999-01-01T00:00:00Z")
+    assert [item["id"] for item in shown] == ["SR-002"]
 
 
 def test_no_change_turn_prints_nothing(project: Path, hook_input) -> None:

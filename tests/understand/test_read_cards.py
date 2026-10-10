@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -49,10 +50,18 @@ def card(card_id: str, card_kind: str, questions: list[ClarifyQuestion], *,
                      resolutions=resolutions, questions=tuple(questions))
 
 
+def pinned(core, each: CardState) -> CardState:
+    """The card as plumb makes it: each question holds the version of its record it showed."""
+    index = core.index()
+    return dataclasses.replace(each, questions=tuple(
+        dataclasses.replace(q, hash=q.hash or (index[q.record].hash if q.record in index else ""))
+        for q in each.questions))
+
+
 def answer(core, cards: list[CardState], message: str, entries: list[dict]):
     """Open the cards, log the message, build and apply the reader's scripted entries."""
     for each in cards:
-        open_card(core, each)
+        open_card(core, pinned(core, each))
     digest = log_prompt(core, message)
     job = read.build(core, SESSION, message={"digest": digest, "text": message})
     assert job is not None

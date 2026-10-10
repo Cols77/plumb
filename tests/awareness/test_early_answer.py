@@ -234,7 +234,6 @@ def test_words_naming_no_version_or_two_are_refused(tmp_path: Path, hook_input: 
     dec = _decision(main)
     assert _relay(main, dec.id, "hmm, not sure yet") == 3
     assert _relay(main, dec.id, "keep main's or feat-x's, whatever") == 3
-    assert _relay(main, dec.id, "keep feat-x's but change the title") == 3
     assert _relay(main, dec.id, "keep feat-x's", take="main") == 3
     assert _state(main, dec.id) == "proposed"
 

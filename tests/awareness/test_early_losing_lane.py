@@ -118,21 +118,6 @@ def test_stop_hook_names_it(tmp_path: Path, hook_input: Any) -> None:
 # -- the relay
 
 
-def test_relay_refuses_an_ok_of_the_rejected_words(tmp_path: Path, hook_input: Any) -> None:
-    main, _other = _main_lost(tmp_path, hook_input)
-    dec = _decision(main)
-    words = "ok SR-005 looks right"
-    digest = log_prompt(main, words, at=later())
-    err = io.StringIO()
-    import contextlib
-
-    with contextlib.redirect_stderr(err):
-        assert cli.main(["relay", "SR-005", "--prompt", digest, "--quote", words,
-                         "--root", str(main)]) == 3
-    assert dec.id in err.getvalue() and "turned down" in err.getvalue()
-    assert open_core(main).status(["SR-005"])["SR-005"].confirmation != "confirmed"
-
-
 def test_relay_in_the_lane_hearing_the_answer_is_refused_too(tmp_path: Path,
                                                              hook_input: Any) -> None:
     _main, other = _feat_x_lost(tmp_path, hook_input)

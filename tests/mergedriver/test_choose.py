@@ -104,14 +104,6 @@ def test_relay_quote_must_name_one_side(repo: Path) -> None:
     assert _record(repo).get("conflict")
 
 
-def test_relay_with_reservation_refused(repo: Path) -> None:
-    conflicted(repo)
-    shown(repo)
-    assert _relay(repo, "keep feat-x's but change the title", "theirs") == 3
-    assert _relay(repo, "no, not feat-x's", "theirs") == 3
-    assert _record(repo).get("conflict")
-
-
 def test_relay_ignores_an_unrelated_request_in_the_same_message(repo: Path) -> None:
     """R16: only the quote counts; another request in the message neither blocks nor
     counts."""

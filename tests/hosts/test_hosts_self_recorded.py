@@ -1,7 +1,9 @@
 """R13 Q4: a chat "ok" confirms on a host without a prompt hook, and every confirmation
 resting on a message the agent recorded itself (``plumb turn start``) is labelled
 "self-recorded message" in plumb show, the merge-boundary glance and the host status
-(sp4 3.2, SR-053). One flag written by ``plumb relay``; every surface reads it."""
+(sp4 3.2, SR-053). One flag written by the prose relay, which no longer exists (SR-101 EX-9);
+entries it wrote stay in the log and every surface reads the flag. The tests write such an
+entry with ``logutil.legacy_relay``."""
 
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from hosts_helpers import make_project
+from logutil import legacy_relay
 
 from plumb import approvals
 from plumb.api import open_core
@@ -45,7 +48,7 @@ def _relay_turn_prompt(repo: Path, monkeypatch, capsys) -> None:
     capsys.readouterr()
     entry = _logged(repo)
     assert entry["via"] == "turn"
-    approvals.relay(open_core(repo), ["SR-001"], prompt=entry["digest"], quote=OK)
+    legacy_relay(repo, ["SR-001"], entry["digest"], OK, self_recorded=True)
 
 
 def _relay_hook_prompt(repo: Path) -> None:
@@ -55,7 +58,7 @@ def _relay_hook_prompt(repo: Path) -> None:
     digest = approvals.prompt_digest(OK)
     path.write_text(json.dumps({"digest": digest, "session": "s1", "at": "t", "text": OK,
                                 "via": "hook"}) + "\n", encoding="utf-8")
-    approvals.relay(open_core(repo), ["SR-001"], prompt=digest, quote=OK)
+    legacy_relay(repo, ["SR-001"], digest, OK)
 
 
 def test_relay_marks_an_approval_resting_on_a_turn_prompt(project, monkeypatch,

@@ -260,6 +260,8 @@ CONFIRM_YOU_SAID = "you said: {evidence}"
 READBACK_CHANGE = ('To be sure I have it: "{title}" should change so that {change}. Say yes, '
                    'or tell me what to fix.')
 CARD_SHOW_FIRST = 'Look at this first, "{topic}": {issue}'
+CARD_CHANGED_SINCE = ('Nothing was confirmed: "{title}" changed after I showed it to you. I am '
+                      'showing you what it says now.')
 TYPED_CONFIRMED = "Confirmed: {titles}"
 TYPED_NEEDS_IDS = ("I could not tell which records you meant from those words alone, so they "
                    "went to the reader; I will confirm what it finds.")
@@ -323,6 +325,10 @@ UNDONE_DROP = "Drop it"
 UNDO_DONE = "{title} is proposed again and waits for you."
 UNDO_REFUSED = ("Only you undo a settled record: use its Undo button, or type /plumb undo "
                 "followed by its title.")
+TYPED_USED = ("Nothing changed: that typed command was already used, or you have changed the "
+              "same thing since. Type it again if you still want it.")
+TYPED_NOT_LATEST = ("Nothing changed: that typed command is not your latest message. Type it "
+                    "again if you still want it.")
 UNDO_UNKNOWN = "Nothing settled is called \"{what}\"."
 
 

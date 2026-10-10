@@ -78,26 +78,16 @@ def _clip(text: str) -> str:
 def _message(payload: Mapping[str, Any],
              prompt_log: Mapping[str, Mapping[str, Any]],
              core: Any = None) -> dict[str, Any]:
-    """The owner's whole logged message beside the quote the agent chose, and whether it
-    also objects to or asks to change something (R2: the glance is the owner's backstop, so
-    a correction next to an "ok" must be visible there). The text is in the session's prompt
-    log while it exists; the flag is in the approval itself (``plumb relay`` writes
-    ``prompt_objects``), so it survives the session."""
-    from plumb.approvals import change_clauses
+    """The owner's whole logged message beside the quote that was recorded, and whether the
+    approval itself says the message also objected to or asked to change something (an older
+    relayed approval wrote ``prompt_objects``). The text is in the session's prompt log while
+    it exists. No rule reads the words here (INT-029): the glance only shows them."""
     from plumb.normalize import normalize_text
 
     item = prompt_log.get(str(payload.get("prompt_digest") or ""))
     raw = item.get("text") if isinstance(item, Mapping) else None
     text = normalize_text(raw) if isinstance(raw, str) else None
-    objects = payload.get("prompt_objects") is True
-    if not objects and text:
-        # the one change-clause reader, against the records this approval and the stated
-        # set were about (a plain-word correction is flagged, not only an objection word)
-        index = core.index() if core is not None else None
-        affirmations = core.config.approve.affirmations if core is not None else ()
-        scope = [*_ids(payload), *(str(i) for i in payload.get("stated_set") or [])]
-        objects = bool(change_clauses(text, index, scope, affirmations))
-    return {"prompt_objects": objects, "prompt_text": text}
+    return {"prompt_objects": payload.get("prompt_objects") is True, "prompt_text": text}
 
 
 AUTO_KEYS = ("score", "model_version", "backend", "claim_kind", "calibration")

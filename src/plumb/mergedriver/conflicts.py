@@ -521,14 +521,7 @@ def _stated_conflicts(core: Any, prompt_at: str) -> list[Mapping[str, Any]]:
 def relay_choice(core: Any, ref: str, take: str, *, prompt: str, quote: str,
                  values: Mapping[str, Any] | None = None) -> tuple[IntentConflict, dict]:
     """Apply the owner's choice relayed from the owner's own logged words (sp6 8.4)."""
-    from plumb.approvals import (
-        Refused,
-        affirmation_context_problem,
-        objection_clauses,
-        owner_prompt,
-        quote_in_prompt,
-    )
-    from plumb.confirm import affirmation_in
+    from plumb.approvals import Refused, owner_prompt, quote_in_prompt
 
     conflict = find(core, ref)
     take = normalize_take(conflict, take)
@@ -556,21 +549,12 @@ def relay_choice(core: Any, ref: str, take: str, *, prompt: str, quote: str,
                    for c in shown):
             raise ChoiceRefused("the combined version was not shown in the card the owner "
                                 "answered")
-        affirmed = affirmation_in(said, core.config.approve.affirmations)
-        if named - {"combined"} or not (affirmed or "combined" in named):
-            raise ChoiceRefused("the quote does not affirm the combined version alone")
-        if affirmed:
-            problem = affirmation_context_problem(said, text, core.config.approve.affirmations)
-            if problem is not None:
-                raise ChoiceRefused(problem)
+        if named != {"combined"}:
+            raise ChoiceRefused("the quote does not name the combined version alone")
     elif named != {take}:
         side = conflict.labels[0 if take == "ours" else 1]
         raise ChoiceRefused(f"the quote must name the one version kept ({side}'s, or "
                             + ("mine" if take == "ours" else "theirs") + ") and no other")
-    held = objection_clauses(said)
-    if held:
-        raise ChoiceRefused("the quote holds a reservation or asks for a change ("
-                            + "; ".join(held) + "); a choice must be the owner's plain pick")
     digest = str(entry["digest"])
     known = {e.payload.get("digest") for e in core.log_read("events", ["prompt"])}
     if digest not in known:

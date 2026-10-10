@@ -1,19 +1,18 @@
-"""R2 / R13 Q4: on a host whose prompt hook is installed, only a hook-logged prompt grounds a
-relayed owner decision (audit round 3).
+"""R2 / R13 Q4: on a host whose prompt hook is installed, only a hook-logged prompt grounds an
+owner decision the agent presents (audit round 3). The prose relay of approvals is gone
+(SR-101 EX-9); what still takes a prompt are ``escalate decline`` and the auto-approval check.
 
 The CLI-only fallback lets the agent record the owner's message itself (``plumb turn start``,
 ``via: turn``) on hosts WITHOUT a prompt hook, labelled "self-recorded message". Where the
 hook exists (the ``claude-code`` marker; Codex once its hook has logged a prompt), that path
-would let the agent write "ok SR-001" itself and relay it. One choke point refuses it
-(``approvals.owner_prompt``); one test per entry point: ``plumb relay`` with IDs,
-``--group low-risk``, ``--set INT``, ``plumb escalate decline --prompt``, and the
-auto-approval eligibility check. The Claude Code deny rules also cover ``plumb turn start``
+would let the agent write "ok SR-001" itself and present it. One choke point refuses it
+(``approvals.owner_prompt``); one test per entry point: ``plumb escalate decline --prompt``
+and the auto-approval eligibility check. The Claude Code deny rules also cover ``plumb turn start``
 and ``plumb hook prompt`` (defence in depth).
 """
 
 from __future__ import annotations
 
-import io
 import json
 from pathlib import Path
 
@@ -53,31 +52,6 @@ def _refused(repo: Path, capsys, *argv: str) -> None:
     assert "escalation-declined" not in event_kinds(repo)
 
 
-def test_relay_ids_refuses_a_self_recorded_prompt_under_a_prompt_hook(project: Path,
-                                                                      capsys) -> None:
-    digest = log_prompt(project, OK, via="turn")
-    _refused(project, capsys, "relay", "INT-005", "SR-005", "--prompt", digest,
-             "--quote", OK)
-    # the same words as the prompt hook logged them confirm (the owner's own prompt)
-    digest = log_prompt(project, "ok, go ahead with it", via="hook")
-    assert run(project, "relay", "INT-005", "SR-005", "--prompt", digest, "--quote",
-               "ok, go ahead with it") == 0
-
-
-def test_relay_group_refuses_a_self_recorded_prompt_under_a_prompt_hook(project: Path,
-                                                                        capsys) -> None:
-    digest = log_prompt(project, OK, via="turn")
-    _refused(project, capsys, "relay", "--group", "low-risk", "--prompt", digest,
-             "--quote", OK)
-
-
-def test_relay_set_refuses_a_self_recorded_prompt_under_a_prompt_hook(project: Path,
-                                                                      capsys) -> None:
-    digest = log_prompt(project, OK, via="turn")
-    _refused(project, capsys, "relay", "--set", "INT-005", "--prompt", digest,
-             "--quote", OK)
-
-
 def test_escalate_decline_refuses_a_self_recorded_prompt_under_a_prompt_hook(
         project: Path, capsys) -> None:
     words = "no spec needed, just do it"
@@ -85,41 +59,11 @@ def test_escalate_decline_refuses_a_self_recorded_prompt_under_a_prompt_hook(
     _refused(project, capsys, "escalate", "decline", "--prompt", digest, "--quote", words)
 
 
-def test_turn_start_message_never_grounds_a_relay_under_the_claude_code_marker(
-        project: Path, monkeypatch, capsys) -> None:
-    """The reproduced path: the agent pipes its own "ok" into plumb turn start, then relays
-    the digest it got."""
-    from plumb.approvals import prompt_digest
-    from plumb.cli import main
-
-    monkeypatch.chdir(project)
-    monkeypatch.setattr("sys.stdin", io.StringIO("ok INT-005 SR-005"))
-    assert main(["turn", "start", "--session", "s9"]) == 0
-    capsys.readouterr()
-    digest = prompt_digest("ok INT-005 SR-005")
-    _refused(project, capsys, "relay", "INT-005", "SR-005", "--prompt", digest,
-             "--quote", "ok INT-005 SR-005")
-
-
 def _codex_hook_prompt(repo: Path) -> None:
     path = repo / ".plumb" / "session" / "prompts.jsonl"
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"digest": "sha256:" + "c" * 64, "session": "x", "at": "t",
                                  "text": "hello", "via": "hook", "host": "codex"}) + "\n")
-
-
-def test_codex_refuses_once_its_prompt_hook_has_logged_a_prompt(project: Path, monkeypatch,
-                                                               capsys) -> None:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "codex")
-    digest = log_prompt(project, OK, via="turn")
-    # hooks not trusted yet (no prompt they logged): the fallback confirms, labelled (Q4)
-    assert run(project, "relay", "SR-005", "--prompt", digest, "--quote", OK) == 0
-    [entry] = open_core(project).log_read("events", ["approval"])
-    assert entry.payload["self_recorded"] is True
-    _codex_hook_prompt(project)
-    digest = log_prompt(project, "ok then", via="turn")
-    assert run(project, "relay", "INT-005", "--prompt", digest, "--quote", "ok then") == 3
-    assert REFUSED in capsys.readouterr().err
 
 
 def test_auto_approval_never_rests_on_a_self_recorded_prompt_under_a_prompt_hook(

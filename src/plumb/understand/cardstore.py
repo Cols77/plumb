@@ -29,8 +29,8 @@ def card_from_json(data: Mapping[str, Any]) -> CardState:
         questions=tuple(ClarifyQuestion(
             id=str(q.get("id", "")), text=str(q.get("text", "")),
             resolutions=tuple(str(r) for r in q.get("resolutions") or ()),
-            record=q.get("record")) for q in data.get("questions") or ()
-            if isinstance(q, Mapping)),
+            record=q.get("record"), hash=str(q.get("hash") or ""))
+            for q in data.get("questions") or () if isinstance(q, Mapping)),
         status=status if status in ("open", "answered", "closed") else "open",
         answers=tuple(ClarifyAnswer(str(a.get("question", "")), str(a.get("answer", "")),
                                     str(a.get("message_digest", "")))

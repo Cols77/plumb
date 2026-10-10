@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from capture_helpers import log_prompt, record_text, run, write_stated
+from logutil import legacy_relay
 
 from plumb.api import open_core
 from plumb.hosts.claude_code import stop
@@ -127,7 +128,7 @@ def test_ambiguous_request_yields_exactly_the_questions_that_matter(
     write_stated(project, [("DEC-001", open_core(project).index()["DEC-001"].hash)],
                  at="2026-10-06T09:00:00Z")
     digest = log_prompt(project, "ok, orders only", at="2026-10-06T09:01:00Z")
-    assert run(project, "relay", "DEC-001", "--prompt", digest, "--quote", "ok") == 0
+    legacy_relay(project, ["DEC-001"], digest, "ok", stated=["DEC-001"])
     start_turn(project)
     (project / "src" / "export.py").write_text("def export():\n    return 2\n", "utf-8")
     assert asked_decs(run_stop(project, hook_input)) == ["DEC-002"]

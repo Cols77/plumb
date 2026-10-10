@@ -43,9 +43,20 @@ def _propose(repo: Path, write_record, record_id: str, readback: str) -> None:
 
 
 def _reject(repo: Path, record_id: str, reason: str, words: str | None = None) -> None:
+    """The rejection as the worker logs it from the reader's reading of the owner's message
+    (the agent-run relay that used to log it no longer exists, SR-101 EX-9)."""
+    from plumb.capture.calibrate import snapshot
+    from plumb.normalize import sha256_text
+
     words = words or f"{record_id}: that is not what I asked"
-    approvals.relay(open_core(repo), [record_id], prompt=_log(repo, words), quote=words,
-                    reject=reason)
+    core = open_core(repo)
+    record = core.index()[record_id]
+    item = {"id": record_id, "hash": record.hash, **snapshot(core.index(), record, core)}
+    core.log_append("events", "rejection", {
+        "by": "owner-words", "records": [item],
+        "reason": reason if reason in ("capture-error", "intent-change") else "intent-change",
+        "prompt_digest": _log(repo, words), "quote": words, "quote_digest": sha256_text(words),
+        "confidence": 0.99})
 
 
 def _rejected(repo: Path) -> list:

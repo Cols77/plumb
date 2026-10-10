@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from plumb.cliutil import EXIT_USAGE, add_common, emit, resolve_root
+from plumb.cliutil import EXIT_REFUSED, EXIT_USAGE, add_common, emit, resolve_root
 
 CONFIG_TEMPLATE = """\
 # plumb configuration. Every key is optional; the defaults are shown commented out.
@@ -327,55 +327,14 @@ def cmd_revoke(command: str, argv: list[str]) -> int:
 
 
 def cmd_relay(command: str, argv: list[str]) -> int:
+    """Refused for the agent, always (SR-101 EX-9, INT-028): the agent-run prose relay no
+    longer exists. Only the owner's typed /plumb approve naming record numbers, or the
+    worker applying the reader's reading of the owner's message, confirms a record."""
     from plumb import approvals
 
-    parser = _parser(command, "Record an approval (or revocation) the owner gave in a prompt, "
-                     "with the owner's exact words.")
-    parser.add_argument("ids", nargs="*")
-    parser.add_argument("--prompt", required=True, help="prompt digest (12+ hex digits)")
-    parser.add_argument("--quote", required=True, help="the owner's exact words")
-    parser.add_argument("--revoke", action="store_true")
-    parser.add_argument("--exempt", action="store_true",
-                        help="also confirm the trace.exempt globs (the quote names them)")
-    parser.add_argument("--group", default=None,
-                        help="the group the last reply offered (low-risk, from plumb triage)")
-    parser.add_argument("--set", default=None, dest="set_anchor", metavar="INT",
-                        help="the escalated spec whose set the reply presented")
-    parser.add_argument("--reject", nargs="?", const="intent-change", default=None,
-                        choices=("capture-error", "intent-change"),
-                        help="relay the owner's rejection of the proposed records instead: "
-                        "capture-error when the read-back misread their words (a calibration "
-                        "'no'), intent-change otherwise (no label; also the bare flag)")
-    parser.add_argument("--note", default="")
-    args = parser.parse_args(argv)
-    if not args.ids and not args.exempt and not args.group and not args.set_anchor:
-        parser.error("name record IDs or pass --exempt, --group or --set")
-    core = _core(args)
-
-    def act() -> None:
-        entry = approvals.relay(core, args.ids, prompt=args.prompt, quote=args.quote,
-                                revoke=args.revoke, note=args.note, exempt=args.exempt,
-                                group=args.group, set_anchor=args.set_anchor,
-                                reject=args.reject)
-        if args.reject:
-            names = ", ".join(r["id"] for r in entry.payload["records"])
-            print(f"plumb: rejected {names} ({args.reject}, agent-relayed); still proposed, "
-                  f"recapture it on the owner's words \"{args.quote}\"")
-            return
-        verb = "revoked" if args.revoke else "confirmed"
-        names = _approved_names(entry)
-        what = (f" (group {args.group})" if args.group else
-                f" (set {args.set_anchor})" if args.set_anchor else "")
-        print(f"plumb: {verb} {names}{what} (agent-relayed) on the owner's words "
-              f"\"{args.quote}\"")
-        left_out = (entry.payload.get("triage") or {}).get("left_out") or []
-        if left_out:
-            print("plumb: changed since offered, left out: " + ", ".join(left_out))
-        if entry.payload.get("self_recorded"):
-            print("plumb: labelled self-recorded message: the prompt hook did not record "
-                  "these words")
-
-    return _guarded(act)
+    del command, argv
+    print(f"plumb: relay refused: {approvals.AGENT_RELAY_GONE}", file=sys.stderr)
+    return EXIT_REFUSED
 
 
 def cmd_validate(command: str, argv: list[str]) -> int:
