@@ -233,7 +233,11 @@ def normalize_id(raw: str, index: Mapping[str, Any]) -> str:
     if raw in index:
         return raw
     match = _LOOSE_ID.match(raw.upper())
-    return f"{match.group(1)}-{int(match.group(2)):03d}" if match else raw
+    if not match:
+        return raw
+    from plumb.ids import format_id          # the one formatter of record numbers
+
+    return format_id(match.group(1), int(match.group(2)))
 
 
 def _collapse(text: str) -> str:

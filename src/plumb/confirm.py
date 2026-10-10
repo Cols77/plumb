@@ -56,7 +56,9 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
     if by in ("owner-words", "settled", "undone"):  # SP8: re-checked by the understand layer
         from plumb.understand.recheck import problem
 
-        reason = problem(entry, core)
+        # a settled or undone entry is checked against the log it is in; an owner-words one
+        # keeps to its own payload (the session's prompt log is not part of the committed history)
+        reason = problem(entry, core if by in ("settled", "undone") else None)
         if (reason is None and by == "owner-words"
                 and payload.get("prompt_digest") not in prompt_digests):
             return f"owner-words {entry.kind} cites no earlier prompt event"

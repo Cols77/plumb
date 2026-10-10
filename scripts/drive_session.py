@@ -72,6 +72,10 @@ def installed_commands(root: Path) -> tuple[dict[str, list[str]], list[str], dic
         for group in settings.get("hooks", {}).get(event, []):
             for hook in group.get("hooks", []):
                 command = hook.get("command", "")
+                # PostToolUse holds two commands since STALE (the edit tracker, then the
+                # synchronous edit check); this driver runs the tracker
+                if command.rstrip().endswith(" edit-check"):
+                    continue
                 if "plumb" in command and " hook " in command:
                     hooks[event] = _argv(command, root)
     status = _argv(settings["statusLine"]["command"], root)
@@ -141,6 +145,10 @@ def drive(root: Path, *, edit: str, prompt_change: str, prompt: str,
         prefix = hooks["Stop"][: hooks["Stop"].index("hook")]
         steps.append(_run("covering tests", [*prefix, *tests_command(stop.stdout)], root, env,
                           None, timeout=600))
+        # the edit made a link stale and the turn is held until the agent resolves it (SR-111);
+        # the driven edit only appends a comment, so the agent repins what it made stale
+        steps.append(_run("repin", [*prefix, "repin", "--all-stale", "--note",
+                                    "the driven edit only appended a comment"], root, env, None))
         hook("Stop (stop_hook_active)", "Stop", stop_hook_active=True)
     finally:
         if restore:
