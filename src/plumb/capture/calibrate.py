@@ -49,6 +49,7 @@ class Item:
     source: str                   # owner | revoked | edited-after-auto | generated
     premise: str
     hypotheses: tuple[str, ...]   # every part must be supported (R13 Q3)
+    hash: str = ""                # the version of the record judged (the logged score's key)
 
 
 @dataclass
@@ -109,7 +110,7 @@ def variations(item: Item) -> list[Item]:
     def add(parts: Sequence[str], how: str) -> None:
         if tuple(parts) != item.hypotheses:
             out.append(Item(item.record, item.kind, "no", f"generated:{how}", item.premise,
-                            tuple(parts)))
+                            tuple(parts), item.hash))
 
     text = list(item.hypotheses)
     flipped = [re.sub(r"(?m)^will: ", "won't: ", text[0], count=1)] + text[1:]
@@ -137,8 +138,8 @@ def labelled_set(core: Core) -> list[Item]:
             continue
         ids = {str(r.get("id")) for r in entry.payload.get("records") or []
                if isinstance(r, Mapping)}
-        if entry.kind == "revocation" and entry.payload.get("by") in ("owner",
-                                                                      "agent-relayed"):
+        if entry.kind == "revocation" and entry.payload.get("by") in (
+                "owner", "agent-relayed", "undone"):   # an undone settling is a real "no"
             revoked |= ids
         if entry.kind == "approval" and entry.payload.get("by") == "auto-jev":
             auto |= ids
@@ -162,7 +163,7 @@ def labelled_set(core: Core) -> list[Item]:
                     statuses[record_id].confirmation == "confirmed":
                 continue  # the owner went on to confirm this very version
             seen_rejected.add((record_id, pin))
-            items.append(Item(record_id, str(kind), "no", "rejected", premise, parts))
+            items.append(Item(record_id, str(kind), "no", "rejected", premise, parts, pin))
     for record_id in sorted(index):
         record = index[record_id]
         kind = KINDS.get(record.kind)
@@ -174,12 +175,13 @@ def labelled_set(core: Core) -> list[Item]:
         status = statuses[record_id]
         latest = standing.get(record_id) or []
         if record_id in revoked:
-            items.append(Item(record_id, kind, "no", "revoked", premise, parts))
+            items.append(Item(record_id, kind, "no", "revoked", premise, parts, record.hash))
         elif record_id in auto and status.confirmation == "unconfirmed-edit":
-            items.append(Item(record_id, kind, "no", "edited-after-auto", premise, parts))
+            items.append(Item(record_id, kind, "no", "edited-after-auto", premise, parts,
+                              record.hash))
         elif status.confirmation == "confirmed" and latest and \
-                latest[-1][1] in ("owner", "agent-relayed"):
-            items.append(Item(record_id, kind, "yes", "owner", premise, parts))
+                latest[-1][1] in ("owner", "agent-relayed", "owner-words"):
+            items.append(Item(record_id, kind, "yes", "owner", premise, parts, record.hash))
     generated = [v for item in items if item.label == "yes" for v in variations(item)]
     return items + generated
 
@@ -238,43 +240,100 @@ def measure(core: Core, items: Sequence[Item], scores: Sequence[float]) -> dict[
     return out
 
 
+def logged_scores(core: Core) -> tuple[dict[tuple[str, str], float], str]:
+    """``{(record, hash): score}`` of the judge's logged verdicts (the latest of each) and the
+    model that gave the most recent one. The score is the model's confidence for a supported
+    verdict and 0 otherwise, logged at judgment time (SR-106), so calibration needs no model."""
+    scores: dict[tuple[str, str], float] = {}
+    model = ""
+    for entry in core.events():
+        if entry.kind != "verdict":
+            continue
+        payload = entry.payload
+        try:
+            scores[(str(payload.get("id")), str(payload.get("hash")))] = float(
+                payload.get("score") or 0)
+        except (TypeError, ValueError):
+            continue
+        model = str(payload.get("model") or model)
+    return scores, model
+
+
 def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindResult]]:
-    """Score the labelled set and append one ``calibration`` event. Raises
-    ``CalibrationUnavailable`` (nothing written) without JEV."""
+    """Measure the labelled set and append one ``calibration`` event. When the judge's logged
+    verdicts score any labelled record, they are the scores (no model call; generated 'no'
+    examples, which no verdict covers, are left out and the event says ``source: logged``).
+    Otherwise the labelled set is scored through JEV; raises ``CalibrationUnavailable``
+    (nothing written) without it."""
     from plumb.normalize import canonical_json, sha256_bytes
 
-    if backend is None:
-        from plumb.judgment import get_backend
-
-        backend = get_backend(core, hook=False)
-    name = str(getattr(backend, "name", "none"))
-    if name in ("disabled", "none"):
-        raise CalibrationUnavailable(NO_JUDGMENTS)
-    if name != "jev":
-        raise CalibrationUnavailable(NOT_APPLICABLE)
+    logged, model = logged_scores(core)
     items = labelled_set(core)
-    scores: list[float] = []
-    for item in items:
-        value, used = score(backend, item)
-        if not used.startswith("jev:"):
-            raise CalibrationUnavailable(f"jev unavailable during calibration ({used} "
-                                         "answered); no calibration written")
-        scores.append(value)
+    source_logged = any((i.record, i.hash) in logged for i in items
+                        if not i.source.startswith("gen"))
+    if source_logged:
+        items = [i for i in items if (i.record, i.hash) in logged]
+        scores = [logged[(i.record, i.hash)] for i in items]
+        name, version = "judge", model
+    else:
+        if backend is None:
+            from plumb.judgment import get_backend
+
+            backend = get_backend(core, hook=False)
+        name = str(getattr(backend, "name", "none"))
+        if name in ("disabled", "none"):
+            raise CalibrationUnavailable(NO_JUDGMENTS)
+        if name != "jev":
+            raise CalibrationUnavailable(NOT_APPLICABLE)
+        scores = []
+        for item in items:
+            value, used = score(backend, item)
+            if not used.startswith("jev:"):
+                raise CalibrationUnavailable(f"jev unavailable during calibration ({used} "
+                                             "answered); no calibration written")
+            scores.append(value)
+        version = getattr(backend, "version", None)
     results = measure(core, items, scores)
     digest = sha256_bytes(canonical_json([[i.record, i.kind, i.label, i.source,
                                            list(i.hypotheses)] for i in items]))
-    payload = {"backend": "jev", "model_version": getattr(backend, "version", None),
+    payload = {"backend": name, "model_version": version,
                "per_kind": {k: {key: getattr(r, key) for key in (
                    "items", "positives", "real_negatives", "generated_negatives",
                    "generated_counted", "negatives", "threshold", "false_accept", "recall",
                    "passing", "reasons")} for k, r in results.items()},
                "labelled_set_digest": digest}
+    if source_logged:
+        payload["source"] = "logged"
+        payload.update(fingerprint(core))
     entry = core.log_append("events", "calibration", payload)
     return entry, results
 
 
+def fingerprint(core: Core) -> dict[str, Any]:
+    """The model and prompt a logged calibration was made under: a change of either suspends
+    settling until the evaluation set passes again (SR-106)."""
+    try:
+        from plumb.understand.evalrun import prompt_digest
+
+        digest = prompt_digest()
+    except Exception:  # noqa: BLE001 - the fingerprint is advisory for the suspension check
+        digest = ""
+    return {"model": core.config.understand.model, "prompt_digest": digest}
+
+
 def latest_calibration(core: Core) -> Any:
     entries = [e for e in core.events() if e.kind == "calibration"]
+    return entries[-1] if entries else None
+
+
+def judge_calibrations(core: Core) -> list[Any]:
+    """The calibrations made from the judge's logged scores (``source: logged``), oldest first."""
+    return [e for e in core.events()
+            if e.kind == "calibration" and e.payload.get("source") == "logged"]
+
+
+def latest_judge_calibration(core: Core) -> Any:
+    entries = judge_calibrations(core)
     return entries[-1] if entries else None
 
 
