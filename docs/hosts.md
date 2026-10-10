@@ -12,8 +12,10 @@ Every adapter is thin: it turns the host's event into a `TurnEvent`, calls
 and renders the `TurnOutput`. The guard against self-approval is the same on every host:
 every owner-only command writes through `approvals.require_owner`, which refuses under the
 session marker and refuses, marker or not, unless stdin and stdout are an interactive
-terminal where the owner answers `y`. An agent's shell has no terminal, so `plumb approve`
-run by an agent exits 3 and writes nothing on every host.
+terminal where the owner answers `y`. In the tested marked/noninteractive shell boundary,
+`plumb approve` exits 3 and writes nothing on every host. This is not a guarantee about
+every agent shell: PTYs, removable markers, and direct file writes are outside that tested
+boundary. Marker and TTY checks are defense in depth, not authenticated owner provenance.
 
 Prompts and the "self-recorded message" label (R13 Q4): a prompt that reaches plumb through
 a host's prompt hook is logged `via: hook`. A prompt the agent records itself with
@@ -78,15 +80,59 @@ interpreter, so the plugin calls the plumb CLI (`--format json`) rather than imp
 
 | plumb event | Hermes mechanism | Installed | Fallback |
 |---|---|---|---|
-| session-start | `on_session_start` cannot inject context: the brief rides on the first `pre_llm_call` | yes | `AGENTS.md` (or `.hermes.md`) block |
+| session-start | `on_session_start` only records a pending session; after ancestry filtering, the brief rides on the first `pre_llm_call` | yes | selected root-local context block |
 | prompt | `pre_llm_call` (`user_message`): `plumb hook prompt --host hermes --format json`, `agent_context` returned as context (logged `via: hook`) | yes | `plumb turn start` |
 | edit | `post_tool_call` for `write_file` and `patch`: `plumb hook post-edit` in the background | yes | stop's `git status` |
 | stop | `pre_verify` (edited turns): the stop event, `block` returned once (`attempt == 0`); `transform_llm_output` (other turns): the stop event, never a block | yes | `plumb turn end` |
 | stop (owner summary) | `transform_llm_output` appends `owner_lines` to the reply the owner reads; `post_llm_call` checks the reply carries them, else (interrupted turn, empty reply, another plugin's transform won, an older Hermes) reruns the stop event `--unseen`, so no stated record stays marked shown | yes | `plumb status` |
-| child agents | delegated subagents, the background review and cron runs fire the same hooks in-process with `parent_session_id`: the plugin skips them (no prompt logged, no stop, no summary), since their messages are never the owner's words | yes | n/a |
+| child agents | sessions with `parent_session_id` are skipped (including startup deferred until after filtering); this does not certify provenance for parentless synthetic or scheduled turns | yes | n/a |
 | owner commands | `/plumb <words>` (`ctx.register_command`): the words are passed to the agent with `ctx.inject_message` | yes | CLI |
 | tools | the read-only MCP server in Hermes' `mcp_servers` (`plumb mcp install hermes`, user configuration) | on request | CLI |
-| guard | owner-terminal guard (always); `register(ctx)` sets `PLUMB_AGENT_SESSION=hermes` in Hermes' environment, which its local terminal tool inherits (not remote terminal backends) | yes | `plumb hosts status hermes` names the missing marker |
+| guard | owner-terminal guard (always); `register(ctx)` sets `PLUMB_AGENT_SESSION=hermes` in Hermes' environment, which its local terminal tool inherits (not remote terminal backends) | yes | `plumb hosts status hermes` labels the CLI fallback and marker status as runtime-unverified |
+
+Release A support boundary
+
+The tested surface is a project-bound event bridge. The generated plugin binds subprocesses
+to the exact installed project root and refuses to run outside a valid `.hermes/plugins/plumb/plugin.py`
+layout with a root-local `.plumb` directory; this does not provide multi-project routing for a
+globally loaded plugin. Context selection is root-only and follows Hermes' selected current
+target; ancestor/nested files, Cursor rules and other context sources are not universally
+preserved, and uninstall does not chase historical block locations. Installation is idempotent,
+preserves foreign plugin files and recognized existing context, and conservatively keeps
+Claude-named and `AGENTS.override.md` instruction blocks on uninstall because ownership is
+shared or unknown.
+
+Runtime activation remains unverified until the owner enables the trusted project plugin and
+observes a delivered hook prompt. File presence and `HERMES_ENABLE_PROJECT_PLUGINS=1` are
+discovery prerequisites, not callback evidence. Delegated children are excluded when Hermes
+supplies `parent_session_id`; that metadata is conditional, so desktop, background and cron
+provenance are not certified. `/plumb`
+injection outside the CLI requires supported routing and grants, and there is no native status
+bar or streaming transport receipt. Native `plumb`/`plumb-clarify` skills are installed by this follow-up as
+plugin-owned files under `.hermes/plugins/plumb/skills/`. The plugin registers
+the bare names `plumb` and `plumb-clarify`; Hermes resolves them explicitly as
+`plumb:plumb` and `plumb:plumb-clarify`. They are not copied to `.hermes/skills`
+and are not entries in the flat available-skills index. MCP registration remains
+separate and is not performed by this adapter.
+
+Owner-run installation
+
+```bash
+plumb hosts install hermes
+# For an owner-run profile allowlist, independently of project discovery:
+export HERMES_ENABLE_PROJECT_PLUGINS=1
+hermes plugins enable plumb
+# Restart the intended Hermes process after enabling.
+plumb hosts status hermes
+```
+
+These commands are Git Bash syntax on Windows; use the equivalent environment assignment in
+other shells. `hermes plugins enable plumb` changes the owner's selected Hermes profile
+allowlist; it does not discover projects or prove that a project plugin is active. Project
+discovery is the separate `HERMES_ENABLE_PROJECT_PLUGINS=1` prerequisite. The status command
+intentionally reports runtime activation as unverified.
+The CLI fallback remains in the selected context file and covers `turn start`/`turn end`,
+owner words, proposed intent, and unseen-summary limitations.
 
 ## The read-only MCP server (SR-057)
 
