@@ -58,6 +58,28 @@ def _pending_dict(pending: FullPending) -> dict[str, Any]:
 
 
 @dataclass
+class CoverageReport:
+    """What ``plumb tests map --coverage`` did (SR-110)."""
+
+    ran: list[str] = field(default_factory=list)       # nodes that ran to record
+    recorded: list[str] = field(default_factory=list)  # nodes whose record was written
+    failed: list[str] = field(default_factory=list)    # nodes that failed: no record
+    fresh: int = 0                                      # recorded nodes left as they were
+    workers: int = 0
+    absent: bool = False                                # coverage is not installed
+    discarded: str | None = None
+    notes: list[str] = field(default_factory=list)
+    elapsed_s: float = 0.0
+    stats: dict[str, int] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"ran": self.ran, "recorded": self.recorded, "failed": self.failed,
+                "fresh": self.fresh, "workers": self.workers, "absent": self.absent,
+                "discarded": self.discarded, "notes": self.notes,
+                "elapsed_s": self.elapsed_s, "stats": self.stats}
+
+
+@dataclass
 class RunReport:
     """What one ``plumb tests run`` did, for printing and for ``--json``."""
 
@@ -77,6 +99,8 @@ class RunReport:
     exit_status: int | None = None
     elapsed_s: float = 0.0
     full_pending: FullPending | None = None
+    notes: list[str] = field(default_factory=list)  # lines the run says (SR-110)
+    workers: int = 0                                 # xdist workers the run used (0: serial)
 
     @property
     def failed(self) -> list[str]:
@@ -96,11 +120,12 @@ class RunReport:
             "removed_after_passing": self.removed_after_passing,
             "collection_errors": self.collection_errors, "discarded": self.discarded,
             "aborted": self.aborted, "timed_out": self.timed_out, "exit_status": self.exit_status,
-            "elapsed_s": self.elapsed_s,
+            "elapsed_s": self.elapsed_s, "notes": self.notes, "workers": self.workers,
             "selection": None if sel is None else {
                 "nodes": list(sel.nodes), "deferred": list(sel.deferred),
                 "sampled": list(sel.sampled), "unknown_coverage": list(sel.unknown_coverage),
-                "infra_changed": list(sel.infra_changed), "doc_only": sel.doc_only},
+                "infra_changed": list(sel.infra_changed), "doc_only": sel.doc_only,
+                "unrecorded": list(sel.unrecorded), "notes": list(sel.notes)},
             "full_pending": None if self.full_pending is None else {
                 "pending": self.full_pending.pending,
                 "reasons": list(self.full_pending.reasons)},
@@ -118,6 +143,7 @@ class Verify:
         self._map: Any = None
         self._index: dict[str, Any] | None = None
         self._env_key: str | None = None
+        self._funcmap: Any = None
 
     # -- cached state
     def test_map(self) -> Any:
@@ -152,6 +178,119 @@ class Verify:
             self._env_key = env_key(self.root)
         return self._env_key
 
+    # -- the function-to-tests record (SR-110)
+    def funcmap(self) -> Any:
+        if self._funcmap is None:
+            from plumb.verify.funcmap import FuncMap
+
+            self._funcmap = FuncMap.open(self.core)
+        return self._funcmap
+
+    def coverage_mode(self) -> str:
+        """``off`` (verify.coverage is off), ``absent`` (the coverage package is missing) or
+        ``auto``."""
+        from plumb.verify.runner import coverage_available
+        from plumb.verify.select import coverage_off
+
+        if coverage_off(self.core.config.verify):
+            return "off"
+        return "auto" if coverage_available() else "absent"
+
+    def _cov_sources(self) -> tuple[str, ...]:
+        config = self.core.config
+        tests = {d.strip("/") for d in config.test_dirs}
+        return tuple(str(self.root / d) for d in config.source_dirs
+                     if d.strip("/") not in tests and (self.root / d).is_dir())
+
+    def _cov_begin(self, tmap: Any, *, deselect: bool = False,
+                   rebuild: bool = False) -> tuple[Any, Path, int]:
+        """The coverage spec of a run: stale tests are measured, fresh ones are not (and are
+        not run at all when ``deselect``). Returns ``(spec, temp dir, fresh count)``."""
+        import tempfile
+
+        from plumb.verify.runner import CovSpec
+
+        fm = self.funcmap()
+        if rebuild:
+            fm.clear()
+        digests = {f: tmap.closure_hash(f) for f in tmap.test_files}
+        fresh = fm.fresh_nodes(digests, self.env_key())
+        tmp = Path(tempfile.mkdtemp(prefix="plumb-cov-"))
+        spec = CovSpec(data_base=str(tmp / "cov"), sources=self._cov_sources(),
+                       skip=frozenset(fresh), deselect=deselect)
+        return spec, tmp, len(fresh)
+
+    def _cov_end(self, outcome: Any, tmap: Any, tmp: Path, spec: Any, *,
+                 refresh: bool = False) -> list[str]:
+        """Write the record of the nodes that passed with coverage on; returns them."""
+        import shutil
+
+        from plumb.verify.funcmap import combine_data_files, ingest_coverage
+        from plumb.verify.testmap import is_test_file
+
+        try:
+            files = outcome.result.cov_files
+            if not files or outcome.discarded or outcome.result.timed_out:
+                return []
+            nodes = {n: n.split("::", 1)[0] for n, d in outcome.result.nodes.items()
+                     if d.get("outcome") == "passed" and n not in spec.skip}
+            if not nodes:
+                return []
+            data = combine_data_files(files, str(tmp / "combined"))
+            digests = {f: tmap.closure_hash(f) for f in set(nodes.values())}
+            test_dirs = tuple(self.core.config.test_dirs)
+            return ingest_coverage(self.funcmap(), data, nodes, digests, self.env_key(),
+                                   skip_file=lambda rel: is_test_file(rel, test_dirs),
+                                   refresh=refresh)
+        except Exception as exc:  # noqa: BLE001 - a recording failure never fails a run
+            outcome.result.notes.append(f"coverage record not written: {exc}")
+            return []
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def map_coverage(self, *, rebuild: bool = False) -> CoverageReport:
+        """``plumb tests map --coverage``: run the tests whose record is missing or stale
+        (every test the first time) once under coverage contexts, on ``verify.workers``
+        workers, and record the functions each executed."""
+        import shutil
+
+        from plumb.verify.runner import run_selection
+
+        report = CoverageReport()
+        mode = self.coverage_mode()
+        if mode == "absent":
+            report.absent = True
+            report.notes.append("coverage is not installed: tests are selected by their "
+                                "import closure (install the dev dependency 'coverage')")
+            return report
+        if mode == "off":
+            report.notes.append("verify.coverage is off: tests are selected by their import "
+                                "closure")
+            return report
+        tmap = self.test_map()
+        spec, tmp, fresh = self._cov_begin(tmap, deselect=True, rebuild=rebuild)
+        report.fresh = fresh
+        try:
+            outcome = run_selection(self.core, [], full=True, tmap=tmap, cov=spec)
+        except BaseException:
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
+        result = outcome.result
+        report.workers = result.workers
+        report.notes += result.notes
+        report.elapsed_s = result.elapsed_s
+        report.discarded = outcome.discarded
+        report.ran = sorted(result.nodes)
+        report.failed = sorted(n for n, d in result.nodes.items()
+                               if d.get("outcome") == "failed")
+        report.recorded = self._cov_end(outcome, tmap, tmp, spec, refresh=True)
+        if not outcome.discarded and not result.timed_out:
+            self.funcmap().refresh_all()  # what changed has now been recorded: new baseline
+        if outcome.discarded:
+            report.notes.append(f"record discarded ({outcome.discarded} during the run)")
+        report.stats = self.funcmap().stats() if self.funcmap().exists() else {}
+        return report
+
     # -- VerifyAPI
     def select(self, changed: Sequence[str], *, budget_s: float | None = None) -> Selection:
         """The covering tests of ``changed`` (spec 7.2). The one choke point of R5 for every
@@ -167,8 +306,21 @@ class Verify:
             tmap = self.test_map()
         except MapUnavailable:
             return self.unknown_selection(changed)
-        return select_tests(self.core, tmap, changed, budget_s=budget_s,
-                            durations=durations(index), scale=float(index.get("scale") or 1.0))
+        funcmap = None
+        extra: tuple[str, ...] = ()
+        if self.coverage_mode() == "auto":
+            candidate = self.funcmap()
+            if candidate.exists():
+                funcmap = candidate
+        if funcmap is not None and not funcmap.is_recorded_anywhere(self.env_key()):
+            funcmap = None
+            if self.funcmap().stats()["tests"]:
+                extra = ("the function record is for another environment: tests are selected "
+                         "by their import closure (plumb tests map --coverage records it again)",)
+        sel = select_tests(self.core, tmap, changed, budget_s=budget_s,
+                           durations=durations(index), scale=float(index.get("scale") or 1.0),
+                           funcmap=funcmap, env_key=self.env_key() if funcmap else None)
+        return replace(sel, notes=sel.notes + extra) if extra else sel
 
     def unknown_selection(self, changed: Sequence[str]) -> Selection:
         """R5 without a test map: the changed test files themselves plus a bounded,
@@ -729,8 +881,16 @@ class Verify:
         infra = self.infra_hashes() if full else None
         files = {p: i["hash"] for p, i in tmap.files.items()} if full else None
         expected = None if full else self.expected_s(args)
-        outcome = run_selection(core, args, full=full, timeout_s=timeout, tmap=tmap)
+        cov_spec = cov_tmp = None
+        if self.coverage_mode() == "auto":
+            cov_spec, cov_tmp, _ = self._cov_begin(tmap)
+        outcome = run_selection(core, args, full=full, timeout_s=timeout, tmap=tmap,
+                                cov=cov_spec)
         result = outcome.result
+        if cov_spec is not None:
+            self._cov_end(outcome, tmap, cov_tmp, cov_spec)
+        report.notes = list(result.notes)
+        report.workers = result.workers
         targets = tmap.test_files if full else args
         aborted = None
         if not outcome.discarded and not result.timed_out:

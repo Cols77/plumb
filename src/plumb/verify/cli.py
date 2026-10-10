@@ -25,12 +25,17 @@ def _parser(prog: str, description: str) -> argparse.ArgumentParser:
 def cmd_map(prog: str, argv: list[str]) -> int:
     parser = _parser(prog, "Build the code-to-test map and write .plumb/test_map.txt.")
     parser.add_argument("--rebuild", action="store_true", help="ignore the parse cache")
+    parser.add_argument("--coverage", action="store_true",
+                        help="also record which functions each test executes (runs the tests "
+                        "whose record is missing or stale, once, under coverage)")
     args = parser.parse_args(argv)
     from plumb.api import open_core
     from plumb.verify.testmap import build_map
 
     core = open_core(resolve_root(args.root))
     tmap = build_map(core, rebuild=args.rebuild)
+    if args.coverage:
+        return _map_coverage(core, args)
     if args.as_json:
         emit(tmap.as_dict(), True)
         return EXIT_OK
@@ -41,12 +46,38 @@ def cmd_map(prog: str, argv: list[str]) -> int:
     return EXIT_OK
 
 
+def _map_coverage(core: Any, args: argparse.Namespace) -> int:
+    from plumb.verify import open_verify
+
+    report = open_verify(core).map_coverage(rebuild=args.rebuild)
+    if args.as_json:
+        emit(report.as_dict(), True)
+    else:
+        lines = [f"plumb: function record: ran {len(report.ran)} tests, recorded "
+                 f"{len(report.recorded)}, {report.fresh} already fresh"
+                 + (f", {report.workers} workers" if report.workers else "")
+                 + f" ({report.elapsed_s:g} s)"]
+        if report.stats:
+            lines.append("plumb: function record holds {tests} tests, {funcs} functions, "
+                         "{hits} executions".format(**report.stats))
+        lines += [f"plumb: {note}" for note in report.notes]
+        lines += [f"plumb: not recorded (failed): {node}" for node in report.failed]
+        emit(lines, False)
+    return EXIT_FINDINGS if report.failed else EXIT_OK
+
+
 def _selection_dict(sel: Any) -> dict[str, Any]:
     return {"changed": list(sel.changed), "nodes": list(sel.nodes), "reasons": dict(sel.reasons),
             "deferred": list(sel.deferred), "sampled": list(sel.sampled),
             "unknown_coverage": list(sel.unknown_coverage),
             "infra_changed": list(sel.infra_changed), "doc_only": sel.doc_only,
-            "expected_s": sel.expected_s}
+            "expected_s": sel.expected_s, "unrecorded": list(sel.unrecorded),
+            "notes": list(sel.notes)}
+
+
+# what `plumb tests select` says for each reason a test was chosen (SR-110)
+_REASON_WORDS = {"executed": "executed", "verified_by": "linked", "literal": "closure",
+                 "import": "closure", "naming": "closure", "sample": "sample"}
 
 
 def cmd_select(prog: str, argv: list[str]) -> int:
@@ -64,7 +95,8 @@ def cmd_select(prog: str, argv: list[str]) -> int:
         return EXIT_OK
     lines = _selection_lines(sel)
     for node in sel.nodes:
-        lines.append(f"  {node}  ({sel.reasons.get(node)})")
+        reason = sel.reasons.get(node)
+        lines.append(f"  {node}  ({_REASON_WORDS.get(str(reason), reason)})")
     emit(lines, False)
     return EXIT_OK
 
@@ -77,6 +109,7 @@ def _selection_lines(sel: Any) -> list[str]:
     if sel.infra_changed:
         lines.append("plumb: full verification pending (shared test infrastructure changed: "
                      + ", ".join(sel.infra_changed) + ")")
+    lines += [f"plumb: {note}" for note in sel.notes]
     if sel.unknown_coverage:
         lines.append("plumb: unknown coverage for " + ", ".join(sel.unknown_coverage)
                      + f": sampled {len(sel.sampled)}; full verification pending")
@@ -144,6 +177,7 @@ def report_lines(report: Any) -> list[str]:
         lines.append(f"plumb: flaky (failed, then passed on a same-tree rerun): {node}")
     for node in report.removed_after_passing:
         lines.append(f"plumb: removed after passing: {node}")
+    lines += [f"plumb: {note}" for note in report.notes]
     if sel is not None:
         lines += [line for line in _selection_lines(sel)[1:]]
     if report.full_pending is not None and report.full_pending.pending and not report.full:

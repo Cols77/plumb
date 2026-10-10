@@ -4828,3 +4828,41 @@ repeat entries of the first round; they are noted as such.
   document which kind words are owner-level by R9.
 - [LOW] (R18; spec 3) The principles are numbered 1, 2, 6, 3, 4, 5. Editorial. Fix:
   renumber them.
+
+## SP8 lane SELECT (2026-10-10)
+
+- HB1 probe (coverage 7.16.2, contexts switched per test node, 5 of plumb's verify test files,
+  32 tests): 24.8 s plain against 37.1 s under coverage (about 1.5 times, dominated by tests
+  that start subprocesses, which coverage does not follow); the data file for those 32 tests
+  is 90 KB with 13 460 (line, test) pairs, about 420 executed lines a test. The suite is about
+  1 400 tests, so an inverted function-to-tests map is several megabytes as JSON: the store
+  is SQLite (`.plumb/cache/funcmap.sqlite`, in the gitignored cache). Final numbers of the
+  whole-suite map are added under HB6 below.
+- HB3/HB6 numbers (whole plumb suite, `plumb tests map --coverage`, 2 workers, one cold run on a
+  busy machine): 1 634 tests ran in 2 016 s; 1 629 were recorded, covering 2 112 functions and
+  194 583 (function, test) pairs; `.plumb/cache/funcmap.sqlite` is 9.1 MB (the JSON route,
+  limit 2 MB, was not an option). Five tests failed under the added load and were not recorded
+  (four wall-clock budget tests: `test_five_worktrees_under_50_ms_warm_no_git_process`,
+  `test_a_step_starting_past_the_budget_is_skipped_and_reported`, `test_read_cost`,
+  `test_merge_check_on_plumb_reports_the_owners_pending_confirmations`; and my own
+  `test_xdist_missing_runs_serial_and_says_so`, since fixed: a nested run inherited the outer
+  xdist worker's environment). A test that fails is never recorded; it is recorded when it next
+  passes in a run that has coverage on.
+- [MEDIUM] (SR-110) Tests that run plumb in a subprocess (many of plumb's own CLI tests) execute
+  plumb's code outside the measured process, so coverage records no function for them and they
+  are selected by their own file or by requirement links only. Fix: `COVERAGE_PROCESS_START`
+  with a `.pth` hook for the children, at the cost of a slower subprocess start.
+- [MEDIUM] (SR-110) A function's baseline hash (what "changed" is measured against) moves only in
+  `plumb tests map --coverage` (to the tree as it is then); a run that records tests only adds
+  functions it has not seen. So the tests of a changed function keep being selected on every
+  run until the next `map --coverage` after the commit, never fewer. If a changed function's
+  tests are deferred by the budget, they stay selected for the next run. Fix if it over-selects
+  in practice: refresh a file's baseline when git shows the file clean.
+- [LOW] (SR-110) A file with no changed function (a comment, a reformat, or `--paths` on a
+  file nobody changed) keeps today's import-closure selection, so formatting-only edits do not
+  gain from the function record. A function inside another function is part of the outer one.
+- [LOW] (SR-110) `verify.coverage: off` unquoted in YAML is read as the boolean false;
+  `coverage_off` in `verify/select.py` accepts both, but `plumb config` shows `False`.
+- [LOW] (SR-110) The record is per environment key (`uv.lock`, interpreter): installing a
+  dependency makes every entry foreign, and selection says so and uses the closure until
+  `plumb tests map --coverage` records it again (a full run, about 30 minutes for plumb).

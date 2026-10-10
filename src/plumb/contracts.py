@@ -131,7 +131,7 @@ class MigrationReport:
     dry_run: bool = False
 
 
-SelectionReason = Literal["verified_by", "literal", "import", "naming", "sample"]
+SelectionReason = Literal["executed", "verified_by", "literal", "import", "naming", "sample"]
 EvidenceState = Literal["fresh-pass", "flaky-pass", "fresh-fail", "stale", "none"]
 
 
@@ -146,6 +146,10 @@ class Selection:
     infra_changed: tuple[str, ...] = ()
     doc_only: bool = False
     expected_s: float = 0.0
+    # SR-110: "<path>::<function>" of changed functions no recorded test executes (their file
+    # fell back to its import closure), and the lines to say about the selection
+    unrecorded: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
