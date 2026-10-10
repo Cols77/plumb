@@ -169,3 +169,8 @@ def test_haiku_judge_confidence_becomes_probability_of_supported() -> None:
 
     verdict = evalcompare.HaikuJudge(D(), "haiku").judge(_item(1, "beyond"), [])
     assert verdict.label == "beyond" and verdict.score == pytest.approx(0.2)
+
+
+def test_other_decision_model_without_key_is_an_error_naming_it(repo: Path) -> None:
+    with pytest.raises(CompareError, match="decide:microsoft/microsoft-decision-1"):
+        evalcompare.open_judges(open_core(repo), ["decide:microsoft/microsoft-decision-1"])

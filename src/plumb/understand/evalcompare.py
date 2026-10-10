@@ -204,17 +204,25 @@ def open_judges(core: Any, names: Sequence[str]) -> list[Any]:
             if reason:
                 raise CompareError("haiku", f"unavailable ({reason})")
             judges.append(HaikuJudge(dispatcher, core.config.understand.model))
-        elif name in ("jev", "jev-choice"):
+        elif name in ("jev", "jev-choice") or name.startswith("decide:"):
             from plumb.judgment.jev import JevBackend, open_jev
             from plumb.judgment.tiers import Thresholds
 
-            backend = open_jev(core, core.config, hook=False,
-                               thresholds=Thresholds.from_config(core.config.judgment.jev))
+            thresholds = Thresholds.from_config(core.config.judgment.jev)
+            backend = open_jev(core, core.config, hook=False, thresholds=thresholds)
             if not isinstance(backend, JevBackend):
-                raise CompareError("jev", "no JEV key (the heuristic is not used)")
-            judges.append(JevJudge(backend) if name == "jev" else JevChoiceJudge(backend))
+                raise CompareError(name, "no decisions key (the heuristic is not used)")
+            if name.startswith("decide:"):
+                # Another decision model behind the same Decisions endpoint and key.
+                backend = JevBackend(core, backend.client, model=name.split(":", 1)[1],
+                                     validated_against=None, thresholds=thresholds)
+                judge = JevJudge(backend)
+                judge.name = name
+                judges.append(judge)
+            else:
+                judges.append(JevJudge(backend) if name == "jev" else JevChoiceJudge(backend))
         else:
-            raise CompareError(name, f"unknown judge (use {', '.join(JUDGES)})")
+            raise CompareError(name, f"unknown judge (use {', '.join(JUDGES)} or decide:<model>)")
     return judges
 
 
