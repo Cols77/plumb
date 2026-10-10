@@ -25,12 +25,17 @@ def _parser(prog: str, description: str) -> argparse.ArgumentParser:
 def cmd_map(prog: str, argv: list[str]) -> int:
     parser = _parser(prog, "Build the code-to-test map and write .plumb/test_map.txt.")
     parser.add_argument("--rebuild", action="store_true", help="ignore the parse cache")
+    parser.add_argument("--coverage", action="store_true",
+                        help="also record which functions each test executes (runs the tests "
+                        "whose record is missing or stale, once, under coverage)")
     args = parser.parse_args(argv)
     from plumb.api import open_core
     from plumb.verify.testmap import build_map
 
     core = open_core(resolve_root(args.root))
     tmap = build_map(core, rebuild=args.rebuild)
+    if args.coverage:
+        return _map_coverage(core, args)
     if args.as_json:
         emit(tmap.as_dict(), True)
         return EXIT_OK
@@ -39,6 +44,26 @@ def cmd_map(prog: str, argv: list[str]) -> int:
          f"covered sources, {sum(1 for v in data['records'].values() if v)} requirements "
          "-> .plumb/test_map.txt (grep it)", False)
     return EXIT_OK
+
+
+def _map_coverage(core: Any, args: argparse.Namespace) -> int:
+    from plumb.verify import open_verify
+
+    report = open_verify(core).map_coverage(rebuild=args.rebuild)
+    if args.as_json:
+        emit(report.as_dict(), True)
+    else:
+        lines = [f"plumb: function record: ran {len(report.ran)} tests, recorded "
+                 f"{len(report.recorded)}, {report.fresh} already fresh"
+                 + (f", {report.workers} workers" if report.workers else "")
+                 + f" ({report.elapsed_s:g} s)"]
+        if report.stats:
+            lines.append("plumb: function record holds {tests} tests, {funcs} functions, "
+                         "{hits} executions".format(**report.stats))
+        lines += [f"plumb: {note}" for note in report.notes]
+        lines += [f"plumb: not recorded (failed): {node}" for node in report.failed]
+        emit(lines, False)
+    return EXIT_FINDINGS if report.failed else EXIT_OK
 
 
 def _selection_dict(sel: Any) -> dict[str, Any]:

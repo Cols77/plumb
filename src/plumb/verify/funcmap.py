@@ -274,3 +274,70 @@ class FuncMap:
         return {"tests": db.execute("SELECT COUNT(*) FROM tests").fetchone()[0],
                 "funcs": db.execute("SELECT COUNT(*) FROM funcs").fetchone()[0],
                 "hits": db.execute("SELECT COUNT(*) FROM hits").fetchone()[0]}
+
+
+# -- recording from coverage data
+def combine_data_files(files: Sequence[str], target: str) -> Any:
+    """Combine the per-process coverage data files into ``target`` (contexts are kept) and
+    return the combined ``CoverageData``."""
+    from coverage import CoverageData
+
+    combined = CoverageData(basename=target)
+    combined.erase()
+    for name in files:
+        part = CoverageData(basename=name)
+        part.read()
+        combined.update(part)
+    combined.write()
+    return combined
+
+
+def executed_functions(root: Path, data: Any, *,
+                       skip_file: Any = None) -> tuple[dict[str, set[tuple[str, str]]],
+                                                       dict[str, dict[str, str]]]:
+    """``({context: {(path, qualname)}}, {path: {qualname: hash}})`` from coverage data: the
+    functions each context (test node) executed, and every measured file's function hashes.
+    ``skip_file(rel)`` names files left out (test modules)."""
+    root = Path(root).resolve()
+    executed: dict[str, set[tuple[str, str]]] = {}
+    hashes: dict[str, dict[str, str]] = {}
+    for name in data.measured_files():
+        try:
+            rel = Path(name).resolve().relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if skip_file is not None and skip_file(rel):
+            continue
+        got = analyse_file(root, rel)
+        if got is None:
+            continue
+        hashes[rel], spans = got
+        by_context: dict[str, set[int]] = {}
+        for line, contexts in (data.contexts_by_lineno(name) or {}).items():
+            for context in contexts:
+                if context:
+                    by_context.setdefault(context, set()).add(line)
+        for context, lines in by_context.items():
+            for qualname in functions_of_lines(spans, lines):
+                executed.setdefault(context, set()).add((rel, qualname))
+    return executed, hashes
+
+
+def ingest_coverage(fm: FuncMap, data: Any, nodes: Mapping[str, str],
+                    digests: Mapping[str, str | None], env_key: str, *,
+                    skip_file: Any = None) -> list[str]:
+    """Record the test nodes in ``nodes`` (``{node: test file}``) from combined coverage
+    ``data``; a node that executed nothing measured is recorded with no hits (so it is not
+    stale). Returns the recorded nodes."""
+    executed, hashes = executed_functions(fm.root, data, skip_file=skip_file)
+    for rel, table in hashes.items():
+        fm.register_file(rel, table)
+    recorded: list[str] = []
+    for node, test_file in sorted(nodes.items()):
+        digest = digests.get(test_file)
+        if digest is None:
+            continue
+        fm.record_test(node, test_file, digest, env_key, executed.get(node, ()))
+        recorded.append(node)
+    fm.commit()
+    return recorded

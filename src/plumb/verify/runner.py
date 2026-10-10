@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 PLUGIN = "plumb.verify.pytest_plugin"
+COV_PLUGIN = "plumb.verify.cov_plugin"  # SR-110: coverage contexts, one per test node
 STREAM_SUFFIX = ".stream"  # the plugin's phase stream, next to its report
 _FAIL_RANK = {"setup": 0, "call": 1, "teardown": 2}
 
@@ -42,6 +43,20 @@ class RunResult:
     finished: bool = False
     output: str = ""
     elapsed_s: float = 0.0
+    workers: int = 0                       # xdist workers the run used (0: serial)
+    notes: list[str] = field(default_factory=list)  # lines the run says (never a silent change)
+    cov_files: list[str] = field(default_factory=list)  # coverage data files it wrote
+
+
+@dataclass(frozen=True)
+class CovSpec:
+    """Record coverage contexts during the run (SR-110): data files next to ``data_base``;
+    nodes in ``skip`` are not measured (their record is fresh), or not run when ``deselect``."""
+
+    data_base: str
+    sources: tuple[str, ...] = ()
+    skip: frozenset[str] = frozenset()
+    deselect: bool = False
 
 
 @dataclass
@@ -57,10 +72,33 @@ def xdist_available() -> bool:
     return importlib.util.find_spec("xdist") is not None
 
 
-def build_command(args: Sequence[str], *, workers: int = 0,
-                  xdist: bool | None = None) -> list[str]:
+def coverage_available() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("coverage") is not None
+
+
+XDIST_MISSING = ("pytest-xdist is not installed: the tests run on one process "
+                 "(verify.workers is {workers})")
+
+
+def effective_workers(workers: int, xdist: bool | None = None) -> tuple[int, str | None]:
+    """``(workers actually used, the line to say when that differs from the setting)``."""
+    if workers not in (1, 2):
+        return 0, None
+    if xdist is None:
+        xdist = xdist_available()
+    if xdist:
+        return workers, None
+    return 0, XDIST_MISSING.format(workers=workers)
+
+
+def build_command(args: Sequence[str], *, workers: int = 0, xdist: bool | None = None,
+                  cov: bool = False) -> list[str]:
     cmd = [sys.executable, "-m", "pytest", "-p", PLUGIN, "-p", "no:cacheprovider", "-q",
            "--continue-on-collection-errors"]
+    if cov:
+        cmd += ["-p", COV_PLUGIN]
     if workers in (1, 2):
         if xdist is None:
             xdist = xdist_available()
@@ -155,8 +193,10 @@ def finished_nodes(phases: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, A
 
 
 def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = None,
-               workers: int = 0) -> RunResult:
-    """Run pytest once in ``root`` and read the plugin's report."""
+               workers: int = 0, cov: CovSpec | None = None) -> RunResult:
+    """Run pytest once in ``root`` and read the plugin's report. With ``cov`` the coverage
+    plugin writes one data file per process (``result.cov_files``)."""
+    import glob
     import time
 
     root = Path(root)
@@ -166,8 +206,22 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
     env = dict(os.environ)
     env["PLUMB_REPORT"] = report_path
     env.setdefault("PYTHONIOENCODING", "utf-8")
-    cmd = build_command(args, workers=workers)
     result = RunResult()
+    used, note = effective_workers(workers)
+    result.workers = used
+    if note:
+        result.notes.append(note)
+    skip_file = None
+    if cov is not None:
+        env["PLUMB_COV_DATA"] = cov.data_base
+        env["PLUMB_COV_SOURCES"] = os.pathsep.join(cov.sources)
+        if cov.deselect:
+            env["PLUMB_COV_DESELECT"] = "1"
+        if cov.skip:
+            skip_file = cov.data_base + ".skip"
+            Path(skip_file).write_text(chr(10).join(sorted(cov.skip)), encoding="utf-8")
+            env["PLUMB_COV_SKIP"] = skip_file
+    cmd = build_command(args, workers=workers, cov=cov is not None)
     start = time.monotonic()
     proc = subprocess.Popen(cmd, cwd=root, env=env, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
@@ -182,6 +236,9 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
             proc.kill()
             out, _ = proc.communicate()
     result.elapsed_s = round(time.monotonic() - start, 3)
+    if cov is not None:
+        result.cov_files = sorted(f for f in glob.glob(glob.escape(cov.data_base) + ".*")
+                                  if not f.endswith((".skip", "-journal")))
     result.output = (out or b"").decode("utf-8", errors="replace")[-4000:]
     stream_path = report_path + STREAM_SUFFIX
     try:
@@ -232,7 +289,8 @@ def closure_inputs(tmap: Any, test_files: Iterable[str]) -> set[str]:
 
 
 def run_selection(core: Any, nodes: Sequence[str], *, full: bool = False,
-                  timeout_s: float | None = None, tmap: Any = None) -> RunOutcome:
+                  timeout_s: float | None = None, tmap: Any = None,
+                  cov: CovSpec | None = None) -> RunOutcome:
     """Run ``nodes`` (or the whole suite when ``full``) and check the inputs did not move."""
     from plumb.verify.testmap import build_map
 
@@ -242,7 +300,8 @@ def run_selection(core: Any, nodes: Sequence[str], *, full: bool = False,
     watched = closure_inputs(tmap, test_files)
     before = input_hashes(root, watched)
     workers = int(getattr(core.config.verify, "workers", 0) or 0)
-    result = run_pytest(root, [] if full else list(nodes), timeout_s=timeout_s, workers=workers)
+    result = run_pytest(root, [] if full else list(nodes), timeout_s=timeout_s,
+                        workers=workers, cov=cov)
     after = input_hashes(root, watched)
     discarded = "inputs changed" if after != before else None
     return RunOutcome(result=result, discarded=discarded, inputs=before)
