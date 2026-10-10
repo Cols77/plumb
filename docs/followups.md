@@ -4866,3 +4866,13 @@ repeat entries of the first round; they are noted as such.
 - [LOW] (SR-110) The record is per environment key (`uv.lock`, interpreter): installing a
   dependency makes every entry foreign, and selection says so and uses the closure until
   `plumb tests map --coverage` records it again (a full run, about 30 minutes for plumb).
+
+## SP8 lane SHOW (2026-10-10)
+
+- `plumb clarify --wait` is not reachable yet: `understand/cli.py` (coordinator) still sends every `clarify` to `capture.cli`. Route `clarify` to `plumb.understand.cmd_clarify` (it forwards to the old helper when `--wait` is absent).
+- `tests/understand/test_contracts.py::test_evalrun_fake_writes_an_eval_run_entry` expects 0 cases (phase C placeholder); filling `evalset/clarify.json` (S6) makes it read 17 cases, by design (READ's `read.json` does the same).
+- `evalrun.run_cases` passes the expected answer inside the job inputs and measures the false-gap rate through a `gap` flag; the clarify schema carries that flag. A run against the real model (Integrate) needs the expectation kept out of the inputs.
+- S5: the replacement of `AMBIGUITY_TERMS` in `capture/clarify.py` waits for the owner's confirmation of the SR-043 narrowing (question 1); only the skill changed.
+- The stop hook does not yet report `gate.problems` (only `plumb validate` does); `stop.py` is not SHOW's.
+- `snapshot.write_snapshot(..., failures=)` carries the three-failures flag; the session-start and stop hooks should pass `queue.consecutive_failures` (the status line also reads it live).
+- ENGINE's real `queue.consecutive_failures` replaces the stand-in in `test_three_failures_flag` on merge; re-run SHOW's set after ENGINE lands (3.5).
