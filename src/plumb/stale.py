@@ -353,9 +353,9 @@ def unresolved(core: Core, session: str, state: TurnState) -> list[Row]:
 
 HOLD_LINE = "plumb: {record}'s link to {what} is stale and unresolved ({link})"
 HOLD_HOW = ("plumb: resolve each before ending the turn: rerun its tests and repin it "
-            "(plumb repin --after-tests <link>), reword the record so it agrees and repin it, or "
-            "bring it to the owner as a card (plumb stale card <link> --topic \"<requirement title>\" "
-            "--issue \"<what changed, in words>\" --options \"a|b|c\"). Held {n} of {max}.")
+            "(plumb repin --after-tests <link>), reword the record so it agrees and repin "
+            "it, or bring it to the owner as a card (plumb stale card <link> --topic "
+            "\"<requirement title>\" --issue \"<what changed, in words>\" --options \"a|b|c\"). Held {n} of {max}.")
 BEFORE_LINE = ("plumb: {n} links were already stale before this turn and are not held: "
                "{links}")
 
