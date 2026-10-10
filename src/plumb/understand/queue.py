@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from plumb.contracts import Job, JobResult
-from plumb.understand import files, jobs, stub, worker
+from plumb.understand import files, jobs, ledger, worker
 
 
 def enqueue(core: Any, job: Job) -> None:
@@ -34,16 +34,42 @@ def enqueue(core: Any, job: Job) -> None:
 
 
 def retry_failed(core: Any, session: str) -> list[str]:
-    return []
+    """Queue again the jobs whose result is an error (once per call; the worker runs a
+    ``needs`` job before its dependent). Returns the ids put back."""
+    if core is None or os.environ.get("PLUMB_JOB"):
+        return []
+    root = Path(core.root)
+    again: list[str] = []
+    for outcome in failures(core, session):
+        if jobs.load(root, session, outcome.job) is None:
+            continue
+        try:
+            jobs.result_path(root, session, outcome.job).unlink()
+        except OSError:
+            continue
+        ledger.forget(root, session, outcome.job)
+        again.append(outcome.job)
+    if again:
+        worker.start_detached(root, session)
+    return again
 
 
-@stub
 def failures(core: Any, session: str) -> list[JobResult]:
-    """The error results whose job has no later ok result, oldest first."""
-    return []
+    """The error results whose job has no ok result, oldest first (the "couldn't check" line)."""
+    if core is None:
+        return []
+    root = Path(core.root)
+    folder = files.results_dir(root, session)
+    found = [r for p in sorted(folder.glob("*.json")) if folder.is_dir()
+             and (r := jobs.result(root, session, p.stem)) is not None and r.status == "error"
+             and jobs.load(root, session, p.stem) is not None]
+    return sorted(found, key=lambda r: (r.started, r.job))
 
 
-@stub
 def consecutive_failures(root: Path, session: str) -> int:
     """The ``consecutive`` count of ``failures.json`` (0 when there is no file)."""
-    return 0
+    data = files.read_json(files.failures_path(Path(root), session))
+    try:
+        return int(data.get("consecutive") or 0) if isinstance(data, dict) else 0
+    except (TypeError, ValueError):
+        return 0

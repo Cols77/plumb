@@ -224,9 +224,24 @@ class _Pass:
                       "a result is there that the worker did not write (no ledger entry); "
                       "it confirms nothing and the job is run again")
 
+    def _count(self, job: Job, result: JobResult) -> None:
+        """``failures.json``: up by one on an error result, back to 0 on an ok one."""
+        path = files.failures_path(self.root, self.session)
+        data = files.read_json(path)
+        data = data if isinstance(data, Mapping) else {}
+        if result.status == "ok":
+            new = {"v": 1, "consecutive": 0, "last": data.get("last")}
+        else:
+            new = {"v": 1, "consecutive": int(data.get("consecutive") or 0) + 1,
+                   "last": {"job": job.id, "kind": job.kind,
+                            "step": result.error.step if result.error else "",
+                            "at": jobs.now()}}
+        files.write_json_atomic(path, new)
+
     def _finish(self, job: Job, result: JobResult) -> None:
         ledger.record(self.root, self.session, job.id)
         jobs.write_result(self.root, self.session, result)
+        self._count(job, result)
         self.ran.append(job.id)
 
     def _error(self, job: Job, step: str, message: str, started: str, t0: float,
