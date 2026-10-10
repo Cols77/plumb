@@ -86,3 +86,90 @@ def test_enqueue_does_not_wait_for_the_worker(repo: Path, monkeypatch: pytest.Mo
         queue.enqueue(core, job)
         best = min(best, time.perf_counter() - start)
     assert best < 0.8 * 0.9
+
+
+def _prompt_payload(repo: Path, text: str) -> str:
+    return json.dumps({"session_id": "s1", "cwd": str(repo), "prompt": text})
+
+
+def test_ex1_prompt_hook_returns_within_budget_without_waiting(
+        repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The hook queues the read job and returns; the worker (blocked here for good) is not
+    waited for. Minimum of several runs against the budget times 0.9."""
+    import io
+    import threading
+
+    from plumb.hosts.claude_code import hookio, prompt
+    from plumb.understand import dispatch, read
+    from understand.fakes import FakeDispatcher, FakeKind, fake_kinds
+
+    blocked = FakeDispatcher({"read": {}}, block=threading.Event())
+    monkeypatch.setattr(dispatch, "configured", lambda core: blocked)
+    fake_kinds(monkeypatch, {"read": FakeKind("read")})
+    started: list[str] = []
+    monkeypatch.setattr(worker, "start_detached",
+                        lambda root, session: started.append(session))
+
+    def on_prompt(ctx, core, entry):
+        job = jobs.new_job("read", "s1", "read.v1", {"message": str(entry["text"])})
+        queue.enqueue(core, job)
+        return job.id
+
+    monkeypatch.setattr(read, "on_prompt", on_prompt)
+    budget = hookio.hook_budget("prompt")(repo)
+    best = 1e9
+    for n in range(4):
+        out = io.StringIO()
+        start = time.perf_counter()
+        assert prompt.main(stdin=io.StringIO(_prompt_payload(repo, f"please change {n}")),
+                           stdout=out, root=repo) == 0
+        best = min(best, (time.perf_counter() - start) * 1000)
+    assert best < 0.9 * budget
+    assert _count(repo) == 4 and started                      # queued, worker asked for
+    assert blocked.jobs == []                                 # and the hook never ran a job
+
+
+def test_one_job_per_turn_one_per_capture_with_fake_kinds(
+        repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """One read job covers every shown record of a turn; one judge job per capture."""
+    import io
+
+    from plumb.capture import capture as capture_module
+    from plumb.hosts.claude_code import prompt
+    from plumb.understand import judge, read
+    from understand.fakes import FakeKind, fake_kinds
+
+    monkeypatch.setattr(worker, "start_detached", lambda root, session: None)
+    shown = [{"id": f"SR-00{n}", "hash": f"sha256:{n}", "text": f"record {n}"}
+             for n in range(1, 8)]
+
+    def build(core, session, **context):
+        return jobs.new_job("read", session, "read.v1",
+                            {"message": context["message"], "shown": shown})
+
+    fake_kinds(monkeypatch, {"read": FakeKind("read", build=build)})
+
+    def on_prompt(ctx, core, entry):
+        from plumb.understand.kinds import KINDS
+
+        job = KINDS["read"].build(core, "s1", message=str(entry["text"]))
+        queue.enqueue(core, job)
+        return job.id
+
+    monkeypatch.setattr(read, "on_prompt", on_prompt)
+
+    def queue_for_capture(core, result, prompt_digest=None):
+        queue.enqueue(core, jobs.new_job("judge", "s1", "judge.v1",
+                                         {"digest": prompt_digest, "result": str(id(result))}))
+
+    monkeypatch.setattr(judge, "queue_for_capture", queue_for_capture)
+    for text in ("first thing", "second thing", "third thing"):
+        assert prompt.main(stdin=io.StringIO(_prompt_payload(repo, text)),
+                           stdout=io.StringIO(), root=repo) == 0
+    reads = [j for j in jobs.queued(repo, "s1") if j.kind == "read"]
+    assert len(reads) == 3 and all(len(j.inputs["shown"]) == 7 for j in reads)
+    core = Core(repo)
+    for digest in ("sha256:aa", "sha256:bb"):
+        capture_module._understand_after(core, {}, object(), digest)
+    assert len([j for j in jobs.queued(repo, "s1") if j.kind == "judge"]) == 2
+    assert len(jobs.queued(repo, "s1")) == 5
