@@ -4866,3 +4866,22 @@ repeat entries of the first round; they are noted as such.
 - [LOW] (SR-110) The record is per environment key (`uv.lock`, interpreter): installing a
   dependency makes every entry foreign, and selection says so and uses the closure until
   `plumb tests map --coverage` records it again (a full run, about 30 minutes for plumb).
+
+## SP8 lane ENGINE (2026-10-10)
+
+- E1 probe of `claude` 2.1.296 (one live call, Haiku, empty working directory): every flag the
+  dispatcher uses exists (`--agent`, `--agents`, `--json-schema`, `--tools`, `--setting-sources`,
+  `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence`, `--model`,
+  `--output-format`). `--output-format json` prints one JSON object: `type: "result"`,
+  `subtype`, `is_error`, `result` (the answer as a JSON string), `structured_output` (the answer
+  as an object, present with `--json-schema`), `usage`, `total_cost_usd`, `modelUsage`. The
+  dispatcher reads `structured_output`, falls back to parsing `result`, and checks the schema
+  itself. `--tools ""` is accepted; `--agents` takes the JSON inline. The child process inherits
+  the parent's environment, so `PLUMB_JOB` is visible to anything it starts; with
+  `--setting-sources ""` no plumb hook is loaded in it at all (the guard is a second line).
+  The login of the owner is used (no `--bare`), which needs the real home directory: the live
+  test (`DISPATCH_LIVE=1`) takes the environment of collection time because the test
+  isolation replaces HOME.
+- [LOW] (SR-104) The marker `dispatch_live` is not registered in `pyproject.toml` (ENGINE does not
+  own it): add `"dispatch_live: calls a real dispatcher; skipped unless DISPATCH_LIVE=1"` to
+  `markers`, or pytest warns about an unknown mark.
