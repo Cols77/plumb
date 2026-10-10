@@ -1,11 +1,79 @@
-"""Dispatchers (ENGINE): ``configured(core)`` returns exactly one. Stub: no model."""
+"""Dispatchers (ENGINE): ``configured(core)`` returns exactly one, never a second route.
+
+``understand.dispatch`` in the config picks it: ``auto`` is ``claude-code`` under Claude Code and
+``hermes`` under Hermes (an error elsewhere), ``openrouter`` only when set. When the one
+dispatcher fails, the job fails with an error; nothing else is tried."""
 
 from __future__ import annotations
 
+import json
+import os
+from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
-from plumb.contracts import Dispatcher, NoModel
+from plumb.contracts import DispatchError, Dispatcher, Job, NoModel
+
+
+class ScriptedDispatcher:
+    """``PLUMB_FAKE_DISPATCH=<file>``: answers each job kind with the file's ``{kind: answer}``
+    (the test harness's way of giving a worker process a fake model). It never reaches a
+    model; its results say ``fake`` as the dispatcher."""
+
+    name = "fake"
+
+    def __init__(self, script: Path) -> None:
+        self.script = Path(script)
+
+    def available(self) -> str | None:
+        return None if self.script.is_file() else "the scripted answers file is missing"
+
+    def run(self, job: Job, *, system: str, user: str, schema: Mapping[str, Any],
+            on_step: Callable[[str], None]) -> Mapping[str, Any]:
+        try:
+            data = json.loads(self.script.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise DispatchError("run", f"the scripted answers cannot be read: {exc}") from exc
+        answer = data.get(job.kind, {}) if isinstance(data, Mapping) else {}
+        if isinstance(answer, Mapping) and "error" in answer and len(answer) == 1:
+            raise DispatchError("run", str(answer["error"]))
+        return dict(answer) if isinstance(answer, Mapping) else {}
+
+
+def host_dispatcher() -> str | None:
+    """``claude-code`` or ``hermes`` from the environment the process runs in, else None."""
+    if os.environ.get("CLAUDE_PROJECT_DIR") or any(
+            name.startswith("CLAUDE_CODE_") for name in os.environ):
+        return "claude-code"
+    if any(name.startswith("HERMES_") for name in os.environ):
+        return "hermes"
+    return None
 
 
 def configured(core: Any) -> Dispatcher:
-    raise NoModel("no model configured")
+    script = os.environ.get("PLUMB_FAKE_DISPATCH")
+    if script:
+        return ScriptedDispatcher(Path(script))
+    from plumb.config import UnderstandConfig
+
+    settings = core.config.understand if core is not None else UnderstandConfig()
+    choice = str(settings.dispatch or "auto").strip().lower()
+    if choice == "auto":
+        choice = host_dispatcher() or ""
+        if not choice:
+            raise NoModel("no model configured: this is neither Claude Code nor Hermes, so "
+                          "set which one to use (understand.dispatch)")
+    if choice == "claude-code":
+        from plumb.understand.dispatch.claude_code import ClaudeCodeDispatcher
+
+        return ClaudeCodeDispatcher(model=settings.model, timeout_s=settings.timeout_s)
+    if choice == "hermes":
+        from plumb.understand.dispatch.hermes import HermesDispatcher
+
+        return HermesDispatcher(model=settings.model, timeout_s=settings.timeout_s)
+    if choice == "openrouter":
+        from plumb.understand.dispatch.openrouter import OpenRouterDispatcher
+
+        return OpenRouterDispatcher.from_core(core)
+    raise NoModel(f"no model configured: {choice!r} is not a dispatcher "
+                  "(claude-code, hermes or openrouter)")

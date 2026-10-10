@@ -463,7 +463,7 @@ def test_c2_stubs_have_final_signatures_and_are_marked() -> None:
     assert _params(queue.failures) == ["core", "session"]
     assert _params(queue.consecutive_failures) == ["root", "session"]
     for func in (worker.run_once, worker.run_loop, queue.failures, queue.consecutive_failures):
-        assert func.__stub__ is True
+        assert getattr(func, "__stub__", False) is False    # ENGINE replaced the stubs
     assert worker.run_once(None, "s1") == [] and worker.run_loop(None, "s1") is None
     assert queue.failures(None, "s1") == []
     assert queue.consecutive_failures(Path("."), "s1") == 0
@@ -644,7 +644,7 @@ def test_standins_step_aside_when_a_name_is_no_longer_a_stub(
     monkeypatch.setattr(worker, "run_once", real)
     install_engine_standins(monkeypatch)
     assert worker.run_once(None, "s1") == ["real"]
-    assert queue.failures.__stub__ is False       # the other names were replaced
+    assert getattr(queue.failures, "__stub__", False) is False   # the real ones stay as they are
 
 
 def test_fake_kinds_installs_a_module_for_a_job_kind(monkeypatch: pytest.MonkeyPatch) -> None:

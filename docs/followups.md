@@ -4866,3 +4866,61 @@ repeat entries of the first round; they are noted as such.
 - [LOW] (SR-110) The record is per environment key (`uv.lock`, interpreter): installing a
   dependency makes every entry foreign, and selection says so and uses the closure until
   `plumb tests map --coverage` records it again (a full run, about 30 minutes for plumb).
+
+## SP8 lane ENGINE (2026-10-10)
+
+- E1 probe of `claude` 2.1.296 (one live call, Haiku, empty working directory): every flag the
+  dispatcher uses exists (`--agent`, `--agents`, `--json-schema`, `--tools`, `--setting-sources`,
+  `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence`, `--model`,
+  `--output-format`). `--output-format json` prints one JSON object: `type: "result"`,
+  `subtype`, `is_error`, `result` (the answer as a JSON string), `structured_output` (the answer
+  as an object, present with `--json-schema`), `usage`, `total_cost_usd`, `modelUsage`. The
+  dispatcher reads `structured_output`, falls back to parsing `result`, and checks the schema
+  itself. `--tools ""` is accepted; `--agents` takes the JSON inline. The child process inherits
+  the parent's environment, so `PLUMB_JOB` is visible to anything it starts; with
+  `--setting-sources ""` no plumb hook is loaded in it at all (the guard is a second line).
+  The login of the owner is used (no `--bare`), which needs the real home directory: the live
+  test (`DISPATCH_LIVE=1`) takes the environment of collection time because the test
+  isolation replaces HOME.
+- [LOW] (SR-104) The marker `dispatch_live` is not registered in `pyproject.toml` (ENGINE does not
+  own it): add `"dispatch_live: calls a real dispatcher; skipped unless DISPATCH_LIVE=1"` to
+  `markers`, or pytest warns about an unknown mark.
+- E7, Hermes (spec question 12.1), verified with `hermes` on this machine: `hermes -z <prompt>`
+  prints only the final text; `--safe-mode` drops the user's config, rules, plugins and MCP
+  servers; `-m` takes a Hermes model name ("haiku" is not one, so it is passed only when it
+  holds a "/"). There is no way to start a one-shot session with no tools: `-t ""` is ignored
+  (the session listed 19 tools) and an unknown toolset is refused ("did not contain any valid
+  toolsets"); the narrowest accepted is `-t memory`, which keeps Hermes' memory tool. So
+  `HermesCliDelegate` runs with that, and the spec's "without tools" waits for Hermes'
+  delegation interface behind `HermesDelegate`. The prompt travels on the command line (about
+  28 000 characters at most on Windows; a longer one fails at step "start").
+- E7, OpenRouter: `POST {base}/api/v1/chat/completions` with the schema as `response_format`
+  (`json_schema`, strict), no tools; model `understand.model` when it holds a "/", else
+  `anthropic/claude-haiku-4.5` (not checked against OpenRouter's list; the live test needs
+  `DISPATCH_LIVE=1` and `OPENROUTER_API_KEY`). The credential is read through `jev.resolve_key`
+  (environment, then the user's env file); the legacy raw-key store is TypeSafe's and is skipped.
+- [MEDIUM] (SR-104) `engine_standins` (in `tests/understand/fakes.py`, the coordinator's): once
+  the real `worker.run_once` exists the fixture steps aside but does not hand its
+  `FakeDispatcher` to the real worker, so five tests of `test_contracts.py` that ran the
+  stand-in now run the real worker with no model: `test_standins_run_a_queued_job_once_...`,
+  `test_standins_failed_needs_...`, `test_standins_failure_counter_resets_...`,
+  `test_standins_step_aside_when_a_name_is_no_longer_a_stub` (it reads `queue.failures.__stub__`,
+  gone with the marker) and `test_c2_stubs_have_final_signatures_and_are_marked` (asserts the
+  markers ENGINE was told to remove). Fix, on `main`: have the fixture also set
+  `dispatch.configured` to its `FakeDispatcher` once `worker.run_once` is real, and update those
+  two assertions.
+- [MEDIUM] (SR-104) `PLUMB_FAKE_DISPATCH` (the harness's way to give a worker process a fake
+  model) is honoured by `dispatch.configured` in any process, so a process whose environment the
+  agent controls could make a worker answer from a file. The worker token still guards the
+  approvals, but a forged "supported" answer would apply. Today the file is the harness's; a guard
+  (for example only under a test marker the harness sets and a hook never has) is the owner's call.
+- [LOW] (SR-104) `start_detached` starts nothing when `PYTEST_CURRENT_TEST` is set and
+  `PLUMB_FAKE_DISPATCH` is not, so a test that queues a job never leaves a stray process.
+- [LOW] (SR-104) A kind whose `recompute` returns None ends its job as an ok result with no
+  answer and no model call, plus a `job-note` ("nothing left to check"): the file's inputs are
+  never used instead (that would let a job file stand in for the logs, SR-104 EX-7).
+- [LOW] (SR-104) A result file with no ledger entry counts as no result: the job is run again
+  and the result overwritten, and one `job-note` says so. The lock takeover is not atomic between
+  two processes that both find the same stale lock.
+- [LOW] (SR-104) `understand.model` defaults to "haiku", a Claude alias; the Hermes and OpenRouter
+  dispatchers ignore it unless it names their own model.
