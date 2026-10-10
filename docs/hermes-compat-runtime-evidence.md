@@ -19,6 +19,12 @@ The source checkout had a pre-existing unrelated modified file. It was not read 
 
 The sanitized fixture `tests/hosts/hermes_probe/hook_payloads.json` records representative shapes with credentials and user content replaced. `ABSENT_FROM_RUNTIME_CALL_SITE` means the field is not passed at the inspected call site; it is not a claim that no other subsystem has that value.
 
+`tests/hosts/hermes_probe/hook_contract.py` is the executable consumer for this
+fixture. It AST-checks each pinned producer's explicit kwargs, replays only the
+fixture kwargs, and exercises the project-bound interleave plus a parentless-cron
+counterexample. This remains source-derived offline evidence, not a captured
+callback, authentication proof, or desktop/cron certification.
+
 | Hook | Producer and observed kwargs | Frequency / result semantics | Provenance and workspace finding |
 |---|---|---|---|
 | `on_session_start` | `agent/conversation_loop.py:1107-1117`: `session_id`, `model`, `platform` | Once when a new session prompt is built; return is ignored | No `parent_session_id`, sender, session key, cwd, or workspace in this call. A plugin cannot exclude a child at this point from this payload alone. |
@@ -32,16 +38,16 @@ Plugin registration is real and general: `PluginContext.register_hook` stores ca
 
 `PluginContext.inject_message` has a supported interface, but its boundary is explicit: CLI injection queues/interupts the local CLI; gateway injection requires an existing `session_key`, `plugins.entries.<plugin_id>.allow_gateway_injection: true`, and a live gateway. A true return means asynchronous queue acceptance, not platform delivery completion.
 
-## Original requirement aliases
+## Original requirement IDs and investigation-gate aliases
 
-The original plan's B-numbers are preserved here: B1 is trusted origin and
-session/project routing; B2 is native skill lifecycle; B3 is the approval threat
-boundary; B4 is latency ordering; B5 is direct-tool defense; B6 is native UX,
-transport and composition. Earlier investigation notes used a different
-investigation-gate numbering; those aliases are not requirements and must not
-be read as additional acceptance gates.
+The original plan's B-numbers remain authoritative: B1 is trusted origin, B2 is
+session/project routing, B3 is native skills, B4 is optional read-only MCP, B5 is
+direct-tool defense, and B6 is native UX, transport and composition. The separate
+investigation aliases are: Gate B1 = provenance and routing, Gate B2 = native
+skills, Gate B3 = threat model, and Gate B4 = latency. These aliases describe
+investigation cards; they do not renumber or replace the original requirements.
 
-## B1 — trusted origin and session/project routing
+## Gate B1 — trusted origin and session/project routing (original B1/B2)
 
 Result: not certified; remain on the labelled CLI/project-local fallback for affected surfaces.
 
@@ -51,7 +57,7 @@ Project/workspace data exists in some host paths (for example ACP binds a sessio
 
 Offline evidence is limited to source inspection and registration. No live callback was run because that would require real profile enablement and potentially model/provider execution.
 
-## B2 — native skill lifecycle
+## Gate B2 — native skill lifecycle (original B3)
 
 Result: implemented and offline-verified for the pinned runtime; live profile activation remains unverified.
 
@@ -71,7 +77,7 @@ claimed. The installer preserves foreign files, supports idempotent updates,
 dry-run and owned-only uninstall. Actual PluginManager/skill_view resolution is
 covered in a temporary-home subprocess with no network or model call.
 
-## B3 — approval threat boundary
+## Gate B3 — approval threat boundary (original B5)
 
 Result: no adapter-level security contract change is justified.
 
@@ -79,7 +85,7 @@ The existing Plumb owner-terminal and marker checks remain defense in depth. The
 
 The official MCP trust guidance is also placement/configuration based: local stdio commands and remote servers execute with the configured trust and permissions. The supported product decision still belongs to the owner: either keep the current explicit owner-terminal boundary, or separately authorize an out-of-band approval mechanism. No such contract amendment was inferred here.
 
-## B4 — latency cause
+## Gate B4 — latency cause (separate investigation; not an original B requirement)
 
 Result: reproduced as a real baseline limitation; no production fix attempted.
 
@@ -93,7 +99,7 @@ The source explains the failure path. `hookio.py` has a 1.9 s hard watchdog. `st
 
 Required separate fix card: add a deterministic RED test that forces the pre-keep path past the watchdog and asserts the read-back survives; move or precompute the minimum record read-back before the watchdog-sensitive work without changing owner approval semantics; run focused latency plus host/conformance suites under normal and contention modes; independently review timing and output ordering. Do not broaden this investigation into a shared-budget refactor.
 
-## B5 — direct tools and PTYs
+## Original B5 — direct tools and PTYs
 
 Result: capability boundary remains explicit and unproven as a security guarantee.
 
@@ -101,7 +107,7 @@ The installed runtime has separate edit-approval handling for `write_file` and `
 
 A future offline matrix should use temporary files and symlinks for both patch modes and `write_file`, then separately document what the runtime approval layer actually blocks. Any claim of adversarial containment requires an owner-approved core/security contract.
 
-## B6 — native UX, transport, and composition
+## Original B6 — native UX, transport, and composition
 
 Result: unsupported for this adapter release.
 
@@ -122,9 +128,9 @@ Official desktop plugins are a separate JavaScript/ESM SDK loaded from `$HERMES_
 | A7 support boundary | Accepted in docs/status | Keep fallback labels |
 | A8 existing behavior | Accepted focused/conformance coverage | Full regression remains incomplete |
 | B1 origin and routing | Not certified; payload gap confirmed | Core/session metadata or fallback; no global enablement |
-| B2 native skills | API identified; lifecycle not implemented | New adapter skill card + review |
-| B3 approval threat model | Boundary characterized; no contract decision | Owner decision before security changes |
-| B4 latency | Failure reproduced; cause localized | Separate RED/GREEN timing card |
+| B2 session/project routing | Not certified; no callback workspace identity | Keep project-local fallback; no global enablement |
+| B3 native skills | Implemented and offline-verified for pinned runtime; live activation unverified | Separate skill review; no flat discovery claim |
+| B4 optional read-only MCP | Deferred/not investigated in this adapter slice; no setup performed | Preserve as a separate consent and registration gate |
 | B5 direct-tool defense | Observation surface exists; containment unproven | Offline matrix; no regex security claim |
 | B6 native UX/transport | Separate desktop SDK exists; bridge does not provide it | Separate desktop/transport design card |
 

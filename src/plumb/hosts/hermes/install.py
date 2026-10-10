@@ -67,7 +67,16 @@ def _skill_text(name: str, argv: list[str]) -> str:
 def _skill_digests(plugin: Path) -> dict[str, str]:
     try:
         match = _SKILL_DIGESTS.search(plugin.read_text(encoding="utf-8"))
-        return {} if match is None else dict(ast.literal_eval(match.group(1)))
+        if match is None or not _ours(plugin):
+            return {}
+        values = ast.literal_eval(match.group(1))
+        if not isinstance(values, dict):
+            return {}
+        return {
+            name: digest for name, digest in values.items()
+            if name in SKILLS and isinstance(name, str)
+            and isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest)
+        }
     except (OSError, UnicodeDecodeError, SyntaxError, ValueError, TypeError):
         return {}
 

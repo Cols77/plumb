@@ -10,7 +10,7 @@ The runtime facts that constrain every follow-up are captured in `docs/hermes-co
 
 ## Ordered execution graph
 
-### Card B2: namespaced native skill bridge
+### Investigation Gate B2 (original requirement B3): namespaced native skill bridge
 
 Type: implementation, then separate read-only review. This is the first executable follow-up because the runtime API is available without a core contract change.
 
@@ -31,6 +31,11 @@ Work completed in this slice:
 3. Offline tests cover install, idempotent launcher update, missing/foreign preservation, dry-run, owned-only uninstall, digest-guarded registration, byte parity, and a temporary-home pinned PluginManager/`skill_view` subprocess.
 4. Keep all validation offline and synthetic; Plugin Doctor remains registration-only evidence.
 
+The committed `tests/hosts/hermes_probe/hook_contract.py` consumer validates the
+pinned producer kwargs and absent fields, replays only those kwargs, and records
+two-project interleave/project binding plus a parentless-cron non-authentication
+counterexample. It does not claim live routing or callback capture.
+
 Acceptance commands:
 
 ```text
@@ -40,7 +45,7 @@ C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/hosts -o addopts= -q --
 hermes plugins doctor src/plumb/hosts/hermes/templates --ci
 ```
 
-On cmd.exe, use `set PYTHONPATH=...` instead; the commands above are Git Bash syntax.
+These commands use Git Bash syntax on Windows; use the equivalent environment assignment in another shell.
 
 The worker must print `plumb.__file__` before tests, record exact counts, and commit only the allowlisted paths. The separate reviewer must verify byte parity and the no-global-skill claim.
 
@@ -66,7 +71,7 @@ RED/GREEN work:
 Acceptance commands:
 
 ```text
-set PYTHONPATH=C:/coding/plumb-wt/hermes-compat/src
+export PYTHONPATH=C:/coding/plumb-wt/hermes-compat/src
 C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/host/test_latency.py -o addopts= -q --tb=short
 C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/hosts tests/host -o addopts= -q --tb=short
 ```
