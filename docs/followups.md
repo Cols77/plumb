@@ -4866,3 +4866,75 @@ repeat entries of the first round; they are noted as such.
 - [LOW] (SR-110) The record is per environment key (`uv.lock`, interpreter): installing a
   dependency makes every entry foreign, and selection says so and uses the closure until
   `plumb tests map --coverage` records it again (a full run, about 30 minutes for plumb).
+
+## SP8 lane JUDGE (2026-10-10)
+
+What is done: J1 to J8 and J9a, each with its tests, committed per task on `sp8/judge`. What is not:
+J9b (retiring `capture/autoapprove.py`, `triage.claim()`, the triage listing) waits for the
+owner's confirmation of SR-041's supersession (plan section 15, question 1); the three files are
+untouched and `tests/capture/test_triage.py`, `test_auto_approve.py` are green as they were.
+
+- [HIGH] (J5, J6) `confirm.entry_problem` calls `recheck.problem(entry, None)`: the re-check of a
+  settled approval has no log context. `recheck_settled.problem` therefore reads the log of the
+  repository the process runs in (`ambient_core`, from the working directory, cached while the
+  events do not change) and refuses an entry it cannot find there. This holds in the hooks and
+  the CLI, which run in the repository; a process started elsewhere sees no settled record as
+  confirmed (the safe direction). The right fix is one keyword: `confirm.checked_entries(...,
+  core=None)` passing the Core down to `entry_problem` and so to `recheck.problem` (`confirm.py`
+  is READ's/the coordinator's, not this lane's). Until then `settle.revalidate(core)` (run at
+  every turn's end, in `summary.stop_parts`) withdraws a settling whose premise or footing no
+  longer stands by writing a `revocation` `by: settled` (accepted on its shape alone: it can only
+  return a record to proposed).
+- [HIGH] (J7) STALE's direct card lines are not in this lane's base: `stale.py` and its
+  `stale_card_lines(ctx)` call in `stop.py` (the line `stale_text = [*stale_notes,
+  *stale_card_lines(ctx)]`) arrive with STALE's merge. J7 asks that commit to drop the card lines
+  and keep `stale_notes`; the summary already renders every `stale_link` card of
+  `cardstore.load` (proved by `tests/understand/test_summary.py::
+  test_stale_link_card_rendered_by_the_summary_exactly_once`). Whoever merges STALE after this
+  lane must make that one-line change, or each stale link shows twice.
+- [HIGH] (J8) Nothing starts the backlog pass by itself: `backlog.start(core, session)` queues it
+  (one judge job per intent), `backlog.resume` continues it (called at the end of each turn once
+  started), and `backlog.run(command, argv)` is a ready entry point. It needs a route (the
+  plan's `plumb understand backlog`, in ENGINE's `cmd_worker`) or the owner's say-so to start;
+  starting it automatically would queue a model call per intent on any repository, and would
+  fill the "couldn't check" line when no model is configured.
+- [MEDIUM] (J9a) `evalrun.run_cases` compares an answer with `expect` key by key; a judge answer
+  is `{"verdicts": [...]}` with the model's own confidence and wording, so the comparison needs
+  `judge.matches(answer, expect)` (verdict per record; for `beyond`, the case's
+  `beyond_mentions` words must appear in what it says goes beyond). `judge.evaluate_case(
+  dispatcher, case)` runs and compares one case. Integrate (12.3) should call it for the judge
+  cases (with `--fake` the comparison passes trivially, as for the others).
+- [MEDIUM] (phase C tests) Four stub-state tests of the coordinator's assert what the stubs did and
+  fail now that the code is real: `tests/understand/test_contracts.py::
+  test_recheck_dispatches_by_value_and_refuses_hand_written_entries`,
+  `::test_confirm_entry_problem_calls_the_recheck_for_the_new_values` (a bare hand-written
+  `settled`/`undone` entry is refused for what it lacks, not with "not available in this build"),
+  `::test_stub_commands_print_not_available_and_exit_2` (`settle` and `undo` exist) and
+  `::test_evalrun_fake_writes_an_eval_run_entry` (the judge cases are 6, READ's are 3: "0 cases").
+  They were not edited here; they are the coordinator's to retire or rewrite.
+- [MEDIUM] (J5) A settled approval's premise check compares the digest of the premise now with
+  the digest it was settled on, so any change to the owner's words a record rests on (the
+  record's prompt, its parent intent's prompt or stored question) withdraws the settling at the
+  next turn's end; the text of the record itself moves its pin (unconfirmed edit) at once.
+- [MEDIUM] (J4, J5) `trial.threshold` starts from `understand.reader_threshold_start` (0.9) for
+  every kind until a calibration from logged scores passes; the judge's confidences are not
+  probabilities, so 0.9 is a starting point to be replaced by the first calibration, not a
+  measured value. Calibration needs 20 of the owner's own decisions with a judged version and 5
+  'no' examples (`calibration.min_items`, `min_negatives`); generated 'no' examples need a model
+  and are left out of a calibration from logged scores, so real 'no' (rejections, undone
+  settlings) are the only negatives it has.
+- [MEDIUM] (J7) `summary.stop_parts` reruns the calibration only when more than 0.9 s of the
+  hook's budget is left (`CALIBRATE_S`); on a repository whose stop hook is always near its
+  budget the rerun waits for a quieter turn. Measured here: the settled line, the cards and the
+  upkeep for 24 settled records take well under the 1 400 ms budget; the calibration of a
+  repository of plumb's size was not timed.
+- [LOW] (J7) The "told once" memory of the settled line and of the notice that settling switched
+  itself on is `.plumb/session/<session>/told.json` (per session, uncommitted): a new session on
+  the same repository says the notice once more. The offer to settle intents is remembered in the
+  committed log (a `settle-config` entry with `offered: true`), so it is made once per repository.
+- [LOW] (J8) A record whose premise is only a fragment of the owner's words is judged on the
+  fragment (marked `partial`), but its verdict is not acted on: its card says the original words
+  are not on file and offers its read-back, whatever the verdict was.
+- [LOW] (J1) The judge's `related` records are those it links to, those linking to it and the
+  same kind in the same feature, confirmed or settled only, at most 12, each clipped to 600
+  characters; a larger neighbourhood is not shown to the model.

@@ -100,7 +100,9 @@ def from_log(core: Any, skip: set[str]) -> list[Candidate]:
     if not wanted:
         return []
     statuses = core.status(wanted)
-    rejected = _rejected(core)
+    from plumb.understand import recheck_settled
+
+    rejected = _rejected(core) | set(recheck_settled.undone_records(core))   # a settling undone
     approved, escalated = approved_before(core), escalated_ids(core)
     known = premise.committed(core)
     out: list[Candidate] = []
@@ -194,7 +196,9 @@ def cards_for(core: Any, session: str, waiting: Sequence[settle.Waiting]) -> lis
     now = [Candidate(w.item.record, w.item.score, w.item.premise, w.reason) for w in waiting
            if w.item.record.id not in held]
     seen = {c.record.id for c in now}
-    pool = [*now, *from_log(core, held | seen)]
+    from plumb.understand import backlog
+
+    pool = [*now, *from_log(core, held | seen | backlog.holding(core, session))]
     out = [individual_card(c) for c in pool if c.reason]
     for kind in ("intent", "requirement"):
         group = [c for c in pool if not c.reason and c.record.kind == kind]

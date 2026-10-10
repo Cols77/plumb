@@ -199,6 +199,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     new_cards: list[CardState] = []
     notes: list[str] = []
     supported: list[settle.Supported] = []
+    fragments: list[Any] = []
+    backlog_pass = job.inputs.get("pass") == backlog.PASS
     for raw in answer.get("verdicts") or ():
         if not isinstance(raw, Mapping) or str(raw.get("id")) not in asked:
             continue
@@ -219,7 +221,12 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         if record is None or record.hash != item["hash"]:
             notes.append(f"{item['id']} changed while it was judged; it is judged again")
             continue
-        if verdict == "beyond":
+        given = item.get("premise") or {}
+        partial = bool(given.get("messages")) and all(
+            m.get("partial") for m in given["messages"])
+        if backlog_pass and partial:
+            fragments.append(record)        # the owner's words are not on file: one card says so
+        elif verdict == "beyond":
             new_cards.append(cards.beyond_card(index, record, beyond, item["premise"]))
         elif verdict == "contradicts":
             new_cards.append(cards.contradicts_card(index, record, contradicts,
@@ -234,11 +241,11 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     entries.extend(routed.entries)
     new_cards.extend(routed.cards)
     notes.extend(routed.notes)
-    if job.inputs.get("pass") == "backlog":
+    if backlog_pass:
         done = backlog.after_job(core, job, supported=supported, waiting=routed.waiting,
                                  verdicts=[e["payload"] for e in entries
                                            if e["kind"] == "verdict"],
-                                 flagged=new_cards)
+                                 fragments=fragments, flagged=new_cards)
         new_cards.extend(done.cards)
         notes.extend(done.notes)
     else:

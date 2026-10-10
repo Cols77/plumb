@@ -231,12 +231,16 @@ INFLIGHT_LINE = '  {branch}: "{summary}" ({records})'
 # worker, the gate's two choices and the reply that names the settle switch and the buttons.
 CARD_CLARIFY = 'Before I build this, one question about "{topic}": {issue}'
 CARD_TRIAL = 'A trial run on "{topic}": {issue}'
-CARD_BACKLOG = 'An older record to look at again, "{topic}": {issue}'
+CARD_BACKLOG = 'Older records to look at again, "{topic}": {issue}'
 CARD_BEYOND = 'This goes beyond your words, "{topic}": {issue}'
 CARD_CONTRADICTS = 'This seems to contradict what you said, "{topic}": {issue}'
 CARD_COULDNT_CHECK = 'I could not check "{topic}": {issue}'
 CARD_STALE_LINK = 'Something you confirmed may have changed, "{topic}": {issue}'
 CARD_EVIDENCE = "  Evidence: {evidence}"
+CARD_ITEM = "  - {text}"
+CARD_MORE = "and {n} more"
+CARD_SETTLE_OFFER = 'Settling "{topic}": {issue}'
+CARD_GENERIC = '"{topic}": {issue}'
 CARD_RESOLUTION = "  {n}. {text}"
 SETTLED_LINE = "Settled from your words: {titles}"
 SETTLED_GLANCE = "settled from your words"
@@ -281,6 +285,9 @@ CONTRADICTS_KEEP_NEW = "Keep the new wording"
 CONTRADICTS_COMBINE = "Combine them (say how)"
 BACKLOG_FEATURE = "these {n} about {topic} would be settled; right?"
 BACKLOG_FEATURE_TOPIC = "{topic}"
+BACKLOG_STARTED = ("Judging the backlog: {records} records are queued in {jobs} groups; the status "
+                   "line shows how far it is.")
+BACKLOG_NOTHING = "Nothing in the backlog is left to judge."
 BACKLOG_YES = "Yes, all of them"
 BACKLOG_EXCEPT = "Yes, except the ones I name"
 BACKLOG_NO = "No, none of them"
