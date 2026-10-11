@@ -79,8 +79,9 @@ def test_hooks_within_in_process_budget(busy_repo: Path, hook_input) -> None:
     timings["post-edit"] = _time_ms(lambda: run(post_edit, edit))
     stop_input = hook_input("Stop", stop_hook_active=True)
     timings["stop"] = _time_ms(lambda: run(stop, stop_input, verify=verify, unjudged=None))
-    assert "plumb: touched SR-003" in json.loads(run(stop, stop_input, verify=verify,
-                                                     unjudged=None))["systemMessage"]
+    # cards only (SR-012): the stale card the hold filed for the edited requirement's link
+    assert '"Requirement 3 about links"' in json.loads(run(stop, stop_input, verify=verify,
+                                                            unjudged=None))["systemMessage"]
     over = {k: round(v) for k, v in timings.items() if v > BUDGET_MS[k]}
     assert not over, f"over budget (ms): {over}; all: {timings}"
     errors = root / ".plumb" / "session" / "errors.log"
@@ -171,5 +172,5 @@ def _contended_turn(busy_repo: Path, hook_input, call) -> None:
         "PostToolUse", tool_name="Edit", tool_input={"file_path": str(record)}))
     raw, wall = call("hook", "stop", payload=hook_input("Stop", stop_hook_active=True))
     message = json.loads(raw)["systemMessage"]
-    assert "  statement two on stale links" in message.splitlines()  # SR-002's card
+    assert "statement two on stale links" in message  # SR-002, drawn in its card
     assert wall < 6.0, f"stop hook took {wall:.1f} s under contention"

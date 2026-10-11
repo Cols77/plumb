@@ -6,8 +6,15 @@
 2. one settled line, "Settled from your words: <title> (Undo); <title> (Undo)", with the notices
    that are said once (settling switched itself on for requirements);
 3. the cards: clarify, trial batch, backlog feature, goes beyond your words, contradicts,
-   couldn't check, then the others (a record to look at, the offer to settle intents, a stale
-   link), each as ``cards.render`` writes it.
+   couldn't check, then the kinds the stop hook builds (a regression, a drift, a merge
+   conflict, an early conflict, a decision that matters, the records the turn proposed, one
+   card per feature), then the others (a record to look at, the offer to settle intents, a
+   stale link). Each is drawn in full (``fullcard``, SR-116): the record as it now reads, the
+   change with its evidence (a long diff folded with its size, never cut), the owner's words,
+   each option with what it does and leaves undone, and why the first. A stale card the agent
+   left incomplete is not offered (SR-116 EX-3) and stays open; one line counts those.
+   Nothing here resolves, expires or hides a card (``_repeats_at_turn_end``: slice 4's Leave
+   open is the hook point).
 
 plumb builds the facts; the agent words the suggested resolutions for the owner from them. The
 turn's upkeep (``settle.refresh``) runs first when the hook's budget allows; the settled line is
@@ -167,9 +174,21 @@ def _meter(core: Any, session: str, open_cards: list[CardState], stamp: int) -> 
     return [c for c in stamped if _offered(c, stamp)]
 
 
-def stop_parts(ctx: Any, core: Any, turn: Any) -> StopParts:
+def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (),
+               fresh: Sequence[CardState] = (), changes: Mapping[str, Any] | None = None,
+               passing: Sequence[str] = (), shown: dict[str, str] | None = None) -> StopParts:
     """The three parts of the stop hook's summary (see the module docstring). Never raises
-    for a part that cannot be made: that part is left out."""
+    for a part that cannot be made: that part is left out.
+
+    Slice 3 (sp7-realign-sp8 C1, C7, C8): ``extra`` are the cards the stop hook builds from
+    this turn's facts (a regression, a decision that matters, the records the turn proposed,
+    one card per feature); they are kept in the session's ``turn_cards.json`` and drawn at
+    every turn end until they are moot (``_moot``). ``fresh`` are drawn this turn only
+    because the stop hook rebuilds them each turn while they hold (a merge conflict, an early
+    conflict). ``changes`` maps a card id to its change with evidence; ``passing`` are the
+    test nodes that pass now (a regression card of one is moot). Every card is drawn in full
+    (``fullcard``, SR-116); ``shown`` is filled with ``{record id: version shown}`` of every
+    record a drawn card showed (the stated set's ``shown``)."""
     session = str(getattr(ctx, "session_id", "") or files.CLI_SESSION)
     turn = turn if isinstance(turn, Mapping) else {}
     started = float(turn.get("turn_start") or 0) or time.time()
@@ -208,13 +227,114 @@ def stop_parts(ctx: Any, core: Any, turn: Any) -> StopParts:
     told.save()
     rendered: tuple[str, ...] = ()
     try:
-        rendered = tuple(_cards(core, session, refreshed, int(started), roomy))
+        rendered = tuple(_cards(core, session, refreshed, int(started), deadline,
+                                extra=extra, fresh=fresh, changes=changes or {},
+                                passing=set(passing), shown=shown))
     except Exception:  # noqa: BLE001 - a card that cannot be made is left out, not fatal
         rendered = ()
     return StopParts(confirmations=confirmations, settled=tuple(settled), cards=rendered)
 
 
-def _cards(core: Any, session: str, refreshed: Any, stamp: int, roomy: bool) -> list[str]:
+# --------------------------------------------------------------------------- the cards
+
+TURN_CARDS = "turn_cards.json"   # the cards the stop hook built, kept while they hold
+WAITING = "cards_waiting.json"   # what the next prompt tells the agent (SR-116 EX-4)
+DRAW_MIN_S = 0.08                # a card's full content needs about this much of the budget
+
+
+def _held(core: Any, session: str) -> list[tuple[CardState, Any]]:
+    raw = files.read_json(files.session_dir(core.root, session) / TURN_CARDS)
+    out = []
+    for item in raw if isinstance(raw, list) else ():
+        if isinstance(item, Mapping) and isinstance(item.get("card"), Mapping):
+            out.append((cardstore.card_from_json(item["card"]), item.get("change")))
+    return out
+
+
+def _keep(core: Any, session: str, held: Sequence[tuple[CardState, Any]]) -> None:
+    files.write_json_atomic(files.session_dir(core.root, session) / TURN_CARDS, [
+        {"card": cardstore.card_to_json(c), "change": change} for c, change in held])
+
+
+def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
+          passing: set[str]) -> CardState | None:
+    """The card as it still holds, or None when its question no longer stands: a proposed
+    record confirmed or settled since leaves its feature card (SR-012 EX-1: a settled record
+    shows only in the settled line), a decision confirmed since needs no card, a regression
+    whose test passes again is over. Nothing the owner has to answer is dropped here."""
+    index = core.index()
+
+    def done(record_id: str | None) -> bool:
+        if not record_id or record_id not in index:
+            return True
+        state = statuses.get(record_id)
+        return state is not None and (state.confirmation == "confirmed" or bool(state.settled)
+                                      or state.superseded_by is not None)
+
+    if card.kind == "proposed":
+        left = [q.record for q in card.questions if not done(q.record)]
+        if not left:
+            return None
+        if len(left) == len(card.questions):
+            return card
+        rebuilt = card_text.proposed_cards(index, [str(i) for i in left], turn=card.turn)
+        return rebuilt[0] if rebuilt else None
+    if card.kind in ("decision", "early_conflict"):
+        return None if all(done(q.record) for q in card.questions) else card
+    if card.kind == "regression":
+        node = card.evidence.split(" ", 1)[0]
+        return None if node in passing or any(
+            q.text in passing for q in card.questions) else card
+    return card
+
+
+def _repeats_at_turn_end(card: CardState) -> bool:
+    """Whether an open card is drawn at this turn end. Every open card is (DEC-034: until the
+    owner presses Leave open, the card shows at the end of every turn).
+
+    TODO(slice 4, DEC-034): after the owner presses Leave open (status ``left_open``, written
+    by ``plumb mod press``), the card stops repeating here until its record changes, and stays
+    listed under what awaits the owner in the band and the pane. That press is the only thing
+    that may make this return False; nothing in slice 3 resolves, expires or hides a card."""
+    return card.status == "open"
+
+
+def _turn_cards(core: Any, session: str, extra: Sequence[CardState], passing: set[str],
+                changes: Mapping[str, Any], open_records: set[str]) -> list[tuple[CardState,
+                                                                               Any]]:
+    """The cards the stop hook built, this turn's and the earlier turns' that still hold;
+    written back so they are drawn again at the next turn end."""
+    held = {c.id: (c, change) for c, change in _held(core, session)}
+    for card in extra:
+        held[card.id] = (card, changes.get(card.id) or (held.get(card.id) or (None, None))[1])
+    wanted = sorted({q.record for c, _ in held.values() for q in c.questions if q.record})
+    statuses = core.status(wanted) if wanted else {}
+    out: list[tuple[CardState, Any]] = []
+    for card, change in held.values():
+        still = _moot(core, card, statuses, passing)
+        if still is not None and still.kind == "proposed":
+            # a record another open card asks about is asked there, not twice
+            keep = [q.record for q in still.questions if q.record not in open_records]
+            if not keep:
+                continue
+            if len(keep) != len(still.questions):
+                rebuilt = card_text.proposed_cards(core.index(), [str(i) for i in keep],
+                                                   turn=still.turn)
+                still = rebuilt[0] if rebuilt else None
+        if still is not None:
+            out.append((still, change))
+    if out or held:
+        _keep(core, session, out)
+    return out
+
+
+def _cards(core: Any, session: str, refreshed: Any, stamp: int, deadline: Any, *,
+           extra: Sequence[CardState] = (), fresh: Sequence[CardState] = (),
+           changes: Mapping[str, Any] | None = None, passing: set[str] | None = None,
+           shown: dict[str, str] | None = None) -> list[str]:
+    from plumb import stale
+    from plumb.understand import fullcard
+
     new: list[CardState] = []
     if refreshed is not None:
         new.extend(refreshed.cards)
@@ -225,8 +345,72 @@ def _cards(core: Any, session: str, refreshed: Any, stamp: int, roomy: bool) -> 
         add = [c for c in new if c.id not in have]
         if add:
             cardstore.save(core.root, session, [*own, *add])
-    open_cards = cardstore.load(core.root, session)
+    open_cards = [c for c in cardstore.load(core.root, session) if _repeats_at_turn_end(c)]
     open_cards = _meter(core, session, open_cards, stamp)
     open_cards.extend(_failure_cards(core, session))
-    shown: Sequence[CardState] = sorted(open_cards, key=card_text.kind_rank)
-    return [card_text.render(c) for c in shown]
+    asked = {q.record for c in open_cards for q in c.questions if q.record}
+    built = _turn_cards(core, session, extra, passing or set(), changes or {}, asked)
+    change_of = {c.id: change for c, change in built}
+    seen = {c.id for c in open_cards}
+    every = [*open_cards, *(c for c, _ in built if c.id not in seen),
+             *(c for c in fresh if c.id not in seen)]
+    entries = {f"stale:{e.get('link', '')}": e for e in stale.read_cards(core.root, session)
+               if e.get("status", "open") == "open"}
+    out: list[str] = []
+    drawn: list[str] = []
+    incomplete = 0
+    late: list[str] = []
+    for card in sorted(every, key=card_text.kind_rank):
+        entry = entries.get(card.id) if card.kind == "stale_link" else None
+        if entry is not None and not stale.card_complete(entry):
+            incomplete += 1              # SR-116 EX-3: not offered until the agent fills it
+            continue
+        if entry is not None and deadline is not None and \
+                deadline.remaining_s() < DRAW_MIN_S:
+            # the diff of a stale link reads git: past the budget the card is named, never
+            # cut silently, and drawn in full at the next turn end (the others read records)
+            late.append(card.topic)
+            continue
+        if entry is not None:
+            item = fullcard.stale_content(core, entry, session=session)
+        else:
+            item = fullcard.content(core, card, session=session,
+                                    change=change_of.get(card.id) or (changes or {}).get(
+                                        card.id))
+        out.append(fullcard.render(item))
+        drawn.append(card.topic)
+        if shown is not None:
+            for question in card.questions:
+                if question.record:
+                    shown.setdefault(question.record, question.hash)
+    if late:
+        out.append(owner_text.FULL_NOT_DRAWN.format(
+            n=len(late), topics="; ".join(f'"{t}"' for t in late)))
+    if incomplete:
+        out.append(owner_text.FULL_INCOMPLETE.format(n=incomplete))
+    _waiting(core, session, drawn)
+    return out
+
+
+def _waiting(core: Any, session: str, topics: Sequence[str]) -> None:
+    """What the next prompt tells the agent (SR-116 EX-4): how many cards the owner was shown
+    and their topics, so the reply names them in one line and never restates them."""
+    path = files.session_dir(core.root, session) / WAITING
+    if not topics:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return
+    files.write_json_atomic(path, {"n": len(topics), "topics": list(topics)})
+
+
+def waiting_line(root: Any, session: str) -> str | None:
+    """The agent's one line about the cards waiting for the owner (SR-116 EX-4), or None."""
+    raw = files.read_json(files.session_dir(root, session) / WAITING)
+    if not isinstance(raw, Mapping) or not raw.get("n"):
+        return None
+    topics = [str(t) for t in raw.get("topics") or ()]
+    named = "; ".join(f'"{t}"' for t in topics[:5]) + (
+        f" and {len(topics) - 5} more" if len(topics) > 5 else "")
+    return owner_text.CARDS_WAITING_AGENT.format(n=int(raw["n"]), topics=named)

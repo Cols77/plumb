@@ -247,13 +247,33 @@ def test_stale_link_card_rendered_by_the_summary_exactly_once(repo: Path) -> Non
         "link": "SR-001#0", "record": "SR-001", "path": "src/calc.py", "topic": "Add multiply",
         "issue": "the code changed after you confirmed it",
         "options": ["keep it as is", "reword the requirement", "undo the change"],
-        "recommended": 1, "turn": 3, "status": "open"}]), encoding="utf-8")
+        "consequences": ["keeps both", "rewords it to the code", "puts the code back"],
+        "why": "the change is what you asked for", "recommended": 1, "turn": 3,
+        "status": "open"}]), encoding="utf-8")
     out = parts(repo)
     (line,) = out.cards
     assert line.count("Add multiply") == 1
     assert "Something you confirmed may have changed" in line
-    assert "1. reword the requirement" in line           # the recommended first
+    assert "1. reword the requirement (recommended)" in line     # the recommended first
+    assert "does and leaves undone: rewords it to the code" in line
+    assert "Why the recommended one: the change is what you asked for" in line
     assert parts(repo).cards == out.cards                # every stop shows it while it is open
+
+
+@pytest.mark.sr("SR-116")
+def test_an_incomplete_stale_card_is_not_offered_but_stays_open(repo: Path) -> None:
+    """SR-116 EX-3: a card missing what its options do or why one is recommended is not
+    offered; the owner is told cards wait for the agent, and the card stays open."""
+    path = repo / ".plumb" / "session" / SESSION / "stale_cards.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([{
+        "link": "SR-001#0", "record": "SR-001", "path": "src/calc.py", "topic": "Add multiply",
+        "issue": "the code changed", "options": ["keep it", "undo it"], "recommended": 0,
+        "turn": 3, "status": "open"}]), encoding="utf-8")
+    (line,) = parts(repo).cards
+    assert line == owner_text.FULL_INCOMPLETE.format(n=1)
+    assert "Add multiply" not in line
+    assert json.loads(path.read_text("utf-8"))[0]["status"] == "open"
 
 
 def test_the_notice_that_settling_switched_on_is_said_once(repo: Path) -> None:

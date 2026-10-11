@@ -136,47 +136,45 @@ def test_block_quotes_paths_with_spaces(project: Path, hook_input) -> None:
     assert "plumb tests run --paths \"src/my calc.py\"" in reason
 
 
+def _status(repo: Path) -> dict:
+    return json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
+
+
 def test_no_block_when_stop_hook_active(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
     verify = FakeVerify(nodes=(NODE,))
     out = run_stop(project, hook_input, verify=verify, active=True)
     assert _block(out) is None
-    assert "1 not run" in _summary(out)
+    assert _summary(out) == ""                      # nothing needs the owner: no text at all
+    assert _status(project)["tests"] != "regression"
 
 
-def test_summary_when_evidence_fresh(project: Path, hook_input) -> None:
+def test_the_status_card_is_the_status_lines_not_the_owners_text(project: Path,
+                                                                  hook_input) -> None:
+    """Slice 3 (SR-012, sp7-realign-sp8 C7): the status card and the summary lines left the
+    owner's text; the status line shows them from status.json."""
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
     verify = FakeVerify(nodes=(NODE, NODE2), deferred=("tests/test_z.py::test_z",),
                         evidence_map={**fresh(NODE), **fresh(NODE2, state="fresh-fail")},
                         pending=FullPending(True, ("tests/conftest.py changed",)))
-    (project / ".plumb" / "config.yaml").write_text("present:\n  card: full\n", "utf-8")
-    summary = _summary(run_stop(project, hook_input, verify=verify))
-    lines = summary.splitlines()
-    assert lines[0].startswith("plumb ✗ failing")  # the status card first (sp5 4.1)
-    assert lines[1].startswith("plumb: touched SR-001")
-    assert ("plumb: covering tests 2: 1 fresh pass, 1 not yet passing, 1 deferred (budget)"
-            in lines)
-    assert "plumb: full verification pending (tests/conftest.py changed)" in lines
-    assert "plumb: questions: none" in lines
-    assert len([line for line in lines if line.startswith("plumb: ")]) <= 5
-    # compact (the default): at most two summary lines under the card
-    start_turn(project)
-    (project / ".plumb" / "config.yaml").write_text("present:\n  card: compact\n", "utf-8")
-    edit(project, "src/calc.py", "def add(a, b):\n    return a + b\n")
-    lines = _summary(run_stop(project, hook_input, verify=verify)).splitlines()
-    assert lines[1].startswith("plumb: touched SR-001")
-    assert lines[2].startswith("plumb: covering tests 2: 1 fresh pass")
-    assert lines[2].endswith("| questions: none")
-    assert len(lines) == 3
+    for card in ("full", "compact"):
+        (project / ".plumb" / "config.yaml").write_text(f"present:\n  card: {card}\n", "utf-8")
+        start_turn(project)
+        edit(project, "src/calc.py", "def add(a, b):\n    return a + b\n")
+        assert _summary(run_stop(project, hook_input, verify=verify)) == ""
+        status = _status(project)
+        assert status["deferred"] == 1 and status["full_pending"] is True
+        assert status["full_pending_reasons"] == ["tests/conftest.py changed"]
 
 
-def test_summary_shows_stale_link(project: Path, hook_input) -> None:
+def test_a_stale_link_is_counted_in_the_status_line(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return a - b\n")
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
-    assert "stale: SR-001#0 -> src/calc.py (target moved)" in summary.splitlines()[1]
+    assert "stale:" not in summary and "plumb: touched" not in summary
+    assert _status(project)["stale_links"] == 1
 
 
 def _stated(repo: Path) -> dict[str, bool]:
@@ -184,8 +182,9 @@ def _stated(repo: Path) -> dict[str, bool]:
     return {r["id"]: r["shown"] for r in data["records"]}
 
 
-def test_summary_caps_proposed_records_and_names_the_rest(project: Path, hook_input,
-                                                          write_record) -> None:
+def test_proposed_records_come_as_one_card_not_a_list(project: Path, hook_input) -> None:
+    """SR-012: no list-style summary of proposed records; the five records the turn proposed
+    (no feature) come as one card, each with its statement and every example."""
     start_turn(project)
     for i in range(2, 7):
         text = (f"---\nid: SR-00{i}\ntitle: Rule {i}\nstatement: rule {i} holds\nexamples:\n"
@@ -193,24 +192,16 @@ def test_summary_caps_proposed_records_and_names_the_rest(project: Path, hook_in
         edit(project, f".plumb/requirements/SR-00{i}.md", text)
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
     lines = summary.splitlines()
-    cards = [line for line in lines if line.startswith(("▸", "  "))]
-    # the cap counts records, and a card shows its statement and every example (sp5 4.2)
-    assert cards == [
-        '▸ Requirement  SR-002 "Rule 2"   (proposed — say "ok" to confirm)',
-        "  rule 2 holds",
-        "  Examples  EX-1 given g2, when w2, then t2   (proposed)",
-        '▸ Requirement  SR-003 "Rule 3"   (proposed — say "ok" to confirm)',
-        "  rule 3 holds",
-        "  Examples  EX-1 given g3, when w3, then t3   (proposed)",
-        '▸ Requirement  SR-004 "Rule 4"   (proposed — say "ok" to confirm)',
-        "  rule 4 holds",
-        "  Examples  EX-1 given g4, when w4, then t4   (proposed)",
-    ]
-    assert lines[-1] == ("plumb: +2 more not shown: SR-005, SR-006 (plumb show SR-005 SR-006); "
-                         "a confirmation must name them")
-    # only what the owner saw is relayable by a bare affirmation
-    assert _stated(project) == {"SR-002": True, "SR-003": True, "SR-004": True,
-                                "SR-005": False, "SR-006": False}
+    assert lines[0] == ('Proposed this turn, "this turn\'s work": these 5 were written from '
+                        "your words this turn and are not settled; are they right?")
+    for i in range(2, 7):
+        assert f"  - Rule {i}" in lines
+        assert f"    rule {i} holds" in lines
+        assert f"    EX-1: given g{i}, when w{i}, then t{i}" in lines
+    assert "▸" not in summary and "say \"ok\"" not in summary and "plumb show" not in summary
+    assert "  1. Yes, as they read (recommended)" in lines
+    # only what the owner saw is relayable by a bare affirmation: every one, drawn in full
+    assert _stated(project) == {f"SR-00{i}": True for i in range(2, 7)}
     assert _block(json.dumps({"systemMessage": summary})) is None
 
 
@@ -268,25 +259,26 @@ def test_summary_shows_every_example_assumption_and_wont(project: Path, hook_inp
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
     for expected in (
             "You want a divide function for two numbers.",
-            "Won't: handle complex numbers",
-            "Assumed: division by zero raises ValueError",
-            "EX-2 given 1/0, when divide runs, then it returns 0",
-            "EX-3 given -6 and 3, when divide runs, then it returns -2",
-            "Also fits: true float division"):
+            "won't: handle complex numbers",
+            "assumed (A-1): division by zero raises ValueError",
+            "EX-2: given 1/0, when divide runs, then it returns 0",
+            "EX-3: given -6 and 3, when divide runs, then it returns -2",
+            "also fits: true float division"):
         assert expected in summary
-    assert "more" not in summary.splitlines()[-1]
+    assert 'Your words (Divide numbers): "add a divide function"' in summary
     assert _stated(project) == {"DEC-002": True, "INT-001": True, "SR-002": True}
 
 
-def test_a_line_too_long_to_show_leaves_the_record_unshown(project: Path,
-                                                          hook_input) -> None:
+@pytest.mark.sr("SR-116")
+def test_a_long_line_is_shown_whole_not_left_out(project: Path, hook_input) -> None:
+    """INT-031: nothing is cut; a long example is shown whole, so the record counts as shown."""
     start_turn(project)
     long = "x" * 600
     edit(project, ".plumb/requirements/SR-002.md",
          SR_DIV.replace("it returns 0", "it returns " + long))
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
-    assert "SR-002" in summary.splitlines()[-1]
-    assert _stated(project) == {"SR-002": False}
+    assert f"then it returns {long}" in summary
+    assert _stated(project) == {"SR-002": True}
 
 
 def test_a_blocked_stop_shows_the_owner_nothing(project: Path, hook_input) -> None:
@@ -311,8 +303,14 @@ def test_regression_blocks_with_owner_instruction(project: Path, hook_input) -> 
                                           "turn.json").read_text("utf-8"))["asked"])
     out = run_stop(project, hook_input, verify=verify)
     assert _block(out) is None
-    assert f"questions: regression {NODE}" in _summary(out)
-    assert f"▸ Regression  {NODE}" in _summary(out)  # no requirement verifies it here
+    summary = _summary(out)
+    # the owner gets a regression card (no requirement verifies it here: the test names it)
+    assert summary.startswith(f'Something that worked now fails, "{NODE}": a test that '
+                              f"passed before now fails: {NODE}")
+    assert f"  Evidence: {NODE} passed in an earlier run and fails now (last run run-2)" in \
+        summary
+    assert "  1. Fix the code so it passes again (recommended)" in summary
+    assert "questions:" not in summary and "▸" not in summary
 
 
 @pytest.mark.sr("SR-020")
@@ -360,9 +358,8 @@ def test_new_red_test_never_asks(project: Path, hook_input) -> None:
     verify = FakeVerify(nodes=(node,), evidence_map=fresh(node, state="fresh-fail"))
     out = run_stop(project, hook_input, verify=verify)
     assert _block(out) is None
-    summary = _summary(out)
-    assert "1 not yet passing" in summary
-    assert "questions: none" in summary
+    assert _summary(out) == ""                       # no card: a new red test asks nothing
+    assert _status(project)["regressions"] == []
 
 
 def test_doc_only_turn_prints_at_most_one_line(project: Path, hook_input) -> None:
@@ -427,17 +424,18 @@ def test_verify_unavailable_degrades(project: Path, hook_input) -> None:
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
     out = run_stop(project, hook_input, verify=None)
     assert _block(out) is None
-    assert "plumb: verification unavailable" in _summary(out)
+    assert _summary(out) == ""
+    assert _status(project)["tests"] == "unknown"
 
 
-def test_confirmation_and_unjudged_fidelity_in_summary(project: Path, hook_input) -> None:
+def test_unjudged_fidelity_goes_to_the_status_line(project: Path, hook_input) -> None:
     start_turn(project)
     approvals.approve(open_core(project), ["SR-001"])
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
     out = run_stop(project, hook_input, verify=FakeVerify(),
                    unjudged=lambda core, ids: tuple(i for i in ids or () if i == "SR-001"))
-    summary = _summary(out)
-    assert "confirmed SR-001 by the owner | fidelity unjudged: SR-001" in summary
+    assert _summary(out) == ""                       # no summary line: cards only
+    assert _status(project)["fidelity_unjudged"] == ["SR-001"]
 
 
 def test_writes_status_snapshot(project: Path, hook_input) -> None:
@@ -553,8 +551,13 @@ def test_a_step_starting_past_the_budget_is_skipped_and_reported(
     reason = _block(run_stop(project, hook_input, verify=verify))
     assert reason is not None and "plumb tests run --paths src/calc.py" in reason
     summary = _summary(run_stop(project, hook_input, verify=verify, active=True))
-    assert "check skipped (budget): covering tests" in summary
-    assert "questions: DEC-001" in summary
+    assert _status(project)["skipped"] == "covering tests"     # the status line names it
+    assert "check skipped" not in summary
+    # the decision that matters is a card, with what each answer does
+    assert summary.startswith('A choice this work relies on, "Integers only": I assumed '
+                              "integers only; floats too also fits. Which one?")
+    assert "  1. Keep it: integers only (recommended)" in summary
+    assert "  2. Switch to: floats too" in summary
 
 
 class _CutVerify(FakeVerify):
@@ -575,20 +578,20 @@ def test_read_back_survives_a_cut_in_the_covering_tests(project: Path, hook_inpu
          SR1.replace("add returns the sum.", "add returns the integer sum."))
     summary = _summary(run_stop(project, hook_input, verify=_CutVerify(nodes=(NODE,))))
     lines = summary.splitlines()
-    assert lines[1].startswith("plumb: touched SR-001")
-    assert "  add returns the integer sum." in lines
-    assert ("  Examples  EX-1 given 1 and 2, when add runs, then it returns 3   (proposed)"
-            in lines)
-    assert "questions: regressions not checked (budget)" in summary
-    assert lines[-1] == "plumb: check skipped (budget): covering tests"
+    # its feature has no record: the card is named in words, never by a bare number
+    assert lines[0].startswith('Proposed this turn, "this turn\'s work": this was written from '
+                               "your words this turn")
+    assert '  As it now reads (Adds numbers): add returns the integer sum.' in lines
+    assert "    EX-1: given 1 and 2, when add runs, then it returns 3" in lines
+    assert "plumb: touched" not in summary and "questions:" not in summary
     stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
     assert stated["records"] == [{"id": "SR-001", "hash": open_core(project).index()[
         "SR-001"].hash, "shown": True}]
 
 
-def test_skipped_covering_tests_never_read_as_no_questions(project: Path, hook_input,
-                                                          clock: _Clock,
-                                                          monkeypatch) -> None:
+def test_skipped_covering_tests_are_named_in_the_status_line(project: Path, hook_input,
+                                                             clock: _Clock,
+                                                             monkeypatch) -> None:
     import plumb.api
 
     real_open = plumb.api.open_core
@@ -596,9 +599,8 @@ def test_skipped_covering_tests_never_read_as_no_questions(project: Path, hook_i
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
     out = run_stop(project, hook_input, active=True, verify=FakeVerify(nodes=(NODE,)))
-    summary = _summary(out)
-    assert "plumb: questions: none" not in summary
-    assert "questions: regressions not checked (budget)" in summary
+    assert "questions: none" not in _summary(out)
+    assert _status(project)["skipped"] == "covering tests"
 
 
 def test_a_slow_git_status_is_reported_not_read_as_no_changes(project: Path, hook_input,
@@ -614,7 +616,8 @@ def test_a_slow_git_status_is_reported_not_read_as_no_changes(project: Path, hoo
 
     monkeypatch.setattr(stop.subprocess, "run", slow_run)
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
-    assert summary == "plumb: check skipped (budget): change detection (git status)"
+    assert summary == ""                                 # cards only: the status line says it
+    assert _status(project)["skipped"] == "change detection (git status)"
 
 
 def test_git_status_gets_most_of_the_remaining_budget() -> None:
@@ -630,15 +633,14 @@ def _note(repo: Path, session: str = "s1") -> dict | None:
 
 
 @pytest.mark.sr("SR-026")
-def test_untraced_change_is_named_to_owner_and_queued_for_the_agent(project: Path,
-                                                                    hook_input) -> None:
+def test_untraced_change_is_queued_for_the_agent(project: Path, hook_input) -> None:
+    """SR-012 (cards only) leaves no summary line to name it to the owner in: the agent is
+    told at the next prompt (SR-026 EX-1's "the summary names it" no longer holds)."""
     start_turn(project)
     edit(project, "src/mul.py", "def mul(a, b):\n    return a * b\n")
     out = run_stop(project, hook_input, verify=FakeVerify())
     assert _block(out) is None  # non-blocking (R1)
-    first = _summary(out).splitlines()[1]
-    assert "untraced: src/mul.py" in first
-    assert "read-back and a proposed SR requested" in first
+    assert "untraced" not in _summary(out)
     assert _note(project)["paths"] == ["src/mul.py"]
 
 
@@ -672,5 +674,4 @@ def test_flat_layout_and_root_files_are_untraced_at_the_stop(project: Path,
     edit(project, "tool.py", "print('tool')\n")
     out = run_stop(project, hook_input, verify=FakeVerify())
     assert _block(out) is None
-    assert "untraced: mypkg/power.py, tool.py" in _summary(out).splitlines()[1]
     assert _note(project)["paths"] == ["mypkg/power.py", "tool.py"]

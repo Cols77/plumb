@@ -80,6 +80,18 @@ _CHOICES: dict[str, dict[str, str]] = {
                      owner_text.SETTLE_LEAVE_OFF: "rejected"},
     "clarify": {owner_text.READBACK_YES: "accepted", owner_text.READBACK_NOT_QUITE: "change"},
     "stale_link": {},
+    # slice 3: the kinds the stop hook drew its own way (sp7-realign-sp8 C1)
+    "regression": {owner_text.REGRESSION_FIX: "accepted", owner_text.REGRESSION_CHANGE: "change",
+                   owner_text.REGRESSION_WAIT: "open"},
+    "decision": {owner_text.DECISION_KEEP: "accepted", owner_text.DECISION_SWITCH: PICK,
+                 owner_text.DECISION_OTHER: "change"},
+    "conflict": {owner_text.CONFLICT_COMBINED: "accepted", owner_text.CONFLICT_KEEP: PICK,
+                 owner_text.CONFLICT_COMBINE: "change"},
+    "early_conflict": {owner_text.EARLY_KEEP_OURS: PICK, owner_text.EARLY_KEEP_THEIRS: PICK,
+                       owner_text.EARLY_BOTH_OPTION: "change"},
+    "drift": {},
+    "proposed": {owner_text.PROPOSED_YES: "accepted", owner_text.PROPOSED_EXCEPT: "change",
+                 owner_text.PROPOSED_LATER: "open"},
 }
 
 
@@ -142,8 +154,12 @@ HEADS = {"clarify": owner_text.CARD_CLARIFY, "trial": owner_text.CARD_TRIAL,
          "contradicts": owner_text.CARD_CONTRADICTS,
          "couldnt_check": owner_text.CARD_COULDNT_CHECK,
          "show_first": owner_text.CARD_SHOW_FIRST, "stale_link": owner_text.CARD_STALE_LINK,
-         "settle_offer": owner_text.CARD_SETTLE_OFFER}
-ORDER = ("clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check")
+         "settle_offer": owner_text.CARD_SETTLE_OFFER,
+         "regression": owner_text.CARD_REGRESSION, "decision": owner_text.CARD_DECISION,
+         "conflict": owner_text.CARD_CONFLICT, "early_conflict": owner_text.CARD_EARLY_CONFLICT,
+         "drift": owner_text.CARD_DRIFT, "proposed": owner_text.CARD_PROPOSED}
+ORDER = ("clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check", "regression",
+         "drift", "conflict", "early_conflict", "decision", "proposed")
 RESOLUTIONS_MAX = 3
 ITEMS_MAX = 30
 
@@ -200,4 +216,168 @@ def undone_cards(core: Any, session: str, *, turn: int = 0) -> list[CardState]:
                                        resolutions=options, record=rid, hash=record.hash,
                                        choices=choices_for("show_first", options)),),
             turn=turn))
+    return out
+
+
+# --------------------------------------------------------------------------- slice 3 kinds
+# The owner items the stop hook drew its own way, as cards (sp7-realign-sp8 C1): a regression,
+# a decision that matters, a merge conflict, an early conflict, and the records a turn proposed
+# (one card per feature, C8). The drift card is a stale card the diagnosis filed (``fullcard``).
+
+
+def _card(kind: str, cid: str, topic: str, issue: str, evidence: str,
+          resolutions: Sequence[str], questions: Sequence[tuple[str, Any]],
+          turn: int = 0) -> CardState:
+    """A card whose questions are ``(text, record or None)``; each question carries the
+    choices of ``resolutions`` and the version of its record shown."""
+    made = tuple(ClarifyQuestion(
+        id=f"{cid}#{n}", text=text, resolutions=tuple(resolutions),
+        record=record.id if record is not None else None,
+        hash=record.hash if record is not None else "",
+        choices=choices_for(kind, resolutions))
+        for n, (text, record) in enumerate(questions, start=1))
+    return CardState(id=cid, kind=kind, topic=topic, issue=issue, evidence=evidence,
+                     resolutions=tuple(resolutions), questions=made, turn=turn)
+
+
+def verifying(index: Mapping[str, Any], node: str) -> list[Any]:
+    """The requirements a test node verifies (its ``verified_by`` links, by node or file)."""
+    path = node.split("::", 1)[0]
+    out = []
+    for record in index.values():
+        for link in getattr(record, "links", ()):
+            if link.kind != "verified_by":
+                continue
+            end = link.target.test or link.target.path or ""
+            if end == node or (link.target.test is None and end == path):
+                out.append(record)
+                break
+    return sorted(out, key=lambda r: r.id)
+
+
+def regression_card(index: Mapping[str, Any], node: str, *, last_run: str = "",
+                    test_changed: bool = False, hidden: bool = False,
+                    turn: int = 0) -> CardState:
+    """SR-012 EX-2: a test that passed with recorded evidence now fails (or passes only because
+    it was changed): the test, what it checks, and the suggested resolutions."""
+    records = verifying(index, node)
+    what = "; ".join(f'"{r.title}"' for r in records) or node
+    if hidden:
+        evidence = owner_text.REGRESSION_HIDDEN.format(test=node)
+    else:
+        note = (owner_text.REGRESSION_TEST_CHANGED if test_changed else "") + (
+            owner_text.REGRESSION_LAST_RUN.format(run=last_run) if last_run else "")
+        evidence = owner_text.REGRESSION_EVIDENCE.format(test=node, note=note)
+    topic = records[0].title if records else node
+    questions = [(r.title, r) for r in records] or [(node, None)]
+    return _card("regression", card_id("regression", node), topic,
+                 owner_text.REGRESSION_ISSUE.format(what=what), evidence,
+                 (owner_text.REGRESSION_FIX, owner_text.REGRESSION_CHANGE,
+                  owner_text.REGRESSION_WAIT), questions, turn)
+
+
+def _alternatives(record: Any) -> list[str]:
+    raw = record.fields.get("alternatives") or []
+    raw = [raw] if isinstance(raw, str) else raw
+    return [" ".join(str(a).split()) for a in raw if str(a).strip()]
+
+
+def decision_card(index: Mapping[str, Any], record: Any, *, touched: Sequence[str] = (),
+                  turn: int = 0) -> CardState:
+    """An unconfirmed decision that matters and that this work relies on (SR-012): what was
+    assumed, what else fits, and what the turn changed that relies on it. A decision that
+    holds an early conflict (R17) is an ``early_conflict`` card with its own answers."""
+    from plumb.awareness.answer import early_of
+
+    chosen = " ".join(str(record.fields.get("chosen") or "").split()) or record.title
+    others = _alternatives(record)
+    relies = [index[i].title for i in touched if i in index and i != record.id and any(
+        link.target.record == i for link in record.links)]
+    evidence = owner_text.DECISION_EVIDENCE.format(
+        what="; ".join(f'"{t}"' for t in relies)) if relies else ""
+    if early_of(record) is not None:
+        question = " ".join(str(record.fields.get("question") or record.title).split())
+        return _card("early_conflict", card_id("early_conflict", record.id, record.hash),
+                     record.title, question, evidence, [chosen, *others][:RESOLUTIONS_MAX],
+                     [(question, record)], turn)
+    other = others[0] if others else owner_text.DECISION_NO_ALTERNATIVE
+    options = [owner_text.DECISION_KEEP.format(chosen=chosen),
+               *(owner_text.DECISION_SWITCH.format(other=o) for o in others[:1]),
+               owner_text.DECISION_OTHER]
+    issue = owner_text.DECISION_ISSUE.format(chosen=chosen, other=other)
+    return _card("decision", card_id("decision", record.id, record.hash), record.title, issue,
+                 evidence, options, [(issue, record)], turn)
+
+
+def conflict_card(index: Mapping[str, Any], conflict: Any, *, turn: int = 0) -> CardState:
+    """An intent conflict a merge left (sp6 8.3): what each side says, field by field, and the
+    choices of keeping one side or combining them."""
+    from plumb.mergedriver.conflicts import field_name, show_value
+
+    ours, theirs = conflict.labels
+    sides = []
+    for side, label in (("ours", ours), ("theirs", theirs)):
+        text = " | ".join(f"{field_name(n)}: {show_value(n, v.get(side))}"
+                          for n, v in conflict.fields.items())
+        sides.append(owner_text.CONFLICT_SIDE.format(side=label, text=text))
+    keep = [owner_text.CONFLICT_KEEP.format(side=ours), owner_text.CONFLICT_KEEP.format(
+        side=theirs)]
+    options = ([owner_text.CONFLICT_COMBINED, *keep] if conflict.proposed
+               else [*keep, owner_text.CONFLICT_COMBINE])
+    record = index.get(conflict.record)
+    issue = owner_text.CONFLICT_ISSUE.format(ours=ours, theirs=theirs)
+    return _card("conflict", card_id("conflict", conflict.ic), conflict.title, issue,
+                 " / ".join(sides), options, [(issue, record)], turn)
+
+
+def early_conflict_card(index: Mapping[str, Any], conflict: Any, *,
+                        turn: int = 0) -> CardState:
+    """An early intent conflict this turn's claim raised (R17): the other branch's version and
+    this work's, in the owner's words."""
+    record = index.get(conflict.record)
+    issue = owner_text.EARLY_ISSUE.format(branch=conflict.branch, theirs=conflict.theirs,
+                                          ours=conflict.ours)
+    options = (owner_text.EARLY_KEEP_OURS,
+               owner_text.EARLY_KEEP_THEIRS.format(branch=conflict.branch),
+               owner_text.EARLY_BOTH_OPTION)
+    return _card("early_conflict", card_id("early_conflict", conflict.record, conflict.branch),
+                 conflict.title or conflict.record, issue, str(conflict.judgment or ""),
+                 options, [(issue, record)], turn)
+
+
+def _group_of(index: Mapping[str, Any], record: Any) -> tuple[str, str]:
+    """``(key, topic)`` of the feature card a proposed record joins (DEC-029): its feature, else
+    the intent it derives from (an intent is its own group), else the turn's work."""
+    feature = str(record.fields.get("feature") or "")
+    if feature:
+        found = index.get(feature)
+        return feature, found.title if found is not None else owner_text.PROPOSED_NO_FEATURE
+    if record.kind == "intent":
+        return record.id, record.title
+    for link in record.links:
+        target = link.target.record
+        if link.kind in ("derives_from", "decides") and target in index:
+            return _group_of(index, index[target])
+    return "", owner_text.PROPOSED_NO_FEATURE
+
+
+def proposed_cards(index: Mapping[str, Any], ids: Sequence[str], *,
+                   turn: int = 0) -> list[CardState]:
+    """SR-012 EX-3, EX-4: the records a turn proposed that nothing settled, one card per
+    feature (DEC-029), each record a question of its card (never a list of lines)."""
+    groups: dict[str, tuple[str, list[Any]]] = {}
+    for record_id in dict.fromkeys(ids):
+        record = index.get(record_id)
+        if record is None:
+            continue
+        key, topic = _group_of(index, record)
+        groups.setdefault(key, (topic, []))[1].append(record)
+    out = []
+    for key, (topic, records) in groups.items():
+        issue = (owner_text.PROPOSED_ISSUE_ONE if len(records) == 1
+                 else owner_text.PROPOSED_ISSUE.format(n=len(records)))
+        out.append(_card("proposed", card_id("proposed", key or "turn"), topic, issue, "",
+                         (owner_text.PROPOSED_YES, owner_text.PROPOSED_EXCEPT,
+                          owner_text.PROPOSED_LATER),
+                         [(r.title, r) for r in records], turn))
     return out

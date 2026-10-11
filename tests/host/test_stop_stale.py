@@ -113,7 +113,11 @@ def test_pre_existing_stale_listed_once_not_blocking(project: Path, hook_input) 
     edit(project, "docs/notes.md", "more notes\n")
     out = run_stop(project, hook_input, verify=_verify())
     assert _block(out) is None
-    assert "1 links were already stale before this turn" in _summary(out)
+    # cards only (SR-012): the note for the agent is not in the owner's text; the status line
+    # counts the stale link
+    assert "already stale" not in _summary(out)
+    status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert status["stale_links"] == 1
     start_turn(project, turn_id="turn-2")
     edit(project, "docs/notes.md", "even more notes\n")
     out = run_stop(project, hook_input, verify=_verify())
@@ -130,8 +134,14 @@ def test_hold_ends_after_max_with_card(project: Path, hook_input) -> None:
     out = run_stop(project, hook_input, verify=_verify(), active=True)
     assert _block(out) is None
     summary = _summary(out)
-    assert 'I held the turn open 3 times for "Adds numbers" and then let it go' in summary
-    assert 'Something you confirmed may have changed, "Adds numbers"' in summary
+    # the card the hold filed is complete (SR-116), so it is drawn in full: the change itself,
+    # each option with what it does and leaves undone, and why the first
+    assert summary.startswith('Something you confirmed may have changed, "Adds numbers"')
+    assert "  What changed in src/calc.py (+" in summary
+    assert "    +    return b + a" in summary
+    assert "  1. Keep the wording as it is (recommended)" in summary
+    assert "     does and leaves undone: Keeps the requirement as it reads" in summary
+    assert "  Why the recommended one: I could not tell whether the change matters" in summary
     (card,) = stale.read_cards(project, "s1")
     assert card["link"] == "SR-001#0" and card["status"] == "open"
 
@@ -194,11 +204,15 @@ def test_ex5_summary_names_requirement_change_and_resolutions_and_the_card_waits
     lines = _summary(out).splitlines()
     head = lines.index('Something you confirmed may have changed, "Adds numbers": add now '
                        "sums its arguments in the other order")
-    # the summary of the understanding layer draws the card: the evidence line, then the options
-    assert lines[head + 1] == "  Evidence: src/calc.py"
-    assert lines[head + 2:head + 5] == ["  1. Reword it to match the change",
-                                        "  2. Keep the wording as it is",
-                                        "  3. Undo the change"]
+    # the summary of the understanding layer draws the card in full (SR-116): the requirement
+    # as it reads, the change, then the options, the recommended first, each with what it does
+    assert lines[head + 1] == "  As it now reads (Adds numbers): add returns the sum."
+    assert lines[head + 3].startswith("  What changed in src/calc.py (+")
+    options = [line for line in lines[head:] if line[:5] in ("  1. ", "  2. ", "  3. ")]
+    assert options == ["  1. Reword it to match the change (recommended)",
+                       "  2. Keep the wording as it is", "  3. Undo the change"]
+    assert "     does and leaves undone: rewords it" in lines
+    assert "  Why the recommended one: it is cosmetic" in lines
 
 
 _BARE_ID = re.compile(r"(?<![\w-])(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})(?![\w-])")
