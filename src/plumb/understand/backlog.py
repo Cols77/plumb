@@ -187,7 +187,8 @@ def fragment_card(record: Any) -> CardState:
         id=cid, kind="backlog", topic=record.title, issue=issue,
         evidence=cards.clip(fragment, DRAWN_WORDS), resolutions=options,
         questions=(ClarifyQuestion(id=f"{cid}#1", text=record.title, resolutions=options,
-                                   record=record.id, hash=record.hash),))
+                                   record=record.id, hash=record.hash,
+                                   choices=cards.choices_for("backlog", options)),))
 
 
 def feature_card(topic: str, above: Sequence[Any], drawn: Any | None) -> CardState:
@@ -197,13 +198,15 @@ def feature_card(topic: str, above: Sequence[Any], drawn: Any | None) -> CardSta
     key = "\n".join(sorted(f"{i.record.id}@{i.record.hash}" for i in items))
     cid = "backlog:" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
     options = (owner_text.BACKLOG_YES, owner_text.BACKLOG_EXCEPT, owner_text.BACKLOG_NO)
+    choices = cards.choices_for("backlog", options)
     questions = [ClarifyQuestion(id=f"{cid}#{n}", text=i.record.title, resolutions=options,
-                                 record=i.record.id, hash=i.record.hash)
+                                 record=i.record.id, hash=i.record.hash, choices=choices)
                  for n, i in enumerate(above, start=1)]
     if drawn is not None:
         questions.append(ClarifyQuestion(
             id=f"{cid}#{len(above) + 1}", resolutions=options, record=drawn.record.id,
-            hash=drawn.record.hash, text=f"{owner_text.TRIAL_BELOW} {drawn.record.title}"))
+            hash=drawn.record.hash, text=f"{owner_text.TRIAL_BELOW} {drawn.record.title}",
+            choices=choices))
     sample: list[str] = []
     for item in above:
         words = cards.words_of(item.premise)

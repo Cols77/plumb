@@ -162,7 +162,8 @@ def batch_card(items: Sequence[Candidate], limit: float) -> CardState:
         text = (f"{owner_text.TRIAL_BELOW} {item.record.title}" if item.score < limit
                 else item.record.title)
         questions.append(ClarifyQuestion(id=f"{cid}#{n}", text=text, resolutions=options,
-                                         record=item.record.id, hash=item.record.hash))
+                                         record=item.record.id, hash=item.record.hash,
+                                         choices=cards.choices_for("trial", options)))
         evidence.append(f"{item.record.title}: {_words(item.premise)}")
     below = any(i.score < limit for i in items)
     if len(items) == 1:
@@ -187,7 +188,8 @@ def individual_card(item: Candidate) -> CardState:
         evidence=cards.words_of(item.premise), resolutions=options,
         questions=(ClarifyQuestion(id=f"{cid}#1", text=item.record.title,
                                    resolutions=options, record=item.record.id,
-                                   hash=item.record.hash),))
+                                   hash=item.record.hash,
+                                   choices=cards.choices_for("trial", options)),))
 
 
 def cards_for(core: Any, session: str, waiting: Sequence[settle.Waiting]) -> list[CardState]:

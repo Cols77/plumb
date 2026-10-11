@@ -323,6 +323,10 @@ UNDONE_ISSUE = "you took this back after plumb had settled it; it waits for you 
 UNDONE_CONFIRM = "Confirm it as it reads"
 UNDONE_CHANGE = "Change it (say how)"
 UNDONE_DROP = "Drop it"
+SHOW_FIRST_YES = "Yes, that is right"
+SHOW_FIRST_NO = "No"
+READBACK_YES = "Yes, that is it"
+READBACK_NOT_QUITE = "Not quite"
 UNDO_DONE = "{title} is proposed again and waits for you."
 UNDO_REFUSED = ("Only you undo a settled record: use its Undo button, or type /plumb undo "
                 "followed by its title.")

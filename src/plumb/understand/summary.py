@@ -139,7 +139,10 @@ def _failure_cards(core: Any, session: str) -> list[CardState]:
             issue=owner_text.COULDNT_CHECK_ISSUE.format(step=step), resolutions=options,
             questions=(ClarifyQuestion(id=f"couldnt_check:{result.job}#1",
                                        text=owner_text.COULDNT_CHECK_ISSUE.format(step=step),
-                                       resolutions=options),) if options else ()))
+                                       resolutions=options,
+                                       choices=card_text.choices_for("couldnt_check",
+                                                                     options)),)
+            if options else ()))
     return out
 
 

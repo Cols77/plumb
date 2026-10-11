@@ -13,7 +13,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from plumb.contracts import CardState, ClarifyQuestion
+from plumb.contracts import CardState, Choice, ClarifyQuestion
 from plumb.present import owner_text
 
 EVIDENCE_WIDTH = 500
@@ -57,6 +57,55 @@ def words_of(premise: Mapping[str, Any]) -> str:
     return clip(f"{question} -> {text}" if question and text else text or question)
 
 
+# What each kind's suggested resolutions answer (sp7-realign-sp8 C2, SP8 4.1): keep = accepted,
+# drop = rejected, reword = change (the owner's words say how); a resolution not listed here is
+# a pick (a version, a gap's suggestion, a stale link's option): change, carrying its label.
+PICK = "pick"
+_CHOICES: dict[str, dict[str, str]] = {
+    "trial": {owner_text.TRIAL_YES: "accepted", owner_text.TRIAL_NO: "rejected"},
+    "backlog": {owner_text.BACKLOG_YES: "accepted", owner_text.BACKLOG_EXCEPT: "change",
+                owner_text.BACKLOG_NO: "rejected", owner_text.NO_ORIGINAL_ACCEPT: "accepted",
+                owner_text.NO_ORIGINAL_CORRECT: "change"},
+    "beyond": {owner_text.BEYOND_KEEP: "accepted", owner_text.BEYOND_DROP: "rejected",
+               owner_text.BEYOND_REWORD: "change"},
+    "contradicts": {owner_text.CONTRADICTS_KEEP_OLD: PICK, owner_text.CONTRADICTS_KEEP_NEW: PICK,
+                    owner_text.CONTRADICTS_COMBINE: "change"},
+    "couldnt_check": {owner_text.GATE_BUILD_ANYWAY: "accepted", owner_text.GATE_WAIT: "rejected",
+                      owner_text.COULDNT_CHECK_GO: "accepted",
+                      owner_text.COULDNT_CHECK_WAIT: "rejected"},
+    "show_first": {owner_text.UNDONE_CONFIRM: "accepted", owner_text.UNDONE_CHANGE: "change",
+                   owner_text.UNDONE_DROP: "rejected", owner_text.SHOW_FIRST_YES: "accepted",
+                   owner_text.SHOW_FIRST_NO: "rejected"},
+    "settle_offer": {owner_text.SETTLE_TURN_ON: "accepted",
+                     owner_text.SETTLE_LEAVE_OFF: "rejected"},
+    "clarify": {owner_text.READBACK_YES: "accepted", owner_text.READBACK_NOT_QUITE: "change"},
+    "stale_link": {},
+}
+
+
+def _answer_of(table: Mapping[str, str], label: str) -> str:
+    """``label``'s answer in ``table``; a template entry ("... {kind} ...") matches any filling."""
+    if label in table:
+        return table[label]
+    for template, answer in table.items():
+        if "{" in template and re.fullmatch(
+                re.sub(r"\\\{\w+\\\}", ".+", re.escape(template)), label):
+            return answer
+    return PICK
+
+
+def choices_for(kind: str, resolutions: Sequence[str]) -> tuple[Choice, ...]:
+    """The choices of a ``kind`` card question whose suggested resolutions are
+    ``resolutions``, in their order (the recommended one first): what the reader's prompt
+    lists and what a button answers."""
+    table = _CHOICES.get(kind, {})
+    out: list[Choice] = []
+    for label in map(str, resolutions):
+        answer: Any = _answer_of(table, label)
+        out.append(Choice(label, "change", label) if answer == PICK else Choice(label, answer))
+    return tuple(out)
+
+
 def issue_card(kind: str, record: Any, issue: str, evidence: str,
                resolutions: Sequence[str], *, turn: int = 0) -> CardState:
     """One card about one record: a single question the reader maps the owner's answer to."""
@@ -65,7 +114,8 @@ def issue_card(kind: str, record: Any, issue: str, evidence: str,
         id=cid, kind=kind, topic=record.title, issue=issue, evidence=evidence,
         resolutions=tuple(resolutions),
         questions=(ClarifyQuestion(id=f"{cid}#1", text=issue, resolutions=tuple(resolutions),
-                                   record=record.id, hash=record.hash),),
+                                   record=record.id, hash=record.hash,
+                                   choices=choices_for(kind, resolutions)),),
         turn=turn)
 
 
@@ -147,6 +197,7 @@ def undone_cards(core: Any, session: str, *, turn: int = 0) -> list[CardState]:
             id=cid, kind="show_first", topic=record.title, issue=owner_text.UNDONE_ISSUE,
             evidence=words_of(given), resolutions=options,
             questions=(ClarifyQuestion(id=f"{cid}#1", text=owner_text.UNDONE_ISSUE,
-                                       resolutions=options, record=rid,
-                                       hash=record.hash),), turn=turn))
+                                       resolutions=options, record=rid, hash=record.hash,
+                                       choices=choices_for("show_first", options)),),
+            turn=turn))
     return out
