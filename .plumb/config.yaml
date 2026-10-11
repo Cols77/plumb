@@ -37,3 +37,8 @@ judgment:
     provider: openrouter
     model: typesafe/jev-1.13
     credential_env: OPENROUTER_API_KEY
+auto_approve:
+  enabled: true
+  backend: jev
+  min_probability: 0.9
+  min_confidence: high
