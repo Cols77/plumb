@@ -38,6 +38,7 @@ def core(repo: Path, write_record):
 def handled(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """Fake effect handlers for the card kinds of the other lanes; what each was given."""
     calls: list[dict] = []
+    effects.handler_for("beyond")      # load the kind modules first, or they replace the fakes
     for card_kind in ("beyond", "contradicts", "clarify", "couldnt_check", "trial", "backlog"):
         monkeypatch.setitem(effects.HANDLERS, card_kind,
                             lambda *, _k=card_kind, **kw: calls.append({"kind": _k, **kw}))
