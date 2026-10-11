@@ -362,7 +362,9 @@ def test_new_red_test_never_asks(project: Path, hook_input) -> None:
     out = run_stop(project, hook_input, verify=verify)
     assert _block(out) is None
     assert _summary(out) == ""                       # no card: a new red test asks nothing
-    assert _status(project)["regressions"] == []
+    status = _status(project)                        # the status line: not yet passing
+    assert status["regressions"] == [] and status["failing"] == [node]
+    assert status["tests"] == "failing"
 
 
 def test_doc_only_turn_prints_at_most_one_line(project: Path, hook_input) -> None:
