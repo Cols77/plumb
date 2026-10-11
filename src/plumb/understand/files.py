@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from plumb.contracts import (
+    CHOICE_ANSWERS,
+    Choice,
     ClarifyAnswer,
     ClarifyQuestion,
     GateState,
@@ -47,6 +49,10 @@ def cards_path(root: Path, session: str) -> Path:
 
 def stale_cards_path(root: Path, session: str) -> Path:
     return session_dir(root, session) / "stale_cards.json"
+
+
+def present_path(root: Path, session: str) -> Path:
+    return session_dir(root, session) / "present.json"
 
 
 def gate_path(root: Path, session: str) -> Path:
@@ -169,9 +175,21 @@ def progress_from_json(data: Any) -> Progress | None:
                     kind=str(data.get("kind", "")))
 
 
+def choice_to_json(c: Choice) -> dict[str, Any]:
+    return {"label": c.label, "answer": c.answer, "change": c.change}
+
+
+def choice_from_json(data: Mapping[str, Any]) -> Choice:
+    answer = data.get("answer")
+    change = data.get("change")
+    return Choice(label=str(data.get("label", "")),
+                  answer=answer if answer in CHOICE_ANSWERS else "open",
+                  change=None if change is None else str(change))
+
+
 def question_to_json(q: ClarifyQuestion) -> dict[str, Any]:
     return {"id": q.id, "text": q.text, "resolutions": list(q.resolutions), "record": q.record,
-            "hash": q.hash}
+            "hash": q.hash, "choices": [choice_to_json(c) for c in q.choices]}
 
 
 def answer_to_json(a: ClarifyAnswer) -> dict[str, Any]:
