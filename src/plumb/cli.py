@@ -44,6 +44,7 @@ ROUTES: dict[str, str] = {
     # SP8 UNDERSTAND: the model-backed layer (a thin router; listed only when importable)
     "understand": "plumb.understand.cli", "settle": "plumb.understand.cli",
     "undo": "plumb.understand.cli", "go": "plumb.understand.cli",
+    "quotes": "plumb.understand.cli",
     # MERGE (sub-project 3)
     "merge-check": "plumb.boundary.cli",
     # SP6 LOGS: one file per log entry; the migration of the legacy JSONL lines
@@ -98,6 +99,8 @@ intent capture:
   triage       proposed records grouped by faithfulness; --approve low-risk (owner only)
   config       auto-approve on|off and show (owner's terminal only); card full|compact|off
   jev          status, setup (the credential variable's name only), calibrate
+  quotes       recover: find older records' words in past session transcripts (shown on
+               the card as found, not verified; it confirms nothing)
 
 owner views (plain words, paths or IDs; none approves anything):
   resolve      what your words mean: records, files and tests, best first

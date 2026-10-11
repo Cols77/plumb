@@ -1,0 +1,12 @@
+{
+  "id": "recover.v1",
+  "title": "Which owner message holds this record's words, and do they support it?",
+  "type": "object",
+  "required": ["message", "span", "supports", "reason"],
+  "properties": {
+    "message": {"type": "string"},
+    "span": {"type": "string"},
+    "supports": {"type": "boolean"},
+    "reason": {"type": "string"}
+  }
+}

@@ -153,7 +153,9 @@ def test_every_route_names_a_module_path() -> None:
                 # sub-project 7 PLUGIN: `plumb plugin ignore|unignore|migrate`
                 "plugin",
                 # sp7 slice 4: the panel's own commands (not advertised in --help)
-                "mod"}
+                "mod",
+                # SR-118: `plumb quotes recover`
+                "quotes"}
     assert set(cli.ROUTES) == expected
     for module in cli.ROUTES.values():
         assert re.fullmatch(r"plumb(\.[a-z_]+)+", module)

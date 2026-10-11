@@ -10,6 +10,7 @@ ROUTES: dict[str, str] = {
     "settle": "plumb.understand.cmd_settle",
     "undo": "plumb.understand.cmd_settle",
     "go": "plumb.understand.cmd_go",
+    "quotes": "plumb.understand.cmd_quotes",
 }
 
 
