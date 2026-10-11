@@ -259,8 +259,7 @@ def records_for_paths(core: Core, paths: Iterable[str]) -> dict[str, tuple[str, 
 # fallback, so a backend that is disabled or unreachable refuses.
 
 REPIN_NOTE = "tests pass, meaning unchanged"
-NO_MODEL = ("no model could judge whether the meaning changed (the judgment backend is "
-            "unreachable or rule-based); nothing was repinned")
+NO_MODEL = "no model could judge whether the meaning changed; nothing was repinned"
 HISTORY_DEPTH = 30
 
 
@@ -268,6 +267,7 @@ HISTORY_DEPTH = 30
 class AfterTests:
     changes: list[dict[str, Any]] = field(default_factory=list)
     refused: list[tuple[str, str]] = field(default_factory=list)   # (link id, why)
+    would: list[tuple[str, str]] = field(default_factory=list)     # dry run: (link id, why)
 
 
 def _segment(text: str, qualname: str | None) -> str | None:
@@ -365,10 +365,11 @@ def _select_stale(core: Core, selector: str) -> list[LinkState]:
 
 def repin_after_tests(core: Core, selector: str, *,
                       runner: Callable[[list[str]], tuple[bool, str]] | None = None,
-                      backend: Any = None) -> AfterTests:
+                      judge: Any = None, dry_run: bool = False) -> AfterTests:
     """Repin the stale links of ``selector`` (a link id or a record id) whose linked tests
-    pass and whose end a model judges unchanged in meaning; refuse the others, with why.
-    Never confirms anything."""
+    pass and whose change a model judges not to alter what the requirement relies on; refuse
+    the others, with why. ``dry_run`` asks the model only: no tests run, nothing is repinned,
+    and the links it would repin are listed in ``would``. Never confirms anything."""
     result = AfterTests()
     states = _select_stale(core, selector)
     candidates: list[LinkState] = []
@@ -385,22 +386,23 @@ def repin_after_tests(core: Core, selector: str, *,
             candidates.append(state)
     if not candidates:
         return result
-    if backend is None:
-        from plumb.judgment import get_backend
+    if judge is None:
+        from plumb.understand.repin import open_judge
 
-        try:
-            backend = get_backend(core, hook=False)
-        except Exception:  # noqa: BLE001
-            backend = None
-    if backend is None or getattr(backend, "name", "") in ("unavailable", "disabled"):
+        judge = open_judge(core)
+    if judge is None:
         result.refused += [(s.link.id, NO_MODEL) for s in candidates]
         return result
-    paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
-    ok, detail = (runner or default_runner(core))(paths)
-    if not ok:
-        result.refused += [(s.link.id, f"its linked tests do not pass ({detail})")
-                           for s in candidates]
-        return result
+    if not dry_run:
+        paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
+        ok, detail = (runner or default_runner(core))(paths)
+        if not ok:
+            result.refused += [(s.link.id, f"its linked tests do not pass ({detail})")
+                               for s in candidates]
+            return result
+    from plumb.understand.judge import record_text
+
+    index = core.index()
     for state in candidates:
         link = state.link
         texts = end_texts(core.root, link)
@@ -408,18 +410,25 @@ def repin_after_tests(core: Core, selector: str, *,
             result.refused.append((link.id, "the earlier version of the end could not be "
                                    "found in git, so there is nothing to compare"))
             continue
+        record = index.get(link.id.split("#")[0])
         try:
-            judgments = list(backend.drift_triage([state], {link.id: texts}))
-        except Exception:  # noqa: BLE001 - an unreachable model refuses
-            judgments = []
-        verdict = judgments[0] if judgments else None
-        if verdict is None or verdict.backend in ("unavailable", "disabled") \
-                or verdict.tier != "accept" or verdict.verdict not in ("cosmetic", "material"):
-            result.refused.append((link.id, NO_MODEL))
-        elif verdict.verdict == "material":
-            result.refused.append((link.id, "the model says the meaning changed"))
+            meaning = judge.same_meaning(
+                requirement=f"{record.id}: {record.title}\n{record_text(record)}"
+                if record is not None else link.id,
+                link_id=link.id, link_kind=link.kind, path=target_path(link.target) or "",
+                before=texts[0], after=texts[1])
+        except Exception as exc:  # noqa: BLE001 - an unreachable model refuses
+            result.refused.append((link.id, f"{NO_MODEL} ({exc})"))
+            continue
+        if meaning.unchanged is None:
+            result.refused.append((link.id, f"{NO_MODEL}: {meaning.reason}"))
+        elif not meaning.unchanged:
+            result.refused.append((link.id, f"the model says the meaning changed: "
+                                   f"{meaning.reason}"))
+        elif dry_run:
+            result.would.append((link.id, meaning.reason))
         else:
-            result.changes += repin(core, link.id, note=REPIN_NOTE)
+            result.changes += repin(core, link.id, note=f"{REPIN_NOTE}: {meaning.reason}")
     return result
 
 

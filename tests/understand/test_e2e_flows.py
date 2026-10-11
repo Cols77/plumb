@@ -20,7 +20,7 @@ import pytest
 
 from plumb import links, stale
 from plumb.api import open_core
-from plumb.judgment import FakeBackend
+from plumb.understand.repin import Meaning
 from plumb.present import owner_text
 from plumb.understand import files
 from understand.fakes import owner_level
@@ -37,6 +37,16 @@ GAPS = {"intent": "yes", "topic": "exporting data", "gap": True,
 CLEAR = {"intent": "yes", "topic": "exporting data", "gap": False, "gaps": []}
 ROOMY = ("calibration: {min_items: 5, min_negatives: 1}\n"
          "hooks:\n  budget_ms: {stop: 8000}\n")
+
+
+class FixedMeaning:
+    """A repin meaning judge with a fixed answer."""
+
+    def __init__(self, unchanged: bool) -> None:
+        self.answer = Meaning(unchanged, "fixed", 0.95)
+
+    def same_meaning(self, **shown: Any) -> Meaning:
+        return self.answer
 
 
 # ---- helpers -----------------------------------------------------------------------------
@@ -591,9 +601,9 @@ def test_flow_7_stale_edit_names_the_link_hold_card_and_reformat(
         "hookSpecificOutput"]["additionalContext"]
     assert json.loads(s.stop())["decision"] == "block"
     link = "SR-001#0"
-    cosmetic = FakeBackend({("drift-triage", link): ("cosmetic", 0.95)})
+    cosmetic = FixedMeaning(True)
     done = links.repin_after_tests(open_core(repo), link, runner=lambda paths: (True, "ran"),
-                                   backend=cosmetic)
+                                   judge=cosmetic)
     assert [c["link"] for c in done.changes] == [link] and done.refused == []
     assert all(st.state == "current" for st in open_core(repo).link_states())
     assert '"decision": "block"' not in s.stop()
@@ -610,9 +620,9 @@ def test_flow_7_stale_edit_names_the_link_hold_card_and_reformat(
     held = json.loads(s.stop())
     assert held["decision"] == "block"
     assert "SR-001's link to src/calc.py is stale and unresolved" in held["reason"]
-    material = FakeBackend({("drift-triage", link): ("material", 0.95)})
+    material = FixedMeaning(False)
     refused = links.repin_after_tests(open_core(repo), link, runner=lambda paths: (True, "ran"),
-                                      backend=material)
+                                      judge=material)
     assert refused.changes == [] and "meaning changed" in refused.refused[0][1]
     assert any(st.state == "stale" for st in open_core(repo).link_states())
     carded = plumb(s, "stale", "card", link, "--topic", "Adds numbers", "--issue",

@@ -190,6 +190,8 @@ class UnderstandConfig:
 
     dispatch: str = "auto"       # auto | claude-code | hermes | openrouter
     model: str = "haiku"
+    repin_model: str = "sonnet"      # SR-111 EX-4: judges whether a stale link's change matters
+    repin_min_confidence: float = 0.8
     timeout_s: float = 120
     clarify_wait_s: float = 45
     reader_threshold_start: float = 0.9

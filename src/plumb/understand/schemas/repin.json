@@ -1,0 +1,11 @@
+{
+  "id": "repin.v1",
+  "title": "Does the change alter what the requirement relies on?",
+  "type": "object",
+  "required": ["verdict", "reason", "confidence"],
+  "properties": {
+    "verdict": {"type": "string", "enum": ["unchanged", "changed"]},
+    "reason": {"type": "string"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+  }
+}

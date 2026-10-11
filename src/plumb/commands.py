@@ -172,6 +172,9 @@ def cmd_repin(command: str, argv: list[str]) -> int:
     parser.add_argument("--after-tests", action="store_true",
                         help="rerun the linked tests and repin only when they pass and a model "
                              "judges the meaning unchanged; refuses otherwise")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="with --after-tests: ask the model only (no tests, no repin) and "
+                             "list what it would repin")
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
     if not args.selector and not args.all_stale:
@@ -180,10 +183,11 @@ def cmd_repin(command: str, argv: list[str]) -> int:
         parser.error("--after-tests takes one link id or record ID")
     core = _core(args)
     refused: list[tuple[str, str]] = []
+    would: list[tuple[str, str]] = []
     try:
         if args.after_tests:
-            outcome = repin_after_tests(core, args.selector)
-            changes, refused = outcome.changes, outcome.refused
+            outcome = repin_after_tests(core, args.selector, dry_run=args.dry_run)
+            changes, refused, would = outcome.changes, outcome.refused, outcome.would
         else:
             changes = repin(core, args.selector, all_stale=args.all_stale, note=args.note)
     except LinkError as exc:
@@ -191,7 +195,10 @@ def cmd_repin(command: str, argv: list[str]) -> int:
         return 1
     if args.as_json:
         emit({"repinned": changes, "refused": [{"link": link, "why": why}
-                                               for link, why in refused]}, True)
+                                               for link, why in refused],
+              "would_repin": [{"link": link, "why": why} for link, why in would]}, True)
+    elif would:
+        emit([f"plumb: would repin {link}: {why}" for link, why in would], False)
     elif changes:
         emit([f"plumb: repinned {c['link']}" for c in changes], False)
     elif not refused:

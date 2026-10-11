@@ -13,8 +13,7 @@ from plumb import links, stale
 from plumb.api import open_core
 from plumb.cli import main
 from plumb.contracts import Target
-from plumb.judgment import DisabledBackend, FakeBackend
-from plumb.judgment import JudgmentUnavailable, UnavailableBackend
+from plumb.understand.repin import Meaning
 
 pytestmark = pytest.mark.sr("SR-111")
 
@@ -58,8 +57,19 @@ def _edit(repo: Path, text: str) -> None:
     (repo / "src" / "calc.py").write_text(text, "utf-8")
 
 
-def _backend(verdict: str, confidence: float = 0.95) -> FakeBackend:
-    return FakeBackend({("drift-triage", LINK): (verdict, confidence)})
+class Judge:
+    """A meaning judge with a fixed answer; it records what it was shown."""
+
+    def __init__(self, unchanged: bool | None, reason: str = "only formatting") -> None:
+        self.answer, self.asked = Meaning(unchanged, reason, 0.95), []
+
+    def same_meaning(self, **shown):
+        self.asked.append(shown)
+        return self.answer
+
+
+def _backend(verdict: str) -> Judge:
+    return Judge({"cosmetic": True, "material": False}[verdict])
 
 
 class Runner:
@@ -81,19 +91,19 @@ def test_ex4_reformat_repinned_without_owner(project: Path) -> None:
     assert _state(project) == "stale"
     runner = Runner()
     result = links.repin_after_tests(open_core(project), LINK, runner=runner,
-                                     backend=_backend("cosmetic"))
+                                     judge=_backend("cosmetic"))
     assert [c["link"] for c in result.changes] == [LINK] and result.refused == []
     assert runner.calls == [["src/calc.py"]]
     assert _state(project) == "current"
     (entry,) = [e for e in open_core(project).log_read("events", ["repin"])]
-    assert entry.payload["note"] == "tests pass, meaning unchanged"
+    assert entry.payload["note"].startswith("tests pass, meaning unchanged")
     assert stale.read_cards(project, "s1") == []          # the owner was not involved
 
 
 def test_meaning_changed_refused(project: Path) -> None:
     _edit(project, CHANGED)
     result = links.repin_after_tests(open_core(project), LINK, runner=Runner(),
-                                     backend=_backend("material"))
+                                     judge=_backend("material"))
     assert result.changes == [] and [r[0] for r in result.refused] == [LINK]
     assert "meaning changed" in result.refused[0][1]
     assert _state(project) == "stale"
@@ -102,23 +112,21 @@ def test_meaning_changed_refused(project: Path) -> None:
 def test_failing_tests_refused(project: Path) -> None:
     _edit(project, REFORMATTED)
     result = links.repin_after_tests(open_core(project), LINK, runner=Runner(ok=False),
-                                     backend=_backend("cosmetic"))
+                                     judge=_backend("cosmetic"))
     assert result.changes == [] and "tests" in result.refused[0][1]
     assert _state(project) == "stale"
 
 
-@pytest.mark.parametrize("backend", [DisabledBackend(), UnavailableBackend(JudgmentUnavailable("JEV", "timeout")), None])
-def test_model_unreachable_refuses_and_repins_nothing(project: Path, backend) -> None:
+@pytest.mark.parametrize("judge", ["raises", "no-answer"])
+def test_model_unreachable_refuses_and_repins_nothing(project: Path, judge) -> None:
     _edit(project, REFORMATTED)
 
     class Broken:
-        name = "jev"
-
-        def drift_triage(self, states, texts):
+        def same_meaning(self, **shown):
             raise OSError("unreachable")
 
     result = links.repin_after_tests(open_core(project), LINK, runner=Runner(),
-                                     backend=Broken() if backend is None else backend)
+                                     judge=Broken() if judge == "raises" else Judge(None))
     assert result.changes == []
     assert "no model" in result.refused[0][1]
     assert _state(project) == "stale"
@@ -130,8 +138,7 @@ def test_unlocatable_earlier_version_refused(project: Path) -> None:
     open_core(project).add_link("SR-001", "implemented_by", Target(path="src/later.py"))
     (project / "src" / "later.py").write_text(DEF_F_SPACED, "utf-8")
     result = links.repin_after_tests(open_core(project), "SR-001#1", runner=Runner(),
-                                     backend=FakeBackend({("drift-triage", "SR-001#1"):
-                                                          ("cosmetic", 0.95)}))
+                                     judge=Judge(True))
     assert result.changes == [] and "earlier version" in result.refused[0][1]
 
 
@@ -140,7 +147,7 @@ def test_a_requirement_reworded_is_not_repinned_by_tests(project: Path) -> None:
     path.write_text(path.read_text("utf-8").replace("add returns the sum.",
                                                     "add returns the total."), "utf-8")
     result = links.repin_after_tests(open_core(project), LINK, runner=Runner(),
-                                     backend=_backend("cosmetic"))
+                                     judge=_backend("cosmetic"))
     assert result.changes == [] and "requirement itself" in result.refused[0][1]
 
 
@@ -149,7 +156,7 @@ def test_repin_never_confirms(project: Path) -> None:
     before = core.status(["SR-001"])["SR-001"].confirmation
     _edit(project, REFORMATTED)
     links.repin_after_tests(open_core(project), LINK, runner=Runner(),
-                            backend=_backend("cosmetic"))
+                            judge=_backend("cosmetic"))
     after = open_core(project).status(["SR-001"])["SR-001"].confirmation
     assert before == after == "proposed"
     kinds = {e.kind for e in open_core(project).log_read("events")}
@@ -203,3 +210,51 @@ def test_stale_cards_file_format(project: Path) -> None:
                    topic="Adds numbers", issue="the sum changed", options=["a", "b", "c"])
     (card,) = cardstore.load(project, "s1")
     assert card.kind == "stale_link" and card.topic == "Adds numbers"
+
+
+def test_the_judge_is_shown_the_requirement_and_the_link(project: Path) -> None:
+    _edit(project, REFORMATTED)
+    judge = Judge(True)
+    links.repin_after_tests(open_core(project), LINK, runner=Runner(), judge=judge)
+    (shown,) = judge.asked
+    assert "add returns the sum." in shown["requirement"] and "EX-1" in shown["requirement"]
+    assert shown["link_id"] == LINK and shown["link_kind"] == "implemented_by"
+    assert shown["path"] == "src/calc.py"
+    assert "a + b" in shown["before"] and "a  +  b" in shown["after"]
+
+
+def test_dry_run_asks_the_model_only(project: Path) -> None:
+    _edit(project, REFORMATTED)
+    runner = Runner()
+    result = links.repin_after_tests(open_core(project), LINK, runner=runner,
+                                     judge=Judge(True), dry_run=True)
+    assert result.would == [(LINK, "only formatting")] and result.changes == []
+    assert runner.calls == [] and _state(project) == "stale"
+
+
+def test_model_judge_sends_the_diff_and_reads_the_verdict() -> None:
+    from plumb.understand.repin import ModelMeaningJudge
+
+    class Dispatcher:
+        name, model = "claude-code", "sonnet"
+
+        def __init__(self, answer):
+            self.answer, self.seen = answer, []
+
+        def run(self, job, *, system, user, schema, on_step):
+            self.seen.append(json.loads(user))
+            return self.answer
+
+    shown = dict(requirement="SR-001: add returns the sum.", link_id=LINK,
+                 link_kind="implemented_by", path="src/calc.py", before=CODE, after=CHANGED)
+    changed = Dispatcher({"verdict": "changed", "reason": "add now multiplies",
+                          "confidence": 0.9})
+    assert ModelMeaningJudge(changed).same_meaning(**shown) == Meaning(
+        False, "add now multiplies", 0.9)
+    assert "-    return a + b" in changed.seen[0]["diff"]
+    unsure = Dispatcher({"verdict": "unchanged", "reason": "r", "confidence": 0.5})
+    assert ModelMeaningJudge(unsure).same_meaning(**shown).unchanged is None
+    sure = Dispatcher({"verdict": "unchanged", "reason": "r", "confidence": 0.9})
+    assert ModelMeaningJudge(sure).same_meaning(**shown).unchanged is True
+    bad = Dispatcher({"verdict": "maybe"})
+    assert ModelMeaningJudge(bad).same_meaning(**shown).unchanged is None

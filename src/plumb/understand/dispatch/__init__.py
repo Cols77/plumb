@@ -70,7 +70,8 @@ def host_dispatcher() -> str | None:
     return None
 
 
-def configured(core: Any) -> Dispatcher:
+def configured(core: Any, *, model: str | None = None) -> Dispatcher:
+    """The one dispatcher; ``model`` overrides ``understand.model`` for one kind of job."""
     script = os.environ.get("PLUMB_FAKE_DISPATCH")
     if script:
         return ScriptedDispatcher(Path(script))
@@ -86,14 +87,17 @@ def configured(core: Any) -> Dispatcher:
     if choice == "claude-code":
         from plumb.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
-        return ClaudeCodeDispatcher(model=settings.model, timeout_s=settings.timeout_s)
+        return ClaudeCodeDispatcher(model=model or settings.model, timeout_s=settings.timeout_s)
     if choice == "hermes":
         from plumb.understand.dispatch.hermes import HermesDispatcher
 
-        return HermesDispatcher(model=settings.model, timeout_s=settings.timeout_s)
+        return HermesDispatcher(model=model or settings.model, timeout_s=settings.timeout_s)
     if choice == "openrouter":
         from plumb.understand.dispatch.openrouter import OpenRouterDispatcher
 
-        return OpenRouterDispatcher.from_core(core)
+        dispatcher = OpenRouterDispatcher.from_core(core)
+        if model and "/" in model:
+            dispatcher.model = model
+        return dispatcher
     raise NoModel(f"no model configured: {choice!r} is not a dispatcher "
                   "(claude-code, hermes or openrouter)")
