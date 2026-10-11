@@ -341,16 +341,28 @@ def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
     return None
 
 
+REPIN_BUDGET_S = 120.0  # an explicit repin is not a hook: the turn budget would cut it short
+
+
 def default_runner(core: Core) -> Callable[[list[str]], tuple[bool, str]]:
     """Run the covering tests of the changed paths through the verification lane."""
 
     def run(paths: list[str]) -> tuple[bool, str]:
         from plumb.verify import open_verify
 
-        report = open_verify(core).run(changed=paths)
+        report = open_verify(core).run(changed=paths, budget_s=REPIN_BUDGET_S)
         if report.run_id is None:
             return False, "no test covers " + ", ".join(paths)
-        return report.ok, ("passed" if report.ok else "failed: " + ", ".join(report.failed))
+        if report.ok:
+            return True, "passed"
+        if report.failed:
+            return False, "failed: " + ", ".join(report.failed)
+        why = (["stopped at the time limit"] if report.timed_out else []) \
+            + ([f"aborted: {report.aborted}"] if report.aborted else []) \
+            + ([f"discarded: {report.discarded}"] if report.discarded else []) \
+            + (["collection errors: " + ", ".join(report.collection_errors)]
+               if report.collection_errors else [])
+        return False, "; ".join(why) or "the run did not finish"
 
     return run
 

@@ -261,3 +261,21 @@ def test_model_judge_sends_the_diff_and_reads_the_verdict() -> None:
     assert ModelMeaningJudge(sure).same_meaning(**shown).unchanged is True
     bad = Dispatcher({"verdict": "maybe"})
     assert ModelMeaningJudge(bad).same_meaning(**shown).unchanged is None
+
+
+def test_a_run_stopped_at_the_time_limit_says_so(project: Path, monkeypatch) -> None:
+    """A run that names no failed test says why it did not pass, not 'failed: '."""
+    from plumb.verify import api as verify_api
+
+    report = verify_api.RunReport(run_id="r1", timed_out=True) \
+        if hasattr(verify_api, "RunReport") else None
+    if report is None:
+        pytest.skip("no RunReport class")
+
+    class Lane:
+        def run(self, changed, budget_s=None):
+            return report
+
+    monkeypatch.setattr("plumb.verify.open_verify", lambda core: Lane())
+    ok, detail = links.default_runner(open_core(project))(["src/a.py"])
+    assert not ok and detail == "stopped at the time limit"
