@@ -7,7 +7,6 @@ confirms only after exact checks (task R2)."""
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import re
 import time
@@ -15,7 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import Applied, CardState, ClarifyAnswer, ClarifyQuestion, Job
+from plumb.contracts import Applied, CardState, Choice, ClarifyQuestion, Job
 from plumb.present import owner_text
 from plumb.understand import files
 
@@ -258,34 +257,6 @@ def _confidence(raw: Any) -> float:
         return 0.0
 
 
-def _approval(core: Any, job: Job, digest: str, message: str, record_id: str,
-              record_hash: str, evidence: str, confidence: float, *,
-              label: str | None = None) -> dict[str, Any]:
-    from plumb.approvals import approval_items
-
-    (item,) = approval_items(core, [record_id])   # with the owned ends and test pins
-    payload: dict[str, Any] = {
-        "by": "owner-words", "session": job.session, "job": job.id,
-        "records": [{**item, "hash": record_hash}], "prompt_digest": digest,
-        "message": message, "evidence": evidence, "confidence": confidence}
-    if label:
-        payload["label"] = label
-    return {"kind": "approval", "payload": payload}
-
-
-def _rejection(core: Any, job: Job, digest: str, record: Any, evidence: str, confidence: float,
-               rejection: Any) -> dict[str, Any]:
-    from plumb.capture.calibrate import snapshot
-    from plumb.normalize import sha256_text
-
-    item = {"id": record.id, "hash": record.hash, **snapshot(core.index(), record, core)}
-    return {"kind": "rejection", "payload": {
-        "by": "owner-words", "session": job.session, "job": job.id, "records": [item],
-        "reason": "capture-error" if rejection == "misread" else "intent-change",
-        "prompt_digest": digest, "quote": evidence, "quote_digest": sha256_text(evidence),
-        "confidence": confidence}}
-
-
 def show_first_card(record: Any, evidence: str) -> CardState:
     """The card that shows a record the owner named but never saw, before it can be
     confirmed on the next answer (SR-088's rule, kept for prose)."""
@@ -323,44 +294,6 @@ def owner_only_reply(card: CardState, question: Any) -> str:
         action="switch settling on or off", command=f"/plumb settle on {kind}".strip())
 
 
-def _open_cards(core: Any, session: str) -> list[CardState]:
-    from plumb.understand import cardstore
-
-    return cardstore.load(core.root, session)
-
-
-class _Applying:
-    """The state of one ``apply`` (in memory; the caller writes the result)."""
-
-    def __init__(self, core: Any, job: Job, digest: str, message: str) -> None:
-        self.core, self.job, self.digest, self.message = core, job, digest, message
-        self.index = core.index()
-        self.statuses = core.status(list(self.index))
-        self.entries: list[Mapping[str, Any]] = []
-        self.cards: dict[str, CardState] = {}
-        self.closed: list[str] = []
-        self.notes: list[str] = []
-        self.confirmed: set[str] = set()
-        self.open_cards = {c.id: c for c in _open_cards(core, job.session)}
-
-    def confirm(self, record_id: str, record_hash: str, evidence: str, confidence: float,
-                label: str | None = None) -> None:
-        record = self.index.get(record_id)
-        if record is None or record.hash != record_hash or record_id in self.confirmed:
-            return
-        if self.statuses[record_id].confirmation == "confirmed":
-            return
-        self.confirmed.add(record_id)
-        self.entries.append(_approval(self.core, self.job, self.digest, self.message,
-                                      record_id, record_hash, evidence, confidence,
-                                      label=label))
-
-    def reject(self, record: Any, evidence: str, confidence: float, rejection: Any) -> None:
-        if self.statuses[record.id].confirmation != "confirmed":
-            self.entries.append(_rejection(self.core, self.job, self.digest, record, evidence,
-                                           confidence, rejection))
-
-
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     """Apply the reader's entries after exact checks only (nothing here reads the words):
     the message is in the prompt log; the record was shown at that version and is still that
@@ -368,6 +301,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     threshold confirms (``by: owner-words``). Every entry is logged as a ``read-entry``."""
     if core is None:
         return Applied(job=job.id)
+    from plumb.understand import answer as answer_mod
     from plumb.understand.threshold import reader_threshold
 
     inputs = job.inputs if isinstance(job.inputs, Mapping) else {}
@@ -377,7 +311,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     if logged is None:
         return Applied(job=job.id, notes=("the message is not in the prompt log; "
                                           "nothing was confirmed",))
-    work = _Applying(core, job, digest, str(logged["text"]))
+    work = answer_mod.Answering(core, job.session, job=job, digest=digest,
+                                message=str(logged["text"]))
     if digest not in {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}:
         work.entries.append({"kind": "prompt", "payload": {
             "digest": digest, "session": logged.get("session"), "at": logged.get("at")}})
@@ -411,7 +346,13 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         if item is None and name not in shown:
             item = by_record.get(name)
         if item is not None and name not in shown:
-            _apply_card(work, item, raw, said, confidence, evidence, passes)
+            answer_mod.apply_answer(
+                work, card=str(item.get("card")), question=str(item.get("question") or ""),
+                record=str(item.get("record") or ""), hash=str(item.get("hash") or ""),
+                choice=Choice(answer=said, change=raw.get("change")),
+                source=answer_mod.OwnerWords(job=job, digest=digest, evidence=evidence,
+                                             confidence=confidence, passes=passes,
+                                             rejection=raw.get("rejection")))
             continue
         record = work.index.get(name)
         if record is None:
@@ -429,74 +370,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         elif said == "change":
             card = change_card(record, str(raw.get("change") or evidence), evidence, digest)
             work.cards[card.id] = card
-    return Applied(job=job.id, cards=tuple(work.cards.values()), closed=tuple(work.closed),
-                   entries=tuple(work.entries), notes=tuple(work.notes))
-
-
-# the kinds of card whose yes confirms a record: the version the card showed
-PINNED_KINDS = ("trial", "backlog", "show_first")
-
-
-def _close_stale(work: _Applying, card: CardState, record: Any, evidence: str) -> None:
-    """The record changed after the card showed it: the answer confirms nothing, the card is
-    closed, and the version it has now is shown as a fresh card."""
-    fresh = show_first_card(record, evidence)
-    if card.id != fresh.id:
-        work.cards[card.id] = dataclasses.replace(card, status="closed")
-        work.closed.append(card.id)
-    work.cards[fresh.id] = fresh
-    work.notes.append(owner_text.CARD_CHANGED_SINCE.format(title=record.title))
-
-
-def _apply_card(work: _Applying, item: Mapping[str, Any], raw: Mapping[str, Any], said: str,
-                confidence: float, evidence: str, passes: bool) -> None:
-    """An answer to a card question: recorded on the card, then the effect of the card's
-    kind. A prose answer to an owner-only card changes nothing and says what does."""
-    from plumb.understand import effects
-
-    card = work.cards.get(str(item.get("card"))) or work.open_cards.get(str(item.get("card")))
-    if card is None:
-        return
-    question = next((q for q in card.questions if q.id == item.get("question")), None)
-    if card.kind in effects.NO_EFFECT or card.owner_only:
-        work.notes.append(owner_only_reply(card, question))
-        return
-    if said == "accepted" and not passes:
-        return
-    record_id = str(item.get("record") or "")
-    record = work.index.get(record_id) if record_id else None
-    if record is not None and card.kind in PINNED_KINDS and record.hash != item.get("hash"):
-        _close_stale(work, card, record, evidence)      # the owner answered an older version
-        return
-    if record is not None and card.kind in ("trial", "backlog"):
-        if said == "accepted":
-            work.confirm(record_id, record.hash, evidence, confidence, label="yes")
-        elif said == "rejected":
-            work.reject(record, evidence, confidence, raw.get("rejection"))
-    text = said if said != "change" else f"change: {raw.get('change') or evidence}"
-    answers = (*card.answers, ClarifyAnswer(str(item.get("question") or card.id), text,
-                                            work.digest))
-    answered = {a.question for a in answers}
-    done = all(q.id in answered for q in card.questions) if card.questions else True
-    card = dataclasses.replace(card, answers=answers, status="answered" if done else "open")
-    work.cards[card.id] = card
-    if done:
-        work.closed.append(card.id)
-    handler = effects.handler_for(card.kind)
-    if handler is None:
-        return
-    result = handler(
-        core=work.core, job=work.job, card=card, question=item.get("question"),
-        entry={"answer": said, "change": raw.get("change"), "confidence": confidence,
-               "evidence": evidence, "record": record_id, "hash": item.get("hash")},
-        message=work.message, digest=work.digest, accepted=said == "accepted" and passes,
-        confirm=work.confirm)
-    if isinstance(result, Applied):
-        work.entries.extend(result.entries)
-        for extra in result.cards:
-            work.cards[extra.id] = extra
-        work.closed.extend(result.closed)
-        work.notes.extend(result.notes)
+    return work.applied()
 
 
 # --------------------------------------------------------------------------- card kinds
