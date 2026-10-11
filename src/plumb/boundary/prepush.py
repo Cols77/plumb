@@ -31,9 +31,10 @@ def hook_path(root: Path) -> Path:
 
 
 def hook_text(interpreter: str) -> str:
-    exe = interpreter.replace("\\", "/")
+    from plumb import launcher
+
     return (f"#!/bin/sh\n{HOOK_MARKER} (written by `plumb merge-check --install-pre-push`)\n"
-            f'exec "{exe}" -m plumb merge-check --hook pre-push\n')
+            + launcher.git_hook_line(interpreter, "pre-push", "merge-check --hook pre-push"))
 
 
 def _is_plumb(path: Path) -> bool:

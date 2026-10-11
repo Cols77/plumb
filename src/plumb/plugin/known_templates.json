@@ -1,0 +1,4 @@
+{
+  "note": "sha256 (of the LF text) of earlier renderings of the command, skill and gate templates; plumb plugin migrate removes a copy whose digest is listed here or that equals a current rendering",
+  "digests": []
+}

@@ -209,9 +209,10 @@ def _git_path(root: Path, rel: str) -> Path:
 
 
 def hook_text(interpreter: str) -> str:
-    exe = interpreter.replace("\\", "/")
+    from plumb import launcher
+
     return (f"#!/bin/sh\n{HOOK_MARKER} (written by `plumb trailers install-hook`)\n"
-            f'exec "{exe}" -m plumb trailers check-msg "$1"\n')
+            + launcher.git_hook_line(interpreter, "commit-msg", 'trailers check-msg "$1"'))
 
 
 def install_commit_msg_hook(root: Path, interpreter: str) -> Path:

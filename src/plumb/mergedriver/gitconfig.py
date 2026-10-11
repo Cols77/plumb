@@ -30,8 +30,11 @@ def driver_command(launcher: str) -> str:
 
 
 def launcher_for(interpreter: str) -> str:
-    """The launcher of the commit-msg hook (``"<interpreter>" -m plumb``)."""
-    return f'"{interpreter.replace(chr(92), "/")}" -m plumb'
+    """The launcher of the record merge driver: ``"<interpreter>" -m plumb``, or the user-level
+    launcher under the plugin (``plumb.launcher``, SP7 4.6)."""
+    from plumb import launcher
+
+    return launcher.driver_command(interpreter)
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:

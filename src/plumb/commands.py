@@ -114,12 +114,26 @@ def cmd_init(command: str, argv: list[str]) -> int:
     changed = init_repo(root)
     # sp6 7.1, 10 (R15, R17): adopting a repository also sets up the record merge driver
     # and the quick merge check (no test run) in git, when it is a git repository
+    from plumb import launcher
     from plumb.hosts.claude_code.install import git_adoption
 
     git_lines: list[str] = []
+    plugin = launcher.plugin_root() is not None
     if (root / ".git").exists():
+        if plugin:
+            # SP7 4.5 (SR-083): under the plugin init also writes the commit check, each hook
+            # calling the user-level launcher; nothing under .claude/ is written
+            from plumb.hosts.claude_code.install import commit_msg_adoption
+
+            commit_msg_adoption(root, sys.executable, git_lines)
         git_adoption(root, sys.executable, git_lines, False)
         git_lines = [line for line in git_lines if not line.endswith("unchanged")]
+    if plugin and not args.as_json:
+        from plumb.present import owner_text
+
+        kept = [line for line in git_lines if "was kept" in line or "not installed" in line]
+        emit([owner_text.INIT_DONE] + kept, False)
+        return 0
     if args.as_json:
         emit({"root": str(root), "changed": changed, "git": git_lines}, True)
     elif changed or git_lines:

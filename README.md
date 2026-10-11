@@ -38,6 +38,21 @@ plumb keeps pi-agent-factory's IDs and `SR:` commit trailers, and it imports tha
 register (requirements, features, bundles, nonconformances, upstream consent) idempotently,
 with a dry-run diff.
 
+## As a Claude Code plugin
+
+In Claude Code, add this repository as a plugin marketplace and install plumb from it:
+
+```
+/plugin marketplace add <owner>/<repo>
+/plugin install plumb@plumb
+```
+
+Then type `/plumb init` in a project to adopt it. The plugin brings `/plumb`, the `plumb` and
+`plumb-clarify` skills and plumb's background checks to every project, and runs plumb from a
+private copy it sets up on first use (it needs uv, or Python 3.12). A project plumb has not
+adopted sees one line per session and nothing else. The plugin is built by
+`python scripts/build_plugin.py` (`plugin/`).
+
 ## Quickstart (5 minutes)
 
 You need Python 3.12+, [uv](https://docs.astral.sh/uv/), git and a pytest test suite.

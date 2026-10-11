@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from plumb.guard import legacy_forms
+
 IS_WINDOWS = os.name == "nt"
 MARKER_NAME = "PLUMB_AGENT_SESSION"
 MARKER_VALUE = "claude-code"
@@ -46,21 +48,16 @@ GATE_SCRIPT = ".claude/plumb/gate.sh"
 GATE_COMMAND = 'sh "$CLAUDE_PROJECT_DIR/' + GATE_SCRIPT + '"'
 # hook names whose module is not named after them
 HOOK_MODULE = {"pre-tool": "pretool"}
-GUARDED = ("approve", "revoke", "tests waive", "triage --approve", "spec approve",
-           "config auto-approve", "config show",
-           # the agent never logs a prompt itself where the prompt hook runs: `turn start`
-           # is the CLI-only fallback of hosts without one, and `hook prompt` is the hook's
-           # own entry (defence in depth beside approvals.owner_prompt)
-           "turn start", "hook prompt",
-           # only the owner chooses a side of an intent conflict (sp6 8.4): the agent relays
-           # the owner's words with `conflict relay`, never `conflict choose`
-           "conflict choose")
+# The command forms the deny rules name come from the one guard table (``plumb.guard``,
+# SP7 4.3): the plugin's pre-tool hook and the mod deny the same set. Among them: the agent
+# never logs a prompt itself where the prompt hook runs (`turn start`, `hook prompt`), only the
+# owner chooses a side of an intent conflict (`conflict choose`, sp6 8.4), and the panel's own
+# steps (`mod hello|press|typed`) are never the agent's.
+GUARDED = tuple(legacy_forms())
 STANDARD_PREFIXES = ("plumb", "uv run plumb", "python -m plumb")
 _PLUMB_COMMAND = re.compile(r"(?:^|[\s\"'/\\])plumb(?:\.exe)?[\"']?\s+(?:hook\s|statusline\b)"
                             r"|\.claude/plumb/gate\.sh")
-_PLUMB_DENY = re.compile(r"plumb (?:approve|revoke|tests waive|triage --approve|spec approve"
-                         r"|config auto-approve|config show|turn start|hook prompt"
-                         r"|conflict choose):\*\)$"
+_PLUMB_DENY = re.compile(r"plumb (?:" + "|".join(re.escape(f) for f in GUARDED) + r"):\*\)$"
                          r"|PLUMB_AGENT_SESSION|"
                          r"^(?:Edit|Write|MultiEdit)\(\.plumb/log/\*\*\)$")
 
@@ -430,6 +427,22 @@ def git_adoption(root: Path, interpreter: str, lines: list[str], dry_run: bool) 
     _adopt_hook(root, interpreter, lines, dry_run, "the push check",
                 prepush.hook_path, prepush.hook_text, prepush.install_pre_push_hook,
                 owner_text.PREPUSH_INSTALLED, owner_text.FOREIGN_PREPUSH_HOOK)
+
+
+def commit_msg_adoption(root: Path, interpreter: str, lines: list[str],
+                        dry_run: bool = False) -> None:
+    """The commit check of ``/plumb init`` under the plugin (SP7 4.5): the ``commit-msg`` hook
+    holds a commit whose SR trailer names no existing requirement; a hook the owner already
+    has is kept and named."""
+    try:
+        from plumb import claims
+        from plumb.present import owner_text
+    except ImportError:
+        return
+    _adopt_hook(root, interpreter, lines, dry_run, "the commit check",
+                lambda r: claims._git_path(r, "hooks/commit-msg"), claims.hook_text,
+                claims.install_commit_msg_hook, owner_text.COMMIT_MSG_INSTALLED,
+                owner_text.FOREIGN_COMMIT_MSG_HOOK)
 
 
 def _adopt_hook(root: Path, interpreter: str, lines: list[str], dry_run: bool, what: str,

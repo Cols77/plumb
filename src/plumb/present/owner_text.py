@@ -141,6 +141,27 @@ FF_HOLD_SET = ("plumb: merges into {branch} always record a merge commit, so the
                "sees every one")
 FF_HOLD_REMOVED = "plumb: merges into {branch} may fast-forward again"
 
+# -- the plugin (SP7 4, SR-082 to SR-084)
+INIT_DONE = ("plumb now follows this repository. It will show what you asked for, keep the work "
+             "tied to it and check merges and pushes.")
+COMMIT_MSG_INSTALLED = ("plumb: each commit is checked for the requirement it says it serves")
+FOREIGN_COMMIT_MSG_HOOK = ("plumb: your own commit-msg hook was kept; say \"call plumb from my "
+                           "commit-msg hook\" to add the check of the requirement each commit "
+                           "serves")
+NOT_ADOPTED = "/plumb init to adopt this repository"
+GETTING_READY = ("plumb is getting ready for its first run; it will follow this session from "
+                 "your next message")
+NEEDS_PYTHON = ("plumb needs Python 3.12 on this machine; say 'install what plumb needs' and I "
+                "will set it up")
+OLD_INSTALL = ("plumb is set up here the old way; say 'move plumb to the plugin' to switch")
+IGNORED = ("plumb will stay out of this repository; say 'use plumb here again' to bring it back")
+UNIGNORED = "plumb will offer to follow this repository again"
+MIGRATE_DONE = ("plumb now runs from the plugin here: its old settings and copies are gone, and "
+                "git's checks call plumb's launcher.")
+MIGRATE_KEPT = "  kept, because you changed it: {what}"
+MIGRATE_KEPT_SETTINGS = "  kept, because they are yours: your own Claude Code settings"
+MIGRATE_NOTHING = "plumb was not set up here the old way; nothing to move."
+
 
 def conflicts_card(n: int) -> str:
     """The status card's part for open intent conflicts ("1 conflict awaits you")."""
