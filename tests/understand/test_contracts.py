@@ -56,7 +56,8 @@ def test_job_needs_defaults_to_none_and_card_kinds_are_complete() -> None:
     assert Job().needs is None
     assert set(contracts.CARD_KINDS) == {
         "clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check", "show_first",
-        "settle_offer", "settled_item", "link", "stale_link"}
+        "settle_offer", "settled_item", "link", "stale_link", "regression", "decision",
+        "conflict", "early_conflict", "drift", "proposed"}
     assert set(contracts.CardKind.__args__) == set(contracts.CARD_KINDS)
     assert "settled" in contracts.ApprovalBy.__args__ and \
         "owner-words" in contracts.ApprovalBy.__args__
@@ -254,7 +255,9 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
     assert worker.start_detached(tmp_path, "s1") is None
     assert _params(gate.is_closed) == ["root", "session"]
     assert gate.is_closed(tmp_path, "s1") is False
-    assert _params(summary.stop_parts) == ["ctx", "core", "turn"]
+    # slice 3: the cards the stop hook builds come in by keyword (sp7-realign-sp8 C1, C7)
+    assert _params(summary.stop_parts) == ["ctx", "core", "turn", "extra", "fresh",
+                                           "changes", "passing", "shown"]
     # the landed summary needs a real core; the stub's empty answer is gone (SHOW/JUDGE landed)
     assert StopParts() == StopParts()
     assert _params(hooks.on_prompt) == ["ctx", "core", "entry"]
@@ -425,10 +428,11 @@ def test_stop_places_confirmations_settled_then_cards(
     from plumb.hosts.claude_code import stop
     from plumb.understand import summary
 
-    monkeypatch.setattr(summary, "stop_parts", lambda ctx, core, turn: StopParts(
+    monkeypatch.setattr(summary, "stop_parts", lambda ctx, core, turn, **cards: StopParts(
         confirmations=("C",), settled=("S",), cards=("K",)))
     assert stop.understand_parts(None, None, {}) == ["C", "S", "K"]
-    monkeypatch.setattr(summary, "stop_parts", lambda *a: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(summary, "stop_parts",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError()))
     assert stop.understand_parts(None, None, {}) == []
 
 

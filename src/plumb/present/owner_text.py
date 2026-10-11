@@ -384,3 +384,181 @@ STALE_WHY_KEEP = ("I could not tell whether the change matters to what you asked
                   "as they are changes nothing while you read the change shown with this card")
 STALE_HOLD_ENDED = ('I held the turn open {n} times for "{title}" and then let it go; it waits '
                     "for your answer below.")
+
+
+# --------------------------------------------------------------------------- SP7 slice 3
+# Cards only at the end of a turn (sp7-realign-sp8 C1, C7, C8; SR-012, SR-116): the kinds the
+# stop hook drew its own way, and what every card shows so the owner can choose without asking
+# back. Titles, never record IDs; no commands.
+CARD_REGRESSION = 'Something that worked now fails, "{topic}": {issue}'
+CARD_DECISION = 'A choice this work relies on, "{topic}": {issue}'
+CARD_CONFLICT = 'Two versions of what you asked disagree, "{topic}": {issue}'
+CARD_EARLY_CONFLICT = 'Another branch says something else, "{topic}": {issue}'
+CARD_DRIFT = 'The code moved away from what you asked, "{topic}": {issue}'
+CARD_PROPOSED = 'Proposed this turn, "{topic}": {issue}'
+
+REGRESSION_ISSUE = "a test that passed before now fails: {what}"
+REGRESSION_FIX = "Fix the code so it passes again"
+REGRESSION_CHANGE = "The test is wrong now: change it (say how)"
+REGRESSION_WAIT = "Leave it failing for now"
+REGRESSION_EVIDENCE = "{test} passed in an earlier run and fails now{note}"
+REGRESSION_TEST_CHANGED = " (the test itself was changed since it passed)"
+REGRESSION_LAST_RUN = " (last run {run})"
+REGRESSION_HIDDEN = ("{test} passed, then failed, and passes now only because the test itself "
+                     "was changed")
+REGRESSION_CHECKS = "it checks: {what}"
+
+DECISION_ISSUE = "I assumed {chosen}; {other} also fits. Which one?"
+DECISION_KEEP = "Keep it: {chosen}"
+DECISION_SWITCH = "Switch to: {other}"
+DECISION_OTHER = "Something else (say what)"
+DECISION_EVIDENCE = "this turn changed work that relies on it: {what}"
+DECISION_NO_ALTERNATIVE = "another reading"
+
+CONFLICT_ISSUE = "{ours} and {theirs} changed it in different ways"
+CONFLICT_SIDE = "{side} says: {text}"
+CONFLICT_KEEP = "Keep {side}'s version"
+CONFLICT_COMBINE = "Combine them (say how)"
+CONFLICT_COMBINED = "Take the combined version already proposed"
+EARLY_ISSUE = '{branch} says "{theirs}"; this work says "{ours}"'
+EARLY_KEEP_THEIRS = "Keep {branch}'s"
+EARLY_KEEP_OURS = "Keep this one"
+EARLY_BOTH_OPTION = "Both, combined (say how)"
+
+DRIFT_REQUEST = 'the request behind the change: "{text}" ({at})'
+DRIFT_NO_REQUEST = "the request behind the change is not on file"
+DRIFT_INTENT = 'it comes from your intent "{title}", which it still agrees with'
+
+PROPOSED_ISSUE_ONE = "this was written from your words this turn and is not settled; is it right?"
+PROPOSED_ISSUE = ("these {n} were written from your words this turn and are not settled; are "
+                  "they right?")
+PROPOSED_YES = "Yes, as they read"
+PROPOSED_EXCEPT = "Yes, except the ones I name (say how)"
+PROPOSED_LATER = "Not yet: leave them open"
+PROPOSED_NO_FEATURE = "this turn's work"
+
+# the parts of every card (SR-116): the record as it reads, the change, the owner's words, each
+# option with what it does and leaves undone, and why the recommended one
+FULL_READS = "  As it now reads ({title}): {wording}"
+FULL_DETAIL = "    {text}"
+FULL_CHANGE = "  What changed in {path} (+{added}/-{removed} lines, {size} characters):"
+FULL_FOLDED = "    [folded: {size} characters, {lines} lines; open it to read it in full]"
+FULL_CHANGE_NOTE = "  About the change: {note}"
+FULL_WORDS = '  Your words ({title}): "{said}"'
+FULL_WORDS_PROMPT = '    from your message: "{text}"'
+FULL_WORDS_NONE = "  {note}"
+FULL_OPTION = "  {n}. {text}{mark}"
+FULL_RECOMMENDED = " (recommended)"
+FULL_CONSEQUENCE = "     does and leaves undone: {text}"
+FULL_WHY = "  Why the recommended one: {text}"
+FULL_NOT_WRITTEN = "not written yet"
+FULL_NOT_DRAWN = ("{n} more cards wait for you; there was no time left to draw them in full "
+                  "this turn: {topics}")
+FULL_INCOMPLETE = ("{n} cards wait until the agent writes what each option does and why one is "
+                   "recommended; they stay open and are shown once complete.")
+# SR-116 EX-4: what the agent is told at the next prompt when cards were shown at turn end
+CARDS_WAITING_AGENT = ("plumb: {n} cards were shown to the owner at the end of the last turn "
+                       "and await their answer ({topics}). If you mention them, say in one line "
+                       "that cards are waiting; do not restate them or ask the owner to answer "
+                       "them in prose.")
+
+# what each suggested resolution does and leaves undone, by its label (SR-116); a template
+# entry ("... {side}") matches any filling and is filled with the same values
+CONSEQUENCES: dict[str, str] = {
+    TRIAL_YES: ("Settles it from your words as it reads; nothing else changes, and it counts "
+                "towards letting such records be settled by themselves"),
+    TRIAL_NO: ("Leaves it unsettled and marks plumb's reading as wrong; it is shown to you "
+               "again to confirm or change"),
+    BACKLOG_YES: "Settles every one of them as it reads; none is changed",
+    BACKLOG_EXCEPT: ("Settles all but the ones you name; those stay open for you to change or "
+                     "drop"),
+    BACKLOG_NO: "Settles none of them; they stay proposed and are shown again one by one",
+    NO_ORIGINAL_ACCEPT: "Confirms it as it reads now; your original words stay unknown",
+    NO_ORIGINAL_CORRECT: "Changes it to what you say; nothing is confirmed until you see it",
+    BEYOND_KEEP: "Confirms it, including the part beyond your words; nothing is removed",
+    BEYOND_DROP: ("Removes it; the work built on it is undone, and nothing beyond your words is "
+                  "kept"),
+    BEYOND_REWORD: ("Rewrites it to what you say; nothing is confirmed until you see the new "
+                    "wording"),
+    CONTRADICTS_KEEP_OLD: ("Keeps what you confirmed before; the new wording and the work built "
+                           "on it are dropped"),
+    CONTRADICTS_KEEP_NEW: ("Replaces what you confirmed before with the new wording; the old "
+                           "one no longer holds"),
+    CONTRADICTS_COMBINE: ("Writes one version from both as you say; neither holds as it reads "
+                          "until you see it"),
+    GATE_BUILD_ANYWAY: ("Builds now without the check; what the check would have caught is not "
+                        "looked at"),
+    GATE_WAIT: "Builds nothing until the check runs again on your next message",
+    COULDNT_CHECK_WAIT: "Builds nothing until the check runs again on your next message",
+    UNDONE_CONFIRM: "Confirms it as it reads; it is no longer waiting",
+    UNDONE_CHANGE: "Changes it to what you say; nothing is confirmed until you see it",
+    UNDONE_DROP: "Removes it; the work built on it is undone",
+    SHOW_FIRST_YES: "Confirms it as it reads",
+    SHOW_FIRST_NO: "Leaves it unconfirmed; tell me what is wrong and it is changed",
+    SETTLE_TURN_ON: ("plumb settles such records from your words by itself when it is sure and "
+                     "names each in one line with Undo; you can turn it off the same way"),
+    SETTLE_LEAVE_OFF: "Nothing is settled by itself; every such record keeps waiting for you",
+    READBACK_YES: "Confirms the read-back; building starts from it",
+    READBACK_NOT_QUITE: "Nothing is built; the read-back is changed to what you say first",
+    STALE_OPTION_KEEP: STALE_CONSEQUENCE_KEEP,
+    STALE_OPTION_REWORD: STALE_CONSEQUENCE_REWORD,
+    STALE_OPTION_UNDO: STALE_CONSEQUENCE_UNDO,
+    REGRESSION_FIX: ("The agent changes the code until this test passes again; the requirement "
+                     "and the test stay as they are, and the change that broke it is reworked"),
+    REGRESSION_CHANGE: ("The test is rewritten to what you say; what it checked before is no "
+                        "longer checked, so the old behaviour may stay broken"),
+    REGRESSION_WAIT: ("Nothing changes; the test stays failing and this card stays open until "
+                      "you answer it"),
+    DECISION_KEEP: ("Confirms the decision as it reads; the work already built on it stands and "
+                    "the other choice is not done"),
+    DECISION_SWITCH: ("Changes the decision to {other}; the work that relied on the current "
+                      "choice is redone to follow it"),
+    DECISION_OTHER: ("The decision is rewritten to what you say; the work that relied on it is "
+                     "checked again against your words"),
+    CONFLICT_KEEP: "Keeps {side}'s version as the one that holds; the other version is dropped",
+    CONFLICT_COMBINE: ("Writes one version from both as you say; neither holds as it reads until "
+                       "you see it"),
+    CONFLICT_COMBINED: ("Keeps the combined version already proposed; what each side had that "
+                        "it leaves out is dropped"),
+    EARLY_KEEP_THEIRS: ("{branch}'s version holds on every branch; this work is changed to match "
+                        "it"),
+    EARLY_KEEP_OURS: "This version holds on every branch; the other branch is changed to match",
+    EARLY_BOTH_OPTION: ("One version is written from both as you say; both branches build on it "
+                        "once you have seen it"),
+    PROPOSED_YES: "Confirms each of them as it reads; nothing is changed",
+    PROPOSED_EXCEPT: ("Confirms all but the ones you name; those are changed as you say and "
+                      "shown again"),
+    PROPOSED_LATER: ("Confirms nothing; they stay proposed and this card is shown again at the "
+                     "end of the next turn"),
+}
+# what a pick does when its label is the owner's own choice among versions (a clarify gap's
+# suggestion, an early conflict's version), by card kind
+CONSEQUENCE_PICK: dict[str, str] = {
+    "clarify": ("Records your answer as this choice; the read-back says it before anything is "
+                "built, and the other suggestions are dropped"),
+    "early_conflict": ("That version holds on every branch; the other is changed to match it and "
+                       "what it said otherwise is dropped"),
+    "contradicts": ("That version holds; the other one no longer does"),
+}
+# why the first resolution of a kind is the recommended one (SR-116)
+WHY_RECOMMENDED: dict[str, str] = {
+    "trial": "it is what plumb read from your words; say no only if the reading is wrong",
+    "backlog": "plumb judged each of them to match your words",
+    "beyond": "it is what the agent understood you to want; drop it if you did not ask for it",
+    "contradicts": ("you confirmed it before, and nothing you said since asks for it to "
+                    "change"),
+    "couldnt_check": "the check could not run; this is the choice that loses the least",
+    "show_first": "it reads as you left it; change it only if it is not what you mean",
+    "settle_offer": ("plumb's settling passed its trial on such records; it stays off until you "
+                     "turn it on"),
+    "clarify": "it is the read-back of your words; say not quite if anything is off",
+    "regression": ("the test checks something you asked for, and nothing you said asks for it "
+                   "to change"),
+    "decision": ("the work this turn already follows it, so keeping it changes nothing you have "
+                 "not seen"),
+    "conflict": ("plumb cannot tell which version you want; this is the version this work was "
+                 "built on, and the other is not lost until you answer"),
+    "early_conflict": ("plumb cannot tell which version you want; this is the version this "
+                       "work is built on"),
+    "proposed": "each was written from your words this turn and reads as you asked",
+}

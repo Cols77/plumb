@@ -345,32 +345,40 @@ def request_cards(core: Any, conflicts: Sequence[EarlyConflict]) -> None:
 def turn_cards(session_dir: Any, turn_start: str = "") -> tuple[list[str], list[dict[str, Any]]]:
     """``(lines, stated entries)``: the early cards ``capture`` or ``clarify`` asked for this
     turn, for the stop hook's reply. Reads one small session file; never fails."""
+    lines: list[str] = []
+    entries: list[dict[str, Any]] = []
+    for conflict in turn_conflicts(session_dir, turn_start):
+        lines += card(conflict)
+        entries.append(stated_entry(conflict))
+    return lines, entries
+
+
+def turn_conflicts(session_dir: Any, turn_start: str = "") -> list[EarlyConflict]:
+    """The early conflicts ``capture`` or ``clarify`` asked for this turn (the stop hook draws
+    each as an ``early_conflict`` card). Reads one small session file; never fails."""
     import json
     from pathlib import Path
 
     try:
         data = json.loads((Path(session_dir) / REQUESTED_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return [], []
+        return []
     if not isinstance(data, Mapping) or str(data.get("at") or "") < turn_start:
-        return [], []
-    lines: list[str] = []
-    entries: list[dict[str, Any]] = []
+        return []
+    out: list[EarlyConflict] = []
     for item in data.get("cards") or []:
         if not isinstance(item, Mapping) or not item.get("record"):
             continue
         if str(item.get("at") or data.get("at") or "") < turn_start:
             continue  # asked in an earlier turn
-        conflict = EarlyConflict(
+        out.append(EarlyConflict(
             record=str(item["record"]), title=str(item.get("title") or ""),
             branch=str(item.get("branch") or ""), claim=str(item.get("claim") or ""),
             theirs=str(item.get("theirs") or ""), ours=str(item.get("ours") or ""),
             judgment=str(item.get("judgment") or ""),
             theirs_hash=str(item.get("theirs_hash") or ""),
-            ours_label=str(item.get("ours_label") or ""))
-        lines += card(conflict)
-        entries.append(stated_entry(conflict))
-    return lines, entries
+            ours_label=str(item.get("ours_label") or "")))
+    return out
 
 
 def stated_entry(conflict: EarlyConflict) -> dict[str, Any]:
