@@ -18,6 +18,7 @@ from typing import Any
 from plumb.contracts import Applied, CardState, ClarifyAnswer, ClarifyQuestion, Job
 from plumb.present import owner_text
 from plumb.understand import files
+from plumb.understand.cards import choices_for
 
 kind = "read"
 SCHEMA_ID = "read.v1"
@@ -119,7 +120,9 @@ def card_item_id(card: Any, question: Any | None) -> str:
 def card_items(core: Any, session: str) -> list[dict[str, Any]]:
     """The open cards as read inputs: one item per card question (one for a card with none).
     An item's ``hash`` is the version of its record the card showed (stored with the question
-    when the card was made), never the record's version today."""
+    when the card was made), never the record's version today. ``choices`` are the question's
+    own, else its kind's for its resolutions (a card stored before choices, or one with no
+    question)."""
     from plumb.understand import cardstore
 
     items: list[dict[str, Any]] = []
@@ -127,11 +130,14 @@ def card_items(core: Any, session: str) -> list[dict[str, Any]]:
         questions = list(card.questions) or [None]
         for question in questions:
             record = getattr(question, "record", None)
+            resolutions = tuple(getattr(question, "resolutions", ()) or card.resolutions)
+            choices = getattr(question, "choices", ()) or choices_for(card.kind, resolutions)
             items.append({
                 "id": card_item_id(card, question), "card": card.id,
                 "question": getattr(question, "id", ""), "kind": card.kind,
                 "text": getattr(question, "text", "") or card.issue or card.topic,
-                "resolutions": list(getattr(question, "resolutions", ()) or card.resolutions),
+                "resolutions": list(resolutions),
+                "choices": [files.choice_to_json(c) for c in choices],
                 "record": record, "hash": getattr(question, "hash", "") or ""})
     return items
 
@@ -291,9 +297,9 @@ def show_first_card(record: Any, evidence: str) -> CardState:
     confirmed on the next answer (SR-088's rule, kept for prose)."""
     text = record_text(record)
     issue = owner_text.CARD_SHOW_FIRST.format(topic=record.title, issue=text)
-    question = ClarifyQuestion(id="confirm", text=issue,
-                               resolutions=("Yes, that is right", "No"), record=record.id,
-                               hash=record.hash)
+    options = (owner_text.SHOW_FIRST_YES, owner_text.SHOW_FIRST_NO)
+    question = ClarifyQuestion(id="confirm", text=issue, resolutions=options, record=record.id,
+                               hash=record.hash, choices=choices_for("show_first", options))
     return CardState(id=f"show_first:{record.id}", kind="show_first", topic=record.title,
                      issue=issue, evidence=evidence, resolutions=question.resolutions,
                      questions=(question,), status="open")
@@ -302,9 +308,9 @@ def show_first_card(record: Any, evidence: str) -> CardState:
 def change_card(record: Any, change: str, evidence: str, digest: str) -> CardState:
     """A change the owner asked for in words, read back at the next turn."""
     issue = owner_text.READBACK_CHANGE.format(title=record.title, change=change)
-    question = ClarifyQuestion(id="change", text=issue,
-                               resolutions=("Yes, that is it", "Not quite"), record=record.id,
-                               hash=record.hash)
+    options = (owner_text.READBACK_YES, owner_text.READBACK_NOT_QUITE)
+    question = ClarifyQuestion(id="change", text=issue, resolutions=options, record=record.id,
+                               hash=record.hash, choices=choices_for("clarify", options))
     return CardState(id=f"change:{record.id}:{digest.removeprefix('sha256:')[:12]}",
                      kind="clarify", topic=record.title, issue=issue, evidence=evidence,
                      resolutions=question.resolutions, questions=(question,), status="open")

@@ -20,6 +20,7 @@ from typing import Any
 from plumb.contracts import Applied, CardState, ClarifyQuestion, Job
 from plumb.present import owner_text
 from plumb.understand import cardstore, files, gate
+from plumb.understand.cards import choices_for
 
 kind = "clarify"
 SCHEMA_ID = "clarify.v1"
@@ -178,7 +179,8 @@ def _gap_question(gap: Mapping[str, Any], n: int) -> ClarifyQuestion:
         suggestions.insert(0, suggestions.pop(first))
     ident = re.sub(r"[^a-z0-9_-]+", "-", str(gap.get("id") or "").lower()).strip("-") or f"q{n}"
     return ClarifyQuestion(id=ident, text=str(gap.get("question") or "").strip(),
-                           resolutions=tuple(suggestions))
+                           resolutions=tuple(suggestions),
+                           choices=choices_for("clarify", suggestions))
 
 
 def _already_answered(question: ClarifyQuestion, answered: Sequence[Mapping[str, Any]]) -> bool:
@@ -247,7 +249,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             evidence="\n".join(filter(None, [ESCALATION_MARK, evidence])),
             resolutions=(SPEC_YES, SPEC_NO),
             questions=(ClarifyQuestion(id="spec", text=SPEC_QUESTION,
-                                       resolutions=(SPEC_YES, SPEC_NO)),),
+                                       resolutions=(SPEC_YES, SPEC_NO),
+                                       choices=choices_for("clarify", (SPEC_YES, SPEC_NO))),),
             status="open", turn=0)
         reason = GATE_REASON_ESCALATION
     else:
@@ -277,7 +280,9 @@ def couldnt_check_card(digest: str, why: str = "") -> CardState:
         id=couldnt_card_id(digest), kind="couldnt_check", topic=TOPIC_FALLBACK,
         issue=COULDNT_ISSUE.format(why=why or COULDNT_TIMEOUT), resolutions=resolutions,
         questions=(ClarifyQuestion(id="release", text=COULDNT_QUESTION,
-                                   resolutions=resolutions),), status="open")
+                                   resolutions=resolutions,
+                                   choices=choices_for("couldnt_check", resolutions)),),
+        status="open")
 
 
 def write_couldnt_check(root: Path, session: str, digest: str, why: str = "") -> CardState:
