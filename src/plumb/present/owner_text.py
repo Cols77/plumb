@@ -417,6 +417,7 @@ CARD_CONFLICT = 'Two versions of what you asked disagree, "{topic}": {issue}'
 CARD_EARLY_CONFLICT = 'Another branch says something else, "{topic}": {issue}'
 CARD_DRIFT = 'The code moved away from what you asked, "{topic}": {issue}'
 CARD_PROPOSED = 'Proposed this turn, "{topic}": {issue}'
+CARD_TEST_CHANGED = 'The test of something you confirmed changed, "{topic}": {issue}'
 
 REGRESSION_ISSUE = "a test that passed before now fails: {what}"
 REGRESSION_FIX = "Fix the code so it passes again"
@@ -428,6 +429,14 @@ REGRESSION_LAST_RUN = " (last run {run})"
 REGRESSION_HIDDEN = ("{test} passed, then failed, and passes now only because the test itself "
                      "was changed")
 REGRESSION_CHECKS = "it checks: {what}"
+
+# SR-030: a confirmed requirement whose acceptance test changed since the owner confirmed it
+TEST_CHANGED_ISSUE = ("the test that checks it was changed since you confirmed it: {tests}; is "
+                      "the new test right?")
+TEST_CHANGED_EVIDENCE = "acceptance test changed since you confirmed it: {tests}"
+TEST_CHANGED_RESTORE = "Put the test back as you confirmed it"
+TEST_CHANGED_KEEP = "The new test is right: confirm it"
+TEST_CHANGED_LATER = "Leave it for now"
 
 DECISION_ISSUE = "I assumed {chosen}; {other} also fits. Which one?"
 DECISION_KEEP = "Keep it: {chosen}"
@@ -546,6 +555,12 @@ CONSEQUENCES: dict[str, str] = {
     EARLY_KEEP_OURS: "This version holds on every branch; the other branch is changed to match",
     EARLY_BOTH_OPTION: ("One version is written from both as you say; both branches build on it "
                         "once you have seen it"),
+    TEST_CHANGED_RESTORE: ("The test is put back as you confirmed it; the change to it is undone, "
+                           "and the code is fixed if it no longer passes"),
+    TEST_CHANGED_KEEP: ("Confirms the requirement with the new test; what the old test checked "
+                        "and the new one does not is no longer checked"),
+    TEST_CHANGED_LATER: ("Nothing changes; the requirement waits for you and holds the merge, and "
+                         "this card is shown again at the end of the next turn"),
     PROPOSED_YES: "Confirms each of them as it reads; nothing is changed",
     PROPOSED_EXCEPT: ("Confirms all but the ones you name; those are changed as you say and "
                       "shown again"),
@@ -582,6 +597,8 @@ WHY_RECOMMENDED: dict[str, str] = {
     "early_conflict": ("plumb cannot tell which version you want; this is the version this "
                        "work is built on"),
     "proposed": "each was written from your words this turn and reads as you asked",
+    "test_changed": ("you confirmed the test as it was, and nothing you said asks for it to "
+                     "change"),
 }
 
 # --------------------------------------------------------------------------- SP7 PRESS

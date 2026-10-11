@@ -75,11 +75,10 @@ def test_prompt_delta_once_then_stop_line_for_the_owner(tmp_path: Path,
     # this worktree's stop: the turn touched SR-005, already told this session: not again
     message = _edit_with_hooks(main, hook_input, "main: pins only the affirmed records")
     assert line not in message.get("systemMessage", "")
-    # feat-x's session, whose prompt was about something else, hears it at its stop
-    message = _edit_with_hooks(other, hook_input, "feat-x: second wording",
-                               ask="tidy the wording")
-    assert ('plumb: SR-005 "relay checks" is also being changed on branch main'
-            in message.get("systemMessage", ""))
+    # retired: "feat-x's session, whose prompt was about something else, hears it at its
+    # stop". SR-012 (INT-008: at the end of a turn only cards; everything else is logged for
+    # the owner to read) removed the awareness lines from the owner's end-of-turn text; the
+    # overlap stays in the brief, the prompt delta and the status line (SR-078).
 
 
 def test_stop_keeps_the_branch_claim_in_step(tmp_path: Path, hook_input) -> None:  # noqa: ANN001

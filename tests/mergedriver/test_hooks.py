@@ -42,15 +42,22 @@ def _stated(repo: Path) -> dict:
 def test_stop_shows_a_new_conflict_once_and_states_it(repo: Path, hook_input) -> None:
     conflicted(repo)
     _start_turn(repo)
+    head = ('Two versions of what you asked disagree, "relay checks": main and feat-x changed '
+            "it in different ways")
     first = _stop(repo, hook_input)
-    assert "Conflict  IC-001 on SR-005" in first
+    assert head in first.splitlines()
+    assert ("  Evidence: main says: What it says: A relay pins only the records the owner's "
+            "words affirm. / feat-x says: What it says: A relay pins the stated group, named by "
+            "its title.") in first.splitlines()
+    assert [c["ic"] for c in _stated(repo)["conflicts"]] == ["IC-001"]
+    # SR-012 with DEC-034 replaced "once per version": a card that still asks the owner is
+    # drawn at the end of every turn while the conflict is open, and stays stated
+    _start_turn(repo)
+    assert head in _stop(repo, hook_input).splitlines()
     assert [c["ic"] for c in _stated(repo)["conflicts"]] == ["IC-001"]
     _start_turn(repo)
-    assert "Conflict  IC-001" not in _stop(repo, hook_input)  # once per version
-    assert "conflicts" not in _stated(repo)
-    _start_turn(repo)
     assert cli.main(["conflicts", "--root", str(repo)]) == 0  # /plumb conflicts asks again
-    assert "Conflict  IC-001" in _stop(repo, hook_input)
+    assert head in _stop(repo, hook_input).splitlines()
     assert [c["ic"] for c in _stated(repo)["conflicts"]] == ["IC-001"]
 
 

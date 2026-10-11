@@ -172,14 +172,9 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
     assert "tests/test_mod.py::test_add" in evidence
     assert "test-run" in evidence
 
-    # the alignment summary, no question asked
-    summary = json.loads(by_name["Stop (stop_hook_active)"].stdout)["systemMessage"]
-    lines = summary.splitlines()
-    assert lines[0].startswith("plumb ")  # the status card (sp5 2)
-    assert lines[1].startswith("plumb: touched SR-001")
-    assert "plumb: covering tests" in summary and "fresh pass" in summary
-    assert "0 not yet passing" in summary
-    assert "questions: none" in summary
+    # SR-012 EX-5: nothing needs the owner (confirmed records, covering tests passing, no
+    # question): the stop shows nothing; the state is the status line's (sp5 2), no summary
+    assert by_name["Stop (stop_hook_active)"].stdout.strip() == ""
 
     assert by_name["statusline"].stdout.startswith("plumb ")  # the status card (sp5 2)
 
@@ -218,13 +213,19 @@ def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
     assert "I assumed integers only; floats too also fits" in asked["reason"]
 
     # the end-of-turn summary shows the read-back and its examples, proposed
+    # (SR-012: as cards, the decision's and one for the feature's proposed records, each in full)
     shown = json.loads(by_name["Stop (read-back shown)"].stdout)["systemMessage"]
-    assert '▸ Intent  INT-002 "Add sub(a, b) beside add, returning a - b"' in shown
-    assert "Will: sub(a, b) returns a - b" in shown and "Won't: no change to add or mul" in shown
-    assert "Assumed: integers, like add" in shown
-    assert ("EX-1 given the numbers 5 and 3, when sub is called, then it returns 2"
-            in shown)
-    assert "it returns -2   (proposed)" in shown
+    lines = shown.splitlines()
+    assert lines[0].startswith('A choice this work relies on, "Floats too, or integers only?": '
+                               "I assumed integers only; floats too also fits.")
+    assert ('Proposed this turn, "Add sub(a, b) beside add, returning a - b": these 2 were '
+            "written from your words this turn and are not settled; are they right?") in lines
+    assert "  - Add sub(a, b) beside add, returning a - b" in lines
+    assert "    will: sub(a, b) returns a - b" in lines
+    assert "    won't: no change to add or mul" in lines
+    assert "    assumed: integers, like add" in lines
+    assert "    EX-1: given the numbers 5 and 3, when sub is called, then it returns 2" in lines
+    assert "    EX-2: given the numbers 3 and 5, when sub is called, then it returns -2" in lines
 
     # a later stop in the same turn does not ask the decision again
     again = json.loads(by_name["Stop (not asked again)"].stdout)

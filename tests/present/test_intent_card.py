@@ -80,34 +80,30 @@ def _config(repo: Path, card: str) -> None:
 
 
 def test_shown_only_when_it_matters(calc: Path, hook_input) -> None:
-    """EX-1: a captured proposed intent gets its card; EX-2: code under confirmed records
-    with fresh tests gets none."""
+    """EX-1: a captured proposed intent gets its card, drawn in full (SR-012 EX-3); EX-2: code
+    under confirmed records with fresh tests gets none, and the stop shows nothing (SR-012
+    EX-5: no status card, no summary)."""
     touch(calc, ".plumb/intents/INT-001.md")
     message = run_stop(calc, hook_input)["systemMessage"]
     lines = message.splitlines()
-    assert lines[0].startswith("plumb ● awaits you")
-    assert ('▸ Intent  INT-001 "add multiply next to add"   (proposed — say "ok" to '
-            'confirm)') in lines
-    assert len([line for line in lines if line.startswith("plumb: ")]) <= 2
+    assert lines[0].startswith('Proposed this turn, "add multiply next to add": ')
+    assert "  As it now reads (add multiply next to add): Add multiply(a, b) beside add." in lines
+    assert "    won't: floats" in lines
+    assert "    assumed: integers only" in lines
+    assert not [line for line in lines if line.startswith("plumb: ")]
 
     approvals.approve(open_core(calc), ["SR-001", "SR-002", "INT-001"])
     touch(calc, "src/app/calc.py", session="s2")
     verify = FakeVerify(nodes=("tests/test_calc.py::test_add",), evidence_map={
         "tests/test_calc.py::test_add": NodeEvidence("tests/test_calc.py::test_add",
                                                      "fresh-pass")})
-    message = run_stop(calc, hook_input, session="s2", verify=verify)["systemMessage"]
-    assert "▸" not in message
-    assert message.splitlines()[0].startswith("plumb ✓ aligned")
+    assert "systemMessage" not in run_stop(calc, hook_input, session="s2", verify=verify)
 
 
-def test_full_mode_cards_every_touched_record(calc: Path, hook_input) -> None:
-    approvals.approve(open_core(calc), ["SR-001"])
-    _config(calc, "full")
-    touch(calc, "src/app/calc.py")
-    message = run_stop(calc, hook_input)["systemMessage"]
-    assert '▸ Requirement  SR-001 "add returns the sum of two numbers"   (confirmed by you)' \
-        in message
-    assert "plumb: questions: none" in message  # the sp1 summary lines under the card
+# retired: test_full_mode_cards_every_touched_record. SR-012 (INT-008 "won't": no list-style
+# summary at the end of a turn) removed the card of every touched record and the sp1 summary
+# lines ("plumb: questions: none") that present.card: full added; the stop hook no longer
+# reads present.card.
 
 
 def test_off_still_shows_trigger(calc: Path, hook_input) -> None:
@@ -126,32 +122,42 @@ def test_off_still_shows_trigger(calc: Path, hook_input) -> None:
     stop.main(stdin=io.StringIO(hook_input("Stop", session_id="s1", stop_hook_active=True)),
               stdout=out, root=calc, verify=verify, unjudged=lambda c, i: ())
     message = json.loads(out.getvalue())["systemMessage"]
-    assert '▸ Regression  SR-001 "add returns the sum of two numbers"' in message
-    assert "INT-001" not in message  # a proposed intent is no trigger in off mode
+    assert message.startswith('Something that worked now fails, "add returns the sum of two '
+                              'numbers"')
+    assert ("  Evidence: tests/test_calc.py::test_add passed in an earlier run and fails now "
+            "(last run r2)") in message.splitlines()
+    # SR-012 EX-3 made a proposed intent a card in every mode ("INT-001 not in message", the
+    # off-mode rule, is retired with present.card in the stop hook)
     assert not message.startswith("plumb ")
 
 
 def test_card_marks_record_shown_in_stated_set(calc: Path, hook_input) -> None:
     touch(calc, ".plumb/requirements/SR-002.md")
-    message = run_stop(calc, hook_input)["systemMessage"]
-    assert "  app.calc.divide(a, b) returns a / b." in message
-    assert "EX-2 given 1 and 0, when divide runs, then it returns 0" in message
+    lines = run_stop(calc, hook_input)["systemMessage"].splitlines()
+    assert ("  As it now reads (divide returns the quotient): app.calc.divide(a, b) returns "
+            "a / b.") in lines
+    assert "    EX-2: given 1 and 0, when divide runs, then it returns 0" in lines
     stated = json.loads((calc / ".plumb" / "session" / "stated.json").read_text("utf-8"))
     assert {"id": "SR-002", "hash": open_core(calc).index()["SR-002"].hash,
             "shown": True} in stated["records"]
 
 
-def test_cards_past_the_cap_are_named_not_shown(calc: Path, hook_input,
-                                                write_record) -> None:
+def test_many_proposed_records_are_one_card_each_drawn(calc: Path, hook_input,
+                                                     write_record) -> None:
+    """SR-012 EX-4 (DEC-029) replaced the cap of three cards and the "+N more not shown"
+    line: five proposed records are one card that draws every one, and each is shown."""
     for n in range(5, 10):
         write_record(calc, f"---\nid: SR-00{n}\ntitle: rule {n}\nstatement: s {n}\n---\n")
         touch(calc, f".plumb/requirements/SR-00{n}.md")
     message = run_stop(calc, hook_input)["systemMessage"]
-    assert message.count("▸ Requirement") == 3
-    assert "plumb: +2 more not shown: SR-008, SR-009 (plumb show SR-008 SR-009)" in message
+    heads = [line for line in message.splitlines() if line and not line.startswith(" ")]
+    assert len(heads) == 1 and "these 5 were written from your words" in heads[0]
+    for n in range(5, 10):
+        assert f"  - rule {n}" in message.splitlines()
+    assert "not shown" not in message
     stated = json.loads((calc / ".plumb" / "session" / "stated.json").read_text("utf-8"))
     shown = {r["id"]: r["shown"] for r in stated["records"]}
-    assert shown["SR-005"] and not shown["SR-009"]
+    assert all(shown[f"SR-00{n}"] for n in range(5, 10))
 
 
 def test_decision_that_matters_gets_a_question_card(calc: Path, hook_input,
@@ -167,8 +173,11 @@ def test_decision_that_matters_gets_a_question_card(calc: Path, hook_input,
     stop.main(stdin=io.StringIO(hook_input("Stop", session_id="s1", stop_hook_active=True)),
               stdout=out, root=calc, verify=FakeVerify(), unjudged=lambda c, i: ())
     message = json.loads(out.getvalue())["systemMessage"]
-    assert '▸ Question  DEC-001 "Rounding"' in message
-    assert "Assumed: half-up · Also fits: banker's rounding" in message
+    lines = message.splitlines()
+    assert lines[0] == ('A choice this work relies on, "Rounding": I assumed half-up; '
+                        "banker's rounding also fits. Which one?")
+    assert "  1. Keep it: half-up (recommended)" in lines
+    assert "  2. Switch to: banker's rounding" in lines
 
 
 def test_intent_change_flag_gets_a_card(calc: Path, hook_input) -> None:
@@ -178,46 +187,31 @@ def test_intent_change_flag_gets_a_card(calc: Path, hook_input) -> None:
     run_prompt(calc, hook_input, "SR-001 add should use floats instead")
     touch(calc, "src/app/calc.py")
     # the flag alone is the agent's instruction: no owner card until the agent concludes
-    message = run_stop(calc, hook_input)["systemMessage"]
-    assert "Intent change" not in message
+    assert "systemMessage" not in run_stop(calc, hook_input)
     # the agent concluded there is a change: it updated the flagged record
     run_prompt(calc, hook_input, "SR-001 add should use floats instead")
     record = calc / ".plumb" / "requirements" / "SR-001.md"
     record.write_text(record.read_text("utf-8").replace("for integers", "for floats"),
                       "utf-8")
     touch(calc, ".plumb/requirements/SR-001.md")
-    message = run_stop(calc, hook_input)["systemMessage"]
-    assert '▸ Intent change  SR-001 "add returns the sum of two numbers"' in message
+    lines = run_stop(calc, hook_input)["systemMessage"].splitlines()
+    # SR-012: the changed record reaches the owner as a card that draws it as it now reads
+    assert lines[0].startswith('Proposed this turn, "')
+    assert ("  As it now reads (add returns the sum of two numbers): app.calc.add(a, b) "
+            "returns a + b for floats.") in lines
 
 
-def test_triage_offer_line_and_group(calc: Path, hook_input, monkeypatch) -> None:
-    """R8 A: the offer of CAPTURE's triage appears and its group is pinned in the stated
-    set; without CAPTURE nothing is offered."""
-    from types import SimpleNamespace
-
-    index = open_core(calc).index()
-    item = SimpleNamespace(id="SR-002", hash=index["SR-002"].hash, title="divide",
-                           rating="faithful", score=0.9)
-    view = SimpleNamespace(backend="heuristic", available=True, low_risk=(item,),
-                           individual=(),
-                           offer='plumb: approve the 1 record rated faithful to your words: '
-                                 '"divide" (SR-002)? say "ok" or see plumb triage')
-    fake_capture(monkeypatch, triage=lambda core, ids: view,
-                 stated_group=lambda v: {"group": "low-risk", "records": [
-                     {"id": "SR-002", "hash": index["SR-002"].hash}]})
-    touch(calc, ".plumb/requirements/SR-002.md")
-    message = run_stop(calc, hook_input)["systemMessage"]
-    assert "plumb: approve the 1 record rated faithful to your words" in message
-    stated = json.loads((calc / ".plumb" / "session" / "stated.json").read_text("utf-8"))
-    assert stated["groups"][0]["group"] == "low-risk"
+# retired: test_triage_offer_line_and_group. SR-012 and DEC-029 replaced CAPTURE's triage offer
+# line ("plumb: approve the 1 record rated faithful...? say \"ok\"") with one card per feature;
+# no offer line is drawn at the end of a turn.
 
 
 @pytest.mark.parametrize("mode", ["compact", "full", "off"])
 def test_triage_group_pinned_only_when_its_offer_is_shown(calc: Path, hook_input, monkeypatch,
                                                           mode: str) -> None:
-    """R2, R13 Q2 (SR-062 EX-5): the stop pins the triage group in the stated set only when
-    the owner saw its offer line; ``present.card: off`` hides the offer, so nothing is
-    relayable with ``plumb relay --group``."""
+    """R2, R13 Q2 (SR-062 EX-4): the stop pins the triage group in the stated set only when
+    the owner saw its offer line. Since SR-012 (DEC-029) no offer line is drawn in any mode,
+    so no group is ever relayable with ``plumb relay --group``; the record's own card is."""
     from types import SimpleNamespace
 
     _config(calc, mode)
@@ -234,13 +228,9 @@ def test_triage_group_pinned_only_when_its_offer_is_shown(calc: Path, hook_input
     touch(calc, ".plumb/requirements/SR-002.md")
     message = run_stop(calc, hook_input).get("systemMessage", "")
     stated = json.loads((calc / ".plumb" / "session" / "stated.json").read_text("utf-8"))
-    groups = stated.get("groups") or []
-    if mode == "off":
-        assert offer not in message.splitlines()
-        assert groups == []
-    else:
-        assert offer in message.splitlines()
-        assert [g["group"] for g in groups] == ["low-risk"]
+    assert offer not in message.splitlines()
+    assert (stated.get("groups") or []) == []
+    assert message.startswith("Proposed this turn, \"this turn's work\"")
 
 
 def test_examples_carry_their_own_record_state() -> None:

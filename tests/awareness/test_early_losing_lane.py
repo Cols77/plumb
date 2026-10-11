@@ -108,11 +108,10 @@ def test_prompt_hook_names_it_on_every_turn(tmp_path: Path, hook_input: Any) -> 
 # -- the stop hook
 
 
-def test_stop_hook_names_it(tmp_path: Path, hook_input: Any) -> None:
-    main, _other = _main_lost(tmp_path, hook_input)
-    start_turn(main, ago=5.0)
-    shown = stop_hook(main, hook_input, active=True)
-    assert LINE in shown and "the owner chose feat-x's version" in shown
+# retired: test_stop_hook_names_it. SR-012 (INT-008: at the end of a turn the owner sees only
+# cards; everything else is logged) removed the losing-lane line from the stop hook's owner
+# text. The lane still hears it: the prompt hook names it to the agent on every turn
+# (test_prompt_hook_names_it_on_every_turn) and plumb status names it (test_status_*).
 
 
 # -- the relay

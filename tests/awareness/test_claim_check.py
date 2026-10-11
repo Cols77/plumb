@@ -75,9 +75,16 @@ def _answer(root: Path, ref: str, words: str = "keep feat-x's") -> int:
                      "--root", str(root)])
 
 
+def early_heads(reply: str, title: str) -> list[str]:
+    """The early conflict cards (SR-012: the owner sees cards, titles not IDs) about the
+    record titled ``title``."""
+    return [line for line in reply.splitlines()
+            if line.startswith('Another branch says something else, "') and title in line]
+
+
 def _assert_asked_and_answered(root: Path, asked: str, reply: str, record: str) -> None:
     assert "ask the owner now" in asked, asked
-    assert f'▸ Conflict  {record} "' in reply, reply
+    assert early_heads(reply, open_core(root).index()[record].title), reply
     [dec] = _decisions(root)
     assert dec.fields.get("matters") is True
     assert _answer(root, record) == 0
@@ -130,7 +137,7 @@ def test_capture(tmp_path: Path, hook_input: Any) -> None:
     result = change(mine, OURS)
     assert any(line.startswith('▸ Conflict  SR-005 "relay checks"') for line in result.lines)
     asked, reply = _turn(mine, hook_input)
-    assert '▸ Conflict  SR-005 "' in reply
+    assert early_heads(reply, "relay checks"), reply
     [dec] = _decisions(mine)
     assert _answer(mine, dec.id) == 0
     assert open_core(mine).index()[dec.id].fields["chosen"] == "feat-x's version"
@@ -153,7 +160,9 @@ def test_clarify_then_edit(tmp_path: Path, hook_input: Any) -> None:
     assert '▸ Conflict  SR-005 "relay checks"' in _clarify(mine)
     requirement(mine, "SR-005", "relay checks", OURS, feature="FEAT-002")
     asked, reply = _turn(mine, hook_input)
-    assert reply.count('▸ Conflict  SR-005 "relay checks"') == 1
+    # the read-back's card is drawn once (its decision has its own card since SR-012)
+    assert len([h for h in early_heads(reply, "relay checks")
+                if h.startswith('Another branch says something else, "relay checks"')]) == 1
     _assert_asked_and_answered(mine, asked, reply, "SR-005")
 
 
@@ -164,7 +173,7 @@ def test_clarify_card_answered_before_any_edit(tmp_path: Path, hook_input: Any) 
     _start_turn(mine)
     _clarify(mine)
     reply = _stop(mine, hook_input)               # a turn that changed no file
-    assert '▸ Conflict  SR-005 "relay checks"' in reply
+    assert early_heads(reply, "relay checks"), reply
     assert _decisions(mine) == []
     assert _answer(mine, "SR-005") == 0
     [dec] = _decisions(mine)

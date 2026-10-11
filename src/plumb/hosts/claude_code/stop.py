@@ -277,6 +277,15 @@ def confirm_carry(ctx: HookContext, turn: Mapping[str, Any]) -> ConfirmView:
                if isinstance(item, dict) and item.get("via") == "confirm" and item.get("id")]
     groups = [dict(item) for item in previous.get("confirm_groups") or []
               if isinstance(item, dict) and item.get("group")]
+    # SR-012, DEC-029: no group offer is drawn any more, so the records of the triage group
+    # plumb confirm prepared join the prepared records and reach the owner on their cards
+    known = {str(r["id"]) for r in records}
+    for group in groups:
+        for item in group.get("records") or []:
+            if isinstance(item, dict) and item.get("id") and str(item["id"]) not in known:
+                known.add(str(item["id"]))
+                records.append({"id": str(item["id"]), "hash": item.get("hash"),
+                                "shown": False, "via": "confirm"})
     return ConfirmView(records=records, groups=groups)
 
 
@@ -478,9 +487,18 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     stamp = int(turn_start)
     decision_cards = [card_text.decision_card(index, index[d], touched=touched_ids, turn=stamp)
                       for d in decisions]
-    proposed = proposed_cards(core, index, all_statuses, stated_ids, decisions, carry, stamp)
+    # SR-030: a confirmed requirement whose acceptance test changed since the owner confirmed
+    # it waits for the owner on its own card (never only in plumb status); it stays out of the
+    # stated set, so a bare "ok" never confirms the new test (the card recommends putting the
+    # test back)
+    test_changed = [i for i in touched_ids if index[i].kind == "requirement"
+                    and getattr(all_statuses.get(i), "changed_tests", ())]
+    test_cards = [card_text.test_changed_card(index[i], all_statuses[i].changed_tests,
+                                              turn=stamp) for i in test_changed]
+    proposed = proposed_cards(core, index, all_statuses, stated_ids,
+                              [*decisions, *test_changed], carry, stamp)
     kept: dict[str, str] = {}
-    ctx.keep(drawn_now(core, [*decision_cards, *proposed], kept))
+    ctx.keep(drawn_now(core, [*decision_cards, *test_cards, *proposed], kept))
     write_stated(ctx, turn, index, stated_ids, kept, confirm=carried_view(carry, kept))
     # then the status line: a later cut (budget, watchdog) must not leave it on an older turn
     write_snapshot(ctx.root, early_snapshot, present=getattr(core.config, "present", None))
@@ -611,9 +629,13 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     # are the block's
     passing = [n for n, e in (evidence or {}).items() if e.state in ("fresh-pass", "flaky-pass")]
     regression, changes = regression_cards(core, index, regressing, masked, changed, stamp)
+    for card, record_id in zip(test_cards, test_changed, strict=True):
+        changes[card.id] = turn_change(core, index, all_statuses[record_id].changed_tests[0],
+                                       changed)
     fresh, conflicts, early = owner_cards(ctx, core, turn)
     shown: dict[str, str] = {}
-    text = understand_parts(ctx, core, turn, extra=[*regression, *decision_cards, *proposed],
+    text = understand_parts(ctx, core, turn,
+                            extra=[*regression, *test_cards, *decision_cards, *proposed],
                             fresh=fresh, changes=changes, passing=passing, shown=shown)
     write_stated(ctx, turn, index, stated_ids, shown, confirm=carried_view(carry, shown),
                  conflicts=conflicts, early=early)
@@ -657,8 +679,9 @@ def proposed_cards(core: Any, index: Mapping[str, Any], statuses: Mapping[str, A
                    stated_ids: Sequence[str], decisions: Sequence[str], carry: ConfirmView,
                    stamp: int) -> list[Any]:
     """SR-012 EX-1, EX-3, EX-4: the records this turn proposed (and ``plumb confirm``
-    prepared) that are neither confirmed nor settled, one card per feature (DEC-029); a
-    decision that matters has its own card."""
+    prepared) that are neither confirmed nor settled, one card per feature (DEC-029); the
+    records of ``decisions`` (a decision that matters, a requirement whose acceptance test
+    changed) have their own card."""
     from plumb.understand import cards as card_text
 
     wanted = [*stated_ids, *(str(r["id"]) for r in carry.records)]

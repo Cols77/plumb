@@ -54,6 +54,15 @@ def _card(lines: str) -> None:
     assert f"main        {MAIN}" in lines, lines
 
 
+def _stop_card(reply: str) -> None:
+    """The stop hook's early conflict card (SR-012: a card in full, titles not IDs): main's
+    version and this work's, in the owner's words."""
+    from awareness.test_claim_check import early_heads
+
+    heads = early_heads(reply, "relay checks")
+    assert heads and any(MAIN in h for h in heads), reply
+
+
 # -- capture
 
 
@@ -82,7 +91,7 @@ def test_the_owner_keeps_mains_and_the_lane_is_told(tmp_path: Path, hook_input: 
     start_turn(other)
     change(other, FEAT_X)
     _asked, reply = turn(other, hook_input)
-    _card(reply)
+    _stop_card(reply)
     [dec] = _decisions(other)
     assert answer(other, dec.id, "keep main's") == 0
     dec = open_core(other).index()[dec.id]
@@ -127,7 +136,7 @@ def test_direct_edit_then_stop_hook_asks(tmp_path: Path, hook_input: Any) -> Non
     requirement(other, "SR-005", "relay checks", FEAT_X, feature="FEAT-002")
     asked, reply = turn(other, hook_input)
     assert "ask the owner now" in asked, asked
-    _card(reply)
+    _stop_card(reply)
     assert len(_decisions(other)) == 1
 
 

@@ -92,6 +92,9 @@ _CHOICES: dict[str, dict[str, str]] = {
     "drift": {},
     "proposed": {owner_text.PROPOSED_YES: "accepted", owner_text.PROPOSED_EXCEPT: "change",
                  owner_text.PROPOSED_LATER: "open"},
+    "test_changed": {owner_text.TEST_CHANGED_RESTORE: "change",
+                     owner_text.TEST_CHANGED_KEEP: "accepted",
+                     owner_text.TEST_CHANGED_LATER: "open"},
 }
 
 
@@ -157,9 +160,10 @@ HEADS = {"clarify": owner_text.CARD_CLARIFY, "trial": owner_text.CARD_TRIAL,
          "settle_offer": owner_text.CARD_SETTLE_OFFER,
          "regression": owner_text.CARD_REGRESSION, "decision": owner_text.CARD_DECISION,
          "conflict": owner_text.CARD_CONFLICT, "early_conflict": owner_text.CARD_EARLY_CONFLICT,
-         "drift": owner_text.CARD_DRIFT, "proposed": owner_text.CARD_PROPOSED}
+         "drift": owner_text.CARD_DRIFT, "proposed": owner_text.CARD_PROPOSED,
+         "test_changed": owner_text.CARD_TEST_CHANGED}
 ORDER = ("clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check", "regression",
-         "drift", "conflict", "early_conflict", "decision", "proposed")
+         "test_changed", "drift", "conflict", "early_conflict", "decision", "proposed")
 RESOLUTIONS_MAX = 3
 ITEMS_MAX = 30
 
@@ -274,6 +278,23 @@ def regression_card(index: Mapping[str, Any], node: str, *, last_run: str = "",
                  owner_text.REGRESSION_ISSUE.format(what=what), evidence,
                  (owner_text.REGRESSION_FIX, owner_text.REGRESSION_CHANGE,
                   owner_text.REGRESSION_WAIT), questions, turn)
+
+
+def test_changed_card(record: Any, ends: Sequence[str], *, turn: int = 0) -> CardState:
+    """SR-030: a confirmed requirement whose acceptance test changed since the owner confirmed
+    it (``RecordStatus.changed_tests``): which test, the examples it verifies, and the choices
+    of putting it back, confirming the new test, or leaving it."""
+    tests = []
+    for end in ends:
+        examples = [link.example for link in record.links if link.kind == "verified_by"
+                    and (link.target.test or link.target.path) == end and link.example]
+        tests.append(end + (f" ({', '.join(examples)})" if examples else ""))
+    what = "; ".join(tests)
+    issue = owner_text.TEST_CHANGED_ISSUE.format(tests=what)
+    return _card("test_changed", card_id("test_changed", record.id, *ends), record.title, issue,
+                 owner_text.TEST_CHANGED_EVIDENCE.format(tests=what),
+                 (owner_text.TEST_CHANGED_RESTORE, owner_text.TEST_CHANGED_KEEP,
+                  owner_text.TEST_CHANGED_LATER), [(issue, record)], turn)
 
 
 def _alternatives(record: Any) -> list[str]:

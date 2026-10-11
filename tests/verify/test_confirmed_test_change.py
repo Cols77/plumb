@@ -196,11 +196,18 @@ def test_stop_asks_when_a_test_was_rewritten_to_hide_a_regression(confirmed,
     assert "plumb: regression hidden: tests/test_mod.py::test_add" in reason
     assert ("SR-001 EX-1 \"given two numbers, when added, then the sum is returned\""
             in reason)
-    summary = _stop(root, hook_input, active=True)["systemMessage"]
-    assert ("acceptance test changed since you confirmed it: SR-001 tests/test_mod.py (EX-1)"
-            in summary)
-    assert "regression hidden by a test change tests/test_mod.py::test_add" in summary
-    assert "questions: none" not in summary
+    # SR-012: the owner gets cards, never a summary: the hidden regression and the changed
+    # acceptance test of the confirmed example each reach the owner on a card
+    lines = _stop(root, hook_input, active=True)["systemMessage"].splitlines()
+    assert ("  Evidence: tests/test_mod.py::test_add passed, then failed, and passes now only "
+            "because the test itself was changed") in lines
+    assert ('The test of something you confirmed changed, "Modules add numbers": the test that '
+            "checks it was changed since you confirmed it: tests/test_mod.py (EX-1); is the new "
+            "test right?") in lines
+    assert ("  Evidence: acceptance test changed since you confirmed it: tests/test_mod.py "
+            "(EX-1)") in lines
+    assert "    -    assert add(1, 2) == 3" in lines        # the test's diff, with the card
+    assert "questions: none" not in lines
 
 
 # -- SR-031: the merge boundary's verification guarantee ---------------------------------------

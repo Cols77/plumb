@@ -615,14 +615,16 @@ JobKindName = Literal["read", "judge", "clarify"]
 # slice 3 (sp7-realign-sp8 C1): the owner items the stop hook drew its own way become card
 # kinds: a regression, a decision that matters, a merge conflict, an early conflict, code that
 # drifted from an intent its requirement agrees with (SR-113 EX-2), and the records a turn
-# proposed, one card per feature (DEC-029)
+# proposed, one card per feature (DEC-029); and the acceptance test of a confirmed requirement
+# that changed since the owner confirmed it (SR-030)
 CardKind = Literal["clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check",
                    "show_first", "settle_offer", "settled_item", "link", "stale_link",
-                   "regression", "decision", "conflict", "early_conflict", "drift", "proposed"]
+                   "regression", "decision", "conflict", "early_conflict", "drift", "proposed",
+                   "test_changed"]
 CARD_KINDS: tuple[str, ...] = ("clarify", "trial", "backlog", "beyond", "contradicts",
                                "couldnt_check", "show_first", "settle_offer", "settled_item",
                                "link", "stale_link", "regression", "decision", "conflict",
-                               "early_conflict", "drift", "proposed")
+                               "early_conflict", "drift", "proposed", "test_changed")
 JOB_KINDS: tuple[str, ...] = ("read", "judge", "clarify")
 JOB_VERSION = 1
 GateStateName = Literal["closed", "open"]

@@ -82,7 +82,7 @@ def test_the_ok_after_the_confirm_turn_is_read_against_exactly_the_shown(
     run_prompt(records, hook_input, "/plumb confirm the login thing")
     assert cli.main(["confirm", "--root", str(records), "the", "login", "thing"]) == 0
     message = run_stop(records, hook_input)["systemMessage"]  # no change this turn
-    assert '▸ Requirement  SR-010 "the login form checks the password"' in message
+    assert drawn(message) == ["the login form checks the password"]
     text = "ok, that's right"
     out = run_prompt(records, hook_input, text)
     assert "plumb relay" not in out
@@ -127,8 +127,21 @@ def _age(repo: Path) -> None:
             os.utime(path, (then, then))
 
 
-def _card_heads(message: str) -> list[str]:
-    return [line for line in message.splitlines() if line.startswith("▸ ")]
+TITLES = {"INT-001": "add multiply next to add", "SR-001": "add returns the sum of two numbers",
+          "SR-002": "divide returns the quotient", "SR-003": "invoices export to csv",
+          "SR-010": "the login form checks the password"}
+
+
+def drawn(message: str) -> list[str]:
+    """The titles of the records the cards drew in full (SR-012, SR-116): a card of one
+    record reads "As it now reads (<title>): ...", a card of several lists "  - <title>"."""
+    out = []
+    for line in message.splitlines():
+        if line.startswith("  As it now reads ("):
+            out.append(line[len("  As it now reads ("):].split("): ", 1)[0])
+        elif line.startswith("  - "):
+            out.append(line[4:])
+    return out
 
 
 @pytest.mark.parametrize(("argv", "prompt", "expected"), [
@@ -138,17 +151,21 @@ def _card_heads(message: str) -> list[str]:
 ], ids=["no-words", "plain-words", "ids"])
 def test_stop_renders_confirm_cards_and_marks_only_them_shown(
         records: Path, hook_input, capsys, argv, prompt, expected) -> None:
-    """Every entry point of /plumb confirm: the stop hook of the turn shows each prepared
-    record as a full intent card in the owner's summary, and only then marks it shown."""
+    """Every entry point of /plumb confirm: the stop hook of the turn draws each prepared
+    record in full on a card (SR-012), and only then marks it shown. IDs the owner typed
+    confirm at once: the owner sees them in the "Confirmed:" line, never as a card."""
     _age(records)
     run_prompt(records, hook_input, prompt)
     assert cli.main(["confirm", "--root", str(records), "--limit", "2", *argv]) == 0
     capsys.readouterr()
     assert not any(r["shown"] for r in _stated(records)["records"])
     message = run_stop(records, hook_input)["systemMessage"]
-    heads = _card_heads(message)
-    assert [h.split()[2] for h in heads] == expected
     shown = {r["id"] for r in _stated(records)["records"] if r["shown"]}
+    if argv == ["SR-002"]:
+        assert message.splitlines() == [f"Confirmed: {TITLES['SR-002']}"]
+        assert open_core(records).status(["SR-002"])["SR-002"].confirmation == "confirmed"
+        return
+    assert sorted(drawn(message)) == sorted(TITLES[i] for i in expected)
     assert shown == set(expected)
 
 
@@ -159,7 +176,7 @@ def test_stop_with_changes_renders_confirm_cards(records: Path, hook_input,
     assert cli.main(["confirm", "--root", str(records), "the", "login", "thing"]) == 0
     touch(records, ".plumb/requirements/SR-003.md")
     message = run_stop(records, hook_input)["systemMessage"]
-    assert '▸ Requirement  SR-010 "the login form checks the password"' in message
+    assert TITLES["SR-010"] in drawn(message)
     assert {r["id"]: r["shown"] for r in _stated(records)["records"]}["SR-010"] is True
 
 
@@ -195,9 +212,10 @@ def _fake_triage(records: Path, monkeypatch) -> list[dict]:
 @pytest.mark.parametrize("changes", [False, True], ids=["no-change", "with-change"])
 def test_confirm_group_survives_the_stop_and_is_offered(records: Path, hook_input, capsys,
                                                         monkeypatch, changes) -> None:
-    """R8 A, R13 Q2: the group plumb confirm pinned stays in the stated set through the
-    turn's stop (with or without changes), its offer line is shown to the owner, and it
-    is the only group (``plumb relay --group low-risk`` then finds exactly it)."""
+    """R8 A, R13 Q2: the group plumb confirm prepared stays in the stated set through the
+    turn's stop (with or without changes). Since SR-012 (DEC-029) no offer line is drawn:
+    each record of the group reaches the owner in full on its card and is marked shown,
+    and no group is relayable (``plumb relay --group`` finds none)."""
     pinned = _fake_triage(records, monkeypatch)
     run_prompt(records, hook_input, "/plumb confirm")
     assert cli.main(["confirm", "--root", str(records)]) == 0
@@ -206,8 +224,12 @@ def test_confirm_group_survives_the_stop_and_is_offered(records: Path, hook_inpu
     if changes:
         touch(records, ".plumb/requirements/SR-002.md")
     message = run_stop(records, hook_input)["systemMessage"]
-    assert "plumb: approve the 2 records rated faithful to your words" in message
-    assert _stated(records)["groups"] == [{"group": "low-risk", "records": pinned}]
+    assert "plumb: approve the 2 records rated faithful to your words" not in message
+    assert sorted(drawn(message)) == sorted(TITLES[p["id"]] for p in pinned)
+    stated = _stated(records)
+    assert "groups" not in stated and stated["confirm_groups"]
+    shown = {r["id"] for r in stated["records"] if r["shown"]}
+    assert {p["id"] for p in pinned} <= shown
 
 
 def test_blocked_stop_keeps_the_confirm_group_unoffered(records: Path, hook_input, capsys,
@@ -231,8 +253,9 @@ def test_blocked_stop_keeps_the_confirm_group_unoffered(records: Path, hook_inpu
 def test_card_off_pins_only_the_offer_the_owner_saw(records: Path, hook_input, capsys,
                                                     monkeypatch, changes) -> None:
     """R2 with ``present.card: off``, on both stop paths (no change and with changes): the
-    group /plumb confirm prepared is still rendered (the owner asked for it) and so
-    pinned; every pinned group's offer line is in the message the owner saw."""
+    records of the group /plumb confirm prepared still reach the owner (the owner asked
+    for them), on their cards since SR-012; no offer line is drawn, so no group is pinned
+    as relayable."""
     pinned = _fake_triage(records, monkeypatch)
     (records / ".plumb" / "config.yaml").write_text("present:\n  card: off\n", "utf-8")
     run_prompt(records, hook_input, "/plumb confirm")
@@ -242,5 +265,6 @@ def test_card_off_pins_only_the_offer_the_owner_saw(records: Path, hook_input, c
         touch(records, ".plumb/requirements/SR-002.md")
     message = run_stop(records, hook_input)["systemMessage"]
     assert ('plumb: approve the 2 records rated faithful to your words: "add", "divide"? '
-            'say "ok" or see plumb triage') in message.splitlines()
-    assert _stated(records)["groups"] == [{"group": "low-risk", "records": pinned}]
+            'say "ok" or see plumb triage') not in message.splitlines()
+    assert sorted(drawn(message)) == sorted(TITLES[p["id"]] for p in pinned)
+    assert "groups" not in _stated(records)

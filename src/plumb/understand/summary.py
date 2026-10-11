@@ -281,7 +281,7 @@ def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
             return card
         rebuilt = card_text.proposed_cards(index, [str(i) for i in left], turn=card.turn)
         return rebuilt[0] if rebuilt else None
-    if card.kind in ("decision", "early_conflict"):
+    if card.kind in ("decision", "early_conflict", "test_changed"):
         return None if all(done(q.record) for q in card.questions) else card
     if card.kind == "regression":
         node = card.evidence.split(" ", 1)[0]

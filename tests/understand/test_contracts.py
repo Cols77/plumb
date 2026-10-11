@@ -57,7 +57,7 @@ def test_job_needs_defaults_to_none_and_card_kinds_are_complete() -> None:
     assert set(contracts.CARD_KINDS) == {
         "clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check", "show_first",
         "settle_offer", "settled_item", "link", "stale_link", "regression", "decision",
-        "conflict", "early_conflict", "drift", "proposed"}
+        "conflict", "early_conflict", "drift", "proposed", "test_changed"}
     assert set(contracts.CardKind.__args__) == set(contracts.CARD_KINDS)
     assert "settled" in contracts.ApprovalBy.__args__ and \
         "owner-words" in contracts.ApprovalBy.__args__

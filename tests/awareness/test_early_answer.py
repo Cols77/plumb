@@ -19,6 +19,7 @@ import pytest
 from mergedriver.mdhelpers import log_prompt
 
 from awareness.scenario import change, setup
+from awareness.test_claim_check import early_heads
 from plumb import cli
 from plumb.api import open_core
 from plumb.awareness import early, inflight
@@ -136,10 +137,12 @@ def test_stop_hook_question_card_answer_both(tmp_path: Path, hook_input: Any) ->
     asked = _stop(main, hook_input)
     assert "Show the owner the conflict card" in asked and "keep this one" in asked
     shown = _stop(main, hook_input, active=True)
-    say = "awaits your choice — say \"keep feat-x's\", \"keep this one\", or \"both\""
-    assert say in shown
-    assert 'proposed — say "ok" to confirm' not in [
-        line for line in shown.splitlines() if dec.id in line][0]
+    # SR-012: the early conflict card offers the card's words as its options, never "ok"
+    lines = shown.splitlines()
+    assert "  1. Keep this one (recommended)" in lines
+    assert "  2. Keep feat-x's" in lines
+    assert "  3. Both, combined (say how)" in lines
+    assert 'say "ok" to confirm' not in shown
     assert any(r["id"] == dec.id and r["shown"] for r in _stated(main)["records"])
     assert _relay(main, dec.id, "both, the group pinned when it is named") == 0
     assert _decision(main).fields["chosen"] == "both, combined"
@@ -160,7 +163,7 @@ def test_clarify_card_answer_before_capture(tmp_path: Path, hook_input: Any) -> 
                          "--root", str(main)]) == 0
     assert '▸ Conflict  SR-005 "relay checks"' in out.getvalue()
     reply = _stop(main, hook_input)
-    assert '▸ Conflict  SR-005 "relay checks"' in reply
+    assert early_heads(reply, "relay checks"), reply
     assert _stated(main)["early"] == [{"record": "SR-005", "branch": "feat-x"}]
     words = "keep feat-x's"
     digest = log_prompt(main, words, at=_later())
@@ -188,7 +191,7 @@ def test_plumb_conflicts_lists_the_early_card(tmp_path: Path, hook_input: Any) -
     assert '▸ Conflict  SR-005 "relay checks"' in text
     assert "feat-x      A relay pins the stated group, named by its title." in text
     _start_turn(main)
-    assert "▸ Conflict  SR-005" in _stop(main, hook_input, active=True)
+    assert early_heads(_stop(main, hook_input, active=True), "relay checks")
     assert _relay(main, "relay checks", "keep feat-x's", take="feat-x") == 0
     assert _state(main, dec.id) == "confirmed"
 
