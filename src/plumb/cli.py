@@ -69,7 +69,8 @@ records and integrity:
   link         add a hash-pinned link between a record and a record, file or test
   repin        refresh link pins (never confirms); --after-tests: only when the linked tests
                pass and a model judges the meaning unchanged
-  stale        card: bring a stale link to the owner as a card
+  stale        card: bring a stale link to the owner as a card; cards: list them in full
+               (--incomplete: those still lacking something)
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
   status       counts, drift and records awaiting your confirmation (--card: the card)
   brief        the short intent brief

@@ -181,6 +181,8 @@ def test_ex5_owner_question_becomes_card_and_turn_may_end(project: Path, capsys)
     code = main(["stale", "card", LINK, "--topic", "Adds numbers", "--issue",
                  "add now multiplies instead of adding", "--options",
                  "Keep it|Reword it|Undo the change", "--recommended", "2",
+                 "--consequences", "keeps the product|says product|sums again",
+                 "--why", "the owner asked for a sum",
                  "--session", "s1", "--root", str(project)])
     assert code == 0, capsys.readouterr().err
     state = stale.turn_state(open_core(project), "s1", turn_id)

@@ -520,17 +520,26 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
     item = {"link": link.id, "record": record_id, "path": path, "outcome": found.outcome,
             "topic": topic, "explanation": found.explanation,
             "proposed_wording": found.proposed_wording, "options": list(found.options),
-            "broken_example": found.broken_example, "turn": turn, "card": False}
+            "broken_example": found.broken_example, "turn": turn, "card": False,
+            "consequences": list(found.consequences), "why": found.why}
     if found.outcome == "owner":
-        if not dry_run:
-            from plumb import stale
+        from plumb import stale
 
+        filed = dict(link=link.id, record=record_id, path=path, topic=topic,
+                     issue=found.explanation, options=found.options,
+                     consequences=found.consequences, why=found.why)
+        missing = stale.card_missing(filed)
+        if not dry_run:
             where = session or stale.current_session(core.root)
-            stale.add_card(core.root, where, link=link.id, record=record_id, path=path,
-                           topic=topic, issue=found.explanation, options=found.options,
-                           turn=stale.turn_number(core.root, where))
-            item["card"] = True
+            stale.add_card(core.root, where, by="diagnosis",
+                           turn=stale.turn_number(core.root, where), **filed)
+            item["card"], item["session"] = True, where
+        item["card_missing"] = missing
         action = f"brought to the owner as a card: {found.explanation}"
+        if missing:   # SR-116: kept open, but not offered until the agent completes it
+            action += ("; the card is not offered until it is complete, it lacks: "
+                       + "; ".join(missing) + f" (plumb stale card {link.id} --consequences "
+                       "\"...\" --why \"...\")")
     elif found.outcome == "reword":
         action = (f"{record_id} disagrees with its intent ({found.explanation}); reword it "
                   f"through plumb capture to: {found.proposed_wording}")

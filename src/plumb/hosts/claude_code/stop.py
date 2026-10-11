@@ -765,7 +765,8 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
             limit = min(limit, 1)  # the host-neutral path blocks at most once per turn
         if held < limit:
             stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), held + 1)
-            return [*stale.hold_lines(open_rows, held + 1, limit), *before], []
+            missing = stale.incomplete_cards(ctx.root, ctx.session_id)
+            return [*stale.hold_lines(open_rows, held + 1, limit, missing), *before], []
         from plumb.present.owner_text import STALE_HOLD_ENDED
 
         notes = []

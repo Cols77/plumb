@@ -224,7 +224,20 @@ def test_ex5_unclear_change_becomes_an_owner_card(project: Path) -> None:
     (item,) = result.diagnoses
     assert item["outcome"] == "owner" and item["card"] is True
     assert "card" in result.refused[0][1] and result.changes == []
-    # the card holds the link for the end-of-turn hold
+    # SR-116: without what each option does and why the first, the card is kept but does not
+    # hold the link for the end-of-turn hold until it is complete
+    assert item["card_missing"] and LINK not in stale.carded_links(project, "s1")
+
+
+def test_ex5_owner_card_with_consequences_holds_the_link(project: Path) -> None:
+    _edit(project, CHANGED, turn=TURN)
+    answer = {**OWNER, "consequences": ["add multiplies; the sum is gone",
+                                        "add sums again; the product is gone"],
+              "why": "the owner's words ask for a sum"}
+    result, _ = _resolve(project, judge=Judge(False, "add now multiplies"), answer=answer)
+    (card,) = stale.read_cards(project, "s1")
+    assert card["consequences"] == answer["consequences"] and card["why"] == answer["why"]
+    assert card["by"] == "diagnosis" and result.diagnoses[0]["card_missing"] == []
     assert LINK in stale.carded_links(project, "s1")
 
 
