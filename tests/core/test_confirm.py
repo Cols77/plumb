@@ -85,3 +85,62 @@ def test_covered_requires_verified_by_per_example(setup: Path) -> None:
                               example="EX-2")
     status = open_core(setup).status()["SR-001"]
     assert status.uncovered_examples == () and status.covered is True
+
+
+def _drawn_offer(root: Path) -> tuple[object, str, str]:
+    """The panel registered for session s1 and a show_first card on SR-001 drawn: the core,
+    the offer and the key digest (``plumb.mod``)."""
+    import hashlib
+
+    from plumb.mod import offers, session
+    from plumb.understand import cardstore, read
+
+    core = open_core(root)
+    cardstore.save(root, "s1", [read.show_first_card(core.index()["SR-001"], "words")])
+    digest = hashlib.sha256(bytes.fromhex("a1" * 32)).hexdigest()
+    session.hello(core, "s1", digest)
+    (card,) = offers.drawn_cards(core, "s1", digest)
+    return core, card["offers"][0]["offer_id"], digest
+
+
+def _button(core, offer: str, digest: str, record_hash: str):
+    return core.log_append("events", "approval", {
+        "by": "owner", "via": "button", "session": "s1", "offer": offer, "key_digest": digest,
+        "card": "show_first:SR-001", "question": "confirm",
+        "records": [{"id": "SR-001", "hash": record_hash}]})
+
+
+@pytest.mark.sr("SR-086")
+def test_button_approval_confirms_only_at_a_drawn_offer(setup: Path) -> None:
+    """SR-086 EX-1, EX-9: an owner button approval naming the offer drawn for this record at
+    this version confirms; the same entry naming no drawn offer confirms nothing."""
+    from plumb import confirm
+
+    core, offer, digest = _drawn_offer(setup)
+    forged = _button(core, "sha256:" + "0" * 64, digest, core.index()["SR-001"].hash)
+    assert "offer was not drawn" in confirm.entry_problem(forged, set(), (), core)
+    assert _confirmation(setup) == "proposed"
+    pressed = _button(core, offer, digest, core.index()["SR-001"].hash)
+    assert confirm.entry_problem(pressed, set(), (), open_core(setup)) is None
+    assert _confirmation(setup) == "confirmed"
+    assert open_core(setup).status()["SR-001"].approved_by == "owner"
+    _edit(setup)                                   # the confirmed version is the drawn one
+    assert _confirmation(setup) == "unconfirmed-edit"
+
+
+@pytest.mark.sr("SR-112")
+def test_button_approval_under_the_marker_or_with_another_key_confirms_nothing(
+        setup: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-112 EX-7: a button approval the agent writes (under its marker, or without the
+    panel's key) is not accepted."""
+    from plumb import confirm
+
+    core, offer, digest = _drawn_offer(setup)
+    record_hash = core.index()["SR-001"].hash
+    other = _button(core, offer, "f" * 64, record_hash)
+    assert "key" in confirm.entry_problem(other, set(), (), core)
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    marked = _button(core, offer, digest, record_hash)
+    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    assert "marker" in confirm.entry_problem(marked, set(), (), core)
+    assert _confirmation(setup) == "proposed"

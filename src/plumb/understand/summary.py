@@ -225,6 +225,9 @@ def _cards(core: Any, session: str, refreshed: Any, stamp: int, roomy: bool) -> 
         add = [c for c in new if c.id not in have]
         if add:
             cardstore.save(core.root, session, [*own, *add])
+    from plumb.mod.offers import reopen_changed
+
+    reopen_changed(core, session)       # DEC-034: a card left open returns once it changed
     open_cards = cardstore.load(core.root, session)
     open_cards = _meter(core, session, open_cards, stamp)
     open_cards.extend(_failure_cards(core, session))

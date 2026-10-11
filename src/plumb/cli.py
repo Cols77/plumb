@@ -57,6 +57,8 @@ ROUTES: dict[str, str] = {
     "inflight": "plumb.awareness.cli",
     # HOSTS (sub-project 4)
     "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
+    # SP7 MOD: the commands only plumb's panel runs (hello, draw, press; key on stdin)
+    "mod": "plumb.mod.cli",
 }
 
 _HELP = """usage: plumb <command> [options]
