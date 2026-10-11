@@ -6,7 +6,7 @@
 - ``OwnerWords``: the reader read the owner's message (``read.apply``, after its exact
   checks); an ``accepted`` answer counts only at or above the reader's threshold, and what it
   confirms is logged ``by: owner-words``;
-- ``Button``: the owner pressed a drawn card's button (the press lands in slice 4); there is
+- ``Button``: the owner pressed a drawn card's button (``plumb mod press``); there is
   no threshold, what it confirms is logged ``by: owner, via: button``, Leave open marks the
   card ``left_open`` and Ask for a change marks it ``change_requested`` (status only).
 
@@ -169,6 +169,13 @@ def _close_stale(work: Answering, card: CardState, record: Any, evidence: str) -
     work.notes.append(owner_text.CARD_CHANGED_SINCE.format(title=record.title))
 
 
+def is_left(choice: Choice) -> bool:
+    """Whether a pressed ``choice`` leaves the card waiting: Leave open (``open``), or Ask for a
+    change (``change`` carrying no wording of its own). A ``change`` choice that carries its
+    wording is a pick (a version, a stale link's option) and is applied like any answer."""
+    return choice.answer == "open" or (choice.answer == "change" and not choice.change)
+
+
 def _left(work: Answering, card: CardState, choice: Choice) -> None:
     """Leave open or Ask for a change from a button: nothing is confirmed and no effect runs;
     the card keeps its question and takes the status (``change_requested``: the owner's next
@@ -190,6 +197,9 @@ def apply_answer(work: Answering, *, card: str, question: str, record: str, hash
         return
     words = source if isinstance(source, OwnerWords) else None
     asked = next((q for q in state.questions if q.id == question), None)
+    if words is None and is_left(choice):     # Leave open, Ask for a change: any card
+        _left(work, state, choice)
+        return
     if state.kind in effects.NO_EFFECT or state.owner_only:
         if words is not None:                   # its buttons run settle and undo, not this path
             work.notes.append(owner_only_reply(state, asked))
@@ -199,9 +209,6 @@ def apply_answer(work: Answering, *, card: str, question: str, record: str, hash
     evidence = words.evidence if words is not None else choice.label
     confidence = words.confidence if words is not None else 1.0
     if said == "accepted" and not passes:
-        return
-    if words is None and said in ("open", "change"):
-        _left(work, state, choice)
         return
     pressed = (_pressed(work.session, source, card, question) if isinstance(source, Button)
                else None)

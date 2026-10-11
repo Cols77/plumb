@@ -396,3 +396,29 @@ STALE_OPTION_UNDO = "Undo the change"
 STALE_CARD_WAITS = "  This waits for your answer; the turn does not."
 STALE_HOLD_ENDED = ('I held the turn open {n} times for "{title}" and then let it go; it waits '
                     "for your answer below.")
+
+
+# --------------------------------------------------------------------------- SP7 PRESS
+# What a button press on a card answers (sp7-realign-sp8 C3, C6; DEC-032, DEC-034). Titles,
+# never record IDs; no commands.
+BUTTON_ASK_CHANGE = "Ask for a change"
+BUTTON_LEAVE_OPEN = "Leave open"
+PRESS_PREFILL = "Change to '{topic}': "
+PRESS_CONFIRMED = 'You pressed {label}: now confirmed: {titles}.'
+PRESS_REJECTED = 'You pressed {label}: dropped: {titles}.'
+PRESS_LEFT_OPEN = ('Left open: "{topic}". It stops coming back at the end of each turn until '
+                   "it changes; it stays listed under what awaits you.")
+PRESS_CHANGE = 'Say what to change about "{topic}"; your next message is read against it.'
+PRESS_ANSWERED = 'You pressed {label} on "{topic}".'
+PRESS_CHANGED_SINCE = '"{title}" changed since it was shown; nothing was confirmed.'
+PRESS_ALREADY = '"{topic}" was already answered; nothing changed.'
+PRESS_MODEL_CONFIRMED = ("The owner pressed {label}; now confirmed: {records}. Do not ask "
+                         "again.")
+PRESS_MODEL_REJECTED = "The owner pressed {label}; dropped: {records}."
+PRESS_MODEL_LEFT_OPEN = ('The owner pressed Leave open on "{topic}". Do not ask about it '
+                         "again until it changes.")
+PRESS_MODEL_CHANGE = ('The owner pressed Ask for a change on "{topic}"; their next message '
+                      "says what to change.")
+PRESS_MODEL_ANSWERED = 'The owner pressed {label} on "{topic}".'
+PRESS_MODEL_CHANGED = ("The owner pressed {label}, but {records} changed since it was shown; "
+                       "nothing was confirmed and the new version is shown as a fresh card.")

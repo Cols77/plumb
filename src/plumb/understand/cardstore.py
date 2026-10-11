@@ -70,10 +70,17 @@ def stale_cards(root: Path, session: str) -> list[CardState]:
     return out
 
 
+# the statuses of a card that still asks the owner at the end of a turn and that the reader
+# reads the owner's next message against: ``change_requested`` waits for the owner's words
+# (SR-086 EX-7, EX-8); ``left_open`` does not repeat until its record changes (DEC-034)
+AWAITING: tuple[str, ...] = ("open", "change_requested")
+
+
 def load(root: Path, session: str, *, open_only: bool = True) -> list[CardState]:
-    """The session's cards: its own, then the stale-link ones."""
+    """The session's cards: its own, then the stale-link ones (``open_only``: the awaiting
+    ones, ``AWAITING``)."""
     cards = [*own_cards(root, session), *stale_cards(root, session)]
-    return [c for c in cards if c.status == "open"] if open_only else cards
+    return [c for c in cards if c.status in AWAITING] if open_only else cards
 
 
 def save(root: Path, session: str, cards: Sequence[CardState]) -> None:

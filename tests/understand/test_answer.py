@@ -3,6 +3,7 @@ path is covered by the reader's tests; these pin what a button source does diffe
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -50,3 +51,27 @@ def test_leave_open_and_ask_for_a_change_confirm_nothing(core, said: str, status
     assert applied.entries == () and applied.closed == ()
     (after,) = applied.cards
     assert after.id == card.id and after.status == status and after.answers == ()
+
+
+@pytest.mark.sr("SR-086")
+def test_leave_open_from_a_button_works_on_an_owner_only_card_too(core) -> None:
+    card = dataclasses.replace(read.show_first_card(core.index()["SR-001"], "words"),
+                               owner_only=True)
+    open_card(core, card)
+    applied = press(core, card, Choice(label="Leave open", answer="open"))
+    assert applied.entries == () and [c.status for c in applied.cards] == ["left_open"]
+
+
+@pytest.mark.sr("SR-086")
+def test_a_pick_carrying_its_wording_is_applied_not_left_waiting(core) -> None:
+    """A ``change`` choice that carries its wording (a version, an option) is a pick, applied
+    like any answer; only Ask for a change (no wording) leaves the card ``change_requested``."""
+    assert answer.is_left(Choice("Ask for a change", "change", None))
+    assert answer.is_left(Choice("Leave open", "open", None))
+    assert not answer.is_left(Choice("the second version", "change", "the second version"))
+    card = read.show_first_card(core.index()["SR-002"], "words")
+    open_card(core, card)
+    applied = press(core, card, Choice("the second version", "change", "the second version"))
+    (after,) = applied.cards
+    assert after.status == "answered" and card.id in applied.closed
+    assert [a.answer for a in after.answers] == ["change: the second version"]
