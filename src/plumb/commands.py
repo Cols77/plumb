@@ -173,8 +173,9 @@ def cmd_repin(command: str, argv: list[str]) -> int:
                         help="rerun the linked tests and repin only when they pass and a model "
                              "judges the meaning unchanged; refuses otherwise")
     parser.add_argument("--dry-run", action="store_true",
-                        help="with --after-tests: ask the model only (no tests, no repin) and "
-                             "list what it would repin")
+                        help="with --after-tests: ask the models only (JEV, Sonnet and the "
+                             "Opus diagnosis; no tests, no repin, no card) and list what it "
+                             "would repin")
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
     if not args.selector and not args.all_stale:
@@ -184,10 +185,12 @@ def cmd_repin(command: str, argv: list[str]) -> int:
     core = _core(args)
     refused: list[tuple[str, str]] = []
     would: list[tuple[str, str]] = []
+    diagnoses: list[dict[str, Any]] = []
     try:
         if args.after_tests:
             outcome = repin_after_tests(core, args.selector, dry_run=args.dry_run)
             changes, refused, would = outcome.changes, outcome.refused, outcome.would
+            diagnoses = outcome.diagnoses
         else:
             changes = repin(core, args.selector, all_stale=args.all_stale, note=args.note)
     except LinkError as exc:
@@ -196,17 +199,37 @@ def cmd_repin(command: str, argv: list[str]) -> int:
     if args.as_json:
         emit({"repinned": changes, "refused": [{"link": link, "why": why}
                                                for link, why in refused],
-              "would_repin": [{"link": link, "why": why} for link, why in would]}, True)
-    elif would:
+              "would_repin": [{"link": link, "why": why} for link, why in would],
+              "diagnoses": diagnoses}, True)
+        return 1 if refused else 0
+    for item in diagnoses:   # SR-114: what Opus found for a link Sonnet says changed
+        print(_diagnosis_line(item, args.dry_run))
+        for n, option in enumerate(item["options"], start=1):
+            print(f"plumb:   {n}. {option}")
+    if would:
         emit([f"plumb: would repin {link}: {why}" for link, why in would], False)
     elif changes:
         emit([f"plumb: repinned {c['link']}" for c in changes], False)
     elif not refused:
         print("plumb: nothing to repin")
-    if not args.as_json:
-        for link, why in refused:
-            print(f"plumb: refused to repin {link}: {why}", file=sys.stderr)
+    for link, why in refused:
+        print(f"plumb: refused to repin {link}: {why}", file=sys.stderr)
     return 1 if refused else 0
+
+
+DIAGNOSIS_LINES = {
+    "owner": "plumb: {link} needs the owner{card}: {topic}: {explanation}",
+    "reword": "plumb: {link}: reword {record} to agree with its intent: {wording}",
+    "back-to-development": "plumb: {link}: send the change back to development: {explanation}",
+}
+
+
+def _diagnosis_line(item: dict[str, Any], dry_run: bool) -> str:
+    card = " (card filed)" if item.get("card") else (" (dry run: no card filed)" if dry_run
+                                                     else "")
+    return DIAGNOSIS_LINES[item["outcome"]].format(
+        link=item["link"], card=card, topic=item["topic"], explanation=item["explanation"],
+        record=item["record"], wording=item["proposed_wording"])
 
 
 def cmd_stale(command: str, argv: list[str]) -> int:

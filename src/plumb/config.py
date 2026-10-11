@@ -191,6 +191,10 @@ class UnderstandConfig:
     dispatch: str = "auto"       # auto | claude-code | hermes | openrouter
     model: str = "haiku"
     repin_model: str = "sonnet"      # SR-111 EX-4: judges whether a stale link's change matters
+    # SR-114: JEV repins alone at or above this probability, set from the labelled repin set
+    # (``eval --repin``: the lowest threshold with no false repin); None leaves the tier off
+    repin_jev_threshold: float | None = None
+    diagnose_model: str = "opus"     # SR-114: diagnoses a change Sonnet says matters (SR-113)
     timeout_s: float = 120
     clarify_wait_s: float = 45
     reader_threshold_start: float = 0.9
