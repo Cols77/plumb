@@ -124,7 +124,9 @@ def guard_ts() -> str:
 def plugin_json() -> str:
     return _json({"name": "plumb", "version": version(), "description": DESCRIPTION,
                   "author": AUTHOR, "license": "MIT",
-                  "keywords": ["intent", "requirements", "alignment", "tests"]})
+                  "keywords": ["intent", "requirements", "alignment", "tests"],
+                  # the mod's $.state contract (SP7 5.6), which `claude plugin validate` checks
+                  "types": "./types/index.d.ts"})
 
 
 def marketplace_json() -> str:

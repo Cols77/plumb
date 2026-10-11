@@ -97,6 +97,32 @@ def _record_offer(core: Any, session: str, data: Mapping[str, Any]) -> None:
         "buttons": [{"label": b["label"], "answer": b["answer"]} for b in data["buttons"]]})
 
 
+def content_for(core: Any, session: str, card: CardState) -> dict[str, Any] | None:
+    """SR-116: what the owner needs to choose that plumb derives each time the card is shown
+    (the record as it now reads, the change with its evidence, the owner's words, each
+    option's consequence, why the recommended one), as ``understand.cardcontent`` builds it for
+    a stale-link card; None where that builder is absent or the card carries its parts in its
+    own fields. The panel draws either form."""
+    if card.kind != "stale_link":
+        return None
+    try:
+        import importlib
+
+        cardcontent = importlib.import_module("plumb.understand.cardcontent")
+        from plumb import stale
+    except ImportError:
+        return None
+    link = card.id.removeprefix("stale:")
+    for entry in stale.read_cards(core.root, session):
+        if str(entry.get("link") or "") == link:
+            try:
+                content = cardcontent.card_content(core, entry, session=session)
+            except Exception:  # noqa: BLE001 - the card is still drawn from its own fields
+                return None
+            return content if isinstance(content, dict) else None
+    return None
+
+
 def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
     """The cards the mod draws for ``session`` (as ``cards.json`` holds them, never cut: the mod
     folds a long ``evidence`` by its ``evidence_size``), each question with its offer and
@@ -126,5 +152,6 @@ def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
             offers.append({k: held[k] for k in ("offer_id", "question", "record", "hash",
                                                   "buttons", "drawn_at")})
         out.append({**cardstore.card_to_json(card), "evidence_size": len(card.evidence),
-                    "repeats": card.status in cardstore.AWAITING, "offers": offers})
+                    "repeats": card.status in cardstore.AWAITING, "offers": offers,
+                    "content": content_for(core, session, card)})
     return out

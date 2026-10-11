@@ -11,5 +11,6 @@
     "requirements",
     "alignment",
     "tests"
-  ]
+  ],
+  "types": "./types/index.d.ts"
 }

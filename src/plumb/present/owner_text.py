@@ -422,3 +422,8 @@ PRESS_MODEL_CHANGE = ('The owner pressed Ask for a change on "{topic}"; their ne
 PRESS_MODEL_ANSWERED = 'The owner pressed {label} on "{topic}".'
 PRESS_MODEL_CHANGED = ("The owner pressed {label}, but {records} changed since it was shown; "
                        "nothing was confirmed and the new version is shown as a fresh card.")
+
+# --------------------------------------------------------------------------- SP7 MOD
+# What plumb's panel adds (SP7 5.1, 5.8; sp7-realign-sp8 C6, C7).
+PRESS_MODEL_UNDONE = ("The owner pressed Undo on the settled line; {records} is proposed again. "
+                      "Do not treat it as confirmed.")

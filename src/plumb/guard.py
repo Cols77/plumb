@@ -74,8 +74,9 @@ TABLE: tuple[Row, ...] = (
     Row(("conflict", "choose"), _TYPED, unless=PROOF, legacy=True),
     # SP7 7.2's one choke point for owner actions, the agent's form carrying the owner's words
     Row(("owner",), _TYPED, unless=PROOF),
-    # SP7 5.5, 5.7: the mod's handshake, its button press and its log of a typed command
-    Row(("mod",), _MOD, legacy=True, first_of=("hello", "press", "typed")),
+    # SP7 5.5, 5.7: the mod's handshake, its button press, its Undo button and its log of a
+    # typed command
+    Row(("mod",), _MOD, legacy=True, first_of=("hello", "press", "typed", "undo")),
     # SP8: settling, Undo and "build anyway" are the owner's typed command or a button
     Row(("settle",), _TYPED, unless=PROOF, first_of=("on", "off")),
     Row(("undo",), _TYPED, unless=PROOF),

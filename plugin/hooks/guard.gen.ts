@@ -118,7 +118,8 @@ export const GUARD_TABLE: GuardRow[] = [
     "firstOf": [
       "hello",
       "press",
-      "typed"
+      "typed",
+      "undo"
     ],
     "unless": null,
     "legacy": true,

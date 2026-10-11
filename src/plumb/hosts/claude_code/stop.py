@@ -787,6 +787,9 @@ def understand_parts(ctx: HookContext, core: Any, turn: Mapping[str, Any]) -> li
         from plumb.understand.summary import stop_parts
 
         parts = stop_parts(ctx, core, turn)
+        extra = getattr(ctx, "extra", None)
+        if isinstance(extra, dict):
+            extra["stop_parts"] = parts     # what present.json carries while the panel is on
         return [*parts.confirmations, *parts.settled, *parts.cards]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return []
@@ -1055,6 +1058,10 @@ def sp1_lines(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
 def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,
          root: Path | str | None = None, watchdog: bool = False, start: float | None = None,
          verify: Any = LAZY, unjudged: Any = LAZY) -> int:
-    return run_hook("stop", lambda ctx: handle(ctx, verify=verify, unjudged=unjudged),
+    from plumb.mod.handshake import deliver
+
+    # with plumb's panel active, the owner's part goes to present.json, not a systemMessage
+    return run_hook("stop", lambda ctx: deliver(ctx, handle(ctx, verify=verify,
+                                                            unjudged=unjudged)),
                     stdin=stdin, stdout=stdout, root=root, budget_ms=hook_budget("stop"),
                     json_output=True, watchdog=watchdog, start=start, grace_s=STOP_GRACE_S)

@@ -53,6 +53,12 @@ private copy it sets up on first use (it needs uv, or Python 3.12). A project pl
 adopted sees one line per session and nothing else. The plugin is built by
 `python scripts/build_plugin.py` (`plugin/`).
 
+On Claude Code builds that load mods, the plugin also draws plumb's panel above the prompt:
+plumb's status, and each card that waits for you in full (the requirement as it now reads, what
+changed, your words, each option and why one is recommended) with buttons to confirm, ask for a
+change, leave it open, or say no where the card suggests it. To try it from a checkout without
+installing: `claude --plugin-dir plugin`. Its tests run with `claude plugin test plugin`.
+
 ## Quickstart (5 minutes)
 
 You need Python 3.12+, [uv](https://docs.astral.sh/uv/), git and a pytest test suite.

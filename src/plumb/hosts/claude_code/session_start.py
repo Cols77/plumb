@@ -204,9 +204,12 @@ def conflicts_line(core: Any) -> str | None:
 
 def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     """The records brief first (kept through any cut), then the tests line."""
+    from plumb.mod.handshake import session_start
+
     timer = StepTimer(ctx)
     try:
-        return _handle(ctx, verify, timer)
+        # with plumb's panel holding the session background, the brief is left out (SP7 5.1)
+        return session_start(ctx, _handle(ctx, verify, timer))
     finally:
         timer.write()
 
