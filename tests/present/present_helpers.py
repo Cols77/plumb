@@ -178,13 +178,14 @@ def touch(repo: Path, rel: str, session: str = "s1") -> None:
 
 
 def fake_capture(monkeypatch: Any, **functions: Any) -> types.ModuleType:
-    """Install a fake ``plumb.capture.api`` exposing ``functions`` (CAPTURE is another lane)."""
-    package = types.ModuleType("plumb.capture")
-    package.__path__ = []  # type: ignore[attr-defined]
+    """Install a fake ``plumb.capture.api`` exposing ``functions`` (CAPTURE is another lane).
+    Only the api module is replaced: the rest of the real package (``spec``, ``triage``...)
+    stays importable."""
+    import plumb.capture as package
+
     api = types.ModuleType("plumb.capture.api")
     for name, function in functions.items():
         setattr(api, name, function)
-    package.api = api  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "plumb.capture", package)
+    monkeypatch.setattr(package, "api", api, raising=False)
     monkeypatch.setitem(sys.modules, "plumb.capture.api", api)
     return api
