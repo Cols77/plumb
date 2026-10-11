@@ -1,0 +1,156 @@
+"""SR-115, DEC-016: the owner's typed /plumb auto-approve on|off, seen by the prompt hook,
+writes the owner's config event as their terminal does; the agent never switches it."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from capture_helpers import event_kinds, log_prompt, run
+from jev_fixtures import calibrated
+
+from plumb.api import open_core
+from plumb.capture.autoapprove import auto_approve_state
+
+pytestmark = pytest.mark.sr("SR-115")
+
+
+def hook_reads(repo: Path, text: str) -> str:
+    """The prompt hook reads ``text`` (the hook runs under the session marker)."""
+    from plumb.understand import read
+
+    digest = log_prompt(repo, text)
+    core = open_core(repo)
+    assert read.on_prompt(SimpleNamespace(session_id="test-session", root=repo), core,
+                          {"digest": digest, "text": text}) is None
+    return digest
+
+
+def configs(repo: Path) -> list:
+    return [e for e in open_core(repo).events() if e.kind == "config"]
+
+
+@pytest.fixture
+def jev(repo: Path, write_record, monkeypatch):
+    stub = calibrated(repo, write_record, monkeypatch)
+    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    yield repo
+    stub.close()
+
+
+def test_ex1_typed_on_logs_the_owners_config_event_and_turns_it_on(jev, capsys) -> None:
+    repo = jev
+    digest = hook_reads(repo, "/plumb auto-approve on")
+    (entry,) = configs(repo)
+    payload = entry.payload
+    assert payload["by"] == "owner" and payload["via"] == "typed"
+    assert payload["prompt_digest"] == digest and payload["quote"] == "/plumb auto-approve on"
+    assert payload["auto_approve"]["enabled"] is True
+    assert entry.marker == "session-1"           # the hook's own process: the quote is the proof
+    state = auto_approve_state(open_core(repo))
+    assert state.configured and state.effective
+    assert state.source == "your typed /plumb auto-approve on"
+    assert "enabled: true" in (repo / ".plumb" / "config.yaml").read_text(encoding="utf-8")
+    from plumb.understand.read import confirmation_lines
+
+    assert confirmation_lines(open_core(repo), digest) == ["Automatic confirmation is now on."]
+    from plumb.validate import validate
+
+    assert not [f for f in validate(open_core(repo)) if f.severity == "error"]
+    assert run(repo, "status") == 0
+    assert "auto-approve: on (set by your typed /plumb auto-approve on)" \
+        in capsys.readouterr().out
+    assert run(repo, "brief", "--all") == 0
+    assert "auto-approve: on (set by your typed /plumb auto-approve on)" \
+        in capsys.readouterr().out
+
+
+def test_ex1_typed_off_turns_it_off(jev) -> None:
+    repo = jev
+    hook_reads(repo, "/plumb auto-approve on")
+    hook_reads(repo, "/plumb auto-approve off")
+    state = auto_approve_state(open_core(repo))
+    assert not state.configured and state.source == "your typed /plumb auto-approve off"
+    assert "enabled: false" in (repo / ".plumb" / "config.yaml").read_text(encoding="utf-8")
+
+
+def test_ex1_typed_on_without_jev_is_logged_and_says_why_not_in_effect(repo: Path) -> None:
+    digest = hook_reads(repo, "/plumb auto-approve on")
+    state = auto_approve_state(open_core(repo))
+    assert state.configured and not state.effective
+    from plumb.understand.read import confirmation_lines
+
+    (line,) = confirmation_lines(open_core(repo), digest)
+    assert line.startswith("Automatic confirmation is switched on, but not in effect yet: ")
+
+
+def test_ex2_agent_running_config_auto_approve_is_refused_and_logs_nothing(
+        jev, capsys) -> None:
+    repo = jev                                     # PLUMB_AGENT_SESSION is set
+    assert run(repo, "config", "auto-approve", "on") == 3
+    assert run(repo, "config", "auto-approve", "off") == 3
+    assert "agent session marker is set" in capsys.readouterr().err
+    assert "config" not in event_kinds(repo)
+    assert not auto_approve_state(open_core(repo)).configured
+
+
+def test_a_typed_switch_the_hook_did_not_log_changes_nothing(jev) -> None:
+    from plumb.understand import typed
+
+    repo = jev
+    parsed = typed.parse("/plumb auto-approve on")
+    core = open_core(repo)
+    assert typed.switch_now(core, parsed, "sha256:" + "1" * 64).lines == ()
+    digest = log_prompt(repo, "/plumb auto-approve on", via="turn")  # the agent's own
+    assert typed.switch_now(core, parsed, digest).lines == ()
+    digest = log_prompt(repo, "turn auto-approve on please")
+    assert typed.switch_now(core, parsed, digest).lines == ()
+    assert configs(repo) == []
+
+
+def test_a_config_event_under_the_marker_without_the_typed_proof_switches_nothing(
+        jev) -> None:
+    from plumb.approvals import prompt_digest
+
+    repo = jev
+    core = open_core(repo)
+    on = {"enabled": True, "backend": "jev", "min_probability": 0.9, "min_confidence": "high"}
+    core.log_append("events", "config", {"auto_approve": on, "by": "owner"})
+    off_quote = "/plumb auto-approve off"         # a quote that says the other state
+    core.log_append("events", "prompt", {"digest": prompt_digest(off_quote)})
+    core.log_append("events", "config", {"auto_approve": on, "by": "owner", "via": "typed",
+                                         "prompt_digest": prompt_digest(off_quote),
+                                         "quote": off_quote})
+    on_quote = "/plumb auto-approve on"           # no prompt event logged before it
+    core.log_append("events", "config", {"auto_approve": on, "by": "owner", "via": "typed",
+                                         "prompt_digest": prompt_digest(on_quote),
+                                         "quote": on_quote})
+    assert not auto_approve_state(open_core(repo)).configured
+
+
+def test_yaml_on_without_the_event_is_off_and_status_says_so(repo: Path, capsys) -> None:
+    config = repo / ".plumb" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8") + "auto_approve: {enabled: true}\n",
+                      encoding="utf-8")
+    state = auto_approve_state(open_core(repo))
+    assert not state.configured and state.mirror_mismatch and state.source is None
+    assert run(repo, "status") == 0
+    assert "auto-approve: off (config.yaml says on, but you never switched it on" \
+        in capsys.readouterr().out
+
+
+def test_status_names_the_terminal_as_the_source(repo: Path, write_record, monkeypatch,
+                                                 capsys) -> None:
+    stub = calibrated(repo, write_record, monkeypatch)
+    try:
+        assert run(repo, "config", "auto-approve", "on") == 0  # the owner's terminal (test)
+        assert run(repo, "status") == 0
+        assert "auto-approve: on (set by your terminal)" in capsys.readouterr().out
+    finally:
+        stub.close()
+
+
+def test_status_says_never_switched_on(repo: Path, capsys) -> None:
+    assert run(repo, "status") == 0
+    assert "auto-approve: off (never switched on)" in capsys.readouterr().out

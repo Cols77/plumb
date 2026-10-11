@@ -2,8 +2,9 @@
 
 Effective only when all of these hold:
 
-- the latest ``config`` event says on, written by the owner with no session marker through
-  ``approvals.require_owner`` (``plumb config auto-approve on``). ``config.yaml``'s
+- the latest ``config`` event says on, written by the owner: with no session marker through
+  ``approvals.require_owner`` (``plumb config auto-approve on``), or from their typed
+  ``/plumb auto-approve on`` the prompt hook saw (``ownerconfig``, SR-115). ``config.yaml``'s
   ``auto_approve`` is a mirror: on without that event is off, and ``plumb validate`` warns;
 - JEV is configured and its credential is present (nothing else auto-approves);
 - a passing ``calibration`` exists for the resolved model version; a different resolved
@@ -42,15 +43,12 @@ CLAIM_KIND = {"intent": "intent-readback", "requirement": "example-restatement"}
 
 
 def owner_config(entries: Sequence[LogEntry]) -> Mapping[str, Any] | None:
-    """The ``auto_approve`` settings of the latest owner ``config`` event (no session
-    marker), or None."""
-    latest = None
-    for entry in entries:
-        if entry.kind == "config" and entry.marker == "none" \
-                and entry.payload.get("by") == "owner" \
-                and isinstance(entry.payload.get("auto_approve"), Mapping):
-            latest = entry.payload["auto_approve"]
-    return latest
+    """The ``auto_approve`` settings of the latest owner ``config`` event (from the owner's
+    terminal, or their typed ``/plumb auto-approve``: ``ownerconfig``), or None."""
+    from plumb.capture.ownerconfig import latest
+
+    entry = latest(entries)
+    return entry.payload["auto_approve"] if entry is not None else None
 
 
 def _last_model_version(entries: Sequence[LogEntry]) -> str | None:
@@ -77,9 +75,11 @@ def jev_ready(core: Core) -> tuple[bool, str]:
 
 def auto_approve_state(core: Core) -> AutoApproveState:
     from plumb.capture.calibrate import latest_calibration
+    from plumb.capture.ownerconfig import latest, source_of
 
     entries = core.events()
-    settings = owner_config(entries)
+    switch = latest(entries)
+    settings = switch.payload["auto_approve"] if switch is not None else None
     configured = bool(settings and settings.get("enabled"))
     mirror = bool(core.config.auto_approve.enabled)
     calibration = latest_calibration(core)
@@ -108,7 +108,24 @@ def auto_approve_state(core: Core) -> AutoApproveState:
         min_probability=float(settings.get("min_probability", 0.9)),
         min_confidence=str(settings.get("min_confidence", "high")),
         calibrated_version=calibrated, model_version=seen, suspended=suspended,
-        mirror_mismatch=mirror and not configured)
+        mirror_mismatch=mirror and not configured, source=source_of(switch))
+
+
+def state_line(state: AutoApproveState) -> str:
+    """``auto-approve: ...`` with where the current setting comes from (SR-115), for
+    ``plumb status`` and ``plumb brief``."""
+    if state.effective:
+        now = "on"
+    elif state.configured:
+        now = f"switched on, not in effect: {state.reason}"
+    else:
+        now = "off"
+    if state.source:
+        return f"auto-approve: {now} (set by {state.source})"
+    if state.mirror_mismatch:
+        return (f"auto-approve: {now} (config.yaml says on, but you never switched it on; "
+                "type /plumb auto-approve on)")
+    return f"auto-approve: {now} (never switched on)"
 
 
 def _kind_threshold(calibration: LogEntry, kind: str) -> float | None:

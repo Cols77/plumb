@@ -247,6 +247,27 @@ def auto_approve(core: Core, on: bool, *, backend: str = "jev", min_probability:
     return entry
 
 
+def auto_approve_typed(core: Core, on: bool, *, prompt_digest: str, quote: str) -> Any:
+    """The owner's typed ``/plumb auto-approve on|off`` (SR-115, DEC-016): the same owner
+    ``config`` event the terminal writes, ``via: typed`` with the command as its proof (the
+    prompt hook runs under the session marker). The caller (``typed.switch_now``) checked
+    that the hook logged exactly that command. Thresholds the owner set in their terminal
+    are kept; whether it takes effect (JEV, its credential, a passing calibration for the
+    model) is ``auto_approve_state``'s, as for the terminal's switch."""
+    from plumb.capture.autoapprove import owner_config
+    from plumb.capture.ownerconfig import TYPED_VIA
+
+    previous = owner_config(core.events()) or {}
+    settings = {"enabled": on, "backend": "jev",
+                "min_probability": float(previous.get("min_probability", 0.9)),
+                "min_confidence": str(previous.get("min_confidence", "high"))}
+    entry = core.log_append("events", "config", {
+        "auto_approve": settings, "by": "owner", "via": TYPED_VIA,
+        "prompt_digest": prompt_digest, "quote": quote})
+    _mirror(core, settings)
+    return entry
+
+
 def config_show(core: Core) -> list[str]:
     from plumb.approvals import refuse_under_marker
     from plumb.capture.autoapprove import auto_approve_state

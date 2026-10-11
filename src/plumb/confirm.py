@@ -130,10 +130,10 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
             if isinstance(digest, str):
                 prompts.add(digest)
         elif entry.kind == "config":
-            settings = entry.payload.get("auto_approve")
-            owner = entry.marker == "none" and entry.payload.get("by") == "owner"
-            if owner and isinstance(settings, Mapping):
-                config = settings
+            from plumb.capture.ownerconfig import is_owner_config
+
+            if is_owner_config(entry, prompts):
+                config = entry.payload["auto_approve"]
         elif entry.kind == "calibration":
             calibrations[entry.digest] = entry
         elif entry.kind in ("approval", "revocation"):

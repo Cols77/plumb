@@ -183,9 +183,10 @@ def auto_approve_off(core: Any) -> str | None:
     """``off`` when the owner never turned auto-approve on (no owner ``config`` event), known
     without the judgment modules the full state would import; None when it must be worked
     out (CAPTURE's ``auto_approve_state``, which snapshot defaults to)."""
-    for entry in core.events():
-        if entry.kind == "config" and entry.marker == "none"                 and entry.payload.get("by") == "owner"                 and isinstance(entry.payload.get("auto_approve"), Mapping):
-            return None
+    from plumb.capture.ownerconfig import latest
+
+    if latest(core.events()) is not None:
+        return None
     return None if core.config.auto_approve.enabled else "off"
 
 

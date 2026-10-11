@@ -210,6 +210,9 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> str | None:
         if parsed.command in ("approve", "confirm") and parsed.ids:
             typed.confirm_now(core, parsed, str(entry.get("digest") or ""), session)
             return None                   # exact: the reader is not called
+        if parsed.command == "auto-approve":
+            typed.switch_now(core, parsed, str(entry.get("digest") or ""), session)
+            return None                   # SR-115: the owner's switch, at once
         if parsed.command not in ("approve", "confirm"):
             return None                   # undo, settle and go are their own commands
     job = build(core, session, message=entry)
@@ -534,6 +537,21 @@ def _register() -> None:
 _register()
 
 
+def _switch_lines(core: Any, payload: Mapping[str, Any]) -> list[str]:
+    """What the owner is told of their typed ``/plumb auto-approve`` (SR-115): the switch, and
+    why it is not in effect yet when it is not."""
+    settings = payload.get("auto_approve")
+    on = isinstance(settings, Mapping) and bool(settings.get("enabled"))
+    lines = [owner_text.AUTO_APPROVE_SWITCHED.format(state="on" if on else "off")]
+    if on:
+        from plumb.capture.api import auto_approve_state
+
+        state = auto_approve_state(core)
+        if state.configured and not state.effective:
+            lines = [owner_text.AUTO_APPROVE_NOT_YET.format(reason=state.reason)]
+    return lines
+
+
 def confirmation_lines(core: Any, turn: Any = None) -> list[str]:
     """``<title>: you said: <evidence>`` for each record the owner's words confirmed for a
     message (``turn``: its prompt digest, or a mapping holding ``prompt_digest``; default:
@@ -546,6 +564,10 @@ def confirmation_lines(core: Any, turn: Any = None) -> list[str]:
     lines: list[str] = []
     for entry in core.events():
         payload = entry.payload
+        if entry.kind == "config" and payload.get("via") == "typed" \
+                and payload.get("prompt_digest") == digest:
+            lines.extend(_switch_lines(core, payload))
+            continue
         if entry.kind != "approval" or payload.get("prompt_digest") != digest:
             continue
         if payload.get("by") == "agent-relayed" and payload.get("via") == "command":
