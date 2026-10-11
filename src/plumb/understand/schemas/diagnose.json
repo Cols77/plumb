@@ -1,0 +1,14 @@
+{
+  "id": "diagnose.v1",
+  "title": "Which way does a change that matters to a requirement go?",
+  "type": "object",
+  "required": ["outcome", "explanation", "topic"],
+  "properties": {
+    "outcome": {"type": "string", "enum": ["reword", "back-to-development", "owner"]},
+    "explanation": {"type": "string"},
+    "topic": {"type": "string"},
+    "proposed_wording": {"type": "string"},
+    "options": {"type": "array", "items": {"type": "string"}},
+    "broken_example": {"type": "string"}
+  }
+}

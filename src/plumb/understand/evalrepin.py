@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from plumb.contracts import NoModel
+from plumb.understand import repin
 from plumb.understand.evalcompare import CompareError, Verdict
 
 HERE = Path(__file__).resolve().parent
@@ -34,8 +35,7 @@ DEFAULT_SET = HERE / "evalset" / "repin_labelled.json"
 JUDGES = ("sonnet", "haiku", "sonnet-x3", "jev")
 LABELS = ("unchanged", "changed")
 REPEATS = 3
-JEV_QUESTION = ("Does the change leave everything the requirement and its examples rely on "
-                "as it was?")
+JEV_QUESTION = repin.JEV_QUESTION   # the question production's JEV tier asks (SR-114)
 
 
 @dataclass(frozen=True)
@@ -163,23 +163,16 @@ class JevRepinJudge:
 
     @staticmethod
     def prompt(case: Case) -> str:
-        return (f"Requirement:\n{case.requirement}\n\n"
-                f"Link {case.link_id} ({case.link_kind}) to {case.path}\n\n"
-                f"The change to the linked end since it was pinned (unified diff):\n"
-                f"{case.diff}\n")
+        return repin.jev_prompt(requirement=case.requirement, link_id=case.link_id,
+                                link_kind=case.link_kind, path=case.path, change=case.diff)
 
     def judge(self, case: Case) -> Verdict:
         from plumb.judgment import JudgmentUnavailable
-        from plumb.judgment.model import JudgmentQuestion
 
-        question = JudgmentQuestion.noul(JEV_QUESTION, "unchanged", "changed")
         try:
-            record = self.backend._ask([("yes_no", question)], self.prompt(case))
+            p = repin.jev_probability(self.backend, self.prompt(case))
         except JudgmentUnavailable as exc:
             raise CompareError(self.name, f"unreachable ({exc})") from exc
-        if record is None:
-            raise CompareError(self.name, "unreachable (no answer)")
-        p = float(record.answers["yes_no"].value)
         return Verdict("unchanged" if p >= 0.5 else "changed", p)
 
 

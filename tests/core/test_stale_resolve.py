@@ -228,7 +228,7 @@ def test_dry_run_asks_the_model_only(project: Path) -> None:
     runner = Runner()
     result = links.repin_after_tests(open_core(project), LINK, runner=runner,
                                      judge=Judge(True), dry_run=True)
-    assert result.would == [(LINK, "only formatting")] and result.changes == []
+    assert result.would == [(LINK, "sonnet: only formatting")] and result.changes == []
     assert runner.calls == [] and _state(project) == "stale"
 
 

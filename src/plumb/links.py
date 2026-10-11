@@ -256,10 +256,14 @@ def records_for_paths(core: Core, paths: Iterable[str]) -> dict[str, tuple[str, 
 # --------------------------------------------------------------------------- repin after tests
 # SR-111 EX-4: a stale link whose tests pass and whose end a model judges unchanged in meaning
 # is repinned without the owner. The reading is the model's alone (INT-029): no rule-based
-# fallback, so a backend that is disabled or unreachable refuses.
+# fallback, so a backend that is disabled or unreachable refuses. SR-114: JEV is asked first
+# and repins alone above its calibrated threshold; Sonnet judges the rest; a link Sonnet says
+# changed goes to Opus, which says whether the record is reworded, the change goes back to
+# development, or the owner gets a card (SR-113).
 
 REPIN_NOTE = "tests pass, meaning unchanged"
 NO_MODEL = "no model could judge whether the meaning changed; nothing was repinned"
+CHANGED = "the model says the meaning changed: {reason}"
 HISTORY_DEPTH = 30
 
 
@@ -268,6 +272,8 @@ class AfterTests:
     changes: list[dict[str, Any]] = field(default_factory=list)
     refused: list[tuple[str, str]] = field(default_factory=list)   # (link id, why)
     would: list[tuple[str, str]] = field(default_factory=list)     # dry run: (link id, why)
+    # SR-114: what Opus found for each link Sonnet says changed (see ``_diagnosis_item``)
+    diagnoses: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _segment(text: str, qualname: str | None) -> str | None:
@@ -365,11 +371,16 @@ def _select_stale(core: Core, selector: str) -> list[LinkState]:
 
 def repin_after_tests(core: Core, selector: str, *,
                       runner: Callable[[list[str]], tuple[bool, str]] | None = None,
-                      judge: Any = None, dry_run: bool = False) -> AfterTests:
+                      judge: Any = None, jev: Any = None, diagnoser: Any = None,
+                      session: str | None = None, dry_run: bool = False) -> AfterTests:
     """Repin the stale links of ``selector`` (a link id or a record id) whose linked tests
     pass and whose change a model judges not to alter what the requirement relies on; refuse
-    the others, with why. ``dry_run`` asks the model only: no tests run, nothing is repinned,
-    and the links it would repin are listed in ``would``. Never confirms anything."""
+    the others, with why. The judging is a cascade (SR-114): ``jev`` (the JEV tier, off
+    without a threshold) clears a link alone, else ``judge`` (Sonnet) gives the verdict, and
+    a link it says changed goes to ``diagnoser`` (Opus), whose finding is in ``diagnoses``: a
+    card for the owner (filed in ``session``), a rewording, or the change sent back to
+    development. ``dry_run`` asks the models only: no tests run, nothing is repinned, no card
+    is filed, and the links it would repin are listed in ``would``. Never confirms anything."""
     result = AfterTests()
     states = _select_stale(core, selector)
     candidates: list[LinkState] = []
@@ -386,11 +397,13 @@ def repin_after_tests(core: Core, selector: str, *,
             candidates.append(state)
     if not candidates:
         return result
-    if judge is None:
-        from plumb.understand.repin import open_judge
+    from plumb.understand import repin as meaning_check
 
-        judge = open_judge(core)
     if judge is None:
+        judge = meaning_check.open_judge(core)
+    if jev is None:
+        jev = meaning_check.open_jev_tier(core)
+    if judge is None and jev is None:
         result.refused += [(s.link.id, NO_MODEL) for s in candidates]
         return result
     if not dry_run:
@@ -411,25 +424,130 @@ def repin_after_tests(core: Core, selector: str, *,
                                    "found in git, so there is nothing to compare"))
             continue
         record = index.get(link.id.split("#")[0])
+        path = target_path(link.target) or ""
+        shown = dict(requirement=f"{record.id}: {record.title}\n{record_text(record)}"
+                     if record is not None else link.id,
+                     link_id=link.id, link_kind=link.kind, path=path,
+                     before=texts[0], after=texts[1])
+        p = jev.clears(**shown) if jev is not None else None
+        if p is not None:   # EX-1: JEV alone, above its calibrated threshold
+            why = f"JEV gives {p:.2f}, at or above its threshold {jev.threshold:.2f}"
+            _repinned(core, result, link.id, "jev", why, dry_run)
+            continue
+        if judge is None:   # EX-6 leads to Sonnet; without it nothing is repinned on a guess
+            result.refused.append((link.id, NO_MODEL))
+            continue
         try:
-            meaning = judge.same_meaning(
-                requirement=f"{record.id}: {record.title}\n{record_text(record)}"
-                if record is not None else link.id,
-                link_id=link.id, link_kind=link.kind, path=target_path(link.target) or "",
-                before=texts[0], after=texts[1])
+            meaning = judge.same_meaning(**shown)
         except Exception as exc:  # noqa: BLE001 - an unreachable model refuses
             result.refused.append((link.id, f"{NO_MODEL} ({exc})"))
             continue
         if meaning.unchanged is None:
             result.refused.append((link.id, f"{NO_MODEL}: {meaning.reason}"))
         elif not meaning.unchanged:
-            result.refused.append((link.id, f"the model says the meaning changed: "
-                                   f"{meaning.reason}"))
-        elif dry_run:
-            result.would.append((link.id, meaning.reason))
+            _diagnose(core, result, record, link, shown, meaning.reason, diagnoser,
+                      session, dry_run)
         else:
-            result.changes += repin(core, link.id, note=f"{REPIN_NOTE}: {meaning.reason}")
+            _repinned(core, result, link.id, "sonnet", meaning.reason, dry_run)
     return result
+
+
+def _repinned(core: Core, result: AfterTests, link_id: str, tier: str, why: str,
+              dry_run: bool) -> None:
+    """Repin ``link_id`` with a note naming the tier that cleared it (or list it, dry)."""
+    if dry_run:
+        result.would.append((link_id, f"{tier}: {why}"))
+        return
+    changes = repin(core, link_id, note=f"{REPIN_NOTE} ({tier}): {why}")
+    for change in changes:
+        change["tier"] = tier
+    result.changes += changes
+
+
+def _intents(core: Core, record: Record | None) -> list[dict[str, str]]:
+    from plumb.understand.judge import record_text
+
+    if record is None:
+        return []
+    index = core.index()
+    out = []
+    for link in record.links:
+        target = index.get(link.target.record or "")
+        if link.kind == "derives_from" and target is not None:
+            out.append({"id": target.id, "text": f"{target.title}\n{record_text(target)}"})
+    return out
+
+
+def _diff_summary(before: str, after: str, path: str) -> str:
+    import difflib
+
+    added = removed = 0
+    old, new = before.splitlines(), after.splitlines()
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, new).get_opcodes():
+        if op != "equal":
+            removed += i2 - i1
+            added += j2 - j1
+    return f"{path}: +{added}/-{removed} lines"
+
+
+def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
+              shown: Mapping[str, str], reason: str, diagnoser: Any, session: str | None,
+              dry_run: bool) -> None:
+    """Sonnet says the change matters: Opus says which way it goes (SR-113, SR-114 EX-3..5).
+    No diagnosis (no model, no usable answer) is the plain refusal: nothing is guessed."""
+    from plumb.understand import repin as meaning_check
+
+    refusal = CHANGED.format(reason=reason)
+    if diagnoser is None:
+        diagnoser = meaning_check.open_diagnoser(core)
+    if diagnoser is None:
+        result.refused.append((link.id, refusal))
+        return
+    path = shown["path"]
+    change = meaning_check.diff(shown["before"], shown["after"], path)
+    turn = meaning_check.turn_before(core, path)
+    try:
+        found, why = diagnoser.diagnose(
+            requirement=shown["requirement"], intents=_intents(core, record), link_id=link.id,
+            path=path, change=change, reason=reason, turn=turn)
+    except Exception as exc:  # noqa: BLE001 - an unreachable model diagnoses nothing
+        found, why = None, str(exc)
+    if found is None:
+        result.refused.append((link.id, f"{refusal} (no diagnosis: {why})"))
+        return
+    record_id = record.id if record is not None else link.source
+    topic = found.topic or (record.title if record is not None else record_id)
+    item = {"link": link.id, "record": record_id, "path": path, "outcome": found.outcome,
+            "topic": topic, "explanation": found.explanation,
+            "proposed_wording": found.proposed_wording, "options": list(found.options),
+            "broken_example": found.broken_example, "turn": turn, "card": False}
+    if found.outcome == "owner":
+        if not dry_run:
+            from plumb import stale
+
+            where = session or stale.current_session(core.root)
+            stale.add_card(core.root, where, link=link.id, record=record_id, path=path,
+                           topic=topic, issue=found.explanation, options=found.options,
+                           turn=stale.turn_number(core.root, where))
+            item["card"] = True
+        action = f"brought to the owner as a card: {found.explanation}"
+    elif found.outcome == "reword":
+        action = (f"{record_id} disagrees with its intent ({found.explanation}); reword it "
+                  f"through plumb capture to: {found.proposed_wording}")
+    else:
+        asked = f"the turn \"{_clip(turn['text'])}\" ({turn['at']})" if turn else \
+            "an unknown turn"
+        action = (f"send it back to development: {asked} made a change "
+                  f"({_diff_summary(shown['before'], shown['after'], path)}) that breaks "
+                  f"{found.broken_example or 'an example of ' + record_id}; "
+                  f"{found.explanation}")
+    result.diagnoses.append(item)
+    result.refused.append((link.id, f"{refusal}; {action}"))
+
+
+def _clip(text: str, width: int = 160) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= width else text[: width - 3].rstrip() + "..."
 
 
 __all__ = ["ALLOWED", "AfterTests", "LinkError", "LinkUsageError", "add_link", "hash_target",
