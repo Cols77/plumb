@@ -525,6 +525,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     # trigger 3: regressions (R3), asked once per failing run
     regressing = {n: e for n, e in (evidence or {}).items() if e.regression}
     regressing.update({n: e for n, e in (recorded or {}).items() if n not in regressing})
+    regressing = {n: e for n, e in regressing.items() if test_exists(core.root, n)}
     regressions = sorted(regressing)
     open_regressions = [n for n in regressions
                         if asked.get(f"regression:{n}") != (regressing[n].last_run or "?")]
@@ -868,6 +869,18 @@ def owner_cards(ctx: HookContext, core: Any, turn: Mapping[str, Any]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         pass
     return out, conflicts, early
+
+
+def test_exists(root: Path | str, node: str) -> bool:
+    """A recorded test still defined in its file: a failure recorded for a test since removed
+    or renamed (its file gone, or no ``def`` of its name left) is not a regression."""
+    path, _, rest = node.partition("::")
+    name = re.sub(r"\[.*\]$", "", rest.split("::")[-1]) if rest else ""
+    try:
+        text = (Path(root) / path).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return not name or re.search(rf"\bdef {re.escape(name)}\b", text) is not None
 
 
 def turn_regressions(verify: Any, turn_start: float) -> dict[str, Any] | None:

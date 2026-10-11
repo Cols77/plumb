@@ -489,3 +489,16 @@ def test_what_every_option_does_is_at_the_owners_level() -> None:
              *owner_text.CONSEQUENCE_PICK.values()]
     for text in texts:
         assert owner_level(text) == [], text
+
+
+def test_a_failure_of_a_test_since_removed_is_not_a_regression(tmp_path: Path) -> None:
+    """SR-012 EX-2: a regression card is raised only for a test still defined in its file."""
+    from plumb.hosts.claude_code.stop import test_exists
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text("def test_kept(): pass\n", encoding="utf-8")
+    assert test_exists(tmp_path, "tests/test_x.py::test_kept")
+    assert test_exists(tmp_path, "tests/test_x.py::test_kept[a-b]")
+    assert not test_exists(tmp_path, "tests/test_x.py::test_gone[a-b]")
+    assert not test_exists(tmp_path, "tests/test_x.py::test_kep")
+    assert not test_exists(tmp_path, "tests/test_missing.py::test_kept")

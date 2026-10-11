@@ -58,6 +58,9 @@ def project(repo: Path, write_record) -> Path:
     (repo / "src" / "calc.py").write_text("def add(a, b):\n    return a + b\n", "utf-8")
     (repo / "docs").mkdir()
     (repo / "docs" / "notes.md").write_text("notes\n", "utf-8")
+    (repo / "tests").mkdir(exist_ok=True)  # NODE and NODE2 exist, so their failures count
+    (repo / "tests" / "test_a.py").write_text("def test_a(): pass\n\n\ndef test_b(): pass\n",
+                                              "utf-8")
     from plumb.contracts import Target
 
     open_core(repo).add_link("SR-001", "implemented_by", Target(path="src/calc.py"))
