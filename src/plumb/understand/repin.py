@@ -217,6 +217,8 @@ class Diagnosis:
     proposed_wording: str = ""
     options: tuple[str, ...] = ()
     broken_example: str = ""
+    consequences: tuple[str, ...] = ()   # SR-116: one per option, when the answer gives them
+    why: str = ""                        # SR-116: why the first option is recommended
 
 
 def _diagnosis(answer: Mapping[str, Any]) -> Diagnosis | None:
@@ -230,10 +232,16 @@ def _diagnosis(answer: Mapping[str, Any]) -> Diagnosis | None:
         return None
     if outcome == "owner" and not 2 <= len(options) <= 4:
         return None
+    raw = answer.get("consequences")
+    consequences = tuple(str(c).strip() for c in raw) if isinstance(raw, (list, tuple)) else ()
+    if len(consequences) != len(options) or not all(consequences):
+        consequences = ()                # partial consequences are none: the card asks for them
     return Diagnosis(outcome=str(outcome), explanation=explanation,
                      topic=str(answer.get("topic") or "").strip(), proposed_wording=wording,
                      options=options if outcome == "owner" else (),
-                     broken_example=str(answer.get("broken_example") or "").strip())
+                     broken_example=str(answer.get("broken_example") or "").strip(),
+                     consequences=consequences if outcome == "owner" else (),
+                     why=str(answer.get("why") or "").strip() if outcome == "owner" else "")
 
 
 class ModelDiagnoser:

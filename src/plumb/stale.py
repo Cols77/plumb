@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -355,14 +356,27 @@ HOLD_LINE = "plumb: {record}'s link to {what} is stale and unresolved ({link})"
 HOLD_HOW = ("plumb: resolve each before ending the turn: rerun its tests and repin it "
             "(plumb repin --after-tests <link>), reword the record so it agrees and repin "
             "it, or bring it to the owner as a card (plumb stale card <link> --topic "
-            "\"<requirement title>\" --issue \"<what changed, in words>\" --options \"a|b|c\"). Held {n} of {max}.")
+            "\"<requirement title>\" --issue \"<what changed, in words>\" --options \"a|b|c\" "
+            "--consequences \"<what a does and leaves undone>|<b's>|<c's>\" --why \"<why the "
+            "recommended one>\"). Held {n} of {max}.")
+INCOMPLETE_LINE = ("plumb: the card for {link} is not offered to the owner until it is "
+                   "complete (SR-116); it lacks: {missing}. Complete it with plumb stale card "
+                   "{link} --consequences \"...\" --why \"...\" (its topic, issue and options "
+                   "are kept)")
 BEFORE_LINE = ("plumb: {n} links were already stale before this turn and are not held: "
                "{links}")
 
 
-def hold_lines(rows: Sequence[Row], held: int, limit: int) -> list[str]:
-    lines = [HOLD_LINE.format(record=r.record, what=r.what, link=r.link)
-             for r in rows[:MAX_NOTICES]]
+def hold_lines(rows: Sequence[Row], held: int, limit: int,
+               missing: Mapping[str, Sequence[str]] | None = None) -> list[str]:
+    """The hold's reasons; ``missing`` (``incomplete_cards``) adds, for a link whose card is
+    incomplete, what that card still lacks (SR-116 EX-3)."""
+    lines = []
+    for r in rows[:MAX_NOTICES]:
+        lines.append(HOLD_LINE.format(record=r.record, what=r.what, link=r.link))
+        lacks = (missing or {}).get(r.link)
+        if lacks:
+            lines.append(INCOMPLETE_LINE.format(link=r.link, missing="; ".join(lacks)))
     if len(rows) > MAX_NOTICES:
         lines.append(f"plumb: +{len(rows) - MAX_NOTICES} more")
     lines.append(HOLD_HOW.format(n=held, max=limit))
@@ -429,16 +443,84 @@ def _write_cards(root: Path | str, session: str, cards: list[dict[str, Any]]) ->
 
 def add_card(root: Path | str, session: str, *, link: str, record: str, path: str,
              topic: str, issue: str, options: Sequence[str], recommended: int = 0,
-             turn: int = 0) -> dict[str, Any]:
-    """Record a stale card for an owner-intent question (one open card per link)."""
-    entry = {"link": link, "record": record, "path": path, "topic": topic, "issue": issue,
-             "options": [str(o) for o in options], "recommended": int(recommended),
-             "turn": int(turn), "status": "open"}
+             turn: int = 0, consequences: Sequence[str] | None = None, why: str = "",
+             by: str = "") -> dict[str, Any]:
+    """Record a stale card for an owner-intent question (one open card per link).
+
+    SR-116: ``consequences`` (one per option: what it does and leaves undone) and ``why``
+    (the reason for the recommended option) are written when given; a card without them is
+    kept but incomplete (``card_missing``). ``by`` names who filed it (``diagnosis`` for
+    Opus). The record's wording, the diff and the owner's words are derived when the card is
+    shown (``plumb.understand.cardcontent``), never stored here."""
+    entry: dict[str, Any] = {"link": link, "record": record, "path": path, "topic": topic,
+                             "issue": issue, "options": [str(o) for o in options],
+                             "recommended": int(recommended), "turn": int(turn),
+                             "status": "open"}
+    if consequences:
+        entry["consequences"] = [str(c) for c in consequences]
+    if why:
+        entry["why"] = str(why)
+    if by:
+        entry["by"] = str(by)
     cards = [c for c in read_cards(root, session)
              if not (c.get("link") == link and c.get("status") == "open")]
     cards.append(entry)
     _write_cards(root, session, cards)
     return entry
+
+
+def card_missing(card: Mapping[str, Any]) -> list[str]:
+    """SR-116 EX-3: what a stale card still lacks before it may be offered to the owner, in
+    words the agent can act on (empty when complete). A card written before SR-116 has no
+    consequences and no reason: it is kept open and reported here, never dropped."""
+    options = [str(o) for o in card.get("options") or ()]
+    raw = card.get("consequences")
+    consequences = [str(c) for c in raw] if isinstance(raw, (list, tuple)) else []
+    missing: list[str] = []
+    if not str(card.get("topic") or "").strip():
+        missing.append("the topic")
+    if not str(card.get("issue") or "").strip():
+        missing.append("the issue")
+    if len(options) < 2:
+        missing.append("at least two options")
+    for n, option in enumerate(options):
+        if n >= len(consequences) or not consequences[n].strip():
+            missing.append(f'what option {n + 1} ("{option}") does and leaves undone')
+    if not str(card.get("why") or "").strip():
+        missing.append("why the recommended option is recommended")
+    return missing
+
+
+def card_complete(card: Mapping[str, Any]) -> bool:
+    return not card_missing(card)
+
+
+def open_card(root: Path | str, session: str, link: str) -> dict[str, Any] | None:
+    """The open card of ``link`` in ``session``, or None."""
+    for card in read_cards(root, session):
+        if card.get("link") == link and card.get("status", "open") == "open":
+            return card
+    return None
+
+
+def incomplete_cards(root: Path | str, session: str) -> dict[str, list[str]]:
+    """``{link: what it lacks}`` for the open cards of ``session`` that are not complete."""
+    out: dict[str, list[str]] = {}
+    for card in read_cards(root, session):
+        if card.get("status", "open") == "open":
+            missing = card_missing(card)
+            if missing:
+                out[str(card.get("link"))] = missing
+    return out
+
+
+def sessions(root: Path | str) -> list[str]:
+    """Every session directory under ``.plumb/session`` (sorted)."""
+    try:
+        return sorted(e.name for e in os.scandir(Path(root) / ".plumb" / "session")
+                      if e.is_dir())
+    except OSError:
+        return []
 
 
 def close_card(root: Path | str, session: str, link: str) -> bool:
@@ -455,8 +537,10 @@ def close_card(root: Path | str, session: str, link: str) -> bool:
 
 
 def carded_links(root: Path | str, session: str) -> set[str]:
+    """The links an open, complete card holds (SR-116: an incomplete card does not count as
+    bringing the link to the owner; the hold names what it lacks)."""
     return {str(c.get("link")) for c in read_cards(root, session)
-            if c.get("status", "open") == "open"}
+            if c.get("status", "open") == "open" and card_complete(c)}
 
 
 def card_lines(root: Path | str, session: str) -> list[str]:
@@ -493,24 +577,50 @@ def default_card(row: Row, record_title: str, other_title: str = "") -> dict[str
         issue = words.STALE_ISSUE_CODE.format(path=row.what, title=record_title)
     return {"link": row.link, "record": row.record, "path": row.what, "topic": record_title,
             "issue": issue, "options": [words.STALE_OPTION_KEEP, words.STALE_OPTION_REWORD,
-                                        words.STALE_OPTION_UNDO], "recommended": 0}
+                                        words.STALE_OPTION_UNDO], "recommended": 0,
+            "consequences": [words.STALE_CONSEQUENCE_KEEP, words.STALE_CONSEQUENCE_REWORD,
+                             words.STALE_CONSEQUENCE_UNDO],
+            "why": words.STALE_WHY_KEEP}
+
+
+# Where a shell command learns its session: plumb's own variable, then the id Claude Code
+# gives every command it runs (the same id its hooks receive as ``session_id``).
+SESSION_ENV = ("PLUMB_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID")
+_NOT_A_TURN = frozenset({"default", "cli"})
+_SESSION_CHARS = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def _safe_session(value: str) -> str:
+    """As ``hookio.safe_session_id``: the directory name the hooks use for this id."""
+    cleaned = _SESSION_CHARS.sub("-", value).strip("-")
+    return cleaned[:80] or "default"
 
 
 def current_session(root: Path | str) -> str:
-    """The session a shell command belongs to: ``PLUMB_SESSION_ID``, else the session whose
-    turn file is newest, else ``cli``."""
-    named = os.environ.get("PLUMB_SESSION_ID")
-    if named:
-        return named
+    """The session whose turn is in progress for this agent: ``PLUMB_SESSION_ID``, else the
+    session id the host exposes to commands (``CLAUDE_CODE_SESSION_ID``), else the session
+    with the newest turn file that holds a live ``turn_id`` and is not ``default``, ``cli``
+    or a ``perf-*`` probe, else ``cli``. A card filed here is the one the stop hook of that
+    session sees."""
+    for name in SESSION_ENV:
+        named = (os.environ.get(name) or "").strip()
+        if named:
+            return _safe_session(named)
     best, newest = "cli", -1
     try:
         entries = list(os.scandir(Path(root) / ".plumb" / "session"))
     except OSError:
         return best
     for entry in entries:
+        if entry.name in _NOT_A_TURN or entry.name.startswith("perf-"):
+            continue
+        turn_file = Path(entry.path) / "turn.json"
         try:
-            stamp = (Path(entry.path) / "turn.json").stat().st_mtime_ns
+            stamp = turn_file.stat().st_mtime_ns
         except OSError:
+            continue
+        data = _read_json(turn_file)
+        if not isinstance(data, dict) or not data.get("turn_id"):
             continue
         if stamp > newest:
             best, newest = entry.name, stamp

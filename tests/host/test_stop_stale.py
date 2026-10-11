@@ -150,9 +150,27 @@ def test_card_counts_as_resolved_for_the_hold(project: Path, hook_input) -> None
     edit(project, "src/calc.py", CHANGED)
     stale.add_card(project, "s1", link="SR-001#0", record="SR-001", path="src/calc.py",
                    topic="Adds numbers", issue="the order of the sum changed",
-                   options=["Keep it", "Reword it"], turn=1)
+                   options=["Keep it", "Reword it"], turn=1,
+                   consequences=["keeps both as they are", "rewords the requirement"],
+                   why="the sum is the same either way")
     out = run_stop(project, hook_input, verify=_verify())
     assert _block(out) is None
+
+
+@pytest.mark.sr("SR-116")
+def test_an_incomplete_card_is_held_and_the_agent_told_what_it_lacks(
+        project: Path, hook_input) -> None:
+    start_turn(project)
+    edit(project, "src/calc.py", CHANGED)
+    stale.add_card(project, "s1", link="SR-001#0", record="SR-001", path="src/calc.py",
+                   topic="Adds numbers", issue="the order of the sum changed",
+                   options=["Keep it", "Reword it"], turn=1)
+    reason = _block(run_stop(project, hook_input, verify=_verify()))
+    assert reason is not None and "stale and unresolved (SR-001#0)" in reason
+    assert "not offered to the owner until it is complete" in reason
+    assert 'what option 1 ("Keep it") does and leaves undone' in reason
+    assert "why the recommended option is recommended" in reason
+    assert stale.read_cards(project, "s1")[0]["status"] == "open"   # kept, not dropped
 
 
 def test_no_baseline_no_hold(project: Path, hook_input) -> None:
@@ -169,7 +187,8 @@ def test_ex5_summary_names_requirement_change_and_resolutions_and_the_card_waits
     stale.add_card(project, "s1", link="SR-001#0", record="SR-001", path="src/calc.py",
                    topic="Adds numbers", issue="add now sums its arguments in the other order",
                    options=["Keep the wording as it is", "Reword it to match the change",
-                            "Undo the change"], recommended=1, turn=1)
+                            "Undo the change"], recommended=1, turn=1,
+                   consequences=["keeps both", "rewords it", "undoes it"], why="it is cosmetic")
     out = run_stop(project, hook_input, verify=_verify())
     assert _block(out) is None                         # the turn may end with the card waiting
     lines = _summary(out).splitlines()

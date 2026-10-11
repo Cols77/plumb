@@ -373,5 +373,14 @@ STALE_OPTION_KEEP = "Keep the wording as it is"
 STALE_OPTION_REWORD = "Reword it to match the change"
 STALE_OPTION_UNDO = "Undo the change"
 STALE_CARD_WAITS = "  This waits for your answer; the turn does not."
+# SR-116: what each default option does and leaves undone, and why the first is recommended
+STALE_CONSEQUENCE_KEEP = ("Keeps the requirement as it reads and the change as made; leaves "
+                          "unchecked whether the change still does what the requirement says")
+STALE_CONSEQUENCE_REWORD = ("Rewrites the requirement to say what the code now does; keeps the "
+                            "change and drops what the old wording promised")
+STALE_CONSEQUENCE_UNDO = ("Puts the code back as it was when you confirmed the requirement; "
+                          "keeps the wording and drops whatever the change was for")
+STALE_WHY_KEEP = ("I could not tell whether the change matters to what you asked; keeping both "
+                  "as they are changes nothing while you read the change shown with this card")
 STALE_HOLD_ENDED = ('I held the turn open {n} times for "{title}" and then let it go; it waits '
                     "for your answer below.")
