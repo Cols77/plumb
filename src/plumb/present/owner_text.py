@@ -266,6 +266,8 @@ CARD_CHANGED_SINCE = ('Nothing was confirmed: "{title}" changed after I showed i
 TYPED_CONFIRMED = "Confirmed: {titles}"
 TYPED_NEEDS_IDS = ("I could not tell which records you meant from those words alone, so they "
                    "went to the reader; I will confirm what it finds.")
+AUTO_APPROVE_SWITCHED = "Automatic confirmation is now {state}."
+AUTO_APPROVE_NOT_YET = "Automatic confirmation is switched on, but not in effect yet: {reason}."
 OWNER_ONLY_REPLY = ("Nothing changed: saying that in a message does not {action}. Use the "
                     "button, or type {command}.")
 BACKLOG_DONE = "{judged} records judged, {cards} cards waiting for you"

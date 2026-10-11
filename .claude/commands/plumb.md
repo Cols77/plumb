@@ -48,6 +48,12 @@ only when asked.
   words: for each kind of record, passing or not, how many of their answers it was tried on,
   and what is missing when it does not pass. Calibrating approves nothing and turns nothing
   on; only the owner can turn automatic confirmation on.
+- `auto-approve on|off` (typed by the owner as their whole message): plumb already switched
+  automatic confirmation when the message arrived, logged as the owner's own setting; you
+  run nothing to switch it. Run `.venv/Scripts/python.exe -m plumb status` and say in their terms whether it is on
+  and, when it is not in effect yet, what is missing. Asked in a sentence ("turn
+  auto-approve on"), nothing changes: tell them to type `/plumb auto-approve on` as the
+  whole message. Never run `config auto-approve`: it is refused in your session.
 - `conflicts` (or "what conflicts?"): run `.venv/Scripts/python.exe -m plumb conflicts [<their words>]`. A merge left
   two versions of the same intent; the cards reach the owner at the end of your turn. Say
   in their terms what each side wants. Their next words choose: relay "keep feat-x's",

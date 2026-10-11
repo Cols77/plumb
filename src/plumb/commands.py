@@ -468,7 +468,25 @@ def status_data(core) -> dict:
         "changed_tests": {i: list(s.changed_tests) for i, s in sorted(statuses.items())
                           if s.changed_tests},
         "verification": verification_state(core),
+        "auto_approve": auto_approve_line(core),
     }
+
+
+def auto_approve_line(core, *, quiet: bool = False) -> str | None:
+    """Whether automatic confirmation is on and where that setting comes from: the owner's
+    terminal or their typed /plumb auto-approve (SR-115, DEC-016). ``quiet``: None while it
+    is off as it always was (never switched, no config.yaml on). Advisory: None on failure."""
+    try:
+        if quiet:                         # known without the judgment modules
+            from plumb.capture.ownerconfig import latest
+
+            if latest(core.events()) is None and not core.config.auto_approve.enabled:
+                return None
+        from plumb.capture.autoapprove import auto_approve_state, state_line
+
+        return state_line(auto_approve_state(core))
+    except Exception:  # noqa: BLE001 - a status line never fails the command
+        return None
 
 
 def _awareness_section(args: argparse.Namespace) -> list[str]:
@@ -527,6 +545,8 @@ def cmd_status(command: str, argv: list[str]) -> int:
                      + ", ".join(verification["full_pending_reasons"]) + ")")
     else:
         lines.append("verification: no full verification pending")
+    if data["auto_approve"]:
+        lines.append(data["auto_approve"])
     lines += _awareness_section(args)
     emit(lines, False)
     return 0
