@@ -620,6 +620,13 @@ JOB_KINDS: tuple[str, ...] = ("read", "judge", "clarify")
 JOB_VERSION = 1
 GateStateName = Literal["closed", "open"]
 ProgressState = Literal["running", "failed", "done"]
+# SP7 re-aligned (docs/specs/sp7-realign-sp8.md C2, C6): what a card's choice answers, and a
+# card's status; ``left_open`` and ``change_requested`` come from a button and confirm nothing
+ChoiceAnswer = Literal["accepted", "rejected", "change", "open"]
+CHOICE_ANSWERS: tuple[str, ...] = ("accepted", "rejected", "change", "open")
+CardStatus = Literal["open", "answered", "closed", "left_open", "change_requested"]
+CARD_STATUSES: tuple[str, ...] = ("open", "answered", "closed", "left_open", "change_requested")
+CARD_PRESS = "card-press"              # the log kind of every button the owner presses (C6)
 
 
 @dataclass(frozen=True)
@@ -707,12 +714,23 @@ class JudgeVerdict:
 
 
 @dataclass(frozen=True)
+class Choice:
+    """One suggested answer to a card question (C2): the label its button shows and what it
+    answers; ``change`` carries the wording a ``change`` choice picks (a version, a reword)."""
+
+    label: str = ""
+    answer: ChoiceAnswer = "accepted"
+    change: str | None = None
+
+
+@dataclass(frozen=True)
 class ClarifyQuestion:
     id: str = ""
     text: str = ""
     resolutions: tuple[str, ...] = ()
     record: str | None = None
     hash: str = ""        # the version of ``record`` the card showed: a yes confirms only that
+    choices: tuple[Choice, ...] = ()   # in the order of ``resolutions``, recommended first
 
 
 @dataclass(frozen=True)
@@ -733,10 +751,34 @@ class CardState:
     evidence: str = ""
     resolutions: tuple[str, ...] = ()
     questions: tuple[ClarifyQuestion, ...] = ()
-    status: Literal["open", "answered", "closed"] = "open"
+    status: CardStatus = "open"
     answers: tuple[ClarifyAnswer, ...] = ()
     owner_only: bool = False
     turn: int = 0
+
+
+@dataclass(frozen=True)
+class CardPress:
+    """A ``card-press`` log entry (C6): one button the owner pressed on a drawn card. It
+    confirms nothing by itself; a Confirm press also writes its ``approval``."""
+
+    session: str = ""
+    offer: str = ""                        # digest(card id, question id, record hash)
+    card: str = ""
+    question: str = ""
+    choice: int = 0                        # the index into the question's ``choices``
+    answer: ChoiceAnswer = "accepted"
+
+
+@dataclass(frozen=True)
+class Present:
+    """``.plumb/session/<id>/present.json`` (C7): what the stop hook hands the mod for a turn
+    in place of a ``systemMessage``; ``cards`` are written as ``cardstore`` writes them."""
+
+    turn: int = 0
+    confirmations: tuple[str, ...] = ()
+    settled: tuple[str, ...] = ()
+    cards: tuple[CardState, ...] = ()
 
 
 @dataclass(frozen=True)

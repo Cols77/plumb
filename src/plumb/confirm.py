@@ -71,6 +71,11 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
         if entry.marker != "none":
             return (f"owner {entry.kind} written under the agent session marker "
                     f"({entry.marker})")
+        if entry.kind == "approval" and payload.get("via") == "button":
+            # SP7 re-aligned C6: a pressed Confirm is re-checked against its drawn offer
+            from plumb.understand.recheck_button import problem as button_problem
+
+            return button_problem(entry, core)
         return None
     if by == "agent-relayed":
         digest = payload.get("prompt_digest")

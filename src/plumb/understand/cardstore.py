@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import CardState, ClarifyAnswer, ClarifyQuestion
+from plumb.contracts import CARD_STATUSES, CardState, ClarifyAnswer, ClarifyQuestion, Present
 from plumb.understand import files
 
 
@@ -29,9 +29,11 @@ def card_from_json(data: Mapping[str, Any]) -> CardState:
         questions=tuple(ClarifyQuestion(
             id=str(q.get("id", "")), text=str(q.get("text", "")),
             resolutions=tuple(str(r) for r in q.get("resolutions") or ()),
-            record=q.get("record"), hash=str(q.get("hash") or ""))
+            record=q.get("record"), hash=str(q.get("hash") or ""),
+            choices=tuple(files.choice_from_json(c) for c in q.get("choices") or ()
+                          if isinstance(c, Mapping)))
             for q in data.get("questions") or () if isinstance(q, Mapping)),
-        status=status if status in ("open", "answered", "closed") else "open",
+        status=status if status in CARD_STATUSES else "open",
         answers=tuple(ClarifyAnswer(str(a.get("question", "")), str(a.get("answer", "")),
                                     str(a.get("message_digest", "")))
                       for a in data.get("answers") or () if isinstance(a, Mapping)),
@@ -78,3 +80,20 @@ def save(root: Path, session: str, cards: Sequence[CardState]) -> None:
     """Write the session's own cards (stale-link cards are STALE's and never written)."""
     files.write_json_atomic(files.cards_path(root, session),
                             [card_to_json(c) for c in cards if c.kind != "stale_link"])
+
+
+def present_to_json(present: Present) -> dict[str, Any]:
+    """The shape of ``present.json`` (sp7-realign-sp8 C7): ``{turn, confirmations, settled,
+    cards}``, the cards as ``cards.json`` holds them."""
+    return {"turn": present.turn, "confirmations": list(present.confirmations),
+            "settled": list(present.settled), "cards": [card_to_json(c) for c in present.cards]}
+
+
+def present_from_json(data: Any) -> Present:
+    if not isinstance(data, Mapping):
+        return Present()
+    return Present(turn=int(data.get("turn") or 0),
+                   confirmations=tuple(str(c) for c in data.get("confirmations") or ()),
+                   settled=tuple(str(s) for s in data.get("settled") or ()),
+                   cards=tuple(card_from_json(c) for c in data.get("cards") or ()
+                               if isinstance(c, Mapping)))

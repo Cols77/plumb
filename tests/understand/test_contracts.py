@@ -14,7 +14,9 @@ import pytest
 from plumb import contracts
 from plumb.contracts import (
     Applied,
+    CardPress,
     CardState,
+    Choice,
     ClarifyAnswer,
     ClarifyQuestion,
     DispatchError,
@@ -26,6 +28,7 @@ from plumb.contracts import (
     JobResult,
     JudgeVerdict,
     NoModel,
+    Present,
     Progress,
     ReaderEntry,
     ReadCard,
@@ -39,7 +42,7 @@ pytestmark = pytest.mark.sr("SR-103", "SR-104", "SR-105")
 
 DATA_CLASSES = (Job, JobError, JobResult, ReadItem, ReadCard, ReaderEntry, JudgeVerdict,
                 ClarifyQuestion, ClarifyAnswer, CardState, Applied, GateState, SettleState,
-                Progress, StopParts)
+                Progress, StopParts, Choice, CardPress, Present)
 
 
 @pytest.mark.parametrize("cls", DATA_CLASSES, ids=lambda c: c.__name__)
@@ -106,9 +109,78 @@ def test_committed_log_kinds_are_accepted(repo: Path) -> None:
                      "false_gap_rate": 0.0},
         "gate": {"digest": "d", "state": "closed", "by": "clarify", "reason": "r"},
         "job-note": {"kind": "ledger", "job": "j", "detail": "no ledger entry"},
+        contracts.CARD_PRESS: {"session": "s", "offer": "o", "card": "c", "question": "q",
+                               "choice": 1, "answer": "open"},
     }
     for kind, payload in payloads.items():
         assert core.log_append("events", kind, payload).kind == kind
+
+
+@pytest.mark.sr("SR-086")
+def test_card_store_round_trips_choices_and_the_button_statuses(tmp_path: Path) -> None:
+    from plumb.understand import cardstore
+
+    question = ClarifyQuestion(
+        id="c1#1", text="Keep the CSV export?", resolutions=("keep it", "drop it", "reword"),
+        record="SR-001", hash="sha256:h",
+        choices=(Choice("Confirm", "accepted"), Choice("drop it", "rejected"),
+                 Choice("the second version", "change", "Export as JSON")))
+    cards = [CardState(id=f"c{n}", kind="beyond", topic="export", questions=(question,),
+                       status=status)
+             for n, status in enumerate(contracts.CARD_STATUSES)]
+    cardstore.save(tmp_path, "s1", cards)
+    assert cardstore.own_cards(tmp_path, "s1") == cards
+    assert set(contracts.CardStatus.__args__) == set(contracts.CARD_STATUSES) \
+        >= {"left_open", "change_requested"}
+    # older cards carry no choices; a choice with an unknown answer reads as "open" (it
+    # confirms nothing), and an unknown status as "open"
+    path = files.cards_path(tmp_path, "s1")
+    path.write_text(json.dumps([{"id": "old", "status": "snoozed", "questions": [
+        {"id": "q", "text": "t"},
+        {"id": "r", "choices": [{"label": "maybe", "answer": "perhaps"}]}]}]),
+        encoding="utf-8")
+    (old,) = cardstore.own_cards(tmp_path, "s1")
+    assert old.status == "open" and old.questions[0].choices == ()
+    assert old.questions[1].choices == (Choice("maybe", "open", None),)
+    assert ClarifyQuestion("q", "t", ("a",)).choices == ()   # positional use is unchanged
+
+
+@pytest.mark.sr("SR-086")
+def test_present_json_shape_round_trips(tmp_path: Path) -> None:
+    from plumb.understand import cardstore
+
+    card = CardState(id="c1", kind="trial", topic="reminders", questions=(
+        ClarifyQuestion(id="c1#1", text="Remind me daily", record="SR-002", hash="sha256:x",
+                        choices=(Choice("yes", "accepted"), Choice("no", "rejected"))),))
+    present = Present(turn=3, confirmations=("Confirmed: export",),
+                      settled=("Settled from your words: reminders",), cards=(card,))
+    data = cardstore.present_to_json(present)
+    assert set(data) == {"turn", "confirmations", "settled", "cards"}
+    assert data["cards"] == [cardstore.card_to_json(card)]
+    files.write_json_atomic(files.present_path(tmp_path, "s1"), data)
+    assert files.present_path(tmp_path, "s1").name == "present.json"
+    assert cardstore.present_from_json(files.read_json(files.present_path(tmp_path, "s1"))) \
+        == present
+    assert cardstore.present_from_json(None) == Present()
+
+
+@pytest.mark.sr("SR-086")
+def test_button_approval_is_accepted_by_the_log_and_refused_by_its_recheck(
+        repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb import confirm
+    from plumb.api import open_core
+
+    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    core = open_core(repo)
+    entry = core.log_append("events", "approval", {
+        "by": "owner", "via": "button", "offer": "o", "card": "c", "question": "q",
+        "records": [{"id": "SR-001", "hash": "sha256:h"}]})
+    assert entry.marker == "none"
+    # stubbed until the press lands (slice 4): a button approval confirms nothing yet
+    assert "button approval" in confirm.entry_problem(entry, set(), ())
+    plain = core.log_append("events", "approval", {
+        "by": "owner", "via": "terminal", "records": [{"id": "SR-001", "hash": "sha256:h"}]})
+    assert confirm.entry_problem(plain, set(), ()) is None
 
 
 def test_protocols_describe_the_dispatcher_and_the_kinds() -> None:
@@ -186,7 +258,7 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
     # the landed summary needs a real core; the stub's empty answer is gone (SHOW/JUDGE landed)
     assert StopParts() == StopParts()
     assert _params(hooks.on_prompt) == ["ctx", "core", "entry"]
-    assert _params(dispatch.configured) == ["core"]
+    assert _params(dispatch.configured) == ["core", "model"]   # model: a per-kind override
     with pytest.raises(NoModel, match="no model configured"):
         dispatch.configured(None)
 
