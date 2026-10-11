@@ -125,12 +125,29 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("--root", default=None)
     parser.add_argument("--compare", default=None,
                         help="judges side by side on the labelled set, e.g. haiku,jev")
+    parser.add_argument("--repin", action="store_true",
+                        help="with --compare: the repin meaning judges on the repin set, "
+                             "e.g. sonnet,haiku,sonnet-x3,jev")
     parser.add_argument("--set", dest="set_path", default=None)
     args = parser.parse_args(argv)
     from plumb.api import open_core
     from plumb.paths import find_root
 
+    if args.repin and not args.compare:
+        print("plumb: eval --repin needs --compare <judges>, e.g. sonnet,haiku,sonnet-x3,jev",
+              file=sys.stderr)
+        return 2
     core = open_core(find_root(Path(args.root or ".")))
+    if args.repin:
+        from plumb.understand import evalcompare, evalrepin
+
+        names = [n.strip().lower() for n in args.compare.split(",") if n.strip()]
+        try:
+            print(evalrepin.run_compare(core, names, args.set_path))
+        except evalcompare.CompareError as exc:
+            print(f"plumb: eval --repin --compare: {exc}", file=sys.stderr)
+            return 2
+        return 0
     if args.compare:
         from plumb.understand import evalcompare
 

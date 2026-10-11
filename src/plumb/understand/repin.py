@@ -52,12 +52,12 @@ def diff(before: str, after: str, path: str) -> str:
 
 
 class ModelMeaningJudge:
-    """Asks one model per link; ``min_confidence`` is the least confidence that repins."""
+    """Asks one model per link. The verdict alone decides: the model's self-reported
+    confidence is kept on the answer but gates nothing."""
 
-    def __init__(self, dispatcher: Any, *, min_confidence: float = 0.8) -> None:
+    def __init__(self, dispatcher: Any) -> None:
         self.dispatcher = dispatcher
         self.name = f"{getattr(dispatcher, 'name', 'model')}:{getattr(dispatcher, 'model', '')}"
-        self.min_confidence = min_confidence
 
     def same_meaning(self, *, requirement: str, link_id: str, link_kind: str, path: str,
                      before: str, after: str) -> Meaning:
@@ -85,12 +85,7 @@ class ModelMeaningJudge:
             return Meaning(None, f"{self.name} gave an answer outside the schema")
         reason = str(answer.get("reason") or "").strip()
         confidence = float(answer.get("confidence") or 0.0)
-        if answer.get("verdict") == "changed":
-            return Meaning(False, reason, confidence)
-        if confidence < self.min_confidence:
-            return Meaning(None, f"{self.name} leaned unchanged but only at {confidence:.2f}: "
-                                 f"{reason}", confidence)
-        return Meaning(True, reason, confidence)
+        return Meaning(answer.get("verdict") == "unchanged", reason, confidence)
 
 
 def open_judge(core: Any) -> ModelMeaningJudge | None:
@@ -104,4 +99,4 @@ def open_judge(core: Any) -> ModelMeaningJudge | None:
         return None
     if dispatcher.available() is not None:
         return None
-    return ModelMeaningJudge(dispatcher, min_confidence=settings.repin_min_confidence)
+    return ModelMeaningJudge(dispatcher)

@@ -252,8 +252,9 @@ def test_model_judge_sends_the_diff_and_reads_the_verdict() -> None:
     assert ModelMeaningJudge(changed).same_meaning(**shown) == Meaning(
         False, "add now multiplies", 0.9)
     assert "-    return a + b" in changed.seen[0]["diff"]
-    unsure = Dispatcher({"verdict": "unchanged", "reason": "r", "confidence": 0.5})
-    assert ModelMeaningJudge(unsure).same_meaning(**shown).unchanged is None
+    # the verdict alone decides: a low self-reported confidence still repins
+    unsure = Dispatcher({"verdict": "unchanged", "reason": "r", "confidence": 0.1})
+    assert ModelMeaningJudge(unsure).same_meaning(**shown).unchanged is True
     sure = Dispatcher({"verdict": "unchanged", "reason": "r", "confidence": 0.9})
     assert ModelMeaningJudge(sure).same_meaning(**shown).unchanged is True
     bad = Dispatcher({"verdict": "maybe"})
