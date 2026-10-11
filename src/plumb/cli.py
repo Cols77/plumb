@@ -57,6 +57,10 @@ ROUTES: dict[str, str] = {
     "inflight": "plumb.awareness.cli",
     # HOSTS (sub-project 4)
     "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
+    # PLUGIN (sub-project 7): the owner's "not here" list and the move from the old install
+    "plugin": "plumb.plugin.cli",
+    # SP7 MOD: the commands only plumb's panel runs (hello, draw, press; key on stdin)
+    "mod": "plumb.mod.cli",
 }
 
 _HELP = """usage: plumb <command> [options]
@@ -106,6 +110,7 @@ owner views (plain words, paths or IDs; none approves anything):
 
 verification:  tests (map | select | run), map, verify
 host:          hook, hooks, install, statusline
+plugin:        plugin ignore | unignore | migrate (the Claude Code plugin)
 hosts:         hosts (install|uninstall|status codex|pi|hermes), turn (start|end: the
                CLI-only fallback), mcp (serve: the read-only MCP server on stdio)
 bridge:        trailers, claims, fidelity, judge, judgment, import

@@ -59,6 +59,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from plumb import launcher
 from plumb.boundary.prepush import ForeignHookError
 from plumb.present import owner_text
 
@@ -106,12 +107,12 @@ def _exe(interpreter: str) -> str:
 
 def hook_line(interpreter: str, hook: str = HOOK) -> str:
     """The line an owner's own hook runs to call plumb (``--json``'s ``hook_line``)."""
-    return f'"{_exe(interpreter)}" -m plumb merge-check --hook {hook} || exit $?'
+    return f'{launcher.prefix(interpreter)} merge-check --hook {hook} || exit $?'
 
 
 def hook_text(interpreter: str) -> str:
     return (f"#!/bin/sh\n{HOOK_MARKER} (written by plumb; a quick check, no test run)\n"
-            f'exec "{_exe(interpreter)}" -m plumb merge-check --hook {HOOK}\n')
+            + launcher.git_hook_line(interpreter, HOOK, f"merge-check --hook {HOOK}"))
 
 
 def commit_hook_text(interpreter: str) -> str:
@@ -126,7 +127,8 @@ def commit_hook_text(interpreter: str) -> str:
             f'[ "$(git config --bool {HOLD_KEY})" = false ] && exit 0\n'
             "if env | grep -q '^GITHEAD_' && grep -qs '" + HOOK_MARKER + "' "
             f'"$(git rev-parse --git-path hooks/{HOOK})"; then exit 0; fi\n'
-            f'exec "{_exe(interpreter)}" -m plumb merge-check --hook {COMMIT_HOOK}\n')
+            + launcher.git_hook_line(interpreter, COMMIT_HOOK,
+                                     f"merge-check --hook {COMMIT_HOOK}"))
 
 
 def post_hook_text(interpreter: str) -> str:
@@ -141,7 +143,8 @@ def post_hook_text(interpreter: str) -> str:
             f"o=$(git rev-parse -q --verify ORIG_HEAD) || exit 0{NL}"
             '[ -n "$(git rev-parse -q --verify HEAD^2)" ] && '
             f'[ "$(git rev-parse -q --verify HEAD^1)" = "$o" ] && exit 0{NL}'
-            f'exec "{_exe(interpreter)}" -m plumb merge-check --hook {POST_HOOK}{NL}')
+            + launcher.git_hook_line(interpreter, POST_HOOK,
+                                     f"merge-check --hook {POST_HOOK}"))
 
 
 def _is_plumb(path: Path, hook: str = HOOK) -> bool:

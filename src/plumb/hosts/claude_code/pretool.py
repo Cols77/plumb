@@ -1,5 +1,12 @@
-"""PreToolUse on Edit, Write, MultiEdit and NotebookEdit (SHOW S4, SR-103): while the gate of
-the session is closed the edit is refused.
+"""PreToolUse on Bash, Edit, Write, MultiEdit and NotebookEdit: the guard, then the gate.
+
+The guard (SP7 4.3, ``plumb.guard.denied``) refuses what only the owner does: the owner-only
+commands in every launcher spelling, the plumb panel's own steps, anything naming the session
+marker, and edits under ``.plumb/log/``. The plugin cannot add permission rules, so this hook is
+where its guard lives; the legacy per-repository install keeps its deny rules (generated from
+the same table) and registers ``gate.sh`` for the edit tools.
+
+The gate (SHOW S4, SR-103): while the gate of the session is closed an edit is refused.
 
 ``templates/gate.sh`` is the fast route the installer registers (shell only, no Python, within
 the hook's 50 ms); this module is the Python route of the same decision, for tests and for
@@ -23,9 +30,22 @@ REASON = ("plumb: edits are on hold until the owner has answered: {reason}. Run 
 FALLBACK_REASON = "your request is still being checked"
 
 
-def decide(root: Path | str, session: str, tool: str) -> dict[str, Any]:
-    """The hook answer for ``tool`` in ``session``: a ``deny`` while the gate is closed, else
-    an empty mapping (allow)."""
+def _deny(reason: str) -> dict[str, Any]:
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                   "permissionDecision": "deny",
+                                   "permissionDecisionReason": reason}}
+
+
+def decide(root: Path | str, session: str, tool: str,
+           tool_input: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The hook answer for ``tool`` in ``session``: a ``deny`` when the guard refuses the call
+    or, for an edit tool, while the gate is closed; else an empty mapping (allow)."""
+    if tool_input is not None:
+        from plumb.guard import denied
+
+        reason = denied(tool, tool_input)
+        if reason:
+            return _deny(reason)
     if tool not in EDIT_TOOLS or not session:
         return {}
     from plumb.understand import files
@@ -34,9 +54,7 @@ def decide(root: Path | str, session: str, tool: str) -> dict[str, Any]:
     if state.state != "closed":
         return {}
     reason = state.reason if state.reason and "\\" not in state.reason else FALLBACK_REASON
-    return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                   "permissionDecision": "deny",
-                                   "permissionDecisionReason": REASON.format(reason=reason)}}
+    return _deny(REASON.format(reason=reason))
 
 
 def main(*, root: Path | str | None = None, watchdog: bool = True, start: float | None = None,
@@ -50,7 +68,9 @@ def main(*, root: Path | str | None = None, watchdog: bool = True, start: float 
         if not isinstance(data, dict):
             return 0
         base = Path(root) if root else Path(os.environ.get("CLAUDE_PROJECT_DIR") or ".")
-        answer = decide(base, str(data.get("session_id") or ""), str(data.get("tool_name") or ""))
+        tool_input = data.get("tool_input")
+        answer = decide(base, str(data.get("session_id") or ""), str(data.get("tool_name") or ""),
+                        tool_input if isinstance(tool_input, dict) else {})
         if answer:
             stdout.write(json.dumps(answer, ensure_ascii=False) + "\n")
     except Exception:  # noqa: BLE001 - the guard never blocks on its own failure

@@ -1,0 +1,160 @@
+#!/bin/sh
+# plumb in the plugin's own environment (SP7 4.2, DEC-023, SR-082). Never the repository's
+# .venv, never a plumb found on the PATH: plumb's private copy, per user and per plugin
+# version, built once from the wheel the plugin carries (vendor/).
+#   PLUMB_HOME = $PLUMB_HOME, else $CLAUDE_PLUGIN_DATA, else ~/.plumb
+#   the environment: PLUMB_HOME/env/<version>-<wheel sha256, first 12>/
+#   PLUMB_HOME/current.json {python, version, wheel_sha256, plugin_root} names the ready one
+# When current.json is missing or names another wheel, this builds it under a lock
+# (mkdir PLUMB_HOME/lock; a lock older than 10 minutes is taken over), with uv when present,
+# else python3.12 -m venv and pip; then writes the user-level launcher PLUMB_HOME/bin/plumb
+# (git's hooks and the merge driver call it) and keeps the two newest environments.
+# `plumb --plumb-bootstrap` only sets the environment up (the session-start hook runs it in
+# the background).
+nl='
+'
+
+slashes() {
+  s=$1
+  while :; do
+    case $s in
+      *\\*) s="${s%%\\*}/${s#*\\}" ;;
+      *) break ;;
+    esac
+  done
+  printf '%s' "$s"
+}
+
+field() {
+  v=${1#*\"$2\"}
+  [ "$v" = "$1" ] && return 0
+  v=${v#*\"}
+  printf '%s' "${v%%\"*}"
+}
+
+read_file() {
+  f=
+  while IFS= read -r l || [ -n "$l" ]; do f="$f$l$nl"; done < "$1"
+  printf '%s' "$f"
+}
+
+mixed() {  # a path every process can open (C:/x on Windows, unchanged elsewhere)
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+
+here=$(slashes "$0")
+here=${here%/*}
+[ "$here" = "$0" ] && here=.
+plugin_root=$(cd "$here/.." && pwd)
+plugin_root=$(mixed "$plugin_root")
+PLUMB_HOME=$(slashes "${PLUMB_HOME:-${CLAUDE_PLUGIN_DATA:-$HOME/.plumb}}")
+PLUMB_PLUGIN_ROOT=$plugin_root
+export PLUMB_HOME PLUMB_PLUGIN_ROOT
+
+manifest=$(read_file "$plugin_root/vendor/MANIFEST.json")
+want=$(field "$manifest" sha256)
+version=$(field "$manifest" version)
+wheel=$(field "$manifest" wheel)
+python=
+
+ready() {
+  [ -f "$PLUMB_HOME/current.json" ] || return 1
+  current=$(read_file "$PLUMB_HOME/current.json")
+  [ -n "$want" ] && [ "$(field "$current" wheel_sha256)" = "$want" ] || return 1
+  python=$(field "$current" python)
+  [ -n "$python" ] && [ -f "$python" ]
+}
+
+venv_python() {
+  if [ -f "$1/Scripts/python.exe" ]; then printf '%s' "$1/Scripts/python.exe"
+  else printf '%s' "$1/bin/python"; fi
+}
+
+unlock() {
+  rm -rf "$PLUMB_HOME/lock"
+  trap - EXIT INT TERM
+}
+
+build() {  # $1: the folder to build the environment in
+  if command -v uv >/dev/null 2>&1; then
+    uv venv --quiet --relocatable --python 3.12 "$1" >&2 || return 1
+    uv pip install --quiet --python "$(venv_python "$1")" "$plugin_root/vendor/$wheel" >&2
+    return $?
+  fi
+  for base in python3.12 python3 python; do
+    command -v "$base" >/dev/null 2>&1 || continue
+    "$base" -c 'import sys; sys.exit(sys.version_info[:2] < (3, 12))' 2>/dev/null || continue
+    "$base" -m venv "$1" >&2 || return 1
+    "$(venv_python "$1")" -m pip install --quiet "$plugin_root/vendor/$wheel" >&2
+    return $?
+  done
+  echo "plumb needs Python 3.12 on this machine; say 'install what plumb needs' and I will set it up" >&2
+  return 2
+}
+
+bootstrap() {
+  [ -n "$want" ] && [ -n "$wheel" ] || {
+    echo "plumb: the plugin's copy of plumb is missing; reinstall the plugin" >&2
+    return 1
+  }
+  mkdir -p "$PLUMB_HOME" || return 1
+  waited=0
+  until mkdir "$PLUMB_HOME/lock" 2>/dev/null; do
+    if [ -n "$(find "$PLUMB_HOME/lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+      rm -rf "$PLUMB_HOME/lock"
+      continue
+    fi
+    ready && return 0
+    if [ "$waited" -ge 600 ]; then
+      echo "plumb: still waiting for another session to set plumb up; try again shortly" >&2
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  trap unlock EXIT INT TERM
+  if ready; then
+    unlock
+    return 0
+  fi
+  name="$version-$(printf '%.12s' "$want")"
+  env="$PLUMB_HOME/env/$name"
+  mkdir -p "$PLUMB_HOME/env" "$PLUMB_HOME/bin"
+  rm -rf "$env.tmp"
+  if ! build "$env.tmp"; then
+    code=$?
+    rm -rf "$env.tmp"
+    unlock
+    return $code
+  fi
+  rm -rf "$env"
+  mv "$env.tmp" "$env" || { unlock; return 1; }
+  python=$(mixed "$(venv_python "$env")")
+  printf '{"python": "%s", "version": "%s", "wheel_sha256": "%s", "plugin_root": "%s"}\n' \
+    "$python" "$version" "$want" "$plugin_root" > "$PLUMB_HOME/current.json.tmp"
+  mv "$PLUMB_HOME/current.json.tmp" "$PLUMB_HOME/current.json"
+  # the user-level launcher: git's hooks and the merge driver call it (SP7 4.6)
+  printf '#!/bin/sh\nexport PLUMB_HOME="%s" PLUMB_PLUGIN_ROOT="%s"; exec "%s" -m plumb "$@"\n' \
+    "$PLUMB_HOME" "$plugin_root" "$python" > "$PLUMB_HOME/bin/plumb"
+  chmod +x "$PLUMB_HOME/bin/plumb" 2>/dev/null
+  printf '@set "PLUMB_HOME=%s"\r\n@set "PLUMB_PLUGIN_ROOT=%s"\r\n@"%s" -m plumb %%*\r\n' \
+    "$PLUMB_HOME" "$plugin_root" "$python" > "$PLUMB_HOME/bin/plumb.cmd"
+  # keep the two newest environments
+  n=0
+  for old in $(ls -1t "$PLUMB_HOME/env" 2>/dev/null); do
+    case $old in *.tmp) continue ;; esac
+    n=$((n + 1))
+    [ "$n" -gt 2 ] && [ "$old" != "$name" ] && rm -rf "$PLUMB_HOME/env/$old"
+  done
+  unlock
+  return 0
+}
+
+if [ "$1" = --plumb-bootstrap ]; then
+  ready && exit 0
+  bootstrap
+  exit $?
+fi
+ready || bootstrap || exit $?
+ready || exit 1
+exec "$python" -m plumb "$@"

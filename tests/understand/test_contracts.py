@@ -177,7 +177,7 @@ def test_button_approval_is_accepted_by_the_log_and_refused_by_its_recheck(
         "by": "owner", "via": "button", "offer": "o", "card": "c", "question": "q",
         "records": [{"id": "SR-001", "hash": "sha256:h"}]})
     assert entry.marker == "none"
-    # stubbed until the press lands (slice 4): a button approval confirms nothing yet
+    # no panel registered, no offer drawn: a button approval confirms nothing (slice 4)
     assert "button approval" in confirm.entry_problem(entry, set(), ())
     plain = core.log_append("events", "approval", {
         "by": "owner", "via": "terminal", "records": [{"id": "SR-001", "hash": "sha256:h"}]})

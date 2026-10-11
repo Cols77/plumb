@@ -8,3 +8,5 @@ dist/
 .ruff_cache/
 .coverage
 htmlcov/
+# the API declarations Claude Code lays beside a mod it loads from a folder (SP7 5)
+plugin/.claude-plugin/types/

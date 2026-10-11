@@ -13,8 +13,8 @@
    change with its evidence (a long diff folded with its size, never cut), the owner's words,
    each option with what it does and leaves undone, and why the first. A stale card the agent
    left incomplete is not offered (SR-116 EX-3) and stays open; one line counts those.
-   Nothing here resolves, expires or hides a card (``_repeats_at_turn_end``: slice 4's Leave
-   open is the hook point).
+   Nothing here resolves, expires or hides a card; only the owner's Leave open press stops a
+   card repeating until its record changes (``_repeats_at_turn_end``, DEC-034).
 
 plumb builds the facts; the agent words the suggested resolutions for the owner from them. The
 turn's upkeep (``settle.refresh``) runs first when the hook's budget allows; the settled line is
@@ -238,6 +238,8 @@ def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (
 # --------------------------------------------------------------------------- the cards
 
 TURN_CARDS = "turn_cards.json"   # the cards the stop hook built, kept while they hold
+DRAWN = "drawn.json"             # every card drawn at the last turn end, with its full content
+TURN_LEFT = "turn_left.json"     # the stop hook's cards the owner left open, with what they showed
 WAITING = "cards_waiting.json"   # what the next prompt tells the agent (SR-116 EX-4)
 DRAW_MIN_S = 0.08                # a card's full content needs about this much of the budget
 
@@ -289,14 +291,14 @@ def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
 
 
 def _repeats_at_turn_end(card: CardState) -> bool:
-    """Whether an open card is drawn at this turn end. Every open card is (DEC-034: until the
-    owner presses Leave open, the card shows at the end of every turn).
-
-    TODO(slice 4, DEC-034): after the owner presses Leave open (status ``left_open``, written
-    by ``plumb mod press``), the card stops repeating here until its record changes, and stays
-    listed under what awaits the owner in the band and the pane. That press is the only thing
-    that may make this return False; nothing in slice 3 resolves, expires or hides a card."""
-    return card.status == "open"
+    """Whether a card is drawn at this turn end (DEC-034): every card that still asks the owner
+    (``cardstore.AWAITING``: open, or waiting for the owner's words after Ask for a change)
+    shows at the end of every turn. A card the owner pressed Leave open on (``left_open``,
+    written by ``plumb mod press``) does not repeat here until a record it asks about changes
+    (``mod.offers.reopen_changed`` reopens it first); it stays listed under what awaits the
+    owner in the band and the pane (``mod.offers.DRAWN``). That press is the only thing that
+    makes this False; nothing here resolves, expires or hides a card."""
+    return card.status in cardstore.AWAITING
 
 
 def _turn_cards(core: Any, session: str, extra: Sequence[CardState], passing: set[str],
@@ -345,15 +347,27 @@ def _cards(core: Any, session: str, refreshed: Any, stamp: int, deadline: Any, *
         add = [c for c in new if c.id not in have]
         if add:
             cardstore.save(core.root, session, [*own, *add])
-    open_cards = [c for c in cardstore.load(core.root, session) if _repeats_at_turn_end(c)]
+    from plumb.mod.offers import reopen_changed
+
+    reopen_changed(core, session)       # DEC-034: a card left open returns once it changed
+    open_cards = [c for c in cardstore.load(core.root, session, open_only=False)
+                  if _repeats_at_turn_end(c)]
     open_cards = _meter(core, session, open_cards, stamp)
     open_cards.extend(_failure_cards(core, session))
     asked = {q.record for c in open_cards for q in c.questions if q.record}
     built = _turn_cards(core, session, extra, passing or set(), changes or {}, asked)
     change_of = {c.id: change for c, change in built}
     seen = {c.id for c in open_cards}
-    every = [*open_cards, *(c for c, _ in built if c.id not in seen),
-             *(c for c in fresh if c.id not in seen)]
+    turn_built = [*(c for c, _ in built if c.id not in seen),
+                  *(c for c in fresh if c.id not in seen)]
+    turn_ids = {c.id for c in turn_built}
+    left = _turn_left_now(core, session, turn_built)
+    every = [*open_cards, *(c for c in turn_built if c.id not in left)]
+    kept: list[dict[str, Any]] = []
+    for card in turn_built:
+        if card.id in left:     # DEC-034: listed as awaiting, not drawn again until it changes
+            kept.append(_drawn_entry(core, session, card, change_of, changes, "left_open",
+                                     turn_built=True))
     entries = {f"stale:{e.get('link', '')}": e for e in stale.read_cards(core.root, session)
                if e.get("status", "open") == "open"}
     out: list[str] = []
@@ -379,6 +393,8 @@ def _cards(core: Any, session: str, refreshed: Any, stamp: int, deadline: Any, *
                                         card.id))
         out.append(fullcard.render(item))
         drawn.append(card.topic)
+        kept.append({"card": cardstore.card_to_json(card), "content": item,
+                     "turn_built": card.id in turn_ids})
         if shown is not None:
             for question in card.questions:
                 if question.record:
@@ -389,7 +405,70 @@ def _cards(core: Any, session: str, refreshed: Any, stamp: int, deadline: Any, *
     if incomplete:
         out.append(owner_text.FULL_INCOMPLETE.format(n=incomplete))
     _waiting(core, session, drawn)
+    files.write_json_atomic(files.session_dir(core.root, session) / DRAWN, kept)
     return out
+
+
+def _drawn_entry(core: Any, session: str, card: CardState, change_of: Mapping[str, Any],
+                 changes: Mapping[str, Any] | None, status: str, *,
+                 turn_built: bool) -> dict[str, Any]:
+    from plumb.understand import fullcard
+
+    card = dataclasses.replace(card, status=status)  # type: ignore[arg-type]
+    item = fullcard.content(core, card, session=session,
+                            change=change_of.get(card.id) or (changes or {}).get(card.id))
+    return {"card": cardstore.card_to_json(card), "content": item, "turn_built": turn_built}
+
+
+def read_drawn(root: Any, session: str) -> list[dict[str, Any]]:
+    """Every card drawn at the last turn end (``{card, content, turn_built}``): the cards the
+    owner reads, each with its full content (SR-116), and the stop hook's cards the owner left
+    open (status ``left_open``). What ``present.json`` and ``plumb mod draw`` carry."""
+    raw = files.read_json(files.session_dir(root, session) / DRAWN)
+    return [dict(e) for e in raw if isinstance(e, Mapping) and isinstance(e.get("card"), Mapping)
+            ] if isinstance(raw, list) else []
+
+
+def _shows(card: CardState) -> dict[str, str]:
+    return {str(q.record): q.hash for q in card.questions if q.record}
+
+
+def leave_turn_card(root: Any, session: str, card: CardState) -> None:
+    """DEC-034 for a card the stop hook builds (a regression, a decision, a conflict, the
+    records the turn proposed): it is not in ``cards.json``, so the owner's Leave open is kept
+    here with the versions it showed; it is not drawn again until one of them changes."""
+    path = files.session_dir(root, session) / TURN_LEFT
+    raw = files.read_json(path)
+    held = dict(raw) if isinstance(raw, Mapping) else {}
+    held[card.id] = _shows(card)
+    files.write_json_atomic(path, held)
+
+
+def turn_left(root: Any, session: str) -> dict[str, Any]:
+    raw = files.read_json(files.session_dir(root, session) / TURN_LEFT)
+    return dict(raw) if isinstance(raw, Mapping) else {}
+
+
+def _turn_left_now(core: Any, session: str, built: Sequence[CardState]) -> set[str]:
+    """The stop hook's cards still left open this turn end: the owner pressed Leave open and
+    no record the card shows changed since (a changed one returns, DEC-034). Entries for cards
+    that no longer hold are dropped."""
+    held = turn_left(core.root, session)
+    if not held:
+        return set()
+    index = core.index()
+    by_id = {c.id: c for c in built}
+    keep: dict[str, Any] = {}
+    for card_id, shows in held.items():
+        card = by_id.get(card_id)
+        if card is None or not isinstance(shows, Mapping):
+            continue
+        if any(rid not in index or index[rid].hash != h for rid, h in shows.items()) or                 _shows(card) != dict(shows):
+            continue
+        keep[card_id] = dict(shows)
+    if keep != held:
+        files.write_json_atomic(files.session_dir(core.root, session) / TURN_LEFT, keep)
+    return set(keep)
 
 
 def _waiting(core: Any, session: str, topics: Sequence[str]) -> None:

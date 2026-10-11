@@ -141,6 +141,27 @@ FF_HOLD_SET = ("plumb: merges into {branch} always record a merge commit, so the
                "sees every one")
 FF_HOLD_REMOVED = "plumb: merges into {branch} may fast-forward again"
 
+# -- the plugin (SP7 4, SR-082 to SR-084)
+INIT_DONE = ("plumb now follows this repository. It will show what you asked for, keep the work "
+             "tied to it and check merges and pushes.")
+COMMIT_MSG_INSTALLED = ("plumb: each commit is checked for the requirement it says it serves")
+FOREIGN_COMMIT_MSG_HOOK = ("plumb: your own commit-msg hook was kept; say \"call plumb from my "
+                           "commit-msg hook\" to add the check of the requirement each commit "
+                           "serves")
+NOT_ADOPTED = "/plumb init to adopt this repository"
+GETTING_READY = ("plumb is getting ready for its first run; it will follow this session from "
+                 "your next message")
+NEEDS_PYTHON = ("plumb needs Python 3.12 on this machine; say 'install what plumb needs' and I "
+                "will set it up")
+OLD_INSTALL = ("plumb is set up here the old way; say 'move plumb to the plugin' to switch")
+IGNORED = ("plumb will stay out of this repository; say 'use plumb here again' to bring it back")
+UNIGNORED = "plumb will offer to follow this repository again"
+MIGRATE_DONE = ("plumb now runs from the plugin here: its old settings and copies are gone, and "
+                "git's checks call plumb's launcher.")
+MIGRATE_KEPT = "  kept, because you changed it: {what}"
+MIGRATE_KEPT_SETTINGS = "  kept, because they are yours: your own Claude Code settings"
+MIGRATE_NOTHING = "plumb was not set up here the old way; nothing to move."
+
 
 def conflicts_card(n: int) -> str:
     """The status card's part for open intent conflicts ("1 conflict awaits you")."""
@@ -562,3 +583,33 @@ WHY_RECOMMENDED: dict[str, str] = {
                        "work is built on"),
     "proposed": "each was written from your words this turn and reads as you asked",
 }
+
+# --------------------------------------------------------------------------- SP7 PRESS
+# What a button press on a card answers (sp7-realign-sp8 C3, C6; DEC-032, DEC-034). Titles,
+# never record IDs; no commands.
+BUTTON_ASK_CHANGE = "Ask for a change"
+BUTTON_LEAVE_OPEN = "Leave open"
+PRESS_PREFILL = "Change to '{topic}': "
+PRESS_CONFIRMED = 'You pressed {label}: now confirmed: {titles}.'
+PRESS_REJECTED = 'You pressed {label}: dropped: {titles}.'
+PRESS_LEFT_OPEN = ('Left open: "{topic}". It stops coming back at the end of each turn until '
+                   "it changes; it stays listed under what awaits you.")
+PRESS_CHANGE = 'Say what to change about "{topic}"; your next message is read against it.'
+PRESS_ANSWERED = 'You pressed {label} on "{topic}".'
+PRESS_CHANGED_SINCE = '"{title}" changed since it was shown; nothing was confirmed.'
+PRESS_ALREADY = '"{topic}" was already answered; nothing changed.'
+PRESS_MODEL_CONFIRMED = ("The owner pressed {label}; now confirmed: {records}. Do not ask "
+                         "again.")
+PRESS_MODEL_REJECTED = "The owner pressed {label}; dropped: {records}."
+PRESS_MODEL_LEFT_OPEN = ('The owner pressed Leave open on "{topic}". Do not ask about it '
+                         "again until it changes.")
+PRESS_MODEL_CHANGE = ('The owner pressed Ask for a change on "{topic}"; their next message '
+                      "says what to change.")
+PRESS_MODEL_ANSWERED = 'The owner pressed {label} on "{topic}".'
+PRESS_MODEL_CHANGED = ("The owner pressed {label}, but {records} changed since it was shown; "
+                       "nothing was confirmed and the new version is shown as a fresh card.")
+
+# --------------------------------------------------------------------------- SP7 MOD
+# What plumb's panel adds (SP7 5.1, 5.8; sp7-realign-sp8 C6, C7).
+PRESS_MODEL_UNDONE = ("The owner pressed Undo on the settled line; {records} is proposed again. "
+                      "Do not treat it as confirmed.")
