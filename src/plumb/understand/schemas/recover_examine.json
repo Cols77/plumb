@@ -1,0 +1,11 @@
+{
+  "id": "recover_examine.v1",
+  "title": "Does the record misread the owner's message?",
+  "type": "object",
+  "required": ["verdict", "explanation"],
+  "properties": {
+    "verdict": {"type": "string", "enum": ["misreads", "fits"]},
+    "explanation": {"type": "string"},
+    "proposed_wording": {"type": "string"}
+  }
+}

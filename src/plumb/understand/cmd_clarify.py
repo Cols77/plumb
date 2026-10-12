@@ -32,6 +32,8 @@ WHY_BY_STEP = {
     "run": "the model could not be reached",
 }
 WHY_DEFAULT = "the check failed"
+# the check finished, yet the gate stays closed with no card: nothing will change by waiting
+WHY_UNSETTLED = "the check finished without a question or a go-ahead"
 READY = "Nothing in your request needs asking. You can start building."
 SHOW_CARD = ("Show this to the owner in your reply and do not build until they have "
              "answered.")
@@ -157,8 +159,18 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
         result = result_of(root, session, ours.id)
         if result is not None:
             if result.status == "ok":
-                reporter.done()
-                return _outcome_from_state(core, session, digest)
+                outcome = _outcome_from_state(core, session, digest)
+                if outcome.state != "waiting":
+                    reporter.done()
+                    return outcome
+                # the result is in but not applied yet (the worker applies it next): poll on,
+                # and once the limit passes say so instead of "waiting", which a re-run would
+                # answer again for ever (the skill runs --wait again on waiting)
+                if clock() - started >= limit:
+                    reporter.failed(owner_text.STEP_CHECKING)
+                    return _couldnt(core, session, digest, WHY_UNSETTLED)
+                sleep(POLL_S)
+                continue
             reporter.failed(owner_text.STEP_CHECKING)
             return _couldnt(core, session, digest, why_failed(result))
         if clock() - started >= limit:

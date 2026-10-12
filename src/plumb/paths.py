@@ -5,12 +5,23 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def holds_records(candidate: Path) -> bool:
+    """Whether ``candidate/.plumb`` is a repository's records folder. plumb's own home
+    (``~/.plumb``: the plugin's environments under ``env/`` and ``current.json``) never is,
+    whatever else was left in it, so a folder under the user's home is never taken for an
+    adopted repository."""
+    plumb = Path(candidate) / ".plumb"
+    if not plumb.is_dir():
+        return False
+    return not ((plumb / "env").is_dir() or (plumb / "current.json").is_file())
+
+
 def find_root(start: Path) -> Path:
     """The first directory upward holding ``.plumb/``, else ``.git``, else ``start``."""
     start = start.resolve()
     chain = [start, *start.parents]
     for candidate in chain:
-        if (candidate / ".plumb").is_dir():
+        if holds_records(candidate):
             return candidate
     for candidate in chain:
         if (candidate / ".git").exists():

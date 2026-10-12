@@ -146,6 +146,8 @@ def test_every_route_names_a_module_path() -> None:
                 # sub-project 6 (sp6 plan 3.2 item 5)
                 "log", "merge-fix", "ids", "merge-driver", "conflict", "conflicts",
                 "inflight",
+                # SR-127: a requirement's proof plan and evidence
+                "proof",
                 # sub-project 8 (understanding layer, phase C stubs)
                 "understand", "go", "settle", "undo",
                 # sp8 STALE: `plumb stale card`
@@ -153,7 +155,9 @@ def test_every_route_names_a_module_path() -> None:
                 # sub-project 7 PLUGIN: `plumb plugin ignore|unignore|migrate`
                 "plugin",
                 # sp7 slice 4: the panel's own commands (not advertised in --help)
-                "mod"}
+                "mod",
+                # SR-118: `plumb quotes recover`
+                "quotes"}
     assert set(cli.ROUTES) == expected
     for module in cli.ROUTES.values():
         assert re.fullmatch(r"plumb(\.[a-z_]+)+", module)
@@ -175,3 +179,20 @@ def test_entry_point_imports_stay_light() -> None:
     out = subprocess.run([sys.executable, "-c", "import json; " + code], capture_output=True,
                          text=True, check=True).stdout
     assert json.loads(out) == []
+
+
+def test_plumbs_own_home_is_never_taken_for_a_repository(tmp_path: Path) -> None:
+    """~/.plumb holds the plugin's environments (env/, current.json): a folder under the
+    user's home walks past it, even when records were once written there by mistake."""
+    from plumb.paths import holds_records
+
+    home = tmp_path / "home"
+    (home / ".plumb" / "env").mkdir(parents=True)
+    (home / ".plumb" / "requirements").mkdir()             # left there by an earlier mistake
+    (home / ".plumb" / "config.yaml").write_text("{}\n", encoding="utf-8")
+    work = home / "scratch" / "x"
+    work.mkdir(parents=True)
+    assert holds_records(home) is False
+    assert find_root(work) == work.resolve()
+    (work / ".plumb").mkdir()                              # a repository's own records count
+    assert holds_records(work) is True and find_root(work) == work.resolve()

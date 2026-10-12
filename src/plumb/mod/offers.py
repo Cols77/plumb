@@ -5,7 +5,8 @@ hash)`` (``files.digest_of``; a card with no question offers its card as questio
 its buttons: the question's suggested choices in order (the recommended one first), then always
 **Ask for a change** and **Leave open**. The press names the offer and the button's index.
 
-An offer is recorded once, when it is first drawn: ``.plumb/session/<s>/offers/<hex>.json``
+An offer is recorded once per panel key (again only after a resumed session's new panel
+registered, ``session.retire``), when it is first drawn: ``.plumb/session/<s>/offers/<hex>.json``
 (what the press reads: the card, question, record and hash shown, the buttons, ``drawn_at``) and
 an ``offer`` log entry (what the re-check of a button approval reads: the session folder is not
 committed, the log is)."""
@@ -87,8 +88,11 @@ def _button_json(n: int, choice: Choice) -> dict[str, Any]:
 
 def _record_offer(core: Any, session: str, data: Mapping[str, Any]) -> None:
     path = offer_path(core.root, session, str(data["offer_id"]))
-    if isinstance(files.read_json(path), Mapping):
+    held = files.read_json(path)
+    if isinstance(held, Mapping) and held.get("key_digest") == data["key_digest"]:
         return                                          # drawn before: the first draw stands
+    # never drawn, or drawn under the key of the panel a resumed session replaced: recorded
+    # again under this key, so a press with it re-checks
     files.write_json_atomic(path, dict(data))
     core.log_append("events", OFFER_KIND, {
         "session": session, "offer": data["offer_id"], "card": data["card"],
@@ -159,12 +163,24 @@ def _offers_of(core: Any, session: str, digest: str, stamp: str, card: CardState
     return offers
 
 
+def unanswered(card: CardState) -> CardState:
+    """A trial batch without the questions already answered (the owner answers it in part,
+    one record at a time): an answered record is not offered again (SR-124, INT-032 (2)).
+    Every other kind of card keeps all its questions: no record says otherwise for them."""
+    answered = {a.question for a in card.answers}
+    if card.kind != "trial" or len(card.questions) < 2 or not answered:
+        return card
+    left = tuple(q for q in card.questions if q.id not in answered)
+    return dataclasses.replace(card, questions=left) if left else card
+
+
 def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
     """The cards the mod draws for ``session`` (as ``cards.json`` holds them, never cut: the mod
     folds a long ``evidence`` by its ``evidence_size``), then the cards the stop hook built and
     drew at the last turn end (``summary.read_drawn``), each with its full content (SR-116, the
-    same as the end-of-turn text) and each question with its offer and buttons; every offer is
-    recorded the first time it is drawn."""
+    same as the end-of-turn text) and each question with its offer and buttons (a question
+    already answered is left out, ``unanswered``); every offer is recorded the first time it
+    is drawn."""
     from plumb.mod.session import now
     from plumb.understand import summary
 
@@ -176,6 +192,7 @@ def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
         have.add(card.id)
         if card.status not in DRAWN:
             continue
+        card = unanswered(card)
         out.append({**cardstore.card_to_json(card), "evidence_size": len(card.evidence),
                     "repeats": card.status in cardstore.AWAITING,
                     "offers": _offers_of(core, session, digest, stamp, card, False),

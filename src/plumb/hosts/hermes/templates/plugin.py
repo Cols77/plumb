@@ -231,7 +231,7 @@ def register(ctx: Any) -> None:
     register_skill = getattr(ctx, "register_skill", None)
     if callable(register_skill):
         for name, description in {
-            "plumb": "Ground work in this repository's plumb records.",
+            "plumb-records": "Ground work in this repository's plumb records.",
             "plumb-clarify": "Clarify the owner's intent before building.",
         }.items():
             path = Path(__file__).parent / "skills" / name / "SKILL.md"

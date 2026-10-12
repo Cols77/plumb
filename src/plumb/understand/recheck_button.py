@@ -30,18 +30,22 @@ class _Index:
         from plumb.mod.session import HELLO_KIND
 
         self.position: dict[str, int] = {}
-        self.hello: dict[str, tuple[int, str]] = {}
-        self.offers: dict[tuple[str, str], tuple[int, Mapping[str, Any]]] = {}
+        # every registration of a session (a resumed one registers again, with a new key) and
+        # every drawing of an offer (drawn again under that new key)
+        self.hello: dict[str, list[tuple[int, str]]] = {}
+        self.offers: dict[tuple[str, str], list[tuple[int, Mapping[str, Any]]]] = {}
         for n, entry in enumerate(events):
             self.position.setdefault(entry.digest, n)
             if entry.marker != "none":
                 continue
             payload = entry.payload
             session = str(payload.get("session") or "")
-            if entry.kind == HELLO_KIND and session not in self.hello:
-                self.hello[session] = (n, str(payload.get("key_digest") or ""))
+            if entry.kind == HELLO_KIND:
+                key = str(payload.get("key_digest") or "")
+                self.hello.setdefault(session, []).append((n, key))
             elif entry.kind == OFFER_KIND:
-                self.offers.setdefault((session, str(payload.get("offer") or "")), (n, payload))
+                drawn = self.offers.setdefault((session, str(payload.get("offer") or "")), [])
+                drawn.append((n, payload))
 
 
 def _index_of(events: list[LogEntry]) -> _Index:
@@ -72,18 +76,19 @@ def problem(entry: LogEntry, core: Any) -> str | None:
     events = core.events()
     index = _index_of(events)
     at = index.position.get(entry.digest, len(events))
-    hello = index.hello.get(session)
-    if hello is None or hello[0] >= at or hello[1] != digest:
+    if not any(n < at and key == digest for n, key in index.hello.get(session, ())):
         return "button approval: no panel registered that key for its session before it"
-    from plumb.mod.session import registration
+    from plumb.mod.session import accepted_digests, registration
 
     held = registration(core.root, session)
-    if held is not None and held.get("key_digest") != digest:
+    if held is not None and digest not in accepted_digests(held):
         return "button approval: the key is not the one the session's panel holds"
-    drawn = index.offers.get((session, offer))
-    if drawn is None or drawn[0] >= at:
+    drawn = [(n, p) for n, p in index.offers.get((session, offer), ()) if n < at]
+    if not drawn:
         return "button approval: its offer was not drawn in that session before it"
-    shown = drawn[1]
+    # the drawing under the approval's key (a resumed session draws its offers again)
+    same_key = [p for _, p in drawn if p.get("key_digest") == digest]
+    shown = same_key[-1] if same_key else drawn[0][1]
     if shown.get("key_digest") != digest or shown.get("card") != payload.get("card") \
             or str(shown.get("question") or "") != str(payload.get("question") or ""):
         return "button approval: its offer was drawn for another card or key"

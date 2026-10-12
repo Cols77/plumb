@@ -166,11 +166,37 @@ def _prompt_for(prompts: list[dict[str, Any]], digest: str) -> dict[str, Any] | 
     return None
 
 
+def recovered(core: Any, source: Any) -> dict[str, Any] | None:
+    """What ``plumb quotes recover`` found for ``source`` in past transcripts (SR-118), or
+    None: ``{status, span, at, session, reason, proposed_wording, note}``. Shown, never
+    trusted: ``note`` says it was found in a transcript and is not verified."""
+    from plumb.understand.recover import finding_for
+
+    try:
+        finding = finding_for(core, source)
+    except Exception:  # noqa: BLE001 - an unreadable cache shows nothing, it never breaks a card
+        return None
+    if finding is None:
+        return None
+    keys = ("status", "span", "at", "session", "reason", "proposed_wording", "note", "by")
+    return {key: finding.get(key) for key in keys}
+
+
+def found_lines(found: Mapping[str, Any] | None) -> list[str]:
+    """What a transcript search found (``recovered``) in plain words, or [] when nothing."""
+    if not found:
+        return []
+    from plumb.understand.recover import finding_lines
+
+    return finding_lines(found)
+
+
 def owner_words(core: Any, record: Any) -> dict[str, Any]:
     """The owner's words ``record`` traces to: for itself when it is an intent, and for each
     intent it derives from, the quote and the logged prompt it came from (where on file).
-    ``{"items": [{id, title, quote, prompt, at}], "note": ""}``; ``note`` says plainly when
-    none is on file."""
+    ``{"items": [{id, title, quote, prompt, at, found, found_lines}], "note": ""}``; ``note`` says plainly
+    when none is on file. ``found`` is what a transcript search found (``recovered``): shown
+    as found, not verified, it never stands for the owner's logged words."""
     index = core.index()
     sources = [record] if record.kind == "intent" else []
     sources += [index[link.target.record] for link in record.links
@@ -182,11 +208,13 @@ def owner_words(core: Any, record: Any) -> dict[str, Any]:
         parts = raw if isinstance(raw, (list, tuple)) else [raw]   # some intents quote twice
         quote = " / ".join(" ".join(str(p).split()) for p in parts if str(p).strip())
         prompt = _prompt_for(prompts, str(source.fields.get("prompt") or ""))
-        if not quote and prompt is None:
+        found = recovered(core, source)
+        if not quote and prompt is None and found is None:
             continue
         items.append({"id": source.id, "title": source.title, "quote": quote or None,
                       "prompt": prompt["text"] if prompt else None,
-                      "at": prompt["at"] if prompt else None})
+                      "at": prompt["at"] if prompt else None, "found": found,
+                      "found_lines": found_lines(found)})
     return {"items": items, "note": "" if items else NO_WORDS.format(title=record.title)}
 
 
@@ -304,12 +332,16 @@ def content_lines(content: Mapping[str, Any], *, fold: bool = True) -> list[str]
             lines += [f"    {line}" for line in str(change["diff"]).splitlines()]
     if change.get("note"):
         lines.append(f"  About the change: {change['note']}")
+    from plumb.present import owner_text as texts
+
     words = content["owner_words"]
     for item in words.get("items") or ():
         said = item.get("quote") or item.get("prompt") or ""
-        lines.append(f'  Your words ({item["title"]}): "{said}"')
+        lines.append(f'  Your words ({item["title"]}): "{said}"' if said
+                     else texts.FULL_WORDS_UNLOGGED.format(title=item["title"]))
         if item.get("prompt") and item.get("quote") and item["prompt"] != item["quote"]:
             lines.append(f'    from your message: "{item["prompt"]}"')
+        lines += [f"    {line}" for line in found_lines(item.get("found"))]
     if words.get("note"):
         lines.append(f"  {words['note']}")
     for option in content["options"]:

@@ -148,7 +148,7 @@ COMMIT_MSG_INSTALLED = ("plumb: each commit is checked for the requirement it sa
 FOREIGN_COMMIT_MSG_HOOK = ("plumb: your own commit-msg hook was kept; say \"call plumb from my "
                            "commit-msg hook\" to add the check of the requirement each commit "
                            "serves")
-NOT_ADOPTED = "/plumb init to adopt this repository"
+NOT_ADOPTED = "/plumb:plumb init to adopt this repository"
 GETTING_READY = ("plumb is getting ready for its first run; it will follow this session from "
                  "your next message")
 NEEDS_PYTHON = ("plumb needs Python 3.12 on this machine; say 'install what plumb needs' and I "
@@ -476,6 +476,7 @@ FULL_FOLDED = "    [folded: {size} characters, {lines} lines; open it to read it
 FULL_CHANGE_NOTE = "  About the change: {note}"
 FULL_WORDS = '  Your words ({title}): "{said}"'
 FULL_WORDS_PROMPT = '    from your message: "{text}"'
+FULL_WORDS_UNLOGGED = "  Your words ({title}): none on file"
 FULL_WORDS_NONE = "  {note}"
 FULL_OPTION = "  {n}. {text}{mark}"
 FULL_RECOMMENDED = " (recommended)"
@@ -609,6 +610,9 @@ BUTTON_LEAVE_OPEN = "Leave open"
 PRESS_PREFILL = "Change to '{topic}': "
 PRESS_CONFIRMED = 'You pressed {label}: now confirmed: {titles}.'
 PRESS_REJECTED = 'You pressed {label}: dropped: {titles}.'
+# a trial No (a misreading, SR-124): plumb's reading is marked wrong; the record is not dropped
+PRESS_MISREAD = ("You pressed {label}: plumb's reading of {titles} is marked wrong; the record "
+                 "stays as it is.")
 PRESS_LEFT_OPEN = ('Left open: "{topic}". It stops coming back at the end of each turn until '
                    "it changes; it stays listed under what awaits you.")
 PRESS_CHANGE = 'Say what to change about "{topic}"; your next message is read against it.'
@@ -618,6 +622,8 @@ PRESS_ALREADY = '"{topic}" was already answered; nothing changed.'
 PRESS_MODEL_CONFIRMED = ("The owner pressed {label}; now confirmed: {records}. Do not ask "
                          "again.")
 PRESS_MODEL_REJECTED = "The owner pressed {label}; dropped: {records}."
+PRESS_MODEL_MISREAD = ("The owner pressed {label}; plumb's reading of {records} is marked wrong. "
+                       "The record stays: do not remove or rewrite it.")
 PRESS_MODEL_LEFT_OPEN = ('The owner pressed Leave open on "{topic}". Do not ask about it '
                          "again until it changes.")
 PRESS_MODEL_CHANGE = ('The owner pressed Ask for a change on "{topic}"; their next message '

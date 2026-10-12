@@ -57,6 +57,9 @@ class MergeReport:
     intent_conflicts: tuple[Mapping[str, Any], ...] = ()  # {ic, record, title, card}
     exit: int = 0
     legacy_log_lines: int = 0        # SP6 6.5: legacy JSONL lines not migrated (a warning)
+    # SR-127, DEC-037: touched requirements whose proof was not shown working ({id, title,
+    # why}: no proof, not run, failed); information for the owner, never a hold
+    not_shown: tuple[Mapping[str, Any], ...] = ()
 
 
 def as_dict(report: MergeReport) -> dict[str, Any]:
@@ -71,7 +74,7 @@ def exit_code(report: MergeReport) -> int:
     read (``available`` false or absent: the lane is missing, or reading the evidence, the
     tree identity or the test map raised) holds the merge with 5, like a pending full run.
     This is the one choke point for every entry (``merge-check``, ``validate --merge``, the
-    pre-push hook): each takes its exit from here."""
+    pre-push hook): each takes its exit from here. ``not_shown`` never counts (DEC-037)."""
     if report.error:
         return 2
     if report.integrity or report.claims.get("holds") or report.links or \
@@ -190,6 +193,17 @@ def _legacy_log_lines(core: Any) -> int:
     return legacy_count(core.paths)
 
 
+def _not_shown(core: Any, touched: Sequence[str]) -> list[dict[str, Any]]:
+    """SR-127: the touched requirements not shown working; advisory, so an error reading
+    them names nothing rather than failing the report."""
+    try:
+        from plumb.capture.proof import not_shown
+
+        return not_shown(core, touched)
+    except Exception:  # noqa: BLE001 - information only, never a hold
+        return []
+
+
 def _merge_state(core: Any, hook: bool) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """``(unmerged, intent_conflicts)`` of the working tree (sp6 10); inside a git hook the
     cards use logged judgments only (``conflict_rows``)."""
@@ -284,7 +298,8 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         fidelity=None if fidelity is None else tuple(fidelity),
         integrity=tuple(integrity), id_collisions=tuple(id_collisions),
         verification=verification, run_full=run_full,
-        legacy_log_lines=_legacy_log_lines(core))
+        legacy_log_lines=_legacy_log_lines(core),
+        not_shown=tuple(_not_shown(core, touched)))
     unmerged, conflicts = _merge_state(core, hook)
     report = _replace(report, unmerged=tuple(unmerged), intent_conflicts=tuple(conflicts))
     code = exit_code(report)
@@ -393,6 +408,7 @@ def render(report: MergeReport) -> list[str]:
         out.append("repinned without a judgment: " + ", ".join(
             f"{i} (plumb fidelity {i})" for i in report.repinned_unjudged[:CAP]))
     out.extend(_fidelity_lines(report))
+    out.extend(_not_shown_lines(report))
     out.extend(_verification_lines(report, failing_line))
     out.extend(collision_lines(report.id_collisions))
     claims = claims_lines(dict(report.claims))
@@ -452,6 +468,21 @@ def _awaiting_lines(report: MergeReport) -> list[str]:
     if len(report.awaiting) > CAP:
         lines.append("  " + MORE.format(n=len(report.awaiting) - CAP))
     return lines
+
+
+NOT_SHOWN_WHY = {"no proof": "no proof planned", "not run": "proof planned, not run",
+                 "failed": "its evidence did not show it working"}
+
+
+def _not_shown_lines(report: MergeReport) -> list[str]:
+    """SR-127: named for the owner, who decides (DEC-037); never holds the merge."""
+    if not report.not_shown:
+        return (["shown working: every touched requirement"] if report.touched else [])
+    rows = [f"  {row['id']} {row.get('title', '')}: "
+            f"{NOT_SHOWN_WHY.get(str(row.get('why')), str(row.get('why')))} "
+            f"(plumb show {row['id']})" for row in report.not_shown]
+    return ["not shown working yet (information, never holds the merge; you decide):",
+            *_capped(rows)]
 
 
 def _fidelity_lines(report: MergeReport) -> list[str]:

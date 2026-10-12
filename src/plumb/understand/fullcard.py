@@ -6,7 +6,7 @@ asking back, as plain data shaped like ``cardcontent.card_content`` (the stale-l
 ``{id, kind, session, topic, issue, evidence, items: [{text, record_now}],
 record_now: {id, kind, title, wording, examples, details} | None,
 change: {path, diff, size, lines, added, removed, folded, note} | None,
-owner_words: {items: [{id, title, quote, prompt, at}], note},
+owner_words: {items: [{id, title, quote, prompt, at, found, found_lines}], note},
 options: [{n, text, consequence, recommended, index}], why, missing, complete, notes}``.
 
 The record as it now reads and the owner's words are derived each time from the records; what
@@ -91,7 +91,10 @@ def wording(record: Any) -> dict[str, Any]:
 
 def owner_words(core: Any, records: Sequence[Any]) -> dict[str, Any]:
     """The owner's words ``records`` trace to (``cardcontent.owner_words`` over several records,
-    the prompt log read once, each intent named once)."""
+    the prompt log read once, each intent named once). ``found`` is what a transcript search
+    found for the intent (``cardcontent.recovered``, SR-118) and ``found_lines`` says it in
+    plain words (the span, its date and session, "found in a transcript, not verified", and
+    for a misreading the proposed rewording): shown, never trusted."""
     index = core.index()
     sources: dict[str, Any] = {}
     for record in records:
@@ -107,11 +110,13 @@ def owner_words(core: Any, records: Sequence[Any]) -> dict[str, Any]:
         parts = raw if isinstance(raw, (list, tuple)) else [raw]
         quote = " / ".join(" ".join(str(p).split()) for p in parts if str(p).strip())
         prompt = cardcontent._prompt_for(prompts, str(source.fields.get("prompt") or ""))
-        if not quote and prompt is None:
+        found = cardcontent.recovered(core, source)
+        if not quote and prompt is None and found is None:
             continue
         out.append({"id": source.id, "title": source.title, "quote": quote or None,
                     "prompt": prompt["text"] if prompt else None,
-                    "at": prompt["at"] if prompt else None})
+                    "at": prompt["at"] if prompt else None, "found": found,
+                    "found_lines": cardcontent.found_lines(found)})
     note = ""
     if not out:
         names = "; ".join(r.title for r in records) or "this"
@@ -233,7 +238,7 @@ def lines(item: Mapping[str, Any], *, fold: bool = True) -> list[str]:
         out.append(owner_text.CARD_ITEM.format(text=entry["text"]))
         if entry.get("record_now"):
             out += _record_lines(entry["record_now"], item=True)
-    if item.get("evidence"):
+    if item.get("evidence") and item["kind"] != "clarify":  # SR-147
         out.append(owner_text.CARD_EVIDENCE.format(evidence=item["evidence"]))
     if item.get("record_now"):
         out += _record_lines(item["record_now"])
@@ -241,9 +246,14 @@ def lines(item: Mapping[str, Any], *, fold: bool = True) -> list[str]:
     words = item.get("owner_words") or {}
     for said in words.get("items") or ():
         text = said.get("quote") or said.get("prompt") or ""
-        out.append(owner_text.FULL_WORDS.format(title=said["title"], said=text))
+        out.append(owner_text.FULL_WORDS.format(title=said["title"], said=text) if text
+                   else owner_text.FULL_WORDS_UNLOGGED.format(title=said["title"]))
         if said.get("prompt") and said.get("quote") and said["prompt"] != said["quote"]:
             out.append(owner_text.FULL_WORDS_PROMPT.format(text=said["prompt"]))
+        found = said.get("found_lines")
+        if found is None:
+            found = cardcontent.found_lines(said.get("found"))
+        out += [owner_text.FULL_DETAIL.format(text=line) for line in found]
     if words.get("note"):
         out.append(owner_text.FULL_WORDS_NONE.format(note=words["note"]))
     for option in item.get("options") or ():

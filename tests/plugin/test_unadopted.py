@@ -115,3 +115,36 @@ def test_ignored_repo_silent(setup: tuple[Path, dict[str, str], Path],
     result = run_hook("session-start", root, hook_data("session-start"), env)
     assert json.loads(result.stdout) == HINT
     assert not sentinel.exists()
+
+
+def test_a_folder_under_plumbs_own_home_is_not_adopted(tmp_path: Path) -> None:
+    """~/.plumb is plumb's home (env/), not a repository's records, even when a folder named
+    records were once written there: a folder under the user's home stays silent."""
+    home = tmp_path / "user"
+    (home / ".plumb" / "env").mkdir(parents=True)
+    (home / ".plumb" / "requirements").mkdir()
+    (home / ".plumb" / "config.yaml").write_text("{}\n", encoding="utf-8")
+    folder = home / "loose"
+    folder.mkdir()
+    env = env_with([], PLUMB_HOME=str(home / ".plumb"), CLAUDE_PROJECT_DIR=str(folder))
+    result = run_hook("session-start", folder, hook_data("session-start"), env)
+    assert (result.returncode, result.stdout) == (0, "")
+
+
+@pytest.mark.sr("SR-122")
+def test_init_hint_puts_plumb_on_the_agents_path(setup: tuple[Path, dict[str, str], Path],
+                                                 tmp_path: Path) -> None:
+    """SR-122 EX-2: where the session start suggests /plumb init, the agent's shell gets the
+    plugin's bin/ on its PATH, so the `plumb init` the command runs resolves; once only."""
+    root, env, sentinel = setup
+    env_file = tmp_path / "claude-env.sh"
+    env_file.write_text("", encoding="utf-8")
+    run_env = dict(env, CLAUDE_ENV_FILE=str(env_file))
+    for _ in range(2):
+        result = run_hook("session-start", root, hook_data("session-start"), run_env)
+        assert json.loads(result.stdout) == HINT
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    assert lines.count("export PLUMB_AGENT_SESSION=claude-code") == 1
+    path_lines = [line for line in lines if line.startswith("export PATH=")]
+    assert len(path_lines) == 1 and "/bin:$PATH" in path_lines[0]
+    assert not sentinel.exists()
