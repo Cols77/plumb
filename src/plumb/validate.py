@@ -51,6 +51,36 @@ def _text_merged(core: Core, rel: str) -> str | None:
     return UNPARSABLE.format(record=record, title=title)
 
 
+def proof_problems(fields: Mapping[str, object]) -> list[str]:
+    """What is malformed in a requirement's optional ``proof`` ({plan, kind}) and
+    ``evidence`` ({at, summary, where, passed}) (SR-127); a record without them is valid."""
+    from plumb.capture.proof import KINDS
+
+    problems: list[str] = []
+    proof = fields.get("proof")
+    if proof is not None:
+        if not isinstance(proof, Mapping):
+            problems.append("proof must be a mapping with plan and kind")
+        else:
+            if not str(proof.get("plan") or "").strip():
+                problems.append("proof has no plan")
+            if proof.get("kind") not in KINDS:
+                problems.append(f"proof kind {proof.get('kind')!r} is not one of "
+                                + ", ".join(KINDS))
+    evidence = fields.get("evidence")
+    if evidence is not None:
+        if not isinstance(evidence, Mapping):
+            problems.append("evidence must be a mapping with at, summary, where and passed")
+        else:
+            missing = [k for k in ("at", "summary", "where")
+                       if not str(evidence.get(k) or "").strip()]
+            if missing:
+                problems.append("evidence has no " + ", ".join(missing))
+            if not isinstance(evidence.get("passed"), bool):
+                problems.append("evidence passed must be true or false")
+    return problems
+
+
 def validate(core: Core) -> list[Finding]:
     findings: list[Finding] = []
 
@@ -76,6 +106,9 @@ def validate(core: Core) -> list[Finding]:
             examples = [e.id for e in record.examples]
             if len(examples) != len(set(examples)):
                 add("error", "example", record.id, "duplicate example ids")
+            # SR-127, DEC-037: a malformed proof is named, never an error (it never holds)
+            for problem in proof_problems(record.fields):
+                add("warning", "proof", record.id, problem)
         if record.kind == "feature":
             for sr in record.fields.get("requirements") or []:
                 if str(sr) not in index:

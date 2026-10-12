@@ -24,7 +24,7 @@ def main() -> int:
     module.register(context)
     result = {
         "registered": sorted(manager._plugin_skills),
-        "plumb": json.loads(skill_view("plumb:plumb", preprocess=False)),
+        "plumb": json.loads(skill_view("plumb:plumb-records", preprocess=False)),
         "clarify": json.loads(skill_view("plumb:plumb-clarify", preprocess=False)),
         "flat": json.loads(skill_view("plumb" , preprocess=False)),
     }

@@ -17,7 +17,6 @@ and ``plumb.understand.files`` only."""
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any, TextIO
@@ -67,7 +66,12 @@ def main(*, root: Path | str | None = None, watchdog: bool = True, start: float 
         data = json.loads(stdin.read() or "{}")
         if not isinstance(data, dict):
             return 0
-        base = Path(root) if root else Path(os.environ.get("CLAUDE_PROJECT_DIR") or ".")
+        if root:
+            base = Path(root)
+        else:  # the .plumb/ found by walking up, as gate.sh and the other hooks read it (SR-121)
+            from plumb.hosts.claude_code.hookio import find_hook_root
+
+            base = find_hook_root(data) or Path(".")
         tool_input = data.get("tool_input")
         answer = decide(base, str(data.get("session_id") or ""), str(data.get("tool_name") or ""),
                         tool_input if isinstance(tool_input, dict) else {})

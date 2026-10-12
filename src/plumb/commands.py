@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from plumb.cliutil import EXIT_REFUSED, EXIT_USAGE, add_common, emit, resolve_root
+from plumb.cliutil import EXIT_OK, EXIT_REFUSED, EXIT_USAGE, add_common, emit, resolve_root
 
 CONFIG_TEMPLATE = """\
 # plumb configuration. Every key is optional; the defaults are shown commented out.
@@ -461,6 +461,9 @@ def cmd_relay(command: str, argv: list[str]) -> int:
     worker applying the reader's reading of the owner's message, confirms a record."""
     from plumb import approvals
 
+    if argv and argv[0] in ("-h", "--help"):       # its help still answers, and says why
+        print(f"usage: plumb relay (retired, always refused)\n\n{approvals.AGENT_RELAY_GONE}")
+        return EXIT_OK
     del command, argv
     print(f"plumb: relay refused: {approvals.AGENT_RELAY_GONE}", file=sys.stderr)
     return EXIT_REFUSED

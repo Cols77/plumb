@@ -140,7 +140,8 @@ hold a triage group (sp2 8.1).
    `.plumb/session/stated.json` gains `groups: [{group, records: [{id, hash}]}]` (written by
    the stop hook, read by `plumb relay --group`).
 5. **Installer.** `install.py` installs every `templates/skills/<name>/SKILL.md` it finds
-   (the existing skill moves to `templates/skills/plumb/SKILL.md`), and adds deny rules for
+   (the existing skill moves to `templates/skills/plumb/SKILL.md`, since DEC-036
+   `templates/skills/plumb-records/`), and adds deny rules for
    `plumb triage --approve`, `plumb spec approve` and `plumb config auto-approve`, in the
    three launcher forms. `plumb hook <event>` accepts `--host` and `--format` and routes
    through `hosts.neutral`. `.plumb/.gitignore` adds `view/`.

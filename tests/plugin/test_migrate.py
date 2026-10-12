@@ -127,3 +127,23 @@ def test_legacy_repo_hooks_run_once(tmp_path: Path) -> None:
         result = run_hook(event, root, hook_data(event), env)
         assert (result.returncode, result.stdout) == (0, ""), event
     assert not sentinel.exists()
+
+
+@pytest.mark.sr("SR-120")
+def test_the_skill_under_its_retired_name_goes_and_an_owners_own_stays(
+        tmp_path: Path, plugin_env: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """DEC-036: an install from before the rename wrote .claude/skills/plumb; migrating removes
+    it with the rest, but a skill of the owner's own named plumb is theirs."""
+    root = _legacy(tmp_path / "repo")
+    old = root / ".claude" / "skills" / "plumb" / "SKILL.md"
+    old.parent.mkdir(parents=True)
+    old.write_text("---\nname: plumb\ndescription: Ground work in this repository's plumb "
+                   "records (owner intent).\n---\nold\n", encoding="utf-8")
+    _migrate(root, capsys)
+    assert not (root / ".claude" / "skills").exists()
+    other = _legacy(tmp_path / "other")
+    own = other / ".claude" / "skills" / "plumb" / "SKILL.md"
+    own.parent.mkdir(parents=True)
+    own.write_text("---\nname: plumb\ndescription: my plumbing notes\n---\n", encoding="utf-8")
+    _migrate(other, capsys)
+    assert own.exists()

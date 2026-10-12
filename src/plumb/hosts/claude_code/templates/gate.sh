@@ -18,7 +18,30 @@ session=${session%%\"*}
 case "$session" in
   ""|*[!A-Za-z0-9_-]*) exit 0 ;;
 esac
-file="${CLAUDE_PROJECT_DIR:-.}/.plumb/session/$session/gate"
+# the .plumb/ folder: PLUMB_ROOT (the plugin hook passes the one its walk up found, so a session
+# started in a subfolder is gated too), else the project folder (the per-repository install)
+file="${PLUMB_ROOT:-${CLAUDE_PROJECT_DIR:-.}}/.plumb/session/$session/gate"
+if [ -z "$PLUMB_ROOT" ] && [ ! -r "$file" ]; then
+  # the per-repository install passes no PLUMB_ROOT: a session started in a subfolder reads
+  # the gate of the .plumb/ above it, the walk stopping at the git root
+  d=${CLAUDE_PROJECT_DIR:-$PWD}
+  while :; do
+    case $d in
+      *\\*) d="${d%%\\*}/${d#*\\}" ;;
+      *) break ;;
+    esac
+  done
+  while [ -n "$d" ]; do
+    if [ -d "$d/.plumb/session" ]; then
+      file="$d/.plumb/session/$session/gate"
+      break
+    fi
+    [ -e "$d/.git" ] && break
+    parent=${d%/*}
+    [ "$parent" = "$d" ] && break
+    d=$parent
+  done
+fi
 [ -r "$file" ] || exit 0
 state=
 while IFS= read -r line || [ -n "$line" ]; do state="$state$line"; done < "$file"

@@ -19,6 +19,10 @@ EXAMPLE_ID = re.compile(r"^(?:EX|AC)-\d+$")
 PREFIX_KIND = {"INT": "intent", "SR": "requirement", "DEC": "decision", "FEAT": "feature",
                "NC": "nc"}
 _ID_FIELDS = ("id", "title", "links")
+# SR-127 (DEC-037): a requirement's proof plan and evidence are the agent's notes about showing
+# the work, not the owner's intent: like ``links`` they stay out of the record hash, so
+# recording them never unconfirms a record nor moves its links
+UNHASHED = frozenset({"links", "proof", "evidence"})
 
 
 class RecordError(ValueError):
@@ -54,8 +58,9 @@ def load_yaml(text: str) -> Any:
 
 
 def record_hash(frontmatter: Mapping[str, Any], body: str) -> str:
-    """Spec 5.4: every frontmatter field except ``links``, plus the normalized body."""
-    fields = {k: v for k, v in frontmatter.items() if k != "links"}
+    """Spec 5.4: every frontmatter field except ``links`` (and a requirement's ``proof`` and
+    ``evidence``, SR-127), plus the normalized body."""
+    fields = {k: v for k, v in frontmatter.items() if k not in UNHASHED}
     return sha256_bytes(canonical_json({"fields": fields, "body": normalize_text(body)}))
 
 

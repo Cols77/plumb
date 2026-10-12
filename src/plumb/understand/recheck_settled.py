@@ -27,8 +27,11 @@ from typing import Any
 
 from plumb.contracts import LogEntry
 from plumb.present import owner_text
+from plumb.understand.typed import PREFIX
 
-UNDO = re.compile(r"^/plumb\s+undo\s+(\S.*?)\s*$", re.IGNORECASE)
+# SR-120: typed as /plumb or as the plugin's /plumb:plumb, in lower case as typed.parse reads
+# every typed command
+UNDO = re.compile(r"^" + PREFIX + r"\s+undo\s+(\S.*?)\s*$")
 
 
 _AMBIENT: dict[str, tuple[Any, Any]] = {}

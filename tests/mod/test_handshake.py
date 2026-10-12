@@ -274,7 +274,8 @@ def test_draw_carries_the_full_card_content_where_plumb_derives_it(core, monkeyp
 
 
 def _fixture(name: str) -> object:
-    text = (PLUGIN / "hooks" / "fixtures.ts").read_text(encoding="utf-8")
+    fixtures = PLUGIN.parent / "tests" / "plugin" / "mod" / "fixtures.ts"   # SR-123: not shipped
+    text = fixtures.read_text(encoding="utf-8")
     found = re.search(rf"// BEGIN {name}\n.*?= (.*?)\n// END {name}", text, re.S)
     assert found, name
     return json.loads(found.group(1))
