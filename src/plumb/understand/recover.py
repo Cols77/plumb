@@ -2,7 +2,8 @@
 
 An intent whose quote is in no prompt the hook logged ("quote not verified" in triage) may
 still have its source in a past Claude Code session: ``~/.claude/projects/<project>*/*.jsonl``
-keeps every message the owner typed. Recovery looks there with a cascade like SR-114's repin:
+keeps every message the owner typed (this project's folder only, its name matched exactly:
+never a worktree's or another project's). Recovery looks there with a cascade like SR-114's repin:
 
 1. a plain text comparison first: a message holding the record's quote verbatim (the same
    ``approvals.quote_in_prompt`` check triage uses, over normalized text) is the source, and
@@ -40,6 +41,8 @@ CACHE_NAME = "recovered_quotes.json"
 TRANSCRIPTS_ENV = "PLUMB_TRANSCRIPTS_DIR"
 NOT_VERIFIED = "found in a transcript, not verified"
 NOT_FOUND = "your words were not found in any past session transcript"
+TOO_SHORT = "the words found in a transcript are too short to show"
+MIN_SPAN_WORDS = 4        # a model-picked span shorter than this (and not the whole message)
 JEV_BATCH = 20            # messages per JEV choice question
 JEV_MESSAGE_MAX = 1200    # characters of a message shown to JEV
 TOP_K = 3                 # messages JEV ranks best that Sonnet reads
@@ -47,7 +50,16 @@ MESSAGE_MAX = 8000        # characters of a message shown to Sonnet and Opus
 PICK_KIND, PICK_SCHEMA_ID = "recover", "recover.v1"
 EXAMINE_KIND, EXAMINE_SCHEMA_ID = "recover_examine", "recover_examine.v1"
 _HARNESS_STARTS = ("<command-", "<local-command", "<system-reminder>", "<task-notification>",
-                   "[Request interrupted", "Caveat: The messages below")
+                   "<cross-session-message", "Another Claude session sent a message",
+                   "This session is being continued from a previous conversation",
+                   "[SYSTEM NOTIFICATION", "[Request interrupted", "Caveat: The messages below")
+# entry flags of messages the harness wrote, never the owner: a compaction summary, a line
+# shown in the transcript only, a skill or meta injection, a tool result, a subagent's turn
+_SYNTHETIC_FLAGS = ("isCompactSummary", "isVisibleInTranscriptOnly", "isMeta", "isSidechain",
+                    "toolUseResult", "sourceToolUseID")
+# ``origin.kind`` of a message the owner typed; any other kind (task-notification, peer for a
+# cross-session message, plugin for a mod's line) is not the owner's
+_OWNER_ORIGINS = ("human",)
 
 
 def _load(name: str, schema_id: str) -> Mapping[str, Any]:
@@ -107,16 +119,25 @@ def _owner(text: str) -> str:
     return "" if not text or text.startswith(_HARNESS_STARTS) else text
 
 
+def _synthetic(entry: Mapping[str, Any]) -> bool:
+    """Whether a ``user`` entry was written by the harness rather than typed by the owner."""
+    if any(entry.get(flag) for flag in _SYNTHETIC_FLAGS):
+        return True
+    origin = entry.get("origin")
+    return isinstance(origin, Mapping) and origin.get("kind") not in _OWNER_ORIGINS
+
+
 def owner_messages(project_root: Path | str, base: Path | None = None) -> list[Message]:
     """The owner's own messages in this project's past sessions, oldest first, each text
     once (its earliest time): user messages only (``type == "user"``, text parts), no
-    tool results, no harness-injected or sidechain messages."""
+    tool results, compaction summaries, transcript-only lines, task notifications,
+    cross-session messages or other harness-injected or sidechain messages. Only the folder
+    named exactly for this project is read (no worktree's, no other project's)."""
     base = transcripts_root() if base is None else Path(base)
-    name = project_dir_name(project_root)
+    folder = base / project_dir_name(project_root)
     found: dict[str, Message] = {}
     try:
-        files = sorted(p for d in base.glob(f"{glob_escape(name)}*") if d.is_dir()
-                       for p in d.glob("*.jsonl"))
+        files = sorted(folder.glob("*.jsonl")) if folder.is_dir() else []
     except OSError:
         return []
     for path in files:
@@ -129,8 +150,7 @@ def owner_messages(project_root: Path | str, base: Path | None = None) -> list[M
                 entry = json.loads(line)
             except ValueError:
                 continue
-            if (not isinstance(entry, dict) or entry.get("type") != "user"
-                    or entry.get("isMeta") or entry.get("isSidechain")):
+            if not isinstance(entry, dict) or entry.get("type") != "user" or _synthetic(entry):
                 continue
             message = entry.get("message")
             text = _owner(_text_of(message.get("content") if isinstance(message, Mapping)
@@ -144,10 +164,6 @@ def owner_messages(project_root: Path | str, base: Path | None = None) -> list[M
                                       session=str(entry.get("sessionId") or path.stem),
                                       path=str(path))
     return sorted(found.values(), key=lambda m: m.at)
-
-
-def glob_escape(name: str) -> str:
-    return re.sub(r"([*?\[\]])", r"[\1]", name)
 
 
 def _flat(text: str) -> str:
@@ -181,7 +197,8 @@ def record_view(record: Any) -> dict[str, Any]:
 def targets(core: Any, ids: Sequence[str] | None = None) -> tuple[list[Any], list[str]]:
     """The intents to recover words for, and why each other named ID is skipped. With no
     IDs: every intent not confirmed whose quote is in no prompt the hook logged. A named
-    requirement or decision stands for the intents it derives from."""
+    requirement or decision stands for the intents it derives from. A confirmed intent is
+    skipped either way: the owner already confirmed it."""
     from plumb.capture.triage import _Prompts, _verified_intent
 
     index = core.index()
@@ -204,7 +221,9 @@ def targets(core: Any, ids: Sequence[str] | None = None) -> tuple[list[Any], lis
                 if not sources:
                     skipped.append(f"{rid}: it derives from no intent")
             for source in sources:
-                if _verified_intent(prompts, source) is not None:
+                if statuses[source.id].confirmation == "confirmed":
+                    skipped.append(f"{source.id}: the owner already confirmed it")
+                elif _verified_intent(prompts, source) is not None:
                     skipped.append(f"{source.id}: its words are in a prompt the hook logged")
                 elif source not in wanted:
                     wanted.append(source)
@@ -223,8 +242,9 @@ def targets(core: Any, ids: Sequence[str] | None = None) -> tuple[list[Any], lis
 @dataclass(frozen=True)
 class Finding:
     """What recovery found for one record. ``status``: ``found`` (the span supports the
-    record), ``misreads`` (the best message does not support it; Opus proposes a rewording)
-    or ``not_found``."""
+    record), ``misreads`` (the best message does not support it; Opus proposes a rewording),
+    ``too_short`` (the span a model picked is under ``MIN_SPAN_WORDS`` words and not the
+    whole message: not shown) or ``not_found``."""
 
     id: str
     hash: str
@@ -430,6 +450,11 @@ def exact_match(record: Any, messages: Sequence[Message]) -> Message | None:
     return None
 
 
+def long_enough(span: str, message: str) -> bool:
+    """A span worth showing: at least ``MIN_SPAN_WORDS`` words, or the whole message."""
+    return len(span.split()) >= MIN_SPAN_WORDS or _flat(span) == _flat(message)
+
+
 def recover_one(record: Any, messages: Sequence[Message], cascade: Cascade) -> Finding:
     """The cascade for one record. Raises ``RecoveryError`` when a model it needs gives no
     usable answer: nothing is decided then."""
@@ -460,13 +485,21 @@ def recover_one(record: Any, messages: Sequence[Message], cascade: Cascade) -> F
     if not holds(message.text, pick.span):
         raise RecoveryError("the span the model picked is not word for word in the message")
     span = " ".join(pick.span.split())
+
+    def supported(by: str, reason: str) -> Finding:
+        if not long_enough(span, message.text):
+            return Finding(**base, status="too_short", by=by, at=message.at,
+                           session=message.session, transcript=message.path, reason=reason,
+                           note=TOO_SHORT)
+        return found(message, "found", by, span, reason=reason)
+
     if pick.supports:
-        return found(message, "found", "sonnet", span, reason=pick.reason)
+        return supported("sonnet", pick.reason)
     verdict = cascade.opus().examine(view, _shown(i, message), span, pick.reason)
     if verdict.misreads:
         return found(message, "misreads", "opus", span, reason=verdict.explanation,
                      proposed_wording=verdict.proposed_wording)
-    return found(message, "found", "opus", span, reason=verdict.explanation)
+    return supported("opus", verdict.explanation)
 
 
 # --------------------------------------------------------------------------- the cache
@@ -546,6 +579,8 @@ def finding_lines(finding: Mapping[str, Any]) -> list[str]:
     status = finding.get("status")
     if status == "not_found":
         return [str(finding.get("note") or NOT_FOUND)]
+    if status == "too_short":
+        return [str(finding.get("note") or TOO_SHORT)]
     when = str(finding.get("at") or "")[:10] or "an unknown date"
     session = str(finding.get("session") or "")[:8]
     lines = [f'found in a transcript of {when} (session {session}), not verified: '
