@@ -609,6 +609,9 @@ BUTTON_LEAVE_OPEN = "Leave open"
 PRESS_PREFILL = "Change to '{topic}': "
 PRESS_CONFIRMED = 'You pressed {label}: now confirmed: {titles}.'
 PRESS_REJECTED = 'You pressed {label}: dropped: {titles}.'
+# a trial No (a misreading, SR-124): plumb's reading is marked wrong; the record is not dropped
+PRESS_MISREAD = ("You pressed {label}: plumb's reading of {titles} is marked wrong; the record "
+                 "stays as it is.")
 PRESS_LEFT_OPEN = ('Left open: "{topic}". It stops coming back at the end of each turn until '
                    "it changes; it stays listed under what awaits you.")
 PRESS_CHANGE = 'Say what to change about "{topic}"; your next message is read against it.'
@@ -618,6 +621,8 @@ PRESS_ALREADY = '"{topic}" was already answered; nothing changed.'
 PRESS_MODEL_CONFIRMED = ("The owner pressed {label}; now confirmed: {records}. Do not ask "
                          "again.")
 PRESS_MODEL_REJECTED = "The owner pressed {label}; dropped: {records}."
+PRESS_MODEL_MISREAD = ("The owner pressed {label}; plumb's reading of {records} is marked wrong. "
+                       "The record stays: do not remove or rewrite it.")
 PRESS_MODEL_LEFT_OPEN = ('The owner pressed Leave open on "{topic}". Do not ask about it '
                          "again until it changes.")
 PRESS_MODEL_CHANGE = ('The owner pressed Ask for a change on "{topic}"; their next message '

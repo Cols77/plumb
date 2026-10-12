@@ -28,7 +28,7 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await ui.press({ key: 'press:0:0:show_first:SR-001' })
+      await ui.press({ key: 'press:0:sha256:aaaa' })
       const [hello] = runsOf(w, 'hello')
       const [pressed] = runsOf(w, 'press')
       expect(hello?.argv).toEqual([PYTHON, '-m', 'plumb', 'mod', 'hello', '--session', SESSION, '--root', ROOT, '--json'])
@@ -53,7 +53,7 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       const drawsBefore = runsOf(w, 'draw').length
-      await ui.press({ key: 'press:0:0:show_first:SR-001' })
+      await ui.press({ key: 'press:0:sha256:aaaa' })
       expect(w.toasts).toContain(PRESS_CONFIRM.line)
       const rows = session.appended().map(r => ({ type: r.message.type, text: (r.message.content as any)[0]?.text }))
       expect(rows).toEqual([
@@ -71,7 +71,7 @@ for (const surface of SURFACES) {
       const session = mock.session(on)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await ui.press({ key: 'press:0:3:show_first:SR-001' })
+      await ui.press({ key: 'press:3:sha256:aaaa' })
       expect(runsOf(w, 'press')[0]?.argv.slice(-4)).toEqual(['--offer', 'sha256:aaaa', '--choice', '3'])
       expect(session.appended().map(r => (r.message.content as any)[0]?.text)).toEqual([
         PRESS_LEAVE_OPEN.line, PRESS_LEAVE_OPEN.model_note])
@@ -85,7 +85,7 @@ for (const surface of SURFACES) {
       const session = mock.session(on)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await ui.press({ key: 'press:0:2:show_first:SR-001' })
+      await ui.press({ key: 'press:2:sha256:aaaa' })
       expect(w.fills).toEqual(["Change to 'CSV export': "])
       expect(session.appended().map(r => (r.message.content as any)[0]?.text)).toEqual([
         PRESS_CHANGE.line, PRESS_CHANGE.model_note])
@@ -98,7 +98,7 @@ for (const surface of SURFACES) {
       const session = mock.session(on)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await ui.press({ key: 'press:0:2:show_first:SR-001' })
+      await ui.press({ key: 'press:2:sha256:aaaa' })
       const note = (session.appended().find(r => r.message.type === 'user')?.message.content as any)[0]?.text
       expect(note).toStartWith(PRESS_CHANGE.model_note)
       expect(note).toContain('one question in your next reply')
@@ -110,10 +110,10 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       await ui.press({ key: 'showall' })
-      const labels = async (id: string) =>
-        (await ui.findAll({ type: 'Button' })).filter(b => b.key?.endsWith(`:${id}`) && b.key.startsWith('press:')).map(b => b.props.label)
-      expect(await labels('show_first:SR-001')).toEqual(['Confirm', 'No', 'Ask for a change', 'Leave open'])
-      expect(await labels('stale:SR-005#0')).toEqual(['Keep the requirement and re-pin it', 'Reword the requirement', 'Ask for a change', 'Leave open'])
+      const labels = async (offer: string) =>
+        (await ui.findAll({ type: 'Button' })).filter(b => b.key?.endsWith(`:${offer}`) && b.key.startsWith('press:')).map(b => b.props.label)
+      expect(await labels('sha256:aaaa')).toEqual(['Confirm', 'No', 'Ask for a change', 'Leave open'])
+      expect(await labels('sha256:bbbb')).toEqual(['Keep the requirement and re-pin it', 'Reword the requirement', 'Ask for a change', 'Leave open'])
       await ui.unmount()
     })
 
@@ -125,9 +125,9 @@ for (const surface of SURFACES) {
       const before = w.runs.length
       await ui.press({ key: 'showall' })
       expect(w.runs.length).toBe(before)
-      for (const id of ['show_first:SR-001', 'stale:SR-005#0', 'show_first:SR-009']) {
+      for (const [id, offer] of [['show_first:SR-001', 'sha256:aaaa'], ['stale:SR-005#0', 'sha256:bbbb'], ['show_first:SR-009', 'sha256:cccc']]) {
         expect(await ui.find({ key: `card:${id}` })).toBeDefined()
-        expect(await ui.find({ key: `press:0:0:${id}` })).toBeDefined()
+        expect(await ui.find({ key: `press:0:${offer}` })).toBeDefined()
       }
       await ui.press({ key: 'fewer' })
       expect(await ui.find({ key: 'card:stale:SR-005#0' })).toBeUndefined()
@@ -158,7 +158,7 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       w.answer = (action, argv) => action === 'press' ? { exitCode: 3, data: null } : world().answer(action, argv)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await ui.press({ key: 'press:0:0:show_first:SR-001' })
+      await ui.press({ key: 'press:0:sha256:aaaa' })
       const texts = session.appended().map(r => (r.message.content as any)[0]?.text)
       expect(texts).toEqual(['plumb could not record that press; nothing changed. Try again, or answer in words.'])
       expect(session.appended().some(r => r.message.type === 'user')).toBe(false)

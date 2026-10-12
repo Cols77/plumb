@@ -200,3 +200,69 @@ def test_a_batch_left_open_is_not_asked_again_in_a_new_batch(batch, repo: Path, 
     _turn_end(repo)
     trials = [c for c in cardstore.own_cards(repo, SESSION) if c.kind == "trial"]
     assert [(c.id, c.status) for c in trials] == [(card["id"], "left_open")]
+
+
+def test_a_no_on_a_trial_card_marks_the_reading_wrong_and_the_record_stays(
+        batch, repo: Path, monkeypatch, capsys) -> None:
+    """A trial No is a misreading (capture-error): neither the owner's line nor the agent's note
+    says the record was dropped; the agent is told the record stays and is not to be removed or
+    rewritten, and the record is still there, unchanged."""
+    ids, card = batch
+    by_record = {o["record"]: o for o in card["offers"]}
+    before = open_core(repo).index()["SR-002"].hash
+    code, no, _ = _press(monkeypatch, capsys, repo, by_record["SR-002"], "rejected")
+    assert code == 0 and no["rejected"] == ["SR-002"]
+    assert no["line"] == owner_text.PRESS_MISREAD.format(label=owner_text.TRIAL_NO,
+                                                         titles='"Operation 2"')
+    assert no["model_note"] == owner_text.PRESS_MODEL_MISREAD.format(
+        label=owner_text.TRIAL_NO, records="SR-002 'Operation 2'")
+    for text in (no["line"], no["model_note"]):
+        assert "dropped" not in text and "marked wrong" in text
+    assert "record stays" in no["model_note"]
+    assert "do not remove or rewrite it" in no["model_note"]
+    assert "record stays" in no["line"]
+    after = open_core(repo).index()
+    assert "SR-002" in after and after["SR-002"].hash == before
+
+
+def test_only_a_trial_batch_leaves_out_its_answered_questions() -> None:
+    """``offers.unanswered`` drops the answered questions of a trial batch only; a card of any
+    other kind (a backlog card, a feature card) keeps every question."""
+    import dataclasses
+
+    from plumb.contracts import CardState, ClarifyAnswer, ClarifyQuestion
+    from plumb.mod import offers
+
+    questions = (ClarifyQuestion(id="q1", text="one", record="SR-001", hash="h1"),
+                 ClarifyQuestion(id="q2", text="two", record="SR-002", hash="h2"))
+    trial = CardState(id="trial:x", kind="trial", questions=questions,
+                      answers=(ClarifyAnswer("q1", "accepted", ""),))
+    assert [q.id for q in offers.unanswered(trial).questions] == ["q2"]
+    for kind in ("backlog", "feature", "clarify", "show_first"):
+        other = dataclasses.replace(trial, id=f"{kind}:x", kind=kind)
+        assert offers.unanswered(other).questions == questions
+    assert offers.unanswered(dataclasses.replace(trial, answers=())).questions == questions
+
+
+def test_a_record_held_by_leave_open_comes_back_once_it_changes(
+        batch, repo: Path, write_record, monkeypatch, capsys) -> None:
+    """DEC-034: a trial card left open holds its records; once one of them changes the card is
+    open again (``reopen_changed``) and repeats in the next draw; while nothing changed it stays
+    left open."""
+    from plumb.mod import offers
+
+    ids, card = batch
+    by_record = {o["record"]: o for o in card["offers"]}
+    assert _press(monkeypatch, capsys, repo, by_record["SR-001"], "accepted")[0] == 0
+    assert _press(monkeypatch, capsys, repo, by_record["SR-002"], "open")[0] == 0
+    assert offers.reopen_changed(open_core(repo), SESSION) == []
+    held = [c for c in cardstore.own_cards(repo, SESSION) if c.id == card["id"]]
+    assert [c.status for c in held] == ["left_open"]
+    write_record(repo, requirement_text(
+        2, "Operation 2", "The calculator does operation 2 on whole numbers", intent=1,
+        examples=(("input 2", "it runs", "output 2"),)))
+    assert offers.reopen_changed(open_core(repo), SESSION) == [card["id"]]
+    (back,) = [c for c in cardstore.own_cards(repo, SESSION) if c.id == card["id"]]
+    assert back.status == "open"
+    again = _trial(_draw(monkeypatch, capsys, repo))
+    assert again["id"] == card["id"] and again["repeats"] is True

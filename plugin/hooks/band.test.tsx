@@ -32,7 +32,7 @@ for (const surface of SURFACES) {
       expect(await ui.find({ type: 'Text', text: '1 left open: Late fees' })).toBeDefined()
       // the first awaiting card, whole, with its buttons
       expect(await ui.find({ key: 'card:show_first:SR-001' })).toBeDefined()
-      expect(await ui.find({ key: 'press:0:0:show_first:SR-001' })).toBeDefined()
+      expect(await ui.find({ key: 'press:0:sha256:aaaa' })).toBeDefined()
       expect(await ui.find({ key: 'card:stale:SR-005#0' })).toBeUndefined()
       expect(await ui.find({ key: 'card:show_first:SR-009' })).toBeUndefined()
       expect(await ui.find({ key: 'showall' })).toBeDefined()

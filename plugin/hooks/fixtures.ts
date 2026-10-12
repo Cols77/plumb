@@ -81,8 +81,8 @@ export const PRESS_TRIAL_NO = {
   "ok": true, "offer": "sha256:t009", "card": "trial:5d1c0a9e7b21", "question": "trial:5d1c0a9e7b21#2", "choice": 1,
   "label": "No, that is not what I meant", "answer": "rejected", "status": "open", "confirmed": [], "rejected": ["SR-009"],
   "left_out": [], "fresh_cards": [], "prefill": null,
-  "line": "You pressed No, that is not what I meant: dropped: \"Late fees\".",
-  "model_note": "The owner pressed No, that is not what I meant; dropped: SR-009 'Late fees'.",
+  "line": "You pressed No, that is not what I meant: plumb's reading of \"Late fees\" is marked wrong; the record stays as it is.",
+  "model_note": "The owner pressed No, that is not what I meant; plumb's reading of SR-009 'Late fees' is marked wrong. The record stays: do not remove or rewrite it.",
   "notes": []
 }
 // END PRESS_TRIAL_NO

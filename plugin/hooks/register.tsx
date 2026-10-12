@@ -11,7 +11,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { PlumbBand, PlumbCard, PlumbView } from '../types'
-import { CardView, contentKey, perFeature } from './cards'
+import { CardView, contentKey, findPress, perFeature } from './cards'
 import type { Ui } from './cards'
 import * as plumb from './plumb'
 import type { Io } from './plumb'
@@ -32,15 +32,6 @@ function statusLine(view: PlumbView): string {
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
   const word = waiting ? T.awaiting(waiting) : state || T.nothingAwaits
   return [`${T.name} ${glyph} ${word}`, view.status?.progress].filter(Boolean).join(' · ')
-}
-
-function findPress(cards: PlumbCard[], key: string) {
-  const [, q, b, ...rest] = key.split(':')
-  const id = rest.join(':')
-  const card = cards.find(c => c.id === id)
-  const offer = card?.offers[Number(q)]
-  const button = offer?.buttons[Number(b)]
-  return card && offer && button ? { card, offer, button } : null
 }
 
 /** The band: one line of status, the cards awaiting per feature, the settled line with its

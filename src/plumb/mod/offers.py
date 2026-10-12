@@ -160,10 +160,11 @@ def _offers_of(core: Any, session: str, digest: str, stamp: str, card: CardState
 
 
 def unanswered(card: CardState) -> CardState:
-    """``card`` without the questions already answered (a batch the owner answered in part,
-    one record at a time): an answered record is not offered again (SR-106, INT-032 (2))."""
+    """A trial batch without the questions already answered (the owner answers it in part,
+    one record at a time): an answered record is not offered again (SR-124, INT-032 (2)).
+    Every other kind of card keeps all its questions: no record says otherwise for them."""
     answered = {a.question for a in card.answers}
-    if len(card.questions) < 2 or not answered:
+    if card.kind != "trial" or len(card.questions) < 2 or not answered:
         return card
     left = tuple(q for q in card.questions if q.id not in answered)
     return dataclasses.replace(card, questions=left) if left else card

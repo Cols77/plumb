@@ -15,8 +15,26 @@ export type Ui = { Box: any; Text: any; Button: any; Code: any }
 
 export const NOOP = () => {}
 
-export function pressKey(card: PlumbCard, q: number, b: number): string {
-  return `press:${q}:${b}:${card.id}`
+/** A button's key names the offer it answers, never its position: a press on a card drawn
+ * before a redraw cannot land on another record (plumb answers the offer it names). */
+export function pressKey(offer: PlumbOffer, b: number): string {
+  return `press:${b}:${offer.offer_id}`
+}
+
+/** The card, offer and button a press key names (`pressKey`): found by the offer's id, so a
+ * key from an earlier draw names that offer or nothing, never another record's. */
+export function findPress(cards: PlumbCard[], key: string) {
+  const rest = key.slice('press:'.length)
+  const cut = rest.indexOf(':')
+  if (cut < 1) return null
+  const b = Number(rest.slice(0, cut))
+  const offerId = rest.slice(cut + 1)
+  for (const card of cards) {
+    const offer = card.offers.find(o => o.offer_id === offerId)
+    const button = Number.isInteger(b) ? offer?.buttons[b] : undefined
+    if (offer && button) return { card, offer, button }
+  }
+  return null
 }
 
 export function foldKey(card: PlumbCard): string {
@@ -130,8 +148,8 @@ function buttons(ui: Ui, card: PlumbCard, offer: PlumbOffer, q: number) {
     <Box key={`buttons:${q}:${card.id}`} flexDirection="row" flexWrap="wrap" gap={1} marginTop={1}>
       {offer.buttons.map((b, i) =>
         i === 0 && b.answer === 'accepted'
-          ? <Button key={pressKey(card, q, i)} label={b.label} variant="primary" onPress={NOOP} />
-          : <Button key={pressKey(card, q, i)} label={b.label} onPress={NOOP} />)}
+          ? <Button key={pressKey(offer, i)} label={b.label} variant="primary" onPress={NOOP} />
+          : <Button key={pressKey(offer, i)} label={b.label} onPress={NOOP} />)}
     </Box>
   )
 }
