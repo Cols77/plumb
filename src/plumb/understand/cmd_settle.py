@@ -27,7 +27,7 @@ from typing import Any
 from plumb.cliutil import EXIT_OK, EXIT_REFUSED, EXIT_USAGE, add_common, resolve_root
 from plumb.present import owner_text
 from plumb.understand import proof as typed_proof
-from plumb.understand import settle
+from plumb.understand import settle, typed
 
 _ID = re.compile(r"^(?:INT|SR|DEC|FEAT)-\d{3,}$", re.IGNORECASE)
 
@@ -38,6 +38,16 @@ class Refusal(Exception):
 
 def _normalized(text: str) -> str:
     return " ".join(str(text).split()).lower()
+
+
+def _same_command(said: str, command_text: str) -> bool:
+    """Whether the owner's logged message ``said`` is the typed command ``command_text``: the
+    head (``/plumb`` or the plugin's ``/plumb:plumb``, and the verb) in lower case exactly, as
+    ``typed.parse`` reads every typed command, the rest compared without case or spacing (an
+    undo names a title in the owner's words)."""
+    said = typed.canonical(" ".join(str(said).split()))
+    return (said.split()[:2] == command_text.split()[:2]
+            and _normalized(said) == _normalized(command_text))
 
 
 def _record_prompt(core: Any, prompt: Any) -> None:
@@ -65,7 +75,7 @@ def _authorize(core: Any, prompt_digest: str | None, command_text: str, name: st
         except Refused as exc:
             raise Refusal(str(exc)) from exc
         text = " ".join(str(prompt["text"]).split())
-        if prompt.get("via") != "hook" or _normalized(text) != _normalized(command_text):
+        if prompt.get("via") != "hook" or not _same_command(text, command_text):
             raise Refusal(refusal_prose)
         digest, seq = str(prompt["digest"]), typed_proof.seq_of(core, str(prompt["digest"]))
         if marker() and not typed_proof.is_current_turn(core, digest):

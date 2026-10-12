@@ -6,17 +6,25 @@
 
 GENERATED from the one source of each (so the legacy installer and the plugin never drift):
 
-- ``plugin/commands/plumb.md`` and ``plugin/skills/<name>/SKILL.md``: the templates under
-  ``src/plumb/hosts/claude_code/templates`` rendered with ``{plumb}`` as ``plumb`` (the
-  session-start hook puts the plugin's ``bin`` on the agent's PATH);
+- ``plugin/commands/plumb.md`` and every file of ``plugin/skills/<name>/`` (``SKILL.md`` and
+  any reference files beside it): the templates under ``src/plumb/hosts/claude_code/templates``,
+  each ``.md`` rendered with ``{plumb}`` as ``plumb`` (the session-start hook puts the plugin's
+  ``bin`` on the agent's PATH), any other file as it is; a file or skill folder under
+  ``plugin/skills`` with no template (a skill renamed, a reference dropped) is stale, and the
+  build removes it;
 - ``plugin/bin/gate.sh``: SP8's edit gate, the template as it is;
 - ``plugin/hooks/guard.gen.ts``: the guard table of ``plumb.guard`` for the mod (SP7 5.9);
 - ``plugin/hooks/hooks.json``: the command hooks and the mod module;
 - ``plugin/.claude-plugin/plugin.json`` and ``.claude-plugin/marketplace.json``: the version
   is ``pyproject.toml``'s;
+- ``plugin/LICENSE``: the repository's ``LICENSE`` as it is (SR-123), so the two never drift;
 - ``plugin/vendor/plumb-<version>-py3-none-any.whl`` and ``plugin/vendor/MANIFEST.json``
   ``{version, wheel, sha256, source_digest}``; ``source_digest`` is the digest of
   ``src/plumb/**`` (templates included) and ``pyproject.toml``.
+
+``--check`` also fails naming any test-only file under ``plugin/`` (``*.test.*``,
+``harness.ts``, ``fixtures.ts``): the mod's tests live in ``tests/plugin/mod`` (SR-123), since a
+marketplace install copies the whole plugin folder. ``plugin/README.md`` is hand-written.
 
 ``tests/plugin/test_bundle_fresh.py`` runs ``--check``."""
 
@@ -36,21 +44,33 @@ REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugin"
 SRC = REPO / "src" / "plumb"
 TEMPLATES = SRC / "hosts" / "claude_code" / "templates"
+HOST_TEMPLATES = TEMPLATES   # the command and gate.sh (the tests move TEMPLATES, not these)
 VENDOR = PLUGIN / "vendor"
 DESCRIPTION = ("Keep a coding agent's work aligned with what you asked for: your intent, the "
                "requirements and examples it becomes, and the checks that hold the code to them.")
 AUTHOR = {"name": "Colin AUBE"}
 
-# (Claude Code event, matcher, plumb hook, async): SP7 4.3, with SR-111's synchronous edit check
-# and SP8's gate on PreToolUse (the guard covers Bash too)
-HOOKS: tuple[tuple[str, str | None, str, bool], ...] = (
-    ("SessionStart", "startup|resume|clear|compact", "session-start", False),
-    ("UserPromptSubmit", None, "prompt", False),
-    ("PreToolUse", "Bash|Edit|Write|MultiEdit|NotebookEdit", "pre-tool", False),
-    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "post-edit", True),
-    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "edit-check", False),
-    ("Stop", None, "stop", False),
+# (Claude Code event, matcher, plumb hook, async, timeout in seconds): SP7 4.3, with SR-111's
+# synchronous edit check and SP8's gate on PreToolUse (the guard covers Bash too). The timeout
+# bounds the whole command (sh, the launcher, Python's start); plumb's own watchdog cuts each
+# hook at 1.9 s (``hookio.HARD_LIMIT_S``; the stop hook's read-back gets 1 s more), so these
+# only keep a hung process from holding the session (SR-123). post-edit and edit-check share a
+# matcher in two groups because only post-edit is async; they write different files under
+# ``.plumb/session/<id>/`` (``touched.txt``, ``stale_told.json``). MultiEdit stays: the legacy
+# installer (``plumb.hosts.claude_code.install``) and ``plumb.guard`` still name it.
+HOOKS: tuple[tuple[str, str | None, str, bool, int], ...] = (
+    ("SessionStart", "startup|resume|clear|compact", "session-start", False, 10),
+    ("UserPromptSubmit", None, "prompt", False, 10),
+    ("PreToolUse", "Bash|Edit|Write|MultiEdit|NotebookEdit", "pre-tool", False, 10),
+    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "post-edit", True, 30),
+    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "edit-check", False, 10),
+    ("Stop", None, "stop", False, 30),
 )
+# test-only files: they belong in tests/plugin/mod, never in the shipped plugin (SR-123)
+TEST_ONLY_NAMES = ("harness.ts", "fixtures.ts")
+TEST_MARKS = (".test.", ".spec.", "_test.")   # x.test.tsx, x.spec.ts, x_test.ts
+# what the engine lays beside a mod it loads from a folder (gitignored): not the plugin's own
+ENGINE_TYPES = PLUGIN / ".claude-plugin" / "types"
 
 
 def version() -> str:
@@ -76,15 +96,32 @@ def source_digest() -> str:
     return digest.hexdigest()
 
 
+def _rel(path: Path) -> str:
+    """path as the repository names it (as it is when outside the repository)."""
+    try:
+        return path.relative_to(REPO).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 def _json(data: object) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
 def _render(name: str) -> str:
-    sys.path.insert(0, str(REPO / "src"))
-    from plumb.hosts.claude_code.install import Launcher, template
+    """The template ``name`` for the plugin: ``{plumb}`` as the agent types it, and the skills'
+    files left under ``${CLAUDE_PLUGIN_ROOT}/skills/``. ``install.template`` points them at
+    ``.claude/skills/`` for the per-repository install, where they are copied; in the plugin
+    they exist only beside it (``plumb plugin migrate`` deletes the .claude copies)."""
+    return _render_text((HOST_TEMPLATES / name).read_text(encoding="utf-8"))
 
-    return template(name, Launcher("path", "plumb", "plumb"))
+
+def _render_text(text: str) -> str:
+    """``text`` as ``install.template`` renders a template: ``{plumb}`` as what the agent types."""
+    sys.path.insert(0, str(REPO / "src"))
+    from plumb.hosts.claude_code.install import Launcher
+
+    return text.replace("{plumb}", Launcher("path", "plumb", "plumb").agent_prefix)
 
 
 def skill_names() -> list[str]:
@@ -92,11 +129,25 @@ def skill_names() -> list[str]:
     return sorted(d.name for d in base.iterdir() if (d / "SKILL.md").is_file())
 
 
+def skill_files(name: str) -> dict[str, str]:
+    """Every file of the skill ``name`` (its POSIX path in the skill's folder) and its content:
+    each ``.md`` rendered as ``SKILL.md`` is, any other file as it is."""
+    base = TEMPLATES / "skills" / name
+    out = {}
+    for path in sorted(p for p in base.rglob("*")
+                       if p.is_file() and "__pycache__" not in p.parts):
+        rel = path.relative_to(base).as_posix()
+        text = path.read_text(encoding="utf-8")  # newlines read as LF, as template() does
+        out[rel] = _render_text(text) if path.suffix == ".md" else text
+    return out
+
+
 def hooks_json() -> str:
     hooks: dict[str, list[dict[str, object]]] = {}
-    for event, matcher, name, is_async in HOOKS:
+    for event, matcher, name, is_async, timeout in HOOKS:
         hook: dict[str, object] = {"type": "command",
-                                   "command": f'sh "${{CLAUDE_PLUGIN_ROOT}}/bin/plumb-hook" {name}'}
+                                   "command": f'sh "${{CLAUDE_PLUGIN_ROOT}}/bin/plumb-hook" {name}',
+                                   "timeout": timeout}
         if is_async:
             hook["async"] = True
         group: dict[str, object] = {"matcher": matcher} if matcher else {}
@@ -143,10 +194,41 @@ def text_files() -> dict[Path, str]:
            PLUGIN / "hooks" / "guard.gen.ts": guard_ts(),
            PLUGIN / "hooks" / "hooks.json": hooks_json(),
            PLUGIN / ".claude-plugin" / "plugin.json": plugin_json(),
-           REPO / ".claude-plugin" / "marketplace.json": marketplace_json()}
+           REPO / ".claude-plugin" / "marketplace.json": marketplace_json(),
+           PLUGIN / "LICENSE": _lf((REPO / "LICENSE").read_bytes()).decode("utf-8")}
     for name in skill_names():
-        out[PLUGIN / "skills" / name / "SKILL.md"] = _render(f"skills/{name}/SKILL.md")
+        for rel, content in skill_files(name).items():
+            out[PLUGIN / "skills" / name / rel] = content
     return out
+
+
+def orphans(expected: dict[Path, str]) -> list[Path]:
+    """Files under ``plugin/skills`` that no template makes any more (a renamed skill's old
+    folder, a dropped reference), deepest first."""
+    base = PLUGIN / "skills"
+    if not base.is_dir():
+        return []
+    return sorted((p for p in base.rglob("*") if p.is_file() and p not in expected),
+                  key=lambda p: (-len(p.parts), p.as_posix()))
+
+
+def remove_orphans(expected: dict[Path, str]) -> None:
+    """Delete what orphans names, and each folder that leaves empty."""
+    base = PLUGIN / "skills"
+    for path in orphans(expected):  # deepest first, so a folder it empties goes too
+        path.unlink()
+        for folder in path.parents:
+            if folder == base or any(folder.iterdir()):
+                break
+            folder.rmdir()
+
+
+def test_only_files() -> list[Path]:
+    """Test-only files under ``plugin/``: the mod's tests live in ``tests/plugin/mod``."""
+    return sorted(p for p in PLUGIN.rglob("*") if p.is_file()
+                  and (any(mark in p.name for mark in TEST_MARKS)
+                       or p.name in TEST_ONLY_NAMES)
+                  and ENGINE_TYPES not in p.parents)
 
 
 def wheel_name() -> str:
@@ -167,13 +249,18 @@ def manifest() -> dict[str, str]:
 def stale() -> list[str]:
     """What no longer matches its source (relative paths, with why)."""
     out = []
-    for path, content in text_files().items():
+    expected = text_files()
+    for path, content in expected.items():
         try:
             current = _lf(path.read_bytes()).decode("utf-8")
         except OSError:
             current = None
         if current != content:
-            out.append(f"{path.relative_to(REPO).as_posix()}: differs from its source")
+            out.append(f"{_rel(path)}: differs from its source")
+    for path in orphans(expected):
+        out.append(f"{_rel(path)}: no template makes it (remove it)")
+    for path in test_only_files():
+        out.append(f"{_rel(path)}: a test-only file in the plugin (it belongs in tests/plugin/mod)")
     found = manifest()
     wheel = VENDOR / wheel_name()
     if found.get("version") != version() or found.get("wheel") != wheel_name():
@@ -211,9 +298,14 @@ def main(argv: list[str] | None = None) -> int:
         for line in found:
             print(line)
         return 1 if found else 0
-    for path, content in text_files().items():
+    expected = text_files()
+    for path, content in expected.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8", newline="\n")
+    remove_orphans(expected)
+    for path in test_only_files():  # never deleted: they are someone's tests; --check names them
+        print(f"build_plugin: {_rel(path)} is test-only; move it to tests/plugin/mod",
+              file=sys.stderr)
     if not args.no_wheel:
         build_wheel()
     print("plugin built" + ("" if args.no_wheel else f": {wheel_name()}"))

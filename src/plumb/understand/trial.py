@@ -65,11 +65,17 @@ def threshold(core: Any, record_kind: str) -> float:
 # --------------------------------------------------------------------------- the pool
 
 
+HELD = ("open", "change_requested", "left_open")   # a card the owner has not answered yet
+
+
 def _open_records(core: Any, session: str) -> set[str]:
+    """The records a trial or backlog card the owner has not answered still asks about: an
+    open card, one waiting for their words, and one they left open (DEC-034: it comes back
+    when its record changes, it is not asked again in another batch)."""
     from plumb.understand import cardstore
 
     return {str(q.record) for card in cardstore.own_cards(core.root, session)
-            if card.status == "open" and card.kind in ("trial", "backlog")
+            if card.status in HELD and card.kind in ("trial", "backlog")
             for q in card.questions if q.record}
 
 

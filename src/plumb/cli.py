@@ -41,6 +41,7 @@ ROUTES: dict[str, str] = {
     "escalate": "plumb.capture.cli", "spec": "plumb.capture.cli",
     "triage": "plumb.capture.cli", "config": "plumb.capture.cli", "jev": "plumb.capture.cli",
     "clarify": "plumb.understand.cli",
+    "proof": "plumb.capture.proof",  # SR-127: a requirement's proof plan and evidence
     # SP8 UNDERSTAND: the model-backed layer (a thin router; listed only when importable)
     "understand": "plumb.understand.cli", "settle": "plumb.understand.cli",
     "undo": "plumb.understand.cli", "go": "plumb.understand.cli",
@@ -75,15 +76,17 @@ records and integrity:
   repin        refresh link pins (never confirms); --after-tests: only when the linked tests
                pass and a model judges the meaning unchanged
   stale        card: bring a stale link to the owner as a card; cards: list them in full
-               (--incomplete: those still lacking something)
+               (--incomplete: those lacking something)
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
   status       counts, drift and records awaiting your confirmation (--card: the card)
   brief        the short intent brief
   explain      why a behaviour, file or record exists, in plain terms (plain words, a path
                or an ID); alias why
   approve      owner approval of records at their current content (owner's terminal only)
-  relay        record an owner approval the agent relays, with the owner's quote
+  relay        retired, always refused: the owner confirms by typing /plumb approve with
+               record numbers, or in their terminal (approve)
   revoke       owner revocation
+  proof        a requirement's planned proof (how you will see it working) and its evidence
   drift        drift signals only
   log          migrate: move legacy JSONL log lines into one file per entry (digests kept)
 

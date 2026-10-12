@@ -10,7 +10,8 @@ answered through the one answer path (``understand.answer.apply_answer``, ``Butt
   confirmed, the card is closed and the version it has now is shown as a fresh card;
 - Confirm (an ``accepted`` choice) writes ``approval {by: owner, via: button, offer, card,
   question, key_digest, records: [{id, hash}]}`` at exactly the hash drawn;
-- a ``rejected`` choice writes the rejection as a typed "no" would, ``by: owner, via: button``;
+- a ``rejected`` choice writes the rejection as a typed "no" would, ``by: owner, via: button``
+  (on a trial card it is a misreading: plumb's reading is marked wrong and the record stays);
 - Leave open sets the card ``left_open`` (it stops repeating at turn end until its record
   changes, DEC-034); Ask for a change sets it ``change_requested`` and the answer carries the
   text the mod puts in the message box (DEC-032). Neither writes an approval."""
@@ -143,10 +144,14 @@ def press(core: Any, session: str, offer: str, index: int,
         result["model_note"] = owner_text.PRESS_MODEL_CONFIRMED.format(
             label=choice.label, records=_model_records(core, confirmed))
     elif rejected:
-        result["line"] = owner_text.PRESS_REJECTED.format(label=choice.label,
-                                                         titles=_quoted(core, rejected))
-        result["model_note"] = owner_text.PRESS_MODEL_REJECTED.format(
-            label=choice.label, records=_model_records(core, rejected))
+        # a trial No marks plumb's reading wrong (capture-error); the record stays (SR-124)
+        misread = any(e["kind"] == "rejection" and e["payload"].get("reason") == "capture-error"
+                      for e in applied.entries)
+        line, note = ((owner_text.PRESS_MISREAD, owner_text.PRESS_MODEL_MISREAD) if misread
+                      else (owner_text.PRESS_REJECTED, owner_text.PRESS_MODEL_REJECTED))
+        result["line"] = line.format(label=choice.label, titles=_quoted(core, rejected))
+        result["model_note"] = note.format(label=choice.label,
+                                           records=_model_records(core, rejected))
     elif status == "left_open":
         result["line"] = owner_text.PRESS_LEFT_OPEN.format(topic=topic)
         result["model_note"] = owner_text.PRESS_MODEL_LEFT_OPEN.format(topic=topic)

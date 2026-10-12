@@ -627,7 +627,9 @@ def test_flow_7_stale_edit_names_the_link_hold_card_and_reformat(
     assert any(st.state == "stale" for st in open_core(repo).link_states())
     carded = plumb(s, "stale", "card", link, "--topic", "Adds numbers", "--issue",
                    "add now multiplies", "--options", "keep the multiplying|go back",
-                   "--session", SID)
+                   "--consequences", "add multiplies from now on; adding is gone|add adds "
+                   "again; the multiplying is undone", "--why", "it is what you asked last",
+                   "--recommended", "0", "--session", SID)      # complete, as SR-116 asks
     assert carded.returncode == 0, carded.stderr + carded.stdout
     ended = s.stop()
     assert '"decision": "block"' not in ended

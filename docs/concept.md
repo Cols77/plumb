@@ -1065,7 +1065,7 @@ Code comes first**: `plumb install claude-code` writes four things.
   approval guard of section 4.6). The same file sets the `PLUMB_AGENT_SESSION` session
   marker in its `env`.
 - **The status line command**.
-- **A short `plumb` skill** of about 20 lines. It explains how to state a read-back and
+- **A short `plumb` skill** (since DEC-036 the `plumb-records` skill) of about 20 lines. It explains how to state a read-back and
   examples as non-blocking statements, how to record them and decisions, how to relay an
   owner's explicit confirmation with the owner's affirming words (and that a prompt that does
   not object is not a confirmation, section 6.6), when to ask (only the three triggers), and
@@ -1190,8 +1190,8 @@ lanes after a short contracts phase (`docs/plans/next-plan.md`); each has its sp
    - the R8 commands (D14): `plumb triage`, `plumb config auto-approve on|off`,
      `plumb config show`, `plumb jev status`, `plumb jev setup`; the narrow auto-approval,
      gated by calibration (`plumb jev calibrate`, D17 item 1);
-   - the `plumb-clarify` skill and `plumb clarify` (D16), with the `plumb` skill updated to
-     drive the capture helpers;
+   - the `plumb-clarify` skill and `plumb clarify` (D16), with the `plumb` skill (now
+     `plumb-records`, DEC-036) updated to drive the capture helpers;
    - ownership proposals and the hidden-dependency scan as drift hints (D17 items 3 and 4).
 3. **Merge boundary** (`docs/specs/sp3-merge-boundary.md`, lane MERGE). `plumb merge-check`
    completes section 7.5: every touched requirement confirmed; agent-relayed and auto-JEV

@@ -47,9 +47,9 @@ In Claude Code, add this repository as a plugin marketplace and install plumb fr
 /plugin install plumb@plumb
 ```
 
-Then type `/plumb init` in a project to adopt it. The plugin brings `/plumb`, the `plumb` and
-`plumb-clarify` skills and plumb's background checks to every project, and runs plumb from a
-private copy it sets up on first use (it needs uv, or Python 3.12). A project plumb has not
+Then type `/plumb init` in a project to adopt it. The plugin brings `/plumb`, the `plumb-records`
+and `plumb-clarify` skills and plumb's background checks to every project, and runs plumb from a
+private copy it sets up on first use (it needs uv, or Python 3.12 or later). A project plumb has not
 adopted sees one line per session and nothing else. The plugin is built by
 `python scripts/build_plugin.py` (`plugin/`).
 
@@ -154,8 +154,9 @@ The install is idempotent and keeps every entry that does not belong to plumb. I
   that stop the agent from running `plumb approve`, `plumb revoke`, `plumb tests waive`,
   `plumb triage --approve`, `plumb spec approve` or `plumb config auto-approve`, or editing
   `.plumb/log/`;
-- `.claude/skills/plumb/SKILL.md`, a short skill that tells the agent where the records and the
-  test map are and which commands to use (`capture`, `decide`, `relay`), and
+- `.claude/skills/plumb-records/SKILL.md` (with its `references/`), a short skill that tells the
+  agent where the records and the test map are and which commands to use (`capture`,
+  `decide`, `proof`), and
   `.claude/skills/plumb-clarify/SKILL.md`, which scales the clarification to the request
   (trivial, incremental, escalated) and asks only the questions that change what gets built,
   one per message;
@@ -496,7 +497,7 @@ plumb has been dogfooded from day one: this repository is developed with plumb.
   given/when/then examples, and `DEC` records hold the design choices. Every record written
   by an agent stays proposed until the owner confirms it. Each requirement is linked, with hash pins, to the
   modules that implement it and the tests that verify each example.
-- The Claude Code hooks are installed here (`.claude/settings.json`, `.claude/skills/plumb/`),
+- The Claude Code hooks are installed here (`.claude/settings.json`, `.claude/skills/plumb-records/`),
   so every session on plumb gets the brief, the per-prompt context, the covering-test stop
   hook, the alignment summary and the status line.
 - Its logs are one file per entry (migrated in SP6 with every digest kept), its IDs come

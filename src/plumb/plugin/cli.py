@@ -102,9 +102,9 @@ def _copies(root: Path) -> list[tuple[Path, str, str]]:
 
     claude = root / ".claude"
     out = [(claude / "commands" / "plumb.md", "plumb-command.md", "the /plumb command")]
-    for name in install.skill_names():
-        out.append((claude / "skills" / name / "SKILL.md", f"skills/{name}/SKILL.md",
-                    f"the {name} skill"))
+    for name in install.skill_files():             # each skill's SKILL.md and its references
+        skill = name.split("/")[1]
+        out.append((claude / name, name, f"the {skill} skill"))
     out.append((root / install.GATE_SCRIPT, "gate.sh", "plumb's edit check"))
     return out
 
@@ -151,8 +151,12 @@ def migrate(root: Path) -> tuple[bool, list[str]]:
         if digest in known or digest in _renderings(root, name):
             path.unlink()
             _prune(path.parent, root)
-        else:
+        elif owner_text.MIGRATE_KEPT.format(what=what) not in kept:
             kept.append(owner_text.MIGRATE_KEPT.format(what=what))
+    for folder in install.retired_skills(root):    # the skill under its retired name (DEC-036)
+        found = True
+        (folder / "SKILL.md").unlink()
+        _prune(folder, root)
     claude_md = root / "CLAUDE.md"
     if claude_md.exists():
         text = claude_md.read_text(encoding="utf-8")

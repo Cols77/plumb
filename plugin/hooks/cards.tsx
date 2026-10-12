@@ -15,8 +15,26 @@ export type Ui = { Box: any; Text: any; Button: any; Code: any }
 
 export const NOOP = () => {}
 
-export function pressKey(card: PlumbCard, q: number, b: number): string {
-  return `press:${q}:${b}:${card.id}`
+/** A button's key names the offer it answers, never its position: a press on a card drawn
+ * before a redraw cannot land on another record (plumb answers the offer it names). */
+export function pressKey(offer: PlumbOffer, b: number): string {
+  return `press:${b}:${offer.offer_id}`
+}
+
+/** The card, offer and button a press key names (`pressKey`): found by the offer's id, so a
+ * key from an earlier draw names that offer or nothing, never another record's. */
+export function findPress(cards: PlumbCard[], key: string) {
+  const rest = key.slice('press:'.length)
+  const cut = rest.indexOf(':')
+  if (cut < 1) return null
+  const b = Number(rest.slice(0, cut))
+  const offerId = rest.slice(cut + 1)
+  for (const card of cards) {
+    const offer = card.offers.find(o => o.offer_id === offerId)
+    const button = Number.isInteger(b) ? offer?.buttons[b] : undefined
+    if (offer && button) return { card, offer, button }
+  }
+  return null
 }
 
 export function foldKey(card: PlumbCard): string {
@@ -134,8 +152,8 @@ function buttons(ui: Ui, card: PlumbCard, offer: PlumbOffer, q: number) {
     <Box key={`buttons:${q}:${card.id}`} flexDirection="row" flexWrap="wrap" gap={1} marginTop={1}>
       {offer.buttons.map((b, i) =>
         i === 0 && b.answer === 'accepted'
-          ? <Button key={pressKey(card, q, i)} label={b.label} variant="primary" onPress={NOOP} />
-          : <Button key={pressKey(card, q, i)} label={b.label} onPress={NOOP} />)}
+          ? <Button key={pressKey(offer, i)} label={b.label} variant="primary" onPress={NOOP} />
+          : <Button key={pressKey(offer, i)} label={b.label} onPress={NOOP} />)}
     </Box>
   )
 }
@@ -150,11 +168,17 @@ export function CardView(ui: Ui, card: PlumbCard, opts: { isOpen: boolean; showA
   const answer: any[] = []
   if (several && !opts.showAll) {
     answer.push(line(ui, T.items(card.offers.length), { dimColor: true }))
-    for (const q of card.questions) answer.push(line(ui, `• ${q.text}`))
+    for (const offer of card.offers) {
+      const asked = card.questions.find(x => x.id === offer.question)
+      answer.push(line(ui, `• ${asked?.text ?? offer.question}`))
+    }
     answer.push(<Button key={`items:${card.id}`} label={T.showAll} onPress={NOOP} />)
   } else {
     card.offers.forEach((offer, q) => {
-      if (several) answer.push(line(ui, card.questions[q]?.text ?? offer.question, { bold: true }))
+      // each record of a batch under its own words, by the question its offer names
+      // (a record already answered is not drawn again: plumb leaves its offer out)
+      const asked = card.questions.find(x => x.id === offer.question) ?? card.questions[q]
+      if (several) answer.push(line(ui, asked?.text ?? offer.question, { bold: true }))
       answer.push(buttons(ui, card, offer, q))
     })
   }
