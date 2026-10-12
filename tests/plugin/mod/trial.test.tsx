@@ -3,7 +3,7 @@
 // again; the No is the owner's "not what I meant", which plumb counts as a real 'no' example.
 import { describe, expect, mock, test } from 'claude-code/testing'
 
-import { findPress, pressKey } from './cards'
+import { findPress, pressKey } from '../../../plugin/hooks/cards'
 import { DRAW_TRIAL, PRESS_TRIAL_NO } from './fixtures'
 import { BAND, install, START, SURFACES, world } from './harness'
 

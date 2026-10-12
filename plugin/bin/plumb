@@ -7,10 +7,14 @@
 #   PLUMB_HOME/current.json {python, version, wheel_sha256, plugin_root} names the ready one
 # When current.json is missing or names another wheel, this builds it under a lock
 # (mkdir PLUMB_HOME/lock; a lock older than 10 minutes is taken over), with uv when present,
-# else python3.12 -m venv and pip; then writes the user-level launcher PLUMB_HOME/bin/plumb
-# (git's hooks and the merge driver call it) and keeps the two newest environments.
+# else the first Python 3.12 or later of python3.12, python3, python, `py -3.12`, `py -3`
+# (-m venv and pip); then writes the user-level launcher PLUMB_HOME/bin/plumb (git's hooks and
+# the merge driver call it) and keeps the two newest environments.
 # `plumb --plumb-bootstrap` only sets the environment up (the session-start hook runs it in
-# the background).
+# the background) and exits with the build's own code: 2 when no Python can build it, and the
+# half-built folder removed and the lock released on any failure (SR-119).
+# `plumb --plumb-probe` exits 0 when this machine can build the environment, else 2: the one
+# probe, so the session-start hook and the build never disagree (SR-119 EX-3).
 nl='
 '
 
@@ -75,21 +79,45 @@ unlock() {
   trap - EXIT INT TERM
 }
 
-build() {  # $1: the folder to build the environment in
+base=
+pyflag=
+run_py() {  # the chosen Python ($base, with $pyflag for the Windows launcher py)
+  if [ -n "$pyflag" ]; then "$base" "$pyflag" "$@"; else "$base" "$@"; fi
+}
+
+probe() {  # base/pyflag = what builds the environment: uv, else a Python 3.12 or later
   if command -v uv >/dev/null 2>&1; then
-    uv venv --quiet --relocatable --python 3.12 "$1" >&2 || return 1
+    base=uv
+    pyflag=
+    return 0
+  fi
+  # python.org's Windows install has python.exe and py.exe, no python3.12: every name is
+  # tried, each one checked for its version (a Windows Store stub or an old Python fails it)
+  for candidate in python3.12 python3 python py:-3.12 py:-3; do
+    base=${candidate%%:*}
+    pyflag=
+    [ "$base" = "$candidate" ] || pyflag=${candidate#*:}
+    command -v "$base" >/dev/null 2>&1 || continue
+    run_py -c 'import sys; sys.exit(sys.version_info[:2] < (3, 12))' >/dev/null 2>&1 &&
+      return 0
+  done
+  base=
+  pyflag=
+  return 2
+}
+
+build() {  # $1: the folder to build the environment in; returns the failing step's code
+  if [ -z "$base" ] && ! probe; then
+    echo "plumb needs Python 3.12 on this machine; say 'install what plumb needs' and I will set it up" >&2
+    return 2
+  fi
+  if [ "$base" = uv ]; then
+    uv venv --quiet --relocatable --python 3.12 "$1" >&2 || return $?
     uv pip install --quiet --python "$(venv_python "$1")" "$plugin_root/vendor/$wheel" >&2
     return $?
   fi
-  for base in python3.12 python3 python; do
-    command -v "$base" >/dev/null 2>&1 || continue
-    "$base" -c 'import sys; sys.exit(sys.version_info[:2] < (3, 12))' 2>/dev/null || continue
-    "$base" -m venv "$1" >&2 || return 1
-    "$(venv_python "$1")" -m pip install --quiet "$plugin_root/vendor/$wheel" >&2
-    return $?
-  done
-  echo "plumb needs Python 3.12 on this machine; say 'install what plumb needs' and I will set it up" >&2
-  return 2
+  run_py -m venv "$1" >&2 || return $?
+  "$(venv_python "$1")" -m pip install --quiet "$plugin_root/vendor/$wheel" >&2
 }
 
 bootstrap() {
@@ -97,10 +125,19 @@ bootstrap() {
     echo "plumb: the plugin's copy of plumb is missing; reinstall the plugin" >&2
     return 1
   }
+  # the probe first: a machine with no Python is left with nothing under PLUMB_HOME
+  if ! probe; then
+    echo "plumb needs Python 3.12 on this machine; say 'install what plumb needs' and I will set it up" >&2
+    return 2
+  fi
   mkdir -p "$PLUMB_HOME" || return 1
+  # a stale lock is found with the POSIX find (/usr/bin/find under Git for Windows' sh too):
+  # the bare name may reach Windows' FIND.EXE, which knows no -mmin and never says stale
+  finder=find
+  [ -x /usr/bin/find ] && finder=/usr/bin/find
   waited=0
   until mkdir "$PLUMB_HOME/lock" 2>/dev/null; do
-    if [ -n "$(find "$PLUMB_HOME/lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+    if [ -n "$("$finder" "$PLUMB_HOME/lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
       rm -rf "$PLUMB_HOME/lock"
       continue
     fi
@@ -121,8 +158,10 @@ bootstrap() {
   env="$PLUMB_HOME/env/$name"
   mkdir -p "$PLUMB_HOME/env" "$PLUMB_HOME/bin"
   rm -rf "$env.tmp"
-  if ! build "$env.tmp"; then
-    code=$?
+  # the build's own code (`if ! build` would leave $? at 0): 2 when no Python can build it
+  build "$env.tmp"
+  code=$?
+  if [ "$code" -ne 0 ]; then
     rm -rf "$env.tmp"
     unlock
     return $code
@@ -138,7 +177,7 @@ bootstrap() {
     "$PLUMB_HOME" "$plugin_root" "$python" > "$PLUMB_HOME/bin/plumb"
   chmod +x "$PLUMB_HOME/bin/plumb" 2>/dev/null
   printf '@set "PLUMB_HOME=%s"\r\n@set "PLUMB_PLUGIN_ROOT=%s"\r\n@"%s" -m plumb %%*\r\n' \
-    "$PLUMB_HOME" "$plugin_root" "$python" > "$PLUMB_HOME/bin/plumb.cmd"
+    "$(mixed "$PLUMB_HOME")" "$plugin_root" "$python" > "$PLUMB_HOME/bin/plumb.cmd"
   # keep the two newest environments
   n=0
   for old in $(ls -1t "$PLUMB_HOME/env" 2>/dev/null); do
@@ -150,6 +189,10 @@ bootstrap() {
   return 0
 }
 
+if [ "$1" = --plumb-probe ]; then
+  probe
+  exit $?
+fi
 if [ "$1" = --plumb-bootstrap ]; then
   ready && exit 0
   bootstrap

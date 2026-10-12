@@ -19,7 +19,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TextIO
 
-from plumb.hosts.claude_code.hookio import HookContext, HookOutput, hook_budget, run_hook
+from plumb.hosts.claude_code.hookio import (
+    BudgetExceeded,
+    HookContext,
+    HookOutput,
+    hook_budget,
+    run_hook,
+)
 from plumb.hosts.claude_code.providers import LAZY, verify_api
 
 HARD_CAP = 40
@@ -203,13 +209,25 @@ def conflicts_line(core: Any) -> str | None:
 
 
 def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
-    """The records brief first (kept through any cut), then the tests line."""
-    from plumb.mod.handshake import session_start
+    """The panel's handshake first, then the records brief (kept through any cut), then the
+    tests line."""
+    from plumb.mod import handshake
 
     timer = StepTimer(ctx)
+    # SR-125: host.json and the brief's decision before any step the budget can cut, so the
+    # panel finds plumb's interpreter even when the rest of this hook is cut short
+    try:
+        owned = handshake.session_start(ctx)
+    except Exception:  # noqa: BLE001 - a broken panel file never costs the records brief
+        owned = False
+    timer.mark("handshake")
     try:
         # with plumb's panel holding the session background, the brief is left out (SP7 5.1)
-        return session_start(ctx, _handle(ctx, verify, timer))
+        return handshake.answer(owned, _handle(ctx, verify, timer))
+    except BudgetExceeded:
+        if owned:
+            return HookOutput()  # nothing of the brief was owed: no skip notice either
+        raise
     finally:
         timer.write()
 

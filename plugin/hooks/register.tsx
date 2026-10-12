@@ -7,14 +7,22 @@
 //
 // The engine wants every `$` call spelled at its hook's call site: each hook hands plumb.ts an
 // `Io` of closures over its own `$`, and every Button is answered by the `ui.press` hook below.
+//
+// Linking (SR-125, SR-126): the session's start says hello as soon as plumb's interpreter is
+// known; the session-start command hook names it in host.json, maybe a moment after this mod
+// starts, so the start keeps trying for a few seconds, and each turn's start tries again. The
+// same holds while plumb still keeps a resumed session's old panel registered (the hook retires
+// it) and while only the repository's .venv was there to try. When the panel cannot reach plumb
+// it says why in one dim line, once per session; in a repository plumb has not adopted it stays
+// silent.
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { PlumbBand, PlumbCard, PlumbView } from '../types'
+import type { PlumbBand, PlumbLink, PlumbTold, PlumbView } from '../types'
 import { CardView, contentKey, findPress, perFeature } from './cards'
 import type { Ui } from './cards'
 import * as plumb from './plumb'
-import type { Io } from './plumb'
+import type { Hello, Io, Unlinked } from './plumb'
 import { GLYPHS, T } from './text'
 
 const PANE = 'plumb-cards'
@@ -23,6 +31,7 @@ const BAND: PlumbBand = { isHidden: false, showAll: false, unfolded: [], shown: 
 
 const linkAtom = atom({ plugin: 'plumb', key: 'link' } as const, null)
 const degradedAtom = atom({ plugin: 'plumb', key: 'degraded' } as const, false)
+const toldAtom = atom({ plugin: 'plumb', key: 'told' } as const, null as PlumbTold | null)
 const viewAtom = atom({ plugin: 'plumb', key: 'view' } as const, EMPTY_VIEW)
 const bandAtom = atom({ plugin: 'plumb', key: 'band' } as const, BAND)
 
@@ -32,6 +41,27 @@ function statusLine(view: PlumbView): string {
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
   const word = waiting ? T.awaiting(waiting) : state || T.nothingAwaits
   return [`${T.name} ${glyph} ${word}`, view.status?.progress].filter(Boolean).join(' · ')
+}
+
+// the session-start hook writes host.json within its first second: about ten seconds of tries
+const RETRY_MS = 500
+const RETRIES = 20
+
+// one hello at a time: the start's retries and a turn's start never both register the session
+let helloing: Promise<Hello> | null = null
+function helloOnce(io: Io): Promise<Hello> {
+  if (helloing === null) {
+    helloing = plumb.hello(io).finally(() => {
+      helloing = null
+    })
+  }
+  return helloing
+}
+
+function unlinkedLine(u: Unlinked): string {
+  if (u.why === 'no-python') return T.noPython(u.looked)
+  if (u.why === 'refused') return T.helloRefused(u.reason)
+  return T.helloFailed(u.error)
 }
 
 /** The band: one line of status, the cards awaiting per feature, the settled line with its
@@ -104,14 +134,62 @@ export const register: Register = on => {
         USERPROFILE: await $.env.get('USERPROFILE'),
       }),
     }
+    // SR-126: why the panel cannot reach plumb, said once per session
+    const tell = async (u: Unlinked) => {
+      const session = await $.session.id()
+      const told = await read($, toldAtom)
+      if (told !== null && told.session === session) return
+      await update($, toldAtom, () => ({ session, why: u.why, retry: plumb.mayLinkLater(u) }))
+      $.ui.log(unlinkedLine(u))
+    }
+    const linked = async (link: PlumbLink) => {
+      await update($, linkAtom, () => link)
+      const band = await read($, bandAtom)
+      const snap = await plumb.snapshot(io, link, await read($, viewAtom), band.shown, false)
+      await update($, viewAtom, () => snap.view)
+      $.ui.status(statusLine(snap.view))
+    }
     if ((await read($, degradedAtom)) || (await read($, linkAtom)) !== null) return started
-    const link = await plumb.hello(io)
-    if (link === null) return started
-    await update($, linkAtom, () => link)
-    const band = await read($, bandAtom)
-    const snap = await plumb.snapshot(io, link, await read($, viewAtom), band.shown, false)
-    await update($, viewAtom, () => snap.view)
-    $.ui.status(statusLine(snap.view))
+    const said = await helloOnce(io)
+    if (said.link !== null) {
+      await linked(said.link)
+      return started
+    }
+    if (said.unlinked === null) return started // a repository plumb has not adopted: silent
+    if (!plumb.mayLinkLater(said.unlinked)) {
+      await tell(said.unlinked)
+      return started
+    }
+    // the session-start hook may not have named the interpreter (or retired a resumed
+    // session's old panel) yet: try again for a while, without holding up the first prompt,
+    // then say why
+    let tries = 0
+    let busy = false
+    const retry = $.clock.every(RETRY_MS, async () => {
+      if (busy) return
+      busy = true
+      try {
+        tries += 1
+        if ((await read($, degradedAtom)) || (await read($, linkAtom)) !== null) {
+          retry.cancel()
+          return
+        }
+        const again = await helloOnce(io)
+        if (again.link !== null) {
+          retry.cancel()
+          await linked(again.link)
+        } else if (again.unlinked === null) {
+          retry.cancel()
+        } else if (!plumb.mayLinkLater(again.unlinked) || tries >= RETRIES) {
+          retry.cancel()
+          await tell(again.unlinked)
+        }
+      } catch {
+        retry.cancel() // the turn's start tries again
+      } finally {
+        busy = false
+      }
+    })
     return started
   }).catch(async ($, e, next) => {
     const result = await next(e)
@@ -141,13 +219,39 @@ export const register: Register = on => {
       }),
     }
     if (await read($, degradedAtom)) return next(e)
+    const session = await $.session.id()
     let link = await read($, linkAtom)
-    if (link === null) {
+    if (link !== null && link.session !== session) {
+      // a /clear: the conversation goes on under a new session id, and no session.start fires
+      link = null
+      await update($, linkAtom, () => null)
+      await update($, viewAtom, () => EMPTY_VIEW)
+    }
+    const told = await read($, toldAtom)
+    // a refusal or a failure already said this session is not retried every turn, unless a
+    // later try may link (mayLinkLater)
+    const settled = told !== null && told.session === session && told.why !== 'no-python' &&
+      told.retry !== true
+    if (link === null && !settled) {
       // the session-start hook may only now have said which interpreter runs plumb
-      link = await plumb.hello(io)
-      if (link !== null) {
-        const held = link
+      const said = await helloOnce(io)
+      if (said.link !== null) {
+        const held = said.link
         await update($, linkAtom, () => held)
+        // the band draws from now on: plumb's status at once (no process), the cards at the turn's end
+        const view = { ...(await read($, viewAtom)), status: await plumb.readStatus(io, held) }
+        await update($, viewAtom, () => view)
+        $.ui.status(statusLine(view))
+        link = held
+      } else if (said.unlinked !== null) {
+        // SR-126: once per session; read again after the hello, which the start's retry may
+        // have told meanwhile
+        const now = await read($, toldAtom)
+        if (now === null || now.session !== session) {
+          const why = said.unlinked
+          await update($, toldAtom, () => ({ session, why: why.why, retry: plumb.mayLinkLater(why) }))
+          $.ui.log(unlinkedLine(why))
+        }
       }
     }
     if (link !== null) await plumb.heartbeat(io, link)

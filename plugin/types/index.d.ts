@@ -87,6 +87,16 @@ export type PlumbLink = {
   key: string
 }
 
+/** SR-126: the session the panel said it could not reach plumb in, and why (`no-python`,
+ * `failed`, `refused`): said once per session; a missing interpreter, and what `retry` marks
+ * (a resumed session's old panel still registered, a .venv tried before host.json), is tried
+ * again each turn. */
+export type PlumbTold = {
+  session: string
+  why: string
+  retry?: boolean
+}
+
 /** The status the band's first line draws: plumb's status card, SP8's progress, and the
  * owner's card setting (full, compact or off). */
 export type PlumbStatus = {
@@ -119,6 +129,7 @@ declare module 'claude-code' {
     plumb: {
       link: PlumbLink | null
       degraded: boolean
+      told: PlumbTold | null
       view: PlumbView
       band: PlumbBand
     }

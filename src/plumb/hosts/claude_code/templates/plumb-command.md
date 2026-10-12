@@ -1,7 +1,7 @@
 ---
-description: plumb in plain words - status, explain anything, review, confirm, what a change would reach, the Obsidian view, the JEV judge (setup, status, calibration)
-argument-hint: "status | explain <anything> | review [<anything>] | confirm [<anything>] | impact <anything> | view | jev status | jev setup <provider> | jev calibrate"
-allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} confirm:*), Bash({plumb} impact:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} conflicts:*), Bash({plumb} conflict relay:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*), Bash({plumb} inflight:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*), Bash({plumb} jev calibrate:*)
+description: plumb in plain words - status, explain anything, review, confirm or approve records, what a change would reach, the Obsidian view, adopt this repository (init), build without a failed check (go), undo a settled record, settling on or off, typed auto-approve on or off, conflicts, merges, other branches' work, the JEV judge (setup, status, calibration), installing what plumb needs
+argument-hint: "status | explain <anything> | review [<anything>] | confirm [<anything or IDs>] | approve <IDs> | impact <anything> | view | init | go | undo <ID or title> | settle on/off <kind> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
+allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} confirm:*), Bash({plumb} impact:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} init:*), Bash({plumb} plugin migrate:*), Bash({plumb} clarify --wait:*), Bash({plumb} undo:*), Bash({plumb} settle:*), Bash({plumb} validate:*), Bash({plumb} conflicts:*), Bash({plumb} conflict relay:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*), Bash({plumb} inflight:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*), Bash({plumb} jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -12,26 +12,58 @@ candidates and asks "which one do you mean?", ask the owner that question in the
 Answer with titles, the owner's own words, examples and test states; mention code paths
 only when asked.
 
+Pick the branch by the first word of the arguments, ignoring case (`Status` is `status`),
+except for the typed commands (`go`, `approve <IDs>`, `confirm <IDs>`, `auto-approve`,
+`undo`, `settle`): plumb acts on those only typed in lower case as the whole message. Typed
+otherwise (`/plumb Approve SR-034`), plumb acted on nothing: confirm, release or switch
+nothing yourself, and tell them to type it again in lower case.
+`<digest>` below is the sha256 of the owner's message: `message_digest` in
+`{plumb} clarify --wait --json` (12 or more hex digits are enough).
+
 - No argument, or `status`: run `{plumb} status --card` and give the card, what awaits
   them and drift in one or two lines; when it lists records also being changed on another
   branch or worktree, name them by title and branch ("is anyone else changing X?" is the
   same request).
-- "what are the other branches working on?": run `{plumb} inflight` and answer with the
-  branches, their one-line intent and the records by title. "drop that work" (the owner
-  abandoned a branch's intent): `{plumb} inflight drop <branch>`.
+- `init` (the session start says "/plumb:plumb init to adopt this repository"; also "set up
+  plumb here"): run `{plumb} init` and report what it printed in their terms. When it says
+  plumb is set up here the old way and they say "move plumb to the plugin", run
+  `{plumb} plugin migrate` and report it.
+- `go`, `approve <IDs>`, `confirm <IDs>` or `auto-approve on|off`, typed as the whole
+  message: plumb's prompt hook already acted on it when the message arrived (released the
+  failed check, confirmed those records, switched automatic confirmation) and logged it as
+  the owner's own. Run nothing to approve, release or switch: run `{plumb} status --card`
+  and report the card, and for auto-approve whether it is on and, when not in effect yet,
+  what is missing. The same words inside a sentence ("turn auto-approve on") change
+  nothing: tell them to type the command as the whole message.
+- `undo <ID or title>` typed as the whole message: run
+  `{plumb} undo <their words> --prompt <digest>` and report what it printed.
+- `settle on|off <kind>` (kind: intent or requirement) typed as the whole message: run
+  `{plumb} settle on|off <kind> --prompt <digest>` and report it. Either one refused (a
+  sentence, an older message, already used): say what it printed; never retry without
+  `--prompt` and never ask them to use a terminal.
 - `explain <anything>` (also `why <anything>`): run `{plumb} explain <their words>` and say
   why it exists: the owner's words it comes from, the decisions, the examples and whether
   their tests pass.
 - `review [<anything>]`: run `{plumb} review [<their words>]` and walk them through what
   awaits them, the approvals they did not type, drift, alignment and the merge state.
-- `confirm [<anything>]`: run `{plumb} confirm [<their words>]` and show the cards it prints,
-  in full. It approves nothing: plumb reads their next answer itself and confirms what it
-  finds; you confirm nothing and never relay their words. A typed "/plumb approve SR-034"
-  naming record numbers confirms at once, without you.
+- `confirm [<anything>]` or `approve <anything>` naming things in words: run
+  `{plumb} confirm [<their words>]` and show the cards it prints, in full. It approves
+  nothing: plumb reads their next answer itself and confirms what it finds; you confirm
+  nothing and never relay their words.
 - `impact <anything>`: run `{plumb} impact <their words>` and say in plain terms what a
   change would reach.
 - `view`: run `{plumb} view --open` and tell them the Obsidian vault is open (generated;
   editing a note approves nothing).
+- `inflight` ("what are the other branches working on?"): run `{plumb} inflight` and answer
+  with the branches, their one-line intent and the records by title. "drop that work" (the
+  owner abandoned a branch's intent): they name the branch; repeat it back ("drop the work
+  of feat-x?") and only on their yes run `{plumb} inflight drop <branch>`.
+- `conflicts` (or "what conflicts?"): run `{plumb} conflicts [<their words>]`, say in their
+  terms what each side wants, and relay their answer as
+  ${CLAUDE_PLUGIN_ROOT}/skills/plumb-records/references/conflicts.md says.
+- `merge-check`, or "finish the merge", "merge <branch>", "continue the rebase", "undo the
+  merge", "keep mine" on a record file, installing plumb's git hooks: follow
+  ${CLAUDE_PLUGIN_ROOT}/skills/plumb-records/references/merge.md.
 - `jev status`: run `{plumb} jev status --probe` and say whether the JEV judge is set
   up: the provider, the endpoint, where the key comes from (a label: the environment, an env
   file or the user store; never the key), whether it answered and the model version it
@@ -48,44 +80,12 @@ only when asked.
   words: for each kind of record, passing or not, how many of their answers it was tried on,
   and what is missing when it does not pass. Calibrating approves nothing and turns nothing
   on; only the owner can turn automatic confirmation on.
-- `auto-approve on|off` (typed by the owner as their whole message): plumb already switched
-  automatic confirmation when the message arrived, logged as the owner's own setting; you
-  run nothing to switch it. Run `{plumb} status` and say in their terms whether it is on
-  and, when it is not in effect yet, what is missing. Asked in a sentence ("turn
-  auto-approve on"), nothing changes: tell them to type `/plumb auto-approve on` as the
-  whole message. Never run `config auto-approve`: it is refused in your session.
-- `conflicts` (or "what conflicts?"): run `{plumb} conflicts [<their words>]`. A merge left
-  two versions of the same intent; the cards reach the owner at the end of your turn. Say
-  in their terms what each side wants. Their next words choose: relay "keep feat-x's",
-  "keep mine" or "ok, the combined one" with `{plumb} conflict relay <IC> --take
-  <ours|theirs|combined> --prompt <digest> --quote "<exact words>"`. When they describe a
-  combination, write it with `{plumb} conflict propose <IC> --file <fields.yaml>` (shown as
-  a third version; it applies nothing). Never run `conflict choose`: it is the owner's own
-  terminal. The same command lists the intent conflicts caught before any work (another
-  branch has a different version of the same intent in flight; the card says "keep
-  feat-x's", "keep this one" or "both"): relay the owner's answer, in their exact words,
-  with `{plumb} conflict relay <the DEC or the requirement> --prompt <digest> --quote
-  "<exact words>"`; it records their pick once for every branch. A conflict the owner already
-  answered that way is settled by that answer when the merge meets it ("already answered by
-  you"): never ask it again; the merge then only needs "finish the merge".
-- `merge-check`: run `{plumb} merge-check` and say what holds the merge in their terms. A
-  merge held by the quick merge check (no test run) is finished when they say "finish the
-  merge": `git add .plumb` (their choices and confirmations made during the merge), then
-  `{plumb} merge-check --hook pre-merge-commit`; when it passes, `git commit -m "Merge
-  <branch>"` with the `SR:` trailers of the merged work. A rebase, cherry-pick or revert
-  step held the same way is continued when they say "continue the rebase" (or cherry-pick,
-  revert): `git add .plumb`, the same check, then `git rebase --continue` (`git cherry-pick
-  --continue`, `git revert --continue`). "merge <branch>" into the main branch is
-  `git merge --no-ff <branch>` (never a fast-forward: the post-merge hook puts the main
-  branch back when a fast-forward brings in what the quick check holds, and says so);
-  "undo the merge of <branch>" right after one is `git reset --keep ORIG_HEAD`. "check merges before they are recorded": `{plumb}
-  merge-check --install-pre-merge-commit`; "call plumb from my merge hook" (or "my commit
-  hook"): add the `hook_lines` of `{plumb} merge-check --install-pre-merge-commit --json`
-  to their own pre-merge-commit (or prepare-commit-msg) hook. "run the tests when I push": `{plumb} merge-check --install-pre-push`;
-  "call plumb from my push hook": add `<python> -m plumb merge-check --hook pre-push` (git's
-  pushed refs on its stdin) to their own pre-push hook. For a record file left in text-merge form, "keep mine" / "keep theirs" is
-  `git checkout --ours` / `--theirs` on it then `git add`; for one changed on one side and
-  removed on the other, "keep the changed one" is `git add`, "keep it removed" is `git rm`;
-  then `{plumb} validate`.
+- "install what plumb needs" (plumb said it needs Python 3.12 on this machine): say what
+  you will install, then install uv (preferred) or Python 3.12 with this machine's usual
+  installer; Claude Code asks them before it runs. Then run `{plumb} status --card`: the
+  first run sets plumb up, which can take two minutes.
+- Anything else: run `{plumb} resolve <their words>`, then ask which of the matches they
+  meant, in their terms, and follow that branch.
 
-Change nothing else.
+Never run a command that is the owner's own (`approve`, `revoke`, `config auto-approve`,
+`conflict choose`, `go`): plumb refuses it from your session. Change nothing else.

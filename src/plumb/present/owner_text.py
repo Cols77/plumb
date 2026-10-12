@@ -148,7 +148,7 @@ COMMIT_MSG_INSTALLED = ("plumb: each commit is checked for the requirement it sa
 FOREIGN_COMMIT_MSG_HOOK = ("plumb: your own commit-msg hook was kept; say \"call plumb from my "
                            "commit-msg hook\" to add the check of the requirement each commit "
                            "serves")
-NOT_ADOPTED = "/plumb init to adopt this repository"
+NOT_ADOPTED = "/plumb:plumb init to adopt this repository"
 GETTING_READY = ("plumb is getting ready for its first run; it will follow this session from "
                  "your next message")
 NEEDS_PYTHON = ("plumb needs Python 3.12 on this machine; say 'install what plumb needs' and I "

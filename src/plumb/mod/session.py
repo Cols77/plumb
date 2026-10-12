@@ -4,8 +4,13 @@ The mod makes a 32-byte random key at session start and keeps it in its own stat
 only the key's digest: ``key_digest`` is the lowercase sha256 hex of the 32 key bytes (the key
 travels as 64 hex characters, on stdin only). ``mod.json`` is written once per session, with an
 exclusive create, so the first registration wins and a key registered after the mod is useless.
-The registration is also logged (``mod-hello``: session and digest, never the key), so a button
-approval can be re-checked from the committed log where the session folder does not exist."""
+A resumed session (``claude --resume``: the same session id, a new panel process with a new key)
+is the one exception: its session-start hook, run by Claude Code and never under the agent's
+marker, marks the registration ``retired`` (``retire``), and the new panel's hello then
+replaces it, keeping the digests it held before under ``earlier`` so the approvals pressed
+with them still re-check. The registration is also logged (``mod-hello``: session and digest,
+never the key), so a button approval can be re-checked from the committed log where the session
+folder does not exist."""
 
 from __future__ import annotations
 
@@ -66,9 +71,37 @@ def registration(root: Path, session: str) -> Mapping[str, Any] | None:
     return data if isinstance(data, Mapping) else None
 
 
+def retire(root: Path, session: str) -> bool:
+    """A resumed session's start: the registration of the panel that ran before (its process
+    and key are gone) is marked ``retired`` and inactive, so the new panel's hello replaces it
+    and the hooks stop counting on it. Only the session-start hook calls this (no command
+    reaches it), and a resumed session's hook inherits the agent marker the first start
+    exported into the session env, so the marker is not checked. True when retired."""
+    held = registration(root, session)
+    if held is None or held.get("retired"):
+        return False
+    try:
+        files.write_json_atomic(mod_path(root, session),
+                                {**held, "active": False, "retired": now()})
+    except OSError:
+        return False
+    return True
+
+
+def accepted_digests(held: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """The key digests a registration answers for: the current one, then the ones it replaced
+    on a resume (approvals pressed with those still re-check)."""
+    if held is None:
+        return ()
+    earlier = held.get("earlier")
+    found = [held.get("key_digest"), *(earlier if isinstance(earlier, list) else ())]
+    return tuple(str(d) for d in found if isinstance(d, str) and d)
+
+
 def hello(core: Any, session: str, digest: Any) -> Mapping[str, Any]:
     """Register ``digest`` for ``session``: writes ``mod.json`` ``{active, since, key_digest,
-    heartbeat}`` and logs ``mod-hello``. A second registration of the session is refused."""
+    heartbeat}`` and logs ``mod-hello``. A second registration of the session is refused, unless
+    the session's start retired the first one (a resumed session, ``retire``)."""
     refuse_under_marker("hello")
     if not session.strip():
         raise Refused("plumb mod hello refused: no session")
@@ -81,11 +114,27 @@ def hello(core: Any, session: str, digest: Any) -> Mapping[str, Any]:
     try:
         handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError as exc:
-        raise Refused("plumb mod hello refused: this session already has its panel") from exc
+        held = registration(core.root, session)
+        if held is None or not held.get("retired"):
+            raise Refused("plumb mod hello refused: this session already has its panel") from exc
+        return _replace(core, session, digest, held)
     with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as out:
         out.write(json.dumps(data, sort_keys=True, indent=1) + "\n")
     core.log_append("events", HELLO_KIND, {"session": session, "key_digest": digest,
                                            "since": stamp})
+    return data
+
+
+def _replace(core: Any, session: str, digest: str, held: Mapping[str, Any]
+             ) -> Mapping[str, Any]:
+    """The hello of a resumed session's new panel: its digest replaces the retired one."""
+    stamp = now()
+    earlier = [d for d in accepted_digests(held) if d != digest]
+    data = {"active": True, "since": stamp, "key_digest": digest, "heartbeat": stamp,
+            "earlier": earlier}
+    files.write_json_atomic(mod_path(core.root, session), data)
+    core.log_append("events", HELLO_KIND, {"session": session, "key_digest": digest,
+                                           "since": stamp, "replaces": earlier[:1]})
     return data
 
 

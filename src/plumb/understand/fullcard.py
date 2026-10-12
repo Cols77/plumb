@@ -233,7 +233,7 @@ def lines(item: Mapping[str, Any], *, fold: bool = True) -> list[str]:
         out.append(owner_text.CARD_ITEM.format(text=entry["text"]))
         if entry.get("record_now"):
             out += _record_lines(entry["record_now"], item=True)
-    if item.get("evidence"):
+    if item.get("evidence") and item["kind"] != "clarify":  # SR-147
         out.append(owner_text.CARD_EVIDENCE.format(evidence=item["evidence"]))
     if item.get("record_now"):
         out += _record_lines(item["record_now"])

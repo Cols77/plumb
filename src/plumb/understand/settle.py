@@ -24,6 +24,7 @@ from typing import Any
 
 from plumb.contracts import CardState, Job, LogEntry, SettleState
 from plumb.present import owner_text
+from plumb.understand.typed import PREFIX
 
 # why a supported record is asked on its own and never settled
 DECISION, SET_MEMBER, EDIT, OPTION = "decision", "set", "edit", "option"
@@ -31,8 +32,9 @@ KINDS = ("intent", "requirement")
 SELF_SWITCHING = ("requirement",)       # the kinds the agent derives: they switch themselves on
 OWNER_VIA = ("typed", "button")
 
-TYPED = re.compile(r"^/plumb\s+settle\s+(on|off)(?:\s+(intent|requirement))?\s*$",
-                   re.IGNORECASE)
+# SR-120: typed as /plumb or as the plugin's /plumb:plumb
+# lower case, as typed.parse reads every typed command (/PLUMB settle on is not one)
+TYPED = re.compile(r"^" + PREFIX + r"\s+settle\s+(on|off)(?:\s+(intent|requirement))?\s*$")
 
 
 @dataclass(frozen=True)

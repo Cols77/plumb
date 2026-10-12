@@ -5,7 +5,8 @@ hash)`` (``files.digest_of``; a card with no question offers its card as questio
 its buttons: the question's suggested choices in order (the recommended one first), then always
 **Ask for a change** and **Leave open**. The press names the offer and the button's index.
 
-An offer is recorded once, when it is first drawn: ``.plumb/session/<s>/offers/<hex>.json``
+An offer is recorded once per panel key (again only after a resumed session's new panel
+registered, ``session.retire``), when it is first drawn: ``.plumb/session/<s>/offers/<hex>.json``
 (what the press reads: the card, question, record and hash shown, the buttons, ``drawn_at``) and
 an ``offer`` log entry (what the re-check of a button approval reads: the session folder is not
 committed, the log is)."""
@@ -87,8 +88,11 @@ def _button_json(n: int, choice: Choice) -> dict[str, Any]:
 
 def _record_offer(core: Any, session: str, data: Mapping[str, Any]) -> None:
     path = offer_path(core.root, session, str(data["offer_id"]))
-    if isinstance(files.read_json(path), Mapping):
+    held = files.read_json(path)
+    if isinstance(held, Mapping) and held.get("key_digest") == data["key_digest"]:
         return                                          # drawn before: the first draw stands
+    # never drawn, or drawn under the key of the panel a resumed session replaced: recorded
+    # again under this key, so a press with it re-checks
     files.write_json_atomic(path, dict(data))
     core.log_append("events", OFFER_KIND, {
         "session": session, "offer": data["offer_id"], "card": data["card"],

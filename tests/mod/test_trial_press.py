@@ -135,7 +135,7 @@ def _fixture(name: str) -> Any:
     import json
     import re
 
-    text = (Path(__file__).resolve().parents[2] / "plugin" / "hooks" / "fixtures.ts").read_text(
+    text = (Path(__file__).resolve().parents[2] / "tests" / "plugin" / "mod" / "fixtures.ts").read_text(
         encoding="utf-8")
     found = re.search(rf"// BEGIN {name}\n.*?= (.*?)\n// END {name}", text, re.S)
     assert found, name

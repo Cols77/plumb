@@ -4,12 +4,17 @@
 # on stdin. The cheap checks run here, in sh, before any Python starts:
 #   1. no .plumb/ up to the git root: silent, apart from one line at a session's start in a
 #      git work tree the owner has not put on the "not here" list (PLUMB_HOME/ignored);
-#   2. a repository set up the old way (its .claude/settings.json runs `plumb hook`): that
-#      install runs the hooks, so this exits at once and nothing runs twice;
-#   3. pre-tool: the edit gate (gate.sh, SP8) for the edit tools, then nothing more unless the
-#      call names plumb or PLUMB_ (the guard, plumb.guard, is Python);
-#   4. plumb's own environment not ready: the session start begins setting it up in the
-#      background with one plain line; every other hook exits at once;
+#   2. a repository set up the old way (a hook "command" in its .claude/settings.json runs
+#      `plumb hook` or plumb's gate.sh): that install runs the hooks, so this exits at once and
+#      nothing runs twice. A deny rule naming `plumb hook` is not a hook (SR-121 EX-1), and when
+#      the old install registers no gate.sh, pre-tool still runs the gate here;
+#   3. pre-tool: the edit gate (gate.sh, SP8) for the edit tools, reading the session gate under
+#      the .plumb/ found by the walk (PLUMB_ROOT, SR-121 EX-2), then nothing more unless the
+#      tool's input names plumb or PLUMB_ (the guard, plumb.guard, is Python; the rest of the
+#      hook's JSON, its cwd and transcript path, is not looked at: SR-123 EX-2);
+#   4. plumb's own environment not ready: the session start asks bin/plumb's probe whether a
+#      Python can build it and, if so, begins setting it up in the background, detached, with
+#      one plain line; every other hook exits at once;
 #   5. otherwise `plumb hook <event>` in the plugin's own environment.
 # Every hook exits 0: a failing check never blocks the owner. The helpers set a variable
 # instead of printing: a command substitution costs a process on Windows, and this runs on
@@ -44,6 +49,59 @@ read_file() {  # f = the text of file $1 (empty when it cannot be read)
   while IFS= read -r l || [ -n "$l" ]; do f="$f$l$nl"; done < "$1"
 }
 
+read_input() {  # input = the hook's JSON on stdin (a loop, not $(cat): no process)
+  input=
+  while IFS= read -r line || [ -n "$line" ]; do input="$input$line"; done
+}
+
+legacy_hooks() {  # legacy = gate, hook or empty: what the "command" values of $f run
+  # Only a "command" value counts: a permission rule such as "Bash(plumb hook prompt:*)" runs
+  # nothing. Each value is read up to its closing quote, an escaped quote (\") kept inside.
+  legacy=
+  r=$f
+  while :; do
+    case $r in
+      *'"command"'*) ;;
+      *) return 0 ;;
+    esac
+    r=${r#*\"command\"}
+    case $r in  # a key, not the value of "type": "command"
+      :*|[' 	']:*|[' 	'][' 	']:*) ;;
+      *) continue ;;
+    esac
+    case $r in
+      *\"*) r=${r#*\"} ;;  # past the value's opening quote
+      *) return 0 ;;
+    esac
+    val=
+    while :; do
+      case $r in
+        *\"*) ;;
+        *) val=$val$r; r=; break ;;
+      esac
+      piece=${r%%\"*}
+      r=${r#*\"}
+      val=$val$piece
+      # an odd run of backslashes before the quote escapes it and the value goes on; an even
+      # run (a value ending in "C:\\dir\\") is escaped backslashes, and the quote closes it
+      t=$piece
+      n=0
+      while :; do
+        case $t in
+          *\\) t=${t%\\}; n=$((n + 1)) ;;
+          *) break ;;
+        esac
+      done
+      [ $((n % 2)) -eq 1 ] || break
+      val="$val\""
+    done
+    case $val in
+      *'plumb/gate.sh'*) legacy=gate; return 0 ;;
+      *'plumb hook '*|*'plumb.exe hook '*|*'plumb.cmd hook '*) legacy=hook ;;
+    esac
+  done
+}
+
 slashes "$0"
 case $s in
   */*) here=${s%/*} ;;
@@ -62,7 +120,9 @@ root=
 gitroot=
 d=$s
 while [ -n "$d" ]; do
-  if [ -f "$d/.plumb/config.yaml" ] || [ -d "$d/.plumb/requirements" ]; then
+  # plumb's own home (~/.plumb: env/, current.json) is never a repository's records
+  if { [ -f "$d/.plumb/config.yaml" ] || [ -d "$d/.plumb/requirements" ]; } &&
+     [ ! -d "$d/.plumb/env" ] && [ ! -f "$d/.plumb/current.json" ]; then
     root=$d
     break
   fi
@@ -74,6 +134,18 @@ while [ -n "$d" ]; do
   [ "$parent" = "$d" ] && break
   d=$parent
 done
+
+agent_env() {  # the agent's shell: the session marker and plumb on the PATH (SP7 4.3)
+  [ -n "$CLAUDE_ENV_FILE" ] || return 0
+  bin="$plugin_root/bin"
+  command -v cygpath >/dev/null 2>&1 && bin=$(cygpath -u "$bin")
+  read_file "$CLAUDE_ENV_FILE"
+  case $f in
+    *PLUMB_AGENT_SESSION*) ;;
+    *) printf '%s\n%s\n' 'export PLUMB_AGENT_SESSION=claude-code' \
+         "export PATH=\"$bin:\$PATH\"" >> "$CLAUDE_ENV_FILE" ;;
+  esac
+}
 
 if [ -z "$root" ]; then
   [ "$event" = session-start ] || exit 0
@@ -92,43 +164,57 @@ if [ -z "$root" ]; then
       if [ "$line" = "$gitroot" ] || [ "$line" = "$canon" ]; then exit 0; fi
     done < "$home/ignored"
   fi
-  printf '%s\n' '{"systemMessage": "/plumb init to adopt this repository"}'
+  # `plumb init`, which /plumb init runs, must resolve in the agent's shell (SR-122 EX-2)
+  agent_env
+  printf '%s\n' '{"systemMessage": "/plumb:plumb init to adopt this repository"}'
   exit 0
 fi
 
 # 2. the old per-repository install answers for itself
 read_file "$root/.claude/settings.json"
+legacy=
 case $f in
-  *'plumb hook '*|*'plumb/gate.sh'*) exit 0 ;;
+  *'"command"'*) legacy_hooks ;;
+esac
+case $legacy in
+  gate) exit 0 ;;
+  hook)
+    # the old install runs plumb's Python hooks but registers no gate: the gate runs here
+    [ "$event" = pre-tool ] || exit 0
+    read_input
+    printf '%s\n' "$input" | PLUMB_ROOT=$root sh "$plugin_root/bin/gate.sh"
+    exit 0 ;;
 esac
 
-input=$(cat)
+read_input
 export CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$root}"
 
-# the agent's shell: the session marker and plumb on the PATH (SP7 4.3)
-if [ "$event" = session-start ] && [ -n "$CLAUDE_ENV_FILE" ]; then
-  bin="$plugin_root/bin"
-  command -v cygpath >/dev/null 2>&1 && bin=$(cygpath -u "$bin")
-  read_file "$CLAUDE_ENV_FILE"
-  case $f in
-    *PLUMB_AGENT_SESSION*) ;;
-    *) printf '%s\n%s\n' 'export PLUMB_AGENT_SESSION=claude-code' \
-         "export PATH=\"$bin:\$PATH\"" >> "$CLAUDE_ENV_FILE" ;;
-  esac
-fi
+[ "$event" = session-start ] && agent_env
 
 # 3. the edit gate first (shell only), then the guard only when the call names plumb
 if [ "$event" = pre-tool ]; then
   field "$input" tool_name
   case $v in
     Edit|Write|MultiEdit|NotebookEdit)
-      answer=$(printf '%s\n' "$input" | sh "$plugin_root/bin/gate.sh")
+      # gate.sh reads PLUMB_ROOT/.plumb/session/<id>/gate: the folder the walk found, so a
+      # session started in a subfolder is still gated (SR-121 EX-2)
+      answer=$(printf '%s\n' "$input" | PLUMB_ROOT=$root sh "$plugin_root/bin/gate.sh")
       if [ -n "$answer" ]; then
         printf '%s\n' "$answer"
         exit 0
       fi ;;
   esac
+  # only the tool's input: the cwd and transcript path name the repository, which may well
+  # be called plumb, and must not start Python on every call (SR-123 EX-2)
   case $input in
+    *'"tool_input"'*) ti=${input#*\"tool_input\"} ;;
+    *) ti= ;;
+  esac
+  # cut at the next top-level key Claude Code sends: the tool's input ends where one begins
+  for k in transcript_path cwd tool_use_id permission_mode hook_event_name session_id; do
+    ti=${ti%%\"$k\"*}
+  done
+  case $ti in
     *plumb*|*PLUMB_*) ;;
     *) exit 0 ;;
   esac
@@ -147,8 +233,17 @@ if [ -n "$want" ] && [ "$v" = "$want" ]; then
 fi
 if [ -z "$python" ] || [ ! -f "$python" ]; then
   [ "$event" = session-start ] || exit 0
-  if command -v uv >/dev/null 2>&1 || command -v python3.12 >/dev/null 2>&1; then
-    PLUMB_HOME=$home sh "$plugin_root/bin/plumb" --plumb-bootstrap </dev/null >/dev/null 2>&1 &
+  # bin/plumb's own probe (uv, or a Python 3.12 or later under any of its names): the
+  # build and this line never disagree (SR-119 EX-3); it runs only here, once per session
+  if PLUMB_HOME=$home sh "$plugin_root/bin/plumb" --plumb-probe </dev/null >/dev/null 2>&1
+  then
+    # detached, so the setup outlives this hook when Claude Code ends the hook's processes
+    if command -v nohup >/dev/null 2>&1; then
+      PLUMB_HOME=$home nohup sh "$plugin_root/bin/plumb" --plumb-bootstrap \
+        </dev/null >/dev/null 2>&1 &
+    else
+      PLUMB_HOME=$home sh "$plugin_root/bin/plumb" --plumb-bootstrap </dev/null >/dev/null 2>&1 &
+    fi
     printf '%s\n' '{"systemMessage": "plumb is getting ready for its first run; it will follow this session from your next message"}'
   else
     printf '%s\n' "{\"systemMessage\": \"plumb needs Python 3.12 on this machine; say 'install what plumb needs' and I will set it up\"}"

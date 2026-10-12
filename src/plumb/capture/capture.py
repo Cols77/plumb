@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from plumb.api import Core
 
 UPDATABLE = {"intent": ("readback", "will", "wont", "assumptions", "title"),
-             "requirement": ("statement", "title", "examples", "add_examples"),
+             "requirement": ("statement", "title", "examples", "add_examples", "proof"),
              "decision": ("chosen", "alternatives", "rationale", "title")}
 
 
@@ -143,6 +143,10 @@ class _Plan:
             if feature is not None:
                 fields["feature"] = str(feature)
             fields["examples"] = _examples(item.get("examples"), f"requirements[{n}].examples")
+            if item.get("proof") is not None:  # SR-127: how the owner will see it working
+                from plumb.capture.proof import proof_entry
+
+                fields["proof"] = proof_entry(item["proof"], f"requirements[{n}].proof")
             self.requirements.append({"fields": fields, "paths": paths})
         if (self.requirements or doc.get("decisions")) and not (self.intent or self.intent_ref):
             raise CaptureError("requirements and decisions derive from an intent: give "
@@ -209,6 +213,10 @@ class _Plan:
                 out[key] = [" ".join(str(v).split()) for v in _as_list(value, key)]
             elif key == "title":
                 out[key] = short_title(str(value))
+            elif key == "proof":
+                from plumb.capture.proof import proof_entry
+
+                out[key] = proof_entry(value, f"{record.id}.proof")
             else:
                 out[key] = " ".join(str(value).split())
         return out
@@ -355,10 +363,12 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
         merged = {**record_fields(record), **changes}
         if merged == record_fields(record):
             continue
-        rewrite(core, record, changes)
+        rewritten = rewrite(core, record, changes)
         updated.append(record_id)
         before = statuses_before.get(record_id)
-        if before is not None and before.confirmation == "confirmed":
+        # a proof alone leaves the hash, so the confirmation, as it was (SR-127)
+        if before is not None and before.confirmation == "confirmed" and \
+                rewritten.hash != record.hash:
             again.append(record_id)
     auto: list[str] = []
     if prompt_digest and written:
@@ -379,6 +389,8 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
         from plumb.stale import derived_lines
 
         lines += derived_lines(core, updated)
+    lines += _unplanned_lines(core, written)
+    lines += _kind_lines(core, written + updated)
     if unchecked:
         lines.append(UNCHECKED_NOTE)
     if _lacks_question(plan):
@@ -402,6 +414,28 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
                            auto_approved=tuple(auto), card=card, lines=tuple(lines))
     _understand_after(core, doc, result, prompt_digest)
     return result
+
+
+def _unplanned_lines(core: Core, written: Sequence[str]) -> list[str]:
+    """SR-127: the new requirements captured without a proof plan, named (never refused)."""
+    from plumb.capture.proof import proof_of
+
+    index = core.index()
+    bare = [i for i in written if i in index and index[i].kind == "requirement"
+            and proof_of(index[i]) is None]
+    if not bare:
+        return []
+    return [f"no proof planned for {', '.join(bare)}: say how the owner will see it working "
+            f"(plumb proof {bare[0]} --plan ... --kind live-session|hook|command|other)"]
+
+
+def _kind_lines(core: Core, ids: Sequence[str]) -> list[str]:
+    """SR-127 EX-1: the requirements implemented by code that changes what Claude Code draws
+    whose proof is not a live session capture, named (never refused)."""
+    from plumb.capture.proof import kind_hint
+
+    index = core.index()
+    return [hint for hint in (kind_hint(index[i]) for i in ids if i in index) if hint]
 
 
 def _understand_after(core: Core, doc: Mapping[str, Any], result: CaptureResult,

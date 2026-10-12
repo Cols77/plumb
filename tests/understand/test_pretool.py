@@ -164,3 +164,18 @@ def test_the_hook_route_is_listed_in_the_help(capsys: pytest.CaptureFixture) -> 
 
     assert cli.run("hook", ["--help"]) == 0
     assert "pre-tool" in capsys.readouterr().out
+
+
+@pytest.mark.sr("SR-121")
+def test_python_route_walks_up_from_a_subfolder(repo: Path,
+                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-121: a session started in src/ reads the gate of the .plumb/ above it, as gate.sh
+    does, instead of a src/.plumb that does not exist."""
+    _closed(repo)
+    src = repo / "src"
+    src.mkdir(exist_ok=True)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(src))
+    monkeypatch.chdir(src)
+    stdout = io.StringIO()
+    assert pretool.main(stdin=io.StringIO(_hook_input("Edit")), stdout=stdout) == 0
+    assert json.loads(stdout.getvalue())["hookSpecificOutput"]["permissionDecision"] == "deny"

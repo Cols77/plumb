@@ -48,11 +48,15 @@ async function readJson(io: Io, path: string): Promise<any> {
   }
 }
 
-/** The repository plumb adopted: the session's root or the nearest folder above it with .plumb. */
+/** The repository plumb adopted: the session's root or the nearest folder above it with .plumb,
+ * never plumb's own home (a .plumb holding env/ or current.json, as paths.holds_records) and
+ * never above the git root (a folder holding .git). */
 export async function findRoot(io: Io): Promise<string | null> {
   let dir: string | null = await io.root()
   for (let depth = 0; dir !== null && depth < 64; depth += 1) {
-    if (await io.exists(join(dir, '.plumb'))) return dir
+    if (await io.exists(join(dir, '.plumb'))
+      && !(await io.exists(join(dir, '.plumb', 'env'))) && !(await io.exists(join(dir, '.plumb', 'current.json')))) return dir
+    if (await io.exists(join(dir, '.git'))) return null
     const up = parent(dir)
     dir = up === dir ? null : up
   }
@@ -63,22 +67,39 @@ export function sessionDir(root: string, session: string): string {
   return join(root, '.plumb', 'session', session)
 }
 
-/** The interpreter that runs plumb: the one the session-start hook ran with (host.json), else
- * the plugin's bundled environment (PLUMB_HOME/current.json). None: the panel stays idle. */
-export async function findPython(io: Io, root: string, session: string): Promise<string | null> {
-  const host = await readJson(io, join(sessionDir(root, session), 'host.json'))
+/** The interpreter that runs plumb: the one the session-start hook ran with (host.json, written
+ * first thing by that hook, SR-125), else the plugin's bundled environment
+ * (PLUMB_HOME/current.json), else the repository's own .venv (an install the old way).
+ * `looked`: every place tried, for the line that says why the panel is off (SR-126); `fallback`:
+ * the interpreter is the repository's .venv, tried only because nothing named one yet. */
+export async function findPython(io: Io, root: string, session: string):
+  Promise<{ python: string | null; looked: string[]; fallback: boolean }> {
+  const hostPath = join(sessionDir(root, session), 'host.json')
+  const host = await readJson(io, hostPath)
   const env = await io.env()
   const homes = [env.PLUMB_HOME, env.CLAUDE_PLUGIN_DATA,
     env.HOME ? join(env.HOME, '.plumb') : undefined,
     env.USERPROFILE ? join(env.USERPROFILE, '.plumb') : undefined]
+  const looked = [hostPath]
   const candidates: unknown[] = [host?.python]
   for (const home of homes) {
-    if (home) candidates.push((await readJson(io, join(home, 'current.json')))?.python)
+    if (!home) continue
+    const current = join(home, 'current.json')
+    if (looked.includes(current)) continue
+    looked.push(current)
+    candidates.push((await readJson(io, current))?.python)
   }
-  for (const python of candidates) {
-    if (typeof python === 'string' && python && (await io.exists(python))) return python
+  for (const venv of [join(root, '.venv', 'Scripts', 'python.exe'), join(root, '.venv', 'bin', 'python')]) {
+    looked.push(venv)
+    candidates.push(venv)
   }
-  return null
+  const named = candidates.length - 2 // host.json's, then each home's current.json
+  for (const [n, python] of candidates.entries()) {
+    if (typeof python === 'string' && python && (await io.exists(python))) {
+      return { python, looked, fallback: n >= named && !host?.python }
+    }
+  }
+  return { python: null, looked, fallback: false }
 }
 
 function hex(bytes: Uint8Array): string {
@@ -113,17 +134,60 @@ export async function plumbMod(io: Io, link: PlumbLink, action: string,
   return { ok: ran.exitCode === 0 && data !== null, exitCode: ran.exitCode, data, stderr: ran.stderr }
 }
 
-/** The handshake: find plumb, make the key, register its digest. Null: stay idle. */
-export async function hello(io: Io): Promise<PlumbLink | null> {
+/** Why the panel could not reach plumb (SR-126): no interpreter found (where it looked),
+ * `plumb mod hello` failed (its error), or plumb refused the hello (plumb's reason). */
+export type Unlinked =
+  | { why: 'no-python'; looked: string[] }
+  | { why: 'failed'; error: string; fallback?: boolean }
+  | { why: 'refused'; reason: string }
+
+/** Whether a later try may link where this one did not: no interpreter named yet; plumb still
+ * holding the registration of the panel a resumed session ran before (the session-start hook
+ * retires it a moment later); or the repository's .venv tried before host.json named the
+ * interpreter (a .venv without plumb fails). Any other refusal or failure stands. */
+export function mayLinkLater(u: Unlinked): boolean {
+  if (u.why === 'no-python') return true
+  if (u.why === 'refused') return /already has its panel/.test(u.reason)
+  return u.fallback === true
+}
+
+/** A hello's outcome: the link, or why there is none; `unlinked` null where plumb has not
+ * adopted the repository (no .plumb/), where the panel stays silent. */
+export type Hello = { link: PlumbLink; unlinked: null } | { link: null; unlinked: Unlinked | null }
+
+const EXIT_REFUSED = 3 // plumb mod's exit code for a refusal (src/plumb/mod/cli.py)
+
+/** The last line of a process's error output, cut to one readable line. */
+function lastLine(text: string): string {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  const line = lines[lines.length - 1] ?? ''
+  return line.length > 200 ? `${line.slice(0, 199)}…` : line
+}
+
+/** The handshake: find plumb, make the key, register its digest. */
+export async function hello(io: Io): Promise<Hello> {
   const root = await findRoot(io)
-  if (root === null) return null
+  if (root === null) return { link: null, unlinked: null }
   const session = await io.id()
-  const python = await findPython(io, root, session)
-  if (python === null) return null
+  const found = await findPython(io, root, session)
+  if (found.python === null) return { link: null, unlinked: { why: 'no-python', looked: found.looked } }
   const { key, digest } = await makeKey()
-  const link: PlumbLink = { session, root, python, key }
-  const ran = await plumbMod(io, link, 'hello', { key_digest: digest })
-  return ran.ok && ran.data?.active === true ? link : null
+  const link: PlumbLink = { session, root, python: found.python, key }
+  let ran: Ran
+  try {
+    ran = await plumbMod(io, link, 'hello', { key_digest: digest })
+  } catch (err) {
+    const error = lastLine(String((err as Error)?.message ?? err)) || 'it could not start'
+    return { link: null, unlinked: { why: 'failed', error, fallback: found.fallback } }
+  }
+  if (ran.ok && ran.data?.active === true) return { link, unlinked: null }
+  const said = lastLine(ran.stderr)
+  if (ran.exitCode === EXIT_REFUSED) {
+    const reason = said.replace(/^plumb mod hello refused:\s*/, '') || 'no reason given'
+    return { link: null, unlinked: { why: 'refused', reason } }
+  }
+  const error = said || (ran.exitCode === 0 ? 'it answered without registering the panel' : `exit code ${ran.exitCode}`)
+  return { link: null, unlinked: { why: 'failed', error, fallback: found.fallback } }
 }
 
 export async function draw(io: Io, link: PlumbLink): Promise<PlumbCard[] | null> {

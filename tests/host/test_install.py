@@ -125,8 +125,9 @@ def test_post_edit_registered_async(repo: Path, no_claims) -> None:
 
 def test_skill_about_20_lines_names_test_map_and_relay(repo: Path, no_claims) -> None:
     _install(repo)
-    skill = (repo / ".claude" / "skills" / "plumb" / "SKILL.md").read_text(encoding="utf-8")
-    assert skill.startswith("---\nname: plumb\n")
+    skill = (repo / ".claude" / "skills" / "plumb-records" / "SKILL.md").read_text(
+        encoding="utf-8")
+    assert skill.startswith("---\nname: plumb-records\n")  # SR-120: /plumb is the command
     body = skill.split("---", 2)[2].strip().splitlines()
     assert 12 <= len(body) <= 26
     assert ".plumb/test_map.txt" in skill
@@ -242,7 +243,7 @@ def test_uninstall_removes_only_plumb_entries(repo: Path, no_claims) -> None:
     install.uninstall(repo)
     settings = _settings(repo)
     assert settings == foreign
-    assert not (claude / "skills" / "plumb").exists()
+    assert not (claude / "skills" / "plumb-records").exists()
     assert not (claude / "commands" / "plumb.md").exists()
     assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "# Project\n"
 
@@ -280,8 +281,10 @@ def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> N
     assert "uv run --no-sync plumb explain <their words>" in text
     advertised = {part.split()[0] for part in hint.split('"')[1].split("|")}
     # sp5 6.1: the six owner verbs, plain words accepted (SR-064 EX-3), plus the JEV judge
-    # (setup, status, calibrate: SR-039, R14)
-    assert advertised == {"status", "explain", "review", "confirm", "impact", "view", "jev"}
+    # (setup, status, calibrate: SR-039, R14); SR-122: every typed verb the command answers
+    assert advertised == {"status", "explain", "review", "confirm", "impact", "view", "jev",
+                          "approve", "init", "go", "undo", "settle", "conflicts",
+                          "merge-check", "inflight"}
     for name in advertised | {"why", "show"}:
         assert name in cli.ROUTES, name
     assert "not available in this build" not in cli._HELP

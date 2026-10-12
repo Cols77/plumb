@@ -1,6 +1,6 @@
 // What `plumb mod draw|press|undo` and the stop hook's present.json answer, for the panel's
 // tests (SP7 5.10). tests/mod/test_handshake.py checks that each has the shape of a real run.
-import type { PlumbCard, PlumbPresent } from '../types'
+import type { PlumbCard, PlumbPresent } from '../../../plugin/types'
 
 export const ROOT = '/work/shop'
 export const SESSION = 'sess-1'

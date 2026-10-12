@@ -180,7 +180,7 @@ def render(card: CardState) -> str:
         if len(items) > ITEMS_MAX:
             lines.append(owner_text.CARD_ITEM.format(
                 text=owner_text.CARD_MORE.format(n=len(items) - ITEMS_MAX)))
-    if card.evidence:
+    if card.evidence and card.kind != "clarify":  # SR-147: the read-back's lines stay stored
         lines.append(owner_text.CARD_EVIDENCE.format(evidence=card.evidence))
     lines += [owner_text.CARD_RESOLUTION.format(n=n, text=text)
               for n, text in enumerate(card.resolutions[:RESOLUTIONS_MAX], start=1)]
