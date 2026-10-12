@@ -41,7 +41,7 @@ export type PlumbContent = {
     note?: string
   }
   owner_words?: {
-    items?: { id?: string; title?: string; quote?: string | null; prompt?: string | null }[]
+    items?: { id?: string; title?: string; quote?: string | null; prompt?: string | null; found_lines?: string[] }[]
     note?: string
   }
   options?: { n: number; text: string; consequence: string | null; recommended: boolean }[]

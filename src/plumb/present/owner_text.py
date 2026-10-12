@@ -476,6 +476,7 @@ FULL_FOLDED = "    [folded: {size} characters, {lines} lines; open it to read it
 FULL_CHANGE_NOTE = "  About the change: {note}"
 FULL_WORDS = '  Your words ({title}): "{said}"'
 FULL_WORDS_PROMPT = '    from your message: "{text}"'
+FULL_WORDS_UNLOGGED = "  Your words ({title}): none on file"
 FULL_WORDS_NONE = "  {note}"
 FULL_OPTION = "  {n}. {text}{mark}"
 FULL_RECOMMENDED = " (recommended)"

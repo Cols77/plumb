@@ -57,6 +57,21 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
+    test('a card shows what a transcript search found, marked not verified (SR-118)', async ($, on) => {
+      const found = 'found in a transcript of 2026-10-06 (session sess-2), not verified: "send me a digest every week"'
+      const rewording = 'proposed rewording: "You want a weekly digest by email."'
+      const card = { ...STALE, content: { ...STALE.content, owner_words: { items: [{ ...STALE.content.owner_words.items[0], found_lines: [found, rewording] }], note: '' } } }
+      const w = world({ answer: (action, argv) => action === 'draw' ? { exitCode: 0, data: drawWith(card) } : world().answer(action, argv) })
+      install(on, w)
+      await $.session.start(START)
+      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const text = async (t: string | RegExp) => (await ui.find({ type: 'Text', text: t }))?.text
+      expect(await text('Buttons confirm: "a click confirms because only I can click"')).toBeDefined()
+      expect(await text(found)).toBeDefined()
+      expect(await text(rewording)).toBeDefined()
+      await ui.unmount()
+    })
+
     test('a 60,000-character change is folded with its size and opens in full', async ($, on) => {
       const diff = longDiff()
       expect(diff.length).toBeGreaterThan(60000)

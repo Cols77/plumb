@@ -95,10 +95,14 @@ function nowReads(ui: Ui, card: PlumbCard) {
 function words(ui: Ui, card: PlumbCard) {
   const said = card.content?.owner_words
   if (!said) return null
-  const body = (said.items ?? []).map(item => {
+  const body: any[] = []
+  for (const item of said.items ?? []) {
     const quote = item.quote || item.prompt || ''
-    return line(ui, item.title ? `${item.title}: "${quote}"` : `"${quote}"`)
-  })
+    const shown = quote ? `"${quote}"` : 'none on file'
+    body.push(line(ui, item.title ? `${item.title}: ${shown}` : shown))
+    // SR-118: what a transcript search found, marked found in a transcript, not verified
+    for (const found of item.found_lines ?? []) body.push(line(ui, found, { dimColor: true }))
+  }
   if (said.note) body.push(line(ui, said.note, { dimColor: true }))
   return body.length ? section(ui, 'words', T.yourWords, body) : null
 }

@@ -1,9 +1,10 @@
 """Recovering older records' words from past session transcripts (SR-118, INT-032).
 
 An intent whose quote is in no prompt the hook logged ("quote not verified" in triage) may
-still have its source in a past Claude Code session: ``~/.claude/projects/<project>*/*.jsonl``
-keeps every message the owner typed (this project's folder only, its name matched exactly:
-never a worktree's or another project's). Recovery looks there with a cascade like SR-114's repin:
+still have its source in a past Claude Code session: ``~/.claude/projects/<project>/*.jsonl``
+keeps every message the owner typed (``<project>`` is this project's folder, its name matched
+exactly: never a worktree's or another project's). Recovery looks there with a cascade like
+SR-114's repin:
 
 1. a plain text comparison first: a message holding the record's quote verbatim (the same
    ``approvals.quote_in_prompt`` check triage uses, over normalized text) is the source, and
@@ -15,6 +16,10 @@ never a worktree's or another project's). Recovery looks there with a cascade li
    message by text comparison; a span that is not is no answer;
 4. when the span does not support the record, Opus (``understand.diagnose_model``) examines
    whether the record misreads the owner and, if so, proposes a rewording.
+
+A model-picked span is shown only when it is long enough (``long_enough``), whether it
+supports the record or Opus finds the record misreads it; a shorter one is reported as too
+short to show.
 
 What is found goes to a cache under ``.plumb/cache`` keyed by the record's hash (never the
 log), and the record's card shows it marked "found in a transcript, not verified". A
@@ -486,20 +491,20 @@ def recover_one(record: Any, messages: Sequence[Message], cascade: Cascade) -> F
         raise RecoveryError("the span the model picked is not word for word in the message")
     span = " ".join(pick.span.split())
 
-    def supported(by: str, reason: str) -> Finding:
+    def shown_span(status: str, by: str, reason: str, **more: Any) -> Finding:
         if not long_enough(span, message.text):
             return Finding(**base, status="too_short", by=by, at=message.at,
                            session=message.session, transcript=message.path, reason=reason,
                            note=TOO_SHORT)
-        return found(message, "found", by, span, reason=reason)
+        return found(message, status, by, span, reason=reason, **more)
 
     if pick.supports:
-        return supported("sonnet", pick.reason)
+        return shown_span("found", "sonnet", pick.reason)
     verdict = cascade.opus().examine(view, _shown(i, message), span, pick.reason)
     if verdict.misreads:
-        return found(message, "misreads", "opus", span, reason=verdict.explanation,
-                     proposed_wording=verdict.proposed_wording)
-    return supported("opus", verdict.explanation)
+        return shown_span("misreads", "opus", verdict.explanation,
+                          proposed_wording=verdict.proposed_wording)
+    return shown_span("found", "opus", verdict.explanation)
 
 
 # --------------------------------------------------------------------------- the cache
