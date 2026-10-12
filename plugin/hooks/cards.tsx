@@ -146,11 +146,17 @@ export function CardView(ui: Ui, card: PlumbCard, opts: { isOpen: boolean; showA
   const answer: any[] = []
   if (several && !opts.showAll) {
     answer.push(line(ui, T.items(card.offers.length), { dimColor: true }))
-    for (const q of card.questions) answer.push(line(ui, `• ${q.text}`))
+    for (const offer of card.offers) {
+      const asked = card.questions.find(x => x.id === offer.question)
+      answer.push(line(ui, `• ${asked?.text ?? offer.question}`))
+    }
     answer.push(<Button key={`items:${card.id}`} label={T.showAll} onPress={NOOP} />)
   } else {
     card.offers.forEach((offer, q) => {
-      if (several) answer.push(line(ui, card.questions[q]?.text ?? offer.question, { bold: true }))
+      // each record of a batch under its own words, by the question its offer names
+      // (a record already answered is not drawn again: plumb leaves its offer out)
+      const asked = card.questions.find(x => x.id === offer.question) ?? card.questions[q]
+      if (several) answer.push(line(ui, asked?.text ?? offer.question, { bold: true }))
       answer.push(buttons(ui, card, offer, q))
     })
   }

@@ -51,6 +51,42 @@ export const DRAW = {
 }
 // END DRAW
 
+// BEGIN DRAW_TRIAL
+export const DRAW_TRIAL = {
+  "session": "sess-1",
+  "cards": [
+    {
+      "id": "trial:5d1c0a9e7b21", "kind": "trial", "topic": "CSV export, Late fees",
+      "issue": "plumb would settle these from your words; is that right?",
+      "evidence": "CSV export: keep the CSV export | Late fees: charge 5% on late invoices", "resolutions": ["Yes, that is what I meant", "No, that is not what I meant"],
+      "questions": [
+        {"id": "trial:5d1c0a9e7b21#1", "text": "CSV export", "resolutions": ["Yes, that is what I meant", "No, that is not what I meant"], "record": "SR-001", "hash": "sha256:1111", "choices": [{"label": "Yes, that is what I meant", "answer": "accepted", "change": null}, {"label": "No, that is not what I meant", "answer": "rejected", "change": null}]},
+        {"id": "trial:5d1c0a9e7b21#2", "text": "Late fees", "resolutions": ["Yes, that is what I meant", "No, that is not what I meant"], "record": "SR-009", "hash": "sha256:9999", "choices": [{"label": "Yes, that is what I meant", "answer": "accepted", "change": null}, {"label": "No, that is not what I meant", "answer": "rejected", "change": null}]}
+      ],
+      "status": "open", "answers": [], "owner_only": false, "turn": 0,
+      "evidence_size": 71, "repeats": true, "content": null,
+      "offers": [
+        {"offer_id": "sha256:t001", "question": "trial:5d1c0a9e7b21#1", "record": "SR-001", "hash": "sha256:1111", "drawn_at": "2026-10-11T12:00:00Z",
+          "buttons": [{"index": 0, "label": "Yes, that is what I meant", "answer": "accepted", "change": null}, {"index": 1, "label": "No, that is not what I meant", "answer": "rejected", "change": null}, {"index": 2, "label": "Ask for a change", "answer": "change", "change": null}, {"index": 3, "label": "Leave open", "answer": "open", "change": null}]},
+        {"offer_id": "sha256:t009", "question": "trial:5d1c0a9e7b21#2", "record": "SR-009", "hash": "sha256:9999", "drawn_at": "2026-10-11T12:00:00Z",
+          "buttons": [{"index": 0, "label": "Yes, that is what I meant", "answer": "accepted", "change": null}, {"index": 1, "label": "No, that is not what I meant", "answer": "rejected", "change": null}, {"index": 2, "label": "Ask for a change", "answer": "change", "change": null}, {"index": 3, "label": "Leave open", "answer": "open", "change": null}]}
+      ]
+    }
+  ]
+}
+// END DRAW_TRIAL
+
+// BEGIN PRESS_TRIAL_NO
+export const PRESS_TRIAL_NO = {
+  "ok": true, "offer": "sha256:t009", "card": "trial:5d1c0a9e7b21", "question": "trial:5d1c0a9e7b21#2", "choice": 1,
+  "label": "No, that is not what I meant", "answer": "rejected", "status": "open", "confirmed": [], "rejected": ["SR-009"],
+  "left_out": [], "fresh_cards": [], "prefill": null,
+  "line": "You pressed No, that is not what I meant: dropped: \"Late fees\".",
+  "model_note": "The owner pressed No, that is not what I meant; dropped: SR-009 'Late fees'.",
+  "notes": []
+}
+// END PRESS_TRIAL_NO
+
 // BEGIN PRESENT
 export const PRESENT = {
   "turn": 1760184000, "turn_id": "t-1", "session": "sess-1", "written_at": "2026-10-11T12:00:01Z",

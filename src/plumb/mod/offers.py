@@ -159,12 +159,23 @@ def _offers_of(core: Any, session: str, digest: str, stamp: str, card: CardState
     return offers
 
 
+def unanswered(card: CardState) -> CardState:
+    """``card`` without the questions already answered (a batch the owner answered in part,
+    one record at a time): an answered record is not offered again (SR-106, INT-032 (2))."""
+    answered = {a.question for a in card.answers}
+    if len(card.questions) < 2 or not answered:
+        return card
+    left = tuple(q for q in card.questions if q.id not in answered)
+    return dataclasses.replace(card, questions=left) if left else card
+
+
 def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
     """The cards the mod draws for ``session`` (as ``cards.json`` holds them, never cut: the mod
     folds a long ``evidence`` by its ``evidence_size``), then the cards the stop hook built and
     drew at the last turn end (``summary.read_drawn``), each with its full content (SR-116, the
-    same as the end-of-turn text) and each question with its offer and buttons; every offer is
-    recorded the first time it is drawn."""
+    same as the end-of-turn text) and each question with its offer and buttons (a question
+    already answered is left out, ``unanswered``); every offer is recorded the first time it
+    is drawn."""
     from plumb.mod.session import now
     from plumb.understand import summary
 
@@ -176,6 +187,7 @@ def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
         have.add(card.id)
         if card.status not in DRAWN:
             continue
+        card = unanswered(card)
         out.append({**cardstore.card_to_json(card), "evidence_size": len(card.evidence),
                     "repeats": card.status in cardstore.AWAITING,
                     "offers": _offers_of(core, session, digest, stamp, card, False),
