@@ -81,6 +81,7 @@ def record_lines(record: Any) -> list[str]:
 
 def show_lines(core: Any, ids: Iterable[str]) -> tuple[list[str], list[str]]:
     """``plumb show``: the header, read-back and body of each record; and the unknown ids."""
+    from plumb.capture.proof import proof_lines
     from plumb.present.cards import confirmed_label
 
     index = core.index()
@@ -102,6 +103,9 @@ def show_lines(core: Any, ids: Iterable[str]) -> tuple[list[str], list[str]]:
                  or (status.confirmation if status is not None else "?"))
         lines.append(f"{record_id} ({record.kind}, {state}) {record.path}")
         lines.extend("  " + line for line in record_lines(record))
+        # SR-127: how the owner sees it working, and the evidence (not part of the read-back
+        # the owner confirms)
+        lines.extend("  " + line for line in proof_lines(record))
         body = record.body.strip()
         if body:
             lines.extend("  | " + line for line in body.splitlines())

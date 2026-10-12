@@ -1,4 +1,4 @@
-"""CAPTURE C7: the plumb skill drives the capture helpers; plumb-clarify beside it
+"""CAPTURE C7: the plumb-records skill drives the capture helpers; plumb-clarify beside it
 (sp2 9.1, SR-046, SR-043)."""
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ def installed(repo: Path) -> Path:
 
 
 @pytest.mark.sr("SR-046")
-def test_plumb_skill_names_capture_helpers(installed: Path) -> None:
-    skill = (installed / ".claude" / "skills" / "plumb" / "SKILL.md").read_text(
+def test_plumb_records_skill_names_capture_helpers(installed: Path) -> None:
+    skill = (installed / ".claude" / "skills" / "plumb-records" / "SKILL.md").read_text(
         encoding="utf-8")
     for words in ("plumb capture", "plumb decide", "plumb clarify", "plumb triage",
                   "plumb relay` is refused", "plumb-clarify"):
@@ -32,7 +32,7 @@ def test_plumb_skill_names_capture_helpers(installed: Path) -> None:
 
 @pytest.mark.sr("SR-043")
 def test_clarify_skill_states_depths_and_discipline(installed: Path) -> None:
-    assert skill_names() == ["plumb", "plumb-clarify"]
+    assert skill_names() == ["plumb-clarify", "plumb-records"]
     path = installed / ".claude" / "skills" / "plumb-clarify" / "SKILL.md"
     skill = path.read_text(encoding="utf-8")
     assert skill.startswith("---\nname: plumb-clarify\n")
@@ -54,4 +54,4 @@ def test_skills_uninstalled_and_owner_commands_denied(installed: Path) -> None:
         assert f"Bash(plumb {command}:*)" in rules
     uninstall(installed)
     assert not (installed / ".claude" / "skills" / "plumb-clarify").exists()
-    assert not (installed / ".claude" / "skills" / "plumb").exists()
+    assert not (installed / ".claude" / "skills" / "plumb-records").exists()

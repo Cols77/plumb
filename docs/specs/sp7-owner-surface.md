@@ -107,10 +107,10 @@ plugin/
   bin/plumb.cmd                     # the same for cmd.exe
   bin/plumb-hook                    # POSIX sh: the cheap pre-checks, then `plumb hook <event>`
   commands/plumb.md                 # GENERATED from src/plumb/hosts/claude_code/templates/plumb-command.md
-  skills/plumb/SKILL.md             # GENERATED from templates/skills/plumb/SKILL.md
+  skills/plumb-records/            # GENERATED from templates/skills/plumb-records/ (SKILL.md, references/; DEC-036)
   skills/plumb-clarify/SKILL.md     # GENERATED from templates/skills/plumb-clarify/SKILL.md
   hooks/hooks.json                  # {"modules": ["./register.tsx"], "hooks": {...command hooks...}}
-  hooks/register.tsx                # the mod (section 5) and its modules, tests *.test.tsx
+  hooks/register.tsx                # the mod (section 5) and its modules; its tests live in tests/plugin/mod
   hooks/jargon.gen.ts               # GENERATED from plumb.present.owner_text.JARGON (6.3)
   types/index.d.ts                  # PluginState for $.state
   tsconfig.json
@@ -460,7 +460,8 @@ fast path, never the only guard (the `pre-tool` command hook remains).
 
 ### 5.10 Tests (`claude plugin test plugin`, MOD)
 
-`plugin/hooks/*.test.tsx`, each body looped over `['terminal', 'desktop'] as const`,
+`tests/plugin/mod/*.test.tsx` (run by `tests/plugin/mod/stand.py`; never shipped in the
+plugin, SR-123), each body looped over `['terminal', 'desktop'] as const`,
 `$.process.run` mocked with recorded `plumb mod ... --json` answers (fixtures written by the
 Python tests from real runs, `tests/mod/fixtures/*.json`, so both sides share them):
 

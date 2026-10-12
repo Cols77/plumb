@@ -65,6 +65,25 @@ def _answers_match(kind: str, answer: Mapping[str, Any], expect: Mapping[str, An
     return all(answer.get(k) == v for k, v in expect.items())
 
 
+def _says_none(answer: Mapping[str, Any], never: Sequence[str]) -> bool:
+    """Whether ``answer`` (as JSON, any case) contains none of a case's ``never_says``: a fact
+    the reader must not state, such as a claim about the repository its inputs never gave."""
+    text = json.dumps(answer, ensure_ascii=False).lower()
+    return not any(str(phrase).lower() in text for phrase in never)
+
+
+def _says_all(answer: Mapping[str, Any], groups: Sequence[Any]) -> bool:
+    """Whether ``answer`` (as JSON, any case) says each of a case's ``says_any`` groups: one of
+    the phrases of every group (a group may be a single phrase), so a reader that resolved a
+    reference names what it points to, in whatever words."""
+    text = json.dumps(answer, ensure_ascii=False).lower()
+    for group in groups:
+        phrases = [group] if isinstance(group, str) else list(group)
+        if not any(str(phrase).lower() in text for phrase in phrases):
+            return False
+    return True
+
+
 def _real_answer(dispatcher: Any, job: Job, kind: str) -> Mapping[str, Any]:
     """What the worker would send for ``job``: the kind's agent prompt, its inputs as the user
     message, its schema; an answer that fails the schema is an error, never a reading."""
@@ -107,7 +126,9 @@ def run_cases(dispatcher: Any, cases: Sequence[Mapping[str, Any]],
                 except KeyError:                 # a kind with no module: the plain protocol
                     answer = dict(dispatcher.run(job, system="", user=json.dumps(inputs),
                                                  schema={}, on_step=lambda step: None))
-                passed = _answers_match(kind, answer, expect)
+                passed = _answers_match(kind, answer, expect) and _says_none(
+                    answer, case.get("never_says") or ()) and _says_all(
+                    answer, case.get("says_any") or ())
             false_gap = bool(answer.get("gap")) and not expect.get("gap")
         except DispatchError as exc:
             passed, false_gap, error = False, False, f"{exc.step}: {exc.message}"

@@ -25,6 +25,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, TextIO
 
+from plumb.paths import holds_records
+
 SKIP_BUDGET = "plumb: check skipped (budget)"
 SKIP_ERROR = "plumb: check skipped (error, see .plumb/session/errors.log)"
 HARD_LIMIT_S = 1.9  # the per-turn 2-second rule; the watchdog's last resort
@@ -100,6 +102,9 @@ class Kept:
 
     def __init__(self) -> None:
         self.lines: list[str] = []
+        # nothing is owed by this hook (plumb's panel holds the session background): a cut,
+        # the watchdog's included, prints nothing at all, not even the skip notice
+        self.quiet = False
 
     def snapshot(self) -> list[str]:
         return list(self.lines)
@@ -174,7 +179,7 @@ def _plumb_root(start: Path) -> Path | None:
     except OSError:
         return None
     for candidate in (start, *start.parents):
-        if (candidate / ".plumb").is_dir():
+        if holds_records(candidate):            # never plumb's own home (~/.plumb)
             return candidate
     return None
 
@@ -248,7 +253,10 @@ def _close_hash_cache() -> None:
 
 
 def _cut_output(kept: Kept, notice: str, json_output: bool) -> str:
-    """The kept lines plus the notice; the bare notice when nothing was kept."""
+    """The kept lines plus the notice; the bare notice when nothing was kept; nothing when the
+    hook owed nothing (``Kept.quiet``)."""
+    if kept.quiet:
+        return ""
     lines = kept.snapshot()
     return _notice("\n".join([*lines, notice]), json_output)
 

@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 from capture.capture_helpers import log_prompt
-from understand.fakes import owner_level
 
 from plumb.api import open_core
 from plumb.understand import cardstore, clarify, cmd_clarify, files, gate, hooks, worker
+from understand.fakes import owner_level
 
 pytestmark = pytest.mark.sr("SR-103")
 
@@ -169,3 +169,22 @@ def test_skill_first_action_is_clarify_wait(repo: Path) -> None:
     for words in ("couldn't check", "Build anyway", "spec session", "ready"):
         assert words.lower() in text.lower(), words
     assert "plumb go" not in text.replace("`/plumb go`", "")      # the agent never types it
+
+
+@pytest.mark.sr("SR-122")
+def test_a_finished_check_that_left_no_card_is_not_waiting_for_ever(
+        repo: Path, engine_standins: Any) -> None:
+    """SR-122 EX-1: the result is in and ok, yet the gate stays closed and no card is open:
+    once the limit passes the answer is couldn't check, never "waiting" again (the skill runs
+    --wait again on waiting, so it would loop)."""
+    engine_standins.dispatcher.script = {"clarify": CARD}
+    core, digest = _say(repo)
+    worker.run_once(core, SESSION)
+    from dataclasses import replace
+
+    # the card closed some other way, the gate left closed
+    cardstore.save(repo, SESSION, [replace(c, status="closed")
+                                   for c in cardstore.own_cards(repo, SESSION)])
+    assert gate.is_closed(repo, SESSION)
+    states = {cmd_clarify.wait(open_core(repo), SESSION, timeout=0.2).state for _ in range(2)}
+    assert "waiting" not in states

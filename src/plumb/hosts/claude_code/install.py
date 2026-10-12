@@ -3,8 +3,11 @@
 Merges plumb's entries into ``.claude/settings.json`` idempotently, preserving every
 non-plumb entry: the hooks whose modules exist in this build, the status line, the session
 marker ``PLUMB_AGENT_SESSION`` and the ``permissions.deny`` rules of the self-approval guard
-(spec 5.6). Writes the skill, the slash command and a marked ``CLAUDE.md`` block, and the
-git ``commit-msg`` hook through BRIDGE's ``install_commit_msg_hook``.
+(spec 5.6). Writes the skills (with their reference files), the slash command and a marked
+``CLAUDE.md`` block, and the git ``commit-msg`` hook through BRIDGE's
+``install_commit_msg_hook``. The grounding skill is ``plumb-records`` (SR-120, DEC-036: a
+skill named ``plumb`` took ``/plumb`` from the command); the copy an earlier install wrote
+under ``.claude/skills/plumb`` is removed.
 """
 
 from __future__ import annotations
@@ -271,18 +274,65 @@ def _dump(data: dict[str, Any]) -> str:
 # --------------------------------------------------------------------------- files
 
 
+# The plugin's command reads the skills' reference files under its own root; this install
+# copies them under the project's ``.claude/skills/``.
+PLUGIN_SKILLS = "${CLAUDE_PLUGIN_ROOT}/skills/"
+LOCAL_SKILLS = ".claude/skills/"
+# Skills an earlier install wrote under another name: the folder, and how its description
+# began (only a copy that still says so is plumb's to remove).
+RETIRED_SKILLS = {"plumb": "description: Ground work in this repository's plumb records"}
+
+
 def template(name: str, launcher: Launcher) -> str:
     text = (Path(__file__).parent / "templates" / name).read_text(encoding="utf-8")
-    return text.replace("{plumb}", launcher.agent_prefix)
+    return text.replace("{plumb}", launcher.agent_prefix).replace(PLUGIN_SKILLS, LOCAL_SKILLS)
 
 
 def skill_names() -> list[str]:
     """Every skill shipped under ``templates/skills/<name>/SKILL.md`` (sp2 9.1: the
-    ``plumb`` skill and ``plumb-clarify`` beside it)."""
+    ``plumb-records`` skill and ``plumb-clarify`` beside it)."""
     base = Path(__file__).parent / "templates" / "skills"
     if not base.is_dir():
         return []
     return sorted(d.name for d in base.iterdir() if (d / "SKILL.md").is_file())
+
+
+def skill_files() -> list[str]:
+    """Every file of every skill, ``skills/<name>/<path>`` under ``templates/``: the
+    ``SKILL.md`` and the reference files it links (``references/...``)."""
+    base = Path(__file__).parent / "templates" / "skills"
+    out = []
+    for name in skill_names():
+        for path in sorted((base / name).rglob("*")):
+            if path.is_file() and "__pycache__" not in path.parts:
+                out.append(path.relative_to(base.parent).as_posix())
+    return out
+
+
+def retired_skills(root: Path) -> list[Path]:
+    """The folders under ``.claude/skills`` an earlier install wrote under a retired name
+    and that are still plumb's (their ``SKILL.md`` begins as plumb wrote it)."""
+    out = []
+    for name, description in RETIRED_SKILLS.items():
+        folder = Path(root) / ".claude" / "skills" / name
+        try:
+            head = (folder / "SKILL.md").read_text(encoding="utf-8").splitlines()[:3]
+        except (OSError, UnicodeDecodeError):
+            continue
+        if head[:2] == ["---", f"name: {name}"] and any(
+                line.startswith(description) for line in head):
+            out.append(folder)
+    return out
+
+
+def _remove_tree(folder: Path, root: Path, report: InstallReport, dry_run: bool,
+                 why: str = "") -> None:
+    """Remove ``folder`` (plumb's own files only were found in it) and report it."""
+    rel = folder.relative_to(root).as_posix()
+    report.changed.append(rel)
+    if not dry_run:
+        shutil.rmtree(folder, ignore_errors=True)
+    report.lines.append(f"plumb: {'would remove' if dry_run else 'removed'} {rel}{why}")
 
 
 def _write(path: Path, content: str, report: InstallReport, root: Path, dry_run: bool) -> None:
@@ -364,9 +414,10 @@ def install(root: Path, *, launcher: Launcher | str = "auto", dry_run: bool = Fa
     report.lines.append("plumb: hooks " + (", ".join(names) if names else "none")
                         + f"; status line; {MARKER_NAME}; deny rules")
     claude = root / ".claude"
-    for name in skill_names():
-        _write(claude / "skills" / name / "SKILL.md",
-               template(f"skills/{name}/SKILL.md", chosen), report, root, dry_run)
+    for rel in skill_files():
+        _write(claude / rel, template(rel, chosen), report, root, dry_run)
+    for folder in retired_skills(root):
+        _remove_tree(folder, root, report, dry_run, " (the skill is now plumb-records)")
     _write(claude / "commands" / "plumb.md", template("plumb-command.md", chosen), report,
            root, dry_run)
     if "pre-tool" in names:
@@ -480,19 +531,25 @@ def uninstall(root: Path, *, dry_run: bool = False) -> InstallReport:
         if cleaned != current:
             _write(settings_path, _dump(cleaned), report, root, dry_run)
     claude = root / ".claude"
-    skills = [claude / "skills" / name / "SKILL.md" for name in skill_names()]
+    skills = [claude / rel for rel in skill_files()]
     for path in (*skills, claude / "commands" / "plumb.md", root / GATE_SCRIPT):
         if path.exists():
             report.changed.append(path.relative_to(root).as_posix())
             if not dry_run:
                 path.unlink()
-                if path.name in ("SKILL.md", "gate.sh"):
+                # the skill's folders (references/, then the skill's own), the gate's folder
+                stop = claude / "skills" if path.name != "gate.sh" else claude
+                for folder in path.parents:
+                    if folder == stop or stop not in folder.parents:
+                        break
                     try:
-                        path.parent.rmdir()
+                        folder.rmdir()
                     except OSError:
-                        pass
+                        break
             report.lines.append(f"plumb: {'would remove' if dry_run else 'removed'} "
                                 f"{path.relative_to(root).as_posix()}")
+    for folder in retired_skills(root):
+        _remove_tree(folder, root, report, dry_run)
     claude_md = root / "CLAUDE.md"
     if claude_md.exists():
         text = claude_md.read_text(encoding="utf-8")
@@ -606,10 +663,10 @@ def status(root: Path) -> list[str]:
     deny = permissions.get("deny", []) if isinstance(permissions, dict) else []
     lines.append(f"deny rules: {sum(is_plumb_deny(r) for r in deny)} plumb rules")
     claude = root / ".claude"
-    skill = claude / "skills" / "plumb" / "SKILL.md"
-    lines.append("skill: " + (".claude/skills/plumb/SKILL.md" if skill.exists()
+    skill = claude / "skills" / "plumb-records" / "SKILL.md"
+    lines.append("skill: " + (".claude/skills/plumb-records/SKILL.md" if skill.exists()
                               else "not installed"))
-    others = [n for n in skill_names() if n != "plumb"
+    others = [n for n in skill_names() if n != "plumb-records"
               and (claude / "skills" / n / "SKILL.md").exists()]
     if others:
         lines.append("other skills: " + ", ".join(others))

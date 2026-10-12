@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO
 
+from plumb.paths import holds_records
+
 NO_STATUS = "plumb | no status yet"
 
 
@@ -41,7 +43,7 @@ def _plumb_root(start: str | None) -> Path | None:
     except OSError:
         return None
     for candidate in (path, *path.parents):
-        if (candidate / ".plumb").is_dir():
+        if holds_records(candidate):            # never plumb's own home (~/.plumb)
             return candidate
     return None
 

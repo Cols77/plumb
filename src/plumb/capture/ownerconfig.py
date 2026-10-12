@@ -18,9 +18,11 @@ import re
 from collections.abc import Mapping, Sequence
 
 from plumb.contracts import LogEntry
+from plumb.understand.typed import PREFIX
 
 TYPED_VIA = "typed"
-TYPED = re.compile(r"^/plumb[ \t]+auto-approve\s+(on|off)$")
+# SR-120: typed as /plumb or as the plugin's /plumb:plumb
+TYPED = re.compile(r"^" + PREFIX + r"[ \t]+auto-approve\s+(on|off)$")
 
 # where the owner's latest switch came from, in the owner's terms
 SOURCE_TERMINAL = "your terminal"

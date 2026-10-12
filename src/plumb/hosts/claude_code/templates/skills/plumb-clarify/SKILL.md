@@ -1,15 +1,15 @@
 ---
 name: plumb-clarify
-description: Clarify the owner's intent before building, scaled to the request. Use whenever a request creates or changes intent (a new feature, a changed behaviour, an ambiguous ask), not for tidy-ups or work on intent the owner already confirmed.
+description: Clarifies the owner's intent before building, scaled to the request. Use on every owner request, to act on what `clarify --wait` answers (ready, a card, a spec session offered, couldn't check, waiting), and to choose the depth and the questions whenever a request creates or changes intent (a new feature, a changed behaviour, an ambiguous ask). Not for choosing questions on tidy-ups or on intent the owner already confirmed; the --wait step still comes first there.
 ---
 # plumb-clarify
 
-Your job is to make what gets built match what the owner means, with the fewest questions.
+Make what gets built match what the owner means, with the fewest questions.
 
-Your first action on every owner request is `{plumb} clarify --wait`. Do it before you read
-code, plan or edit anything: edits are refused until it has answered, and you do not build
-until the owner has answered any card it returns. It waits for the check plumb started on the
-owner's message and tells you which of four things happened:
+Your first action on every owner request is `{plumb} clarify --wait`. Run it before you read
+code, plan or edit anything: edits are refused until it has answered, and do not build
+until the owner has answered any card it returns. It collects the check plumb started on the
+owner's message and says which of five things happened:
 
 - ready (nothing in the request is unclear, or it was only a question or an answer): go ahead.
 - a card (up to three questions, the smaller gaps listed as assumptions): show the owner the
@@ -17,32 +17,28 @@ owner's message and tells you which of four things happened:
   read by plumb, are what open the way. Never answer the questions yourself.
 - a spec session offered (more than three things change what gets built): show the offer and
   stop; if they accept, run the escalated depth below.
-- couldn't check (the check did not finish): show the card ("Build without the check?" with
-  Build anyway and Wait) and stop. Only the owner can say to build anyway, with the button, by
-  typing `/plumb go` themselves, or in plain words; you never do it for them. If they say wait,
-  the check is tried again on their next message.
+- couldn't check (the check failed or took too long): show the card ("Build without the
+  check?" with Build anyway and Wait) and stop. Only the owner says to build without the
+  check: the Build anyway button, `/plumb go` typed as their whole message, or plain words
+  that plumb reads from their next message and accepts. You never release it for them. Wait
+  builds nothing until the check runs again on their next message.
+- waiting (the check is not finished yet): build nothing and run `{plumb} clarify --wait`
+  again, twice at most; still waiting after that, build nothing, tell the owner the check of
+  their request has not finished, and stop.
+
+With `--json` the answer is `{state, message_digest, card, lines}`; `state` is `ready`,
+`card`, `escalation`, `couldnt_check` or `waiting`. `message_digest` is the sha256 of the
+owner's message: the `<digest>` that `--prompt` takes (12 or more hex digits are enough).
 
 Once you are past that, `{plumb} clarify "<the request>"` says the depth, what confirmed
-records already answer, and (with `--questions q.json`, each `{question, options,
-recommended}`) which of your drafted questions matter, ranked.
+records already answer, and (with `--questions q.json`, see
+../plumb-records/references/capture-doc.md) which of your drafted questions matter, ranked.
 
 Another branch may already have this intent in flight. When `clarify` (or `capture`) prints
-a `▸ Conflict` card, that branch says one thing and this request another: show the owner
-the card and ask it first ("which one, or both?"), before any other question and before any
-work. `capture` records the question once as a decision, so every branch builds on the
-same answer; a line saying the owner was already asked (or settled it) on another branch
-means: build on that answer, ask nothing.
-
-The owner answers in the card's own words: "keep feat-x's", "keep this one" or "both" (and
-how they combine). Record that answer as it is, once `capture` has raised the decision:
-`{plumb} conflict relay <the DEC, or the requirement> --prompt <digest> --quote "<their exact
-words>"` (add `--take <branch>|both` when you are sure which they chose). It sets the
-decision to their pick and confirms it, and every other branch hears it at once. Never relay
-their pick as a plain "ok" (`relay`): an ok confirms only the option the decision already
-holds, and words naming the other version are refused there. When `clarify` showed the card
-before anything was written, run `capture` first, then relay the answer. When the backend
-could not judge an overlap ("whether they agree could not be judged"), read both versions
-yourself; if they differ, ask the owner which holds, or both, like any conflict card.
+a `▸ Conflict` card, show it to the owner and ask it first ("which one, or both?"), before
+any other question and before any work; a line saying the owner was already asked (or
+settled it) on another branch means: build on that answer, ask nothing. How to record their
+answer: ../plumb-records/references/conflicts.md.
 
 Depth:
 
@@ -55,8 +51,9 @@ Depth:
   `{plumb} decide --question Q --chosen <recommended> --alt B --matters --recommend <it>`.
 - escalated (`clarify` names a trigger): a short structured session. Settle purpose and what
   success looks like first; then 2-3 approaches with trade-offs and your recommendation; then
-  record the set (`capture` with `"mode": "escalated"`) and present it as an up-front spec:
-  `{plumb} spec show INT-###`. Write no code for it until the owner approves the set.
+  record the set (`capture` with `"mode": "escalated"` in its intent) and present it as an
+  up-front spec: `{plumb} spec show INT-###`. Write no code for it until the owner approves
+  the set.
 
 Discipline:
 

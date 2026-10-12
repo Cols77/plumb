@@ -10,7 +10,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" session-start"
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" session-start",
+            "timeout": 10
           }
         ]
       }
@@ -20,7 +21,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" prompt"
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" prompt",
+            "timeout": 10
           }
         ]
       }
@@ -31,7 +33,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" pre-tool"
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" pre-tool",
+            "timeout": 10
           }
         ]
       }
@@ -43,6 +46,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" post-edit",
+            "timeout": 30,
             "async": true
           }
         ]
@@ -52,7 +56,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" edit-check"
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" edit-check",
+            "timeout": 10
           }
         ]
       }
@@ -62,7 +67,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" stop"
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" stop",
+            "timeout": 30
           }
         ]
       }

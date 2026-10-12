@@ -21,7 +21,13 @@ from plumb.present import owner_text
 
 _ID = re.compile(r"^(?:(?:INT|SR|DEC|FEAT)-\d+|NC-\d+)$")
 _KIND = re.compile(r"^[a-z][a-z-]*$")
-_HEAD = re.compile(r"^/plumb[ \t]+([a-z][a-z-]*)(?:[ \t]+(.*))?$", re.DOTALL)
+# SR-120: under the Claude Code plugin the command is namespaced, so the owner types /plumb or
+# /plumb:plumb. Every parser of a typed command (here, clarify's go, settle, the undo re-check,
+# the owner's auto-approve switch) starts with this one prefix and then whitespace, so
+# /plumbing and /plumb:other never match.
+PREFIX = r"/plumb(?::plumb)?"
+_PREFIX_HEAD = re.compile(r"^" + PREFIX + r"(?=[ \t])")
+_HEAD = re.compile(r"^" + PREFIX + r"[ \t]+([a-z][a-z-]*)(?:[ \t]+(.*))?$", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -42,9 +48,16 @@ class TypedResult:
     lines: tuple[str, ...] = ()
 
 
+def canonical(text: str) -> str:
+    """``text`` with a leading ``/plumb:plumb`` spelled ``/plumb`` (SR-120), else unchanged:
+    what a check that compares the owner's message to an exact ``/plumb ...`` command (the
+    typed settle and undo) compares."""
+    return _PREFIX_HEAD.sub("/plumb", text.lstrip(), count=1)
+
+
 def parse(text: Any) -> Typed | None:
-    """The typed command ``text`` is, or None. Exact: lower-case ``/plumb`` first, the verb,
-    then only what the verb takes."""
+    """The typed command ``text`` is, or None. Exact: lower-case ``/plumb`` (or the plugin's
+    ``/plumb:plumb``) first, the verb, then only what the verb takes."""
     if not isinstance(text, str):
         return None
     match = _HEAD.match(text.strip())
