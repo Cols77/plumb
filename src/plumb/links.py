@@ -244,7 +244,9 @@ def unlink(core: Core, link_id: str, note: str) -> dict[str, Any]:
     others = [other for other in record.links if other.index != link.index
               and other.kind == "verified_by" and other.example == link.example
               and core.hash_target(other.target) is not None]
-    lone = link.kind == "verified_by" and link.example is not None and not others
+    # a retired example (one the record no longer has) is no one's confirmed example
+    lone = link.kind == "verified_by" and not others \
+        and link.example in {example.id for example in record.examples}
     if lone and alive and core.status([record.id])[record.id].confirmation != "proposed":
         raise LinkError(f"{link_id} is the only test of {record.id} {link.example}, which the "
                         f"owner confirmed; removing it would leave that example without its "

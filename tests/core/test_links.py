@@ -375,3 +375,16 @@ def test_relink_refuses_a_kind_that_cannot_reach_the_target(
     assert _cli(edit, "relink", "SR-001#0", "tests/test_a.py", "--note", "x") == 1
     assert "derives_from is not allowed from requirement to code" in capsys.readouterr().err
     assert _record_text(edit) == before
+
+
+@pytest.mark.sr("SR-148")
+def test_unlink_lets_a_retired_examples_test_go(
+        edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert _cli(edit, "approve", "SR-001") == 0
+    path = edit / ".plumb" / "requirements" / "SR-001.md"
+    # EX-2 is retired (renumbered away); SR-001#3 still names it
+    path.write_text(_record_text(edit).replace("id: EX-2", "id: EX-7"), encoding="utf-8")
+    assert {e.id for e in open_core(edit).index()["SR-001"].examples} == {"EX-1", "EX-7"}
+    capsys.readouterr()
+    assert _cli(edit, "unlink", "SR-001#3", "--note", "EX-2 was retired") == 0
+    assert "no test" not in capsys.readouterr().out
