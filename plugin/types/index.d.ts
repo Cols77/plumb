@@ -1,5 +1,5 @@
 // plumb's mod: the values it keeps in $.state (SP7 5.6) and the shapes `plumb mod` answers
-// (src/plumb/mod: draw, press, undo; present.json from plumb.mod.handshake).
+// (src/plumb/mod: draw, press; present.json from plumb.mod.handshake).
 
 /** One button of a drawn card question: a suggested choice, Ask for a change, Leave open. */
 export type PlumbButton = {
@@ -7,6 +7,7 @@ export type PlumbButton = {
   label: string
   answer: 'accepted' | 'rejected' | 'change' | 'open'
   change: string | null
+  consequence?: string
 }
 
 /** One question of a card as drawn, with the offer the press names. */
@@ -27,26 +28,15 @@ export type PlumbQuestion = {
   hash: string
 }
 
-/** SR-116: what the owner needs to choose, where plumb derives it (understand.cardcontent). */
+/** What a card shows (SR-129): a read-back or a choice, as plumb derives it (understand.fullcard). */
 export type PlumbContent = {
-  record_now?: { id?: string; title?: string; wording?: string; examples?: string[] } | null
-  change?: {
-    path?: string
-    diff?: string | null
-    size?: number
-    lines?: number
-    added?: number
-    removed?: number
-    folded?: boolean
-    note?: string
-  }
-  owner_words?: {
-    items?: { id?: string; title?: string; quote?: string | null; prompt?: string | null; found_lines?: string[] }[]
-    note?: string
-  }
-  options?: { n: number; text: string; consequence: string | null; recommended: boolean }[]
-  why?: string | null
-  notes?: string[]
+  topic: string
+  issue: string
+  context: string[]
+  assumptions: string[]
+  wont: string | null
+  options: { n: number; text: string; consequence: string | null; recommended: boolean }[]
+  diagram: string
 }
 
 /** A card as `plumb mod draw` answers it: the card as cards.json holds it, plus its offers. */
@@ -62,11 +52,14 @@ export type PlumbCard = {
   answers: unknown[]
   owner_only: boolean
   turn: number
-  evidence_size: number
   repeats: boolean
   offers: PlumbOffer[]
   content: PlumbContent | null
   feature?: string
+  /** the path of the card's diagram file ('' for none) */
+  diagram?: string
+  /** the diagram drawn by the diagram mod's noun when the snapshot was taken (null: not drawn) */
+  drawn?: { rows: string[]; svg: string } | null
 }
 
 /** present.json: what the stop hook hands the panel for a turn (sp7-realign-sp8 C7). */
@@ -75,8 +68,6 @@ export type PlumbPresent = {
   turn_id: string
   written_at: string
   confirmations: string[]
-  settled: string[]
-  settled_records: { id: string; title: string }[]
 }
 
 /** The session's link to plumb: where it runs and the key only the panel holds (DEC-025). */
@@ -115,12 +106,11 @@ export type PlumbView = {
   line: string
 }
 
-/** How the owner left the band: hidden, every card shown, which long changes are open, and
- * the cards' contents when the owner hid it (a new content shows the band again). */
+/** How the owner left the band: hidden, every card shown, and the cards' contents when the
+ * owner hid it (a new content shows the band again). */
 export type PlumbBand = {
   isHidden: boolean
   showAll: boolean
-  unfolded: string[]
   shown: string[]
 }
 

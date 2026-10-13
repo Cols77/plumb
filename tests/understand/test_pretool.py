@@ -54,6 +54,29 @@ def test_ex5_edit_refused_while_closed_message_names_clarify_wait(repo: Path) ->
     assert json.loads(stdout.getvalue())["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+def test_gate_sh_lets_the_card_diagram_through_while_closed(repo: Path) -> None:
+    """SR-146: the agent draws the diagram a card names while the card is open."""
+    _closed(repo)
+    run = lambda path: subprocess.run(  # noqa: E731
+        [SH or "sh", str(SCRIPT)], capture_output=True, text=True, timeout=20,
+        input=json.dumps({"session_id": SESSION, "tool_name": "Write",
+                          "tool_input": {"file_path": path}}),
+        env={"PATH": __import__("os").environ["PATH"], "CLAUDE_PROJECT_DIR": str(repo)}).stdout
+    assert run(f"{repo}/.plumb/session/{SESSION}/diagrams/ab12.html") == ""
+    assert run(rf"C:\x\.plumb\session\{SESSION}\diagrams\ab12.html") == ""
+    assert "deny" in run(f"{repo}/.plumb/session/{SESSION}/diagrams/../../../src/a.py")
+    assert "deny" in run("src/a.py")
+
+
+def test_python_route_lets_the_card_diagram_through_while_closed(repo: Path) -> None:
+    """SR-146: the hook falls through to this route for any path naming .plumb."""
+    _closed(repo)
+    ok = {"file_path": rf"C:\x\.plumb\session\{SESSION}\diagrams\ab12.html"}
+    assert pretool.decide(repo, SESSION, "Write", ok) == {}
+    bad = {"file_path": f"{repo}/.plumb/session/{SESSION}/diagrams/../../../src/a.py"}
+    assert pretool.decide(repo, SESSION, "Write", bad)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
 def test_edit_allowed_when_open(repo: Path) -> None:
     assert pretool.decide(repo, SESSION, "Edit") == {}            # no gate file at all
     _closed(repo)

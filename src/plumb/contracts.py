@@ -19,7 +19,7 @@ ID_RE = r"^(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})$"
 LinkKind = Literal["derives_from", "decides", "upstream", "relates_to", "implemented_by",
                    "verified_by", "corrects", "supersedes"]
 Confirmation = Literal["proposed", "confirmed", "unconfirmed-edit"]
-ApprovalBy = Literal["owner", "agent-relayed", "import", "auto-jev", "owner-words", "settled"]
+ApprovalBy = Literal["owner", "agent-relayed", "import", "auto-jev", "owner-words"]
 LogStream = Literal["events", "evidence"]
 
 
@@ -99,9 +99,6 @@ class RecordStatus:
     # R17: the confirmation stands only through an approval a renumber carried (the old ID
     # the owner approved, same words); every surface labels it "carried by renumber"
     carried_from: str | None = None
-    # SP8: the confirmation rests on a judge's settled verdict (approval ``by: settled``);
-    # it counts as confirmed everywhere and is listed apart ("settled from your words")
-    settled: bool = False
 
 
 @dataclass(frozen=True)
@@ -321,7 +318,6 @@ class CaptureResult:
     needs_owner_again: tuple[str, ...] = ()  # updated records that were confirmed
     links: tuple[str, ...] = ()            # link ids added
     auto_approved: tuple[str, ...] = ()    # IDs approved by auto-jev (sp2 8.2)
-    card: str = ""                         # the intent card text for the agent's reply
     lines: tuple[str, ...] = ()            # "INT-017 proposed", ...
     dry_run: bool = False
 
@@ -373,7 +369,6 @@ class TriageView:
     available: bool = False                # False: "no judgments available"
     low_risk: tuple[TriageItem, ...] = ()
     individual: tuple[TriageItem, ...] = ()
-    offer: str | None = None               # the one-line offer (R13 Q2), when low_risk
     unavailable: str = ""                  # why no judge rated them (INT-029), when none did
 
 
@@ -381,54 +376,6 @@ class TriageView:
 # The output contract every host renders (sp5 9): cards and plain-language resolution.
 
 CardMode = Literal["full", "compact", "off"]
-
-
-@dataclass(frozen=True)
-class IntentCardData:
-    """The data of one intent card (sp2 11.1; the same shape CAPTURE provides)."""
-
-    id: str
-    title: str = ""
-    state: str = "proposed"                # confirmation state
-    confirmed_by: str | None = None        # "you" | "you (relayed)" | "JEV" | "import"
-    label: str = ""                        # plain label, "self-recorded message" included
-    quote: str = ""
-    will: tuple[str, ...] = ()
-    wont: tuple[str, ...] = ()
-    assumed: tuple[str, ...] = ()
-    examples: tuple[tuple[str, str, str], ...] = ()   # (SR, EX-n, text)
-    # each example's record and its OWN confirmation state (an SR under a confirmed INT may
-    # still be proposed): ``example_groups`` labels examples by these, never by the card's
-    member_states: tuple[tuple[str, str], ...] = ()   # (record, confirmation state)
-    tests: tuple[tuple[str, str], ...] = ()           # (test end, state)
-    decisions: tuple[str, ...] = ()        # DEC ids deciding it
-    # sp5 4.2: a card shows its record in full (the stated-set "shown" form), so PRESENT
-    # also carries the record's kind, an SR's statement or an INT's read-back, and a DEC's
-    # alternatives; CAPTURE's data leaves them empty
-    kind: str = ""
-    statement: str = ""
-    alternatives: tuple[str, ...] = ()
-    # R17: an early-conflict decision is answered in the conflict card's own words ("keep
-    # feat-x's", "keep this one", "both"), never a bare "ok" to a preset side
-    say: str = ""
-
-
-def example_groups(card: IntentCardData, limit: int | None = None
-                   ) -> list[tuple[str, list[tuple[str, str, str]]]]:
-    """The card's examples grouped by the confirmation state of the record each belongs to
-    (R2, R9: "Examples ... (proposed)" says what the owner confirmed, so an example is never
-    labelled with another record's state). The card's own examples carry the card's state;
-    a member whose state is unknown reads "proposed", never "confirmed". Consecutive
-    examples of one state share a group, in order."""
-    states = dict(card.member_states)
-    groups: list[tuple[str, list[tuple[str, str, str]]]] = []
-    for sr, ex, text in card.examples[:limit] if limit is not None else card.examples:
-        state = states.get(sr) or (card.state if sr in (card.id, "") else "proposed")
-        if groups and groups[-1][0] == state:
-            groups[-1][1].append((sr, ex, text))
-        else:
-            groups.append((state, [(sr, ex, text)]))
-    return groups
 
 
 @dataclass(frozen=True)
@@ -617,14 +564,12 @@ JobKindName = Literal["read", "judge", "clarify"]
 # drifted from an intent its requirement agrees with (SR-113 EX-2), and the records a turn
 # proposed, one card per feature (DEC-029); and the acceptance test of a confirmed requirement
 # that changed since the owner confirmed it (SR-030)
-CardKind = Literal["clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check",
-                   "show_first", "settle_offer", "settled_item", "link", "stale_link",
-                   "regression", "decision", "conflict", "early_conflict", "drift", "proposed",
-                   "test_changed"]
-CARD_KINDS: tuple[str, ...] = ("clarify", "trial", "backlog", "beyond", "contradicts",
-                               "couldnt_check", "show_first", "settle_offer", "settled_item",
-                               "link", "stale_link", "regression", "decision", "conflict",
-                               "early_conflict", "drift", "proposed", "test_changed")
+CardKind = Literal["clarify", "choice", "trial", "couldnt_check", "beyond", "contradicts",
+                   "stale_link", "drift", "regression", "test_changed", "conflict",
+                   "early_conflict"]
+CARD_KINDS: tuple[str, ...] = ("clarify", "choice", "trial", "couldnt_check", "beyond",
+                               "contradicts", "stale_link", "drift", "regression",
+                               "test_changed", "conflict", "early_conflict")
 JOB_KINDS: tuple[str, ...] = ("read", "judge", "clarify")
 JOB_VERSION = 1
 GateStateName = Literal["closed", "open"]
@@ -633,8 +578,9 @@ ProgressState = Literal["running", "failed", "done"]
 # card's status; ``left_open`` and ``change_requested`` come from a button and confirm nothing
 ChoiceAnswer = Literal["accepted", "rejected", "change", "open"]
 CHOICE_ANSWERS: tuple[str, ...] = ("accepted", "rejected", "change", "open")
-CardStatus = Literal["open", "answered", "closed", "left_open", "change_requested"]
-CARD_STATUSES: tuple[str, ...] = ("open", "answered", "closed", "left_open", "change_requested")
+CardStatus = Literal["open", "answered", "closed", "left_open", "change_requested", "withdrawn"]
+CARD_STATUSES: tuple[str, ...] = ("open", "answered", "closed", "left_open", "change_requested",
+                                  "withdrawn")
 CARD_PRESS = "card-press"              # the log kind of every button the owner presses (C6)
 
 
@@ -730,6 +676,7 @@ class Choice:
     label: str = ""
     answer: ChoiceAnswer = "accepted"
     change: str | None = None
+    consequence: str = ""              # what the choice does, in the owner's words
 
 
 @dataclass(frozen=True)
@@ -762,8 +709,9 @@ class CardState:
     questions: tuple[ClarifyQuestion, ...] = ()
     status: CardStatus = "open"
     answers: tuple[ClarifyAnswer, ...] = ()
-    owner_only: bool = False
     turn: int = 0
+    branch: str = ""                   # the branch the card belongs to ('' = any)
+    diagram: str = ""                  # a block diagram drawn beside the question (INT-041)
 
 
 @dataclass(frozen=True)
@@ -777,17 +725,6 @@ class CardPress:
     question: str = ""
     choice: int = 0                        # the index into the question's ``choices``
     answer: ChoiceAnswer = "accepted"
-
-
-@dataclass(frozen=True)
-class Present:
-    """``.plumb/session/<id>/present.json`` (C7): what the stop hook hands the mod for a turn
-    in place of a ``systemMessage``; ``cards`` are written as ``cardstore`` writes them."""
-
-    turn: int = 0
-    confirmations: tuple[str, ...] = ()
-    settled: tuple[str, ...] = ()
-    cards: tuple[CardState, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -807,14 +744,6 @@ class GateState:
     message_digest: str = ""
     reason: str = ""
     since: str = ""
-
-
-@dataclass(frozen=True)
-class SettleState:
-    kind: str = ""
-    on: bool = False
-    via: Literal["typed", "button", "calibration", ""] = ""
-    calibration: str = ""
 
 
 @dataclass(frozen=True)
@@ -866,9 +795,8 @@ class JobKind(Protocol):
 
 @dataclass(frozen=True)
 class StopParts:
-    """The three parts the stop hook places, in the order of SR-105: what the owner confirmed
-    by their words, the one settled line, then the cards."""
+    """The parts the stop hook places, in the order of SR-105: what the owner confirmed
+    by their words, then the cards."""
 
     confirmations: tuple[str, ...] = ()
-    settled: tuple[str, ...] = ()
     cards: tuple[str, ...] = ()

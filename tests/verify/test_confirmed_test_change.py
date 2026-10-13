@@ -199,14 +199,12 @@ def test_stop_asks_when_a_test_was_rewritten_to_hide_a_regression(confirmed,
     # SR-012: the owner gets cards, never a summary: the hidden regression and the changed
     # acceptance test of the confirmed example each reach the owner on a card
     lines = _stop(root, hook_input, active=True)["systemMessage"].splitlines()
-    assert ("  Evidence: tests/test_mod.py::test_add passed, then failed, and passes now only "
+    assert ("tests/test_mod.py::test_add passed, then failed, and passes now only "
             "because the test itself was changed") in lines
-    assert ('The test of something you confirmed changed, "Modules add numbers": the test that '
-            "checks it was changed since you confirmed it: tests/test_mod.py (EX-1); is the new "
-            "test right?") in lines
-    assert ("  Evidence: acceptance test changed since you confirmed it: tests/test_mod.py "
-            "(EX-1)") in lines
-    assert "    -    assert add(1, 2) == 3" in lines        # the test's diff, with the card
+    assert ("the test that checks it was changed since you confirmed it: tests/test_mod.py; "
+            "is the new test right?") in lines
+    assert any(line.startswith("What you confirmed: ") for line in lines)
+    assert any(line.startswith("Cases the test checks: given two numbers") for line in lines)
     assert "questions: none" not in lines
 
 

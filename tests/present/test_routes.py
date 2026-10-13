@@ -22,7 +22,7 @@ def _command_file_verbs() -> set[str]:
     verbs = {part.split()[0] for part in hint.split('"')[1].split("|")}
     verbs |= set(re.findall(r"Bash\(\{plumb\} ([a-z-]+):\*\)", text))
     verbs |= set(re.findall(r"`\{plumb\} ([a-z-]+)", text))
-    return verbs
+    return verbs - {"go", "undo"}      # typed as the whole message: the prompt hook does them
 
 
 def _help_verbs() -> set[str]:
@@ -43,7 +43,7 @@ def test_every_advertised_verb_is_routed_and_its_help_exits_zero(capsys) -> None
     """EX-1: each verb of the installed /plumb command and of plumb --help is routed, and
     plumb <verb> --help exits 0."""
     advertised = _command_file_verbs() | _help_verbs()
-    assert {"status", "explain", "why", "review", "confirm", "impact", "view", "resolve",
+    assert {"status", "explain", "why", "review", "impact", "view", "resolve",
             "align"} <= advertised
     for verb in sorted(advertised):
         assert verb in cli.ROUTES, verb

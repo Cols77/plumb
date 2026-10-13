@@ -1,4 +1,4 @@
-"""``plumb mod hello|draw|press|undo``: the commands only plumb's panel (the Claude Code mod)
+"""``plumb mod hello|draw|press``: the commands only plumb's panel (the Claude Code mod)
 runs.
 
 All of them take ``--session <id>`` and read one JSON object on stdin; none takes a key in argv.
@@ -9,8 +9,6 @@ All of them take ``--session <id>`` and read one JSON object on stdin; none take
   buttons; records each offer the first time it is drawn. Answer ``{session, cards}``.
 - ``press``  ``--offer <offer_id> --choice <n>``, stdin ``{"key": "<64 hex>"}``: one button.
   Answer: see ``plumb.mod.press``.
-- ``undo``   ``--record <id>``, stdin ``{"key": "<64 hex>"}``: the Undo button on the settled
-  line. Answer ``{ok, undone, line, model_note}``; exit 2 when the record is not settled now.
 
 Exit codes: 0 done, 1 the card no longer exists, 2 usage (no such button), 3 refused (the agent
 session marker, no panel registered, no key, another key, an offer never drawn): nothing
@@ -36,15 +34,14 @@ def _answer(data: Any, as_json: bool) -> None:
 
 def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="plumb mod")
-    parser.add_argument("action", choices=("hello", "draw", "press", "undo"))
+    parser.add_argument("action", choices=("hello", "draw", "press"))
     add_common(parser)
     parser.add_argument("--session", required=True)
     parser.add_argument("--offer", default=None)
     parser.add_argument("--choice", type=int, default=None)
-    parser.add_argument("--record", default=None)
     args = parser.parse_args(argv)
     from plumb.api import open_core
-    from plumb.mod import offers, press, session, undo
+    from plumb.mod import offers, press, session
 
     payload = session.read_stdin_json(sys.stdin)
     root = Path(resolve_root(args.root))
@@ -61,13 +58,6 @@ def run(command: str, argv: list[str]) -> int:
             _answer({"session": args.session,
                      "cards": offers.drawn_cards(core, args.session, digest)}, args.as_json)
             return EXIT_OK
-        if args.action == "undo":
-            if not args.record:
-                print("plumb mod undo: --record is required", file=sys.stderr)
-                return EXIT_USAGE
-            core = open_core(root)
-            _answer(undo.undo(core, args.session, args.record, payload), args.as_json)
-            return EXIT_OK
         if not args.offer or args.choice is None:
             print("plumb mod press: --offer and --choice are required", file=sys.stderr)
             return EXIT_USAGE
@@ -78,9 +68,6 @@ def run(command: str, argv: list[str]) -> int:
     except session.Refused as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_REFUSED
-    except undo.NotSettled as exc:
-        print(str(exc), file=sys.stderr)
-        return EXIT_USAGE
     except press.Unknown as exc:
         print(str(exc), file=sys.stderr)
         return exc.exit_code

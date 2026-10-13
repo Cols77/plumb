@@ -484,12 +484,11 @@ CLAIMED_KINDS = inflight.CLAIMED_KINDS
 
 @dataclass
 class Claimed:
-    """What ``claim`` did: the check, the decisions it raised (the claim's conflict
-    entries) and the lines telling the agent to ask the owner now."""
+    """What ``claim`` did: the check and the decisions it raised (the claim's conflict
+    entries); the owner is asked on the card, never in the agent's words."""
 
     check: EarlyCheck
     entries: list[dict[str, Any]] = field(default_factory=list)
-    ask: list[str] = field(default_factory=list)
 
 
 def claim(core: Any, ids: Sequence[str], *, summary: str, intent: str | None,
@@ -501,7 +500,7 @@ def claim(core: Any, ids: Sequence[str], *, summary: str, intent: str | None,
     claims (``check_records``): the same record claimed elsewhere at another version is a
     conflict, caught deterministically; a new record in a feature another branch claims is
     judged (``backend``). Each conflict is raised ONCE as a proposed decision that matters
-    and its card is asked of the stop hook, so every card the owner sees has a decision the
+    and its card is drawn by the stop hook, so every card the owner sees has a decision the
     owner's words answer. Raises ``inflight.InflightBusy`` when the register kept moving."""
     index = core.index()
     ids = [i for i in ids if i in index]
@@ -509,15 +508,9 @@ def claim(core: Any, ids: Sequence[str], *, summary: str, intent: str | None,
     result = check_records(core, mine, new=new, backend=backend)
     request_cards(core, result.conflicts)
     entries = raise_conflicts(core, result.conflicts, intent=intent)
-    ask: list[str] = []
-    for entry in entries:
-        ask.append(text.EARLY_RECORDED.format(id=entry["record"],
-                                              title=index[entry["record"]].title
-                                              if entry["record"] in index else ""))
-        ask.append(text.EARLY_ASK.format(dec=entry["dec"]))
     claimed = {i: inflight.record_entry(index[i]) for i in ids
                if index[i].kind in CLAIMED_KINDS}
-    done = Claimed(check=result, entries=entries, ask=ask)
+    done = Claimed(check=result, entries=entries)
     if claimed or entries:
         inflight.record_claim(core, records=claimed, summary=summary or "", intent=intent,
                               conflicts=entries)
@@ -549,7 +542,7 @@ def after_capture(core: Any, *, written: Sequence[str], updated: Sequence[str],
     except inflight.InflightBusy:
         return [text.INFLIGHT_BUSY]
     lines = [line for conflict in done.check.conflicts for line in card(conflict)]
-    return [*lines, *done.check.lines, *done.ask]
+    return [*lines, *done.check.lines]
 
 
 def preview(core: Any, requirements: Sequence[Mapping[str, Any]],

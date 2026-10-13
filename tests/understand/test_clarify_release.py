@@ -13,7 +13,7 @@ from understand.fakes import owner_level
 
 from plumb.api import open_core
 from plumb.present import owner_text
-from plumb.understand import cardstore, clarify, cmd_clarify, cmd_go, effects, files, gate, hooks, worker
+from plumb.understand import cardstore, clarify, cmd_clarify, effects, files, fullcard, gate, hooks, worker
 
 pytestmark = pytest.mark.sr("SR-103")
 
@@ -48,10 +48,10 @@ def test_ex7_dispatcher_failure_couldnt_check_card_nothing_built(
     assert card.id == clarify.couldnt_card_id(digest) and card.status == "open"
     (question,) = card.questions
     assert question.text == "Build without the check?"
-    assert question.resolutions == (owner_text.GATE_BUILD_ANYWAY, owner_text.GATE_WAIT)
+    assert question.resolutions == (owner_text.GATE_WAIT, owner_text.GATE_BUILD_ANYWAY)
     assert "Nothing was built" in card.issue
     assert gate.is_closed(repo, SESSION) and not _entries(repo)         # nothing opened it
-    assert owner_level("\n".join(clarify.render(card))) == []
+    assert owner_level(fullcard.render(fullcard.content(open_core(repo), card))) == []
     assert engine_standins.dispatcher.ran("clarify")
 
 
@@ -145,33 +145,3 @@ def test_ex11_failed_job_for_ok_message_still_refuses_edits(
 
     answer = pretool.decide(repo, SESSION, "Edit")
     assert answer["hookSpecificOutput"]["permissionDecision"] == "deny"
-
-
-def test_go_without_typed_prompt_in_log_refused(repo: Path, engine_standins: Any,
-                                                capsys: pytest.CaptureFixture) -> None:
-    core, digest = _failed_check(repo, engine_standins)
-    said = log_prompt(repo, "build it anyway please", session=SESSION)
-    assert cmd_go.run("go", ["--prompt", said, "--root", str(repo)]) == 3
-    assert cmd_go.run("go", ["--prompt", "sha256:" + "0" * 64, "--root", str(repo)]) == 3
-    assert cmd_go.run("go", ["--root", str(repo)]) == 2
-    assert gate.is_closed(repo, SESSION) and not _entries(repo)
-    typed = log_prompt(repo, "/plumb go", session=SESSION)
-    assert cmd_go.run("go", ["--prompt", typed, "--root", str(repo)]) == 0
-    assert not gate.is_closed(repo, SESSION)
-    assert [e["by"] for e in _entries(repo)] == ["release:typed"]
-    assert owner_level(capsys.readouterr().out) == []
-
-
-def test_go_from_agent_session_marker_refused(repo: Path, engine_standins: Any,
-                                              monkeypatch: pytest.MonkeyPatch) -> None:
-    _failed_check(repo, engine_standins)
-    typed = log_prompt(repo, "/plumb go", session=SESSION)
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
-    assert cmd_go.run("go", ["--prompt", typed, "--root", str(repo)]) == 3
-    assert gate.is_closed(repo, SESSION) and not _entries(repo)
-
-
-def test_go_with_nothing_to_release_changes_nothing(repo: Path) -> None:
-    typed = log_prompt(repo, "/plumb go", session=SESSION)
-    assert cmd_go.run("go", ["--prompt", typed, "--root", str(repo)]) == 1
-    assert not _entries(repo)

@@ -6,8 +6,8 @@ answered in an interactive terminal: ``require_owner``, the one choke point of e
 write); the owner's typed ``/plumb approve`` naming record numbers; and the worker plumb starts,
 applying the reader's reading of the owner's own logged message (``plumb.understand``).
 
-The coding agent decides nothing about what the owner approved: ``plumb relay`` is refused
-whatever the words (SR-101 EX-9). No fixed rule about the owner's words (affirmation words,
+The coding agent decides nothing about what the owner approved: there is no relay command
+(SR-101 EX-9, SR-135). No fixed rule about the owner's words (affirmation words,
 objection words, clause splitting, plain-words matching) is left here (INT-029).
 """
 
@@ -233,7 +233,7 @@ def revoke(core: Core, ids: Iterable[str], *, note: str = "") -> LogEntry:
     return core.log_append("events", "revocation", payload)
 
 
-# --------------------------------------------------------------------------- relay
+# --------------------------------------------------------------------------- prompts
 
 
 def _read_jsonl(path: Any) -> list[Mapping[str, Any]]:
@@ -339,16 +339,3 @@ def quote_in_prompt(quote: str, text: str) -> bool:
     if not quote:
         return False
     return _quote_pattern(quote).search(text) is not None
-
-
-AGENT_RELAY_GONE = ("an agent-run prose relay no longer exists: the owner's typed /plumb approve "
-                    "naming record numbers, or the reader's reading of the owner's own message "
-                    "(applied by the worker plumb starts), are the only things that confirm "
-                    "a record, so nothing was recorded")
-
-
-def relay(core: Core, ids: Sequence[str] = (), **_: Any) -> LogEntry:
-    """Refused, always (SR-101 EX-9, INT-028, INT-029): the coding agent does not decide that
-    the owner approved, on any words. Nothing is read and nothing is written."""
-    del core, ids
-    raise Refused(AGENT_RELAY_GONE)

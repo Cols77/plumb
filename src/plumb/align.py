@@ -71,8 +71,9 @@ class AlignResult:
 
 
 def _changed_since(core: Any) -> list[str]:
-    merge = getattr(core.config, "merge", None)
-    base = str(getattr(merge, "default_base", "main") or "main")
+    from plumb.boundary.cli import merge_settings
+
+    base = str(merge_settings(core)["default_base"])
     try:
         out = subprocess.run(["git", "diff", "--name-only", f"{base}...HEAD"], cwd=core.root,
                              capture_output=True, text=True, timeout=5, check=False)

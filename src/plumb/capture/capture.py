@@ -24,7 +24,7 @@ from plumb.capture.records import (
     rewrite,
     short_title,
 )
-from plumb.contracts import CaptureResult, IntentCardData, Target
+from plumb.contracts import CaptureResult, Target
 
 if TYPE_CHECKING:
     from plumb.api import Core
@@ -222,30 +222,6 @@ class _Plan:
         return out
 
 
-def _preview(core: Core, plan: _Plan) -> list[IntentCardData]:
-    """Card data for a dry run, from the plan alone (nothing written)."""
-    from plumb.capture.card import _clip, _list, example_text
-    from plumb.contracts import Example
-
-    examples: list[tuple[str, str, str]] = []
-    for n, item in enumerate(plan.requirements, start=1):
-        for raw in item["fields"]["examples"]:
-            example = Example(id=raw["id"], given=raw["given"], when=raw["when"],
-                              then=raw["then"])
-            examples.append((f"SR-new{n}", raw["id"], _clip(example_text(example))))
-    if plan.intent is not None:
-        fields = plan.intent
-        return [IntentCardData(id="INT-new", title=fields["title"], quote=fields["quote"],
-                               will=_list(fields["will"]), wont=_list(fields["wont"]),
-                               assumed=_list(fields["assumptions"]),
-                               examples=tuple(examples))]
-    if plan.intent_ref is not None:
-        from plumb.capture.card import card_data
-
-        return list(card_data(core, [plan.intent_ref]))
-    return []
-
-
 UNCHECKED_NOTE = ("quote not checked (no --prompt): it is kept as the agent's quote, not as "
                   "the owner's words, and triage never rates it faithful; give --prompt "
                   "<digest> of the owner's logged prompt")
@@ -299,8 +275,6 @@ def _lacks_question(plan: _Plan) -> bool:
 def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = None,
             dry_run: bool = False, backend: Any = None) -> CaptureResult:
     """Write the read-back ``doc`` as proposed records; see the module docstring."""
-    from plumb.capture.card import card_data, render
-
     plan = _Plan(core, doc)
     unchecked = _check_quotes(core, plan, prompt_digest)
     if prompt_digest:
@@ -308,7 +282,6 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
 
         prompt_digest = str(find_prompt(core, prompt_digest)["digest"])
     if dry_run:
-        card = render(_preview(core, plan))
         lines = ["dry run: nothing written"]
         if plan.intent is not None:
             lines.append("INT (new) would be proposed")
@@ -319,7 +292,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
         if _lacks_question(plan):
             lines.append(ANSWER_NEEDS_QUESTION)
         lines += _inflight_preview(core, plan, backend)
-        return CaptureResult(card=card, lines=tuple(lines), dry_run=True)
+        return CaptureResult(lines=tuple(lines), dry_run=True)
 
     # one reservation per prefix for the whole read-back (sp6 4.2)
     core.store.prereserve("intent", 1 if plan.intent is not None else 0)
@@ -375,12 +348,6 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
         from plumb.capture.autoapprove import gate
 
         auto = list(gate(core, written, prompt_digest=prompt_digest, backend=backend))
-    shown = [intent_id] if intent_id else []
-    shown += [i for i in written + updated if i not in shown and not i.startswith("SR-")
-              and not i.startswith("DEC-")]
-    if not shown:
-        shown = written + updated
-    card = render(card_data(core, shown))
     statuses = core.status(written + updated)
     lines = [f"{rid} {statuses[rid].confirmation}" + (" (confirmed by JEV)" if rid in auto
                                                       else "") for rid in written + updated]
@@ -411,7 +378,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
                          f"{plan.intent_ref})")
     result = CaptureResult(written=tuple(written), updated=tuple(updated),
                            needs_owner_again=tuple(again), links=tuple(links),
-                           auto_approved=tuple(auto), card=card, lines=tuple(lines))
+                           auto_approved=tuple(auto), lines=tuple(lines))
     _understand_after(core, doc, result, prompt_digest)
     return result
 
@@ -481,7 +448,7 @@ def load_document(text: str) -> Mapping[str, Any]:
 
 
 def result_lines(result: CaptureResult) -> list[str]:
-    return ([result.card] if result.card else []) + list(result.lines)
+    return list(result.lines)
 
 
 def capture_ids(result: CaptureResult) -> Sequence[str]:

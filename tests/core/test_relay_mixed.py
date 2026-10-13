@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from capture_helpers import log_prompt, record_text, run
+from capture.capture_helpers import log_prompt, record_text, run
 
 from plumb.api import open_core
 

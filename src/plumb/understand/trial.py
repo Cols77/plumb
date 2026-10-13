@@ -1,29 +1,34 @@
-"""The trial (JUDGE, SR-106, spec 7).
+"""The trial (JUDGE, SR-106, SR-133, DEC-038).
 
-While no calibration passes for a kind, every ``supported`` record goes to a trial batch card
-of up to five instead of being settled: four the judge would settle and one drawn from below the
-threshold, asked as "plumb would not settle this; right?" (the threshold is learned on what the
-owner answers, so a range cut off at the threshold would teach nothing). A record settling never
-reaches (a decision, a set member, an edit of a confirmed record, an option picked among
-several) is asked on its own. The owner's yes confirms the record, labelled yes, and a no
-rejects it as a misreading: READ applies both when it applies the answer; ``effect`` logs the
-batch. Recalibration reads the logged scores (``capture.calibrate``) and calls no model."""
+Calibrating the judge takes the owner's answers on records it found ``supported``. Each such
+record is asked as one card, the read-back of that record alone: the owner's source words with
+their date (or a line saying they were not found), the record's proposal in the owner's terms,
+and Yes, No, Fix it. At most ``MAX_OPEN`` are open at a time; while none open is below the
+threshold, one record below it is drawn (the threshold is learned on what the owner answers, so
+a range cut off at it would teach nothing). The owner's yes confirms the record, labelled yes,
+and a no rejects it as a misreading: READ applies both when it applies the answer; ``effect``
+logs the answer. Recalibration reads the logged scores (``capture.calibrate``) and calls no
+model."""
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
-from plumb.contracts import Applied, CardState, ClarifyQuestion
-from plumb.present import owner_text
-from plumb.understand import cards, settle
+from plumb.contracts import Applied, CardState, Choice, ClarifyQuestion
+from plumb.understand import backlog, cards
 
-BATCH = 5
-ABOVE = 4
-TITLES_IN_TOPIC = 3
+MAX_OPEN = 3
 WORDS_PER_ITEM = 140
+NOT_FOUND = "Your words for this were not found."
+ASK = "Is this what you meant?"
+CHOICES = (
+    Choice("Yes", "accepted", consequence="It is confirmed as yours."),
+    Choice("No", "rejected", consequence="It is marked as a misreading and stays unconfirmed."),
+    Choice("Fix it", "change",
+           consequence="You say what it should be; it stays unconfirmed until then."))
 
 
 @dataclass(frozen=True)
@@ -46,7 +51,7 @@ def claim_kind(record_kind: str) -> str | None:
 
 
 def threshold(core: Any, record_kind: str) -> float:
-    """The score at which the judge would settle a ``record_kind`` record: the latest judge
+    """The score at which the judge would confirm a ``record_kind`` record: the latest judge
     calibration's threshold for the kind when it passes, else the starting value."""
     from plumb.capture.calibrate import judge_calibrations
 
@@ -69,20 +74,21 @@ HELD = ("open", "change_requested", "left_open")   # a card the owner has not an
 
 
 def _open_records(core: Any, session: str) -> set[str]:
-    """The records a trial or backlog card the owner has not answered still asks about: an
-    open card, one waiting for their words, and one they left open (DEC-034: it comes back
-    when its record changes, it is not asked again in another batch)."""
+    """The records a trial card the owner has not answered still asks about: an open card, one
+    waiting for their words, and one they left open (DEC-034: it comes back when its record
+    changes, it is not asked again)."""
     from plumb.understand import cardstore
 
     return {str(q.record) for card in cardstore.own_cards(core.root, session)
-            if card.status in HELD and card.kind in ("trial", "backlog")
+            if card.status in HELD and card.kind == "trial"
             for q in card.questions if q.record}
 
 
 def _rejected(core: Any) -> set[tuple[str, str]]:
     out: set[tuple[str, str]] = set()
     for entry in core.events():
-        if entry.kind == "rejection":
+        if entry.kind == "rejection" or (
+                entry.kind == "revocation" and entry.payload.get("by") == "undone"):
             for item in entry.payload.get("records") or ():
                 if isinstance(item, Mapping):
                     out.add((str(item.get("id")), str(item.get("hash"))))
@@ -91,140 +97,135 @@ def _rejected(core: Any) -> set[tuple[str, str]]:
 
 def from_log(core: Any, skip: set[str]) -> list[Candidate]:
     """The supported records of the logged verdicts that still wait: judged at their current
-    version, neither confirmed nor rejected, not in ``skip``."""
-    from plumb.capture.spec import escalated_ids
-    from plumb.capture.triage import approved_before
-    from plumb.understand import premise
-
-    latest: dict[str, Mapping[str, Any]] = {}
-    for entry in core.events():
-        if entry.kind == "verdict":
-            latest[str(entry.payload.get("id"))] = entry.payload
+    version, neither confirmed nor rejected (nor taken back), not in ``skip``."""
+    latest = backlog.latest_verdicts(core)
     index = core.index()
     wanted = [i for i, v in latest.items() if v.get("verdict") == "supported" and i in index
               and index[i].hash == v.get("hash") and i not in skip]
     if not wanted:
         return []
-    statuses = core.status(wanted)
-    from plumb.understand import recheck_settled
-
-    rejected = _rejected(core) | set(recheck_settled.undone_records(core))   # a settling undone
-    approved, escalated = approved_before(core), escalated_ids(core)
-    known = premise.committed(core)
-    out: list[Candidate] = []
-    for record_id in wanted:
-        record = index[record_id]
-        if statuses[record_id].confirmation == "confirmed" \
-                or (record_id, record.hash) in rejected:
-            continue
-        reason = settle.ineligible(core, record, status=statuses[record_id], approved=approved,
-                                   escalated=escalated)
-        given = premise.premise_of(core, record, known=known).as_input()
-        out.append(Candidate(record, float(latest[record_id].get("score") or 0), given, reason))
-    return out
+    statuses, rejected = core.status(wanted), _rejected(core)
+    return [Candidate(index[i], float(latest[i].get("score") or 0), {}) for i in wanted
+            if statuses[i].confirmation != "confirmed" and (i, index[i].hash) not in rejected]
 
 
-# --------------------------------------------------------------------------- batches
+# --------------------------------------------------------------------------- the card
 
 
-def batches(items: Sequence[Candidate], limit: float) -> list[list[Candidate]]:
-    """Batches of up to five: four the judge would settle (score at or above ``limit``, the
-    surest first) and one drawn from below it (the closest to it), else five above."""
-    above = sorted((i for i in items if i.score >= limit),
-                   key=lambda i: (-i.score, i.record.id))
-    below = sorted((i for i in items if i.score < limit),
-                   key=lambda i: (-i.score, i.record.id))
-    out: list[list[Candidate]] = []
-    while above or below:
-        if below:
-            batch = [*above[:ABOVE], below.pop(0)]
-            above = above[ABOVE:]
-        else:
-            batch, above = above[:BATCH], above[BATCH:]
-        out.append(batch)
-    return out
+def _date(at: str) -> str:
+    try:
+        day = datetime.strptime(str(at)[:10], "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return f"{day.day} {day:%b}"
 
 
-def _words(premise: Mapping[str, Any]) -> str:
-    return cards.clip(cards.words_of(premise), WORDS_PER_ITEM)
+def _said(words: str, at: str) -> str:
+    return f'"{cards.clip(words, WORDS_PER_ITEM)}"' + (f" ({_date(at)})" if _date(at) else "")
 
 
-def _topic(items: Sequence[Candidate]) -> str:
-    titles = [i.record.title for i in items]
-    shown = ", ".join(titles[:TITLES_IN_TOPIC])
-    if len(titles) <= TITLES_IN_TOPIC:
-        return shown
-    return f"{shown} and {len(titles) - TITLES_IN_TOPIC} more"
+def _evidence(core: Any, record: Any) -> str:
+    """The owner's words this record came from, with their date, or that they were not found."""
+    from plumb.understand import cardcontent
+
+    for item in cardcontent.owner_words(core, record)["items"]:
+        found = item.get("found") or {}
+        if found.get("status") == "found" and found.get("span"):    # found by meaning
+            return _said(found["span"], found.get("at") or "")
+        if item.get("quote"):                          # then the owner's own quoted words
+            return _said(item["quote"], item.get("at") or "")
+        if item.get("prompt") and item.get("at"):
+            return _said(item["prompt"], item["at"])
+    return _request_of(core, record) or NOT_FOUND
 
 
-def batch_card(items: Sequence[Candidate], limit: float) -> CardState:
-    """One trial batch card; the item below ``limit`` (if any) is asked as such."""
-    key = "\n".join(sorted(f"{i.record.id}@{i.record.hash}" for i in items))
-    cid = "trial:" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
-    options = (owner_text.TRIAL_YES, owner_text.TRIAL_NO)
-    questions: list[ClarifyQuestion] = []
-    evidence: list[str] = []
-    for n, item in enumerate(items, start=1):
-        text = (f"{owner_text.TRIAL_BELOW} {item.record.title}" if item.score < limit
-                else item.record.title)
-        questions.append(ClarifyQuestion(id=f"{cid}#{n}", text=text, resolutions=options,
-                                         record=item.record.id, hash=item.record.hash,
-                                         choices=cards.choices_for("trial", options)))
-        evidence.append(f"{item.record.title}: {_words(item.premise)}")
-    below = any(i.score < limit for i in items)
-    if len(items) == 1:
-        issue = owner_text.TRIAL_BELOW if below else owner_text.TRIAL_ISSUE_ONE
-    else:
-        issue = owner_text.TRIAL_ISSUE.format(what="these")
-        if below:
-            issue += " " + owner_text.TRIAL_ONE_BELOW
-    return CardState(id=cid, kind="trial", topic=_topic(items), issue=issue,
-                     evidence=" | ".join(evidence), resolutions=options,
-                     questions=tuple(questions))
+def _request_of(core: Any, record: Any) -> str:
+    """The request the record was written for, with its date, when its prompt is on file."""
+    from plumb.approvals import Refused, find_prompt
+
+    digest = str(record.fields.get("prompt") or "")
+    try:
+        logged = find_prompt(core, digest)
+    except Refused:
+        return ""
+    at = str(logged.get("at") or logged.get("time") or logged.get("ts") or "")
+    return NOT_FOUND + " It came from your request " + _said(str(logged.get("text") or ""), at)
 
 
-def individual_card(item: Candidate) -> CardState:
-    """A record that never settles, asked on its own."""
-    issue = {settle.EDIT: owner_text.EDIT_ISSUE, settle.OPTION: owner_text.OPTION_ISSUE
-             }.get(item.reason, owner_text.CONFIRM_ISSUE)
-    cid = cards.card_id("trial", item.record.id, item.record.hash)
-    options = (owner_text.TRIAL_YES, owner_text.TRIAL_NO)
+def _proposal(record: Any) -> str:
+    """What the record says, in the owner's terms."""
+    from plumb.understand.judge import _flat, _items
+
+    fields = record.fields
+    if record.kind == "intent":
+        return _flat(fields.get("readback") or record.title)
+    if record.kind == "decision":
+        chosen = _flat(fields.get("chosen"))
+        others = ", ".join(_items(fields.get("alternatives")))
+        return f"You chose {chosen}" + (f" over {others}" if others else "")
+    return _flat(fields.get("statement") or record.title)
+
+
+def card(core: Any, item: Candidate) -> CardState:
+    """The read-back of one record as a trial card."""
+    record = item.record
+    short = str(record.hash).split(":")[-1][:12]
+    cid = f"trial:{record.id}@{short}"
+    labels = tuple(c.label for c in CHOICES)
     return CardState(
-        id=cid, kind="trial", topic=item.record.title, issue=issue,
-        evidence=cards.words_of(item.premise), resolutions=options,
-        questions=(ClarifyQuestion(id=f"{cid}#1", text=item.record.title,
-                                   resolutions=options, record=item.record.id,
-                                   hash=item.record.hash,
-                                   choices=cards.choices_for("trial", options)),))
+        id=cid, kind="trial", topic=record.title,
+        issue=_proposal(record),
+        evidence=_evidence(core, record), resolutions=labels,
+        questions=(ClarifyQuestion(id=f"{cid}#1", text=ASK, resolutions=labels,
+                                   record=record.id, hash=record.hash, choices=CHOICES),))
 
 
-def cards_for(core: Any, session: str, waiting: Sequence[settle.Waiting]) -> list[CardState]:
-    """The trial and confirm cards for ``waiting`` (this job's supported records that did not
-    settle) and every supported record the log still holds back."""
+def cards_for(core: Any, session: str, candidates: Sequence[Candidate], *,
+              pass_done: bool = False) -> list[CardState]:
+    """The trial cards to open now: this job's supported records ``candidates`` and every one
+    the log still holds back, up to ``MAX_OPEN`` open in all. The surest first, but one below
+    the threshold when none open is (calibration needs both sides). While a backlog pass runs,
+    the log's records wait for its end (``pass_done``: this call is its end)."""
+    from plumb.understand import cardstore
+
+    open_ids = [str(q.record) for c in cardstore.own_cards(core.root, session)
+                if c.kind == "trial" and c.status in cardstore.AWAITING for q in c.questions]
+    room = MAX_OPEN - len(open_ids)
+    if room <= 0:
+        return []
     held = _open_records(core, session)
-    now = [Candidate(w.item.record, w.item.score, w.item.premise, w.reason) for w in waiting
-           if w.item.record.id not in held]
-    seen = {c.record.id for c in now}
-    from plumb.understand import backlog
+    waiting = core.status([c.record.id for c in candidates])      # the judge may have confirmed it
+    now = [c for c in candidates if c.record.id not in held
+           and waiting[c.record.id].confirmation != "confirmed"]
+    skip = held | {c.record.id for c in now} | (
+        set() if pass_done else backlog.holding(core, session))
+    pool = sorted([*now, *from_log(core, skip)],
+                  key=lambda c: (-c.score, c.record.id))
+    index, scores = core.index(), backlog.latest_verdicts(core)
 
-    pool = [*now, *from_log(core, held | seen | backlog.holding(core, session))]
-    out = [individual_card(c) for c in pool if c.reason]
-    for kind in ("intent", "requirement"):
-        group = [c for c in pool if not c.reason and c.record.kind == kind]
-        if group:
-            limit = threshold(core, kind)
-            out.extend(batch_card(batch, limit) for batch in batches(group, limit))
-    return out
+    def below(score: float, kind: str) -> bool:
+        return score < threshold(core, kind)
+
+    picked: list[Candidate] = []
+    if not any(i in index and below(float(scores.get(i, {}).get("score") or 0), index[i].kind)
+               for i in open_ids):
+        picked = [c for c in pool if below(c.score, c.record.kind)][:1]
+    picked += [c for c in pool if c not in picked][:room - len(picked)]
+    return [card(core, c) for c in picked]
 
 
 def top_up(core: Any, session: str) -> list[CardState]:
-    """New trial cards for the records still waiting, when no trial card is open (called
-    when the turn ends, after a batch was answered)."""
+    """New trial cards for the records still waiting, when fewer than ``MAX_OPEN`` are open
+    (called when the turn ends, after a card was answered). A card whose records are all
+    confirmed by now (a read-back's yes confirmed them) is withdrawn first, so its slot frees."""
     from plumb.understand import cardstore
 
-    if any(c.kind == "trial" and c.status == "open"
-           for c in cardstore.own_cards(core.root, session)):
-        return []
+    mine = [c for c in cardstore.own_cards(core.root, session) if c.status in cardstore.AWAITING]
+    ids = {c.id: [str(q.record) for q in c.questions if q.record] for c in mine}
+    status = core.status([r for rs in ids.values() for r in rs])
+    done = [i for i, rs in ids.items() if rs and all(status[r].confirmation == "confirmed" for r in rs)]
+    if done:
+        cardstore.withdraw(core.root, session, done)
     return cards_for(core, session, [])
 
 
@@ -232,8 +233,8 @@ def top_up(core: Any, session: str) -> list[CardState]:
 
 
 def effect(*, core: Any = None, card: CardState | None = None, **_: Any) -> Applied | None:
-    """A trial card was answered (READ confirmed the yes items, labelled yes, and rejected
-    the no items). When every item has its answer, log the batch."""
+    """A trial card was answered (READ confirmed the yes, labelled yes, or rejected the no):
+    log the answer."""
     if card is None or core is None:
         return None
     answered = {a.question: a.answer for a in card.answers}

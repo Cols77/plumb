@@ -7,7 +7,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from understand.fakes import FakeDispatcher
 
 from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyQuestion

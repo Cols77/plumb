@@ -41,3 +41,15 @@ def kinds(root: Path) -> list[str]:
 
 def mod_json(root: Path, session: str = SESSION) -> Path:
     return root / ".plumb" / "session" / session / "mod.json"
+
+
+def sample_card(core: Any, record_id: str) -> Any:
+    """A card asking about one record, ids that are easy to type: ``card:<record>``, its one
+    question ``confirm``."""
+    import dataclasses
+
+    from plumb.understand import trial
+
+    card = trial.card(core, trial.Candidate(core.index()[record_id], 0.9, {}))
+    question = dataclasses.replace(card.questions[0], id="confirm")
+    return dataclasses.replace(card, id=f"card:{record_id}", questions=(question,))

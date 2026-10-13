@@ -357,3 +357,15 @@ def test_the_reader_is_told_about_other_sessions_and_the_summary() -> None:
     prompt = (Path(clarify.__file__).parent / "agents" / "clarify.md").read_text(
         encoding="utf-8")
     assert "`other_sessions`" in prompt and "`summary`" in prompt and "that chat" in prompt.lower()
+
+
+def test_the_reader_recommends_asks_one_blocking_question_and_names_replaced_cards() -> None:
+    prompt = (Path(clarify.__file__).parent / "agents" / "clarify.md").read_text(
+        encoding="utf-8")
+    for words in ("open_cards", "Recommend whenever you can", "At most one gap",
+                  "`diagram`", "`replaces`", "`proposal`", "consequences"):
+        assert words in prompt, words
+    assert {"proposal"} <= set(clarify.schema["properties"]["readback"]["properties"])
+    gap = clarify.schema["properties"]["gaps"]["items"]["properties"]
+    assert {"consequences", "blocking", "diagram"} <= set(gap)
+    assert "replaces" in clarify.schema["properties"]

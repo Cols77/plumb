@@ -44,13 +44,6 @@ def test_rule_skips_superseded_and_confirmed(superseded: Path) -> None:
     assert open_decisions(core.index(), core.status(), ["SR-010"]) == ["DEC-003"]
 
 
-def test_stop_hook_asks_the_next_decision(superseded: Path) -> None:
-    from plumb.hosts.claude_code.stop import matters_decisions
-
-    core = open_core(superseded)
-    assert matters_decisions(core.index(), core.status(), ["SR-010"]) == ["DEC-003"]
-
-
 def test_next_question_skips_the_superseded_decision(superseded: Path) -> None:
     assert next_question(open_core(superseded), ["SR-010"]) == "DEC-003"
 

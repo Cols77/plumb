@@ -12,8 +12,9 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> list[str]:
     understand layer never blocks the prompt."""
     lines: list[str] = []
     try:
-        from plumb.understand import clarify, queue, read
+        from plumb.understand import clarify, queue, read, typed
 
+        lines.extend(typed.on_prompt(core, entry, getattr(ctx, "session_id", "")))
         read_job = read.on_prompt(ctx, core, entry)
         lines.extend(clarify.on_prompt(ctx, core, entry, after=read_job))
         queue.retry_failed(core, getattr(ctx, "session_id", ""))

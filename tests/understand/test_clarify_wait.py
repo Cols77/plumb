@@ -20,7 +20,8 @@ pytestmark = pytest.mark.sr("SR-103")
 
 SESSION = "s1"
 CARD = {"intent": "yes", "topic": "exporting data", "gap": True,
-        "gaps": [{"id": "format", "question": "Which format?", "suggestions": ["csv", "json"]},
+        "gaps": [{"id": "format", "question": "Which format?", "suggestions": ["csv", "json"],
+                  "consequences": ["opens in a sheet", "needs a program"], "blocking": True},
                  {"id": "scope", "question": "Which data?", "suggestions": ["all", "mine"]}]}
 NO_GAP = {"intent": "yes", "topic": "export", "gap": False, "gaps": []}
 
@@ -54,7 +55,8 @@ def test_ex5_wait_blocks_until_card_ready(repo: Path, engine_standins: Any) -> N
     releaser.join(10)
     assert took >= 0.7                                      # it really waited for the job
     assert outcome.state == "card" and outcome.digest == digest
-    assert any("Which format?" in line for line in outcome.lines)
+    assert outcome.lines == [cmd_clarify.ASK]             # the question is on the card only
+    assert outcome.card == clarify.choice_id(digest)
     assert owner_level("\n".join(outcome.lines)) == []
     assert gate.is_closed(repo, SESSION)                    # the card is not answered yet
     assert len(engine_standins.dispatcher.ran("clarify")) == 1
@@ -133,7 +135,7 @@ def test_the_command_prints_the_result_as_json(repo: Path, engine_standins: Any,
     assert cmd_clarify.run("clarify", ["--wait", "--json", "--root", str(repo),
                                        "--timeout", "5"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["state"] == "card" and data["card"].startswith("clarify:")
+    assert data["state"] == "card" and data["card"].startswith("choice:")
 
 
 def test_without_wait_the_command_is_todays_helper(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -188,3 +190,30 @@ def test_a_finished_check_that_left_no_card_is_not_waiting_for_ever(
     assert gate.is_closed(repo, SESSION)
     states = {cmd_clarify.wait(open_core(repo), SESSION, timeout=0.2).state for _ in range(2)}
     assert "waiting" not in states
+
+
+def test_a_read_back_with_no_blocking_choice_is_ready_with_its_assumptions(
+        repo: Path, engine_standins: Any) -> None:
+    engine_standins.dispatcher.script = {"clarify": {
+        **NO_GAP, "readback": {"assumptions": ["the file is named after the user"]},
+        "gap": True, "gaps": [{"id": "scope", "question": "Which data?",
+                               "suggestions": ["all", "mine"]}]}}
+    core, _ = _say(repo)
+    worker.run_once(core, SESSION)
+    outcome = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
+    assert outcome.state == "ready" and not gate.is_closed(repo, SESSION)
+    assert outcome.lines[1:] == [cmd_clarify.BUILD_ON, "Assumed: the file is named after the user",
+                                 "Assumed: Which data?: all"]
+
+
+def test_a_structure_question_tells_the_agent_to_draw_first(repo: Path,
+                                                            engine_standins: Any) -> None:
+    gap = {**CARD["gaps"][0], "diagram": True}
+    engine_standins.dispatcher.script = {"clarify": {**CARD, "gaps": [gap]}}
+    core, digest = _say(repo)
+    worker.run_once(core, SESSION)
+    outcome = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
+    path = f".plumb/session/{SESSION}/diagrams/{clarify.short(digest)}.html"
+    assert path in outcome.lines[0] and outcome.lines[0].startswith("Draw the answer space")
+    assert CARD["gaps"][0]["question"] in outcome.lines[0]      # what to draw is in the line
+    assert outcome.lines[1] == cmd_clarify.ASK

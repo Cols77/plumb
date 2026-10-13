@@ -111,27 +111,13 @@ def test_ex2_int24_read_as_int024_all_three_confirmed(core) -> None:
     assert set(approvals(after)) == {"SR-097", "SR-098", "INT-024"}
 
 
-def test_ex3_unshown_record_shown_as_card_first_then_confirmed_next_answer(core) -> None:
+def test_ex3_unshown_record_is_noted_and_confirmed_by_nothing(core) -> None:
     after, applied, _ = run(core, "ok, and confirm SR-041 too", ["SR-040"], [
         entry_of(core, "SR-040", "accepted", "ok"),
         entry_of(core, "SR-041", "accepted", "confirm SR-041 too", hash="")])
     assert set(approvals(after)) == {"SR-040"}
-    (card,) = cardstore.load(after.root, SESSION)
-    assert card.kind == "show_first" and card.questions[0].record == "SR-041"
-    # the next answer: one read job over the card, the handler confirms the record
-    message = "yes"
-    digest = log_prompt(after, message, at="2026-10-10T11:00:00Z")
-    job = read.build(after, SESSION, message={"digest": digest, "text": message})
-    (item,) = job.inputs["cards"]
-    assert item["record"] == "SR-041" and item["kind"] == "show_first"
-    with as_worker(after.root, SESSION):
-        applied = read.apply(after, job, {"entries": [
-            {"id": item["id"], "hash": "", "answer": "accepted", "evidence": "yes",
-             "confidence": 0.95}]})
-    write_applied(after, applied)
-    final = open_core(after.root)
-    assert set(approvals(final)) == {"SR-040", "SR-041"}
-    assert cardstore.load(final.root, SESSION) == []
+    assert cardstore.load(after.root, SESSION) == [] and applied.cards == ()
+    assert any("SR-041" in note for note in applied.notes)
 
 
 def test_ex4_confidence_below_threshold_confirms_nothing(core) -> None:
@@ -141,16 +127,16 @@ def test_ex4_confidence_below_threshold_confirms_nothing(core) -> None:
     assert [e.payload["confidence"] for e in entries_of(after, "read-entry")] == [0.7]
 
 
-def test_ex5_edited_record_confirms_nothing_new_version_shown(core, repo, write_record) -> None:
+def test_ex5_edited_record_confirms_nothing_and_is_noted(core, repo, write_record) -> None:
     def edit():
         write_record(repo, record_text(40, "Plain words UX reworded"))
 
-    after, _, _ = run(core, "ok", ["SR-040", "SR-041"], [
+    after, applied, _ = run(core, "ok", ["SR-040", "SR-041"], [
         entry_of(core, "SR-040", "accepted", "ok"),
         entry_of(core, "SR-041", "accepted", "ok")], edit=edit)
     assert set(approvals(after)) == {"SR-041"}
-    (card,) = cardstore.load(after.root, SESSION)
-    assert card.kind == "show_first" and card.topic == "Plain words UX reworded"
+    assert cardstore.load(after.root, SESSION) == []
+    assert any("SR-040" in note for note in applied.notes)
 
 
 def test_evidence_not_in_message_confirms_nothing(core) -> None:
@@ -231,14 +217,10 @@ def test_ex13_nothing_confirmed_while_the_job_runs_confirmed_when_it_returns(
     assert set(approvals(open_core(core.root))) == {"SR-040"}
 
 
-def test_confirmation_readback_and_show_first_text_pass_the_owner_level_scan(core) -> None:
+def test_confirmation_and_readback_text_pass_the_owner_level_scan(core) -> None:
     assert owner_level(owner_text.CONFIRM_YOU_SAID.format(evidence="ok")) == []
     assert owner_level(owner_text.READBACK_CHANGE.format(
         title="Plain words UX", change="some features stay internal")) == []
-    after, applied, _ = run(core, "confirm SR-041", ["SR-040"], [
-        entry_of(core, "SR-041", "accepted", "confirm SR-041", hash="")])
-    (card,) = applied.cards
-    assert owner_level(card.issue) == [] and owner_level(card.topic) == []
     _ = json, files, FakeDispatcher, ctx_for, open_card
 
 

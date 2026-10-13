@@ -1,6 +1,6 @@
 """The registry of what an answered card does (plan 3.2 item 4). READ applies the answers and
-calls the handler of the card's kind; JUDGE registers trial, backlog, beyond, contradicts;
-SHOW registers clarify, couldnt_check; READ registers show_first."""
+calls the handler of the card's kind; JUDGE registers trial, beyond, contradicts;
+SHOW registers clarify, couldnt_check."""
 
 from __future__ import annotations
 
@@ -14,10 +14,6 @@ HANDLERS: dict[str, Handler] = {}
 
 def register(card_kind: str, handler: Handler) -> None:
     HANDLERS[card_kind] = handler
-
-
-# card kinds only a typed command or a button can answer; a prose answer changes nothing
-NO_EFFECT = frozenset({"settle_offer", "settled_item"})
 
 
 def handler_for(card_kind: str) -> Handler | None:

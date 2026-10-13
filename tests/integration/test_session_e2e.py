@@ -206,37 +206,12 @@ def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
     for line in ("INT-002 proposed", "SR-003 proposed", "DEC-001 proposed"):
         assert line in captured
 
-    # the decision that matters is asked, alone, in the next message (R11)
-    asked = json.loads(by_name["Stop (asks the decision)"].stdout)
-    assert asked["decision"] == "block"
-    assert re.findall(r"plumb: (DEC-\d+) is unconfirmed", asked["reason"]) == ["DEC-001"]
-    assert "I assumed integers only; floats too also fits" in asked["reason"]
-
-    # the end-of-turn summary shows the read-back and its examples, proposed
-    # (SR-012: as cards, the decision's and one for the feature's proposed records, each in full)
-    shown = json.loads(by_name["Stop (read-back shown)"].stdout)["systemMessage"]
-    lines = shown.splitlines()
-    assert lines[0].startswith('A choice this work relies on, "Floats too, or integers only?": '
-                               "I assumed integers only; floats too also fits.")
-    assert ('Proposed this turn, "Add sub(a, b) beside add, returning a - b": these 2 were '
-            "written from your words this turn and are not settled; are they right?") in lines
-    assert "  - Add sub(a, b) beside add, returning a - b" in lines
-    assert "    will: sub(a, b) returns a - b" in lines
-    assert "    won't: no change to add or mul" in lines
-    assert "    assumed: integers, like add" in lines
-    assert "    EX-1: given the numbers 5 and 3, when sub is called, then it returns 2" in lines
-    assert "    EX-2: given the numbers 3 and 5, when sub is called, then it returns -2" in lines
-
-    # a later stop in the same turn does not ask the decision again
-    again = json.loads(by_name["Stop (not asked again)"].stdout)
-    assert again.get("decision") != "block"
-    assert "is unconfirmed" not in json.dumps(again)
-
-    # the owner's "ok": the summary showed these records, and the prompt hook no longer tells
-    # the agent to confirm them (the reader of the answer does, INT-028)
-    stated = json.loads((adopted / ".plumb" / "session" / "stated.json").read_text("utf-8"))
-    shown_ids = [r["id"] for r in stated["records"] if r.get("shown")]
-    assert shown_ids == ["DEC-001", "INT-002", "SR-003"]
+    # INT-036/INT-037: no stop asks the decision or lists the proposed records in prose; the
+    # request's read-back is the one card, drawn by the clarify check, and the owner's answer
+    # is read by plumb itself, so the agent is told to relay nothing
+    for name in ("Stop (asks the decision)", "Stop (read-back shown)", "Stop (not asked again)",
+                 "Stop (summary again)"):
+        assert "is unconfirmed" not in by_name[name].stdout and "block" not in by_name[name].stdout
     answer = by_name["UserPromptSubmit (owner ok)"].stdout
     assert "plumb relay" not in answer and "awaiting confirmation" not in answer
     assert "plumb relay" not in by_name

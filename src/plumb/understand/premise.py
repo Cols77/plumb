@@ -9,7 +9,7 @@ premise is only a fragment of the owner's words (older records) says so: ``fragm
 fragment and ``messages`` is empty.
 
 ``problems(core)`` is what ``plumb validate`` reports: a premise whose digest is not the
-digest of its text, and a settled record whose premise is not on file."""
+digest of its text."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ PREFIX_MIN = 12
 class Premise:
     """What a record rests on. ``messages``: ``({"digest", "text"}, ...)`` (the owner's whole
     logged messages); ``question``: the stored question a short answer answered; ``parent``:
-    the confirmed or settled parent intent, if any; ``fragment``: the owner's words as the
+    the confirmed parent intent, if any; ``fragment``: the owner's words as the
     record quotes them when no whole message is on file."""
 
     messages: tuple[Mapping[str, str], ...] = ()
@@ -56,7 +56,7 @@ def _sha(text: str) -> str:
 
 
 def input_digest(premise: Mapping[str, Any]) -> str:
-    """The digest a verdict and a settled approval carry for a job's ``premise`` object: the
+    """The digest a verdict and an approval carry for a job's ``premise`` object: the
     message's own digest when there is one message, else the digest of the sorted message
     digests; nothing on file is ''."""
     digests = sorted(str(m.get("digest")) for m in premise.get("messages") or ()
@@ -218,7 +218,7 @@ def _digest_matches(digest: str, text: str) -> bool:
 
 def problems(core: Any) -> list[str]:
     """What ``plumb validate`` reports about premises: a digest that is not the digest of its
-    text, and a settled record whose premise is not in the committed log."""
+    text."""
     if core is None:
         return []
     out: list[str] = []
@@ -235,16 +235,6 @@ def problems(core: Any) -> list[str]:
             out.append(f"premise {digest[:19]}: the digest is not the digest of its text")
             continue
         held[digest] = text
-    for entry in core.events():
-        if entry.kind != "approval" or entry.payload.get("by") != "settled":
-            continue
-        wanted = entry.payload.get("premise_digests") or [entry.payload.get("premise_digest")]
-        for digest in wanted:
-            if digest and digest not in held:
-                ids = ", ".join(str(r.get("id")) for r in entry.payload.get("records") or ()
-                                if isinstance(r, Mapping))
-                out.append(f"{ids} rests on a premise ({str(digest)[:19]}) that is not in "
-                           "the committed log")
     return out
 
 

@@ -27,10 +27,8 @@ def resolve(core: Any, words: str, *, kind: str | None = None) -> Resolution:
 def brief(core: Any, *, full: bool = False, max_lines: int | None = None) -> list[str]:
     """``plumb brief``: the short intent brief (``full``: every record), the tests line when
     verification is unavailable or a full run is pending, whether auto-approve is on and where
-    that setting comes from once the owner switched it (SR-115), each while there is room, and
-    the triage offer (R8 A)."""
+    that setting comes from once the owner switched it (SR-115), each while there is room."""
     from plumb.commands import auto_approve_line, verification_state
-    from plumb.hosts.claude_code.session_start import triage_offer_line
     from plumb.query import HARD_CAP, brief_lines
 
     cap = 10**6 if full else int(max_lines or core.config.hooks.brief_lines)
@@ -47,12 +45,6 @@ def brief(core: Any, *, full: bool = False, max_lines: int | None = None) -> lis
         if extra and (full or len(lines) < min(cap, HARD_CAP)):
             at = len(lines) - 1 if lines and lines[-1].startswith("open NCs") else len(lines)
             lines.insert(at, extra)
-    try:
-        offer = triage_offer_line(core)
-    except Exception:  # noqa: BLE001 - the offer is advisory
-        offer = None
-    if offer:
-        lines.append(offer)
     return lines
 
 

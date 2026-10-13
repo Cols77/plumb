@@ -171,6 +171,5 @@ def _contended_turn(busy_repo: Path, hook_input, call) -> None:
     call("hook", "post-edit", payload=hook_input(  # the Edit tool's PostToolUse
         "PostToolUse", tool_name="Edit", tool_input={"file_path": str(record)}))
     raw, wall = call("hook", "stop", payload=hook_input("Stop", stop_hook_active=True))
-    message = json.loads(raw)["systemMessage"]
-    assert "statement two on stale links" in message  # SR-002, drawn in its card
+    assert "decision" not in raw  # no decision is asked here (INT-037)
     assert wall < 6.0, f"stop hook took {wall:.1f} s under contention"
