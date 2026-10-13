@@ -196,6 +196,25 @@ def test_unreachable_judge_is_one_line_once_per_session_and_never_blocks(
     assert "judging unavailable" not in second  # once per session
 
 
+@pytest.mark.sr("SR-039")
+def test_jev_without_its_key_says_so_once_and_judges_nothing_by_rules(
+        records: Path, hook_input) -> None:
+    """SR-039 EX-1: judgment.backend jev and the key variable unset (conftest clears it).
+    Two prompts in one session: the first names JEV and the variable in exactly one line,
+    the second says nothing, and no rule-based judgment is made in either."""
+    _confirm(records, "SR-004")
+    (records / ".plumb" / "config.yaml").write_text("judgment:\n  backend: jev\n",
+                                                   encoding="utf-8")
+    text = "approvals should now stay after an edit, SR-004"
+    first = _run(records, hook_input, text, backend=prompt.LAZY)
+    second = _run(records, hook_input, text, backend=prompt.LAZY)
+    [line] = [ln for ln in first.splitlines() if "judging unavailable" in ln]
+    assert "JEV" in line and "TYPESAFE_API_KEY" in line
+    assert "judging unavailable" not in second
+    assert "this may change" not in first + second
+    assert not (records / ".plumb" / "session" / "intent_flags.jsonl").exists()
+
+
 @pytest.mark.sr("SR-021")
 def test_no_judge_configured_names_the_setting(records: Path, hook_input) -> None:
     _confirm(records, "SR-004")

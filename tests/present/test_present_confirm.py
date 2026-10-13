@@ -3,6 +3,7 @@ SR-065)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -99,6 +100,13 @@ def test_ids_with_confirm_are_left_to_the_typed_command(records: Path, hook_inpu
     agent relaying the words."""
     text = "/plumb confirm SR-002"
     run_prompt(records, hook_input, text)
+    # confirmed by the prompt hook itself, before any stop hook runs
+    assert open_core(records).status(["SR-002"])["SR-002"].confirmation == "confirmed"
+    newest = _approvals(records)[-1].payload
+    assert (newest["via"], newest["by"], newest["self_recorded"]) == (
+        "command", "agent-relayed", False)
+    assert newest["prompt_digest"] == "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+    assert newest["quote"] == text
     assert cli.main(["confirm", "--root", str(records), "SR-002"]) == 0
     out = capsys.readouterr().out
     assert "plumb relay" not in out and "you confirm nothing yourself" in out
