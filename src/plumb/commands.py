@@ -177,6 +177,50 @@ def cmd_link(command: str, argv: list[str]) -> int:
     return 0
 
 
+def cmd_unlink(command: str, argv: list[str]) -> int:
+    from plumb.links import LinkError, unlink
+
+    parser = _parser(command, "Remove one link; the links after it move down by one.")
+    parser.add_argument("link", help="link id (SR-003#2)")
+    parser.add_argument("--note", required=True, help="why the link goes (logged)")
+    args = parser.parse_args(argv)
+    try:
+        result = unlink(_core(args), args.link, args.note)
+    except LinkError as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return 1
+    lines = [f"plumb: unlinked {result['link']} {result['kind']} {result['target']}"]
+    lines += [f"plumb: {r['from']} is now {r['to']}" for r in result["renumbered"]]
+    if result["untested"]:
+        lines.append(f"plumb: {args.link.partition('#')[0]} {result['untested']} "
+                     f"now has no test")
+    emit(result if args.as_json else lines, args.as_json)
+    return 0
+
+
+def cmd_relink(command: str, argv: list[str]) -> int:
+    from plumb.links import LinkError, LinkUsageError, parse_cli_target, relink
+
+    parser = _parser(command, "Point one link at a new target, keeping its number, kind and "
+                              "example, with fresh pins.")
+    parser.add_argument("link", help="link id (SR-003#2)")
+    parser.add_argument("target", help="record ID or repository-relative path")
+    parser.add_argument("--note", required=True, help="why the link moves (logged)")
+    args = parser.parse_args(argv)
+    try:
+        result = relink(_core(args), args.link, parse_cli_target(args.target), args.note)
+    except LinkUsageError as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    except LinkError as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return 1
+    emit(result if args.as_json else
+         f"plumb: relinked {result['link']} {result['old']['target']} -> "
+         f"{result['new']['target']}", args.as_json)
+    return 0
+
+
 def cmd_repin(command: str, argv: list[str]) -> int:
     from plumb.links import LinkError, repin, repin_after_tests
 
@@ -828,6 +872,8 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "init": cmd_init,
     "show": cmd_show,
     "link": cmd_link,
+    "unlink": cmd_unlink,
+    "relink": cmd_relink,
     "repin": cmd_repin,
     "stale": cmd_stale,
     "approve": cmd_approve,

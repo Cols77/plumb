@@ -220,3 +220,158 @@ def test_symbol_and_test_node_ends_from_the_cli_form(setup: Path) -> None:
     with pytest.raises(links.LinkError):
         open_core(setup).add_link("SR-001", "implemented_by",
                                   links.parse_cli_target("src/mod.py::fn"))
+
+
+# --------------------------------------------------------------------------- unlink and relink
+
+TWO = SR.replace("examples:\n", "examples:\n  - {id: EX-2, given: g2, when: w2, then: t2}\n")
+
+
+@pytest.fixture
+def edit(repo: Path, write_record) -> Path:
+    write_record(repo, INT)
+    write_record(repo, TWO)
+    (repo / "tests").mkdir()
+    for name in ("test_a.py", "test_b.py", "test_old.py"):
+        (repo / "tests" / name).write_text("def test_x():\n    pass\n", encoding="utf-8")
+    root = ["--root", str(repo)]
+    from plumb import cli
+
+    assert cli.main(["link", "SR-001", "derives_from", "INT-001", *root]) == 0
+    assert cli.main(["link", "SR-001", "verified_by", "tests/test_old.py", "--example", "EX-1",
+                     *root]) == 0
+    assert cli.main(["link", "SR-001", "verified_by", "tests/test_a.py", "--example", "EX-1",
+                     *root]) == 0
+    assert cli.main(["link", "SR-001", "verified_by", "tests/test_b.py", "--example", "EX-2",
+                     *root]) == 0
+    return repo
+
+
+def _cli(repo: Path, *argv: str) -> int:
+    from plumb import cli
+
+    return cli.main([*argv, "--root", str(repo)])
+
+
+def _record_text(repo: Path) -> str:
+    return (repo / ".plumb" / "requirements" / "SR-001.md").read_text(encoding="utf-8")
+
+
+def _ends(repo: Path) -> list[str | None]:
+    return [link.target.record or link.target.path
+            for link in open_core(repo).index()["SR-001"].links]
+
+
+@pytest.mark.sr("SR-148")
+def test_unlink_removes_a_dangling_link_renumbers_and_logs(
+        edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (edit / "tests" / "test_old.py").unlink()
+    pin = open_core(edit).index()["SR-001"].links[1].pin
+    capsys.readouterr()
+    assert _cli(edit, "unlink", "SR-001#1", "--note", "the test moved") == 0
+    out = capsys.readouterr().out
+    assert _ends(edit) == ["INT-001", "tests/test_a.py", "tests/test_b.py"]
+    assert "SR-001#2 is now SR-001#1" in out and "SR-001#3 is now SR-001#2" in out
+    events = [e.payload for e in open_core(edit).log_read("events", kinds=["unlink"])]
+    assert events == [{"link": "SR-001#1", "kind": "verified_by",
+                       "target": "tests/test_old.py", "example": "EX-1",
+                       "pin": {"from": pin.source, "to": pin.target},
+                       "note": "the test moved",
+                       "renumbered": [{"from": "SR-001#2", "to": "SR-001#1"},
+                                      {"from": "SR-001#3", "to": "SR-001#2"}]}]
+
+
+@pytest.mark.sr("SR-148")
+def test_unlink_of_a_missing_link_exits_1_and_changes_nothing(
+        edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    before = _record_text(edit)
+    capsys.readouterr()
+    assert _cli(edit, "unlink", "SR-001#40", "--note", "x") == 1
+    assert "no link SR-001#40" in capsys.readouterr().err
+    assert _record_text(edit) == before
+
+
+@pytest.mark.sr("SR-148")
+def test_unlink_without_a_note_is_a_usage_error(edit: Path) -> None:
+    before = _record_text(edit)
+    assert _cli(edit, "unlink", "SR-001#1") == 2
+    assert _record_text(edit) == before
+    assert list(open_core(edit).log_read("events", kinds=["unlink"])) == []
+
+
+@pytest.mark.sr("SR-148")
+def test_unlink_refuses_the_only_live_test_of_a_confirmed_example(
+        edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert _cli(edit, "approve", "SR-001") == 0
+    before = _record_text(edit)
+    capsys.readouterr()
+    assert _cli(edit, "unlink", "SR-001#3", "--note", "x") == 1
+    err = capsys.readouterr().err
+    assert "EX-2" in err and "only test" in err and "plumb relink" in err
+    assert _record_text(edit) == before
+    # EX-1 keeps another live test, so one of its two may go
+    assert _cli(edit, "unlink", "SR-001#1", "--note", "a duplicate test") == 0
+
+
+@pytest.mark.sr("SR-148")
+def test_unlink_removes_a_dangling_only_test_of_a_confirmed_example(
+        edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert _cli(edit, "approve", "SR-001") == 0
+    (edit / "tests" / "test_b.py").unlink()
+    capsys.readouterr()
+    assert _cli(edit, "unlink", "SR-001#3", "--note", "the test is gone") == 0
+    assert "EX-2 now has no test" in capsys.readouterr().out
+    assert "tests/test_b.py" not in _ends(edit)
+
+
+@pytest.mark.sr("SR-149")
+def test_relink_points_a_dangling_link_at_the_new_target(
+        edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (edit / "tests" / "mod").mkdir()
+    (edit / "tests" / "test_old.py").rename(edit / "tests" / "mod" / "test_old.py")
+    old = open_core(edit).index()["SR-001"].links[1]
+    assert _cli(edit, "relink", "SR-001#1", "tests/mod/test_old.py", "--note", "moved") == 0
+    core = open_core(edit)
+    link = core.index()["SR-001"].links[1]
+    assert (link.kind, link.target, link.example) == (
+        "verified_by", Target(path="tests/mod/test_old.py"), "EX-1")
+    assert link.pin == Pin(core.index()["SR-001"].hash,
+                           core.hash_target(Target(path="tests/mod/test_old.py")))
+    assert _state(core, "SR-001#1").state == "current"
+    events = [e.payload for e in core.log_read("events", kinds=["relink"])]
+    assert events == [{"link": "SR-001#1", "note": "moved",
+                       "old": {"target": "tests/test_old.py",
+                               "pin": {"from": old.pin.source, "to": old.pin.target}},
+                       "new": {"target": "tests/mod/test_old.py",
+                               "pin": {"from": link.pin.source, "to": link.pin.target}}}]
+
+
+@pytest.mark.sr("SR-149")
+def test_relink_to_a_missing_target_exits_1_and_changes_nothing(
+        edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    before = _record_text(edit)
+    capsys.readouterr()
+    assert _cli(edit, "relink", "SR-001#1", "tests/nowhere.py", "--note", "x") == 1
+    assert "tests/nowhere.py" in capsys.readouterr().err
+    assert _record_text(edit) == before
+
+
+@pytest.mark.sr("SR-149")
+def test_relink_refuses_to_copy_another_link(
+        edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    before = _record_text(edit)
+    capsys.readouterr()
+    assert _cli(edit, "relink", "SR-001#1", "tests/test_a.py", "--note", "x") == 1
+    err = capsys.readouterr().err
+    assert "SR-001#2" in err and "plumb unlink" in err
+    assert _record_text(edit) == before
+
+
+@pytest.mark.sr("SR-149")
+def test_relink_refuses_a_kind_that_cannot_reach_the_target(
+        edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    before = _record_text(edit)
+    capsys.readouterr()
+    assert _cli(edit, "relink", "SR-001#0", "tests/test_a.py", "--note", "x") == 1
+    assert "derives_from is not allowed from requirement to code" in capsys.readouterr().err
+    assert _record_text(edit) == before
