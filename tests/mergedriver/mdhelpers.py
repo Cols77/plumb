@@ -179,3 +179,38 @@ def events(root: Path, kind: str) -> list[dict]:
     from plumb.api import open_core
 
     return [e.payload for e in open_core(root).log_read("events", [kind])]
+
+
+def reads(monkeypatch: Any, root: Path, answer: str, evidence: str, change: str | None = None,
+          *, record_id: str = "SR-005", confidence: float = 0.95) -> None:
+    """A stubbed model reading of the owner's message against the conflict card: ''answer''
+    (accepted, rejected, change, open), ''change'' and the words that carry it."""
+    import json
+
+    script = root.parent / "reading.json"
+    script.write_text(json.dumps({"read": {"entries": [{
+        "id": record_id, "hash": "", "answer": answer, "change": change,
+        "evidence": evidence, "confidence": confidence}]}}), encoding="utf-8")
+    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+
+
+def unreachable(monkeypatch: Any, root: Path) -> None:
+    """The model that reads the owner's words cannot be reached."""
+    import json
+
+    script = root.parent / "reading.json"
+    script.write_text(json.dumps({"read": {"error": "the model could not be reached"}}),
+                      encoding="utf-8")
+    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+
+
+def reads_keep(monkeypatch: Any, root: Path, take: str, evidence: str) -> None:
+    """A stubbed model reading of the owner's words as keeping one side of the open conflict
+    (``ours`` or ``theirs``), with no change asked."""
+    from plumb.api import open_core
+    from plumb.mergedriver import open_conflicts
+
+    (conflict,) = open_conflicts(open_core(root))
+    label = conflict.labels[0 if take == "ours" else 1]
+    reads(monkeypatch, root, "change", evidence, f"Keep {label}'s version",
+          record_id=conflict.record)

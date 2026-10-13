@@ -8,8 +8,10 @@
 - ``propose``: the agent's combined version, shown in the card, never applied by itself;
 - ``choose_owner`` and ``relay_choice``: only the owner chooses. The owner's own terminal
   (``approvals.require_owner``), or the owner's words relayed (``approvals.owner_prompt``)
-  with the card in the stated set of the reply before that prompt and a quote that names
-  exactly one choice without a reservation; ``apply_choice`` writes the chosen side's
+  with the card in the stated set of the reply before that prompt, read like an approval
+  (``read_choice``: the model that reads the owner's answers, INT-028, INT-029) as exactly
+  one version kept with no change asked; ``apply_choice`` writes the chosen side's
+
   values for the conflicting fields, keeps everything that merged on its own, removes the
   block and appends a ``conflict-resolution`` entry.
 """
@@ -491,25 +493,67 @@ def normalize_take(conflict: IntentConflict, take: str) -> str:
 # --------------------------------------------------------------------------- the relay
 
 
-def _side_pattern(words: Sequence[str]) -> re.Pattern[str]:
-    alternatives = "|".join(re.escape(w) for w in sorted(set(words), key=len, reverse=True))
-    return re.compile(rf"(?<![\w-])(?:{alternatives})(?![\w-])", re.IGNORECASE)
+def _same(choice: str | None, said: Any) -> bool:
+    return bool(choice) and (_one_line(str(choice)).casefold()
+                             == _one_line(str(said or "")).casefold())
 
 
-def named_takes(conflict: IntentConflict, quote: str) -> set[str]:
-    """The choices ``quote`` names: a side's label (or mine/ours, theirs/their version), or
-    the combined version."""
-    ours, theirs = conflict.labels
-    found: set[str] = set()
-    if _side_pattern([ours, "mine", "ours", "my version", "my one", "my side"]).search(quote):
-        found.add("ours")
-    if _side_pattern([theirs, "theirs", "their version", "their one", "their side",
-                      "the incoming one"]).search(quote):
-        found.add("theirs")
-    if _side_pattern(["combined", "combination", "combine them", "the combined one",
-                      "the combined version", "the merged wording"]).search(quote):
-        found.add("combined")
-    return found
+def read_choice(core: Any, conflict: IntentConflict, *, digest: str, message: str) -> str:
+    """The version the owner kept, as the model that reads the owner's answers
+    (``understand.read``) reads their logged ``message`` with this conflict's card shown
+    (INT-028): ``ours`` or ``theirs`` for one side's version picked with no change asked,
+    ``combined`` for a yes to the combined version the card offers. A change asked, a
+    refusal, an open or unsure reading, or no model reached refuses (INT-029: nothing reads
+    the words in its place)."""
+    from plumb.contracts import DispatchError, NoModel
+    from plumb.understand import agents, files, read
+    from plumb.understand import schema as schema_check
+    from plumb.understand.cards import BOTH, KEEP_OTHER, KEEP_THIS
+    from plumb.understand.cards import conflict_card as reader_card
+    from plumb.understand.dispatch import configured
+    from plumb.understand.threshold import reader_threshold
+
+    card = reader_card(core.index(), conflict)
+    (question,) = card.questions
+    item = read.card_item_id(card, question)
+    inputs = {"message": {"digest": digest, "text": message}, "shown": [], "cards": [{
+        "id": item, "card": card.id, "question": question.id, "kind": card.kind,
+        "text": "\n".join(conflict_card(core, conflict, backend=CACHED_ONLY)),
+        "resolutions": list(question.resolutions),
+        "choices": [files.choice_to_json(c) for c in question.choices],
+        "record": conflict.record, "hash": ""}]}
+    try:
+        dispatcher = configured(core)
+        reason = dispatcher.available()
+        if reason:
+            raise DispatchError("dispatch", reason)
+        answer = dispatcher.run(
+            files.make_job(read.kind, "", read.SCHEMA_ID, inputs), system=agents.load(read.kind),
+            user=json.dumps(inputs, ensure_ascii=False, sort_keys=True, indent=1),
+            schema=read.schema, on_step=lambda _: None)
+    except (NoModel, DispatchError) as exc:
+        raise ChoiceRefused(f"the owner's words could not be read ({exc}); nothing was "
+                            "chosen") from exc
+    if schema_check.problems(answer, read.schema):
+        raise ChoiceRefused("the reading of the owner's words is outside its schema; nothing "
+                            "was chosen")
+    entries = [e for e in answer.get("entries") or () if isinstance(e, Mapping)
+               and str(e.get("id") or "") in (item, conflict.record)]
+    if len(entries) != 1:
+        raise ChoiceRefused("the owner's words were not read as an answer to the card")
+    said = entries[0]
+    if (not read.evidence_in(str(said.get("evidence") or ""), message)
+            or float(said.get("confidence") or 0.0) < reader_threshold(core)):
+        raise ChoiceRefused("the reading of the owner's words is not sure they chose; the "
+                            "conflict stays open")
+    picked = [c for c in question.choices if c.answer == said.get("answer")
+              and (c.answer == "accepted" or _same(c.change, said.get("change"))
+                   or _same(c.label, said.get("change")))]
+    if len(picked) != 1:
+        change = f": {said['change']}" if said.get("change") else ""
+        raise ChoiceRefused(f"the owner's words were read as {said.get('answer')}{change}, not "
+                            "as one version kept; the conflict stays open")
+    return {KEEP_THIS: "ours", KEEP_OTHER: "theirs", BOTH: "combined"}[picked[0].label]
 
 
 def _stated_conflicts(core: Any, prompt_at: str) -> list[Mapping[str, Any]]:
@@ -525,13 +569,14 @@ def _stated_conflicts(core: Any, prompt_at: str) -> list[Mapping[str, Any]]:
     return [c for c in data.get("conflicts") or [] if isinstance(c, Mapping)]
 
 
-def relay_choice(core: Any, ref: str, take: str, *, prompt: str, quote: str,
+def relay_choice(core: Any, ref: str, take: str | None, *, prompt: str, quote: str,
                  values: Mapping[str, Any] | None = None) -> tuple[IntentConflict, dict]:
-    """Apply the owner's choice relayed from the owner's own logged words (sp6 8.4)."""
+    """Apply the owner's choice relayed from the owner's own logged words (sp6 8.4): the
+    version ``read_choice`` reads in them; ``take``, when given, must be that one."""
     from plumb.approvals import Refused, owner_prompt, quote_in_prompt
 
     conflict = find(core, ref)
-    take = normalize_take(conflict, take)
+    wanted = normalize_take(conflict, take) if take else None
     try:
         entry = owner_prompt(core, prompt)
     except Refused as exc:
@@ -548,7 +593,11 @@ def relay_choice(core: Any, ref: str, take: str, *, prompt: str, quote: str,
         raise ChoiceRefused(f"the card of {conflict.record} \"{conflict.title}\" was not shown "
                             "in the reply before that prompt; show it (/plumb conflicts) and "
                             "let the owner answer it")
-    named = named_takes(conflict, said)
+    take = read_choice(core, conflict, digest=str(entry["digest"]),
+                       message=str(entry.get("text") or ""))
+    if wanted and wanted != take:
+        raise ChoiceRefused(f"the owner's words were read as keeping {_kept(conflict, take)}, "
+                            f"not {_kept(conflict, wanted)}")
     if take == "combined":
         if values is not None and _values_hash(values) != combined_hash(conflict):
             raise ChoiceRefused("the combined version given is not the one the card showed")
@@ -556,12 +605,6 @@ def relay_choice(core: Any, ref: str, take: str, *, prompt: str, quote: str,
                    for c in shown):
             raise ChoiceRefused("the combined version was not shown in the card the owner "
                                 "answered")
-        if named != {"combined"}:
-            raise ChoiceRefused("the quote does not name the combined version alone")
-    elif named != {take}:
-        side = conflict.labels[0 if take == "ours" else 1]
-        raise ChoiceRefused(f"the quote must name the one version kept ({side}'s, or "
-                            + ("mine" if take == "ours" else "theirs") + ") and no other")
     digest = str(entry["digest"])
     known = {e.payload.get("digest") for e in core.log_read("events", ["prompt"])}
     if digest not in known:
@@ -572,7 +615,14 @@ def relay_choice(core: Any, ref: str, take: str, *, prompt: str, quote: str,
     return conflict, payload
 
 
+def _kept(conflict: IntentConflict, take: str) -> str:
+    return {"ours": f"{conflict.labels[0]}'s version",
+            "theirs": f"{conflict.labels[1]}'s version",
+            "combined": "the combined version"}[take]
+
+
 def choose_owner(core: Any, ref: str, take: str,
+
                  values: Mapping[str, Any] | None = None) -> tuple[IntentConflict, dict]:
     """The owner's own terminal (``approvals.require_owner``): refused under the session
     marker and without an interactive terminal (exit 3, nothing written)."""

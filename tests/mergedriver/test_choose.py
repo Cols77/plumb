@@ -16,8 +16,10 @@ from mergedriver.mdhelpers import (
     log_prompt,
     parse,
     plumb,
+    reads,
     record,
     shown,
+    unreachable,
     write_record,
 )
 from plumb import cli
@@ -72,8 +74,9 @@ def test_choose_refused_under_marker_without_prompt(repo: Path) -> None:
     assert events(repo, "conflict-resolution") == []
 
 
-def test_relay_needs_logged_prompt_and_card_in_stated_set(repo: Path) -> None:
+def test_relay_needs_logged_prompt_and_card_in_stated_set(repo: Path, monkeypatch) -> None:
     conflicted(repo)
+    reads(monkeypatch, repo, "change", "keep feat-x's version", "Keep feat-x's version")
     assert _relay(repo, "keep feat-x's version", "theirs") == 3  # the card was not shown
     assert _record(repo).get("conflict")
     shown(repo)
@@ -86,34 +89,85 @@ def test_relay_needs_logged_prompt_and_card_in_stated_set(repo: Path) -> None:
     assert entry["prompt"].startswith("sha256:")
 
 
-def test_choose_with_prompt_is_the_relay(repo: Path) -> None:
+def test_choose_with_prompt_is_the_relay(repo: Path, monkeypatch) -> None:
     conflicted(repo)
     shown(repo)
+    reads(monkeypatch, repo, "change", "keep mine", "Keep main's version")
     digest = log_prompt(repo, "keep mine")
     assert cli.main(["conflict", "choose", "IC-001", "--take", "ours", "--prompt", digest,
                      "--quote", "keep mine", "--root", str(repo)]) == 0
     assert _record(repo)["statement"] == OURS_STATEMENT
 
 
-def test_relay_quote_must_name_one_side(repo: Path) -> None:
+def test_relay_takes_only_the_version_the_reading_found(repo: Path, monkeypatch) -> None:
     conflicted(repo)
     shown(repo)
+    reads(monkeypatch, repo, "open", "whatever")
     assert _relay(repo, "keep main's or feat-x's, whatever", "theirs") == 3
-    assert _relay(repo, "ok", "theirs") == 3
-    assert _relay(repo, "keep main's", "theirs") == 3  # names the other side
+    reads(monkeypatch, repo, "change", "keep main's", "Keep main's version")
+    assert _relay(repo, "keep main's", "theirs") == 3  # the reading found the other side
     assert _record(repo).get("conflict")
 
 
-def test_relay_ignores_an_unrelated_request_in_the_same_message(repo: Path) -> None:
+def test_relay_without_take_applies_the_reading(repo: Path, monkeypatch) -> None:
+    conflicted(repo)
+    shown(repo)
+    reads(monkeypatch, repo, "change", "keep feat-x's version", "Keep feat-x's version")
+    digest = log_prompt(repo, "keep feat-x's version")
+    assert cli.main(["conflict", "relay", "IC-001", "--prompt", digest,
+                     "--quote", "keep feat-x's version", "--root", str(repo)]) == 0
+    assert _record(repo)["statement"] == THEIRS_STATEMENT
+
+
+def test_relay_with_a_change_asked_or_a_refusal_leaves_it_open(repo: Path,
+                                                                monkeypatch) -> None:
+    """SR-076 EX-4: the model reads a reservation or a refusal: exit 3, nothing changes."""
+    conflicted(repo)
+    shown(repo)
+    before = (repo / SR).read_bytes()
+    words = "keep feat-x's but change the title"
+    reads(monkeypatch, repo, "change", words, "Keep feat-x's version, with its title changed")
+    assert _relay(repo, words, "theirs") == 3
+    reads(monkeypatch, repo, "rejected", "no, not feat-x's")
+    assert _relay(repo, "no, not feat-x's", "theirs") == 3
+    assert (repo / SR).read_bytes() == before
+    assert events(repo, "conflict-resolution") == []
+
+
+def test_relay_naming_a_side_is_not_enough_without_the_reading(repo: Path,
+                                                               monkeypatch) -> None:
+    """The agent's own match of the side's name settles nothing: the reading left it open."""
+    conflicted(repo)
+    shown(repo)
+    reads(monkeypatch, repo, "open", "keep feat-x's version")
+    assert _relay(repo, "keep feat-x's version", "theirs") == 3
+    assert _record(repo).get("conflict")
+
+
+def test_relay_with_the_model_unreachable_is_refused(repo: Path, monkeypatch,
+                                                     capsys) -> None:
+    conflicted(repo)
+    shown(repo)
+    before = (repo / SR).read_bytes()
+    unreachable(monkeypatch, repo)
+    assert _relay(repo, "keep feat-x's version", "theirs") == 3
+    assert "the model could not be reached" in capsys.readouterr().err
+    assert (repo / SR).read_bytes() == before
+    assert events(repo, "conflict-resolution") == []
+
+
+def test_relay_ignores_an_unrelated_request_in_the_same_message(repo: Path,
+                                                               monkeypatch) -> None:
     """R16: only the quote counts; another request in the message neither blocks nor
     counts."""
     conflicted(repo)
     shown(repo)
+    reads(monkeypatch, repo, "change", "Keep feat-x's version", "Keep feat-x's version")
     words = "Make the docs shorter. Keep feat-x's version"
     assert _relay(repo, words, "theirs", quote="Keep feat-x's version") == 0
 
 
-def test_choosing_a_confirmed_side_reconfirms(repo: Path) -> None:
+def test_choosing_a_confirmed_side_reconfirms(repo: Path, monkeypatch) -> None:
     """SR-076 EX-3: feat-x's version was confirmed: choosing it confirms SR-005 again."""
     from plumb.approvals import approve
 
@@ -123,11 +177,12 @@ def test_choosing_a_confirmed_side_reconfirms(repo: Path) -> None:
     conflicted(repo, theirs=theirs)
     assert open_core(repo).status(["SR-005"])["SR-005"].confirmation != "confirmed"
     shown(repo)
+    reads(monkeypatch, repo, "change", "keep feat-x's version", "Keep feat-x's version")
     assert _relay(repo, "keep feat-x's version", "feat-x") == 0
     assert open_core(repo).status(["SR-005"])["SR-005"].confirmation == "confirmed"
 
 
-def test_combined_stays_proposed(repo: Path, tmp_path: Path) -> None:
+def test_combined_stays_proposed(repo: Path, tmp_path: Path, monkeypatch) -> None:
     conflicted(repo)
     combined = tmp_path / "combined.yaml"
     combined.write_text("statement: A relay pins the records the owner affirms, by name.\n",
@@ -135,7 +190,9 @@ def test_combined_stays_proposed(repo: Path, tmp_path: Path) -> None:
     assert cli.main(["conflict", "propose", "IC-001", "--file", str(combined),
                      "--root", str(repo)]) == 0
     shown(repo)
+    reads(monkeypatch, repo, "accepted", "ok, the combined one")  # a yes to the version shown
     assert _relay(repo, "ok, the combined one", "combined") == 0
+
     data = _record(repo)
     assert data["statement"] == "A relay pins the records the owner affirms, by name."
     assert open_core(repo).status(["SR-005"])["SR-005"].confirmation != "confirmed"

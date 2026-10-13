@@ -168,21 +168,6 @@ def _conflict(argv: list[str]) -> int:
         ic = merge_conflict_of(core, ref) if merge_conflict_of is not None else None
         if ic:
             ref = ic  # the merge card asks this question; its answer answers the decision
-            if not args.take and args.quote:  # the early path needs no --take: the words
-                from plumb.normalize import normalize_text  # name the merge card's side
-
-                try:
-                    named = mod.named_takes(mod.find(core, ic), normalize_text(args.quote))
-                except mod.ConflictError:
-                    named = set()
-                if len(named) == 1:
-                    args.take = next(iter(named))
-                else:
-                    labels = mod.find(core, ic).labels
-                    print(f"plumb: answer refused: the merge card {ic} asks this question "
-                          f"now; the owner's words must name one of its versions (\"keep "
-                          f"{labels[0]}'s\" or \"keep {labels[1]}'s\")", file=sys.stderr)
-                    return 3
         elif _is_early(core, ref, mod):
             return _early_answer(core, args, ref)
     try:
@@ -193,11 +178,11 @@ def _conflict(argv: list[str]) -> int:
                 print(line)
             _request_cards(core, [conflict.ic])
             return 0
-        if not args.take:
+        relayed = args.action == "relay" or args.prompt is not None
+        if not args.take and not relayed:  # relayed, the reading of the words picks it
             print("plumb: --take is required (ours, theirs, combined or a side's name)",
                   file=sys.stderr)
             return 2
-        relayed = args.action == "relay" or args.prompt is not None
         if relayed:
             if not args.prompt or not args.quote:
                 print("plumb: a relayed choice needs --prompt and --quote", file=sys.stderr)

@@ -20,6 +20,7 @@ from mergedriver.mdhelpers import (
     log_prompt,
     make_repo,
     plumb,
+    reads_keep,
     record,
     run_git,
     shown,
@@ -83,10 +84,11 @@ def _committed(root: Path, rev: str = "HEAD") -> str:
     return run_git(root, "show", f"{rev}:{SR}").stdout
 
 
-def _relay_theirs(root: Path) -> None:
+def _relay_theirs(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The owner saw the card and said "keep feat-x's"; the agent relays it (the /plumb
     template's form)."""
     shown(root)
+    reads_keep(monkeypatch, root, "theirs", "keep feat-x's")
     digest = log_prompt(root, "keep feat-x's")
     assert cli.main(["conflict", "relay", "IC-001", "--take", "theirs", "--prompt", digest,
                      "--quote", "keep feat-x's", "--root", str(root)]) == 0
@@ -96,14 +98,15 @@ def _relay_theirs(root: Path) -> None:
 
 
 @pytest.mark.sr("SR-077")
-def test_template_steps_commit_the_choice(tmp_path: Path) -> None:
+def test_template_steps_commit_the_choice(tmp_path: Path,
+                                          monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-077 EX-6, following the /plumb template exactly: the held merge, the relayed
     choice, then "finish the merge" (stage .plumb, the check, git commit). The merge commit
     carries the chosen record and its resolution entry; nothing is left behind."""
     root = _diverged(tmp_path)
     held = _git(root, "merge", "--no-edit", "feat-x")
     assert held.returncode != 0 and "IC-001" in held.stdout + held.stderr
-    _relay_theirs(root)
+    _relay_theirs(root, monkeypatch)
     _git(root, "add", ".plumb", check=True)
     assert plumb(root, "merge-check", "--hook", "pre-merge-commit").returncode == 0
     done = _git(root, "commit", "-m", "Merge feat-x\n\nSR: SR-005")
@@ -127,7 +130,7 @@ def test_choice_left_unstaged_holds_the_commit(tmp_path: Path,
     root = _diverged(tmp_path)
     _git(root, "merge", "--no-edit", "feat-x")
     monkeypatch.setattr(conflicts, "stage_choice", lambda *_a, **_k: None)
-    _relay_theirs(root)
+    _relay_theirs(root, monkeypatch)
     head = _head(root)
     check = plumb(root, "merge-check", "--hook", "pre-merge-commit")
     assert check.returncode == 1
@@ -224,7 +227,8 @@ def _sequenced(tmp_path: Path, operation: str) -> tuple[Path, list[str], list[st
 
 @pytest.mark.sr("SR-077")
 @pytest.mark.parametrize("operation", ["rebase", "cherry-pick", "revert"])
-def test_sequencer_step_stops_and_is_held(tmp_path: Path, operation: str) -> None:
+def test_sequencer_step_stops_and_is_held(tmp_path: Path, operation: str,
+                                          monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-077 EX-10: the driver stops a rebase, cherry-pick or revert step on the intent
     conflict; continuing with the block still in the record is held; after the owner's
     choice the step continues and records the chosen version."""
@@ -240,6 +244,7 @@ def test_sequencer_step_stops_and_is_held(tmp_path: Path, operation: str) -> Non
     assert "IC-001" in output and f"continue the {operation}" in output
     assert _head(where) == head
     shown(where)
+    reads_keep(monkeypatch, where, "theirs", "keep theirs")
     digest = log_prompt(where, "keep theirs")
     assert cli.main(["conflict", "relay", "IC-001", "--take", "theirs", "--prompt", digest,
                      "--quote", "keep theirs", "--root", str(where)]) == 0

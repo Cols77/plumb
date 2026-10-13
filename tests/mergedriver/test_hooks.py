@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from mergedriver.mdhelpers import conflicted, log_prompt, parse
+from mergedriver.mdhelpers import conflicted, log_prompt, parse, reads_keep
 from plumb import cli
 from plumb.hosts.claude_code import session_start, stop
 
@@ -60,7 +60,8 @@ def test_stop_shows_a_new_conflict_once_and_states_it(repo: Path, hook_input) ->
     assert [c["ic"] for c in _stated(repo)["conflicts"]] == ["IC-001"]
 
 
-def test_owner_words_after_the_card_choose_a_side(repo: Path, hook_input) -> None:
+def test_owner_words_after_the_card_choose_a_side(repo: Path, hook_input,
+                                                  monkeypatch) -> None:
     """End to end: the stop hook shows the card, the owner says "keep feat-x's version",
     the agent relays it."""
     conflicted(repo)
@@ -68,6 +69,7 @@ def test_owner_words_after_the_card_choose_a_side(repo: Path, hook_input) -> Non
     _stop(repo, hook_input)
     later = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 5))
     digest = log_prompt(repo, "keep feat-x's version", at=later)
+    reads_keep(monkeypatch, repo, "theirs", "keep feat-x's version")
     assert cli.main(["conflict", "relay", "IC-001", "--take", "feat-x", "--prompt", digest,
                      "--quote", "keep feat-x's version", "--root", str(repo)]) == 0
     assert "conflict" not in parse((repo / SR).read_text(encoding="utf-8"))[0]

@@ -20,6 +20,7 @@ from mergedriver.mdhelpers import (
     log_prompt,
     make_repo,
     parse,
+    reads_keep,
     run_git,
     write_stated_conflicts,
 )
@@ -143,7 +144,7 @@ def test_merge_check_lists_no_answered_question(tmp_path: Path) -> None:
     assert any("as you answered before work began" in line for line in report.lines)
 
 
-def test_merge_card_answer_answers_the_waiting_decision(tmp_path: Path) -> None:
+def test_merge_card_answer_answers_the_waiting_decision(tmp_path: Path, monkeypatch) -> None:
     """The early decision was never answered: the merge-time card is the one question
     (the merge check does not list the decision beside it), and its answer answers the
     decision too."""
@@ -163,6 +164,7 @@ def test_merge_card_answer_answers_the_waiting_decision(tmp_path: Path) -> None:
     core = open_core(main)
     write_stated_conflicts(main, stated_entries(core, [c.ic for c in open_conflicts(core)]))
     digest = log_prompt(main, "keep feat-x's version", at="2999-01-01T00:00:00Z")
+    reads_keep(monkeypatch, main, "theirs", "keep feat-x's version")
     assert cli.main(["conflict", "relay", "IC-001", "--take", "feat-x", "--prompt", digest,
                      "--quote", "keep feat-x's version", "--root", str(main)]) == 0
     core = open_core(main)

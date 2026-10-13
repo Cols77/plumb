@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 import pytest
-from mergedriver.mdhelpers import install_driver, log_prompt, shown
+from mergedriver.mdhelpers import install_driver, log_prompt, reads, reads_keep, shown
 
 from awareness.gitrepo import add_worktree, commit_all, make_repo, run_git, write_record
 from awareness.scenario import capture
@@ -137,13 +137,16 @@ def test_conflicts_shows_one_card_per_record(tmp_path: Path) -> None:
     assert lines == []
 
 
-def test_relay_of_the_decision_answers_through_the_merge_card(tmp_path: Path) -> None:
+def test_relay_of_the_decision_answers_through_the_merge_card(tmp_path: Path,
+                                                             monkeypatch) -> None:
     """Relaying the decision while the merge card asks the same question records the
     owner's words on the merge card, which also answers the decision."""
     main, dec = _held_merge_of_b(tmp_path)
     shown(main)                                              # the stop hook showed it
     later = "2999-01-01T00:00:00Z"
+    reads(monkeypatch, main, "open", "keep this one")
     assert _relay(main, dec, "keep this one", at=later) == 3  # no side of the merge card
+    reads_keep(monkeypatch, main, "theirs", "keep feat-b's")
     assert _relay(main, dec, "keep feat-b's", at=later) == 0
     core = open_core(main)
     record = core.index()["SR-005"]
