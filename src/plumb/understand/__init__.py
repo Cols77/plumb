@@ -2,7 +2,8 @@
 cards the owner answers, the gate and the progress. Phase C holds the contracts and stubs;
 each lane fills its own modules. Standard library only at import."""
 
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 

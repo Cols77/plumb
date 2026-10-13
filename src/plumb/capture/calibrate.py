@@ -139,7 +139,7 @@ def labelled_set(core: Core) -> list[Item]:
         ids = {str(r.get("id")) for r in entry.payload.get("records") or []
                if isinstance(r, Mapping)}
         if entry.kind == "revocation" and entry.payload.get("by") in (
-                "owner", "agent-relayed", "undone"):   # an undone settling is a real "no"
+                "owner", "agent-relayed", "undone"):   # an undone confirmation is a real "no"
             revoked |= ids
         if entry.kind == "approval" and entry.payload.get("by") == "auto-jev":
             auto |= ids

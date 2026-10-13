@@ -7,7 +7,7 @@ Auto-approval is switched only by the owner's logged ``config`` event, written o
 - ``/plumb auto-approve on|off`` typed by the owner as a whole message and seen by the prompt
   hook: ``by: owner``, ``via: typed``, carrying the typed command as its quote and the digest
   of that very text, cited by a ``prompt`` event logged before it. The hook runs under the
-  session marker, so the quote is the proof, as for a typed ``/plumb settle``.
+  session marker, so the quote is the proof, as for a typed ``/plumb undo``.
 
 Anything else (an event under the marker without that proof, a quote that says the other
 state, ``config.yaml`` alone) switches nothing."""

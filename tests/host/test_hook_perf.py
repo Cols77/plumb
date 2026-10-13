@@ -3,7 +3,6 @@ modules stay cheap to import."""
 
 from __future__ import annotations
 
-import io
 import json
 import statistics
 import subprocess
@@ -109,35 +108,6 @@ def test_hookio_imports_only_what_a_hook_always_needs() -> None:
         assert heavy not in loaded, f"importing hookio also imports {heavy}"
     best = min(run["ms"] for run in runs)
     assert best < 350, f"hookio import took {best:.0f} ms"
-
-
-def test_the_triage_offer_is_skipped_when_its_judgment_could_outlast_the_hook(
-        repo: Path, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The offer may call the judgment service for up to the hook timeout: with less budget
-    left than that, the brief ends without it rather than risk the watchdog."""
-    from plumb.capture import api as capture_api
-    from plumb.hosts.claude_code import session_start
-
-    (repo / ".plumb" / "config.yaml").write_text("judgment:\n  backend: fake\n",
-                                                encoding="utf-8")
-    asked: list[int] = []
-
-    def triage(core, ids):
-        asked.append(1)
-        raise RuntimeError("no offer")
-
-    monkeypatch.setattr(capture_api, "triage", triage)
-    from fakes import FakeVerify
-
-    def run(budget_ms: float) -> None:
-        monkeypatch.setattr(session_start, "hook_budget", lambda name: (lambda root: budget_ms))
-        session_start.main(stdin=io.StringIO(hook_input("SessionStart")), stdout=io.StringIO(),
-                           root=repo, verify=FakeVerify())
-
-    run(300)  # the default judgment timeout is 800 ms
-    assert not asked
-    run(60000)
-    assert asked
 
 
 def test_a_warm_session_start_reads_no_record_file(

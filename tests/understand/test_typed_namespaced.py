@@ -12,7 +12,7 @@ import pytest
 from plumb.api import open_core
 from plumb.capture import ownerconfig
 from plumb.capture.autoapprove import auto_approve_state
-from plumb.understand import clarify, files, gate, hooks, read, recheck_settled, settle, typed
+from plumb.understand import clarify, files, gate, hooks, read, typed
 from understand.test_clarify_release import SESSION as GO_SESSION
 from understand.test_clarify_release import _ctx, _entries, _failed_check
 from understand.test_read_job import (
@@ -23,7 +23,6 @@ from understand.test_read_job import (
     record_text,
     state,
 )
-from understand.test_recheck_settled import problem, settled_world, undo_entry
 
 pytestmark = pytest.mark.sr("SR-120")
 
@@ -41,7 +40,7 @@ def in_repo(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.parametrize("words", ["approve SR-034", "confirm SR-034, DEC-017", "go",
                                    "auto-approve on", "auto-approve off",
-                                   "settle on intent", "settle off requirement", "undo SR-001"])
+                                   "undo SR-001"])
 def test_both_spellings_parse_the_same(words: str) -> None:
     plain = typed.parse(f"/plumb {words}")
     assert plain is not None
@@ -64,19 +63,14 @@ def test_go_needs_one_of_the_two_spellings(text: str) -> None:
 
 def test_each_owner_check_takes_the_namespaced_spelling() -> None:
     assert ownerconfig.TYPED.match("/plumb:plumb auto-approve on").group(1) == "on"
-    assert settle.TYPED.match("/plumb:plumb settle off intent").group(1, 2) == ("off", "intent")
-    assert recheck_settled.UNDO.match("/plumb:plumb undo Operation 1").group(1) == "Operation 1"
-    for check, words in ((ownerconfig.TYPED, "auto-approve on"),
-                         (settle.TYPED, "settle on intent"), (recheck_settled.UNDO, "undo X")):
-        for head in ("/plumbing", "/plumb:other", "/plumb:plumbing"):
-            assert check.match(f"{head} {words}") is None, (head, words)
+    for head in ("/plumbing", "/plumb:other", "/plumb:plumbing"):
+        assert ownerconfig.TYPED.match(f"{head} auto-approve on") is None, head
 
 
 @pytest.mark.parametrize("text,expected", [
-    ("/plumb:plumb settle on intent", "/plumb settle on intent"),
-    ("  /plumb:plumb undo Operation 1", "/plumb undo Operation 1"),
-    ("/plumb settle on intent", "/plumb settle on intent"),
-    ("/plumb:other settle on intent", "/plumb:other settle on intent"),
+    ("/plumb:plumb undo SR-001", "/plumb undo SR-001"),
+    ("  /plumb:plumb undo SR-001", "/plumb undo SR-001"),
+    ("/plumb:other undo SR-001", "/plumb:other undo SR-001"),
     ("/plumb:plumbing go", "/plumb:plumbing go"),
     ("", "")])
 def test_canonical_spells_the_namespaced_prefix_plain(text: str, expected: str) -> None:
@@ -159,106 +153,38 @@ def test_ex3_plumbing_go_releases_nothing(repo: Path, engine_standins: Any) -> N
     assert [e["by"] for e in _entries(repo)] == []
 
 
-def test_namespaced_settle_in_an_entry_counts(repo: Path,
-                                              monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_namespaced_undo_entry_counts_only_as_the_typed_undo(repo: Path) -> None:
+    """The undo re-check takes both spellings and no look-alike (the whole message, lower case)."""
     from plumb.approvals import prompt_digest
+    from plumb.contracts import LogEntry
 
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "agent-1")
-    for quote, on in (("/plumb:other settle on requirement", False),
-                      ("/plumb:plumb settle on requirement", True)):
-        open_core(repo).log_append("events", "settle-config", {
-            "kind": "requirement", "on": True, "via": "typed", "calibration": "",
-            "quote": quote, "prompt_digest": prompt_digest(quote)})
-        assert settle.state(open_core(repo), "requirement").on is on, quote
+    def problem(quote: str) -> str | None:
+        entry = LogEntry(stream="events", kind="revocation", at="", marker="agent-1",
+                         digest="", prev="", payload={
+                             "by": "undone", "via": "typed", "quote": quote,
+                             "prompt_digest": prompt_digest(quote),
+                             "records": [{"id": "SR-001", "hash": "sha256:x"}]})
+        return typed.problem(entry, open_core(repo))
+
+    assert problem("/plumb:plumb undo SR-001") is None
+    assert problem("/plumb undo SR-001") is None
+    for lookalike in ("/plumb:other undo SR-001", "/PLUMB undo SR-001", "/plumb Undo SR-001"):
+        assert problem(lookalike) is not None, lookalike
 
 
-def test_namespaced_undo_in_an_entry_counts(repo: Path, write_record,
-                                            monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_undo_entry_must_cite_a_logged_prompt(repo: Path) -> None:
+    """Like the owner's words, an undo written under the agent marker rests on a prompt event."""
+    from plumb import confirm
     from plumb.approvals import prompt_digest
+    from plumb.contracts import LogEntry
+    from plumb.log import entry_digest
 
-    settled_world(repo, write_record)
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "agent-1")
-    lookalike = "/plumb:other undo Operation 1"
-    assert problem(repo, undo_entry(repo, quote=lookalike,
-                                    prompt_digest=prompt_digest(lookalike))) is not None
-    typed_undo = "/plumb:plumb undo Operation 1"
-    proven = undo_entry(repo, quote=typed_undo, prompt_digest=prompt_digest(typed_undo))
-    assert problem(repo, proven) is None
-    assert open_core(repo).status(["SR-001"])["SR-001"].confirmation == "proposed"
-
-
-# ---- the command the agent runs for a typed settle or undo --------------------------------
-
-
-def test_namespaced_settle_through_the_command_switches_and_keeps_the_quote(
-        repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The agent runs ``plumb settle on intent --prompt <digest>`` for the owner's
-    ``/plumb:plumb settle on intent``: it is the owner's command, and the entry quotes it."""
-    from plumb.understand import cmd_settle
-    from understand.test_judge_job import log_prompt as log_hook
-    from understand.test_settle_switch import configs
-
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "agent-1")
-    digest = log_hook(repo, "/plumb:plumb settle on intent")
-    assert cmd_settle.run("settle", ["on", "intent", "--prompt", digest,
-                                     "--root", str(repo)]) == 0
-    assert settle.state(open_core(repo), "intent").on is True
-    entry = configs(repo, "intent")[-1]
-    assert entry.payload["quote"] == "/plumb:plumb settle on intent"
-    assert recheck_settled.problem(entry, open_core(repo)) is None
-
-
-@pytest.mark.parametrize("text", ["/plumb:other settle on intent", "/plumbing settle on intent"])
-def test_lookalike_settle_through_the_command_is_refused(
-        repo: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> None:
-    from plumb.understand import cmd_settle
-    from understand.test_judge_job import log_prompt as log_hook
-
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "agent-1")
-    digest = log_hook(repo, text)
-    assert cmd_settle.run("settle", ["on", "intent", "--prompt", digest,
-                                     "--root", str(repo)]) == 3
-    assert settle.state(open_core(repo), "intent").on is False
-
-
-def test_namespaced_undo_through_the_command_takes_the_record_back(
-        repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import cmd_settle
-    from understand.test_judge_job import log_prompt as log_hook
-
-    settled_world(repo, write_record)
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "agent-1")
-    digest = log_hook(repo, "/plumb:plumb undo SR-001")
-    assert cmd_settle.run("undo", ["SR-001", "--prompt", digest, "--root", str(repo)]) == 0
-    assert len([e for e in open_core(repo).events() if e.kind == "revocation"]) == 1
-
-
-# ---- one case rule for every parser: lower case, as typed.parse ----------------------------
-
-@pytest.mark.parametrize("text", ["/PLUMB settle on intent", "/Plumb:plumb settle on intent",
-                                  "/PLUMB:plumb settle on intent", "/plumb SETTLE on intent"])
-def test_settle_in_another_case_is_not_the_typed_command(
-        repo: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> None:
-    """``/plumb Approve SR-034`` is not a typed command (typed.parse), so neither is
-    ``/PLUMB settle on``: the entry check, the undo check and the command agree."""
-    from plumb.understand import cmd_settle
-    from understand.test_judge_job import log_prompt as log_hook
-
-    assert typed.parse(text) is None
-    assert settle.TYPED.match(text) is None
-    assert recheck_settled.UNDO.match(text.replace("settle on intent", "undo SR-001")) is None
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "agent-1")
-    digest = log_hook(repo, text)
-    assert cmd_settle.run("settle", ["on", "intent", "--prompt", digest,
-                                     "--root", str(repo)]) == 3
-    assert settle.state(open_core(repo), "intent").on is False
-
-
-def test_undo_title_words_keep_any_case() -> None:
-    """Only the head is exact: the owner's words for the record may be in any case."""
-    from plumb.understand import cmd_settle
-
-    assert cmd_settle._same_command("/plumb undo Operation 1", "/plumb undo operation 1")
-    assert cmd_settle._same_command("/plumb:plumb  undo SR-001", "/plumb undo SR-001")
-    assert not cmd_settle._same_command("/PLUMB undo SR-001", "/plumb undo SR-001")
-    assert not cmd_settle._same_command("/plumb Undo SR-001", "/plumb undo SR-001")
+    quote = "/plumb undo SR-001"
+    payload = {"by": "undone", "via": "typed", "quote": quote, "prompt_digest": prompt_digest(quote),
+               "records": [{"id": "SR-001", "hash": "sha256:x"}]}
+    raw = {"v": 1, "kind": "revocation", "at": "t", "marker": "agent-1", "payload": payload,
+           "prev": None}
+    entry = LogEntry("events", "revocation", "t", "agent-1", payload, None, entry_digest(raw))
+    core = open_core(repo)
+    assert "cites no earlier prompt" in (confirm.entry_problem(entry, set(), (), core) or "")
+    assert confirm.entry_problem(entry, {prompt_digest(quote)}, (), core) is None

@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import CARD_STATUSES, CardState, ClarifyAnswer, ClarifyQuestion, Present
+from plumb.contracts import CARD_STATUSES, CardState, ClarifyAnswer, ClarifyQuestion
 from plumb.understand import files
 
 
@@ -16,7 +16,7 @@ def card_to_json(card: CardState) -> dict[str, Any]:
             "evidence": card.evidence, "resolutions": list(card.resolutions),
             "questions": [files.question_to_json(q) for q in card.questions],
             "status": card.status, "answers": [files.answer_to_json(a) for a in card.answers],
-            "owner_only": card.owner_only, "turn": card.turn}
+            "turn": card.turn, "branch": card.branch, "diagram": card.diagram}
 
 
 def card_from_json(data: Mapping[str, Any]) -> CardState:
@@ -37,7 +37,8 @@ def card_from_json(data: Mapping[str, Any]) -> CardState:
         answers=tuple(ClarifyAnswer(str(a.get("question", "")), str(a.get("answer", "")),
                                     str(a.get("message_digest", "")))
                       for a in data.get("answers") or () if isinstance(a, Mapping)),
-        owner_only=bool(data.get("owner_only")), turn=int(data.get("turn") or 0))
+        turn=int(data.get("turn") or 0), branch=str(data.get("branch") or ""),
+        diagram=str(data.get("diagram") or ""))
 
 
 def own_cards(root: Path, session: str) -> list[CardState]:
@@ -76,31 +77,57 @@ def stale_cards(root: Path, session: str) -> list[CardState]:
 AWAITING: tuple[str, ...] = ("open", "change_requested")
 
 
+def _head_is(git: Path, branch: str) -> bool:
+    try:
+        return (git / "HEAD").read_text(encoding="utf-8").strip() == "ref: refs/heads/" + branch
+    except OSError:
+        return False
+
+
+def branch_gone(root: Path, branch: str) -> bool:
+    """Whether ``branch`` has neither a ref file nor a packed-refs line (files only, no git
+    process). A worktree's ``.git`` file leads to its git dir, whose ``commondir`` holds refs.
+    The branch HEAD points at is never gone (an unborn branch has no ref yet), and a
+    repository using reftable keeps no ref files to look in."""
+    git = root / ".git"
+    try:
+        if git.is_file():
+            git = (root / git.read_text(encoding="utf-8").split(":", 1)[1].strip()).resolve()
+            if _head_is(git, branch):
+                return False
+            common = git / "commondir"
+            if common.is_file():
+                git = (git / common.read_text(encoding="utf-8").strip()).resolve()
+        if not git.is_dir() or _head_is(git, branch) or (git / "reftable").is_dir():
+            return False
+        if (git / "refs" / "heads" / branch).is_file():
+            return False
+        packed = git / "packed-refs"
+        return not (packed.is_file() and any(
+            line.rstrip().endswith(" refs/heads/" + branch)
+            for line in packed.read_text(encoding="utf-8").splitlines()))
+    except (OSError, IndexError):
+        return False
+
+
 def load(root: Path, session: str, *, open_only: bool = True) -> list[CardState]:
     """The session's cards: its own, then the stale-link ones (``open_only``: the awaiting
-    ones, ``AWAITING``)."""
-    cards = [*own_cards(root, session), *stale_cards(root, session)]
+    ones, ``AWAITING``). A card of a branch that is gone is left out (SR-132 EX-3)."""
+    cards = [c for c in (*own_cards(root, session), *stale_cards(root, session))
+             if not (c.branch and branch_gone(root, c.branch))]
     return [c for c in cards if c.status in AWAITING] if open_only else cards
+
+
+def withdraw(root: Path, session: str, ids: Sequence[str]) -> None:
+    """Withdraw the session's cards ``ids`` (SR-132 EX-4): they confirm nothing and their
+    records stay proposed."""
+    from dataclasses import replace
+
+    cards = own_cards(root, session)
+    save(root, session, [replace(c, status="withdrawn") if c.id in ids else c for c in cards])
 
 
 def save(root: Path, session: str, cards: Sequence[CardState]) -> None:
     """Write the session's own cards (stale-link cards are STALE's and never written)."""
     files.write_json_atomic(files.cards_path(root, session),
                             [card_to_json(c) for c in cards if c.kind != "stale_link"])
-
-
-def present_to_json(present: Present) -> dict[str, Any]:
-    """The shape of ``present.json`` (sp7-realign-sp8 C7): ``{turn, confirmations, settled,
-    cards}``, the cards as ``cards.json`` holds them."""
-    return {"turn": present.turn, "confirmations": list(present.confirmations),
-            "settled": list(present.settled), "cards": [card_to_json(c) for c in present.cards]}
-
-
-def present_from_json(data: Any) -> Present:
-    if not isinstance(data, Mapping):
-        return Present()
-    return Present(turn=int(data.get("turn") or 0),
-                   confirmations=tuple(str(c) for c in data.get("confirmations") or ()),
-                   settled=tuple(str(s) for s in data.get("settled") or ()),
-                   cards=tuple(card_from_json(c) for c in data.get("cards") or ()
-                               if isinstance(c, Mapping)))

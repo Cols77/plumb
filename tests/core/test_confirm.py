@@ -88,15 +88,15 @@ def test_covered_requires_verified_by_per_example(setup: Path) -> None:
 
 
 def _drawn_offer(root: Path) -> tuple[object, str, str]:
-    """The panel registered for session s1 and a show_first card on SR-001 drawn: the core,
+    """The panel registered for session s1 and a trial card on SR-001 drawn: the core,
     the offer and the key digest (``plumb.mod``)."""
     import hashlib
 
     from plumb.mod import offers, session
-    from plumb.understand import cardstore, read
+    from plumb.understand import cardstore, trial
 
     core = open_core(root)
-    cardstore.save(root, "s1", [read.show_first_card(core.index()["SR-001"], "words")])
+    cardstore.save(root, "s1", [trial.card(core, trial.Candidate(core.index()["SR-001"], 0.9, {}))])
     digest = hashlib.sha256(bytes.fromhex("a1" * 32)).hexdigest()
     session.hello(core, "s1", digest)
     (card,) = offers.drawn_cards(core, "s1", digest)
@@ -104,9 +104,10 @@ def _drawn_offer(root: Path) -> tuple[object, str, str]:
 
 
 def _button(core, offer: str, digest: str, record_hash: str):
+    card = f"trial:SR-001@{record_hash.split(':')[-1][:12]}"
     return core.log_append("events", "approval", {
         "by": "owner", "via": "button", "session": "s1", "offer": offer, "key_digest": digest,
-        "card": "show_first:SR-001", "question": "confirm",
+        "card": card, "question": f"{card}#1",
         "records": [{"id": "SR-001", "hash": record_hash}]})
 
 

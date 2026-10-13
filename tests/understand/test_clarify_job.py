@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import json
 from pathlib import Path
 from typing import Any
@@ -22,10 +24,11 @@ SR = ("---\nid: SR-001\ntitle: Export users as CSV\nfeature: FEAT-001\n"
       "examples:\n- id: EX-1\n  given: 2 users\n  when: exported\n  then: 2 rows\n---\n")
 
 
-def _gap(ident: str, question: str, recommended: int = 0) -> dict[str, Any]:
+def _gap(ident: str, question: str, recommended: int = 0, **more: Any) -> dict[str, Any]:
     return {"id": ident, "question": question,
             "suggestions": ["the first way", "the second way", "the third way"],
-            "recommended": recommended}
+            "consequences": ["costs a day", "costs an hour", "costs a week"],
+            "recommended": recommended, **more}
 
 
 def _asked(text: str, answer: dict[str, Any], repo: Path, engine_standins: Any, *,
@@ -47,41 +50,128 @@ def _cards(repo: Path) -> list[CardState]:
     return cardstore.own_cards(repo, SESSION)
 
 
+def _by_kind(repo: Path, kind: str) -> list[CardState]:
+    return [c for c in _cards(repo) if c.kind == kind and c.status == "open"]
+
+
 def _gate_entries(core: Any) -> list[dict[str, Any]]:
     return [dict(e.payload) for e in core.events() if e.kind == "gate"]
 
 
-def test_ex1_export_request_one_card_format_and_scope_rest_assumptions(
+def _text(card: CardState) -> str:
+    return "\n".join([card.topic, card.issue, card.evidence,
+                      *(q.text for q in card.questions), *card.resolutions])
+
+
+def test_sr131_ex2_one_blocking_choice_the_rest_assumptions(
         repo: Path, engine_standins: Any) -> None:
     answer = {"intent": "yes", "topic": "exporting user data",
-              "readback": {"will": ["let a user download their data"],
-                           "wont": ["export other people's data"],
-                           "assumptions": ["the file is named after the user",
-                                           "only the signed-in user can export"],
+              "readback": {"proposal": "Let a user download their data as one file.",
+                           "will": ["let a user download their data"],
+                           "wont": ["export other people's data", "send it by mail"],
+                           "assumptions": ["the file is named after the user"],
                            "examples": ["a user asks for an export and gets one file"]},
-              "gaps": [_gap("format", "Which file format should the export use?", 1),
+              "gaps": [_gap("format", "Which file format should the export use?", 1,
+                            blocking=True, diagram=False),
                        _gap("scope", "Which of their data goes in the export?")]}
     core, digest = _asked("let users export their data", answer, repo, engine_standins)
-    (card,) = _cards(repo)
-    assert card.kind == "clarify" and card.id == clarify.card_id(digest)
-    assert [q.id for q in card.questions] == ["format", "scope"]
-    assert all(2 <= len(q.resolutions) <= 3 for q in card.questions)
-    assert card.questions[0].resolutions[0] == "the second way"    # the recommended one first
-    assert [t for t, _ in clarify.assumptions(card)] == [
-        "the file is named after the user", "only the signed-in user can export"]
-    assert {s for _, s in clarify.assumptions(card)} == {"proposed"}
+    (readback,) = _by_kind(repo, "clarify")
+    assert readback.id == clarify.card_id(digest)
+    assert readback.issue == "Let a user download their data as one file."
+    assert readback.topic.startswith("Your request of ")
+    assert readback.topic.endswith('"let users export their data"')
+    assert [t for t, _ in clarify.assumptions(readback)] == [
+        "the file is named after the user",
+        "Which of their data goes in the export?: the first way"]
+    assert readback.evidence.splitlines()[-1] == "Not doing: export other people's data"
+    assert "send it by mail" not in readback.evidence          # at most one won't
+    assert [c.label for c in readback.questions[0].choices] == ["Yes, that is what I meant", "Not quite"]
+    (choice,) = _by_kind(repo, "choice")
+    assert choice.id == clarify.choice_id(digest) and choice.issue.startswith("Which file")
+    assert choice.questions[0].resolutions[0] == "the second way"    # the recommended one first
+    assert [c.consequence for c in choice.questions[0].choices][0] == "costs an hour"
+    assert choice.evidence.startswith("What changes: ") and choice.diagram == ""
     assert gate.is_closed(repo, SESSION)
-    assert owner_level("\n".join(clarify.render(card))) == []
+    assert owner_level(_text(readback) + _text(choice)) == []
     assert not _gate_entries(core)
 
 
-def test_ex2_request_that_maps_to_confirmed_requirement_no_card(
+def test_sr131_ex3_three_gaps_with_recommendations_are_assumptions_and_no_card(
+        repo: Path, engine_standins: Any) -> None:
+    answer = {"intent": "yes", "topic": "export", "gaps": [
+        _gap("a", "First?"), _gap("b", "Second?"), _gap("c", "Third?")]}
+    core, digest = _asked("export things", answer, repo, engine_standins)
+    (readback,) = _cards(repo)
+    assert [t for t, _ in clarify.assumptions(readback)] == [
+        "First?: the first way", "Second?: the first way", "Third?: the first way"]
+    assert not gate.is_closed(repo, SESSION)
+    assert [e["digest"] for e in _gate_entries(core)] == [digest]
+
+
+def test_sr131_ex1_a_resolved_reference_is_an_assumption_and_the_work_starts(
+        repo: Path, engine_standins: Any) -> None:
+    answer = {"intent": "yes", "topic": "the findings", "readback": {
+        "proposal": "Fix every finding listed above.",
+        "assumptions": ["the findings are the ones I listed above"]}}
+    _asked("resolve all the findings using a workflow", answer, repo, engine_standins)
+    assert _by_kind(repo, "choice") == [] and not gate.is_closed(repo, SESSION)
+
+
+def test_sr146_ex1_a_structure_question_names_a_diagram_file(
+        repo: Path, engine_standins: Any) -> None:
+    answer = {"intent": "yes", "topic": "host file", "gaps": [
+        _gap("writer", "Which of the three hooks should write host.json?", blocking=True,
+             diagram=True)]}
+    _, digest = _asked("write host.json somewhere", answer, repo, engine_standins)
+    (choice,) = _by_kind(repo, "choice")
+    assert choice.diagram == f".plumb/session/{SESSION}/diagrams/{clarify.short(digest)}.html"
+
+
+def test_sr146_ex2_a_wording_question_gets_no_diagram(repo: Path,
+                                                      engine_standins: Any) -> None:
+    answer = {"intent": "yes", "topic": "findings", "gaps": [
+        _gap("which", "Does the word findings mean the ones listed above?", blocking=True,
+             diagram=False)]}
+    _asked("fix the findings", answer, repo, engine_standins)
+    (choice,) = _by_kind(repo, "choice")
+    assert choice.diagram == ""
+
+
+def test_sr131_two_blocking_gaps_offer_a_spec_session_not_a_guess(
+        repo: Path, engine_standins: Any) -> None:
+    answer = {"intent": "yes", "topic": "x", "gaps": [
+        _gap("a", "First?", blocking=True), _gap("b", "Second?", blocking=True)]}
+    _asked("do two things", answer, repo, engine_standins)
+    (choice,) = _by_kind(repo, "choice")
+    assert clarify.is_escalation(choice)
+    assert "Assumed: " not in _by_kind(repo, "clarify")[0].evidence
+
+
+def test_sr132_ex1_a_newer_read_back_withdraws_the_card_it_replaces(
+        repo: Path, engine_standins: Any) -> None:
+    gaps = [_gap("which", "Which findings should I resolve?", blocking=True)]
+    _, old = _asked("resolve the findings", {"intent": "yes", "topic": "findings",
+                                             "gaps": gaps}, repo, engine_standins)
+    older = clarify.choice_id(old)
+    assert [c.id for c in _by_kind(repo, "choice")] == [older]
+    _, new = _asked("resolve findings 1 and 2", {"intent": "yes", "topic": "findings",
+                                                 "replaces": [older, "nonesuch"]},
+                    repo, engine_standins)
+    by_id = {c.id: c for c in _cards(repo)}
+    assert by_id[older].status == "withdrawn"
+    assert [c.id for c in _by_kind(repo, "choice")] == []
+    assert by_id[clarify.card_id(new)].status == "open"
+    sent = engine_standins.dispatcher.jobs[-1].inputs
+    assert [c["id"] for c in sent["open_cards"]] == [clarify.card_id(old), older]
+
+
+def test_ex2_request_that_maps_to_confirmed_requirement_no_choice(
         repo: Path, write_record: Any, engine_standins: Any) -> None:
     write_record(repo, SR)
     assert run(repo, "approve", "SR-001") == 0
     answer = {"intent": "yes", "topic": "export as CSV", "gaps": []}
     core, digest = _asked("export the user list as CSV", answer, repo, engine_standins)
-    assert _cards(repo) == []
+    assert [c.kind for c in _cards(repo)] == ["clarify"]
     sent = engine_standins.dispatcher.jobs[0].inputs
     assert [t["id"] for t in sent["touched"]] == ["SR-001"]
     assert sent["touched"][0]["status"] == "confirmed"
@@ -91,23 +181,27 @@ def test_ex2_request_that_maps_to_confirmed_requirement_no_card(
 
 
 def test_ex3_five_gaps_offer_a_spec_session(repo: Path, engine_standins: Any) -> None:
-    gaps = [_gap(f"g{n}", f"Question number {n}?") for n in range(1, 6)]
+    gaps = [_gap(f"g{n}", f"Question number {n}?", blocking=True) for n in range(1, 6)]
     answer = {"intent": "yes", "topic": "a big feature", "gaps": gaps}
     core, _ = _asked("rebuild the billing system", answer, repo, engine_standins)
-    (card,) = _cards(repo)
+    (card,) = _by_kind(repo, "choice")
     assert clarify.is_escalation(card)
     assert len(card.questions) == 1 and card.questions[0].id == "spec"
+    assert [c.answer for c in card.questions[0].choices] == ["change", "accepted"]
     assert "5" in card.issue
     assert gate.is_closed(repo, SESSION)
-    assert owner_level("\n".join(clarify.render(card))) == []
+    assert owner_level(_text(card)) == []
 
 
-def test_three_gaps_make_one_card_of_three_questions(repo: Path, engine_standins: Any) -> None:
-    answer = {"intent": "yes", "topic": "export", "gaps": [
-        _gap("a", "First?"), _gap("b", "Second?"), _gap("c", "Third?")]}
-    _asked("export things", answer, repo, engine_standins)
-    (card,) = _cards(repo)
-    assert not clarify.is_escalation(card) and len(card.questions) == 3
+def test_sr131_many_gaps_with_a_recommendation_are_assumed_not_asked(
+        repo: Path, engine_standins: Any) -> None:
+    gaps = [_gap(f"g{n}", f"Question number {n}?") for n in range(1, 6)]
+    answer = {"intent": "yes", "topic": "a big feature", "gaps": gaps}
+    _asked("rebuild the billing system", answer, repo, engine_standins)
+    assert _by_kind(repo, "choice") == []
+    (card,) = _by_kind(repo, "clarify")
+    assert card.evidence.count("Assumed:") >= 5
+    assert not gate.is_closed(repo, SESSION)
 
 
 def test_ex4_a_question_carries_no_intent_no_card(repo: Path, engine_standins: Any) -> None:
@@ -119,23 +213,55 @@ def test_ex4_a_question_carries_no_intent_no_card(repo: Path, engine_standins: A
     assert [e["digest"] for e in _gate_entries(core)] == [digest]
 
 
-def test_ex8_two_answers_confirmed_assumption_stays_proposed(
-        repo: Path, engine_standins: Any) -> None:
-    answer = {"intent": "yes", "topic": "export", "readback": {
-        "assumptions": ["the file is named after the user"]},
-        "gaps": [_gap("format", "Which format?"), _gap("scope", "Which data?")]}
-    core, digest = _asked("let users export their data", answer, repo, engine_standins)
-    (card,) = _cards(repo)
-    answered = card.__class__(**{**card.__dict__, "status": "answered", "answers": (
-        ClarifyAnswer("format", "accepted", "sha256:m2"),
-        ClarifyAnswer("scope", "change: only their own profile", "sha256:m2"))})
+def _request(repo: Path, write_record: Any, digest: str) -> None:
+    """An intent of the request, two requirements and a decision on one of them."""
+    write_record(repo, "\n".join([
+        "---", "id: INT-001", "title: Export", "quote: export",
+        "prompt: " + clarify.short(digest), "---", ""]))
+    for n in (1, 2):
+        write_record(repo, "\n".join([
+            "---", f"id: SR-00{n}", f"title: Export {n}", "feature: FEAT-001",
+            f"statement: export {n}", "links:", "- kind: derives_from", "  to: INT-001",
+            "examples:", "- id: EX-1", "  given: a", "  when: b", "  then: c", "---", ""]))
+    write_record(repo, "\n".join([
+        "---", "id: DEC-001", "title: Format", "question: Which format?", "chosen: csv",
+        "links:", "- kind: decides", "  to: SR-001", "---", ""]))
+
+
+def test_sr130_ex1_an_ok_on_the_read_back_confirms_the_whole_request(
+        repo: Path, write_record: Any, engine_standins: Any) -> None:
+    core, digest = _asked("let users export", {"intent": "yes", "topic": "export"}, repo,
+                          engine_standins)
+    _request(repo, write_record, digest)
+    core = open_core(repo)
+    (card,) = _by_kind(repo, "clarify")
+    answered = CardState(**{**card.__dict__, "status": "answered", "answers": (
+        ClarifyAnswer(clarify.READBACK_ID, "accepted", digest),)})
+    confirmed: list[str] = []
     handler = effects.handler_for("clarify")
+    assert handler is not None
+    assert handler(core=core, card=answered, digest=digest, accepted=False,
+                   confirm=lambda *a, **k: confirmed.append(a[0])) is None
+    assert confirmed == []                                   # not quite confirms nothing
+    handler(core=core, card=answered, digest=digest, accepted=True,
+            confirm=lambda *a, **k: confirmed.append(a[0]))
+    assert confirmed == ["DEC-001", "INT-001", "SR-001", "SR-002"]
+
+
+def test_ex8_a_choice_answer_confirms_nothing_and_opens_the_gate(
+        repo: Path, engine_standins: Any) -> None:
+    answer = {"intent": "yes", "topic": "export", "gaps": [
+        _gap("format", "Which format?", blocking=True)]}
+    core, digest = _asked("let users export their data", answer, repo, engine_standins)
+    (card,) = _by_kind(repo, "choice")
+    answered = card.__class__(**{**card.__dict__, "status": "answered", "answers": (
+        ClarifyAnswer("format", "change: the first way", "sha256:m2"),)})
+    handler = effects.handler_for("choice")
     assert handler is not None
     result = handler(core=core, job=engine_standins.dispatcher.jobs[0], card=answered,
                      digest="sha256:m2", accepted=True, entry={})
     assert result is None or not result.entries           # nothing is confirmed on its behalf
-    assert set(clarify.confirmed_answers(answered)) == {"format", "scope"}
-    assert clarify.assumptions(answered) == [("the file is named after the user", "proposed")]
+    assert set(clarify.confirmed_answers(answered)) == {"format"}
     assert not [e for e in core.events() if e.kind == "approval"]
 
 
@@ -144,27 +270,27 @@ def test_ex9_clarify_job_needs_the_read_job_and_its_inputs_hold_the_answered_car
     core = open_core(repo)
     first = log_prompt(repo, "let users export their data", session=SESSION)
     asked = {"intent": "yes", "topic": "export",
-             "gaps": [_gap("format", "Which format?"), _gap("scope", "Which data?")]}
+             "gaps": [_gap("format", "Which format?", blocking=True)]}
     _asked("let users export their data", asked, repo, engine_standins)
-    (card,) = _cards(repo)
-    assert card.id == clarify.card_id(first)
-    # the owner answers all of it in one message; the reader (applied first) mapped it
-    reply = log_prompt(repo, "csv, and everything about them", session=SESSION)
+    (card,) = _by_kind(repo, "choice")
+    assert card.id == clarify.choice_id(first)
+    # the owner answers it in a message; the reader (applied first) mapped it
+    reply = log_prompt(repo, "csv", session=SESSION)
     mapped = CardState(**{**card.__dict__, "status": "answered", "answers": (
-        ClarifyAnswer("format", "change: csv", reply), ClarifyAnswer("scope", "accepted", reply))})
+        ClarifyAnswer("format", "change: csv", reply),)})
     cardstore.save(repo, SESSION, [mapped])
     gate.close(repo, SESSION, reply, "your request is being checked")
-    job = clarify.build(core, SESSION, message={"digest": reply, "text": "csv, and everything"
-                                                " about them"}, after="read-0123456789abcdef")
+    job = clarify.build(core, SESSION, message={"digest": reply, "text": "csv"},
+                        after="read-0123456789abcdef")
     assert job is not None and job.needs == "read-0123456789abcdef"
     inputs = clarify.recompute(core, job)
     assert inputs is not None
-    assert {a["question"] for a in inputs["answered"]} == {"format", "scope"}
-    # the model repeats a question the owner just answered, and one new thing it does not ask
+    assert {a["question"] for a in inputs["answered"]} == {"format"}
+    # the model repeats a question the owner just answered
     engine_standins.dispatcher.script = {"clarify": {"intent": "yes", "gap": True, "gaps": [
-        _gap("format", "Which format?")]}}
+        _gap("format", "Which format?", blocking=True)]}}
     worker.run_once(core, SESSION, job.id)
-    assert [c.id for c in _cards(repo) if c.status == "open"] == []     # no second card
+    assert _by_kind(repo, "choice") == []                               # no second question
     assert not gate.is_closed(repo, SESSION)
     assert [e["digest"] for e in _gate_entries(open_core(repo))] == [reply]
 
@@ -265,3 +391,65 @@ def test_the_schema_and_the_agent_ask_for_the_gap_flag_and_the_list() -> None:
     prompt = (Path(clarify.__file__).parent / "agents" / "clarify.md").read_text(
         encoding="utf-8")
     assert "false gap" not in prompt and "changes nothing" in prompt
+
+
+def _offer_answered(repo: Path, engine_standins: Any, label: str) -> tuple[Any, str]:
+    """Two blocking gaps; the owner presses ``label`` on the spec session offer."""
+    from plumb.understand import answer
+
+    answer_ = {"intent": "yes", "topic": "x", "gaps": [
+        _gap("a", "First?", blocking=True), _gap("b", "Second?", blocking=True)]}
+    core, digest = _asked("do two things", answer_, repo, engine_standins)
+    (choice,) = _by_kind(repo, "choice")
+    pick = next(c for c in choice.questions[0].choices if c.label == label)
+    job = clarify.build(core, SESSION, message={"digest": digest, "text": "do two things"})
+    work = answer.Answering(core, SESSION, job=job, digest=digest)
+    answer.apply_answer(work, card=choice.id, question="spec", record="", hash="", choice=pick,
+                        source=answer.Button(offer_id="o", key_digest="sha256:k"))
+    applied = work.applied()
+    new = {c.id: c for c in applied.cards}
+    cardstore.save(repo, SESSION, [new.get(c.id, c) for c in _cards(repo)])
+    return core, digest
+
+
+def test_sr131_no_to_the_spec_session_opens_the_gate_and_lists_the_guesses(
+        repo: Path, engine_standins: Any) -> None:
+    _offer_answered(repo, engine_standins, clarify.SPEC_NO)
+    assert not gate.is_closed(repo, SESSION)
+    (request,) = _by_kind(repo, "clarify")
+    assert "Assumed: First?: the first way" in request.evidence
+    assert "Assumed: Second?: the first way" in request.evidence
+
+
+def test_sr131_yes_to_the_spec_session_keeps_the_gate_closed(
+        repo: Path, engine_standins: Any) -> None:
+    _offer_answered(repo, engine_standins, clarify.SPEC_YES)
+    assert gate.is_closed(repo, SESSION)
+
+
+@pytest.mark.sr("SR-131")
+def test_sr131_ex4_a_vague_answer_keeps_the_choice_card_and_opens_no_read_back(
+        repo: Path, engine_standins: Any) -> None:
+    gaps = {"intent": "yes", "topic": "export", "gaps": [
+        _gap("format", "Which format?", blocking=True)]}
+    core, _ = _asked("let users export their data", gaps, repo, engine_standins)
+    (card,) = _by_kind(repo, "choice")
+    before = [(c.id, c.status) for c in _cards(repo)]
+    digest = log_prompt(repo, "whatever works", session=SESSION)
+    gate.close(repo, SESSION, digest, "your request is being checked")
+    core.log_append("events", "read-entry", {   # the reader found it answers the card, no pick
+        "job": "r1", "id": f"{card.id}/format", "hash": "", "answer": "open",
+        "confidence": 0.9, "evidence": "whatever works", "message_digest": digest})
+    # as live: the read job applies first and leaves the card left_open
+    cardstore.save(repo, SESSION, [dataclasses.replace(c, status="left_open") if c.id == card.id
+                                   else c for c in cardstore.own_cards(repo, SESSION)])
+    before = [(c.id, c.status) for c in _cards(repo)]
+    engine_standins.dispatcher.script = {"clarify": {
+        "gap": False, "gaps": [], "intent": "yes", "topic": "export", "replaces": [card.id],
+        "readback": {"proposal": "Export in any format.", "will": [], "wont": [],
+                     "assumptions": [], "examples": []}}}
+    assert clarify.build(open_core(repo), SESSION, message={"digest": digest,
+                                                            "text": "whatever works"})
+    worker.run_once(open_core(repo), SESSION)
+    assert [(c.id, c.status) for c in _cards(repo)] == before    # nothing withdrawn, nothing new
+    assert gate.is_closed(repo, SESSION)

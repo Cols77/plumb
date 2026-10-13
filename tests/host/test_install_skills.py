@@ -134,9 +134,6 @@ def test_command_has_a_branch_for_each_typed_verb_and_a_fallback() -> None:
     assert "run `{plumb} init`" in init and "report what it printed" in init
     typed = body[body.index("- `go`, `approve <IDs>`"):].split("\n- ", 1)[0]
     assert "Run nothing to approve" in typed and "`{plumb} status --card`" in typed
-    for verb in ("undo", "settle"):
-        branch = body[body.index(f"- `{verb} "):].split("\n- ", 1)[0]
-        assert f"`{{plumb}} {verb} " in branch and "--prompt <digest>" in branch, verb
     assert "install what plumb needs" in body
     assert "`{plumb} resolve <their words>`" in body
     drop = body[body.index("\"drop that work\""):].split("\n- ", 1)[0]
@@ -177,7 +174,7 @@ def test_command_allows_exactly_what_it_runs_and_no_owner_command() -> None:
 def test_references_give_the_conflict_forms_and_a_capture_document_that_parses() -> None:
     refs = TEMPLATES / "skills" / "plumb-records" / "references"
     conflicts = (refs / "conflicts.md").read_text(encoding="utf-8")
-    assert "--take ours|theirs|combined" in conflicts and "--take <branch>|both" in conflicts
+    assert "conflict relay" not in conflicts and "conflict propose" in conflicts
     merge = (refs / "merge.md").read_text(encoding="utf-8")
     for step in ("git merge --no-ff", "git reset --keep ORIG_HEAD", "git rebase --continue",
                  "merge-check --hook pre-merge-commit", "git checkout --ours"):

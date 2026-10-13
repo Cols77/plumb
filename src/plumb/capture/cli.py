@@ -58,7 +58,7 @@ def cmd_capture(command: str, argv: list[str]) -> int:
     parser = _parser(command, "Record a whole read-back in one call: the owner's verbatim "
                      "words, the restatement, will, won't, assumptions, requirements with "
                      "given/when/then examples, decisions with alternatives; all proposed. "
-                     "Prints the intent card for your reply.")
+                     "Prints what it wrote, for you.")
     parser.add_argument("--file", default="-", help="the JSON or YAML document (- = stdin)")
     parser.add_argument("--prompt", default=None,
                         help="the logged prompt's digest: the quote must be verbatim in it")

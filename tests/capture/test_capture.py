@@ -106,19 +106,16 @@ def test_dry_run_writes_nothing(calc: Path, capsys) -> None:
     assert capture(calc, DOC, "--dry-run") == 0
     out = capsys.readouterr().out
     assert "dry run: nothing written" in out
-    assert "Add multiply beside add" in out  # the card is printed
     assert tree_bytes(calc) == before
     assert event_kinds(calc) == []
 
 
-def test_prints_intent_card(calc: Path, capsys) -> None:
+def test_prints_what_it_wrote_and_no_intent_card(calc: Path, capsys) -> None:
+    """INT-037: the owner reads the request's read-back card, not a second card of ids."""
     assert capture(calc, DOC) == 0
     out = capsys.readouterr().out
-    assert '▸ Intent  INT-001 "Add multiply beside add"' in out
-    assert 'proposed — say "ok" to confirm' in out
-    assert "Will: multiply(a, b) returns a * b" in out
-    assert "Won't: no floats yet" in out and "Assumed: integers only, like add" in out
-    assert "SR-001/EX-1 given a = 2 and b = 3" in out
+    assert "INT-001 proposed" in out and "SR-001 proposed" in out
+    assert "▸ Intent" not in out and "say \"ok\"" not in out
 
 
 def test_bad_document_writes_nothing(calc: Path) -> None:
@@ -136,23 +133,3 @@ def test_escalated_intent_lists_its_members(calc: Path) -> None:
     core = open_core(calc)
     assert core.index()["INT-001"].fields["members"] == ["SR-001", "DEC-001"]
     assert all(s.state == "current" for s in core.link_states())
-
-
-def test_card_labels_a_new_sr_under_a_confirmed_intent_proposed(calc: Path, capsys) -> None:
-    """R2, R9: a capture adding a proposed requirement under an already confirmed intent
-    prints its example as (proposed), never with the intent's (confirmed) state."""
-    from plumb.approvals import approve
-
-    assert capture(calc, DOC) == 0
-    approve(open_core(calc), ["INT-001", "SR-001", "DEC-001"])
-    capsys.readouterr()
-    doc = {"intent": "INT-001", "requirements": [
-        {"title": "absolute value", "statement": "abs(a) returns a without its sign",
-         "examples": [{"given": "a = -3", "when": "abs runs", "then": "it returns 3"}]}]}
-    assert capture(calc, doc) == 0
-    out = capsys.readouterr().out
-    [line] = [x for x in out.splitlines() if x.lstrip().startswith("Examples")]
-    assert "(confirmed)" in line                       # SR-001's own examples
-    assert line.rstrip().endswith("SR-002/EX-1 given a = -3, when abs runs, then it "
-                                  "returns 3   (proposed)")
-    assert line.index("(confirmed)") < line.index("SR-002/EX-1")

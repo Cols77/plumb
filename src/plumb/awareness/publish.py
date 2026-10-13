@@ -76,13 +76,14 @@ def _default_branch(core: Any) -> str:
         config = root / "config.yaml"
         stat = config.stat()
     except OSError:
-        return "main"
+        return "main"       # no config at all: not a plumb repository
     try:
         cached = json.loads((root / "cache" / "config.json").read_text(encoding="utf-8"))
         if cached.get("key") == f"{stat.st_size}:{stat.st_mtime_ns}":
             merge = (cached.get("data") or {}).get("merge")
             base = merge.get("default_base") if isinstance(merge, dict) else None
-            return base.strip() if isinstance(base, str) and base.strip() else "main"
+            if isinstance(base, str) and base.strip():
+                return base.strip()
     except (OSError, ValueError, AttributeError):
         pass
     try:

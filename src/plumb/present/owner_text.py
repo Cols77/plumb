@@ -74,7 +74,6 @@ MODIFY_DELETE = ("  {record} \"{title}\" was changed on {changed} and removed on
 CARD_HEAD = "▸ Conflict  {ic} on {record} \"{title}\"   (awaits your choice)"
 CARD_FIELD = "  {name}:"
 CARD_MERGED = "  Merged on their own: {what}"
-CARD_COMBINED = "  combined (proposed)"
 CARD_JUDGED = "  Compatible? JEV: {verdict} ({probability:.2f}){reason}"
 CARD_NO_JUDGMENT = "  Compatible? no judgment available"
 CARD_UNAVAILABLE = "  Compatible? judging unavailable: {cause}"
@@ -110,7 +109,7 @@ FOREIGN_PREPUSH_HOOK = ("plumb: your own pre-push hook was kept; say \"call plum
 COMMIT_HOLD_INSTALLED = ("plumb: merges finished by hand, rebases and cherry-picks get the same "
                          "quick check before git records them")
 PREMERGE_REMOVED = "plumb: merges are no longer checked before git records them"
-PREMERGE_UNCONFIRMED = "  {record} \"{title}\" is not confirmed yet; /plumb confirm {title}"
+PREMERGE_UNCONFIRMED = "  {record} \"{title}\" is not confirmed yet; /plumb approve {record}"
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "
                        "to link it to the requirement it serves")
 PREMERGE_COLLISION = ("  {record}: two different records hold this ID; /plumb merge-fix fixes "
@@ -197,18 +196,11 @@ EARLY_CARD_SAY_NAMED = ('  Say: "keep {a}\'s", "keep {b}\'s", or "both" (and how
                         "combine)")
 EARLY_QUESTION = 'Branch {branch} says "{theirs}"; this request says "{ours}": which one, or both?'
 EARLY_THEIRS = "{branch}'s version"          # every option names its branch: the answer
-EARLY_CHOSEN = EARLY_THEIRS                   # reads the same on every branch (R17)
 # words that name "this side" only from the raising branch's point of view: shown on another
 # branch, they become "<raising branch>'s version"
 EARLY_RELATIVE = ("this request's version", "this request", "this work's version", "this work",
                   "this one", "keep this one", "this version", "ours", "mine")
 EARLY_BOTH = "both, combined"
-EARLY_RECORDED = ("plumb: asked once for every branch working on {id} \"{title}\"; the answer "
-                  "settles it there too")
-EARLY_ASK = ("plumb: {dec} holds that question for the agent: show the card above and ask the "
-             "owner now, before any implementation; the owner's own words (\"keep ...'s\", "
-             "\"keep this one\" or \"both\") answer it as they are (relay them as the "
-             "answer to {dec}), then build on the answer")
 EARLY_KNOWN = ('plumb: {id} "{title}": the owner is asked on branch {branch} whether this work '
                "or that branch's holds; build on the answer")
 EARLY_SETTLED = ('plumb: {id} "{title}": the owner settled it on branch {branch}: "{chosen}"; '
@@ -228,11 +220,6 @@ EARLY_ANSWERED = ('plumb: {id} "{title}": your answer is recorded: {chosen}; eve
 # R17, the losing lane: this checkout's record still holds the version the owner turned down
 EARLY_SUPERSEDED = ('plumb: {id} "{title}" here still says "{ours}", but the owner chose '
                     '{chosen}: "{theirs}"; change it to match that answer before building on it')
-EARLY_SUPERSEDED_RELAY = ('{id} "{title}" still holds the version the owner turned down when '
-                          'answering {dec} (the owner chose {chosen}: "{theirs}"); an ok does '
-                          "not confirm it: change it to match that answer first, or show the "
-                          "owner that conflict again and relay the new pick as the answer to "
-                          "{dec}")
 EARLY_APPLIED = ('plumb: {id} "{title}" now holds {chosen}, as you answered before work '
                  'began; nothing to ask again (say "finish the merge" to record it)')
 CARD_SETTLED = ("  Already answered by you before work began: {chosen} ({side}'s side); "
@@ -249,118 +236,46 @@ INFLIGHT_LINE = '  {branch}: "{summary}" ({records})'
 
 
 # --------------------------------------------------------------------------- SP8 UNDERSTAND
-# First wordings (JUDGE finishes them): the six card kinds, the settled line, the steps of the
-# worker, the gate's two choices and the reply that names the settle switch and the buttons.
-CARD_CLARIFY = 'Before I build this, one question about "{topic}": {issue}'
-CARD_TRIAL = 'A trial run on "{topic}": {issue}'
-CARD_BACKLOG = 'Older records to look at again, "{topic}": {issue}'
-CARD_BEYOND = 'This goes beyond your words, "{topic}": {issue}'
-CARD_CONTRADICTS = 'This seems to contradict what you said, "{topic}": {issue}'
-CARD_COULDNT_CHECK = 'I could not check "{topic}": {issue}'
-CARD_STALE_LINK = 'Something you confirmed may have changed, "{topic}": {issue}'
-CARD_EVIDENCE = "  Evidence: {evidence}"
-CARD_ITEM = "  - {text}"
-CARD_MORE = "and {n} more"
-CARD_SETTLE_OFFER = 'Settling "{topic}": {issue}'
-CARD_GENERIC = '"{topic}": {issue}'
-CARD_RESOLUTION = "  {n}. {text}"
-SETTLED_LINE = "Settled from your words: {titles}"
-SETTLED_GLANCE = "settled from your words"
-SETTLED_COUNT = "{n} settled from your words"
-SETTLED_UNDO ="{title} (say undo to take it back)"
+# First wordings (JUDGE finishes them): the stale card, the steps of the worker and the
+# gate's two choices.
 STEP_READING = "reading your answer"
 STEP_CHECKING = "checking your request"
 STEP_JUDGING = "judging {n} records"
 STEP_JUDGING_BACKLOG = "judging the backlog"
 GATE_BUILD_ANYWAY = "Build anyway"
 GATE_WAIT = "Wait"
+GATE_BUILD_NOTE = ("Builds now without the check; what the check would have caught is not "
+                   "looked at")
+GATE_WAIT_NOTE = "Builds nothing until the check runs again on your next message"
 GATE_CLOSED = "Waiting for your answer before building: {reason}"
-SETTLE_REPLY = ('Settling is {state}. Say "settle on" to let confirmed wording settle by '
-                'itself, "undo" to take a settled record back, or use the buttons.')
 NOT_AVAILABLE = "not available in this build"
 CONFIRM_YOU_SAID = "you said: {evidence}"
 READBACK_CHANGE = ('To be sure I have it: "{title}" should change so that {change}. Say yes, '
                    'or tell me what to fix.')
-CARD_SHOW_FIRST = 'Look at this first, "{topic}": {issue}'
 CARD_CHANGED_SINCE = ('Nothing was confirmed: "{title}" changed after I showed it to you. I am '
                       'showing you what it says now.')
 TYPED_CONFIRMED = "Confirmed: {titles}"
 TYPED_NEEDS_IDS = ("I could not tell which records you meant from those words alone, so they "
                    "went to the reader; I will confirm what it finds.")
+TYPED_SETTLE_GONE = "That switch no longer exists; nothing changed. Records are confirmed by you, or by the judge reading your words when automatic confirmation is on."
 AUTO_APPROVE_SWITCHED = "Automatic confirmation is now {state}."
 AUTO_APPROVE_NOT_YET = "Automatic confirmation is switched on, but not in effect yet: {reason}."
-OWNER_ONLY_REPLY = ("Nothing changed: saying that in a message does not {action}. Use the "
-                    "button, or type {command}.")
 BACKLOG_DONE = "{judged} records judged, {cards} cards waiting for you"
 
 # -- JUDGE: the cards, the trial and the summary
-TRIAL_ISSUE = "plumb would settle {what} from your words; is that right?"
-TRIAL_ISSUE_ONE = "plumb would settle this from your words; is that right?"
-TRIAL_BELOW = "plumb would not settle this; right?"
-TRIAL_ONE_BELOW = "One of them (the last) is one it would not settle."
-CONFIRM_ISSUE = "this one is always asked on its own, never settled for you; is it what you meant?"
-OPTION_ISSUE = "you picked one option among several; is it what you meant?"
-EDIT_ISSUE = "you had confirmed this and it was changed; is the new wording what you mean?"
-TRIAL_YES = "Yes, that is what I meant"
-TRIAL_NO = "No, that is not what I meant"
 BEYOND_KEEP = "Keep it: this is what I meant"
 BEYOND_DROP = "Drop it"
 BEYOND_REWORD = "Reword it (say how)"
-CONTRADICTS_KEEP_OLD = "Keep what you confirmed before"
-CONTRADICTS_KEEP_NEW = "Keep the new wording"
-CONTRADICTS_COMBINE = "Combine them (say how)"
-BACKLOG_FEATURE = "these {n} about {topic} would be settled; right?"
-BACKLOG_FEATURE_TOPIC = "{topic}"
 BACKLOG_STARTED = ("Judging the backlog: {records} records are queued in {jobs} groups; the status "
                    "line shows how far it is.")
 BACKLOG_NOTHING = "Nothing in the backlog is left to judge."
-BACKLOG_YES = "Yes, all of them"
-BACKLOG_EXCEPT = "Yes, except the ones I name"
-BACKLOG_NO = "No, none of them"
-NO_ORIGINAL_WORDS = ("your original words are not on file for this one; here is how it reads "
-                     "now: {readback}")
-NO_ORIGINAL_ACCEPT = "Accept it as it reads"
-NO_ORIGINAL_CORRECT = "Correct it (say how)"
 EXAMPLE_N = "example {n}"
-COULDNT_CHECK_ISSUE = "the check did not finish ({step}); I will try again on your next message"
-COULDNT_CHECK_WAIT = "Wait for the check"
-COULDNT_CHECK_GO = "Build anyway"
-SETTLED_UNDO_LINE = "{title} (Undo)"
-SETTLED_HOW = ("To take one back, use its Undo button or type /plumb undo followed by its "
-               "title.")
-SETTLE_OFFER_INTENT = ("plumb can now settle your intent read-backs from your words when it is "
-                       "sure. It is off until you turn it on: type /plumb settle on intent or "
-                       "use the button. You can turn it off the same way.")
-SETTLE_TURN_ON = "Turn it on: type /plumb settle on {kind}, or use the button"
-SETTLE_LEAVE_OFF = "Leave it off"
-SETTLE_ON_REQUIREMENTS = ("plumb now settles requirements and their examples from your words "
-                          "when it is sure, and tells you in one line each turn. To switch it "
-                          "off, type /plumb settle off requirement or use the button.")
-SETTLE_SWITCHED = "Settling for {kind} is now {state}."
-SETTLE_STATE_LINE = "Settling for {kind}: {state}"
-SETTLE_REFUSED_PROSE = ("Nothing changed: saying that in a message does not switch settling. "
-                        "Use the button, or type /plumb settle {state} {kind}.")
-SETTLE_REFUSED_AGENT = ("Only you switch settling, from the button or by typing /plumb settle "
-                        "{state} {kind} yourself.")
-UNDONE_ISSUE = "you took this back after plumb had settled it; it waits for you again"
-UNDONE_CONFIRM = "Confirm it as it reads"
-UNDONE_CHANGE = "Change it (say how)"
-UNDONE_DROP = "Drop it"
-SHOW_FIRST_YES = "Yes, that is right"
-SHOW_FIRST_NO = "No"
+COULDNT_CHECK_ISSUE = "the check did not finish; I will try again on your next message"
 READBACK_YES = "Yes, that is it"
 READBACK_NOT_QUITE = "Not quite"
-UNDO_DONE = "{title} is proposed again and waits for you."
-UNDO_REFUSED = ("Only you undo a settled record: use its Undo button, or type /plumb undo "
-                "followed by its title.")
-TYPED_USED = ("Nothing changed: that typed command was already used, or you have changed the "
-              "same thing since. Type it again if you still want it.")
-TYPED_NOT_LATEST = ("Nothing changed: that typed command is not your latest message. Type it "
-                    "again if you still want it.")
-UNDO_UNKNOWN = "Nothing settled is called \"{what}\"."
 
 
-_PLUMB_VERB = re.compile(r"(?<![\w/.-])plumb[ \t]+([a-z][a-z-]*)(?![\w-]*:)")
+_PLUMB_VERB = re.compile(r"(?<![\w/.:-])plumb[ \t]+([a-z][a-z-]*)(?![\w-]*:)")
 
 
 def bare_cli_verbs(text: str) -> list[str]:
@@ -393,7 +308,6 @@ STALE_ISSUE_RECORD = ('"{title}" rests on "{other}", which was reworded since, a
 STALE_OPTION_KEEP = "Keep the wording as it is"
 STALE_OPTION_REWORD = "Reword it to match the change"
 STALE_OPTION_UNDO = "Undo the change"
-STALE_CARD_WAITS = "  This waits for your answer; the turn does not."
 # SR-116: what each default option does and leaves undone, and why the first is recommended
 STALE_CONSEQUENCE_KEEP = ("Keeps the requirement as it reads and the change as made; leaves "
                           "unchecked whether the change still does what the requirement says")
@@ -411,13 +325,6 @@ STALE_HOLD_ENDED = ('I held the turn open {n} times for "{title}" and then let i
 # Cards only at the end of a turn (sp7-realign-sp8 C1, C7, C8; SR-012, SR-116): the kinds the
 # stop hook drew its own way, and what every card shows so the owner can choose without asking
 # back. Titles, never record IDs; no commands.
-CARD_REGRESSION = 'Something that worked now fails, "{topic}": {issue}'
-CARD_DECISION = 'A choice this work relies on, "{topic}": {issue}'
-CARD_CONFLICT = 'Two versions of what you asked disagree, "{topic}": {issue}'
-CARD_EARLY_CONFLICT = 'Another branch says something else, "{topic}": {issue}'
-CARD_DRIFT = 'The code moved away from what you asked, "{topic}": {issue}'
-CARD_PROPOSED = 'Proposed this turn, "{topic}": {issue}'
-CARD_TEST_CHANGED = 'The test of something you confirmed changed, "{topic}": {issue}'
 
 REGRESSION_ISSUE = "a test that passed before now fails: {what}"
 REGRESSION_FIX = "Fix the code so it passes again"
@@ -428,61 +335,30 @@ REGRESSION_TEST_CHANGED = " (the test itself was changed since it passed)"
 REGRESSION_LAST_RUN = " (last run {run})"
 REGRESSION_HIDDEN = ("{test} passed, then failed, and passes now only because the test itself "
                      "was changed")
-REGRESSION_CHECKS = "it checks: {what}"
 
 # SR-030: a confirmed requirement whose acceptance test changed since the owner confirmed it
 TEST_CHANGED_ISSUE = ("the test that checks it was changed since you confirmed it: {tests}; is "
                       "the new test right?")
-TEST_CHANGED_EVIDENCE = "acceptance test changed since you confirmed it: {tests}"
+TEST_CHANGED_SAYS = "What you confirmed: {text}"
+TEST_CHANGED_EXAMPLES = "Cases the test checks: {text}"
 TEST_CHANGED_RESTORE = "Put the test back as you confirmed it"
 TEST_CHANGED_KEEP = "The new test is right: confirm it"
 TEST_CHANGED_LATER = "Leave it for now"
 
-DECISION_ISSUE = "I assumed {chosen}; {other} also fits. Which one?"
-DECISION_KEEP = "Keep it: {chosen}"
-DECISION_SWITCH = "Switch to: {other}"
-DECISION_OTHER = "Something else (say what)"
-DECISION_EVIDENCE = "this turn changed work that relies on it: {what}"
-DECISION_NO_ALTERNATIVE = "another reading"
 
 CONFLICT_ISSUE = "{ours} and {theirs} changed it in different ways"
 CONFLICT_SIDE = "{side} says: {text}"
-CONFLICT_KEEP = "Keep {side}'s version"
-CONFLICT_COMBINE = "Combine them (say how)"
-CONFLICT_COMBINED = "Take the combined version already proposed"
 EARLY_ISSUE = '{branch} says "{theirs}"; this work says "{ours}"'
-EARLY_KEEP_THEIRS = "Keep {branch}'s"
-EARLY_KEEP_OURS = "Keep this one"
-EARLY_BOTH_OPTION = "Both, combined (say how)"
 
 DRIFT_REQUEST = 'the request behind the change: "{text}" ({at})'
 DRIFT_NO_REQUEST = "the request behind the change is not on file"
-DRIFT_INTENT = 'it comes from your intent "{title}", which it still agrees with'
 
-PROPOSED_ISSUE_ONE = "this was written from your words this turn and is not settled; is it right?"
-PROPOSED_ISSUE = ("these {n} were written from your words this turn and are not settled; are "
-                  "they right?")
-PROPOSED_YES = "Yes, as they read"
-PROPOSED_EXCEPT = "Yes, except the ones I name (say how)"
-PROPOSED_LATER = "Not yet: leave them open"
-PROPOSED_NO_FEATURE = "this turn's work"
 
-# the parts of every card (SR-116): the record as it reads, the change, the owner's words, each
-# option with what it does and leaves undone, and why the recommended one
-FULL_READS = "  As it now reads ({title}): {wording}"
-FULL_DETAIL = "    {text}"
-FULL_CHANGE = "  What changed in {path} (+{added}/-{removed} lines, {size} characters):"
-FULL_FOLDED = "    [folded: {size} characters, {lines} lines; open it to read it in full]"
-FULL_CHANGE_NOTE = "  About the change: {note}"
-FULL_WORDS = '  Your words ({title}): "{said}"'
-FULL_WORDS_PROMPT = '    from your message: "{text}"'
-FULL_WORDS_UNLOGGED = "  Your words ({title}): none on file"
-FULL_WORDS_NONE = "  {note}"
+# the parts of every card (SR-129): each option, the recommended one marked, what it does
 FULL_OPTION = "  {n}. {text}{mark}"
 FULL_RECOMMENDED = " (recommended)"
-FULL_CONSEQUENCE = "     does and leaves undone: {text}"
-FULL_WHY = "  Why the recommended one: {text}"
-FULL_NOT_WRITTEN = "not written yet"
+FULL_CONSEQUENCE = " - {text}"
+FULL_DIAGRAM = "Diagram: {path} (open it to see it)"
 FULL_NOT_DRAWN = ("{n} more cards wait for you; there was no time left to draw them in full "
                   "this turn: {topics}")
 FULL_INCOMPLETE = ("{n} cards wait until the agent writes what each option does and why one is "
@@ -492,115 +368,6 @@ CARDS_WAITING_AGENT = ("plumb: {n} cards were shown to the owner at the end of t
                        "and await their answer ({topics}). If you mention them, say in one line "
                        "that cards are waiting; do not restate them or ask the owner to answer "
                        "them in prose.")
-
-# what each suggested resolution does and leaves undone, by its label (SR-116); a template
-# entry ("... {side}") matches any filling and is filled with the same values
-CONSEQUENCES: dict[str, str] = {
-    TRIAL_YES: ("Settles it from your words as it reads; nothing else changes, and it counts "
-                "towards letting such records be settled by themselves"),
-    TRIAL_NO: ("Leaves it unsettled and marks plumb's reading as wrong; it is shown to you "
-               "again to confirm or change"),
-    BACKLOG_YES: "Settles every one of them as it reads; none is changed",
-    BACKLOG_EXCEPT: ("Settles all but the ones you name; those stay open for you to change or "
-                     "drop"),
-    BACKLOG_NO: "Settles none of them; they stay proposed and are shown again one by one",
-    NO_ORIGINAL_ACCEPT: "Confirms it as it reads now; your original words stay unknown",
-    NO_ORIGINAL_CORRECT: "Changes it to what you say; nothing is confirmed until you see it",
-    BEYOND_KEEP: "Confirms it, including the part beyond your words; nothing is removed",
-    BEYOND_DROP: ("Removes it; the work built on it is undone, and nothing beyond your words is "
-                  "kept"),
-    BEYOND_REWORD: ("Rewrites it to what you say; nothing is confirmed until you see the new "
-                    "wording"),
-    CONTRADICTS_KEEP_OLD: ("Keeps what you confirmed before; the new wording and the work built "
-                           "on it are dropped"),
-    CONTRADICTS_KEEP_NEW: ("Replaces what you confirmed before with the new wording; the old "
-                           "one no longer holds"),
-    CONTRADICTS_COMBINE: ("Writes one version from both as you say; neither holds as it reads "
-                          "until you see it"),
-    GATE_BUILD_ANYWAY: ("Builds now without the check; what the check would have caught is not "
-                        "looked at"),
-    GATE_WAIT: "Builds nothing until the check runs again on your next message",
-    COULDNT_CHECK_WAIT: "Builds nothing until the check runs again on your next message",
-    UNDONE_CONFIRM: "Confirms it as it reads; it is no longer waiting",
-    UNDONE_CHANGE: "Changes it to what you say; nothing is confirmed until you see it",
-    UNDONE_DROP: "Removes it; the work built on it is undone",
-    SHOW_FIRST_YES: "Confirms it as it reads",
-    SHOW_FIRST_NO: "Leaves it unconfirmed; tell me what is wrong and it is changed",
-    SETTLE_TURN_ON: ("plumb settles such records from your words by itself when it is sure and "
-                     "names each in one line with Undo; you can turn it off the same way"),
-    SETTLE_LEAVE_OFF: "Nothing is settled by itself; every such record keeps waiting for you",
-    READBACK_YES: "Confirms the read-back; building starts from it",
-    READBACK_NOT_QUITE: "Nothing is built; the read-back is changed to what you say first",
-    STALE_OPTION_KEEP: STALE_CONSEQUENCE_KEEP,
-    STALE_OPTION_REWORD: STALE_CONSEQUENCE_REWORD,
-    STALE_OPTION_UNDO: STALE_CONSEQUENCE_UNDO,
-    REGRESSION_FIX: ("The agent changes the code until this test passes again; the requirement "
-                     "and the test stay as they are, and the change that broke it is reworked"),
-    REGRESSION_CHANGE: ("The test is rewritten to what you say; what it checked before is no "
-                        "longer checked, so the old behaviour may stay broken"),
-    REGRESSION_WAIT: ("Nothing changes; the test stays failing and this card stays open until "
-                      "you answer it"),
-    DECISION_KEEP: ("Confirms the decision as it reads; the work already built on it stands and "
-                    "the other choice is not done"),
-    DECISION_SWITCH: ("Changes the decision to {other}; the work that relied on the current "
-                      "choice is redone to follow it"),
-    DECISION_OTHER: ("The decision is rewritten to what you say; the work that relied on it is "
-                     "checked again against your words"),
-    CONFLICT_KEEP: "Keeps {side}'s version as the one that holds; the other version is dropped",
-    CONFLICT_COMBINE: ("Writes one version from both as you say; neither holds as it reads until "
-                       "you see it"),
-    CONFLICT_COMBINED: ("Keeps the combined version already proposed; what each side had that "
-                        "it leaves out is dropped"),
-    EARLY_KEEP_THEIRS: ("{branch}'s version holds on every branch; this work is changed to match "
-                        "it"),
-    EARLY_KEEP_OURS: "This version holds on every branch; the other branch is changed to match",
-    EARLY_BOTH_OPTION: ("One version is written from both as you say; both branches build on it "
-                        "once you have seen it"),
-    TEST_CHANGED_RESTORE: ("The test is put back as you confirmed it; the change to it is undone, "
-                           "and the code is fixed if it no longer passes"),
-    TEST_CHANGED_KEEP: ("Confirms the requirement with the new test; what the old test checked "
-                        "and the new one does not is no longer checked"),
-    TEST_CHANGED_LATER: ("Nothing changes; the requirement waits for you and holds the merge, and "
-                         "this card is shown again at the end of the next turn"),
-    PROPOSED_YES: "Confirms each of them as it reads; nothing is changed",
-    PROPOSED_EXCEPT: ("Confirms all but the ones you name; those are changed as you say and "
-                      "shown again"),
-    PROPOSED_LATER: ("Confirms nothing; they stay proposed and this card is shown again at the "
-                     "end of the next turn"),
-}
-# what a pick does when its label is the owner's own choice among versions (a clarify gap's
-# suggestion, an early conflict's version), by card kind
-CONSEQUENCE_PICK: dict[str, str] = {
-    "clarify": ("Records your answer as this choice; the read-back says it before anything is "
-                "built, and the other suggestions are dropped"),
-    "early_conflict": ("That version holds on every branch; the other is changed to match it and "
-                       "what it said otherwise is dropped"),
-    "contradicts": ("That version holds; the other one no longer does"),
-}
-# why the first resolution of a kind is the recommended one (SR-116)
-WHY_RECOMMENDED: dict[str, str] = {
-    "trial": "it is what plumb read from your words; say no only if the reading is wrong",
-    "backlog": "plumb judged each of them to match your words",
-    "beyond": "it is what the agent understood you to want; drop it if you did not ask for it",
-    "contradicts": ("you confirmed it before, and nothing you said since asks for it to "
-                    "change"),
-    "couldnt_check": "the check could not run; this is the choice that loses the least",
-    "show_first": "it reads as you left it; change it only if it is not what you mean",
-    "settle_offer": ("plumb's settling passed its trial on such records; it stays off until you "
-                     "turn it on"),
-    "clarify": "it is the read-back of your words; say not quite if anything is off",
-    "regression": ("the test checks something you asked for, and nothing you said asks for it "
-                   "to change"),
-    "decision": ("the work this turn already follows it, so keeping it changes nothing you have "
-                 "not seen"),
-    "conflict": ("plumb cannot tell which version you want; this is the version this work was "
-                 "built on, and the other is not lost until you answer"),
-    "early_conflict": ("plumb cannot tell which version you want; this is the version this "
-                       "work is built on"),
-    "proposed": "each was written from your words this turn and reads as you asked",
-    "test_changed": ("you confirmed the test as it was, and nothing you said asks for it to "
-                     "change"),
-}
 
 # --------------------------------------------------------------------------- SP7 PRESS
 # What a button press on a card answers (sp7-realign-sp8 C3, C6; DEC-032, DEC-034). Titles,
@@ -634,5 +401,3 @@ PRESS_MODEL_CHANGED = ("The owner pressed {label}, but {records} changed since i
 
 # --------------------------------------------------------------------------- SP7 MOD
 # What plumb's panel adds (SP7 5.1, 5.8; sp7-realign-sp8 C6, C7).
-PRESS_MODEL_UNDONE = ("The owner pressed Undo on the settled line; {records} is proposed again. "
-                      "Do not treat it as confirmed.")

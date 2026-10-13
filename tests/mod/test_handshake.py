@@ -4,8 +4,7 @@
 While the panel is active (registered and its heartbeat refreshed for this turn), the stop hook
 writes ``present.json`` and prints no ``systemMessage``; with a stale heartbeat, a panel marked
 off, or none, it prints as before. A block is unchanged. Session start writes ``host.json`` and
-injects the brief unless the panel owns the session background. The Undo button of the settled
-line goes through ``plumb mod undo`` with the key on stdin. The panel's TypeScript fixtures have
+injects the brief unless the panel owns the session background. The panel's TypeScript fixtures have
 the shape a real ``plumb mod draw`` answers."""
 
 from __future__ import annotations
@@ -19,14 +18,11 @@ import types
 from pathlib import Path
 
 import pytest
-from mod.helpers import DIGEST, KEY, OTHER_KEY, SESSION, kinds, mod_json, run_mod
+from mod.helpers import DIGEST, KEY, SESSION, mod_json, run_mod, sample_card
 from understand.test_read_job import make_core, open_card, record_text
 
-from plumb.api import open_core
 from plumb.hosts.claude_code import session_start, stop
 from plumb.mod import handshake
-from plumb.mod import undo as undo_mod
-from plumb.understand import read
 
 pytestmark = pytest.mark.sr("SR-087")
 
@@ -40,7 +36,7 @@ def _iso(epoch: float) -> str:
 @pytest.fixture
 def core(repo: Path, write_record):
     core = make_core(repo, write_record, [record_text(n) for n in range(1, 3)])
-    open_card(core, read.show_first_card(core.index()["SR-001"], "the owner's words"))
+    open_card(core, sample_card(core, "SR-001"))
     return core
 
 
@@ -88,16 +84,16 @@ def test_stop_writes_present_json_and_no_system_message_while_the_panel_is_activ
     assert out.strip() == ""                       # no systemMessage, no block
     present = _present(core.root)
     assert present is not None
-    assert {"turn", "confirmations", "settled", "cards"} <= set(present)
+    assert {"turn", "confirmations", "cards"} <= set(present)
+    assert "settled" not in present and "settled_records" not in present
     assert present["turn"] == int(started) and present["session"] == SESSION
     assert present["turn_id"] == "t-1" and present["written_at"]
     # the cards the end-of-turn text drew (slice 3), each with its full content (SR-116)
     by_id = {c["id"]: c for c in present["cards"]}
-    card = by_id["show_first:SR-001"]
+    card = by_id["card:SR-001"]
     assert all(c["content"] and c["content"]["id"] == c["id"] for c in present["cards"])
-    assert card["id"] == "show_first:SR-001" and card["kind"] == "show_first"
+    assert card["id"] == "card:SR-001" and card["kind"] == "trial"
     assert card["status"] == "open" and card["questions"][0]["record"] == "SR-001"
-    assert present["settled_records"] == []
 
 
 def test_stop_prints_as_before_when_the_heartbeat_is_older_than_the_turn(
@@ -132,27 +128,6 @@ def test_a_block_is_unchanged_while_the_panel_is_active(core, monkeypatch, capsy
     assert _present(core.root) is None
     shown = HookOutput(system_message="plumb: a card")
     assert handshake.deliver(ctx, shown) is None and _present(core.root) is not None
-
-
-def test_present_json_names_the_records_settled_this_turn_for_their_undo(
-        core, monkeypatch) -> None:
-    started = _start_turn(core.root)
-    record = core.index()["SR-002"]
-    # the worker alone writes a settled approval; here it stands in the log as read back
-    settled = types.SimpleNamespace(kind="approval", at=_iso(started + 1), payload={
-        "by": "settled", "records": [{"id": record.id, "hash": record.hash}]})
-    earlier = types.SimpleNamespace(kind="approval", at=_iso(started - 600), payload={
-        "by": "settled", "records": [{"id": "SR-001", "hash": "x"}]})
-
-    class Settled:
-        settled = True
-
-    monkeypatch.setattr(type(core), "events", lambda self, *a, **k: [earlier, settled])
-    monkeypatch.setattr(type(core), "status",
-                        lambda self, ids=None: {i: Settled() for i in ids or ()})
-    assert handshake.settled_records(core, started) == [{"id": "SR-002",
-                                                         "title": "Requirement 2"}]
-    assert handshake.settled_records(core, 0) == []
 
 
 # ---------------------------------------------------------------- session start
@@ -196,53 +171,6 @@ def test_a_registered_panel_without_the_background_leaves_the_brief_in(
     assert _brief(core.root) == {"injected": True}
 
 
-# ---------------------------------------------------------------- Undo on the settled line
-
-
-def test_undo_refuses_a_wrong_key_no_key_and_the_agent_shell(core, monkeypatch, capsys) -> None:
-    _register(monkeypatch, capsys, core.root)
-    before = kinds(core.root)
-    for stdin in ({"key": OTHER_KEY}, {}):
-        code, answer, _ = run_mod(monkeypatch, capsys, core.root, "undo", "--record", "SR-001",
-                                  stdin=stdin)
-        assert code == 3 and answer is None
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
-    code, _, _ = run_mod(monkeypatch, capsys, core.root, "undo", "--record", "SR-001",
-                         stdin={"key": KEY})
-    assert code == 3
-    monkeypatch.delenv("PLUMB_AGENT_SESSION")
-    assert kinds(core.root) == before
-
-
-def test_undo_of_a_record_not_settled_changes_nothing(core, monkeypatch, capsys) -> None:
-    _register(monkeypatch, capsys, core.root)
-    before = kinds(core.root)
-    code, answer, err = run_mod(monkeypatch, capsys, core.root, "undo", "--record", "SR-001",
-                                stdin={"key": KEY})
-    assert code == 2 and answer is None and "SR-001" in err
-    assert kinds(core.root) == before
-
-
-def test_undo_of_a_settled_record_writes_the_button_revocation(core, monkeypatch,
-                                                              capsys) -> None:
-    _register(monkeypatch, capsys, core.root)
-
-    class Settled:
-        settled = True
-
-    monkeypatch.setattr(type(core), "status",
-                        lambda self, ids=None: {i: Settled() for i in ids or ()})
-    answer = undo_mod.undo(core, SESSION, "SR-001", {"key": KEY})
-    record = core.index()["SR-001"]
-    assert answer["undone"] == ["SR-001"] and "Requirement 1" in answer["line"]
-    assert "SR-001" in answer["model_note"]
-    (entry,) = [e for e in open_core(core.root).events() if e.kind == "revocation"]
-    assert entry.payload == {"records": [{"id": "SR-001", "hash": record.hash}],
-                             "by": "undone", "via": "button", "session": SESSION,
-                             "key_digest": DIGEST}
-    assert entry.marker == "none"
-
-
 # ---------------------------------------------------------------- SR-116 content on draw
 
 
@@ -257,17 +185,17 @@ def test_draw_carries_the_full_card_content_where_plumb_derives_it(core, monkeyp
                    topic="Adds numbers", issue="the code it is linked to changed",
                    options=["re-pin it", "reword it"], recommended=0, turn=1)
     monkeypatch.setattr(fullcard, "stale_content", lambda core, entry, session="": {
-        "record_now": {"wording": "add returns the sum"}, "link": entry["link"]})
+        "context": ["add returns the sum"], "link": entry["link"]})
     _register(monkeypatch, capsys, core.root)
     code, answer, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
     assert code == 0
     by_id = {c["id"]: c for c in answer["cards"]}
     assert by_id["stale:SR-001#0"]["content"] == {
-        "record_now": {"wording": "add returns the sum"}, "link": "SR-001#0"}
-    shown = by_id["show_first:SR-001"]["content"]
-    assert shown["kind"] == "show_first" and shown["record_now"]["id"] == "SR-001"
+        "context": ["add returns the sum"], "link": "SR-001#0"}
+    shown = by_id["card:SR-001"]["content"]
+    assert shown["kind"] == "trial"
     assert shown["options"] and all("consequence" in o for o in shown["options"])
-    assert "owner_words" in shown and "why" in shown
+    assert {"topic", "issue", "context", "assumptions", "wont", "diagram"} <= set(shown)
 
 
 # ---------------------------------------------------------------- the panel's fixtures

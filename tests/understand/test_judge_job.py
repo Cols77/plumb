@@ -86,6 +86,22 @@ def approve(core: Any, record_id: str, by: str = "owner") -> None:
                                            "by": by})
 
 
+MESSAGE = "Build a calculator with add, subtract, multiply and divide."
+
+
+def make_world(repo: Path, write_record, count: int = 2) -> list[str]:
+    """One intent from MESSAGE and ``count`` requirements under it; their ids."""
+    digest = log_prompt(repo, MESSAGE)
+    write_record(repo, intent_text(1, "Build a calculator", "A calculator", prompt=digest))
+    ids = []
+    for n in range(1, count + 1):
+        write_record(repo, requirement_text(
+            n, f"Operation {n}", f"The calculator does operation {n}", intent=1,
+            examples=((f"input {n}", "it runs", f"output {n}"),)))
+        ids.append(f"SR-{n:03d}")
+    return ids
+
+
 def verdict_answer(*items: tuple[str, str, float], **extra: Any) -> dict[str, Any]:
     """A scripted judge answer: ``(id, verdict, confidence)`` per record."""
     return {"verdicts": [{"id": i, "verdict": v, "confidence": c,
@@ -302,10 +318,10 @@ def test_a_changed_record_is_not_carded_or_settled(world: Path) -> None:
     assert applied.cards == ()
 
 
-def test_judge_registers_trial_backlog_beyond_contradicts() -> None:
+def test_judge_registers_trial_beyond_contradicts() -> None:
     from plumb.understand import effects
 
-    for kind in ("trial", "backlog", "beyond", "contradicts"):
+    for kind in ("trial", "beyond", "contradicts"):
         assert callable(effects.handler_for(kind)), kind
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 
 import pytest
@@ -140,21 +139,3 @@ def test_validate_flags_a_premise_whose_digest_differs(repo: Path) -> None:
     problems = premise.problems(open_core(repo))
     assert len(problems) == 1 and "digest" in problems[0]
     assert any("digest" in f.message for f in validate(open_core(repo)))
-
-
-def test_validate_flags_a_settled_record_whose_premise_is_not_committed(repo: Path) -> None:
-    from plumb.approvals import approval_items
-    from plumb.understand import premise
-    from understand.fakes import as_worker
-
-    digest = log_prompt(repo, PROMPT)
-    _capture(repo, digest)
-    core = open_core(repo)
-    payload = {"records": approval_items(core, ["SR-001"]), "by": "settled", "session": "s1",
-               "job": "judge-1", "model": "fake", "score": 0.97,
-               "premise_digest": "sha256:" + "1" * 64, "calibration": "sha256:2"}
-    with as_worker(core.root, "s1"):
-        core.log_append("events", "approval", payload)
-    (problem,) = premise.problems(open_core(repo))
-    assert "SR-001" in problem and "not in the committed log" in problem
-    json.dumps(problem)

@@ -12,6 +12,14 @@ case "$tool" in
   Edit|Write|MultiEdit|NotebookEdit) ;;
   *) exit 0 ;;
 esac
+# a card's diagram is drawn while the card is open (SR-146): its folder is let through (JSON doubles a Windows backslash, hence the stars)
+path=${input#*\"file_path\"}
+path=${path#*\"}
+path=${path%%\"*}
+case "$path" in
+  *..*) ;;
+  *.plumb[/\\]*session[/\\]*diagrams[/\\]*) exit 0 ;;
+esac
 session=${input#*\"session_id\"}
 session=${session#*\"}
 session=${session%%\"*}

@@ -16,7 +16,7 @@ from capture_helpers import (
 )
 
 from plumb.api import open_core
-from plumb.capture.triage import offer_line, stated_group, triage
+from plumb.capture.triage import triage
 
 pytestmark = pytest.mark.sr("SR-040")
 
@@ -146,18 +146,3 @@ def test_no_judge_says_judging_unavailable(project: Path, monkeypatch, capsys) -
     assert "TYPESAFE_API_KEY" in view.unavailable
     assert run(project, "triage") == 0
     assert "judging unavailable" in capsys.readouterr().out
-
-
-def test_offer_line_names_five_then_more(repo: Path, write_record) -> None:
-    for n in range(11, 18):
-        write_record(repo, faithful_intent(n))
-    view = triage(open_core(repo))
-    assert len(view.low_risk) == 7
-    line = offer_line(view.low_risk)
-    assert line == view.offer
-    assert line.startswith("plumb: approve the 7 records rated faithful to your words: "
-                           "\"multiply number 11\" (INT-011), ")
-    assert "(INT-015)" in line and "(INT-016)" not in line
-    assert line.endswith("+2 more (see plumb triage)? say \"ok\" or see plumb triage")
-    assert len(stated_group(view)["records"]) == 7  # the ok pins the whole list
-

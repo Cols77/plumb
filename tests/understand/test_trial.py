@@ -1,4 +1,4 @@
-"""SP8 lane JUDGE, J4: the trial (SR-106 EX-1, EX-6, EX-7; SR-042 thresholds per kind)."""
+"""SP8 lane JUDGE, J4: the trial (SR-106, SR-133; SR-042 thresholds per kind)."""
 
 from __future__ import annotations
 
@@ -53,63 +53,31 @@ def trial_cards(applied: Any) -> list[Any]:
     return [c for c in applied.cards if c.kind == "trial"]
 
 
-def test_ex1_no_calibration_three_supported_one_batch_nothing_settled(
+def test_ex1_no_calibration_three_supported_three_cards_nothing_settled(
         repo: Path, write_record) -> None:
     ids = make_world(repo, write_record, 3)
     applied = apply_scores(open_core(repo), ids, [0.95, 0.9, 0.97])
-    (card,) = trial_cards(applied)
-    assert [q.record for q in card.questions] == ["SR-003", "SR-001", "SR-002"]   # most sure first
-    assert not [e for e in applied.entries if e["kind"] in ("approval", "settle-config")]
-    assert MESSAGE[:30] in card.evidence
-    assert "Operation 1" in card.topic
-
-
-def test_ex7_batch_of_five_four_plus_one_below_threshold(repo: Path, write_record) -> None:
-    from plumb.present import owner_text
-
-    ids = make_world(repo, write_record, 6)
-    core = open_core(repo)
-    log_calibration(core, 0.8)
-    applied = apply_scores(open_core(repo), ids, [0.99, 0.97, 0.95, 0.9, 0.85, 0.6])
-    first, second = trial_cards(applied)
-    card = first
-    assert len(card.questions) == 5
-    assert [q.record for q in card.questions] == ["SR-001", "SR-002", "SR-003", "SR-004",
-                                                  "SR-006"]
-    assert owner_text.TRIAL_BELOW in card.questions[-1].text
-    assert all(owner_text.TRIAL_BELOW not in q.text for q in card.questions[:-1])
-    # SR-005 (0.85) is above the threshold but the batch was full: it comes in the next one
-    assert [q.record for q in second.questions] == ["SR-005"]
-
-
-def test_batch_of_more_than_five_split(repo: Path, write_record) -> None:
-    ids = make_world(repo, write_record, 7)
-    applied = apply_scores(open_core(repo), ids, [0.99, 0.98, 0.97, 0.96, 0.95, 0.94, 0.93])
     cards = trial_cards(applied)
-    assert sorted(len(c.questions) for c in cards) == [2, 5]
-    assert len({c.id for c in cards}) == 2
-    seen = [q.record for c in cards for q in c.questions]
-    assert sorted(seen) == sorted(ids)
+    assert [c.questions[0].record for c in cards] == ["SR-003", "SR-001", "SR-002"]   # sure first
+    assert all(len(c.questions) == 1 for c in cards)                  # one record per card
+    assert not [e for e in applied.entries if e["kind"] in ("approval", "settle-config")]
+    assert "Build a calculator" in cards[1].evidence and "6 Oct" in cards[1].evidence
+    assert cards[1].topic == "Operation 1"
 
 
-def test_a_decision_a_set_member_or_an_edit_is_asked_on_its_own(repo: Path,
-                                                                 write_record) -> None:
-    from plumb.approvals import approval_items
-    from plumb.present import owner_text
+def test_ex7_a_record_below_the_threshold_is_drawn_when_none_open_is(
+        repo: Path, write_record) -> None:
+    ids = make_world(repo, write_record, 6)
+    log_calibration(open_core(repo), 0.8)
+    applied = apply_scores(open_core(repo), ids, [0.99, 0.97, 0.95, 0.9, 0.85, 0.6])
+    assert [c.questions[0].record for c in trial_cards(applied)] == ["SR-006", "SR-001", "SR-002"]
 
-    ids = make_world(repo, write_record, 2)
-    core = open_core(repo)
-    core.log_append("events", "approval", {"records": approval_items(core, ["SR-002"]),
-                                           "by": "owner"})
-    path = repo / ".plumb" / "requirements" / "SR-002.md"
-    path.write_text(path.read_text(encoding="utf-8").replace("operation 2", "operation two"),
-                    encoding="utf-8")
-    applied = apply_scores(open_core(repo), ids, [0.99, 0.99])
-    singles = {c.questions[0].record: c for c in trial_cards(applied) if len(c.questions) == 1}
-    assert "SR-002" in singles
-    assert singles["SR-002"].issue == owner_text.EDIT_ISSUE
-    assert [q.record for c in trial_cards(applied) for q in c.questions
-            if c.issue != owner_text.EDIT_ISSUE] == ["SR-001"]
+
+def test_no_more_than_three_cards_are_open(repo: Path, write_record) -> None:
+    ids = make_world(repo, write_record, 7)
+    cards = trial_cards(apply_scores(open_core(repo), ids, [0.99, 0.98, 0.97, 0.96, 0.95, 0.94,
+                                                            0.93]))
+    assert len(cards) == 3 and len({c.id for c in cards}) == 3
 
 
 def test_open_cards_and_confirmed_records_are_not_offered_twice(repo: Path,
@@ -135,7 +103,7 @@ def test_ex6_yes_is_a_labelled_yes_and_recalibration_makes_no_model_call(
     ids = make_world(repo, write_record, 3)
     core = open_core(repo)
     applied = apply_scores(core, ids, [0.95, 0.9, 0.97])
-    (card,) = trial_cards(applied)
+    card = trial_cards(applied)[0]
     for entry in applied.entries:                      # the worker writes what apply returns
         core.log_append("events", entry["kind"], entry["payload"])
     confirmed: list[tuple[Any, ...]] = []
@@ -148,7 +116,7 @@ def test_ex6_yes_is_a_labelled_yes_and_recalibration_makes_no_model_call(
                           confirm=lambda *a, **k: confirmed.append(a))
     (log,) = [e for e in result.entries if e["kind"] == "trial"]
     assert log["payload"]["card"] == card.id
-    assert [i["id"] for i in log["payload"]["items"]] == ["SR-003", "SR-001", "SR-002"]
+    assert [i["id"] for i in log["payload"]["items"]] == ["SR-003"]
     # the yes itself is recorded by the reader as an owner-words approval, label yes
     monkeypatch.setattr(recheck_words, "problem", lambda entry, core: None)
     # the reader logs the owner's message as a prompt event before it writes a confirmation
@@ -179,6 +147,33 @@ def test_ex6_yes_is_a_labelled_yes_and_recalibration_makes_no_model_call(
     assert not result_kind.passing                     # three decisions are not enough yet
 
 
+def test_a_card_whose_record_is_confirmed_is_withdrawn_at_turn_end_and_its_slot_frees(
+        repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from plumb.understand import cardstore, trial
+
+    ids = make_world(repo, write_record, 4)
+    core = open_core(repo)
+    applied = apply_scores(core, ids, [0.95, 0.9, 0.97, 0.5])
+    for entry in applied.entries:
+        core.log_append("events", entry["kind"], entry["payload"])
+    cardstore.save(repo, SESSION, trial_cards(applied))
+    real = type(core).status
+
+    def status(self: Any, ids: Any = None) -> Any:          # SR-003 was confirmed by a read-back yes
+        got = real(self, ids)
+        if "SR-003" in got:
+            got["SR-003"] = replace(got["SR-003"], confirmation="confirmed")
+        return got
+
+    monkeypatch.setattr(type(core), "status", status)
+    opened = trial.top_up(open_core(repo), SESSION)
+    state = {c.questions[0].record: c.status for c in cardstore.own_cards(repo, SESSION)}
+    assert state["SR-003"] == "withdrawn" and state["SR-001"] == "open"
+    assert len(opened) == 1 and opened[0].questions[0].record not in state
+
+
 def _answer(question: Any, said: str) -> Any:
     from plumb.contracts import ClarifyAnswer
 
@@ -203,18 +198,6 @@ def test_a_no_answer_closes_the_card_without_confirming(repo: Path, write_record
     (log,) = [e for e in result.entries if e["kind"] == "trial"]
     assert log["payload"]["answers"] == [{"question": card.questions[0].id,
                                           "answer": "rejected"}]
-
-
-def test_a_half_answered_card_logs_nothing_yet(repo: Path, write_record) -> None:
-    from plumb.understand import trial
-
-    ids = make_world(repo, write_record, 3)
-    (card,) = trial_cards(apply_scores(open_core(repo), ids, [0.95, 0.9, 0.97]))
-    half = card.__class__(**{**card.__dict__, "answers": (
-        _answer(card.questions[0], "accepted"),)})
-    assert trial.effect(core=open_core(repo), job=None, card=half,
-                        question=card.questions[0].id, entry={"answer": "accepted"},
-                        message="m", digest="d", accepted=True, confirm=None) is None
 
 
 def test_thresholds_are_per_kind_and_start_from_the_config(repo: Path, write_record) -> None:

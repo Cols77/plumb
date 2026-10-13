@@ -28,12 +28,10 @@ from plumb.contracts import (
     JobResult,
     JudgeVerdict,
     NoModel,
-    Present,
     Progress,
     ReaderEntry,
     ReadCard,
     ReadItem,
-    SettleState,
     StopParts,
 )
 from plumb.understand import files
@@ -41,8 +39,8 @@ from plumb.understand import files
 pytestmark = pytest.mark.sr("SR-103", "SR-104", "SR-105")
 
 DATA_CLASSES = (Job, JobError, JobResult, ReadItem, ReadCard, ReaderEntry, JudgeVerdict,
-                ClarifyQuestion, ClarifyAnswer, CardState, Applied, GateState, SettleState,
-                Progress, StopParts, Choice, CardPress, Present)
+                ClarifyQuestion, ClarifyAnswer, CardState, Applied, GateState,
+                Progress, StopParts, Choice, CardPress)
 
 
 @pytest.mark.parametrize("cls", DATA_CLASSES, ids=lambda c: c.__name__)
@@ -55,15 +53,15 @@ def test_frozen_with_defaults_on_every_field(cls) -> None:
 def test_job_needs_defaults_to_none_and_card_kinds_are_complete() -> None:
     assert Job().needs is None
     assert set(contracts.CARD_KINDS) == {
-        "clarify", "trial", "backlog", "beyond", "contradicts", "couldnt_check", "show_first",
-        "settle_offer", "settled_item", "link", "stale_link", "regression", "decision",
-        "conflict", "early_conflict", "drift", "proposed", "test_changed"}
+        "clarify", "choice", "trial", "couldnt_check", "beyond", "contradicts", "stale_link",
+        "drift", "regression", "test_changed", "conflict", "early_conflict"}
     assert set(contracts.CardKind.__args__) == set(contracts.CARD_KINDS)
-    assert "settled" in contracts.ApprovalBy.__args__ and \
-        "owner-words" in contracts.ApprovalBy.__args__
-    assert contracts.RecordStatus(id="SR-1", confirmation="proposed", approved_by=None,
-                                  covered=False, uncovered_examples=(), links=()).settled \
-        is False
+    assert "settled" not in contracts.ApprovalBy.__args__
+    assert "owner-words" in contracts.ApprovalBy.__args__
+    assert not hasattr(contracts.RecordStatus(id="SR-1", confirmation="proposed",
+                                              approved_by=None, covered=False,
+                                              uncovered_examples=(), links=()), "settled")
+    assert "withdrawn" in contracts.CARD_STATUSES
 
 
 def test_job_id_is_content_addressed_and_needs_changes_it() -> None:
@@ -144,25 +142,6 @@ def test_card_store_round_trips_choices_and_the_button_statuses(tmp_path: Path) 
     assert old.status == "open" and old.questions[0].choices == ()
     assert old.questions[1].choices == (Choice("maybe", "open", None),)
     assert ClarifyQuestion("q", "t", ("a",)).choices == ()   # positional use is unchanged
-
-
-@pytest.mark.sr("SR-086")
-def test_present_json_shape_round_trips(tmp_path: Path) -> None:
-    from plumb.understand import cardstore
-
-    card = CardState(id="c1", kind="trial", topic="reminders", questions=(
-        ClarifyQuestion(id="c1#1", text="Remind me daily", record="SR-002", hash="sha256:x",
-                        choices=(Choice("yes", "accepted"), Choice("no", "rejected"))),))
-    present = Present(turn=3, confirmations=("Confirmed: export",),
-                      settled=("Settled from your words: reminders",), cards=(card,))
-    data = cardstore.present_to_json(present)
-    assert set(data) == {"turn", "confirmations", "settled", "cards"}
-    assert data["cards"] == [cardstore.card_to_json(card)]
-    files.write_json_atomic(files.present_path(tmp_path, "s1"), data)
-    assert files.present_path(tmp_path, "s1").name == "present.json"
-    assert cardstore.present_from_json(files.read_json(files.present_path(tmp_path, "s1"))) \
-        == present
-    assert cardstore.present_from_json(None) == Present()
 
 
 @pytest.mark.sr("SR-086")
@@ -257,7 +236,7 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
     assert gate.is_closed(tmp_path, "s1") is False
     # slice 3: the cards the stop hook builds come in by keyword (sp7-realign-sp8 C1, C7)
     assert _params(summary.stop_parts) == ["ctx", "core", "turn", "extra", "fresh",
-                                           "changes", "passing", "shown"]
+                                           "passing", "shown"]
     # the landed summary needs a real core; the stub's empty answer is gone (SHOW/JUDGE landed)
     assert StopParts() == StopParts()
     assert _params(hooks.on_prompt) == ["ctx", "core", "entry"]
@@ -293,8 +272,7 @@ def test_recheck_dispatches_by_value_and_refuses_hand_written_entries() -> None:
     def entry(by: str, kind: str = "approval"):
         return contracts.LogEntry("events", kind, "t", "none", {"by": by}, None, "sha256:x")
 
-    for by, kind in (("owner-words", "approval"), ("settled", "approval"),
-                     ("undone", "revocation")):
+    for by, kind in (("owner-words", "approval"), ("undone", "revocation")):
         # the landed recheck refuses an entry that names no record at a version
         assert recheck.problem(entry(by, kind), None)
     assert recheck.problem(entry("owner"), None) is None
@@ -304,7 +282,7 @@ def test_confirm_entry_problem_calls_the_recheck_for_the_new_values() -> None:
     from plumb import confirm
     from plumb.log import entry_digest
 
-    for by in ("owner-words", "settled"):
+    for by in ("owner-words", "undone"):
         raw = {"v": 1, "kind": "approval", "at": "t", "marker": "none",
                "payload": {"by": by, "records": []}, "prev": None}
         entry = contracts.LogEntry("events", "approval", "t", "none", raw["payload"], None,
@@ -342,14 +320,15 @@ def test_config_section_understand(tmp_path: Path) -> None:
 def test_routes_and_help_list_only_importable_verbs() -> None:
     from plumb import cli
 
-    for verb in ("understand", "settle", "undo", "go", "clarify"):
+    for verb in ("understand", "clarify"):
         assert cli.ROUTES[verb] == "plumb.understand.cli"
+    assert not {"settle", "undo", "go", "confirm"} & set(cli.ROUTES)
     assert cli._available("clarify")
     assert "clarify" in cli.help_text()
     saved = dict(cli.ROUTES)
     try:
-        cli.ROUTES["settle"] = "plumb.no_such_module"
-        assert "\n  settle" not in cli.help_text()
+        cli.ROUTES["clarify"] = "plumb.no_such_module"
+        assert "\n  clarify" not in cli.help_text()
     finally:
         cli.ROUTES.update(saved)
 
@@ -357,11 +336,8 @@ def test_routes_and_help_list_only_importable_verbs() -> None:
 def test_stub_commands_print_not_available_and_exit_2(capsys: pytest.CaptureFixture) -> None:
     from plumb.understand import cli
 
-    # settle, undo and go landed with JUDGE and READ; `understand` and a bare `go` still refuse
-    for verb in ("understand", "go"):
-        assert cli.run(verb, []) == 2
-        assert "not available in this build" in capsys.readouterr().err
-    assert cli.run("undo", []) == 2
+    assert cli.run("understand", []) == 2
+    assert "not available in this build" in capsys.readouterr().err
 
 
 def test_pre_tool_hook_allows(repo: Path) -> None:
@@ -423,14 +399,14 @@ def test_prompt_hook_calls_the_understand_layer_in_order(
     assert "skipped" not in out.getvalue()
 
 
-def test_stop_places_confirmations_settled_then_cards(
+def test_stop_places_confirmations_then_cards(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb.hosts.claude_code import stop
     from plumb.understand import summary
 
     monkeypatch.setattr(summary, "stop_parts", lambda ctx, core, turn, **cards: StopParts(
-        confirmations=("C",), settled=("S",), cards=("K",)))
-    assert stop.understand_parts(None, None, {}) == ["C", "S", "K"]
+        confirmations=("C",), cards=("K",)))
+    assert stop.understand_parts(None, None, {}) == ["C", "K"]
     monkeypatch.setattr(summary, "stop_parts",
                         lambda *a, **k: (_ for _ in ()).throw(OSError()))
     assert stop.understand_parts(None, None, {}) == []
@@ -459,12 +435,9 @@ def test_capture_calls_judge_and_premise_after_writing(
 def test_owner_text_constants_exist() -> None:
     from plumb.present import owner_text as t
 
-    for name in ("CARD_CLARIFY", "CARD_TRIAL", "CARD_BACKLOG", "CARD_BEYOND",
-                 "CARD_CONTRADICTS", "CARD_COULDNT_CHECK", "SETTLED_LINE", "STEP_READING",
-                 "STEP_CHECKING", "STEP_JUDGING", "STEP_JUDGING_BACKLOG", "GATE_BUILD_ANYWAY",
-                 "GATE_WAIT", "SETTLE_REPLY"):
+    for name in ("STEP_READING", "STEP_CHECKING", "STEP_JUDGING", "STEP_JUDGING_BACKLOG",
+                 "GATE_BUILD_ANYWAY", "GATE_WAIT", "FULL_OPTION", "FULL_DIAGRAM"):
         assert isinstance(getattr(t, name), str) and getattr(t, name)
-    assert "/plumb" not in t.SETTLE_REPLY and not t.bare_cli_verbs(t.SETTLE_REPLY)
 
 
 def test_fakes_and_harness_work(tmp_path: Path) -> None:
@@ -581,14 +554,8 @@ def test_handler_for_raises_an_import_error_of_a_lane_module(
         effects.handler_for("anything")
 
 
-def test_no_effect_kinds_are_the_owner_only_ones() -> None:
-    from plumb.understand import effects
-
-    assert effects.NO_EFFECT == {"settle_offer", "settled_item"}
-
-
-C2_TEXT = ("CONFIRM_YOU_SAID", "READBACK_CHANGE", "CARD_SHOW_FIRST", "TYPED_CONFIRMED",
-           "TYPED_NEEDS_IDS", "OWNER_ONLY_REPLY", "BACKLOG_DONE")
+C2_TEXT = ("CONFIRM_YOU_SAID", "READBACK_CHANGE", "TYPED_CONFIRMED", "TYPED_NEEDS_IDS",
+           "BACKLOG_DONE")
 
 
 @pytest.mark.parametrize("name", C2_TEXT)

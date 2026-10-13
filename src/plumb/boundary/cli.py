@@ -14,10 +14,39 @@ STEP_CHECK = "checking the merge"       # SR-108
 MERGE_END = "merge check finished"
 
 
+def detected_base(root: Path) -> str:
+    """The repository's default branch when the config does not name it: where
+    ``origin/HEAD`` points, else ``main`` if it exists, else ``master`` (files only, no git
+    process: the post-edit hook asks on every edit)."""
+    from plumb.understand.cardstore import branch_gone
+
+    git = Path(root) / ".git"
+    try:
+        if git.is_file():                        # a worktree: its refs live in the main git dir
+            git = (Path(root) / git.read_text(encoding="utf-8").split(":", 1)[1].strip()).resolve()
+            common = git / "commondir"
+            if common.is_file():
+                git = (git / common.read_text(encoding="utf-8").strip()).resolve()
+        head = (git / "refs" / "remotes" / "origin" / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref: refs/remotes/origin/"):
+            return head.removeprefix("ref: refs/remotes/origin/")
+    except (OSError, IndexError):
+        pass
+    root = Path(root)
+    return "master" if branch_gone(root, "main") and not branch_gone(root, "master") else "main"
+
+
 def merge_settings(core: Any) -> dict[str, Any]:
-    """``merge.default_base`` (main) and ``merge.prepush_run_full`` (true), from the config
-    when it carries the section, else read from ``.plumb/config.yaml`` directly."""
-    out: dict[str, Any] = {"default_base": "main", "prepush_run_full": True}
+    """``merge.default_base`` (the detected default branch when unset) and
+    ``merge.prepush_run_full`` (true), from the config when it carries the section, else read
+    from ``.plumb/config.yaml`` directly."""
+    out = _configured(core)
+    out["default_base"] = out["default_base"] or detected_base(Path(core.root))
+    return out
+
+
+def _configured(core: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {"default_base": None, "prepush_run_full": True}
     section = getattr(core.config, "merge", None)
     if section is not None:
         for key in out:

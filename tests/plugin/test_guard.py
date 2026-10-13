@@ -58,13 +58,6 @@ DENIED = (
     "mod hello --session s1 --json",
     "mod press --session s1 --offer abc --choice 1",
     "mod typed --session s1",
-    # SP8: without the owner's proof (the digest of their typed command)
-    "settle on intent",
-    "settle off requirement",
-    "settle on",
-    "undo SR-001",
-    "undo the deadline reminders",
-    "go",
 )
 
 ALLOWED = (
@@ -72,11 +65,6 @@ ALLOWED = (
     "status --card",
     "show SR-001",
     "explain the reminders",
-    "settle",  # shows the switch, changes nothing
-    "settle on intent --prompt 9f2c",
-    "undo SR-001 --prompt 9f2c",
-    "go --prompt 9f2c",
-    "go --prompt=9f2c",
     "conflict choose INT-004 --take ours --prompt 9f2c --quote ours",
     "conflict relay INT-004 --prompt 9f2c --quote ours",
     "owner confirm SR-001 --prompt 9f2c",
@@ -105,10 +93,10 @@ def test_allowed(launcher: str, form: str) -> None:
     "true || plumb revoke SR-001",
     "plumb status | plumb mod press --offer x",
     "echo $(plumb approve SR-001)",
-    'echo "$(plumb settle on intent)"',
-    "echo `plumb undo SR-001`",
+    'echo "$(plumb revoke SR-001)"',
+    "echo `plumb approve SR-001`",
     'bash -c "plumb approve SR-001"',
-    "sh -lc 'plumb go'",
+    "sh -lc 'plumb approve SR-001'",
     'powershell -Command "plumb approve SR-001"',
     'eval "plumb approve SR-001"',
     "env FOO=1 plumb approve SR-001",
@@ -123,7 +111,7 @@ def test_denied_inside_compound_commands(command: str) -> None:
 
 @pytest.mark.parametrize("command", [
     'git commit -m "plumb approve SR-001 is the owner\'s alone"',
-    "git commit -F - <<'EOF'\nGuard plumb approve and plumb settle on\n\nSR: SR-112\nEOF",
+    "git commit -F - <<'EOF'\nGuard plumb approve and plumb revoke\n\nSR: SR-112\nEOF",
     "grep -rn 'plumb approve' src",
     "echo plumb approve",
     "plumb explain approve",
@@ -154,11 +142,11 @@ def test_pre_tool_hook_answers_deny(tmp_path: Path) -> None:
 
     out = io.StringIO()
     data = {"session_id": "s1", "tool_name": "Bash",
-            "tool_input": {"command": "plumb settle on intent"}}
+            "tool_input": {"command": "plumb approve SR-001"}}
     assert pretool.main(root=tmp_path, stdin=io.StringIO(json.dumps(data)), stdout=out) == 0
     answer = json.loads(out.getvalue())["hookSpecificOutput"]
     assert answer["permissionDecision"] == "deny"
-    assert "settle on" in answer["permissionDecisionReason"]
+    assert "approve" in answer["permissionDecisionReason"]
     out = io.StringIO()
     data["tool_input"] = {"command": "plumb status"}
     pretool.main(root=tmp_path, stdin=io.StringIO(json.dumps(data)), stdout=out)

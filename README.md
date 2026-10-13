@@ -213,35 +213,26 @@ plumb: fidelity unjudged: SR-001
 plumb: questions: none
 ```
 
-When the turn proposed records, the summary then shows each one in full (at most three
-records): an intent's read-back, what will and won't be done and its labelled assumptions; a
-requirement's statement and every given/when/then example; a decision and its alternatives.
-Records past that cap are named, never hidden behind a count:
-
-```
-plumb: proposed SR-002: divide returns a / b.
-plumb: proposed SR-002/EX-1: given 6 and 3, when divide runs, then it returns 2
-plumb: proposed SR-002/EX-2: given 1 and 0, when divide runs, then it returns 0
-plumb: +1 more not shown: SR-005 (plumb show SR-005); a confirmation must name them
-```
-
-Your "ok" on the next prompt confirms only what was shown; SR-005 needs words naming it.
-
 When the agent records a new intent (`plumb capture`: your verbatim words, its read-back, a
-requirement with examples, a decision), the summary shows it as an intent card, only when it
-matters (a new or changed intent waiting for you, one of the three triggers, or a regression;
-`plumb config card full|compact|off` sets the verbosity):
+requirement with examples, a decision), the summary shows one read-back card for the request,
+in your words, with its date:
 
 ```
-▸ Intent  INT-002 "Add sub(a, b) beside add, returning a - b"   (proposed — say "ok" to confirm)
-  Will: sub(a, b) returns a - b · Won't: no change to add or mul · Assumed: integers, like add
-  Examples  SR-003/EX-1 given the numbers 5 and 3, when sub is called, then it returns 2  (proposed)
+Your request of 2026-10-12: "add sub(a, b) beside add"
+I will add sub(a, b), returning a - b, next to add.
+Assumed: whole numbers, like add
+Not doing: no change to add or mul
+  1. Yes, that is what I meant (recommended) - Confirms this request and everything recorded from it
+  2. Not quite - Say what to change; nothing is confirmed
 ```
 
-A decision that matters is asked once, one per message ("I assumed integers only; floats too
-also fits. Which one?"). When several proposed records are rated faithful to your words, the
-summary offers them in one line (up to five titles, then "+N more (see plumb triage)"); your
-"ok" confirms exactly that pinned list.
+A choice you have no better-supported answer to is its own card, one question at a time, the
+recommended option first, each option saying what it does. A decision with a better-supported
+answer is not asked: it is stated as an assumption you can flip ("Assumed: whole numbers").
+A choice that is about structure or flow can show a block diagram above its question, when the
+agent drew one with the architecture-diagram skill and the diagram mod is installed; without the
+mod the card names the diagram file in one line.
+`plumb show <ID>` prints a record's examples and tests.
 
 The status line is a one-line card, the state plus a plain-language intent summary:
 
@@ -250,13 +241,11 @@ plumb ● awaits you · "Add sub(a, b) beside add, returning a..." · SR 2/3 ok 
 ```
 
 Read-backs and proposed examples appear in the summary as `proposed` and never block the work.
-To confirm them, reply in the session in your own words, for example "ok, SR-009 is right".
-The agent then records your words with `plumb relay`, and the approval is marked
-`agent-relayed` with your quote and the digest of your prompt. A prompt that does not object
-does not count as a confirmation, and an "ok" never confirms a record the same prompt objects
-to, however you name it ("the pow example is wrong, it should return 9. Ok, carry on" leaves
-the pow records proposed). The triage offer only groups records whose quotes are your logged
-words and that contradict none of them (no changed number, no flipped will/won't).
+To confirm them, answer the request's read-back card (Yes, that is what I meant) or reply in the session
+in your own words, for example "ok, that is right". plumb's own reader of your message, or your
+button press, confirms; the agent confirms nothing. A prompt that does not object does not count
+as a confirmation, and an "ok" never confirms a record the same prompt objects to ("the pow
+example is wrong, it should return 9. Ok, carry on" leaves the pow records proposed).
 
 Hook timing on the 2-core development machine, warm caches: session start 0.55 to 0.8 s,
 prompt 0.45 to 0.6 s, stop 0.65 to 1.2 s on a turn with changes (the first call after a code
@@ -264,7 +253,7 @@ change rebuilds the test map and can take about 1.4 s). Each hook has a soft bud
 2-second ceiling and a 1.9 s watchdog. A hook never builds a cold test map inline (a fresh
 clone): `plumb map` runs detached, and meanwhile a turn gets a bounded sample of nearby tests
 with `full verification pending (coverage unknown)`. When a loaded machine cuts a hook short, it still
-prints the read-back, the relevant records and the relay line, and names the skipped step
+prints the read-back, the relevant records and the open assumptions, and names the skipped step
 (for example `plumb: check skipped (budget): tests` at session start): evidence detail is
 dropped first, never the intent lines.
 
@@ -310,7 +299,7 @@ coordinates them through git alone: it holds no locks and no shared runtime stat
   example `SR-005 "relay checks" is also being changed on branch feat-x`. When a new request
   contradicts intent another branch has in flight, you are asked right away, before either
   side builds on it ("keep feat-x's", "keep this one" or "both"), and your answer holds for
-  both. When those two versions later meet at merge, your earlier answer settles them: you
+  both. When those two versions later meet at merge, your earlier answer decides them: you
   are not asked again.
 - **The merge waits for you only when it must.** `/plumb init` sets up the record merge and
   a quick check that holds a merge carrying an open intent conflict, an unconfirmed
@@ -347,14 +336,13 @@ exact change).
 | `plumb brief [--all] [--max-lines N]` | The short intent brief (about 30 lines). |
 | `plumb explain WORDS...` (alias `why`) | Why a behaviour, a file or a record exists, in your terms: the requirement, your words it derives from, decisions, examples, test state and code. Takes plain words ("how totals are rounded"), a path or a record ID. In Claude Code, `/plumb explain <anything>`. |
 | `plumb approve IDS... [--proposed] [--exempt] [--note]` | Owner approval of records at their current content. It asks y/N in your interactive terminal and is refused under the agent session marker or without a terminal (an agent's shell, a pipe), on every host. `revoke` and `tests waive` work the same way. |
-| `plumb relay IDS... --prompt DIGEST --quote "..." [--revoke]` | Record an approval or a revocation that you gave in a prompt, with your exact words. |
 | `plumb revoke IDS... [--note]` | Owner revocation of the latest approval. |
 
 ### Intent capture
 
 | Command | What it does |
 |---|---|
-| `plumb capture --prompt DIGEST --file DOC` | Record a whole read-back in one call: your verbatim quote (checked against the logged prompt), the read-back, will, won't, labelled assumptions, requirements with given/when/then examples, decisions. Everything is proposed; it prints the intent card. `--dry-run` writes nothing. |
+| `plumb capture --prompt DIGEST --file DOC` | Record a whole read-back in one call: your verbatim quote (checked against the logged prompt), the read-back, will, won't, labelled assumptions, requirements with given/when/then examples, decisions. Everything is proposed. `--dry-run` writes nothing. |
 | `plumb new KIND --title ...` | One record with the next ID (`intent`, `requirement`, `decision`, `feature`, `nc`), proposed. |
 | `plumb intent`, `plumb example SR --given --when --then`, `plumb decide --question --chosen --alt [--matters] [--supersede DEC]` | An INT read-back, an example, a decision ("I assumed A; B also fits"). |
 | `plumb clarify "<request>" [--questions FILE]` | The clarification depth (trivial, incremental, escalated) and only the questions that change what gets built, ranked. |
@@ -363,7 +351,6 @@ exact change).
 | `plumb triage [--approve low-risk]` | Proposed records grouped by faithfulness to your words; `--approve low-risk` confirms exactly the listed hashes in one step (your terminal). |
 | `plumb config auto-approve on\|off`, `config show`, `config card full\|compact\|off` | The opt-in auto-approval (off by default; refused without a passing calibration) and the card verbosity. Your terminal only. |
 | `plumb jev status [--probe]\|setup [--provider typesafe\|openrouter] [--env-var NAME] [--env-file PATH]\|calibrate` | The optional JEV backend (the agent runs it when you say `/plumb jev status`, `/plumb jev setup openrouter` or `/plumb jev calibrate`): provider, endpoint, where the key comes from (a label, never the key), reachability and the normalized resolved version; setup records the provider, model and the credential variable's NAME; calibration on your own decisions. |
-| `plumb relay IDS... --group low-risk` / `--set INT` | Relay your "ok" for a triage group or an escalated set that was shown. |
 
 ### Owner views (plain words; none approves anything)
 
@@ -372,12 +359,11 @@ exact change).
 | `plumb resolve WORDS...` | What your words mean: records, files and tests, best first; asks when ambiguous. |
 | `plumb status --card` | The status card, what awaits you and drift. |
 | `plumb review [WORDS...]` | The deep review: what awaits you, approvals you did not type, drift, alignment, the merge state. |
-| `plumb confirm [WORDS...]` | Shows records as cards so your own "ok" can confirm them. |
 | `plumb align [SCOPE]` | Judges each edge from intent to code, weakest first, and names the gaps; never adds or removes an edge. |
 | `plumb view [--open]` | Writes a generated Obsidian vault (one note per record, wikilinks, index notes, a Canvas intent map) under `.plumb/view/`. Editing a note approves nothing. |
 
 In Claude Code these are `/plumb status`, `/plumb explain <anything>`, `/plumb review`,
-`/plumb confirm`, `/plumb impact <anything>` and `/plumb view`.
+`/plumb impact <anything>` and `/plumb view`.
 
 ### Verification
 
@@ -408,7 +394,7 @@ during the turn.
 | Command | What it does |
 |---|---|
 | `plumb hosts install\|uninstall\|status codex\|pi\|hermes [--dry-run]` | Thin adapters over the same host-neutral turn API (see `docs/hosts.md` for each host's events). |
-| `plumb turn start\|end [--session ID]` | The CLI-only fallback for a host without hooks; confirmations resting on a message the agent recorded itself are labelled "self-recorded message". On a host whose prompt hook runs (Claude Code, or Codex once its hooks are trusted), such a message never grounds a relay. |
+| `plumb turn start\|end [--session ID]` | The CLI-only fallback for a host without hooks; confirmations resting on a message the agent recorded itself are labelled "self-recorded message". On a host whose prompt hook runs (Claude Code, or Codex once its hooks are trusted), such a message never grounds a confirmation. |
 | `plumb mcp serve` / `plumb mcp install\|uninstall claude-code\|codex\|hermes` | A read-only MCP server on stdio (brief, relevant records, show, explain, impact, drift); it has no write tool. |
 
 ### Merge boundary

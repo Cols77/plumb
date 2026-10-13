@@ -14,12 +14,12 @@ import types
 from pathlib import Path
 
 import pytest
-from mod.helpers import DIGEST, KEY, SESSION, kinds, run_mod
+from mod.helpers import DIGEST, KEY, SESSION, kinds, run_mod, sample_card
 from understand.test_read_job import make_core, open_card, record_text
 
 from plumb.api import open_core
 from plumb.understand import cards as card_text
-from plumb.understand import read, summary
+from plumb.understand import summary
 
 pytestmark = pytest.mark.sr("SR-086")
 
@@ -66,15 +66,15 @@ def _edit(root: Path, n: int = 1) -> None:
 
 def test_a_card_left_open_is_not_drawn_at_turn_end_until_its_record_changes(
         core, monkeypatch, capsys) -> None:
-    open_card(core, read.show_first_card(core.index()["SR-001"], "words"))
+    open_card(core, sample_card(core, "SR-001"))
     _hello(monkeypatch, capsys, core)
-    offer = _draw(monkeypatch, capsys, core)["show_first:SR-001"]["offers"][0]
+    offer = _draw(monkeypatch, capsys, core)["card:SR-001"]["offers"][0]
     assert any("Requirement 1" in c for c in _turn_end(core))
     leave = next(b["index"] for b in offer["buttons"] if b["answer"] == "open")
     assert _press(monkeypatch, capsys, core, offer["offer_id"], leave)[0] == 0
     assert not any("Requirement 1" in c for c in _turn_end(core))
     # still listed under what awaits the owner
-    card = _draw(monkeypatch, capsys, core)["show_first:SR-001"]
+    card = _draw(monkeypatch, capsys, core)["card:SR-001"]
     assert card["status"] == "left_open" and card["repeats"] is False
     _edit(core.root)
     assert any("Requirement 1" in c for c in _turn_end(core))
@@ -82,12 +82,12 @@ def test_a_card_left_open_is_not_drawn_at_turn_end_until_its_record_changes(
 
 def test_a_stop_hook_card_is_drawn_by_the_panel_in_full_with_leave_open(
         core, monkeypatch, capsys) -> None:
-    (proposed,) = card_text.proposed_cards(core.index(), ["SR-001"], turn=1000)
+    proposed = card_text.test_changed_card(core.index()["SR-001"], ["tests/test_x.py"], turn=1000)
     drawn_text = _turn_end(core, [proposed])
     assert any(proposed.topic in c for c in drawn_text)
     _hello(monkeypatch, capsys, core)
     card = _draw(monkeypatch, capsys, core)[proposed.id]
-    assert card["kind"] == "proposed" and card["repeats"] is True
+    assert card["kind"] == "test_changed" and card["repeats"] is True
     assert card["content"]["id"] == proposed.id and card["content"]["options"]
     (offer,) = card["offers"]
     assert [b["answer"] for b in offer["buttons"]] == ["change", "open"]
@@ -95,17 +95,17 @@ def test_a_stop_hook_card_is_drawn_by_the_panel_in_full_with_leave_open(
     assert code == 0 and answer["status"] == "left_open" and answer["confirmed"] == []
     assert "approval" not in kinds(core.root) and "card-press" in kinds(core.root)
     # DEC-034: not drawn at the next turn end, still listed as awaiting
-    assert not any(proposed.topic in c and "Proposed" in c for c in _turn_end(core))
+    assert not any(proposed.topic in c and "changed since you confirmed it" in c for c in _turn_end(core))
     listed = _draw(monkeypatch, capsys, core)[proposed.id]
     assert listed["status"] == "left_open" and listed["repeats"] is False
     # until the record it shows changes: it is drawn again
     _edit(core.root)
-    assert any("Proposed" in c for c in _turn_end(core))
+    assert any("changed since you confirmed it" in c for c in _turn_end(core))
 
 
 def test_ask_for_a_change_on_a_stop_hook_card_prefills_and_confirms_nothing(
         core, monkeypatch, capsys) -> None:
-    (proposed,) = card_text.proposed_cards(core.index(), ["SR-001"], turn=1000)
+    proposed = card_text.test_changed_card(core.index()["SR-001"], ["tests/test_x.py"], turn=1000)
     _turn_end(core, [proposed])
     _hello(monkeypatch, capsys, core)
     (offer,) = _draw(monkeypatch, capsys, core)[proposed.id]["offers"]

@@ -42,7 +42,7 @@ def test_same_output_for_every_host(repo: Path, write_record, tmp_path: Path) ->
         results[host] = _session(copy, host)
     first = results[HOSTS[0]]
     assert any("SR-001" in line for line in first[1][0])  # the delta reached the agent
-    assert first[3][2] and "DEC-001" in first[3][2]       # trigger 2 blocked once
+    assert first[3][2] and "stale" in first[3][2]         # the stale-link hold blocked once
     assert first[4][2] is None                            # never while continuing
     for host in HOSTS[1:]:
         assert results[host] == first, host

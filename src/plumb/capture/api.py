@@ -18,7 +18,6 @@ from plumb.contracts import (
     ClarifyView,
     DiffStats,
     EscalationSuggestion,
-    IntentCardData,
     IntentFlag,
     Proposal,
     TriageView,
@@ -70,12 +69,6 @@ def triage(core: Core, ids: Iterable[str] | None = None) -> TriageView:
     return _safe(TriageView(), lambda: _triage(core, ids, hook=True))
 
 
-def card_data(core: Core, ids: Sequence[str]) -> Sequence[IntentCardData]:
-    from plumb.capture.card import card_data as _card_data
-
-    return _safe([], lambda: _card_data(core, ids))
-
-
 def confirmation_counts(core: Core) -> Mapping[str, int]:
     """``{"owner", "agent-relayed", "auto-jev", "import", "proposed", "self-recorded"}``."""
     from plumb.capture.confirmations import confirmation_counts as _counts
@@ -121,11 +114,3 @@ def clarify(core: Core, request: str,
     from plumb.capture.clarify import clarify as _clarify
 
     return _safe(ClarifyView(), lambda: _clarify(core, request, questions))
-
-
-def stated_group(view: TriageView) -> Mapping[str, Any] | None:
-    """The ``{group, records: [{id, hash}]}`` the stop hook writes into the stated set with
-    the triage offer line, so the owner's "ok" relays exactly that group (DEC-017)."""
-    from plumb.capture.triage import stated_group as _group
-
-    return _safe(None, lambda: _group(view))
