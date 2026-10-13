@@ -842,8 +842,9 @@ def owner_cards(ctx: HookContext, core: Any, turn: Mapping[str, Any]
                 ) -> tuple[list[Any], list[dict[str, Any]], list[dict[str, Any]]]:
     """``(cards, conflict stated entries, early stated entries)``: a card per intent conflict
     a merge left (sp6 8.3), drawn at every turn end while it is open, and per early conflict
-    ``capture`` or ``plumb clarify`` asked for this turn (R17); their stated entries let the
-    owner's next words choose a side (8.4). Never fails the stop."""
+    ``capture`` or ``plumb clarify`` asked for this turn (R17), except on a record a merge card
+    already asks about; their stated entries let the owner's next words choose a side (8.4).
+    Never fails the stop."""
     from plumb.understand import cards as card_text
 
     index = core.index()
@@ -851,6 +852,7 @@ def owner_cards(ctx: HookContext, core: Any, turn: Mapping[str, Any]
     out: list[Any] = []
     conflicts: list[dict[str, Any]] = []
     early: list[dict[str, Any]] = []
+    found: list[Any] = []
     try:
         from plumb.mergedriver.conflicts import open_conflicts, stated_entries
 
@@ -863,7 +865,10 @@ def owner_cards(ctx: HookContext, core: Any, turn: Mapping[str, Any]
     try:
         from plumb.awareness.early import stated_entry, turn_conflicts
 
+        merged = {c.record for c in found}   # the merge card asks for that record (EX-10)
         for conflict in turn_conflicts(ctx.session_dir, start):
+            if conflict.record in merged:
+                continue
             out.append(card_text.early_conflict_card(index, conflict, turn=stamp))
             early.append(stated_entry(conflict))
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop

@@ -451,6 +451,7 @@ CONFLICT_KEEP = "Keep {side}'s version"
 CONFLICT_COMBINE = "Combine them (say how)"
 CONFLICT_COMBINED = "Take the combined version already proposed"
 EARLY_ISSUE = '{branch} says "{theirs}"; this work says "{ours}"'
+EARLY_ISSUE_NAMED = '{branch} says "{theirs}"; {other} says "{ours}"'
 EARLY_KEEP_THEIRS = "Keep {branch}'s"
 EARLY_KEEP_OURS = "Keep this one"
 EARLY_BOTH_OPTION = "Both, combined (say how)"

@@ -150,3 +150,35 @@ def test_relay_of_the_decision_answers_through_the_merge_card(tmp_path: Path) ->
     assert record.fields["statement"] == B and "conflict" not in record.fields
     assert core.index()[dec].fields["chosen"] == "feat-b's version"
     assert _state(main, dec) == "confirmed"
+
+
+def _stop_cards(root: Path) -> list:
+    from types import SimpleNamespace
+
+    from plumb.hosts.claude_code.stop import owner_cards
+
+    core = open_core(root)
+    cards, _conflicts, _early = owner_cards(SimpleNamespace(session_dir=core.paths.session),
+                                            core, {})
+    return cards
+
+
+def test_end_of_turn_card_on_default_branch_labels_both_sides(tmp_path: Path) -> None:
+    """The end-of-turn early card names both branches and offers each by name, never
+    "this work" or "Keep this one"."""
+    main, _dec = _on_main_after_b(tmp_path)
+    _conflicts(main)
+    [card] = _stop_cards(main)
+    assert card.kind == "early_conflict"
+    assert card.issue == f'feat-b says "{B}"; feat-a says "{A}"'
+    assert card.resolutions[:2] == ("Keep feat-b's", "Keep feat-a's")
+    assert "this work" not in card.issue and "Keep this one" not in card.resolutions
+
+
+def test_end_of_turn_shows_only_the_merge_card_for_its_record(tmp_path: Path) -> None:
+    """An early card asked for a record a merge left an intent conflict on is not drawn."""
+    main, _dec = _held_merge_of_b(tmp_path)
+    early.request_cards(open_core(main), [early.EarlyConflict(
+        record="SR-005", title="deadline reminder", branch="feat-b", claim="CL-1",
+        theirs=B, ours=A, ours_label="feat-a")])
+    assert [card.kind for card in _stop_cards(main)] == ["conflict"]

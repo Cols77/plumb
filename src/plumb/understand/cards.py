@@ -354,13 +354,18 @@ def conflict_card(index: Mapping[str, Any], conflict: Any, *, turn: int = 0) -> 
 def early_conflict_card(index: Mapping[str, Any], conflict: Any, *,
                         turn: int = 0) -> CardState:
     """An early intent conflict this turn's claim raised (R17): the other branch's version and
-    this work's, in the owner's words."""
+    this work's, in the owner's words. On a branch that is neither side (``ours_label`` names
+    the second branch) both are labelled and offered by branch, never "this work"."""
     record = index.get(conflict.record)
-    issue = owner_text.EARLY_ISSUE.format(branch=conflict.branch, theirs=conflict.theirs,
-                                          ours=conflict.ours)
-    options = (owner_text.EARLY_KEEP_OURS,
-               owner_text.EARLY_KEEP_THEIRS.format(branch=conflict.branch),
-               owner_text.EARLY_BOTH_OPTION)
+    other = conflict.ours_label
+    issue = (owner_text.EARLY_ISSUE_NAMED.format(branch=conflict.branch, other=other,
+                                                 theirs=conflict.theirs, ours=conflict.ours)
+             if other else owner_text.EARLY_ISSUE.format(
+                 branch=conflict.branch, theirs=conflict.theirs, ours=conflict.ours))
+    keep = owner_text.EARLY_KEEP_THEIRS.format(branch=conflict.branch)
+    ours = (owner_text.EARLY_KEEP_THEIRS.format(branch=other) if other
+            else owner_text.EARLY_KEEP_OURS)
+    options = ((keep, ours) if other else (ours, keep)) + (owner_text.EARLY_BOTH_OPTION,)
     return _card("early_conflict", card_id("early_conflict", conflict.record, conflict.branch),
                  conflict.title or conflict.record, issue, str(conflict.judgment or ""),
                  options, [(issue, record)], turn)
