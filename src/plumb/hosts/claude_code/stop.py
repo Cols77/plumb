@@ -559,8 +559,9 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
     A stale link the turn caused (against the baseline the prompt hook wrote) that no card
     holds keeps the turn open, naming it, up to ``hooks.stale_holds_max`` consecutive holds;
     then the turn is let go with a stale card per link. The links stale before the turn are
-    listed once per session and never block. Without a baseline of this turn nothing is
-    held. Never fails the stop."""
+    listed to the agent once per session and never block: in the block when there is one,
+    else queued for the next prompt hook (``stale.take_before``). Without a baseline of this
+    turn nothing is held. Never fails the stop."""
     try:
         from plumb import stale
 
@@ -569,18 +570,23 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         if not state.valid:
             return [], []
         before = []
-        if state.before and stale.once_per_session(
-                ctx.root, ctx.session_id, "before:" + ",".join(r.link for r in state.before)):
+        key = "before:" + ",".join(r.link for r in state.before)
+        if state.before and not stale.listed(ctx.root, ctx.session_id, key):
             before = [stale.before_line(state.before)]
         open_rows = stale.unresolved(core, ctx.session_id, state)
         held = stale.hold_count(ctx.root, ctx.session_id, str(turn_id))
-        if not open_rows:
-            if held:
-                stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), 0)
-            return [], before
         limit = int(core.config.hooks.stale_holds_max)
         if ctx.extra.get("host"):
             limit = min(limit, 1)  # the host-neutral path blocks at most once per turn
+        if before and open_rows and held < limit:
+            stale.once_per_session(ctx.root, ctx.session_id, key)  # the block tells the agent
+        elif before:
+            stale.queue_before(ctx.root, ctx.session_id, key, before[0])  # the next prompt does
+            before = []
+        if not open_rows:
+            if held:
+                stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), 0)
+            return [], []
         if held < limit:
             stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), held + 1)
             missing = stale.incomplete_cards(ctx.root, ctx.session_id)
@@ -594,7 +600,7 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
             stale.add_card(ctx.root, ctx.session_id, turn=int(turn_start),
                            **stale.default_card(row, title, other))
             notes.append(STALE_HOLD_ENDED.format(n=held, title=title))
-        return [], [*before, *notes]
+        return [], notes
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return [], []
 

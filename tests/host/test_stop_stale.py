@@ -125,6 +125,29 @@ def test_pre_existing_stale_listed_once_not_blocking(project: Path, hook_input) 
     assert "already stale" not in _summary(out)
 
 
+def _prompt(repo: Path, hook_input, session: str = "s1") -> str:
+    from plumb.hosts.claude_code import prompt
+
+    out = io.StringIO()
+    payload = hook_input("UserPromptSubmit", session_id=session, prompt="please tidy up")
+    assert prompt.main(stdin=io.StringIO(payload), stdout=out, root=repo) == 0
+    return out.getvalue()
+
+
+def test_pre_existing_stale_line_reaches_the_agent_once(project: Path, hook_input) -> None:
+    (project / "src" / "calc.py").write_text(CHANGED, "utf-8")   # stale before the turn
+    start_turn(project)
+    edit(project, "docs/notes.md", "more notes\n")
+    assert _block(run_stop(project, hook_input, verify=_verify())) is None
+    # a stop that holds nothing cannot reach the agent: the next prompt carries the line
+    told = _prompt(project, hook_input)
+    assert "1 links were already stale before this turn" in told and "SR-001" in told
+    start_turn(project, turn_id="turn-2")
+    edit(project, "docs/notes.md", "even more notes\n")
+    assert _block(run_stop(project, hook_input, verify=_verify())) is None
+    assert "already stale" not in _prompt(project, hook_input)
+
+
 def test_hold_ends_after_max_with_card(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "src/calc.py", CHANGED)
