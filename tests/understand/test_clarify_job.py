@@ -453,3 +453,46 @@ def test_sr131_ex4_a_vague_answer_keeps_the_choice_card_and_opens_no_read_back(
     worker.run_once(open_core(repo), SESSION)
     assert [(c.id, c.status) for c in _cards(repo)] == before    # nothing withdrawn, nothing new
     assert gate.is_closed(repo, SESSION)
+
+
+def test_sr131_ex4_no_new_request_before_the_reader_keeps_the_hold(
+        repo: Path, engine_standins: Any) -> None:
+    """As live: the request check applies before the reader logs anything and finds no new
+    request; the blocking card is unanswered, so the hold stays closed."""
+    gaps = {"intent": "yes", "topic": "export", "gaps": [
+        _gap("format", "Which format?", blocking=True)]}
+    core, _ = _asked("let users export their data", gaps, repo, engine_standins)
+    _by_kind(repo, "choice")
+    digest = log_prompt(repo, "whatever works", session=SESSION)
+    gate.close(repo, SESSION, digest, "your request is being checked")
+    before = [(c.id, c.status) for c in _cards(repo)]
+    engine_standins.dispatcher.script = {"clarify": {"gap": False, "gaps": [], "intent": "no"}}
+    assert clarify.build(open_core(repo), SESSION, message={"digest": digest,
+                                                            "text": "whatever works"})
+    worker.run_once(open_core(repo), SESSION)
+    assert [(c.id, c.status) for c in _cards(repo)] == before
+    assert gate.is_closed(repo, SESSION)
+
+
+def test_sr131_ex4_ok_go_on_while_the_card_waits_starts_no_new_request(
+        repo: Path, engine_standins: Any) -> None:
+    """As live: 'ok go on' is read as a yes to the read-back while the blocking choice is
+    unanswered; the check's new read-back for it is dropped and the hold stays closed."""
+    gaps = {"intent": "yes", "topic": "export", "gaps": [
+        _gap("format", "Which format?", blocking=True)]}
+    core, _ = _asked("let users export their data", gaps, repo, engine_standins)
+    (readback,) = _by_kind(repo, "clarify")
+    digest = log_prompt(repo, "ok go on", session=SESSION)
+    gate.close(repo, SESSION, digest, "your request is being checked")
+    core.log_append("events", "read-entry", {
+        "job": "r1", "id": f"{readback.id}/ok", "hash": "", "answer": "accepted",
+        "confidence": 0.8, "evidence": "ok go on", "message_digest": digest})
+    before = [(c.id, c.status) for c in _cards(repo)]
+    engine_standins.dispatcher.script = {"clarify": {
+        "gap": False, "gaps": [], "intent": "yes", "topic": "export",
+        "readback": {"proposal": "Go on with the export.", "will": [], "wont": [],
+                     "assumptions": [], "examples": []}}}
+    assert clarify.build(open_core(repo), SESSION, message={"digest": digest, "text": "ok go on"})
+    worker.run_once(open_core(repo), SESSION)
+    assert [(c.id, c.status) for c in _cards(repo)] == before
+    assert gate.is_closed(repo, SESSION)

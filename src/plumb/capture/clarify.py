@@ -228,17 +228,23 @@ def clarify(core: Core, request: str, questions: Sequence[Mapping[str, Any]] = (
                        backend=name, inflight=tuple(inflight))
 
 
+INFLIGHT_NOTE = ('a conflict with {branch} over "{title}" waits as a card for the owner at the '
+                 "end of this turn; do not restate it")
+
+
 def _inflight(core: Core, request: str, backend: Any) -> tuple[list[str], bool]:
     """The early intent-conflict check of the read-back (R17, SR-081): ``(lines, whether a
     card is among them)``. Advisory: an error shows nothing."""
     try:
-        from plumb.awareness.early import card, check_text, request_cards
+        from plumb.awareness.early import check_text, request_cards
 
         result = check_text(core, request, backend=backend)
         request_cards(core, result.conflicts)  # the owner sees them at the end of the turn
     except Exception:  # noqa: BLE001 - intent in flight never fails the read-back
         return [], False
-    lines = [line for conflict in result.conflicts for line in card(conflict)]
+    # the turn-end card asks the owner (SR-151); the agent only learns that one waits
+    lines = [INFLIGHT_NOTE.format(title=c.title or c.record, branch=c.branch)
+             for c in result.conflicts]
     return lines + list(result.lines), bool(result.conflicts)
 
 
@@ -260,8 +266,6 @@ def write_session(core: Core, view: ClarifyView, request: str) -> None:
 
 def view_lines(view: ClarifyView) -> list[str]:
     lines = list(getattr(view, "inflight", ()) or ())
-    if any(line.startswith(("▸ Conflict", "> Conflict")) for line in lines):
-        lines.append("ask this conflict first, before any other question or any work")
     lines.append(f"depth: {view.depth} ({view.reason})")
     if view.answered:
         lines.append("already answered (do not ask):")

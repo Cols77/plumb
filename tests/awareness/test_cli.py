@@ -43,7 +43,7 @@ def test_check_exits_1_with_the_card(tmp_path: Path) -> None:
     change(other, "feat-x's version")
     code, text = _run("inflight", "check", "make", "SR-005", "stricter", "--root", str(main))
     assert code == 1
-    assert text.startswith('▸ Conflict  SR-005 "relay checks"')
+    assert '"relay checks" waits as a card' in text
     code, text = _run("inflight", "check", "nothing", "related", "--root", str(main))
     assert (code, text) == (0, "")
 

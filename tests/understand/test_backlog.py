@@ -176,7 +176,7 @@ def test_sr107_ex3_18_supported_open_three_trial_cards_one_record_each(
     assert not [e for e in open_core(repo).events() if e.kind == "approval"]
 
 
-def test_sr107_ex5_three_flagged_are_issue_cards_not_trial_cards(
+def test_sr107_ex5_three_flagged_are_not_trial_cards_and_raise_no_card(
         repo: Path, write_record, engine_standins) -> None:
     from plumb.understand import backlog
 
@@ -186,10 +186,10 @@ def test_sr107_ex5_three_flagged_are_issue_cards_not_trial_cards(
     engine_standins.dispatcher.script = {"judge": answering(0.95, flagged)}
     run_pass(repo, engine_standins)
     cards = open_cards(repo)
-    issue = [c for c in cards if c.kind in ("beyond", "contradicts")]
-    assert sorted(c.questions[0].record for c in issue) == sorted(flagged)
+    assert not [c for c in cards if c.kind in ("beyond", "contradicts")]   # SR-152: a line
     on_trial = {c.questions[0].record for c in cards if c.kind == "trial"}
     assert on_trial.isdisjoint(flagged) and len(on_trial) == 3     # 8 records, 3 flagged
+    assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=8, cards=6)   # 3 + 3
 
 
 def test_sr107_ex6_progress_10_of_160(repo: Path, write_record, engine_standins) -> None:

@@ -156,25 +156,6 @@ def log_prompt(root: Path, text: str, *, at: str = "2026-10-07T10:00:00Z",
     return digest
 
 
-def write_stated_conflicts(root: Path, entries: list[dict], *,
-                           at: str = "2026-10-07T09:59:00Z") -> None:
-    import json
-
-    path = root / ".plumb" / "session" / "stated.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"at": at, "records": [], "conflicts": entries}),
-                    encoding="utf-8")
-
-
-def shown(root: Path) -> None:
-    """The stop hook showed every open conflict card in the reply before the prompt."""
-    from plumb.api import open_core
-    from plumb.mergedriver import open_conflicts, stated_entries
-
-    core = open_core(root)
-    write_stated_conflicts(root, stated_entries(core, [c.ic for c in open_conflicts(core)]))
-
-
 def events(root: Path, kind: str) -> list[dict]:
     from plumb.api import open_core
 

@@ -8,14 +8,16 @@ intent when the owner confirmed it, next to the owner's confirmed records it
 relates to. Labelled assumptions are shown and left out of what is judged.
 
 ``apply`` logs one ``verdict`` per record (the score is the model's confidence for
-``supported``, 0 otherwise), raises an issue card for ``beyond`` and ``contradicts``, and gives
+``supported``, 0 otherwise), puts a line on the request's open read-back card for ``beyond``
+and ``contradicts`` (SR-152: the next read-back drawn when none is open), and gives
 ``supported`` to the trial, which asks the owner (nothing is confirmed from a verdict alone). It
 only returns what to write: the worker writes it. The kind registers the handlers of the trial,
-beyond and contradicts cards (``effects``)."""
+beyond and contradicts cards (``effects``; old cards of those kinds are still answered)."""
 
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -186,8 +188,69 @@ def _strings(value: Any) -> list[str]:
     return [_flat(v) for v in value or () if _flat(v)]
 
 
+def _request_card(index: Mapping[str, Any], record: Any) -> str:
+    """The id of the read-back card of the request ``record`` came from ('' when unknown)."""
+    from plumb.understand import clarify
+
+    seen: set[str] = set()
+    todo = [record]
+    while todo:
+        r = todo.pop()
+        if r.id in seen:
+            continue
+        seen.add(r.id)
+        said = str(r.fields.get("prompt") or "")
+        if r.kind == "intent" and len(said) >= 12:
+            return clarify.card_id(said)
+        todo += [index[link.target.record] for link in r.links
+                 if link.kind in ("derives_from", "decides") and link.target.record in index]
+    return ""
+
+
+def doubt_line(index: Mapping[str, Any], record: Any, verdict: str,
+               related: Sequence[Any] = (), contradicts: Sequence[str] = ()) -> str:
+    """SR-152: the one line a ``beyond`` or ``contradicts`` verdict adds to a read-back."""
+    if verdict == "beyond":
+        return owner_text.DOUBT_BEYOND.format(title=record.title)
+    named = [str(r.get("id")) for r in related if isinstance(r, Mapping)
+             and str(r.get("id")) in index and any(
+                 re.search(rf"\b{re.escape(str(r.get('id')))}\b", c) for c in contradicts)]
+    other = index[named[0]] if named else None      # the record the judge named, not the first
+    if other is None:
+        return owner_text.DOUBT_CONTRADICTS_UNNAMED.format(title=record.title)
+    return owner_text.DOUBT_CONTRADICTS.format(title=record.title, other=other.title)
+
+
+def pending_lines(core: Any, session: str, card: str) -> list[str]:
+    """The doubt lines of the session's judged records of the request whose read-back is
+    ``card`` that no card carries yet (still unconfirmed, still as judged)."""
+    from plumb import log
+    from plumb.understand import cardstore, jobs
+
+    root = Path(core.root)
+    judged = {j.id: j for j in jobs.queued(root, session) if j.kind == kind}
+    shown = "\n".join(c.evidence for c in cardstore.own_cards(root, session))
+    index = core.index()
+    out: list[str] = []
+    for entry in log.read(core.paths, "events", ["verdict"]):
+        p = entry.payload
+        job = judged.get(str(p.get("job")))
+        record = index.get(str(p.get("id")))
+        if (job is None or record is None or record.hash != p.get("hash")
+                or _request_card(index, record) != card
+                or p.get("verdict") not in ("beyond", "contradicts")
+                or core.status([record.id])[record.id].confirmation == "confirmed"):
+            continue
+        item = next((r for r in job.inputs.get("records") or () if r.get("id") == record.id), {})
+        line = doubt_line(index, record, str(p["verdict"]), item.get("related") or (),
+                          _strings(p.get("contradicts")))
+        if line not in shown and line not in out:
+            out.append(line)
+    return out
+
+
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
-    """Log the verdicts; raise the issue cards; give the supported records to the trial.
+    """Log the verdicts; add the doubt lines to the read-back cards; give the supported records to the trial.
     Returns it in memory; the worker writes it."""
     if core is None:
         return Applied(job=job.id)
@@ -201,6 +264,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     supported: list[trial.Candidate] = []
     fragments: list[Any] = []
     backlog_pass = job.inputs.get("pass") == backlog.PASS
+    doubts: dict[str, list[str]] = {}       # read-back card id -> lines
+    flagged: list[str] = []                 # every doubt line, for the backlog's end line
     for raw in answer.get("verdicts") or ():
         if not isinstance(raw, Mapping) or str(raw.get("id")) not in asked:
             continue
@@ -226,12 +291,10 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             m.get("partial") for m in given["messages"])
         if backlog_pass and partial:
             fragments.append(record)        # the owner's words are not on file: one card says so
-        elif verdict == "beyond":
-            new_cards.append(cards.beyond_card(index, record, beyond, item["premise"],
-                                           trial._proposal(record)))
-        elif verdict == "contradicts":
-            new_cards.append(cards.contradicts_card(index, record, contradicts,
-                                                    item["premise"], trial._proposal(record)))
+        elif verdict in ("beyond", "contradicts"):
+            line = doubt_line(index, record, verdict, item.get("related") or (), contradicts)
+            doubts.setdefault(_request_card(index, record), []).append(line)
+            flagged.append(line)
         else:
             supported.append(trial.Candidate(record, confidence, item["premise"], ""))
     for item_id in asked:
@@ -241,11 +304,21 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         done = backlog.after_job(core, job, supported=supported,
                                  verdicts=[e["payload"] for e in entries
                                            if e["kind"] == "verdict"],
-                                 fragments=fragments, flagged=new_cards)
+                                 fragments=fragments, flagged=flagged)
         new_cards.extend(done.cards)
         notes.extend(done.notes)
     else:
         new_cards.extend(trial.cards_for(core, job.session, supported))
+    if doubts:
+        from dataclasses import replace
+
+        from plumb.understand import cardstore
+
+        for card in cardstore.own_cards(Path(core.root), job.session):
+            more = [d for d in doubts.get(card.id, ()) if d not in card.evidence.splitlines()]
+            if card.kind == "clarify" and card.status in cardstore.AWAITING and more:
+                new_cards.append(replace(card, evidence="\n".join(
+                    [*([card.evidence] if card.evidence else []), *more])))
     return Applied(job=job.id, cards=tuple(new_cards), entries=tuple(entries),
                    notes=tuple(notes))
 

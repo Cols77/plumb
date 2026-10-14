@@ -4,19 +4,15 @@
 - ``conflict_card``: one card in the intent-card format of R9, both versions in the owner's
   terms, what merged on its own, an optional advisory compatibility judgment (once per pair
   of hashes, logged, 5 s limit; "no judgment available" with none configured);
-- ``stated_entries``: the stated set's ``conflicts`` entries for the cards a reply showed;
 - ``propose``: the agent's combined version, shown in the card, never applied by itself;
-- ``choose_owner`` and ``relay_choice``: only the owner chooses. The owner's own terminal
-  (``approvals.require_owner``), or the owner's words relayed (``approvals.owner_prompt``)
-  with the card in the stated set of the reply before that prompt and a quote that names
-  exactly one choice without a reservation; ``apply_choice`` writes the chosen side's
+- ``choose_owner``: only the owner chooses, at their own terminal
+  (``approvals.require_owner``); ``apply_choice`` writes the chosen side's
   values for the conflicting fields, keeps everything that merged on its own, removes the
   block and appends a ``conflict-resolution`` entry.
 """
 
 from __future__ import annotations
 
-import json
 import re
 import threading
 from collections.abc import Iterable, Mapping, Sequence
@@ -25,7 +21,7 @@ from typing import Any
 
 from plumb.contracts import IntentConflict
 from plumb.model import record_hash
-from plumb.normalize import canonical_json, normalize_text, sha256_bytes
+from plumb.normalize import canonical_json, sha256_bytes
 from plumb.present import owner_text
 
 JUDGE_TIMEOUT_S = 5.0
@@ -119,12 +115,6 @@ def stated_key(conflict: IntentConflict) -> dict[str, Any]:
     return {"ic": conflict.ic, "record": conflict.record, "ours_hash": conflict.hashes["ours"],
             "theirs_hash": conflict.hashes["theirs"],
             "combined_hash": combined_hash(conflict)}
-
-
-def stated_entries(core: Any, shown: Iterable[str]) -> list[dict[str, Any]]:
-    """``[{ic, record, ours_hash, theirs_hash, combined_hash}]`` for the shown ICs."""
-    wanted = set(shown)
-    return [stated_key(c) for c in open_conflicts(core) if c.ic in wanted]
 
 
 def is_conflict_id(word: str) -> bool:
@@ -488,88 +478,7 @@ def normalize_take(conflict: IntentConflict, take: str) -> str:
                         f"{conflict.labels[1]}")
 
 
-# --------------------------------------------------------------------------- the relay
-
-
-def _side_pattern(words: Sequence[str]) -> re.Pattern[str]:
-    alternatives = "|".join(re.escape(w) for w in sorted(set(words), key=len, reverse=True))
-    return re.compile(rf"(?<![\w-])(?:{alternatives})(?![\w-])", re.IGNORECASE)
-
-
-def named_takes(conflict: IntentConflict, quote: str) -> set[str]:
-    """The choices ``quote`` names: a side's label (or mine/ours, theirs/their version), or
-    the combined version."""
-    ours, theirs = conflict.labels
-    found: set[str] = set()
-    if _side_pattern([ours, "mine", "ours", "my version", "my one", "my side"]).search(quote):
-        found.add("ours")
-    if _side_pattern([theirs, "theirs", "their version", "their one", "their side",
-                      "the incoming one"]).search(quote):
-        found.add("theirs")
-    if _side_pattern(["combined", "combination", "combine them", "the combined one",
-                      "the combined version", "the merged wording"]).search(quote):
-        found.add("combined")
-    return found
-
-
-def _stated_conflicts(core: Any, prompt_at: str) -> list[Mapping[str, Any]]:
-    try:
-        data = json.loads(core.paths.stated.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    if not isinstance(data, Mapping):
-        return []
-    stated_at = str(data.get("at") or "")
-    if stated_at and prompt_at and stated_at > prompt_at:
-        return []
-    return [c for c in data.get("conflicts") or [] if isinstance(c, Mapping)]
-
-
-def relay_choice(core: Any, ref: str, take: str, *, prompt: str, quote: str,
-                 values: Mapping[str, Any] | None = None) -> tuple[IntentConflict, dict]:
-    """Apply the owner's choice relayed from the owner's own logged words (sp6 8.4)."""
-    from plumb.approvals import Refused, owner_prompt, quote_in_prompt
-
-    conflict = find(core, ref)
-    take = normalize_take(conflict, take)
-    try:
-        entry = owner_prompt(core, prompt)
-    except Refused as exc:
-        raise ChoiceRefused(str(exc)) from exc
-    text = normalize_text(str(entry.get("text") or ""))
-    said = normalize_text(quote)
-    if not said or not quote_in_prompt(said, text):
-        raise ChoiceRefused("the quote is not a verbatim part of that prompt (whole words)")
-    key = stated_key(conflict)
-    shown = [c for c in _stated_conflicts(core, str(entry.get("at") or ""))
-             if c.get("ic") == conflict.ic]
-    if not any(c.get("ours_hash") == key["ours_hash"]
-               and c.get("theirs_hash") == key["theirs_hash"] for c in shown):
-        raise ChoiceRefused(f"the card of {conflict.record} \"{conflict.title}\" was not shown "
-                            "in the reply before that prompt; show it (/plumb conflicts) and "
-                            "let the owner answer it")
-    named = named_takes(conflict, said)
-    if take == "combined":
-        if values is not None and _values_hash(values) != combined_hash(conflict):
-            raise ChoiceRefused("the combined version given is not the one the card showed")
-        if not any(c.get("combined_hash") == key["combined_hash"] and key["combined_hash"]
-                   for c in shown):
-            raise ChoiceRefused("the combined version was not shown in the card the owner "
-                                "answered")
-        if named != {"combined"}:
-            raise ChoiceRefused("the quote does not name the combined version alone")
-    elif named != {take}:
-        side = conflict.labels[0 if take == "ours" else 1]
-        raise ChoiceRefused(f"the quote must name the one version kept ({side}'s, or "
-                            + ("mine" if take == "ours" else "theirs") + ") and no other")
-    digest = str(entry["digest"])
-    known = {e.payload.get("digest") for e in core.log_read("events", ["prompt"])}
-    if digest not in known:
-        core.log_append("events", "prompt", {"digest": digest, "session": entry.get("session"),
-                                             "at": entry.get("at")})
-    payload = apply_choice(core, conflict, take, by="agent-relayed", quote=said, prompt=digest,
-                           self_recorded=entry.get("via") != "hook", values=values)
-    return conflict, payload
+# --------------------------------------------------------------------------- the owner's choice
 
 
 def choose_owner(core: Any, ref: str, take: str,

@@ -146,8 +146,8 @@ def _conflict(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="plumb conflict",
         description="propose: store a combined version (shown in the card; applies nothing). "
-                    "choose: the owner's terminal, or with --prompt and --quote the owner's "
-                    "relayed words. relay: choose with --prompt and --quote.")
+                    "choose: the owner's terminal. relay, and choose with --prompt or "
+                    "--quote, no longer exist.")
     parser.add_argument("action", choices=["propose", "choose", "relay"])
     parser.add_argument("ref", nargs="+", help="an IC, a record or plain words")
     parser.add_argument("--take", default=None,
@@ -158,6 +158,11 @@ def _conflict(argv: list[str]) -> int:
     parser.add_argument("--quote", default=None, help="the owner's exact words")
     add_common(parser)
     args = parser.parse_args(argv)
+    if args.action == "relay" or args.prompt is not None or args.quote is not None:
+        print("plumb: conflict relay no longer exists; nothing was chosen. The owner answers "
+              "on the conflict's card or with their own typed `plumb conflict choose`",
+              file=sys.stderr)
+        return 3
     core = open_core(resolve_root(args.root))
     ref = " ".join(args.ref)
     if args.action != "propose":
@@ -168,21 +173,6 @@ def _conflict(argv: list[str]) -> int:
         ic = merge_conflict_of(core, ref) if merge_conflict_of is not None else None
         if ic:
             ref = ic  # the merge card asks this question; its answer answers the decision
-            if not args.take and args.quote:  # the early path needs no --take: the words
-                from plumb.normalize import normalize_text  # name the merge card's side
-
-                try:
-                    named = mod.named_takes(mod.find(core, ic), normalize_text(args.quote))
-                except mod.ConflictError:
-                    named = set()
-                if len(named) == 1:
-                    args.take = next(iter(named))
-                else:
-                    labels = mod.find(core, ic).labels
-                    print(f"plumb: answer refused: the merge card {ic} asks this question "
-                          f"now; the owner's words must name one of its versions (\"keep "
-                          f"{labels[0]}'s\" or \"keep {labels[1]}'s\")", file=sys.stderr)
-                    return 3
         elif _is_early(core, ref, mod):
             return _early_answer(core, args, ref)
     try:
@@ -197,22 +187,13 @@ def _conflict(argv: list[str]) -> int:
             print("plumb: --take is required (ours, theirs, combined or a side's name)",
                   file=sys.stderr)
             return 2
-        relayed = args.action == "relay" or args.prompt is not None
-        if relayed:
-            if not args.prompt or not args.quote:
-                print("plumb: a relayed choice needs --prompt and --quote", file=sys.stderr)
-                return 2
-            conflict, payload = mod.relay_choice(core, ref, args.take, prompt=args.prompt,
-                                                 quote=args.quote,
+        try:
+            conflict, payload = mod.choose_owner(core, ref, args.take,
                                                  values=_values(args.file))
-        else:
-            try:
-                conflict, payload = mod.choose_owner(core, ref, args.take,
-                                                     values=_values(args.file))
-            except Refused:
-                theirs = mod.find(core, ref).labels[1]
-                print(owner_text.CHOOSE_REFUSED.format(theirs=theirs), file=sys.stderr)
-                return 3
+        except Refused:
+            theirs = mod.find(core, ref).labels[1]
+            print(owner_text.CHOOSE_REFUSED.format(theirs=theirs), file=sys.stderr)
+            return 3
     except mod.ChoiceRefused as exc:
         print(f"plumb: choice refused: {exc}", file=sys.stderr)
         return 3
@@ -245,32 +226,23 @@ def _is_early(core: Any, ref: str, mod: Any) -> bool:
 
 
 def _early_answer(core: Any, args: Any, ref: str) -> int:
-    """The owner's answer to an early conflict card: relayed from their logged words
-    (``relay``, or ``choose`` with ``--prompt``), or their own terminal (``choose``)."""
+    """The owner's answer to an early conflict card: their own terminal (``choose``)."""
     from plumb.approvals import Declined, Refused
     from plumb.awareness import answer
     from plumb.cliutil import emit
 
     try:
-        relayed = args.action == "relay" or args.prompt is not None
-        if relayed:
-            if not args.prompt or not args.quote:
-                print("plumb: a relayed answer needs --prompt and --quote", file=sys.stderr)
-                return 2
-            early, payload = answer.relay(core, ref, args.take, prompt=args.prompt,
-                                          quote=args.quote)
-        else:
-            if not args.take:
-                print("plumb: --take is required (a branch's name, or both)", file=sys.stderr)
-                return 2
-            try:
-                early, payload = answer.choose_owner(core, ref, args.take)
-            except Refused:
-                from plumb.present import owner_text
+        if not args.take:
+            print("plumb: --take is required (a branch's name, or both)", file=sys.stderr)
+            return 2
+        try:
+            early, payload = answer.choose_owner(core, ref, args.take)
+        except Refused:
+            from plumb.present import owner_text
 
-                print(owner_text.CHOOSE_REFUSED.format(theirs=answer.find(core, ref).other),
-                      file=sys.stderr)
-                return 3
+            print(owner_text.CHOOSE_REFUSED.format(theirs=answer.find(core, ref).other),
+                  file=sys.stderr)
+            return 3
     except answer.AnswerRefused as exc:
         print(f"plumb: answer refused: {exc}", file=sys.stderr)
         return 3

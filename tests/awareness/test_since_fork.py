@@ -50,8 +50,11 @@ def _decisions(root: Path) -> list[Any]:
 
 
 def _card(lines: str) -> None:
-    assert '▸ Conflict  SR-005 "relay checks"' in lines, lines
-    assert f"main        {MAIN}" in lines, lines
+    assert '"relay checks" waits as a card' in lines, lines
+
+
+def _note(lines: str) -> None:
+    assert 'over "relay checks" waits as a card' in lines, lines
 
 
 def _stop_card(reply: str) -> None:
@@ -71,7 +74,6 @@ def test_capture_raises_the_card_and_one_decision(tmp_path: Path) -> None:
     result = change(other, FEAT_X)
     text = "\n".join(result.lines)
     _card(text)
-    assert f"this work   {FEAT_X}" in text
     [dec] = _decisions(other)
     assert dec.fields["matters"] is True
     assert dec.fields["early"]["hashes"]["main"] != dec.fields["early"]["hashes"]["feat-x"]
@@ -79,7 +81,7 @@ def test_capture_raises_the_card_and_one_decision(tmp_path: Path) -> None:
             if c["branch"] == "feat-x"]
     assert mine[0]["conflicts"][0]["branch"] == "main"
     again = change(other, FEAT_X + " Reworded.")                   # asked once
-    assert not any(line.startswith("▸ Conflict") for line in again.lines)
+    assert not any("waits as a card" in line for line in again.lines)
     assert len(_decisions(other)) == 1
 
 
@@ -105,10 +107,10 @@ def test_capture_after_taking_main_or_of_another_record_raises_nothing(tmp_path:
                                                                          ) -> None:
     _main, other = _main_landed(tmp_path)
     result = change(other, "The status card shows the state in two lines.", record="SR-006")
-    assert not any(line.startswith("▸ Conflict") for line in result.lines)
+    assert not any("waits as a card" in line for line in result.lines)
     run_git(other, "merge", "-q", "--no-edit", "main")            # feat-x takes main
     result = change(other, FEAT_X)
-    assert not any(line.startswith("▸ Conflict") for line in result.lines)
+    assert not any("waits as a card" in line for line in result.lines)
     assert _decisions(other) == []
 
 
@@ -123,7 +125,7 @@ def test_clarify_read_back_shows_the_card_before_anything_is_written(tmp_path: P
     with contextlib.redirect_stdout(out):
         assert cli.main(["clarify", "change SR-005 relay checks so the stated group is "
                          "pinned by its title", "--root", str(other)]) == 0
-    _card(out.getvalue())
+    _note(out.getvalue())
     assert sorted(p.name for p in (other / ".plumb").rglob("*.md")) == before
 
 

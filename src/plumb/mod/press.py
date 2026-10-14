@@ -167,6 +167,18 @@ def press(core: Any, session: str, offer: str, index: int,
     return result
 
 
+def _conflict_take(card: Any, choice: Choice) -> str | None:
+    """The side a press on a merge conflict card keeps (``ours``, ``theirs``, or ``combined``
+    when one is proposed), None for any other card or button."""
+    from plumb.understand import cards
+
+    if card.kind != "conflict":
+        return None
+    return {cards.KEEP_THIS: "ours", cards.KEEP_OTHER: "theirs"}.get(
+        choice.label, "combined" if choice.label == cards.BOTH and choice.answer == "accepted"
+        else None)
+
+
 def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Choice,
                      card: Any, question: str, record_id: Any, shown_hash: str,
                      digest: str) -> dict[str, Any]:
@@ -175,7 +187,8 @@ def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Ch
     (the owner's next message says what; nothing is stored). Neither confirms anything."""
     from plumb.understand import answer, summary
 
-    if not answer.is_left(choice):
+    side = _conflict_take(card, choice)
+    if not answer.is_left(choice) and side is None:
         raise Unknown("plumb mod press: that button cannot answer this card", 2)
     core.log_append("events", CARD_PRESS, {
         "session": session, "offer": offer, "card": card.id, "question": question,
@@ -187,7 +200,24 @@ def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Ch
         "label": choice.label, "answer": choice.answer, "status": card.status,
         "confirmed": [], "rejected": [], "left_out": [], "fresh_cards": [], "prefill": None,
         "line": "", "model_note": "", "notes": []}
-    if choice.answer == "open":
+    if side is not None and not answer.is_left(choice):
+        from plumb.mergedriver import conflicts
+        from plumb.understand import cards
+
+        try:
+            found = conflicts.find(core, card.id.removeprefix("conflict:"))
+            if cards.conflict_card(core.index(), found).evidence != card.evidence:
+                # the sides or the combined version are not what the owner was shown
+                raise Unknown(owner_text.PRESS_CHANGED_SINCE.format(title=card.topic)
+                              + " Nothing was written.", 1)
+            conflicts.apply_choice(core, found, side, by="owner")
+        except conflicts.ConflictError as exc:
+            raise Unknown(f"plumb mod press: {exc}; nothing was written", 1) from exc
+        result.update(status="closed",
+                      line=owner_text.PRESS_ANSWERED.format(label=choice.label, topic=topic),
+                      model_note=owner_text.PRESS_MODEL_ANSWERED.format(label=choice.label,
+                                                                        topic=topic))
+    elif choice.answer == "open":
         summary.leave_turn_card(core.root, session, card)
         result.update(status="left_open",
                       line=owner_text.PRESS_LEFT_OPEN.format(topic=topic),

@@ -2,7 +2,7 @@
 version the owner turned down is told so on every turn until its record matches the answer,
 and no "ok" confirms the rejected words meanwhile (SR-081).
 
-One test per entry point: the relay, the prompt hook, the stop hook and status; for the lane
+One test per entry point: the prompt hook, the stop hook and status; for the lane
 that holds the decision (it raised the question) and for the lane that hears the answer
 through the register."""
 
@@ -14,16 +14,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from mergedriver.mdhelpers import log_prompt
 
 from awareness.gitrepo import write_record
 from awareness.scenario import setup
 from awareness.test_early_answer import _captured_with_card as captured_with_card
-from awareness.test_early_answer import _later as later
-from awareness.test_early_answer import _relay as relay
+from awareness.test_early_answer import _choose as choose
 from awareness.test_early_answer import _start_turn as start_turn
 from awareness.test_early_answer import _stop as stop_hook
-from plumb import cli
 from plumb.api import open_core
 from plumb.hosts.claude_code import prompt
 
@@ -42,14 +39,14 @@ def _decision(root: Path) -> Any:
 def _main_lost(tmp_path: Path, hook_input: Any) -> tuple[Path, Path]:
     """main raised the question; the owner kept feat-x's: main is the losing lane."""
     main, other = captured_with_card(tmp_path, hook_input)
-    assert relay(main, _decision(main).id, "keep feat-x's") == 0
+    assert choose(main, _decision(main).id, "feat-x") == 0
     return main, other
 
 
 def _feat_x_lost(tmp_path: Path, hook_input: Any) -> tuple[Path, Path]:
     """main raised the question; the owner kept main's: feat-x hears it via the register."""
     main, other = captured_with_card(tmp_path, hook_input)
-    assert relay(main, _decision(main).id, "keep this one") == 0
+    assert choose(main, _decision(main).id, "main") == 0
     return main, other
 
 
@@ -112,18 +109,6 @@ def test_prompt_hook_names_it_on_every_turn(tmp_path: Path, hook_input: Any) -> 
 # cards; everything else is logged) removed the losing-lane line from the stop hook's owner
 # text. The lane still hears it: the prompt hook names it to the agent on every turn
 # (test_prompt_hook_names_it_on_every_turn) and plumb status names it (test_status_*).
-
-
-# -- the relay
-
-
-def test_relay_in_the_lane_hearing_the_answer_is_refused_too(tmp_path: Path,
-                                                             hook_input: Any) -> None:
-    _main, other = _feat_x_lost(tmp_path, hook_input)
-    words = "ok SR-005 looks right"
-    digest = log_prompt(other, words, at=later())
-    assert cli.main(["relay", "SR-005", "--prompt", digest, "--quote", words,
-                     "--root", str(other)]) == 3
 
 
 def test_no_answer_no_signal(tmp_path: Path) -> None:
@@ -190,19 +175,6 @@ def test_stop_hook_never_names_a_later_version(tmp_path: Path, hook_input: Any) 
     _main, other = _answer_merged_then_changed(tmp_path, hook_input)
     start_turn(other)
     assert LINE not in stop_hook(other, hook_input, active=True)
-
-
-def test_relay_records_an_ok_of_a_later_version(tmp_path: Path, hook_input: Any) -> None:
-    import contextlib
-
-    _main, other = _answer_merged_then_changed(tmp_path, hook_input)
-    words = "ok SR-005 looks right"
-    digest = log_prompt(other, words, at=later())
-    err = io.StringIO()
-    with contextlib.redirect_stderr(err):
-        cli.main(["relay", "SR-005", "--prompt", digest, "--quote", words,
-                  "--root", str(other)])
-    assert "turned down" not in err.getvalue()
 
 
 def test_fresh_branch_from_main_after_a_later_change(tmp_path: Path,

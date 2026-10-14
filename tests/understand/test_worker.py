@@ -271,3 +271,14 @@ def test_cmd_worker_runs_the_session_in_the_foreground(
     assert jobs.result(repo, "s1", job.id).status == "ok"
     assert cmd_worker.run("understand", []) == 2
     assert "not available in this build" in capsys.readouterr().err
+
+
+@pytest.mark.sr("SR-131")
+def test_an_applied_entry_is_seen_by_the_next_job_on_the_same_core(repo: Path) -> None:
+    """SR-131 EX-4: the reader's entries reach a later job applied by the same worker (the
+    request check reads them to keep a card open on a vague answer)."""
+    core = Core(repo)
+    assert not [e for e in core.events() if e.kind == "read-entry"]    # cached now
+    worker._write_applied(core, "s1", Applied(job="r1", entries=(
+        {"kind": "read-entry", "payload": {"id": "choice:x/q", "answer": "open"}},)))
+    assert [e.payload["answer"] for e in core.events() if e.kind == "read-entry"] == ["open"]

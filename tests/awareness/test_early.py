@@ -40,11 +40,8 @@ def test_same_record_conflict_card_and_one_decision(tmp_path: Path) -> None:
     change(other, "A relay pins the stated group, named by its title.")
     result = change(main, "A relay pins only the records the owner's words affirm.")
     text = "\n".join(result.lines)
-    assert '▸ Conflict  SR-005 "relay checks"' in text
-    assert "feat-x      A relay pins the stated group, named by its title." in text
-    assert "this work   A relay pins only the records the owner's words affirm." in text
-    assert "the same requirement is being changed on both branches" in text
-    assert 'Say: "keep feat-x\'s", "keep this one", or "both"' in text
+    assert '"relay checks" waits as a card' in text
+    assert "Say:" not in text      # the card asks the owner, not the agent
     decisions = _decisions(main)
     assert len(decisions) == 1
     dec = decisions[0]
@@ -70,7 +67,7 @@ def test_feature_overlap_judged_contradictory_is_a_conflict(tmp_path: Path) -> N
                              backend=judge)
     assert judge.calls and judge.calls[0][0] == "A relay confirms a group named by its title."
     text = "\n".join(result.lines)
-    assert "▸ Conflict" in text and "likely not (JEV, 0.90)" in text
+    assert "waits as a card" in text
     assert len(_decisions(main)) == 1
 
 
@@ -126,9 +123,9 @@ def test_clarify_shows_the_card_before_anything_is_written(tmp_path: Path) -> No
     before = sorted(p.name for p in (main / ".plumb").rglob("*.md"))
     view = clarify(open_core(main), "make SR-005 pin only the affirmed records")
     lines = view_lines(view)
-    assert lines[0].startswith('▸ Conflict  SR-005 "relay checks"')
-    assert "  feat-x      A relay pins the stated group, named by its title." in lines
-    assert "ask this conflict first, before any other question or any work" in lines
+    assert lines[0] == ('a conflict with feat-x over "relay checks" waits as a card for the '
+                        "owner at the end of this turn; do not restate it")
+    assert not any("SR-005" in line or "Say:" in line for line in lines)    # SR-151 EX-3
     assert sorted(p.name for p in (main / ".plumb").rglob("*.md")) == before
     assert inflight.read(main, allow_git=True)[1]["claims"][0]["branch"] == "feat-x"
 
@@ -137,7 +134,7 @@ def test_dry_run_checks_and_records_nothing(tmp_path: Path) -> None:
     main, other = setup(tmp_path)
     change(other, "feat-x's version")
     result = change(main, "main's version", dry_run=True)
-    assert any(line.startswith("▸ Conflict") for line in result.lines)
+    assert any("waits as a card" in line for line in result.lines)
     assert "plumb: nothing recorded (a preview)" in result.lines
     assert _decisions(main) == []
     assert [c["branch"] for c in inflight.read(main, allow_git=True)[1]["claims"]] == [
@@ -261,7 +258,7 @@ def test_different_examples_are_a_conflict(tmp_path: Path) -> None:
     main, other = setup(tmp_path)
     capture(other, _examples("the group is pinned"))
     result = capture(main, _examples("only the affirmed records are pinned"))
-    assert any(line.startswith('▸ Conflict  SR-005 "relay checks"') for line in result.lines)
+    assert any('"relay checks" waits as a card' in line for line in result.lines)
     assert len(_decisions(main)) == 1
 
 
@@ -272,7 +269,7 @@ def test_different_tails_of_a_long_statement_are_a_conflict(tmp_path: Path) -> N
     main, other = setup(tmp_path)
     change(other, _LONG + "Then the group is pinned.")
     result = change(main, _LONG + "Then only the affirmed records are pinned.")
-    assert any(line.startswith("▸ Conflict") for line in result.lines)
+    assert any("waits as a card" in line for line in result.lines)
     assert len(_decisions(main)) == 1
 
 
@@ -281,7 +278,7 @@ def test_preview_of_a_different_tail_shows_the_card(tmp_path: Path) -> None:
     main, other = setup(tmp_path)
     change(other, _LONG + "Then the group is pinned.")
     result = change(main, _LONG + "Then only the affirmed records are pinned.", dry_run=True)
-    assert any(line.startswith("▸ Conflict") for line in result.lines)
+    assert any("waits as a card" in line for line in result.lines)
     assert _decisions(main) == []
 
 
@@ -323,9 +320,8 @@ def test_capture_asks_once_against_the_newest_version(
     """check_records: one card and one decision, not one per claim of feat-x."""
     main, _other = _edited_outside_capture(tmp_path, monkeypatch)
     result = change(main, "main version")
-    cards = [line for line in result.lines if line.startswith("▸ Conflict")]
+    cards = [line for line in result.lines if "waits as a card" in line]
     assert len(cards) == 1
-    assert "  feat-x      feat-x version two" in result.lines
     assert len(_decisions(main)) == 1
 
 

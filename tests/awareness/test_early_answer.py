@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from mergedriver.mdhelpers import log_prompt
 
 from awareness.scenario import change, setup
 from awareness.test_claim_check import early_heads
@@ -67,14 +66,9 @@ def _state(root: Path, record_id: str) -> str:
     return open_core(root).status([record_id])[record_id].confirmation
 
 
-def _relay(root: Path, ref: str, words: str, *, quote: str | None = None,
-           take: str | None = None, via: str | None = "hook") -> int:
-    digest = log_prompt(root, words, at=_later(), via=via)
-    argv = ["conflict", "relay", ref, "--prompt", digest, "--quote", quote or words,
-            "--root", str(root)]
-    if take:
-        argv[3:3] = ["--take", take]
-    return cli.main(argv)
+def _choose(root: Path, ref: str, take: str) -> int:
+    """The owner's own terminal answers the card."""
+    return cli.main(["conflict", "choose", ref, "--take", take, "--root", str(root)])
 
 
 def _validate_errors(root: Path) -> list[str]:
@@ -90,7 +84,7 @@ def _captured_with_card(tmp_path: Path, hook_input: Any) -> tuple[Path, Path]:
     change(other, "A relay pins the stated group, named by its title.")
     _start_turn(main)
     result = change(main, "A relay pins only the records the owner's words affirm.")
-    assert any(line.startswith('▸ Conflict  SR-005 "relay checks"') for line in result.lines)
+    assert any('"relay checks" waits as a card' in line for line in result.lines)
     _stop(main, hook_input)                 # trigger 2 blocks: the agent asks
     _stop(main, hook_input, active=True)    # the reply the owner reads
     return main, other
@@ -106,7 +100,7 @@ def test_capture_card_answer_keep_theirs(tmp_path: Path, hook_input: Any) -> Non
     assert {"record": "SR-005", "branch": "feat-x"} in _stated(main)["early"]
     dec = _decision(main)
     assert dec.fields["chosen"] == "main's version"          # the preset side
-    assert _relay(main, dec.id, "keep feat-x's") == 0
+    assert _choose(main, dec.id, "feat-x") == 0
     dec = _decision(main)
     assert dec.fields["chosen"] == "feat-x's version"
     assert "main's version" in dec.fields["alternatives"]
@@ -121,7 +115,7 @@ def test_capture_card_answer_keep_theirs(tmp_path: Path, hook_input: Any) -> Non
 def test_capture_card_answer_keep_this_one(tmp_path: Path, hook_input: Any) -> None:
     main, _other = _captured_with_card(tmp_path, hook_input)
     dec = _decision(main)
-    assert _relay(main, "SR-005", "keep this one") == 0      # named by its record
+    assert _choose(main, "SR-005", "main") == 0      # named by its record
     assert _decision(main).fields["chosen"] == "main's version"
     assert _state(main, dec.id) == "confirmed"
 
@@ -143,14 +137,14 @@ def test_stop_hook_question_card_answer_both(tmp_path: Path, hook_input: Any) ->
                    "  3. Both - "):
         assert any(line.startswith(option) for line in lines), option
     assert 'say "ok" to confirm' not in shown
-    assert _relay(main, dec.id, "both, the group pinned when it is named") == 0
+    assert _choose(main, dec.id, "both") == 0
     assert _decision(main).fields["chosen"] == "both, combined"
     assert _state(main, dec.id) == "confirmed"
 
 
 def test_clarify_card_answer_before_capture(tmp_path: Path, hook_input: Any) -> None:
     """The read-back card (nothing written yet) reaches the owner through the stop hook of
-    a turn that changed no file; the answer is relayed once capture raised the decision."""
+    a turn that changed no file; the owner answers once capture raised the decision."""
     main, other = setup(tmp_path)
     change(other, "A relay pins the stated group, named by its title.")
     _start_turn(main)
@@ -160,16 +154,13 @@ def test_clarify_card_answer_before_capture(tmp_path: Path, hook_input: Any) -> 
     with contextlib.redirect_stdout(out):
         assert cli.main(["clarify", "make SR-005 pin only the affirmed records",
                          "--root", str(main)]) == 0
-    assert '▸ Conflict  SR-005 "relay checks"' in out.getvalue()
+    assert 'over "relay checks" waits as a card' in out.getvalue()
     reply = _stop(main, hook_input)
     assert early_heads(reply, "relay checks"), reply
     assert _stated(main)["early"] == [{"record": "SR-005", "branch": "feat-x"}]
-    words = "keep feat-x's"
-    digest = log_prompt(main, words, at=_later())
     change(main, "A relay pins only the records the owner's words affirm.")
     dec = _decision(main)
-    assert cli.main(["conflict", "relay", "SR-005", "--prompt", digest, "--quote", words,
-                     "--root", str(main)]) == 0
+    assert _choose(main, "SR-005", "feat-x") == 0
     assert _decision(main).fields["chosen"] == "feat-x's version"
     assert _state(main, dec.id) == "confirmed"
 
@@ -191,18 +182,7 @@ def test_plumb_conflicts_lists_the_early_card(tmp_path: Path, hook_input: Any) -
     assert "feat-x      A relay pins the stated group, named by its title." in text
     _start_turn(main)
     assert early_heads(_stop(main, hook_input, active=True), "relay checks")
-    assert _relay(main, "relay checks", "keep feat-x's", take="feat-x") == 0
-    assert _state(main, dec.id) == "confirmed"
-
-
-def test_host_without_prompt_hook_is_labelled(tmp_path: Path, hook_input: Any) -> None:
-    """The CLI-fallback host: a message the agent recorded itself answers too, labelled
-    "self-recorded message" (R13 Q4)."""
-    main, _other = _captured_with_card(tmp_path, hook_input)
-    dec = _decision(main)
-    assert _relay(main, dec.id, "keep feat-x's", via="turn") == 0
-    approval = [e.payload for e in open_core(main).log_read("events", ["approval"])][-1]
-    assert approval["self_recorded"] is True and approval["choice"]["take"] == "feat-x"
+    assert _choose(main, "relay checks", "feat-x") == 0
     assert _state(main, dec.id) == "confirmed"
 
 
@@ -213,40 +193,6 @@ def test_owner_terminal_answer(tmp_path: Path, hook_input: Any) -> None:
                      "--root", str(main)]) == 0
     assert _decision(main).fields["chosen"] == "feat-x's version"
     assert _state(main, dec.id) == "confirmed"
-
-
-# -- the answer is never inverted
-
-
-def test_plain_ok_naming_the_other_side_is_refused(tmp_path: Path, hook_input: Any) -> None:
-    """"ok DEC-001, keep feat-x's" never confirms the preset "main's version"."""
-    main, _other = _captured_with_card(tmp_path, hook_input)
-    dec = _decision(main)
-    words = f"ok {dec.id}, keep feat-x's"
-    digest = log_prompt(main, words, at=_later())
-    assert cli.main(["relay", dec.id, "--prompt", digest, "--quote", f"ok {dec.id}",
-                     "--root", str(main)]) == 3
-    assert _state(main, dec.id) == "proposed"
-    assert _relay(main, dec.id, words) == 0                    # the pick path records it
-    assert _decision(main).fields["chosen"] == "feat-x's version"
-
-
-def test_words_naming_no_version_or_two_are_refused(tmp_path: Path, hook_input: Any) -> None:
-    main, _other = _captured_with_card(tmp_path, hook_input)
-    dec = _decision(main)
-    assert _relay(main, dec.id, "hmm, not sure yet") == 3
-    assert _relay(main, dec.id, "keep main's or feat-x's, whatever") == 3
-    assert _relay(main, dec.id, "keep feat-x's", take="main") == 3
-    assert _state(main, dec.id) == "proposed"
-
-
-def test_answer_needs_the_card_shown(tmp_path: Path) -> None:
-    main, other = setup(tmp_path)
-    change(other, "A relay pins the stated group, named by its title.")
-    change(main, "A relay pins only the records the owner's words affirm.")
-    dec = _decision(main)
-    assert _relay(main, dec.id, "keep feat-x's") == 3          # no reply showed it
-    assert _relay(main, dec.id, f"keep feat-x's for {dec.id}") == 0  # the owner named it
 
 
 # -- the heuristic never says "compatible" on its own (finding: a plain contradiction passed)
@@ -315,7 +261,7 @@ def test_relay_carries_the_answer_into_the_register(tmp_path: Path,
                                                     hook_input: Any) -> None:
     main, _other = _captured_with_card(tmp_path, hook_input)
     dec = _decision(main)
-    assert _relay(main, dec.id, "keep feat-x's") == 0
+    assert _choose(main, dec.id, "feat-x") == 0
     [mine] = [c for c in inflight.read(main, allow_git=True)[1]["claims"]
               if c["branch"] == "main"]
     assert mine["conflicts"][0]["state"] == "confirmed"

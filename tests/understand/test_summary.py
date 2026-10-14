@@ -42,21 +42,6 @@ def own_card(repo: Path, card: CardState) -> None:
     cardstore.save(repo, SESSION, [*cardstore.own_cards(repo, SESSION), card])
 
 
-def test_sr105_ex2_beyond_card_offers_keep_drop_reword(repo: Path, write_record) -> None:
-    from plumb.understand import cardstore, judge
-
-    ids = make_world(repo, write_record, 1)
-    job = judge.build(open_core(repo), SESSION, records=ids)
-    applied = judge.apply(open_core(repo), job, verdict_answer(
-        (ids[0], "beyond", 0.9), beyond={ids[0]: ["a promise the owner did not make"]}))
-    cardstore.save(repo, SESSION, applied.cards)
-    (card,) = parts(repo).cards
-    assert card.splitlines()[:2] == ["Operation 1", "a promise the owner did not make"]
-    assert "1. " + owner_text.BEYOND_KEEP in card and "(recommended)" not in card
-    assert owner_text.BEYOND_DROP in card and owner_text.BEYOND_REWORD in card
-    assert owner_level(card) == []
-
-
 def test_order_confirmations_then_cards(repo: Path, write_record,
                                            monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb.hosts.claude_code import stop
@@ -121,7 +106,7 @@ def test_owner_text_passes_both_scanners(repo: Path, write_record) -> None:
         contradicts={ids[2]: ["SR-003 EX-1 conflicts with SR-001 EX-1"]}))
     cardstore.save(repo, SESSION, applied.cards)
     out = parts(repo)
-    assert out.cards
+    assert not out.cards                                  # SR-152: lines, not cards
     for text in out.cards:
         assert owner_level(text) == [], text
     for kind in ("clarify", "trial", "beyond", "contradicts", "couldnt_check", "stale_link"):
