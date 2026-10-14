@@ -48,6 +48,10 @@ const degradedAtom = atom({ plugin: 'plumb', key: 'degraded' } as const, false)
 const toldAtom = atom({ plugin: 'plumb', key: 'told' } as const, null as PlumbTold | null)
 const viewAtom = atom({ plugin: 'plumb', key: 'view' } as const, EMPTY_VIEW)
 const bandAtom = atom({ plugin: 'plumb', key: 'band' } as const, BAND)
+const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const, { index: 0 })
+
+// the width the pane asks for when it docks beside the conversation
+const PANE_COLUMNS = 80
 
 function statusLine(view: PlumbView): string {
   const waiting = view.cards.filter(c => c.repeats).length
@@ -347,7 +351,14 @@ export const register: Register = on => {
       return next(e)
     }
     if (key === 'pane') {
-      await $.ui.open({ id: PANE, title: T.paneTitle })
+      await update($, paneAtom, () => ({ index: 0 }))
+      await $.ui.open({ id: PANE, title: T.paneTitle, columns: PANE_COLUMNS })
+      return next(e)
+    }
+    if (key === 'back' || key === 'next') {
+      // Back on the first and Next on the last stay where they are
+      const last = view.cards.filter(c => c.repeats).length - 1
+      await update($, paneAtom, p => ({ index: Math.max(0, Math.min(last, Math.min(p.index, last) + (key === 'next' ? 1 : -1))) }))
       return next(e)
     }
     const link = await read($, linkAtom)
@@ -410,10 +421,30 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = uiOf($, e)
-    const { Text } = ui
+    const { Box, Button, Text } = ui
     const room = e.props.bodyColumns - 4 // less the card's frame and padding
-    const view = await read($, viewAtom)
-    if (!view.cards.length) return <Text dimColor>{T.nothingAwaits}</Text>
-    return Grouped(ui, view.cards, room)
+    const cards = (await read($, viewAtom)).cards
+    const waiting = cards.filter(c => c.repeats)
+    // SR-160: the other states (left open, being processed, blocked, done) listed below
+    const others = cards.filter(c => !c.repeats)
+    if (!cards.length) return <Text dimColor>{T.nothingAwaits}</Text>
+    const at = Math.min((await read($, paneAtom)).index, Math.max(waiting.length - 1, 0))
+    return (
+      <Box flexDirection="column">
+        {e.props.placement === 'inline' ? <Text dimColor>{T.paneDocks}</Text> : null}
+        {waiting.length ? (
+          <Box key="paged" flexDirection="column">
+            <Text bold>{`${T.groups.waiting} (${waiting.length})`}</Text>
+            <Box flexDirection="row" gap={1}>
+              <Button key="back" label={T.back} hotkey="b" onPress={() => {}} />
+              <Text>{T.nOfM(at + 1, waiting.length)}</Text>
+              <Button key="next" label={T.next} hotkey="n" onPress={() => {}} />
+            </Box>
+            {CardView(ui, waiting[at]!, room)}
+          </Box>
+        ) : null}
+        {others.length ? Grouped(ui, others, room) : null}
+      </Box>
+    )
   })
 }

@@ -18,8 +18,8 @@ Run plumb as `plumb`. The owner's intent lives in files; read it before acting.
   owner's message: `message_digest` in `plumb clarify --wait --json` (12+ hex digits do).
 - Plan each requirement's proof, how the owner sees it working, and show it before done:
   `plumb proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
-- Questions reach the owner only as cards: a read-back card (yes or a correction) or a choice
-  card (one question, the recommended option first); when one waits, say so, do not restate it.
+- Ask with Claude Code's question tool by default; a card (plumb-clarify) only when the answer
+  must change the owner's records or needs context, consequences or a diagram.
 - Never decide that the owner approved: only their typed `/plumb approve <IDs>` or plumb's own
   reader of their next message confirms.
 - Never run `plumb approve`, `revoke`, `tests waive`, `plumb triage --approve`,

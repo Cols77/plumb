@@ -404,6 +404,36 @@ def once_per_session(root: Path | str, session: str, key: str) -> bool:
     return True
 
 
+def listed(root: Path | str, session: str, key: str) -> bool:
+    """Whether ``key`` was already listed in this session (``once_per_session``), unmarked."""
+    data = _read_json(session_path(root, session) / "stale_listed.json")
+    return isinstance(data, dict) and key in data
+
+
+def queue_before(root: Path | str, session: str, key: str, line: str) -> None:
+    """SR-111: a stop that holds nothing cannot reach the agent, so the before-the-turn line
+    waits for the next prompt hook (``take_before``), which lists it."""
+    try:
+        _write_atomic(session_path(root, session) / "stale_before.json",
+                      json.dumps({"key": key, "line": line}))
+    except OSError:
+        pass
+
+
+def take_before(root: Path | str, session: str) -> str | None:
+    """The queued before-the-turn line, read once and marked listed as it is handed over;
+    None when none waits or it was listed already."""
+    path = session_path(root, session) / "stale_before.json"
+    data = _read_json(path)
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    if not isinstance(data, dict) or not data.get("line"):
+        return None
+    return str(data["line"]) if once_per_session(root, session, str(data.get("key"))) else None
+
+
 def hold_count(root: Path | str, session: str, turn_id: str | None) -> int:
     data = _read_json(session_path(root, session) / "stale_holds.json")
     if isinstance(data, dict) and data.get("turn") == turn_id:

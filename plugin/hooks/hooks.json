@@ -60,6 +60,17 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" question-answer",
+            "timeout": 30,
+            "async": true
+          }
+        ]
       }
     ],
     "Stop": [

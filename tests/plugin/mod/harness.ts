@@ -33,6 +33,7 @@ export type World = {
   logs: string[]
   fills: string[]
   opened: string[]
+  opens: { id: string; columns?: number }[]
   /** What `plumb mod <action>` answers: its exit code and JSON, by action and argv. */
   answer: (action: string, argv: string[]) => { exitCode: number; data: unknown }
   canFill: boolean
@@ -60,6 +61,7 @@ export function world(over: Partial<World> = {}): World {
     logs: [],
     fills: [],
     opened: [],
+    opens: [],
     canFill: true,
     answer: (action, argv) => {
       if (action === 'hello') return { exitCode: 0, data: { active: true, since: '2026-10-11T12:00:00Z', session: SESSION } }
@@ -138,6 +140,7 @@ export function install(on: On, w: World): void {
   })
   on('ui.open', (_$, e) => {
     w.opened.push(e.id)
+    w.opens.push({ id: e.id, columns: e.columns })
     return { value: { isPlaced: true } as any }
   })
   on('prompt.fill', (_$, e) => {

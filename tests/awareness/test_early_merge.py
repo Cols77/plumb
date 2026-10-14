@@ -19,6 +19,7 @@ from mergedriver.mdhelpers import (
     install_driver,
     make_repo,
     parse,
+    reads_keep,
     run_git,
 )
 
@@ -139,7 +140,7 @@ def test_merge_check_lists_no_answered_question(tmp_path: Path) -> None:
     assert any("as you answered before work began" in line for line in report.lines)
 
 
-def test_merge_card_answer_answers_the_waiting_decision(tmp_path: Path) -> None:
+def test_merge_card_answer_answers_the_waiting_decision(tmp_path: Path, monkeypatch) -> None:
     """The early decision was never answered: the merge-time card is the one question
     (the merge check does not list the decision beside it), and its answer answers the
     decision too."""

@@ -352,6 +352,22 @@ def cards_waiting_line(ctx: HookContext) -> Any:
     return Line(text, subject="cards-waiting", state=text) if text else None
 
 
+def stale_before_line(ctx: HookContext) -> Any:
+    """SR-111: the links already stale before the last turn, which a stop that held nothing
+    could not tell the agent, listed once per session (marked as it is handed over). None
+    when none waits."""
+    from plumb.present.delta import Line
+
+    try:
+        from plumb.stale import take_before
+
+        text = take_before(ctx.root, ctx.session_id)
+    except Exception:  # noqa: BLE001 - an advisory line never fails the prompt hook
+        return None
+    # oneshot: the queued line was consumed when read, so the budget must never cut it
+    return Line(text, oneshot=True) if text else None
+
+
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
     """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
@@ -386,7 +402,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     emitter = open_emitter(ctx, "prompt", config=core.config,
                            cap_lines=int(hooks.prompt_lines))
     trace = untraced_line(emitter, untraced_queued(ctx, core), core)
-    tail = [line for line in (trace, cards_waiting_line(ctx)) if line]
+    tail = [line for line in (trace, cards_waiting_line(ctx), stale_before_line(ctx)) if line]
     # oneshot: escalation_lines advanced the queue offset past them already
     queued = [Line(line, oneshot=True) for line in escalations]
     ctx.keep(emitter.add([*queued, *tail], commit=False))
