@@ -4,6 +4,9 @@
     "name": "Colin AUBE"
   },
   "description": "plumb, as a Claude Code plugin",
+  "allowCrossMarketplaceDependenciesOn": [
+    "diagram-mod"
+  ],
   "plugins": [
     {
       "name": "plumb",

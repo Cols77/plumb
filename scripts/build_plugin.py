@@ -49,6 +49,7 @@ VENDOR = PLUGIN / "vendor"
 DESCRIPTION = ("Keep a coding agent's work aligned with what you asked for: your intent, the "
                "requirements and examples it becomes, and the checks that hold the code to them.")
 AUTHOR = {"name": "Colin AUBE"}
+DIAGRAM_MARKETPLACE = "diagram-mod"   # where the diagram mod plumb's cards draw with is published
 
 # (Claude Code event, matcher, plumb hook, async, timeout in seconds): SP7 4.3, with SR-111's
 # synchronous edit check and SP8's gate on PreToolUse (the guard covers Bash too). The timeout
@@ -178,13 +179,16 @@ def plugin_json() -> str:
                   "keywords": ["intent", "requirements", "alignment", "tests"],
                   # the mod's $.state contract (SP7 5.6), which `claude plugin validate` checks
                   "types": "./types/index.d.ts",
-                  # the card's diagram is drawn by the diagram mod's noun (INT-041, DEC-047)
-                  "dependencies": ["diagram"]})
+                  # the card's diagram is drawn by the diagram mod's noun (INT-041, DEC-047);
+                  # it lives in its own marketplace, so the dependency names it
+                  "dependencies": [f"diagram@{DIAGRAM_MARKETPLACE}"]})
 
 
 def marketplace_json() -> str:
     return _json({"name": "plumb", "owner": AUTHOR,
                   "description": "plumb, as a Claude Code plugin",
+                  # without it Claude Code refuses to install a dependency from another marketplace
+                  "allowCrossMarketplaceDependenciesOn": [DIAGRAM_MARKETPLACE],
                   "plugins": [{"name": "plumb", "source": "./plugin", "version": version(),
                                "description": DESCRIPTION, "author": AUTHOR}]})
 

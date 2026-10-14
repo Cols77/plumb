@@ -43,6 +43,14 @@ def test_versions_agree() -> None:
     assert market["plugins"][0]["version"] == version
 
 
+def test_the_diagram_dependency_names_its_marketplace() -> None:
+    # a bare "diagram" is looked up in plumb's own marketplace, where it is not: the update fails
+    manifest = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    market = json.loads((REPO / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    assert manifest["dependencies"] == ["diagram@diagram-mod"]
+    assert market["allowCrossMarketplaceDependenciesOn"] == ["diagram-mod"]
+
+
 def test_hooks_cover_every_event() -> None:
     hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     assert hooks["modules"] == ["./register.tsx"]
