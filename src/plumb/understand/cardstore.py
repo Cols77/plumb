@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import CARD_STATUSES, CardState, ClarifyAnswer, ClarifyQuestion
+from plumb.contracts import CARD_STATUSES, CardState, Choice, ClarifyAnswer, ClarifyQuestion
 from plumb.understand import files
 
 
@@ -57,17 +57,27 @@ def stale_cards(root: Path, session: str) -> list[CardState]:
         if not isinstance(item, Mapping) or item.get("status", "open") != "open":
             continue
         options = [str(o) for o in item.get("options") or ()]
+        consequences = [str(c) for c in item.get("consequences") or ()]
+        consequences += [""] * (len(options) - len(consequences))
         try:
             first = int(item.get("recommended") or 0)
         except (TypeError, ValueError):
             first = 0
         if 0 < first < len(options):
             options.insert(0, options.pop(first))
+            consequences.insert(0, consequences.pop(first))
+        # one question whose choices are the options, so the panel draws a button for each
+        # with what it does; a press records the owner's choice and the agent acts on it
+        link = str(item.get("link", ""))
+        question = ClarifyQuestion(
+            id=f"stale:{link}#1", text=str(item.get("issue", "")), resolutions=tuple(options),
+            choices=tuple(Choice(o, "change", o, consequences[n])
+                          for n, o in enumerate(options)))
         out.append(CardState(
             id=f"stale:{item.get('link', '')}", kind="stale_link",
             topic=str(item.get("topic", "")), issue=str(item.get("issue", "")),
             evidence=str(item.get("path", "")), resolutions=tuple(options), status="open",
-            turn=int(item.get("turn") or 0)))
+            questions=(question,), turn=int(item.get("turn") or 0)))
     return out
 
 
