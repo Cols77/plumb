@@ -14,7 +14,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -24,7 +23,9 @@ import pytest
 from plumb import cli
 
 ROOT = Path(__file__).resolve().parents[2]
-HOOK_LIMIT_MS = 2000
+# End-to-end allowance includes process startup and filesystem scanning on Windows.
+# The owner requested this increase; configured in-process hook budgets are unchanged.
+HOOK_LIMIT_MS = 5000
 
 pytestmark = [pytest.mark.sr("SR-014"), pytest.mark.sr("SR-010"), pytest.mark.sr("SR-012")]
 
@@ -178,7 +179,7 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
 
     assert by_name["statusline"].stdout.startswith("plumb ")  # the status card (sp5 2)
 
-    # every hook well under 2 s; the test run is bounded by the tests themselves
+    # Every hook stays within the integration allowance; the test run has its own bound.
     for step in steps:
         if step.name != "covering tests":
             assert step.ms < HOOK_LIMIT_MS, (step.name, step.ms)

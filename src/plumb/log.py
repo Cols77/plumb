@@ -28,7 +28,7 @@ import re
 import subprocess
 import time
 import uuid
-from collections.abc import Collection, Iterable, Iterator, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +39,7 @@ from plumb.paths import PlumbPaths
 SCHEMA = 1
 LOCK_WAIT_S = 2.0
 LOCK_STALE_S = 10.0
+APPEND_BATCH_SIZE = 32  # bound each lock hold; every entry remains its own immutable file
 PACK_VERSION = 1
 # A cold read takes the entry files the pack cache misses from git's object store in one
 # process once there are this many: one git process costs about as much as this many first
@@ -599,30 +600,22 @@ def _all_entries(paths: PlumbPaths, stream: LogStream,
 # --------------------------------------------------------------------------- head
 
 
-def _head(paths: PlumbPaths, stream: LogStream) -> str | None:
+def _head(paths: PlumbPaths, stream: LogStream, data: dict[str, Any]) -> str | None:
     """The stream's latest digest: the head pointer, rebuilt by a scan when it is missing or
     names a file that no longer exists."""
-    data = _read_json(paths.log_head)
-    head = data.get(stream) if isinstance(data, dict) else None
+    head = data.get(stream)
     if isinstance(head, dict):
         name = str(head.get("name", ""))
-        if "/" in name and (paths.log_dir / name).is_file():
-            digest = head.get("digest")
-            return str(digest) if digest else None
+        digest = head.get("digest")
+        if (isinstance(digest, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+                and "/" in name and (paths.log_dir / name).is_file()):
+            return digest
     entries = _all_entries(paths, stream)
     if not entries:
         return None
     last = entries[-1]
-    _set_head(paths, stream, last.digest, last.name)
+    data[stream] = {"digest": last.digest, "name": last.name}
     return last.digest
-
-
-def _set_head(paths: PlumbPaths, stream: LogStream, digest: str, name: str) -> None:
-    data = _read_json(paths.log_head)
-    if not isinstance(data, dict):
-        data = {}
-    data[stream] = {"digest": digest, "name": name}
-    _write_json_atomic(paths.log_head, data)
 
 
 # --------------------------------------------------------------------------- API
@@ -631,6 +624,11 @@ def _set_head(paths: PlumbPaths, stream: LogStream, digest: str, name: str) -> N
 def append(paths: PlumbPaths, stream: LogStream, kind: str,
            payload: Mapping[str, Any]) -> LogEntry:
     """Write one entry as its own file under the per-worktree log lock; returns it."""
+    return append_many(paths, stream, [(kind, payload)])[0]
+
+
+def _validate_append(paths: PlumbPaths, stream: LogStream, kind: str,
+                     payload: Mapping[str, Any]) -> None:
     if stream not in STREAMS:
         raise ValueError(f"unknown log stream: {stream}")
     if not _KIND_RE.match(kind):
@@ -644,20 +642,53 @@ def append(paths: PlumbPaths, stream: LogStream, kind: str,
                                        else None, str(payload.get("by")))
         if problem:
             raise LogError(problem)
-    directory = paths.log_kind_dir(kind)
-    with _Lock(paths):
-        prev = _head(paths, stream)
-        now = time.time()
-        entry: dict[str, Any] = {"v": SCHEMA, "kind": kind,
-                                 "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
-                                 "marker": current_marker(), "payload": dict(payload),
-                                 "prev": prev}
-        entry["digest"] = entry_digest(entry)
-        file_name = _write_new(paths, directory, canonical_json(entry) + b"\n",
-                               (_new_name(now) for _ in range(100)))  # a clash: new suffix
-        name = f"{kind}/{file_name}"
-        _set_head(paths, stream, entry["digest"], name)
-    return _to_entry(stream, entry, -1, name)
+
+
+def append_many(paths: PlumbPaths, stream: LogStream,
+                entries: Sequence[tuple[str, Mapping[str, Any]]]) -> list[LogEntry]:
+    """Append separate entries, with one lock and head publication per bounded chunk.
+
+    Validate the whole request before writing. A failed chunk can persist a prefix: the
+    head is removed BEFORE its first write, so even a process interruption forces the next
+    writer to recover from the entry files instead of trusting an obsolete pointer.
+    """
+    if stream not in STREAMS:
+        raise ValueError(f"unknown log stream: {stream}")
+    pending = [(kind, dict(payload)) for kind, payload in entries]
+    for kind, payload in pending:
+        _validate_append(paths, stream, kind, payload)
+        canonical_json(payload)  # serialization errors must also precede persistence
+    result: list[LogEntry] = []
+    for offset in range(0, len(pending), APPEND_BATCH_SIZE):
+        with _Lock(paths):
+            data = _read_json(paths.log_head)
+            if not isinstance(data, dict):
+                data = {}
+                prev = None
+                for other in STREAMS:
+                    recovered = _head(paths, other, data)
+                    if other == stream:
+                        prev = recovered
+            else:
+                prev = _head(paths, stream, data)
+            # An inability to invalidate must abort before persisting any entry.
+            paths.log_head.unlink(missing_ok=True)
+            for kind, payload in pending[offset:offset + APPEND_BATCH_SIZE]:
+                now = time.time()
+                entry: dict[str, Any] = {
+                    "v": SCHEMA, "kind": kind,
+                    "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+                    "marker": current_marker(), "payload": payload, "prev": prev}
+                entry["digest"] = entry_digest(entry)
+                file_name = _write_new(paths, paths.log_kind_dir(kind),
+                                       canonical_json(entry) + b"\n",
+                                       (_new_name(now) for _ in range(100)))
+                name = f"{kind}/{file_name}"
+                prev = entry["digest"]
+                data[stream] = {"digest": prev, "name": name}
+                result.append(_to_entry(stream, entry, -1, name))
+            _write_json_atomic(paths.log_head, data)
+    return result
 
 
 def read(paths: PlumbPaths, stream: LogStream, kinds: Iterable[str] | None = None,
@@ -877,8 +908,10 @@ def migrate(paths: PlumbPaths, *, dry_run: bool) -> MigrationReport:
                 os.remove(paths.log_head)
             except OSError:
                 pass
+            heads: dict[str, Any] = {}
             for stream in STREAMS:
-                _head(paths, stream)
+                _head(paths, stream, heads)
+            _write_json_atomic(paths.log_head, heads)
     remaining = lines if dry_run else legacy_count(paths)
     return MigrationReport(lines=lines, written=tuple(written), skipped=skipped,
                            refused=tuple(refused), truncated=tuple(truncated),
