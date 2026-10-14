@@ -56,7 +56,7 @@ def load_offer(root: Path, session: str, offer: str) -> Mapping[str, Any] | None
 def buttons(card: CardState, question: ClarifyQuestion | None) -> tuple[Choice, ...]:
     """The buttons of one card question, in order: its stored choices (a card with no question,
     a stale link, offers its options as changes), then Ask for a change and Leave open (C3)."""
-    chosen = question.choices if question is not None else tuple(
+    chosen = question.choices if question is not None and question.choices else tuple(
         Choice(label, "change", label) for label in card.resolutions)
     return (*chosen, Choice(owner_text.BUTTON_ASK_CHANGE, "change", None),
             Choice(owner_text.BUTTON_LEAVE_OPEN, "open", None))
