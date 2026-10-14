@@ -133,6 +133,25 @@ def test_judgment_never_confirms_or_freshens(fid: Path) -> None:
     assert kinds == ["judgment"]
 
 
+@pytest.mark.sr("SR-050", "SR-153")
+@pytest.mark.parametrize("batch", [False, True])
+@pytest.mark.parametrize("stream,kind", [("events", "judgment"), ("evidence", "test-run")])
+def test_boundary_backend_view_suppresses_log_mutations(fid: Path, batch, stream, kind) -> None:
+    from plumb.boundary.fidelity import _NoWriteCore
+
+    core = open_core(fid)
+    original = core.log_append(stream, kind, {"original": True})
+    view = _NoWriteCore(core)
+    assert view.index()["SR-001"] == core.index()["SR-001"]
+    if batch:
+        result = view.log_append_many(stream, [(kind, {"attempt": n}) for n in range(2)])
+    else:
+        result = view.log_append(stream, kind, {"attempt": 0})
+    # Read the real disk again: an instance cache must not conceal an accidental write.
+    assert list(open_core(fid).log_read(stream)) == [original]
+    assert result is None
+
+
 def test_merge_lists_unjudged_fidelity(fid: Path, capsys) -> None:
     _git(fid, "add", "-A")
     _git(fid, "commit", "-q", "-m", "base")

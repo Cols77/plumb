@@ -71,10 +71,37 @@ def run_pass(repo: Path, box: Any, jobs: int | None = None) -> list[str]:
     ran: list[str] = []
     from plumb.understand import files
 
+    if jobs is None:
+        return worker.run_once(open_core(repo), SESSION)
     queued = sorted(files.jobs_dir(repo, SESSION).glob("*.json"))
     for path in queued[:jobs]:
         ran += worker.run_once(open_core(repo), SESSION, path.stem)
     return ran
+
+
+@pytest.mark.sr("SR-153")
+def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
+        repo: Path, write_record, engine_standins) -> None:
+    from plumb.understand import backlog, worker
+
+    ids = bulk(repo, write_record, {"alpha": 3, "beta": 3, "gamma": 3})
+    backlog.start(open_core(repo), SESSION)
+    core = open_core(repo)
+    core.events()  # prime the same instance the worker reuses across all jobs
+    seen = []
+
+    def answer(job):
+        seen.append(len([e for e in core.events() if e.kind == "verdict"]))
+        return answering()(job)
+
+    engine_standins.dispatcher.script = {"judge": answer}
+    ran = worker.run_once(core, SESSION)
+    assert len(ran) == 3 and seen == [0, 4, 8]
+    assert len([e for e in core.events() if e.kind == "verdict"]) == sum(map(len, ids.values()))
+    assert progress(repo).state == "done"
+    assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=12, cards=3)
+    assert len(open_cards(repo)) == 3
+    assert worker.run_once(core, SESSION) == []
 
 
 def progress(repo: Path):

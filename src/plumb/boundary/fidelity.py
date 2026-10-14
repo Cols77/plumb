@@ -30,6 +30,10 @@ class _NoWriteCore:
     def log_append(self, stream: str, kind: str, payload: Mapping[str, Any]) -> None:
         return None
 
+    def log_append_many(self, stream: str,
+                        entries: Sequence[tuple[str, Mapping[str, Any]]]) -> None:
+        return None
+
     def write_record(self, *args: Any, **kwargs: Any) -> None:
         raise PermissionError("the merge boundary writes no records")
 

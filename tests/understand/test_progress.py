@@ -7,10 +7,10 @@ import json
 from pathlib import Path
 
 import pytest
-from understand.fakes import owner_level
 
 from plumb.progress import Reporter, status_text
 from plumb.understand import files
+from understand.fakes import owner_level
 
 pytestmark = pytest.mark.sr("SR-108")
 
@@ -145,3 +145,58 @@ def test_no_stream_means_no_display_at_all(tmp_path: Path, capsys: pytest.Captur
     reporter.done()
     captured = capsys.readouterr()
     assert captured.out == "" and captured.err == ""
+
+
+@pytest.mark.sr("SR-153")
+def test_duplicate_updates_coalesce_but_heartbeat_and_changes_publish(tmp_path, monkeypatch):
+    import os
+
+    clock = Clock()
+    reporter = Reporter(tmp_path, "s1", "judge", clock=clock)
+    writes = []
+    replace = os.replace
+
+    def counted(src, dst):
+        if Path(dst) == reporter.path:
+            writes.append(clock())
+        return replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", counted)
+    reporter.update("judging", 0, 10)
+    for _ in range(5):
+        clock.advance(0.1)
+        reporter.update("judging", 0, 10)
+        reporter.tick()
+    assert writes == [0.0]
+    clock.advance(0.5)
+    reporter.tick()
+    assert writes == [0.0, 1.0]
+    reporter.update("judging", 1, 10)
+    reporter.update("judging", 1, 11)
+    reporter.update("checking", 1, 11)
+    reporter.done("finished")
+    assert len(writes) == 6 and _file(tmp_path, "s1")["state"] == "done"
+    reporter.failed("stopped")
+    assert len(writes) == 7 and _file(tmp_path, "s1")["state"] == "failed"
+
+
+@pytest.mark.sr("SR-153")
+def test_failed_progress_write_is_retried_without_waiting(tmp_path, monkeypatch):
+    import os
+
+    reporter = Reporter(tmp_path, "s1", "judge", clock=Clock())
+    replace = os.replace
+    attempts = []
+
+    def fail_once(src, dst):
+        attempts.append(dst)
+        if len(attempts) == 1:
+            raise PermissionError("busy")
+        return replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", fail_once)
+    reporter.update("judging", 1, 10)
+    reporter.update("judging", 1, 10)
+    reporter.update("judging", 1, 10)
+    assert len(attempts) == 2
+    assert _file(tmp_path, "s1")["done"] == 1
