@@ -194,10 +194,10 @@ def test_every_kind_stub_follows_the_job_kind_protocol(name: str) -> None:
         assert list(inspect.signature(func).parameters) == params
 
 
-def test_kinds_maps_the_three_kinds() -> None:
+def test_kinds_maps_the_kinds() -> None:
     from plumb.understand.kinds import KINDS
 
-    assert sorted(KINDS) == ["clarify", "judge", "read"]
+    assert sorted(KINDS) == ["clarify", "judge", "read", "tidy"]
 
 
 def _params(func) -> list[str]:

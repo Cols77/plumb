@@ -561,7 +561,7 @@ class IntentConflict:
 # The model-backed understanding layer (docs/plans/sp8-plan.md 3.2): jobs a worker runs, the
 # cards the owner answers, the gate and the progress. Every field has a default.
 
-JobKindName = Literal["read", "judge", "clarify"]
+JobKindName = Literal["read", "judge", "clarify", "tidy"]
 # slice 3 (sp7-realign-sp8 C1): the owner items the stop hook drew its own way become card
 # kinds: a regression, a decision that matters, a merge conflict, an early conflict, code that
 # drifted from an intent its requirement agrees with (SR-113 EX-2), and the records a turn

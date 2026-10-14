@@ -127,6 +127,18 @@ def withdraw(root: Path, session: str, ids: Sequence[str]) -> None:
     save(root, session, [replace(c, status="withdrawn") if c.id in ids else c for c in cards])
 
 
+def withdraw_card(core: Any, session: str, card: CardState, why: str) -> None:
+    """Withdraw one card (own or stale-link) and log why; it is told at the next turn end."""
+    if card.kind == "stale_link":
+        from plumb import stale
+
+        stale.withdraw_card(core, session, card.id.removeprefix("stale:"), why)
+        return
+    withdraw(core.root, session, [card.id])
+    core.log_append("events", "card-withdrawn", {"card": card.id, "session": session,
+                                                 "topic": card.topic, "reason": why})
+
+
 def save(root: Path, session: str, cards: Sequence[CardState]) -> None:
     """Write the session's own cards (stale-link cards are STALE's and never written)."""
     files.write_json_atomic(files.cards_path(root, session),

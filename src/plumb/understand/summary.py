@@ -25,7 +25,7 @@ from typing import Any
 from plumb.contracts import CardState, Choice, ClarifyQuestion, StopParts
 from plumb.present import owner_text
 from plumb.understand import cards as card_text
-from plumb.understand import cardstore, files
+from plumb.understand import cardstore, files, jobs
 
 UNDER_BUDGET_S = 0.35        # the upkeep (the log's cards, the offers) needs this much left
 CALIBRATE_S = 0.9            # rerunning the calibration needs this much left
@@ -103,6 +103,8 @@ def _failure_cards(core: Any, session: str) -> list[CardState]:
         raw = files.read_json(files.jobs_dir(core.root, session) / f"{result.job}.json")
         kind = str(raw.get("kind")) if isinstance(raw, Mapping) else ""
         message = ((raw.get("inputs") or {}).get("message") or {}) if isinstance(raw, Mapping) else {}
+        if kind == "tidy":
+            continue                      # SR-162: its own line says it could not run
         if kind == "clarify" and any(c.id == clarify.couldnt_card_id(str(message.get("digest")))
                                      for c in cardstore.own_cards(Path(core.root), session)):
             continue                      # `plumb clarify` already drew this failure's card
@@ -185,9 +187,10 @@ def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (
         except Exception:  # noqa: BLE001 - the upkeep never costs the owner their summary
             pass
         try:
-            from plumb.understand import backlog
+            from plumb.understand import backlog, tidy
 
             backlog.resume(core, session)    # a pass a failure interrupted goes on (spec 8)
+            tidy.enqueue(core, session)      # SR-162: the model reads the cards after this turn
         except Exception:  # noqa: BLE001 - queueing never costs the owner their summary
             pass
     rendered: tuple[str, ...] = ()
@@ -222,6 +225,64 @@ def _keep(core: Any, session: str, held: Sequence[CardState]) -> None:
         {"card": cardstore.card_to_json(c)} for c in held])
 
 
+READ_BACK = ("clarify", "trial")
+
+
+def _settled(card: CardState, statuses: Mapping[str, Any]) -> str | None:
+    """SR-161: why a read-back or trial card's question no longer stands (every record it asks
+    about is confirmed or superseded), in the owner's words, or None while one still does."""
+    records = [q.record for q in card.questions if q.record]
+    states = [statuses.get(r) for r in records]
+    if not records or any(s is None or not (s.confirmation == "confirmed"
+                                            or s.superseded_by is not None) for s in states):
+        return None
+    gone = [r for r, s in zip(records, states, strict=True) if s.superseded_by is not None]
+    if not gone:
+        return owner_text.WITHDRAWN_CONFIRMED
+    return owner_text.WITHDRAWN_SUPERSEDED.format(ids=" and ".join(gone))
+
+
+def _withdraw_settled(core: Any, session: str) -> None:
+    """SR-161: withdraw the session's read-back and trial cards whose question no longer stands
+    and its stale-link cards whose link is settled. Nothing is answered or confirmed
+    (``cardstore.withdraw``); each withdrawal is logged (``_withdrawn_lines`` tells it)."""
+    from plumb import stale
+
+    cards = [c for c in cardstore.own_cards(core.root, session)
+             if c.kind in READ_BACK and c.status in (*cardstore.AWAITING, "left_open")]
+    wanted = sorted({q.record for c in cards for q in c.questions if q.record})
+    statuses = core.status(wanted) if wanted else {}
+    gone = [(c, why) for c in cards if (why := _settled(c, statuses))]
+    for card, why in gone:
+        cardstore.withdraw_card(core, session, card, why)
+    stale.withdraw_settled(core, [session])
+
+
+def _tidy_lines(core: Any, session: str, since: str) -> list[str]:
+    """The owner's lines about cards plumb withdrew in this session, told once: one naming
+    ``topic, reason`` for each, and one when the tidy job could not run (SR-162 EX-4)."""
+    told = Told(core.root, session, since)
+    named: list[str] = []
+    for entry in core.events():
+        if (entry.kind == "card-withdrawn" and entry.payload.get("session") == session
+                and entry.digest not in told.notices and entry.at >= told.since):
+            told.notices.add(entry.digest)
+            named.append(f"{entry.payload.get('topic')}, {entry.payload.get('reason')}")
+    failed = [r.job for r in _tidy_failures(core, session) if r.job not in told.notices]
+    told.notices.update(failed)
+    told.dirty = bool(named or failed)
+    told.save()
+    return [*([owner_text.CARDS_WITHDRAWN.format(items="; ".join(named))] if named else []),
+            *([owner_text.TIDY_COULD_NOT_RUN] if failed else [])]
+
+
+def _tidy_failures(core: Any, session: str) -> list[Any]:
+    from plumb.understand import queue
+
+    return [r for r in queue.failures(core, session)
+            if getattr(jobs.load(core.root, session, r.job), "kind", "") == "tidy"]
+
+
 def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
           passing: set[str]) -> CardState | None:
     """The card as it still holds, or None when its question no longer stands: a decision
@@ -236,6 +297,8 @@ def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
         return state is not None and (state.confirmation == "confirmed"
                                       or state.superseded_by is not None)
 
+    if card.kind in READ_BACK:
+        return None if _settled(card, statuses) else card
     if card.kind in ("decision", "early_conflict", "test_changed"):
         return None if all(done(q.record) for q in card.questions) else card
     if card.kind == "regression":
@@ -286,6 +349,7 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
             cardstore.save(core.root, session, [*own, *add])
     from plumb.mod.offers import reopen_changed
 
+    _withdraw_settled(core, session)
     reopen_changed(core, session)       # DEC-034: a card left open returns once it changed
     held = cardstore.states(core, session)
     open_cards = [c for c in cardstore.load(core.root, session, open_only=False)
@@ -338,6 +402,7 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
             n=len(late), topics="; ".join(f'"{t}"' for t in late)))
     if incomplete:
         out.append(owner_text.FULL_INCOMPLETE.format(n=incomplete))
+    out.extend(_tidy_lines(core, session, _iso(stamp)))
     _waiting(core, session, drawn, drawn_ids)
     # an answered turn-built card (a resolved conflict) stays listed, so the turn line and the
     # pane's Done list still know it after this rewrite

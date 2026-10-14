@@ -376,6 +376,17 @@ FULL_NOT_DRAWN = ("{n} more cards wait for you; there was no time left to draw t
                   "this turn: {topics}")
 FULL_INCOMPLETE = ("{n} cards wait until the agent writes what each option does and why one is "
                    "recommended; they stay open and are shown once complete.")
+# SR-161: the one line at a turn end naming the cards plumb withdrew, and why
+CARDS_WITHDRAWN = "Withdrawn: {items}"
+WITHDRAWN_LINK_CURRENT = "its link is current again"
+WITHDRAWN_LINK_GONE = "its link no longer exists"
+WITHDRAWN_SUPERSEDED = "{ids} is superseded"
+WITHDRAWN_CONFIRMED = "you confirmed what it asked about"
+# SR-162: the tidy job's reasons, its step and the line when it could not run
+STEP_TIDYING = "checking your open questions"
+TIDY_ANSWERED = 'you confirmed {record}: "{quote}"'
+TIDY_DUPLICATE = 'it asks what "{other}" asks'
+TIDY_COULD_NOT_RUN = "I could not check whether your open questions are already answered; they all stay."
 # SR-116 EX-4: what the agent is told at the next prompt when cards were shown at turn end
 CARDS_WAITING_AGENT = ("plumb: {n} cards were shown to the owner at the end of the last turn "
                        "and await their answer ({topics}). If you mention them, say in one line "

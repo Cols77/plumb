@@ -221,7 +221,15 @@ def repin(core: Core, selector: str | None = None, *, all_stale: bool = False,
             core.store.set_links(record_id, [link_to_dict(link) for link in new_links])
     if changes:
         core.log_append("events", "repin", {"links": changes, "note": note})
+        _withdraw_settled_cards(core)
     return changes
+
+
+def _withdraw_settled_cards(core: Core) -> None:
+    """SR-161: a stale card of a link just settled is withdrawn in every session folder."""
+    from plumb import stale
+
+    stale.withdraw_settled(core)
 
 
 def _named_link(core: Core, link_id: str) -> tuple[Record, Link]:
@@ -259,6 +267,7 @@ def unlink(core: Core, link_id: str, note: str) -> dict[str, Any]:
               "example": link.example, "pin": _pin_dict(link.pin), "note": note,
               "renumbered": renumbered}
     core.log_append("events", "unlink", result)
+    _withdraw_settled_cards(core)
     return {**result, "untested": link.example if lone else None}
 
 
@@ -289,6 +298,7 @@ def relink(core: Core, link_id: str, target: Target, note: str) -> dict[str, Any
               "old": {"target": _describe(link.target), "pin": _pin_dict(link.pin)},
               "new": {"target": _describe(target), "pin": _pin_dict(moved.pin)}}
     core.log_append("events", "relink", result)
+    _withdraw_settled_cards(core)
     return result
 
 
