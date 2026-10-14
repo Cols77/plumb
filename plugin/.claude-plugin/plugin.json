@@ -12,5 +12,8 @@
     "alignment",
     "tests"
   ],
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "dependencies": [
+    "diagram"
+  ]
 }

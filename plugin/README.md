@@ -30,7 +30,7 @@ per session and nothing else.
 ## What it brings
 
 - `/plumb`: plumb in plain words. `/plumb status` says what awaits you; `/plumb explain
-  <anything>` says why something exists; `/plumb review` and `/plumb confirm` walk you through
+  <anything>` says why something exists; `/plumb review` walks you through
   what to confirm; `/plumb impact <anything>` says what a change would reach; `/plumb view`
   opens the records in Obsidian.
 - Skills that ground the agent's work in your records and clarify your intent before it builds.
@@ -38,5 +38,7 @@ per session and nothing else.
   by a timeout so plumb never holds your session.
 - On Claude Code builds that load mods, a panel above the prompt with plumb's status and each
   card that waits for you, with buttons to confirm, ask for a change or leave it open.
+  A card is either a read-back of what plumb understood or a choice between options; when the
+  diagram mod is installed, a card can show a block diagram beside its question.
 
 plumb is MIT licensed (see `LICENSE`).

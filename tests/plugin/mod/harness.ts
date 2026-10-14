@@ -5,7 +5,7 @@
 import type { On } from 'claude-code'
 import { mock } from 'claude-code/testing'
 
-import { DRAW, PRESS_CHANGE, PRESS_CONFIRM, PRESS_LEAVE_OPEN, PRESENT, PYTHON, ROOT, SESSION, UNDO } from './fixtures'
+import { DRAW, PRESS_CHANGE, PRESS_CONFIRM, PRESS_LEAVE_OPEN, PRESENT, PYTHON, ROOT, SESSION } from './fixtures'
 
 export const SURFACES = ['terminal', 'desktop'] as const
 export const NOW = Date.parse('2026-10-11T12:00:05Z')
@@ -64,7 +64,6 @@ export function world(over: Partial<World> = {}): World {
     answer: (action, argv) => {
       if (action === 'hello') return { exitCode: 0, data: { active: true, since: '2026-10-11T12:00:00Z', session: SESSION } }
       if (action === 'draw') return { exitCode: 0, data: DRAW }
-      if (action === 'undo') return { exitCode: 0, data: UNDO }
       if (action === 'press') {
         const choice = argv[argv.indexOf('--choice') + 1]
         const answer = choice === '3' ? PRESS_LEAVE_OPEN : choice === '2' ? PRESS_CHANGE : PRESS_CONFIRM

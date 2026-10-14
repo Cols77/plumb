@@ -29,11 +29,11 @@ Rules:
 - "ok" or "yes" with no names covers the items shown, unless other words of the same message
   object to or change some of them: then those items get their own answer.
 - A record the person names that is not in `shown` still gets an entry, with an empty `hash`.
-- A short answer to a card question is read against that question. A trial batch's yes is
-  `accepted`, no is `rejected`; the "build anyway" offer's yes is `accepted`, "wait" is `rejected`.
+- A short answer to a card question is read against that question. The "build anyway" offer's yes
+  is `accepted`, "wait" is `rejected`.
+- A vague answer to a choice ("whatever works", "you pick", "up to you") is `open`: the
+  card stays open until the person picks one.
 - Read an id that is typed loosely ("INT-24") as the id in `shown` ("INT-024").
 - Never answer `accepted` for something the person only asked a question about.
-- A request to turn a setting on, to undo something, or to go ahead with a held step is read like
-  any other answer: report what the message says; others decide what it may do.
 
 Answer with the JSON object the schema describes and nothing else.

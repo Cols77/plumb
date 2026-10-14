@@ -1,8 +1,6 @@
 // What plumb's panel says to the owner (SP7 6.3: titles and plain words, never IDs, paths of
 // plumb's own files, hashes or commands). The card texts themselves come from plumb.
 
-export const FOLD_AT = 4000 // characters of a change above which it is folded, never cut
-
 export const GLYPHS: Record<string, string> = {
   aligned: '✓',
   'awaits you': '●',
@@ -22,26 +20,11 @@ export const T = {
   showFewer: 'Show fewer',
   openPane: 'Open in a pane',
   paneTitle: 'plumb: what awaits you',
-  asItReads: 'As it now reads',
-  whatChanged: 'What changed',
-  evidence: 'What it rests on',
-  yourWords: 'Your words',
-  options: 'Your options',
-  why: 'Why the recommended one',
   recommended: ' (recommended)',
-  consequence: 'does and leaves undone: ',
-  notWritten: 'not written yet',
-  folded: (size: number, lines: number) =>
-    `folded: ${size.toLocaleString('en')} characters, ${lines} lines`,
-  unfold: 'Open the change in full',
-  fold: 'Fold the change',
-  changeHead: (path: string, added: number, removed: number, size: number) =>
-    `${path} (+${added}/-${removed} lines, ${size.toLocaleString('en')} characters)`,
-  items: (n: number) => `${n} items`,
-  undo: 'Undo',
-  settledHead: 'Settled from your words:',
+  assumed: 'Assumed: ',
+  wont: 'Not doing: ',
+  diagramLine: (path: string) => `Diagram: ${path} (open it to see it)`,
   pressFailed: "plumb could not record that press; nothing changed. Try again, or answer in words.",
-  undoFailed: 'plumb could not take that back; nothing changed.',
   degraded: "plumb's panel is off for this session; plumb keeps working in the background.",
   // SR-126: why the panel could not reach plumb, said once per session
   noPython: (looked: string[]) =>

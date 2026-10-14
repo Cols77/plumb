@@ -17,6 +17,7 @@ and ``plumb.understand.files`` only."""
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, TextIO
@@ -47,6 +48,9 @@ def decide(root: Path | str, session: str, tool: str,
             return _deny(reason)
     if tool not in EDIT_TOOLS or not session:
         return {}
+    path = str((tool_input or {}).get("file_path") or "").replace("\\", "/")
+    if ".." not in path and re.search(r"\.plumb/session/[^/]+/diagrams/", path):
+        return {}  # a card's diagram is drawn while the card is open (SR-146), as gate.sh lets it
     from plumb.understand import files
 
     state = files.gate_from_json(files.read_json(files.gate_path(Path(root), session)))

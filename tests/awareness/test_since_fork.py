@@ -135,7 +135,7 @@ def test_direct_edit_then_stop_hook_asks(tmp_path: Path, hook_input: Any) -> Non
     start_turn(other)
     requirement(other, "SR-005", "relay checks", FEAT_X, feature="FEAT-002")
     asked, reply = turn(other, hook_input)
-    assert "ask the owner now" in asked, asked
+    assert "ask the owner now" not in asked, asked      # the card asks, never the agent
     _stop_card(reply)
     assert len(_decisions(other)) == 1
 

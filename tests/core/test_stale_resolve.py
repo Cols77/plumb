@@ -202,7 +202,6 @@ def test_stale_cards_file_format(project: Path) -> None:
                     "options": ["a", "b", "c"], "recommended": 1, "turn": 4,
                     "status": "open"}]
     assert stale.close_card(project, "s1", LINK) is True
-    assert stale.card_lines(project, "s1") == []
     assert json.loads((project / ".plumb" / "session" / "s1" / "stale_cards.json")
                       .read_text("utf-8"))[0]["status"] == "resolved"
     # the phase C adapter reads it back as a card

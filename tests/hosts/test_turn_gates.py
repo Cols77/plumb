@@ -187,7 +187,9 @@ def test_without_a_test_map_a_turn_samples_sets_pending_and_checks_regressions(
     # trigger 3 ran without the map: the regression of this turn's run is asked
     assert "regression: tests/test_calc.py::test_sub" in first
     second = stop(project, entry, monkeypatch, capsys, active=True)
-    assert "full verification pending (coverage unknown" in second
+    # the status card is the status line's: the pending state is in the snapshot it reads
+    status = project / ".plumb" / "session" / "status.json"
+    assert "full pending" in second or json.loads(status.read_text("utf-8"))["full_pending"]
     assert "regressions not checked" not in first + second
     assert "check skipped" not in first + second
     assert no_map, "the map build was not started outside the hook"

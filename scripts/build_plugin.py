@@ -177,7 +177,9 @@ def plugin_json() -> str:
                   "author": AUTHOR, "license": "MIT",
                   "keywords": ["intent", "requirements", "alignment", "tests"],
                   # the mod's $.state contract (SP7 5.6), which `claude plugin validate` checks
-                  "types": "./types/index.d.ts"})
+                  "types": "./types/index.d.ts",
+                  # the card's diagram is drawn by the diagram mod's noun (INT-041, DEC-047)
+                  "dependencies": ["diagram"]})
 
 
 def marketplace_json() -> str:

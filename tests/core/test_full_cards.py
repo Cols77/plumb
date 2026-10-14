@@ -16,7 +16,7 @@ from plumb import links, stale
 from plumb.api import open_core
 from plumb.cli import main
 from plumb.contracts import Target
-from plumb.understand import cardcontent, cardstore
+from plumb.understand import cardcontent, cardstore, fullcard
 from plumb.understand.repin import Meaning, ModelDiagnoser
 
 pytestmark = pytest.mark.sr("SR-116")
@@ -229,63 +229,32 @@ def test_completing_a_card_keeps_its_topic_issue_and_options(project: Path, caps
     assert card["turn"] == 7 and card["status"] == "open" and stale.card_complete(card)
 
 
-# --------------------------------------------------------------------------- the content (EX-1)
+# --------------------------------------------------------------------------- the content (SR-129)
 
 
-def test_ex1_the_card_shows_wording_change_words_consequences_and_why(project: Path) -> None:
+def test_the_card_shows_its_options_consequences_and_why_and_no_diff(project: Path) -> None:
     (project / "src" / "calc.py").write_text(CHANGED, "utf-8")
     entry = stale.add_card(project, "s1", link=LINK, record="SR-001", path="src/calc.py",
                            topic="Adds numbers", issue="add now multiplies",
                            options=OPTIONS.split("|"), consequences=CONSEQUENCES.split("|"),
                            why=WHY)
-    content = cardcontent.card_content(open_core(project), entry, session="s1")
-    assert content["record_now"]["wording"] == "add returns the sum."
-    assert content["record_now"]["examples"] == ["EX-1: given 1 and 2, when add runs, then it "
-                                                 "returns 3"]
-    change = content["change"]
-    assert "-    return a + b" in change["diff"] and "+    return a * b" in change["diff"]
-    assert change["added"] == 1 and change["removed"] == 1 and change["folded"] is False
-    (words,) = content["owner_words"]["items"]
-    assert words["id"] == "INT-001" and words["quote"] == QUOTE and words["prompt"] == PROMPT
+    content = fullcard.stale_content(open_core(project), entry, session="s1")
+    assert content["kind"] == "stale_link"
+    assert content["context"] == [WHY] and content["link"] == LINK
     first, second = content["options"]
     assert first["recommended"] and first["consequence"].startswith("add keeps multiplying")
     assert second["consequence"].startswith("add sums again")
-    assert content["why"] == WHY and content["complete"] and content["missing"] == []
-    text = "\n".join(cardcontent.content_lines(content))
-    for part in ("add returns the sum.", "+    return a * b", QUOTE, WHY,
-                 "does and leaves undone: add sums again"):
-        assert part in text
+    text = fullcard.render(content)
+    assert "  1. Keep it and reword the requirement (recommended) - add keeps multiplying" in text
+    assert WHY in text and "return a * b" not in text
     json.dumps(content)                                     # plain data for present.json
-
-
-def test_ex2_a_long_diff_is_kept_whole_and_marked_with_its_size(project: Path) -> None:
-    big = "".join(f"line_{n} = {n}\n" for n in range(4000))
-    (project / "src" / "big.py").write_text(big, "utf-8")
-    open_core(project).add_link("SR-001", "implemented_by", Target(path="src/big.py"))
-    _git(project, "add", "-A")
-    _git(project, "commit", "-q", "-m", "big")
-    (project / "src" / "big.py").write_text(big.replace(" = ", " == "), "utf-8")
-    entry = {"link": "SR-001#2", "record": "SR-001", "path": "src/big.py", "topic": "t",
-             "issue": "i", "options": ["a", "b"], "consequences": ["x", "y"], "why": "w"}
-    content = cardcontent.card_content(open_core(project), entry)
-    change = content["change"]
-    assert change["size"] > 60_000 and len(change["diff"]) == change["size"]
-    assert change["folded"] is True and change["removed"] == 4000
-    folded = cardcontent.content_lines(content)
-    assert any(f"folded: {change['size']} characters" in line for line in folded)
-    assert len(folded) < 50
-    full = cardcontent.content_lines(content, fold=False)
-    assert sum(1 for line in full if "line_3999 == 3999" in line) == 1
 
 
 def test_owner_words_not_on_file_are_said_plainly(project: Path, write_record) -> None:
     write_record(project, SR1.replace("SR-001", "SR-002").replace("Adds numbers", "Subtracts"))
-    entry = {"link": "SR-002#0", "record": "SR-002", "path": "", "topic": "t", "issue": "i",
-             "options": ["a", "b"]}
-    content = cardcontent.card_content(open_core(project), entry)
-    assert content["owner_words"] == {"items": [], "note": 'The words of yours "Subtracts" '
-                                                           "came from are not on file."}
-    assert content["change"]["note"]                         # no such link: said, not invented
+    words = cardcontent.owner_words(open_core(project), open_core(project).index()["SR-002"])
+    assert words == {"items": [], "note": 'The words of yours "Subtracts" came from are not '
+                                          "on file."}
 
 
 def test_an_intent_quoting_several_messages_shows_each(project: Path, write_record) -> None:
@@ -297,23 +266,18 @@ def test_an_intent_quoting_several_messages_shows_each(project: Path, write_reco
     assert words["items"][0]["quote"] == "first ask / B"
 
 
-def test_a_reworded_intent_shows_its_earlier_and_current_wording(project: Path) -> None:
-    path = project / ".plumb" / "intents" / "INT-001.md"
-    path.write_text(path.read_text("utf-8").replace("adds two numbers", "multiplies two "
-                                                    "numbers"), "utf-8")
-    entry = {"link": "SR-001#0", "record": "SR-001", "path": "INT-001", "topic": "t",
-             "issue": "i", "options": ["a", "b"]}
-    change = cardcontent.card_content(open_core(project), entry)["change"]
-    assert "-The calculator adds two numbers." in change["diff"]
-    assert "+The calculator multiplies two numbers." in change["diff"]
+def test_the_words_a_requirement_came_from_are_the_quote_and_the_logged_message(
+        project: Path) -> None:
+    words = cardcontent.owner_words(open_core(project), open_core(project).index()["SR-001"])
+    (item,) = words["items"]
+    assert item["id"] == "INT-001" and item["quote"] == QUOTE and item["prompt"] == PROMPT
 
 
 # --------------------------------------------------------------------------- old cards stay open
 
 
-def test_an_old_card_loads_with_derived_parts_and_says_what_is_not_written(
+def test_an_old_card_loads_and_shows_its_options_without_a_placeholder(
         project: Path, capsys) -> None:
-    (project / "src" / "calc.py").write_text(CHANGED, "utf-8")
     raw = [{"link": LINK, "record": "SR-001", "path": "src/calc.py", "topic": "Adds numbers",
             "issue": "add multiplies", "options": ["Keep it", "Undo it"], "recommended": 0,
             "turn": 3, "status": "open"}]
@@ -323,14 +287,12 @@ def test_an_old_card_loads_with_derived_parts_and_says_what_is_not_written(
     before = file.read_text("utf-8")
     (card,) = cardstore.load(project, "old")                 # still offered as before
     assert card.kind == "stale_link" and card.status == "open"
-    (content,) = cardcontent.session_contents(open_core(project), "old")
-    assert "+    return a * b" in content["change"]["diff"]
-    assert content["owner_words"]["items"][0]["quote"] == QUOTE
+    (content,) = [fullcard.stale_content(open_core(project), e, session="old")
+                  for e in stale.read_cards(project, "old")]
     assert [o["consequence"] for o in content["options"]] == [None, None]
-    assert content["why"] is None and not content["complete"]
-    assert any("not written yet" in note for note in content["notes"])
-    text = "\n".join(cardcontent.content_lines(content))
-    assert "does and leaves undone: not written yet" in text
+    assert content["context"] == [] and content["missing"]
+    assert fullcard.render(content).splitlines()[-2:] == ["  1. Keep it (recommended)",
+                                                         "  2. Undo it"]
     assert main(["stale", "cards", "--incomplete", "--root", str(project)]) == 0
     out = capsys.readouterr().out
     assert f"{LINK} (session old) lacks: what option 1" in out
@@ -349,4 +311,4 @@ def test_stale_cards_lists_complete_ones_in_full(project: Path, capsys) -> None:
     assert "no open stale cards lacking anything" in capsys.readouterr().out
     assert main(["stale", "cards", "--root", str(project)]) == 0
     out = capsys.readouterr().out
-    assert "Why the recommended one: " + WHY in out and "lacks" not in out
+    assert WHY in out and "add sums again as the requirement says" in out and "lacks" not in out

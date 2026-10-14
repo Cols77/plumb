@@ -123,7 +123,7 @@ def test_post_edit_registered_async(repo: Path, no_claims) -> None:
     assert "async" not in stop
 
 
-def test_skill_about_20_lines_names_test_map_and_relay(repo: Path, no_claims) -> None:
+def test_skill_about_20_lines_names_test_map(repo: Path, no_claims) -> None:
     _install(repo)
     skill = (repo / ".claude" / "skills" / "plumb-records" / "SKILL.md").read_text(
         encoding="utf-8")
@@ -131,7 +131,6 @@ def test_skill_about_20_lines_names_test_map_and_relay(repo: Path, no_claims) ->
     body = skill.split("---", 2)[2].strip().splitlines()
     assert 12 <= len(body) <= 26
     assert ".plumb/test_map.txt" in skill
-    assert "uv run --no-sync plumb relay` is refused" in skill
     assert "uv run --no-sync plumb tests run --changed" in skill
     assert "never" in skill.lower() and "plumb approve" in skill
     assert "{plumb}" not in skill
@@ -282,10 +281,10 @@ def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> N
     advertised = {part.split()[0] for part in hint.split('"')[1].split("|")}
     # sp5 6.1: the six owner verbs, plain words accepted (SR-064 EX-3), plus the JEV judge
     # (setup, status, calibrate: SR-039, R14); SR-122: every typed verb the command answers
-    assert advertised == {"status", "explain", "review", "confirm", "impact", "view", "jev",
-                          "approve", "init", "go", "undo", "settle", "conflicts",
+    assert advertised == {"status", "explain", "review", "impact", "view", "jev",
+                          "approve", "init", "go", "undo", "conflicts",
                           "merge-check", "inflight"}
-    for name in advertised | {"why", "show"}:
+    for name in (advertised - {"go", "undo"}) | {"why", "show"}:       # go, undo: typed only
         assert name in cli.ROUTES, name
     assert "not available in this build" not in cli._HELP
 

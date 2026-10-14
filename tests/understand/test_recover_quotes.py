@@ -175,10 +175,9 @@ def _cascade(core, jev, sonnet, opus=None) -> Cascade:
 
 
 def _card(core, record_id: str) -> tuple[dict, list[str]]:
-    content = cardcontent.card_content(core, {
-        "link": f"{record_id}#9", "record": record_id, "topic": "words", "issue": "check",
-        "options": []})
-    return content["owner_words"], cardcontent.content_lines(content)
+    words = cardcontent.owner_words(core, core.index()[record_id])
+    lines = [line for item in words["items"] for line in item["found_lines"]]
+    return words, [*lines, *([words["note"]] if words["note"] else [])]
 
 
 def _unverified(core, record_id: str) -> bool:
@@ -194,10 +193,10 @@ def _press_accept(monkeypatch, capsys, root: Path, record_id: str) -> None:
     from mod.helpers import DIGEST as KEY_DIGEST
     from mod.helpers import KEY, SESSION, run_mod
 
-    from plumb.understand import cardstore, read
+    from plumb.understand import cardstore, trial
 
     core = open_core(root)
-    card = read.show_first_card(core.index()[record_id], "words")
+    card = trial.card(core, trial.Candidate(core.index()[record_id], 0.9, {}))
     cardstore.save(root, SESSION, [*cardstore.own_cards(root, SESSION), card])
     assert run_mod(monkeypatch, capsys, root, "hello", stdin={"key_digest": KEY_DIGEST})[0] == 0
     code, drawn, _ = run_mod(monkeypatch, capsys, root, "draw", stdin={"key": KEY})

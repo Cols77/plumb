@@ -14,13 +14,12 @@ from pathlib import Path
 import pytest
 from understand.test_read_job import make_core, open_card, record_text
 
-from mod.helpers import DIGEST, KEY, OTHER_KEY, SESSION, kinds, mod_json, run_mod
+from mod.helpers import DIGEST, KEY, OTHER_KEY, SESSION, kinds, mod_json, run_mod, sample_card
 from plumb import confirm
 from plumb.api import open_core
 from plumb.hosts.claude_code import hookio, session_start
 from plumb.mod import handshake
 from plumb.mod import session as mod_session
-from plumb.understand import read
 
 pytestmark = pytest.mark.sr("SR-126")
 
@@ -31,8 +30,8 @@ CONFIRM = 0
 @pytest.fixture
 def core(repo: Path, write_record):
     core = make_core(repo, write_record, [record_text(n) for n in range(1, 4)])
-    open_card(core, read.show_first_card(core.index()["SR-001"], "words"))
-    open_card(core, read.show_first_card(core.index()["SR-002"], "words"))
+    open_card(core, sample_card(core, "SR-001"))
+    open_card(core, sample_card(core, "SR-002"))
     return core
 
 
@@ -103,13 +102,13 @@ def test_a_resume_start_under_the_agent_marker_still_retires(core, monkeypatch, 
 def test_presses_before_and_after_the_resume_both_recheck(core, monkeypatch, capsys,
                                                           hook_input) -> None:
     assert _hello(monkeypatch, capsys, core.root, DIGEST)[0] == 0
-    _press_first(monkeypatch, capsys, core.root, KEY, "show_first:SR-001")
+    _press_first(monkeypatch, capsys, core.root, KEY, "card:SR-001")
     _start(core.root, hook_input, "resume")
     assert _hello(monkeypatch, capsys, core.root, NEW_DIGEST)[0] == 0
     # the old key no longer presses
     code, _, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
     assert code == 3
-    answer = _press_first(monkeypatch, capsys, core.root, OTHER_KEY, "show_first:SR-002")
+    answer = _press_first(monkeypatch, capsys, core.root, OTHER_KEY, "card:SR-002")
     assert answer["confirmed"] == ["SR-002"]
     fresh = open_core(core.root)
     approvals = [e for e in fresh.events() if e.kind == "approval"]

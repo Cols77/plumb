@@ -1,11 +1,6 @@
-"""The output contract every host renders (sp5 4, 9): the status card and the intent card.
-
-- ``status_card``: one owner-facing line, in the status line and as the first line of the
-  end-of-turn summary. It renders a snapshot (``StatusSnapshot`` or its ``status.json``
-  mapping) and recomputes nothing (SR-061).
-- ``intent_card``: the four-line card of one record, shown only when it matters (SR-062).
-  A card shows its record in full (nothing is clipped), so it is the "shown" form of the
-  stated set: a bare "ok" may confirm a record only once its card was shown.
+"""The output contract every host renders (sp5 4, 9): the status card, one owner-facing line,
+in the status line and as the first line of the end-of-turn summary. It renders a snapshot
+(``StatusSnapshot`` or its ``status.json`` mapping) and recomputes nothing (SR-061).
 
 Standard library only: the status line imports this module on every refresh.
 """
@@ -14,19 +9,13 @@ from __future__ import annotations
 
 import dataclasses
 import unicodedata
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any
-
-from plumb.contracts import IntentCardData
 
 STATES = ("regression", "failing", "awaits you", "drift", "aligned")
 GLYPHS = {"aligned": "✓", "awaits you": "●", "drift": "▲", "failing": "✗",
           "regression": "✗"}
 SUMMARY_WIDTH = 40
-KINDS = {"INT": "Intent", "SR": "Requirement", "DEC": "Question", "FEAT": "Feature",
-         "NC": "Nonconformance"}
-TEST_MARKS = {"passing": ("✓", "ok"), "failing": ("✗", "x"), "not run": ("○", "-"),
-              "not yet passing": ("◌", "~"), "regression": ("✗", "x")}
 
 
 def _data(snapshot: Any) -> Mapping[str, Any]:
@@ -81,11 +70,6 @@ def status_card(snapshot: Any, *, ascii: bool = False) -> str:
     if summary:
         parts.append(f'"{summary}"')
     notes = ([f"{jev} by JEV"] if jev else [])
-    settled = _int(by, "settled")
-    if settled:  # counted as confirmed, listed apart (SP8)
-        from plumb.present.owner_text import SETTLED_COUNT
-
-        notes.append(SETTLED_COUNT.format(n=settled))
     parts.append(f"SR {confirmed}/{total} ok" + (f" ({', '.join(notes)})" if notes else ""))
     proposed = _int(data, "proposed")
     if proposed:
@@ -125,75 +109,3 @@ def overlap_parts(data: Mapping[str, Any], *, ascii: bool = False) -> list[str]:
         parts.append((text.CONFLICTS_CARD if conflicts == 1 else text.CONFLICTS_CARD_PLURAL)
                      .format(n=conflicts))
     return parts
-
-
-# --------------------------------------------------------------------------- intent card
-
-
-def _state_text(card: IntentCardData) -> str:
-    if card.state == "confirmed":
-        by = card.confirmed_by or "you"
-        text = f"confirmed by {by}"
-        if by == "JEV":
-            text += ' — say "revoke" to undo'
-    elif getattr(card, "say", ""):
-        from plumb.present.owner_text import EARLY_DEC_STATE
-
-        text = EARLY_DEC_STATE.format(say=card.say)
-    elif card.state == "unconfirmed-edit":
-        text = 'changed since you confirmed it — say "ok" to confirm'
-    else:
-        text = 'proposed — say "ok" to confirm'
-    return text + (f", {card.label}" if card.label else "")
-
-
-def _kind(card: IntentCardData) -> str:
-    prefix = card.id.split("-", 1)[0]
-    return KINDS.get(prefix, "Record")
-
-
-def intent_card(card: IntentCardData, *, mode: str = "compact", why: str | None = None,
-                ascii: bool = False) -> list[str]:
-    """The card's lines (sp5 4.2). ``why`` names a trigger ("Regression", "Question",
-    "Intent change") and replaces the kind on line 1. ``mode`` ``off`` renders nothing but
-    a trigger card: an interruption the owner must answer is never hidden."""
-    if mode == "off" and not why:
-        return []
-    arrow, dot = (">", "|") if ascii else ("▸", "·")
-    lines = [f"{arrow} {why or _kind(card)}  {card.id} \"{card.title}\"   "
-             f"({_state_text(card)})"]
-    second: list[str] = []
-    if card.statement:
-        second.append(card.statement)
-    elif card.quote:
-        second.append(f'You said: "{card.quote}"')
-    if card.will:
-        second.append("Will: " + "; ".join(card.will))
-    if card.wont:
-        second.append("Won't: " + "; ".join(card.wont))
-    if card.assumed:
-        second.append("Assumed: " + "; ".join(card.assumed))
-    if card.alternatives:
-        second.append("Also fits: " + "; ".join(card.alternatives))
-    if second:
-        lines.append("  " + f" {dot} ".join(second))
-    if card.examples:
-        from plumb.contracts import example_groups
-
-        shown = "  ".join(
-            "  ".join(f"{ex} {text}" if sr in (card.id, "") else f"{sr}/{ex} {text}"
-                      for sr, ex, text in group) + f"   ({state})"
-            for state, group in example_groups(card))
-        lines.append(f"  Examples  {shown}")
-    if card.tests:
-        marks = [f"{end}  {TEST_MARKS.get(state, ('', ''))[1 if ascii else 0]} {state}".replace(
-            "   ", "  ") for end, state in card.tests]
-        lines.append("  Tests  " + "  ".join(marks))
-    return [to_ascii(line) for line in lines] if ascii else lines
-
-
-def cards_text(cards: Sequence[IntentCardData], **kwargs: Any) -> list[str]:
-    out: list[str] = []
-    for card in cards:
-        out.extend(intent_card(card, **kwargs))
-    return out

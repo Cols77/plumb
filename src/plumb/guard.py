@@ -11,10 +11,10 @@ One table, three readers that agree by construction:
   this table by ``scripts/build_plugin.py``.
 
 A row names a plumb command by its words. Some commands are the owner's only with their proof:
-``settle on|off``, ``undo`` and ``go`` carry ``--prompt <digest>`` of the owner's typed command
-(SP8: the command re-checks that digest), ``conflict choose`` and ``owner`` carry the owner's
-relayed words the same way. Without the proof they are denied; with it they reach the command,
-which re-checks it. ``mod hello|press|typed`` are the mod's alone (the key never leaves it).
+``conflict choose`` and ``owner`` carry ``--prompt <digest>`` of the owner's typed command (the
+command re-checks that digest) and the owner's relayed words. Without the proof they are
+denied; with it they reach the command, which re-checks it. ``mod hello|press|typed`` are
+the mod's alone (the key never leaves it).
 Every launcher spelling counts: ``plumb``, ``plumb.exe``, ``plumb.cmd``, ``<path>/bin/plumb``,
 ``uv run [--no-sync] plumb``, ``python -m plumb`` and ``<path>/python(.exe) -m plumb``, also
 inside ``sh -c``/``bash -c`` strings, ``$( )``, backquotes and after ``env``/``exec``.
@@ -74,13 +74,8 @@ TABLE: tuple[Row, ...] = (
     Row(("conflict", "choose"), _TYPED, unless=PROOF, legacy=True),
     # SP7 7.2's one choke point for owner actions, the agent's form carrying the owner's words
     Row(("owner",), _TYPED, unless=PROOF),
-    # SP7 5.5, 5.7: the mod's handshake, its button press, its Undo button and its log of a
-    # typed command
-    Row(("mod",), _MOD, legacy=True, first_of=("hello", "press", "typed", "undo")),
-    # SP8: settling, Undo and "build anyway" are the owner's typed command or a button
-    Row(("settle",), _TYPED, unless=PROOF, first_of=("on", "off")),
-    Row(("undo",), _TYPED, unless=PROOF),
-    Row(("go",), _TYPED, unless=PROOF),
+    # SP7 5.5, 5.7: the mod's handshake, its button press and its log of a typed command
+    Row(("mod",), _MOD, legacy=True, first_of=("hello", "press", "typed")),
 )
 
 REASON = ("plumb: refused: `{form}` {why}. The agent never runs it for the owner; tell the owner "

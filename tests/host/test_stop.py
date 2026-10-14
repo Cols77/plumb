@@ -32,19 +32,6 @@ examples:
   then: it returns 3
 ---
 """
-DEC1 = """---
-id: DEC-001
-title: Integers only
-question: Should add accept floats?
-chosen: integers only
-alternatives:
-- floats too
-matters: true
-links:
-- kind: decides
-  to: SR-001
----
-"""
 
 
 def _git(root: Path, *args: str) -> None:
@@ -185,108 +172,9 @@ def _stated(repo: Path) -> dict[str, bool]:
     return {r["id"]: r["shown"] for r in data["records"]}
 
 
-def test_proposed_records_come_as_one_card_not_a_list(project: Path, hook_input) -> None:
-    """SR-012: no list-style summary of proposed records; the five records the turn proposed
-    (no feature) come as one card, each with its statement and every example."""
-    start_turn(project)
-    for i in range(2, 7):
-        text = (f"---\nid: SR-00{i}\ntitle: Rule {i}\nstatement: rule {i} holds\nexamples:\n"
-                f"- id: EX-1\n  given: g{i}\n  when: w{i}\n  then: t{i}\n---\n")
-        edit(project, f".plumb/requirements/SR-00{i}.md", text)
-    summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
-    lines = summary.splitlines()
-    assert lines[0] == ('Proposed this turn, "this turn\'s work": these 5 were written from '
-                        "your words this turn and are not settled; are they right?")
-    for i in range(2, 7):
-        assert f"  - Rule {i}" in lines
-        assert f"    rule {i} holds" in lines
-        assert f"    EX-1: given g{i}, when w{i}, then t{i}" in lines
-    assert "▸" not in summary and "say \"ok\"" not in summary and "plumb show" not in summary
-    assert "  1. Yes, as they read (recommended)" in lines
-    # only what the owner saw is relayable by a bare affirmation: every one, drawn in full
-    assert _stated(project) == {f"SR-00{i}": True for i in range(2, 7)}
-    assert _block(json.dumps({"systemMessage": summary})) is None
-
-
-INT_DIV = """---
-id: INT-001
-title: Divide numbers
-quote: add a divide function
-readback: You want a divide function for two numbers.
-will:
-- add divide(a, b)
-wont:
-- handle complex numbers
-assumptions:
-- id: A-1
-  text: division by zero raises ValueError
----
-"""
-SR_DIV = """---
-id: SR-002
-title: Divide
-statement: divide returns a / b.
-examples:
-- id: EX-1
-  given: 6 and 3
-  when: divide runs
-  then: it returns 2
-- id: EX-2
-  given: 1/0
-  when: divide runs
-  then: it returns 0
-- id: EX-3
-  given: -6 and 3
-  when: divide runs
-  then: it returns -2
----
-"""
-DEC_DIV = """---
-id: DEC-002
-title: Division kind
-chosen: integer floor division
-alternatives:
-- true float division
-matters: false
----
-"""
-
-
-@pytest.mark.sr("SR-005")
-def test_summary_shows_every_example_assumption_and_wont(project: Path, hook_input) -> None:
-    """The owner's "ok" can only confirm what the summary displayed (R1, R2)."""
-    start_turn(project)
-    edit(project, ".plumb/intents/INT-001.md", INT_DIV)
-    edit(project, ".plumb/requirements/SR-002.md", SR_DIV)
-    edit(project, ".plumb/decisions/DEC-002.md", DEC_DIV)
-    summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
-    for expected in (
-            "You want a divide function for two numbers.",
-            "won't: handle complex numbers",
-            "assumed (A-1): division by zero raises ValueError",
-            "EX-2: given 1/0, when divide runs, then it returns 0",
-            "EX-3: given -6 and 3, when divide runs, then it returns -2",
-            "also fits: true float division"):
-        assert expected in summary
-    assert 'Your words (Divide numbers): "add a divide function"' in summary
-    assert _stated(project) == {"DEC-002": True, "INT-001": True, "SR-002": True}
-
-
-@pytest.mark.sr("SR-116")
-def test_a_long_line_is_shown_whole_not_left_out(project: Path, hook_input) -> None:
-    """INT-031: nothing is cut; a long example is shown whole, so the record counts as shown."""
-    start_turn(project)
-    long = "x" * 600
-    edit(project, ".plumb/requirements/SR-002.md",
-         SR_DIV.replace("it returns 0", "it returns " + long))
-    summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
-    assert f"then it returns {long}" in summary
-    assert _stated(project) == {"SR-002": True}
-
-
 def test_a_blocked_stop_shows_the_owner_nothing(project: Path, hook_input) -> None:
     start_turn(project)
-    edit(project, ".plumb/requirements/SR-002.md", SR_DIV)
+    edit(project, ".plumb/requirements/SR-002.md", SR1.replace("SR-001", "SR-002"))
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
     assert _block(run_stop(project, hook_input, verify=FakeVerify(nodes=(NODE,)))) is not None
     assert _stated(project) == {"SR-002": False}
@@ -308,10 +196,8 @@ def test_regression_blocks_with_owner_instruction(project: Path, hook_input) -> 
     assert _block(out) is None
     summary = _summary(out)
     # the owner gets a regression card (no requirement verifies it here: the test names it)
-    assert summary.startswith(f'Something that worked now fails, "{NODE}": a test that '
-                              f"passed before now fails: {NODE}")
-    assert f"  Evidence: {NODE} passed in an earlier run and fails now (last run run-2)" in \
-        summary
+    assert summary.startswith(f"{NODE}\na test that passed before now fails: {NODE}")
+    assert f"{NODE} passed in an earlier run and fails now (last run run-2)" in summary
     assert "  1. Fix the code so it passes again (recommended)" in summary
     assert "questions:" not in summary and "▸" not in summary
 
@@ -326,31 +212,6 @@ def test_edited_test_regression_still_blocks(project: Path, hook_input) -> None:
     reason = _block(run_stop(project, hook_input, verify=verify))
     assert reason is not None
     assert "now fails (test source changed since the pass)" in reason
-
-
-def test_matters_dec_asked_once_per_hash(project: Path, hook_input, write_record) -> None:
-    write_record(project, DEC1)
-    _git(project, "add", "-A")
-    _git(project, "commit", "-q", "-m", "dec")
-    verify = FakeVerify(nodes=(NODE,), evidence_map=fresh(NODE))
-    start_turn(project)
-    edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
-    reason = _block(run_stop(project, hook_input, verify=verify))
-    assert reason == ('plumb: DEC-001 is unconfirmed and this work relies on it. Ask the '
-                      'owner: "I assumed integers only; floats too also fits. Which one?"')
-    stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
-    assert "DEC-001" in [r["id"] for r in stated["records"]]
-    asked = json.loads((project / ".plumb" / "session" / "s1" / "turn.json")
-                       .read_text("utf-8"))["asked"]
-    start_turn(project, asked=asked)
-    edit(project, "src/calc.py", "def add(a, b):\n    return int(b) + int(a)\n")
-    assert _block(run_stop(project, hook_input, verify=verify)) is None
-    # a new hash of the decision asks again
-    dec = project / ".plumb" / "decisions" / "DEC-001.md"
-    dec.write_text(DEC1.replace("integers only", "ints only"), "utf-8")
-    start_turn(project, asked=asked)
-    edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
-    assert "DEC-001" in (_block(run_stop(project, hook_input, verify=verify)) or "")
 
 
 @pytest.mark.sr("SR-020")
@@ -385,19 +246,8 @@ def test_writes_stated_set(project: Path, hook_input) -> None:
     stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
     index = open_core(project).index()
     assert stated["records"] == [{"id": "SR-002", "hash": index["SR-002"].hash,
-                                  "shown": True}]
+                                  "shown": False}]    # no card draws it any more
     assert stated["session"] == "s1" and stated["reply_after_prompt"] == "sha256:" + "a" * 64
-    # the stated set is what the reader takes as shown for the owner's next answer
-    text = "ok, sounds right"
-    prompts = project / ".plumb" / "session" / "prompts.jsonl"
-    prompts.write_text(json.dumps({"digest": approvals.prompt_digest(text), "session": "s1",
-                                   "at": "2999-01-01T00:00:00Z", "text": text,
-                                   "via": "hook"}) + "\n",
-                       "utf-8")
-    from plumb.understand import read
-
-    shown = read.shown_items(open_core(project), "2999-01-01T00:00:00Z")
-    assert [item["id"] for item in shown] == ["SR-002"]
 
 
 def test_no_change_turn_prints_nothing(project: Path, hook_input) -> None:
@@ -487,11 +337,8 @@ class _SlowVerify(FakeVerify):
         return result
 
 
-def test_results_finished_past_the_budget_are_used(project: Path, hook_input, write_record,
+def test_results_finished_past_the_budget_are_used(project: Path, hook_input,
                                                    clock: _Clock) -> None:
-    write_record(project, DEC1)
-    _git(project, "add", "-A")
-    _git(project, "commit", "-q", "-m", "dec")
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
     edit(project, ".plumb/requirements/SR-001.md",
@@ -502,10 +349,9 @@ def test_results_finished_past_the_budget_are_used(project: Path, hook_input, wr
     reason = _block(run_stop(project, hook_input, verify=verify))
     assert reason is not None
     assert "plumb: run 'plumb tests run --paths " in reason
-    assert "DEC-001 is unconfirmed" in reason
     assert f"plumb: regression: {NODE2}" in reason
     stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
-    assert {"SR-001", "DEC-001"} <= {r["id"] for r in stated["records"]}
+    assert "SR-001" in {r["id"] for r in stated["records"]}
     status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert status["tests"] == "regression"
     log = project / ".plumb" / "session" / "errors.log"
@@ -528,12 +374,9 @@ class _SlowCore:
 
 
 def test_a_step_starting_past_the_budget_is_skipped_and_reported(
-        project: Path, hook_input, write_record, clock: _Clock, monkeypatch) -> None:
+        project: Path, hook_input, clock: _Clock, monkeypatch) -> None:
     import plumb.api
 
-    write_record(project, DEC1)
-    _git(project, "add", "-A")
-    _git(project, "commit", "-q", "-m", "dec")
     real_open = plumb.api.open_core
     monkeypatch.setattr(plumb.api, "open_core", lambda root: _SlowCore(real_open(root), clock))
     start_turn(project)
@@ -542,13 +385,11 @@ def test_a_step_starting_past_the_budget_is_skipped_and_reported(
     out = run_stop(project, hook_input, verify=verify)
     assert verify.select_calls == []  # the covering-tests step would start past the deadline
     reason = _block(out)
-    assert reason is not None and "DEC-001 is unconfirmed" in reason
+    assert reason is not None
     assert "plumb: check skipped (budget): covering tests" in reason
-    stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
-    assert "DEC-001" in {r["id"] for r in stated["records"]}
     status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert status["skipped"] == "covering tests"
-    # the next turn (the DEC already asked): the cut selection still asks the agent for the
+    # the next turn: the cut selection still asks the agent for the
     # covering tests of the turn's code change (R5), then the summary names the skip
     start_turn(project, asked=json.loads(
         (project / ".plumb" / "session" / "s1" / "turn.json").read_text("utf-8"))["asked"])
@@ -558,11 +399,6 @@ def test_a_step_starting_past_the_budget_is_skipped_and_reported(
     summary = _summary(run_stop(project, hook_input, verify=verify, active=True))
     assert _status(project)["skipped"] == "covering tests"     # the status line names it
     assert "check skipped" not in summary
-    # the decision that matters is a card, with what each answer does
-    assert summary.startswith('A choice this work relies on, "Integers only": I assumed '
-                              "integers only; floats too also fits. Which one?")
-    assert "  1. Keep it: integers only (recommended)" in summary
-    assert "  2. Switch to: floats too" in summary
 
 
 class _CutVerify(FakeVerify):
@@ -572,26 +408,6 @@ class _CutVerify(FakeVerify):
         from plumb.hosts.claude_code.hookio import BudgetExceeded
 
         raise BudgetExceeded("covering tests")
-
-
-def test_read_back_survives_a_cut_in_the_covering_tests(project: Path, hook_input) -> None:
-    """R1: the proposed read-back is computed before the covering tests and kept, so a
-    budget cut drops evidence detail, never the read-back; the shown set matches."""
-    start_turn(project)
-    edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
-    edit(project, ".plumb/requirements/SR-001.md",
-         SR1.replace("add returns the sum.", "add returns the integer sum."))
-    summary = _summary(run_stop(project, hook_input, verify=_CutVerify(nodes=(NODE,))))
-    lines = summary.splitlines()
-    # its feature has no record: the card is named in words, never by a bare number
-    assert lines[0].startswith('Proposed this turn, "this turn\'s work": this was written from '
-                               "your words this turn")
-    assert '  As it now reads (Adds numbers): add returns the integer sum.' in lines
-    assert "    EX-1: given 1 and 2, when add runs, then it returns 3" in lines
-    assert "plumb: touched" not in summary and "questions:" not in summary
-    stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
-    assert stated["records"] == [{"id": "SR-001", "hash": open_core(project).index()[
-        "SR-001"].hash, "shown": True}]
 
 
 def test_skipped_covering_tests_are_named_in_the_status_line(project: Path, hook_input,

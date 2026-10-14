@@ -44,7 +44,7 @@ def status_card_lines(core: Any) -> dict[str, Any]:
     if awaiting:
         shown = ", ".join(awaiting[:6]) + (f" +{len(awaiting) - 6} more"
                                             if len(awaiting) > 6 else "")
-        lines.append(f"awaits you: {shown} (plumb confirm shows them as cards; "
+        lines.append(f"awaits you: {shown} (their cards and /plumb approve confirm them; "
                      "plumb triage groups them)")
     stale = [s.link.id for st in statuses.values() for s in st.links if s.state == "stale"]
     dangling = [s.link.id for st in statuses.values() for s in st.links
