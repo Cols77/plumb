@@ -11,7 +11,6 @@
   with the card in the stated set of the reply before that prompt, read like an approval
   (``read_choice``: the model that reads the owner's answers, INT-028, INT-029) as exactly
   one version kept with no change asked; ``apply_choice`` writes the chosen side's
-
   values for the conflicting fields, keeps everything that merged on its own, removes the
   block and appends a ``conflict-resolution`` entry.
 """
@@ -622,7 +621,6 @@ def _kept(conflict: IntentConflict, take: str) -> str:
 
 
 def choose_owner(core: Any, ref: str, take: str,
-
                  values: Mapping[str, Any] | None = None) -> tuple[IntentConflict, dict]:
     """The owner's own terminal (``approvals.require_owner``): refused under the session
     marker and without an interactive terminal (exit 3, nothing written)."""
