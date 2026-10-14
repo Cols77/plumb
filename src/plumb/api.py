@@ -146,10 +146,20 @@ class Core:
 
     def log_append(self, stream: LogStream, kind: str,
                    payload: Mapping[str, Any]) -> LogEntry:
-        entry = _log.append(self.paths, stream, kind, payload)
-        if stream == "events":
-            self._events = None
-        return entry
+        try:
+            return _log.append(self.paths, stream, kind, payload)
+        finally:
+            if stream == "events":
+                self._events = None
+
+    def log_append_many(self, stream: LogStream,
+                        entries: Sequence[tuple[str, Mapping[str, Any]]]) -> list[LogEntry]:
+        try:
+            return _log.append_many(self.paths, stream, entries)
+        finally:
+            # A failed batch can have persisted a prefix, which subsequent jobs must see.
+            if stream == "events":
+                self._events = None
 
     def log_read(self, stream: LogStream, kinds: Iterable[str] | None = None,
                  since_offset: int = 0, *,

@@ -1,7 +1,7 @@
 """Progress of a long step (SHOW, SR-108): the file ``progress`` of a session, or of the shell
 (``.plumb/session/cli/progress``), and what is drawn for the person waiting.
 
-``Reporter`` writes the progress file at once on every update (the status line reads it) and,
+``Reporter`` writes changed progress at once and unchanged progress once a second. Also,
 when it is given a ``stream``, draws the same message there: one bar line redrawn in place when
 the stream is a terminal, bounded plain lines at a steady interval otherwise. An execution that
 ends within ``progress_min_s`` (two seconds) draws nothing; a failure is always drawn, as one
@@ -26,6 +26,7 @@ from plumb.contracts import Progress
 MIN_S = 2.0              # understand.progress_min_s: nothing is drawn before this
 INTERVAL_S = 1.0         # understand.progress_interval_s: a terminal bar redraws this often
 PLAIN_INTERVAL_S = 5.0   # plain lines come this far apart
+HEARTBEAT_S = 1.0        # bound coalescing independently of the display's redraw interval
 MAX_PLAIN_LINES = 40     # and never more than this many before the end line
 BAR_WIDTH = 20
 STALE_S = 5.0            # a running line not updated for this long, its process gone, is stale
@@ -89,6 +90,8 @@ class Reporter:
         self._lazy = lazy                     # no file, no line, before ``min_s`` (an execution)
         self._live = not lazy                 # the file has been written
         self._ended = False
+        self._published: tuple[str, int, int, str, str] | None = None
+        self._published_at: float | None = None
 
     # ------------------------------------------------------------------ the file
     def _write(self, step: str, done: int, total: int, state: str) -> None:
@@ -96,6 +99,11 @@ class Reporter:
             if state != "running" or self._clock() - self._t0 < self._min_s:
                 return
             self._live = True
+        now = self._clock()
+        semantic = (step, done, total, state, self.kind)
+        if (state == "running" and semantic == self._published
+                and self._published_at is not None and now - self._published_at < HEARTBEAT_S):
+            return
         data = self._files.progress_to_json(Progress(
             step=step, done=done, total=total, started=self.started, updated=_now(),
             state=state, kind=self.kind))  # type: ignore[arg-type]
@@ -104,6 +112,8 @@ class Reporter:
             self._files.write_json_atomic(self.path, data)
         except OSError:
             pass                              # a courtesy: it never stops the work
+        else:
+            self._published, self._published_at = semantic, now
 
     # ------------------------------------------------------------------ the display
     def _text(self) -> str:
