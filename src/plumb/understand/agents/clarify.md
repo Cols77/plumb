@@ -20,8 +20,10 @@ You are given:
   repository) and `branch`.
 
 Decide:
-- `intent`: `yes` only when the message starts or changes something to be built or done.
-  A question, an answer, a remark, a thanks, an "ok" is `no`; then say nothing else.
+- `intent`: `yes` only when the message starts or changes something in this repository's own
+  system: its behaviour, code, tests, docs or records. Operating the tools or the machine is
+  `no`: update, reload or install a plugin, run a command, merge or clean up branches, and
+  the like. A question, an answer, a remark, a thanks, an "ok" is `no`; then say nothing else.
   One exception: when the message answers a question the last reply asked about an earlier
   request, or corrects how that request was read ("that's the issue we found in that chat"),
   it carries that request: `intent` is `yes` when the earlier message's was, and the readback
