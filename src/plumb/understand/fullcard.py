@@ -61,7 +61,7 @@ def content(core: Any, card: CardState) -> dict[str, Any]:
     choices = [(c.label, c.consequence) for c in (question.choices if question else ())] \
         or [(label, "") for label in card.resolutions]
     readback = card.kind in READBACK
-    assumed, wont, context = [], "", []
+    assumed, wont, context, doubts = [], "", [], []
     marks = (clarify.EVIDENCE_ASSUMED.format(text=""), clarify.EVIDENCE_WONT.format(text=""))
     for line in (raw.strip() for raw in card.evidence.splitlines()):
         if not line or line == clarify.ESCALATION_MARK:
@@ -70,6 +70,8 @@ def content(core: Any, card: CardState) -> dict[str, Any]:
             assumed.append(line[len(marks[0]):])
         elif readback and line.startswith(marks[1]):
             wont = wont or line[len(marks[1]):]
+        elif readback and "Yes confirms" in line:      # SR-152 doubt lines: never cut
+            doubts.append(line)
         else:
             context.append(line)
     if card.kind == "trial" and question:
@@ -77,7 +79,7 @@ def content(core: Any, card: CardState) -> dict[str, Any]:
     return {
         "id": card.id, "kind": card.kind,
         "topic": _say(card.topic, index), "issue": _say(card.issue, index),
-        "context": [_say(line, index) for line in context[:CONTEXT_MAX]],
+        "context": [_say(line, index) for line in (*context[:CONTEXT_MAX], *doubts)],
         "assumptions": [_say(a, index) for a in assumed],
         "wont": _say(wont, index) or None,
         # a merge conflict recommends only a combined version that was actually proposed

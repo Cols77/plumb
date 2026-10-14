@@ -14,12 +14,10 @@ from mergedriver.mdhelpers import (
     conflicted,
     ex,
     install_driver,
-    log_prompt,
     make_repo,
     plumb,
     record,
     run_git,
-    shown,
     write_record,
 )
 from plumb import cli
@@ -121,20 +119,18 @@ def test_conflict_card(repo: Path) -> None:
 
 
 @pytest.mark.sr("SR-076")
-def test_choose_messages(repo: Path) -> None:
+def test_choose_messages(repo: Path, capsys: pytest.CaptureFixture) -> None:
     """The refusal (the agent's shell, a pipe) and the applied choice."""
     conflicted(repo)
     refused = plumb(repo, "conflict", "choose", "IC-001", "--take", "theirs", stdin="y\n",
                     env={"PLUMB_AGENT_SESSION": "claude-code"})
     assert refused.returncode == 3
     _clean(refused.stderr)
-    shown(repo)
-    digest = log_prompt(repo, "keep feat-x's version")
-    applied = plumb(repo, "conflict", "relay", "IC-001", "--take", "theirs", "--prompt",
-                    digest, "--quote", "keep feat-x's version")
-    assert applied.returncode == 0, applied.stderr
-    _clean(applied.stdout)
-    assert owner_text.CHOSEN.split("{")[0] in applied.stdout
+    assert cli.main(["conflict", "choose", "IC-001", "--take", "theirs",
+                     "--root", str(repo)]) == 0
+    applied = capsys.readouterr().out
+    _clean(applied)
+    assert owner_text.CHOSEN.split("{")[0] in applied
 
 
 @pytest.mark.sr("SR-077")

@@ -534,6 +534,9 @@ def _readback_card(root: Path, digest: str, text: str, readback: Mapping[str, An
         status="open", turn=0, branch=repository(root)["branch"])
 
 
+HOLDING = (*cardstore.AWAITING, "left_open")   # a card not answered yet
+
+
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     if core is None:
         return Applied(job=job.id)
@@ -545,14 +548,19 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     own = cardstore.own_cards(root, session)
     closed = tuple(c.id for c in own if c.id == couldnt_card_id(digest) and c.status == "open")
     # the reader marks the card left_open before this job applies (SR-131 EX-4)
-    waiting = {c.id for c in own if c.kind == "choice"
-               and c.status in (*cardstore.AWAITING, "left_open")}
-    if any(e.kind == "read-entry" and e.payload.get("message_digest") == digest
-           and e.payload.get("answer") == "open"
-           and str(e.payload.get("id")).split("/", 1)[0] in waiting for e in core.events()):
+    waiting = {c.id for c in own if c.kind == "choice" and c.status in HOLDING}
+    held = {c.id for c in own if c.status in HOLDING}
+    # while a blocking card is unanswered, a message the reader read as an answer to any of
+    # the session's cards ("whatever works", "ok go on") starts no new request
+    if waiting and any(e.kind == "read-entry" and e.payload.get("message_digest") == digest
+                       and str(e.payload.get("id")).split("/", 1)[0] in held
+                       for e in core.events()):
         gate.refresh(root, session, digest, GATE_REASON_CARD)    # SR-131 EX-4: a vague answer
         return Applied(job=job.id, closed=closed)               # picks nothing; the card stays
     if str(answer.get("intent")) != "yes":
+        if waiting:   # SR-131 EX-4: an unanswered blocking card holds the gate; its answer opens it
+            gate.refresh(root, session, digest, GATE_REASON_CARD)
+            return Applied(job=job.id, closed=closed)
         gate.open(core, session, digest, "clarify", "your message carries no new request")
         return Applied(job=job.id, closed=closed)
     answered = [a for a in job.inputs.get("answered") or () if isinstance(a, Mapping)]
@@ -573,6 +581,9 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     lines += [EVIDENCE_ASSUMED.format(text=f"{q.text}: {q.resolutions[0]}")
               for g, q in gaps if id(g) not in asked and (escalate or not g.get("blocking"))
               and q.resolutions and not (escalate and g.get("blocking"))]
+    from plumb.understand import judge
+
+    lines += judge.pending_lines(core, session, card_id(digest))   # SR-152: this request's doubts
     if escalate or blocking:
         lines.insert(0, WAITS_ON)
     cards = [_readback_card(root, digest, text, readback, lines)]
@@ -721,8 +732,13 @@ def _choice_effect(*, core: Any, card: CardState, job: Any = None, digest: str =
         any(a.question == q.id and opens(a.answer) for a in card.answers)
         for q in card.questions)
     session = str(getattr(job, "session", "") or "")
-    if done and session and not _clarify_pending(Path(core.root), session, digest):
-        gate.open(core, session, digest, "clarify", "every question of the card is answered")
+    # a later message the card held (SR-131 EX-4) owns the gate now: open it for that one
+    held = gate.pending_digest(Path(core.root), session) if session else None
+    target = held if held and held != digest and not any(
+        c.kind == "choice" and c.status in HOLDING and c.id != card.id
+        for c in cardstore.own_cards(Path(core.root), session)) else digest
+    if done and session and not _clarify_pending(Path(core.root), session, target):
+        gate.open(core, session, target, "clarify", "every question of the card is answered")
     if not (guessed and session):
         return None
     # "build with my best guesses": the request lists them, as the answer promised

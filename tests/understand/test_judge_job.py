@@ -254,18 +254,32 @@ def test_verdict_logged_with_score(world: Path) -> None:
     assert one["model"]
 
 
-def test_beyond_names_what_the_words_do_not_support(world: Path) -> None:
+def _open_readback(repo: Path, text: str = MESSAGE) -> str:
+    """An open read-back card for the request ``text`` (what the clarify job draws)."""
+    from plumb.contracts import CardState
+    from plumb.understand import cardstore, clarify
+
+    digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    card = CardState(id=clarify.card_id(digest), kind="clarify", topic="your request",
+                     issue="Make pages load faster", evidence="Assumed: public pages",
+                     resolutions=("Yes", "No"), status="open")
+    cardstore.save(repo, SESSION, [card])
+    return card.id
+
+
+@pytest.mark.sr("SR-152")
+def test_sr152_ex1_beyond_is_a_line_on_the_read_back_not_a_card(world: Path) -> None:
     core = open_core(world)
+    card_id = _open_readback(world)
     job = build_job(core, ["SR-001"])
     applied = _apply(core, job, verdict_answer(
         ("SR-001", "beyond", 0.9), beyond={"SR-001": ["a two second limit"]}))
-    (card,) = [c for c in applied.cards if c.kind == "beyond"]
-    assert "a two second limit" in card.issue
-    assert card.topic == "Pages load in two seconds"
-    assert MESSAGE in card.evidence
-    assert len(card.resolutions) == 3                 # keep it, drop it, reword
-    assert owner_level(card.issue + card.topic) == []
-    assert card.questions and card.questions[0].record == "SR-001"
+    (card,) = applied.cards
+    assert card.id == card_id and card.kind == "clarify"
+    assert card.evidence.splitlines() == [
+        "Assumed: public pages",
+        "You did not ask for Pages load in two seconds; Yes confirms it too, so choose Not quite to drop it"]
+    assert owner_level(card.evidence) == []
 
 
 def test_ex4_contradicts_names_both_examples(world: Path, write_record) -> None:
@@ -284,10 +298,64 @@ def test_ex4_contradicts_names_both_examples(world: Path, write_record) -> None:
                                                contradicts={"SR-002": said}))
     verdict = next(e["payload"] for e in applied.entries if e["kind"] == "verdict")
     assert verdict["verdict"] == "contradicts" and verdict["contradicts"] == said
-    (card,) = [c for c in applied.cards if c.kind == "contradicts"]
-    assert '"Pages load in five seconds" (example 1)' in card.issue
-    assert '"Pages load in two seconds" (example 1)' in card.issue
-    assert owner_level(card.issue) == []                # titles, never a bare number
+    assert not [c for c in applied.cards if c.kind == "contradicts"]
+
+
+@pytest.mark.sr("SR-152")
+def test_sr152_ex2_contradicts_line_names_both_titles_and_the_confirmed_one(
+        world: Path, write_record) -> None:
+    write_record(world, requirement_text(
+        2, "Pages load in five seconds", "Public pages load within five seconds",
+        intent=1, feature="FEAT-001",
+        examples=(("a public page", "it is requested", "it loads within 5 seconds"),)))
+    core = open_core(world)
+    approve(core, "INT-001")        # the intent is confirmed too: not the one named
+    approve(core, "SR-001")
+    core = open_core(world)
+    _open_readback(world)
+    job = build_job(core, ["SR-002"])
+    applied = _apply(core, job, verdict_answer(
+        ("SR-002", "contradicts", 0.9), contradicts={"SR-002": ["SR-002 conflicts with SR-001"]}))
+    (card,) = applied.cards
+    assert card.evidence.splitlines()[-1] == (
+        "You confirmed Pages load in two seconds; Pages load in five seconds contradicts it. "
+        "Yes confirms Pages load in five seconds too, so choose Not quite to keep only "
+        "Pages load in two seconds")
+    assert owner_level(card.evidence) == []
+
+
+@pytest.mark.sr("SR-152")
+def test_sr152_ex3_no_finding_leaves_the_read_back_unchanged(world: Path) -> None:
+    core = open_core(world)
+    _open_readback(world)
+    applied = _apply(core, build_job(core, ["SR-001"]), verdict_answer(("SR-001", "supported", 0.9)))
+    assert not [c for c in applied.cards if c.kind == "clarify"]
+
+
+@pytest.mark.sr("SR-152")
+def test_sr152_ex4_no_open_read_back_the_line_waits_for_its_own_request(world: Path) -> None:
+    from plumb.understand import clarify, files, jobs
+
+    core = open_core(world)
+    job = build_job(core, ["SR-001"])
+    applied = _apply(core, job, verdict_answer(
+        ("SR-001", "beyond", 0.9), beyond={"SR-001": ["a two second limit"]}))
+    assert applied.cards == ()                         # no read-back open: no card, no line yet
+    files.write_json_atomic(jobs.job_path(world, SESSION, job.id), files.job_to_json(job))
+    for e in applied.entries:
+        core.log_append("events", e["kind"], dict(e["payload"]))
+
+    def drawn_for(text: str) -> list[str]:
+        digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+        asked = clarify.build(open_core(world), SESSION, message={"digest": digest, "text": text})
+        (card,) = clarify.apply(open_core(world), asked, {"intent": "yes", "readback": {
+            "proposal": "Do the thing"}}).cards
+        return card.evidence.splitlines()
+
+    assert drawn_for("another request") == []          # not this record's request
+    assert drawn_for(MESSAGE) == [                      # its own request's read-back
+        "You did not ask for Pages load in two seconds; Yes confirms it too, so choose Not quite "
+        "to drop it"]
 
 
 def test_ex5_option_picked_decision_supported_is_not_settled_waits_as_card(
@@ -433,7 +501,7 @@ def test_the_worker_applies_the_verdicts_and_the_cards(repo: Path, engine_standi
     assert {v["id"]: (v["verdict"], v["score"]) for v in logged} == {
         ids[0]: ("supported", 0.95), ids[1]: ("supported", 0.9), ids[2]: ("beyond", 0)}
     kinds = sorted(c.kind for c in cardstore.load(repo, SESSION))
-    assert "beyond" in kinds and "trial" in kinds
+    assert "beyond" not in kinds and "trial" in kinds
 
 
 # ---- J9a: the judge cases of the evaluation set ---------------------------------------------

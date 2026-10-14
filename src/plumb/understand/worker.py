@@ -202,7 +202,8 @@ def _write_applied(core: Any, session: str, applied: Applied) -> None:
         cardstore.save(core.root, session, [*kept, *applied.cards])
     for entry in applied.entries:
         kind = str(entry["kind"])
-        log.append(core.paths, log.stream_of(kind), kind, dict(entry["payload"]))
+        # through the core, so its cached events see this entry (a later job reads them)
+        core.log_append(log.stream_of(kind), kind, dict(entry["payload"]))
     for text in applied.notes:
         _note(core, "worker", applied.job, text)
 

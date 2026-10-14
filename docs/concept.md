@@ -1,13 +1,11 @@
 # plumb concept spec
 
-Superseded in part by INT-037 (DEC-040): `plumb relay`, `/plumb settle`, settling and
-`by: settled`, `plumb confirm`, the triage offer and agent-relayed offers described below are gone. One judge
-path (or the owner, by a button or typed words) confirms a record; context alone never does.
-Read every passage below that names them as history.
-Cards are reshaped by INT-036 (DEC-038, DEC-039) and INT-041: a card is one of two shapes, a
-read-back of a request or a choice (one question at a time, the recommended option first); a
-choice card can carry a block diagram. The card passages below that list card sets or
-offers are history.
+Confirmation today (INT-036, INT-037, INT-041): a card is a read-back of a request, a choice
+(one question at a time, the recommended option first, optionally with a block diagram) or a
+trial. A record is confirmed by the owner's answer on a card, by the owner's own typed command
+(`/plumb approve ...`), or by the judge when the owner has turned auto-approve on. Context
+alone never confirms. There is no settle on/off, triage offer, `plumb relay`, `/plumb confirm`
+or agent-run conflict relay; passages below that name them are history.
 
 Status: reference document. Written 2026-10-05 from the owner intent brief of the same day.
 The owner does not review this document; independent verifier agents check it, and every
@@ -304,8 +302,7 @@ Two forms the owner chose on 2026-10-06 (D14) sit beside these:
 - **Triage group (D14 A).** `plumb triage` groups proposed records by the judgment backend's
   faithfulness rating. The owner confirms the low-risk group in one step, either
   `plumb triage --approve low-risk` in the owner's terminal (`by: owner`, exactly the listed
-  hashes) or by affirming the one-line offer in a prompt, which the agent relays as above
-  (`by: agent-relayed`, `plumb relay --group low-risk`). The offer line names up to about 5
+  hashes). The offer line names up to about 5
   records of the group by title, then "+N more (see plumb triage)" (D18, R13 Q2); the stated
   set pins the whole group's hashes, `plumb triage` shows it in full, and the owner's "ok"
   approves exactly that pinned list, no more: a record changed since the offer is left out
@@ -438,21 +435,9 @@ committed entry shows up in `plumb check` and in git history. The merge-boundary
 `agent-relayed` approvals with their quotes (section 7.5) is the owner's cheap backstop
 against a relayed approval the owner never gave.
 
-**Self-recorded messages (D18, R13 Q4).** On a host without a prompt hook (the CLI-only
-fallback of section 9), the agent records the owner's message itself with `plumb turn
-start`. A chat "ok" may still confirm through `plumb relay`, but every confirmation resting
-on a message the agent recorded itself is labelled "self-recorded message" in `plumb show`,
-the merge-boundary glance and the host status, and it never supports an auto-approval. This path exists only for hosts WITHOUT a prompt hook: where the session marker names a
-host whose prompt hook runs (`claude-code`; Codex once its hook has logged a prompt), a
-relay, a relayed escalation decline or an auto-approval resting on a message not logged by
-that hook is refused (exit 3) at one choke point (`approvals.owner_prompt`), and the Claude
-Code deny rules also cover `plumb turn start` and `plumb hook prompt`. Otherwise the agent
-could pipe its own "ok" into `plumb turn start` and relay it.
-
 An escalated plan (section 5.2) is approved as a set: one approval pins a set hash over the
 sorted member hashes. The set is anchored on an `INT` with `mode: escalated` and a `members`
-list (`plumb spec approve INT-###` in the owner's terminal, or the owner's affirming words
-relayed with `plumb relay --set`).
+list (`plumb spec approve INT-###` in the owner's terminal).
 
 ### 4.7 Append-only logs
 
@@ -576,15 +561,12 @@ is exact code.
   cards that are open: accepted, rejected, change or open, with the owner's exact words as
   evidence. An accepted answer at or above the learned threshold, at the version shown, with
   its words found in the message, is written as an `approval` with `by: owner-words`. The
-  typed commands (`/plumb approve ...`, `/plumb undo ...`, `/plumb settle on|off ...`,
-  `/plumb go`) stay an exact grammar; prose never turns an owner-only setting on.
+  typed commands (`/plumb approve ...`, `/plumb undo ...`, `/plumb go`) stay an exact grammar; prose never turns an owner-only setting on.
 - **The judge** asks, for every record a capture wrote, whether the owner would object given
   their words. Until the trial teaches a threshold it only offers the supported records in
   batches of at most five (one drawn from below the line); an answered batch is the labelled
-  set that `calibrate` reads, from the logged scores and with no model call. Where calibration
-  passes, settling switches itself on for requirements and their examples (`by: settled`,
-  one line each turn with Undo); for intents the owner turns it on by typing; decisions are
-  never settled. The ~150 records proposed before this are judged in one background pass and
+  set that `calibrate` reads, from the logged scores and with no model call. With
+  auto-approve on (typed by the owner) the judge confirms what passes. The ~150 records proposed before this are judged in one background pass and
   offered as one card per feature (or per intent when there is no feature).
 - **The clarifier** runs on every owner message and says whether it carries intent and which
   gaps change what gets built. A request with such a gap closes the **gate**: edits are

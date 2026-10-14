@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from mergedriver.mdhelpers import log_prompt
 
 from awareness.gitrepo import add_worktree, requirement
 from awareness.scenario import change, setup
@@ -69,10 +68,9 @@ def _decisions(root: Path) -> list[Any]:
     return [r for r in open_core(root).index().values() if r.kind == "decision"]
 
 
-def _answer(root: Path, ref: str, words: str = "keep feat-x's") -> int:
-    digest = log_prompt(root, words, at=_later())
-    return cli.main(["conflict", "relay", ref, "--prompt", digest, "--quote", words,
-                     "--root", str(root)])
+def _answer(root: Path, ref: str, take: str = "feat-x") -> int:
+    """The owner's own terminal answers the card."""
+    return cli.main(["conflict", "choose", ref, "--take", take, "--root", str(root)])
 
 
 def early_heads(reply: str, title: str) -> list[str]:
@@ -136,7 +134,7 @@ def test_capture(tmp_path: Path, hook_input: Any) -> None:
     _other, mine = _lanes(tmp_path)
     _start_turn(mine)
     result = change(mine, OURS)
-    assert any(line.startswith('▸ Conflict  SR-005 "relay checks"') for line in result.lines)
+    assert any('"relay checks" waits as a card' in line for line in result.lines)
     asked, reply = _turn(mine, hook_input)
     assert early_heads(reply, "relay checks"), reply
     [dec] = _decisions(mine)
@@ -158,7 +156,7 @@ def test_clarify_then_edit(tmp_path: Path, hook_input: Any) -> None:
     the decision once, and the owner's "keep feat-x's" records it."""
     _other, mine = _lanes(tmp_path)
     _start_turn(mine)
-    assert '▸ Conflict  SR-005 "relay checks"' in _clarify(mine)
+    assert 'over "relay checks" waits as a card' in _clarify(mine)
     requirement(mine, "SR-005", "relay checks", OURS, feature="FEAT-002")
     asked, reply = _turn(mine, hook_input)
     # the read-back's card is drawn once (its decision has its own card since SR-012)

@@ -17,12 +17,10 @@ from mergedriver.mdhelpers import (
     commit_all,
     ex,
     install_driver,
-    log_prompt,
     make_repo,
     plumb,
     record,
     run_git,
-    shown,
     write_record,
 )
 from plumb import cli
@@ -84,12 +82,9 @@ def _committed(root: Path, rev: str = "HEAD") -> str:
 
 
 def _relay_theirs(root: Path) -> None:
-    """The owner saw the card and said "keep feat-x's"; the agent relays it (the /plumb
-    template's form)."""
-    shown(root)
-    digest = log_prompt(root, "keep feat-x's")
-    assert cli.main(["conflict", "relay", "IC-001", "--take", "theirs", "--prompt", digest,
-                     "--quote", "keep feat-x's", "--root", str(root)]) == 0
+    """The owner chooses feat-x's version at their own terminal."""
+    assert cli.main(["conflict", "choose", "IC-001", "--take", "theirs",
+                     "--root", str(root)]) == 0
 
 
 # --------------------------------------------------------------- the check reads the commit
@@ -239,10 +234,8 @@ def test_sequencer_step_stops_and_is_held(tmp_path: Path, operation: str) -> Non
     assert held.returncode != 0, output
     assert "IC-001" in output and f"continue the {operation}" in output
     assert _head(where) == head
-    shown(where)
-    digest = log_prompt(where, "keep theirs")
-    assert cli.main(["conflict", "relay", "IC-001", "--take", "theirs", "--prompt", digest,
-                     "--quote", "keep theirs", "--root", str(where)]) == 0
+    assert cli.main(["conflict", "choose", "IC-001", "--take", "theirs",
+                     "--root", str(where)]) == 0
     done = _git(where, *cont)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "conflict:" not in _committed(where)

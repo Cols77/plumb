@@ -107,6 +107,18 @@ def test_an_option_with_no_consequence_is_printed_alone_without_a_placeholder(
     assert "not written" not in text
 
 
+@pytest.mark.sr("SR-152")
+def test_every_doubt_line_of_a_readback_is_shown(repo: Path) -> None:
+    from plumb.present import owner_text
+
+    doubts = [owner_text.DOUBT_BEYOND.format(title=t) for t in ("Alpha", "Beta")]
+    card = CardState(id="clarify:1", kind="clarify", topic="t", issue="i",
+                     evidence=chr(10).join([clarify.WAITS_ON, "a context line", *doubts]),
+                     resolutions=("Yes",))
+    context = fullcard.content(open_core(repo), card)["context"]
+    assert all(d in context for d in doubts)
+
+
 def test_sr145_ex4_a_card_with_no_diagram_has_no_diagram_line(repo: Path) -> None:
     plain = CardState(id="c:1", kind="choice", topic="t", issue="i", resolutions=("A", "B"))
     drawn = CardState(id="c:2", kind="choice", topic="t", issue="i", resolutions=("A", "B"),

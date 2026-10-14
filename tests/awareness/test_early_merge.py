@@ -17,11 +17,9 @@ import pytest
 from mergedriver.mdhelpers import (
     commit_all,
     install_driver,
-    log_prompt,
     make_repo,
     parse,
     run_git,
-    write_stated_conflicts,
 )
 
 from awareness.scenario import capture
@@ -74,12 +72,10 @@ def _commit_lanes(main: Path, other: Path) -> None:
     commit_all(main, "main's relay\n\nSR: SR-005")
 
 
-def _answered(tmp_path: Path, words: str) -> tuple[Path, Path, str]:
+def _answered(tmp_path: Path, take: str) -> tuple[Path, Path, str]:
     main, other = _lanes(tmp_path)
     dec = _decision(main)
-    digest = log_prompt(main, f"{words} {dec.id}", at="2999-01-01T00:00:00Z")
-    assert cli.main(["conflict", "relay", dec.id, "--prompt", digest, "--quote",
-                     f"{words} {dec.id}", "--root", str(main)]) == 0
+    assert cli.main(["conflict", "choose", dec.id, "--take", take, "--root", str(main)]) == 0
     from plumb.approvals import approve
 
     approve(open_core(main), ["INT-001", "SR-005"])
@@ -93,7 +89,7 @@ def test_merge_hook_applies_the_earlier_answer(tmp_path: Path) -> None:
     held once and "finish the merge" records the answer. Nothing is asked again."""
     from plumb.boundary.premerge import check
 
-    main, _other, dec = _answered(tmp_path, "keep feat-x's")
+    main, _other, dec = _answered(tmp_path, "feat-x")
     merged = run_git(main, "merge", "--no-edit", "feat-x", check=False)
     output = merged.stdout + merged.stderr
     assert merged.returncode != 0, output
@@ -113,7 +109,7 @@ def test_merge_hook_applies_the_earlier_answer(tmp_path: Path) -> None:
 def test_merge_card_and_conflicts_show_the_earlier_answer(tmp_path: Path) -> None:
     """Without the hook (``--no-verify``): the card says it is already answered, and
     /plumb conflicts settles it."""
-    main, _other, _dec = _answered(tmp_path, "keep this one")
+    main, _other, _dec = _answered(tmp_path, "main")
     run_git(main, "merge", "--no-edit", "--no-verify", "--no-commit", "feat-x", check=False)
     from plumb.mergedriver.conflicts import conflict_card, open_conflicts
 
@@ -135,7 +131,7 @@ def test_merge_card_and_conflicts_show_the_earlier_answer(tmp_path: Path) -> Non
 def test_merge_check_lists_no_answered_question(tmp_path: Path) -> None:
     from plumb.boundary.premerge import check
 
-    main, _other, dec = _answered(tmp_path, "keep feat-x's")
+    main, _other, dec = _answered(tmp_path, "feat-x")
     run_git(main, "merge", "--no-edit", "--no-verify", "--no-commit", "feat-x", check=False)
     report = check(open_core(main), "merge")
     assert report.intent_conflicts == ()
@@ -148,8 +144,6 @@ def test_merge_card_answer_answers_the_waiting_decision(tmp_path: Path) -> None:
     (the merge check does not list the decision beside it), and its answer answers the
     decision too."""
     from plumb.boundary.premerge import check
-    from plumb.mergedriver import open_conflicts, stated_entries
-
     main, other = _lanes(tmp_path)
     dec = _decision(main).id
     from plumb.approvals import approve
@@ -160,11 +154,8 @@ def test_merge_card_answer_answers_the_waiting_decision(tmp_path: Path) -> None:
     report = check(open_core(main), "merge")
     assert [c["record"] for c in report.intent_conflicts] == ["SR-005"]
     assert dec not in [r["id"] for r in report.unconfirmed]
-    core = open_core(main)
-    write_stated_conflicts(main, stated_entries(core, [c.ic for c in open_conflicts(core)]))
-    digest = log_prompt(main, "keep feat-x's version", at="2999-01-01T00:00:00Z")
-    assert cli.main(["conflict", "relay", "IC-001", "--take", "feat-x", "--prompt", digest,
-                     "--quote", "keep feat-x's version", "--root", str(main)]) == 0
+    assert cli.main(["conflict", "choose", "IC-001", "--take", "feat-x",
+                     "--root", str(main)]) == 0
     core = open_core(main)
     assert core.index()[dec].fields["chosen"] == "feat-x's version"
     assert core.status([dec])[dec].confirmation == "confirmed"

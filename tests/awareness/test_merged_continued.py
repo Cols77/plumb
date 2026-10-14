@@ -73,7 +73,7 @@ def _feat_x(root: Path, *, allow_git: bool = True) -> list[dict]:
 def test_capture_on_main_asks_nothing(tmp_path: Path) -> None:
     main, _other = _merged_then_continued(tmp_path)
     result = change(main, "A relay pins only the records the owner's words affirm.")
-    assert not any("Conflict" in line for line in result.lines), result.lines
+    assert not any("waits as a card" in line for line in result.lines), result.lines
     assert _decisions(main) == []
 
 
@@ -165,4 +165,4 @@ def test_unmerged_change_still_conflicts(tmp_path: Path) -> None:
     commit_all(other, "feat-x goes on")
     _stop_hook(other)
     result = change(main, "A relay pins only the records the owner's words affirm.")
-    assert any("Conflict" in line for line in result.lines)
+    assert any("waits as a card" in line for line in result.lines)

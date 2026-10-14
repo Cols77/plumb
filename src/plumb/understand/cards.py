@@ -163,7 +163,7 @@ def which_version(record: Any, old: str, new: str, branch: str = "",
                      evidence="\n".join(context), resolutions=options, questions=(question,), branch=branch)
 
 
-ORDER = ("choice", "clarify", "trial", "beyond", "contradicts", "couldnt_check", "regression",
+ORDER = ("choice", "clarify", "trial", "couldnt_check", "regression",
          "test_changed", "drift", "conflict", "early_conflict")
 
 
@@ -263,6 +263,10 @@ def conflict_card(index: Mapping[str, Any], conflict: Any, *, turn: int = 0) -> 
         text = " | ".join(f"{field_name(n)}: {show_value(n, v.get(side))}"
                           for n, v in conflict.fields.items())
         sides.append(owner_text.CONFLICT_SIDE.format(side=label, text=text))
+    proposed = conflict.proposed.get("fields") if isinstance(conflict.proposed, Mapping) else None
+    if isinstance(proposed, Mapping):  # SR-151 EX-1: the combined version, when one is proposed
+        sides.append(owner_text.CONFLICT_SIDE.format(side="A combined version", text=" | ".join(
+            f"{field_name(n)}: {show_value(n, v)}" for n, v in proposed.items())))
     both = ("Keeps the combined version already proposed; what each side had that it leaves "
             "out is dropped" if conflict.proposed else
             "Writes one version from both as you say; neither holds as it reads until you "
@@ -279,10 +283,15 @@ def early_conflict_card(index: Mapping[str, Any], conflict: Any, *,
     """An early intent conflict this turn's claim raised (R17): the other branch's version and
     this work's, in the owner's words."""
     record = index.get(conflict.record)
+    label = conflict.ours_label or "this work"       # off both branches, the second branch
     issue = owner_text.EARLY_ISSUE.format(branch=conflict.branch, theirs=conflict.theirs,
-                                          ours=conflict.ours)
+                                          label=label, ours=conflict.ours)
     both = ("One version is written from both as you say; both branches build on it once you "
             "have seen it")
     return _card("early_conflict", card_id("early_conflict", conflict.record, conflict.branch),
-                 conflict.title or conflict.record, issue, str(conflict.judgment or ""),
-                 _sides("this work", conflict.branch, both=both), [(issue, record)], turn)
+                 conflict.title or conflict.record, issue,
+                 "\n".join(filter(None, (
+                     str(conflict.judgment or ""), owner_text.EARLY_TYPED_CHOOSE.format(
+                         title=conflict.title or conflict.record, branch=conflict.branch,
+                         ours=conflict.ours_label or "this")))),
+                 _sides(label, conflict.branch, both=both), [(issue, record)], turn)

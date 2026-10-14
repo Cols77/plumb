@@ -5,9 +5,6 @@ asked at once, "the answer is recorded once (a DEC) and both lanes build on it".
 tells the owner to say "keep feat-x's", "keep this one" or "both". This module turns those
 words, and only those words, into the decision:
 
-- ``relay``: the owner's words relayed from a logged prompt (``plumb conflict relay
-  DEC-### [--take <branch>|both]``, the agent's path; the prompt hook's log, or a message
-  the agent recorded itself on a host without one, labelled "self-recorded message");
 - ``choose_owner``: the owner's own terminal (``plumb conflict choose DEC-###``);
 - ``answer_from_conflict``: a merge-time conflict card the owner answered on a record an
   unanswered early decision decides (``conflicts.apply_choice``), so one answer settles
@@ -51,7 +48,7 @@ _RELATIVE = ("this one", "this request", "this request's", "this request's versi
              "my one", "the new one", "this lane", "this lane's")
 _OTHER = ("theirs", "their version", "their one", "the other one", "the other version",
           "the other branch's", "that one", "that version", "that branch's")
-# the merge-time card's own words for its two sides (``conflicts.named_takes``)
+# the merge-time card's own words for its two sides
 _IC_OURS = ("mine", "ours", "my version", "my one", "my side")
 _IC_THEIRS = ("theirs", "their version", "their one", "their side", "the incoming one")
 _BOTH = ("both", "both of them", "combined", "combine them", "combine both", "both, combined",
@@ -470,61 +467,6 @@ def _stated(core: Any, prompt_at: str) -> Mapping[str, Any]:
     if stated_at and prompt_at and stated_at > prompt_at:
         return {}
     return data
-
-
-def was_shown(core: Any, early: Early, prompt_at: str, quote: str) -> bool:
-    """The owner saw the question in the reply before the prompt: the decision's card, or
-    the early conflict card of its record and branches (capture, the clarify read-back),
-    or the owner's words name the decision or its record."""
-    from plumb.approvals import _named
-
-    if _named(early.dec, quote) or _named(early.record, quote):
-        return True
-    data = _stated(core, prompt_at)
-    if any(isinstance(r, Mapping) and r.get("id") == early.dec
-           for r in data.get("records") or []):
-        return True
-    return any(isinstance(c, Mapping) and c.get("record") == early.record
-               and c.get("branch") in early.branches for c in data.get("early") or [])
-
-
-def relay(core: Any, ref: str, take: str | None, *, prompt: str,
-          quote: str) -> tuple[Early, dict[str, Any]]:
-    """The owner's answer, relayed from their logged words (``plumb conflict relay``)."""
-    from plumb.approvals import Refused, owner_prompt, quote_in_prompt
-    from plumb.normalize import normalize_text
-
-    early = find_or_raise(core, ref)
-    current = _current(core)
-    try:
-        entry = owner_prompt(core, prompt)
-    except Refused as exc:
-        raise AnswerRefused(str(exc)) from exc
-    said = normalize_text(quote)
-    if not said or not quote_in_prompt(said, normalize_text(str(entry.get("text") or ""))):
-        raise AnswerRefused("the quote is not a verbatim part of that prompt (whole words)")
-    if _here(early, current) is None and relative_words(said):
-        raise AnswerRefused(
-            f"on {current or 'this checkout'}, which is neither {early.raised_on} nor "
-            f"{early.other}, words like \"this one\" or \"theirs\" name no version; the "
-            "owner answers with a branch's name ("
-            + say_line(early, current).removeprefix("Say: ") + ")")
-    named = named_keys(early, said, current)
-    key = chosen_key(named)
-    if take:
-        wanted = normalize_take(early, take, current)
-        if key != wanted:
-            raise AnswerRefused(f"the quote must name the one choice made ({option(wanted)}) "
-                                "and no other")
-    if key is None:
-        raise AnswerRefused("the quote names no version: the owner answers with the card's "
-                            f"words ({say_line(early, current).removeprefix('Say: ')})")
-    if not was_shown(core, early, str(entry.get("at") or ""), said):
-        raise AnswerRefused(f"the conflict card of {early.record} was not shown in the reply "
-                            "before that prompt; show it (/plumb conflicts) and let the owner "
-                            "answer it")
-    payload = record_answer(core, early, key, by="agent-relayed", quote=said, prompt=entry)
-    return early, payload
 
 
 def choose_owner(core: Any, ref: str, take: str) -> tuple[Early, dict[str, Any]]:

@@ -217,7 +217,6 @@ def _regression_line(node: str, evidence: Any) -> str:
 
 def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
                  stated_ids: Sequence[str], shown: Iterable[str] = (), *,
-                 conflicts: Sequence[Mapping[str, Any]] = (),
                  early: Sequence[Mapping[str, Any]] = ()) -> None:
     """The stated set of this reply: what a bare affirmation of the owner may confirm.
 
@@ -238,8 +237,6 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
         "at": utc_now(), "session": ctx.session_id,
         "reply_after_prompt": turn.get("prompt_digest"),
         "records": [{"id": i, "hash": index[i].hash, "shown": i in shown} for i in stated_ids]}
-    if seen and conflicts:  # sp6 8.4: the conflict cards this reply showed the owner
-        data["conflicts"] = [dict(c) for c in conflicts]
     if seen and early:  # R17: the early conflict cards this reply showed the owner
         data["early"] = [dict(c) for c in early]
     write_json_atomic(ctx.session_dir / "stated.json", data)
@@ -251,10 +248,10 @@ def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
     for and what the owner's words confirmed need none (R17: asked at once)."""
     if skipped:  # a timed-out git status is no evidence of a turn without changes
         note_skipped(ctx.root, skipped)
-    fresh, conflicts, early = owner_cards(ctx, core, turn)
+    fresh, early = owner_cards(ctx, core, turn)
     shown: dict[str, str] = {}
     text = understand_parts(ctx, core, turn, fresh=fresh, shown=shown)
-    write_stated(ctx, turn, {}, [], conflicts=conflicts, early=early)
+    write_stated(ctx, turn, {}, [], early=early)
     return HookOutput(system_message="\n\n".join(text)) if text else None
 
 
@@ -338,7 +335,6 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     job = GitStatusJob(ctx.root, git_timeout) if turn_start > 0 else None
     from plumb.api import open_core
     from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
-    from plumb.understand import cards as card_text
 
     core = open_core(ctx.root)
     core.index()  # read while git status runs; both turn paths need it
@@ -353,7 +349,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     changed_set = set(changed)
     edited_ids = [i for i in touched_ids if index[i].path in changed_set]
     all_statuses = core.status()
-    from plumb.trace import trace_instruction, untraced_paths
+    from plumb.trace import untraced_paths
 
     # work no requirement owns escaped the translation chain: the agent is told to read it
     # back and record a proposed SR (non-blocking, R1)
@@ -372,19 +368,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                                     tests_summary=("unknown", (), ()),
                                     intent_summary=intent_summary)
     stamp = int(turn_start)
-    # SR-030: a confirmed requirement whose acceptance test changed since the owner confirmed
-    # it waits for the owner on its own card (never only in plumb status); it stays out of the
-    # stated set, so a bare "ok" never confirms the new test (the card recommends putting the
-    # test back)
-    test_changed = [i for i in touched_ids if index[i].kind == "requirement"
-                    and getattr(all_statuses.get(i), "changed_tests", ())]
-    test_cards = [card_text.test_changed_card(index[i], all_statuses[i].changed_tests,
-                                              turn=stamp) for i in test_changed]
-    kept: dict[str, str] = {}
-    ctx.keep(drawn_now(core, test_cards, kept))
-    write_stated(ctx, turn, index, stated_ids, kept)
-    # then the status line: a later cut (budget, watchdog) must not leave it on an older turn
-    write_snapshot(ctx.root, early_snapshot, present=getattr(core.config, "present", None))
+    test_cards = _early_state(ctx, core, index, turn, touched_ids, all_statuses, stated_ids,
+                              early_snapshot, stamp)
     note_path = session_dir / "untraced.json"
     queued = [p for p in untraced if p not in told]
     if queued:  # delivered by the next prompt hook, so a cut after this still tells the agent
@@ -408,6 +393,46 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
 
     aware = at_stop(core, changed, touched_ids, ctx.deadline)
     stale_reasons, _ = stale_hold(ctx, core, index, turn, turn_start)
+
+    blocked = _block_reasons(ctx, core, index, turn, turn_path, active, v, changed, asked,
+                             stated_ids, told, queued, note_path, skipped, aware,
+                             stale_reasons)
+    if blocked:
+        return blocked
+
+    return _cards(ctx, core, index, turn, v, test_cards, stated_ids, stamp)
+
+
+def _early_state(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any],
+                 touched_ids: Sequence[str], all_statuses: Any, stated_ids: Sequence[str],
+                 early_snapshot: Any, stamp: int) -> list[Any]:
+    """Keep the test-changed cards, the stated set and the status line before any evidence step."""
+    from plumb.hosts.claude_code.snapshot import write_snapshot
+    from plumb.understand import cards as card_text
+
+    # SR-030: a confirmed requirement whose acceptance test changed since the owner confirmed
+    # it waits for the owner on its own card (never only in plumb status); it stays out of the
+    # stated set, so a bare "ok" never confirms the new test (the card recommends putting the
+    # test back)
+    test_changed = [i for i in touched_ids if index[i].kind == "requirement"
+                    and getattr(all_statuses.get(i), "changed_tests", ())]
+    test_cards = [card_text.test_changed_card(index[i], all_statuses[i].changed_tests,
+                                              turn=stamp) for i in test_changed]
+    kept: dict[str, str] = {}
+    ctx.keep(drawn_now(core, test_cards, kept))
+    write_stated(ctx, turn, index, stated_ids, kept)
+    # then the status line: a later cut (budget, watchdog) must not leave it on an older turn
+    write_snapshot(ctx.root, early_snapshot, present=getattr(core.config, "present", None))
+    return test_cards
+
+
+def _block_reasons(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any],
+                   turn_path: Path, active: bool, v: Any, changed: Sequence[str],
+                   asked: dict[str, Any], stated_ids: Sequence[str], told: set[str],
+                   queued: Sequence[str], note_path: Path, skipped: Sequence[str],
+                   aware: Sequence[str], stale_reasons: Sequence[str]) -> HookOutput | None:
+    """The block that tells the agent what to do before it stops, or None to go on to cards."""
+    from plumb.trace import trace_instruction
 
     if not active:
         from plumb.present.delta import Line, open_emitter
@@ -458,16 +483,21 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         # hooks.stale_holds_max times (stale.hold_count), so a turn is never held forever
         write_stated(ctx, turn, index, stated_ids)
         return HookOutput(block_reason="\n".join(stale_reasons))
+    return None
 
+
+def _cards(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], v: Any,
+           test_cards: Sequence[Any], stated_ids: Sequence[str], stamp: int) -> HookOutput | None:
+    """The owner's cards, in full, and the stated set that goes with them."""
     # cards only (SR-012, sp7-realign-sp8 C7): what the owner's words confirmed, then every
     # card in full; the status card is the status line's, the agent's lines are the block's
     passing = [n for n, e in (v.evidence or {}).items() if e.state in ("fresh-pass", "flaky-pass")]
     regression = regression_cards(index, v.regressing, v.masked, stamp)
-    fresh, conflicts, early = owner_cards(ctx, core, turn)
+    fresh, early = owner_cards(ctx, core, turn)
     shown: dict[str, str] = {}
     text = understand_parts(ctx, core, turn, extra=[*regression, *test_cards], fresh=fresh,
                             passing=passing, shown=shown)
-    write_stated(ctx, turn, index, stated_ids, shown, conflicts=conflicts, early=early)
+    write_stated(ctx, turn, index, stated_ids, shown, early=early)
     return HookOutput(system_message="\n\n".join(text)) if text else None
 
 
@@ -591,24 +621,21 @@ def understand_parts(ctx: HookContext, core: Any, turn: Mapping[str, Any], *,
 
 
 def owner_cards(ctx: HookContext, core: Any, turn: Mapping[str, Any]
-                ) -> tuple[list[Any], list[dict[str, Any]], list[dict[str, Any]]]:
-    """``(cards, conflict stated entries, early stated entries)``: a card per intent conflict
-    a merge left (sp6 8.3), drawn at every turn end while it is open, and per early conflict
-    ``capture`` or ``plumb clarify`` asked for this turn (R17); their stated entries let the
-    owner's next words choose a side (8.4). Never fails the stop."""
+                ) -> tuple[list[Any], list[dict[str, Any]]]:
+    """``(cards, early stated entries)``: a card per intent conflict a merge left (sp6 8.3),
+    drawn at every turn end while it is open, and per early conflict ``capture`` or
+    ``plumb clarify`` asked for this turn (R17); the early stated entries let the owner's
+    next answer name the card. Never fails the stop."""
     from plumb.understand import cards as card_text
 
     index = core.index()
     stamp = int(float(turn.get("turn_start") or 0))
     out: list[Any] = []
-    conflicts: list[dict[str, Any]] = []
     early: list[dict[str, Any]] = []
     try:
-        from plumb.mergedriver.conflicts import open_conflicts, stated_entries
+        from plumb.mergedriver.conflicts import open_conflicts
 
-        found = open_conflicts(core)
-        out += [card_text.conflict_card(index, c, turn=stamp) for c in found]
-        conflicts = stated_entries(core, [c.ic for c in found])
+        out += [card_text.conflict_card(index, c, turn=stamp) for c in open_conflicts(core)]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         pass
     start = _iso(float(turn.get("turn_start") or 0)) if turn.get("turn_start") else ""
@@ -620,7 +647,7 @@ def owner_cards(ctx: HookContext, core: Any, turn: Mapping[str, Any]
             early.append(stated_entry(conflict))
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         pass
-    return out, conflicts, early
+    return out, early
 
 
 def test_exists(root: Path | str, node: str) -> bool:

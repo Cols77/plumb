@@ -293,6 +293,14 @@ def check_text(core: Any, request: str, *, backend: Any = None) -> EarlyCheck:
     return result
 
 
+def notes(conflicts: Sequence[EarlyConflict]) -> list[str]:
+    """What the agent is told of conflicts: one waits as a card for the owner, who answers it
+    there (SR-151); the agent does not restate it."""
+    from plumb.capture.clarify import INFLIGHT_NOTE
+
+    return [INFLIGHT_NOTE.format(title=c.title or c.record, branch=c.branch) for c in conflicts]
+
+
 def card(conflict: EarlyConflict) -> list[str]:
     """The early intent-conflict card, in the owner's terms (R9 card format, sp5 4.2). On a
     branch that is neither side (``ours_label`` names the second branch) both versions are
@@ -531,8 +539,7 @@ def after_capture(core: Any, *, written: Sequence[str], updated: Sequence[str],
     if dry_run:
         mine = [index[i] for i in ids if index[i].kind != "decision"]
         result = check_records(core, mine, new=written, backend=backend)
-        lines = [line for conflict in result.conflicts for line in card(conflict)]
-        lines += result.lines
+        lines = notes(result.conflicts) + result.lines
         return [*lines, text.EARLY_DRY_RUN] if lines else []
     if not summary and intent and intent in index:
         summary = index[intent].title
@@ -541,7 +548,7 @@ def after_capture(core: Any, *, written: Sequence[str], updated: Sequence[str],
                      backend=backend)
     except inflight.InflightBusy:
         return [text.INFLIGHT_BUSY]
-    lines = [line for conflict in done.check.conflicts for line in card(conflict)]
+    lines = notes(done.check.conflicts)
     return [*lines, *done.check.lines]
 
 
@@ -570,7 +577,7 @@ def preview(core: Any, requirements: Sequence[Mapping[str, Any]],
             mine[-1] = _with_feature(mine[-1], str(fields["feature"]))
         new.append(record_id)
     result = check_records(core, mine, ours=ours, new=new, planned=planned, backend=backend)
-    lines = [line for conflict in result.conflicts for line in card(conflict)] + result.lines
+    lines = notes(result.conflicts) + result.lines
     return [*lines, text.EARLY_DRY_RUN] if lines else []
 
 

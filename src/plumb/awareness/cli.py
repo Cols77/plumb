@@ -67,13 +67,13 @@ def _list(argv: list[str]) -> int:
 
 
 def _check(argv: list[str]) -> int:
-    from plumb.awareness.early import card, check_text
+    from plumb.awareness.early import check_text, notes
 
     parser = _parser("The early intent-conflict check of a request (writes nothing).")
     parser.add_argument("request", nargs="+")
     args = parser.parse_args(argv)
     result = check_text(_core(args), " ".join(args.request))
-    lines = [line for conflict in result.conflicts for line in card(conflict)] + result.lines
+    lines = notes(result.conflicts) + result.lines
     if args.as_json:
         emit({"conflicts": [conflict.__dict__ for conflict in result.conflicts],
               "lines": lines}, True)

@@ -77,9 +77,10 @@ CARD_MERGED = "  Merged on their own: {what}"
 CARD_JUDGED = "  Compatible? JEV: {verdict} ({probability:.2f}){reason}"
 CARD_NO_JUDGMENT = "  Compatible? no judgment available"
 CARD_UNAVAILABLE = "  Compatible? judging unavailable: {cause}"
-CARD_SAY = "  Say: \"keep {ours}'s\", \"keep {theirs}'s\", or how to combine them"
-CARD_SAY_COMBINED = ("  Say: \"keep {ours}'s\", \"keep {theirs}'s\", \"ok, the combined one\", "
-                     "or how to combine them")
+CARD_SAY = ("  Waits on its card for the owner ({ours}'s, {theirs}'s, or combined); "
+            "do not ask in words")
+CARD_SAY_COMBINED = ("  Waits on its card for the owner ({ours}'s, {theirs}'s, or the "
+                     "combined one); do not ask in words")
 CONFLICTS_HEADER = "intent conflicts wait for your choice (/plumb conflicts):"
 NO_CONFLICTS = "plumb: no intent conflict waits for you"
 CONFLICTS_BRIEF = "plumb: {n} intent conflict(s) await your choice (/plumb conflicts)"
@@ -188,12 +189,12 @@ EARLY_CARD_HEAD = '▸ Conflict  {id} "{title}"   (awaits your choice, before an
 EARLY_CARD_SIDE = "  {label:<10}  {text}"
 EARLY_CARD_JUDGED = "  Compatible? {judgment}"
 EARLY_CARD_SAME = "the same requirement is being changed on both branches"
-EARLY_CARD_SAY = ('  Say: "keep {branch}\'s", "keep this one", or "both" (and how they '
-                  "combine)")
+EARLY_CARD_SAY = ("  Waits on its card for the owner ({branch}'s, this one, or both); "
+                  "do not ask in words")
 # the same card shown on a branch that is neither side (the default branch after one side
 # merged): both versions are labelled by branch, and only a branch's name answers it
-EARLY_CARD_SAY_NAMED = ('  Say: "keep {a}\'s", "keep {b}\'s", or "both" (and how they '
-                        "combine)")
+EARLY_CARD_SAY_NAMED = ("  Waits on its card for the owner ({a}'s, {b}'s, or both); "
+                        "do not ask in words")
 EARLY_QUESTION = 'Branch {branch} says "{theirs}"; this request says "{ours}": which one, or both?'
 EARLY_THEIRS = "{branch}'s version"          # every option names its branch: the answer
 # words that name "this side" only from the raising branch's point of view: shown on another
@@ -263,6 +264,12 @@ AUTO_APPROVE_NOT_YET = "Automatic confirmation is switched on, but not in effect
 BACKLOG_DONE = "{judged} records judged, {cards} cards waiting for you"
 
 # -- JUDGE: the cards, the trial and the summary
+DOUBT_BEYOND = ("You did not ask for {title}; Yes confirms it too, so choose Not quite to "
+                "drop it")
+DOUBT_CONTRADICTS = ('You confirmed {other}; {title} contradicts it. Yes confirms {title} too, '
+                     "so choose Not quite to keep only {other}")
+DOUBT_CONTRADICTS_UNNAMED = ("{title} contradicts something you said. Yes confirms it too, so "
+                             "choose Not quite to drop it")
 BEYOND_KEEP = "Keep it: this is what I meant"
 BEYOND_DROP = "Drop it"
 BEYOND_REWORD = "Reword it (say how)"
@@ -348,7 +355,9 @@ TEST_CHANGED_LATER = "Leave it for now"
 
 CONFLICT_ISSUE = "{ours} and {theirs} changed it in different ways"
 CONFLICT_SIDE = "{side} says: {text}"
-EARLY_ISSUE = '{branch} says "{theirs}"; this work says "{ours}"'
+EARLY_TYPED_CHOOSE = ('To answer, type: /plumb conflict choose "{title}" --take '
+                      "<{branch} | {ours} | both>")
+EARLY_ISSUE = '{branch} says "{theirs}"; {label} says "{ours}"'
 
 DRIFT_REQUEST = 'the request behind the change: "{text}" ({at})'
 DRIFT_NO_REQUEST = "the request behind the change is not on file"

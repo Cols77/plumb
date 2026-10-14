@@ -17,13 +17,8 @@ terminal where the owner answers `y`. In the tested marked/noninteractive shell 
 every agent shell: PTYs, removable markers, and direct file writes are outside that tested
 boundary. Marker and TTY checks are defense in depth, not authenticated owner provenance.
 
-Prompts and the "self-recorded message" label (R13 Q4): a prompt that reaches plumb through
-a host's prompt hook is logged `via: hook`. A prompt the agent records itself with
-`plumb turn start` is logged `via: turn`; a chat "ok" relayed from it still confirms, and
-the confirmation is labelled "self-recorded message" in `plumb show`, `plumb explain`, the
-merge-boundary glance and `plumb hosts status`. The label is written once, as
-`self_recorded: true` in the approval's hash-chained payload when the cited prompt was logged
-`via: turn`; every surface reads that one field (`plumb.confirm.is_self_recorded`).
+Prompts: a prompt that reaches plumb through a host's prompt hook is logged `via: hook`; one the
+agent records itself with `plumb turn start` is logged `via: turn` and never confirms anything.
 
 Hook commands that a host runs through the platform shell (Codex's `.codex/hooks.json`) are
 rendered by one function, `plumb.hosts.common.shell_command`: POSIX `sh` quoting, and on
@@ -139,7 +134,7 @@ owner words, proposed intent, and unseen-summary limitations.
 `plumb mcp serve` speaks JSON-RPC 2.0 over stdio (newline-delimited, standard library only)
 and lists six read-only tools: `plumb_brief`, `plumb_relevant`, `plumb_show`,
 `plumb_explain`, `plumb_impact`, `plumb_drift`, each annotated `readOnlyHint: true`. There is
-no write tool: no capture, link, approval, relay, revocation, test run or waiver.
+no write tool: no capture, link, approval, revocation, test run or waiver.
 `plumb mcp install claude-code|codex|hermes` registers it (`.mcp.json`, `.codex/config.toml`,
 Hermes' `config.yaml`), preserving foreign entries.
 
@@ -160,4 +155,4 @@ The gate that refuses edits while a request's check is open is **Claude Code onl
 small state file. Edits made through a shell command are not checked, and the hook says so.
 Other hosts get the skill's instruction to run `plumb clarify --wait` first and the visible
 card, but no refusal. The end-of-turn summary of the understanding layer (what the owner's words
-confirmed, the settled line, the cards) is written by the same stop hook on every host that has one.
+confirmed, the cards) is written by the same stop hook on every host that has one.

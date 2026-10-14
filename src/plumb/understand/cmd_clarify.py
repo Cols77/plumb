@@ -117,6 +117,9 @@ def _outcome_from_state(core: Any, session: str, digest: str) -> Outcome:
         assumed = readback.evidence.splitlines() if readback else []
         return Outcome("ready", digest, [READY, BUILD_ON, *assumed] if assumed else [READY])
     choice = cards.get(clarify.choice_id(digest))
+    if choice is None:   # SR-131 EX-4: an earlier blocking card still holds the gate
+        choice = next((c for c in cardstore.own_cards(root, session) if c.kind == "choice"
+                       and c.status in clarify.HOLDING), None)
     if choice is None:
         return Outcome("waiting", digest, [WAITING])
     drawn = [DRAW.format(path=choice.diagram, question=choice.issue,

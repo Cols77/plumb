@@ -33,7 +33,7 @@ def test_card_shows_both_versions_and_what_merged(repo: Path) -> None:
     assert card[1].split(None, 1) == ["main", OURS_STATEMENT]
     assert card[2].split(None, 1) == ["feat-x", THEIRS_STATEMENT]
     assert card[3] == "  Merged on their own: links +1 from feat-x"
-    assert card[-1] == '  Say: "keep main\'s", "keep feat-x\'s", or how to combine them'
+    assert card[-1] == "  Waits on its card for the owner (main's, feat-x's, or combined); do not ask in words"
 
 
 def test_card_in_owner_terms_example_as_given_when_then(repo: Path) -> None:

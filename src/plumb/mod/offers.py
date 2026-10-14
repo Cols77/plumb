@@ -121,11 +121,15 @@ def content_for(core: Any, session: str, card: CardState) -> dict[str, Any] | No
     return None
 
 
-def turn_buttons() -> tuple[Choice, ...]:
-    """The buttons of a card the stop hook builds (a regression, a decision, a conflict, an
-    early conflict, a drift, the records the turn proposed): it is not in ``cards.json`` and no
-    press can apply its options, so it offers Ask for a change and Leave open; its options are
-    in its content, for the owner to answer in words."""
+def turn_buttons(card: CardState | None = None,
+                 question: ClarifyQuestion | None = None) -> tuple[Choice, ...]:
+    """The buttons of a card the stop hook builds (a regression, a decision, an early conflict,
+    a drift, the records the turn proposed): it is not in ``cards.json`` and no press can apply
+    its options, so it offers Ask for a change and Leave open; its options are in its content,
+    for the owner to answer in words. A merge conflict card's sides are pressable too (SR-150
+    EX-2): a press applies the owner's choice."""
+    if card is not None and card.kind == "conflict":
+        return buttons(card, question)
     return (Choice(owner_text.BUTTON_ASK_CHANGE, "change", None),
             Choice(owner_text.BUTTON_LEAVE_OPEN, "open", None))
 
@@ -156,7 +160,7 @@ def _offers_of(core: Any, session: str, digest: str, stamp: str, card: CardState
                    for r in request_records(
             core, card.id.removeprefix("clarify:"))] if card.kind == "clarify" else []
         offer = offer_id(card.id, qid, record_hash, records)
-        pressable = turn_buttons() if turn_built else buttons(card, question)
+        pressable = turn_buttons(card, question) if turn_built else buttons(card, question)
         data = {"offer_id": offer, "session": session, "card": card.id, "question": qid,
                 "record": record, "hash": record_hash, "records": records,
                 "key_digest": digest,
