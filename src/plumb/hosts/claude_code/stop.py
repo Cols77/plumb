@@ -638,17 +638,22 @@ def owner_cards(ctx: HookContext, core: Any, turn: Mapping[str, Any]
     stamp = int(float(turn.get("turn_start") or 0))
     out: list[Any] = []
     early: list[dict[str, Any]] = []
+    found: list[Any] = []
     try:
         from plumb.mergedriver.conflicts import open_conflicts
 
-        out += [card_text.conflict_card(index, c, turn=stamp) for c in open_conflicts(core)]
+        found = open_conflicts(core)
+        out += [card_text.conflict_card(index, c, turn=stamp) for c in found]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         pass
     start = _iso(float(turn.get("turn_start") or 0)) if turn.get("turn_start") else ""
     try:
         from plumb.awareness.early import stated_entry, turn_conflicts
 
+        merged = {c.record for c in found}   # the merge card asks for that record (EX-10)
         for conflict in turn_conflicts(ctx.session_dir, start):
+            if conflict.record in merged:
+                continue
             out.append(card_text.early_conflict_card(index, conflict, turn=stamp))
             early.append(stated_entry(conflict))
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
