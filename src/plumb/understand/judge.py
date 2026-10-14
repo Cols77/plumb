@@ -4,14 +4,14 @@ A model independent of the coding agent is asked, for every record a capture wro
 (one job per capture) or the backlog pass covers (one job per intent): *would the owner object
 to this record, given their words?* The record's premise is the owner's whole logged message or
 messages (``understand.premise``), the stored question for a short answer, and the parent
-intent when the owner confirmed it, next to the owner's confirmed or settled records it
+intent when the owner confirmed it, next to the owner's confirmed records it
 relates to. Labelled assumptions are shown and left out of what is judged.
 
 ``apply`` logs one ``verdict`` per record (the score is the model's confidence for
-``supported``, 0 otherwise), raises an issue card for ``beyond`` and ``contradicts``, and routes
-``supported`` to settling or to a trial or confirm card. It only returns what to write: the
-worker writes it. The kind registers the handlers of the trial, backlog, beyond and contradicts
-cards (``effects``)."""
+``supported``, 0 otherwise), raises an issue card for ``beyond`` and ``contradicts``, and gives
+``supported`` to the trial, which asks the owner (nothing is confirmed from a verdict alone). It
+only returns what to write: the worker writes it. The kind registers the handlers of the trial,
+beyond and contradicts cards (``effects``)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from typing import Any
 
 from plumb.contracts import Applied, CardState, Job
 from plumb.present import owner_text
-from plumb.understand import backlog, cards, files, premise, settle, trial
+from plumb.understand import backlog, cards, files, premise, trial
 
 kind = "judge"
 SCHEMA_ID = "judge.v1"
@@ -81,7 +81,7 @@ def _clip(text: str, width: int = TEXT_WIDTH) -> str:
 
 def _related(core: Any, record: Any, index: Mapping[str, Any],
              statuses: Mapping[str, Any]) -> list[dict[str, str]]:
-    """The owner's confirmed (or settled) records ``record`` relates to: those it links to,
+    """The owner's confirmed records ``record`` relates to: those it links to,
     those linking to it, and the requirements of its feature."""
     near: list[str] = []
 
@@ -105,7 +105,7 @@ def _related(core: Any, record: Any, index: Mapping[str, Any],
         state = statuses.get(record_id)
         if state is None or state.confirmation != "confirmed":
             continue
-        out.append({"id": record_id, "status": "settled" if state.settled else "confirmed",
+        out.append({"id": record_id, "status": "confirmed",
                     "text": _clip(record_text(index[record_id]), 600)})
         if len(out) >= RELATED_MAX:
             break
@@ -187,8 +187,8 @@ def _strings(value: Any) -> list[str]:
 
 
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
-    """Log the verdicts; raise the issue cards; send the supported records to settling or to a
-    trial or confirm card. Returns it in memory; the worker writes it."""
+    """Log the verdicts; raise the issue cards; give the supported records to the trial.
+    Returns it in memory; the worker writes it."""
     if core is None:
         return Applied(job=job.id)
     asked = {str(r.get("id")): r for r in job.inputs.get("records") or ()
@@ -198,7 +198,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     entries: list[Mapping[str, Any]] = []
     new_cards: list[CardState] = []
     notes: list[str] = []
-    supported: list[settle.Supported] = []
+    supported: list[trial.Candidate] = []
     fragments: list[Any] = []
     backlog_pass = job.inputs.get("pass") == backlog.PASS
     for raw in answer.get("verdicts") or ():
@@ -227,29 +227,25 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         if backlog_pass and partial:
             fragments.append(record)        # the owner's words are not on file: one card says so
         elif verdict == "beyond":
-            new_cards.append(cards.beyond_card(index, record, beyond, item["premise"]))
+            new_cards.append(cards.beyond_card(index, record, beyond, item["premise"],
+                                           trial._proposal(record)))
         elif verdict == "contradicts":
             new_cards.append(cards.contradicts_card(index, record, contradicts,
-                                                    item["premise"]))
+                                                    item["premise"], trial._proposal(record)))
         else:
-            supported.append(settle.Supported(record=record, score=confidence,
-                                              premise=item["premise"], payload=payload))
+            supported.append(trial.Candidate(record, confidence, item["premise"], ""))
     for item_id in asked:
         if not any(e["payload"]["id"] == item_id for e in entries):
             notes.append(f"the judge gave no verdict for {item_id}")
-    routed = settle.route(core, job, supported, model=model)
-    entries.extend(routed.entries)
-    new_cards.extend(routed.cards)
-    notes.extend(routed.notes)
     if backlog_pass:
-        done = backlog.after_job(core, job, supported=supported, waiting=routed.waiting,
+        done = backlog.after_job(core, job, supported=supported,
                                  verdicts=[e["payload"] for e in entries
                                            if e["kind"] == "verdict"],
                                  fragments=fragments, flagged=new_cards)
         new_cards.extend(done.cards)
         notes.extend(done.notes)
     else:
-        new_cards.extend(trial.cards_for(core, job.session, routed.waiting))
+        new_cards.extend(trial.cards_for(core, job.session, supported))
     return Applied(job=job.id, cards=tuple(new_cards), entries=tuple(entries),
                    notes=tuple(notes))
 
@@ -340,7 +336,6 @@ def _register() -> None:
     from plumb.understand import effects
 
     effects.register("trial", trial.effect)
-    effects.register("backlog", backlog.effect)
     effects.register("beyond", _beyond_effect)
     effects.register("contradicts", _contradicts_effect)
 

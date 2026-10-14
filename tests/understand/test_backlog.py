@@ -1,4 +1,4 @@
-"""SP8 lane JUDGE, J8: the backlog pass (SR-107; SR-105 EX-7; spec 8)."""
+"""SP8 lane JUDGE, J8: the backlog pass (SR-107, SR-133; spec 8)."""
 
 from __future__ import annotations
 
@@ -14,8 +14,7 @@ from plumb.contracts import DispatchError, Job
 from plumb.hosts.claude_code.hookio import Deadline, HookContext
 from plumb.present import owner_text
 from understand.fakes import FakeDispatcher, owner_level
-from understand.test_judge_job import intent_text, log_prompt, requirement_text
-from understand.test_settle import SESSION
+from understand.test_judge_job import SESSION, intent_text, log_prompt, requirement_text
 
 pytestmark = pytest.mark.sr("SR-107")
 
@@ -120,8 +119,8 @@ def test_sr107_ex1_150_records_one_pass_no_per_turn_limit_done_jobs_not_rerun(
     assert [r["id"] for r in last.inputs["records"]] == ["SR-007"]
 
 
-def test_sr107_ex2_fragment_premise_says_words_not_on_file(repo: Path, write_record,
-                                                           engine_standins) -> None:
+def test_sr107_ex2_fragment_premise_gets_a_card_that_shows_its_words_alone(
+        repo: Path, write_record, engine_standins) -> None:
     from plumb.understand import backlog
 
     bulk(repo, write_record, {"the checks": 0}, prompt=False)    # a quote, no logged message
@@ -129,16 +128,14 @@ def test_sr107_ex2_fragment_premise_says_words_not_on_file(repo: Path, write_rec
     engine_standins.dispatcher.script = {"judge": answering(0.99)}
     run_pass(repo, engine_standins)
     (card,) = open_cards(repo)
-    assert card.kind == "backlog" and card.topic == "Intent about the checks"
-    assert "original words are not on file" in card.issue
-    assert "Intent about the checks" in card.issue                # offers its read-back
-    assert card.resolutions == (owner_text.NO_ORIGINAL_ACCEPT, owner_text.NO_ORIGINAL_CORRECT)
+    assert card.kind == "trial" and card.topic == "Intent about the checks"
+    assert card.issue == "Intent about the checks"                # its read-back
     assert card.questions[0].record == "INT-001"
     seen = engine_standins.dispatcher.jobs[0].inputs["records"][0]["premise"]["messages"][0]
     assert seen["partial"] is True
 
 
-def test_sr107_ex3_18_supported_one_feature_card_yes_confirms_all_labelled(
+def test_sr107_ex3_18_supported_open_three_trial_cards_one_record_each(
         repo: Path, write_record, engine_standins) -> None:
     from plumb.understand import backlog
 
@@ -146,54 +143,13 @@ def test_sr107_ex3_18_supported_one_feature_card_yes_confirms_all_labelled(
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.95)}
     run_pass(repo, engine_standins)
-    cards = [c for c in open_cards(repo) if c.kind == "backlog"]
-    assert len(cards) == 1
-    card = cards[0]
-    assert card.topic == "the merge check"
-    assert card.issue == "these 18 about the merge check would be settled; right?"
-    assert len(card.questions) == 18
-    assert {q.record for q in card.questions} == {"INT-001",
-                                                  *(f"SR-{n:03d}" for n in range(1, 18))}
-    assert card.resolutions == (owner_text.BACKLOG_YES, owner_text.BACKLOG_EXCEPT,
-                                owner_text.BACKLOG_NO)
-    # the owner's yes: every record on the card is confirmed, labelled yes
-    confirmed: list[tuple[Any, ...]] = []
-    from plumb.understand import effects
-
-    handler = effects.handler_for("backlog")
-    answered = card.__class__(**{**card.__dict__, "status": "answered"})
-    handler(core=open_core(repo), job=None, card=answered, question=None,
-            entry={"answer": "accepted", "confidence": 0.95, "evidence": "yes"},
-            message="yes", digest="sha256:0", accepted=True,
-            confirm=lambda *a, **k: confirmed.append((a, k)))
-    assert len(confirmed) == 18
-    assert {a[0] for a, _ in confirmed} == {q.record for q in card.questions}
-    assert all(k.get("label") == "yes" for _, k in confirmed)
-    hashes = {a[0]: a[1] for a, _ in confirmed}
-    index = open_core(repo).index()
-    assert all(hashes[r] == index[r].hash for r in hashes)
+    cards = open_cards(repo)
+    assert [c.kind for c in cards] == ["trial"] * 3
+    assert all(len(c.questions) == 1 for c in cards)
+    assert not [e for e in open_core(repo).events() if e.kind == "approval"]
 
 
-def test_a_record_answered_one_by_one_is_left_to_the_reader(repo: Path, write_record,
-                                                            engine_standins) -> None:
-    """"yes, except SR-040": the reader maps each record; the handler adds nothing on a
-    per-record answer (READ confirmed the 17, labelled yes)."""
-    from plumb.understand import backlog, effects
-
-    bulk(repo, write_record, {"the merge check": 3})
-    backlog.start(open_core(repo), SESSION)
-    engine_standins.dispatcher.script = {"judge": answering(0.95)}
-    run_pass(repo, engine_standins)
-    card = next(c for c in open_cards(repo) if c.kind == "backlog")
-    called: list[Any] = []
-    result = effects.handler_for("backlog")(
-        core=open_core(repo), job=None, card=card, question=card.questions[0].id,
-        entry={"answer": "accepted", "record": card.questions[0].record, "hash": "h"},
-        message="m", digest="d", accepted=True, confirm=lambda *a, **k: called.append(a))
-    assert called == [] and result is None
-
-
-def test_sr107_ex5_three_flagged_are_issue_cards_not_on_the_feature_card(
+def test_sr107_ex5_three_flagged_are_issue_cards_not_trial_cards(
         repo: Path, write_record, engine_standins) -> None:
     from plumb.understand import backlog
 
@@ -205,10 +161,8 @@ def test_sr107_ex5_three_flagged_are_issue_cards_not_on_the_feature_card(
     cards = open_cards(repo)
     issue = [c for c in cards if c.kind in ("beyond", "contradicts")]
     assert sorted(c.questions[0].record for c in issue) == sorted(flagged)
-    (feature,) = [c for c in cards if c.kind == "backlog"]
-    on_card = {q.record for q in feature.questions}
-    assert on_card.isdisjoint(flagged) and len(on_card) == 5       # 8 records, 3 flagged
-    assert "these 5 about the merge check" in feature.issue
+    on_trial = {c.questions[0].record for c in cards if c.kind == "trial"}
+    assert on_trial.isdisjoint(flagged) and len(on_trial) == 3     # 8 records, 3 flagged
 
 
 def test_sr107_ex6_progress_10_of_160(repo: Path, write_record, engine_standins) -> None:
@@ -238,9 +192,9 @@ def test_backlog_end_line_counts_judged_and_cards_awaiting(
     run_pass(repo, engine_standins)
     shown = progress(repo)
     assert shown.state == "done"
-    assert shown.step == owner_text.BACKLOG_DONE.format(judged=160, cards=4)
+    assert shown.step == owner_text.BACKLOG_DONE.format(judged=160, cards=3)
     assert owner_level(shown.step) == []
-    assert len([c for c in open_cards(repo) if c.kind == "backlog"]) == 4
+    assert len([c for c in open_cards(repo) if c.kind == "trial"]) == 3
 
 
 def test_sr107_ex7_model_unreachable_midway_resumes_without_rejudging(
@@ -298,50 +252,8 @@ def test_the_pass_holds_its_records_back_from_the_trial_until_it_ends(
     assert trial.top_up(open_core(repo), SESSION) == []           # no trial batch mid-pass
 
 
-def test_sr105_ex7_eighteen_merge_check_records_one_card(repo: Path, write_record,
-                                                         engine_standins) -> None:
-    from plumb.understand import backlog, summary
-
-    bulk(repo, write_record, {"the merge check": 17})
-    backlog.start(open_core(repo), SESSION)
-    engine_standins.dispatcher.script = {"judge": answering(0.95)}
-    run_pass(repo, engine_standins)
-    ctx = HookContext("stop", {}, repo, SESSION, Deadline(1400))
-    out = summary.stop_parts(ctx, open_core(repo), {"turn_start": time.time() - 3600})
-    (text,) = out.cards
-    assert text.splitlines()[0].endswith("these 18 about the merge check would be settled; right?")
-    assert text.count("\n  - ") == 18                            # lists them in the owner's terms
-    assert owner_level(text) == []
-
-
-def test_cards_per_turn_metered_most_records_first(repo: Path, write_record,
-                                                   engine_standins) -> None:
-    from plumb.understand import backlog, summary
-
-    (repo / ".plumb" / "config.yaml").write_text(
-        "understand:\n  backlog_cards_per_turn: 2\n", encoding="utf-8")
-    bulk(repo, write_record, {"small one": 3, "big one": 10, "middle one": 7})
-    backlog.start(open_core(repo), SESSION)
-    engine_standins.dispatcher.script = {"judge": answering(0.95)}
-    run_pass(repo, engine_standins)
-
-    def turn(n: int) -> list[str]:
-        ctx = HookContext("stop", {}, repo, SESSION, Deadline(1400))
-        return list(summary.stop_parts(ctx, open_core(repo),
-                                       {"turn_start": time.time() - 3600 + n}).cards)
-
-    first = turn(0)
-    assert len(first) == 2
-    assert "these 11 about big one" in first[0] and "these 8 about middle one" in first[1]
-    second = turn(1)
-    assert len(second) == 1 and "these 4 about small one" in second[0]
-    assert turn(2) == []
-    # all three are still open cards for the reader: metering is of what is shown
-    assert len([c for c in open_cards(repo) if c.kind == "backlog"]) == 3
-
-
-def test_a_decision_in_the_backlog_is_asked_on_its_own(repo: Path, write_record,
-                                                       engine_standins) -> None:
+def test_a_decision_in_the_backlog_is_a_trial_card_of_its_own(repo: Path, write_record,
+                                                            engine_standins) -> None:
     from plumb.understand import backlog
     from understand.test_judge_job import decision_text
 
@@ -350,15 +262,12 @@ def test_a_decision_in_the_backlog_is_asked_on_its_own(repo: Path, write_record,
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.99)}
     run_pass(repo, engine_standins)
-    cards = open_cards(repo)
-    single = [c for c in cards if c.kind == "trial"]
-    assert [c.questions[0].record for c in single] == ["DEC-001"]
-    (feature,) = [c for c in cards if c.kind == "backlog"]
-    assert "DEC-001" not in {q.record for q in feature.questions}
+    (single,) = [c for c in open_cards(repo) if c.questions[0].record == "DEC-001"]
+    assert single.kind == "trial" and single.issue == "You chose decimal"
 
 
-def test_one_below_threshold_record_rides_on_the_feature_card(repo: Path, write_record,
-                                                               engine_standins) -> None:
+def test_one_record_below_the_threshold_is_drawn_first(repo: Path, write_record,
+                                                      engine_standins) -> None:
     from plumb.understand import backlog
 
     ids = bulk(repo, write_record, {"alpha": 5})["alpha"]
@@ -372,11 +281,8 @@ def test_one_below_threshold_record_rides_on_the_feature_card(repo: Path, write_
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": graded}
     run_pass(repo, engine_standins)
-    (feature,) = [c for c in open_cards(repo) if c.kind == "backlog"]
-    assert feature.issue == "these 5 about alpha would be settled; right?"
-    assert len(feature.questions) == 6
-    assert feature.questions[-1].record == ids[3]
-    assert owner_text.TRIAL_BELOW in feature.questions[-1].text
+    cards = open_cards(repo)
+    assert len(cards) == 3 and cards[0].questions[0].record == ids[3]
     assert FakeDispatcher().available() is None
 
 

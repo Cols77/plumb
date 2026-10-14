@@ -78,12 +78,13 @@ def _answer(root: Path, ref: str, words: str = "keep feat-x's") -> int:
 def early_heads(reply: str, title: str) -> list[str]:
     """The early conflict cards (SR-012: the owner sees cards, titles not IDs) about the
     record titled ``title``."""
-    return [line for line in reply.splitlines()
-            if line.startswith('Another branch says something else, "') and title in line]
+    lines = reply.splitlines()
+    return [f"{line} {lines[n + 1]}" for n, line in enumerate(lines[:-1])
+            if line == title and lines[n + 1].startswith(("feat-x says", "main says"))]
 
 
 def _assert_asked_and_answered(root: Path, asked: str, reply: str, record: str) -> None:
-    assert "ask the owner now" in asked, asked
+    assert "ask the owner now" not in asked, asked      # the card asks, never the agent
     assert early_heads(reply, open_core(root).index()[record].title), reply
     [dec] = _decisions(root)
     assert dec.fields.get("matters") is True
@@ -161,8 +162,7 @@ def test_clarify_then_edit(tmp_path: Path, hook_input: Any) -> None:
     requirement(mine, "SR-005", "relay checks", OURS, feature="FEAT-002")
     asked, reply = _turn(mine, hook_input)
     # the read-back's card is drawn once (its decision has its own card since SR-012)
-    assert len([h for h in early_heads(reply, "relay checks")
-                if h.startswith('Another branch says something else, "relay checks"')]) == 1
+    assert len(early_heads(reply, "relay checks")) == 1
     _assert_asked_and_answered(mine, asked, reply, "SR-005")
 
 

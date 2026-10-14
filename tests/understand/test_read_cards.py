@@ -1,4 +1,4 @@
-"""R4: cards answered in prose (SR-101 EX-11, SR-103 EX-9 and EX-10, SR-105, SR-107 EX-4)."""
+"""R4: cards answered in prose (SR-101 EX-11, SR-103 EX-9 and EX-10, SR-105)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import dataclasses
 from pathlib import Path
 
 import pytest
-from understand.fakes import as_worker, owner_level
+from understand.fakes import as_worker
 from understand.test_read_apply import (
     approvals,
     entries_of,
@@ -22,8 +22,7 @@ from understand.test_read_job import (
 
 from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyQuestion
-from plumb.present import owner_text
-from plumb.understand import cardstore, effects, read
+from plumb.understand import effects, read
 
 pytestmark = pytest.mark.sr("SR-101")
 
@@ -39,7 +38,7 @@ def handled(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """Fake effect handlers for the card kinds of the other lanes; what each was given."""
     calls: list[dict] = []
     effects.handler_for("beyond")      # load the kind modules first, or they replace the fakes
-    for card_kind in ("beyond", "contradicts", "clarify", "couldnt_check", "trial", "backlog"):
+    for card_kind in ("beyond", "contradicts", "clarify", "couldnt_check", "trial"):
         monkeypatch.setitem(effects.HANDLERS, card_kind,
                             lambda *, _k=card_kind, **kw: calls.append({"kind": _k, **kw}))
     return calls
@@ -127,19 +126,6 @@ def test_sr105_ex5_yes_yes_no_third_rejected_as_misreading(core, handled) -> Non
     assert [h["card"].id for h in handled] == ["t1", "t1", "t1"]
 
 
-def test_sr107_ex4_yes_except_sr040_only_17_confirmed_each_labelled_yes(core, handled) -> None:
-    ids = [f"SR-{300 + n:03d}" for n in range(18)]
-    message = "yes, except SR-310"
-    entries = [e(f"b1/q{n}", "open" if i == "SR-310" else "accepted",
-                 "SR-310" if i == "SR-310" else "yes") for n, i in enumerate(ids)]
-    after, applied, _ = answer(core, [trial_card("b1", ids, "backlog")], message, entries)
-    assert set(approvals(after)) == set(ids) - {"SR-310"}
-    assert len(approvals(after)) == 17
-    assert {p["label"] for p in approvals(after).values()} == {"yes"}
-    (state,) = [c for c in applied.cards if c.id == "b1"]
-    assert state.status == "open" and len(state.answers) == 17   # SR-310 stays on the card
-
-
 def test_sr103_ex9_all_three_questions_mapped_in_one_message(core, handled) -> None:
     clarify = card("k1", "clarify", [
         ClarifyQuestion(id=f"q{n}", text=f"question {n}", resolutions=("a", "b"))
@@ -170,20 +156,16 @@ def test_build_anyway_below_the_threshold_is_not_accepted(core, handled) -> None
     assert handled == [] and applied.cards == ()
 
 
-def test_read_registers_show_first_link_and_stale_link() -> None:
-    for card_kind in ("show_first", "link", "stale_link"):
-        assert effects.handler_for(card_kind) is not None
+def test_read_registers_stale_link() -> None:
+    assert effects.handler_for("stale_link") is not None
 
 
-def test_prose_answer_to_a_settle_offer_changes_nothing_and_replies_owner_only(
-        core, handled) -> None:
-    offer = card("o1", "settle_offer", [ClarifyQuestion(id="q", text="turn settling on?")])
-    after, applied, _ = answer(core, [offer], "turn settling on", [
-        e("o1/q", "accepted", "turn settling on", confidence=0.99)])
-    assert handled == [] and applied.cards == () and applied.closed == ()
-    assert [x for x in applied.entries if x["kind"] not in ("read-entry", "prompt")] == []
-    (reply,) = applied.notes
-    assert "/plumb settle on" in reply and "Nothing changed" in reply
-    assert owner_level(reply) == []
-    assert [c.status for c in cardstore.load(after.root, SESSION)] == ["open"]
-    _ = owner_text
+def test_a_record_on_a_card_is_confirmed_only_by_the_cards_answer(core, handled) -> None:
+    from understand.test_read_job import state
+
+    state(core, ["SR-002"])                      # the record is also in the stated set
+    _, applied, _ = answer(core, [trial_card("t1", ["SR-002"])], "ok",
+                               [e("SR-002", "accepted", "ok")])
+    (call,) = handled
+    assert call["card"].id == "t1" and call["accepted"] is True
+    assert "t1" in applied.closed

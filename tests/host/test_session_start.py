@@ -23,9 +23,6 @@ def _roomy_hook_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     line. The cut itself is tested on a fake clock that jumps 5 s, past this budget; the
     hook's real speed is held by test_hook_perf."""
     monkeypatch.setattr(session_start, "hook_budget", lambda name: (lambda root: 4000.0))
-    # the triage offer fires whenever the budget leaves room for its judgment; it is held by
-    # test_hook_perf, and here would make the line count depend on how much budget is left
-    monkeypatch.setattr(session_start, "triage_offer_line", lambda core: None)
 
 
 def _run(repo: Path, hook_input, **kwargs) -> str:
@@ -298,3 +295,25 @@ def test_a_slow_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> 
     monkeypatch.setattr(hygiene.subprocess, "run", slow)
     out = _run(repo, hook_input, verify=FakeVerify())
     assert _notice(out) == [] and out.startswith("plumb brief")
+
+
+@pytest.mark.sr("SR-135")
+def test_ex4_low_risk_records_give_no_offer_line(repo: Path, write_record, hook_input,
+                                                 monkeypatch) -> None:
+    """SR-135 EX-4: records the judge rates faithful to the owner's words add no approve line to
+    the brief; plumb triage still lists them."""
+    from capture.capture_helpers import log_prompt, record_text, use_coverage_judge
+
+    use_coverage_judge(monkeypatch)
+    said = "add multiply number 11 next to add"
+    log_prompt(repo, said, at="2026-10-06T00:00:00Z")
+    write_record(repo, record_text("INT-011", "multiply number 11", quote=said, readback=said,
+                                   will=["multiply number 11"], prompt=_digest(said)))
+    out = _run(repo, hook_input)
+    assert "INT-011" in out and "rated faithful" not in out and "approve the" not in out
+
+
+def _digest(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]

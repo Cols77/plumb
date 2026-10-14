@@ -17,7 +17,6 @@ from typing import Any
 from plumb.contracts import Applied, CardState, Choice, ClarifyQuestion, Job
 from plumb.present import owner_text
 from plumb.understand import files
-from plumb.understand.cards import choices_for
 
 kind = "read"
 SCHEMA_ID = "read.v1"
@@ -120,8 +119,7 @@ def card_items(core: Any, session: str) -> list[dict[str, Any]]:
     """The open cards as read inputs: one item per card question (one for a card with none).
     An item's ``hash`` is the version of its record the card showed (stored with the question
     when the card was made), never the record's version today. ``choices`` are the question's
-    own, else its kind's for its resolutions (a card stored before choices, or one with no
-    question)."""
+    own, else its kind's for its resolutions (a card with no question: a stale link)."""
     from plumb.understand import cardstore
 
     items: list[dict[str, Any]] = []
@@ -130,7 +128,8 @@ def card_items(core: Any, session: str) -> list[dict[str, Any]]:
         for question in questions:
             record = getattr(question, "record", None)
             resolutions = tuple(getattr(question, "resolutions", ()) or card.resolutions)
-            choices = getattr(question, "choices", ()) or choices_for(card.kind, resolutions)
+            choices = getattr(question, "choices", ()) or tuple(
+                Choice(label, "change", label) for label in resolutions)
             items.append({
                 "id": card_item_id(card, question), "card": card.id,
                 "question": getattr(question, "id", ""), "kind": card.kind,
@@ -219,7 +218,7 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> str | None:
             typed.switch_now(core, parsed, str(entry.get("digest") or ""), session)
             return None                   # SR-115: the owner's switch, at once
         if parsed.command not in ("approve", "confirm"):
-            return None                   # undo, settle and go are their own commands
+            return None                   # undo, go, settle: typed.on_prompt, clarify
     job = build(core, session, message=entry)
     if job is None:
         return None
@@ -244,7 +243,7 @@ def normalize_id(raw: str, index: Mapping[str, Any]) -> str:
     match = _LOOSE_ID.match(raw.upper())
     if not match:
         return raw
-    from plumb.ids import format_id          # the one formatter of record numbers
+    from plumb.ids import format_id  # the one formatter of record numbers
 
     return format_id(match.group(1), int(match.group(2)))
 
@@ -266,41 +265,17 @@ def _confidence(raw: Any) -> float:
         return 0.0
 
 
-def show_first_card(record: Any, evidence: str) -> CardState:
-    """The card that shows a record the owner named but never saw, before it can be
-    confirmed on the next answer (SR-088's rule, kept for prose)."""
-    text = record_text(record)
-    issue = owner_text.CARD_SHOW_FIRST.format(topic=record.title, issue=text)
-    options = (owner_text.SHOW_FIRST_YES, owner_text.SHOW_FIRST_NO)
-    question = ClarifyQuestion(id="confirm", text=issue, resolutions=options, record=record.id,
-                               hash=record.hash, choices=choices_for("show_first", options))
-    return CardState(id=f"show_first:{record.id}", kind="show_first", topic=record.title,
-                     issue=issue, evidence=evidence, resolutions=question.resolutions,
-                     questions=(question,), status="open")
-
-
 def change_card(record: Any, change: str, evidence: str, digest: str) -> CardState:
     """A change the owner asked for in words, read back at the next turn."""
     issue = owner_text.READBACK_CHANGE.format(title=record.title, change=change)
     options = (owner_text.READBACK_YES, owner_text.READBACK_NOT_QUITE)
     question = ClarifyQuestion(id="change", text=issue, resolutions=options, record=record.id,
-                               hash=record.hash, choices=choices_for("clarify", options))
+                               hash=record.hash,
+                               choices=(Choice(owner_text.READBACK_YES, "accepted"),
+                                        Choice(owner_text.READBACK_NOT_QUITE, "change")))
     return CardState(id=f"change:{record.id}:{digest.removeprefix('sha256:')[:12]}",
                      kind="clarify", topic=record.title, issue=issue, evidence=evidence,
                      resolutions=question.resolutions, questions=(question,), status="open")
-
-
-def owner_only_reply(card: CardState, question: Any) -> str:
-    """What a prose answer to an owner-only card is told: nothing changed, and the button
-    or the typed command that does it."""
-    if card.kind == "settled_item":
-        record = getattr(question, "record", None) or card.topic
-        return owner_text.OWNER_ONLY_REPLY.format(action="undo anything",
-                                                  command=f"/plumb undo {record}".strip())
-    kind = next((w.rstrip("s") for w in card.topic.lower().replace(",", " ").split()
-                 if w.rstrip("s") in ("intent", "requirement")), "")
-    return owner_text.OWNER_ONLY_REPLY.format(
-        action="switch settling on or off", command=f"/plumb settle on {kind}".strip())
 
 
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
@@ -351,10 +326,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                               "nothing was changed")
             continue
         passes = confidence >= threshold
-        item = by_id.get(raw_id) or by_id.get(name)
-        if item is None and name not in shown:
-            item = by_record.get(name)
-        if item is not None and name not in shown:
+        item = by_id.get(raw_id) or by_id.get(name) or by_record.get(name)
+        if item is not None:      # a record on a card is confirmed only by the card's answer
             answer_mod.apply_answer(
                 work, card=str(item.get("card")), question=str(item.get("question") or ""),
                 record=str(item.get("record") or ""), hash=str(item.get("hash") or ""),
@@ -370,7 +343,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             work.notes.append(f"{name} was answered at a version that was not shown")
             continue
         if name not in shown or shown[name] != record.hash:
-            work.cards[f"show_first:{name}"] = show_first_card(record, evidence)
+            work.notes.append(f"{name} was not shown to the owner at this version; "
+                              "nothing was confirmed")
             continue
         if said == "accepted" and passes:
             work.confirm(name, record.hash, evidence, confidence)
@@ -390,18 +364,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
 # ``Applied`` or None, and takes ``**_`` for what a later version adds.
 
 
-def _show_first_effect(*, entry: Mapping[str, Any], accepted: bool = False,
-                       confirm: Any = None, **_: Any) -> Applied | None:
-    """A show_first card answered: the owner has now seen the record, so an accepted answer
-    confirms it (at the version the card showed)."""
-    if accepted and entry.get("record") and entry.get("hash") and confirm is not None:
-        confirm(str(entry["record"]), str(entry["hash"]), str(entry.get("evidence") or ""),
-                float(entry.get("confidence") or 0))
-    return None
-
-
 def _acknowledge_effect(**_: Any) -> Applied | None:
-    """A link or stale-link card answered: the answer is recorded on the card and the agent
+    """A stale-link card answered: the answer is recorded on the card and the agent
     resolves it; nothing is confirmed or changed here."""
     return None
 
@@ -409,8 +373,6 @@ def _acknowledge_effect(**_: Any) -> Applied | None:
 def _register() -> None:
     from plumb.understand import effects
 
-    effects.register("show_first", _show_first_effect)
-    effects.register("link", _acknowledge_effect)
     effects.register("stale_link", _acknowledge_effect)
 
 

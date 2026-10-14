@@ -12,8 +12,7 @@ import time
 from pathlib import Path
 
 import pytest
-from capture_helpers import log_prompt, record_text, run, write_stated
-from logutil import legacy_relay
+from capture_helpers import record_text, run
 
 from plumb.api import open_core
 from plumb.hosts.claude_code import stop
@@ -116,19 +115,5 @@ def test_ambiguous_request_yields_exactly_the_questions_that_matter(
     assert decs == ["DEC-001", "DEC-002"]
     assert all(index[d].fields["matters"] is True for d in decs)
 
-    # the next message asks only the first
-    assert asked_decs(run_stop(project, hook_input)) == ["DEC-001"]
-    # a later turn on the same work, the first still unanswered: nothing new is asked
-    start_turn(project)
-    (project / "src" / "export.py").write_text("def export():\n    return 1\n", "utf-8")
+    # INT-037: the stop hook asks no decision, as a card or in prose; the read-back does
     assert asked_decs(run_stop(project, hook_input)) == []
-
-    # the owner answers the first ("ok" to DEC-001); the next stop asks the second
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "s1")
-    write_stated(project, [("DEC-001", open_core(project).index()["DEC-001"].hash)],
-                 at="2026-10-06T09:00:00Z")
-    digest = log_prompt(project, "ok, orders only", at="2026-10-06T09:01:00Z")
-    legacy_relay(project, ["DEC-001"], digest, "ok", stated=["DEC-001"])
-    start_turn(project)
-    (project / "src" / "export.py").write_text("def export():\n    return 2\n", "utf-8")
-    assert asked_decs(run_stop(project, hook_input)) == ["DEC-002"]

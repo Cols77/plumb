@@ -20,11 +20,11 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Any
 
-from plumb.contracts import Applied, CardState, Choice, ClarifyAnswer, Job
+from plumb.contracts import Applied, CardState, Choice, ClarifyAnswer, ClarifyQuestion, Job
 from plumb.present import owner_text
 
 # the kinds of card whose yes confirms a record: the version the card showed
-PINNED_KINDS = ("trial", "backlog", "show_first")
+PINNED_KINDS = ("trial",)
 
 
 @dataclass(frozen=True)
@@ -156,16 +156,17 @@ class Answering:
                        entries=tuple(self.entries), notes=tuple(self.notes))
 
 
-def _close_stale(work: Answering, card: CardState, record: Any, evidence: str) -> None:
+def _close_stale(work: Answering, card: CardState, record: Any) -> None:
     """The record changed after the card showed it: the answer confirms nothing, the card is
-    closed, and the version it has now is shown as a fresh card."""
-    from plumb.understand.read import show_first_card
+    closed, and one choice card asks which version the owner means (SR-130 EX-2): the
+    card's own proposal is the version they answered."""
+    from plumb.understand import cards, trial
 
-    fresh = show_first_card(record, evidence)
-    if card.id != fresh.id:
-        work.cards[card.id] = dataclasses.replace(card, status="closed")
-        work.closed.append(card.id)
-    work.cards[fresh.id] = fresh
+    found_card = cards.which_version(record, card.issue, trial._proposal(record), card.branch,
+                                      card.topic)
+    work.cards[card.id] = dataclasses.replace(card, status="closed")
+    work.closed.append(card.id)
+    work.cards[found_card.id] = found_card
     work.notes.append(owner_text.CARD_CHANGED_SINCE.format(title=record.title))
 
 
@@ -187,22 +188,15 @@ def _left(work: Answering, card: CardState, choice: Choice) -> None:
 def apply_answer(work: Answering, *, card: str, question: str, record: str, hash: str,
                  choice: Choice, source: Source) -> None:
     """An answer to the question ``question`` of the card ``card`` (``record`` at ``hash``:
-    the version the card offered): recorded on the card, then the effect of the card's kind.
-    A prose answer to an owner-only card changes nothing and says what does."""
+    the version the card offered): recorded on the card, then the effect of the card's kind."""
     from plumb.understand import effects
-    from plumb.understand.read import owner_only_reply
 
     state = work.cards.get(card) or work.open_cards.get(card)
     if state is None:
         return
     words = source if isinstance(source, OwnerWords) else None
-    asked = next((q for q in state.questions if q.id == question), None)
     if words is None and is_left(choice):     # Leave open, Ask for a change: any card
         _left(work, state, choice)
-        return
-    if state.kind in effects.NO_EFFECT or state.owner_only:
-        if words is not None:                   # its buttons run settle and undo, not this path
-            work.notes.append(owner_only_reply(state, asked))
         return
     said = choice.answer
     passes = words.passes if words is not None else True    # a press is the owner's own
@@ -218,11 +212,12 @@ def apply_answer(work: Answering, *, card: str, question: str, record: str, hash
                                     else partial(work.confirm, pressed=pressed))
     found = work.index.get(record) if record else None
     if found is not None and state.kind in PINNED_KINDS and found.hash != hash:
-        _close_stale(work, state, found, evidence)      # the owner answered an older version
+        _close_stale(work, state, found)      # the owner answered an older version
         return
-    if found is not None and state.kind in ("trial", "backlog"):
+    if found is not None and state.kind in ("trial", "choice"):
         if said == "accepted":
-            confirm(record, found.hash, evidence, confidence, label="yes")
+            confirm(record, found.hash, evidence, confidence,
+                    label="yes" if state.kind == "trial" else None)
         elif said == "rejected":
             work.reject(found, evidence, confidence, rejection, pressed=pressed)
     text = said if said != "change" else f"change: {choice.change or evidence}"

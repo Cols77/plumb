@@ -60,7 +60,7 @@ def test_turn_end_prints_summary_and_block_exit_0(project: Path, monkeypatch,
                                              "utf-8")
     assert main(["turn", "end", "--session", "s1"]) == 0
     out = capsys.readouterr().out
-    assert "DEC-001 is unconfirmed and this work relies on it" in out
+    assert "is stale and unresolved" in out
     # a second turn end of the same turn never blocks again (no loop)
     assert main(["turn", "end", "--session", "s1", "--format", "json"]) == 0
     data = json.loads(capsys.readouterr().out.strip().splitlines()[-1])

@@ -1,6 +1,6 @@
 // plumb's mod (SP7 5 as re-aligned by sp7-realign-sp8; SR-085, SR-086, SR-087, SR-116): the
 // band above the prompt (plumb's status, SP8's progress, the cards awaiting per feature), each
-// awaiting card in full with its buttons, Show all, Undo on the settled line, a toast, the
+// awaiting card in full with its buttons, Show all, a toast, the
 // owner's notice and the model's note after a press, and the fallback. plumb's command hooks
 // keep doing the work (DEC-024): while this panel is active the stop hook writes present.json
 // instead of printing.
@@ -25,9 +25,23 @@ import * as plumb from './plumb'
 import type { Hello, Io, Unlinked } from './plumb'
 import { GLYPHS, T } from './text'
 
+/** The surface's element table; the terminal draws the diagram's rows, whatever else the table
+ * holds (the live terminal lists an Svg that draws nothing). */
+const uiOf = ($: any, e: any): Ui => {
+  const t = $.ui.resolve(e)
+  return { Box: t.Box, Text: t.Text, Button: t.Button, Svg: e.surface === 'terminal' ? undefined : t.Svg }
+}
+
+/** The diagram mod's noun (plumb's plugin.json lists the mod under `dependencies`); reached
+ * untyped until the mod's contract declares `diagram.rows` and `diagram.svg`. */
+const diagramOf = ($: any): NonNullable<Io['diagram']> => async (text, columns) => ({
+  rows: await $.diagram.rows({ text, columns }),
+  svg: await $.diagram.svg(text),
+})
+
 const PANE = 'plumb-cards'
 const EMPTY_VIEW: PlumbView = { cards: [], present: null, status: null, line: '' }
-const BAND: PlumbBand = { isHidden: false, showAll: false, unfolded: [], shown: [] }
+const BAND: PlumbBand = { isHidden: false, showAll: false, shown: [] }
 
 const linkAtom = atom({ plugin: 'plumb', key: 'link' } as const, null)
 const degradedAtom = atom({ plugin: 'plumb', key: 'degraded' } as const, false)
@@ -64,8 +78,8 @@ function unlinkedLine(u: Unlinked): string {
   return T.helloFailed(u.error)
 }
 
-/** The band: one line of status, the cards awaiting per feature, the settled line with its
- * Undo buttons, then the awaiting card in full (every card with Show all). */
+/** The band: one line of status, the cards awaiting per feature, then the awaiting card in
+ * full (every card with Show all). */
 function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number) {
   const { Box, Button, Text } = ui
   const head = statusLine(view)
@@ -81,7 +95,6 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number) {
   const leftOpen = view.cards.filter(c => !c.repeats)
   const compact = view.status?.card === 'compact'
   const shown = band.showAll ? view.cards : compact ? [] : waiting.slice(0, 1)
-  const settled = view.present?.settled_records ?? []
   return (
     <Box flexDirection="column" width={columns}>
       <Box flexDirection="row" gap={1}>
@@ -93,18 +106,7 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number) {
       {leftOpen.length ? <Text key="left" dimColor>{`${T.leftOpen(leftOpen.length)}: ${perFeature(leftOpen)}`}</Text> : null}
       {view.line ? <Text key="line" dimColor>{view.line}</Text> : null}
       {(view.present?.confirmations ?? []).map(c => <Text key={`confirmed:${c}`}>{c}</Text>)}
-      {settled.length ? (
-        <Box key="settled" flexDirection="row" flexWrap="wrap" gap={1}>
-          <Text>{T.settledHead}</Text>
-          {settled.map(r => (
-            <Box key={`settled:${r.id}`} flexDirection="row" gap={1}>
-              <Text>{r.title}</Text>
-              <Button key={`undo:${r.id}`} label={T.undo} onPress={() => {}} />
-            </Box>
-          ))}
-        </Box>
-      ) : null}
-      {shown.map(card => CardView(ui, card, { isOpen: band.unfolded.includes(card.id), showAll: band.showAll }))}
+      {shown.map(card => CardView(ui, card))}
       {view.cards.length > shown.length ? (
         <Box flexDirection="row" gap={1}>
           <Button key="showall" label={T.showAll} onPress={() => {}} />
@@ -133,6 +135,7 @@ export const register: Register = on => {
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
       }),
+      diagram: diagramOf($),
     }
     // SR-126: why the panel cannot reach plumb, said once per session
     const tell = async (u: Unlinked) => {
@@ -284,6 +287,7 @@ export const register: Register = on => {
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
       }),
+      diagram: diagramOf($),
     }
     if (await read($, degradedAtom)) return result
     const link = await read($, linkAtom)
@@ -323,7 +327,7 @@ export const register: Register = on => {
       await update($, bandAtom, b => ({ ...b, isHidden: false }))
       return next(e)
     }
-    if (key === 'showall' || key.startsWith('items:')) {
+    if (key === 'showall') {
       await update($, bandAtom, b => ({ ...b, showAll: true })) // records nothing, runs nothing
       return next(e)
     }
@@ -333,12 +337,6 @@ export const register: Register = on => {
     }
     if (key === 'pane') {
       await $.ui.open({ id: PANE, title: T.paneTitle })
-      return next(e)
-    }
-    if (key.startsWith('fold:')) {
-      const id = key.slice('fold:'.length)
-      await update($, bandAtom, b => ({ ...b, unfolded: b.unfolded.includes(id)
-        ? b.unfolded.filter(x => x !== id) : [...b.unfolded, id] }))
       return next(e)
     }
     const link = await read($, linkAtom)
@@ -357,14 +355,11 @@ export const register: Register = on => {
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
       }),
+      diagram: diagramOf($),
     }
     let line = ''
     let note = ''
-    if (key.startsWith('undo:')) {
-      const ran = await plumb.undo(io, link, key.slice('undo:'.length))
-      line = ran.ok ? String(ran.data.line ?? '') : T.undoFailed
-      note = ran.ok ? String(ran.data.model_note ?? '') : ''
-    } else if (key.startsWith('press:')) {
+    if (key.startsWith('press:')) {
       const found = findPress(view.cards, key)
       if (found === null) return next(e)
       const ran = await plumb.press(io, link, found.offer.offer_id, found.button.index)
@@ -388,11 +383,7 @@ export const register: Register = on => {
       await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: note }] } })
     }
     const snap = await plumb.snapshot(io, link, { ...view, line }, band.shown, false)
-    const undone = key.startsWith('undo:') ? key.slice('undo:'.length) : null
-    const present = snap.view.present && undone
-      ? { ...snap.view.present, settled_records: snap.view.present.settled_records.filter(r => r.id !== undone) }
-      : snap.view.present
-    await update($, viewAtom, () => ({ ...snap.view, present }))
+    await update($, viewAtom, () => snap.view)
     $.ui.status(statusLine(snap.view))
     return next(e)
   })
@@ -402,19 +393,19 @@ export const register: Register = on => {
     if ((await read($, degradedAtom)) || (await read($, linkAtom)) === null) return next(e)
     const view = await read($, viewAtom)
     if (view.status?.card === 'off') return next(e)
-    const ui = $.ui.resolve(e) as unknown as Ui
+    const ui = uiOf($, e)
     return drawBand(ui, view, await read($, bandAtom), e.props.bodyColumns)
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const ui = $.ui.resolve(e) as unknown as Ui
+    const ui = uiOf($, e)
     const { Box, Text } = ui
+    const room = e.props.bodyColumns - 4 // less the card's frame and padding
     const view = await read($, viewAtom)
-    const band = await read($, bandAtom)
     if (!view.cards.length) return <Text dimColor>{T.nothingAwaits}</Text>
     return (
       <Box flexDirection="column">
-        {view.cards.map(card => CardView(ui, card, { isOpen: band.unfolded.includes(card.id), showAll: true }))}
+        {view.cards.map(card => CardView(ui, card, room))}
       </Box>
     )
   })

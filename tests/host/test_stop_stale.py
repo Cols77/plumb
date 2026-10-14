@@ -157,14 +157,10 @@ def test_hold_ends_after_max_with_card(project: Path, hook_input) -> None:
     out = run_stop(project, hook_input, verify=_verify(), active=True)
     assert _block(out) is None
     summary = _summary(out)
-    # the card the hold filed is complete (SR-116), so it is drawn in full: the change itself,
-    # each option with what it does and leaves undone, and why the first
-    assert summary.startswith('Something you confirmed may have changed, "Adds numbers"')
-    assert "  What changed in src/calc.py (+" in summary
-    assert "    +    return b + a" in summary
-    assert "  1. Keep the wording as it is (recommended)" in summary
-    assert "     does and leaves undone: Keeps the requirement as it reads" in summary
-    assert "  Why the recommended one: I could not tell whether the change matters" in summary
+    # the card the hold filed is complete (SR-116), so it is drawn: its title, then each option
+    assert summary.startswith("Adds numbers\n")
+    assert "  1. Keep the wording as it is (recommended) - Keeps" in (
+        summary)
     (card,) = stale.read_cards(project, "s1")
     assert card["link"] == "SR-001#0" and card["status"] == "open"
 
@@ -225,17 +221,13 @@ def test_ex5_summary_names_requirement_change_and_resolutions_and_the_card_waits
     out = run_stop(project, hook_input, verify=_verify())
     assert _block(out) is None                         # the turn may end with the card waiting
     lines = _summary(out).splitlines()
-    head = lines.index('Something you confirmed may have changed, "Adds numbers": add now '
-                       "sums its arguments in the other order")
-    # the summary of the understanding layer draws the card in full (SR-116): the requirement
-    # as it reads, the change, then the options, the recommended first, each with what it does
-    assert lines[head + 1] == "  As it now reads (Adds numbers): add returns the sum."
-    assert lines[head + 3].startswith("  What changed in src/calc.py (+")
+    head = lines.index("add now sums its arguments in the other order") - 1
+    assert lines[head] == "Adds numbers"
     options = [line for line in lines[head:] if line[:5] in ("  1. ", "  2. ", "  3. ")]
-    assert options == ["  1. Reword it to match the change (recommended)",
-                       "  2. Keep the wording as it is", "  3. Undo the change"]
-    assert "     does and leaves undone: rewords it" in lines
-    assert "  Why the recommended one: it is cosmetic" in lines
+    assert options == ["  1. Reword it to match the change (recommended) - rewords it",
+                       "  2. Keep the wording as it is - keeps both",
+                       "  3. Undo the change - undoes it"]
+    assert "it is cosmetic" in lines
 
 
 _BARE_ID = re.compile(r"(?<![\w-])(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})(?![\w-])")
@@ -250,8 +242,11 @@ def test_stale_card_text_passes_both_owner_text_scanners(project: Path) -> None:
                     ("a", "c"))
     card = stale.default_card(row, "Adds numbers")
     stale.add_card(project, "s1", turn=1, **card)
-    text = "\n".join([*stale.card_lines(project, "s1"), owner_text.STALE_HOLD_ENDED.format(
-        n=3, title="Adds numbers")])
+    from plumb.understand import fullcard
+
+    (entry,) = stale.read_cards(project, "s1")
+    text = "\n".join([fullcard.render(fullcard.stale_content(open_core(project), entry)),
+                      owner_text.STALE_HOLD_ENDED.format(n=3, title="Adds numbers")])
     assert bare_cli_verbs(text) == []
     assert _BARE_ID.findall(text) == [] and _INTERNAL.findall(text) == []
     assert "Adds numbers" in text

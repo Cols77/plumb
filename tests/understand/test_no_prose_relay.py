@@ -1,4 +1,4 @@
-"""SR-101 EX-9 and INT-028/INT-029: an agent-run prose relay no longer exists, the prompt hook
+"""SR-101 EX-9 and INT-028/INT-029: there is no agent-run prose relay command, the prompt hook
 no longer tells the agent to confirm on its own reading, and no word rule that decides
 whether the owner approved is left in `approvals`."""
 
@@ -49,35 +49,13 @@ def approvals_of(repo: Path) -> list:
     return [e for e in open_core(repo).events() if e.kind == "approval"]
 
 
-def relay(repo: Path, digest: str, quote: str, *extra: str) -> int:
-    return main(["relay", "SR-001", "--prompt", digest, "--quote", quote, *extra,
-                 "--root", str(repo)])
-
-
-def test_ex9_relay_of_a_prompt_reading_no_do_not_approve_confirms_nothing(
+def test_ex9_there_is_no_relay_command_so_a_prompt_reading_no_confirms_nothing(
         project: Path, capsys) -> None:
     digest = log_prompt(project, "no, do not approve SR-001")
-    assert relay(project, digest, "approve SR-001") == 3
-    assert "no longer exists" in capsys.readouterr().err
-    assert approvals_of(project) == []
-
-
-def test_relay_refuses_even_on_words_that_plainly_affirm(project: Path, capsys) -> None:
-    digest = log_prompt(project, "ok SR-001")
-    assert relay(project, digest, "ok SR-001") == 3
-    assert relay(project, digest, "ok SR-001", "--revoke") == 3
-    assert main(["relay", "--prompt", digest, "--quote", "ok", "--group", "g1",
+    assert main(["relay", "SR-001", "--prompt", digest, "--quote", "approve SR-001",
                  "--root", str(project)]) == 3
-    assert relay(project, digest, "ok SR-001", "--reject") == 3
-    assert approvals_of(project) == []
-    assert [e for e in open_core(project).events() if e.kind in ("revocation", "rejection")] == []
-    capsys.readouterr()
-
-
-def test_the_library_relay_refuses_too(project: Path) -> None:
-    digest = log_prompt(project, "ok SR-001")
-    with pytest.raises(approvals.Refused, match="no longer exists"):
-        approvals.relay(open_core(project), ["SR-001"], prompt=digest, quote="ok SR-001")
+    assert "no longer exists" in capsys.readouterr().err
+    assert not hasattr(approvals, "relay")
     assert approvals_of(project) == []
 
 

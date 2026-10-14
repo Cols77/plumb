@@ -118,41 +118,10 @@ export const GUARD_TABLE: GuardRow[] = [
     "firstOf": [
       "hello",
       "press",
-      "typed",
-      "undo"
+      "typed"
     ],
     "unless": null,
     "legacy": true,
     "why": "this is the plumb panel's own step; only a press in the panel runs it"
-  },
-  {
-    "words": [
-      "settle"
-    ],
-    "firstOf": [
-      "on",
-      "off"
-    ],
-    "unless": "--prompt",
-    "legacy": false,
-    "why": "only the owner's typed command does this: run it with --prompt and the digest of the owner's message that is exactly that command"
-  },
-  {
-    "words": [
-      "undo"
-    ],
-    "firstOf": [],
-    "unless": "--prompt",
-    "legacy": false,
-    "why": "only the owner's typed command does this: run it with --prompt and the digest of the owner's message that is exactly that command"
-  },
-  {
-    "words": [
-      "go"
-    ],
-    "firstOf": [],
-    "unless": "--prompt",
-    "legacy": false,
-    "why": "only the owner's typed command does this: run it with --prompt and the digest of the owner's message that is exactly that command"
   }
 ];

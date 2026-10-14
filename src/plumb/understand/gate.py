@@ -107,12 +107,6 @@ def problems(core: Any) -> list[str]:
     return out
 
 
-def _used(core: Any, digest: str, prompt_seq: int) -> bool:
-    from plumb.understand import proof
-
-    return proof.used(core, digest, prompt_seq)
-
-
 RELEASE_WORDS = {"typed": "the owner typed the release", "button": "the owner pressed Build anyway",
                  "owner-words": "the owner's words, read at the reader's threshold"}
 
@@ -130,34 +124,17 @@ def failed_check_open(root: Path, session: str) -> bool:
                for c in cardstore.own_cards(Path(root), session))
 
 
-def typed_is_late(core: Any, session: str, prompt_seq: int) -> bool:
-    """Whether a typed message at ``prompt_seq`` of the prompt log came before the message the
-    gate is closed for: an old ``/plumb go`` cannot release a check that failed after it."""
-    from plumb.understand import proof
-
-    held = state(Path(core.root), session).message_digest
-    closed_at = proof.seq_of(core, held)
-    return closed_at >= 0 and prompt_seq <= closed_at
-
-
-def release(core: Any, session: str, via: str, *, digest: str = "",
-            prompt_seq: int | None = None) -> bool:
+def release(core: Any, session: str, via: str, *, digest: str = "") -> bool:
     """Open the gate of a failed check because the owner said so: ``via`` is ``typed`` (the
     caller checked the logged prompt is exactly ``/plumb go``), ``button`` or ``owner-words``
     (the caller checked the reader's answer is accepted at or above its threshold). No other
-    route exists, and a gate closed by a card's questions is not released this way. A typed
-    release presented from the log (``prompt_seq``: the position of the typed message) must
-    come after the message the gate is closed for, and is used once."""
+    route exists, and a gate closed by a card's questions is not released this way."""
     if via not in RELEASE_WORDS or not failed_check_open(Path(core.root), session):
-        return False
-    if prompt_seq is not None and (typed_is_late(core, session, prompt_seq)
-                                   or _used(core, digest, prompt_seq)):
         return False
     held = state(Path(core.root), session).message_digest
     note = RELEASE_WORDS[via] + (f" ({digest.removeprefix('sha256:')[:12]})" if digest else "")
-    proof = ({"prompt_digest": digest, "prompt_seq": prompt_seq}
-             if prompt_seq is not None else None)
-    if not open(core, session, held, f"release:{via}", note, proof):
+    if not open(core, session, held, f"release:{via}", note,
+                {"prompt_digest": digest} if digest else None):
         return False
     from plumb.understand import cardstore
 

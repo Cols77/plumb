@@ -77,14 +77,3 @@ def test_vault_note_says_who_confirmed(records: Path, capsys, monkeypatch, by, e
     note = next(p for p in (records / ".plumb" / "view").rglob("SR-002*.md")
                 if "EX-" not in p.name).read_text("utf-8")
     assert f"State: **confirmed**, {label}" in note
-
-
-@pytest.mark.sr("SR-062")
-@pytest.mark.parametrize(("by", "extra", "label"), CASES, ids=IDS)
-def test_card_says_who_confirmed(records: Path, monkeypatch, by, extra, label) -> None:
-    from plumb.present.cards import card_data
-    from plumb.present.render import intent_card
-
-    _confirmed(monkeypatch, by, extra)
-    (data,) = card_data(open_core(records), ["SR-002"])
-    assert label in intent_card(data)[0]

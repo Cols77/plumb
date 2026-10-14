@@ -139,52 +139,6 @@ def brief(core: Any, tests_line: str) -> list[str]:
     return lines[:HARD_CAP]
 
 
-def _judgment_timeout_s(core: Any) -> float:
-    try:
-        return max(float(core.config.judgment.hook_timeout_ms), 0.0) / 1000.0
-    except (AttributeError, TypeError, ValueError):
-        return 0.0
-
-
-LOCAL_BACKENDS = ("disabled", "fake")
-
-
-def triage_offer_line(core: Any) -> str | None:
-    """The brief's one triage line (R8 A, sp5 3): the records rated faithful to the owner's
-    words, from CAPTURE's triage; None without CAPTURE or without a low-risk group.
-
-    Read from the last whole triage's cache when there is one (no judgment, no import of the
-    judgment modules); with none, only a backend that runs on this machine is asked, never
-    one that calls the network: a cold start waits for a triage run (SR-014)."""
-    try:
-        from plumb.capture import triage as cached
-    except ImportError:
-        return None
-    try:
-        known, line = cached.cached_offer(core)
-    except Exception:  # noqa: BLE001 - an advisory lane never fails the brief
-        known, line = False, None
-    if known:
-        return line
-    if str(getattr(getattr(core.config, "judgment", None), "backend", "")
-           ).strip().lower() not in LOCAL_BACKENDS:
-        return None
-    try:
-        from plumb.capture import api
-    except ImportError:
-        return None
-    try:
-        view = api.triage(core, None)
-    except Exception:  # noqa: BLE001 - an advisory lane never fails the brief
-        return None
-    low = list(getattr(view, "low_risk", ()) or ())
-    if not low:
-        return None
-    noun = "record" if len(low) == 1 else "records"
-    return (f"plumb: {len(low)} {noun} rated faithful to your words await you: "
-            "plumb triage lists them; plumb confirm shows them as cards")
-
-
 def auto_approve_off(core: Any) -> str | None:
     """``off`` when the owner never turned auto-approve on (no owner ``config`` event), known
     without the judgment modules the full state would import; None when it must be worked
@@ -240,6 +194,12 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
     from plumb.present.delta import Line, open_emitter, reset
 
     timer.mark("imports")
+    try:  # advisory: an older post-merge hook is brought up to date (SR-132)
+        from plumb.boundary.premerge import refresh_post_hook
+
+        refresh_post_hook(ctx.root)
+    except Exception:  # noqa: BLE001
+        pass
     # work left in the tree from before is told only at the start of a conversation
     scan = TreeScan(ctx.root) if ctx.data.get("source") not in ("resume", "compact") else None
     core = open_core(ctx.root)
@@ -295,15 +255,6 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
         lines += emitter.add(at_session_start(core, ctx.deadline))
         ctx.keep(lines)
     timer.mark("awareness")
-    # R8 A: at most one line, the triage offer. Its judgment may call the network for up to
-    # the hook timeout, so it runs only when that much of the budget is left (the cached
-    # judgments of an earlier session make it free; a cold one waits for a roomier hook)
-    if ctx.deadline.remaining_s() > _judgment_timeout_s(core):
-        offer = triage_offer_line(core)
-        if offer:
-            lines += emitter.add([Line(offer)])
-            ctx.keep(lines)
-    timer.mark("triage_offer")
     emitter.close()
     return HookOutput(text="\n".join(lines))
 

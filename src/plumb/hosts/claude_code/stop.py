@@ -5,31 +5,29 @@ sp7-realign-sp8 C7, slice 3).
    ``git status`` call whose mtime is at or after the turn start.
 2. Their records (``CoreAPI.records_for_paths``), the link states of those records only, the
    covering selection (``VerifyAPI.select``) and its evidence.
-3. The read-back comes first (R1): the cards of the records this turn proposed (one per
-   feature, DEC-029) are drawn from the record states alone and kept (``HookContext.keep``)
-   before any evidence step, so a budget cut, an error or the watchdog still shows them. Then
-   the covering tests and fidelity. Write ``status.json`` (the status line: the status card
-   lives there, never in the owner's text) and the stated set (``stated.json``): a stated
-   record is ``shown`` only when a card drew it in full.
+3. The read-back comes first (R1): the cards drawn from the record states alone (a changed
+   acceptance test) are kept (``HookContext.keep``) before any evidence step, so a budget cut,
+   an error or the watchdog still shows them. Then the covering tests and fidelity. Write
+   ``status.json`` (the status line: the status card lives there, never in the owner's text)
+   and the stated set (``stated.json``): a stated record is ``shown`` only when a card drew it
+   in full.
 4. At most one block per turn, never when the host says ``stop_hook_active``: covering tests
    without fresh evidence (the agent runs ``plumb tests run --paths <this turn's paths>`` in
-   its turn; the hook never runs pytest), an unconfirmed decision that matters (trigger 2,
-   once per hash) and a regression (trigger 3, R3: a node that passed with recorded
-   evidence and now fails; once per failing run). A new test that starts red is "not yet
-   passing" and never asks. The block's lines go through the one emitter
+   its turn; the hook never runs pytest) and a regression (trigger 3, R3: a node that passed
+   with recorded evidence and now fails; once per failing run). A new test that starts red is
+   "not yet passing" and never asks. The block's lines go through the one emitter
    (``plumb.present.delta``): each once per session per state, within
    ``hooks.stop_tokens``; the covering-tests instruction and the skipped-check notice are
    about this turn (``per_turn``), so every turn whose covering tests lack fresh evidence
    blocks once, whatever the prompt's words. The block is for the agent; the owner sees none
    of it.
 5. Otherwise the owner's text is ``StopParts`` and nothing else (SR-012, SR-105 order): what
-   the owner's words confirmed, the one settled line with Undo, then the cards. The stop hook
-   builds the cards of its own facts (``plumb.understand.cards``): a regression, a decision
-   that matters, a merge conflict, an early conflict, and the records this turn proposed
-   that nothing settled, one card per feature; the summary of the understanding layer draws
-   them with its own and the stale-link and drift cards, each in full (SR-116). No list of
-   proposed records, no status card, no summary lines: a turn with nothing for the owner
-   shows nothing. The records ``plumb confirm`` prepared this turn join the proposed cards.
+   the owner's words confirmed, then the cards. The stop hook builds the cards of its own
+   facts (``plumb.understand.cards``): a regression, a changed acceptance test, a merge
+   conflict, an early conflict; the summary of the understanding layer draws them with its own
+   and the stale-link and drift cards, each in full (SR-116). A decision is never asked here,
+   as a card or in the agent's words (INT-037). A turn with nothing for the owner shows
+   nothing.
 
 The deadline is checked before a step starts, never after it ends (spec 10): a step that
 would start past the soft budget is skipped and named in the status line, and results already
@@ -40,15 +38,13 @@ bounds them, and it prints whatever was kept.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
 import time
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, NamedTuple, TextIO
 
 from plumb.hosts.claude_code.hookio import (
     HookContext,
@@ -172,38 +168,6 @@ def _iso(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
-def _dec_question(record: Any) -> str:
-    from plumb.awareness.answer import early_of
-
-    early = early_of(record)
-    if early is not None:  # R17: the early conflict card's own question and answers
-        question = " ".join(str(record.fields.get("question") or record.title).split())
-        return (f"plumb: {record.id} is unconfirmed and this work relies on it. Show the owner "
-                f"the conflict card and ask: \"{question}\" They answer in the card's words "
-                "(\"keep <branch>'s\", \"keep this one\" or \"both\"); relay those words as "
-                f"the answer to {record.id}")
-    chosen = str(record.fields.get("chosen") or "A").strip()
-    alternatives = record.fields.get("alternatives") or []
-    if isinstance(alternatives, str):
-        alternatives = [alternatives]
-    other = str(alternatives[0]).strip() if alternatives else "another reading"
-    return (f"plumb: {record.id} is unconfirmed and this work relies on it. Ask the owner: "
-            f"\"I assumed {chosen}; {other} also fits. Which one?\"")
-
-
-def matters_decisions(index: Mapping[str, Any], statuses: Mapping[str, Any],
-                      touched: Iterable[str]) -> list[str]:
-    """Open DECs with ``matters: true`` that are touched or decide a touched record, earliest
-    first: ``plumb.capture.clarify.open_decisions`` (unconfirmed and not superseded), the one
-    rule the clarify queue and the escalation trigger share."""
-    from plumb.awareness.answer import waiting_on_conflict
-    from plumb.capture.clarify import open_decisions
-
-    # an early decision whose record a merge left in conflict is asked by that merge card
-    return [d for d in open_decisions(index, statuses, touched)
-            if not waiting_on_conflict(index, d)]
-
-
 def masked_acceptance(core: Any, verify: Any, index: Mapping[str, Any],
                       statuses: Mapping[str, Any], touched_ids: Sequence[str],
                       changed: Sequence[str]) -> list[dict[str, Any]]:
@@ -251,113 +215,16 @@ def _regression_line(node: str, evidence: Any) -> str:
             "Tell the owner, with a read-back, and ask how to proceed.")
 
 
-@dataclass
-class ConfirmView:
-    """What ``plumb confirm`` prepared this turn and what this stop shows of it (sp5 6.3):
-    the records a card drew in full (``id -> hash``); since slice 3 the records join the
-    proposed cards and no group offer is drawn (``lines`` and ``shown_groups`` stay empty)."""
-
-    records: list[dict[str, Any]] = field(default_factory=list)
-    groups: list[dict[str, Any]] = field(default_factory=list)
-    lines: list[str] = field(default_factory=list)
-    shown: dict[str, str] = field(default_factory=dict)
-    shown_groups: list[dict[str, Any]] = field(default_factory=list)
-
-
-def confirm_carry(ctx: HookContext, turn: Mapping[str, Any]) -> ConfirmView:
-    """The records and triage groups ``plumb confirm`` put in the stated set during this
-    turn (``via: confirm``), nothing rendered yet."""
-    previous = read_json(ctx.session_dir / "stated.json")
-    if not isinstance(previous, dict):
-        return ConfirmView()
-    start = _iso(float(turn.get("turn_start") or 0)) if turn.get("turn_start") else ""
-    if not start or str(previous.get("at") or "") < start:
-        return ConfirmView()
-    records = [dict(item) for item in previous.get("records") or []
-               if isinstance(item, dict) and item.get("via") == "confirm" and item.get("id")]
-    groups = [dict(item) for item in previous.get("confirm_groups") or []
-              if isinstance(item, dict) and item.get("group")]
-    # SR-012, DEC-029: no group offer is drawn any more, so the records of the triage group
-    # plumb confirm prepared join the prepared records and reach the owner on their cards
-    known = {str(r["id"]) for r in records}
-    for group in groups:
-        for item in group.get("records") or []:
-            if isinstance(item, dict) and item.get("id") and str(item["id"]) not in known:
-                known.add(str(item["id"]))
-                records.append({"id": str(item["id"]), "hash": item.get("hash"),
-                                "shown": False, "via": "confirm"})
-    return ConfirmView(records=records, groups=groups)
-
-
-_ASKED = re.compile(
-    r"^[ \t>#*_-]*Question[ \t]*\([ \t]*\**(DEC-\d+)\**[ \t]*\)", re.MULTILINE)
-
-
-def reply_text(ctx: HookContext) -> str:
-    """The agent's last reply as the host gave it: ``last_assistant_message``, else the last
-    assistant entry of the transcript. Empty when neither is available."""
-    text = ctx.data.get("last_assistant_message")
-    if isinstance(text, str):
-        return text
-    path = ctx.data.get("transcript_path")
-    if not isinstance(path, str) or not path:
-        return ""
-    last = ""
-    try:
-        with open(path, encoding="utf-8") as handle:
-            for line in handle:
-                try:
-                    entry = json.loads(line)
-                except ValueError:
-                    continue
-                message = entry.get("message") if isinstance(entry, dict) else None
-                if not isinstance(message, dict) or message.get("role") != "assistant":
-                    continue
-                content = message.get("content")
-                if isinstance(content, str):
-                    last = content
-                elif isinstance(content, list):
-                    last = "\n".join(str(b.get("text")) for b in content
-                                     if isinstance(b, dict) and b.get("type") == "text")
-    except OSError:
-        return ""
-    return last
-
-
-def asked_decisions(ctx: HookContext) -> dict[str, str]:
-    """Decisions the reply asked as plain text, "Question (DEC-026): ..." at a line start.
-
-    A decision named in passing ("see DEC-002") is not asked. Only a decision that exists is
-    returned, with its current hash."""
-    found = list(dict.fromkeys(_ASKED.findall(reply_text(ctx))))
-    if not found:
-        return {}
-    from plumb.api import open_core
-
-    known = open_core(ctx.root).index()
-    return {i: known[i].hash for i in found if i in known}
-
-
 def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
                  stated_ids: Sequence[str], shown: Iterable[str] = (), *,
-                 group: Mapping[str, Any] | None = None, offer: Sequence[str] = (),
-                 message: str = "", confirm: ConfirmView | None = None,
                  conflicts: Sequence[Mapping[str, Any]] = (),
                  early: Sequence[Mapping[str, Any]] = ()) -> None:
     """The stated set of this reply: what a bare affirmation of the owner may confirm.
 
-    The records and groups ``plumb confirm`` prepared this turn stay in it (``via:
-    confirm``); they are shown, and a group relayable (``groups``), only as ``confirm``
-    rendered them (``confirm_view``). Without ``confirm`` (a blocked stop shows the owner
-    nothing) they are kept unshown for the turn's last stop. ``group`` is the triage offer
-    of this turn's own records (``plumb relay --group``), pinned only when its ``offer``
-    lines are in ``message``, the text the owner is shown (R2, DEC-017): a group the
-    owner never saw (``present.card: off`` hides the offer) is never relayable.
-
     The one writer of ``stated.json``, so it holds the guarantee "``shown`` only when the
     owner sees the summary" for every host (``ctx.extra["display"]``, set by
     ``hosts.neutral.handle_event``): ``owner`` (the host shows ``owner_lines``) keeps
-    ``shown``; ``unseen`` (the host could not show them) writes no record or group as shown;
+    ``shown``; ``unseen`` (the host could not show them) writes no record as shown;
     ``status`` (a status refresh, e.g. Codex's ``notify``) leaves the stated set of the reply
     the owner actually answers untouched."""
     from plumb.normalize import utc_now
@@ -366,40 +233,11 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     if display == "status":
         return
     seen = display == "owner"
-    carry = confirm if confirm is not None else confirm_carry(ctx, turn)
-    rendered = confirm.shown if confirm is not None and seen else {}
     shown = set(shown) if seen else set()
-    records = [{"id": i, "hash": index[i].hash, "shown": i in shown} for i in stated_ids]
-    by_id = {r["id"]: r for r in records}
-    if seen:  # a question asked as plain text is the whole of what the owner answers
-        for record_id, current in asked_decisions(ctx).items():
-            if record_id not in by_id:
-                by_id[record_id] = {"id": record_id, "hash": current, "shown": True}
-                records.append(by_id[record_id])
-    for item in carry.records:
-        record_id = item["id"]
-        if record_id in rendered:
-            if record_id in by_id:  # still prepared by plumb confirm for a later stop
-                by_id[record_id].update(hash=rendered[record_id], shown=True, via="confirm")
-                continue
-            item = {**item, "hash": rendered[record_id], "shown": True}
-        elif record_id in by_id:
-            by_id[record_id]["via"] = "confirm"
-            continue
-        else:
-            item = {**item, "shown": False}
-        by_id[record_id] = item
-        records.append(item)
-    data: dict[str, Any] = {"at": utc_now(), "session": ctx.session_id,
-                            "reply_after_prompt": turn.get("prompt_digest"),
-                            "records": records}
-    groups = list(confirm.shown_groups) if confirm is not None and seen else []
-    if seen and group is not None and not carry.groups and offered(offer, message):
-        groups.append(dict(group))
-    if groups:
-        data["groups"] = groups
-    if carry.groups:
-        data["confirm_groups"] = carry.groups
+    data: dict[str, Any] = {
+        "at": utc_now(), "session": ctx.session_id,
+        "reply_after_prompt": turn.get("prompt_digest"),
+        "records": [{"id": i, "hash": index[i].hash, "shown": i in shown} for i in stated_ids]}
     if seen and conflicts:  # sp6 8.4: the conflict cards this reply showed the owner
         data["conflicts"] = [dict(c) for c in conflicts]
     if seen and early:  # R17: the early conflict cards this reply showed the owner
@@ -407,10 +245,81 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     write_json_atomic(ctx.session_dir / "stated.json", data)
 
 
-def offered(offer: Sequence[str], message: str) -> bool:
-    """True when every offer line is a line of ``message`` (what reached the owner)."""
-    shown = set(message.splitlines())
-    return bool(offer) and all(line in shown for line in offer)
+def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
+               skipped: Sequence[str]) -> HookOutput | None:
+    """A turn with no edit: the cards plumb conflicts, capture or the clarify read-back asked
+    for and what the owner's words confirmed need none (R17: asked at once)."""
+    if skipped:  # a timed-out git status is no evidence of a turn without changes
+        note_skipped(ctx.root, skipped)
+    fresh, conflicts, early = owner_cards(ctx, core, turn)
+    shown: dict[str, str] = {}
+    text = understand_parts(ctx, core, turn, fresh=fresh, shown=shown)
+    write_stated(ctx, turn, {}, [], conflicts=conflicts, early=early)
+    return HookOutput(system_message="\n\n".join(text)) if text else None
+
+
+class Verified(NamedTuple):
+    selection: Any
+    evidence: Any
+    pending: Any
+    regressing: dict[str, Any]
+    open_regressions: list[str]
+    masked: list[Any]
+    open_masked: list[Any]
+    not_run: list[str]
+    unselected: bool
+
+
+def _verification(ctx: HookContext, core: Any, verify: Any, index: Any, all_statuses: Any,
+                  touched_ids: Sequence[str], changed: Sequence[str], turn_start: float,
+                  asked: dict[str, Any], skipped: list[str]) -> Verified:
+    """What the turn's tests say: the selection, its evidence, the full run still pending, the
+    regressions (recorded or seen now) and those still to ask, the acceptance tests hidden by a
+    test change, the covering tests not run and whether the budget cut the selection."""
+    # trigger 3 first (R3, R5): the regressions this turn's runs recorded come from the
+    # evidence index alone, before any step a budget can cut (no test map needed)
+    recorded = turn_regressions(verify, turn_start)
+    selection = evidence = pending = None
+    if verify is not None:
+        if ctx.deadline.expired():
+            skipped.append("covering tests")
+        else:
+            selection = verify.select(changed,
+                                      budget_s=float(core.config.verify.turn_budget_s))
+            evidence = dict(verify.evidence(selection.nodes)) if selection.nodes else {}
+            pending = verify.full_pending()
+    # trigger 3: regressions (R3), asked once per failing run
+    regressing = {n: e for n, e in (evidence or {}).items() if e.regression}
+    regressing.update({n: e for n, e in (recorded or {}).items() if n not in regressing})
+    regressing = {n: e for n, e in regressing.items() if test_exists(core.root, n)}
+    open_regressions = [n for n in sorted(regressing)
+                        if asked.get(f"regression:{n}") != (regressing[n].last_run or "?")]
+    # trigger 3 as well: a regression of a confirmed example hidden by changing its test
+    masked = masked_acceptance(core, verify, index, all_statuses, touched_ids, changed)
+    open_masked = [m for m in masked
+                   if asked.get(f"masked:{m['node']}") != str(m.get("masked_by") or "?")]
+    not_run = [n for n, e in (evidence or {}).items() if e.state in ("none", "stale")]
+    # R5: a turn that changed code always gets its covering tests run; when the budget cut
+    # the selection, the agent's own `plumb tests run --paths` selects them
+    unselected = (verify is not None and selection is None
+                  and any(is_code_path(core.config, p) for p in changed))
+    return Verified(selection, evidence, pending, regressing, open_regressions, masked,
+                    open_masked, not_run, unselected)
+
+
+def _unjudged(ctx: HookContext, core: Any, unjudged: Any, touched_ids: Sequence[str],
+              index: Any, skipped: list[str]) -> tuple[Any, ...]:
+    """The touched requirements whose fidelity is not judged yet (advisory only)."""
+    requirement_ids = [i for i in touched_ids if index[i].kind == "requirement"]
+    if unjudged is None or not requirement_ids:
+        return ()
+    if ctx.deadline.expired():
+        skipped.append("fidelity")
+        return ()
+    try:
+        return tuple(unjudged(core, requirement_ids))
+    except Exception:  # noqa: BLE001 - advisory only
+        return ()
 
 
 def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> HookOutput | None:
@@ -435,20 +344,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     core.index()  # read while git status runs; both turn paths need it
     changed = changed_paths(ctx.root, session_dir / "touched.txt", turn_start, git_timeout,
                             skipped, job)
-    # what plumb confirm prepared this turn joins the cards of the proposed records (sp5 6.3)
-    carry = confirm_carry(ctx, turn)
     if not changed:
-        if skipped:  # a timed-out git status is no evidence of a turn without changes
-            note_skipped(ctx.root, skipped)
-        # the cards plumb conflicts, capture or the clarify read-back asked for, what the
-        # owner's words confirmed and the settled line need no edit (R17: asked at once)
-        fresh, conflicts, early = owner_cards(ctx, core, turn)
-        shown: dict[str, str] = {}
-        text = understand_parts(ctx, core, turn, extra=carried_cards(core, carry, turn_start),
-                                fresh=fresh, shown=shown)
-        write_stated(ctx, turn, {}, [], confirm=carried_view(carry, shown),
-                     conflicts=conflicts, early=early)
-        return HookOutput(system_message="\n".join(text)) if text else None
+        return _unchanged(ctx, core, turn, skipped)
     # no soft-budget check before the read-back (R1): only the watchdog bounds it
     index = core.index()
     by_path = core.records_for_paths(changed)
@@ -464,29 +361,17 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     told_raw = turn.get("untraced_told")
     told = {str(p) for p in told_raw} if isinstance(told_raw, list) else set()
 
-    # trigger 2: decisions that matter, unconfirmed, touched this turn
-    decisions = matters_decisions(index, all_statuses, touched_ids)
-    # R11 "ONE per message": only the earliest open decision is asked; the next one waits
-    # until it is answered (plumb.capture.api.next_question, sp2 5.3)
-    first = decisions[:1]
-    open_decisions = [d for d in first if asked.get(d) != index[d].hash]
-    stated_ids = [i for i in edited_ids
-                  if all_statuses[i].confirmation != "confirmed"]
-    for d in decisions:
-        if d not in stated_ids:
-            stated_ids.append(d)
+    stated_ids = [i for i in edited_ids if all_statuses[i].confirmation != "confirmed"]
     from plumb.present.cards import session_intent
 
     intent_summary = session_intent(core, index, touched_ids, session_dir)
-    # R1 first: the cards of the proposed records and of the decisions that matter, from the
-    # record states alone, are kept before any evidence step, so a cut (budget, error,
-    # watchdog) still shows them; kept before the stated set says "shown", never after
+    # R1 first: the cards from the record states alone are kept before any evidence step, so
+    # a cut (budget, error, watchdog) still shows them; kept before the stated set says
+    # "shown", never after
     early_snapshot = build_snapshot(core, statuses=all_statuses, auto_approve="off",
                                     tests_summary=("unknown", (), ()),
                                     intent_summary=intent_summary)
     stamp = int(turn_start)
-    decision_cards = [card_text.decision_card(index, index[d], touched=touched_ids, turn=stamp)
-                      for d in decisions]
     # SR-030: a confirmed requirement whose acceptance test changed since the owner confirmed
     # it waits for the owner on its own card (never only in plumb status); it stays out of the
     # stated set, so a bare "ok" never confirms the new test (the card recommends putting the
@@ -495,11 +380,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                     and getattr(all_statuses.get(i), "changed_tests", ())]
     test_cards = [card_text.test_changed_card(index[i], all_statuses[i].changed_tests,
                                               turn=stamp) for i in test_changed]
-    proposed = proposed_cards(core, index, all_statuses, stated_ids,
-                              [*decisions, *test_changed], carry, stamp)
     kept: dict[str, str] = {}
-    ctx.keep(drawn_now(core, [*decision_cards, *test_cards, *proposed], kept))
-    write_stated(ctx, turn, index, stated_ids, kept, confirm=carried_view(carry, kept))
+    ctx.keep(drawn_now(core, test_cards, kept))
+    write_stated(ctx, turn, index, stated_ids, kept)
     # then the status line: a later cut (budget, watchdog) must not leave it on an older turn
     write_snapshot(ctx.root, early_snapshot, present=getattr(core.config, "present", None))
     note_path = session_dir / "untraced.json"
@@ -509,54 +392,14 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                                       "prompt_digest": turn.get("prompt_digest")})
 
     verify = verify_api(core, verify)
-    # trigger 3 first (R3, R5): the regressions this turn's runs recorded come from the
-    # evidence index alone, before any step a budget can cut (no test map needed)
-    recorded = turn_regressions(verify, turn_start)
-    selection = evidence = pending = None
-    if verify is not None:
-        if ctx.deadline.expired():
-            skipped.append("covering tests")
-        else:
-            selection = verify.select(changed,
-                                      budget_s=float(core.config.verify.turn_budget_s))
-            evidence = dict(verify.evidence(selection.nodes)) if selection.nodes else {}
-            pending = verify.full_pending()
+    v = _verification(ctx, core, verify, index, all_statuses, touched_ids, changed,
+                      turn_start, asked, skipped)
 
-    # trigger 3: regressions (R3), asked once per failing run
-    regressing = {n: e for n, e in (evidence or {}).items() if e.regression}
-    regressing.update({n: e for n, e in (recorded or {}).items() if n not in regressing})
-    regressing = {n: e for n, e in regressing.items() if test_exists(core.root, n)}
-    regressions = sorted(regressing)
-    open_regressions = [n for n in regressions
-                        if asked.get(f"regression:{n}") != (regressing[n].last_run or "?")]
-    # trigger 3 as well: a regression of a confirmed example hidden by changing its test
-    masked = masked_acceptance(core, verify, index, all_statuses, touched_ids, changed)
-    open_masked = [m for m in masked
-                   if asked.get(f"masked:{m['node']}") != str(m.get("masked_by") or "?")]
-    not_run = [n for n, e in (evidence or {}).items() if e.state in ("none", "stale")]
-    # R5: a turn that changed code always gets its covering tests run; when the budget cut
-    # the selection, the agent's own `plumb tests run --paths` selects them
-    unselected = (verify is not None and selection is None
-                  and any(is_code_path(core.config, p) for p in changed))
-
-    unjudged = unjudged_fn(unjudged)
-    requirement_ids = [i for i in touched_ids if index[i].kind == "requirement"]
-    fidelity = ()
-    if unjudged is not None and requirement_ids:
-        if ctx.deadline.expired():
-            skipped.append("fidelity")
-        else:
-            try:
-                fidelity = tuple(unjudged(core, requirement_ids))
-            except Exception:  # noqa: BLE001 - advisory only
-                fidelity = ()
-    questions = ([f"regression {n}" for n in regressions]
-                 + [f"regression hidden by a test change {m['node']}" for m in masked]
-                 + decisions)
+    fidelity = _unjudged(ctx, core, unjudged_fn(unjudged), touched_ids, index, skipped)
     snapshot = build_snapshot(
-        core, evidence=evidence, full_pending=pending, statuses=all_statuses,
-        deferred=len(selection.deferred) if selection else 0, fidelity_unjudged=fidelity,
-        ask=len(questions), skipped=", ".join(skipped) or None,
+        core, evidence=v.evidence, full_pending=v.pending, statuses=all_statuses,
+        deferred=len(v.selection.deferred) if v.selection else 0, fidelity_unjudged=fidelity,
+        ask=len(v.regressing) + len(v.masked), skipped=", ".join(skipped) or None,
         intent_summary=intent_summary)
     write_snapshot(ctx.root, snapshot, present=getattr(core.config, "present", None))
     # sp6 9.2, 9.4, R17: publish this worktree's changes, keep its intent in flight in step,
@@ -564,10 +407,6 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     from plumb.awareness.turn import at_stop
 
     aware = at_stop(core, changed, touched_ids, ctx.deadline)
-    # R17: an early conflict this turn's claim raised is asked now (the agent shows the
-    # card the owner then sees at the end of the turn, and asks before any further work)
-    early_ask = [line for line in aware if line.must]
-    aware = [line for line in aware if not line.must]
     stale_reasons, _ = stale_hold(ctx, core, index, turn, turn_start)
 
     if not active:
@@ -577,20 +416,15 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         # session per state; the triggers and the tests instruction are never cut
         emitter = open_emitter(ctx, "stop", config=core.config)
         wanted: list[Line] = []
-        if not_run or unselected:
+        if v.not_run or v.unselected:
             wanted.append(Line(tests_instruction(changed,
                                                  float(core.config.verify.turn_budget_s)),
                                subject="tests", must=True, per_turn=True))
-        wanted.extend(early_ask)
-        for d in open_decisions:
-            wanted.append(Line(_dec_question(index[d]), subject=f"question:{d}",
-                               state=index[d].hash, must=True))
-            asked[d] = index[d].hash
-        for n in open_regressions:
-            wanted.append(Line(_regression_line(n, regressing[n]), subject=f"regression:{n}",
-                               state=regressing[n].last_run or "?", must=True))
-            asked[f"regression:{n}"] = regressing[n].last_run or "?"
-        for m in open_masked:
+        for n in v.open_regressions:
+            wanted.append(Line(_regression_line(n, v.regressing[n]), subject=f"regression:{n}",
+                               state=v.regressing[n].last_run or "?", must=True))
+            asked[f"regression:{n}"] = v.regressing[n].last_run or "?"
+        for m in v.open_masked:
             wanted.append(Line(_masked_line(index, m), subject=f"masked:{m['node']}",
                                state=str(m.get("masked_by") or "?"), must=True))
             asked[f"masked:{m['node']}"] = str(m.get("masked_by") or "?")
@@ -614,7 +448,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                 reasons += emitter.add([Line(skip_notice(skipped), per_turn=True)])
             reasons += emitter.add(aware)
             emitter.close()
-            # a blocked stop shows the owner nothing: a bare "ok" relays no record
+            # a blocked stop shows the owner nothing: a bare "ok" confirms no record
             write_stated(ctx, turn, index, stated_ids)
             write_json_atomic(turn_path, {**turn, "asked": asked,
                                           "untraced_told": sorted(told | set(queued))})
@@ -625,22 +459,16 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
         write_stated(ctx, turn, index, stated_ids)
         return HookOutput(block_reason="\n".join(stale_reasons))
 
-    # cards only (SR-012, sp7-realign-sp8 C7): what the owner's words confirmed, the settled
-    # line, then every card in full; the status card is the status line's, the agent's lines
-    # are the block's
-    passing = [n for n, e in (evidence or {}).items() if e.state in ("fresh-pass", "flaky-pass")]
-    regression, changes = regression_cards(core, index, regressing, masked, changed, stamp)
-    for card, record_id in zip(test_cards, test_changed, strict=True):
-        changes[card.id] = turn_change(core, index, all_statuses[record_id].changed_tests[0],
-                                       changed)
+    # cards only (SR-012, sp7-realign-sp8 C7): what the owner's words confirmed, then every
+    # card in full; the status card is the status line's, the agent's lines are the block's
+    passing = [n for n, e in (v.evidence or {}).items() if e.state in ("fresh-pass", "flaky-pass")]
+    regression = regression_cards(index, v.regressing, v.masked, stamp)
     fresh, conflicts, early = owner_cards(ctx, core, turn)
     shown: dict[str, str] = {}
-    text = understand_parts(ctx, core, turn,
-                            extra=[*regression, *test_cards, *decision_cards, *proposed],
-                            fresh=fresh, changes=changes, passing=passing, shown=shown)
-    write_stated(ctx, turn, index, stated_ids, shown, confirm=carried_view(carry, shown),
-                 conflicts=conflicts, early=early)
-    return HookOutput(system_message="\n".join(text)) if text else None
+    text = understand_parts(ctx, core, turn, extra=[*regression, *test_cards], fresh=fresh,
+                            passing=passing, shown=shown)
+    write_stated(ctx, turn, index, stated_ids, shown, conflicts=conflicts, early=early)
+    return HookOutput(system_message="\n\n".join(text)) if text else None
 
 
 def note_skipped(root: Path, skipped: Sequence[str]) -> None:
@@ -655,46 +483,6 @@ def note_skipped(root: Path, skipped: Sequence[str]) -> None:
         write_json_atomic(path, data)
     except OSError:
         pass
-
-
-def carried_view(carry: ConfirmView, shown: Mapping[str, str]) -> ConfirmView:
-    """What ``plumb confirm`` prepared, with the records a card drew in full marked shown
-    (sp5 6.3: only what is shown is relayable). Its triage groups are not drawn (DEC-029: one
-    card per feature replaces them), so none is relayable."""
-    drawn = {str(r["id"]): shown[str(r["id"])] for r in carry.records if str(r["id"]) in shown}
-    return ConfirmView(records=carry.records, groups=carry.groups, shown=drawn)
-
-
-def carried_cards(core: Any, carry: ConfirmView, stamp: float) -> list[Any]:
-    """The proposed cards of the records ``plumb confirm`` prepared this turn (a turn that
-    changed no file)."""
-    if not carry.records:
-        return []
-    index = core.index()
-    ids = [str(r["id"]) for r in carry.records if str(r["id"]) in index]
-    statuses = core.status(ids) if ids else {}
-    return proposed_cards(core, index, statuses, ids, (), ConfirmView(), int(stamp))
-
-
-def proposed_cards(core: Any, index: Mapping[str, Any], statuses: Mapping[str, Any],
-                   stated_ids: Sequence[str], decisions: Sequence[str], carry: ConfirmView,
-                   stamp: int) -> list[Any]:
-    """SR-012 EX-1, EX-3, EX-4: the records this turn proposed (and ``plumb confirm``
-    prepared) that are neither confirmed nor settled, one card per feature (DEC-029); the
-    records of ``decisions`` (a decision that matters, a requirement whose acceptance test
-    changed) have their own card."""
-    from plumb.understand import cards as card_text
-
-    wanted = [*stated_ids, *(str(r["id"]) for r in carry.records)]
-    ids = []
-    for record_id in dict.fromkeys(wanted):
-        state = statuses.get(record_id)
-        if record_id not in index or record_id in decisions or state is None:
-            continue
-        if state.confirmation == "confirmed" or state.settled or state.superseded_by:
-            continue
-        ids.append(record_id)
-    return card_text.proposed_cards(index, ids, turn=stamp)
 
 
 def drawn_now(core: Any, cards: Sequence[Any], shown: dict[str, str]) -> list[str]:
@@ -714,60 +502,24 @@ def drawn_now(core: Any, cards: Sequence[Any], shown: dict[str, str]) -> list[st
     return out
 
 
-def turn_change(core: Any, index: Mapping[str, Any], node: str,
-                changed: Sequence[str]) -> dict[str, Any] | None:
-    """This turn's change behind a regression, as evidence (SR-116): the working-tree diff of
-    the changed paths the failing test's requirements are implemented by (and the test file
-    itself), else of the turn's changed code. None when git shows no diff."""
-    from plumb.understand import cardcontent
-    from plumb.understand.cards import verifying
-
-    changed_set = set(changed)
-    ends = {link.target.path for record in verifying(index, node) for link in record.links
-            if link.kind == "implemented_by" and link.target.path}
-    paths = sorted((ends | {node.split("::", 1)[0]}) & changed_set)
-    if not paths:
-        paths = [p for p in changed if is_code_path(core.config, p)][:MAX_INSTRUCTION_PATHS]
-    if not paths:
-        return None
-    try:
-        result = subprocess.run(["git", "diff", "HEAD", "--", *paths], cwd=core.root,
-                                capture_output=True, timeout=GIT_TIMEOUT_S, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    diff = result.stdout.decode("utf-8", errors="replace") if result.returncode == 0 else ""
-    if not diff.strip():
-        return None
-    return {"path": ", ".join(paths), "diff": diff, "note": "",
-            **cardcontent._measure(diff)}
-
-
-def regression_cards(core: Any, index: Mapping[str, Any], regressing: Mapping[str, Any],
-                     masked: Sequence[Mapping[str, Any]], changed: Sequence[str],
-                     stamp: int) -> tuple[list[Any], dict[str, Any]]:
-    """SR-012 EX-2: a card per regression (and per regression a test change hid), with this
-    turn's change as its evidence."""
+def regression_cards(index: Mapping[str, Any], regressing: Mapping[str, Any],
+                     masked: Sequence[Mapping[str, Any]], stamp: int) -> list[Any]:
+    """SR-012 EX-2: a card per regression (and per regression a test change hid)."""
     from plumb.understand import cards as card_text
 
     out: list[Any] = []
-    changes: dict[str, Any] = {}
     try:
         for node in sorted(regressing):
             found = regressing[node]
-            card = card_text.regression_card(
+            out.append(card_text.regression_card(
                 index, node, last_run=str(found.last_run or ""),
-                test_changed=bool(getattr(found, "test_changed_since_pass", False)), turn=stamp)
-            out.append(card)
-            changes[card.id] = turn_change(core, index, node, changed)
+                test_changed=bool(getattr(found, "test_changed_since_pass", False)), turn=stamp))
         for item in masked:
-            card = card_text.regression_card(index, str(item["node"]), hidden=True, turn=stamp)
-            out.append(card)
-            changes[card.id] = turn_change(core, index, str(item["node"]), changed)
+            out.append(card_text.regression_card(index, str(item["node"]), hidden=True,
+                                                 turn=stamp))
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
-        return out, changes
-    return out, changes
-
-
+        return out
+    return out
 
 
 def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
@@ -825,21 +577,21 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
 
 def understand_parts(ctx: HookContext, core: Any, turn: Mapping[str, Any], *,
                      extra: Sequence[Any] = (), fresh: Sequence[Any] = (),
-                     changes: Mapping[str, Any] | None = None, passing: Sequence[str] = (),
+                     passing: Sequence[str] = (),
                      shown: dict[str, str] | None = None) -> list[str]:
     """SR-105, SR-012: the owner's whole text at the end of a turn: what they confirmed by
-    their words, the settled line, then the cards (``understand.summary.stop_parts``, which
+    their words, then the cards (``understand.summary.stop_parts``, which
     draws every card in full and keeps ``extra`` open across turns while it holds). Never
     fails the stop."""
     try:
         from plumb.understand.summary import stop_parts
 
-        parts = stop_parts(ctx, core, turn, extra=extra, fresh=fresh, changes=changes,
-                           passing=passing, shown=shown)
+        parts = stop_parts(ctx, core, turn, extra=extra, fresh=fresh, passing=passing,
+                           shown=shown)
         bag = getattr(ctx, "extra", None)
         if isinstance(bag, dict):
             bag["stop_parts"] = parts       # what present.json carries while the panel is on
-        return [*parts.confirmations, *parts.settled, *parts.cards]
+        return [*parts.confirmations, *parts.cards]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return []
 

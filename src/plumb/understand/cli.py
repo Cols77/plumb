@@ -1,4 +1,4 @@
-"""Thin router of ``plumb understand``, ``settle``, ``undo``, ``go`` and ``clarify``."""
+"""Thin router of ``plumb understand``, ``quotes`` and ``clarify``."""
 
 from __future__ import annotations
 
@@ -7,9 +7,6 @@ import sys
 
 ROUTES: dict[str, str] = {
     "understand": "plumb.understand.cmd_worker",
-    "settle": "plumb.understand.cmd_settle",
-    "undo": "plumb.understand.cmd_settle",
-    "go": "plumb.understand.cmd_go",
     "quotes": "plumb.understand.cmd_quotes",
 }
 

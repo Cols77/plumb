@@ -25,6 +25,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "proposal": {
+          "type": "string",
+          "description": "One to three sentences saying what you will do, in the person's own words."
+        },
         "will": {
           "type": "array",
           "items": {
@@ -35,7 +39,9 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "maxItems": 1,
+          "description": "The one thing you will not do that rules out something the person might expect."
         },
         "assumptions": {
           "type": "array",
@@ -82,6 +88,21 @@
             "type": "integer",
             "minimum": 0,
             "description": "Position in suggestions of the one you recommend."
+          },
+          "consequences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "One line per suggestion, parallel to suggestions: what picking it means."
+          },
+          "blocking": {
+            "type": "boolean",
+            "description": "true only when no suggestion is better supported by the conversation, the records and the code AND a wrong pick is costly to undo."
+          },
+          "diagram": {
+            "type": "boolean",
+            "description": "true only when the question is about which parts talk to which, an order of steps, or where something lives; false for wording or scope."
           }
         }
       }
@@ -89,6 +110,13 @@
     "gap": {
       "type": "boolean",
       "description": "true when gaps is not empty."
+    },
+    "replaces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Ids of the open cards this request answers or makes moot."
     }
   }
 }
