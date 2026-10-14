@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import replace
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -287,6 +288,10 @@ def early_conflict_card(index: Mapping[str, Any], conflict: Any, *,
                  branch=conflict.branch, theirs=conflict.theirs, ours=conflict.ours))
     both = ("One version is written from both as you say; both branches build on it once you "
             "have seen it")
+    sides = _sides(other or "this work", conflict.branch, both=both)
+    if other:        # off both branches "this one"/"the other" name nothing: label by branch
+        sides = [replace(c, label=f"Keep {name}'s") if c.label in (KEEP_THIS, KEEP_OTHER) else c
+                 for c, name in zip(sides, (other, conflict.branch, ""))]
     return _card("early_conflict", card_id("early_conflict", conflict.record, conflict.branch),
                  conflict.title or conflict.record, issue, str(conflict.judgment or ""),
-                 _sides(other or "this work", conflict.branch, both=both), [(issue, record)], turn)
+                 sides, [(issue, record)], turn)

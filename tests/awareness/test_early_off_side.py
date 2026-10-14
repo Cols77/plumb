@@ -171,8 +171,12 @@ def test_end_of_turn_card_on_default_branch_labels_both_sides(tmp_path: Path) ->
     [card] = _stop_cards(main)
     assert card.kind == "early_conflict"
     assert card.issue == f'feat-b says "{B}"; feat-a says "{A}"'
-    assert card.resolutions[:2] == ("Keep feat-b's", "Keep feat-a's")
+    assert card.resolutions[:2] == ("Keep feat-a's", "Keep feat-b's")
     assert "this work" not in card.issue and "Keep this one" not in card.resolutions
+    from plumb.understand import fullcard
+
+    shown = fullcard.render(fullcard.content(open_core(main), card))
+    assert "this work" not in shown.lower() and "feat-a" in shown and "feat-b" in shown
 
 
 def test_end_of_turn_shows_only_the_merge_card_for_its_record(tmp_path: Path) -> None:
