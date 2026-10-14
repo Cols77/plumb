@@ -56,7 +56,6 @@ def _run_legacy(repo: Path, *argv: str) -> subprocess.CompletedProcess[bytes]:
 
 @pytest.mark.parametrize("argv", [
     ("status", "--card"),
-    ("confirm", "the add function"),
     ("review",),
     ("explain", "the add function"),
     ("resolve", "the add function"),

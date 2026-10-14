@@ -63,12 +63,12 @@ class LogError(RuntimeError):
     """An entry the log refuses to write (the reason is a plain sentence)."""
 
 
-# approvals written from the owner's words or from a settled judgment come from the worker
-WORKER_ONLY_BY = frozenset({"owner-words", "settled"})
+# approvals written from the owner's words come from the worker
+WORKER_ONLY_BY = frozenset({"owner-words"})
 
 
 def worker_token_problem(root: Path | str, session: str | None, by: str) -> str | None:
-    """Why a ``by`` value may not be written here, or None. ``owner-words`` and ``settled``
+    """Why a ``by`` value may not be written here, or None. ``owner-words``
     approvals need ``PLUMB_WORKER`` equal to the ``token`` of the session's ``worker.lock``
     (tamper-evident, not tamper-proof). Other ``by`` values are not checked."""
     if by not in WORKER_ONLY_BY:

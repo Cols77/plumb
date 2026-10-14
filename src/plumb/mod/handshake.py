@@ -7,8 +7,8 @@ read that one small file:
 
 - ``stop``: while the panel is active (``active``: registered, not marked off, its heartbeat not
   older than the turn's start), the owner's part of the stop hook goes to
-  ``.plumb/session/<id>/present.json`` (``{turn, confirmations, settled, cards}`` plus the
-  settled records the panel offers Undo on; each card with its full content, SR-116) and no
+  ``.plumb/session/<id>/present.json`` (``{turn, confirmations, cards}``; each card with its
+  full content, SR-116) and no
   ``systemMessage`` is printed (``deliver``).
   A block (the instruction to the agent) is unchanged. Otherwise the hook prints as before.
 - ``session-start``: first of all, before any step its budget can cut (SR-125), writes
@@ -150,41 +150,16 @@ def _turn_start(turn: Mapping[str, Any]) -> float:
 
 def awaiting_cards(core: Any, session: str, stamp: int) -> list[Any]:
     """The cards that ask the owner at the end of this turn, as the text summary orders them:
-    the awaiting ones (a backlog card only in the turn it is offered), then a "couldn't check"
-    card per failed job."""
+    the awaiting ones, then a "couldn't check" card per failed job."""
     from plumb.understand import cards as card_text
     from plumb.understand import cardstore, summary
 
-    cards = [c for c in cardstore.load(core.root, session) if summary._offered(c, stamp)]
+    cards = list(cardstore.load(core.root, session))
     try:
         cards.extend(summary._failure_cards(core, session))
     except Exception:  # noqa: BLE001 - a card that cannot be made is left out
         pass
     return sorted(cards, key=card_text.kind_rank)
-
-
-def settled_records(core: Any, since: float) -> list[dict[str, str]]:
-    """``{id, title}`` of the records settled from the owner's words since ``since`` that are
-    still settled: what the settled line names and what its Undo buttons take back."""
-    if since <= 0:
-        return []
-    start = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(since))
-    index = core.index()
-    ids: list[str] = []
-    for entry in core.events():
-        if entry.kind != "approval" or entry.payload.get("by") != "settled" or entry.at < start:
-            continue
-        ids += [str(r.get("id")) for r in entry.payload.get("records") or ()
-                if isinstance(r, Mapping) and str(r.get("id")) in index]
-    if not ids:
-        return []
-    statuses = core.status(sorted(set(ids)))
-    out: list[dict[str, str]] = []
-    for record_id in dict.fromkeys(ids):
-        state = statuses.get(record_id)
-        if state is not None and state.settled:
-            out.append({"id": record_id, "title": index[record_id].title})
-    return out
 
 
 def present_cards(core: Any, session: str, stamp: int) -> list[dict[str, Any]]:
@@ -204,22 +179,16 @@ def present_cards(core: Any, session: str, stamp: int) -> list[dict[str, Any]]:
 
 def write_present(ctx: Any, turn: Mapping[str, Any]) -> dict[str, Any]:
     """Write ``present.json`` for this turn: the parts the stop hook kept for the owner
-    (``ctx.extra["stop_parts"]``), the cards it drew in full and the settled records."""
+    (``ctx.extra["stop_parts"]``), and the cards it drew in full."""
     from plumb.api import open_core
-    from plumb.contracts import Present
-    from plumb.understand import cardstore
 
     core = open_core(ctx.root)
     started = _turn_start(turn)
     parts = ctx.extra.get("stop_parts")
-    present = Present(
-        turn=int(started), confirmations=tuple(getattr(parts, "confirmations", ()) or ()),
-        settled=tuple(getattr(parts, "settled", ()) or ()))
-    data = {**cardstore.present_to_json(present), "session": ctx.session_id,
-            "cards": present_cards(core, ctx.session_id, int(started)),
+    data = {"turn": int(started), "confirmations": list(getattr(parts, "confirmations", ()) or ()),
+            "session": ctx.session_id, "cards": present_cards(core, ctx.session_id, int(started)),
             "turn_id": str(turn.get("turn_id") or ""),
-            "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "settled_records": settled_records(core, started)}
+            "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     files.write_json_atomic(present_path(ctx.root, ctx.session_id), data)
     return data
 

@@ -35,10 +35,16 @@ WHY_DEFAULT = "the check failed"
 # the check finished, yet the gate stays closed with no card: nothing will change by waiting
 WHY_UNSETTLED = "the check finished without a question or a go-ahead"
 READY = "Nothing in your request needs asking. You can start building."
-SHOW_CARD = ("Show this to the owner in your reply and do not build until they have "
-             "answered.")
-SHOW_COULDNT = ("Show this to the owner in your reply. Nothing was built, and nothing is built "
-                "until they say to build anyway.")
+ASK = ("The owner has this one question on a card. Say in one line that it waits there; do "
+       "not restate it or its options; build nothing until they answer; plumb reads their "
+       "answer from their next message.")
+DRAW = ("Draw the answer space with the diagram:architecture-diagram skill into {path}. "
+        "The question: {question} The options: {options}. (For the drawing only; do not "
+        "repeat them in your reply.)")
+BUILD_ON = "Build on this; tell the owner in one line what you assumed:"
+SHOW_COULDNT = ("The check could not be made and the owner has a card offering to build anyway or "
+                "wait. Say so in one line; nothing was built, and nothing is built until they "
+                "say to build anyway.")
 WAITING = "The check of your request is not finished. Do not build yet."
 
 
@@ -105,19 +111,29 @@ def why_failed(result: JobResult) -> str:
 
 def _outcome_from_state(core: Any, session: str, digest: str) -> Outcome:
     root = Path(core.root)
-    current = gate.state(root, session)
-    if current.state == "open":
-        return Outcome("ready", digest, [READY])
-    for card in cardstore.own_cards(root, session):
-        if card.id == clarify.card_id(digest) and card.status == "open":
-            state = "escalation" if clarify.is_escalation(card) else "card"
-            return Outcome(state, digest, [*clarify.render(card), SHOW_CARD], card.id)
-    return Outcome("waiting", digest, [WAITING])
+    cards = {c.id: c for c in cardstore.own_cards(root, session) if c.status == "open"}
+    if gate.state(root, session).state == "open":
+        readback = cards.get(clarify.card_id(digest))
+        assumed = readback.evidence.splitlines() if readback else []
+        return Outcome("ready", digest, [READY, BUILD_ON, *assumed] if assumed else [READY])
+    choice = cards.get(clarify.choice_id(digest))
+    if choice is None:
+        return Outcome("waiting", digest, [WAITING])
+    drawn = [DRAW.format(path=choice.diagram, question=choice.issue,
+                         options="; ".join(choice.resolutions))] if choice.diagram else []
+    return Outcome("escalation" if clarify.is_escalation(choice) else "card", digest,
+                   [*drawn, ASK], choice.id)
 
 
 def _couldnt(core: Any, session: str, digest: str, why: str) -> Outcome:
-    card = clarify.write_couldnt_check(Path(core.root), session, digest, why)
-    return Outcome("couldnt_check", digest, [*clarify.render(card), SHOW_COULDNT], card.id)
+    from plumb.approvals import Refused, find_prompt
+
+    try:
+        text = str(find_prompt(core, digest).get("text") or "")
+    except Refused:
+        text = ""
+    card = clarify.write_couldnt_check(Path(core.root), session, digest, why, text)
+    return Outcome("couldnt_check", digest, [SHOW_COULDNT], card.id)
 
 
 def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
@@ -137,7 +153,7 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
     if gate.state(root, session).message_digest != digest and not gate.is_closed(root, session):
         gate.close(root, session, digest, clarify.GATE_REASON_CHECKING)   # no hook closed it
     if not gate.is_closed(root, session):
-        return Outcome("ready", digest, [READY])
+        return _outcome_from_state(core, session, digest)
     queued = _jobs_of(root, session, "clarify", digest)
     ours = queued[-1] if queued else None
     started = clock()

@@ -1,6 +1,6 @@
 // How plumb's panel reaches plumb (SP7 5.1, 5.7; DEC-025): it finds the repository and the
 // interpreter that runs plumb, makes the session's key, registers its digest with
-// `plumb mod hello`, and runs `plumb mod draw|press|undo` with the key on stdin, never in argv,
+// `plumb mod hello`, and runs `plumb mod draw|press` with the key on stdin, never in argv,
 // and with the agent session marker emptied.
 //
 // The engine wants every `$` call spelled at its hook's call site, so the hooks hand these
@@ -19,6 +19,8 @@ export type Io = {
   id: () => Promise<string>
   now: () => Promise<number>
   env: () => Promise<Record<string, string | undefined>>
+  /** The diagram mod's noun on a text; it throws where the mod is not installed. */
+  diagram?: (text: string, columns: number) => Promise<{ rows: string[]; svg: string }>
 }
 
 export type Ran = { ok: boolean; exitCode: number; data: any; stderr: string }
@@ -199,10 +201,6 @@ export function press(io: Io, link: PlumbLink, offer: string, choice: number): P
   return plumbMod(io, link, 'press', { key: link.key }, ['--offer', offer, '--choice', String(choice)])
 }
 
-export function undo(io: Io, link: PlumbLink, record: string): Promise<Ran> {
-  return plumbMod(io, link, 'undo', { key: link.key }, ['--record', record])
-}
-
 /** The panel is alive this turn: refresh the heartbeat in mod.json (no process). */
 export async function heartbeat(io: Io, link: PlumbLink): Promise<void> {
   const path = join(sessionDir(link.root, link.session), 'mod.json')
@@ -220,8 +218,6 @@ export async function readPresent(io: Io, link: PlumbLink): Promise<PlumbPresent
     turn_id: String(data.turn_id ?? ''),
     written_at: String(data.written_at ?? ''),
     confirmations: Array.isArray(data.confirmations) ? data.confirmations.map(String) : [],
-    settled: Array.isArray(data.settled) ? data.settled.map(String) : [],
-    settled_records: Array.isArray(data.settled_records) ? data.settled_records : [],
   }
 }
 
@@ -243,11 +239,26 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
   }
 }
 
+const DIAGRAM_COLUMNS = 85 // the docked pane's body (INT-041/A-2)
+
+/** The card's diagram file drawn by the diagram mod's noun, taken with the snapshot, never in
+ * the render hook; null when the file or the drawing fails. */
+async function drawn(io: Io, link: PlumbLink, card: PlumbCard): Promise<PlumbCard['drawn']> {
+  if (!card.diagram || !io.diagram) return null
+  try {
+    const path = /^([A-Za-z]:|[\\/])/.test(card.diagram) ? card.diagram : join(link.root, card.diagram)
+    return await io.diagram(await io.read(path), DIAGRAM_COLUMNS)
+  } catch {
+    return null
+  }
+}
+
 /** What plumb holds now: the cards (drawing them records their offers), the status and, at
  * the end of a turn, present.json. `fresh`: an awaiting card the owner has not hidden. */
 export async function snapshot(io: Io, link: PlumbLink, view: PlumbView, shown: string[],
   atTurnEnd: boolean): Promise<{ view: PlumbView; fresh: number }> {
   const cards = await draw(io, link)
+  if (io.diagram) for (const card of cards ?? []) card.drawn = await drawn(io, link, card)
   const status = await readStatus(io, link)
   const present = atTurnEnd ? await readPresent(io, link) : view.present
   const next: PlumbView = { ...view, cards: cards ?? view.cards, status, present }

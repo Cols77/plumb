@@ -51,54 +51,6 @@ def _last_prompt(repo: Path) -> dict:
     return json.loads(path.read_text("utf-8").splitlines()[-1])
 
 
-def _turn_end_then_ok(repo: Path, monkeypatch, capsys, *, notify: bool) -> None:
-    monkeypatch.setattr("sys.stdin", io.StringIO("change add"))
-    assert main(["turn", "start", "--session", "s1"]) == 0
-    _edit_record(repo)
-    assert main(["turn", "end", "--session", "s1"]) == 0
-    before = _stated(repo)
-    assert before["records"] == [{"id": "SR-001", "hash": before["records"][0]["hash"],
-                                  "shown": True}]
-    if notify:  # Codex's notify program: the turn's JSON as the last argument
-        payload = json.dumps({"type": "agent-turn-complete", "thread-id": "codex-thread-1",
-                              "cwd": str(repo)})
-        assert main(["hook", "stop", "--host", "codex", "--format", "text", "--notify",
-                     payload]) == 0
-        assert _stated(repo) == before  # a status refresh never rewrites the stated set
-    capsys.readouterr()
-    monkeypatch.setattr("sys.stdin", io.StringIO("ok"))
-    assert main(["turn", "start", "--session", "s1"]) == 0
-    from plumb.understand import read
-
-    last = _last_prompt(repo)
-    assert last["via"] == "turn"  # R13 Q4: the fallback's message is labelled as such
-    assert [i["id"] for i in read.shown_items(open_core(repo), last["at"])] == ["SR-001"]
-
-
-def test_turn_end_marks_the_shown_summary(project: Path, monkeypatch, capsys) -> None:
-    _turn_end_then_ok(project, monkeypatch, capsys, notify=False)
-
-
-@pytest.mark.sr("SR-054")
-def test_codex_notify_leaves_the_stated_set(project: Path, monkeypatch, capsys) -> None:
-    """R13 Q4 on Codex's fallback: notify after `turn end` must not wipe what a chat "ok"
-    confirms."""
-    _turn_end_then_ok(project, monkeypatch, capsys, notify=True)
-
-
-@pytest.mark.sr("SR-054")
-def test_codex_stop_hook_marks_the_shown_summary(project: Path, monkeypatch,
-                                                 capsys) -> None:
-    _hook(monkeypatch, capsys, ["prompt", "--host", "codex", "--format", "claude"],
-          {"session_id": "c1", "prompt": "change add", "cwd": str(project)})
-    _edit_record(project)
-    _hook(monkeypatch, capsys, ["stop", "--host", "codex", "--format", "claude"],
-          {"session_id": "c1", "stop_hook_active": False, "cwd": str(project)})
-    stated = _stated(project)
-    assert stated["session"] == "c1"
-    assert [(r["id"], r["shown"]) for r in stated["records"]] == [("SR-001", True)]
-
-
 @pytest.mark.sr("SR-056")
 def test_unseen_stop_marks_nothing_shown(project: Path, monkeypatch, capsys) -> None:
     """A host that could not show the summary (Hermes without it in the reply): a bare "ok"

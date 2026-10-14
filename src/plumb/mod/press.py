@@ -116,7 +116,7 @@ def press(core: Any, session: str, offer: str, index: int,
         result["left_out"] = [{"id": record_id, "title": title,
                                "reason": "changed since it was shown"}]
         if current is not None:
-            answer._close_stale(work, card, current, choice.label)
+            answer._close_stale(work, card, current)
         else:
             closed_card = card.id
         result["line"] = owner_text.PRESS_CHANGED_SINCE.format(title=title)

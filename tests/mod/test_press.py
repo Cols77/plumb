@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from mod.helpers import DIGEST, KEY, OTHER_KEY, SESSION, kinds, run_mod
+from mod.helpers import DIGEST, KEY, OTHER_KEY, SESSION, kinds, run_mod, sample_card
 from understand.test_read_job import make_core, open_card, record_text
 
 from plumb import confirm
@@ -17,7 +17,7 @@ from plumb.understand import cards, cardstore, read
 
 pytestmark = pytest.mark.sr("SR-086")
 
-CONFIRM, NO, ASK_CHANGE, LEAVE_OPEN = 0, 1, 2, 3     # a show_first card's buttons, in order
+CONFIRM, NO, FIX_IT, ASK_CHANGE, LEAVE_OPEN = 0, 1, 2, 3, 4     # a trial card's buttons, in order
 
 
 @pytest.fixture
@@ -27,8 +27,8 @@ def core(repo: Path, write_record):
 
 @pytest.fixture
 def drawn(core, monkeypatch, capsys):
-    """The panel registered, a show_first card for SR-001 open, the cards drawn."""
-    open_card(core, read.show_first_card(core.index()["SR-001"], "words"))
+    """The panel registered, a trial card for SR-001 open, the cards drawn."""
+    open_card(core, sample_card(core, "SR-001"))
     assert run_mod(monkeypatch, capsys, core.root, "hello",
                    stdin={"key_digest": DIGEST})[0] == 0
     code, answer, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
@@ -36,7 +36,7 @@ def drawn(core, monkeypatch, capsys):
     return answer
 
 
-def _offer(answer, card_id: str = "show_first:SR-001") -> dict:
+def _offer(answer, card_id: str = "card:SR-001") -> dict:
     (card,) = [c for c in answer["cards"] if c["id"] == card_id]
     return card["offers"][0]
 
@@ -57,7 +57,7 @@ def _confirmation(root: Path, rid: str = "SR-001") -> str:
     return open_core(root).status([rid])[rid].confirmation
 
 
-def _status(root: Path, card_id: str = "show_first:SR-001") -> str:
+def _status(root: Path, card_id: str = "card:SR-001") -> str:
     (card,) = [c for c in cardstore.own_cards(root, SESSION) if c.id == card_id]
     return card.status
 
@@ -71,10 +71,12 @@ def test_drawing_records_one_offer_per_question_with_the_buttons(core, drawn) ->
     assert offer["record"] == "SR-001" and offer["hash"] == record.hash
     assert offer["offer_id"].startswith("sha256:") and offer["drawn_at"]
     assert [(b["index"], b["answer"]) for b in offer["buttons"]] == [
-        (0, "accepted"), (1, "rejected"), (2, "change"), (3, "open")]
-    assert [b["label"] for b in offer["buttons"][2:]] == ["Ask for a change", "Leave open"]
+        (0, "accepted"), (1, "rejected"), (2, "change"), (3, "change"), (4, "open")]
+    assert [b["label"] for b in offer["buttons"]] == [
+        "Yes", "No", "Fix it", "Ask for a change", "Leave open"]
     (card,) = drawn["cards"]
-    assert card["evidence_size"] == len("words") and card["repeats"] is True
+    card_evidence = cardstore.own_cards(core.root, SESSION)[0].evidence
+    assert card["repeats"] is True
     logged = [e for e in open_core(core.root).events() if e.kind == "offer"]
     assert [e.payload["offer"] for e in logged] == [offer["offer_id"]]
     assert logged[0].payload["hash"] == record.hash and logged[0].payload["key_digest"] == DIGEST
@@ -111,7 +113,7 @@ def test_under_the_session_marker_the_press_is_refused(core, drawn, monkeypatch,
 
 
 def test_no_panel_registered_refuses_drawing_and_pressing(core, monkeypatch, capsys) -> None:
-    open_card(core, read.show_first_card(core.index()["SR-001"], "words"))
+    open_card(core, sample_card(core, "SR-001"))
     assert run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})[0] == 3
     assert _press(monkeypatch, capsys, core.root, "sha256:" + "0" * 64, CONFIRM)[0] == 3
     assert not (core.root / ".plumb" / "session" / SESSION / "offers").exists()
@@ -142,18 +144,75 @@ def test_confirm_writes_by_owner_via_button_at_the_shown_hash(core, drawn, monke
     assert answer["confirmed"] == ["SR-001"] and answer["left_out"] == []
     assert answer["answer"] == "accepted" and answer["prefill"] is None
     assert "Requirement 1" in answer["line"] and "SR-001" in answer["model_note"]
-    events = open_core(core.root).events()
+    events = [e for e in open_core(core.root).events() if e.kind in ("card-press", "approval")]
     assert [e.kind for e in events][-2:] == ["card-press", "approval"]
     press, approval = events[-2:]
     assert press.payload["answer"] == "accepted" and press.payload["choice"] == CONFIRM
     payload = approval.payload
     assert (payload["by"], payload["via"], payload["offer"], payload["card"]) == (
-        "owner", "button", offer["offer_id"], "show_first:SR-001")
+        "owner", "button", offer["offer_id"], "card:SR-001")
     assert payload["key_digest"] == DIGEST and approval.marker == "none"
     assert [(r["id"], r["hash"]) for r in payload["records"]] == [("SR-001", offer["hash"])]
     assert confirm.entry_problem(approval, set(), (), open_core(core.root)) is None
     assert _confirmation(core.root) == "confirmed"
     assert open_core(core.root).status(["SR-001"])["SR-001"].approved_by == "owner"
+
+
+def test_sr135_ex2_a_reworded_button_still_applies_its_stored_answer(
+        core, drawn, monkeypatch, capsys) -> None:
+    from plumb.mod.offers import offer_path
+    from plumb.understand import files
+
+    offer = _offer(drawn)
+    path = offer_path(core.root, SESSION, offer["offer_id"])
+    data = files.read_json(path)
+    data["buttons"][CONFIRM]["label"] = "Sure, carry on"        # reworded; the answer is stored
+    files.write_json_atomic(path, data)
+    code, answer, _ = _press(monkeypatch, capsys, core.root, offer["offer_id"], CONFIRM)
+    assert code == 0 and answer["confirmed"] == ["SR-001"]
+    assert _confirmation(core.root) == "confirmed"
+
+
+def test_sr130_ex1_a_readback_press_confirms_its_requests_records(
+        core, monkeypatch, capsys) -> None:
+    """The read-back's offer names the request's records; one Yes confirms them all, and the
+    button approval passes its re-check because the offer listed them."""
+    from plumb.understand import clarify
+
+    digest = "sha256:" + "ab" * 32
+    (core.root / ".plumb" / "intents" / "INT-001.md").write_text(
+        "---\nid: INT-001\ntitle: Export\nquote: export it\nreadback: Export.\n"
+        f"prompt: {digest.removeprefix('sha256:')[:16]}\n---\n", encoding="utf-8")
+    core = open_core(core.root)
+    card = clarify._readback_card(core.root, digest, "export it", {"proposal": "Export it."}, [])
+    open_card(core, card)
+    run_mod(monkeypatch, capsys, core.root, "hello", stdin={"key_digest": DIGEST})
+    _, drawn, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
+    offer = _offer(drawn, card.id)
+    code, answer, _ = _press(monkeypatch, capsys, core.root, offer["offer_id"], 0)
+    assert code == 0 and answer["confirmed"] == ["INT-001"]
+    approval = [e for e in open_core(core.root).events() if e.kind == "approval"][-1]
+    assert confirm.entry_problem(approval, set(), (), open_core(core.root)) is None
+
+
+def test_sr130_a_readback_drawn_before_its_records_exist_confirms_only_what_it_showed(
+        core, monkeypatch, capsys) -> None:
+    from plumb.understand import clarify
+
+    digest = "sha256:" + "ab" * 32
+    card = clarify._readback_card(core.root, digest, "export it", {"proposal": "Export it."}, [])
+    open_card(core, card)
+    run_mod(monkeypatch, capsys, core.root, "hello", stdin={"key_digest": DIGEST})
+    _, first, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
+    (core.root / ".plumb" / "intents" / "INT-001.md").write_text(
+        "---\nid: INT-001\ntitle: Export\nquote: export it\nreadback: Export.\n"
+        f"prompt: {digest.removeprefix('sha256:')[:16]}\n---\n", encoding="utf-8")
+    _, second, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
+    old, new = _offer(first, card.id), _offer(second, card.id)
+    assert old["offer_id"] != new["offer_id"]                  # the records changed: drawn again
+    assert _confirmation(core.root, "INT-001") == "proposed"
+    _, answer, _ = _press(monkeypatch, capsys, core.root, new["offer_id"], 0)
+    assert answer["confirmed"] == ["INT-001"]
 
 
 def test_a_changed_record_is_left_out_and_re_carded(core, monkeypatch, capsys) -> None:
@@ -171,16 +230,17 @@ def test_a_changed_record_is_left_out_and_re_carded(core, monkeypatch, capsys) -
     assert answer["left_out"] == [{"id": "SR-001", "title": "Requirement 1",
                                    "reason": "changed since it was shown"}]
     assert "changed since it was shown" in answer["line"]
-    assert answer["fresh_cards"] == ["show_first:SR-001"]
+    (fresh_id,) = answer["fresh_cards"]
+    assert fresh_id.startswith("choice:SR-001:")        # which version do you mean
     assert "approval" not in kinds(core.root) and "card-press" in kinds(core.root)
     assert _confirmation(core.root) == "proposed"
     now = open_core(core.root).index()["SR-001"].hash
     held = {c.id: c for c in cardstore.own_cards(core.root, SESSION)}
     assert held[beyond.id].status == "closed"
-    assert held["show_first:SR-001"].questions[0].hash == now != offer["hash"]
+    assert held[fresh_id].questions[0].hash == now != offer["hash"]
     # the fresh card is drawn as a new offer at the version it has now
     _, again, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
-    assert _offer(again)["hash"] == now
+    assert _offer(again, fresh_id)["hash"] == now
 
 
 def test_leave_open_writes_no_approval_and_stops_the_card_repeating(core, drawn, monkeypatch,
@@ -201,7 +261,7 @@ def test_leave_open_writes_no_approval_and_stops_the_card_repeating(core, drawn,
     _edit(core.root)
     _, listed, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
     assert listed["cards"][0]["status"] == "open" and listed["cards"][0]["repeats"] is True
-    assert [c.id for c in cardstore.load(core.root, SESSION)] == ["show_first:SR-001"]
+    assert [c.id for c in cardstore.load(core.root, SESSION)] == ["card:SR-001"]
 
 
 def test_ask_for_a_change_writes_no_approval_and_returns_the_prefill(core, drawn, monkeypatch,
@@ -214,9 +274,9 @@ def test_ask_for_a_change_writes_no_approval_and_returns_the_prefill(core, drawn
     (press,) = [e for e in open_core(core.root).events() if e.kind == "card-press"]
     assert press.payload["answer"] == "change"
     # the owner's next message is read against it (SR-086 EX-7)
-    assert [c.id for c in cardstore.load(core.root, SESSION)] == ["show_first:SR-001"]
+    assert [c.id for c in cardstore.load(core.root, SESSION)] == ["card:SR-001"]
     assert [i["card"] for i in read.card_items(open_core(core.root), SESSION)] \
-        == ["show_first:SR-001"]
+        == ["card:SR-001"]
 
 
 def test_every_button_is_logged_once(core, drawn, monkeypatch, capsys) -> None:
@@ -238,7 +298,7 @@ def test_every_button_is_logged_once(core, drawn, monkeypatch, capsys) -> None:
 def _forged(core, **payload):
     record = core.index()["SR-001"]
     body = {"by": "owner", "via": "button", "session": SESSION, "offer": "sha256:" + "1" * 64,
-            "key_digest": DIGEST, "card": "show_first:SR-001", "question": "confirm",
+            "key_digest": DIGEST, "card": "card:SR-001", "question": "confirm",
             "records": [{"id": "SR-001", "hash": record.hash}], **payload}
     return core.log_append("events", "approval", body)
 
@@ -267,11 +327,11 @@ def test_a_button_approval_copying_a_drawn_offer_for_another_version_is_rejected
 
 def test_a_button_approval_written_before_its_offer_was_drawn_is_rejected(
         core, monkeypatch, capsys) -> None:
-    open_card(core, read.show_first_card(core.index()["SR-001"], "words"))
+    open_card(core, sample_card(core, "SR-001"))
     run_mod(monkeypatch, capsys, core.root, "hello", stdin={"key_digest": DIGEST})
     from plumb.understand import files
 
-    offer = files.digest_of(["show_first:SR-001", "confirm", core.index()["SR-001"].hash])
+    offer = files.digest_of(["card:SR-001", "confirm", core.index()["SR-001"].hash])
     early = _forged(core, offer=offer)                 # names the offer before it is drawn
     run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
     fresh = open_core(core.root)

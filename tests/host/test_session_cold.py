@@ -20,7 +20,7 @@ REPO = Path(__file__).resolve().parents[2]
 BUDGET_MS = 1400.0
 WARM_TARGET_MS = 900.0
 STEPS = ("imports", "core_open", "index", "brief", "tests_summary", "snapshot", "tree_scan",
-         "awareness", "triage_offer")
+         "awareness")
 
 _HARNESS = """
 import io, json, sys, time
@@ -218,31 +218,6 @@ def test_no_network_call_cold(repo: Path, hook_input, write_record, roomy,
     assert not any("rated faithful" in line for line in lines)
 
 
-def test_cached_triage_offer_is_read_without_judgment(repo: Path, hook_input, write_record,
-                                                      roomy, monkeypatch) -> None:
-    from fakes import FakeVerify
-
-    import plumb.judgment as judgment
-    from plumb.api import open_core
-
-    write_record(repo, "---\nid: INT-001\ntitle: One\nquote: q\n---\n")
-    core = open_core(repo)
-    record = core.index()["INT-001"]
-    cache = repo / ".plumb" / "cache"
-    cache.mkdir(exist_ok=True)
-    (cache / "triage_offer.json").write_text(json.dumps(
-        {"items": [{"id": "INT-001", "hash": record.hash, "title": "One"}]}), "utf-8")
-    monkeypatch.setattr(judgment, "get_backend",
-                        lambda *a, **k: pytest.fail("a judgment backend was opened"))
-    lines = _start(repo, hook_input, verify=FakeVerify())
-    assert any("rated faithful to your words" in line and "INT-001" in line for line in lines)
-    record_file = next((repo / ".plumb" / "intents").glob("INT-001*"))
-    record_file.write_text(record_file.read_text("utf-8").replace("title: One", "title: Two"),
-                           "utf-8")
-    assert not any("rated faithful" in line
-                   for line in _start(repo, hook_input, verify=FakeVerify()))  # it changed
-
-
 def test_git_called_once(repo: Path, hook_input, roomy, monkeypatch) -> None:
     """One git status pass for the whole start, however many steps want the tree."""
     from fakes import FakeVerify
@@ -277,8 +252,8 @@ def test_brief_kept_when_cut(repo: Path, hook_input, write_record, monkeypatch) 
 def test_cold_branch_scan_is_bounded_and_continues_next_start(repo: Path, monkeypatch) -> None:
     import time
 
-    from plumb.awareness import scan
     from plumb.api import open_core
+    from plumb.awareness import scan
 
     for n in range(8):
         _git(repo, "branch", f"topic-{n}")

@@ -16,15 +16,14 @@ the record "riskier" and shows it individually, whatever the backend scored.
 
 Triage never approves anything by itself. ``plumb triage --approve low-risk`` is the owner's
 one step from the owner's own terminal (``approvals.require_owner``) and approves exactly the
-listed hashes. The agent relays no "ok" to the offer line (``plumb relay`` is refused, SR-101).
+listed hashes.
 """
 
 from __future__ import annotations
 
 import json
 import time
-from collections.abc import Iterable, Mapping, Sequence
-from types import SimpleNamespace
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from plumb.capture.records import is_short_answer
@@ -34,7 +33,6 @@ if TYPE_CHECKING:
     from plumb.api import Core
 
 GROUP = "low-risk"
-OFFER_TITLES = 5          # R13 Q2: name up to about 5 records by title, then "+N more"
 JEV_BUDGET_S = 8.0        # scoring new records with JEV on the command line
 HOOK_BUDGET_S = 0.6       # a hook scores only what fits; the rest stays unrated
 
@@ -232,43 +230,6 @@ def _save_cache(core: Core, cache: Mapping[str, Any]) -> None:
         pass
 
 
-def _offer_path(core: Core) -> Any:
-    return core.paths.cache / "triage_offer.json"
-
-
-def _save_offer(core: Core, low: Sequence[TriageItem]) -> None:
-    """The records the last whole triage rated faithful, kept for the session-start brief,
-    which must not judge anything itself (a cold start reads this and nothing else)."""
-    path = _offer_path(core)
-    items = [{"id": i.id, "hash": i.hash, "title": i.title} for i in low]
-    try:
-        if path.exists() or items:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps({"items": items}), encoding="utf-8")
-    except OSError:
-        pass
-
-
-def cached_offer(core: Core) -> tuple[bool, str | None]:
-    """``(known, offer line)`` from the last whole triage, with no judgment: ``known`` is
-    False when no triage has run (a cold start), the line is None when nothing it rated
-    faithful still awaits (a record since changed or confirmed drops out)."""
-    try:
-        data = json.loads(_offer_path(core).read_text(encoding="utf-8"))
-        raw = data.get("items") if isinstance(data, dict) else None
-    except (OSError, ValueError):
-        return False, None
-    if not isinstance(raw, list):
-        return False, None
-    index = core.index()
-    statuses = core.status() if raw else {}
-    left = [SimpleNamespace(id=str(r["id"]), title=str(r.get("title") or ""))
-            for r in raw if isinstance(r, Mapping) and r.get("id") in index
-            and index[r["id"]].hash == r.get("hash")
-            and statuses[r["id"]].confirmation != "confirmed"]
-    return True, offer_line(left)  # type: ignore[arg-type]
-
-
 def approved_before(core: Core) -> set[str]:
     """Records with any valid approval in the log, by anyone (an edit of them is never
     low-risk, sp2 8.1)."""
@@ -367,11 +328,8 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
             single.append(item)
     if dirty:
         _save_cache(core, cache)
-    if ids is None:
-        _save_offer(core, low)
     return TriageView(backend=name, available=available, low_risk=tuple(low),
-                      individual=tuple(single), offer=offer_line(low),
-                      unavailable=unavailable)
+                      individual=tuple(single), unavailable=unavailable)
 
 
 def _outcome(rating: str, unfaithful: str | None) -> str:
@@ -409,32 +367,6 @@ def _order(record_id: str) -> tuple[int, int]:
     return rank, int(number) if number.isdigit() else 0
 
 
-def offer_line(low: Sequence[TriageItem]) -> str | None:
-    """The one-line offer of the end-of-turn summary and the brief (R13 Q2): up to about 5
-    records by title, then "+N more (see plumb triage)". The owner's "ok" approves exactly
-    the pinned list, which ``plumb triage`` shows in full."""
-    if not low:
-        return None
-    named = ", ".join(f"\"{_clip(i.title)}\" ({i.id})" for i in low[:OFFER_TITLES])
-    more = f" +{len(low) - OFFER_TITLES} more (see plumb triage)" if len(low) > OFFER_TITLES \
-        else ""
-    noun = "record" if len(low) == 1 else "records"
-    return (f"plumb: approve the {len(low)} {noun} rated faithful to your words: {named}"
-            f"{more}? say \"ok\" or see plumb triage")
-
-
-def _clip(text: str, width: int = 40) -> str:
-    text = _flat(text)
-    return text if len(text) <= width else text[: width - 1].rstrip() + "…"
-
-
-def stated_group(view: TriageView) -> dict[str, Any] | None:
-    """The group the stop hook writes into the stated set with the offer (sp2 C5)."""
-    if not view.low_risk:
-        return None
-    return {"group": GROUP, "records": [{"id": i.id, "hash": i.hash} for i in view.low_risk]}
-
-
 def view_lines(view: TriageView) -> list[str]:
     lines: list[str] = []
     if not view.available:
@@ -447,8 +379,7 @@ def view_lines(view: TriageView) -> list[str]:
         lines.append(f"low-risk group: {len(view.low_risk)} records rated faithful to your "
                      "words")
         lines += [f"  {i.id} {i.hash[:19]}  {i.title}" for i in view.low_risk]
-        lines.append("  approve them: plumb triage --approve low-risk (your terminal), or "
-                     "say \"ok\" to the offer in a session")
+        lines.append("  approve them: plumb triage --approve low-risk (your terminal)")
     if view.individual:
         lines.append(f"individually: {len(view.individual)} records")
         for item in view.individual:
@@ -476,12 +407,6 @@ def log_triage(core: Core, view: TriageView) -> None:
     if last and last[-1].payload.get("digest") == digest:
         return
     core.log_append("events", "triage", {**payload, "digest": digest})
-    try:
-        path = core.paths.session / "triage.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(stated_group(view) or {}), encoding="utf-8")
-    except OSError:
-        pass
 
 
 def approve_low_risk(core: Core, *, backend: Any = None, note: str = "",

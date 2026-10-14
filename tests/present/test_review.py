@@ -73,14 +73,11 @@ def test_drift_and_scope_by_plain_words(records: Path, capsys) -> None:
 def test_triage_groups_from_capture(records: Path, capsys, monkeypatch) -> None:
     item = SimpleNamespace(id="SR-002", title="divide returns the quotient", score=0.4,
                            rating="riskier", excluded=None)
-    view = SimpleNamespace(available=True, offer="plumb: approve the 1 record rated "
-                           "faithful to your words: \"add\" (SR-001)? say \"ok\"",
-                           low_risk=(), individual=(item,))
+    view = SimpleNamespace(available=True, low_risk=(), individual=(item,))
     fake_capture(monkeypatch, triage=lambda core, ids: view,
                  drift_hints=lambda core, changed: ["plumb: hint: SR-002 may depend on "
                                                     "INT-001"],
                  ownership_proposals=lambda core, paths: {})
     out = _review(records, capsys)
-    assert "approve the 1 record rated faithful to your words" in out
     assert 'SR-002 "divide returns the quotient" (riskier 0.40)' in out
     assert "hint: SR-002 may depend on INT-001" in out

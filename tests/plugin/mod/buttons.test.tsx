@@ -1,10 +1,10 @@
 // The card buttons (sp7-realign-sp8 C3-C6; SR-086 EX-1, EX-6, EX-7, EX-10; DEC-032, DEC-033;
 // SR-087 EX-3): each button runs `plumb mod press` with the offer and the button, the key on
 // stdin and never in argv, with the agent session marker emptied; the answer becomes a toast,
-// an owner notice and a model note; Show all runs nothing; Undo on the settled line.
+// an owner notice and a model note; Show all runs nothing.
 import { describe, expect, mock, test } from 'claude-code/testing'
 
-import { PRESS_CHANGE, PRESS_CONFIRM, PRESS_LEAVE_OPEN, PYTHON, ROOT, SESSION, UNDO } from './fixtures'
+import { PRESS_CHANGE, PRESS_CONFIRM, PRESS_LEAVE_OPEN, PYTHON, ROOT, SESSION } from './fixtures'
 import { BAND, install, START, SURFACES, TURN_DONE, world } from './harness'
 import type { World } from './harness'
 
@@ -125,29 +125,12 @@ for (const surface of SURFACES) {
       const before = w.runs.length
       await ui.press({ key: 'showall' })
       expect(w.runs.length).toBe(before)
-      for (const [id, offer] of [['show_first:SR-001', 'sha256:aaaa'], ['stale:SR-005#0', 'sha256:bbbb'], ['show_first:SR-009', 'sha256:cccc']]) {
+      for (const [id, offer] of [['clarify:SR-001', 'sha256:aaaa'], ['stale:SR-005#0', 'sha256:bbbb'], ['clarify:SR-009', 'sha256:cccc']]) {
         expect(await ui.find({ key: `card:${id}` })).toBeDefined()
         expect(await ui.find({ key: `press:0:${offer}` })).toBeDefined()
       }
       await ui.press({ key: 'fewer' })
       expect(await ui.find({ key: 'card:stale:SR-005#0' })).toBeUndefined()
-      await ui.unmount()
-    })
-
-    test('Undo on the settled line runs plumb mod undo with the key on stdin', async ($, on) => {
-      const w = world()
-      install(on, w)
-      const session = mock.session(on)
-      await $.session.start(START)
-      await $.turn.complete(TURN_DONE) // present.json: the settled line
-      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: 'Deadline reminders' })).toBeDefined()
-      await ui.press({ key: 'undo:SR-007' })
-      const [undone] = runsOf(w, 'undo')
-      expect(undone?.argv.slice(-2)).toEqual(['--record', 'SR-007'])
-      expect(Object.keys(JSON.parse(undone?.stdin ?? '{}'))).toEqual(['key'])
-      expect(session.appended().map(r => (r.message.content as any)[0]?.text)).toEqual([UNDO.line, UNDO.model_note])
-      expect(await ui.find({ key: 'undo:SR-007' })).toBeUndefined()
       await ui.unmount()
     })
 

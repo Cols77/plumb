@@ -74,7 +74,7 @@ def _card(digest: str, answered: list[str]) -> CardState:
     questions = (ClarifyQuestion("format", "Which format?", ("csv", "json")),
                  ClarifyQuestion("scope", "Which data?", ("all", "profile")))
     answers = tuple(ClarifyAnswer(q, "accepted", digest) for q in answered)
-    return CardState(id="clarify:old", kind="clarify", topic="export", issue="two things",
+    return CardState(id="choice:old", kind="choice", topic="export", issue="two things",
                      questions=questions, answers=answers,
                      status="answered" if len(answered) == 2 else "open")
 
@@ -84,7 +84,7 @@ def test_opens_when_card_fully_answered(repo: Path) -> None:
     digest = log_prompt(repo, "csv and everything", session=SESSION)
     gate.close(repo, SESSION, digest, "your request is being checked")
     job = SimpleNamespace(session=SESSION)
-    handler = effects.handler_for("clarify")
+    handler = effects.handler_for("choice")
     handler(core=core, job=job, card=_card(digest, ["format"]), digest=digest)
     assert gate.is_closed(repo, SESSION)                    # one of two questions mapped
     handler(core=core, job=job, card=_card(digest, ["format", "scope"]), digest=digest)
@@ -99,14 +99,14 @@ def test_a_rejected_answer_does_not_open_the_gate(repo: Path) -> None:
     card = _card(digest, ["format", "scope"])
     card = CardState(**{**card.__dict__, "answers": (
         ClarifyAnswer("format", "accepted", digest), ClarifyAnswer("scope", "rejected", digest))})
-    effects.handler_for("clarify")(core=core, job=SimpleNamespace(session=SESSION), card=card,
+    effects.handler_for("choice")(core=core, job=SimpleNamespace(session=SESSION), card=card,
                                    digest=digest)
     assert gate.is_closed(repo, SESSION)
 
 
 def test_stays_closed_with_a_pending_job(repo: Path, engine_standins: Any) -> None:
     core, digest = _say(repo, "csv and everything")
-    handler = effects.handler_for("clarify")
+    handler = effects.handler_for("choice")
     handler(core=core, job=SimpleNamespace(session=SESSION),
             card=_card(digest, ["format", "scope"]), digest=digest)
     assert gate.is_closed(repo, SESSION)       # this message's clarify job has still to run

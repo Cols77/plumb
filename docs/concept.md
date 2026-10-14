@@ -1,5 +1,14 @@
 # plumb concept spec
 
+Superseded in part by INT-037 (DEC-040): `plumb relay`, `/plumb settle`, settling and
+`by: settled`, `plumb confirm`, the triage offer and agent-relayed offers described below are gone. One judge
+path (or the owner, by a button or typed words) confirms a record; context alone never does.
+Read every passage below that names them as history.
+Cards are reshaped by INT-036 (DEC-038, DEC-039) and INT-041: a card is one of two shapes, a
+read-back of a request or a choice (one question at a time, the recommended option first); a
+choice card can carry a block diagram. The card passages below that list card sets or
+offers are history.
+
 Status: reference document. Written 2026-10-05 from the owner intent brief of the same day.
 The owner does not review this document; independent verifier agents check it, and every
 plumb artifact, against the owner's words quoted below. When this document and the owner's

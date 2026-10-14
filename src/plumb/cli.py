@@ -25,7 +25,7 @@ ROUTES: dict[str, str] = {
     "status": "plumb.present.cli", "brief": "plumb.present.cli", "drift": "plumb.present.cli",
     "show": "plumb.present.cli", "explain": "plumb.present.cli", "why": "plumb.present.cli",
     "impact": "plumb.present.cli", "resolve": "plumb.present.cli",
-    "review": "plumb.present.cli", "confirm": "plumb.present.cli",
+    "review": "plumb.present.cli",
     "align": "plumb.present.cli", "view": "plumb.present.cli",
     # VERIFY
     "tests": "plumb.verify.cli", "map": "plumb.verify.cli", "verify": "plumb.verify.cli",
@@ -44,8 +44,7 @@ ROUTES: dict[str, str] = {
     "clarify": "plumb.understand.cli",
     "proof": "plumb.capture.proof",  # SR-127: a requirement's proof plan and evidence
     # SP8 UNDERSTAND: the model-backed layer (a thin router; listed only when importable)
-    "understand": "plumb.understand.cli", "settle": "plumb.understand.cli",
-    "undo": "plumb.understand.cli", "go": "plumb.understand.cli",
+    "understand": "plumb.understand.cli",
     "quotes": "plumb.understand.cli",
     # MERGE (sub-project 3)
     "merge-check": "plumb.boundary.cli",
@@ -86,8 +85,6 @@ records and integrity:
   explain      why a behaviour, file or record exists, in plain terms (plain words, a path
                or an ID); alias why
   approve      owner approval of records at their current content (owner's terminal only)
-  relay        retired, always refused: the owner confirms by typing /plumb approve with
-               record numbers, or in their terminal (approve)
   revoke       owner revocation
   proof        a requirement's planned proof (how you will see it working) and its evidence
   drift        drift signals only
@@ -112,7 +109,6 @@ owner views (plain words, paths or IDs; none approves anything):
   resolve      what your words mean: records, files and tests, best first
   review       the deep review: what awaits you, approvals you did not type, drift,
                alignment, the merge state
-  confirm      show records as cards so your own "ok" can confirm them
   align        judge each edge from intent to evidence, weakest first; name the gaps
   view         write the Obsidian vault and the Canvas intent map (--open)
   impact       what a change would reach
@@ -128,8 +124,7 @@ merge:         merge-check (the merge boundary: one full run, claims, links, the
 
 record merges (parallel work):
   conflicts    the intent conflicts a merge left, as cards (both versions; nothing chosen)
-  conflict     propose a combined version; choose a side (owner's terminal), relay the
-               owner's choice (--prompt, --quote)
+  conflict     propose a combined version; choose a side (owner's terminal)
   merge-driver  git's merge driver for record files (git calls it; see plumb hooks install)
 
 parallel work:

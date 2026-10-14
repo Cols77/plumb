@@ -33,7 +33,8 @@ pytestmark = pytest.mark.sr("SR-101", "SR-102", "SR-103", "SR-104", "SR-105", "S
 SID = "harness"
 NOTHING = {"intent": "no", "gap": False, "gaps": []}
 GAPS = {"intent": "yes", "topic": "exporting data", "gap": True,
-        "gaps": [{"id": "format", "question": "Which format?", "suggestions": ["csv", "json"]}]}
+        "gaps": [{"id": "format", "question": "Which format?", "suggestions": ["csv", "json"],
+                  "blocking": True}]}
 CLEAR = {"intent": "yes", "topic": "exporting data", "gap": False, "gaps": []}
 ROOMY = ("calibration: {min_items: 5, min_negatives: 1}\n"
          "hooks:\n  budget_ms: {stop: 8000}\n")
@@ -84,11 +85,6 @@ def owner_words_approvals(repo: Path) -> dict[str, dict[str, Any]]:
             for record in e.payload["records"]:
                 out[record["id"]] = dict(e.payload)
     return out
-
-
-def settled_ids(repo: Path) -> list[str]:
-    return [r["id"] for e in events(repo, "approval") if e.payload.get("by") == "settled"
-            for r in e.payload["records"]]
 
 
 def last_digest(repo: Path) -> str:
@@ -155,10 +151,10 @@ def test_flow_1_request_with_gaps_one_card_one_answer(repo: Path) -> None:
 
     done = plumb(s, "clarify", "--wait", "--json", "--root", str(repo), "--timeout", "30")
     card = json.loads(done.stdout)
-    assert card["state"] == "card" and any("Which format?" in ln for ln in card["lines"])
+    assert card["state"] == "card" and card["card"]
     at_owner_level(*card["lines"])
     assert deny(s)                                                # still closed: unanswered
-    (open_card,) = [c for c in own_cards(s) if c["status"] == "open"]
+    (open_card,) = [c for c in own_cards(s) if c["status"] == "open" and c["kind"] == "choice"]
     question = f'{open_card["id"]}/{open_card["questions"][0]["id"]}'
 
     # the owner answers in one message; the read job applies before the clarify job runs
@@ -178,8 +174,8 @@ def test_flow_1_request_with_gaps_one_card_one_answer(repo: Path) -> None:
     assert started[read_job.id] <= started[second_clarify[0].id]
 
     assert not deny(s)                                            # the gate opened
-    cards = own_cards(s)
-    assert [c["status"] for c in cards] == ["answered"]           # no second card
+    cards = [c for c in own_cards(s) if c["kind"] == "choice"]
+    assert [c["status"] for c in cards] == ["answered"]           # no second choice card
     assert cards[0]["answers"][0]["answer"] == "accepted"
     again = json.loads(plumb(s, "clarify", "--wait", "--json", "--root", str(repo),
                              "--timeout", "30").stdout)
@@ -235,7 +231,7 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
                    quoted=("INT-008 ok", "I am not sure I agree with SR-088"))
 
 
-# ---- (3) capture, trial, calibration, settling, undo -------------------------------------------
+# ---- (3) capture, trial, calibration -------------------------------------------
 
 
 def _capture_doc() -> dict[str, Any]:
@@ -247,7 +243,7 @@ def _capture_doc() -> dict[str, Any]:
             "requirements": requirements}
 
 
-def test_flow_3_capture_trial_calibration_settling_undo(repo: Path) -> None:
+def test_flow_3_capture_trial_and_calibration(repo: Path) -> None:
     (repo / ".plumb" / "config.yaml").write_text(ROOMY, encoding="utf-8")
     s = Session(repo)
     s.start()
@@ -268,138 +264,44 @@ def test_flow_3_capture_trial_calibration_settling_undo(repo: Path) -> None:
     assert done.returncode == 0, done.stderr
     assert s.worker_idle(30)
     assert len(calls(s, "judge")) == 1
-    assert owner_words_approvals(repo) == {} and settled_ids(repo) == []   # a trial only
+    assert owner_words_approvals(repo) == {}                              # a trial only
 
-    # the trial: the summary offers batches of at most five; the owner has not answered yet
+    # the trial: three cards of one record each, one of them below the threshold; the owner
+    # has not answered yet
     s.stop()
     trials = [c for c in own_cards(s) if c["kind"] == "trial"]
-    assert sorted(len(c["questions"]) for c in trials) == [1, 1, 5]
-    batch = next(c for c in trials if len(c["questions"]) == 5)
-    assert owner_text.TRIAL_BELOW in batch["questions"][-1]["text"]
-    intent_card = next(c for c in trials if c["questions"][0]["record"] == "INT-001")
+    assert [len(c["questions"]) for c in trials] == [1, 1, 1]
+    assert [c["questions"][0]["record"] for c in trials] == ["SR-005", "SR-001", "SR-002"]
 
-    # the owner answers yes to four of them and no to the fifth, in one message
+    # the owner answers yes to two of them and no to the one below the threshold
     index = open_core(repo).index()
     entries = []
-    for card in (intent_card, batch):
-        for q in card["questions"]:
-            bad = q["record"] == "SR-005"
-            entries.append({
-                "id": f'{card["id"]}/{q["id"]}', "hash": index[q["record"]].hash,
-                "answer": "rejected" if bad else "accepted",
-                "rejection": "misread" if bad else None,
-                "evidence": "no to the fifth" if bad else "yes to all", "confidence": 0.95})
+    for card in trials:
+        q = card["questions"][0]
+        bad = q["record"] == "SR-005"
+        entries.append({
+            "id": f'{card["id"]}/{q["id"]}', "hash": index[q["record"]].hash,
+            "answer": "rejected" if bad else "accepted",
+            "rejection": "misread" if bad else None,
+            "evidence": "no to the fifth" if bad else "yes to all", "confidence": 0.95})
     model(s, read={"entries": entries})
     s.say("yes to all, but no to the fifth, no to the fifth")
     assert s.worker_idle(30)
     assert {r: p["label"] for r, p in owner_words_approvals(repo).items()} == {
-        "INT-001": "yes", "SR-001": "yes", "SR-002": "yes", "SR-003": "yes", "SR-004": "yes"}
+        "SR-001": "yes", "SR-002": "yes"}
     (rejected,) = events(repo, "rejection")           # the fifth, a misreading
     assert [r["id"] for r in rejected.payload["records"]] == ["SR-005"]
     assert rejected.payload["reason"] == "capture-error"
 
-    # recalibration at the turn's end, from the logs: no model call, requirements switch on
+    # recalibration at the turn's end, from the logs: no model call
     before = len(calls(s))
     model(s, **{"$fail_when": {"contains": ""}})        # any model call now would fail
-    first = text_of(s.stop())
+    s.stop()
     assert len(calls(s)) == before                       # recalibration called no model
-    (calibration,) = [e for e in events(repo, "calibration") if e.payload.get("source") == "logged"]
-    assert calibration.payload["per_kind"]["example-restatement"]["passing"] is True
-    (config,) = [e for e in events(repo, "settle-config") if e.payload["kind"] == "requirement"]
-    assert config.payload["on"] is True and config.payload["via"] == "calibration"
-    assert config.payload["calibration"] == calibration.digest
-    assert owner_text.SETTLE_ON_REQUIREMENTS in first    # told once, with how to switch it off
-    assert owner_text.SETTLE_ON_REQUIREMENTS not in text_of(s.stop())
-    assert not [e for e in events(repo, "settle-config") if e.payload["kind"] == "intent"
-                and e.payload.get("on")]                 # intents are never switched on alone
-    at_owner_level(first)
-
-    # a new requirement, judged supported above the threshold, is settled and told with Undo
-    model(s, clarify=CLEAR)
-    s.say("also add a modulo operation to the calculator")
-    assert s.worker_idle(30)
-    (repo / "capture2.json").write_text(json.dumps({
-        "intent": "INT-001", "requirements": [{
-            "title": "Modulo", "statement": "The calculator takes a modulo",
-            "examples": [{"given": "7 and 3", "when": "modulo runs", "then": "it gives 1"}]}]}),
-        encoding="utf-8")
-    model(s, judge={"verdicts": [{"id": "SR-007", "verdict": "supported", "confidence": 0.99}]})
-    done = plumb(s, "capture", "--file", str(repo / "capture2.json"), "--prompt",
-                 short(last_digest(repo)))
-    assert done.returncode == 0, done.stderr
-    assert s.worker_idle(30)
-    assert settled_ids(repo) == ["SR-007"]
-    (settled,) = [e for e in events(repo, "approval") if e.payload.get("by") == "settled"]
-    assert settled.payload["calibration"] == calibration.digest and settled.payload["job"]
-    line = text_of(s.stop())
-    assert owner_text.SETTLED_LINE.format(titles="") .strip() in line
-    assert owner_text.SETTLED_UNDO_LINE.format(title="Modulo") in line
-    assert open_core(repo).status()["SR-007"].confirmation == "confirmed"
-
-    # the owner types the undo; the record is proposed again and comes back as a card
-    s.say("/plumb undo SR-007")
-    undone = plumb(s, "undo", "SR-007", "--prompt", short(last_digest(repo)))
-    assert undone.returncode == 0, undone.stderr + undone.stdout
-    assert open_core(repo).status()["SR-007"].confirmation != "confirmed"
-    after = text_of(s.stop())
-    assert owner_text.UNDONE_ISSUE in after
-    assert any(c["id"] == "show_first:SR-007" and c["status"] == "open" for c in own_cards(s))
-
-
-# ---- (4) the backlog pass on 40 proposed records, a failure midway, a resume -----------------
-
-
-def test_flow_4_backlog_pass_failure_midway_and_resume(repo: Path, write_record) -> None:
-    from understand.test_judge_job import intent_text, log_prompt, requirement_text
-
-    digest = log_prompt(repo, "Build the tool: eight small things, each as described.",
-                        session=SID)
-    ids: list[str] = []
-    for k in range(1, 6):
-        write_record(repo, intent_text(k, "Build the tool", f"Part {k} of the tool",
-                                       prompt=digest))
-        ids.append(f"INT-{k:03d}")
-        for j in range(1, 8):
-            number = k * 10 + j
-            write_record(repo, requirement_text(
-                number, f"Thing {number}", f"The tool does thing {number}", intent=k,
-                examples=((f"input {number}", "it runs", f"output {number}"),)))
-            ids.append(f"SR-{number:03d}")
-    assert len(ids) == 40 and len(open_core(repo).index()) == 40
-    s = Session(repo)
-    verdicts = [{"id": i, "verdict": "supported", "confidence": 0.95} for i in ids]
-    model(s, judge={"verdicts": verdicts}, **{"$fail_when": {"kind": "judge",
-                                                             "contains": "SR-033"}})
-    s.start()
-    done = plumb(s, "understand", "backlog", "--root", str(repo), "--session", SID)
-    assert done.returncode == 0, done.stderr
-    s.say("carry on")                      # a turn: the hooks start the worker for the queue
-    assert s.worker_idle(60)
-    first = calls(s, "judge")
-    assert len(first) >= 5                  # one judge job per intent
-
-    # the third intent's job failed; the others were judged; nothing was confirmed or settled
-    judged = {e.payload["id"] for e in events(repo, "verdict")}
-    third = {"INT-003", *(f"SR-03{n}" for n in range(1, 8))}
-    assert judged == set(ids) - third
-    assert owner_words_approvals(repo) == {} and settled_ids(repo) == []
-    held = text_of(s.stop())
-    assert "could not check" in held.lower() or "couldn't check" in held.lower()
-    at_owner_level(held)
-
-    # the model is back: the next turns resume the pass from where it stopped
-    model(s, judge={"verdicts": verdicts})
-    s.say("and now?")
-    assert s.worker_idle(60)
-    s.stop()
-    assert s.worker_idle(60)
-    assert {e.payload["id"] for e in events(repo, "verdict")} == set(ids)
-    again = calls(s, "judge")[len(first):]
-    assert len(again) == 1                  # only the failed intent was judged again
-    s.stop()
-    backlog_cards = [c for c in own_cards(s) if c["kind"] == "backlog"]
-    assert len(backlog_cards) == 5          # one card per intent (no feature to group by)
-    assert owner_words_approvals(repo) == {} and settled_ids(repo) == []
+    assert [e for e in events(repo, "calibration") if e.payload.get("source") == "logged"]
+    assert not events(repo, "settle-config")             # nothing settles by context any more
+    # the next card opens when one was answered
+    assert len([c for c in own_cards(s) if c["kind"] == "trial" and c["status"] == "open"]) == 3
 
 
 # ---- (5) every failure of spec 9.1 ------------------------------------------------------------
@@ -424,7 +326,7 @@ def test_flow_5_failures_confirm_nothing_and_retry_next_turn(repo: Path, write_r
     assert owner_words_approvals(repo) == {}
     assert events(repo, "approval") == []
     couldnt = text_of(s.stop())
-    assert "could not check" in couldnt.lower()
+    assert "did not finish" in couldnt.lower()
     at_owner_level(couldnt, quoted=("INT-008 ok",))
 
     # the model is back: the next turn retries the failed job and the confirmation lands

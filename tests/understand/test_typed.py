@@ -95,23 +95,21 @@ def test_ex10_typed_confirm_with_words_confirms_nothing(core, engine_standins) -
 
 
 @pytest.mark.parametrize("text,expected", [
-    ("/plumb approve SR-001", ("approve", ("SR-001",), "", "", "")),
-    ("  /plumb confirm SR-001, DEC-017 \n", ("confirm", ("SR-001", "DEC-017"), "", "", "")),
-    ("/plumb confirm SR-001 and SR-002", ("confirm", (), "SR-001 and SR-002", "", "")),
-    ("/plumb approve", ("approve", (), "", "", "")),
-    ("/plumb undo SR-001", ("undo", ("SR-001",), "", "", "")),
-    ("/plumb settle on intent", ("settle", (), "", "on", "intent")),
-    ("/plumb settle off requirement", ("settle", (), "", "off", "requirement")),
-    ("/plumb go", ("go", (), "", "", "")),
+    ("/plumb approve SR-001", ("approve", ("SR-001",), "", "")),
+    ("  /plumb confirm SR-001, DEC-017 \n", ("confirm", ("SR-001", "DEC-017"), "", "")),
+    ("/plumb confirm SR-001 and SR-002", ("confirm", (), "SR-001 and SR-002", "")),
+    ("/plumb approve", ("approve", (), "", "")),
+    ("/plumb undo SR-001", ("undo", ("SR-001",), "", "")),
+    ("/plumb go", ("go", (), "", "")),
 ])
 def test_grammar_is_exact(text: str, expected: tuple) -> None:
     parsed = typed.parse(text)
-    assert (parsed.command, parsed.ids, parsed.words, parsed.state, parsed.kind) == expected
+    assert (parsed.command, parsed.ids, parsed.words, parsed.state) == expected
 
 
 @pytest.mark.parametrize("text", [
-    "plumb approve SR-001", "ok /plumb approve SR-001", "/plumb settle maybe intent",
-    "/plumb settle on", "/plumb undo", "/plumb undo SR-001 SR-002", "/plumb go now",
+    "plumb approve SR-001", "ok /plumb approve SR-001", "/plumb undo",
+    "/plumb undo SR-001 SR-002", "/plumb go now",
     "/plumbs go", "/Plumb go", "please /plumb go", "/plumb", "/plumb frobnicate SR-001",
     "turn settling on", "", "yes"])
 def test_grammar_rejects_everything_else(text: str) -> None:
@@ -120,7 +118,7 @@ def test_grammar_rejects_everything_else(text: str) -> None:
 
 def test_typed_owner_only_commands_do_not_reach_the_reader(core, engine_standins) -> None:
     state(core, ["SR-040"])
-    for text in ("/plumb go", "/plumb undo SR-040", "/plumb settle on intent"):
+    for text in ("/plumb go", "/plumb undo SR-040"):
         digest = log_prompt(core, text)
         assert read.on_prompt(ctx_for(core), core, {"digest": digest, "text": text}) is None
     assert list(files.jobs_dir(core.root, SESSION).glob("*.json")) == []

@@ -133,6 +133,15 @@ for (const surface of SURFACES) {
       expect(hellos(w)).toHaveLength(1)
     })
 
+    test("SR-126: the interpreter cannot be started: one line gives the error", async ($, on) => {
+      const w = unnamed({ broken: true })
+      w.files[HOST] = JSON.stringify({ python: PYTHON })
+      install(on, w)
+      await $.session.start(START)
+      expect(w.logs).toHaveLength(1)
+      expect(w.logs[0]).toContain('the process could not start')
+    })
+
     test("SR-126: a resumed session: plumb still holds the old panel a moment, then the hook retires it and the panel links with no line", async ($, on) => {
       const clock = mock.clock(on, { now: NOW })
       const w = unnamed()
