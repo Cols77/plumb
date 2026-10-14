@@ -171,8 +171,21 @@ def test_a_failed_clarify_job_asks_to_build_without_the_check(repo: Path,
     assert '"add a thing"' in line and "(run)" not in line
 
 
-def test_stale_link_card_rendered_by_the_summary_exactly_once(repo: Path) -> None:
+def stale_link(repo: Path, write_record) -> None:
+    """SR-001#0 is a link that is stale now (a card of a link that is current or gone is
+    withdrawn, SR-161)."""
+    from plumb.contracts import Target
+
+    make_world(repo, write_record, 1)
+    (repo / "src").mkdir()
+    (repo / "src" / "calc.py").write_text("a = 1\n", encoding="utf-8")
+    open_core(repo).add_link("SR-001", "implemented_by", Target(path="src/calc.py"))
+    (repo / "src" / "calc.py").write_text("a = 2\n", encoding="utf-8")
+
+
+def test_stale_link_card_rendered_by_the_summary_exactly_once(repo: Path, write_record) -> None:
     """SR-111 EX-5 carried over: the adapter feeds the summary, which renders it once."""
+    stale_link(repo, write_record)
     path = repo / ".plumb" / "session" / SESSION / "stale_cards.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([{
@@ -192,9 +205,11 @@ def test_stale_link_card_rendered_by_the_summary_exactly_once(repo: Path) -> Non
 
 
 @pytest.mark.sr("SR-116")
-def test_an_incomplete_stale_card_is_not_offered_but_stays_open(repo: Path) -> None:
+def test_an_incomplete_stale_card_is_not_offered_but_stays_open(repo: Path,
+                                                                write_record) -> None:
     """SR-116 EX-3: a card missing what its options do or why one is recommended is not
     offered; the owner is told cards wait for the agent, and the card stays open."""
+    stale_link(repo, write_record)
     path = repo / ".plumb" / "session" / SESSION / "stale_cards.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([{

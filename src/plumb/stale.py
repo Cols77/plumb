@@ -565,6 +565,41 @@ def close_card(root: Path | str, session: str, link: str) -> bool:
     return found
 
 
+def withdraw_card(core: Core, session: str, link: str, why: str) -> bool:
+    """SR-161, SR-162: withdraw the open card of ``link`` in ``session``, logged with its
+    reason. A withdrawal answers and confirms nothing; False when there is no open card."""
+    cards = read_cards(core.root, session)
+    found = False
+    for card in cards:
+        if card.get("link") == link and card.get("status", "open") == "open":
+            card["status"] = "withdrawn"
+            found = True
+    if found:
+        _write_cards(core.root, session, cards)
+        core.log_append("events", "card-withdrawn",
+                        {"card": f"stale:{link}", "session": session, "topic": link,
+                         "reason": why})
+    return found
+
+
+def withdraw_settled(core: Core, only: Sequence[str] | None = None) -> None:
+    """SR-161: withdraw the open stale cards whose link is current again or no longer exists,
+    in the ``only`` sessions (default every session folder)."""
+    from plumb.present import owner_text as words
+
+    held = {s: [str(c.get("link")) for c in read_cards(core.root, s)
+                if c.get("status", "open") == "open"]
+            for s in (sessions(core.root) if only is None else only)}
+    wanted = sorted({link.partition("#")[0] for links in held.values() for link in links})
+    states = {s.link.id: s.state for s in core.link_states(wanted)} if wanted else {}
+    for session, links in held.items():
+        for link in links:
+            state = states.get(link, "gone")
+            if state in ("current", "gone"):
+                withdraw_card(core, session, link, words.WITHDRAWN_LINK_GONE if state == "gone"
+                              else words.WITHDRAWN_LINK_CURRENT)
+
+
 def carded_links(root: Path | str, session: str) -> set[str]:
     """The links an open, complete card holds (SR-116: an incomplete card does not count as
     bringing the link to the owner; the hold names what it lacks)."""

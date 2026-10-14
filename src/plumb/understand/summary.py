@@ -222,6 +222,56 @@ def _keep(core: Any, session: str, held: Sequence[CardState]) -> None:
         {"card": cardstore.card_to_json(c)} for c in held])
 
 
+READ_BACK = ("clarify", "trial")
+
+
+def _settled(card: CardState, statuses: Mapping[str, Any]) -> str | None:
+    """SR-161: why a read-back or trial card's question no longer stands (every record it asks
+    about is confirmed or superseded), in the owner's words, or None while one still does."""
+    records = [q.record for q in card.questions if q.record]
+    states = [statuses.get(r) for r in records]
+    if not records or any(s is None or not (s.confirmation == "confirmed"
+                                            or s.superseded_by is not None) for s in states):
+        return None
+    gone = [r for r, s in zip(records, states, strict=True) if s.superseded_by is not None]
+    if not gone:
+        return owner_text.WITHDRAWN_CONFIRMED
+    return owner_text.WITHDRAWN_SUPERSEDED.format(ids=" and ".join(gone))
+
+
+def _withdraw_settled(core: Any, session: str) -> None:
+    """SR-161: withdraw the session's read-back and trial cards whose question no longer stands
+    and its stale-link cards whose link is settled. Nothing is answered or confirmed
+    (``cardstore.withdraw``); each withdrawal is logged (``_withdrawn_lines`` tells it)."""
+    from plumb import stale
+
+    cards = [c for c in cardstore.own_cards(core.root, session)
+             if c.kind in READ_BACK and c.status in (*cardstore.AWAITING, "left_open")]
+    wanted = sorted({q.record for c in cards for q in c.questions if q.record})
+    statuses = core.status(wanted) if wanted else {}
+    gone = [(c, why) for c in cards if (why := _settled(c, statuses))]
+    if gone:
+        cardstore.withdraw(core.root, session, [c.id for c, _ in gone])
+    for card, why in gone:
+        core.log_append("events", "card-withdrawn", {"card": card.id, "session": session,
+                                                     "topic": card.topic, "reason": why})
+    stale.withdraw_settled(core, [session])
+
+
+def _withdrawn_lines(core: Any, session: str, since: str) -> list[str]:
+    """``topic, reason`` of each card withdrawn in this session and not told yet (told once)."""
+    told = Told(core.root, session, since)
+    lines = []
+    for entry in core.events():
+        if (entry.kind == "card-withdrawn" and entry.payload.get("session") == session
+                and entry.digest not in told.notices and entry.at >= told.since):
+            told.notices.add(entry.digest)
+            lines.append(f"{entry.payload.get('topic')}, {entry.payload.get('reason')}")
+    told.dirty = bool(lines)
+    told.save()
+    return lines
+
+
 def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
           passing: set[str]) -> CardState | None:
     """The card as it still holds, or None when its question no longer stands: a decision
@@ -236,6 +286,8 @@ def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
         return state is not None and (state.confirmation == "confirmed"
                                       or state.superseded_by is not None)
 
+    if card.kind in READ_BACK:
+        return None if _settled(card, statuses) else card
     if card.kind in ("decision", "early_conflict", "test_changed"):
         return None if all(done(q.record) for q in card.questions) else card
     if card.kind == "regression":
@@ -286,6 +338,7 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
             cardstore.save(core.root, session, [*own, *add])
     from plumb.mod.offers import reopen_changed
 
+    _withdraw_settled(core, session)
     reopen_changed(core, session)       # DEC-034: a card left open returns once it changed
     open_cards = [c for c in cardstore.load(core.root, session, open_only=False)
                   if _repeats_at_turn_end(c)]
@@ -335,6 +388,8 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
             n=len(late), topics="; ".join(f'"{t}"' for t in late)))
     if incomplete:
         out.append(owner_text.FULL_INCOMPLETE.format(n=incomplete))
+    if withdrawn := _withdrawn_lines(core, session, _iso(stamp)):
+        out.append(owner_text.CARDS_WITHDRAWN.format(items="; ".join(withdrawn)))
     _waiting(core, session, drawn)
     files.write_json_atomic(files.session_dir(core.root, session) / DRAWN, kept)
     return out
