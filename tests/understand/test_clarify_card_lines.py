@@ -1,36 +1,45 @@
-"""SR-147: the clarify card prints its questions, not the read-back's lines."""
+"""SR-129: the read-back card shows the proposal, the assumptions and the one thing not done."""
 from __future__ import annotations
 
-from plumb.contracts import CardState
-from plumb.understand import clarify, fullcard
-from plumb.understand.cards import render
+from pathlib import Path
 
-READBACK = {"will": ["build it in a worktree", "merge at the end"],
-            "wont": ["touch main"], "assumptions": ["the findings are the ones listed above"]}
+from plumb.understand import clarify
 
-
-def _card(kind: str) -> CardState:
-    return CardState(id="c1", kind=kind, topic="worktree changes", issue="which findings?",
-                     evidence=clarify._evidence(READBACK), resolutions=("the ones above",))
+READBACK = {"proposal": "Work in a worktree and merge at the end.",
+            "will": ["build it in a worktree", "merge at the end"],
+            "wont": ["touch main", "rewrite history"],
+            "assumptions": ["the findings are the ones listed above"],
+            "examples": ["one worktree per finding"]}
 
 
-def test_ex1_the_hook_prints_no_readback_lines_on_a_clarify_card() -> None:
-    text = render(_card("clarify"))
-    assert text.splitlines()[0].endswith("which findings?")
-    assert "  1. the ones above" in text
-    for word in ("I will:", "I will not:", "Assumed", "For example"):
+def _card(root: Path):
+    return clarify._readback_card(root, "sha256:" + "ab" * 32, "do the findings above",
+                                  READBACK, ["Assumed: the findings are the ones listed above"])
+
+
+def test_ex1_the_card_has_the_proposal_the_assumptions_and_one_wont(tmp_path: Path) -> None:
+    card = _card(tmp_path)
+    assert card.issue == "Work in a worktree and merge at the end."
+    assert card.evidence.splitlines() == [
+        "Assumed: the findings are the ones listed above", "Not doing: touch main"]
+    for word in ("I will", "For example", "rewrite history", "one worktree per finding"):
+        assert word not in card.evidence + card.issue
+
+
+def test_ex2_the_card_names_its_request_and_date(tmp_path: Path) -> None:
+    card = _card(tmp_path)
+    assert card.topic.startswith("Your request of 20")
+    assert card.topic.endswith('"do the findings above"')
+
+
+def test_ex3_the_card_uses_the_owners_words_only(tmp_path: Path) -> None:
+    card = _card(tmp_path)
+    text = " ".join([card.topic, card.issue, card.evidence, card.questions[0].text,
+                     *card.resolutions, *(c.consequence for c in card.questions[0].choices)])
+    for word in ("settled", "trial", "relay", "sha256", "clarify:"):
         assert word not in text
-    full = fullcard.lines({"kind": "clarify", "topic": "worktree changes",
-                           "issue": "which findings?", "evidence": clarify._evidence(READBACK)})
-    assert not any("I will" in line for line in full)
 
 
-def test_ex2_the_assumptions_still_come_from_the_stored_card() -> None:
-    assert clarify.assumptions(_card("clarify")) == [
+def test_the_assumptions_still_come_from_the_stored_card(tmp_path: Path) -> None:
+    assert clarify.assumptions(_card(tmp_path)) == [
         ("the findings are the ones listed above", "proposed")]
-
-
-def test_ex3_other_cards_keep_their_evidence_line() -> None:
-    card = CardState(id="c2", kind="stale_link", topic="Adds numbers", issue="a test fails now",
-                     evidence="t::a passed in an earlier run and fails now")
-    assert "  Evidence: t::a passed in an earlier run and fails now" in render(card)

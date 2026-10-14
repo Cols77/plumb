@@ -4,13 +4,14 @@ EX-9, SR-112 EX-7). Such an approval confirms only when, in the log it is in, be
 - the session registered its panel (``mod-hello``, no marker) with the key digest the approval
   carries (and, where the session folder exists, ``mod.json`` holds that digest too);
 - the offer it names was drawn in that session (an ``offer`` entry, no marker, same key digest)
-  for this card and question, naming this record at this hash.
+  for this card and question, naming this record at this hash (or, for a request's read-back,
+  listing it among its ``records``).
 
 The marker is checked by the caller (``confirm.entry_problem``: an owner entry carries none). An
 approval written any other way (by hand, without a drawn offer, for another record or version)
 confirms nothing, and ``plumb validate`` reports it. Tamper-evident, not tamper-proof (SP7 5.7).
 It is called with no log context by ``confirm.entry_problem`` when no Core is given, so it
-then reads the log of the repository the process runs in (``recheck_settled.ambient_core``)."""
+then reads the log of the repository the process runs in (``ambient_core``)."""
 
 from __future__ import annotations
 
@@ -59,6 +60,31 @@ def _index_of(events: list[LogEntry]) -> _Index:
     return built
 
 
+_AMBIENT: dict[str, tuple[Any, Any]] = {}
+
+
+def ambient_core() -> Any:
+    """The Core of the repository the process runs in, for a re-check called with no log
+    context. Kept while the events do not change; None when there is no repository here."""
+    try:
+        from pathlib import Path
+
+        from plumb.api import open_core
+        from plumb.log import stream_stamp
+        from plumb.paths import PlumbPaths, find_root
+
+        root = find_root(Path.cwd())
+        stamp = stream_stamp(PlumbPaths(root), "events")
+        held = _AMBIENT.get(str(root))
+        if held is not None and held[0] == stamp:
+            return held[1]
+        core = open_core(root)
+        _AMBIENT[str(root)] = (stamp, core)
+        return core
+    except Exception:  # noqa: BLE001 - no repository here: the entry is refused, not trusted
+        return None
+
+
 def problem(entry: LogEntry, core: Any) -> str | None:
     """Why the button approval ``entry`` fails its re-check, or None."""
     payload = entry.payload
@@ -68,8 +94,6 @@ def problem(entry: LogEntry, core: Any) -> str | None:
     if not session or not offer or not digest or not records:
         return "button approval does not name its session, offer, key and records"
     if core is None:
-        from plumb.understand.recheck_settled import ambient_core
-
         core = ambient_core()
     if core is None:
         return "button approval cannot be checked here (no repository log)"
@@ -92,8 +116,12 @@ def problem(entry: LogEntry, core: Any) -> str | None:
     if shown.get("key_digest") != digest or shown.get("card") != payload.get("card") \
             or str(shown.get("question") or "") != str(payload.get("question") or ""):
         return "button approval: its offer was drawn for another card or key"
+    # the record the offer asked about, or (a read-back) the request's records it named
+    named = {(shown.get("record"), shown.get("hash")),
+             *((r.get("id"), r.get("hash")) for r in shown.get("records") or ()
+               if isinstance(r, Mapping))}
     for item in records:
-        if item.get("id") != shown.get("record") or item.get("hash") != shown.get("hash"):
+        if (item.get("id"), item.get("hash")) not in named:
             return (f"button approval: the offer did not show {item.get('id')} at that "
                     "version")
     return None

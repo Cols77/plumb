@@ -142,14 +142,14 @@ def test_every_route_names_a_module_path() -> None:
                 # sub-projects 2 to 5 (next-plan 3.2 item 4)
                 "capture", "intent", "example", "decide", "escalate", "spec", "triage",
                 "config", "jev", "clarify", "merge-check", "hosts", "turn", "mcp", "resolve",
-                "review", "confirm", "align", "view",
+                "review", "align", "view",
                 # sub-project 6 (sp6 plan 3.2 item 5)
                 "log", "merge-fix", "ids", "merge-driver", "conflict", "conflicts",
                 "inflight",
                 # SR-127: a requirement's proof plan and evidence
                 "proof",
                 # sub-project 8 (understanding layer, phase C stubs)
-                "understand", "go", "settle", "undo",
+                "understand",
                 # sp8 STALE: `plumb stale card`
                 "stale",
                 # sub-project 7 PLUGIN: `plumb plugin ignore|unignore|migrate`

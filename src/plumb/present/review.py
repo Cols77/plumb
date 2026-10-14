@@ -41,8 +41,6 @@ def _awaiting(core: Any, scope: set[str] | None) -> list[str]:
         except Exception:  # noqa: BLE001
             view = None
     if view is not None and getattr(view, "available", False):
-        if view.offer:
-            lines.append("  " + str(view.offer).removeprefix("plumb: "))
         for item in view.individual:
             outcome = getattr(item, "outcome", "")
             if outcome:  # in words, never a probability next to a risk
@@ -55,8 +53,8 @@ def _awaiting(core: Any, scope: set[str] | None) -> list[str]:
                 rating = (item.rating if item.score is None
                           else f"{item.rating} {item.score:.2f}")
             why = f"; {item.excluded}" if getattr(item, "excluded", None) else ""
-            lines.append(f"  {item.id} \"{item.title}\" ({rating}{why}): plumb confirm "
-                         f"{item.id} shows it")
+            lines.append(f"  {item.id} \"{item.title}\" ({rating}{why}): /plumb approve "
+                         f"{item.id} confirms it")
     else:
         pending = [i for i, s in sorted(statuses.items()) if s.confirmation != "confirmed"
                    and _in_scope(i, scope)]
@@ -68,8 +66,8 @@ def _awaiting(core: Any, scope: set[str] | None) -> list[str]:
         if pending:
             names = ", ".join(pending[:8]) + (f" +{len(pending) - 8} more"
                                               if len(pending) > 8 else "")
-            lines.append(f"  {len(pending)} proposed or edited: {names} (plumb confirm "
-                         "shows them as cards)")
+            lines.append(f"  {len(pending)} proposed or edited: {names} (their cards and "
+                         "/plumb approve confirm them)")
     try:
         from plumb.capture import spec
 

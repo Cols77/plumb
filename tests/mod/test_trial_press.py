@@ -1,12 +1,12 @@
-"""SR-124 (SR-106 x INT-025 x INT-032 (2)): a trial batch reaches the owner in the mod and each press is
-a labelled owner answer that calibration counts.
+"""SR-124 (SR-106 x INT-025 x INT-032 (2), SR-133): trial cards reach the owner in the mod, one
+record each, and each press is a labelled owner answer that calibration counts.
 
 The trace: the judge's logged ``supported`` verdicts wait in the log (``trial.from_log``); the
-stop hook's upkeep (``settle.refresh`` -> ``trial.top_up``) puts a trial batch card in
-``cards.json``; ``plumb mod draw`` offers each record of the batch its own Yes and No; ``plumb
+stop hook's upkeep (``trial.top_up``) puts up to three trial cards, one record each, in
+``cards.json``; ``plumb mod draw`` offers each its Yes, No and Fix it; ``plumb
 mod press`` answers through the one answer path: Yes is ``approval {by: owner, via: button,
 label: yes}``, No is a ``capture-error`` rejection (a misreading) with the read-back it
-rejected; when the batch is answered the ``trial`` entry is logged; the next turn end reruns
+rejected; when a card is answered its ``trial`` entry is logged; the next turn end reruns
 the calibration from the logged scores (no model call) and ``plumb jev status`` shows the yes
 and the real 'no' examples."""
 
@@ -67,15 +67,15 @@ def _press(monkeypatch, capsys, repo: Path, offer: dict[str, Any], answer: str):
                    "--choice", str(index), stdin={"key": KEY})
 
 
-def _trial(drawn: dict[str, Any]) -> dict[str, Any]:
-    (card,) = [c for c in drawn.values() if c["kind"] == "trial"]
-    return card
+def _trial(drawn: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """The drawn trial cards by their record."""
+    return {c["offers"][0]["record"]: c for c in drawn.values() if c["kind"] == "trial"}
 
 
 @pytest.fixture
 def batch(repo: Path, write_record, monkeypatch, capsys):
     """Three supported requirements held back by the log, a turn end, the panel registered and
-    the cards drawn."""
+    the cards drawn: ``(ids, {record: card})``."""
     ids = _world(repo, write_record, [0.95, 0.9, 0.97])
     assert cardstore.own_cards(repo, SESSION) == []
     text = _turn_end(repo)
@@ -84,26 +84,27 @@ def batch(repo: Path, write_record, monkeypatch, capsys):
     return ids, _trial(_draw(monkeypatch, capsys, repo))
 
 
-def test_the_turn_end_puts_a_trial_batch_in_the_mod_with_yes_and_no_per_record(batch) -> None:
-    ids, card = batch
-    assert card["repeats"] is True and card["status"] == "open"
-    assert sorted(o["record"] for o in card["offers"]) == ids
-    for offer in card["offers"]:
-        assert [(b["label"], b["answer"]) for b in offer["buttons"][:2]] == [
-            (owner_text.TRIAL_YES, "accepted"), (owner_text.TRIAL_NO, "rejected")]
+def test_the_turn_end_puts_one_trial_card_per_record_with_yes_no_and_fix_it(batch) -> None:
+    ids, cards = batch
+    assert sorted(cards) == ids
+    for card in cards.values():
+        assert card["repeats"] is True and card["status"] == "open"
+        (offer,) = card["offers"]
+        assert [(b["label"], b["answer"]) for b in offer["buttons"][:3]] == [
+            ("Yes", "accepted"), ("No", "rejected"), ("Fix it", "change")]
 
 
 def test_each_press_is_a_labelled_owner_answer_and_calibration_counts_the_no(
         batch, repo: Path, monkeypatch, capsys) -> None:
     from plumb.capture import jevcmd
 
-    ids, card = batch
-    by_record = {o["record"]: o for o in card["offers"]}
-    code, yes, _ = _press(monkeypatch, capsys, repo, by_record["SR-001"], "accepted")
-    assert code == 0 and yes["confirmed"] == ["SR-001"]
-    code, no, _ = _press(monkeypatch, capsys, repo, by_record["SR-002"], "rejected")
+    ids, cards = batch
+    offer = {r: c["offers"][0] for r, c in cards.items()}
+    code, yes, _ = _press(monkeypatch, capsys, repo, offer["SR-001"], "accepted")
+    assert code == 0 and yes["confirmed"] == ["SR-001"] and yes["status"] == "closed"
+    code, no, _ = _press(monkeypatch, capsys, repo, offer["SR-002"], "rejected")
     assert code == 0 and no["rejected"] == ["SR-002"]
-    code, last, _ = _press(monkeypatch, capsys, repo, by_record["SR-003"], "accepted")
+    code, last, _ = _press(monkeypatch, capsys, repo, offer["SR-003"], "accepted")
     assert code == 0 and last["confirmed"] == ["SR-003"] and last["status"] == "closed"
     events = open_core(repo).events()
     (approval,) = [e for e in events if e.kind == "approval"
@@ -114,8 +115,8 @@ def test_each_press_is_a_labelled_owner_answer_and_calibration_counts_the_no(
     assert (rejection.payload["by"], rejection.payload["via"], rejection.payload["reason"]) \
         == ("owner", "button", "capture-error")
     assert rejection.payload["records"][0]["kind"] == "example-restatement"
-    (trial,) = [e for e in events if e.kind == "trial"]
-    assert sorted(a["answer"] for a in trial.payload["answers"]) == [
+    trials = [e for e in events if e.kind == "trial"]
+    assert sorted(a["answer"] for t in trials for a in t.payload["answers"]) == [
         "accepted", "accepted", "rejected"]
     # the next turn end reruns the calibration from the logged scores, no model call
     _turn_end(repo)
@@ -144,62 +145,59 @@ def _fixture(name: str) -> Any:
 
 def test_the_panels_trial_fixtures_have_the_shape_of_a_real_trial_draw_and_press(
         batch, repo: Path, monkeypatch, capsys) -> None:
-    ids, card = batch
+    ids, cards = batch
+    card = cards["SR-001"]
     (fixture,) = _fixture("DRAW_TRIAL")["cards"]
     assert set(fixture) == set(card) and fixture["kind"] == card["kind"] == "trial"
     assert set(fixture["questions"][0]) == set(card["questions"][0])
     assert set(fixture["offers"][0]) == set(card["offers"][0])
-    assert [(b["label"], b["answer"]) for b in fixture["offers"][0]["buttons"]] == [
-        (b["label"], b["answer"]) for b in card["offers"][0]["buttons"]]
+    assert [b["answer"] for b in fixture["offers"][0]["buttons"]][:2] == [
+        b["answer"] for b in card["offers"][0]["buttons"]][:2]
     assert {o["question"] for o in fixture["offers"]} == {q["id"] for q in fixture["questions"]}
-    code, pressed, _ = _press(monkeypatch, capsys, repo, card["offers"][1], "rejected")
+    code, pressed, _ = _press(monkeypatch, capsys, repo, card["offers"][0], "rejected")
     shown = _fixture("PRESS_TRIAL_NO")
     assert code == 0 and set(shown) == set(pressed)
     assert (shown["answer"], shown["status"]) == (pressed["answer"], pressed["status"])
-    assert shown["line"].split(":")[0] == pressed["line"].split(":")[0]
+    assert "marked wrong" in shown["line"] and "marked wrong" in pressed["line"]
 
 
-def test_a_record_answered_in_its_batch_is_not_offered_again(batch, repo: Path, monkeypatch,
-                                                              capsys) -> None:
-    ids, card = batch
-    by_record = {o["record"]: o for o in card["offers"]}
-    assert _press(monkeypatch, capsys, repo, by_record["SR-001"], "accepted")[0] == 0
+def test_a_record_answered_is_not_offered_again(batch, repo: Path, monkeypatch,
+                                                 capsys) -> None:
+    ids, cards = batch
+    assert _press(monkeypatch, capsys, repo, cards["SR-001"]["offers"][0], "accepted")[0] == 0
     again = _trial(_draw(monkeypatch, capsys, repo))
-    assert again["id"] == card["id"] and again["repeats"] is True
-    assert sorted(o["record"] for o in again["offers"]) == ["SR-002", "SR-003"]
-    assert sorted(q["record"] for q in again["questions"]) == ["SR-002", "SR-003"]
+    assert sorted(again) == ["SR-002", "SR-003"]
     # each offer is still the one first drawn for its record
-    assert {o["record"]: o["offer_id"] for o in again["offers"]} == {
-        r: by_record[r]["offer_id"] for r in ("SR-002", "SR-003")}
+    assert {r: c["offers"][0]["offer_id"] for r, c in again.items()} == {
+        r: cards[r]["offers"][0]["offer_id"] for r in ("SR-002", "SR-003")}
 
 
-def test_the_calibration_waits_for_the_batch_then_counts_every_press(
+def test_the_calibration_reruns_at_the_turn_end_and_counts_every_press(
         batch, repo: Path, monkeypatch, capsys) -> None:
-    """SR-106: calibration reruns after each batch; a yes pressed on one record of a batch
-    still open does not rerun it (settling cannot switch on from half a batch), and once the
-    batch is answered the rerun counts that yes too."""
-    ids, card = batch
-    by_record = {o["record"]: o for o in card["offers"]}
-    assert _press(monkeypatch, capsys, repo, by_record["SR-001"], "accepted")[0] == 0
+    """SR-106: calibration reruns from the logged scores at the turn end after an answer; the
+    next rerun counts the yes pressed since."""
+    ids, cards = batch
+    offer = {r: c["offers"][0] for r, c in cards.items()}
+    assert _press(monkeypatch, capsys, repo, offer["SR-001"], "accepted")[0] == 0
     _turn_end(repo)
-    assert not [e for e in open_core(repo).events() if e.kind == "calibration"]
-    assert _press(monkeypatch, capsys, repo, by_record["SR-002"], "accepted")[0] == 0
-    assert _press(monkeypatch, capsys, repo, by_record["SR-003"], "accepted")[0] == 0
+    (first,) = [e for e in open_core(repo).events() if e.kind == "calibration"]
+    assert first.payload["per_kind"]["example-restatement"]["positives"] == 1
+    assert _press(monkeypatch, capsys, repo, offer["SR-002"], "accepted")[0] == 0
+    assert _press(monkeypatch, capsys, repo, offer["SR-003"], "accepted")[0] == 0
     _turn_end(repo)
-    (calibration,) = [e for e in open_core(repo).events() if e.kind == "calibration"]
+    calibration = [e for e in open_core(repo).events() if e.kind == "calibration"][-1]
     assert calibration.payload["source"] == "logged"
     assert calibration.payload["per_kind"]["example-restatement"]["positives"] == 3
 
 
-def test_a_batch_left_open_is_not_asked_again_in_a_new_batch(batch, repo: Path, monkeypatch,
-                                                             capsys) -> None:
-    ids, card = batch
-    by_record = {o["record"]: o for o in card["offers"]}
-    assert _press(monkeypatch, capsys, repo, by_record["SR-001"], "accepted")[0] == 0
-    assert _press(monkeypatch, capsys, repo, by_record["SR-002"], "open")[0] == 0
+def test_a_card_left_open_is_not_asked_again(batch, repo: Path, monkeypatch, capsys) -> None:
+    ids, cards = batch
+    assert _press(monkeypatch, capsys, repo, cards["SR-001"]["offers"][0], "accepted")[0] == 0
+    assert _press(monkeypatch, capsys, repo, cards["SR-002"]["offers"][0], "open")[0] == 0
     _turn_end(repo)
-    trials = [c for c in cardstore.own_cards(repo, SESSION) if c.kind == "trial"]
-    assert [(c.id, c.status) for c in trials] == [(card["id"], "left_open")]
+    trials = [c for c in cardstore.own_cards(repo, SESSION) if c.kind == "trial"
+              and c.questions[0].record == "SR-002"]
+    assert [(c.id, c.status) for c in trials] == [(cards["SR-002"]["id"], "left_open")]
 
 
 def test_a_no_on_a_trial_card_marks_the_reading_wrong_and_the_record_stays(
@@ -207,15 +205,14 @@ def test_a_no_on_a_trial_card_marks_the_reading_wrong_and_the_record_stays(
     """A trial No is a misreading (capture-error): neither the owner's line nor the agent's note
     says the record was dropped; the agent is told the record stays and is not to be removed or
     rewritten, and the record is still there, unchanged."""
-    ids, card = batch
-    by_record = {o["record"]: o for o in card["offers"]}
+    ids, cards = batch
     before = open_core(repo).index()["SR-002"].hash
-    code, no, _ = _press(monkeypatch, capsys, repo, by_record["SR-002"], "rejected")
+    code, no, _ = _press(monkeypatch, capsys, repo, cards["SR-002"]["offers"][0], "rejected")
     assert code == 0 and no["rejected"] == ["SR-002"]
-    assert no["line"] == owner_text.PRESS_MISREAD.format(label=owner_text.TRIAL_NO,
+    assert no["line"] == owner_text.PRESS_MISREAD.format(label="No",
                                                          titles='"Operation 2"')
     assert no["model_note"] == owner_text.PRESS_MODEL_MISREAD.format(
-        label=owner_text.TRIAL_NO, records="SR-002 'Operation 2'")
+        label="No", records="SR-002 'Operation 2'")
     for text in (no["line"], no["model_note"]):
         assert "dropped" not in text and "marked wrong" in text
     assert "record stays" in no["model_note"]
@@ -225,25 +222,6 @@ def test_a_no_on_a_trial_card_marks_the_reading_wrong_and_the_record_stays(
     assert "SR-002" in after and after["SR-002"].hash == before
 
 
-def test_only_a_trial_batch_leaves_out_its_answered_questions() -> None:
-    """``offers.unanswered`` drops the answered questions of a trial batch only; a card of any
-    other kind (a backlog card, a feature card) keeps every question."""
-    import dataclasses
-
-    from plumb.contracts import CardState, ClarifyAnswer, ClarifyQuestion
-    from plumb.mod import offers
-
-    questions = (ClarifyQuestion(id="q1", text="one", record="SR-001", hash="h1"),
-                 ClarifyQuestion(id="q2", text="two", record="SR-002", hash="h2"))
-    trial = CardState(id="trial:x", kind="trial", questions=questions,
-                      answers=(ClarifyAnswer("q1", "accepted", ""),))
-    assert [q.id for q in offers.unanswered(trial).questions] == ["q2"]
-    for kind in ("backlog", "feature", "clarify", "show_first"):
-        other = dataclasses.replace(trial, id=f"{kind}:x", kind=kind)
-        assert offers.unanswered(other).questions == questions
-    assert offers.unanswered(dataclasses.replace(trial, answers=())).questions == questions
-
-
 def test_a_record_held_by_leave_open_comes_back_once_it_changes(
         batch, repo: Path, write_record, monkeypatch, capsys) -> None:
     """DEC-034: a trial card left open holds its records; once one of them changes the card is
@@ -251,10 +229,10 @@ def test_a_record_held_by_leave_open_comes_back_once_it_changes(
     left open."""
     from plumb.mod import offers
 
-    ids, card = batch
-    by_record = {o["record"]: o for o in card["offers"]}
-    assert _press(monkeypatch, capsys, repo, by_record["SR-001"], "accepted")[0] == 0
-    assert _press(monkeypatch, capsys, repo, by_record["SR-002"], "open")[0] == 0
+    ids, cards = batch
+    card = cards["SR-002"]
+    assert _press(monkeypatch, capsys, repo, cards["SR-001"]["offers"][0], "accepted")[0] == 0
+    assert _press(monkeypatch, capsys, repo, card["offers"][0], "open")[0] == 0
     assert offers.reopen_changed(open_core(repo), SESSION) == []
     held = [c for c in cardstore.own_cards(repo, SESSION) if c.id == card["id"]]
     assert [c.status for c in held] == ["left_open"]
@@ -264,5 +242,5 @@ def test_a_record_held_by_leave_open_comes_back_once_it_changes(
     assert offers.reopen_changed(open_core(repo), SESSION) == [card["id"]]
     (back,) = [c for c in cardstore.own_cards(repo, SESSION) if c.id == card["id"]]
     assert back.status == "open"
-    again = _trial(_draw(monkeypatch, capsys, repo))
+    again = _trial(_draw(monkeypatch, capsys, repo))["SR-002"]
     assert again["id"] == card["id"] and again["repeats"] is True

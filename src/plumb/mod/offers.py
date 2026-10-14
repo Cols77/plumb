@@ -27,8 +27,11 @@ OFFER_KIND = "offer"
 DRAWN = (*cardstore.AWAITING, "left_open")
 
 
-def offer_id(card: str, question: str, record_hash: str) -> str:
-    return files.digest_of([card, question, record_hash])
+def offer_id(card: str, question: str, record_hash: str,
+             records: Sequence[Mapping[str, Any]] = ()) -> str:
+    """A read-back's offer also names its records, so a changed set is a new offer."""
+    named = [f"{r['id']}:{r['hash']}" for r in records]
+    return files.digest_of([card, question, record_hash, *named])
 
 
 def offers_dir(root: Path, session: str) -> Path:
@@ -51,14 +54,10 @@ def load_offer(root: Path, session: str, offer: str) -> Mapping[str, Any] | None
 
 
 def buttons(card: CardState, question: ClarifyQuestion | None) -> tuple[Choice, ...]:
-    """The buttons of one card question, in order: its choices, then Ask for a change and
-    Leave open (C3)."""
-    from plumb.understand.cards import choices_for
-
-    resolutions = tuple(question.resolutions if question is not None else ()) \
-        or card.resolutions
-    chosen = (question.choices if question is not None else ()) \
-        or choices_for(card.kind, resolutions)
+    """The buttons of one card question, in order: its stored choices (a card with no question,
+    a stale link, offers its options as changes), then Ask for a change and Leave open (C3)."""
+    chosen = question.choices if question is not None else tuple(
+        Choice(label, "change", label) for label in card.resolutions)
     return (*chosen, Choice(owner_text.BUTTON_ASK_CHANGE, "change", None),
             Choice(owner_text.BUTTON_LEAVE_OPEN, "open", None))
 
@@ -97,21 +96,20 @@ def _record_offer(core: Any, session: str, data: Mapping[str, Any]) -> None:
     core.log_append("events", OFFER_KIND, {
         "session": session, "offer": data["offer_id"], "card": data["card"],
         "question": data["question"], "record": data["record"], "hash": data["hash"],
+        "records": data["records"],
         "key_digest": data["key_digest"], "drawn_at": data["drawn_at"],
         "buttons": [{"label": b["label"], "answer": b["answer"]} for b in data["buttons"]]})
 
 
-def content_for(core: Any, session: str, card: CardState,
-                change: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
-    """SR-116: the card's full content as the end-of-turn text draws it (``understand.fullcard``,
-    the same dict for every kind: the record as it now reads, the change with its evidence, the
-    owner's words, each option with what it does and leaves undone, why the recommended one).
-    None when it cannot be made (the card is still drawn from its own fields)."""
+def content_for(core: Any, session: str, card: CardState) -> dict[str, Any] | None:
+    """SR-116: the card's content as the end-of-turn text draws it (``understand.fullcard``,
+    the same dict for every kind: its shape, context, assumptions and each option with what it
+    does). None when it cannot be made (the card is still drawn from its own fields)."""
     try:
         from plumb.understand import fullcard
 
         if card.kind != "stale_link":
-            return fullcard.content(core, card, session=session, change=change)
+            return fullcard.content(core, card)
         from plumb import stale
 
         link = card.id.removeprefix("stale:")
@@ -144,16 +142,24 @@ def turn_card(root: Path, session: str, card_id: str) -> CardState | None:
 
 def _offers_of(core: Any, session: str, digest: str, stamp: str, card: CardState,
                turn_built: bool) -> list[dict[str, Any]]:
+    from plumb.understand import trial
+    from plumb.understand.clarify import request_records
+
     questions: Sequence[ClarifyQuestion | None] = list(card.questions) or [None]
     offers: list[dict[str, Any]] = []
     for question in questions:
         qid = question.id if question is not None else ""
         record = question.record if question is not None else None
         record_hash = question.hash if question is not None else ""
-        offer = offer_id(card.id, qid, record_hash)
+        # SR-130: a read-back's answer confirms the request's records the offer names
+        records = [{"id": r.id, "hash": r.hash, "proposal": trial._proposal(r)}
+                   for r in request_records(
+            core, card.id.removeprefix("clarify:"))] if card.kind == "clarify" else []
+        offer = offer_id(card.id, qid, record_hash, records)
         pressable = turn_buttons() if turn_built else buttons(card, question)
         data = {"offer_id": offer, "session": session, "card": card.id, "question": qid,
-                "record": record, "hash": record_hash, "key_digest": digest,
+                "record": record, "hash": record_hash, "records": records,
+                "key_digest": digest,
                 "drawn_at": stamp,
                 "buttons": [_button_json(n, c) for n, c in enumerate(pressable)]}
         _record_offer(core, session, data)
@@ -163,24 +169,11 @@ def _offers_of(core: Any, session: str, digest: str, stamp: str, card: CardState
     return offers
 
 
-def unanswered(card: CardState) -> CardState:
-    """A trial batch without the questions already answered (the owner answers it in part,
-    one record at a time): an answered record is not offered again (SR-124, INT-032 (2)).
-    Every other kind of card keeps all its questions: no record says otherwise for them."""
-    answered = {a.question for a in card.answers}
-    if card.kind != "trial" or len(card.questions) < 2 or not answered:
-        return card
-    left = tuple(q for q in card.questions if q.id not in answered)
-    return dataclasses.replace(card, questions=left) if left else card
-
-
 def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
-    """The cards the mod draws for ``session`` (as ``cards.json`` holds them, never cut: the mod
-    folds a long ``evidence`` by its ``evidence_size``), then the cards the stop hook built and
-    drew at the last turn end (``summary.read_drawn``), each with its full content (SR-116, the
-    same as the end-of-turn text) and each question with its offer and buttons (a question
-    already answered is left out, ``unanswered``); every offer is recorded the first time it
-    is drawn."""
+    """The cards the mod draws for ``session`` (as ``cards.json`` holds them), then the cards
+    the stop hook built and drew at the last turn end (``summary.read_drawn``), each with its
+    full content (SR-116, the same as the end-of-turn text) and each question with its offer and
+    buttons; every offer is recorded the first time it is drawn."""
     from plumb.mod.session import now
     from plumb.understand import summary
 
@@ -192,8 +185,7 @@ def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
         have.add(card.id)
         if card.status not in DRAWN:
             continue
-        card = unanswered(card)
-        out.append({**cardstore.card_to_json(card), "evidence_size": len(card.evidence),
+        out.append({**cardstore.card_to_json(card),
                     "repeats": card.status in cardstore.AWAITING,
                     "offers": _offers_of(core, session, digest, stamp, card, False),
                     "content": content_for(core, session, card)})
@@ -208,7 +200,7 @@ def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
         if card.id in left:
             card = dataclasses.replace(card, status="left_open")
         content = entry.get("content")
-        out.append({**cardstore.card_to_json(card), "evidence_size": len(card.evidence),
+        out.append({**cardstore.card_to_json(card),
                     "repeats": card.status in cardstore.AWAITING,
                     "offers": _offers_of(core, session, digest, stamp, card, True),
                     "content": dict(content) if isinstance(content, Mapping) else None})

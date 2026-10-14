@@ -21,7 +21,7 @@ Prompts and the "self-recorded message" label (R13 Q4): a prompt that reaches pl
 a host's prompt hook is logged `via: hook`. A prompt the agent records itself with
 `plumb turn start` is logged `via: turn`; a chat "ok" relayed from it still confirms, and
 the confirmation is labelled "self-recorded message" in `plumb show`, `plumb explain`, the
-merge-boundary glance and `plumb hosts status`. `plumb relay` writes the label once, as
+merge-boundary glance and `plumb hosts status`. The label is written once, as
 `self_recorded: true` in the approval's hash-chained payload when the cited prompt was logged
 `via: turn`; every surface reads that one field (`plumb.confirm.is_self_recorded`).
 

@@ -14,7 +14,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 # Rows in this order: what the owner did not type in their own terminal comes first.
-GROUP_ORDER = ("agent-relayed", "auto-jev", "owner-words", "settled", "owner", "import")
+GROUP_ORDER = ("agent-relayed", "auto-jev", "owner-words", "owner", "import")
 SELF_RECORDED_VIA = frozenset({"turn", "turn-start", "cli", "agent", "self"})
 SELF_RECORDED_HOSTS = frozenset({"cli"})
 
@@ -185,10 +185,6 @@ def glance_line(row: Mapping[str, Any]) -> str:
     elif by == "auto-jev":
         line = (f"  {kind}AUTO-JEV {what} score {row.get('score')} ({row.get('confidence')}) "
                 f"model {row.get('model_version')} prompt {str(row['prompt_digest'])[:19]}")
-    elif by == "settled":
-        from plumb.present.owner_text import SETTLED_GLANCE
-
-        line = f"  {kind}{SETTLED_GLANCE} {what}"
     else:
         line = f"  {kind}{by} {what}"
         if row.get("triage"):

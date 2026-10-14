@@ -1,7 +1,7 @@
 """PRESENT commands (sp5 5 to 8): the owner's commands take plain words.
 
 ``status`` (``--card``), ``brief``, ``drift``, ``show``, ``explain`` (alias ``why``),
-``impact``, ``resolve``, ``review``, ``confirm``, ``align`` and ``view``. Every argument that
+``impact``, ``resolve``, ``review``, ``align`` and ``view``. Every argument that
 names something may be plain words ("the login thing"), a path or an ID; IDs and paths still
 work but are never required (R9). When the words do not clearly name one thing, the command
 lists the candidates in the owner's terms and asks which one, instead of guessing.
@@ -194,27 +194,6 @@ def cmd_review(command: str, argv: list[str]) -> int:
     return 0
 
 
-def cmd_confirm(command: str, argv: list[str]) -> int:
-    parser = _parser(command, "Prepare a confirmation your own words then give: shows the "
-                     "records as intent cards and puts them in the stated set. It never "
-                     "approves anything.")
-    parser.add_argument("words", nargs="*")
-    parser.add_argument("--limit", type=int, default=5, help="cards shown at most")
-    args = parser.parse_args(argv)
-    from plumb.present.confirm import confirm
-
-    core = _core(args)
-    ids: list[str] | None = None
-    if args.words:
-        ids, _, answered = _resolve_or_ask(core, args.words, args.as_json)
-        if answered:
-            return 0
-    data = confirm(core, ids, limit=args.limit, named=bool(
-        args.words and all(_ID.match(w) for w in args.words)))
-    emit(data if args.as_json else data["lines"], args.as_json)
-    return 0
-
-
 def cmd_align(command: str, argv: list[str]) -> int:
     parser = _parser(command, "Judge each edge of a scope (intent, feature, requirement, "
                      "example, test, code, evidence), weakest first, and name the gaps. "
@@ -266,7 +245,7 @@ def cmd_view(command: str, argv: list[str]) -> int:
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "status": cmd_status, "brief": cmd_brief, "drift": _delegate, "show": cmd_show,
     "explain": cmd_explain, "why": cmd_explain, "impact": cmd_impact,
-    "resolve": cmd_resolve, "review": cmd_review, "confirm": cmd_confirm,
+    "resolve": cmd_resolve, "review": cmd_review,
     "align": cmd_align, "view": cmd_view,
 }
 

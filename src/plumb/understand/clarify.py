@@ -4,10 +4,11 @@
 the owner has just answered is applied first); its inputs carry the conversation before the
 message and the repository facts (SR-128), frozen when the prompt arrives; ``recompute``
 rebuilds the inputs from the logs, the card store and that frozen context; ``apply`` turns
-the model's answer into at most one card of three questions (the smaller gaps as labelled
-assumptions on it), an offer of a short spec session when more than three questions change
-what gets built, or nothing (no intent, no gap), and opens the gate when nothing is left to
-ask. ``on_prompt`` is the prompt hook's side: it closes the gate and queues the job, and never
+the model's answer into the read-back card of the request (a proposal, the assumptions and the
+one thing not done; the owner's one "yes" confirms the request's records), at most one choice
+card for the one gap that blocks (or an offer of a short spec session when more than one
+question changes what gets built), or nothing (no intent). Only the choice card keeps the gate
+closed. ``on_prompt`` is the prompt hook's side: it closes the gate and queues the job, and never
 waits."""
 
 from __future__ import annotations
@@ -15,36 +16,48 @@ from __future__ import annotations
 import json
 import re
 import time
+from dataclasses import replace
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import Applied, CardState, ClarifyQuestion, Job
+from plumb.contracts import Applied, CardState, Choice, ClarifyQuestion, Job
 from plumb.present import owner_text
 from plumb.understand import cardstore, files, gate
-from plumb.understand.cards import choices_for
 from plumb.understand.typed import PREFIX
 
 kind = "clarify"
 SCHEMA_ID = "clarify.v1"
 HERE = Path(__file__).resolve().parent
-MAX_QUESTIONS = 3
+MAX_QUESTIONS = 1
 GO_TEXT = re.compile(r"^" + PREFIX + r"[ \t]+go$")   # SR-120: /plumb go or /plumb:plumb go
 
 TOPIC_FALLBACK = "your request"
 ISSUE_QUESTIONS = "{n} things would change what I build, and I need your answer before I start"
-ISSUE_ESCALATION = ("{n} things would change what I build; a short spec session settles them "
-                    "better than {n} questions")
+ISSUE_ESCALATION = ("{n} things would change what I build; going through them together in a "
+                    "short spec session beats {n} separate questions")
+EVIDENCE_GAPS = "The {n} things: {text}"
+SPEC_YES_NOTE = "Nothing is built until we have been through them together"
+SPEC_NO_NOTE = "Builds now on the guesses listed on your request; you can correct them there"
+WAITS_ON = "Nothing is built until you answer the question below."
+CHOICE_TOPIC = 'One question about your request of {date}: "{text}"'
 SPEC_QUESTION = "Shall we go through them in a short spec session first?"
 SPEC_YES = "Yes, a short spec session"
 SPEC_NO = "No, build with my best guesses"
 COULDNT_ISSUE = "I could not check whether your request is clear: {why}. Nothing was built."
 COULDNT_TIMEOUT = "the check was still running"
 COULDNT_QUESTION = "Build without the check?"
-EVIDENCE_WILL = "  I will: {text}"
-EVIDENCE_WONT = "  I will not: {text}"
-EVIDENCE_ASSUMED = "  Assumed (not confirmed): {text}"
-EVIDENCE_EXAMPLE = "  For example: {text}"
+EVIDENCE_WONT = "Not doing: {text}"
+EVIDENCE_ASSUMED = "Assumed: {text}"
+EVIDENCE_CHANGES = "What changes: {text}"
+TOPIC = 'Your request of {date}: "{text}"'
+READBACK_ID = "ok"
+READBACK_QUESTION = "Is this what you want?"
+READBACK_YES = "Yes, that is what I meant"
+READBACK_YES_NOTE = ("Confirms this request and everything recorded from it (the brief lists it); "
+                     "it does not hold the work back")
+READBACK_NO = "Not quite"
+READBACK_NO_NOTE = "Say what to change; nothing is confirmed."
 ESCALATION_MARK = "Escalation: short spec session"
 GATE_REASON_CARD = "a question about your request is waiting for your answer"
 GATE_REASON_ESCALATION = "a short spec session is offered before building"
@@ -76,6 +89,10 @@ def card_id(digest: str) -> str:
     return f"clarify:{short(digest)}"
 
 
+def choice_id(digest: str) -> str:
+    return f"choice:{short(digest)}"
+
+
 def couldnt_card_id(digest: str) -> str:
     return f"couldnt_check:{short(digest)}"
 
@@ -91,7 +108,7 @@ def _message_of(context: Mapping[str, Any]) -> tuple[str, str]:
 
 
 def touched(core: Any, text: str) -> list[dict[str, str]]:
-    """The confirmed (and settled) records the message seems to touch, with their text."""
+    """The confirmed records the message seems to touch, with their text."""
     from plumb.query import record_text
 
     found = [rid for rid, _ in core.relevant(text, 8)]
@@ -105,8 +122,7 @@ def touched(core: Any, text: str) -> list[dict[str, str]]:
         record = index.get(rid)
         if record is None or status is None or status.confirmation != "confirmed":
             continue
-        out.append({"id": rid, "status": "settled" if getattr(status, "settled", False)
-                    else "confirmed", "text": record_text(record)})
+        out.append({"id": rid, "status": "confirmed", "text": record_text(record)})
     return out
 
 
@@ -115,7 +131,7 @@ def answered_for(root: Path, session: str, digest: str) -> list[dict[str, str]]:
     ``{card, question, text, answer}``; a question answered "rejected" is not an answer."""
     out: list[dict[str, str]] = []
     for card in cardstore.own_cards(root, session):
-        if card.kind != "clarify":
+        if card.kind not in ("clarify", "choice"):
             continue
         texts = {q.id: q.text for q in card.questions}
         for answer in card.answers:
@@ -368,10 +384,17 @@ def frozen_context(root: Path, session: str, digest: str, transcript: Any = None
     return frozen
 
 
-def _inputs(core: Any, digest: str, text: str, answered: Sequence[Mapping[str, str]],
-            frozen: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def _inputs(core: Any, session: str, digest: str, text: str,
+            answered: Sequence[Mapping[str, str]], frozen: Mapping[str, Any] | None = None
+            ) -> dict[str, Any]:
     out = {"message": {"digest": digest, "text": text}, "touched": touched(core, text),
            "answered": [dict(a) for a in answered]}
+    open_cards = [{"id": c.id, "topic": c.topic, "question": c.issue}
+                  for c in cardstore.own_cards(Path(core.root), session)
+                  if c.kind in ("clarify", "choice") and c.status in cardstore.AWAITING
+                  and short(digest) not in c.id]
+    if open_cards:
+        out["open_cards"] = open_cards
     out.update(frozen or {})
     return out
 
@@ -388,7 +411,7 @@ def build(core: Any, session: str, **context: Any) -> Job | None:
         return None
     after = context.get("after")
     frozen = frozen_context(Path(core.root), session, digest, context.get("transcript"), text)
-    job = files.make_job(kind, session, SCHEMA_ID, _inputs(core, digest, text, (), frozen),
+    job = files.make_job(kind, session, SCHEMA_ID, _inputs(core, session, digest, text, (), frozen),
                          needs=str(after) if after else None, created=_now())
     queue.enqueue(core, job)
     return job
@@ -407,7 +430,7 @@ def recompute(core: Any, job: Job) -> Mapping[str, Any] | None:
     except Refused:
         return None
     digest = str(logged["digest"])
-    return _inputs(core, digest, str(logged.get("text") or ""),
+    return _inputs(core, job.session, digest, str(logged.get("text") or ""),
                    answered_for(Path(core.root), job.session, digest),
                    frozen_context(Path(core.root), job.session, digest))
 
@@ -422,17 +445,20 @@ def _clean(items: Any) -> list[str]:
 
 
 def _gap_question(gap: Mapping[str, Any], n: int) -> ClarifyQuestion:
+    """The gap as one question: the recommended suggestion first, each with its consequence."""
     suggestions = _clean(gap.get("suggestions"))
+    lines = [*_clean(gap.get("consequences")), *[""] * len(suggestions)][:len(suggestions)]
     try:
         first = int(gap.get("recommended") or 0)
     except (TypeError, ValueError):
         first = 0
     if 0 < first < len(suggestions):
         suggestions.insert(0, suggestions.pop(first))
+        lines.insert(0, lines.pop(first))
     ident = re.sub(r"[^a-z0-9_-]+", "-", str(gap.get("id") or "").lower()).strip("-") or f"q{n}"
-    return ClarifyQuestion(id=ident, text=str(gap.get("question") or "").strip(),
-                           resolutions=tuple(suggestions),
-                           choices=choices_for("clarify", suggestions))
+    return ClarifyQuestion(
+        id=ident, text=str(gap.get("question") or "").strip(), resolutions=tuple(suggestions),
+        choices=tuple(Choice(t, "change", t, c) for t, c in zip(suggestions, lines)))
 
 
 def _already_answered(question: ClarifyQuestion, answered: Sequence[Mapping[str, Any]]) -> bool:
@@ -442,14 +468,6 @@ def _already_answered(question: ClarifyQuestion, answered: Sequence[Mapping[str,
         if question.text and str(item.get("text", "")).strip().lower() == question.text.lower():
             return True
     return False
-
-
-def _evidence(readback: Mapping[str, Any]) -> str:
-    lines = [EVIDENCE_WILL.format(text=t) for t in _clean(readback.get("will"))]
-    lines += [EVIDENCE_WONT.format(text=t) for t in _clean(readback.get("wont"))]
-    lines += [EVIDENCE_ASSUMED.format(text=t) for t in _clean(readback.get("assumptions"))]
-    lines += [EVIDENCE_EXAMPLE.format(text=t) for t in _clean(readback.get("examples"))]
-    return "\n".join(lines)
 
 
 def assumptions(card: CardState) -> list[tuple[str, str]]:
@@ -468,53 +486,133 @@ def confirmed_answers(card: CardState) -> dict[str, str]:
 
 
 def is_escalation(card: CardState) -> bool:
-    return card.kind == "clarify" and ESCALATION_MARK in card.evidence
+    return card.kind == "choice" and ESCALATION_MARK in card.evidence
+
+
+def request_records(core: Any, digest: str) -> list[Any]:
+    """The records of the request ``digest``: the intents whose ``prompt`` field is its digest
+    (a 12+ hex prefix either way), and what derives from or decides them, however deep."""
+    want = digest.removeprefix("sha256:")
+    index = core.index()
+    found = set()
+    for r in index.values():
+        said = str(r.fields.get("prompt") or "")
+        if r.kind == "intent" and len(said) >= 12 and (want.startswith(said)
+                                                       or said.startswith(want)):
+            found.add(r.id)
+    while True:
+        more = {r.id for r in index.values() if r.id not in found and any(
+            link.kind in ("derives_from", "decides") and link.target.record in found
+            for link in r.links)}
+        if not more:
+            return [index[i] for i in sorted(found)]
+        found |= more
+
+
+def _clipped(text: str) -> str:
+    clipped = " ".join(text.split())
+    return clipped if len(clipped) <= 80 else clipped[:79].rstrip() + "..."
+
+
+def _readback_card(root: Path, digest: str, text: str, readback: Mapping[str, Any],
+                   lines: Sequence[str]) -> CardState:
+    clipped = _clipped(text)
+    will = _clean(readback.get("will"))
+    wont = _clean(readback.get("wont"))[:1]
+    proposal = str(readback.get("proposal") or "").strip() or (will[0] if will else clipped)
+    evidence = [*lines, *(EVIDENCE_WONT.format(text=t) for t in wont)]
+    resolutions = (READBACK_YES, READBACK_NO)
+    return CardState(
+        id=card_id(digest), kind="clarify", topic=TOPIC.format(date=_now()[:10], text=clipped),
+        issue=proposal, evidence="\n".join(evidence), resolutions=resolutions,
+        questions=(ClarifyQuestion(id=READBACK_ID, text=READBACK_QUESTION,
+                                   resolutions=resolutions, choices=(
+                                       Choice(READBACK_YES, "accepted",
+                                              consequence=READBACK_YES_NOTE),
+                                       Choice(READBACK_NO, "change",
+                                              consequence=READBACK_NO_NOTE))),),
+        status="open", turn=0, branch=repository(root)["branch"])
 
 
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     if core is None:
         return Applied(job=job.id)
+    root = Path(core.root)
     message = job.inputs.get("message")
     digest = str(message.get("digest") if isinstance(message, Mapping) else "")
+    text = str(message.get("text") if isinstance(message, Mapping) else "")
     session = job.session
-    closed = tuple(c.id for c in cardstore.own_cards(Path(core.root), session)
-                   if c.id == couldnt_card_id(digest) and c.status == "open")
+    own = cardstore.own_cards(root, session)
+    closed = tuple(c.id for c in own if c.id == couldnt_card_id(digest) and c.status == "open")
+    # the reader marks the card left_open before this job applies (SR-131 EX-4)
+    waiting = {c.id for c in own if c.kind == "choice"
+               and c.status in (*cardstore.AWAITING, "left_open")}
+    if any(e.kind == "read-entry" and e.payload.get("message_digest") == digest
+           and e.payload.get("answer") == "open"
+           and str(e.payload.get("id")).split("/", 1)[0] in waiting for e in core.events()):
+        gate.refresh(root, session, digest, GATE_REASON_CARD)    # SR-131 EX-4: a vague answer
+        return Applied(job=job.id, closed=closed)               # picks nothing; the card stays
     if str(answer.get("intent")) != "yes":
         gate.open(core, session, digest, "clarify", "your message carries no new request")
         return Applied(job=job.id, closed=closed)
     answered = [a for a in job.inputs.get("answered") or () if isinstance(a, Mapping)]
-    questions = [_gap_question(g, n) for n, g in enumerate(answer.get("gaps") or (), 1)
-                 if isinstance(g, Mapping)]
-    questions = [q for q in questions if q.text and not _already_answered(q, answered)]
+    gaps = [(g, _gap_question(g, n)) for n, g in enumerate(answer.get("gaps") or (), 1)
+            if isinstance(g, Mapping)]
+    gaps = [(g, q) for g, q in gaps if q.text and not _already_answered(q, answered)]
     raw = answer.get("readback")
     readback: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}
-    topic = str(answer.get("topic") or "").strip() or TOPIC_FALLBACK
-    if not questions:
-        gate.open(core, session, digest, "clarify",
-                  "the questions are answered" if answered else "nothing is unclear")
-        return Applied(job=job.id, closed=closed)
-    evidence = _evidence(readback)
-    if len(questions) > MAX_QUESTIONS:
-        card = CardState(
-            id=card_id(digest), kind="clarify", topic=topic,
-            issue=ISSUE_ESCALATION.format(n=len(questions)),
-            evidence="\n".join(filter(None, [ESCALATION_MARK, evidence])),
+    # SR-131: only a gap with no better-supported answer is asked, and one at most; two or
+    # more are a spec session offered; a gap that is not blocking is assumed
+    open_gaps = [(g, q) for g, q in gaps if g.get("blocking")]
+    escalate = len(open_gaps) > MAX_QUESTIONS
+    blocking = [] if escalate else open_gaps[:1]
+    # a gap not asked (not blocking, past the first, or all of them when a spec session is
+    # offered) is a guess on the read-back, so the owner can still flip it
+    asked = {id(g) for g, _ in blocking}
+    lines = [EVIDENCE_ASSUMED.format(text=t) for t in _clean(readback.get("assumptions"))]
+    lines += [EVIDENCE_ASSUMED.format(text=f"{q.text}: {q.resolutions[0]}")
+              for g, q in gaps if id(g) not in asked and (escalate or not g.get("blocking"))
+              and q.resolutions and not (escalate and g.get("blocking"))]
+    if escalate or blocking:
+        lines.insert(0, WAITS_ON)
+    cards = [_readback_card(root, digest, text, readback, lines)]
+    topic = CHOICE_TOPIC.format(date=_now()[:10], text=_clipped(text))
+    if escalate:
+        cards.append(CardState(
+            id=choice_id(digest), kind="choice", topic=topic,
+            issue=ISSUE_ESCALATION.format(n=len(open_gaps)),
+            evidence="\n".join([ESCALATION_MARK, EVIDENCE_GAPS.format(
+                n=len(open_gaps), text="; ".join(q.text for _, q in open_gaps)),
+                *(EVIDENCE_ASSUMED.format(text=f"{q.text}: {q.resolutions[0]}")
+                  for _, q in open_gaps if q.resolutions)]),
             resolutions=(SPEC_YES, SPEC_NO),
             questions=(ClarifyQuestion(id="spec", text=SPEC_QUESTION,
                                        resolutions=(SPEC_YES, SPEC_NO),
-                                       choices=choices_for("clarify", (SPEC_YES, SPEC_NO))),),
-            status="open", turn=0)
-        reason = GATE_REASON_ESCALATION
+                                       choices=(Choice(SPEC_YES, "change", SPEC_YES, SPEC_YES_NOTE),
+                                                Choice(SPEC_NO, "accepted", consequence=SPEC_NO_NOTE))),),
+            status="open", turn=0, branch=cards[0].branch))
+    elif blocking:
+        gap, question = blocking[0]
+        changes = "; ".join(c.consequence for c in question.choices if c.consequence)
+        cards.append(CardState(
+            id=choice_id(digest), kind="choice", topic=topic, issue=question.text,
+            evidence=EVIDENCE_CHANGES.format(text=changes) if changes else "",
+            resolutions=question.resolutions, questions=(question,), status="open", turn=0,
+            branch=cards[0].branch,
+            diagram=(f".plumb/session/{session}/diagrams/{short(digest)}.html"
+                     if gap.get("diagram") else "")))
+    mine = {c.id for c in cards}
+    moot = [i for i in _clean(answer.get("replaces")) if i not in mine
+            and any(c.id == i and c.status in cardstore.AWAITING for c in own)]
+    if moot:
+        cardstore.withdraw(root, session, moot)
+    if len(cards) > 1:
+        gate.refresh(root, session, digest,
+                     GATE_REASON_ESCALATION if escalate else GATE_REASON_CARD)
     else:
-        card = CardState(
-            id=card_id(digest), kind="clarify", topic=topic,
-            issue=(questions[0].text if len(questions) == 1
-                   else ISSUE_QUESTIONS.format(n=len(questions))),
-            evidence=evidence, resolutions=questions[0].resolutions,
-            questions=tuple(questions), status="open", turn=0)
-        reason = GATE_REASON_CARD
-    gate.refresh(Path(core.root), session, digest, reason)
-    return Applied(job=job.id, cards=(card,), closed=closed)
+        gate.open(core, session, digest, "clarify",
+                  "the questions are answered" if answered else "nothing is unclear")
+    return Applied(job=job.id, cards=tuple(cards), closed=closed)
 
 
 def describe(job: Job) -> str:
@@ -524,41 +622,33 @@ def describe(job: Job) -> str:
 # ---------------------------------------------------------------- the failed check
 
 
-def couldnt_check_card(digest: str, why: str = "") -> CardState:
+def couldnt_check_card(digest: str, why: str = "", topic: str = "") -> CardState:
     """The card shown when the check could not be made: it says nothing was built and asks
     "Build without the check?" with Build anyway and Wait."""
-    resolutions = (owner_text.GATE_BUILD_ANYWAY, owner_text.GATE_WAIT)
+    resolutions = (owner_text.GATE_WAIT, owner_text.GATE_BUILD_ANYWAY)   # waiting is the safe one
     return CardState(
-        id=couldnt_card_id(digest), kind="couldnt_check", topic=TOPIC_FALLBACK,
+        id=couldnt_card_id(digest), kind="couldnt_check", topic=topic or TOPIC_FALLBACK,
         issue=COULDNT_ISSUE.format(why=why or COULDNT_TIMEOUT), resolutions=resolutions,
         questions=(ClarifyQuestion(id="release", text=COULDNT_QUESTION,
                                    resolutions=resolutions,
-                                   choices=choices_for("couldnt_check", resolutions)),),
+                                   choices=(
+                                       Choice(owner_text.GATE_WAIT, "rejected",
+                                              consequence=owner_text.GATE_WAIT_NOTE),
+                                       Choice(owner_text.GATE_BUILD_ANYWAY, "accepted",
+                                              consequence=owner_text.GATE_BUILD_NOTE))),),
         status="open")
 
 
-def write_couldnt_check(root: Path, session: str, digest: str, why: str = "") -> CardState:
+def write_couldnt_check(root: Path, session: str, digest: str, why: str = "",
+                        text: str = "") -> CardState:
     """Put the "couldn't check" card of the message in the card store (once) and keep the
     gate closed for it."""
-    card = couldnt_check_card(digest, why)
+    card = couldnt_check_card(digest, why, TOPIC.format(date=_now()[:10], text=_clipped(text))
+                              if text.strip() else "")
     cards = [c for c in cardstore.own_cards(root, session) if c.id != card.id]
     cardstore.save(root, session, [*cards, card])
     gate.refresh(root, session, digest, GATE_REASON_COULDNT)
     return card
-
-
-def render(card: CardState) -> list[str]:
-    """The card as the owner reads it (the agent shows it in its reply)."""
-    head = owner_text.CARD_COULDNT_CHECK if card.kind == "couldnt_check" \
-        else owner_text.CARD_CLARIFY
-    lines = [head.format(topic=card.topic, issue=card.issue)]
-    if card.evidence and card.kind == "clarify":
-        lines.extend(line for line in card.evidence.splitlines() if line != ESCALATION_MARK)
-    for question in card.questions:
-        lines.append(question.text)
-        lines.extend(owner_text.CARD_RESOLUTION.format(n=n, text=text)
-                     for n, text in enumerate(question.resolutions, 1))
-    return lines
 
 
 # ---------------------------------------------------------------- the card effects
@@ -575,17 +665,72 @@ def _clarify_pending(root: Path, session: str, digest: str) -> bool:
     return False
 
 
-def _clarify_effect(*, core: Any, card: CardState, job: Any = None, digest: str = "",
-                    **_: Any) -> Applied | None:
-    """A clarify card answered: when every question is mapped the gate opens, unless this
-    message's own clarify job is still to run (it opens the gate, or asks what is new)."""
+def _shown_records(core: Any, session: str, card: str, source: Any) -> dict[tuple[str, str], str] | None:
+    """The ``(id, hash)`` pairs the read-back was drawn with, each with the proposal shown: those
+    of the offer pressed, or of the card's latest drawing; None when typed words answer a card
+    never drawn in the panel."""
+    from plumb.mod.offers import load_offer, offers_dir
+
+    offer = getattr(source, "offer_id", "")
+    if offer:
+        held = [load_offer(core.root, session, offer)]
+    else:
+        held = [files.read_json(p) for p in offers_dir(Path(core.root), session).glob("*.json")]
+        held = sorted((h for h in held if isinstance(h, Mapping) and h.get("card") == card),
+                      key=lambda h: str(h.get("drawn_at")))[-1:]
+    if not any(held):
+        return None if not offer else {}
+    return {(str(r.get("id")), str(r.get("hash"))): str(r.get("proposal") or "")
+            for h in held if h for r in h.get("records") or () if isinstance(r, Mapping)}
+
+
+def _clarify_effect(*, core: Any, card: CardState, accepted: bool = False,
+                    confirm: Any = None, entry: Mapping[str, Any] | None = None,
+                    session: str = "", source: Any = None, **_: Any) -> Applied | None:
+    """The read-back answered yes: that one answer confirms the records it was drawn with, at
+    the versions drawn (SR-130); a record changed or added since is left unconfirmed and
+    asked again on a choice showing what was answered next to how it reads now."""
+    from plumb.understand import cards, trial
+
+    digest = card.id.removeprefix("clarify:")
+    if not (accepted and confirm is not None and card.id != digest and digest):
+        return None
+    said = entry or {}
+    shown = _shown_records(core, session, card.id, source)
+    again: list[CardState] = []
+    for record in request_records(core, digest):
+        if shown is None or (record.id, record.hash) in shown:
+            confirm(record.id, record.hash, str(said.get("evidence") or ""),
+                    float(said.get("confidence") or 1.0))
+        else:
+            old = next((p for (i, _h), p in shown.items() if i == record.id), "")
+            again.append(cards.which_version(record, old or record.title,
+                                             trial._proposal(record), card.branch,
+                                             card.topic))
+    return Applied(job="", cards=tuple(again)) if again else None
+
+
+def _choice_effect(*, core: Any, card: CardState, job: Any = None, digest: str = "",
+                   **_: Any) -> Applied | None:
+    """The choice answered: the gate opens, unless this message's own clarify job is still to
+    run (it opens the gate, or asks what is new)."""
+    # the spec session offer opens the gate only on "build with my best guesses"
+    opens = (lambda a: a == "accepted") if is_escalation(card) else (lambda a: a != "rejected")
+    guessed = bool(card.answers) and is_escalation(card) and opens(card.answers[-1].answer)
     done = bool(card.questions) and all(
-        any(a.question == q.id and a.answer != "rejected" for a in card.answers)
+        any(a.question == q.id and opens(a.answer) for a in card.answers)
         for q in card.questions)
     session = str(getattr(job, "session", "") or "")
     if done and session and not _clarify_pending(Path(core.root), session, digest):
         gate.open(core, session, digest, "clarify", "every question of the card is answered")
-    return None
+    if not (guessed and session):
+        return None
+    # "build with my best guesses": the request lists them, as the answer promised
+    guesses = [l for l in card.evidence.splitlines() if l.startswith(EVIDENCE_ASSUMED.format(text=""))]
+    want = card_id(digest or card.id.removeprefix("choice:"))
+    return Applied(job="", cards=tuple(
+        replace(c, evidence="\n".join([*c.evidence.splitlines(), *guesses]))
+        for c in cardstore.own_cards(Path(core.root), session) if c.id == want))
 
 
 def _couldnt_check_effect(*, core: Any, card: CardState, job: Any = None, digest: str = "",
@@ -602,6 +747,7 @@ def _register() -> None:
     from plumb.understand import effects
 
     effects.register("clarify", _clarify_effect)
+    effects.register("choice", _choice_effect)
     effects.register("couldnt_check", _couldnt_check_effect)
 
 
@@ -615,6 +761,13 @@ def is_typed_go(text: str) -> bool:
     return bool(GO_TEXT.match(text.strip()))
 
 
+def _typed_settle(text: str) -> bool:
+    from plumb.understand import typed
+
+    parsed = typed.parse(text)
+    return parsed is not None and parsed.command == "settle"
+
+
 def on_prompt(ctx: Any, core: Any, entry: Any, *, after: str | None = None) -> list[str]:
     """Close the gate for this message and queue its clarify job (idempotent, no wait). The
     typed ``/plumb go`` releases a failed check instead and carries no request of its own.
@@ -624,6 +777,8 @@ def on_prompt(ctx: Any, core: Any, entry: Any, *, after: str | None = None) -> l
     text = str(entry.get("text") if isinstance(entry, Mapping) else "")
     if not session or not digest:
         return []
+    if text.strip() and _typed_settle(text):
+        return []                         # SR-134 EX-2: typed.on_prompt tells the owner it is gone
     if is_typed_go(text):
         if gate.release(core, session, "typed", digest=digest):
             return [GATE_RELEASED]

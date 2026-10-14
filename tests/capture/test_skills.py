@@ -21,7 +21,7 @@ def test_plumb_records_skill_names_capture_helpers(installed: Path) -> None:
     skill = (installed / ".claude" / "skills" / "plumb-records" / "SKILL.md").read_text(
         encoding="utf-8")
     for words in ("plumb capture", "plumb decide", "plumb clarify", "plumb triage",
-                  "plumb relay` is refused", "plumb-clarify"):
+                  "plumb-clarify"):
         assert words in skill, words
     body = skill.split("---", 2)[2].strip().splitlines()
     assert len(body) <= 30  # about 25 lines of context, not procedure
@@ -37,10 +37,10 @@ def test_clarify_skill_states_depths_and_discipline(installed: Path) -> None:
     skill = path.read_text(encoding="utf-8")
     assert skill.startswith("---\nname: plumb-clarify\n")
     assert "creates or changes intent" in skill.split("---", 2)[1]
-    for words in ("trivial", "incremental", "escalated", "ONE per message",
-                  "multiple choice", "recommended", "--matters", "YAGNI",
+    for words in ("trivial", "incremental", "escalated", "one at a time",
+                  "I assume", "recommended", "--matters", "YAGNI",
                   "owner's terms", "\"go\" or \"ok\"", "labelled", "2-3 approaches",
-                  "purpose", "plumb clarify", "spec show", "intent card"):
+                  "purpose", "plumb clarify", "spec show", "read-back"):
         assert words in skill, words
     assert "{plumb}" not in skill
 

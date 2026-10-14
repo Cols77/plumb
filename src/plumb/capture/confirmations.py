@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from plumb.api import Core
 
 WORDS = {"owner": "you", "agent-relayed": "you (relayed)", "auto-jev": "JEV",
-         "import": "import", "owner-words": "you", "settled": "settled from your words"}
+         "import": "import", "owner-words": "you"}
 
 
 def standing(core: Core) -> dict[str, tuple[str, str, Any]]:

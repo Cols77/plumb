@@ -55,23 +55,6 @@ def test_calibration_from_logged_scores_leaves_the_generated_no_examples_out(
     assert results["example-restatement"].generated_negatives == 0
 
 
-def test_a_backlog_without_features_is_grouped_by_the_intent(repo: Path, write_record) -> None:
-    from plumb.understand import backlog
-
-    digest = log_prompt(repo, "Build the tool as described.")
-    for k in (1, 2):
-        write_record(repo, intent_text(k, "Build the tool", f"Part {k} of the tool",
-                                       prompt=digest))
-        for j in (1, 2, 3):
-            write_record(repo, requirement_text(
-                k * 10 + j, f"Thing {k * 10 + j}", "does a thing", intent=k,
-                examples=(("a", "b", "c"),)))
-    titles = backlog.features(open_core(repo))
-    assert {titles[f"SR-0{k}{j}"] for k in (1, 2) for j in (1, 2, 3)} == {
-        "Part 1 of the tool", "Part 2 of the tool"}
-    assert titles["SR-011"] == titles["SR-013"] == titles["INT-001"] != titles["SR-021"]
-
-
 def test_the_worker_keeps_the_count_of_a_pass_between_its_jobs(repo: Path) -> None:
     """The line of the backlog pass reads 10/160 while the next job starts, not 0 (SR-107)."""
     import time

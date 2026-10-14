@@ -1,4 +1,4 @@
-"""SP8 3.2 item 3: owner-words and settled approvals need the worker's token."""
+"""SP8 3.2 item 3: owner-words approvals need the worker's token."""
 
 from __future__ import annotations
 
@@ -37,19 +37,12 @@ def test_owner_words_refused_without_token(paths: PlumbPaths,
     assert log.worker_token_problem(paths.root, "s1", "owner-words")
 
 
-def test_settled_refused_with_wrong_token(paths: PlumbPaths,
-                                          monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PLUMB_WORKER", "b2" * 16)
-    with pytest.raises(log.LogError):
-        log.append(paths, "events", "approval", _approval("settled"))
-
-
 def test_accepted_with_matching_token(paths: PlumbPaths,
                                       monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PLUMB_WORKER", TOKEN)
-    assert log.worker_token_problem(paths.root, "s1", "settled") is None
-    entry = log.append(paths, "events", "approval", _approval("settled"))
-    assert entry.payload["by"] == "settled"
+    assert log.worker_token_problem(paths.root, "s1", "owner-words") is None
+    entry = log.append(paths, "events", "approval", _approval("owner-words"))
+    assert entry.payload["by"] == "owner-words"
 
 
 def test_other_by_values_unchanged(paths: PlumbPaths, monkeypatch: pytest.MonkeyPatch) -> None:

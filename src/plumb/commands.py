@@ -1,5 +1,5 @@
 """CORE commands: init, show, link, repin, validate, status, brief, explain (alias why), approve,
-relay, revoke."""
+revoke."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from plumb.cliutil import EXIT_OK, EXIT_REFUSED, EXIT_USAGE, add_common, emit, resolve_root
+from plumb.cliutil import EXIT_REFUSED, EXIT_USAGE, add_common, emit, resolve_root
 
 CONFIG_TEMPLATE = """\
 # plumb configuration. Every key is optional; the defaults are shown commented out.
@@ -254,7 +254,7 @@ def _diagnosis_line(item: dict[str, Any], dry_run: bool) -> str:
 STALE_USAGE = (
     "usage: plumb stale card <link> --topic TITLE --issue WORDS --options a|b|c "
     "--consequences a|b|c --why REASON [--recommended N] [--session ID]\n"
-    "       plumb stale cards [--incomplete] [--full] [--session ID] [--json]\n"
+    "       plumb stale cards [--incomplete] [--session ID] [--json]\n"
     "card: records a stale card for an owner-intent question: the link then counts as "
     "resolved for the end-of-turn hold, and the end-of-turn summary shows the card to the "
     "owner. Each option needs what it does and leaves undone (--consequences, one per option, "
@@ -346,19 +346,20 @@ def _stale_card(argv: list[str]) -> int:
 
 
 def _stale_cards(argv: list[str]) -> int:
-    from plumb.understand import cardcontent
+    from plumb import stale
+    from plumb.understand import fullcard
 
     parser = _parser("stale cards", "List the open stale cards with all they show the owner.")
     parser.add_argument("--incomplete", action="store_true",
                         help="only the cards still lacking something (SR-116), and what")
-    parser.add_argument("--full", action="store_true",
-                        help="print a long diff in full instead of folded")
     parser.add_argument("--session", default=None, help="one session (default: every one)")
     args = parser.parse_args(argv)
     core = _core(args)
-    contents = cardcontent.all_contents(
-        core, sessions=[args.session] if args.session else None,
-        incomplete_only=args.incomplete)
+    contents = [fullcard.stale_content(core, entry, session=session)
+                for session in ([args.session] if args.session else stale.sessions(core.root))
+                for entry in stale.read_cards(core.root, session)
+                if entry.get("status", "open") == "open"
+                and not (args.incomplete and stale.card_complete(entry))]
     if args.as_json:
         emit({"cards": contents}, True)
         return 0
@@ -370,12 +371,11 @@ def _stale_cards(argv: list[str]) -> int:
         if content["missing"]:
             head += " lacks: " + "; ".join(content["missing"])
         print(head)
-        if args.incomplete and not args.full:
+        if args.incomplete:
             print(f"  complete it: plumb stale card {content['link']} --session "
                   f"{content['session']} --consequences \"...\" --why \"...\"")
             continue
-        for line in cardcontent.content_lines(content, fold=not args.full):
-            print(line)
+        print(fullcard.render(content))
     return 0
 
 
@@ -439,6 +439,14 @@ def cmd_approve(command: str, argv: list[str]) -> int:
     return _guarded(act)
 
 
+def cmd_relay(command: str, argv: list[str]) -> int:
+    """Refused, always (SR-135): an agent-run prose relay no longer exists."""
+    del command, argv
+    print("plumb: relay no longer exists; nothing was recorded. The owner's typed /plumb approve, "
+          "or the reader's reading of their own message, are what confirm a record", file=sys.stderr)
+    return EXIT_REFUSED
+
+
 def cmd_revoke(command: str, argv: list[str]) -> int:
     from plumb import approvals
 
@@ -453,20 +461,6 @@ def cmd_revoke(command: str, argv: list[str]) -> int:
         print("plumb: revoked " + ", ".join(r["id"] for r in entry.payload["records"]))
 
     return _guarded(act)
-
-
-def cmd_relay(command: str, argv: list[str]) -> int:
-    """Refused for the agent, always (SR-101 EX-9, INT-028): the agent-run prose relay no
-    longer exists. Only the owner's typed /plumb approve naming record numbers, or the
-    worker applying the reader's reading of the owner's message, confirms a record."""
-    from plumb import approvals
-
-    if argv and argv[0] in ("-h", "--help"):       # its help still answers, and says why
-        print(f"usage: plumb relay (retired, always refused)\n\n{approvals.AGENT_RELAY_GONE}")
-        return EXIT_OK
-    del command, argv
-    print(f"plumb: relay refused: {approvals.AGENT_RELAY_GONE}", file=sys.stderr)
-    return EXIT_REFUSED
 
 
 def cmd_validate(command: str, argv: list[str]) -> int:
@@ -831,8 +825,8 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "repin": cmd_repin,
     "stale": cmd_stale,
     "approve": cmd_approve,
-    "revoke": cmd_revoke,
     "relay": cmd_relay,
+    "revoke": cmd_revoke,
     "validate": cmd_validate,
     "check": cmd_validate,
     "status": cmd_status,

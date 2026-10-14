@@ -25,11 +25,11 @@ pytestmark = pytest.mark.sr("SR-080")
 
 def _stop_hook(root: Path, changed: list[str] | None = None) -> list[str]:
     """The stop hook's awareness step (publish, then the claim kept in step)."""
+    from plumb.awareness.early import turn_cards
     from plumb.awareness.turn import claim_changes
 
-    asked: list[str] = []
-    claim_changes(open_core(root), pub.publish(open_core(root), changed or []), asked=asked)
-    return asked
+    claim_changes(open_core(root), pub.publish(open_core(root), changed or []))
+    return turn_cards(open_core(root).paths.session)[0]
 
 
 def _merged_then_continued(tmp_path: Path, *, hooks: bool = True,

@@ -424,8 +424,7 @@ def set_hold_count(root: Path | str, session: str, turn_id: str | None, holds: i
 
 # --------------------------------------------------------------------------- stale cards
 # ``.plumb/session/<id>/stale_cards.json``: a JSON list, written here alone (atomically).
-# Phase C's ``cardstore`` reads the open entries as ``stale_link`` cards; JUDGE then renders
-# them in the summary and this module's ``card_lines`` goes.
+# ``cardstore`` reads the open entries as ``stale_link`` cards; ``understand.fullcard`` draws them.
 
 
 def cards_path(root: Path | str, session: str) -> Path:
@@ -451,7 +450,7 @@ def add_card(root: Path | str, session: str, *, link: str, record: str, path: st
     (the reason for the recommended option) are written when given; a card without them is
     kept but incomplete (``card_missing``). ``by`` names who filed it (``diagnosis`` for
     Opus). The record's wording, the diff and the owner's words are derived when the card is
-    shown (``plumb.understand.cardcontent``), never stored here."""
+    shown (``plumb.understand.fullcard``), never stored here."""
     entry: dict[str, Any] = {"link": link, "record": record, "path": path, "topic": topic,
                              "issue": issue, "options": [str(o) for o in options],
                              "recommended": int(recommended), "turn": int(turn),
@@ -541,30 +540,6 @@ def carded_links(root: Path | str, session: str) -> set[str]:
     bringing the link to the owner; the hold names what it lacks)."""
     return {str(c.get("link")) for c in read_cards(root, session)
             if c.get("status", "open") == "open" and card_complete(c)}
-
-
-def card_lines(root: Path | str, session: str) -> list[str]:
-    """The open stale cards as owner-level lines: the requirement's title, the change in
-    words and the options, the recommended one first."""
-    from plumb.present import owner_text as words
-
-    lines: list[str] = []
-    for card in read_cards(root, session):
-        if card.get("status", "open") != "open":
-            continue
-        options = [str(o) for o in card.get("options") or ()]
-        try:
-            first = int(card.get("recommended") or 0)
-        except (TypeError, ValueError):
-            first = 0
-        if 0 < first < len(options):
-            options.insert(0, options.pop(first))
-        lines.append(words.CARD_STALE_LINK.format(topic=card.get("topic", ""),
-                                                  issue=card.get("issue", "")))
-        lines += [words.CARD_RESOLUTION.format(n=n, text=text)
-                  for n, text in enumerate(options, start=1)]
-        lines.append(words.STALE_CARD_WAITS)
-    return lines
 
 
 def default_card(row: Row, record_title: str, other_title: str = "") -> dict[str, Any]:
