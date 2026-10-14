@@ -8,9 +8,15 @@ import types
 from pathlib import Path
 
 import pytest
+from core.test_stale_resolve import (  # noqa: F401
+    LINK,
+    REFORMATTED,
+    Runner,
+    _backend,
+    _edit,
+    project,
+)
 
-from core.test_stale_resolve import (LINK, REFORMATTED, Runner, _backend, _edit,  # noqa: F401
-                                     project)
 from plumb import links, stale
 from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyQuestion

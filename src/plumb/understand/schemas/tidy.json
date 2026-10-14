@@ -1,0 +1,25 @@
+{
+  "id": "tidy.v1",
+  "title": "Which open cards the owner's confirmed records already settle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdicts"],
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "description": "One verdict for each card that should be withdrawn; nothing for the cards to keep.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["card", "verdict"],
+        "properties": {
+          "card": {"type": "string", "description": "The card id as given."},
+          "verdict": {"type": "string", "enum": ["withdraw_answered", "withdraw_duplicate", "keep"]},
+          "record": {"type": ["string", "null"], "description": "withdraw_answered: the id of the confirmed record that answers the card."},
+          "quote": {"type": ["string", "null"], "description": "withdraw_answered: the words of that record that answer it, copied exactly."},
+          "other": {"type": ["string", "null"], "description": "withdraw_duplicate: the id of the other open card that asks the same."}
+        }
+      }
+    }
+  }
+}

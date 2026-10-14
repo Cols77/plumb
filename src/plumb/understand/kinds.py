@@ -8,7 +8,8 @@ from typing import Any
 
 KIND_MODULES: dict[str, str] = {"read": "plumb.understand.read",
                                 "judge": "plumb.understand.judge",
-                                "clarify": "plumb.understand.clarify"}
+                                "clarify": "plumb.understand.clarify",
+                                "tidy": "plumb.understand.tidy"}
 
 
 class _Kinds:

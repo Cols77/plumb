@@ -25,7 +25,7 @@ from typing import Any
 from plumb.contracts import CardState, Choice, ClarifyQuestion, StopParts
 from plumb.present import owner_text
 from plumb.understand import cards as card_text
-from plumb.understand import cardstore, files
+from plumb.understand import cardstore, files, jobs
 
 UNDER_BUDGET_S = 0.35        # the upkeep (the log's cards, the offers) needs this much left
 CALIBRATE_S = 0.9            # rerunning the calibration needs this much left
@@ -103,6 +103,8 @@ def _failure_cards(core: Any, session: str) -> list[CardState]:
         raw = files.read_json(files.jobs_dir(core.root, session) / f"{result.job}.json")
         kind = str(raw.get("kind")) if isinstance(raw, Mapping) else ""
         message = ((raw.get("inputs") or {}).get("message") or {}) if isinstance(raw, Mapping) else {}
+        if kind == "tidy":
+            continue                      # SR-162: its own line says it could not run
         if kind == "clarify" and any(c.id == clarify.couldnt_card_id(str(message.get("digest")))
                                      for c in cardstore.own_cards(Path(core.root), session)):
             continue                      # `plumb clarify` already drew this failure's card
@@ -185,9 +187,10 @@ def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (
         except Exception:  # noqa: BLE001 - the upkeep never costs the owner their summary
             pass
         try:
-            from plumb.understand import backlog
+            from plumb.understand import backlog, tidy
 
             backlog.resume(core, session)    # a pass a failure interrupted goes on (spec 8)
+            tidy.enqueue(core, session)      # SR-162: the model reads the cards after this turn
         except Exception:  # noqa: BLE001 - queueing never costs the owner their summary
             pass
     rendered: tuple[str, ...] = ()
@@ -250,26 +253,34 @@ def _withdraw_settled(core: Any, session: str) -> None:
     wanted = sorted({q.record for c in cards for q in c.questions if q.record})
     statuses = core.status(wanted) if wanted else {}
     gone = [(c, why) for c in cards if (why := _settled(c, statuses))]
-    if gone:
-        cardstore.withdraw(core.root, session, [c.id for c, _ in gone])
     for card, why in gone:
-        core.log_append("events", "card-withdrawn", {"card": card.id, "session": session,
-                                                     "topic": card.topic, "reason": why})
+        cardstore.withdraw_card(core, session, card, why)
     stale.withdraw_settled(core, [session])
 
 
-def _withdrawn_lines(core: Any, session: str, since: str) -> list[str]:
-    """``topic, reason`` of each card withdrawn in this session and not told yet (told once)."""
+def _tidy_lines(core: Any, session: str, since: str) -> list[str]:
+    """The owner's lines about cards plumb withdrew in this session, told once: one naming
+    ``topic, reason`` for each, and one when the tidy job could not run (SR-162 EX-4)."""
     told = Told(core.root, session, since)
-    lines = []
+    named: list[str] = []
     for entry in core.events():
         if (entry.kind == "card-withdrawn" and entry.payload.get("session") == session
                 and entry.digest not in told.notices and entry.at >= told.since):
             told.notices.add(entry.digest)
-            lines.append(f"{entry.payload.get('topic')}, {entry.payload.get('reason')}")
-    told.dirty = bool(lines)
+            named.append(f"{entry.payload.get('topic')}, {entry.payload.get('reason')}")
+    failed = [r.job for r in _tidy_failures(core, session) if r.job not in told.notices]
+    told.notices.update(failed)
+    told.dirty = bool(named or failed)
     told.save()
-    return lines
+    return [*([owner_text.CARDS_WITHDRAWN.format(items="; ".join(named))] if named else []),
+            *([owner_text.TIDY_COULD_NOT_RUN] if failed else [])]
+
+
+def _tidy_failures(core: Any, session: str) -> list[Any]:
+    from plumb.understand import queue
+
+    return [r for r in queue.failures(core, session)
+            if getattr(jobs.load(core.root, session, r.job), "kind", "") == "tidy"]
 
 
 def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
@@ -388,8 +399,7 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
             n=len(late), topics="; ".join(f'"{t}"' for t in late)))
     if incomplete:
         out.append(owner_text.FULL_INCOMPLETE.format(n=incomplete))
-    if withdrawn := _withdrawn_lines(core, session, _iso(stamp)):
-        out.append(owner_text.CARDS_WITHDRAWN.format(items="; ".join(withdrawn)))
+    out.extend(_tidy_lines(core, session, _iso(stamp)))
     _waiting(core, session, drawn)
     files.write_json_atomic(files.session_dir(core.root, session) / DRAWN, kept)
     return out
