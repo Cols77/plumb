@@ -16,7 +16,8 @@ from plumb import __version__
 ROUTES: dict[str, str] = {
     # CORE
     "init": "plumb.commands",
-    "link": "plumb.commands", "repin": "plumb.commands", "stale": "plumb.commands",
+    "link": "plumb.commands", "unlink": "plumb.commands", "relink": "plumb.commands",
+    "repin": "plumb.commands", "stale": "plumb.commands",
     "validate": "plumb.commands",
     "check": "plumb.commands",
     "approve": "plumb.commands", "relay": "plumb.commands", "revoke": "plumb.commands",
@@ -72,6 +73,8 @@ records and integrity:
   init         adopt this repository (.plumb/)
   show         print records in full (read-back, examples, assumptions, alternatives)
   link         add a hash-pinned link between a record and a record, file or test
+  unlink       remove a link (--note why); the links after it move down by one
+  relink       point a link at a new target (--note why), keeping its number and example
   repin        refresh link pins (never confirms); --after-tests: only when the linked tests
                pass and a model judges the meaning unchanged
   stale        card: bring a stale link to the owner as a card; cards: list them in full

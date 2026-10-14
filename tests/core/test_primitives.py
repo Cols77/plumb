@@ -136,6 +136,8 @@ def test_missing_module_reports_not_available(
 
 def test_every_route_names_a_module_path() -> None:
     expected = {"init", "new", "show", "link", "repin", "validate", "check", "status", "drift",
+                # SR-148, SR-149: `plumb unlink`, `plumb relink`
+                "unlink", "relink",
                 "brief", "explain", "why", "approve", "relay", "revoke", "tests", "map",
                 "verify", "impact", "hook", "hooks", "install", "statusline", "trailers",
                 "claims", "import", "fidelity", "judge", "judgment",

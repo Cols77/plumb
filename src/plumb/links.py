@@ -224,6 +224,74 @@ def repin(core: Core, selector: str | None = None, *, all_stale: bool = False,
     return changes
 
 
+def _named_link(core: Core, link_id: str) -> tuple[Record, Link]:
+    record_id, _, position = link_id.partition("#")
+    record = core.index().get(record_id)
+    if record is None or not position.isdigit() or int(position) >= len(record.links):
+        raise LinkError(f"no link {link_id}")
+    return record, record.links[int(position)]
+
+
+def _pin_dict(pin: Pin | None) -> dict[str, str] | None:
+    return None if pin is None else {"from": pin.source, "to": pin.target}
+
+
+def unlink(core: Core, link_id: str, note: str) -> dict[str, Any]:
+    """Remove one link; the links after it move down by one (DEC-048). The only live test of
+    an example the owner confirmed is refused (DEC-049); a dangling one may always go."""
+    record, link = _named_link(core, link_id)
+    alive = core.hash_target(link.target) is not None
+    others = [other for other in record.links if other.index != link.index
+              and other.kind == "verified_by" and other.example == link.example
+              and core.hash_target(other.target) is not None]
+    # a retired example (one the record no longer has) is no one's confirmed example
+    lone = link.kind == "verified_by" and not others \
+        and link.example in {example.id for example in record.examples}
+    if lone and alive and core.status([record.id])[record.id].confirmation != "proposed":
+        raise LinkError(f"{link_id} is the only test of {record.id} {link.example}, which the "
+                        f"owner confirmed; removing it would leave that example without its "
+                        f"test. Point it at the test's new place with plumb relink instead")
+    kept = [other for other in record.links if other.index != link.index]
+    core.store.set_links(record.id, [link_to_dict(other) for other in kept])
+    renumbered = [{"from": other.id, "to": f"{record.id}#{n}"}
+                  for n, other in enumerate(kept) if other.index != n]
+    result = {"link": link_id, "kind": link.kind, "target": _describe(link.target),
+              "example": link.example, "pin": _pin_dict(link.pin), "note": note,
+              "renumbered": renumbered}
+    core.log_append("events", "unlink", result)
+    return {**result, "untested": link.example if lone else None}
+
+
+def relink(core: Core, link_id: str, target: Target, note: str) -> dict[str, Any]:
+    """Point one link at a new target, keeping its number, kind and example, with fresh pins
+    on both ends."""
+    record, link = _named_link(core, link_id)
+    target = end_for(link.kind, target)
+    moved = Link(source=record.id, index=link.index, kind=link.kind, target=target,
+                 example=link.example)
+    problem = kind_problem(moved, record)
+    if problem:
+        raise LinkError(problem)
+    target_hash = core.hash_target(target)
+    if target_hash is None:
+        raise LinkError(f"link end does not exist: {_describe(target)}")
+    for other in record.links:
+        if other.index != link.index and \
+                (other.kind, other.target, other.example) == (link.kind, target, link.example):
+            raise LinkError(f"{other.id} already links {record.id} {link.kind} "
+                            f"{_describe(target)}; remove {link_id} with plumb unlink instead")
+    moved = Link(source=record.id, index=link.index, kind=link.kind, target=target,
+                 example=link.example, pin=Pin(source=record.hash, target=target_hash))
+    raw = [link_to_dict(moved if other.index == link.index else other)
+           for other in record.links]
+    core.store.set_links(record.id, raw)
+    result = {"link": link_id, "note": note,
+              "old": {"target": _describe(link.target), "pin": _pin_dict(link.pin)},
+              "new": {"target": _describe(target), "pin": _pin_dict(moved.pin)}}
+    core.log_append("events", "relink", result)
+    return result
+
+
 def records_for_paths(core: Core, paths: Iterable[str]) -> dict[str, tuple[str, ...]]:
     """Each path mapped to the records it is a link end of, or whose record file it is."""
     from plumb.hashing import target_path
