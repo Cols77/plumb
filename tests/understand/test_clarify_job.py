@@ -496,3 +496,11 @@ def test_sr131_ex4_ok_go_on_while_the_card_waits_starts_no_new_request(
     worker.run_once(open_core(repo), SESSION)
     assert [(c.id, c.status) for c in _cards(repo)] == before
     assert gate.is_closed(repo, SESSION)
+
+
+@pytest.mark.sr("SR-154")
+def test_sr154_operating_the_tools_is_not_a_request() -> None:
+    """Only a change to the repository's own system raises a card (the model is told so)."""
+    prompt = (Path(clarify.__file__).parent / "agents" / "clarify.md").read_text(
+        encoding="utf-8")
+    assert "this repository's own" in prompt and "Operating the tools or the machine is" in prompt
