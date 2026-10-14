@@ -557,6 +557,21 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                        for e in core.events()):
         gate.refresh(root, session, digest, GATE_REASON_CARD)    # SR-131 EX-4: a vague answer
         return Applied(job=job.id, closed=closed)               # picks nothing; the card stays
+    from plumb.understand import read
+
+    said = answer.get("answers")     # SR-163: a clear answer to a question just put to the owner
+    if isinstance(said, Mapping) and read.evidence_in(str(said.get("evidence") or ""), text):
+        card = str(said.get("card") or "")
+        question = str(said.get("question") or "").strip()
+        if card in held:             # the reader left it open: it stays, nothing is recorded
+            gate.refresh(root, session, digest, GATE_REASON_CARD)
+            return Applied(job=job.id, closed=closed)
+        gate.open(core, session, digest, "clarify", "your message answers a question")
+        entries = () if card in {c.id for c in own} or not question else ({
+            "kind": "question-answer", "payload": {
+                "session": session, "question": question, "options": [],
+                "answer": str(said["evidence"]), "message_digest": digest}},)
+        return Applied(job=job.id, closed=closed, entries=entries)
     if str(answer.get("intent")) != "yes":
         if waiting:   # SR-131 EX-4: an unanswered blocking card holds the gate; its answer opens it
             gate.refresh(root, session, digest, GATE_REASON_CARD)

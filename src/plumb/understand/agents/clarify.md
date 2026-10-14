@@ -51,6 +51,13 @@ Decide:
   one-line consequence for each suggestion.
 - Set a gap's `diagram` to true only when the question is about which parts talk to which, an
   order of steps, or where something lives. For wording or scope it is false.
+- `answers`: when the message clearly answers a question just put to the person (it picks one
+  option of an open card by number or label, or says a plain yes or no to one proposal shown
+  whole, on a card or in the last reply), set `evidence` to their words copied exactly, and
+  `card` (an `open_cards` id) or, when no card holds the question, `question` (the question as
+  the last reply asked it). Then `intent` is `no` and nothing else is asked or read back: the
+  answer is the reply, not a new request. Leave `answers` out when the answer is unclear,
+  hedged or only partial ("maybe 2, but..."), or when the message also starts something new.
 - In `replaces`, name the `open_cards` your readback answers or makes moot.
 - Never use record ids, digests, or the words settled, trial or relay: the person's own words
   only.
