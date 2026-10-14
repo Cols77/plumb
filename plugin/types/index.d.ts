@@ -122,6 +122,8 @@ declare module 'claude-code' {
       told: PlumbTold | null
       view: PlumbView
       band: PlumbBand
+      /** the card the pane shows, among those waiting */
+      pane: { index: number }
     }
   }
 }
