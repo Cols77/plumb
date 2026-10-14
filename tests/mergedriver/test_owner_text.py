@@ -16,6 +16,7 @@ from mergedriver.mdhelpers import (
     install_driver,
     make_repo,
     plumb,
+    reads_keep,
     record,
     run_git,
     write_record,

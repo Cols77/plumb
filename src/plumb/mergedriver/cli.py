@@ -146,8 +146,8 @@ def _conflict(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="plumb conflict",
         description="propose: store a combined version (shown in the card; applies nothing). "
-                    "choose: the owner's terminal. relay, and choose with --prompt or "
-                    "--quote, no longer exist.")
+                    "choose: the owner's terminal, or with --prompt and --quote the owner's "
+                    "relayed words. relay: choose with --prompt and --quote.")
     parser.add_argument("action", choices=["propose", "choose", "relay"])
     parser.add_argument("ref", nargs="+", help="an IC, a record or plain words")
     parser.add_argument("--take", default=None,
@@ -158,11 +158,6 @@ def _conflict(argv: list[str]) -> int:
     parser.add_argument("--quote", default=None, help="the owner's exact words")
     add_common(parser)
     args = parser.parse_args(argv)
-    if args.action == "relay" or args.prompt is not None or args.quote is not None:
-        print("plumb: conflict relay no longer exists; nothing was chosen. The owner answers "
-              "on the conflict's card or with their own typed `plumb conflict choose`",
-              file=sys.stderr)
-        return 3
     core = open_core(resolve_root(args.root))
     ref = " ".join(args.ref)
     if args.action != "propose":
@@ -183,13 +178,22 @@ def _conflict(argv: list[str]) -> int:
                 print(line)
             _request_cards(core, [conflict.ic])
             return 0
-        if not args.take:
+        relayed = args.action == "relay" or args.prompt is not None
+        if not args.take and not relayed:  # relayed, the reading of the words picks it
             print("plumb: --take is required (ours, theirs, combined or a side's name)",
                   file=sys.stderr)
             return 2
         try:
-            conflict, payload = mod.choose_owner(core, ref, args.take,
-                                                 values=_values(args.file))
+            if relayed:
+                if not args.prompt or not args.quote:
+                    print("plumb: a relayed choice needs --prompt and --quote", file=sys.stderr)
+                    return 2
+                conflict, payload = mod.relay_choice(core, ref, args.take, prompt=args.prompt,
+                                                     quote=args.quote,
+                                                     values=_values(args.file))
+            else:
+                conflict, payload = mod.choose_owner(core, ref, args.take,
+                                                     values=_values(args.file))
         except Refused:
             theirs = mod.find(core, ref).labels[1]
             print(owner_text.CHOOSE_REFUSED.format(theirs=theirs), file=sys.stderr)

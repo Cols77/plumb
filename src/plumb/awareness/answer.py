@@ -48,7 +48,7 @@ _RELATIVE = ("this one", "this request", "this request's", "this request's versi
              "my one", "the new one", "this lane", "this lane's")
 _OTHER = ("theirs", "their version", "their one", "the other one", "the other version",
           "the other branch's", "that one", "that version", "that branch's")
-# the merge-time card's own words for its two sides
+# the merge-time card's own words for its two sides, used by the early-conflict reading below
 _IC_OURS = ("mine", "ours", "my version", "my one", "my side")
 _IC_THEIRS = ("theirs", "their version", "their one", "their side", "the incoming one")
 _BOTH = ("both", "both of them", "combined", "combine them", "combine both", "both, combined",

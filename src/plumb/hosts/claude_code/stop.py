@@ -217,7 +217,8 @@ def _regression_line(node: str, evidence: Any) -> str:
 
 def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, Any],
                  stated_ids: Sequence[str], shown: Iterable[str] = (), *,
-                 early: Sequence[Mapping[str, Any]] = ()) -> None:
+                 early: Sequence[Mapping[str, Any]] = (),
+                 conflicts: Sequence[Mapping[str, Any]] = ()) -> None:
     """The stated set of this reply: what a bare affirmation of the owner may confirm.
 
     The one writer of ``stated.json``, so it holds the guarantee "``shown`` only when the
@@ -237,6 +238,8 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
         "at": utc_now(), "session": ctx.session_id,
         "reply_after_prompt": turn.get("prompt_digest"),
         "records": [{"id": i, "hash": index[i].hash, "shown": i in shown} for i in stated_ids]}
+    if seen and conflicts:  # sp6 8.4: the conflict cards this reply showed the owner
+        data["conflicts"] = [dict(c) for c in conflicts]
     if seen and early:  # R17: the early conflict cards this reply showed the owner
         data["early"] = [dict(c) for c in early]
     write_json_atomic(ctx.session_dir / "stated.json", data)
@@ -251,7 +254,7 @@ def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
     fresh, early = owner_cards(ctx, core, turn)
     shown: dict[str, str] = {}
     text = understand_parts(ctx, core, turn, fresh=fresh, shown=shown)
-    write_stated(ctx, turn, {}, [], early=early)
+    write_stated(ctx, turn, {}, [], early=early, conflicts=conflict_entries(core))
     return HookOutput(system_message="\n\n".join(text)) if text else None
 
 
@@ -497,7 +500,8 @@ def _cards(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], v: 
     shown: dict[str, str] = {}
     text = understand_parts(ctx, core, turn, extra=[*regression, *test_cards], fresh=fresh,
                             passing=passing, shown=shown)
-    write_stated(ctx, turn, index, stated_ids, shown, early=early)
+    write_stated(ctx, turn, index, stated_ids, shown, early=early,
+                 conflicts=conflict_entries(core))
     return HookOutput(system_message="\n\n".join(text)) if text else None
 
 
@@ -622,6 +626,17 @@ def understand_parts(ctx: HookContext, core: Any, turn: Mapping[str, Any], *,
         if isinstance(bag, dict):
             bag["stop_parts"] = parts       # what present.json carries while the panel is on
         return [*parts.confirmations, *parts.cards]
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        return []
+
+
+def conflict_entries(core: Any) -> list[dict[str, Any]]:
+    """The stated entries of the open intent conflicts, whose cards every turn end draws
+    (the owner's relayed words may choose among them, DEC-051). Never fails the stop."""
+    try:
+        from plumb.mergedriver.conflicts import open_conflicts, stated_entries
+
+        return stated_entries(core, [c.ic for c in open_conflicts(core)])
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return []
 
