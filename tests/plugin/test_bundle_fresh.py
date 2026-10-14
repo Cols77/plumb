@@ -56,7 +56,8 @@ def test_hooks_cover_every_event() -> None:
     assert hooks["modules"] == ["./register.tsx"]
     commands = {h["command"] for groups in hooks["hooks"].values() for g in groups
                 for h in g["hooks"]}
-    for event in ("session-start", "prompt", "pre-tool", "post-edit", "edit-check", "stop"):
+    for event in ("session-start", "prompt", "pre-tool", "post-edit", "edit-check", "question-answer",
+                  "stop"):
         assert f'sh "${{CLAUDE_PLUGIN_ROOT}}/bin/plumb-hook" {event}' in commands
     pre_tool = hooks["hooks"]["PreToolUse"][0]["matcher"].split("|")
     assert {"Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"} <= set(pre_tool)
@@ -132,10 +133,10 @@ def test_every_hook_has_a_timeout() -> None:
     timeouts = {h["command"].rsplit(" ", 1)[1]: h["timeout"]
                 for groups in hooks.values() for g in groups for h in g["hooks"]}
     assert timeouts == {"session-start": 10, "prompt": 10, "pre-tool": 10, "edit-check": 10,
-                        "post-edit": 30, "stop": 30}
+                        "post-edit": 30, "question-answer": 30, "stop": 30}
     assert all(t >= 3 * (HARD_LIMIT_S + STOP_GRACE_S) for t in timeouts.values())
     post = hooks["PostToolUse"]
-    assert [g["hooks"][0].get("async", False) for g in post] == [True, False]
+    assert [g["hooks"][0].get("async", False) for g in post] == [True, False, True]
 
 
 @pytest.mark.sr("SR-123")

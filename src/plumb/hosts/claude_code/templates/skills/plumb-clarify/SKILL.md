@@ -79,7 +79,13 @@ Discipline:
   recommended one first). Nothing else is a card.
 - Once the owner says "go" or "ok", stop asking: remaining unknowns become labelled
   assumptions, which never block.
-- Outside an accepted spec session, never ask in your own words; the cards ask.
+- Outside an accepted spec session, never ask in your own words about the owner's intent;
+  the cards ask.
+- Any other quick question (which of two files, a name, now or later) goes to the owner with
+  Claude Code's question tool by default. A card only when the answer must change the
+  owner's records (confirm, conflict, stale link, a decision that matters) or the question
+  needs context, consequences or a diagram to answer. The question tool's answer is logged
+  as the owner's words but confirms nothing.
 
 Output: the records (INT, SR with examples, DEC), all proposed until the owner confirms the
 request's read-back on its card. Paste nothing of what capture prints into your reply.
