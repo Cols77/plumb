@@ -145,7 +145,8 @@ def _conflict(argv: list[str]) -> int:
 
     parser = argparse.ArgumentParser(
         prog="plumb conflict",
-        description="propose: store a combined version (shown in the card; applies nothing). "
+        description="propose: store a combined version (--file) and/or suggest a side (--take "
+                    "with --why); shown on the card, applies nothing. "
                     "choose: the owner's terminal. relay, and choose with --prompt or "
                     "--quote, no longer exist.")
     parser.add_argument("action", choices=["propose", "choose", "relay"])
@@ -154,6 +155,8 @@ def _conflict(argv: list[str]) -> int:
                         help="ours | theirs | combined, or a side's name (main, feat-x)")
     parser.add_argument("--file", default=None,
                         help="a YAML mapping of the conflicting fields (propose, combined)")
+    parser.add_argument("--why", default="",
+                        help="propose --take: the one-line reason for the suggested side")
     parser.add_argument("--prompt", default=None, help="digest of the owner's logged prompt")
     parser.add_argument("--quote", default=None, help="the owner's exact words")
     add_common(parser)
@@ -177,7 +180,10 @@ def _conflict(argv: list[str]) -> int:
             return _early_answer(core, args, ref)
     try:
         if args.action == "propose":
-            conflict = mod.propose(core, ref, _values(args.file))
+            if args.take and not args.why.strip():
+                print("plumb: a suggestion needs its reason (--why)", file=sys.stderr)
+                return 2
+            conflict = mod.propose(core, ref, _values(args.file), take=args.take, why=args.why)
             print(owner_text.PROPOSED.format(record=conflict.record, title=conflict.title))
             for line in mod.conflict_card(core, conflict):
                 print(line)

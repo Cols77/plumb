@@ -64,7 +64,8 @@ def _as_conflict(record: Any) -> IntentConflict | None:
         hashes={"base": str(block.get("base") or ""), "ours": str(ours.get("hash") or ""),
                 "theirs": str(theirs.get("hash") or "")},
         merged=tuple(str(m) for m in block.get("merged") or ()),
-        proposed=dict(proposed) if proposed else None, path=record.path)
+        proposed=dict(proposed) if proposed else None, path=record.path,
+        suggested=dict(block["suggested"]) if isinstance(block.get("suggested"), Mapping) else None)
 
 
 def open_conflicts(core: Any) -> tuple[IntentConflict, ...]:
@@ -364,13 +365,24 @@ def _check_values(conflict: IntentConflict, values: Any) -> dict[str, Any]:
     return dict(values)
 
 
-def propose(core: Any, ref: str, values: Any) -> IntentConflict:
-    """Store the agent's combined version in the conflict block; it changes nothing else."""
+def propose(core: Any, ref: str, values: Any, *, take: str | None = None,
+            why: str = "") -> IntentConflict:
+    """Store the agent's combined version and/or its suggestion (SR-158: ``take`` is ours,
+    theirs or combined, with ``why``) in the conflict block; it changes nothing else."""
     conflict = find(core, ref)
-    values = _check_values(conflict, values)
     record, data, body = _read_record(core, conflict)
     block = dict(data["conflict"])
-    block["proposed"] = {"fields": values, "hash": _values_hash(values)}
+    if values is not None:
+        values = _check_values(conflict, values)
+        block["proposed"] = {"fields": values, "hash": _values_hash(values)}
+    if values is None and not take:
+        raise ConflictError("plumb: propose needs a combined version (--file) or a suggestion "
+                            "(--take with --why)")
+    if take:
+        take = normalize_take(conflict, take)
+        if take == "combined" and not isinstance(block.get("proposed"), Mapping):
+            raise ConflictError("plumb: propose a combined version (--file) before suggesting it")
+        block["suggested"] = {"take": take, "why": " ".join(why.split())}
     data["conflict"] = block
     _write(core, record, data, body)
     return find(core, conflict.ic)

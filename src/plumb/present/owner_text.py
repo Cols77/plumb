@@ -355,6 +355,7 @@ TEST_CHANGED_LATER = "Leave it for now"
 
 CONFLICT_ISSUE = "{ours} and {theirs} changed it in different ways"
 CONFLICT_SIDE = "{side} says: {text}"
+CONFLICT_SUGGESTED = "Suggested: {said}. {why}"
 EARLY_TYPED_CHOOSE = ('To answer, type: /plumb conflict choose "{title}" --take '
                       "<{branch} | {ours} | both>")
 EARLY_ISSUE = '{branch} says "{theirs}"; {label} says "{ours}"'
