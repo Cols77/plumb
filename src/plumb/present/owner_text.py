@@ -96,6 +96,9 @@ CHOSEN_PROPOSED = " (it waits for your ok, like any new wording)"
 PROPOSED = ("plumb: a combined version of {record} \"{title}\" is shown in its conflict card; "
             "nothing changes until you choose")
 
+SUGGESTED = ("plumb: your suggestion on {record} \"{title}\" is shown in its conflict card; "
+             "nothing changes until the owner chooses")
+
 # -- the merge-time check and its hook (10, R17)
 MERGE_HELD = ("plumb: the merge is not recorded yet; once this is settled, say \"finish the "
               "merge\"")
@@ -355,6 +358,7 @@ TEST_CHANGED_LATER = "Leave it for now"
 
 CONFLICT_ISSUE = "{ours} and {theirs} changed it in different ways"
 CONFLICT_SIDE = "{side} says: {text}"
+CONFLICT_SUGGESTED = "Suggested: {said}. {why}"
 EARLY_TYPED_CHOOSE = ('To answer, type: /plumb conflict choose "{title}" --take '
                       "<{branch} | {ours} | both>")
 EARLY_ISSUE = '{branch} says "{theirs}"; {label} says "{ours}"'

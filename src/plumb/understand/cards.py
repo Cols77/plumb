@@ -241,8 +241,15 @@ def test_changed_card(record: Any, ends: Sequence[str], *, turn: int = 0) -> Car
                  [(issue, record)], turn)
 
 
-def _sides(ours: str, theirs: str, *, both: str, combined: bool = False) -> list[Choice]:
-    """SR-130 EX-3: keep this one, keep the other, or both, each saying what it means."""
+def _sides(ours: str, theirs: str, *, both: str, combined: bool = False,
+           first: str | None = None) -> list[Choice]:
+    """SR-130 EX-3: keep this one, keep the other, or both, each saying what it means;
+    ``first`` (ours, theirs, combined): the agent's suggestion goes first (SR-158)."""
+    if first in ("ours", "theirs"):
+        order = _sides(ours, theirs, both=both, combined=combined)
+        pick = order.pop(next(n for n, c in enumerate(order) if c.label == (
+            KEEP_THIS if first == "ours" else KEEP_OTHER)))
+        return [pick, *order]
     keep = [Choice(KEEP_THIS, "change", f"Keep {ours}'s version", (
                 f"Keeps {ours}'s version as the one that holds; the other is dropped")),
             Choice(KEEP_OTHER, "change", f"Keep {theirs}'s version", (
@@ -273,8 +280,17 @@ def conflict_card(index: Mapping[str, Any], conflict: Any, *, turn: int = 0) -> 
             "see it")
     record = index.get(conflict.record)
     issue = owner_text.CONFLICT_ISSUE.format(ours=ours, theirs=theirs)
+    suggested = getattr(conflict, "suggested", None) or {}
+    take = suggested.get("take")
+    said = {"ours": f"keep {ours}'s version", "theirs": f"keep {theirs}'s version",
+            "combined": "keep the combined version"}.get(str(take))
+    evidence = " / ".join(sides)
+    if said:   # SR-158: the agent's suggestion and its reason, never cut
+        line = owner_text.CONFLICT_SUGGESTED.format(said=said, why=suggested.get("why", ""))
+        evidence = "\n".join((line, evidence))
     return _card("conflict", card_id("conflict", conflict.ic), conflict.title, issue,
-                 " / ".join(sides), _sides(ours, theirs, both=both, combined=conflict.proposed),
+                 evidence, _sides(ours, theirs, both=both, combined=conflict.proposed,
+                                  first=take),
                  [(issue, record)], turn)
 
 

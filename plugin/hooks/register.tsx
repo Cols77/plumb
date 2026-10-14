@@ -19,11 +19,11 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { PlumbBand, PlumbLink, PlumbTold, PlumbView } from '../types'
-import { CardView, contentKey, findPress, perFeature } from './cards'
+import { CardView, contentKey, findPress, Grouped, perFeature, stateOf } from './cards'
 import type { Ui } from './cards'
 import * as plumb from './plumb'
 import type { Hello, Io, Unlinked } from './plumb'
-import { GLYPHS, T } from './text'
+import { GLYPHS, PLUMB_COLOR, T } from './text'
 
 /** The surface's element table; the terminal draws the diagram's rows, whatever else the table
  * holds (the live terminal lists an Svg that draws nothing). */
@@ -90,19 +90,20 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number) {
   if (band.isHidden) {
     return (
       <Box flexDirection="row" gap={1}>
-        <Text dimColor>{head}</Text>
+        <Text color={PLUMB_COLOR} dimColor>{head}</Text>
         <Button key="show" label={T.show} plain onPress={() => {}} />
       </Box>
     )
   }
   const waiting = view.cards.filter(c => c.repeats)
-  const leftOpen = view.cards.filter(c => !c.repeats)
+  const leftOpen = view.cards.filter(c => stateOf(c) === 'left_open')
   const compact = view.status?.card === 'compact'
-  const shown = band.showAll ? view.cards : compact ? [] : waiting.slice(0, 1)
+  const everyOpen = [...waiting, ...leftOpen]
+  const shown = band.showAll ? everyOpen : compact ? [] : waiting.slice(0, 1)
   return (
     <Box flexDirection="column" width={columns}>
       <Box flexDirection="row" gap={1}>
-        <Text bold>{head}</Text>
+        <Text bold color={PLUMB_COLOR}>{head}</Text>
         {view.status?.summary ? <Text dimColor>{view.status.summary}</Text> : null}
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
       </Box>
@@ -111,7 +112,7 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number) {
       {view.line ? <Text key="line" dimColor>{view.line}</Text> : null}
       {(view.present?.confirmations ?? []).map(c => <Text key={`confirmed:${c}`}>{c}</Text>)}
       {shown.map(card => CardView(ui, card))}
-      {view.cards.length > shown.length ? (
+      {everyOpen.length > shown.length ? (
         <Box flexDirection="row" gap={1}>
           <Button key="showall" label={T.showAll} onPress={() => {}} />
           <Button key="pane" label={T.openPane} onPress={() => {}} />
@@ -261,7 +262,17 @@ export const register: Register = on => {
         }
       }
     }
-    if (link !== null) await plumb.heartbeat(io, link)
+    if (link !== null) {
+      // the plugin's environment may have been built after the link (a first run): run plumb with
+      // the interpreter now named, or the panel keeps an older plumb that lacks the newer fields
+      const now = (await plumb.findPython(io, link.root, link.session)).python
+      if (now !== null && now !== link.python) {
+        link = { ...link, python: now }
+        const relinked = link
+        await update($, linkAtom, () => relinked)
+      }
+      await plumb.heartbeat(io, link)
+    }
     return next(e)
   }).catch(async ($, e, next) => {
     const result = await next(e)
@@ -412,18 +423,27 @@ export const register: Register = on => {
     const ui = uiOf($, e)
     const { Box, Button, Text } = ui
     const room = e.props.bodyColumns - 4 // less the card's frame and padding
-    const waiting = (await read($, viewAtom)).cards.filter(c => c.repeats)
-    if (!waiting.length) return <Text dimColor>{T.nothingAwaits}</Text>
-    const at = Math.min((await read($, paneAtom)).index, waiting.length - 1)
+    const cards = (await read($, viewAtom)).cards
+    const waiting = cards.filter(c => c.repeats)
+    // SR-160: the other states (left open, being processed, blocked, done) listed below
+    const others = cards.filter(c => !c.repeats)
+    if (!cards.length) return <Text dimColor>{T.nothingAwaits}</Text>
+    const at = Math.min((await read($, paneAtom)).index, Math.max(waiting.length - 1, 0))
     return (
       <Box flexDirection="column">
         {e.props.placement === 'inline' ? <Text dimColor>{T.paneDocks}</Text> : null}
-        <Box flexDirection="row" gap={1}>
-          <Button key="back" label={T.back} hotkey="b" onPress={() => {}} />
-          <Text>{T.nOfM(at + 1, waiting.length)}</Text>
-          <Button key="next" label={T.next} hotkey="n" onPress={() => {}} />
-        </Box>
-        {CardView(ui, waiting[at]!, room)}
+        {waiting.length ? (
+          <Box key="paged" flexDirection="column">
+            <Text bold>{`${T.groups.waiting} (${waiting.length})`}</Text>
+            <Box flexDirection="row" gap={1}>
+              <Button key="back" label={T.back} hotkey="b" onPress={() => {}} />
+              <Text>{T.nOfM(at + 1, waiting.length)}</Text>
+              <Button key="next" label={T.next} hotkey="n" onPress={() => {}} />
+            </Box>
+            {CardView(ui, waiting[at]!, room)}
+          </Box>
+        ) : null}
+        {others.length ? Grouped(ui, others, room) : null}
       </Box>
     )
   })

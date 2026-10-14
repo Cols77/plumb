@@ -344,7 +344,9 @@ def cards_waiting_line(ctx: HookContext) -> Any:
     try:
         from plumb.understand.summary import waiting_line
 
-        text = waiting_line(ctx.root, ctx.session_id)
+        from plumb.api import open_core
+
+        text = waiting_line(ctx.root, ctx.session_id, open_core(ctx.root))
     except Exception:  # noqa: BLE001 - an advisory line never fails the prompt hook
         return None
     return Line(text, subject="cards-waiting", state=text) if text else None

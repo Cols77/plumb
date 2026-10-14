@@ -68,7 +68,8 @@ def _as_conflict(record: Any) -> IntentConflict | None:
         hashes={"base": str(block.get("base") or ""), "ours": str(ours.get("hash") or ""),
                 "theirs": str(theirs.get("hash") or "")},
         merged=tuple(str(m) for m in block.get("merged") or ()),
-        proposed=dict(proposed) if proposed else None, path=record.path)
+        proposed=dict(proposed) if proposed else None, path=record.path,
+        suggested=dict(block["suggested"]) if isinstance(block.get("suggested"), Mapping) else None)
 
 
 def open_conflicts(core: Any) -> tuple[IntentConflict, ...]:
@@ -215,6 +216,11 @@ def conflict_card(core: Any, conflict: IntentConflict, *, backend: Any = None) -
         side = ours if settled.take == "ours" else theirs
         lines.append(owner_text.CARD_SETTLED.format(chosen=settled.chosen, side=side))
         return lines
+    sug = conflict.suggested or {}
+    side = {"ours": f"keep {ours}'s version", "theirs": f"keep {theirs}'s version",
+            "combined": "keep the combined version"}.get(str(sug.get("take")))
+    if side:  # SR-158: the agent's suggestion and its reason
+        lines.append(owner_text.CONFLICT_SUGGESTED.format(said=side, why=sug.get("why", "")))
     lines.append(judgment_line(core, conflict, backend))
     say = owner_text.CARD_SAY_COMBINED if conflict.proposed else owner_text.CARD_SAY
     lines.append(say.format(ours=ours, theirs=theirs))
@@ -374,13 +380,24 @@ def _check_values(conflict: IntentConflict, values: Any) -> dict[str, Any]:
     return dict(values)
 
 
-def propose(core: Any, ref: str, values: Any) -> IntentConflict:
-    """Store the agent's combined version in the conflict block; it changes nothing else."""
+def propose(core: Any, ref: str, values: Any, *, take: str | None = None,
+            why: str = "") -> IntentConflict:
+    """Store the agent's combined version and/or its suggestion (SR-158: ``take`` is ours,
+    theirs or combined, with ``why``) in the conflict block; it changes nothing else."""
     conflict = find(core, ref)
-    values = _check_values(conflict, values)
     record, data, body = _read_record(core, conflict)
     block = dict(data["conflict"])
-    block["proposed"] = {"fields": values, "hash": _values_hash(values)}
+    if values is not None:
+        values = _check_values(conflict, values)
+        block["proposed"] = {"fields": values, "hash": _values_hash(values)}
+    if values is None and not take:
+        raise ConflictError("plumb: propose needs a combined version (--file) or a suggestion "
+                            "(--take with --why)")
+    if take:
+        take = normalize_take(conflict, take)
+        if take == "combined" and not isinstance(block.get("proposed"), Mapping):
+            raise ConflictError("plumb: propose a combined version (--file) before suggesting it")
+        block["suggested"] = {"take": take, "why": " ".join(why.split())}
     data["conflict"] = block
     _write(core, record, data, body)
     return find(core, conflict.ic)

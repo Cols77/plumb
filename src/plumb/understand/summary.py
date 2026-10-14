@@ -287,8 +287,9 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
     from plumb.mod.offers import reopen_changed
 
     reopen_changed(core, session)       # DEC-034: a card left open returns once it changed
+    held = cardstore.states(core, session)
     open_cards = [c for c in cardstore.load(core.root, session, open_only=False)
-                  if _repeats_at_turn_end(c)]
+                  if _repeats_at_turn_end(c) and held.get(c.id, ("",))[0] != "processing"]
     open_cards.extend(_failure_cards(core, session))
     built = _turn_cards(core, session, extra, passing or set())
     seen = {c.id for c in open_cards}
@@ -305,6 +306,7 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
                if e.get("status", "open") == "open"}
     out: list[str] = []
     drawn: list[str] = []
+    drawn_ids: list[str] = []
     incomplete = 0
     late: list[str] = []
     for card in sorted(every, key=card_text.kind_rank):
@@ -324,6 +326,7 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
             item = fullcard.content(core, card)
         out.append(fullcard.render(item))
         drawn.append(card.topic)
+        drawn_ids.append(card.id)
         kept.append({"card": cardstore.card_to_json(card), "content": item,
                      "turn_built": card.id in turn_ids})
         if shown is not None:
@@ -335,7 +338,13 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
             n=len(late), topics="; ".join(f'"{t}"' for t in late)))
     if incomplete:
         out.append(owner_text.FULL_INCOMPLETE.format(n=incomplete))
-    _waiting(core, session, drawn)
+    _waiting(core, session, drawn, drawn_ids)
+    # an answered turn-built card (a resolved conflict) stays listed, so the turn line and the
+    # pane's Done list still know it after this rewrite
+    answered = {p.get("card") for p in cardstore.answer_presses(core, session)}
+    have = {e["card"].get("id") for e in kept}
+    kept += [e for e in read_drawn(core.root, session) if e.get("turn_built")
+             and e["card"].get("id") in answered and e["card"].get("id") not in have]
     files.write_json_atomic(files.session_dir(core.root, session) / DRAWN, kept)
     return out
 
@@ -400,7 +409,7 @@ def _turn_left_now(core: Any, session: str, built: Sequence[CardState]) -> set[s
     return set(keep)
 
 
-def _waiting(core: Any, session: str, topics: Sequence[str]) -> None:
+def _waiting(core: Any, session: str, topics: Sequence[str], ids: Sequence[str] = ()) -> None:
     """What the next prompt tells the agent (SR-116 EX-4): how many cards the owner was shown
     and their topics, so the reply names them in one line and never restates them."""
     path = files.session_dir(core.root, session) / WAITING
@@ -410,15 +419,23 @@ def _waiting(core: Any, session: str, topics: Sequence[str]) -> None:
         except OSError:
             pass
         return
-    files.write_json_atomic(path, {"n": len(topics), "topics": list(topics)})
+    files.write_json_atomic(path, {"n": len(topics), "topics": list(topics),
+                                 "ids": list(ids)})
 
 
-def waiting_line(root: Any, session: str) -> str | None:
-    """The agent's one line about the cards waiting for the owner (SR-116 EX-4), or None."""
+def waiting_line(root: Any, session: str, core: Any = None) -> str | None:
+    """The agent's one line about the cards waiting for the owner (SR-116 EX-4), or None.
+    A card the owner has answered since (SR-160) is no longer named."""
     raw = files.read_json(files.session_dir(root, session) / WAITING)
     if not isinstance(raw, Mapping) or not raw.get("n"):
         return None
     topics = [str(t) for t in raw.get("topics") or ()]
+    ids = [str(i) for i in raw.get("ids") or ()]
+    if core is not None and len(ids) == len(topics):
+        held = cardstore.states(core, session)
+        topics = [t for t, i in zip(topics, ids) if held.get(i, ("waiting",))[0] == "waiting"]
+        if not topics:
+            return None
     named = "; ".join(f'"{t}"' for t in topics[:5]) + (
         f" and {len(topics) - 5} more" if len(topics) > 5 else "")
-    return owner_text.CARDS_WAITING_AGENT.format(n=int(raw["n"]), topics=named)
+    return owner_text.CARDS_WAITING_AGENT.format(n=len(topics), topics=named)

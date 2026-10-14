@@ -9,10 +9,19 @@ export const GLYPHS: Record<string, string> = {
   'two versions': '⇄',
 }
 
+/** The one colour of plumb's own lines wherever the mod draws text (SR-159). */
+export const PLUMB_COLOR = 'cyan'
+
 export const T = {
   name: 'plumb',
   awaiting: (n: number) => (n === 1 ? '1 awaits you' : `${n} await you`),
   leftOpen: (n: number) => `${n} left open`,
+  groups: {
+    waiting: 'Waiting for you',
+    processing: 'Being processed',
+    blocked: 'Blocked',
+    done: 'Done this session',
+  } as Record<string, string>,
   nothingAwaits: 'nothing awaits you',
   hide: 'Hide',
   show: 'Show',

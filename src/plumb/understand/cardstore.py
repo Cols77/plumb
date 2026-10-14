@@ -131,3 +131,53 @@ def save(root: Path, session: str, cards: Sequence[CardState]) -> None:
     """Write the session's own cards (stale-link cards are STALE's and never written)."""
     files.write_json_atomic(files.cards_path(root, session),
                             [card_to_json(c) for c in cards if c.kind != "stale_link"])
+
+
+def answer_presses(core: Any, session: str) -> list[dict[str, Any]]:
+    """The session's logged presses that answer a card: not Leave open or Ask for a change,
+    but a merge conflict card's side buttons are ``change`` presses that do answer."""
+    from plumb.contracts import CARD_PRESS
+    from plumb.understand import cards
+
+    sides = (cards.KEEP_THIS, cards.KEEP_OTHER, cards.BOTH)
+    return [e.payload for e in core.log_read("events", [CARD_PRESS])
+            if e.payload.get("session") == session
+            and (e.payload.get("answer") != "open"
+                 and (e.payload.get("answer") != "change" or e.payload.get("label") in sides))]
+
+
+def states(core: Any, session: str) -> dict[str, tuple[str, str]]:
+    """SR-160: where each of the session's cards stands, as ``id -> (state, reason)``:
+    ``waiting`` (awaiting the owner), ``processing`` (every question answered by a logged
+    press, not applied yet), ``blocked`` (a press that found the record changed since it was
+    shown: the reason, decided at press time), ``done`` (answered or closed), ``left_open``;
+    withdrawn cards are left out. Cards the stop hook built are read from what it drew."""
+    from plumb.present import owner_text
+    from plumb.understand import summary
+
+    presses = answer_presses(core, session)
+    index = core.index()
+    out: dict[str, tuple[str, str]] = {}
+    for card in load(core.root, session, open_only=False):
+        mine = [p for p in presses if p.get("card") == card.id]
+        if card.status == "open":
+            asked = {q.id for q in card.questions}
+            out[card.id] = ("processing" if mine and asked <= {p.get("question") for p in mine}
+                            else "waiting", "")
+        elif card.status == "change_requested":
+            out[card.id] = ("waiting", "")
+        elif card.status == "left_open":
+            out[card.id] = ("left_open", "")
+        elif card.status in ("answered", "closed"):
+            gone = next((p for p in mine if p.get("stale")), None)
+            title = index[gone["record"]].title if gone and gone["record"] in index else (
+                gone["record"] if gone else "")
+            out[card.id] = (("blocked", owner_text.PRESS_CHANGED_SINCE.format(title=title))
+                            if gone else ("done", ""))
+    left = summary.turn_left(core.root, session)
+    for entry in summary.read_drawn(core.root, session):
+        cid = str(entry["card"].get("id"))
+        if entry.get("turn_built") and cid not in out:
+            out[cid] = (("done" if any(p.get("card") == cid for p in presses) else
+                         "left_open" if cid in left else "waiting"), "")
+    return out

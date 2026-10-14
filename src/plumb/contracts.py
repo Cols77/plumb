@@ -554,6 +554,7 @@ class IntentConflict:
     merged: tuple[str, ...] = ()
     proposed: Mapping[str, Any] | None = None
     path: str = ""
+    suggested: Mapping[str, str] | None = None    # SR-158: the agent's {take, why}; chooses nothing
 
 
 # --------------------------------------------------------------------------- SP8 UNDERSTAND

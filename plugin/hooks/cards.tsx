@@ -91,6 +91,33 @@ export function CardView(ui: Ui, card: PlumbCard, room = Infinity) {
   )
 }
 
+/** SR-160: the card's group; a card with no state is waiting when it repeats, else left open. */
+export const stateOf = (card: PlumbCard): string => card.state ?? (card.repeats ? 'waiting' : 'left_open')
+
+/** The pane's cards grouped by state (empty groups are not drawn): the cards to answer in full,
+ * the others (processing, blocked with its reason, done) as one line each. */
+export function Grouped(ui: Ui, cards: PlumbCard[], room: number) {
+  const { Box, Text } = ui
+  return (
+    <Box flexDirection="column">
+      {['waiting', 'processing', 'blocked', 'done'].map(group => {
+        const here = cards.filter(c => (stateOf(c) === 'left_open' ? 'waiting' : stateOf(c)) === group)
+        if (!here.length) return null
+        return (
+          <Box key={`group:${group}`} flexDirection="column" marginTop={1}>
+            <Text bold>{`${T.groups[group]} (${here.length})`}</Text>
+            {group === 'waiting'
+              ? here.map(card => CardView(ui, card, room))
+              : here.map(card => (
+                  <Text key={`line:${card.id}`} dimColor>{card.reason ? `${card.topic}: ${card.reason}` : card.topic}</Text>
+                ))}
+          </Box>
+        )
+      })}
+    </Box>
+  )
+}
+
 /** "merge check (2), reminders": the cards awaiting, per feature (DEC-029). */
 export function perFeature(cards: PlumbCard[]): string {
   const counts = new Map<string, number>()

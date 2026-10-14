@@ -81,7 +81,8 @@ def test_stop_writes_present_json_and_no_system_message_while_the_panel_is_activ
     started = _start_turn(core.root)
     _register(monkeypatch, capsys, core.root, heartbeat=started + 0.2)
     out = _stop(core.root, hook_input)
-    assert out.strip() == ""                       # no systemMessage, no block
+    # the owner's decision (2026-10-14): one plumb line instead of silence (SR-159 EX-1)
+    assert json.loads(out) == {"systemMessage": "plumb: 1 new card waits on the panel"}
     present = _present(core.root)
     assert present is not None
     assert {"turn", "confirmations", "cards"} <= set(present)
@@ -127,7 +128,9 @@ def test_a_block_is_unchanged_while_the_panel_is_active(core, monkeypatch, capsy
     assert handshake.deliver(ctx, block) is block
     assert _present(core.root) is None
     shown = HookOutput(system_message="plumb: a card")
-    assert handshake.deliver(ctx, shown) is None and _present(core.root) is not None
+    line = handshake.deliver(ctx, shown)      # one plumb line, not the card (SR-159 EX-1)
+    assert line is not None and line.system_message == "plumb: 1 new card waits on the panel"
+    assert "a card" not in line.system_message and _present(core.root) is not None
 
 
 # ---------------------------------------------------------------- session start

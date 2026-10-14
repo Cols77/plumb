@@ -84,8 +84,8 @@ def content(core: Any, card: CardState) -> dict[str, Any]:
         "wont": _say(wont, index) or None,
         # a merge conflict recommends only a combined version that was actually proposed
         "options": _options(choices, index, card.kind not in NO_RECOMMENDATION and (
-            card.kind != "conflict" or bool(question and question.choices
-                                            and question.choices[0].answer == "accepted"))),
+            card.kind != "conflict" or card.evidence.startswith(owner_text.CONFLICT_SUGGESTED[:11]) or bool(
+                question and question.choices and question.choices[0].answer == "accepted"))),
         "diagram": card.diagram, "turn": card.turn,
         "status": card.status}
 

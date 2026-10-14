@@ -52,6 +52,8 @@ export const DRAW = {
    "diagram": "",
    "turn": 0,
    "repeats": true,
+   "state": "waiting",
+   "reason": "",
    "content": {
     "topic": "CSV export",
     "issue": "The report exports as CSV with one row per invoice.",
@@ -135,6 +137,8 @@ export const DRAW = {
    "diagram": "",
    "turn": 3,
    "repeats": true,
+   "state": "waiting",
+   "reason": "",
    "content": {
     "topic": "Confirm button",
     "issue": "the confirm check now accepts the panel's Confirm button",
@@ -229,6 +233,8 @@ export const DRAW = {
    "diagram": "",
    "turn": 0,
    "repeats": false,
+   "state": "left_open",
+   "reason": "",
    "content": {
     "topic": "Late fees",
     "issue": "A late invoice gets a 5% fee.",
@@ -278,7 +284,8 @@ export const DRAW = {
     }
    ]
   }
- ]
+ ],
+ "settled": []
 }
 // END DRAW
 
@@ -328,6 +335,8 @@ export const DRAW_TRIAL = {
    "diagram": "",
    "turn": 0,
    "repeats": true,
+   "state": "waiting",
+   "reason": "",
    "content": {
     "topic": "CSV export",
     "issue": "From your words of 4 Oct: keep the CSV export. Is that what you meant?",
@@ -398,7 +407,8 @@ export const DRAW_TRIAL = {
     }
    ]
   }
- ]
+ ],
+ "settled": []
 }
 // END DRAW_TRIAL
 

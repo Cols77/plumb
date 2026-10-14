@@ -56,7 +56,8 @@ def run(command: str, argv: list[str]) -> int:
             digest = session.check_key(root, args.session, payload, "draw")
             core = open_core(root)
             _answer({"session": args.session,
-                     "cards": offers.drawn_cards(core, args.session, digest)}, args.as_json)
+                     "cards": offers.drawn_cards(core, args.session, digest),
+                     "settled": offers.settled_cards(core, args.session)}, args.as_json)
             return EXIT_OK
         if not args.offer or args.choice is None:
             print("plumb mod press: --offer and --choice are required", file=sys.stderr)
