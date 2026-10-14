@@ -111,6 +111,17 @@
       "type": "boolean",
       "description": "true when gaps is not empty."
     },
+    "answers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence"],
+      "description": "Set only when the message clearly answers a question just put to the person: one option picked, or a plain yes or no to one proposal shown whole.",
+      "properties": {
+        "card": {"type": "string", "description": "The id of the open card the message answers."},
+        "question": {"type": "string", "description": "The question in the last reply the message answers, when there is no card."},
+        "evidence": {"type": "string", "description": "The person's exact words that answer it, copied from the message."}
+      }
+    },
     "replaces": {
       "type": "array",
       "items": {
