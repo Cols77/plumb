@@ -173,6 +173,20 @@ def _offers_of(core: Any, session: str, digest: str, stamp: str, card: CardState
     return offers
 
 
+def settled_cards(core: Any, session: str) -> list[dict[str, Any]]:
+    """SR-160: the session's cards the panel only lists: answered ones plumb could not apply
+    (``blocked``, with the reason) and finished ones (``done``), the stop hook's included."""
+    from plumb.understand import summary
+
+    held = cardstore.states(core, session)
+    cards = list(cardstore.load(core.root, session, open_only=False))
+    cards += [cardstore.card_from_json(e["card"]) for e in summary.read_drawn(core.root, session)
+              if e.get("turn_built")]
+    return [{**cardstore.card_to_json(c), "repeats": False, "state": held[c.id][0],
+             "reason": held[c.id][1], "offers": [], "content": None}
+            for c in cards if held.get(c.id, ("",))[0] in ("blocked", "done")]
+
+
 def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
     """The cards the mod draws for ``session`` (as ``cards.json`` holds them), then the cards
     the stop hook built and drew at the last turn end (``summary.read_drawn``), each with its
@@ -185,12 +199,15 @@ def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
     stamp = now()
     out: list[dict[str, Any]] = []
     have: set[str] = set()
+    held = cardstore.states(core, session)      # SR-160: where each card stands
     for card in cardstore.load(core.root, session, open_only=False):
         have.add(card.id)
+        state, reason = held.get(card.id, ("waiting", ""))
         if card.status not in DRAWN:
             continue
-        out.append({**cardstore.card_to_json(card),
-                    "repeats": card.status in cardstore.AWAITING,
+        waiting = state == "waiting" and card.status in cardstore.AWAITING
+        out.append({**cardstore.card_to_json(card), "repeats": waiting, "state": state,
+                    "reason": reason,
                     "offers": _offers_of(core, session, digest, stamp, card, False),
                     "content": content_for(core, session, card)})
     left = summary.turn_left(core.root, session)
@@ -201,11 +218,16 @@ def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
         if card.id in have:
             continue
         have.add(card.id)
+        state, reason = held.get(card.id, ("waiting", ""))
+        if state in ("done", "blocked"):
+            continue
         if card.id in left:
             card = dataclasses.replace(card, status="left_open")
         content = entry.get("content")
         out.append({**cardstore.card_to_json(card),
-                    "repeats": card.status in cardstore.AWAITING,
+                    "repeats": state == "waiting" and card.status in cardstore.AWAITING,
+                    "state": state,
+                    "reason": reason,
                     "offers": _offers_of(core, session, digest, stamp, card, True),
                     "content": dict(content) if isinstance(content, Mapping) else None})
     return out

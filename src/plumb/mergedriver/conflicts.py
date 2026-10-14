@@ -206,6 +206,11 @@ def conflict_card(core: Any, conflict: IntentConflict, *, backend: Any = None) -
         side = ours if settled.take == "ours" else theirs
         lines.append(owner_text.CARD_SETTLED.format(chosen=settled.chosen, side=side))
         return lines
+    sug = conflict.suggested or {}
+    side = {"ours": f"keep {ours}'s version", "theirs": f"keep {theirs}'s version",
+            "combined": "keep the combined version"}.get(str(sug.get("take")))
+    if side:  # SR-158: the agent's suggestion and its reason
+        lines.append(owner_text.CONFLICT_SUGGESTED.format(said=side, why=sug.get("why", "")))
     lines.append(judgment_line(core, conflict, backend))
     say = owner_text.CARD_SAY_COMBINED if conflict.proposed else owner_text.CARD_SAY
     lines.append(say.format(ours=ours, theirs=theirs))

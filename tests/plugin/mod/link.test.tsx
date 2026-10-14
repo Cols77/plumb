@@ -6,7 +6,7 @@ import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { PYTHON, ROOT, SESSION } from './fixtures'
-import { BAND, install, NOW, START, SURFACES, world } from './harness'
+import { BAND, install, NOW, START, SURFACES, TURN_DONE, world } from './harness'
 import type { World } from './harness'
 
 const SESSION_DIR = `${ROOT}/.plumb/session/${SESSION}`
@@ -199,6 +199,19 @@ for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await ui.find({ type: 'Text', text: /^plumb / })).toBeDefined()
       await ui.unmount()
+    })
+
+    test('SR-160: linked with an older interpreter, then host.json names the plugin environment: the panel draws with the new one', async ($, on) => {
+      const w = unnamed()
+      w.files[VENV_PYTHON] = ''
+      install(on, w)
+      await $.session.start(START)
+      expect(hellos(w).map(a => a[0])).toEqual([VENV_PYTHON])
+      w.files[HOST] = JSON.stringify({ python: PYTHON })
+      await $.turn.start(TURN)
+      await $.turn.complete(TURN_DONE)
+      const draws = w.runs.filter(r => r.argv[4] === 'draw').map(r => r.argv[0])
+      expect(draws[draws.length - 1]).toBe(PYTHON)
     })
 
     test('SR-126: plumb mod hello fails: one line gives its error', async ($, on) => {

@@ -194,7 +194,9 @@ export async function hello(io: Io): Promise<Hello> {
 
 export async function draw(io: Io, link: PlumbLink): Promise<PlumbCard[] | null> {
   const ran = await plumbMod(io, link, 'draw', { key: link.key })
-  return ran.ok && Array.isArray(ran.data?.cards) ? (ran.data.cards as PlumbCard[]) : null
+  return ran.ok && Array.isArray(ran.data?.cards)
+    ? ([...ran.data.cards, ...(ran.data.settled ?? [])] as PlumbCard[])
+    : null
 }
 
 export function press(io: Io, link: PlumbLink, offer: string, choice: number): Promise<Ran> {

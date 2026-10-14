@@ -184,7 +184,8 @@ def _conflict(argv: list[str]) -> int:
                 print("plumb: a suggestion needs its reason (--why)", file=sys.stderr)
                 return 2
             conflict = mod.propose(core, ref, _values(args.file), take=args.take, why=args.why)
-            print(owner_text.PROPOSED.format(record=conflict.record, title=conflict.title))
+            print((owner_text.PROPOSED if conflict.proposed else owner_text.SUGGESTED).format(
+                record=conflict.record, title=conflict.title))
             for line in mod.conflict_card(core, conflict):
                 print(line)
             _request_cards(core, [conflict.ic])

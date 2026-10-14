@@ -98,7 +98,10 @@ def press(core: Any, session: str, offer: str, index: int,
     core.log_append("events", CARD_PRESS, {
         "session": session, "offer": offer, "card": card_id, "question": question,
         "choice": index, "answer": choice.answer, "label": choice.label,
-        "record": record_id, "hash": shown_hash, "key_digest": digest})
+        "record": record_id, "hash": shown_hash, "key_digest": digest,
+        # decided now, so a later edit of the record never turns a confirmed card blocked
+        "stale": bool(record_id) and (core.index().get(str(record_id)) is None
+                                      or core.index()[str(record_id)].hash != shown_hash)})
     result: dict[str, Any] = {
         "ok": True, "offer": offer, "card": card_id, "question": question, "choice": index,
         "label": choice.label, "answer": choice.answer, "status": card.status,
@@ -190,10 +193,14 @@ def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Ch
     side = _conflict_take(card, choice)
     if not answer.is_left(choice) and side is None:
         raise Unknown("plumb mod press: that button cannot answer this card", 2)
-    core.log_append("events", CARD_PRESS, {
-        "session": session, "offer": offer, "card": card.id, "question": question,
-        "choice": index, "answer": choice.answer, "label": choice.label,
-        "record": record_id, "hash": shown_hash, "key_digest": digest})
+    def log_press() -> None:
+        core.log_append("events", CARD_PRESS, {
+            "session": session, "offer": offer, "card": card.id, "question": question,
+            "choice": index, "answer": choice.answer, "label": choice.label,
+            "record": record_id, "hash": shown_hash, "key_digest": digest})
+
+    if side is None:
+        log_press()
     topic = card.topic
     result: dict[str, Any] = {
         "ok": True, "offer": offer, "card": card.id, "question": question, "choice": index,
@@ -211,6 +218,7 @@ def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Ch
                 raise Unknown(owner_text.PRESS_CHANGED_SINCE.format(title=card.topic)
                               + " Nothing was written.", 1)
             conflicts.apply_choice(core, found, side, by="owner")
+            log_press()     # logged once applied: a refused press answers nothing (SR-160)
         except conflicts.ConflictError as exc:
             raise Unknown(f"plumb mod press: {exc}; nothing was written", 1) from exc
         result.update(status="closed",

@@ -154,7 +154,9 @@ def awaiting_cards(core: Any, session: str, stamp: int) -> list[Any]:
     from plumb.understand import cards as card_text
     from plumb.understand import cardstore, summary
 
-    cards = list(cardstore.load(core.root, session))
+    held = cardstore.states(core, session)
+    cards = [c for c in cardstore.load(core.root, session)
+             if held.get(c.id, ("",))[0] != "processing"]
     try:
         cards.extend(summary._failure_cards(core, session))
     except Exception:  # noqa: BLE001 - a card that cannot be made is left out
@@ -203,7 +205,41 @@ def deliver(ctx: Any, output: Any) -> Any:
         turn = _turn(ctx)
         if not active(ctx.root, ctx.session_id, _turn_start(turn)):
             return output
-        write_present(ctx, turn)
+        before = files.read_json(present_path(ctx.root, ctx.session_id))
+        data = write_present(ctx, turn)
+        line = turn_line(ctx, before, data)
     except Exception:  # noqa: BLE001 - the owner's summary is never lost to the panel
         return output
+    if line:
+        from plumb.hosts.claude_code.hookio import HookOutput
+
+        return HookOutput(system_message=line)
     return None
+
+
+def turn_line(ctx: Any, before: Any, data: Mapping[str, Any]) -> str:
+    """SR-159: the one plumb line for a turn end with the panel running: new cards waiting,
+    answers applied (by the card's title), nothing when neither changed. Plain text: a hook's
+    ``systemMessage`` cannot carry colour. ``turnline.json`` holds each card's state seen at
+    the last turn end."""
+    from plumb.api import open_core
+    from plumb.understand import cardstore, summary
+
+    core = open_core(ctx.root)
+    seen_path = _session_file(ctx.root, ctx.session_id, "turnline.json")
+    seen = files.read_json(seen_path)
+    seen = seen if isinstance(seen, Mapping) else {}
+    states = {k: v[0] for k, v in cardstore.states(core, ctx.session_id).items()}
+    files.write_json_atomic(seen_path, states)
+    old = {str(c.get("id")) for c in (before or {}).get("cards", ()) if isinstance(c, Mapping)}
+    fresh = [c for c in data.get("cards", ()) if c.get("id") not in old]
+    titles = {c.id: c.topic for c in cardstore.load(core.root, ctx.session_id, open_only=False)}
+    titles.update({str(e["card"].get("id")): str(e["card"].get("topic"))
+                   for e in summary.read_drawn(ctx.root, ctx.session_id)})
+    applied = [titles.get(k, k) for k, v in states.items()
+               if v == "done" and seen.get(k) in ("waiting", "processing")]
+    lines = [f"plumb: your answer on {t} was applied" for t in applied]
+    if fresh:
+        lines.append("plumb: 1 new card waits on the panel" if len(fresh) == 1
+                     else f"plumb: {len(fresh)} new cards wait on the panel")
+    return "\n".join(lines)

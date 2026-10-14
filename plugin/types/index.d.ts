@@ -53,6 +53,10 @@ export type PlumbCard = {
   owner_only: boolean
   turn: number
   repeats: boolean
+  /** SR-160: where the card stands: waiting, processing, blocked, done or left_open */
+  state?: string
+  /** why a blocked card could not be applied */
+  reason?: string
   offers: PlumbOffer[]
   content: PlumbContent | null
   feature?: string
