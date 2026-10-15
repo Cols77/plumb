@@ -496,3 +496,23 @@ def test_flat_layout_and_root_files_are_untraced_at_the_stop(project: Path,
     out = run_stop(project, hook_input, verify=FakeVerify())
     assert _block(out) is None
     assert _note(project)["paths"] == ["mypkg/power.py", "tool.py"]
+
+
+# -- SR-173 EX-2: the agent's warnings reach it as text, panel or not -------------------------
+
+
+@pytest.mark.sr("SR-173")
+def test_warnings_are_queued_for_the_agent_and_the_owner_text_stays_cards(
+        project: Path, hook_input, monkeypatch) -> None:
+    from plumb.awareness import turn as awareness
+    from plumb.present.delta import Line
+
+    warning = "plumb: SR-001 'Adds numbers' is also being changed on branch feat-x"
+    monkeypatch.setattr(awareness, "at_stop", lambda *a, **k: [Line(warning)])
+    start_turn(project)
+    edit(project, "src/mul.py", "def mul(a, b):\n    return a * b\n")
+    out = run_stop(project, hook_input, verify=FakeVerify())
+    assert _block(out) is None and "feat-x" not in _summary(out)
+    assert _note(project)["paths"] == ["src/mul.py"]          # untraced, queued
+    notes = project / ".plumb" / "session" / "s1" / "agent_notes.json"
+    assert json.loads(notes.read_text("utf-8")) == [warning]   # the warning, queued

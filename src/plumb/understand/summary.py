@@ -103,7 +103,7 @@ def _failure_cards(core: Any, session: str) -> list[CardState]:
         raw = files.read_json(files.jobs_dir(core.root, session) / f"{result.job}.json")
         kind = str(raw.get("kind")) if isinstance(raw, Mapping) else ""
         message = ((raw.get("inputs") or {}).get("message") or {}) if isinstance(raw, Mapping) else {}
-        if kind == "tidy":
+        if kind in ("tidy", "question"):
             continue                      # SR-162: its own line says it could not run
         if kind == "clarify" and any(c.id == clarify.couldnt_card_id(str(message.get("digest")))
                                      for c in cardstore.own_cards(Path(core.root), session)):
@@ -187,10 +187,12 @@ def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (
         except Exception:  # noqa: BLE001 - the upkeep never costs the owner their summary
             pass
         try:
-            from plumb.understand import backlog, tidy
+            from plumb.understand import backlog, question, tidy
 
             backlog.resume(core, session)    # a pass a failure interrupted goes on (spec 8)
             tidy.enqueue(core, session)      # SR-162: the model reads the cards after this turn
+            question.enqueue(core, session,   # SR-167: and the agent's reply for a question to raise
+                             (getattr(ctx, "data", None) or {}).get("transcript_path"))
         except Exception:  # noqa: BLE001 - queueing never costs the owner their summary
             pass
     rendered: tuple[str, ...] = ()
@@ -268,11 +270,19 @@ def _tidy_lines(core: Any, session: str, since: str) -> list[str]:
                 and entry.digest not in told.notices and entry.at >= told.since):
             told.notices.add(entry.digest)
             named.append(f"{entry.payload.get('topic')}, {entry.payload.get('reason')}")
+    settled = [e for e in core.events() if e.kind == "card-settled"
+               and e.payload.get("session") == session and e.digest not in told.notices
+               and e.at >= told.since]
+    told.notices.update(e.digest for e in settled)
+    counts = {a: sum(e.payload.get("action") == a for e in settled)
+              for a in ("withdraw", "repin", "reword", "stays")}
     failed = [r.job for r in _tidy_failures(core, session) if r.job not in told.notices]
     told.notices.update(failed)
-    told.dirty = bool(named or failed)
+    told.dirty = bool(named or failed or settled)
     told.save()
-    return [*([owner_text.CARDS_WITHDRAWN.format(items="; ".join(named))] if named else []),
+    return [*([owner_text.CARDS_SETTLED.format(items=owner_text.settled_counts(counts))]
+              if settled else []),
+            *([owner_text.CARDS_WITHDRAWN.format(items="; ".join(named))] if named else []),
             *([owner_text.TIDY_COULD_NOT_RUN] if failed else [])]
 
 
@@ -352,8 +362,9 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
     _withdraw_settled(core, session)
     reopen_changed(core, session)       # DEC-034: a card left open returns once it changed
     held = cardstore.states(core, session)
+    waiting = cardstore.grouped(core.root, session)   # SR-172: the principle card asks for these
     open_cards = [c for c in cardstore.load(core.root, session, open_only=False)
-                  if _repeats_at_turn_end(c) and held.get(c.id, ("",))[0] != "processing"]
+                  if _repeats_at_turn_end(c) and c.id not in waiting and held.get(c.id, ("",))[0] != "processing"]
     open_cards.extend(_failure_cards(core, session))
     built = _turn_cards(core, session, extra, passing or set())
     seen = {c.id for c in open_cards}
@@ -486,6 +497,15 @@ def _waiting(core: Any, session: str, topics: Sequence[str], ids: Sequence[str] 
         return
     files.write_json_atomic(path, {"n": len(topics), "topics": list(topics),
                                  "ids": list(ids)})
+
+
+def tell_agent(core: Any, session: str, card: CardState) -> None:
+    """A card raised between turn ends (SR-167) joins the cards the next prompt names."""
+    path = files.session_dir(core.root, session) / WAITING
+    raw = files.read_json(path)
+    raw = raw if isinstance(raw, Mapping) else {}
+    topics, ids = [*raw.get("topics", ()), card.topic], [*raw.get("ids", ()), card.id]
+    files.write_json_atomic(path, {"n": len(topics), "topics": topics, "ids": ids})
 
 
 def waiting_line(root: Any, session: str, core: Any = None) -> str | None:

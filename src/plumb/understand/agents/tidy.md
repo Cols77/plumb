@@ -22,4 +22,16 @@ Rules:
   to what the card asks.
 - Return a verdict only for the cards to withdraw (you may leave out `keep`).
 
+Principles and settlements:
+- Each card has `grouped`: true when it already waits under a principle question.
+- `principles`: when two or more open cards that are not grouped hinge on one question of
+  principle, give that `question` once, 2 to 4 `options`, and the `cards` ids it would settle.
+  Never invent a principle for cards that merely share a subject.
+- `settlements`: for a grouped card, when a confirmed record in `confirmed` decides that
+  principle, give `action`: `withdraw` (the decision answers what the card asks), `repin` (the
+  change the card is about keeps the requirement's meaning) or `reword` (only the wording of
+  the requirement should change; give `wording`, the new statement). Give `decision`, the id
+  of that record, and `quote`, its words copied exactly. When you cannot settle a grouped card
+  from a confirmed record, give `stays`. Only confirmed records count; never a proposed one.
+
 Answer with the JSON object the schema describes and nothing else.

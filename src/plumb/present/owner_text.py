@@ -9,6 +9,7 @@ surface's output passes. Each lane's constants sit under its own heading.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 
 # -- LOGS (sp6 6)
 # 6.5, 10: the warning in plumb validate and in the merge report while legacy lines remain
@@ -322,6 +323,8 @@ STALE_ISSUE_CODE = ('{path} changed after you confirmed "{title}", and I could n
                     "whether it still does what you asked")
 STALE_ISSUE_RECORD = ('"{title}" rests on "{other}", which was reworded since, and I could '
                       "not settle whether the two still agree")
+STALE_ISSUE_LOST_TEST = ('The test that proved example {example} of "{title}" is gone and nothing '
+                         "replaces it, so nothing shows it still holds")
 STALE_OPTION_KEEP = "Keep the wording as it is"
 STALE_OPTION_REWORD = "Reword it to match the change"
 STALE_OPTION_UNDO = "Undo the change"
@@ -391,8 +394,23 @@ WITHDRAWN_SUPERSEDED = "{ids} is superseded"
 WITHDRAWN_CONFIRMED = "you confirmed what it asked about"
 # SR-162: the tidy job's reasons, its step and the line when it could not run
 STEP_TIDYING = "checking your open questions"
+STEP_QUESTIONS = "reading the agent's questions to you"   # SR-167
 TIDY_ANSWERED = 'you confirmed {record}: "{quote}"'
 TIDY_DUPLICATE = 'it asks what "{other}" asks'
+TIDY_SETTLED = 'you decided {record}: "{quote}"'
+PRINCIPLE_CONSEQUENCE = "Settles {n} open questions that hinge on it, each told with your words cited"
+PRINCIPLE_ISSUE = "{n} open questions hinge on this: {topics}"
+CARDS_SETTLED = "Settled from your decision: {items}"
+
+
+def settled_counts(counts: Mapping[str, int]) -> str:
+    """How many cards a decision withdrew, repinned or reworded, and how many it could not
+    settle (they stay)."""
+    said = [f"{counts[a]} {word}" for a, word in (("withdraw", "withdrawn"),
+            ("repin", "repinned"), ("reword", "reworded")) if counts.get(a)]
+    if counts.get("stays"):
+        said.append(f"{counts['stays']} could not be settled and stay open")
+    return ", ".join(said)
 TIDY_COULD_NOT_RUN = "I could not check whether your open questions are already answered; they all stay."
 # SR-116 EX-4: what the agent is told at the next prompt when cards were shown at turn end
 CARDS_WAITING_AGENT = ("plumb: {n} cards were shown to the owner at the end of the last turn "

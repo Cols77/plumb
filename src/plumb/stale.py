@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 if TYPE_CHECKING:
     from plumb.api import Core
+    from plumb.contracts import LinkState
 
 CACHE_REL = ".plumb/cache/linkmap.json"
 VERSION = 2
@@ -640,6 +641,16 @@ def withdraw_card(core: Core, session: str, link: str, why: str) -> bool:
     return found
 
 
+def reopen_card(root: Path | str, session: str, link: str) -> None:
+    """Put the latest withdrawn card of ``link`` back open (the undo of a settlement)."""
+    cards = read_cards(root, session)
+    for card in reversed(cards):
+        if card.get("link") == link and card.get("status") == "withdrawn":
+            card["status"] = "open"
+            _write_cards(root, session, cards)
+            return
+
+
 def withdraw_settled(core: Core, only: Sequence[str] | None = None) -> None:
     """SR-161: withdraw the open stale cards whose link is current again or no longer exists,
     in the ``only`` sessions (default every session folder)."""
@@ -732,3 +743,57 @@ def turn_number(root: Path | str, session: str) -> int:
         return int(float(data.get("turn_start") or 0)) if isinstance(data, dict) else 0
     except (TypeError, ValueError):
         return 0
+
+
+def settle_drift(core: Core, session: str, rows: Sequence[Row],
+                 waiting: set[str] | None = None) -> list[str]:
+    """SR-175, DEC-061: check the requirement of each stale link is still covered before any
+    card: its tests run, a model judges the meaning kept, and the link is repinned with a
+    logged note (a wording-only change is recorded as an unconfirmed edit). A card is filed
+    only when the model says the requirement should change fundamentally; a failure, an
+    unreachable model or a change to send back stays unresolved (SR-174: with one line saying
+    the check waits, returned; ``waiting`` collects the records it waits on). Never fails
+    the stop."""
+    from plumb.judgment import waiting_line
+    from plumb.links import repin_after_tests
+
+    said: list[str] = []
+    for record in sorted({r.record for r in rows}):
+        try:
+            cause = repin_after_tests(core, record, session=session, auto=True).unreachable
+        except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+            continue
+        if cause and waiting is not None:
+            waiting.add(record)
+        line = waiting_line(core.root, "the stale check", cause) if cause else None
+        if line:
+            said.append(line)
+    return said
+
+
+def card_lost_tests(core: Core, session: str) -> None:
+    """SR-175 EX-2: a confirmed example whose every verified_by test is gone has lost its
+    proof, so the owner is asked once whether the requirement should change."""
+    from plumb.present import owner_text as words
+
+    states = core.link_states()
+    status = core.status(sorted({s.link.source for s in states}))
+    proof: dict[tuple[str, str], list[LinkState]] = {}
+    for s in states:
+        if s.link.kind == "verified_by" and s.link.example:
+            proof.setdefault((s.link.source, s.link.example), []).append(s)
+    index = core.index()
+    asked = {str(c.get("link")) for c in read_cards(core.root, session)}
+    for (source, example), found in sorted(proof.items()):
+        link = found[0].link.id
+        if (any(s.state != "dangling" for s in found) or link in asked
+                or status[source].confirmation != "confirmed"):
+            continue
+        title = index[source].title
+        add_card(core.root, session, link=link, record=source, path="", by="drift",
+                 turn=turn_number(core.root, session), topic=title,
+                 issue=words.STALE_ISSUE_LOST_TEST.format(title=title, example=example),
+                 options=[words.STALE_OPTION_KEEP, words.STALE_OPTION_REWORD,
+                          words.STALE_OPTION_UNDO],
+                 consequences=[words.STALE_CONSEQUENCE_KEEP, words.STALE_CONSEQUENCE_REWORD,
+                               words.STALE_CONSEQUENCE_UNDO], why=words.STALE_WHY_KEEP)

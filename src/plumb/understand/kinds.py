@@ -9,7 +9,8 @@ from typing import Any
 KIND_MODULES: dict[str, str] = {"read": "plumb.understand.read",
                                 "judge": "plumb.understand.judge",
                                 "clarify": "plumb.understand.clarify",
-                                "tidy": "plumb.understand.tidy"}
+                                "tidy": "plumb.understand.tidy",
+                                "question": "plumb.understand.question"}
 
 
 class _Kinds:

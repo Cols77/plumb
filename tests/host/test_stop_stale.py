@@ -53,6 +53,20 @@ def project(repo: Path, write_record) -> Path:
     return repo
 
 
+@pytest.fixture(autouse=True)
+def judge_reachable_tests_fail(monkeypatch) -> None:
+    """A reachable judge whose linked tests fail: the drift stays unresolved and holds (SR-111);
+    SR-174 below makes the judge unreachable."""
+    from types import SimpleNamespace
+
+    from plumb import links
+    from plumb.understand import repin
+
+    monkeypatch.setattr(links, "default_runner", lambda core: lambda paths: (False, "failed"))
+    monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
+    monkeypatch.setattr(repin, "open_judge", lambda core: SimpleNamespace())
+
+
 def start_turn(repo: Path, session: str = "s1", turn_id: str = TURN) -> None:
     """What the prompt hook does at a turn start: the turn file and the stale baseline."""
     path = repo / ".plumb" / "session" / session / "turn.json"
@@ -273,3 +287,25 @@ def test_rewording_the_requirement_alone_is_not_held(project: Path, hook_input) 
     edit(project, ".plumb/requirements/SR-001.md",
          path.read_text("utf-8").replace("add returns the sum.", "add returns the total."))
     assert _block(run_stop(project, hook_input, verify=_verify(), active=True)) is None
+
+
+@pytest.mark.sr("SR-174")
+def test_ex2_a_stale_check_waiting_for_the_judge_does_not_hold_the_turn(
+        project: Path, hook_input, monkeypatch) -> None:
+    from plumb import links
+    from plumb.understand import repin
+
+    monkeypatch.setattr(links, "default_runner", lambda core: lambda paths: (True, "passed"))
+    monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
+    monkeypatch.setattr(repin, "open_judge", lambda core: None)
+    monkeypatch.setattr(repin, "judge_gap", lambda core: "no key")
+    start_turn(project)
+    edit(project, "src/calc.py", CHANGED)
+    out = run_stop(project, hook_input, verify=_verify())
+    assert _block(out) is None
+    told = _prompt(project, hook_input)     # a stop that holds nothing tells the next prompt
+    assert "the stale check is waiting" in told and "no key" in told
+    start_turn(project, turn_id="turn-2")
+    edit(project, "src/calc.py", CHANGED + "\n")
+    out = run_stop(project, hook_input, verify=_verify())
+    assert _block(out) is None and "the stale check is waiting" not in _prompt(project, hook_input)
