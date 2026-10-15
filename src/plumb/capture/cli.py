@@ -450,8 +450,7 @@ def cmd_config(command: str, argv: list[str]) -> int:
     from plumb.capture import jevcmd
 
     parser = _parser(command, "Owner settings: auto-approve on|off and show run in your own "
-                     "terminal only (logged in the event log); card full|compact|off sets "
-                     "the intent card's verbosity.")
+                     "terminal only (logged in the event log); card is retired.")
     parser.add_argument("setting", choices=["auto-approve", "show", "card"])
     parser.add_argument("value", nargs="?", default=None)
     parser.add_argument("--backend", default="jev")
@@ -465,9 +464,9 @@ def cmd_config(command: str, argv: list[str]) -> int:
             emit(jevcmd.config_show(core), False)
             return 0
         if args.setting == "card":
-            if args.value is None:
-                parser.error("card takes full, compact or off")
-            print(f"plumb: card {jevcmd.set_card(core, args.value)}")
+            from plumb.config import CARD_RETIRED
+
+            print(CARD_RETIRED)  # SR-173: the setting is retired and changes nothing
             return 0
         if args.value not in ("on", "off"):
             parser.error("auto-approve takes on or off")

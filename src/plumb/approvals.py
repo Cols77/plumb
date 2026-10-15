@@ -43,6 +43,39 @@ def prompt_digest(text: str) -> str:
     return sha256_bytes(text.encode("utf-8"))
 
 
+# The host marks a message from another Claude session with this wrapper; plumb reads the
+# mark (a structured format), never the words.
+_PEER_WRAPPER = re.compile(r"\s*<cross-session-message\b([^>]*)>")
+# Host-marked non-owner text: a cross-session delivery notice, and the caveat or command tags
+# of a slash command the owner typed (a command, not a request).
+_NOTICE = re.compile(r"\s*\[Cross-session delivery notice\]")
+_COMMAND = re.compile(r"\s*<(?:local-command-caveat|command-name)>")
+_FROM_NAME = re.compile(r'from-name=(?:"([^"]*)"|(\S+))')
+
+
+def prompt_origin(text: str) -> tuple[str, str]:
+    """``(origin, from-name)`` of a prompt: ``peer`` when the host wrapped it as another
+    session's message, ``notification`` or ``command`` for host-marked notices, else ``owner`` (SR-168)."""
+    wrapped = _PEER_WRAPPER.match(text)
+    if _NOTICE.match(text):
+        return "notification", ""
+    if _COMMAND.match(text):
+        return "command", ""
+    if wrapped is None:
+        return "owner", ""
+    name = _FROM_NAME.search(wrapped.group(1))
+    return "peer", (name.group(1) or name.group(2)) if name else ""
+
+
+def is_owner_entry(entry: Mapping[str, Any]) -> bool:
+    """Whether a prompt-log entry holds the owner's own words. Entries logged before origins
+    existed have no ``origin``: they count as the owner's unless the host wrapped them."""
+    origin = entry.get("origin")
+    if origin is None:
+        return prompt_origin(str(entry.get("text") or ""))[0] == "owner"
+    return origin == "owner"
+
+
 def marker() -> str | None:
     value = os.environ.get("PLUMB_AGENT_SESSION")
     return value or None
@@ -272,6 +305,9 @@ def find_prompt(core: Core, given: str) -> Mapping[str, Any]:
     if len(matches) > 1:
         raise Refused(f"prompt digest prefix {given} is ambiguous; give more digits")
     digest, entry = next(iter(matches.items()))
+    if not is_owner_entry(entry):
+        raise Refused(f"prompt {digest[:19]} is not the owner's words (origin: "
+                      f"{entry.get('origin') or 'peer'})")
     text = entry.get("text")
     if not isinstance(text, str) or digest not in (prompt_digest(text), sha256_text(text)):
         raise Refused(f"logged prompt {digest[:19]} does not hash to its digest")

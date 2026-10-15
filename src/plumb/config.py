@@ -33,16 +33,20 @@ class VerifyConfig:
     coverage: str = "auto"
 
 
-# Soft budgets per hook, from process start. Near the 2-second ceiling on purpose: on a
-# loaded 2-core machine a tighter budget cut the read-back first. The watchdog (1.9 s) is
-# the hard bound, and a cut keeps the intent-translation lines (hookio.HookContext.keep).
+# Soft budgets per hook, from process start (SR-181). Generous on purpose: on a loaded 2-core
+# machine a 1.2-1.4 s budget cut the read-back and skipped the check on every turn. They sit
+# under the watchdog's hard limit (hookio.HARD_LIMIT_S, 6 s, or hooks.hard_limit_s), which is
+# the bound; a cut keeps the intent-translation lines (hookio.HookContext.keep). The host's own
+# hook timeouts (10 s and 30 s) stay above the hard limit plus the stop hook's grace.
 DEFAULT_HOOK_BUDGET_MS: Mapping[str, int] = {
-    "session_start": 1400, "prompt": 1200, "stop": 1400, "post_edit": 300}
+    "session_start": 4000, "prompt": 4000, "stop": 4000, "post_edit": 1000}
 
 
 @dataclass(frozen=True)
 class HooksConfig:
     budget_ms: Mapping[str, int] = field(default_factory=lambda: dict(DEFAULT_HOOK_BUDGET_MS))
+    # SR-181: the watchdog's hard limit in seconds; unset = hookio.HARD_LIMIT_S
+    hard_limit_s: float | None = None
     brief_lines: int = 30
     prompt_lines: int = 20
     # R9 context economy: the most a prompt hook injects (records are one line each, and only
@@ -157,10 +161,14 @@ class TraceConfig:
     exempt: tuple[str, ...] = ()
 
 
+CARD_RETIRED = ("plumb: the card setting (full, compact, off) is retired and has no effect; "
+                "cards are always drawn in full")
+
+
 @dataclass(frozen=True)
 class PresentConfig:
-    # sp5 4.3: the intent card's verbosity, full | compact | off (a display preference)
-    card: str = "compact"
+    # retired (SR-173): the intent card's full | compact | off; read for the notice only
+    card: str = ""
     ascii: bool = False          # the status card without glyphs
 
 

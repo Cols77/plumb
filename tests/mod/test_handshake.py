@@ -159,12 +159,14 @@ def test_session_start_injects_the_brief_and_says_so_unless_the_panel_owns_it(
     assert host["python"] == sys.executable
 
 
-def test_session_start_leaves_the_brief_out_when_the_panel_gives_the_background(
+@pytest.mark.sr("SR-173")
+def test_session_start_still_gives_the_agent_the_brief_when_the_panel_gives_the_background(
         core, monkeypatch, capsys, hook_input) -> None:
+    """SR-173 EX-1: the panel is the owner's surface; the agent's channel keeps the brief."""
     _register(monkeypatch, capsys, core.root, background=True)
     out = _session_start(core.root, hook_input)
-    assert out.strip() == ""
-    assert _brief(core.root) == {"injected": False}
+    assert out.strip().startswith("plumb brief")
+    assert _brief(core.root) == {"injected": True}
 
 
 def test_a_registered_panel_without_the_background_leaves_the_brief_in(

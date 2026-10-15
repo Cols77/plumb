@@ -4,11 +4,12 @@
   "type": "object",
   "required": ["outcome", "explanation", "topic"],
   "properties": {
-    "outcome": {"type": "string", "enum": ["reword", "back-to-development", "owner"]},
+    "outcome": {"type": "string", "enum": ["reword", "back-to-development", "owner", "contradicts"]},
     "explanation": {"type": "string"},
     "topic": {"type": "string"},
     "proposed_wording": {"type": "string"},
     "options": {"type": "array", "items": {"type": "string"}},
-    "broken_example": {"type": "string"}
+    "broken_example": {"type": "string"},
+    "other": {"type": "string"}
   }
 }

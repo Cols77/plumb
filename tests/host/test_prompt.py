@@ -471,13 +471,14 @@ def _logged(repo: Path) -> list[dict]:
     "<system-reminder>\nthe task tools have not been used\n</system-reminder>",
     "[SYSTEM NOTIFICATION - NOT USER INPUT]\nbackground task finished",
 ])
-def test_harness_notification_is_not_logged_and_queues_no_job(
+def test_harness_notification_is_logged_as_such_and_queues_no_job(
         records: Path, hook_input, monkeypatch: pytest.MonkeyPatch, note: str) -> None:
     seen = []
     monkeypatch.setattr(prompt, "understand_lines",
                         lambda ctx, core, digest, text: seen.append(text) or [])
     out = _run(records, hook_input, note)
-    assert _logged(records) == [] and seen == [] and out.strip() == ""
+    assert [e["origin"] for e in _logged(records)] == ["notification"]
+    assert seen == [] and out.strip() == ""
     assert not (records / ".plumb" / "session" / "s1" / "turn.json").exists()
 
 
@@ -497,3 +498,14 @@ def test_owner_text_with_appended_notification_logs_only_the_owner_text(
     assert [e["text"] for e in entries] == ["please fix the stale links"]
     assert entries[0]["digest"] == approvals.prompt_digest("please fix the stale links")
     assert seen == ["please fix the stale links"]
+
+
+@pytest.mark.sr("SR-173")
+def test_the_next_prompt_hands_the_agent_the_stop_hooks_queued_notes(
+        records: Path, hook_input) -> None:
+    notes = records / ".plumb" / "session" / "s1" / "agent_notes.json"
+    notes.parent.mkdir(parents=True, exist_ok=True)
+    notes.write_text(json.dumps(["plumb: SR-003 is also being changed on branch feat-x"]), "utf-8")
+    assert "also being changed on branch feat-x" in _run(records, hook_input, "hello")
+    assert not notes.exists()
+    assert "feat-x" not in _run(records, hook_input, "hello again")

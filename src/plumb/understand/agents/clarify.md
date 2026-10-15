@@ -59,6 +59,11 @@ Decide:
   the last reply asked it). Then `intent` is `no` and nothing else is asked or read back: the
   answer is the reply, not a new request. Leave `answers` out when the answer is unclear,
   hedged or only partial ("maybe 2, but..."), or when the message also starts something new.
+  When it answers a question in the last reply that no card holds and the answer would
+  confirm, reject or change a record, choose a conflict's side or settle a stale link, also give
+  `options` (what the reply offered, each with its `effect` on the record), `picked` (the label
+  the person chose) and `records` (ids from `touched` the question is about); a question that
+  changes no record gets none of these.
 - In `replaces`, name the `open_cards` your readback answers or makes moot.
 - Never use record ids, digests, or the words settled, trial or relay: the person's own words
   only.

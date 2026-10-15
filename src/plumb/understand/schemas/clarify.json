@@ -119,7 +119,18 @@
       "properties": {
         "card": {"type": "string", "description": "The id of the open card the message answers."},
         "question": {"type": "string", "description": "The question in the last reply the message answers, when there is no card."},
-        "evidence": {"type": "string", "description": "The person's exact words that answer it, copied from the message."}
+        "evidence": {"type": "string", "description": "The person's exact words that answer it, copied from the message."},
+        "options": {
+          "type": "array",
+          "description": "With question, only when its answer would confirm, reject or change a record, choose a conflict's side or settle a stale link: the options the last reply offered (a plain yes or no are two).",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["label", "effect"],
+            "properties": {
+              "label": {"type": "string"},
+              "effect": {"type": "string", "enum": ["accepted", "rejected", "change"], "description": "What choosing it does to the record: confirms it as it reads, drops it, or changes it."},
+              "consequence": {"type": "string"}}}},
+        "picked": {"type": "string", "description": "With options: the label of the option the person chose, copied from options."},
+        "records": {"type": "array", "items": {"type": "string"}, "description": "With options: ids of the records the question is about, as given in touched."}
       }
     },
     "replaces": {

@@ -13,10 +13,8 @@ read that one small file:
   A block (the instruction to the agent) is unchanged. Otherwise the hook prints as before.
 - ``session-start``: first of all, before any step its budget can cut (SR-125), writes
   ``host.json`` (the interpreter that runs plumb, so the panel can run ``plumb mod`` with the
-  same one) and decides the brief: when the panel says it owns the session background
-  (``background_owned``), the brief is left out, kept lines included, and ``brief.json``
-  records ``{injected: false}``; otherwise the brief is injected as before and ``{injected:
-  true}`` is recorded. A cut later in the hook changes neither.
+  same one) and ``brief.json`` (``{injected: true}``): the agent gets the brief with the panel
+  up or not (SR-173).
 
 Nothing here fails a hook: a file that cannot be read means the panel is not active."""
 
@@ -100,37 +98,18 @@ def record_brief(root: Path, session: str, injected: bool) -> None:
         pass
 
 
-def _keep_nothing(lines: list[str]) -> None:
-    """``HookContext.keep`` while the panel owns the background: a cut prints no brief."""
-
-
-def session_start(ctx: Any) -> bool:
+def session_start(ctx: Any) -> None:
     """The session-start hook's first step (see the module doc): ``host.json``; on a resumed
     session the registration of the panel that ran before is retired (its process and key are
-    gone: the new panel registers again, and until it does nobody owns the background); then
-    whether the brief goes in, recorded in ``brief.json``. True when the panel owns the
-    background: the hook then keeps no line for a cut and answers nothing (``answer``)."""
+    gone: the new panel registers again); then ``brief.json`` records that the brief goes in
+    (SR-173: the agent always gets it, panel or not)."""
     write_host(ctx.root, ctx.session_id)
     data = getattr(ctx, "data", None)
     if isinstance(data, Mapping) and data.get("source") == "resume":
         from plumb.mod.session import retire
 
         retire(ctx.root, ctx.session_id)
-    owned = background_owned(ctx.root, ctx.session_id)
-    record_brief(ctx.root, ctx.session_id, not owned)
-    if owned:
-        ctx.keep = _keep_nothing
-        kept = getattr(ctx, "kept", None)
-        if kept is not None:
-            kept.quiet = True    # the watchdog's cut prints no skip notice either
-    return owned
-
-
-def answer(owned: bool, output: Any) -> Any:
-    """The session-start hook's answer: nothing while the panel owns the background."""
-    from plumb.hosts.claude_code.hookio import HookOutput
-
-    return HookOutput() if owned else output
+    record_brief(ctx.root, ctx.session_id, True)
 
 
 # --------------------------------------------------------------------------- stop

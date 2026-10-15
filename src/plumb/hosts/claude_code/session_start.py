@@ -168,20 +168,15 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     from plumb.mod import handshake
 
     timer = StepTimer(ctx)
-    # SR-125: host.json and the brief's decision before any step the budget can cut, so the
+    # SR-125: host.json and the brief's record before any step the budget can cut, so the
     # panel finds plumb's interpreter even when the rest of this hook is cut short
     try:
-        owned = handshake.session_start(ctx)
+        handshake.session_start(ctx)
     except Exception:  # noqa: BLE001 - a broken panel file never costs the records brief
-        owned = False
+        pass
     timer.mark("handshake")
     try:
-        # with plumb's panel holding the session background, the brief is left out (SP7 5.1)
-        return handshake.answer(owned, _handle(ctx, verify, timer))
-    except BudgetExceeded:
-        if owned:
-            return HookOutput()  # nothing of the brief was owed: no skip notice either
-        raise
+        return _handle(ctx, verify, timer)
     finally:
         timer.write()
 
@@ -231,6 +226,11 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
     lines = emitter.add([Line(evidence_line(summary) if line == NOT_CHECKED else line)
                          for line in records_brief])
     ctx.keep(lines)
+    if getattr(getattr(core.config, "present", None), "card", ""):  # SR-173: retired setting
+        from plumb.config import CARD_RETIRED
+
+        lines += emitter.add([Line(CARD_RETIRED)])
+        ctx.keep(lines)
     conflicts = conflicts_line(core)  # sp6 8.3: a merge left intent awaiting the owner
     if conflicts:
         lines += emitter.add([Line(conflicts)])
