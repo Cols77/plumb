@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import os
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -148,7 +149,12 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
     from plumb.progress import Reporter
     from plumb.understand import worker
 
+    from plumb.stale import SESSION_ENV, current_session
+
     root = Path(core.root)
+    # SR-169: this session's message, never the newest of whichever session logged last
+    if session is None and any(os.environ.get(name) for name in SESSION_ENV):
+        session = current_session(root)
     logged = latest_prompt(core, session)
     if logged is None:
         return Outcome("ready", "", [READY])
