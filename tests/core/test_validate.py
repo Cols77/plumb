@@ -125,3 +125,17 @@ def test_parse_sr_trailer_variants() -> None:
     assert parse_sr_trailer(message) == ("SR-001", "SR-002", "SR-003")
     assert parse_sr_trailer("no trailer") == ()
     assert invalid_ids(("SR-001", "SR-1", "INT-001", "FEAT-002")) == ("SR-1",)
+
+
+@pytest.mark.sr("SR-165")
+def test_supersedes_a_newer_record_warns(clean: Path, write_record) -> None:
+    write_record(clean, "---\nid: SR-002\ntitle: t\nstatement: s\nlinks:\n"
+                 "  - {kind: derives_from, to: INT-001}\n---\n")
+    write_record(clean, "---\nid: SR-003\ntitle: t3\nstatement: s3\nlinks:\n"
+                 "  - {kind: derives_from, to: INT-001}\n---\n")
+    from plumb.links import add_link
+
+    add_link(open_core(clean), "SR-003", "supersedes", Target(record="SR-002"))
+    assert "supersedes" not in _codes(clean, "warning")
+    add_link(open_core(clean), "SR-002", "supersedes", Target(record="SR-003"))
+    assert "supersedes" in _codes(clean, "warning")

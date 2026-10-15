@@ -311,7 +311,7 @@ def changed_tests(states: Iterable[Any], pinned: Mapping[str, set[str]]) -> tupl
     out: list[str] = []
     for state in states:
         end = verified_end(state.link)
-        if end is None or end not in pinned:
+        if state.state == "retired" or end is None or end not in pinned:
             continue
         now = state.current.target if state.current is not None else None
         if now is None or now not in pinned[end]:

@@ -163,3 +163,51 @@ def test_own_records_inside_budget(hook_input) -> None:
         edit_check.main(stdin=io.StringIO(payload), stdout=out, root=root)
         runs.append((time.monotonic() - start) * 1000)
     assert min(runs) < 300 * 0.9, runs
+
+
+def test_sr166_edit_outside_the_root_uses_the_files_own_root(project: Path, hook_input,
+                                                             tmp_path: Path, write_record) -> None:
+    other = tmp_path / "wt"
+    (other / ".plumb").mkdir(parents=True)
+    (other / "src").mkdir()
+    (other / "src" / "x.py").write_text(CODE, encoding="utf-8")
+    write_record(other, SR5)
+    open_core(other).add_link("SR-005", "implemented_by", Target(path="src/x.py", symbol="f"))
+    stale.ensure_linkmap(open_core(other))
+    (other / "src" / "x.py").write_text(CODE.replace("a + b", "a - b"), encoding="utf-8")
+    out = io.StringIO()
+    payload = hook_input("PostToolUse", tool_name="Edit", agent_id="a1",
+                         tool_input={"file_path": str(other / "src" / "x.py")})
+    assert edit_check.main(stdin=io.StringIO(payload), stdout=out, root=project) == 0
+    assert NOTICE in out.getvalue()
+    roots = json.loads((project / ".plumb" / "session" / "agent_roots.json").read_text("utf-8"))
+    assert roots == {"a1": {str(other.resolve()): ["SR-005#0"]}}  # what subagent-stop rechecks
+
+
+@pytest.mark.sr("SR-166")
+def test_sr166_a_worktree_no_session_prompted_in_gets_its_map_built(project: Path, hook_input,
+                                                                    tmp_path: Path,
+                                                                    write_record) -> None:
+    other = tmp_path / "wt"
+    (other / ".plumb").mkdir(parents=True)
+    (other / "src").mkdir()
+    (other / "src" / "x.py").write_text(CODE, encoding="utf-8")
+    write_record(other, SR5)
+    open_core(other).add_link("SR-005", "implemented_by", Target(path="src/x.py", symbol="f"))
+    assert stale.load_linkmap(other) is None  # no prompt hook ever ran there
+    (other / "src" / "x.py").write_text(CODE.replace("a + b", "a - b"), encoding="utf-8")
+    out = io.StringIO()
+    payload = hook_input("PostToolUse", tool_name="Edit", agent_id="a1",
+                         tool_input={"file_path": str(other / "src" / "x.py")})
+    assert edit_check.main(stdin=io.StringIO(payload), stdout=out, root=project) == 0
+    assert NOTICE in out.getvalue()
+    assert stale.load_linkmap(other) is not None
+
+
+@pytest.mark.sr("SR-166")
+def test_sr166_an_edit_that_makes_nothing_stale_records_no_link(project: Path,
+                                                                hook_input) -> None:
+    (project / "src" / "x.py").write_text(CODE.replace("return x", "return -x"), "utf-8")
+    assert _run(project, hook_input) == ""
+    roots = json.loads((project / ".plumb" / "session" / "agent_roots.json").read_text("utf-8"))
+    assert roots == {"main": {str(project): []}}

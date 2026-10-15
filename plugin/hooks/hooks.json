@@ -83,6 +83,17 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" subagent-stop",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

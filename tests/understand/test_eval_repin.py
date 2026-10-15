@@ -130,7 +130,8 @@ def test_head_pin_survives_a_working_tree_repin(project: Path) -> None:
     links.repin(open_core(project), LINK)                       # not committed
     core = open_core(project)
     skipped = evalrepin.build_case(core, {"id": "a", "link": LINK, "label": "changed"})
-    assert skipped == "the pinned version of the end is not in git"   # skipped, not guessed
+    # skipped, not guessed: the uncommitted pin is kept (SR-166 EX-2), so the diff is empty
+    assert skipped == "no change since the pin (repinned since it was labelled?)"
     case = evalrepin.build_case(core, {"id": "a", "link": LINK, "label": "changed",
                                        "pin": "HEAD"})
     assert isinstance(case, Case) and "+    return a * b" in case.diff

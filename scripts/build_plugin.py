@@ -68,6 +68,7 @@ HOOKS: tuple[tuple[str, str | None, str, bool, int], ...] = (
     ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "edit-check", False, 10),
     ("PostToolUse", "AskUserQuestion", "question-answer", True, 30),
     ("Stop", None, "stop", False, 30),
+    ("SubagentStop", None, "subagent-stop", False, 30),
 )
 # test-only files: they belong in tests/plugin/mod, never in the shipped plugin (SR-123)
 TEST_ONLY_NAMES = ("harness.ts", "fixtures.ts")

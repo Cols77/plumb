@@ -99,6 +99,18 @@ def validate(core: Core) -> list[Finding]:
             problem = kind_problem(link, record)
             if problem:
                 add("error", "kind", link.id, problem)
+            # shortcut: IDs are allocated in order; use the record's first commit date if renumbering breaks that
+            elif link.kind == "supersedes" and link.target.record:
+                old, new = link.target.record, record.id
+                if old.split("-")[0] == new.split("-")[0] and int(old.split("-")[1]) > int(new.split("-")[1]):
+                    add("warning", "supersedes", link.id, f"supersedes a newer record {old}: "
+                        "the newer one is usually the owner's current intent")
+                from plumb.links import live_examples  # SR-164: a retired record's tests
+
+                for ex, test in live_examples(core, old, record.id).items():
+                    add("warning", "retired-example", link.id,
+                        f"{old}/{ex} is retired but still verified by {test}: move it to "
+                        f"{record.id} or keep {old}")
         if record.kind == "requirement":
             feature = record.fields.get("feature")
             if feature is not None and str(feature) not in index:

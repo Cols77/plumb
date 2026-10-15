@@ -342,3 +342,54 @@ def test_read_back_asks_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     check = early.check_text(open_core(main), "make SR-005 pin only the affirmed records")
     assert [(c.record, c.branch, c.theirs) for c in check.conflicts] == [
         ("SR-005", "feat-x", "feat-x version two")]
+
+
+class _Unavailable:
+    name = "jev"
+
+    def contradiction(self, prompt: str, record: Any) -> Judgment:
+        from plumb.judgment import JudgmentUnavailable
+
+        raise JudgmentUnavailable("no model")
+
+
+@pytest.mark.sr("SR-165")
+def test_check_live_contradicts_benign_and_unavailable(tmp_path: Path) -> None:
+    from plumb.awareness.early import check_live
+
+    main, _ = setup(tmp_path)
+    result = new_requirement(main, "relay checks pin nothing",
+                             "A relay pins no stated record at all.", backend=Judge("benign"))
+    new = result.written[0]
+    core = open_core(main)
+    bad = check_live(core, [new], backend=Judge("contradicts"))
+    assert any(f"{new} contradicts SR-005" in line and "supersedes: [SR-005]" in line
+               for line in bad)
+    assert not any("SR-005" in line for line in check_live(core, [new], exclude=["SR-005"],
+                                                           backend=Judge("contradicts")))
+    unsure = check_live(core, [new], backend=_Unavailable())
+    assert any(f"{new} may change what SR-005 says (" in line
+               for line in unsure)
+    assert check_live(core, [new], backend=Judge("benign")) == []
+
+
+@pytest.mark.sr("SR-165")
+def test_check_live_judges_the_opposite_even_when_wordier_records_outrank_it(
+        repo: Path, write_record) -> None:
+    """SR-165 EX-2: SR-076 (the agent relays the choice) and SR-150 (never relayed) ranked 4th
+    by words behind longer, related records; the opposite is still judged and named."""
+    from plumb.awareness.early import check_live
+
+    def sr(n: int, statement: str) -> str:
+        return (f"---\nid: SR-{n:03d}\ntitle: t{n}\nstatement: {statement}\nexamples:\n"
+                f"- {{id: EX-1, given: g, when: w, then: t}}\n---\n")
+
+    base = "the agent relays the owner's conflict choice on the conflict card to the driver"
+    write_record(repo, sr(1, base + " and the owner answers"))
+    for n in range(2, 7):    # five related records that share more words than the opposite
+        write_record(repo, sr(n, base + f" and the owner answers it again {n}"))
+    write_record(repo, sr(7, "the agent never relays the owner's conflict choice"))
+    judge = Judge("contradicts")
+    lines = check_live(open_core(repo), ["SR-001"], backend=judge)
+    assert any("never relays" in prompt for prompt, _ in judge.calls)
+    assert any("SR-001 contradicts SR-007" in line for line in lines)
