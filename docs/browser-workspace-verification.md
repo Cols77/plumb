@@ -73,6 +73,7 @@ From this e2e run, copied to `docs/screenshots/browser/`:
 | `stale-refusal.png` | the stale-card refusal with "Refresh issue" |
 | `narrow-issue.png` | the phone-width layout |
 | `disconnected.png` | the disconnected state with retry |
+| `demo-live.png` | the persistent demo server (library-started on isolated demo data, port 8765) opened in the installed browser after the run |
 
 ## Baseline
 
@@ -91,8 +92,10 @@ on this machine and a session-start import set, out of scope here and left untou
 - `plumb ui` refuses under the agent session marker by design, so the e2e helper
   (`ui/tests/e2e/server.py`) starts the server through the library
   (`plumb.browser.server.make_server`), not the command.
-- Not tested now: a visible browser demonstration (the browser MCP servers did not
-  connect in this session); browser console errors are not captured by the e2e suite;
+- The visible demonstration ran afterwards from a scratch launcher that drops the agent
+  marker in its own process only (as `ui/tests/e2e/server.py` does) and serves a fresh
+  demo project; `plumb ui --demo --open` from the owner's terminal is the clean way.
+- Not tested now: browser console errors are not captured by the e2e suite;
   no independent reviewer recheck or final spec/security code review is recorded here;
   Firefox and WebKit; packaging of the built assets into a wheel.
 - The pytest command prints no summary line, so the counts above were derived from the
