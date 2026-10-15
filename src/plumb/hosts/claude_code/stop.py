@@ -395,14 +395,14 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     from plumb.awareness.turn import at_stop
 
     aware = at_stop(core, changed, touched_ids, ctx.deadline)
-    stale_reasons, _ = stale_hold(ctx, core, index, turn, turn_start)
+    stale_reasons, stale_notes = stale_hold(ctx, core, index, turn, turn_start)
 
     blocked = _block_reasons(ctx, core, index, turn, turn_path, active, v, changed, asked,
                              stated_ids, told, queued, note_path, skipped, aware,
                              stale_reasons)
     if blocked:
         return blocked
-    queue_notes(ctx, [*(line.text for line in aware),
+    queue_notes(ctx, [*stale_notes, *(line.text for line in aware),
                       *([skip_notice(skipped)] if skipped else [])])
 
     return _cards(ctx, core, index, turn, v, test_cards, stated_ids, stamp)
@@ -592,9 +592,12 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         open_rows = stale.unresolved(core, ctx.session_id, state)
         waiting: list[str] = []
         if open_rows:   # SR-175: drift is checked for coverage and repinned before any hold
-            waiting = stale.settle_drift(core, ctx.session_id, open_rows)
+            no_judge: set[str] = set()
+            waiting = stale.settle_drift(core, ctx.session_id, open_rows, no_judge)
             state = stale.turn_state(core, ctx.session_id, str(turn_id) if turn_id else None)
-            open_rows = stale.unresolved(core, ctx.session_id, state)
+            # SR-174, DEC-060: a check that waits for the judge does not hold the turn
+            open_rows = [r for r in stale.unresolved(core, ctx.session_id, state)
+                         if r.record not in no_judge]
         stale.card_lost_tests(core, ctx.session_id)
         held = stale.hold_count(ctx.root, ctx.session_id, str(turn_id))
         limit = int(core.config.hooks.stale_holds_max)
@@ -608,7 +611,7 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         if not open_rows:
             if held:
                 stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), 0)
-            return [], []
+            return [], waiting
         if held < limit:
             stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), held + 1)
             missing = stale.incomplete_cards(ctx.root, ctx.session_id)
