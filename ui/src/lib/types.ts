@@ -1,0 +1,14 @@
+export type Button = { index: number; label: string; answer: string; change: string | null; consequence?: string };
+export type Offer = { offer_id: string; question: string; record?: string; hash?: string; buttons: Button[]; drawn_at?: string };
+export type Question = { id: string; text: string; choices?: Omit<Button, 'index'>[] };
+export type Content = { kind?: string; topic: string; issue: string; context: string[]; assumptions: string[]; wont?: string | null; options: { n?: number; text: string; consequence?: string | null; recommended?: boolean }[] };
+export type LinkTarget = string | {record?: string | null; path?: string | null; test?: string | null; symbol?: string | null};
+export type RecordStatus = {confirmation: string; covered?: boolean; uncovered_examples?: string[]; links?: {state: string; link?: {kind?: string; target?: LinkTarget}}[]; changed_tests?: string[]; superseded_by?: string | null; carried_from?: string | null; self_recorded?: boolean; approved_by?: string | null};
+export type RecordEvidence = { id: string; title: string; hash: string; body: string; fields: Record<string, unknown>; status: RecordStatus | null };
+export type Conflict = { record: string; labels: { ours: string; theirs: string }; fields: Record<string, {base?: unknown; ours?: unknown; theirs?: unknown}>; proposed?: unknown };
+export type Card = { id: string; kind: string; topic: string; issue: string; evidence: string; resolutions?: string[]; state: string; status: string; reason?: string; turn?: number; branch?: string; questions: Question[]; answers: {question: string; answer: string}[]; offers: Offer[]; content: Content | null; records: RecordEvidence[]; diff: Conflict | null; diagram: {source: string; available: boolean; error?: string} };
+export type Session = { id: string; counts: Record<string, number> };
+export type Workspace = { project: {name: string; root: string; demo: boolean}; sessions: Session[] };
+export type Followup = { id: string; card: string; status: string; created: string; delivered?: string };
+export type Draw = {session: string; cards: Card[]; followups: Followup[]};
+export type PressResult = {line?: string; duplicate?: boolean; followup?: {id: string; status: string}; [key: string]: unknown};

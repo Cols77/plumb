@@ -1,5 +1,48 @@
 # plumb
 
+## Browser issue workspace
+
+Open one project's issue inbox, decisions, diagrams and evidence in your browser:
+
+```sh
+plumb ui --root /path/to/project --port 8765 --open
+plumb ui --demo --port 8765 --open
+```
+
+The demo creates an isolated temporary project with labelled records. The server binds
+only to `127.0.0.1`; use its printed launch URL. The fragment capability is removed from
+the address bar immediately and retained in this tab's session storage for authenticated
+requests. Never share that launch URL. Sessions are the original source sessions, so
+answering does not steal the Claude panel registration. Queued follow-up context is
+retained for that session's next prompt hook; it does not wake the agent. A recorded
+answer is not proof of implementation or passing tests.
+
+Built frontend assets are included in `src/plumb/browser/static/`. To rebuild with Node 22:
+
+```sh
+cd ui
+npm ci
+npm test
+npm run check
+npm run build
+```
+
+The pinned Svelte/TypeScript/Vite project builds directly into the packaged static
+directory; commit updated assets with source changes. Fonts and third-party license
+notices are bundled locally. `plumb ui --assets /path/to/build` selects another build.
+Only the index and `/assets/` files are served. Repository HTML is never a document in
+the app: extracted diagrams are sanitized and rendered as SVG image Blobs, with scripts,
+embedded HTML and external resources removed. Some complex SVG styling is omitted by
+this boundary; the source disclosure and download show the sanitized image.
+
+For frontend development, start the Python server on port 8765, then run `npm run dev`
+from `ui/`. Open the Vite address with the same `#token=...` fragment from the Python
+launch URL. Vite's loopback-only proxy sends API requests to the local server with its
+matching Origin; set `PLUMB_API` to another loopback origin before starting Vite if needed.
+Do not expose either development server to a network. The browser API and independent
+process concurrency limits are documented in [docs/browser-api.md](docs/browser-api.md).
+Upstream revisions and license details are in [ui/THIRD_PARTY_NOTICES.md](ui/THIRD_PARTY_NOTICES.md).
+
 A plumb line shows whether a wall is true. plumb does the same check for software: it keeps a
 coding agent's work aligned with what you intend to build.
 
