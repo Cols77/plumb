@@ -29,7 +29,7 @@ from plumb.paths import holds_records
 
 SKIP_BUDGET = "plumb: check skipped (budget)"
 SKIP_ERROR = "plumb: check skipped (error, see .plumb/session/errors.log)"
-HARD_LIMIT_S = 1.9  # the per-turn 2-second rule; the watchdog's last resort
+HARD_LIMIT_S = 6.0  # SR-181: the watchdog's last resort when hooks.hard_limit_s is unset
 _SESSION_RE = re.compile(r"[^A-Za-z0-9_-]+")
 
 
@@ -326,14 +326,15 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
                     timer.start()
                     return
                 if writer.write(_cut_output(kept, SKIP_BUDGET, json_output)):
-                    log_error(found, name, f"watchdog: hard limit {HARD_LIMIT_S}s reached")
+                    log_error(found, name, f"watchdog: hard limit {limit}s reached")
                     flush = getattr(sys.modules.get("plumb.hashing"), "flush_stat_cache", None)
                     if flush is not None:
                         flush()  # the hash cache learned so far warms the next hook
                     os._exit(0)
 
+            limit = hard_limit_s(found)
             elapsed = 0.0 if start is None else time.monotonic() - start
-            timer = threading.Timer(max(HARD_LIMIT_S - elapsed, 0.05), fire)
+            timer = threading.Timer(max(limit - elapsed, 0.05), fire)
             timer.daemon = True
             timer.start()
         if name not in NO_HASHING:
@@ -386,6 +387,17 @@ def read_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+
+
+def hard_limit_s(root: Path) -> float:
+    """The watchdog's hard limit: ``hooks.hard_limit_s`` when set, else ``HARD_LIMIT_S``."""
+    try:
+        from plumb.config import load_config
+
+        configured = load_config(root).hooks.hard_limit_s
+        return float(configured) if configured is not None else HARD_LIMIT_S
+    except Exception:  # noqa: BLE001 - a broken config must not break the hook
+        return HARD_LIMIT_S
 
 
 def hook_budget(name: str) -> Callable[[Path], float]:
