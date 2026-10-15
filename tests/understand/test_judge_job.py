@@ -496,6 +496,8 @@ def test_the_worker_applies_the_verdicts_and_the_cards(repo: Path, engine_standi
         (ids[0], "supported", 0.95), (ids[1], "supported", 0.9),
         (ids[2], "beyond", 0.8), beyond={ids[2]: ["a promise the owner did not make"]})}
     core = open_core(repo)
+    core.log_append("events", "config", {"by": "owner", "auto_approve": {   # the owner's switch
+        "enabled": True, "backend": "jev", "min_probability": 0.9, "min_confidence": "high"}})
     assert worker.run_once(core, SESSION)
     logged = [e.payload for e in open_core(repo).events() if e.kind == "verdict"]
     assert {v["id"]: (v["verdict"], v["score"]) for v in logged} == {

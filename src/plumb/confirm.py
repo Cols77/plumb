@@ -150,6 +150,10 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
             by = entry.payload.get("by")
             if problem is None and by == "auto-jev":
                 problem = recheck(entry, config, calibrations, prompts, approved, escalated)
+            if problem is None and by == "auto-model" and entry.kind == "approval":
+                from plumb.capture.autoapprove import model_floor
+
+                problem = model_floor(config, float(entry.payload["auto"]["confidence"]))
             if problem is None and entry.kind == "approval" and by != "auto-jev":
                 approved.update(str(r.get("id")) for r in entry.payload.get("records") or []
                                 if isinstance(r, Mapping))

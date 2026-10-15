@@ -153,6 +153,22 @@ def verdict_refusal(verdict: Mapping[str, Any]) -> str | None:
     return refusal(verdict.get("by"), verdict.get("verdict"))
 
 
+def model_floor(config: Mapping[str, Any] | None, confidence: float) -> str | None:
+    """SR-191: why a judge model's verdict at ``confidence`` may not confirm under the owner's
+    auto-approve settings (their switch, min_probability, min_confidence), or None."""
+    from plumb.judgment.common import confidence_label
+
+    if not config or not config.get("enabled"):
+        return "auto-model approval without the owner's config auto-approve on before it"
+    floor = float(config.get("min_probability", 0.9))
+    if confidence < floor:
+        return f"auto-model confidence {confidence:.3f} is below the owner's minimum {floor:.3f}"
+    if CONFIDENCE_RANK[confidence_label(confidence)] < CONFIDENCE_RANK.get(
+            str(config.get("min_confidence", "high")), 2):
+        return "auto-model confidence is below the owner's minimum"
+    return None
+
+
 def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
          backend: Any = None, said: list[str] | None = None) -> list[str]:
     """Approve ``by: auto-jev`` the eligible records among ``ids`` (written by one

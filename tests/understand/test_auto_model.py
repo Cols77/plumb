@@ -22,8 +22,17 @@ from plumb.api import open_core
 pytestmark = pytest.mark.sr("SR-191")
 
 
-def judged(root: Path, *items: tuple[str, str, float]):
+def owner_on(root: Path, probability: float = 0.7, confidence: str = "medium") -> None:
+    """The owner's auto-approve switch, as ``plumb config auto-approve on`` logs it."""
+    open_core(root).log_append("events", "config", {"by": "owner", "auto_approve": {
+        "enabled": True, "backend": "jev", "min_probability": probability,
+        "min_confidence": confidence}})
+
+
+def judged(root: Path, *items: tuple[str, str, float], on: bool = True):
     """Apply the scripted judge model's answer and write what it returns, as the worker does."""
+    if on:
+        owner_on(root)
     core = open_core(root)
     answer = verdict_answer(*items)
     for verdict in answer["verdicts"]:
@@ -75,3 +84,37 @@ def test_ex4_undo_revokes_it_and_counts_as_a_no(world: Path) -> None:  # noqa: F
     assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"
     assert [(i.record, i.label) for i in labelled_set(core)
             if i.record == "SR-001" and i.source == "revoked"] == [("SR-001", "no")]
+
+
+def test_ex5_below_the_owners_floor_the_verdict_is_logged_and_confirms_nothing(
+        world: Path) -> None:  # noqa: F811
+    owner_on(world, 0.7, "high")                  # 0.8 reads as medium: under the owner's bar
+    core, _ = judged(world, ("SR-001", "supported", 0.8), on=False)
+    assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"
+    assert not [e for e in core.events() if e.kind == "approval"]
+    assert [e.payload["verdict"] for e in core.events() if e.kind == "verdict"] == ["supported"]
+    owner_on(world, 0.9)
+    core, _ = judged(world, ("SR-001", "supported", 0.8), on=False)
+    assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"
+
+
+def test_ex6_without_the_owners_switch_nothing_is_confirmed(world: Path) -> None:  # noqa: F811
+    core, _ = judged(world, ("SR-001", "supported", 0.99), on=False)
+    assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"
+
+
+def test_ex7_recheck_refuses_an_approval_under_the_floor_on_read(world: Path) -> None:  # noqa: F811
+    from plumb.approvals import approval_items
+    from plumb.confirm import checked
+
+    owner_on(world, 0.9, "high")
+    core = open_core(world)
+    payload = {"records": approval_items(core, ["SR-001"]), "by": "auto-model",
+               "prompt_digest": "sha256:x", "job": "judge-1",
+               "auto": {"model": "haiku", "confidence": 0.6}}
+    with as_worker(world, SESSION):               # a worker wrote it despite the floor
+        core.log_append("events", "approval", payload)
+    core = open_core(world)
+    (_, why), = [(e, w) for e, w in checked(core) if e.kind == "approval"]
+    assert why and "below the owner's minimum" in why
+    assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"

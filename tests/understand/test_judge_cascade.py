@@ -103,6 +103,8 @@ def test_ex1_jev_above_the_threshold_gives_the_verdict_and_the_model_is_not_aske
 def test_ex2_jev_below_the_threshold_sends_the_record_to_the_model(world: Path) -> None:
     core = configure(world)
     calibrate_to(core)
+    core.log_append("events", "config", {"by": "owner", "auto_approve": {   # the owner's switch
+        "enabled": True, "backend": "jev", "min_probability": 0.9, "min_confidence": "high"}})
     model = FakeDispatcher({"judge": verdict_answer(("SR-001", "supported", 0.97))})
     job, cascaded = run(core, ["SR-001"], jev=StubJev(0.3), model=model)
     v = by_id(cascaded)["SR-001"]

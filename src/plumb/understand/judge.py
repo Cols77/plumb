@@ -261,11 +261,17 @@ def pending_lines(core: Any, session: str, card: str) -> list[str]:
     return out
 
 
-def _confirms(core: Any, index: Mapping[str, Any], record: Any, raw: Mapping[str, Any]) -> bool:
+def _confirms(core: Any, index: Mapping[str, Any], record: Any, raw: Mapping[str, Any],
+              confidence: float) -> bool:
     """SR-191: whether the judge model's supported verdict confirms ``record`` itself: a
     proposed requirement or decision whose premise is the owner's verified words. An intent,
-    JEV's verdict and a quote-only premise never do."""
+    JEV's verdict and a quote-only premise never do, nor does a confidence under the owner's
+    auto-approve settings (the verdict is logged, nothing is confirmed)."""
+    from plumb.capture.autoapprove import model_floor, owner_config
     from plumb.capture.triage import _Prompts, premise_problem
+
+    if model_floor(owner_config(core.events()), confidence) is not None:
+        return False
 
     return (raw.get("by") == "model" and record.kind in ("requirement", "decision")
             and core.status([record.id])[record.id].confirmation == "proposed"
@@ -326,7 +332,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             line = doubt_line(index, record, verdict, item.get("related") or (), contradicts)
             doubts.setdefault(_request_card(index, record), []).append(line)
             flagged.append(line)
-        elif _confirms(core, index, record, raw):
+        elif _confirms(core, index, record, raw, confidence):
             confirmed.append({"kind": "approval", "payload": {   # SR-191
                 "records": approval_items(core, [record.id]), "by": "auto-model",
                 "prompt_digest": digest, "job": job.id,
