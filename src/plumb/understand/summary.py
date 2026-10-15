@@ -103,7 +103,7 @@ def _failure_cards(core: Any, session: str) -> list[CardState]:
         raw = files.read_json(files.jobs_dir(core.root, session) / f"{result.job}.json")
         kind = str(raw.get("kind")) if isinstance(raw, Mapping) else ""
         message = ((raw.get("inputs") or {}).get("message") or {}) if isinstance(raw, Mapping) else {}
-        if kind == "tidy":
+        if kind in ("tidy", "question"):
             continue                      # SR-162: its own line says it could not run
         if kind == "clarify" and any(c.id == clarify.couldnt_card_id(str(message.get("digest")))
                                      for c in cardstore.own_cards(Path(core.root), session)):
@@ -187,10 +187,12 @@ def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (
         except Exception:  # noqa: BLE001 - the upkeep never costs the owner their summary
             pass
         try:
-            from plumb.understand import backlog, tidy
+            from plumb.understand import backlog, question, tidy
 
             backlog.resume(core, session)    # a pass a failure interrupted goes on (spec 8)
             tidy.enqueue(core, session)      # SR-162: the model reads the cards after this turn
+            question.enqueue(core, session,   # SR-167: and the agent's reply for a question to raise
+                             (getattr(ctx, "data", None) or {}).get("transcript_path"))
         except Exception:  # noqa: BLE001 - queueing never costs the owner their summary
             pass
     rendered: tuple[str, ...] = ()
@@ -495,6 +497,15 @@ def _waiting(core: Any, session: str, topics: Sequence[str], ids: Sequence[str] 
         return
     files.write_json_atomic(path, {"n": len(topics), "topics": list(topics),
                                  "ids": list(ids)})
+
+
+def tell_agent(core: Any, session: str, card: CardState) -> None:
+    """A card raised between turn ends (SR-167) joins the cards the next prompt names."""
+    path = files.session_dir(core.root, session) / WAITING
+    raw = files.read_json(path)
+    raw = raw if isinstance(raw, Mapping) else {}
+    topics, ids = [*raw.get("topics", ()), card.topic], [*raw.get("ids", ()), card.id]
+    files.write_json_atomic(path, {"n": len(topics), "topics": topics, "ids": ids})
 
 
 def waiting_line(root: Any, session: str, core: Any = None) -> str | None:

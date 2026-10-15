@@ -86,9 +86,9 @@ def _pressed(session: str, button: Button, card: str, question: str) -> dict[str
 
 
 def _open_cards(core: Any, session: str) -> list[CardState]:
-    from plumb.understand import cardstore
+    from plumb.understand import cardstore, read
 
-    return cardstore.load(core.root, session)
+    return [*cardstore.load(core.root, session), *read.conflict_cards(core)]
 
 
 class Answering:

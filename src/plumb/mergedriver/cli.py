@@ -1,9 +1,10 @@
 """``plumb merge-driver``, ``plumb conflicts``, ``plumb conflict propose|choose|relay``.
 
 The agent's interface (sp6 8.4, 11). The owner says "keep feat-x's version" or uses
-``/plumb conflicts``; the agent runs these. ``conflict choose`` without ``--prompt`` is the
-owner's own terminal (exit 3 elsewhere, nothing written); with ``--prompt`` and ``--quote``
-(or as ``conflict relay``) it relays the owner's logged words, checked like an approval.
+``/plumb conflicts``; the agent runs these. ``conflict choose`` is the owner's own terminal
+(exit 3 elsewhere, nothing written). The agent never carries the owner's answer (DEC-057):
+``conflict relay`` and ``choose --prompt/--quote`` are refused; the owner answers on the card
+or in chat, where the prompt hook reads it (``understand.read``).
 """
 
 from __future__ import annotations
@@ -147,8 +148,7 @@ def _conflict(argv: list[str]) -> int:
         prog="plumb conflict",
         description="propose: store a combined version (--file) and/or suggest a side (--take "
                     "with --why); shown on the card, applies nothing. choose: the owner's "
-                    "terminal, or with --prompt and --quote the owner's relayed words. relay: "
-                    "choose with --prompt and --quote.")
+                    "terminal. relay, and choose with --prompt or --quote, are refused.")
     parser.add_argument("action", choices=["propose", "choose", "relay"])
     parser.add_argument("ref", nargs="+", help="an IC, a record or plain words")
     parser.add_argument("--take", default=None,
@@ -161,6 +161,10 @@ def _conflict(argv: list[str]) -> int:
     parser.add_argument("--quote", default=None, help="the owner's exact words")
     add_common(parser)
     args = parser.parse_args(argv)
+    if args.action == "relay" or args.prompt is not None or args.quote is not None:
+        print("plumb: nothing was chosen. The owner answers on the conflict's card or in chat, "
+              "and plumb reads it; the agent does not relay it", file=sys.stderr)
+        return 3
     core = open_core(resolve_root(args.root))
     ref = " ".join(args.ref)
     if args.action != "propose":
@@ -185,29 +189,17 @@ def _conflict(argv: list[str]) -> int:
                 print(line)
             _request_cards(core, [conflict.ic])
             return 0
-        relayed = args.action == "relay" or args.prompt is not None
-        if not args.take and not relayed:  # relayed, the reading of the words picks it
+        if not args.take:
             print("plumb: --take is required (ours, theirs, combined or a side's name)",
                   file=sys.stderr)
             return 2
         try:
-            if relayed:
-                if not args.prompt or not args.quote:
-                    print("plumb: a relayed choice needs --prompt and --quote", file=sys.stderr)
-                    return 2
-                conflict, payload = mod.relay_choice(core, ref, args.take, prompt=args.prompt,
-                                                     quote=args.quote,
-                                                     values=_values(args.file))
-            else:
-                conflict, payload = mod.choose_owner(core, ref, args.take,
-                                                     values=_values(args.file))
+            conflict, payload = mod.choose_owner(core, ref, args.take,
+                                                 values=_values(args.file))
         except Refused:
             theirs = mod.find(core, ref).labels[1]
             print(owner_text.CHOOSE_REFUSED.format(theirs=theirs), file=sys.stderr)
             return 3
-    except mod.ChoiceRefused as exc:
-        print(f"plumb: choice refused: {exc}", file=sys.stderr)
-        return 3
     except Declined:
         print("plumb: nothing chosen", file=sys.stderr)
         return 1

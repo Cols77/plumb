@@ -387,6 +387,7 @@ WITHDRAWN_SUPERSEDED = "{ids} is superseded"
 WITHDRAWN_CONFIRMED = "you confirmed what it asked about"
 # SR-162: the tidy job's reasons, its step and the line when it could not run
 STEP_TIDYING = "checking your open questions"
+STEP_QUESTIONS = "reading the agent's questions to you"   # SR-167
 TIDY_ANSWERED = 'you confirmed {record}: "{quote}"'
 TIDY_DUPLICATE = 'it asks what "{other}" asks'
 TIDY_SETTLED = 'you decided {record}: "{quote}"'
