@@ -17,7 +17,9 @@ answering does not steal the Claude panel registration. Queued follow-up context
 retained for that session's next prompt hook; it does not wake the agent. A recorded
 answer is not proof of implementation or passing tests.
 
-Built frontend assets are included in `src/plumb/browser/static/`. To rebuild with Node 22:
+The workspace's Python tests, `tests/browser`, stay out of a plain `pytest` run: name the
+directory or pass `--browser` to run them. Built frontend assets are included in
+`src/plumb/browser/static/`. To rebuild with Node 22:
 
 ```sh
 cd ui
