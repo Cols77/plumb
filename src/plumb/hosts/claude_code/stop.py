@@ -590,8 +590,9 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         if state.before and not stale.listed(ctx.root, ctx.session_id, key):
             before = [stale.before_line(state.before)]
         open_rows = stale.unresolved(core, ctx.session_id, state)
+        waiting: list[str] = []
         if open_rows:   # SR-175: drift is checked for coverage and repinned before any hold
-            stale.settle_drift(core, ctx.session_id, open_rows)
+            waiting = stale.settle_drift(core, ctx.session_id, open_rows)
             state = stale.turn_state(core, ctx.session_id, str(turn_id) if turn_id else None)
             open_rows = stale.unresolved(core, ctx.session_id, state)
         stale.card_lost_tests(core, ctx.session_id)
@@ -611,7 +612,8 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         if held < limit:
             stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), held + 1)
             missing = stale.incomplete_cards(ctx.root, ctx.session_id)
-            return [*stale.hold_lines(open_rows, held + 1, limit, missing), *before], []
+            return [*waiting, *stale.hold_lines(open_rows, held + 1, limit, missing),
+                    *before], []
         from plumb.present.owner_text import STALE_HOLD_ENDED
 
         notes = []
@@ -621,7 +623,7 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
             stale.add_card(ctx.root, ctx.session_id, turn=int(turn_start),
                            **stale.default_card(row, title, other))
             notes.append(STALE_HOLD_ENDED.format(n=held, title=title))
-        return [], notes
+        return [], [*waiting, *notes]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return [], []
 

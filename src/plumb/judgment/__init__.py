@@ -197,6 +197,15 @@ def optional_backend(core: Any, *, hook: bool) -> Any:
         return UnavailableBackend(exc)
 
 
+def waiting_line(root: Path, step: str, cause: object) -> str | None:
+    """SR-174: the one line saying ``step`` waits because no judge can be reached (no key,
+    timeout, API down), the first time in this session window, else None. The step is left
+    undone and runs again when a judge is back; nothing stands in for it (INT-029)."""
+    return notice_once(Path(root), f"waiting:{step}",
+                       f"plumb: {step} is waiting: no judge can be reached ({cause}); it runs "
+                       "again when one is back")
+
+
 def report_unavailable(root: Path, exc: BaseException) -> str | None:
     """The one-line report of ``exc`` the first time it is seen in this session window, else
     None. Hooks print it without blocking the prompt."""

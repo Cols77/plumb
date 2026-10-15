@@ -138,12 +138,23 @@ def _kind_threshold(calibration: LogEntry, kind: str) -> float | None:
 
 
 def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
-         backend: Any = None) -> list[str]:
+         backend: Any = None, said: list[str] | None = None) -> list[str]:
     """Approve ``by: auto-jev`` the eligible records among ``ids`` (written by one
     ``capture``); returns their IDs. Returns at once when auto-approval is off."""
     state = auto_approve_state(core)
     if not state.configured or not prompt_digest:
         return []
+
+    def wait(cause: object) -> None:   # SR-174: said once, the approval waits
+        from plumb.judgment import waiting_line
+
+        line = waiting_line(core.root, "auto-approval", cause)
+        if line and said is not None:
+            said.append(line)
+
+    ready, why = jev_ready(core)
+    if not ready:
+        wait(why)
     if not state.effective and not state.reason.startswith("auto-approve suspended"):
         return []
     from plumb.approvals import Refused, approval_items, find_prompt, quote_in_prompt
@@ -166,7 +177,8 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
 
         try:
             backend = get_backend(core, hook=False)
-        except JudgmentUnavailable:
+        except JudgmentUnavailable as exc:
+            wait(exc)
             return []  # no judge, no auto-approval
     if getattr(backend, "name", "") != "jev":
         return []  # only JEV auto-approves
@@ -204,9 +216,11 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
         try:
             judgments = [backend.entailment(str(prompt["text"]), part, subject=record_id,
                                             claim_kind=kind) for part in parts]
-        except JudgmentUnavailable:
+        except JudgmentUnavailable as exc:
+            wait(exc)
             return out  # JEV unavailable: nothing more is auto-approved (INT-029)
         if not judgments or any(not j.backend.startswith("jev:") for j in judgments):
+            wait("the judge did not answer")
             return out  # JEV unavailable or errored: nothing more is auto-approved
         version = judgments[0].backend.split(":", 1)[1]
         if not same_version(version, calibration.payload.get("model_version")):

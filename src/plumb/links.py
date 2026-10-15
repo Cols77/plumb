@@ -352,6 +352,7 @@ class AfterTests:
     would: list[tuple[str, str]] = field(default_factory=list)     # dry run: (link id, why)
     # SR-114: what Opus found for each link Sonnet says changed (see ``_diagnosis_item``)
     diagnoses: list[dict[str, Any]] = field(default_factory=list)
+    unreachable: str = ""   # SR-174: why no model could judge (the check waits, nothing decided)
 
 
 def _segment(text: str, qualname: str | None) -> str | None:
@@ -498,6 +499,7 @@ def repin_after_tests(core: Core, selector: str, *,
         jev = meaning_check.open_jev_tier(core)
     if judge is None and jev is None:
         result.refused += [(s.link.id, NO_MODEL) for s in candidates]
+        result.unreachable = meaning_check.judge_gap(core)
         return result
     if not dry_run:
         paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
@@ -534,6 +536,7 @@ def repin_after_tests(core: Core, selector: str, *,
             meaning = judge.same_meaning(**shown)
         except Exception as exc:  # noqa: BLE001 - an unreachable model refuses
             result.refused.append((link.id, f"{NO_MODEL} ({exc})"))
+            result.unreachable = str(exc)
             continue
         if meaning.unchanged is None:
             result.refused.append((link.id, f"{NO_MODEL}: {meaning.reason}"))
