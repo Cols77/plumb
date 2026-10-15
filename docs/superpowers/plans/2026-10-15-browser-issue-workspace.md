@@ -12,27 +12,27 @@
 
 Files: `src/plumb/browser/{__init__,cli,server,service,session,followup,diagrams,demo}.py`; focused modifications to `src/plumb/cli.py`, mod offer/press plumbing, answer source/provenance recheck, and `src/plumb/hosts/claude_code/prompt.py`; tests under `tests/browser/`.
 
-- [ ] Write failing tests using temporary real repositories. Assert snapshot exposes stored source-session cards and full content, browser registration never changes existing mod registration, an answer approves exactly displayed hashes, changed content refuses, duplicate press cannot duplicate approval, and approvals still recheck after runtime session data is removed.
-- [ ] Implement a separately registered browser surface and authenticate it internally through the existing offers/press/answer path. Separate browser offers from mod offers to avoid credential collisions. Preserve mod behaviour and tests.
-- [ ] Implement locked server operations with loopback-only binding, capability authentication, exact Origin/Host checks, JSON type/size errors and safe static routing. `plumb ui --root PATH --port PORT --open`, `--demo`, `--assets PATH` supported. Secret in fragment; no token in request logs. Use current Python package, never shell interpolated commands.
-- [ ] Return a documented JSON contract consumed by Task 2, with sessions, issues, fullcontent, offers/actions, evidence and follow-ups. Keep issue id scoped by session. Read project sources only within root.
-- [ ] Queue answer follow-up by source session; prompt hook consumes context without logging it as an owner prompt. Persist queued/delivered and deduplicate messages.
-- [ ] Serve bounded diagram file text only for an existing card's diagram path, with path confinement and explicit error state; frontend parser performs SVG extraction. Supply original text and derived source path, not arbitrary file access.
-- [ ] Implement labelled temporary demo project covering representative genuine card shapes, diagram, choices, evidence and blocked/done/left-open states. Tests may seed all kinds separately.
-- [ ] Run `C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/browser tests/mod -q` with `PYTHONPATH` targeting this worktree. Run changed-area Ruff checks. Report exact results and contract. Commit only task-owned files.
-- [ ] Independent spec review, fix/re-review; independent quality review, fix/re-review.
+- [x] Write failing tests using temporary real repositories. Assert snapshot exposes stored source-session cards and full content, browser registration never changes existing mod registration, an answer approves exactly displayed hashes, changed content refuses, duplicate press cannot duplicate approval, and approvals still recheck after runtime session data is removed.
+- [x] Implement a separately registered browser surface and authenticate it internally through the existing offers/press/answer path. Separate browser offers from mod offers to avoid credential collisions. Preserve mod behaviour and tests.
+- [x] Implement locked server operations with loopback-only binding, capability authentication, exact Origin/Host checks, JSON type/size errors and safe static routing. `plumb ui --root PATH --port PORT --open`, `--demo`, `--assets PATH` supported. Secret in fragment; no token in request logs. Use current Python package, never shell interpolated commands.
+- [x] Return a documented JSON contract consumed by Task 2, with sessions, issues, fullcontent, offers/actions, evidence and follow-ups. Keep issue id scoped by session. Read project sources only within root.
+- [x] Queue answer follow-up by source session; prompt hook consumes context without logging it as an owner prompt. Persist queued/delivered and deduplicate messages.
+- [x] Serve bounded diagram file text only for an existing card's diagram path, with path confinement and explicit error state; frontend parser performs SVG extraction. Supply original text and derived source path, not arbitrary file access.
+- [x] Implement labelled temporary demo project covering representative genuine card shapes, diagram, choices, evidence and blocked/done/left-open states. Tests may seed all kinds separately.
+- [x] Run `C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/browser tests/mod -q` with `PYTHONPATH` targeting this worktree. Run changed-area Ruff checks. Report exact results and contract. Commit only task-owned files.
+- [x] Independent spec review, fix/re-review; independent quality review, fix/re-review.
 
 ## Task 2: Svelte workspace and diagram presentation
 
 Files: `ui/package.json`, lockfile, Vite/TypeScript/Vitest configs, `ui/src/{App.svelte,app.css,main.ts,lib/*,components/*}`, `ui/THIRD_PARTY_NOTICES.md`, component tests, README launch instructions. Build to `src/plumb/browser/static` and include distributable assets in package.
 
-- [ ] Pin and attribute copied Escouade Splitter/DiffView/theme portions, adapting imports to local helpers and browser actions. Copy diagram-mod pure parser/model/preparation with MIT notice. Remove desktop-only dependencies. Install pinned compatible Svelte 5/Vite toolchain.
-- [ ] Write failing interaction tests for issue selection/filtering, actual offer buttons, correction input, stale answer feedback and multi-question rendering.
-- [ ] Implement project/session navigation, issue inbox, full explanation and actual core actions. Three-pane desktop composition; usable narrow layout. Preserve draft text during polling, selection by URL, back/forward, keyboard focus, error/retry and busy states. Fetch adapter authenticates using fragment token then removes it from history and retains in session storage only.
-- [ ] Implement diagram above questions using extracted SVG image Blob; size cap, text alternative, zoom +/-/reset/download and clear fallback. Never inject raw HTML/SVG or trust external scripts. Revoke replaced Blob URLs.
-- [ ] Implement evidence and activity views with record details and real diffs where provided. Clearly distinguish owner answer, pending agent follow-up and measured verification. No fake progress or placeholder controls.
-- [ ] Run frontend unit tests, `npm run check`, `npm run build`; inspect actual compiled output. Commit task-owned files.
-- [ ] Independent spec review, fix/re-review; independent quality review, fix/re-review.
+- [x] Pin and attribute copied Escouade Splitter/DiffView/theme portions, adapting imports to local helpers and browser actions. Copy diagram-mod pure parser/model/preparation with MIT notice. Remove desktop-only dependencies. Install pinned compatible Svelte 5/Vite toolchain.
+- [x] Write failing interaction tests for issue selection/filtering, actual offer buttons, correction input, stale answer feedback and multi-question rendering.
+- [x] Implement project/session navigation, issue inbox, full explanation and actual core actions. Three-pane desktop composition; usable narrow layout. Preserve draft text during polling, selection by URL, back/forward, keyboard focus, error/retry and busy states. Fetch adapter authenticates using fragment token then removes it from history and retains in session storage only.
+- [x] Implement diagram above questions using extracted SVG image Blob; size cap, text alternative, zoom +/-/reset/download and clear fallback. Never inject raw HTML/SVG or trust external scripts. Revoke replaced Blob URLs.
+- [x] Implement evidence and activity views with record details and real diffs where provided. Clearly distinguish owner answer, pending agent follow-up and measured verification. No fake progress or placeholder controls.
+- [x] Run frontend unit tests, `npm run check`, `npm run build`; inspect actual compiled output. Commit task-owned files.
+- [x] Independent spec review, fix/re-review; independent quality review, fix/re-review.
 
 ## Task 3: Full interaction and integration proof
 
