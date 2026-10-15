@@ -599,6 +599,13 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             return replace(raised, closed=(*closed, *raised.closed),
                            entries=(*entries, *raised.entries))
         return Applied(job=job.id, closed=closed, entries=entries)
+    own_ids = {c.id for c in own}
+    if any(e.kind == "read-entry" and e.payload.get("message_digest") == digest
+           and e.payload.get("answer") != "open"
+           and str(e.payload.get("id")).split("/", 1)[0] in own_ids
+           for e in core.events()):    # SR-167 EX-2: the reader answered a card: no read-back
+        gate.open(core, session, digest, "clarify", "your message answers a question")
+        return Applied(job=job.id, closed=closed)
     if str(answer.get("intent")) != "yes":
         if waiting:   # SR-131 EX-4: an unanswered blocking card holds the gate; its answer opens it
             gate.refresh(root, session, digest, GATE_REASON_CARD)
