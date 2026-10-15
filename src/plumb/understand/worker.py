@@ -158,16 +158,10 @@ def start_detached(root: Path, session: str) -> None:
         path = files.lock_path(root, session)
         if path.exists() and _lock_is_held(root, session, path):
             return None
-        options: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
-                                   "stderr": subprocess.DEVNULL, "cwd": str(root),
-                                   "close_fds": True}
-        if os.name == "nt":
-            options["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0x8)
-                                        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
-                                        | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
-        else:
-            options["start_new_session"] = True
-        env = {k: v for k, v in os.environ.items() if k not in ("PLUMB_WORKER", "PLUMB_JOB")}
+        from plumb.background import popen_options
+
+        options = popen_options(root)   # no console window for it or what it runs
+        env ={k: v for k, v in os.environ.items() if k not in ("PLUMB_WORKER", "PLUMB_JOB")}
         subprocess.Popen([sys.executable, "-m", "plumb", "understand", "worker", "--session",
                           session, "--root", str(root)], env=env, **options)
     except OSError:
