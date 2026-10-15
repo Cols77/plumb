@@ -2,7 +2,7 @@
 require_trailer: true
 # Extra exempt globs (the defaults .plumb/**, docs/**, .claude/**, uv.lock, .gitignore and
 # .gitattributes always apply).
-exempt: [CLAUDE.md, README.md]   # CLAUDE.md: written by plumb hooks install, like .claude/**; README.md: documentation, like docs/**
+exempt: [CLAUDE.md, README.md, plugin/vendor/**]   # CLAUDE.md: written by plumb hooks install, like .claude/**; README.md: documentation, like docs/**; plugin/vendor/**: the bundled wheel and its manifest, built by scripts/build_plugin.py from declared sources (the owner's choice, 2026-10-15)
 # NC-backed baseline of undeclared paths; it may only shrink: [{commit, path, nc}]
 baseline:
 - {commit: e4105c9, path: tests/importer/test_claims.py, nc: NC-0002}
