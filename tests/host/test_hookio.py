@@ -173,7 +173,7 @@ def test_watchdog_prints_the_kept_lines(repo: Path, hook_input, tmp_path: Path) 
 
 
 def test_default_budgets_sit_just_under_the_hard_limit(repo: Path) -> None:
-    """Soft budgets near the 2-second ceiling (spec 10): a loaded 2-core machine must not cut
+    """Soft budgets generous but under the hard limit (SR-181): a loaded 2-core machine must not cut
     the read-back on a routine turn; the watchdog still bounds the hook."""
     from plumb.config import HooksConfig
 

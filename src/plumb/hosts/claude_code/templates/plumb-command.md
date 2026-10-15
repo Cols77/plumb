@@ -1,6 +1,6 @@
 ---
 description: plumb in plain words - status, explain anything, review, confirm or approve records, what a change would reach, the Obsidian view, adopt this repository (init), build without a failed check (go), undo a confirmed record, typed auto-approve on or off, conflicts, merges, other branches' work, the JEV judge (setup, status, calibration), installing what plumb needs
-argument-hint: "status | explain <anything> | review [<anything>] | approve <IDs> | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
+argument-hint: "status | clarify <words> | explain <anything> | review [<anything>] | approve <IDs> | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
 allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} impact:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} init:*), Bash({plumb} plugin migrate:*), Bash({plumb} clarify --wait:*), Bash({plumb} validate:*), Bash({plumb} conflicts:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*), Bash({plumb} inflight:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*), Bash({plumb} jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
@@ -18,7 +18,8 @@ on those only typed in lower case as the whole message.
 Typed otherwise (`/plumb Approve SR-034`), plumb acted on nothing: confirm, release or switch
 nothing yourself, and tell them to type it again in lower case.
 `<digest>` below is the sha256 of the owner's message: `message_digest` in
-`{plumb} clarify --wait --json` (12 or more hex digits are enough).
+`{plumb} clarify --wait --json` (12 or more hex digits are enough; on an ordinary message it
+answers ready at once and runs no check).
 
 - No argument, or `status`: run `{plumb} status --card` and give the card, what awaits
   them and drift in one or two lines; when it lists records also being changed on another
@@ -37,6 +38,9 @@ nothing yourself, and tell them to type it again in lower case.
   what is missing. The same words inside a sentence ("turn auto-approve on") change
   nothing: tell them to type the command as the whole message.
 - `settle ...`: that switch no longer exists; the prompt hook said so. Change and run nothing.
+- `clarify <words>`: plumb checks those words as a request (a read-back card, questions,
+  edits held until answered). Run `{plumb} clarify --wait`, then follow the plumb-clarify
+  skill for its answer. Ordinary messages are not checked.
 - `explain <anything>` (also `why <anything>`): run `{plumb} explain <their words>` and say
   why it exists: the owner's words it comes from, the decisions, the examples and whether
   their tests pass.

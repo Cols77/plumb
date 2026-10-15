@@ -25,6 +25,7 @@ def _ctx() -> Any:
 
 def _say(repo: Path, text: str) -> tuple[Any, str]:
     core = open_core(repo)
+    text = "/plumb clarify " + text      # SR-171: only the command runs the check
     digest = log_prompt(repo, text, session=SESSION)
     lines = hooks.on_prompt(_ctx(), core, {"digest": digest, "text": text})
     assert all(owner_level(line) == [] or "plumb" not in line for line in lines)
@@ -46,7 +47,7 @@ def test_prompt_hook_closes_gate_and_queues_clarify_job(repo: Path,
     assert not files.results_dir(repo, SESSION).exists() or not list(
         files.results_dir(repo, SESSION).glob("*.json"))
     # the same message again queues nothing new
-    hooks.on_prompt(_ctx(), core, {"digest": digest, "text": "let users export their data"})
+    hooks.on_prompt(_ctx(), core, {"digest": digest, "text": "/plumb clarify let users export their data"})
     assert _jobs(repo) == [job_id]
 
 

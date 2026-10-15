@@ -170,8 +170,8 @@ def test_ex1_the_prompt_hook_puts_the_conversation_in_the_job_inputs(
         repo: Path, tmp_path: Path, engine_standins: Any) -> None:
     core = open_core(repo)
     transcript = _review_session(tmp_path, with_request=False)
-    digest = log_prompt(repo, REQUEST, session=SESSION)
-    clarify.on_prompt(_ctx(transcript), core, {"digest": digest, "text": REQUEST})
+    digest = log_prompt(repo, "/plumb clarify " + REQUEST, session=SESSION)
+    clarify.on_prompt(_ctx(transcript), core, {"digest": digest, "text": "/plumb clarify " + REQUEST})
     job = _job(repo)
     assert job.inputs["context"]["last_reply"].endswith(FINDINGS)
     assert job.inputs["repository"]["root"] == str(repo)
@@ -190,8 +190,8 @@ def test_ex1_the_prompt_hook_puts_the_conversation_in_the_job_inputs(
 def test_ex4_without_a_transcript_the_check_runs_on_the_message_alone(
         repo: Path, engine_standins: Any) -> None:
     core = open_core(repo)
-    digest = log_prompt(repo, REQUEST, session=SESSION)
-    clarify.on_prompt(_ctx(None), core, {"digest": digest, "text": REQUEST})
+    digest = log_prompt(repo, "/plumb clarify " + REQUEST, session=SESSION)
+    clarify.on_prompt(_ctx(None), core, {"digest": digest, "text": "/plumb clarify " + REQUEST})
     job = _job(repo)
     assert "context" not in job.inputs
     assert set(job.inputs) == {"message", "touched", "answered", "repository"}
