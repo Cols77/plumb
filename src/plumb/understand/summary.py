@@ -268,11 +268,19 @@ def _tidy_lines(core: Any, session: str, since: str) -> list[str]:
                 and entry.digest not in told.notices and entry.at >= told.since):
             told.notices.add(entry.digest)
             named.append(f"{entry.payload.get('topic')}, {entry.payload.get('reason')}")
+    settled = [e for e in core.events() if e.kind == "card-settled"
+               and e.payload.get("session") == session and e.digest not in told.notices
+               and e.at >= told.since]
+    told.notices.update(e.digest for e in settled)
+    counts = {a: sum(e.payload.get("action") == a for e in settled)
+              for a in ("withdraw", "repin", "reword", "stays")}
     failed = [r.job for r in _tidy_failures(core, session) if r.job not in told.notices]
     told.notices.update(failed)
-    told.dirty = bool(named or failed)
+    told.dirty = bool(named or failed or settled)
     told.save()
-    return [*([owner_text.CARDS_WITHDRAWN.format(items="; ".join(named))] if named else []),
+    return [*([owner_text.CARDS_SETTLED.format(items=owner_text.settled_counts(counts))]
+              if settled else []),
+            *([owner_text.CARDS_WITHDRAWN.format(items="; ".join(named))] if named else []),
             *([owner_text.TIDY_COULD_NOT_RUN] if failed else [])]
 
 
@@ -352,8 +360,9 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
     _withdraw_settled(core, session)
     reopen_changed(core, session)       # DEC-034: a card left open returns once it changed
     held = cardstore.states(core, session)
+    waiting = cardstore.grouped(core.root, session)   # SR-172: the principle card asks for these
     open_cards = [c for c in cardstore.load(core.root, session, open_only=False)
-                  if _repeats_at_turn_end(c) and held.get(c.id, ("",))[0] != "processing"]
+                  if _repeats_at_turn_end(c) and c.id not in waiting and held.get(c.id, ("",))[0] != "processing"]
     open_cards.extend(_failure_cards(core, session))
     built = _turn_cards(core, session, extra, passing or set())
     seen = {c.id for c in open_cards}
