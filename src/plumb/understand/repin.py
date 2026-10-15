@@ -98,7 +98,8 @@ def judge_gap(core: Any) -> str:
     from plumb.understand.dispatch import configured
 
     try:
-        return configured(core, model=core.config.understand.repin_model).available()             or "no model answered"
+        gap = configured(core, model=core.config.understand.repin_model).available()
+        return gap or "no model answered"
     except NoModel as exc:
         return str(exc)
 

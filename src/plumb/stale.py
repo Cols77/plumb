@@ -724,7 +724,8 @@ def card_lost_tests(core: Core, session: str) -> None:
     asked = {str(c.get("link")) for c in read_cards(core.root, session)}
     for (source, example), found in sorted(proof.items()):
         link = found[0].link.id
-        if any(s.state != "dangling" for s in found) or link in asked                 or status[source].confirmation != "confirmed":
+        if (any(s.state != "dangling" for s in found) or link in asked
+                or status[source].confirmation != "confirmed"):
             continue
         title = index[source].title
         add_card(core.root, session, link=link, record=source, path="", by="drift",
