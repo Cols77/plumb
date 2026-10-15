@@ -262,6 +262,8 @@ GATE_WAIT_NOTE = "Builds nothing until the check runs again on your next message
 GATE_CLOSED = "Waiting for your answer before building: {reason}"
 NOT_AVAILABLE = "not available in this build"
 CONFIRM_YOU_SAID = "you said: {evidence}"
+CONFIRM_BY_MODEL = ("{title}: confirmed by {model} reading your words ({confidence:.0%} sure); "
+                    "say /plumb undo {id} to take it back")
 READBACK_CHANGE = ('To be sure I have it: "{title}" should change so that {change}. Say yes, '
                    'or tell me what to fix.')
 CARD_CHANGED_SINCE = ('Nothing was confirmed: "{title}" changed after I showed it to you. I am '

@@ -225,7 +225,14 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("--session", default="")
     args = parser.parse_args(argv)
     root = resolve_root(args.root)
-    done = undo(open_core(root), args.session or current_session(root), args.card)
+    core = open_core(root)
+    if args.card.startswith(("SR-", "DEC-")):    # SR-191: a record a model confirmed
+        from plumb.understand.typed import take_back
+
+        result = take_back(core, args.card)
+        print(*result.lines, sep="\n")
+        return 0 if result.confirmed else 1
+    done = undo(core, args.session or current_session(root), args.card)
     print(f"plumb: {args.card} is open again." if done
           else f"plumb: {args.card} was not settled from a decision; nothing changed.")
     return 0 if done else 1

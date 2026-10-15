@@ -501,7 +501,9 @@ def test_the_worker_applies_the_verdicts_and_the_cards(repo: Path, engine_standi
     assert {v["id"]: (v["verdict"], v["score"]) for v in logged} == {
         ids[0]: ("supported", 0.95), ids[1]: ("supported", 0.9), ids[2]: ("beyond", 0)}
     kinds = sorted(c.kind for c in cardstore.load(repo, SESSION))
-    assert "beyond" not in kinds and "trial" in kinds
+    assert "beyond" not in kinds and kinds.count("trial") == 1   # the intent still asks
+    status = open_core(repo).status(ids[:2])           # SR-191: the model confirmed the requirement
+    assert status[ids[0]].confirmation == "proposed" and status[ids[1]].approved_by == "auto-model"
 
 
 # ---- J9a: the judge cases of the evaluation set ---------------------------------------------
@@ -598,3 +600,4 @@ def test_the_other_supported_cases_match_only_a_supported_verdict() -> None:
         assert judge.evaluate_case(bad, case)[0] is False
     assert _case("int008-answer-a-supported")["inputs"]["records"][0]["premise"][
         "messages"][0]["text"] == "A"
+

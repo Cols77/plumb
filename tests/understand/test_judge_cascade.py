@@ -114,7 +114,8 @@ def test_ex2_jev_below_the_threshold_sends_the_record_to_the_model(world: Path) 
     applied = judge.apply(core, job, cascaded.answer)
     logged = next(e["payload"] for e in applied.entries if e["kind"] == "verdict")
     assert logged["by"] == "model" and logged["verdict"] == "supported"
-    assert any(c.kind == "trial" for c in applied.cards)
+    assert [e["payload"]["by"] for e in applied.entries if e["kind"] == "approval"] == [
+        "auto-model"]                       # SR-191: the model's verdict confirms it, no card
     # and auto-approval refuses it in code, however sure the model was
     from plumb.capture.autoapprove import verdict_refusal
 

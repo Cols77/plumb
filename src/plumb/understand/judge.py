@@ -22,6 +22,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from plumb.approvals import approval_items
 from plumb.contracts import Applied, CardState, Job
 from plumb.judgment.verdict import BY
 from plumb.present import owner_text
@@ -260,6 +261,17 @@ def pending_lines(core: Any, session: str, card: str) -> list[str]:
     return out
 
 
+def _confirms(core: Any, index: Mapping[str, Any], record: Any, raw: Mapping[str, Any]) -> bool:
+    """SR-191: whether the judge model's supported verdict confirms ``record`` itself: a
+    proposed requirement or decision whose premise is the owner's verified words. An intent,
+    JEV's verdict and a quote-only premise never do."""
+    from plumb.capture.triage import _Prompts, premise_problem
+
+    return (raw.get("by") == "model" and record.kind in ("requirement", "decision")
+            and core.status([record.id])[record.id].confirmation == "proposed"
+            and premise_problem(_Prompts(core), index, record) is None)
+
+
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     """Log the verdicts; add the doubt lines to the read-back cards; give the supported records to the trial.
     Returns it in memory; the worker writes it."""
@@ -274,6 +286,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     notes: list[str] = []
     supported: list[trial.Candidate] = []
     fragments: list[Any] = []
+    confirmed: list[Mapping[str, Any]] = []     # SR-191: records the judge model confirmed
     backlog_pass = job.inputs.get("pass") == backlog.PASS
     doubts: dict[str, list[str]] = {}       # read-back card id -> lines
     flagged: list[str] = []                 # every doubt line, for the backlog's end line
@@ -313,6 +326,11 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             line = doubt_line(index, record, verdict, item.get("related") or (), contradicts)
             doubts.setdefault(_request_card(index, record), []).append(line)
             flagged.append(line)
+        elif _confirms(core, index, record, raw):
+            confirmed.append({"kind": "approval", "payload": {   # SR-191
+                "records": approval_items(core, [record.id]), "by": "auto-model",
+                "prompt_digest": digest, "job": job.id,
+                "auto": {"model": payload["model"], "confidence": confidence}}})
         else:
             supported.append(trial.Candidate(record, confidence, item["premise"], ""))
     for item_id in asked:
@@ -337,7 +355,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             if card.kind == "clarify" and card.status in cardstore.AWAITING and more:
                 new_cards.append(replace(card, evidence="\n".join(
                     [*([card.evidence] if card.evidence else []), *more])))
-    return Applied(job=job.id, cards=tuple(new_cards), entries=tuple(entries),
+    return Applied(job=job.id, cards=tuple(new_cards), entries=(*entries, *confirmed),
                    notes=tuple(notes))
 
 

@@ -63,6 +63,10 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
                 and payload.get("prompt_digest") not in prompt_digests):
             return f"{by} {entry.kind} cites no earlier prompt event"
         return reason
+    if by == "auto-model":   # SR-191: the judge model's verdict on the owner's verified words
+        from plumb.understand.recheck import problem
+
+        return problem(entry, core)
     if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)
         from plumb.importer.recheck import import_problem
 

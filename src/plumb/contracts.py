@@ -19,7 +19,7 @@ ID_RE = r"^(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})$"
 LinkKind = Literal["derives_from", "decides", "upstream", "relates_to", "implemented_by",
                    "verified_by", "corrects", "supersedes"]
 Confirmation = Literal["proposed", "confirmed", "unconfirmed-edit"]
-ApprovalBy = Literal["owner", "agent-relayed", "import", "auto-jev", "owner-words"]
+ApprovalBy = Literal["owner", "agent-relayed", "import", "auto-jev", "owner-words", "auto-model"]
 LogStream = Literal["events", "evidence"]
 
 
