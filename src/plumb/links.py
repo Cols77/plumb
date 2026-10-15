@@ -7,7 +7,7 @@ Repinning refreshes pins, logs a ``repin`` event and never confirms anything.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -125,15 +125,42 @@ def _state_of(link: Link, source_hash: str, target_hash: str | None) -> LinkStat
     return LinkState(link=link, state="stale", moved=moved, current=current)  # type: ignore[arg-type]
 
 
-def link_states(core: Core, ids: Iterable[str] | None = None) -> list[LinkState]:
+def link_states(core: Core, ids: Iterable[str] | None = None,
+                only: Collection[str] | None = None) -> list[LinkState]:
+    """The state of each link of ``ids`` (else of every record); ``only``: just these link
+    ids, so a hook hashes no other end."""
     index = core.index()
     selected = index.keys() if ids is None else [i for i in ids if i in index]
+    from plumb.query import retired_ids
+
+    retired = retired_ids(index)
     out: list[LinkState] = []
     for record_id in selected:
         record = index[record_id]
         for link in record.links:
+            if only is not None and link.id not in only:
+                continue
+            if record_id in retired:  # SR-164: a superseded record's pins are not tracked
+                out.append(LinkState(link=link, state="retired"))
+                continue
             out.append(_state_of(link, record.hash, core.hash_target(link.target)))
     return out
+
+
+def live_examples(core: Core, old_id: str, new_id: str = "") -> dict[str, str]:
+    """Examples of ``old_id`` that a test still verifies and ``new_id`` does not already
+    verify: ``{EX-n: test}`` (SR-164)."""
+    index = core.index()
+
+    def tests(rid: str) -> dict[str | None, str]:
+        record = index.get(rid)
+        return {} if record is None else {
+            link.example: link.target.test or link.target.path or ""
+            for link in record.links if link.kind == "verified_by"
+            and (link.target.test or link.target.path)}
+
+    kept = set(tests(new_id).values())
+    return {ex: t for ex, t in tests(old_id).items() if ex and t not in kept}
 
 
 def add_link(core: Core, source: str, kind: str, target: Target,
@@ -161,7 +188,41 @@ def add_link(core: Core, source: str, kind: str, target: Target,
                 example=example, pin=Pin(source=record.hash, target=target_hash))
     raw = [link_to_dict(existing) for existing in record.links] + [link_to_dict(link)]
     core.store.set_links(source, raw)
+    _keep_pinned_version(core, target, target_hash)
     return link
+
+
+def _blob_store(root: Path) -> Path | None:
+    common = _git_text(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"])
+    return Path(common.strip()) / "plumb" / "pin_blobs.json" if common else None
+
+
+def _keep_pinned_version(core: Core, target: Target, target_hash: str) -> None:
+    """SR-166 EX-2: a pin on an uncommitted file version keeps that version as a git blob,
+    so the pinned text can be found after the file is committed again. Never fails the pin."""
+    import json
+    import os
+
+    try:
+        rel = clean_rel_path(target_path(target) or "")
+        store = _blob_store(core.root)
+        if rel is None or store is None or not _git_text(core.root,
+                                                        ["status", "--porcelain", "--", rel]):
+            return
+        blob = (_git_text(core.root, ["hash-object", "-w", "--", rel]) or "").strip()
+        if not blob:
+            return
+        try:
+            known = json.loads(store.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            known = {}
+        known[target_hash] = blob
+        store.parent.mkdir(parents=True, exist_ok=True)
+        tmp = store.with_name(f"{store.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(known), encoding="utf-8")
+        os.replace(tmp, store)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _describe(target: Target) -> str:
@@ -208,7 +269,7 @@ def repin(core: Core, selector: str | None = None, *, all_stale: bool = False,
                 if explicit:
                     raise LinkError(f"{link.id} is dangling: its target does not exist")
                 continue
-            if state.state == "current" or state.current is None:
+            if state.state in ("current", "retired") or state.current is None:
                 continue
             old = None if link.pin is None else {"from": link.pin.source, "to": link.pin.target}
             new = {"from": state.current.source, "to": state.current.target}
@@ -216,6 +277,7 @@ def repin(core: Core, selector: str | None = None, *, all_stale: bool = False,
                                          target=link.target, example=link.example,
                                          pin=state.current)
             changes.append({"link": link.id, "old": old, "new": new})
+            _keep_pinned_version(core, link.target, state.current.target)
             touched = True
         if touched:
             core.store.set_links(record_id, [link_to_dict(link) for link in new_links])
@@ -294,6 +356,7 @@ def relink(core: Core, link_id: str, target: Target, note: str) -> dict[str, Any
     raw = [link_to_dict(moved if other.index == link.index else other)
            for other in record.links]
     core.store.set_links(record.id, raw)
+    _keep_pinned_version(core, target, target_hash)
     result = {"link": link_id, "note": note,
               "old": {"target": _describe(link.target), "pin": _pin_dict(link.pin)},
               "new": {"target": _describe(target), "pin": _pin_dict(moved.pin)}}
@@ -416,6 +479,17 @@ def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
         before = None if text is None else _segment(text, qualname)
         if before is not None and sha256_text(before) == link.pin.target:
             return before, now or ""
+    # shortcut: a loose blob can be pruned by git gc after ~2 weeks; record the pin in a ref if repins come later than that
+    store = _blob_store(root)
+    try:
+        import json
+        blob = json.loads(store.read_text(encoding="utf-8")).get(link.pin.target) if store else None
+    except (OSError, ValueError):
+        blob = None
+    text = _git_text(root, ["cat-file", "blob", blob]) if blob else None
+    before = None if text is None else _segment(text, qualname)
+    if before is not None and sha256_text(before) == link.pin.target:
+        return before, now or ""
     return None
 
 
@@ -430,7 +504,8 @@ def default_runner(core: Core) -> Callable[[list[str]], tuple[bool, str]]:
 
         report = open_verify(core).run(changed=paths, budget_s=REPIN_BUDGET_S)
         if report.run_id is None:
-            return False, "no test covers " + ", ".join(paths)
+            # SR-166: an untested end is judged on meaning alone; the judge below still gates
+            return True, "no test covers " + ", ".join(paths) + ": judged on meaning only"
         if report.ok:
             return True, "passed"
         if report.failed:
@@ -496,6 +571,7 @@ def repin_after_tests(core: Core, selector: str, *,
     if judge is None and jev is None:
         result.refused += [(s.link.id, NO_MODEL) for s in candidates]
         return result
+    untested = ""
     if not dry_run:
         paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
         ok, detail = (runner or default_runner(core))(paths)
@@ -503,6 +579,8 @@ def repin_after_tests(core: Core, selector: str, *,
             result.refused += [(s.link.id, f"its linked tests do not pass ({detail})")
                                for s in candidates]
             return result
+        if detail.startswith("no test covers"):
+            untested = f" (no test gate: {detail})"
     from plumb.understand.judge import record_text
 
     index = core.index()
@@ -522,7 +600,7 @@ def repin_after_tests(core: Core, selector: str, *,
         p = jev.clears(**shown) if jev is not None else None
         if p is not None:   # EX-1: JEV alone, above its calibrated threshold
             why = f"JEV gives {p:.2f}, at or above its threshold {jev.threshold:.2f}"
-            _repinned(core, result, link.id, "jev", why, dry_run)
+            _repinned(core, result, link.id, "jev", why + untested, dry_run)
             continue
         if judge is None:   # EX-6 leads to Sonnet; without it nothing is repinned on a guess
             result.refused.append((link.id, NO_MODEL))
@@ -538,7 +616,7 @@ def repin_after_tests(core: Core, selector: str, *,
             _diagnose(core, result, record, link, shown, meaning.reason, diagnoser,
                       session, dry_run)
         else:
-            _repinned(core, result, link.id, "sonnet", meaning.reason, dry_run)
+            _repinned(core, result, link.id, "sonnet", meaning.reason + untested, dry_run)
     return result
 
 

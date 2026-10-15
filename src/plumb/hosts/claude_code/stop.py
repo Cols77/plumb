@@ -556,6 +556,23 @@ def regression_cards(index: Mapping[str, Any], regressing: Mapping[str, Any],
     return out
 
 
+def card_released(root: Path, session: str, rows: Sequence[Any], index: Mapping[str, Any],
+                  turn_start: float, held: int) -> list[str]:
+    """The hold gave up on ``rows``: a stale card per link (the owner decides), and the note
+    saying the hold ended, per link."""
+    from plumb import stale
+    from plumb.present.owner_text import STALE_HOLD_ENDED
+
+    notes = []
+    for row in rows:
+        title = index[row.record].title if row.record in index else row.record
+        other = index[row.what].title if row.what in index else ""
+        stale.add_card(root, session, turn=int(turn_start),
+                       **stale.default_card(row, title, other))
+        notes.append(STALE_HOLD_ENDED.format(n=held, title=title))
+    return notes
+
+
 def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
                turn: Mapping[str, Any], turn_start: float) -> tuple[list[str], list[str]]:
     """SR-111 EX-3: ``(block reasons, summary lines)`` for the links this turn made stale.
@@ -595,16 +612,7 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
             stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), held + 1)
             missing = stale.incomplete_cards(ctx.root, ctx.session_id)
             return [*stale.hold_lines(open_rows, held + 1, limit, missing), *before], []
-        from plumb.present.owner_text import STALE_HOLD_ENDED
-
-        notes = []
-        for row in open_rows:
-            title = index[row.record].title if row.record in index else row.record
-            other = index[row.what].title if row.what in index else ""
-            stale.add_card(ctx.root, ctx.session_id, turn=int(turn_start),
-                           **stale.default_card(row, title, other))
-            notes.append(STALE_HOLD_ENDED.format(n=held, title=title))
-        return [], notes
+        return [], card_released(ctx.root, ctx.session_id, open_rows, index, turn_start, held)
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return [], []
 

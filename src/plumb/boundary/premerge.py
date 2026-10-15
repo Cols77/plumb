@@ -304,6 +304,11 @@ class PremergeReport:
     unstaged: tuple[str, ...] = ()       # .plumb/ paths that differ from the index committed
     unreadable: tuple[Mapping[str, Any], ...] = ()       # {path, line}
     settled: tuple[str, ...] = ()        # R17: conflicts the owner's earlier answer settled
+    stale_links: tuple[str, ...] = ()    # SR-166: links the merge leaves stale
+    untested_links: tuple[str, ...] = ()  # SR-166: links the merge adds to files no test covers
+    contradictions: tuple[str, ...] = ()  # SR-165: new requirements against live ones
+    contradiction_notes: tuple[str, ...] = ()  # unsure verdicts: shown, never held on
+    judge_note: str = ""                 # set when the contradiction check could not judge
     operation: str = "merge"     # merge | fast-forward | rebase | cherry-pick | revert
     skipped: str | None = None
     exit: int = 0
@@ -490,16 +495,134 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
 
     conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
+    stale_links, untested_links = _link_problems(core, base, paths, index)
+    contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index)
     # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
     # the commit that finishes it ("finish the merge") records the settled version
-    held = bool(undeclared or collisions or unstaged or unreadable or settled)
-    code = 1 if held else 4 if (conflicts or unconfirmed) else 0
+    held = bool(undeclared or collisions or unstaged or unreadable or settled
+                or stale_links or untested_links)
+    code = 1 if held else 4 if (conflicts or unconfirmed or contradictions) else 0
     report = PremergeReport(merging=theirs, into=ours, touched=tuple(touched),
                             unconfirmed=tuple(unconfirmed), undeclared=tuple(undeclared),
                             intent_conflicts=tuple(conflicts), collisions=tuple(collisions),
                             unstaged=unstaged, unreadable=unreadable, settled=settled,
+                            stale_links=tuple(stale_links), untested_links=tuple(untested_links),
+                            contradictions=tuple(contradictions),
+                            contradiction_notes=tuple(contradiction_notes),
+                            judge_note=judge_note,
                             operation=operation, exit=code)
     return _with_lines(report)
+
+
+def _link_problems(core: Any, base: str, paths: Sequence[str],
+                   index: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    """SR-166 EX-3: the stale links of the changed files' records, and the implemented_by
+    links this merge adds (not in ``base``) to files no test covers."""
+    from plumb import stale
+
+    changed = set(paths)
+    try:   # only the links this merge made stale: those already stale at base are old debt
+        near = [r for r in stale.stale_rows(core)
+                if r.what in changed or getattr(index.get(r.record), "path", "") in changed]
+        stale_links = [f"  {r.link} -> {r.what}"
+                       for r in stale.new_rows(Path(core.root), base, near)]
+    except Exception:  # noqa: BLE001 - an unreadable link state is not this check's hold
+        stale_links = []
+    untested: list[str] = []
+    tmap = None
+    before_of: dict[str, str] = {}
+    for record in index.values():
+        for link in record.links:
+            target = link.target.path
+            if link.kind != "implemented_by" or not target or not (
+                    record.path in changed or target in changed):
+                continue
+            if record.path not in before_of:   # one read per record, not per link
+                before_of[record.path] = _git(Path(core.root), "show",
+                                              f"{base}:{record.path}") or ""
+            if target in before_of[record.path]:
+                continue
+            try:
+                if tmap is None:
+                    from plumb.verify import open_verify
+
+                    tmap = open_verify(core).test_map()
+                covered = tmap.covering(target) or tmap.verified_tests(target)
+            except Exception:  # noqa: BLE001 - no test map: cannot tell, so not held
+                return stale_links, []
+            if not covered:
+                untested.append(f"  {link.id} -> {target}")
+    return stale_links, untested
+
+
+def drift_problems(core: Any, base: str, paths: Sequence[str]) -> dict[str, Any]:
+    """The stale, untested-link and contradiction sections of a merge into ``base`` (SR-165,
+    SR-166), as ``PremergeReport`` fields, for ``merge-check``'s report too."""
+    index = core.index()
+    stale_links, untested_links = _link_problems(core, base, paths, index)
+    contradictions, notes, judge_note = _contradictions(core, base, paths, index)
+    return dict(stale_links=tuple(stale_links), untested_links=tuple(untested_links),
+                contradictions=tuple(contradictions), contradiction_notes=tuple(notes),
+                judge_note=judge_note)
+
+
+def drift_lines(report: Any) -> list[str]:
+    """The lines of ``drift_problems``' sections (a premerge or a merge-check report)."""
+    out: list[str] = []
+    for rows, header in ((report.contradictions, owner_text.PREMERGE_CONTRADICTIONS_HEADER),
+                         (report.contradiction_notes, owner_text.PREMERGE_CONTRADICTIONS_NOTE)):
+        if rows:
+            out += [header, *_capped(rows)]
+    if report.judge_note:
+        out.append(report.judge_note)
+    for rows, header in ((report.stale_links, owner_text.PREMERGE_STALE_HEADER),
+                         (report.untested_links, owner_text.PREMERGE_UNTESTED_HEADER)):
+        if rows:
+            out += [header, *_capped(rows)]
+    return out
+
+
+def _reworded(core: Any, base: str, paths: Sequence[str], index: Mapping[str, Any]
+              ) -> list[str]:
+    """The requirements in ``paths`` that are new at ``base`` or whose words changed there
+    (the record hash leaves the links out, so a repin is not a rewording)."""
+    from plumb.model import parse_record
+
+    out = []
+    for rid, record in index.items():
+        if record.kind != "requirement" or record.path not in set(paths):
+            continue
+        before = _git(Path(core.root), "show", f"{base}:{record.path}")
+        try:
+            same = before is not None and parse_record(before, record.path).hash == record.hash
+        except Exception:  # noqa: BLE001 - unreadable at base: judge it
+            same = False
+        if not same:
+            out.append(rid)
+    return out
+
+
+def _contradictions(core: Any, base: str, paths: Sequence[str], index: Mapping[str, Any]
+                    ) -> tuple[list[str], list[str], str]:
+    """SR-165 EX-2: the new or reworded requirements that contradict a live one, held only
+    on a confident verdict and otherwise only noted (at most 5 each), with validate's
+    ``supersedes`` warnings; the note when the judge could not be reached."""
+    from plumb.awareness.early import check_live_rows
+    from plumb.validate import validate
+
+    ids = _reworded(core, base, paths, index)
+    if not ids:
+        return [], [], ""
+    rows = check_live_rows(core, ids)
+    said = [(line, sure) for line, sure in rows if " contradicts " in line]
+    out = [f"  {line}" for line, sure in said if sure][:5]
+    notes = [f"  {line}" for line, sure in said if not sure][:5]
+    if not said and any(k in line for line, _ in rows
+                        for k in ("judging unavailable", "no judgment", "not checked")):
+        return [], [], owner_text.PREMERGE_NOT_JUDGED
+    out += [f"  {f.subject}: {f.message}" for f in validate(core)
+            if f.code == "supersedes" and f.subject.split("#")[0] in ids]
+    return out, notes, ""
 
 
 def _with_lines(report: PremergeReport) -> PremergeReport:
@@ -541,6 +664,7 @@ def render(report: PremergeReport) -> list[str]:
         out.extend(_capped([owner_text.PREMERGE_UNCONFIRMED.format(record=r["id"],
                                                                    title=r["title"])
                             for r in report.unconfirmed]))
+    out.extend(drift_lines(report))
     if report.undeclared:
         out.append("files changed without a requirement that declares them:")
         out.extend(_capped([owner_text.PREMERGE_UNDECLARED.format(

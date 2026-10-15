@@ -299,3 +299,165 @@ def test_pre_push_hook_never_calls_a_judgment_backend(
     assert [p for p in events(repo, "judgment") if p.get("subject") == "IC-001"] == []
     merge_report(open_core(repo), head, run_full=False)  # interactive: live
     assert backend.calls == 1
+
+
+def _branch_pair(tmp_path: Path) -> tuple[Path, Path]:
+    """main and feat-x, SR-005 linked to src/a.py in both; main has moved on."""
+    root = make_repo(tmp_path / "main")
+    write_record(root, record(statement="A relay pins every stated record.", examples=[ex(1)]))
+    (root / "src").mkdir()
+    (root / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    assert plumb(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
+    commit_all(root, "SR-005")
+    other = tmp_path / "feat"
+    run_git(root, "worktree", "add", "-q", "-b", "feat-x", str(other))
+    (root / "notes.txt").write_text("main\n", encoding="utf-8")
+    commit_all(root, "main side")
+    return root, other
+
+
+def _merge_report(root: Path):
+    run_git(root, "merge", "--no-edit", "--no-verify", "--no-commit", "feat-x", check=False)
+    return check(open_core(root))
+
+
+@pytest.mark.sr("SR-166")
+def test_merge_check_holds_a_link_the_branch_left_stale(tmp_path: Path) -> None:
+    """SR-166 EX-3: a branch edits a linked file without repinning: held, naming the link."""
+    root, other = _branch_pair(tmp_path)
+    (other / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
+    commit_all(other, "edit\n\nSR: SR-005")
+    report = _merge_report(root)
+    assert report.exit == 1 and any("SR-005#" in line for line in report.stale_links)
+    assert "links this merge leaves stale" in "\n".join(report.lines)
+
+
+@pytest.mark.sr("SR-166")
+def test_merge_check_names_a_link_added_to_a_file_no_test_covers(tmp_path: Path) -> None:
+    """SR-166 EX-3: a branch links a .md no test covers: named, merge held."""
+    root, other = _branch_pair(tmp_path)
+    (other / "docs").mkdir()
+    (other / "docs" / "x.md").write_text("notes\n", encoding="utf-8")
+    assert plumb(other, "link", "SR-005", "implemented_by", "docs/x.md").returncode == 0
+    commit_all(other, "link\n\nSR: SR-005")
+    report = _merge_report(root)
+    assert report.exit == 1 and any("docs/x.md" in line for line in report.untested_links)
+    assert not any("src/a.py" in line for line in report.untested_links)
+
+
+@pytest.mark.sr("SR-165")
+def test_merge_check_asks_about_contradicting_requirements(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-165 EX-2: a branch adds a requirement a live one contradicts: exit 4, both named."""
+    from plumb.contracts import Judgment
+
+    class Judge:
+        name = "jev"
+
+        def contradiction(self, prompt: str, rec: object) -> Judgment:
+            return Judgment(action="contradiction", subject=rec.id, verdict="contradicts",
+                            confidence=0.9, tier="act", backend="jev", fingerprint="f")
+
+    import plumb.judgment as judgment
+
+    monkeypatch.setattr(judgment, "optional_backend", lambda core, hook: Judge())
+    root, other = _branch_pair(tmp_path)
+    write_record(other, record("SR-006", "relay pins nothing",
+                               statement="A relay pins no stated record.", examples=[ex(1)]))
+    commit_all(other, "SR-006\n\nSR: SR-006")
+    report = _merge_report(root)
+    assert any("SR-006 contradicts SR-005" in line for line in report.contradictions)
+    assert report.exit == 4
+
+
+@pytest.mark.sr("SR-166")
+def test_merge_check_clean_merge_has_no_link_findings(tmp_path: Path) -> None:
+    """No regression: a merge touching neither links nor requirements names nothing new."""
+    root, other = _branch_pair(tmp_path)
+    (other / "other.txt").write_text("y\n", encoding="utf-8")
+    commit_all(other, "plain")
+    report = _merge_report(root)
+    assert report.exit == 0
+    assert not (report.stale_links or report.untested_links or report.contradictions)
+
+
+class _Counting:
+    name = "jev"
+
+    def __init__(self, confidence: float = 0.9) -> None:
+        self.calls = 0
+        self.confidence = confidence
+
+    def contradiction(self, prompt: str, rec: object):
+        from plumb.contracts import Judgment
+
+        self.calls += 1
+        return Judgment(action="contradiction", subject=rec.id, verdict="contradicts",
+                        confidence=self.confidence, tier="act", backend="jev", fingerprint="f")
+
+
+@pytest.mark.sr("SR-166")
+def test_merge_check_does_not_hold_on_links_already_stale_at_base(tmp_path: Path) -> None:
+    """SR-166: only new problems hold: a link stale before the fork is old debt."""
+    root = make_repo(tmp_path / "main")
+    write_record(root, record(statement="A relay pins every stated record.", examples=[ex(1)]))
+    (root / "src").mkdir()
+    (root / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    assert plumb(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
+    commit_all(root, "SR-005")
+    (root / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
+    commit_all(root, "stale before the fork")
+    other = tmp_path / "feat"
+    run_git(root, "worktree", "add", "-q", "-b", "feat-x", str(other))
+    (other / "src" / "a.py").write_text("x = 3\n", encoding="utf-8")
+    commit_all(other, "edit again\n\nSR: SR-005")
+    (root / "notes.txt").write_text("main\n", encoding="utf-8")
+    commit_all(root, "main side")
+    report = _merge_report(root)
+    assert report.stale_links == () and report.exit != 1
+
+
+@pytest.mark.sr("SR-165")
+def test_merge_check_judges_only_reworded_requirements_and_holds_on_sure_verdicts(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A repin (links only) is not judged; an unsure 'contradicts' is a note, not a hold."""
+    import plumb.judgment as judgment
+
+    judge = _Counting(confidence=0.4)
+    monkeypatch.setattr(judgment, "optional_backend", lambda core, hook: judge)
+    root, other = _branch_pair(tmp_path)
+    (other / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
+    assert plumb(other, "repin", "SR-005").returncode == 0     # SR-005's file: pins only
+    commit_all(other, "repin\n\nSR: SR-005")
+    report = _merge_report(root)
+    assert judge.calls == 0
+    assert report.contradictions == ()
+    run_git(root, "merge", "--abort", check=False)
+    write_record(other, record("SR-006", "relay pins nothing",
+                               statement="A relay pins no stated record.", examples=[ex(1)]))
+    commit_all(other, "SR-006\n\nSR: SR-006")
+    report = _merge_report(root)
+    assert report.contradictions == () and report.contradiction_notes
+    assert report.exit != 1
+
+
+@pytest.mark.sr("SR-166")
+def test_merge_check_cli_report_names_untested_links_and_contradictions(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """``plumb merge-check`` prints the pre-merge hook's sections, with its exit code."""
+    import plumb.judgment as judgment
+
+    monkeypatch.setattr(judgment, "optional_backend", lambda core, hook: _Counting())
+    _, other = _branch_pair(tmp_path)
+    (other / "docs").mkdir()
+    (other / "docs" / "x.md").write_text("notes\n", encoding="utf-8")
+    assert plumb(other, "link", "SR-005", "implemented_by", "docs/x.md").returncode == 0
+    write_record(other, record("SR-006", "relay pins nothing",
+                               statement="A relay pins no stated record.", examples=[ex(1)]))
+    commit_all(other, "link and SR-006\n\nSR: SR-005, SR-006")
+    code = cli.main(["merge-check", "main", "--no-run", "--root", str(other)])
+    out = capsys.readouterr().out
+    assert "links this merge adds to files no test covers:" in out and "docs/x.md" in out
+    assert "requirements that contradict each other:" in out
+    assert "SR-006 contradicts SR-005" in out
+    assert code == 1   # the untested link holds, as at the pre-merge hook

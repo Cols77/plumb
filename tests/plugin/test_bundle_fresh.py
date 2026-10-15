@@ -133,7 +133,7 @@ def test_every_hook_has_a_timeout() -> None:
     timeouts = {h["command"].rsplit(" ", 1)[1]: h["timeout"]
                 for groups in hooks.values() for g in groups for h in g["hooks"]}
     assert timeouts == {"session-start": 10, "prompt": 10, "pre-tool": 10, "edit-check": 10,
-                        "post-edit": 30, "question-answer": 30, "stop": 30}
+                        "post-edit": 30, "question-answer": 30, "stop": 30, "subagent-stop": 30}
     assert all(t >= 3 * (HARD_LIMIT_S + STOP_GRACE_S) for t in timeouts.values())
     post = hooks["PostToolUse"]
     assert [g["hooks"][0].get("async", False) for g in post] == [True, False, True]

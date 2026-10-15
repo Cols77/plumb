@@ -49,7 +49,8 @@ is recorded: ../plumb-records/references/conflicts.md.
 
 Depth:
 
-- trivial (maps to confirmed intent, or a small unambiguous change): no questions. One line
+- trivial (maps to confirmed intent, or a small unambiguous change): no questions. A request
+  that changes what an existing requirement says is not trivial. One line
   of read-back: "Doing X, as already confirmed in <the record's title>; nothing else
   changes."
 - incremental (new or partly specified intent): write back your understanding, separating

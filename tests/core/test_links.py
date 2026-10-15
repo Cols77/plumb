@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -388,3 +389,147 @@ def test_unlink_lets_a_retired_examples_test_go(
     capsys.readouterr()
     assert _cli(edit, "unlink", "SR-001#3", "--note", "EX-2 was retired") == 0
     assert "no test" not in capsys.readouterr().out
+
+
+def _superseded(setup: Path, write_record):
+    write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
+    core = open_core(setup)
+    core.add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
+    old_pin = core.index()["SR-001"].links[0].pin
+    (setup / "src" / "mod.py").write_bytes(b"x = 2\n")
+    assert _state(open_core(setup), "SR-001#0").state == "stale"
+    open_core(setup).add_link("SR-002", "supersedes", Target(record="SR-001"))
+    return open_core(setup), old_pin
+
+
+@pytest.mark.sr("SR-164")
+def test_a_superseded_requirements_moved_links_are_retired_not_stale(
+        setup: Path, write_record) -> None:
+    """SR-164 EX-1: stale rows, validate and stale selection show nothing for the retired one."""
+    from plumb import stale
+
+    core, _ = _superseded(setup, write_record)
+    assert _state(core, "SR-001#0").state == "retired"
+    assert [r for r in stale.stale_rows(core) if r.link.startswith("SR-001")] == []
+    assert links._select_stale(core, "SR-001") == []
+    assert "SR-001#0" not in str(core.status())
+
+
+@pytest.mark.sr("SR-164")
+def test_repin_all_stale_leaves_a_retired_pin(setup: Path, write_record) -> None:
+    core, old_pin = _superseded(setup, write_record)
+    assert links.repin(core, all_stale=True) == []
+    assert open_core(setup).index()["SR-001"].links[0].pin == old_pin
+
+
+@pytest.mark.sr("SR-164")
+def test_superseding_names_the_examples_a_test_still_verifies(
+        setup: Path, write_record, capsys) -> None:
+    write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
+    (setup / "tests").mkdir()
+    (setup / "tests" / "test_a.py").write_text("def test_x():\n    pass\n", encoding="utf-8")
+    from plumb import cli
+
+    root = ["--root", str(setup)]
+    assert cli.main(["link", "SR-001", "verified_by", "tests/test_a.py", "--example", "EX-1",
+                     *root]) == 0
+    assert cli.main(["link", "SR-002", "supersedes", "SR-001", *root]) == 0
+    assert ("SR-001/EX-1 is still verified by tests/test_a.py: move it to SR-002"
+            in capsys.readouterr().out)
+
+
+def test_pin_on_an_uncommitted_edit_keeps_its_version_for_end_texts(setup: Path) -> None:
+    """SR-166 EX-2: the pinned version survives being edited again and committed."""
+    from tests.conftest import git
+
+    core = open_core(setup)
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "mod")
+    (setup / "src" / "mod.py").write_bytes(b"x = 2\n")          # uncommitted edit
+    link = core.add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
+    (setup / "src" / "mod.py").write_bytes(b"x = 3\n")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "later")
+    pinned = open_core(setup).index()["SR-001"].links[0]
+    assert pinned.id == link.id
+    assert links.end_texts(setup, pinned) == ("x = 2\n", "x = 3\n")
+
+
+def test_pin_on_a_committed_file_stores_no_blob(setup: Path) -> None:
+    from tests.conftest import git
+
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "mod")
+    open_core(setup).add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
+    assert not list((setup / ".git" / "plumb").glob("pin_blobs.json"))
+
+
+@pytest.mark.sr("SR-164")
+def test_status_and_validate_work_on_a_confirmed_superseded_record_with_a_test(
+        setup: Path, write_record) -> None:
+    """A retired link has no current pin: status, changed_tests and validate must not read one."""
+    from plumb import approvals
+    from plumb.validate import validate
+
+    write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
+    (setup / "tests").mkdir()
+    (setup / "tests" / "test_a.py").write_text("def test_x():\n    pass\n", encoding="utf-8")
+    core = open_core(setup)
+    core.add_link("SR-001", "verified_by", Target(path="tests/test_a.py"), "EX-1")
+    approvals.approve(open_core(setup), ["SR-001"])
+    open_core(setup).add_link("SR-002", "supersedes", Target(record="SR-001"))
+    core = open_core(setup)
+    status = core.status(["SR-001"])["SR-001"]
+    assert status.superseded_by == "SR-002" and status.changed_tests == ()
+    assert [s.state for s in status.links] == ["retired"]
+    assert core.status() and validate(core) is not None
+
+
+@pytest.mark.sr("SR-164")
+def test_an_older_record_superseding_a_newer_one_does_not_retire_it(
+        setup: Path, write_record) -> None:
+    """SR-076 over SR-150: the owner has not settled it (INT-058 A-1), so SR-150 stays tracked."""
+    from plumb.query import retired_ids
+
+    write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
+    open_core(setup).add_link("SR-001", "supersedes", Target(record="SR-002"))
+    open_core(setup).add_link("SR-002", "supersedes", Target(record="SR-001"))
+    assert retired_ids(open_core(setup).index()) == {"SR-001"}
+
+
+def test_a_test_the_superseder_already_verifies_is_not_named(
+        setup: Path, write_record, capsys) -> None:
+    """SR-164: a test copied onto the superseder is not a retired example."""
+    write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
+    (setup / "tests").mkdir()
+    (setup / "tests" / "test_a.py").write_text("def test_x():\n    pass\n", encoding="utf-8")
+    from plumb import cli
+
+    root = ["--root", str(setup)]
+    for sr in ("SR-001", "SR-002"):
+        assert cli.main(["link", sr, "verified_by", "tests/test_a.py", "--example", "EX-1",
+                         *root]) == 0
+    assert cli.main(["link", "SR-002", "supersedes", "SR-001", *root]) == 0
+    assert "still verified" not in capsys.readouterr().out
+    from plumb.validate import validate
+
+    assert not [f for f in validate(open_core(setup)) if f.code == "retired-example"]
+
+
+def test_a_retired_example_is_a_warning_naming_both_records_and_the_test(
+        setup: Path, write_record, capsys) -> None:
+    """SR-164: the owner's per-pair choice, so validate warns and still exits 0."""
+    write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
+    (setup / "tests").mkdir()
+    (setup / "tests" / "test_a.py").write_text("def test_x():\n    pass\n", encoding="utf-8")
+    from plumb import cli
+
+    root = ["--root", str(setup)]
+    assert cli.main(["link", "SR-001", "verified_by", "tests/test_a.py", "--example", "EX-1",
+                     *root]) == 0
+    assert cli.main(["link", "SR-002", "supersedes", "SR-001", *root]) == 0
+    capsys.readouterr()
+    assert cli.main(["validate", "--json", *root]) == 0
+    (warning,) = [w for w in json.loads(capsys.readouterr().out)["warnings"]
+                  if w["code"] == "retired-example"]
+    assert all(name in warning["message"] for name in ("SR-001/EX-1", "SR-002", "tests/test_a.py"))

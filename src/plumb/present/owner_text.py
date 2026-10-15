@@ -116,6 +116,13 @@ PREMERGE_REMOVED = "plumb: merges are no longer checked before git records them"
 PREMERGE_UNCONFIRMED = "  {record} \"{title}\" is not confirmed yet; /plumb approve {record}"
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "
                        "to link it to the requirement it serves")
+PREMERGE_STALE_HEADER = ("links this merge leaves stale (plumb repin --after-tests <link> once "
+                         "tests pass, or card it):")
+PREMERGE_UNTESTED_HEADER = "links this merge adds to files no test covers:"
+PREMERGE_CONTRADICTIONS_HEADER = "requirements that contradict each other:"
+PREMERGE_CONTRADICTIONS_NOTE = ("requirements that may contradict each other (the judge was not "
+                                "sure, so this does not hold the merge):")
+PREMERGE_NOT_JUDGED = "plumb: could not judge whether the new requirements contradict live ones"
 PREMERGE_COLLISION = ("  {record}: two different records hold this ID; /plumb merge-fix fixes "
                       "it")
 PREMERGE_OK = "plumb: merge check: nothing holds this merge"
