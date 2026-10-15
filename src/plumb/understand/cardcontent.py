@@ -24,12 +24,8 @@ def _record_text(record: Any) -> str:
 
 
 def _prompts(core: Any) -> list[dict[str, Any]]:
-    try:
-        lines = Path(core.paths.prompts).read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
-        return []
     out = []
-    for line in lines:
+    for line in core.paths.prompt_lines():
         try:
             entry = json.loads(line)
         except ValueError:

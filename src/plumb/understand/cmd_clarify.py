@@ -66,13 +66,9 @@ def latest_prompt(core: Any, session: str | None) -> Mapping[str, Any] | None:
     from plumb.approvals import is_owner_entry
 
     newest: Mapping[str, Any] | None = None
-    try:
-        text = Path(core.paths.prompts).read_text(encoding="utf-8")
-    except OSError:
-        return None
     import json
 
-    for line in text.splitlines():
+    for line in core.paths.prompt_lines():
         try:
             entry = json.loads(line)
         except ValueError:

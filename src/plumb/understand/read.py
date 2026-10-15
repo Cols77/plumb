@@ -54,14 +54,13 @@ def _prompt_entries(core: Any) -> list[Mapping[str, Any]]:
 
     out: list[Mapping[str, Any]] = []
     try:
-        with open(core.paths.prompts, encoding="utf-8") as handle:
-            for line in handle:
-                try:
-                    item = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(item, Mapping) and is_owner_entry(item):
-                    out.append(item)
+        for line in core.paths.prompt_lines():
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(item, Mapping) and is_owner_entry(item):
+                out.append(item)
     except OSError:
         pass
     return out

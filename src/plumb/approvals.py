@@ -269,19 +269,15 @@ def revoke(core: Core, ids: Iterable[str], *, note: str = "") -> LogEntry:
 # --------------------------------------------------------------------------- prompts
 
 
-def _read_jsonl(path: Any) -> list[Mapping[str, Any]]:
+def _entries(lines: Any) -> list[Mapping[str, Any]]:
     out: list[Mapping[str, Any]] = []
-    try:
-        with open(path, encoding="utf-8") as handle:
-            for line in handle:
-                try:
-                    item = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(item, Mapping):
-                    out.append(item)
-    except FileNotFoundError:
-        pass
+    for line in lines:
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(item, Mapping):
+            out.append(item)
     return out
 
 
@@ -296,7 +292,7 @@ def find_prompt(core: Core, given: str) -> Mapping[str, Any]:
     if not re.fullmatch(r"[0-9a-f]+", wanted or "x") or len(wanted) < MIN_PREFIX:
         raise Refused(f"prompt digest '{given}' must be at least {MIN_PREFIX} hex digits")
     matches: dict[str, Mapping[str, Any]] = {}
-    for entry in _read_jsonl(core.paths.prompts):
+    for entry in _entries(core.paths.prompt_lines()):
         digest = str(entry.get("digest", ""))
         if digest.removeprefix("sha256:").startswith(wanted):
             matches[digest] = entry  # the latest entry of each digest wins
@@ -331,7 +327,7 @@ def host_logs_prompts(core: Core, host: str | None) -> bool:
     if host in PROMPT_HOOK_HOSTS:
         return True
     return any(item.get("via") == "hook" and item.get("host") == host
-               for item in _read_jsonl(core.paths.prompts))
+               for item in _entries(core.paths.prompt_lines()))
 
 
 def owner_prompt(core: Core, given: str) -> Mapping[str, Any]:
