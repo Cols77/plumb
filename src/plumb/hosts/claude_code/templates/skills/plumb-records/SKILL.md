@@ -22,7 +22,7 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
   must change the owner's records or needs context, consequences or a diagram.
 - Never decide that the owner approved: only their typed `/plumb approve <IDs>` or plumb's own
   reader of their next message confirms.
-- Never run `{plumb} approve`, `revoke`, `tests waive`, `{plumb} triage --approve`,
+- Never run `{plumb} approve`, `revoke`, `tests waive`, `ui`, `{plumb} triage --approve`,
   `spec approve`, `config auto-approve`, `config show`, `conflict choose`, `turn start`,
   `hook prompt`, `owner` or `mod`: they are the owner's or plumb's own.
   `undo`, `go` and `approve` are typed by the owner and done by the hook.

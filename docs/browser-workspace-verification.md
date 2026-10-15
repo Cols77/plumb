@@ -1,80 +1,99 @@
 # Browser workspace verification
 
-Implementation branch: `feat/browser-issue-workspace`.
-All decision tests use isolated temporary repositories, not the owner's project records.
+Branch `feat/browser-issue-workspace`, worktree `C:/Users/33630/.codex/worktrees/1190/plumb`,
+measured on 2026-10-15 after commit `632b051`. Everything below is from that one fresh run;
+nothing is carried over from earlier reports.
 
-## Backend review
+## Commands and their result lines
 
-Task 1 passed independent specification and code-quality reviews. Review fixes are in
-`e3a6d68` and `701f460`:
+| # | Command (run from the worktree root, `ui/` for npm) | Result line |
+| --- | --- | --- |
+| 1 | `PYTHONPATH=<worktree>/src python -m pytest tests/browser tests/mod tests/host -q -p no:cacheprovider -n 2` | No summary line is printed (`addopts = "-q"` plus `-q` is double quiet). Progress line counted: **313 passed, 7 failed, 1 skipped** (321). All 7 failures are in `tests/host` (below); `tests/browser` and `tests/mod` all passed. |
+| 2a | `npm test` | `Test Files  5 passed (5)` / `Tests  29 passed (29)` |
+| 2b | `npm run check` | `COMPLETED 395 FILES 0 ERRORS 0 WARNINGS 0 FILES_WITH_PROBLEMS` |
+| 2c | `npm run build` | `✓ built in 14.14s` (output `src/plumb/browser/static`, unchanged against the committed assets) |
+| 2d | `npm run test:e2e` | `40 passed (1.8m)` |
+| 3 | `python -m ruff check src/plumb/browser src/plumb/mod tests/browser` | `All checks passed!` |
+| 4 | `git status --short` | Clean apart from `.plumb/log` entries and the files this report changes |
 
-- Browser offers bind the displayed explanation and reject earlier registration keys.
-- Duplicate requests reserve their identity durably without duplicate follow-ups.
-- Intervening card actions allow a later legitimate answer, including across questions.
-- Background notifications do not consume the next-user-turn handoff.
-- Separate actions with identical wording retain separate delivery identities.
-- Queued actions retain their original order.
+`-n 2` was used because pytest-xdist 3.8.0 is installed (pytest 9.1.1).
 
-Measured checks (overlapping runs; counts must not be added):
+### The seven `tests/host` failures
 
-| Check | Result |
+`tests/host/test_session_cold.py` (6) and `tests/host/test_hook_perf.py` (1): cold session
+start 5734 ms against a 1400 ms budget, warm start 2297 ms against 900 ms, the "check
+skipped (budget)" line, extra timing steps (`tests_summary`, `tree_scan`, `awareness`),
+and `plumb.judgment.jev`, `plumb.judgment.model`, `plumb.capture.calibrate` imported at
+session start. None of these tests touch the browser, mod press or follow-up code, and
+the branch does not change `session_start`. See "Baseline" below for the same tests on
+the merge-base commit.
+
+An eighth failure in the first run, `tests/host/test_install_skills.py::
+test_records_skill_runs_clarify_wait_first_and_names_the_guarded_commands`, was caused by
+this branch: it added `ui` to the guard table (`src/plumb/guard.py`) without naming it in
+the plumb-records skill. The skill template and its two rendered copies now list `ui`
+among the owner-only commands; the test passed in the second full run.
+
+## The four queued defects
+
+All four were fixed in one commit, `aac8a1c` ("fix(browser): preserve decisions through
+refresh and restart"), each guarded in `tests/browser/test_decision_lifecycle.py`:
+
+| Defect | Regression test |
 | --- | --- |
-| Root regression: browser, all mod, prompt/hook I/O, host conformance, guard (`701f460`) | 505 passed, 3 platform skips, 448.71 seconds |
-| Browser, prompt-hook and mod-press regression run | 85 passed, 1 platform skip |
-| Final specification regressions, sequential | 9 passed |
-| Final quality-fix regressions, sequential | 6 passed |
-| Independent quality-review reproduction tests | 3 passed |
-| Changed Python files: Ruff; Git whitespace check | Passed |
+| Stale-link/drift action state was not persisted to its separate store | `test_stale_decisions_survive_redraw_restart_and_identical_evaluation`, `test_stale_changed_meaning_reopens_a_left_open_decision`, `test_stale_target_change_in_same_turn_has_a_fresh_answerable_offer` |
+| An invalid button index left an intent that became a false recovery handoff | `test_invalid_button_never_recovers_a_handoff`, `test_disappeared_card_unknown_failure_never_recovers_a_handoff` |
+| A left-open turn-built card's fresh offer failed presentation validation | `test_turn_card_leave_then_change_is_waiting_after_restart`, `test_turn_card_semantic_change_still_refuses_old_offer` |
+| A custom combination for an unresolved conflict was reported done | `test_conflict_both_only_completes_when_combined_version_applies` |
 
-An earlier broader run of browser, all mod, prompt/hook I/O, host conformance and guard
-tests exited successfully with three platform skips. Its double-quiet output did not
-give a final count, so no count is claimed. A later parallel worker startup failed on
-Windows; the affected focused checks were rerun sequentially and passed.
+## End-to-end coverage (Playwright against the real server)
 
-## Frontend review
+40 tests, one worker, Chromium, server started by `ui/tests/e2e/server.py`:
 
-Task 2 passed independent specification and code-quality reviews and was committed as
-`f754e57`. Final implementation checks: 29 unit tests passed; Svelte check reported zero
-errors and warnings; production build succeeded; a fresh dependency installation and
-audit reported zero known vulnerabilities. The quality reviewer independently reran
-all 15 App tests, including the deferred-refresh selection regression.
+| File | Tests | Covers |
+| --- | --- | --- |
+| `controls.spec.ts` | 21 | skip link, help notices, Processing filter, inbox and evidence splitters, composer Cancel, session back navigation, 15 s polling only while visible, resize between inbox and drawer, retry under the same request id, empty project, Retry diagram, zoom limits, evidence sections, conflict Split/Unified/Base/proposed, Only this issue, long diff folding, phone drawer shade/close/Tab wrap |
+| `decisions.spec.ts` | 9 | double click records one answer; trial Leave open / Ask for a change / Yes / No / Fix it; choice Keep CSV / Use JSON; conflict Both / Keep this one / Keep the other; stale card and stale record refusal; multi-question card and missing-diagram fallback |
+| `diagram.spec.ts` | 1 | zoom, reset, download, source |
+| `navigation.spec.ts` | 7 | click and keyboard selection, filters/search/reset, browser back and forward, reload, refresh and help, empty session, tabs with records and activity |
+| `resilience.spec.ts` | 2 | unreachable server then retry; phone width drawer |
 
-A preliminary real Chrome render against the Python demo server displayed the issue,
-diagram and evidence without page errors. The launch fragment was removed and selection
-appeared in the URL. This is a rendering smoke check, not the final interaction proof.
+Decision tests assert the approval log and the server's stored card state (fresh draw)
+after each click, not only the page.
 
-## Independent integration exploration
+## Screenshots
 
-The integration tester exercised 58 HTTP action scenarios across all 12 content kinds,
-plus an accepted combined-conflict proposal. It verified action journals and press
-events, retry deduplication, preserved mod credentials, trial approval/rejection
-evidence, conflict file changes, and resulting card states. Two initial client timeouts
-passed targeted retries with a longer client timeout.
+From this e2e run, copied to `docs/screenshots/browser/`:
 
-Separate lifecycle checks passed for multiple questions, stale records, changed
-presentation, matching-session full prompt delivery, notification and other-session
-exclusion, one-time delivery, restart receipts, and correction text remaining outside
-owner-prompt logs.
+| File | Shows |
+| --- | --- |
+| `inbox.png` | the inbox with an issue selected |
+| `issue-diagram.png` | an issue with its diagram zoomed to 125 % |
+| `answered-followup.png` | an answered issue with its queued follow-up notice |
+| `stale-refusal.png` | the stale-card refusal with "Refresh issue" |
+| `narrow-issue.png` | the phone-width layout |
+| `disconnected.png` | the disconnected state with retry |
 
-Four defects remain queued for the integration fix pass:
+## Baseline
 
-1. Stale-link/drift action state is not persisted to its separate store.
-2. An invalid button index leaves an intent that becomes a false recovery handoff.
-3. A left-open turn-built card's fresh offer fails presentation validation.
-4. Requesting a custom combination for an unresolved conflict reports it done.
+The two failing files were rerun on a clone of the merge-base commit `8ad488f` (without
+this branch): `python -m pytest tests/host/test_session_cold.py tests/host/test_hook_perf.py
+-p no:cacheprovider -rfs` gave `7 failed, 9 passed in 201.85s (0:03:21)` with the same
+seven test names. These failures exist without the browser work; they are timing budgets
+on this machine and a session-start import set, out of scope here and left untouched.
 
-These explorations are not claimed as an all-passing matrix. Regression results and
-the final browser matrix will be recorded after fixes.
+## Limitations
 
-## Remaining verification
-
-Frontend checks, real-server browser interaction coverage, packaging verification and
-the visible browser demonstration are still pending. This report is updated as those
-checks complete.
-
-## Meaning of the evidence
-
-An owner answer is separate from a verified repair. A delivered follow-up means retained
-in the matching session's prompt-hook output; it does not mean an agent was started or
-completed work. The server serializes its browser requests. Independent existing mod
-and worker processes retain the repository's original write/concurrency semantics.
+- "Delivered" means the follow-up was retained in the matching session's prompt-hook
+  output; it does not mean an agent ran or that a repair was verified.
+- The demonstration and the e2e suite run on isolated demo data seeded by
+  `plumb.browser.demo.seed` in a temporary directory, never on the owner's records.
+- `plumb ui` refuses under the agent session marker by design, so the e2e helper
+  (`ui/tests/e2e/server.py`) starts the server through the library
+  (`plumb.browser.server.make_server`), not the command.
+- Not tested now: a visible browser demonstration (the browser MCP servers did not
+  connect in this session); browser console errors are not captured by the e2e suite;
+  no independent reviewer recheck or final spec/security code review is recorded here;
+  Firefox and WebKit; packaging of the built assets into a wheel.
+- The pytest command prints no summary line, so the counts above were derived from the
+  progress line of the same run.
