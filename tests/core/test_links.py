@@ -446,7 +446,7 @@ def test_superseding_names_the_examples_a_test_still_verifies(
     assert cli.main(["link", "SR-001", "verified_by", "tests/test_a.py", "--example", "EX-1",
                      *root]) == 0
     assert cli.main(["link", "SR-002", "supersedes", "SR-001", *root]) == 0
-    assert ("SR-001/EX-1 is still verified by tests/test_a.py: move it to SR-002"
+    assert ("SR-001/EX-1 is still verified by tests/test_a.py: retire the test too"
             in capsys.readouterr().out)
 
 

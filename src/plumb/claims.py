@@ -304,7 +304,7 @@ def _declared_before(root: Path, sha: str, index: Mapping[str, Any], record_id: 
         before = parse_record(shown.stdout, record.path)
     except RecordError:
         return set()
-    return _declared_paths({record_id: before}, record_id) - {record.path}
+    return _declared_paths({record_id: before}, record_id)
 
 
 def claims_check(root: Path, rng: str | None = None) -> dict[str, Any]:

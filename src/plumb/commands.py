@@ -172,8 +172,8 @@ def cmd_link(command: str, argv: list[str]) -> int:
         print(f"plumb: {exc}", file=sys.stderr)
         return 1
     for ex, test in live:  # SR-164: print only, never refuse
-        print(f"plumb: {target.record}/{ex} is still verified by {test}: move it to "
-              f"{args.source} (capture updates) before retiring {target.record}")
+        print(f"plumb: {target.record}/{ex} is still verified by {test}: retire the test too "
+              f"(plumb unlink; drop it when it covers nothing else), DEC-065")
     pin = link.pin
     data = {"link": link.id, "kind": link.kind, "target": args.target,
             "pin": None if pin is None else {"from": pin.source, "to": pin.target}}
