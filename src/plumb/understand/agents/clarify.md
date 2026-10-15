@@ -58,7 +58,10 @@ Decide:
   `card` (an `open_cards` id) or, when no card holds the question, `question` (the question as
   the last reply asked it). Then `intent` is `no` and nothing else is asked or read back: the
   answer is the reply, not a new request. Leave `answers` out when the answer is unclear,
-  hedged or only partial ("maybe 2, but..."), or when the message also starts something new.
+  hedged or only partial ("maybe 2, but..."). When the message also starts something new
+  ("2, and also make the pane resizable"), set `also` to that new request and give `intent`
+  `yes` with the readback of the new request only; the answer is applied to the card
+  either way. Leave `also` out when the whole message is the answer.
   When it answers a question in the last reply that no card holds and the answer would
   confirm, reject or change a record, choose a conflict's side or settle a stale link, also give
   `options` (what the reply offered, each with its `effect` on the record), `picked` (the label

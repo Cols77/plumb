@@ -345,7 +345,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             answer_mod.apply_answer(
                 work, card=str(item.get("card")), question=str(item.get("question") or ""),
                 record=str(item.get("record") or ""), hash=str(item.get("hash") or ""),
-                choice=Choice(answer=said, change=raw.get("change")),
+                choice=_picked(item, raw) or Choice(answer=said, change=raw.get("change")),
                 source=answer_mod.OwnerWords(job=job, digest=digest, evidence=evidence,
                                              confidence=confidence, passes=passes,
                                              rejection=raw.get("rejection")))
@@ -381,6 +381,15 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
 def _acknowledge_effect(**_: Any) -> Applied | None:
     """A stale-link card answered: the answer is recorded on the card and the agent
     resolves it; nothing is confirmed or changed here."""
+    return None
+
+
+def _picked(item: Mapping[str, Any], raw: Mapping[str, Any]) -> Choice | None:
+    """SR-187: the card's own choice the model named in ``option`` (a side picked in plain
+    words); None when it named none, so the answer reads as it was said."""
+    for c in item.get("choices") or ():
+        if c.get("label") and c["label"] == raw.get("option"):
+            return Choice(answer=str(c["answer"]), change=c.get("change") or c["label"])
     return None
 
 
