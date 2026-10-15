@@ -92,7 +92,8 @@ def jev_status(core: Core, *, probe: bool = False) -> dict[str, Any]:
             kind: {"passing": r.get("passing"), "threshold": r.get("threshold"),
                    "decisions": r.get("items"), "real_no": r.get("real_negatives"),
                    "generated_no": r.get("generated_negatives"),
-                   "generated_counted": r.get("generated_counted")}
+                   "generated_counted": r.get("generated_counted"),
+                   "quote_only": r.get("quote_only")}
             for kind, r in per_kind.items() if isinstance(r, Mapping)}
     else:
         out["calibration"] = f"none yet ({CALIBRATE_HINT})"
@@ -134,6 +135,9 @@ def status_lines(data: Mapping[str, Any]) -> list[str]:
                          f"{r['decisions']} of your decisions, 'no' examples "
                          f"{r['real_no']} real + {r['generated_counted']} generated counted "
                          f"(of {r['generated_no']})")
+            if r.get("quote_only"):
+                lines.append(f"    quote-only: {r['quote_only']} of {r['decisions']} judged on "
+                             "the owner's quote alone, no whole message on file")
     else:
         lines.append(f"calibration: {calibration}")
     lines.append(f"auto-approve: {data['auto_approve']}")

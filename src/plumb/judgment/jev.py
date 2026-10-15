@@ -400,10 +400,12 @@ class JevBackend:
                               end_hashes=hashes, note="jev score (advisory)")
 
     # -- sp2 11.2
-    def entailment(self, premise: str, hypothesis: str, *, subject: str,
-                   claim_kind: str) -> Judgment:
+    def entailment(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str,
+                   quote_only: str | None = None) -> Judgment:
         """Do the owner's words (the premise) support every part of the claim? A Noul; the
-        judgment's probability is the vendor's probability of its verdict (sp2 8.2)."""
+        judgment's probability is the vendor's probability of its verdict (sp2 8.2).
+        ``quote_only`` (SR-190) is why the premise is the quote alone; the entry says so."""
+        mark = {"premise": "quote-only", "premise_reason": quote_only} if quote_only else {}
         prefix = (f"Owner's words:\n{premise}\n\nClaim ({claim_kind}, {subject}):\n"
                   f"{hypothesis}\n")
         if output_form(self.core.config) == CHOICE:
@@ -419,7 +421,7 @@ class JevBackend:
             verdict = "entailed" if label == "supported" else "not-entailed"
             return self._judgment(record, "entailment", "faithfulness", subject, verdict,
                                   probability=p if verdict == "entailed" else 1.0 - p,
-                                  claim_kind=claim_kind, form=CHOICE, choice=label)
+                                  claim_kind=claim_kind, form=CHOICE, choice=label, **mark)
         question = JudgmentQuestion.noul(
             "Do the owner's words support every part of the claim, with nothing added, "
             "dropped or changed?", "the owner's words support the whole claim",
@@ -428,7 +430,7 @@ class JevBackend:
         p = float(record.answers["entailment"].value)
         verdict = "entailed" if p >= 0.5 else "not-entailed"
         return self._judgment(record, "entailment", "faithfulness", subject, verdict,
-                              claim_kind=claim_kind, form=YES_NO)
+                              claim_kind=claim_kind, form=YES_NO, **mark)
 
     def yes_probability(self, instructions: str, context: str, *, true: str = "yes",
                         false: str = "no") -> float | None:

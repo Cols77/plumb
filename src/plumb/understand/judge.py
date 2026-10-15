@@ -288,20 +288,25 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         beyond, contradicts = _strings(raw.get("beyond")), _strings(raw.get("contradicts"))
         confidence = _confidence(raw.get("confidence"))
         digest = premise.input_digest(item.get("premise") or {})
+        record = index.get(item["id"])
         payload = {"job": job.id, "id": item["id"], "hash": item["hash"], "verdict": verdict,
                    "beyond": beyond, "contradicts": contradicts,
                    "score": confidence if verdict == "supported" else 0,
                    "model": str(raw.get("model") or model), "premise_digest": digest}
-        if raw.get("by") in BY:         # SR-182: who answered; a verdict with none is no JEV's
-            payload.update(by=raw["by"], judge=str(raw.get("judge") or ""))
-        entries.append({"kind": "verdict", "payload": payload})
-        record = index.get(item["id"])
-        if record is None or record.hash != item["hash"]:
-            notes.append(f"{item['id']} changed while it was judged; it is judged again")
-            continue
         given = item.get("premise") or {}
         partial = bool(given.get("messages")) and all(
             m.get("partial") for m in given["messages"])
+        if partial and record is not None:    # SR-190: judged on the quote alone
+            from plumb.capture.triage import _Prompts, premise_problem
+
+            payload.update(premise="quote-only", premise_reason=premise_problem(
+                _Prompts(core), index, record) or "")
+        if raw.get("by") in BY:         # SR-182: who answered; a verdict with none is no JEV's
+            payload.update(by=raw["by"], judge=str(raw.get("judge") or ""))
+        entries.append({"kind": "verdict", "payload": payload})
+        if record is None or record.hash != item["hash"]:
+            notes.append(f"{item['id']} changed while it was judged; it is judged again")
+            continue
         if backlog_pass and partial:
             fragments.append(record)        # the owner's words are not on file: one card says so
         elif verdict in ("beyond", "contradicts"):
