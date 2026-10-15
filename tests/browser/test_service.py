@@ -99,12 +99,49 @@ def test_duplicate_action_survives_restart_and_queues_once(core):
     assert len([e for e in open_core(core.root).events() if e.kind == "card-press"]) == 1
 
 
+def test_restart_requires_redraw_before_pressing_old_key_offer(core):
+    first = service(core.root)
+    snapshot = first.draw(SESSION)
+    payload = press_payload(snapshot)
+    before = cardstore.own_cards(core.root, SESSION)
+    second = service(core.root)
+    with pytest.raises(PermissionError, match="redraw"):
+        second.press(SESSION, payload)
+    fresh = open_core(core.root)
+    assert not [e for e in fresh.events() if e.kind in ("card-press", "approval")]
+    assert cardstore.own_cards(core.root, SESSION) == before
+    current = second.draw(SESSION)
+    result = second.press(SESSION, press_payload(current, request_id="after-redraw"))
+    assert result["confirmed"] == ["SR-001"]
+    fresh = open_core(core.root)
+    approval = next(e for e in fresh.events() if e.kind == "approval")
+    assert recheck_button.problem(approval, fresh) is None
+
+
 def test_request_id_cannot_be_reused_for_another_answer(core):
     ui = service(core.root)
     payload = press_payload(ui.draw(SESSION), choice=4)
     ui.press(SESSION, payload)
     with pytest.raises(ValueError, match="request_id"):
         ui.press(SESSION, {**payload, "choice": 0})
+
+
+def test_duplicate_alias_reserves_request_id_without_second_handoff(core):
+    ui = service(core.root)
+    payload = press_payload(ui.draw(SESSION), choice=4, request_id="original")
+    ui.press(SESSION, payload)
+    alias = {**payload, "request_id": "alias"}
+    assert ui.press(SESSION, alias)["duplicate"] is True
+    conflicting = press_payload(ui.draw(SESSION), choice=3, request_id="alias")
+    with pytest.raises(ValueError, match="request_id"):
+        ui.press(SESSION, conflicting)
+    assert len(ui.draw(SESSION)["followups"]) == 1
+    current = press_payload(ui.draw(SESSION), choice=3, request_id="later-change")
+    ui.press(SESSION, current)
+    retry = service(core.root).press(SESSION, alias)
+    assert retry["duplicate"] is True and retry["status"] == "left_open"
+    assert retry["followup"]["id"] == "original"
+    assert cardstore.own_cards(core.root, SESSION)[0].status == "change_requested"
 
 
 def test_multiple_questions_remain_independent(core):

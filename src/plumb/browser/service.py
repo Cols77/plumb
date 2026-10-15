@@ -157,10 +157,12 @@ class BrowserService:
                 if held["fingerprint"] != fingerprint:
                     raise ValueError("request_id was already used for another answer")
                 if held.get("result"):
+                    original = followup.read(self.root, session, held.get("alias_of", request_id))
+                    original = original or held
                     return {
                         **held["result"],
                         "duplicate": True,
-                        "followup": {"id": request_id, "status": held["status"]},
+                        "followup": {"id": original["id"], "status": original["status"]},
                     }
                 raise ValueError(
                     "This request was interrupted; refresh to inspect the recorded answer"
@@ -188,6 +190,18 @@ class BrowserService:
                     and done.get("result")
                     and latest.get("request_id") == done.get("id")
                 ):
+                    followup.write(
+                        self.root,
+                        session,
+                        {
+                            "id": request_id,
+                            "alias_of": done["id"],
+                            "fingerprint": fingerprint,
+                            "status": "duplicate",
+                            "result": done["result"],
+                            "created": now(),
+                        },
+                    )
                     return {
                         **done["result"],
                         "duplicate": True,

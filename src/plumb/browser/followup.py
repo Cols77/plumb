@@ -33,7 +33,7 @@ def entries(root, session):
 def history(root, session):
     out = []
     for data in entries(root, session):
-        if isinstance(data, dict):
+        if isinstance(data, dict) and not data.get("alias_of"):
             # Do not expose the server key (never persisted) or internal request bookkeeping.
             out.append(
                 {k: data[k] for k in ("id", "card", "status", "created", "delivered") if k in data}
@@ -74,7 +74,9 @@ def pending(root, session):
             if correction:
                 note += "\nOwner correction supplied in the browser: " + correction
             text = "plumb browser answer (source session " + session + "): " + note
-            out.append((data, Line(text, oneshot=True)))
+            out.append(
+                (data, Line(text, subject=f"browser-answer:{session}:{data['id']}", oneshot=True))
+            )
     return out
 
 

@@ -82,6 +82,9 @@ def press(core: Any, session: str, offer: str, index: int,
     drawn = offers_mod.load_offer(core.root, session, offer, surface=surface)
     if drawn is None:
         raise Refused("plumb mod press refused: no such card was drawn in this session")
+    if surface == "browser" and drawn.get("key_digest") != digest:
+        raise Refused("This offer belongs to an earlier browser registration; "
+                      "redraw before answering")
     buttons = [b for b in drawn.get("buttons") or () if isinstance(b, Mapping)]
     if not 0 <= index < len(buttons):
         raise Unknown(f"plumb mod press: the card has no button {index}", 2)

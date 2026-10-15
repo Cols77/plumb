@@ -124,3 +124,26 @@ def test_followups_keep_action_sequence_after_restart(tmp_path):
         )
     notes = [line.text for _, line in followup.pending(tmp_path, "source")]
     assert "First answer" in notes[0] and "Second correction" in notes[1]
+
+
+def test_distinct_actions_with_same_note_are_both_emitted_on_later_prompts(tmp_path):
+    from plumb.browser.demo import SESSION, seed
+    from plumb.hosts.claude_code.prompt import handle
+
+    root = seed(tmp_path / "demo")
+    for ident in ("first", "second"):
+        followup.write(
+            root,
+            SESSION,
+            {
+                "id": ident,
+                "card": "demo-card-1",
+                "status": "queued",
+                "created": "now",
+                "model_note": "Owner chose Leave open.",
+            },
+        )
+        ctx = HookContext("prompt", {}, root, SESSION, Deadline(100000))
+        result = handle(ctx, backend=None)
+        assert "Owner chose Leave open." in result.text
+        assert followup.read(root, SESSION, ident)["status"] == "delivered"
