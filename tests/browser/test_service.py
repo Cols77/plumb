@@ -303,3 +303,12 @@ def test_repeated_leave_change_cycle_applies_current_answer(core, other_question
     current = cardstore.own_cards(core.root, SESSION)[0]
     assert current.status == result["status"] == "change_requested"
     assert result["duplicate"] is False
+
+
+def test_workspace_hides_sessions_without_cards(core, repo):
+    from plumb.browser.service import BrowserService
+
+    (repo / ".plumb/session/idle").mkdir(parents=True)
+    listed = [s["id"] for s in BrowserService(repo).workspace()["sessions"]]
+    assert SESSION in listed
+    assert "idle" not in listed

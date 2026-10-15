@@ -88,13 +88,11 @@ test('refresh draws again and help opens and closes', async ({ page }, info) => 
   await expect(help).toBeHidden();
 });
 
-test('an empty session shows its empty state', async ({ page }, info) => {
+test('a session that never drew a card is not offered', async ({ page }) => {
   await open(page);
-  await page.getByLabel('Source session').selectOption('empty-session');
-  await expect(page.getByText('No issues in this session.')).toBeVisible();
-  await expect(page.locator('h1')).toHaveText('Nothing waiting here');
-  await expect(page).toHaveURL(/session=empty-session$/);
-  await shot(page, info, 'empty-session');
+  const options = await page.getByLabel('Source session').locator('option').allTextContents();
+  expect(options.some((o) => o.includes('empty-session'))).toBe(false);
+  expect(options.some((o) => o.includes('demo-session'))).toBe(true);
 });
 
 test('tabs show the explanation, evidence with records, and activity', async ({ page }, info) => {

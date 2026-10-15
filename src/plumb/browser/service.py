@@ -57,6 +57,8 @@ class BrowserService:
                     s: sum(v[0] == s for v in states.values())
                     for s in ("waiting", "processing", "blocked", "done", "left_open")
                 }
+                if not any(counts.values()):
+                    continue  # a session that never drew a card is noise in the selector
                 sessions.append({"id": name, "counts": counts})
             return {
                 "project": {"name": self.root.name, "root": str(self.root), "demo": self.demo},

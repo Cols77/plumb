@@ -108,15 +108,15 @@ test('Cancel closes the composer, sends nothing and keeps the draft', async ({ p
 
 test('back after changing the session restores the previous session and card', async ({ page }) => {
   await open(page, 'demo-session', 'demo-card-5');
-  await page.getByLabel('Source session').selectOption('empty-session');
-  await expect(page).toHaveURL(/session=empty-session$/);
+  await page.getByLabel('Source session').selectOption('e2e-trial');
+  await expect(page).toHaveURL(/session=e2e-trial$/);
   await page.goBack();
   await expect(page.getByLabel('Source session')).toHaveValue('demo-session');
   await expect(page.locator('h1')).toHaveText('Choose the export format');
   await expect(page).toHaveURL(/session=demo-session&card=demo-card-5$/);
   await page.goForward();
-  await expect(page.getByLabel('Source session')).toHaveValue('empty-session');
-  await expect(page.locator('h1')).toHaveText('Nothing waiting here');
+  await expect(page.getByLabel('Source session')).toHaveValue('e2e-trial');
+  await expect(page.locator('h1')).toHaveText('Keep exports readable'); // the first issue is selected when the address names none
 });
 
 test('the workspace polls every 15 seconds while visible, never while hidden', async ({ page, request }) => {
