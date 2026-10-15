@@ -117,7 +117,7 @@ def test_records_skill_runs_clarify_wait_first_and_names_the_guarded_commands(
     skill = (_installed(repo) / "skills" / "plumb-records" / "SKILL.md").read_text(
         encoding="utf-8")
     first = _body(skill).strip().split("\n- ")[1]
-    assert first.startswith("First, on every owner request, run `plumb clarify --wait`")
+    assert first.startswith("Only after the owner types `/plumb clarify <words>`, run `plumb clarify --wait`")
     assert "message_digest" in skill and "sha256" in skill
     assert "plumb tests map" in skill  # what to run when the test map is missing
     for row in TABLE:

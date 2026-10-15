@@ -28,6 +28,7 @@ NO_GAP = {"intent": "yes", "topic": "export", "gap": False, "gaps": []}
 
 def _say(repo: Path, text: str = "let users export their data") -> tuple[Any, str]:
     core = open_core(repo)
+    text = "/plumb clarify " + text      # SR-171: only the command runs the check
     digest = log_prompt(repo, text, session=SESSION)
     hooks.on_prompt(SimpleNamespace(session_id=SESSION), core, {"digest": digest, "text": text})
     return core, digest
@@ -98,7 +99,7 @@ def test_ex6_late_result_collected_by_next_wait_no_build_started(
 def test_runs_the_job_itself_when_none_queued(repo: Path, engine_standins: Any) -> None:
     engine_standins.dispatcher.script = {"clarify": CARD}
     core = open_core(repo)
-    digest = log_prompt(repo, "let users export their data", session=SESSION)
+    digest = log_prompt(repo, "/plumb clarify let users export their data", session=SESSION)
     assert not list(files.jobs_dir(repo, SESSION).glob("*.json"))
     outcome = cmd_clarify.wait(core, SESSION, timeout=5)
     assert outcome.state == "card" and outcome.digest == digest
@@ -131,7 +132,7 @@ def test_a_result_with_no_ledger_entry_counts_for_nothing(repo: Path,
 def test_the_command_prints_the_result_as_json(repo: Path, engine_standins: Any,
                                                capsys: pytest.CaptureFixture) -> None:
     engine_standins.dispatcher.script = {"clarify": CARD}
-    log_prompt(repo, "let users export their data", session=SESSION)
+    log_prompt(repo, "/plumb clarify let users export their data", session=SESSION)
     assert cmd_clarify.run("clarify", ["--wait", "--json", "--root", str(repo),
                                        "--timeout", "5"]) == 0
     data = json.loads(capsys.readouterr().out)
@@ -229,7 +230,7 @@ def test_sr131_ex4_an_earlier_blocking_card_is_the_answer_not_a_failed_check(
     older = CardState(id="choice:aaaaaaaaaaaa", kind="choice", topic="t", issue="Which one?",
                       resolutions=("A", "B"), status="left_open")
     cardstore.save(repo, SESSION, [older])
-    digest = log_prompt(repo, "whatever works", session=SESSION)
+    digest = log_prompt(repo, "/plumb clarify whatever works", session=SESSION)
     gate.close(repo, SESSION, digest, "a question waits on a card")
     outcome = cmd_clarify._outcome_from_state(core, SESSION, digest)
     assert (outcome.state, outcome.card) == ("card", older.id)
@@ -241,8 +242,8 @@ def test_sr131_ex4_answering_the_held_card_opens_the_later_messages_gate(repo: P
     from plumb.contracts import CardState, ClarifyAnswer, ClarifyQuestion
 
     core = open_core(repo)
-    first = log_prompt(repo, "sort the rows, ask me about ties", session=SESSION)
-    later = log_prompt(repo, "whatever works", session=SESSION)
+    first = log_prompt(repo, "/plumb clarify sort the rows, ask me about ties", session=SESSION)
+    later = log_prompt(repo, "/plumb clarify whatever works", session=SESSION)
     gate.close(repo, SESSION, later, "a question waits on a card")
     card = CardState(id="choice:" + first.removeprefix("sha256:")[:12], kind="choice",
                      topic="t", issue="Ties?", resolutions=("Keep order", "By id"),

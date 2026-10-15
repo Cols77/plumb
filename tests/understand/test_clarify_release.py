@@ -29,6 +29,7 @@ def _failed_check(repo: Path, engine_standins: Any, text: str = "let users expor
     """The owner says something; the dispatcher fails; ``--wait`` returns."""
     engine_standins.dispatcher.failing("run", "the model could not be reached")
     core = open_core(repo)
+    text = "/plumb clarify " + text      # SR-171: only the command runs the check
     digest = log_prompt(repo, text, session=SESSION)
     hooks.on_prompt(_ctx(), core, {"digest": digest, "text": text})
     worker.run_once(core, SESSION)
@@ -122,17 +123,14 @@ def test_ex10_no_wait_keeps_gate_closed_next_turn_retries(
                                          card=card, digest=digest, accepted=False,
                                          entry={"answer": "rejected"})
     assert gate.is_closed(repo, SESSION)
-    retried: list[str] = []
-    monkeypatch.setattr(queue, "retry_failed", lambda c, session: retried.append(session) or [])
     # the open card makes the turn's read job (it answers nothing), which the check waits for
     engine_standins.dispatcher.script = {"clarify": {"intent": "no", "gap": False, "gaps": []},
                                          "read": {"entries": []}}
     text = "are you there?"
     again = log_prompt(repo, text, session=SESSION)
     hooks.on_prompt(_ctx(), open_core(repo), {"digest": again, "text": text})
-    assert retried == [SESSION]                              # the failed check is tried again
     state = gate.state(repo, SESSION)
-    assert state.state == "closed" and state.message_digest == again
+    assert state.state == "closed" and state.message_digest == digest   # SR-171: the held check keeps its message
     worker.run_once(open_core(repo), SESSION)                # and this time it works
     assert not gate.is_closed(repo, SESSION)
 

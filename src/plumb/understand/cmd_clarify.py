@@ -160,6 +160,12 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
         return Outcome("ready", "", [READY])
     session = str(logged.get("session") or session or "default")
     digest = str(logged["digest"])
+    if clarify.commanded_words(str(logged.get("text") or "")) is None:
+        # SR-171: no commanded check of this message; one still holding the gate keeps its digest
+        held = gate.state(root, session)
+        if not gate.is_closed(root, session) or not held.message_digest:
+            return Outcome("ready", digest, [READY])
+        digest = held.message_digest
     limit = float(timeout if timeout is not None else core.config.understand.clarify_wait_s)
     if gate.state(root, session).message_digest != digest and not gate.is_closed(root, session):
         gate.close(root, session, digest, clarify.GATE_REASON_CHECKING)   # no hook closed it
