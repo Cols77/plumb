@@ -10,7 +10,7 @@ from plumb.api import open_core
 from plumb.browser import followup
 from plumb.browser import session as registration
 from plumb.mod import offers
-from plumb.mod.press import press
+from plumb.mod.press import Unknown, press
 from plumb.mod.session import now, refuse_under_marker
 from plumb.understand import cardstore, files
 
@@ -172,6 +172,22 @@ class BrowserService:
             drawn = offers.load_offer(self.root, session, offer, surface="browser")
             if not drawn:
                 raise PermissionError("No such offer was drawn in this source session")
+            if choice >= len(drawn.get("buttons") or ()):
+                raise Unknown(f"plumb mod press: the card has no button {choice}", 2)
+            current = next(
+                (
+                    c
+                    for c in cardstore.load(self.root, session, open_only=False)
+                    if c.id == drawn["card"]
+                ),
+                None,
+            )
+            if current and current.kind == "stale_link" and drawn.get(
+                "presentation"
+            ) != offers.presentation_digest(core, session, current):
+                raise PermissionError(
+                    "The card changed since it was shown. Refresh it before answering."
+                )
             latest = next(
                 (
                     e.payload
@@ -207,14 +223,6 @@ class BrowserService:
                         "duplicate": True,
                         "followup": {"id": done["id"], "status": done["status"]},
                     }
-            current = next(
-                (
-                    c
-                    for c in cardstore.load(self.root, session, open_only=False)
-                    if c.id == drawn["card"]
-                ),
-                None,
-            )
             if current and any(a.question == drawn["question"] for a in current.answers):
                 raise PermissionError("This question was already answered; refresh the card")
             # Intent is durable before any answer side effect. An interrupted intent is
@@ -243,7 +251,7 @@ class BrowserService:
                     {"key": key, "request_id": request_id},
                     surface="browser",
                 )
-            except PermissionError:
+            except (PermissionError, Unknown):
                 followup.write(self.root, session, {**entry, "status": "failed"})
                 raise
             status = "queued" if result.get("model_note") else "not_needed"

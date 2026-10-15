@@ -190,7 +190,17 @@ def presentation_digest(core: Any, session: str, card: CardState) -> str:
     data = cardstore.card_to_json(card)
     for key in ("status", "answers"):
         data.pop(key, None)
-    return files.digest_of([data, content_for(core, session, card)])
+    if card.kind == "stale_link":
+        from plumb import stale
+
+        entry = stale.open_card(core.root, session, card.id.removeprefix("stale:"))
+        if entry is not None:
+            data["stale_basis"] = stale.card_basis(core, entry)
+    content = content_for(core, session, card)
+    if content is not None:
+        content = dict(content)
+        content.pop("status", None)
+    return files.digest_of([data, content])
 
 
 def settled_cards(core: Any, session: str) -> list[dict[str, Any]]:

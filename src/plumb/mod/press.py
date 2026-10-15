@@ -37,10 +37,13 @@ class Unknown(LookupError):
 
 
 def _write(core: Any, session: str, applied: Any, closed_card: str | None) -> None:
-    from plumb import log
+    from plumb import log, stale
     from plumb.understand import cardstore
 
     closed = set(applied.closed) | ({closed_card} if closed_card else set())
+    for card in applied.cards:
+        if card.kind == "stale_link":
+            stale.save_decision(core, session, card)
     if applied.cards or closed:
         replaced = {c.id for c in applied.cards}
         kept = [dataclasses.replace(c, status="closed") if c.id in closed else c
@@ -258,4 +261,6 @@ def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Ch
                       prefill=owner_text.PRESS_PREFILL.format(topic=topic),
                       line=owner_text.PRESS_CHANGE.format(topic=topic),
                       model_note=owner_text.PRESS_MODEL_CHANGE.format(topic=topic))
+    if choice.answer != "open":
+        summary.clear_turn_left(core.root, session, card.id, result["status"])
     return result
