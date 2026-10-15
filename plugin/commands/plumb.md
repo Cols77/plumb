@@ -1,7 +1,7 @@
 ---
 description: plumb in plain words - status, explain anything, review, confirm or approve records, what a change would reach, the Obsidian view, adopt this repository (init), build without a failed check (go), undo a confirmed record, typed auto-approve on or off, conflicts, merges, other branches' work, the JEV judge (setup, status, calibration), installing what plumb needs
 argument-hint: "status | explain <anything> | review [<anything>] | approve <IDs> | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
-allowed-tools: Bash(plumb status:*), Bash(plumb brief:*), Bash(plumb explain:*), Bash(plumb why:*), Bash(plumb review:*), Bash(plumb impact:*), Bash(plumb view:*), Bash(plumb show:*), Bash(plumb resolve:*), Bash(plumb align:*), Bash(plumb init:*), Bash(plumb plugin migrate:*), Bash(plumb clarify --wait:*), Bash(plumb validate:*), Bash(plumb conflicts:*), Bash(plumb conflict relay:*), Bash(plumb conflict propose:*), Bash(plumb merge-check:*), Bash(plumb inflight:*), Bash(plumb jev status:*), Bash(plumb jev setup:*), Bash(plumb jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
+allowed-tools: Bash(plumb status:*), Bash(plumb brief:*), Bash(plumb explain:*), Bash(plumb why:*), Bash(plumb review:*), Bash(plumb impact:*), Bash(plumb view:*), Bash(plumb show:*), Bash(plumb resolve:*), Bash(plumb align:*), Bash(plumb init:*), Bash(plumb plugin migrate:*), Bash(plumb clarify --wait:*), Bash(plumb validate:*), Bash(plumb conflicts:*), Bash(plumb conflict propose:*), Bash(plumb merge-check:*), Bash(plumb inflight:*), Bash(plumb jev status:*), Bash(plumb jev setup:*), Bash(plumb jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -57,7 +57,7 @@ nothing yourself, and tell them to type it again in lower case.
 - `conflicts` (or "what conflicts?"): run `plumb conflicts [<their words>]`, say in their
   terms what each side wants, and follow
   ${CLAUDE_PLUGIN_ROOT}/skills/plumb-records/references/conflicts.md:
-  the card takes their answer, or you relay their own logged words as it says.
+  the card takes their answer, or plumb reads their chat reply; you choose nothing.
 - `merge-check`, or "finish the merge", "merge <branch>", "continue the rebase", "undo the
   merge", "keep mine" on a record file, installing plumb's git hooks: follow
   ${CLAUDE_PLUGIN_ROOT}/skills/plumb-records/references/merge.md.
