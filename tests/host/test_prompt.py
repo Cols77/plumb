@@ -471,13 +471,14 @@ def _logged(repo: Path) -> list[dict]:
     "<system-reminder>\nthe task tools have not been used\n</system-reminder>",
     "[SYSTEM NOTIFICATION - NOT USER INPUT]\nbackground task finished",
 ])
-def test_harness_notification_is_not_logged_and_queues_no_job(
+def test_harness_notification_is_logged_as_such_and_queues_no_job(
         records: Path, hook_input, monkeypatch: pytest.MonkeyPatch, note: str) -> None:
     seen = []
     monkeypatch.setattr(prompt, "understand_lines",
                         lambda ctx, core, digest, text: seen.append(text) or [])
     out = _run(records, hook_input, note)
-    assert _logged(records) == [] and seen == [] and out.strip() == ""
+    assert [e["origin"] for e in _logged(records)] == ["notification"]
+    assert seen == [] and out.strip() == ""
     assert not (records / ".plumb" / "session" / "s1" / "turn.json").exists()
 
 

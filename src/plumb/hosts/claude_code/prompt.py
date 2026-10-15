@@ -85,10 +85,11 @@ def owner_text(text: str) -> str:
     return _ENVELOPE.sub("", text).strip() if _ENVELOPE.search(text) else text
 
 
-def log_prompt(ctx: HookContext, text: str) -> str:
+def log_prompt(ctx: HookContext, text: str, origin: str = "") -> str:
     """Append the prompt to the session's prompt log and start the turn. Returns the digest."""
     digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-    origin, from_name = prompt_origin(text)   # SR-168: as the host marked it
+    marked, from_name = prompt_origin(text)   # SR-168: as the host marked it
+    origin = origin or marked
     _append_jsonl(ctx.session_dir / "prompts.jsonl",
                   {"digest": digest, "session": ctx.session_id, "at": _utc_now(),
                    # R13 Q4: "hook" only from a host's prompt hook; `plumb turn start`
@@ -389,9 +390,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     text = ctx.data.get("prompt")
     text = text if isinstance(text, str) else ""
     if text.strip():
-        text = owner_text(text)
-        if not text.strip():  # SR-112: a harness notification: no log, no job, no turn
+        owned = owner_text(text)
+        if not owned.strip():  # SR-112/168: a harness notification: logged, never the owner's
+            log_prompt(ctx, text, "notification")
             return HookOutput(text="")
+        text = owned
     digest = log_prompt(ctx, text)
     if prompt_origin(text)[0] != "owner":   # SR-168: logged with its origin, nothing else
         return HookOutput(text="")
