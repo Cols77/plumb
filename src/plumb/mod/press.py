@@ -170,7 +170,7 @@ def press(core: Any, session: str, offer: str, index: int,
     return result
 
 
-def _conflict_take(card: Any, choice: Choice) -> str | None:
+def conflict_take(card: Any, choice: Choice) -> str | None:
     """The side a press on a merge conflict card keeps (``ours``, ``theirs``, or ``combined``
     when one is proposed), None for any other card or button."""
     from plumb.understand import cards
@@ -190,7 +190,7 @@ def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Ch
     (the owner's next message says what; nothing is stored). Neither confirms anything."""
     from plumb.understand import answer, summary
 
-    side = _conflict_take(card, choice)
+    side = conflict_take(card, choice)
     if not answer.is_left(choice) and side is None:
         raise Unknown("plumb mod press: that button cannot answer this card", 2)
     def log_press() -> None:

@@ -118,7 +118,17 @@ def card_item_id(card: Any, question: Any | None) -> str:
     return card.id if question is None else f"{card.id}/{question.id}"
 
 
-def card_items(core: Any, session: str) -> list[dict[str, Any]]:
+def conflict_cards(core: Any, prompt_at: str = "") -> list[CardState]:
+    """The merge conflict cards a chat reply can answer (DEC-057): the stop hook draws them
+    each turn and never stores them, so they are rebuilt from the open conflicts the reply
+    before ``prompt_at`` showed at their present versions (``conflicts.shown_open``)."""
+    from plumb.mergedriver import conflicts
+    from plumb.understand import cards
+
+    return [cards.conflict_card(core.index(), c) for c in conflicts.shown_open(core, prompt_at)]
+
+
+def card_items(core: Any, session: str, prompt_at: str = "") -> list[dict[str, Any]]:
     """The open cards as read inputs: one item per card question (one for a card with none).
     An item's ``hash`` is the version of its record the card showed (stored with the question
     when the card was made), never the record's version today. ``choices`` are the question's
@@ -126,7 +136,7 @@ def card_items(core: Any, session: str) -> list[dict[str, Any]]:
     from plumb.understand import cardstore
 
     items: list[dict[str, Any]] = []
-    for card in cardstore.load(core.root, session):
+    for card in [*cardstore.load(core.root, session), *conflict_cards(core, prompt_at)]:
         questions = list(card.questions) or [None]
         for question in questions:
             record = getattr(question, "record", None)
@@ -169,7 +179,7 @@ def build(core: Any, session: str, **context: Any) -> Job | None:
     if logged is None or not str(logged.get("text") or "").strip():
         return None
     shown = shown_items(core, str(logged.get("at") or ""))
-    cards = card_items(core, session)
+    cards = card_items(core, session, str(logged.get("at") or ""))
     if not shown and not cards:
         return None
     inputs = {"message": {"digest": logged["digest"], "text": logged["text"]},
@@ -198,7 +208,8 @@ def recompute(core: Any, job: Job) -> Mapping[str, Any] | None:
                  if isinstance(i, Mapping) and str(i.get("id")) in index
                  and index[str(i.get("id"))].hash == i.get("hash")]
     return {"message": {"digest": logged["digest"], "text": logged["text"]},
-            "shown": shown, "cards": card_items(core, job.session)}
+            "shown": shown,
+            "cards": card_items(core, job.session, str(logged.get("at") or ""))}
 
 
 def describe(job: Job) -> str:
@@ -373,10 +384,41 @@ def _acknowledge_effect(**_: Any) -> Applied | None:
     return None
 
 
+def _conflict_effect(*, core: Any, card: CardState, entry: Mapping[str, Any], source: Any,
+                     digest: str, **_: Any) -> Applied | None:
+    """SR-170: a merge conflict card answered in words. When they clearly keep one version,
+    the card button's own code applies it, citing their words; a change asked, a refusal or
+    an unsure reading leaves the conflict open (INT-029: nothing else reads the words)."""
+    from plumb.mergedriver import conflicts
+    from plumb.mod.press import conflict_take
+    from plumb.understand import answer
+
+    if not (isinstance(source, answer.OwnerWords) and source.passes):
+        return None
+
+    def same(text: Any) -> bool:
+        return _collapse(str(text or "")).casefold() == _collapse(
+            str(entry.get("change") or "")).casefold()
+
+    picked = [c for c in card.questions[0].choices if c.answer == entry["answer"]
+              and (c.answer == "accepted" or same(c.change) or same(c.label))]
+    take = conflict_take(card, picked[0]) if len(picked) == 1 else None
+    if take is None:
+        return None
+    try:
+        found = conflicts.find(core, card.id.removeprefix("conflict:"))
+        conflicts.apply_choice(core, found, take, by="owner-words",
+                               quote=str(entry["evidence"]), prompt=digest)
+    except conflicts.ConflictError:
+        return None
+    return None
+
+
 def _register() -> None:
     from plumb.understand import effects
 
     effects.register("stale_link", _acknowledge_effect)
+    effects.register("conflict", _conflict_effect)
 
 
 _register()
