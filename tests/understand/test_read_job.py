@@ -153,8 +153,8 @@ def test_schema_has_only_four_answers() -> None:
     item = schema["properties"]["entries"]["items"]
     assert item["properties"]["answer"]["enum"] == ["accepted", "rejected", "change", "open"]
     assert item["properties"]["rejection"]["enum"] == ["misread", "intent-changed", None]
-    assert {"id", "hash", "answer", "rejection", "change", "evidence",
-            "confidence"} == set(item["properties"])
+    assert {"id", "hash", "answer", "rejection", "option", "change",
+            "evidence", "confidence"} == set(item["properties"])
     assert read.schema["properties"]["entries"] == schema["properties"]["entries"]
     system = (Path(read.__file__).parent / "agents" / "read.md").read_text(encoding="utf-8")
     assert "accepted" in system and "evidence" in system

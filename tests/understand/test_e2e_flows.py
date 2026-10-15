@@ -288,6 +288,13 @@ def test_flow_3_capture_trial_and_calibration(repo: Path) -> None:
     assert [r["id"] for r in rejected.payload["records"]] == ["SR-005"]
     assert rejected.payload["reason"] == "capture-error"
 
+    # JEV's own logged verdicts (the judge model's never calibrate, SR-182)
+    core = open_core(repo)
+    for rid, c in scores.items():
+        core.log_append("events", "verdict", {
+            "id": rid, "hash": core.index()[rid].hash, "verdict": "supported", "score": c,
+            "by": "jev", "judge": "jev:test/jev-1", "model": "test/jev-1"})
+
     # recalibration at the turn's end, from the logs: no model call
     before = len(calls(s))
     model(s, **{"$fail_when": {"contains": ""}})        # any model call now would fail

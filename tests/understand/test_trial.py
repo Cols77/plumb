@@ -105,7 +105,9 @@ def test_ex6_yes_is_a_labelled_yes_and_recalibration_makes_no_model_call(
     applied = apply_scores(core, ids, [0.95, 0.9, 0.97])
     card = trial_cards(applied)[0]
     for entry in applied.entries:                      # the worker writes what apply returns
-        core.log_append("events", entry["kind"], entry["payload"])
+        jev = {"by": "jev", "judge": "jev:test/jev-1", "model": "test/jev-1"}   # SR-182
+        core.log_append("events", entry["kind"], {**entry["payload"], **(
+            jev if entry["kind"] == "verdict" else {})})
     confirmed: list[tuple[Any, ...]] = []
     done = card.__class__(**{**card.__dict__, "status": "answered", "answers": tuple(
         card.answers) + tuple(_answer(q, "accepted") for q in card.questions)})
