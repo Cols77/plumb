@@ -10,6 +10,9 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [['list']],
+  // A loaded machine takes 20 s to open a page and seconds to draw: the defaults (30 s, 5 s) timed out.
+  timeout: 60000,
+  expect: { timeout: 10000 },
   use: { baseURL: 'http://127.0.0.1:8765', trace: 'retain-on-failure' },
   webServer: {
     command: `"${python}" tests/e2e/server.py`,
