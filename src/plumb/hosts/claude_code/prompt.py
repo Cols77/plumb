@@ -342,9 +342,8 @@ def cards_waiting_line(ctx: HookContext) -> Any:
     from plumb.present.delta import Line
 
     try:
-        from plumb.understand.summary import waiting_line
-
         from plumb.api import open_core
+        from plumb.understand.summary import waiting_line
 
         text = waiting_line(ctx.root, ctx.session_id, open_core(ctx.root))
     except Exception:  # noqa: BLE001 - an advisory line never fails the prompt hook
@@ -379,6 +378,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     tests are not injected: the agent pulls them with ``plumb show``. ``verify`` is accepted
     for the hook interface and unused."""
     del verify
+    from plumb.browser.followup import preserve
     from plumb.present.delta import Line, open_emitter
 
     text = ctx.data.get("prompt")
@@ -387,6 +387,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
         text = owner_text(text)
         if not text.strip():  # SR-112: a harness notification: no log, no job, no turn
             return HookOutput(text="")
+    browser_lines = preserve(ctx)
     digest = log_prompt(ctx, text)
     from plumb.api import open_core
 
@@ -404,7 +405,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     trace = untraced_line(emitter, untraced_queued(ctx, core), core)
     tail = [line for line in (trace, cards_waiting_line(ctx), stale_before_line(ctx)) if line]
     # oneshot: escalation_lines advanced the queue offset past them already
-    queued = [Line(line, oneshot=True) for line in escalations]
+    queued = [*browser_lines, *(Line(line, oneshot=True) for line in escalations)]
     ctx.keep(emitter.add([*queued, *tail], commit=False))
     # no soft-budget check before the intent lines: only the watchdog bounds them
     ids, strong = _relevant_ids(core, text) if text.strip() else ([], [])

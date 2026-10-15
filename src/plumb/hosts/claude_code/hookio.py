@@ -102,6 +102,7 @@ class Kept:
 
     def __init__(self) -> None:
         self.lines: list[str] = []
+        self.retained: list[str] = []  # acknowledged one-shot handoffs survive later keep calls
         # nothing is owed by this hook (plumb's panel holds the session background): a cut,
         # the watchdog's included, prints nothing at all, not even the skip notice
         self.quiet = False
@@ -127,7 +128,8 @@ class HookContext:
 
     def keep(self, lines: list[str]) -> None:
         """Replace the output printed if a later step is cut (budget, error, watchdog)."""
-        self.kept.lines = [line for line in lines if line]
+        self.kept.lines = [*self.kept.retained,
+                           *(line for line in lines if line and line not in self.kept.retained)]
 
     @property
     def plumb_dir(self) -> Path:
