@@ -138,8 +138,13 @@ def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, s
     one the model cannot settle stays, and is told once."""
     from plumb import links
 
+    last: dict[str, str] = {}
+    for e in core.log_read("events", ["card-settled", "card-unsettled"]):
+        last[str(e.payload.get("card"))] = e.kind
     for item in settlements:
         grouped = cardstore.grouped(core.root, session)
+        if last.get(str(item.get("card"))) == "card-unsettled":
+            continue        # the owner took this settlement back: it stays open
         card = next((c for c in cardstore.load(core.root, session)
                      if c.id == str(item.get("card")) and c.id in grouped), None)
         if card is None:
@@ -200,5 +205,27 @@ def undo(core: Any, session: str, card_id: str) -> bool:
         rewrite(core, record, {"statement": event["before"]})
     links.restore_pins(core, changes)
     cardstore.reopen(core.root, session, card_id)
+    cardstore.ungroup(core.root, session, card_id)
     core.log_append("events", "card-unsettled", {"card": card_id, "session": session})
     return True
+
+
+def run(command: str, argv: list[str]) -> int:
+    """``plumb understand undo <card id>``: take back a card plumb settled from a decision
+    (SR-172 EX-4); the one entry, as ``plumb undo`` covers confirmed records only."""
+    import argparse
+
+    from plumb.api import open_core
+    from plumb.cliutil import add_common, resolve_root
+    from plumb.stale import current_session
+
+    parser = argparse.ArgumentParser(prog="plumb understand undo")
+    add_common(parser)
+    parser.add_argument("card")
+    parser.add_argument("--session", default="")
+    args = parser.parse_args(argv)
+    root = resolve_root(args.root)
+    done = undo(open_core(root), args.session or current_session(root), args.card)
+    print(f"plumb: {args.card} is open again." if done
+          else f"plumb: {args.card} was not settled from a decision; nothing changed.")
+    return 0 if done else 1

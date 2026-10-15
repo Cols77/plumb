@@ -127,3 +127,24 @@ def test_ex4_undo_puts_the_card_and_the_reworded_statement_back(repo: Path, worl
     assert "stale:SR-002#0" in [c.id for c in cardstore.load(repo, SESSION)]
     assert [s.state for s in core.link_states(["SR-002"]) if s.link.id == "SR-002#0"] == ["stale"]
     assert not tidy.undo(core, SESSION, "stale:SR-002#0")
+
+
+def test_ex4_an_undone_settlement_stays_open_on_the_next_tidy_run(repo: Path, world) -> None:
+    _grouped(repo)
+    world.dispatcher.script = {"tidy": {"verdicts": [], "settlements": [SETTLE[0]]}}
+    core = _run(repo)
+    assert tidy.undo(core, SESSION, "stale:SR-002#0")
+    assert "stale:SR-002#0" not in cardstore.grouped(repo, SESSION)
+    _run(repo)
+    cardstore.group(repo, SESSION, "principle:x", ["stale:SR-002#0"])   # asked again: still kept
+    _run(repo)
+    assert "stale:SR-002#0" in [c.id for c in cardstore.load(repo, SESSION)]
+
+
+def test_ex4_the_undo_entry_reopens_a_settled_card(repo: Path, world, capsys) -> None:
+    _grouped(repo)
+    world.dispatcher.script = {"tidy": {"verdicts": [], "settlements": [SETTLE[0]]}}
+    _run(repo)
+    argv = ["stale:SR-002#0", "--root", str(repo), "--session", SESSION]
+    assert tidy.run("undo", argv) == 0 and "is open again" in capsys.readouterr().out
+    assert tidy.run("undo", argv) == 1

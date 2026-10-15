@@ -140,6 +140,12 @@ def group(root: Path, session: str, principle: str, ids: Sequence[str]) -> None:
                             {**grouped(root, session), **dict.fromkeys(ids, principle)})
 
 
+def ungroup(root: Path, session: str, card_id: str) -> None:
+    """Take ``card_id`` out of its principle's group, so it is drawn again (``tidy.undo``)."""
+    left = {k: v for k, v in grouped(root, session).items() if k != card_id}
+    files.write_json_atomic(files.cards_path(root, session).with_name("grouped.json"), left)
+
+
 def reopen(root: Path, session: str, card_id: str) -> None:
     """Put a withdrawn card back as it was (``tidy.undo``)."""
     from dataclasses import replace

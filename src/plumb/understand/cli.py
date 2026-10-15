@@ -21,6 +21,10 @@ def run(command: str, argv: list[str]) -> int:
         from plumb.understand import evalrun
 
         return evalrun.run("eval", argv[1:])
+    if command == "understand" and argv and argv[0] == "undo":
+        from plumb.understand import tidy
+
+        return tidy.run("undo", argv[1:])
     if command == "understand" and argv and argv[0] == "backlog":
         from plumb.understand import backlog
 
