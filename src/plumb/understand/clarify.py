@@ -537,6 +537,29 @@ def _readback_card(root: Path, digest: str, text: str, readback: Mapping[str, An
 HOLDING = (*cardstore.AWAITING, "left_open")   # a card not answered yet
 
 
+def _raise_and_answer(core: Any, job: Job, said: Mapping[str, Any], text: str,
+                      digest: str) -> Applied | None:
+    """SR-167 EX-3: the owner answered a record-changing question no card was raised for: raise
+    its card from the question and the options the model read, and apply the answer to it, in
+    one step. None when the question changes no record or the pick is not one of its options."""
+    from plumb.understand import answer as answer_mod
+    from plumb.understand import question
+
+    made = question.card(core, said, repository(Path(core.root))["branch"])
+    question_ = made.questions[0] if made is not None else None
+    choice = next((c for c in question_.choices if c.label == said.get("picked")), None)         if question_ is not None else None
+    if made is None or question_ is None or choice is None:
+        return None
+    work = answer_mod.Answering(core, job.session, job=job, digest=digest, message=text)
+    work.cards[made.id] = made
+    answer_mod.apply_answer(
+        work, card=made.id, question=question_.id, record=question_.record or "",
+        hash=question_.hash, choice=choice,
+        source=answer_mod.OwnerWords(job=job, digest=digest, evidence=str(said["evidence"]),
+                                     confidence=1.0, passes=True))
+    return replace(work.applied(), job=job.id)
+
+
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     if core is None:
         return Applied(job=job.id)
@@ -571,6 +594,10 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             "kind": "question-answer", "payload": {
                 "session": session, "question": question, "options": [],
                 "answer": str(said["evidence"]), "message_digest": digest}},)
+        raised = _raise_and_answer(core, job, said, text, digest) if entries else None
+        if raised is not None:      # SR-167: the card the turn end did not raise, answered now
+            return replace(raised, closed=(*closed, *raised.closed),
+                           entries=(*entries, *raised.entries))
         return Applied(job=job.id, closed=closed, entries=entries)
     if str(answer.get("intent")) != "yes":
         if waiting:   # SR-131 EX-4: an unanswered blocking card holds the gate; its answer opens it

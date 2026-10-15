@@ -1,0 +1,28 @@
+{
+  "id": "question.v1",
+  "title": "The question in the agent's reply whose answer changes a record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["questions"],
+  "properties": {
+    "questions": {
+      "type": "array",
+      "maxItems": 1,
+      "description": "The one question the reply puts to the person whose answer would confirm, reject or change a record, choose a conflict's side or settle a stale link; empty when there is none.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question", "options"],
+        "properties": {
+          "question": {"type": "string", "description": "The question as the reply asks it."},
+          "options": {"type": "array", "minItems": 2, "items": {"type": "object", "additionalProperties": false, "required": ["label", "effect"],
+          "properties": {
+            "label": {"type": "string", "description": "The option as the reply words it."},
+            "effect": {"type": "string", "enum": ["accepted", "rejected", "change"], "description": "What choosing it does to the record: accepted confirms it as it reads, rejected drops it, change rewords or otherwise changes it."},
+            "consequence": {"type": "string", "description": "One line: what choosing it means."}}}},
+          "records": {"type": "array", "items": {"type": "string"}, "description": "Ids of the records the question is about, as given in records."}
+        }
+      }
+    }
+  }
+}
