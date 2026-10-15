@@ -48,6 +48,7 @@ class Meaning:
     unchanged: bool | None
     reason: str
     confidence: float = 0.0
+    unreachable: bool = False   # SR-174: the model gave no answer at all (HTTP error, timeout)
 
 
 def diff(before: str, after: str, path: str) -> str:
@@ -85,7 +86,8 @@ class ModelMeaningJudge:
                 user=json.dumps(inputs, ensure_ascii=False, indent=1),
                 schema=schema, on_step=lambda step: None))
         except DispatchError as exc:
-            return Meaning(None, f"no answer from {self.name} ({exc.step}: {exc.message})")
+            return Meaning(None, f"no answer from {self.name} ({exc.step}: {exc.message})",
+                           unreachable=True)
         if schema_check.problems(answer, schema):
             return Meaning(None, f"{self.name} gave an answer outside the schema")
         reason = str(answer.get("reason") or "").strip()
