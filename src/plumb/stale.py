@@ -687,19 +687,26 @@ def turn_number(root: Path | str, session: str) -> int:
         return 0
 
 
-def settle_drift(core: Core, session: str, rows: Sequence[Row]) -> None:
+def settle_drift(core: Core, session: str, rows: Sequence[Row]) -> list[str]:
     """SR-175, DEC-061: check the requirement of each stale link is still covered before any
     card: its tests run, a model judges the meaning kept, and the link is repinned with a
     logged note (a wording-only change is recorded as an unconfirmed edit). A card is filed
     only when the model says the requirement should change fundamentally; a failure, an
-    unreachable model or a change to send back stays unresolved. Never fails the stop."""
+    unreachable model or a change to send back stays unresolved (SR-174: with one line saying
+    the check waits, returned). Never fails the stop."""
+    from plumb.judgment import waiting_line
     from plumb.links import repin_after_tests
 
+    said: list[str] = []
     for record in sorted({r.record for r in rows}):
         try:
-            repin_after_tests(core, record, session=session, auto=True)
+            cause = repin_after_tests(core, record, session=session, auto=True).unreachable
         except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
             continue
+        line = waiting_line(core.root, "the stale check", cause) if cause else None
+        if line:
+            said.append(line)
+    return said
 
 
 def card_lost_tests(core: Core, session: str) -> None:

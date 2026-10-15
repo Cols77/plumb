@@ -93,6 +93,16 @@ class ModelMeaningJudge:
         return Meaning(answer.get("verdict") == "unchanged", reason, confidence)
 
 
+def judge_gap(core: Any) -> str:
+    """Why no meaning judge can be reached (SR-174), for the line that says the check waits."""
+    from plumb.understand.dispatch import configured
+
+    try:
+        return configured(core, model=core.config.understand.repin_model).available()             or "no model answered"
+    except NoModel as exc:
+        return str(exc)
+
+
 def open_judge(core: Any) -> ModelMeaningJudge | None:
     """The configured meaning judge, or None when no model can be reached."""
     from plumb.understand.dispatch import configured
