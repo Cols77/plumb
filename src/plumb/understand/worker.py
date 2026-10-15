@@ -361,7 +361,7 @@ class _Pass:
         got = self._ask(module, job, reporter, step, counts, started, t0)
         if got is None:
             return
-        answer, dname = got
+        answer, dname, left = got
         found = schema_check.problems(answer, module.schema)
         if found:
             self._error(job, "schema", "; ".join(found[:3]), started, t0, dname)
@@ -370,6 +370,8 @@ class _Pass:
             with _as_worker(self.token):
                 _write_applied(self.core, self.session,
                                module.apply(self.core, job, dict(answer)))
+            if left:
+                self._hold(job, left)
         except Exception as exc:  # noqa: BLE001 - the kind or the log refused
             self._error(job, "apply", f"{type(exc).__name__}: {exc}", started, t0,
                         dname)
@@ -379,9 +381,26 @@ class _Pass:
             job=job.id, status="ok", answer=dict(answer), dispatcher=dname,
             started=started, finished=jobs.now(), run_s=round(time.perf_counter() - t0, 3)))
 
+    def _hold(self, job: Job, left: Any) -> None:
+        """SR-185: the records nobody could judge stay a job of their own, for the next run."""
+        again = files.make_job(job.kind, job.session, job.schema,
+                               {**job.inputs, "records": list(left)}, needs=job.needs,
+                               created=jobs.now())
+        files.write_json_atomic(jobs.job_path(self.root, job.session, again.id),
+                                files.job_to_json(again))
+
+    def _say(self, line: str) -> None:
+        """A once-per-window line for the agent: it waits in the session's notes for the next
+        prompt hook (``prompt.agent_notes``), as the stop hook's warnings do."""
+        path = files.session_dir(self.root, self.session) / "agent_notes.json"
+        notes = files.read_json(path)
+        with contextlib.suppress(OSError):
+            files.write_json_atomic(path, [*(notes if isinstance(notes, list) else []), line])
+
     def _ask(self, module: Any, job: Job, reporter: Any, step: str, counts: tuple[int, int],
-             started: str, t0: float) -> tuple[dict[str, Any], str] | None:
-        """The kind's answer and who gave it, or None after the job's error was written."""
+             started: str, t0: float
+             ) -> tuple[dict[str, Any], str, tuple[Any, ...]] | None:
+        """The kind's answer, who gave it and the records it left, or None after the job's error was written."""
         cascade = getattr(module, "cascade", None)
         if cascade is not None:             # SR-182: the kind chooses who answers
             try:
@@ -390,7 +409,9 @@ class _Pass:
                     done = cascade(self.core, job, system=agents.load(job.kind),
                                    schema=module.schema)
             except module.Waiting as wait:
-                self._error(job, "dispatch", wait.line or str(wait.cause), started, t0)
+                if wait.line:
+                    self._say(wait.line)
+                self._error(job, "dispatch", str(wait.cause), started, t0)
                 return None
             except DispatchError as exc:
                 self._error(job, exc.step, exc.message, started, t0)
@@ -398,7 +419,9 @@ class _Pass:
             except Exception as exc:  # noqa: BLE001 - any failure of a judge is the job's
                 self._error(job, "run", f"{type(exc).__name__}: {exc}", started, t0)
                 return None
-            return done.answer, done.dispatcher
+            if done.line:
+                self._say(done.line)
+            return done.answer, done.dispatcher, done.left
         try:
             dispatcher = dispatch.configured(self.core)
         except NoModel as exc:
@@ -422,7 +445,7 @@ class _Pass:
             self._error(job, "run", f"{type(exc).__name__}: {exc}", started, t0,
                         dispatcher.name)
             return None
-        return dict(answer), dispatcher.name
+        return dict(answer), dispatcher.name, ()
 
     def _carried(self, reporter: Any) -> tuple[int, int]:
         """The count a pass of many jobs (the backlog) left on the line a moment ago, so the

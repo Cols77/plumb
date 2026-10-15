@@ -512,7 +512,9 @@ def queue_notes(ctx: HookContext, notes: Sequence[str]) -> None:
     the next prompt hook (``prompt.agent_notes``), panel or not. Never fails the stop."""
     if notes:
         try:
-            write_json_atomic(ctx.session_dir / ctx.session_id / "agent_notes.json", list(notes))
+            path = ctx.session_dir / ctx.session_id / "agent_notes.json"
+            kept = read_json(path)      # the worker's waiting lines (SR-185) wait there too
+            write_json_atomic(path, [*(kept if isinstance(kept, list) else []), *notes])
         except OSError:
             pass
 

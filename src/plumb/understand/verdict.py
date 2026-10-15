@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from plumb.contracts import Job, NoModel
+from plumb.contracts import DispatchError, Job, NoModel
 from plumb.judgment.verdict import JEV, MODEL
 
 STEP = "the verdict"
@@ -38,6 +38,8 @@ class Waiting(Exception):
 class Cascaded:
     answer: dict[str, Any]
     dispatcher: str          # who answered: "jev", "<dispatcher>", or both
+    left: tuple[Mapping[str, Any], ...] = ()   # SR-185: the entries nobody could judge
+    line: str = ""           # SR-185: the once-per-window line saying they wait
 
 
 def open_jev(core: Any) -> Any:
@@ -128,7 +130,8 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             on_step: Callable[[str], None] = lambda text: None, jev: Any = _UNSET,
             dispatcher: Any = None) -> Cascaded:
     """The judge job's answer: JEV's verdicts where it clears the threshold, the judge model's
-    for the rest. Raises ``Waiting`` when records are left and no model can be reached."""
+    for the rest. Raises ``Waiting`` when no record has a verdict and the model cannot judge them;
+    otherwise the records it could not judge are ``left`` and ``line`` says so once (SR-185)."""
     from plumb.understand import dispatch
 
     entries = [r for r in job.inputs.get("records") or () if isinstance(r, Mapping)]
@@ -138,6 +141,7 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
     verdicts = list(cleared.values())
     names = ["jev"] if cleared else []
     extra: dict[str, Any] = {}
+    left, why = [], ""
     if rest:
         model = str(core.config.understand.judge_model)
         try:
@@ -145,19 +149,28 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             gap = dispatcher.available() or ""
         except NoModel as exc:
             gap = str(exc)
-        if gap:
-            from plumb.judgment import waiting_line
-
-            cause = f"{jev_cause}; {gap}" if jev_cause else gap
-            raise Waiting(cause, waiting_line(core.root, STEP, cause) or "")
         sub = dataclasses.replace(job, inputs={**job.inputs, "records": rest})
-        answer = dict(dispatcher.run(
-            sub, system=system, schema=schema, on_step=on_step,
-            user=json.dumps(sub.inputs, ensure_ascii=False, sort_keys=True, indent=1)))
-        label = f"{getattr(dispatcher, 'name', 'model')}:{model}"
-        for raw in answer.get("verdicts") or ():
-            if isinstance(raw, Mapping):
-                verdicts.append({**raw, "by": MODEL, "judge": label, "model": model})
-        extra = {k: v for k, v in answer.items() if k != "verdicts"}
-        names.append(str(getattr(dispatcher, "name", "model")))
-    return Cascaded({**extra, "verdicts": verdicts}, "+".join(names) or "none")
+        try:
+            if gap:
+                raise DispatchError("start", f"{jev_cause}; {gap}" if jev_cause else gap)
+            answer = dict(dispatcher.run(
+                sub, system=system, schema=schema, on_step=on_step,
+                user=json.dumps(sub.inputs, ensure_ascii=False, sort_keys=True, indent=1)))
+        except DispatchError as exc:     # SR-185: these records wait; the others go on
+            left, why = rest, exc.message
+        else:
+            label = f"{getattr(dispatcher, 'name', 'model')}:{model}"
+            for raw in answer.get("verdicts") or ():
+                if isinstance(raw, Mapping):
+                    verdicts.append({**raw, "by": MODEL, "judge": label, "model": model})
+            extra = {k: v for k, v in answer.items() if k != "verdicts"}
+            names.append(str(getattr(dispatcher, "name", "model")))
+    line = ""
+    if left:
+        from plumb.judgment import waiting_line
+
+        why = f"{', '.join(str(e.get('id')) for e in left)}: {why}"
+        line = waiting_line(core.root, STEP, why) or ""
+        if not verdicts:
+            raise Waiting(why, line)
+    return Cascaded({**extra, "verdicts": verdicts}, "+".join(names) or "none", tuple(left), line)
