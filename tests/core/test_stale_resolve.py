@@ -133,9 +133,21 @@ def test_model_unreachable_refuses_and_repins_nothing(project: Path, judge) -> N
     assert not list(open_core(project).log_read("events", ["repin"]))
 
 
-def test_unlocatable_earlier_version_refused(project: Path) -> None:
+@pytest.mark.sr("SR-166")
+def test_pin_on_an_uncommitted_version_is_found_and_repinned(project: Path) -> None:
+    """SR-166 EX-2: the pinned uncommitted version is kept in git's object store."""
     (project / "src" / "later.py").write_text(DEF_F, "utf-8")
     open_core(project).add_link("SR-001", "implemented_by", Target(path="src/later.py"))
+    (project / "src" / "later.py").write_text(DEF_F_SPACED, "utf-8")
+    result = links.repin_after_tests(open_core(project), "SR-001#1", runner=Runner(),
+                                     judge=Judge(True))
+    assert [c["link"] for c in result.changes] == ["SR-001#1"] and result.refused == []
+
+
+def test_unlocatable_earlier_version_refused_without_the_blob_map(project: Path) -> None:
+    (project / "src" / "later.py").write_text(DEF_F, "utf-8")
+    open_core(project).add_link("SR-001", "implemented_by", Target(path="src/later.py"))
+    (project / ".git" / "plumb" / "pin_blobs.json").unlink()
     (project / "src" / "later.py").write_text(DEF_F_SPACED, "utf-8")
     result = links.repin_after_tests(open_core(project), "SR-001#1", runner=Runner(),
                                      judge=Judge(True))

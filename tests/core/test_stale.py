@@ -141,3 +141,13 @@ def test_direct_record_edit_notice(repo: Path, write_record) -> None:
     assert stale.record_for_path(repo, ".plumb/intents/INT-016.md") == "INT-016"
     write_record(repo, INT16.replace("Add multiply beside add", "Add multiply and divide"))
     assert stale.derived_lines(open_core(repo), ["INT-016"])
+
+
+def test_a_retired_record_raises_no_stale_notice(project: Path, write_record) -> None:
+    """SR-164: once SR-032 supersedes SR-005, an edit to SR-005's file is not reported."""
+    write_record(project, SR32)
+    open_core(project).add_link("SR-032", "supersedes", Target(record="SR-005"))
+    stale.ensure_linkmap(open_core(project))
+    (project / "src" / "x.py").write_text(CODE.replace("a + b", "a - b"), encoding="utf-8")
+    assert stale.links_touching(project, "src/x.py") == []
+    assert stale.stale_after_edit(project, "src/x.py") == []

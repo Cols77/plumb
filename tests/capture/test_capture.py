@@ -133,3 +133,53 @@ def test_escalated_intent_lists_its_members(calc: Path) -> None:
     core = open_core(calc)
     assert core.index()["INT-001"].fields["members"] == ["SR-001", "DEC-001"]
     assert all(s.state == "current" for s in core.link_states())
+
+
+class _Judge:
+    name = "fake"
+
+    def __init__(self, verdict: str) -> None:
+        self.verdict = verdict
+
+    def contradiction(self, prompt, record):
+        from plumb.contracts import Judgment
+
+        return Judgment(action="contradiction", subject=record.id, verdict=self.verdict,
+                        confidence=0.9, tier="act", backend="fake", fingerprint="f")
+
+
+def _relay_doc(statement: str, **extra) -> dict:
+    return {"intent": {"quote": "x", "readback": "relay"},
+            "requirements": [{"title": statement, "statement": statement, **extra}]}
+
+
+@pytest.mark.sr("SR-165")
+def test_capture_names_the_requirement_a_new_one_contradicts(calc: Path) -> None:
+    """SR-165 EX-2: 'never relays the choice' next to 'relays the choice'."""
+    from plumb.capture.capture import capture as run
+
+    core = open_core(calc)
+    first = run(core, _relay_doc("The agent relays the choice the owner made"),
+                backend=_Judge("benign"))
+    second = run(open_core(calc), _relay_doc("The agent never relays the choice the owner made"),
+                 backend=_Judge("contradicts"))
+    old, new = first.written[1], second.written[1]
+    assert any(f"{new} contradicts {old}" in line and f"supersedes: [{old}]" in line
+               for line in second.lines)
+
+
+@pytest.mark.sr("SR-165")
+def test_capture_supersedes_adds_the_link_and_names_nothing_for_it(calc: Path) -> None:
+    from plumb.capture.capture import CaptureError, capture as run
+
+    first = run(open_core(calc), _relay_doc("The agent relays the choice the owner made"))
+    old = first.written[1]
+    second = run(open_core(calc), _relay_doc("The agent never relays the choice",
+                                             supersedes=[old]), backend=_Judge("contradicts"))
+    new = second.written[1]
+    links = open_core(calc).index()[new].links
+    assert [(link.kind, link.target.record) for link in links
+            if link.kind == "supersedes"] == [("supersedes", old)]
+    assert not any("contradicts" in line for line in second.lines)
+    with pytest.raises(CaptureError):
+        run(open_core(calc), _relay_doc("another", supersedes=["INT-999"]))
