@@ -19,6 +19,8 @@ touches, and none for the rest. For every entry:
   - `change`: the person wants the item changed. Put what they want in `change`. For a card that
     offers versions, a pick or a combination ("the second, plus the first's date") is `change`
     and `change` holds the version chosen or the combination.
+    When the message picks one of a card's offered `choices` just as it stands, set `option` to
+    that choice's exact `label`; when it asks for any change to it, or picks none, leave `option` null.
   - `open`: the message does not settle it, or you cannot tell.
 - `evidence` is the person's own words that carry the answer, copied exactly from the message
   (a contiguous part of it). Never paraphrase and never invent words.

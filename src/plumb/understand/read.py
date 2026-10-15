@@ -345,7 +345,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             answer_mod.apply_answer(
                 work, card=str(item.get("card")), question=str(item.get("question") or ""),
                 record=str(item.get("record") or ""), hash=str(item.get("hash") or ""),
-                choice=Choice(answer=said, change=raw.get("change")),
+                choice=Choice(answer=said, change=raw.get("change")), option=raw.get("option"),
                 source=answer_mod.OwnerWords(job=job, digest=digest, evidence=evidence,
                                              confidence=confidence, passes=passes,
                                              rejection=raw.get("rejection")))
@@ -396,12 +396,9 @@ def _conflict_effect(*, core: Any, card: CardState, entry: Mapping[str, Any], so
     if not (isinstance(source, answer.OwnerWords) and source.passes):
         return None
 
-    def same(text: Any) -> bool:
-        return _collapse(str(text or "")).casefold() == _collapse(
-            str(entry.get("change") or "")).casefold()
-
-    picked = [c for c in card.questions[0].choices if c.answer == entry["answer"]
-              and (c.answer == "accepted" or same(c.change) or same(c.label))]
+    picked = [c for c in card.questions[0].choices if c.label == entry.get("option")]
+    if entry.get("answer") == "rejected":
+        picked = []
     take = conflict_take(card, picked[0]) if len(picked) == 1 else None
     if take is None:
         return None

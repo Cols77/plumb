@@ -31,7 +31,8 @@ def _statement(repo: Path) -> str:
     return parse((repo / SR).read_text(encoding="utf-8"))[0]["statement"]
 
 
-def _reply(repo: Path, words: str, said: str, change: str | None) -> None:
+def _reply(repo: Path, words: str, said: str, change: str | None,
+           option: str | None = None) -> None:
     """The owner's ``words`` read by a stubbed model as ``said`` (with ``change``), applied."""
     core = open_core(repo)
     digest = log_prompt(repo, words)
@@ -39,7 +40,7 @@ def _reply(repo: Path, words: str, said: str, change: str | None) -> None:
     assert job is not None
     (item,) = [i for i in job.inputs["cards"] if i["kind"] == "conflict"]
     entry = {"id": item["id"], "hash": "", "answer": said, "change": change,
-             "evidence": words, "confidence": 0.95}
+             "evidence": words, "confidence": 0.95, "option": option}
     with as_worker(repo, SESSION):
         read.apply(core, job, {"entries": [entry]})
 
@@ -47,7 +48,7 @@ def _reply(repo: Path, words: str, said: str, change: str | None) -> None:
 def test_ex1_a_clear_pick_in_chat_is_applied_by_plumb(repo: Path) -> None:
     conflicted(repo)
     shown(repo)
-    _reply(repo, "keep feat-x's version", "change", "Keep feat-x's version")
+    _reply(repo, "keep feat-x's version", "change", "Keep feat-x's version", "Keep the other")
     assert _statement(repo) == THEIRS_STATEMENT
     (entry,) = events(repo, "conflict-resolution")
     assert (entry["take"], entry["by"], entry["quote"]) == (
@@ -55,12 +56,20 @@ def test_ex1_a_clear_pick_in_chat_is_applied_by_plumb(repo: Path) -> None:
     assert entry["prompt"].startswith("sha256:")
 
 
+def test_ex1_the_option_picked_decides_not_the_wording_of_the_change(repo: Path) -> None:
+    conflicted(repo)
+    shown(repo)
+    _reply(repo, "keep feat-x's version", "change", "Keep feat-x's version (the newer one)",
+           "Keep the other")
+    assert _statement(repo) == THEIRS_STATEMENT
+
+
 def test_ex3_a_change_asked_or_a_refusal_leaves_it_open(repo: Path) -> None:
     conflicted(repo)
     shown(repo)
     before = (repo / SR).read_bytes()
     _reply(repo, "keep feat-x's version but change the title", "change",
-           "Keep feat-x's version, with its title changed")
+           "Keep feat-x's version, with its title changed", None)
     _reply(repo, "no, not feat-x's", "rejected", None)
     _reply(repo, "keep feat-x's or main's, whatever", "open", None)
     assert (repo / SR).read_bytes() == before

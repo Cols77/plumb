@@ -186,7 +186,7 @@ def _left(work: Answering, card: CardState, choice: Choice) -> None:
 
 
 def apply_answer(work: Answering, *, card: str, question: str, record: str, hash: str,
-                 choice: Choice, source: Source) -> None:
+                 choice: Choice, source: Source, option: str | None = None) -> None:
     """An answer to the question ``question`` of the card ``card`` (``record`` at ``hash``:
     the version the card offered): recorded on the card, then the effect of the card's kind."""
     from plumb.understand import effects
@@ -234,7 +234,8 @@ def apply_answer(work: Answering, *, card: str, question: str, record: str, hash
     result = handler(
         core=work.core, job=work.job, card=state, question=question,
         entry={"answer": said, "change": choice.change, "confidence": confidence,
-               "evidence": evidence, "record": record, "hash": hash},
+               "evidence": evidence, "record": record, "hash": hash,
+               "option": option},
         message=work.message, digest=work.digest, accepted=said == "accepted" and passes,
         confirm=confirm, session=work.session, source=source)
     if isinstance(result, Applied):
