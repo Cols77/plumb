@@ -330,15 +330,15 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
 
 
 def fingerprint(core: Core) -> dict[str, Any]:
-    """The model and prompt a logged calibration was made under: a change of either suspends
-    settling until the evaluation set passes again (SR-106)."""
+    """The judge model (SR-186) and prompt a logged calibration was made under: a change of
+    either suspends settling until the evaluation set passes again (SR-106)."""
     try:
         from plumb.understand.evalrun import prompt_digest
 
         digest = prompt_digest()
     except Exception:  # noqa: BLE001 - the fingerprint is advisory for the suspension check
         digest = ""
-    return {"model": core.config.understand.model, "prompt_digest": digest}
+    return {"model": core.config.understand.judge_model, "prompt_digest": digest}
 
 
 def calibration_form(calibration: Any) -> str:
@@ -368,6 +368,15 @@ def judge_calibrations(core: Core) -> list[Any]:
     """The calibrations made from the judge's logged scores (``source: logged``), oldest first."""
     return [e for e in core.events()
             if e.kind == "calibration" and e.payload.get("source") == "logged"]
+
+
+def fingerprint_stale(core: Core) -> bool:
+    """Whether the judge model or the prompt differs from the latest calibration's
+    fingerprint (SR-106, SR-186); a calibration that recorded none is not stale."""
+    latest = latest_calibration(core)
+    if latest is None or "prompt_digest" not in latest.payload:
+        return False
+    return any(latest.payload.get(k) != v for k, v in fingerprint(core).items())
 
 
 def latest_judge_calibration(core: Core) -> Any:

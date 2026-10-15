@@ -301,3 +301,19 @@ def test_an_equivalent_model_name_does_not_suspend(ready) -> None:
     from plumb.validate import validate
 
     assert not [f for f in validate(open_core(repo)) if f.severity == "error"]
+
+
+@pytest.mark.sr("SR-186")
+def test_a_judge_model_change_after_a_logged_calibration_suspends_settling(ready) -> None:
+    """SR-186 EX-4: the fingerprint's judge model differs from understand.judge_model now."""
+    from plumb.capture.calibrate import fingerprint
+
+    repo, _ = ready
+    core = open_core(repo)
+    assert not auto_approve_state(core).suspended
+    core.log_append("events", "calibration", {
+        "backend": "jev", "model_version": "jev-1.13.0", "source": "logged",
+        "per_kind": {"intent-readback": {"passing": True, "threshold": 0.5}},
+        **fingerprint(core), "model": "sonnet"})          # made while judge_model was sonnet
+    state = auto_approve_state(core)
+    assert state.suspended and state.reason.startswith("auto-approve suspended")

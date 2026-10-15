@@ -188,13 +188,13 @@ def open_judges(core: Any, names: Sequence[str]) -> list[Any]:
             from plumb.understand.dispatch import configured
 
             try:
-                dispatcher = configured(core)
+                dispatcher = configured(core, model=core.config.understand.judge_model)
             except NoModel as exc:
                 raise CompareError("haiku", f"no model ({exc})") from exc
             reason = dispatcher.available()
             if reason:
                 raise CompareError("haiku", f"unavailable ({reason})")
-            judges.append(HaikuJudge(dispatcher, core.config.understand.model))
+            judges.append(HaikuJudge(dispatcher, core.config.understand.judge_model))
         elif name in ("jev", "jev-choice") or name.startswith("decide:"):
             from plumb.judgment import JudgmentUnavailable
             from plumb.judgment.jev import JevBackend, open_jev

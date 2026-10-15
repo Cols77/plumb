@@ -179,22 +179,25 @@ def run(command: str, argv: list[str]) -> int:
             print(f"plumb: eval --compare: {exc}", file=sys.stderr)
             return 2
         return 0
-    if args.fake:
-        dispatcher: Any = FakeEvalDispatcher()
-    else:
+    judge_model = str(core.config.understand.judge_model)    # SR-186: verdicts follow it
+    dispatchers: dict[str, Any] = {}
+    for kind in KINDS:
+        if args.fake:
+            dispatchers[kind] = FakeEvalDispatcher()
+            continue
         from plumb.understand.dispatch import configured
 
         try:
-            dispatcher = configured(core)
+            dispatchers[kind] = configured(core, model=judge_model if kind == "judge" else None)
         except NoModel as exc:
             print(f"plumb: {exc}", file=sys.stderr)
             return 2
-    cases = [r for kind in KINDS for r in run_cases(dispatcher, load_cases(kind), kind)]
+    cases = [r for kind in KINDS for r in run_cases(dispatchers[kind], load_cases(kind), kind)]
     clarify = [r for r in cases if r["kind"] == "clarify"]
     rate = (sum(r["false_gap"] for r in clarify) / len(clarify)) if clarify else 0.0
     passed = sum(1 for r in cases if r["passed"])
     core.log_append("events", "eval-run", {
-        "model": "fake" if args.fake else core.config.understand.model,
+        "model": "fake" if args.fake else judge_model,
         "prompt_digest": prompt_digest(), "cases": cases, "passed": passed,
         "false_gap_rate": rate})
     print(f"eval: {len(cases)} cases, {passed} passed")

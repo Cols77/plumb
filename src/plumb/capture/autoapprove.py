@@ -88,8 +88,10 @@ def auto_approve_state(core: Core) -> AutoApproveState:
         k.get("passing") for k in (calibration.payload.get("per_kind") or {}).values()
         if isinstance(k, Mapping)))
     seen = _last_model_version(entries)
-    suspended = bool(configured and calibrated and seen
-                     and not same_version(seen, calibrated))
+    from plumb.capture.calibrate import fingerprint_stale
+
+    suspended = bool(configured and calibrated and (
+        (seen and not same_version(seen, calibrated)) or fingerprint_stale(core)))
     ready, why = jev_ready(core)
     from plumb.capture.calibrate import form_gap
 
@@ -103,7 +105,7 @@ def auto_approve_state(core: Core) -> AutoApproveState:
     elif not passing:
         reason = f"no passing calibration ({CALIBRATE_HINT})"
     elif suspended:
-        reason = f"auto-approve suspended: the JEV model changed ({RECALIBRATE_HINT})"
+        reason = f"auto-approve suspended: the judge model, prompt or JEV model changed ({RECALIBRATE_HINT})"
     else:
         reason = "on"
     settings = settings or {}
