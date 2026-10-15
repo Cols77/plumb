@@ -100,7 +100,7 @@ intent capture:
   escalate     escalation suggestions; decline (the owner said no)
   spec         an escalated spec: show, approve (owner's terminal only)
   triage       proposed records grouped by faithfulness; --approve low-risk (owner only)
-  config       auto-approve on|off and show (owner's terminal only); card full|compact|off
+  config       auto-approve on|off and show (owner's terminal only)
   jev          status, setup (the credential variable's name only), calibrate
   quotes       recover: find older records' words in past session transcripts (shown on
                the card as found, not verified; it confirms nothing)

@@ -157,10 +157,14 @@ class TraceConfig:
     exempt: tuple[str, ...] = ()
 
 
+CARD_RETIRED = ("plumb: the card setting (full, compact, off) is retired and has no effect; "
+                "cards are always drawn in full")
+
+
 @dataclass(frozen=True)
 class PresentConfig:
-    # sp5 4.3: the intent card's verbosity, full | compact | off (a display preference)
-    card: str = "compact"
+    # retired (SR-173): the intent card's full | compact | off; read for the notice only
+    card: str = ""
     ascii: bool = False          # the status card without glyphs
 
 

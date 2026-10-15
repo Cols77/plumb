@@ -402,6 +402,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                              stale_reasons)
     if blocked:
         return blocked
+    queue_notes(ctx, [*(line.text for line in aware),
+                      *([skip_notice(skipped)] if skipped else [])])
 
     return _cards(ctx, core, index, turn, v, test_cards, stated_ids, stamp)
 
@@ -503,6 +505,16 @@ def _cards(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], v: 
     write_stated(ctx, turn, index, stated_ids, shown, early=early,
                  conflicts=conflict_entries(core))
     return HookOutput(system_message="\n\n".join(text)) if text else None
+
+
+def queue_notes(ctx: HookContext, notes: Sequence[str]) -> None:
+    """SR-173: a stop that blocks nothing cannot tell the agent its warnings, so they wait for
+    the next prompt hook (``prompt.agent_notes``), panel or not. Never fails the stop."""
+    if notes:
+        try:
+            write_json_atomic(ctx.session_dir / ctx.session_id / "agent_notes.json", list(notes))
+        except OSError:
+            pass
 
 
 def note_skipped(root: Path, skipped: Sequence[str]) -> None:
