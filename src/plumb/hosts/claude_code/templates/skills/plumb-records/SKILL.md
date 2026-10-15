@@ -4,18 +4,18 @@ description: Grounds work in this repository's plumb records (the owner's intent
 ---
 Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting.
 
-- First, on every owner request, run `{plumb} clarify --wait`, before reading code or planning:
-  edits are refused until it answers. plumb-clarify says what to do with each answer.
+- Only after the owner types `/plumb clarify <words>`, run `{plumb} clarify --wait` before
+  reading code (plumb-clarify has its answers); an ordinary message is read back in your reply.
 - `.plumb/` holds INT (the owner's words), SR (given/when/then examples), DEC, FEAT and NC:
   `{plumb} brief` (intent now), `show <ID>` (examples, tests), `explain <words>` (why it is).
 - Before editing a file, grep `.plumb/test_map.txt` for it (no map: run `{plumb} tests map`);
   the tests listed cover it. Never rewrite a confirmed example's acceptance test to make it
   pass. When the stop hook asks, run the command it names (`{plumb} tests run --changed`).
-- Read back each request in the owner's terms and record it in one call:
-  `{plumb} capture --prompt <digest> --file <doc.json>` (references/capture-doc.md); paste
-  none of its output in your reply. All proposed; it never blocks. Two readings fit:
-  `{plumb} decide --question Q --chosen A --alt B [--matters]`. `<digest>` is the sha256 of the
-  owner's message: `message_digest` in `{plumb} clarify --wait --json` (12+ hex digits do).
+- Read back each request in the owner's terms and record it in one call: `{plumb} capture
+  --prompt <digest> --file <doc.json>` (references/capture-doc.md); paste none of its output
+  in your reply. All proposed; it never blocks. Two readings fit: `{plumb} decide --question Q
+  --chosen A --alt B [--matters]`. `<digest>` is the sha256 of the owner's message (12+ hex
+  digits do): `message_digest` of `{plumb} clarify --wait --json` (ready at once, if ordinary).
 - Plan each requirement's proof, how the owner sees it working, and show it before done:
   `{plumb} proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
 - Ask with Claude Code's question tool by default; a card (plumb-clarify) only when the answer

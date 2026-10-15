@@ -407,6 +407,7 @@ def build(core: Any, session: str, **context: Any) -> Job | None:
     from plumb.understand import queue
 
     digest, text = _message_of(context)
+    text = commanded_words(text) or text      # SR-171: the check reads the words, not the command
     if not text.strip():
         return None
     after = context.get("after")
@@ -430,7 +431,8 @@ def recompute(core: Any, job: Job) -> Mapping[str, Any] | None:
     except Refused:
         return None
     digest = str(logged["digest"])
-    return _inputs(core, job.session, digest, str(logged.get("text") or ""),
+    return _inputs(core, job.session, digest,
+                   commanded_words(str(logged.get("text") or "")) or str(logged.get("text") or ""),
                    answered_for(Path(core.root), job.session, digest),
                    frozen_context(Path(core.root), job.session, digest))
 
@@ -792,6 +794,14 @@ def is_typed_go(text: str) -> bool:
     return bool(GO_TEXT.match(text.strip()))
 
 
+def commanded_words(text: str) -> str | None:
+    """The words of a typed ``/plumb clarify <words>`` (SR-171), else None."""
+    from plumb.understand import typed
+
+    parsed = typed.parse(text)
+    return parsed.words if parsed is not None and parsed.command == "clarify" else None
+
+
 def _typed_settle(text: str) -> bool:
     from plumb.understand import typed
 
@@ -814,6 +824,9 @@ def on_prompt(ctx: Any, core: Any, entry: Any, *, after: str | None = None) -> l
         if gate.release(core, session, "typed", digest=digest):
             return [GATE_RELEASED]
         return []
+    words = commanded_words(text)
+    if words is None:
+        return []                         # SR-171 EX-1: an ordinary message is not checked
     gate.close(Path(core.root), session, digest, GATE_REASON_CHECKING)
     data = getattr(ctx, "data", None)
     transcript = data.get("transcript_path") if isinstance(data, Mapping) else None

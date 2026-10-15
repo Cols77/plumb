@@ -11,7 +11,8 @@ You are given:
   oldest first; `summary` (after the conversation was compacted) is the host's summary of
   everything before. All may be cut short.
 - `other_sessions` (when there are some): the person's other recent conversations about the
-  same project, most recent first, each with `last_active`, its `last_reply`,
+  same project, most recent first (background only: they may help you understand the message,
+  but never supply the options or suggestions of a question), each with `last_active`, its `last_reply`,
   `earlier_messages` and maybe `summary`. "That chat", "the other session", "the issue we found
   earlier" may point into one of them.
 - `open_cards` (when there are some): the cards still waiting for the person, each `{id, topic,
@@ -70,6 +71,12 @@ Decide:
   reference is resolved: it is not a gap, and your `readback` names what it points to in the
   person's terms (and which conversation it comes from when it is another one). Ask only when
   none of them settles the reference, or they name several things the message could mean.
+- The last entry of `earlier_messages` is the person's most recent earlier message: read it
+  first. When it makes what the message points to clear ("this update", "that"), the reference
+  is resolved from it.
+- A message that only says how to carry out work already asked for ("use a workflow", "keep
+  going", "dispatch it", "do so") adds nothing to build: raise no gap and no question about how
+  to carry it out.
 - Never state a fact about the repository or the conversation that the inputs do not give you.
   Whether the folder is a git repository, which branch is checked out, what was said earlier:
   take them from `repository` and `context` only, and never guess them.

@@ -35,7 +35,7 @@ _HEAD = re.compile(r"^" + PREFIX + r"[ \t]+([a-z][a-z-]*)(?:[ \t]+(.*))?$", re.D
 class Typed:
     """A parsed typed command."""
 
-    command: str                       # approve | confirm | undo | auto-approve | go | settle
+    command: str                       # approve | confirm | undo | auto-approve | go | settle | clarify
     ids: tuple[str, ...] = ()          # the IDs it names (all of them, or none)
     words: str = ""                    # approve/confirm: what followed when it was not all IDs
     state: str = ""                    # auto-approve: on | off
@@ -76,6 +76,8 @@ def parse(text: Any) -> Typed | None:
         return Typed("auto-approve", state=tokens[0])
     if verb == "go" and not tokens:
         return Typed("go")
+    if verb == "clarify" and rest:
+        return Typed("clarify", words=" ".join(rest.split()))   # SR-171: the words are the request
     if verb == "settle":
         return Typed("settle")             # SR-134 EX-2: the switch is gone, the words are not a request
     return None

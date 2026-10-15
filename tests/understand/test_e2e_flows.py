@@ -144,7 +144,7 @@ def test_flow_1_request_with_gaps_one_card_one_answer(repo: Path) -> None:
     s = Session(repo)
     model(s, clarify=GAPS)
     s.start()
-    said = s.say("let users export their data")
+    said = s.say("/plumb clarify let users export their data")
     assert "Waiting for your answer before building" in said     # the gate closed at once
     assert deny(s)                                                # an edit is refused
     assert s.worker_idle(30)
@@ -166,12 +166,7 @@ def test_flow_1_request_with_gaps_one_card_one_answer(repo: Path) -> None:
     jobs = [files.job_from_json(json.loads(p.read_text(encoding="utf-8")))
             for p in (repo / ".plumb" / "session" / SID / "jobs").glob("*.json")]
     (read_job,) = [j for j in jobs if j.kind == "read"]
-    second_clarify = [j for j in jobs if j.kind == "clarify" and j.needs]
-    assert [j.needs for j in second_clarify] == [read_job.id]
-    started = {j.id: json.loads((repo / ".plumb" / "session" / SID / "results" /
-                                 f"{j.id}.json").read_text(encoding="utf-8"))["started"]
-               for j in (read_job, second_clarify[0])}
-    assert started[read_job.id] <= started[second_clarify[0].id]
+    assert [j for j in jobs if j.kind == "clarify" and j.needs] == []   # SR-171: no second check
 
     assert not deny(s)                                            # the gate opened
     cards = [c for c in own_cards(s) if c["kind"] == "choice"]
@@ -181,7 +176,7 @@ def test_flow_1_request_with_gaps_one_card_one_answer(repo: Path) -> None:
                              "--timeout", "30").stdout)
     assert again["state"] == "ready"
     at_owner_level(*again["lines"])
-    assert len(calls(s, "clarify")) == 2                          # one per message, no retry
+    assert len(calls(s, "clarify")) == 1                          # only the command runs a check
 
 
 # ---- (2) a mixed answer ---------------------------------------------------------------------
@@ -201,7 +196,7 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
         {"id": "SR-088", "hash": index["SR-088"].hash, "answer": "change",
          "change": "some features stay internal", "confidence": 0.9,
          "evidence": "I am not sure I agree with SR-088"}]
-    s.script_path.write_text(json.dumps({"$delay": 4, "clarify": NOTHING,
+    s.script_path.write_text(json.dumps({"$delay": 10, "clarify": NOTHING,
                                          "read": {"entries": entries}}), encoding="utf-8")
     s.start()
     s.say(message)
@@ -419,7 +414,8 @@ def test_flow_6_a_result_file_and_a_job_file_written_by_the_agent_confirm_nothin
     s.script_path.write_text(json.dumps({"$delay": 5, "clarify": GAPS,
                                          "read": {"entries": []}}), encoding="utf-8")
     s.start()
-    s.say("let users export their data")                           # a request with gaps
+    s.say("let users export their data")                            # read while a card waits
+    s.say("/plumb clarify let users export their data")             # a request with gaps
     base = repo / ".plumb" / "session" / SID
     by_kind = {json.loads(p.read_text(encoding="utf-8"))["kind"]: p
                for p in (base / "jobs").glob("*.json")}
