@@ -547,6 +547,8 @@ def _link_problems(core: Any, base: str, paths: Sequence[str],
                     from plumb.verify import open_verify
 
                     tmap = open_verify(core).test_map()
+                    if not tmap.test_files:   # a project with no tests: nothing is covered yet
+                        return stale_links, []
                 covered = tmap.covering(target) or tmap.verified_tests(target)
             except Exception:  # noqa: BLE001 - no test map: cannot tell, so not held
                 return stale_links, []

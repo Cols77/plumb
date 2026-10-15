@@ -316,6 +316,13 @@ def _branch_pair(tmp_path: Path) -> tuple[Path, Path]:
     return root, other
 
 
+def _one_test(other: Path) -> None:
+    """One test on src/a.py, so the project has tests and an uncovered file counts as such."""
+    (other / "tests").mkdir()
+    (other / "tests" / "test_a.py").write_text(
+        "from src.a import x\n\n\ndef test_x() -> None:\n    assert x == 1\n", encoding="utf-8")
+
+
 def _merge_report(root: Path):
     run_git(root, "merge", "--no-edit", "--no-verify", "--no-commit", "feat-x", check=False)
     return check(open_core(root))
@@ -336,6 +343,7 @@ def test_merge_check_holds_a_link_the_branch_left_stale(tmp_path: Path) -> None:
 def test_merge_check_names_a_link_added_to_a_file_no_test_covers(tmp_path: Path) -> None:
     """SR-166 EX-3: a branch links a .md no test covers: named, merge held."""
     root, other = _branch_pair(tmp_path)
+    _one_test(other)   # a project with tests: a file none covers is untested
     (other / "docs").mkdir()
     (other / "docs" / "x.md").write_text("notes\n", encoding="utf-8")
     assert plumb(other, "link", "SR-005", "implemented_by", "docs/x.md").returncode == 0
@@ -449,6 +457,7 @@ def test_merge_check_cli_report_names_untested_links_and_contradictions(
 
     monkeypatch.setattr(judgment, "optional_backend", lambda core, hook: _Counting())
     _, other = _branch_pair(tmp_path)
+    _one_test(other)
     (other / "docs").mkdir()
     (other / "docs" / "x.md").write_text("notes\n", encoding="utf-8")
     assert plumb(other, "link", "SR-005", "implemented_by", "docs/x.md").returncode == 0
