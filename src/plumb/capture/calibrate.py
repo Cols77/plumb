@@ -241,13 +241,17 @@ def measure(core: Core, items: Sequence[Item], scores: Sequence[float]) -> dict[
 
 
 def logged_scores(core: Core) -> tuple[dict[tuple[str, str], float], str]:
-    """``{(record, hash): score}`` of the judge's logged verdicts (the latest of each) and the
-    model that gave the most recent one. The score is the model's confidence for a supported
-    verdict and 0 otherwise, logged at judgment time (SR-106), so calibration needs no model."""
+    """``{(record, hash): score}`` of JEV's logged verdicts (the latest of each) and the JEV
+    version that gave the most recent one. The score is JEV's probability for a supported
+    verdict and 0 otherwise, logged at judgment time (SR-106), so calibration needs no call.
+    Only a verdict marked as JEV's counts (SR-182): a judge model's confidence never sets
+    JEV's threshold, and an old verdict with no marker is not taken as JEV's."""
+    from plumb.judgment.verdict import JEV
+
     scores: dict[tuple[str, str], float] = {}
     model = ""
     for entry in core.events():
-        if entry.kind != "verdict":
+        if entry.kind != "verdict" or entry.payload.get("by") != JEV:
             continue
         payload = entry.payload
         try:
@@ -277,7 +281,7 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
         items = [i for i in items if not i.source.startswith("gen")
                  and (i.record, i.hash) in logged]
         scores = [logged[(i.record, i.hash)] for i in items]
-        name, version = "judge", model
+        name, version = "jev", model
     else:
         if backend is None:
             from plumb.judgment import JudgmentUnavailable, get_backend
