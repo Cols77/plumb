@@ -578,6 +578,11 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         if state.before and not stale.listed(ctx.root, ctx.session_id, key):
             before = [stale.before_line(state.before)]
         open_rows = stale.unresolved(core, ctx.session_id, state)
+        if open_rows:   # SR-175: drift is checked for coverage and repinned before any hold
+            stale.settle_drift(core, ctx.session_id, open_rows)
+            state = stale.turn_state(core, ctx.session_id, str(turn_id) if turn_id else None)
+            open_rows = stale.unresolved(core, ctx.session_id, state)
+        stale.card_lost_tests(core, ctx.session_id)
         held = stale.hold_count(ctx.root, ctx.session_id, str(turn_id))
         limit = int(core.config.hooks.stale_holds_max)
         if ctx.extra.get("host"):

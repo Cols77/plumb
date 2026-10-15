@@ -462,7 +462,8 @@ def _select_stale(core: Core, selector: str) -> list[LinkState]:
 def repin_after_tests(core: Core, selector: str, *,
                       runner: Callable[[list[str]], tuple[bool, str]] | None = None,
                       judge: Any = None, jev: Any = None, diagnoser: Any = None,
-                      session: str | None = None, dry_run: bool = False) -> AfterTests:
+                      session: str | None = None, dry_run: bool = False,
+                      auto: bool = False) -> AfterTests:
     """Repin the stale links of ``selector`` (a link id or a record id) whose linked tests
     pass and whose change a model judges not to alter what the requirement relies on; refuse
     the others, with why. The judging is a cascade (SR-114): ``jev`` (the JEV tier, off
@@ -470,7 +471,9 @@ def repin_after_tests(core: Core, selector: str, *,
     a link it says changed goes to ``diagnoser`` (Opus), whose finding is in ``diagnoses``: a
     card for the owner (filed in ``session``), a rewording, or the change sent back to
     development. ``dry_run`` asks the models only: no tests run, nothing is repinned, no card
-    is filed, and the links it would repin are listed in ``would``. Never confirms anything."""
+    is filed, and the links it would repin are listed in ``would``. ``auto`` (SR-175, the turn
+    end): a rewording Opus proposes is recorded as an unconfirmed edit and the link repinned,
+    where the command only tells the agent to reword. Never confirms anything."""
     result = AfterTests()
     states = _select_stale(core, selector)
     candidates: list[LinkState] = []
@@ -536,7 +539,7 @@ def repin_after_tests(core: Core, selector: str, *,
             result.refused.append((link.id, f"{NO_MODEL}: {meaning.reason}"))
         elif not meaning.unchanged:
             _diagnose(core, result, record, link, shown, meaning.reason, diagnoser,
-                      session, dry_run)
+                      session, dry_run, auto)
         else:
             _repinned(core, result, link.id, "sonnet", meaning.reason, dry_run)
     return result
@@ -582,7 +585,7 @@ def _diff_summary(before: str, after: str, path: str) -> str:
 
 def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
               shown: Mapping[str, str], reason: str, diagnoser: Any, session: str | None,
-              dry_run: bool) -> None:
+              dry_run: bool, auto: bool = False) -> None:
     """Sonnet says the change matters: Opus says which way it goes (SR-113, SR-114 EX-3..5).
     No diagnosis (no model, no usable answer) is the plain refusal: nothing is guessed."""
     from plumb.understand import repin as meaning_check
@@ -630,6 +633,11 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
             action += ("; the card is not offered until it is complete, it lacks: "
                        + "; ".join(missing) + f" (plumb stale card {link.id} --consequences "
                        "\"...\" --why \"...\")")
+    elif found.outcome == "reword" and auto and not dry_run and (changes := reword_and_repin(
+            core, record, link, found.proposed_wording,
+            f"{REPIN_NOTE} (reworded, unconfirmed edit): {found.explanation}")) is not None:
+        result.changes += changes
+        return
     elif found.outcome == "reword":
         action = (f"{record_id} disagrees with its intent ({found.explanation}); reword it "
                   f"through plumb capture to: {found.proposed_wording}")
@@ -642,6 +650,31 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
                   f"{found.explanation}")
     result.diagnoses.append(item)
     result.refused.append((link.id, f"{refusal}; {action}"))
+
+
+def reword_and_repin(core: Core, record: Record | None, link: Link, wording: str,
+                     note: str) -> list[dict[str, Any]] | None:
+    """SR-175 EX-4, SR-172: record ``wording`` as the record's statement (a confirmed record
+    reworded is an unconfirmed edit) and repin the link; the repin changes, or None when
+    there is no statement to reword."""
+    if record is None or not wording or "statement" not in record.fields:
+        return None
+    from plumb.capture.records import rewrite
+
+    rewrite(core, record, {"statement": wording})
+    return repin(core, link.id, note=note)
+
+
+def restore_pins(core: Core, changes: Iterable[Mapping[str, Any]]) -> None:
+    """Put back the pins a repin changed (``repin`` returns them: ``old`` is the pin before)."""
+    for change in changes:
+        record, link = _named_link(core, str(change["link"]))
+        old = change.get("old")
+        pin = Pin(old["from"], old["to"]) if old else None
+        core.store.set_links(record.id, [
+            link_to_dict(Link(source=o.source, index=o.index, kind=o.kind, target=o.target,
+                              example=o.example, pin=pin if o.index == link.index else o.pin))
+            for o in record.links])
 
 
 def _clip(text: str, width: int = 160) -> str:
