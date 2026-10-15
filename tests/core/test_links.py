@@ -391,6 +391,18 @@ def test_unlink_lets_a_retired_examples_test_go(
     assert "no test" not in capsys.readouterr().out
 
 
+@pytest.mark.sr("SR-148")
+def test_unlink_lets_a_superseded_records_only_test_go(
+        edit: Path, write_record, capsys: pytest.CaptureFixture[str]) -> None:
+    """DEC-065: every example of a superseded record is retired, so its tests go with it."""
+    assert _cli(edit, "approve", "SR-001") == 0
+    write_record(edit, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
+    assert _cli(edit, "link", "SR-002", "supersedes", "SR-001") == 0
+    capsys.readouterr()
+    assert _cli(edit, "unlink", "SR-001#3", "--note", "DEC-065") == 0
+    assert "tests/test_b.py" not in _ends(edit)
+
+
 def _superseded(setup: Path, write_record):
     write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
     core = open_core(setup)
@@ -533,3 +545,18 @@ def test_a_retired_example_is_a_warning_naming_both_records_and_the_test(
     (warning,) = [w for w in json.loads(capsys.readouterr().out)["warnings"]
                   if w["code"] == "retired-example"]
     assert all(name in warning["message"] for name in ("SR-001/EX-1", "SR-002", "tests/test_a.py"))
+    # DEC-065: the test is retired with the example, never moved or kept
+    assert "unlink" in warning["message"] and "move it" not in warning["message"]
+
+
+def test_every_test_of_a_retired_example_is_warned_not_only_the_last(
+        setup: Path, write_record) -> None:
+    """DEC-065: two tests of one retired example are two warnings."""
+    write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
+    (setup / "tests").mkdir()
+    for name in ("test_a.py", "test_b.py"):
+        (setup / "tests" / name).write_text("def test_x():\n    pass\n", encoding="utf-8")
+        open_core(setup).add_link("SR-001", "verified_by", Target(path=f"tests/{name}"), "EX-1")
+    open_core(setup).add_link("SR-002", "supersedes", Target(record="SR-001"))
+    assert links.live_examples(open_core(setup), "SR-001", "SR-002") == [
+        ("EX-1", "tests/test_a.py"), ("EX-1", "tests/test_b.py")]

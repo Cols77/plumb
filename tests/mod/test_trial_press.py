@@ -17,14 +17,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from mod.helpers import DIGEST, KEY, SESSION, run_mod
 from understand.test_judge_job import intent_text, log_prompt, requirement_text, verdict_answer
 
+from mod.helpers import DIGEST, KEY, SESSION, run_mod
 from plumb.api import open_core
 from plumb.present import owner_text
 from plumb.understand import cardstore, summary
-
-pytestmark = pytest.mark.sr("SR-124")
 
 MESSAGE = "Build a calculator with add, subtract, multiply, divide, power, root and modulo."
 

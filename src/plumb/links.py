@@ -147,20 +147,20 @@ def link_states(core: Core, ids: Iterable[str] | None = None,
     return out
 
 
-def live_examples(core: Core, old_id: str, new_id: str = "") -> dict[str, str]:
+def live_examples(core: Core, old_id: str, new_id: str = "") -> list[tuple[str, str]]:
     """Examples of ``old_id`` that a test still verifies and ``new_id`` does not already
-    verify: ``{EX-n: test}`` (SR-164)."""
+    verify: ``[(EX-n, test)]``, one per link (SR-164)."""
     index = core.index()
 
-    def tests(rid: str) -> dict[str | None, str]:
+    def tests(rid: str) -> list[tuple[str | None, str]]:
         record = index.get(rid)
-        return {} if record is None else {
-            link.example: link.target.test or link.target.path or ""
+        return [] if record is None else [
+            (link.example, link.target.test or link.target.path or "")
             for link in record.links if link.kind == "verified_by"
-            and (link.target.test or link.target.path)}
+            and (link.target.test or link.target.path)]
 
-    kept = set(tests(new_id).values())
-    return {ex: t for ex, t in tests(old_id).items() if ex and t not in kept}
+    kept = {t for _, t in tests(new_id)}
+    return [(ex, t) for ex, t in tests(old_id) if ex and t not in kept]
 
 
 def add_link(core: Core, source: str, kind: str, target: Target,
@@ -314,9 +314,13 @@ def unlink(core: Core, link_id: str, note: str) -> dict[str, Any]:
     others = [other for other in record.links if other.index != link.index
               and other.kind == "verified_by" and other.example == link.example
               and core.hash_target(other.target) is not None]
-    # a retired example (one the record no longer has) is no one's confirmed example
+    # a retired example (one the record no longer has, or one of a superseded record: DEC-065)
+    # is no one's confirmed example
+    from plumb.query import retired_ids
+
     lone = link.kind == "verified_by" and not others \
-        and link.example in {example.id for example in record.examples}
+        and link.example in {example.id for example in record.examples} \
+        and record.id not in retired_ids(core.index())
     if lone and alive and core.status([record.id])[record.id].confirmation != "proposed":
         raise LinkError(f"{link_id} is the only test of {record.id} {link.example}, which the "
                         f"owner confirmed; removing it would leave that example without its "
