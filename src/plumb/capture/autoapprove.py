@@ -137,10 +137,21 @@ def _kind_threshold(calibration: LogEntry, kind: str) -> float | None:
     return float(threshold) if threshold is not None else None
 
 
+def verdict_refusal(verdict: Mapping[str, Any]) -> str | None:
+    """SR-182: why a logged verdict may not feed auto-approval, or None. Only a supported
+    verdict marked as JEV's does; the judge model's never does (nothing approves on a judge
+    model's verdict alone), and neither does one that says nobody."""
+    from plumb.judgment.verdict import refusal
+
+    return refusal(verdict.get("by"), verdict.get("verdict"))
+
+
 def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
-         backend: Any = None, said: list[str] | None = None) -> list[str]:
+         backend: Any = None, said: list[str] | None = None,
+         verdicts: Mapping[str, Mapping[str, Any]] | None = None) -> list[str]:
     """Approve ``by: auto-jev`` the eligible records among ``ids`` (written by one
-    ``capture``); returns their IDs. Returns at once when auto-approval is off."""
+    ``capture``); returns their IDs. Returns at once when auto-approval is off. ``verdicts``
+    (``{record: logged verdict}``, SR-182) leaves out a record whose verdict is not JEV's."""
     state = auto_approve_state(core)
     if not state.configured or not prompt_digest:
         return []
@@ -195,6 +206,8 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
             continue  # an escalated spec set waits for the owner's set approval (R8 B)
         if record_id in before:
             continue
+        if verdicts and record_id in verdicts and verdict_refusal(verdicts[record_id]):
+            continue  # SR-182: a judge model's verdict never feeds auto-approval
         kind = CLAIM_KIND[record.kind]
         threshold = _kind_threshold(calibration, kind)
         if threshold is None:
@@ -243,7 +256,7 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
             "auto": {"score": weakest.probability, "confidence": weakest.confidence,
                      "confidence_label": weakest.confidence_label,
                      "backend": weakest.backend, "model_version": version,
-                     "calibration": calibration.digest, "claim_kind": kind,
+                     "calibration": calibration.digest, "claim_kind": kind, "judge": "jev",
                      "threshold": threshold, "prompt_via": "hook",
                      "min_probability": state.min_probability,
                      "min_confidence": state.min_confidence, "parts": len(judgments),
@@ -272,6 +285,8 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
         return "auto-jev approval cites no earlier calibration"
     if not same_version(calibration.payload.get("model_version"), auto.get("model_version")):
         return "auto-jev approval by a model version its calibration did not measure"
+    if auto.get("judge", "jev") != "jev":
+        return "auto-jev approval rests on a judge model's verdict, which never approves"
     kind = str(auto.get("claim_kind"))
     threshold = _kind_threshold(calibration, kind)
     if threshold is None:

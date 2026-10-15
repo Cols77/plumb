@@ -194,6 +194,7 @@ class UnderstandConfig:
 
     dispatch: str = "auto"       # auto | claude-code | hermes | openrouter
     model: str = "haiku"
+    judge_model: str = "haiku"       # SR-182: gives the verdict below JEV's threshold (or without JEV)
     repin_model: str = "sonnet"      # SR-111 EX-4: judges whether a stale link's change matters
     # SR-114: JEV repins alone at or above this probability, set from the labelled repin set
     # (``eval --repin``: the lowest threshold with no false repin); None leaves the tier off

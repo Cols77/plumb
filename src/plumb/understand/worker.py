@@ -358,15 +358,56 @@ class _Pass:
         step = self._step_text(job)
         with contextlib.suppress(Exception):
             reporter.update(step, *counts)
+        got = self._ask(module, job, reporter, step, counts, started, t0)
+        if got is None:
+            return
+        answer, dname = got
+        found = schema_check.problems(answer, module.schema)
+        if found:
+            self._error(job, "schema", "; ".join(found[:3]), started, t0, dname)
+            return
+        try:
+            with _as_worker(self.token):
+                _write_applied(self.core, self.session,
+                               module.apply(self.core, job, dict(answer)))
+        except Exception as exc:  # noqa: BLE001 - the kind or the log refused
+            self._error(job, "apply", f"{type(exc).__name__}: {exc}", started, t0,
+                        dname)
+            return
+        self._clear(reporter)
+        self._finish(job, JobResult(
+            job=job.id, status="ok", answer=dict(answer), dispatcher=dname,
+            started=started, finished=jobs.now(), run_s=round(time.perf_counter() - t0, 3)))
+
+    def _ask(self, module: Any, job: Job, reporter: Any, step: str, counts: tuple[int, int],
+             started: str, t0: float) -> tuple[dict[str, Any], str] | None:
+        """The kind's answer and who gave it, or None after the job's error was written."""
+        cascade = getattr(module, "cascade", None)
+        if cascade is not None:             # SR-182: the kind chooses who answers
+            try:
+                with _Ticker(self, reporter, step, float(getattr(
+                        self.core.config.understand, "progress_interval_s", 1) or 1), counts):
+                    done = cascade(self.core, job, system=agents.load(job.kind),
+                                   schema=module.schema)
+            except module.Waiting as wait:
+                self._error(job, "dispatch", wait.line or str(wait.cause), started, t0)
+                return None
+            except DispatchError as exc:
+                self._error(job, exc.step, exc.message, started, t0)
+                return None
+            except Exception as exc:  # noqa: BLE001 - any failure of a judge is the job's
+                self._error(job, "run", f"{type(exc).__name__}: {exc}", started, t0)
+                return None
+            return done.answer, done.dispatcher
         try:
             dispatcher = dispatch.configured(self.core)
         except NoModel as exc:
             self._error(job, "dispatch", str(exc), started, t0)
-            return
+            return None
         reason = dispatcher.available()
         if reason:
             self._error(job, "dispatch", reason, started, t0, dispatcher.name)
-            return
+            return None
         interval = float(getattr(self.core.config.understand, "progress_interval_s", 1) or 1)
         try:
             with _Ticker(self, reporter, step, interval, counts):
@@ -376,27 +417,12 @@ class _Pass:
                     schema=module.schema, on_step=lambda text: None)
         except DispatchError as exc:
             self._error(job, exc.step, exc.message, started, t0, dispatcher.name)
-            return
+            return None
         except Exception as exc:  # noqa: BLE001 - any failure of a dispatcher is the job's
             self._error(job, "run", f"{type(exc).__name__}: {exc}", started, t0,
                         dispatcher.name)
-            return
-        found = schema_check.problems(answer, module.schema)
-        if found:
-            self._error(job, "schema", "; ".join(found[:3]), started, t0, dispatcher.name)
-            return
-        try:
-            with _as_worker(self.token):
-                _write_applied(self.core, self.session,
-                               module.apply(self.core, job, dict(answer)))
-        except Exception as exc:  # noqa: BLE001 - the kind or the log refused
-            self._error(job, "apply", f"{type(exc).__name__}: {exc}", started, t0,
-                        dispatcher.name)
-            return
-        self._clear(reporter)
-        self._finish(job, JobResult(
-            job=job.id, status="ok", answer=dict(answer), dispatcher=dispatcher.name,
-            started=started, finished=jobs.now(), run_s=round(time.perf_counter() - t0, 3)))
+            return None
+        return dict(answer), dispatcher.name
 
     def _carried(self, reporter: Any) -> tuple[int, int]:
         """The count a pass of many jobs (the backlog) left on the line a moment ago, so the

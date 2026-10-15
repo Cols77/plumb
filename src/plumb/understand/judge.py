@@ -23,8 +23,10 @@ from pathlib import Path
 from typing import Any
 
 from plumb.contracts import Applied, CardState, Job
+from plumb.judgment.verdict import BY
 from plumb.present import owner_text
 from plumb.understand import backlog, cards, files, premise, trial
+from plumb.understand import verdict as verdict_cascade
 
 kind = "judge"
 SCHEMA_ID = "judge.v1"
@@ -175,6 +177,15 @@ def describe(job: Job) -> str:
     return owner_text.STEP_JUDGING.format(n=len(records))
 
 
+Waiting = verdict_cascade.Waiting
+
+
+def cascade(core: Any, job: Job, **context: Any) -> Any:
+    """SR-182: who answers this job. JEV first where its probability clears the calibrated
+    threshold, the judge model for the rest; ``Waiting`` when neither can be reached."""
+    return verdict_cascade.cascade(core, job, **context)
+
+
 def _confidence(value: Any) -> float:
     try:
         return round(min(1.0, max(0.0, float(value))), 6)
@@ -257,7 +268,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     asked = {str(r.get("id")): r for r in job.inputs.get("records") or ()
              if isinstance(r, Mapping)}
     index = core.index()
-    model = str(answer.get("model") or core.config.understand.model)
+    model = str(answer.get("model") or core.config.understand.judge_model)
     entries: list[Mapping[str, Any]] = []
     new_cards: list[CardState] = []
     notes: list[str] = []
@@ -280,7 +291,9 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         payload = {"job": job.id, "id": item["id"], "hash": item["hash"], "verdict": verdict,
                    "beyond": beyond, "contradicts": contradicts,
                    "score": confidence if verdict == "supported" else 0,
-                   "model": model, "premise_digest": digest}
+                   "model": str(raw.get("model") or model), "premise_digest": digest}
+        if raw.get("by") in BY:         # SR-182: who answered; a verdict with none is no JEV's
+            payload.update(by=raw["by"], judge=str(raw.get("judge") or ""))
         entries.append({"kind": "verdict", "payload": payload})
         record = index.get(item["id"])
         if record is None or record.hash != item["hash"]:
