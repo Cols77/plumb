@@ -152,11 +152,10 @@ def verdict_refusal(verdict: Mapping[str, Any]) -> str | None:
 
 
 def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
-         backend: Any = None, said: list[str] | None = None,
-         verdicts: Mapping[str, Mapping[str, Any]] | None = None) -> list[str]:
+         backend: Any = None, said: list[str] | None = None) -> list[str]:
     """Approve ``by: auto-jev`` the eligible records among ``ids`` (written by one
-    ``capture``); returns their IDs. Returns at once when auto-approval is off. ``verdicts``
-    (``{record: logged verdict}``, SR-182) leaves out a record whose verdict is not JEV's."""
+    ``capture``); returns their IDs. Returns at once when auto-approval is off. It asks JEV
+    itself and never reads a logged verdict, so no judge model's verdict reaches it (SR-182)."""
     state = auto_approve_state(core)
     if not state.configured or not prompt_digest:
         return []
@@ -211,8 +210,6 @@ def gate(core: Core, ids: Sequence[str], *, prompt_digest: str | None,
             continue  # an escalated spec set waits for the owner's set approval (R8 B)
         if record_id in before:
             continue
-        if verdicts and record_id in verdicts and verdict_refusal(verdicts[record_id]):
-            continue  # SR-182: a judge model's verdict never feeds auto-approval
         kind = CLAIM_KIND[record.kind]
         threshold = _kind_threshold(calibration, kind)
         if threshold is None:

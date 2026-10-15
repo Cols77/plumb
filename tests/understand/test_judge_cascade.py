@@ -140,14 +140,6 @@ def test_a_verdict_with_no_marker_is_not_taken_as_jevs() -> None:
     assert verdict_refusal({"verdict": "beyond", "by": "jev"}) is not None
 
 
-def test_gate_skips_a_record_whose_verdict_is_the_models(world: Path) -> None:
-    from plumb.capture.autoapprove import gate
-
-    core = configure(world)
-    assert gate(core, ["INT-001"], prompt_digest="sha256:x",
-                verdicts={"INT-001": {"verdict": "supported", "by": "model"}}) == []
-
-
 def test_ex3_judge_model_setting_picks_the_model_that_judges(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     core = configure(world, "understand:\n  judge_model: sonnet\n")
