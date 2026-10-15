@@ -73,10 +73,13 @@ def stale_cards(root: Path, session: str) -> list[CardState]:
             id=f"stale:{link}#1", text=str(item.get("issue", "")), resolutions=tuple(options),
             choices=tuple(Choice(o, "change", o, consequences[n])
                           for n, o in enumerate(options)))
+        decision = item.get("decision")
+        decided = card_from_json(decision) if isinstance(decision, Mapping) else CardState(id="")
         out.append(CardState(
             id=f"stale:{item.get('link', '')}", kind="stale_link",
             topic=str(item.get("topic", "")), issue=str(item.get("issue", "")),
-            evidence=str(item.get("path", "")), resolutions=tuple(options), status="open",
+            evidence=str(item.get("path", "")), resolutions=tuple(options), status=decided.status,
+            answers=decided.answers,
             questions=(question,), turn=int(item.get("turn") or 0)))
     return out
 
@@ -192,7 +195,7 @@ def answer_presses(core: Any, session: str) -> list[dict[str, Any]]:
     from plumb.contracts import CARD_PRESS
     from plumb.understand import cards
 
-    sides = (cards.KEEP_THIS, cards.KEEP_OTHER, cards.BOTH)
+    sides = (cards.KEEP_THIS, cards.KEEP_OTHER)
     return [e.payload for e in core.log_read("events", [CARD_PRESS])
             if e.payload.get("session") == session
             and (e.payload.get("answer") != "open"
