@@ -201,7 +201,7 @@ def open_jev_tier(core: Any) -> JevTier | None:
 
 DIAGNOSE_KIND = "diagnose"
 DIAGNOSE_SCHEMA_ID = "diagnose.v1"
-OUTCOMES = ("reword", "back-to-development", "owner")
+OUTCOMES = ("reword", "back-to-development", "owner", "contradicts")
 TURN_NOTE = ("best effort: the latest owner prompt logged before the file last changed; it "
              "is context, not proof that this turn made the change")
 TURN_MAX = 4000
@@ -222,7 +222,7 @@ diagnose_schema: Mapping[str, Any] = _load_diagnose_schema()
 class Diagnosis:
     """What Opus found for one link whose change Sonnet says matters."""
 
-    outcome: str                         # reword | back-to-development | owner
+    outcome: str                         # reword | back-to-development | owner | contradicts
     explanation: str
     topic: str
     proposed_wording: str = ""
@@ -230,6 +230,7 @@ class Diagnosis:
     broken_example: str = ""
     consequences: tuple[str, ...] = ()   # SR-116: one per option, when the answer gives them
     why: str = ""                        # SR-116: why the first option is recommended
+    other: str = ""                      # SR-175 EX-3: the record this one now contradicts
 
 
 def _diagnosis(answer: Mapping[str, Any]) -> Diagnosis | None:
@@ -241,7 +242,9 @@ def _diagnosis(answer: Mapping[str, Any]) -> Diagnosis | None:
         return None
     if outcome == "reword" and not wording:
         return None
-    if outcome == "owner" and not 2 <= len(options) <= 4:
+    other = str(answer.get("other") or "").strip()
+    asks = outcome in ("owner", "contradicts")
+    if asks and not 2 <= len(options) <= 4 or outcome == "contradicts" and not other:
         return None
     raw = answer.get("consequences")
     consequences = tuple(str(c).strip() for c in raw) if isinstance(raw, (list, tuple)) else ()
@@ -249,10 +252,10 @@ def _diagnosis(answer: Mapping[str, Any]) -> Diagnosis | None:
         consequences = ()                # partial consequences are none: the card asks for them
     return Diagnosis(outcome=str(outcome), explanation=explanation,
                      topic=str(answer.get("topic") or "").strip(), proposed_wording=wording,
-                     options=options if outcome == "owner" else (),
+                     options=options if asks else (), other=other,
                      broken_example=str(answer.get("broken_example") or "").strip(),
-                     consequences=consequences if outcome == "owner" else (),
-                     why=str(answer.get("why") or "").strip() if outcome == "owner" else "")
+                     consequences=consequences if asks else (),
+                     why=str(answer.get("why") or "").strip() if asks else "")
 
 
 class ModelDiagnoser:

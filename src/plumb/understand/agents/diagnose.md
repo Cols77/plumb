@@ -25,6 +25,10 @@ If they agree, the code moved away from what the owner wants. Then look at the t
   "owner". Give 2 to 4 short "options" the owner can pick from, such as keeping the change
   and rewording the requirement, or undoing the change.
 
+- If the change makes this requirement disagree with another requirement or decision the
+  owner already confirmed (both can no longer hold), answer "contradicts": put the other
+  record's id in "other" and give 2 to 4 short "options" that say which one wins.
+
 Never send a change back to development on a guess: when unsure, it is "owner".
 
 "explanation" says what is wrong in plain words for the owner: the intent, the requirement,

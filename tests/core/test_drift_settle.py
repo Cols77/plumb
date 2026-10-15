@@ -122,3 +122,38 @@ def test_ex4_a_wording_only_change_is_an_unconfirmed_edit_and_the_link_repinned(
     core = open_core(project)
     assert core.index()["SR-001"].fields["statement"] == "add returns the total."
     assert _state(project) == "current" and stale.read_cards(project, "s1") == []
+
+
+SR2 = SR1.replace("SR-001", "SR-002").replace("Adds numbers", "Never reorders").replace(
+    "add returns the sum.", "operands are never reordered.")
+
+
+def _contradiction(monkeypatch, other: str) -> None:
+    _models(monkeypatch, False, dict(
+        outcome="contradicts", explanation="adding now swaps the operands", topic="Adds numbers",
+        options=("Adding wins", "Never reordering wins"), consequences=("a", "b"), why="x",
+        other=other))
+
+
+def test_ex3_two_confirmed_records_that_contradict_raise_one_card_which_wins(
+        project: Path, write_record, monkeypatch) -> None:
+    write_record(project, SR2)
+    (project / "src" / "calc.py").write_text(REFACTORED, "utf-8")
+    _contradiction(monkeypatch, "SR-002")
+    monkeypatch.setattr(type(open_core(project)), "status", lambda self, ids: {
+        i: SimpleNamespace(confirmation="confirmed") for i in ids})
+    _settle(project)
+    _settle(project)
+    (card,) = stale.read_cards(project, "s1")
+    assert card["by"] == "contradiction" and card["options"] == ["Adding wins",
+                                                                "Never reordering wins"]
+    assert _state(project) == "stale"      # nothing is repinned while the owner decides
+
+
+def test_ex3_a_contradiction_with_an_unconfirmed_record_files_no_card(
+        project: Path, write_record, monkeypatch) -> None:
+    write_record(project, SR2)
+    (project / "src" / "calc.py").write_text(REFACTORED, "utf-8")
+    _contradiction(monkeypatch, "SR-002")
+    _settle(project)
+    assert stale.read_cards(project, "s1") == [] and _state(project) == "stale"

@@ -618,7 +618,12 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
             "proposed_wording": found.proposed_wording, "options": list(found.options),
             "broken_example": found.broken_example, "turn": turn, "card": False,
             "consequences": list(found.consequences), "why": found.why}
-    if found.outcome == "owner":
+    asks = found.outcome == "owner"
+    if found.outcome == "contradicts":   # SR-175 EX-3: only two confirmed records contradict
+        known = core.status([record_id, found.other]) if found.other in core.index() else {}
+        asks = len(known) == 2 and all(s.confirmation == "confirmed" for s in known.values())
+        item["other"] = found.other
+    if asks:
         from plumb import stale
 
         filed = dict(link=link.id, record=record_id, path=path, topic=topic,
@@ -627,7 +632,8 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
         missing = stale.card_missing(filed)
         if not dry_run:
             where = session or stale.current_session(core.root)
-            stale.add_card(core.root, where, by="diagnosis",
+            stale.add_card(core.root, where,
+                           by="contradiction" if found.outcome == "contradicts" else "diagnosis",
                            turn=stale.turn_number(core.root, where), **filed)
             item["card"], item["session"] = True, where
         item["card_missing"] = missing
@@ -644,6 +650,9 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
     elif found.outcome == "reword":
         action = (f"{record_id} disagrees with its intent ({found.explanation}); reword it "
                   f"through plumb capture to: {found.proposed_wording}")
+    elif found.outcome == "contradicts":   # not two confirmed records: nothing to ask which wins
+        action = (f"{record_id} may disagree with {found.other}, but both are not confirmed, so "
+                  f"no card asks which wins: {found.explanation}")
     else:
         asked = f"the turn \"{_clip(turn['text'])}\" ({turn['at']})" if turn else \
             "an unknown turn"
