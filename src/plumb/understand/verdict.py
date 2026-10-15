@@ -109,6 +109,10 @@ def _ask_jev(core: Any, entries: list[Mapping[str, Any]], backend: Any
         return {}, "JEV is not set up"
     if calibration is None:
         return {}, "JEV has no calibration"
+    from plumb.capture.calibrate import form_gap
+
+    if form_gap(core, calibration):      # SR-183: it measured the other question form
+        return {}, str(form_gap(core, calibration))
     cleared: dict[str, dict[str, Any]] = {}
     for entry in entries:
         try:

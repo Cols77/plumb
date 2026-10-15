@@ -91,10 +91,15 @@ def auto_approve_state(core: Core) -> AutoApproveState:
     suspended = bool(configured and calibrated and seen
                      and not same_version(seen, calibrated))
     ready, why = jev_ready(core)
+    from plumb.capture.calibrate import form_gap
+
+    wrong_form = form_gap(core, calibration)
     if not configured:
         reason = "off"
     elif not ready:
         reason = why
+    elif wrong_form:
+        reason = f"{wrong_form}; {CALIBRATE_HINT}"
     elif not passing:
         reason = f"no passing calibration ({CALIBRATE_HINT})"
     elif suspended:

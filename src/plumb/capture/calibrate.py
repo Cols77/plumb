@@ -310,7 +310,9 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
     results = measure(core, items, scores)
     digest = sha256_bytes(canonical_json([[i.record, i.kind, i.label, i.source,
                                            list(i.hypotheses)] for i in items]))
-    payload = {"backend": name, "model_version": version,
+    from plumb.judgment.jev import output_form
+
+    payload = {"backend": name, "model_version": version, "form": output_form(core.config),
                "per_kind": {k: {key: getattr(r, key) for key in (
                    "items", "positives", "real_negatives", "generated_negatives",
                    "generated_counted", "negatives", "threshold", "false_accept", "recall",
@@ -333,6 +335,24 @@ def fingerprint(core: Core) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 - the fingerprint is advisory for the suspension check
         digest = ""
     return {"model": core.config.understand.model, "prompt_digest": digest}
+
+
+def calibration_form(calibration: Any) -> str:
+    """The question form a calibration measured (``yes_no`` when it records none, SR-183)."""
+    return str((calibration.payload.get("form") if calibration is not None else None)
+               or "yes_no")
+
+
+def form_gap(core: Core, calibration: Any) -> str | None:
+    """SR-183: why ``calibration`` may not serve JEV as configured now (it measured the other
+    question form), else None."""
+    from plumb.judgment.jev import output_form
+
+    want = output_form(core.config)
+    if calibration is None or calibration_form(calibration) == want:
+        return None
+    return (f"a calibration for the {want} form is needed (the last one measured "
+            f"{calibration_form(calibration)})")
 
 
 def latest_calibration(core: Core) -> Any:
