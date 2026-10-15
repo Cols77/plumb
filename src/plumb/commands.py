@@ -150,7 +150,7 @@ def _core(args: argparse.Namespace):
 
 
 def cmd_link(command: str, argv: list[str]) -> int:
-    from plumb.links import LinkError, LinkUsageError, parse_cli_target
+    from plumb.links import LinkError, LinkUsageError, live_examples, parse_cli_target
 
     parser = _parser(command, "Add a hash-pinned link from a record to a record or file.")
     parser.add_argument("source", help="source record ID")
@@ -162,6 +162,8 @@ def cmd_link(command: str, argv: list[str]) -> int:
     core = _core(args)
     try:
         target = parse_cli_target(args.target)
+        live = live_examples(core, target.record, args.source) if (
+            args.kind == "supersedes" and target.record) else {}
         link = core.add_link(args.source, args.kind, target, args.example)
     except LinkUsageError as exc:
         print(f"plumb: {exc}", file=sys.stderr)
@@ -169,6 +171,9 @@ def cmd_link(command: str, argv: list[str]) -> int:
     except LinkError as exc:
         print(f"plumb: {exc}", file=sys.stderr)
         return 1
+    for ex, test in live.items():  # SR-164: print only, never refuse
+        print(f"plumb: {target.record}/{ex} is still verified by {test}: move it to "
+              f"{args.source} (capture updates) before retiring {target.record}")
     pin = link.pin
     data = {"link": link.id, "kind": link.kind, "target": args.target,
             "pin": None if pin is None else {"from": pin.source, "to": pin.target}}
@@ -587,7 +592,7 @@ def status_data(core) -> dict:
     confirmation = {"proposed": 0, "confirmed": 0, "unconfirmed-edit": 0}
     for status in statuses.values():
         confirmation[status.confirmation] += 1
-    links = {"current": 0, "stale": 0, "dangling": 0, "unpinned": 0}
+    links = {"current": 0, "stale": 0, "dangling": 0, "unpinned": 0, "retired": 0}
     for status in statuses.values():
         for state in status.links:
             links[state.state] += 1

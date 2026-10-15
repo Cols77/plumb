@@ -11,20 +11,20 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
 - Before editing a file, grep `.plumb/test_map.txt` for it (no map: run `{plumb} tests map`);
   the tests listed cover it. Never rewrite a confirmed example's acceptance test to make it
   pass. When the stop hook asks, run the command it names (`{plumb} tests run --changed`).
+  A workflow agent's stop is held on each stale link its work made: repin, reword or card it.
 - Read back each request in the owner's terms and record it in one call: `{plumb} capture
-  --prompt <digest> --file <doc.json>` (references/capture-doc.md); paste none of its output
-  in your reply. All proposed; it never blocks. Two readings fit: `{plumb} decide --question Q
-  --chosen A --alt B [--matters]`. `<digest>` is the sha256 of the owner's message (12+ hex
-  digits do): `message_digest` of `{plumb} clarify --wait --json` (ready at once, if ordinary).
+  --prompt <digest> --file <doc.json>` (references/capture-doc.md); paste none of its output.
+  All proposed; never blocking. Two readings: `{plumb} decide --question Q --chosen A --alt B`.
+  `<digest>` (sha256 of the owner's message, 12+ hex) is `message_digest` of `{plumb} clarify
+  --wait --json`. Act on capture's "contradicts"/"may change" lines: supersede only when every
+  still-tested example of the old record is covered or moved via `updates`, else reword.
 - Plan each requirement's proof, how the owner sees it working, and show it before done:
   `{plumb} proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
 - Ask with Claude Code's question tool by default; a card (plumb-clarify) only when the answer
   must change the owner's records or needs context, consequences or a diagram.
-- Never decide that the owner approved: only their typed `/plumb approve <IDs>` or plumb's own
-  reader of their next message confirms.
-- Never run `{plumb} approve`, `revoke`, `tests waive`, `{plumb} triage --approve`,
-  `spec approve`, `config auto-approve`, `config show`, `conflict choose`, `turn start`,
-  `hook prompt`, `owner` or `mod`: they are the owner's or plumb's own.
-  `undo`, `go` and `approve` are typed by the owner and done by the hook.
-- Merges and conflict cards: references/merge.md and references/conflicts.md.
-- Commits carry an `SR: SR-###` trailer naming the requirements they serve.
+- Never decide the owner approved: only their typed `/plumb approve <IDs>` or plumb's reader
+  of their next message confirms. Never run `{plumb} approve`, `revoke`, `tests waive`,
+  `{plumb} triage --approve`, `spec approve`, `config auto-approve`, `config show`,
+  `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo`, `go`, `approve`
+  are typed by the owner and done by the hook. Merges, conflict cards: references/merge.md,
+  references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.

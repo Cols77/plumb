@@ -15,7 +15,7 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from plumb.contracts import LinkState
 
 CACHE_REL = ".plumb/cache/linkmap.json"
-VERSION = 1
+VERSION = 2
 DERIVING = frozenset({"derives_from", "decides", "upstream"})
 MAX_NOTICES = 5
 
@@ -78,13 +78,17 @@ def _clean(raw: str) -> str | None:
 
 def build_linkmap(index: Mapping[str, Any]) -> dict[str, Any]:
     from plumb.hashing import target_path
+    from plumb.query import retired_ids
 
     ends: dict[str, list[list[Any]]] = {}
     derived: dict[str, list[list[Any]]] = {}
     records: dict[str, str] = {}
+    retired = retired_ids(index)
     for record_id in sorted(index):
         record = index[record_id]
         records[record.path] = record.id
+        if record_id in retired:  # SR-164: a superseded record's links are not tracked
+            continue
         for link in record.links:
             if link.pin is None:
                 continue
@@ -228,10 +232,15 @@ def notices(items: Sequence[StaleLink], limit: int = MAX_NOTICES) -> list[str]:
 def derived_stale(core: Core, ids: Iterable[str]) -> list[tuple[str, str, str, str]]:
     """``(source, target, link id, kind)`` of every link from a record to one of ``ids``
     whose pin no longer matches that record (it was reworded since the pin)."""
+    from plumb.query import retired_ids
+
     wanted = set(ids)
     index = core.index()
+    retired = retired_ids(index)
     out = []
     for record in index.values():
+        if record.id in retired:
+            continue
         for link in record.links:
             target = link.target.record
             if (target in wanted and target in index and link.kind in DERIVING
@@ -300,10 +309,16 @@ class Row(NamedTuple):
     now: tuple[str, str]
 
 
-def stale_rows(core: Core) -> list[Row]:
-    """Every link that is stale now (an end moved), with its pinned and current hashes."""
+def stale_rows(core: Core, records: Iterable[str] | None = None,
+               only: Collection[str] | None = None) -> list[Row]:
+    """Every link (of ``records``, else of all; ``only``: of these link ids) that is stale
+    now (an end moved), with its pinned and current hashes."""
+    from plumb import links
+
     out = []
-    for state in core.link_states():
+    chosen = None if records is None else list(records)
+    states = core.link_states(chosen) if only is None else links.link_states(core, chosen, only)
+    for state in states:
         if state.state != "stale" or state.current is None or state.link.pin is None:
             continue
         link = state.link
@@ -313,6 +328,49 @@ def stale_rows(core: Core) -> list[Row]:
                        (link.pin.source, link.pin.target),
                        (state.current.source, state.current.target)))
     return out
+
+
+BASE_RECORD_DIRS = (".plumb/decisions", ".plumb/features", ".plumb/intents", ".plumb/ncs",
+                    ".plumb/requirements")
+
+
+def stale_at(root: Path, base: str, rows: Sequence[Row]) -> set[str] | None:
+    """Of ``rows``, the link ids that were already stale at ``base`` (a git ref): the records
+    and the linked files are read from ``base`` into a temporary folder and judged there in
+    one pass (SR-166: only new problems hold). None when ``base`` cannot be read."""
+    import io
+    import subprocess
+    import tarfile
+    import tempfile
+
+    from plumb import links
+    from plumb.api import open_core
+
+    if not rows:
+        return set()
+    wanted = sorted({r.what for r in rows if "/" in r.what or "." in r.what})
+    try:
+        listed = subprocess.run(["git", "ls-tree", "-r", "--name-only", base, "--",
+                                 *BASE_RECORD_DIRS, *wanted], cwd=root, capture_output=True,
+                                text=True, encoding="utf-8", timeout=30,
+                                check=True).stdout.splitlines()
+        tar = subprocess.run(["git", "archive", "--format=tar", base, "--",
+                              *[p for p in listed if p]], cwd=root, capture_output=True,
+                             timeout=60, check=True).stdout
+        with tempfile.TemporaryDirectory(prefix="plumb-base-") as tmp:
+            tarfile.open(fileobj=io.BytesIO(tar)).extractall(tmp, filter="data")
+            core = open_core(Path(tmp))
+            wanted_links = {r.link for r in rows}
+            return {st.link.id for st in links.link_states(core, {r.record for r in rows})
+                    if st.state == "stale" and st.link.id in wanted_links}
+    except Exception:  # noqa: BLE001 - an unreadable base means "cannot tell"
+        return None
+
+
+def new_rows(root: Path, base: str, rows: Sequence[Row]) -> list[Row]:
+    """``rows`` minus the ones already stale at ``base``; all of them when base cannot be read."""
+    old = stale_at(root, base, rows)
+    return list(rows) if old is None else [r for r in rows if r.link not in old]
 
 
 def write_baseline(core: Core, session: str, turn_id: str) -> None:

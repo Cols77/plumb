@@ -325,3 +325,30 @@ def test_cli_prints_the_diagnosis(project: Path, capsys, monkeypatch) -> None:
 def test_config_reads_the_cascade_settings() -> None:
     settings = config_from_mapping({"understand": {"repin_jev_threshold": 0.83}}).understand
     assert settings.repin_jev_threshold == 0.83 and settings.diagnose_model == "opus"
+
+
+@pytest.mark.sr("SR-166")
+def test_sr166_default_runner_lets_the_meaning_judge_gate_when_no_test_covers(project: Path,
+                                                                monkeypatch) -> None:
+    class Lane:
+        def run(self, changed, budget_s=None):
+            return SimpleNamespace(run_id=None)
+
+    monkeypatch.setattr("plumb.verify.open_verify", lambda core: Lane())
+    ok, detail = links.default_runner(open_core(project))(["notes.md"])
+    assert ok and detail == "no test covers notes.md: judged on meaning only"
+
+
+@pytest.mark.sr("SR-166")
+def test_sr166_untested_end_repins_on_meaning_with_the_gap_in_the_note(project: Path) -> None:
+    _edit(project, REFORMATTED)
+    untested = "no test covers src/calc.py: judged on meaning only"
+    result = links.repin_after_tests(open_core(project), LINK, judge=Judge(True),
+                                     runner=lambda paths: (True, untested))
+    assert [c["link"] for c in result.changes] == [LINK]
+    (entry,) = open_core(project).log_read("events", ["repin"])
+    assert entry.payload["note"].endswith(f"(no test gate: {untested})")
+    _edit(project, CHANGED)                       # a changed meaning is still not repinned
+    result = links.repin_after_tests(open_core(project), LINK, judge=Judge(False, "sums"),
+                                     runner=lambda paths: (True, untested))
+    assert result.changes == []

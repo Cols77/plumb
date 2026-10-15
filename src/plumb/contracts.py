@@ -76,7 +76,7 @@ class Record:
 @dataclass(frozen=True)
 class LinkState:
     link: Link
-    state: Literal["current", "stale", "dangling", "unpinned"]
+    state: Literal["current", "stale", "dangling", "unpinned", "retired"]
     moved: Literal["source", "target", "both"] | None = None
     current: Pin | None = None  # current hashes, when both ends exist
 
