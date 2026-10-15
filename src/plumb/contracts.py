@@ -295,7 +295,7 @@ class JudgmentBackend(Protocol):
     # the gated entailment of auto-approval, sp2 8.2)
     version: str                          # resolved model version, "none" otherwise
     def entailment(self, premise: str, hypothesis: str, *, subject: str,
-                   claim_kind: str) -> Judgment: ...       # entailed | not-entailed | unsure
+                   claim_kind: str, quote_only: str | None = None) -> Judgment: ...  # entailed | not-entailed | unsure
     def contradiction(self, prompt: str, record: Record) -> Judgment: ...
     # verdict contradicts | extends | benign
     def choose(self, question: str, options: Sequence[str], *, subject: str,

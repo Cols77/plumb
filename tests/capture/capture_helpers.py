@@ -150,7 +150,8 @@ class CoverageJudge:
     name = "double"
     version = "double-1"
 
-    def entailment(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str):
+    def entailment(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str,
+                   quote_only: str | None = None):
         from plumb.contracts import Judgment
         from plumb.judgment.textjudge import _LABEL, stems
 

@@ -50,6 +50,7 @@ class Item:
     premise: str
     hypotheses: tuple[str, ...]   # every part must be supported (R13 Q3)
     hash: str = ""                # the version of the record judged (the logged score's key)
+    quote_only: str = ""          # why its premise is the quote alone (SR-190), else ""
 
 
 @dataclass
@@ -59,6 +60,7 @@ class KindResult:
     real_negatives: int = 0
     generated_negatives: int = 0
     generated_counted: int = 0
+    quote_only: int = 0           # real items whose premise is the quote alone (SR-190)
     negatives: int = 0            # counted: real + generated up to half
     threshold: float | None = None
     false_accept: float = 0.0
@@ -126,6 +128,7 @@ def variations(item: Item) -> list[Item]:
 
 
 def labelled_set(core: Core) -> list[Item]:
+    from plumb.capture.triage import premise_problem
     from plumb.confirm import checked, remaining
 
     index = core.index()
@@ -172,16 +175,17 @@ def labelled_set(core: Core) -> list[Item]:
         premise, parts = _hypotheses(index, record, prompts)
         if not premise.strip():
             continue
+        thin = (premise_problem(prompts, index, record) or "") if prompts is not None else ""
         status = statuses[record_id]
         latest = standing.get(record_id) or []
         if record_id in revoked:
-            items.append(Item(record_id, kind, "no", "revoked", premise, parts, record.hash))
+            items.append(Item(record_id, kind, "no", "revoked", premise, parts, record.hash, thin))
         elif record_id in auto and status.confirmation == "unconfirmed-edit":
             items.append(Item(record_id, kind, "no", "edited-after-auto", premise, parts,
-                              record.hash))
+                              record.hash, thin))
         elif status.confirmation == "confirmed" and latest and \
                 latest[-1][1] in ("owner", "agent-relayed", "owner-words"):
-            items.append(Item(record_id, kind, "yes", "owner", premise, parts, record.hash))
+            items.append(Item(record_id, kind, "yes", "owner", premise, parts, record.hash, thin))
     generated = [v for item in items if item.label == "yes" for v in variations(item)]
     return items + generated
 
@@ -216,6 +220,8 @@ def measure(core: Core, items: Sequence[Item], scores: Sequence[float]) -> dict[
         result.real_negatives = len(real_no)
         result.generated_negatives = len(gen_no)
         result.items = len(yes) + len(real_no)
+        result.quote_only = sum(bool(i.quote_only) for i, _ in pairs
+                                if not i.source.startswith("gen"))
         result.generated_counted = min(len(gen_no), len(real_no))  # at most half
         result.negatives = len(real_no) + result.generated_counted
         negatives = real_no + gen_no
@@ -319,8 +325,8 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
     payload = {"backend": name, "model_version": version, "form": output_form(core.config),
                "per_kind": {k: {key: getattr(r, key) for key in (
                    "items", "positives", "real_negatives", "generated_negatives",
-                   "generated_counted", "negatives", "threshold", "false_accept", "recall",
-                   "passing", "reasons")} for k, r in results.items()},
+                   "generated_counted", "quote_only", "negatives", "threshold", "false_accept",
+                   "recall", "passing", "reasons")} for k, r in results.items()},
                "labelled_set_digest": digest}
     if source_logged:
         payload["source"] = "logged"
