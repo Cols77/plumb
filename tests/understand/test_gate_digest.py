@@ -15,7 +15,7 @@ from plumb.understand import cardstore, clarify, cmd_clarify, effects, gate, hoo
 
 pytestmark = pytest.mark.sr("SR-169")
 
-TEXT = "let users export their data"
+TEXT = "/plumb clarify let users export their data"  # SR-171: the check runs on the command
 CARD = {"intent": "yes", "topic": "exporting", "gap": True,
         "gaps": [{"id": "format", "question": "Which format?", "suggestions": ["csv", "json"],
                   "blocking": True}]}
