@@ -42,6 +42,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, TextIO
 
+from plumb.approvals import prompt_origin
 from plumb.hosts.claude_code.hookio import (
     HookContext,
     HookOutput,
@@ -87,6 +88,7 @@ def owner_text(text: str) -> str:
 def log_prompt(ctx: HookContext, text: str) -> str:
     """Append the prompt to the session's prompt log and start the turn. Returns the digest."""
     digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    origin, from_name = prompt_origin(text)   # SR-168: as the host marked it
     _append_jsonl(ctx.session_dir / "prompts.jsonl",
                   {"digest": digest, "session": ctx.session_id, "at": _utc_now(),
                    # R13 Q4: "hook" only from a host's prompt hook; `plumb turn start`
@@ -94,7 +96,10 @@ def log_prompt(ctx: HookContext, text: str) -> str:
                    "text": text, "via": str(ctx.extra.get("via") or "hook"),
                    # which host's hook logged it: a hook-logged prompt from a host proves
                    # that host's prompt hook runs (approvals.host_logs_prompts)
-                   "host": str(ctx.extra.get("host") or "claude-code")})
+                   "host": str(ctx.extra.get("host") or "claude-code"), "origin": origin,
+                   **({"from_name": from_name} if from_name else {})})
+    if origin != "owner":   # a peer's message starts no turn
+        return digest
     turn_path = ctx.session_dir / ctx.session_id / "turn.json"
     try:  # a new turn: the touched list holds this turn's edits only
         (turn_path.parent / "touched.txt").unlink()
@@ -388,6 +393,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
         if not text.strip():  # SR-112: a harness notification: no log, no job, no turn
             return HookOutput(text="")
     digest = log_prompt(ctx, text)
+    if prompt_origin(text)[0] != "owner":   # SR-168: logged with its origin, nothing else
+        return HookOutput(text="")
     from plumb.api import open_core
 
     escalations: list[str] = []

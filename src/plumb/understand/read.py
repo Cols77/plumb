@@ -49,6 +49,9 @@ def _utc_now() -> str:
 
 
 def _prompt_entries(core: Any) -> list[Mapping[str, Any]]:
+    """The owner's own entries of the prompt log (SR-168: a peer's message is not one)."""
+    from plumb.approvals import is_owner_entry
+
     out: list[Mapping[str, Any]] = []
     try:
         with open(core.paths.prompts, encoding="utf-8") as handle:
@@ -57,7 +60,7 @@ def _prompt_entries(core: Any) -> list[Mapping[str, Any]]:
                     item = json.loads(line)
                 except ValueError:
                     continue
-                if isinstance(item, Mapping):
+                if isinstance(item, Mapping) and is_owner_entry(item):
                     out.append(item)
     except OSError:
         pass
