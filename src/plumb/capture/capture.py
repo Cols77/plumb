@@ -344,14 +344,17 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
                 rewritten.hash != record.hash:
             again.append(record_id)
     auto: list[str] = []
+    waiting: list[str] = []
     if prompt_digest and written:
         from plumb.capture.autoapprove import gate
 
-        auto = list(gate(core, written, prompt_digest=prompt_digest, backend=backend))
+        auto = list(gate(core, written, prompt_digest=prompt_digest, backend=backend,
+                         said=waiting))
     statuses = core.status(written + updated)
     lines = [f"{rid} {statuses[rid].confirmation}" + (" (confirmed by JEV)" if rid in auto
                                                       else "") for rid in written + updated]
     lines += [f"{rid} was confirmed; this edit needs the owner again" for rid in again]
+    lines += waiting
     if updated:  # SR-111 EX-2: the records that derive from a reworded one may disagree now
         from plumb.stale import derived_lines
 

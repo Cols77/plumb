@@ -128,6 +128,37 @@ def load(root: Path, session: str, *, open_only: bool = True) -> list[CardState]
     return [c for c in cards if c.status in AWAITING] if open_only else cards
 
 
+def grouped(root: Path, session: str) -> dict[str, str]:
+    """``{card id: the principle card that asks for it}`` (SR-172): a grouped card waits for
+    the principle's answer and is not drawn at the turn end."""
+    raw = files.read_json(files.cards_path(root, session).with_name("grouped.json"))
+    return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, Mapping) else {}
+
+
+def group(root: Path, session: str, principle: str, ids: Sequence[str]) -> None:
+    files.write_json_atomic(files.cards_path(root, session).with_name("grouped.json"),
+                            {**grouped(root, session), **dict.fromkeys(ids, principle)})
+
+
+def ungroup(root: Path, session: str, card_id: str) -> None:
+    """Take ``card_id`` out of its principle's group, so it is drawn again (``tidy.undo``)."""
+    left = {k: v for k, v in grouped(root, session).items() if k != card_id}
+    files.write_json_atomic(files.cards_path(root, session).with_name("grouped.json"), left)
+
+
+def reopen(root: Path, session: str, card_id: str) -> None:
+    """Put a withdrawn card back as it was (``tidy.undo``)."""
+    from dataclasses import replace
+
+    if card_id.startswith("stale:"):
+        from plumb import stale
+
+        stale.reopen_card(root, session, card_id.removeprefix("stale:"))
+        return
+    save(root, session, [replace(c, status="open") if c.id == card_id and c.status == "withdrawn"
+                         else c for c in own_cards(root, session)])
+
+
 def withdraw(root: Path, session: str, ids: Sequence[str]) -> None:
     """Withdraw the session's cards ``ids`` (SR-132 EX-4): they confirm nothing and their
     records stay proposed."""

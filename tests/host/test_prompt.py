@@ -498,3 +498,14 @@ def test_owner_text_with_appended_notification_logs_only_the_owner_text(
     assert [e["text"] for e in entries] == ["please fix the stale links"]
     assert entries[0]["digest"] == approvals.prompt_digest("please fix the stale links")
     assert seen == ["please fix the stale links"]
+
+
+@pytest.mark.sr("SR-173")
+def test_the_next_prompt_hands_the_agent_the_stop_hooks_queued_notes(
+        records: Path, hook_input) -> None:
+    notes = records / ".plumb" / "session" / "s1" / "agent_notes.json"
+    notes.parent.mkdir(parents=True, exist_ok=True)
+    notes.write_text(json.dumps(["plumb: SR-003 is also being changed on branch feat-x"]), "utf-8")
+    assert "also being changed on branch feat-x" in _run(records, hook_input, "hello")
+    assert not notes.exists()
+    assert "feat-x" not in _run(records, hook_input, "hello again")

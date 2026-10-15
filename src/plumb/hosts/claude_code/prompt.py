@@ -374,6 +374,19 @@ def stale_before_line(ctx: HookContext) -> Any:
     return Line(text, oneshot=True) if text else None
 
 
+def agent_notes(ctx: HookContext) -> list[Any]:
+    """SR-173: the warnings the stop hook queued (``stop.queue_notes``), read once."""
+    from plumb.present.delta import Line
+
+    path = ctx.session_dir / ctx.session_id / "agent_notes.json"
+    notes = read_json(path)
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    return [Line(str(n), oneshot=True) for n in notes] if isinstance(notes, list) else []
+
+
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
     """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
@@ -413,6 +426,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
                            cap_lines=int(hooks.prompt_lines))
     trace = untraced_line(emitter, untraced_queued(ctx, core), core)
     tail = [line for line in (trace, cards_waiting_line(ctx), stale_before_line(ctx)) if line]
+    tail += agent_notes(ctx)
     # oneshot: escalation_lines advanced the queue offset past them already
     queued = [Line(line, oneshot=True) for line in escalations]
     ctx.keep(emitter.add([*queued, *tail], commit=False))

@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from plumb.api import Core
 
 PROBE_TIMEOUT_S = 2.0
-CARD_MODES = ("full", "compact", "off")
 
 
 class ConfigRefused(ValueError):
@@ -283,32 +282,5 @@ def config_show(core: Core) -> list[str]:
              + (" (no owner event: off)" if state.mirror_mismatch else ""),
              f"  calibrated against: {state.calibrated_version or 'none'}; last model seen: "
              f"{state.model_version or 'none'}"]
-    present = getattr(core.config, "present", None)
-    card = getattr(present, "card", None) if present is not None else None
-    lines.append(f"card: {card or _raw_card(core) or 'compact (default)'}")
     lines.append(f"judgment backend: {core.config.judgment.backend}")
     return lines
-
-
-def _raw_card(core: Core) -> str | None:
-    import yaml
-
-    try:
-        data = yaml.safe_load((core.paths.config).read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
-        return None
-    present = data.get("present") if isinstance(data, dict) else None
-    return str(present.get("card")) if isinstance(present, dict) and present.get("card") \
-        else None
-
-
-def set_card(core: Core, mode: str) -> str:
-    """``plumb config card full|compact|off`` (R9: the card's verbosity)."""
-    from plumb.capture.configfile import update_section
-
-    if mode not in CARD_MODES:
-        from plumb.capture.records import CaptureError
-
-        raise CaptureError(f"card is one of {', '.join(CARD_MODES)}")
-    update_section(core.root, "present", {"card": mode})
-    return mode

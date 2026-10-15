@@ -395,13 +395,15 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     from plumb.awareness.turn import at_stop
 
     aware = at_stop(core, changed, touched_ids, ctx.deadline)
-    stale_reasons, _ = stale_hold(ctx, core, index, turn, turn_start)
+    stale_reasons, stale_notes = stale_hold(ctx, core, index, turn, turn_start)
 
     blocked = _block_reasons(ctx, core, index, turn, turn_path, active, v, changed, asked,
                              stated_ids, told, queued, note_path, skipped, aware,
                              stale_reasons)
     if blocked:
         return blocked
+    queue_notes(ctx, [*stale_notes, *(line.text for line in aware),
+                      *([skip_notice(skipped)] if skipped else [])])
 
     return _cards(ctx, core, index, turn, v, test_cards, stated_ids, stamp)
 
@@ -505,6 +507,16 @@ def _cards(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], v: 
     return HookOutput(system_message="\n\n".join(text)) if text else None
 
 
+def queue_notes(ctx: HookContext, notes: Sequence[str]) -> None:
+    """SR-173: a stop that blocks nothing cannot tell the agent its warnings, so they wait for
+    the next prompt hook (``prompt.agent_notes``), panel or not. Never fails the stop."""
+    if notes:
+        try:
+            write_json_atomic(ctx.session_dir / ctx.session_id / "agent_notes.json", list(notes))
+        except OSError:
+            pass
+
+
 def note_skipped(root: Path, skipped: Sequence[str]) -> None:
     """A step skipped by the budget is named in the status line (``status.json``'s
     ``skipped``), never in the owner's text (cards only)."""
@@ -578,6 +590,15 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         if state.before and not stale.listed(ctx.root, ctx.session_id, key):
             before = [stale.before_line(state.before)]
         open_rows = stale.unresolved(core, ctx.session_id, state)
+        waiting: list[str] = []
+        if open_rows:   # SR-175: drift is checked for coverage and repinned before any hold
+            no_judge: set[str] = set()
+            waiting = stale.settle_drift(core, ctx.session_id, open_rows, no_judge)
+            state = stale.turn_state(core, ctx.session_id, str(turn_id) if turn_id else None)
+            # SR-174, DEC-060: a check that waits for the judge does not hold the turn
+            open_rows = [r for r in stale.unresolved(core, ctx.session_id, state)
+                         if r.record not in no_judge]
+        stale.card_lost_tests(core, ctx.session_id)
         held = stale.hold_count(ctx.root, ctx.session_id, str(turn_id))
         limit = int(core.config.hooks.stale_holds_max)
         if ctx.extra.get("host"):
@@ -590,11 +611,12 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         if not open_rows:
             if held:
                 stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), 0)
-            return [], []
+            return [], waiting
         if held < limit:
             stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), held + 1)
             missing = stale.incomplete_cards(ctx.root, ctx.session_id)
-            return [*stale.hold_lines(open_rows, held + 1, limit, missing), *before], []
+            return [*waiting, *stale.hold_lines(open_rows, held + 1, limit, missing),
+                    *before], []
         from plumb.present.owner_text import STALE_HOLD_ENDED
 
         notes = []
@@ -604,7 +626,7 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
             stale.add_card(ctx.root, ctx.session_id, turn=int(turn_start),
                            **stale.default_card(row, title, other))
             notes.append(STALE_HOLD_ENDED.format(n=held, title=title))
-        return [], notes
+        return [], [*waiting, *notes]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return [], []
 
