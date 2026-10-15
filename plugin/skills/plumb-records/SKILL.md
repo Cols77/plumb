@@ -4,22 +4,22 @@ description: Grounds work in this repository's plumb records (the owner's intent
 ---
 Run plumb as `plumb`. The owner's intent lives in files; read it before acting.
 
-- First, on every owner request, run `plumb clarify --wait`, before reading code or planning:
-  edits are refused until it answers. plumb-clarify says what to do with each answer.
+- Only after the owner types `/plumb clarify <words>`, run `plumb clarify --wait` before
+  reading code (plumb-clarify has its answers); an ordinary message is read back in your reply.
 - `.plumb/` holds INT (the owner's words), SR (given/when/then examples), DEC, FEAT and NC:
   `plumb brief` (intent now), `show <ID>` (examples, tests), `explain <words>` (why it is).
-- Grep `.plumb/test_map.txt` before editing a file (no map: `plumb tests map`). Never rewrite
-  a confirmed example's test to pass. If the stop hook asks, run `plumb tests run --changed`.
+- Before editing a file, grep `.plumb/test_map.txt` for it (no map: run `plumb tests map`);
+  the tests listed cover it. Never rewrite a confirmed example's acceptance test to make it
+  pass. When the stop hook asks, run the command it names (`plumb tests run --changed`).
   A workflow agent's stop is held on each stale link its work made: repin, reword or card it.
-- Read back each request in the owner's terms; record it in one call, all proposed, never
-  blocking, output not pasted: `plumb capture --prompt <digest> --file <doc.json>`
-  (references/capture-doc.md); `<digest>` (sha256 of the owner's message) is `message_digest`
-  in `plumb clarify --wait --json`. Two readings: `plumb decide --question Q --chosen A`.
-- Act on capture's "contradicts" and "may change" lines in that capture: supersede only when
-  every still-tested example of the old record is covered by the new or moved via `updates`,
-  else reword; never supersede a newer or proposed record by an older; undecided: card.
-- Plan and show each requirement's proof before done: `plumb proof SR-### --plan ...
-  --kind live-session|hook|command|other`, then `--evidence`.
+- Read back each request in the owner's terms and record it in one call: `plumb capture
+  --prompt <digest> --file <doc.json>` (references/capture-doc.md); paste none of its output.
+  All proposed; never blocking. Two readings: `plumb decide --question Q --chosen A --alt B`.
+  `<digest>` (sha256 of the owner's message, 12+ hex) is `message_digest` of `plumb clarify
+  --wait --json`. Act on capture's "contradicts"/"may change" lines: supersede only when every
+  still-tested example of the old record is covered or moved via `updates`, else reword.
+- Plan each requirement's proof, how the owner sees it working, and show it before done:
+  `plumb proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
 - Ask with Claude Code's question tool by default; a card (plumb-clarify) only when the answer
   must change the owner's records or needs context, consequences or a diagram.
 - Never decide the owner approved: only their typed `/plumb approve <IDs>` or plumb's reader

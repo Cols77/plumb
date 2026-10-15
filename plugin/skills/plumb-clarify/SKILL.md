@@ -1,12 +1,15 @@
 ---
 name: plumb-clarify
-description: Clarifies the owner's intent before building, scaled to the request. Use on every owner request, to act on what `clarify --wait` answers (ready, a card, a spec session offered, couldn't check, waiting), and to choose the depth and the questions whenever a request creates or changes intent (a new feature, a changed behaviour, an ambiguous ask). Not for choosing questions on tidy-ups or on intent the owner already confirmed; the --wait step still comes first there.
+description: Clarifies the owner's intent before building, scaled to the request. Use on every owner request to read it back, and after the owner types /plumb clarify to act on what `clarify --wait` answers (ready, a card, a spec session offered, couldn't check, waiting), and to choose the depth and the questions whenever a request creates or changes intent (a new feature, a changed behaviour, an ambiguous ask). Not for choosing questions on tidy-ups or on intent the owner already confirmed; the --wait step still comes first there.
 ---
 # plumb-clarify
 
 Make what gets built match what the owner means, with the fewest questions.
 
-Your first action on every owner request is `plumb clarify --wait`. Run it before you read
+On an ordinary message plumb runs no check: read the request back in your own reply (see
+Depth) and record it as proposed; `clarify --wait --json` there only gives the message
+digest. Only when the owner types `/plumb clarify <words>` is your first action
+`plumb clarify --wait`. Run it before you read
 code, plan or edit anything: edits are refused until it has answered, and do not build
 until the owner has answered any card it returns. It collects the check plumb started on the
 owner's message and says which of five things happened:
