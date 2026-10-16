@@ -36,7 +36,7 @@ def test_a_retired_requirement_counts_nowhere(repo: Path, write_record) -> None:
     write_record(repo, NEW)
     data = status_data(open_core(repo))
     assert data["records"]["requirement"] == 1
-    assert data["awaiting"] == ["SR-002"]
+    assert data["awaiting"] == ["SR-002"] and "SR-001" not in data["failing"]
 
 
 def test_triage_rates_no_retired_record(repo: Path, write_record) -> None:
