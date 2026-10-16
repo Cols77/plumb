@@ -370,6 +370,8 @@ def _after_round(core: Any, record: Any, raw: Mapping[str, Any], payload: Mappin
 
     if payload["verdict"] != "supported" or payload["contradicts"] or payload["beyond"]:
         return None
+    if payload.get("answer_corrects"):  # SR-252 EX-4: a corrected reading is never approved
+        return None
     if raw.get("by") == JEV and jev is not None and jev.get("clears") and not in_set:
         auto = after_round(core, record, jev)
         if auto is not None:

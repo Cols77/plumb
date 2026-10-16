@@ -108,3 +108,23 @@ def test_too_few_real_no_examples_show_not_passing_with_the_four_counts(
     assert re.search(r"intent-readback: not passing; 21 of your decisions \(0 from your "
                      r"answers\), 'no' examples 1 real \+ 1 generated counted \(of \d+\); "
                      r"threshold 0\.\d{3}$", line.strip()), line
+
+
+@pytest.mark.sr("SR-252")
+def test_a_clear_supported_verdict_whose_answer_corrects_is_not_approved_and_is_a_no(
+        world: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-252 EX-4: a verdict of supported and clear that says the owner's answer corrects the
+    reading writes no approval, and the correction stays one real 'no'."""
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    configure(world)
+    owner_answers(world, ["SR-001"], answer="Every page")
+    model = FakeDispatcher({"judge": {"verdicts": [
+        {"id": "SR-001", "verdict": "supported", "confidence": 0.95, "beyond": [],
+         "contradicts": [], "clear": True, "answer_corrects": True}]}})
+    _, _, applied = judged(open_core(world), ["SR-001"], StubJev(0.85), model)
+    assert [e for e in applied.entries if e["kind"] == "approval"] == []
+    assert len([e for e in applied.entries if e["kind"] == "rejection"]) == 1
+    write(world, applied)
+    items = [i for i in labelled_set(open_core(world)) if i.record == "SR-001"
+             and not i.source.startswith("gen")]
+    assert [(i.label, i.source) for i in items] == [("no", "answer")]

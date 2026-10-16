@@ -170,7 +170,7 @@ def labelled_set(core: Core) -> list[Item]:
                     or (record_id, pin) in seen_rejected:
                 continue
             current = index.get(record_id)
-            if current is not None and current.hash == pin and \
+            if not answered and current is not None and current.hash == pin and \
                     statuses[record_id].confirmation == "confirmed":
                 continue  # the owner went on to confirm this very version
             seen_rejected.add((record_id, pin))
