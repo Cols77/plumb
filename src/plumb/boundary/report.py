@@ -402,8 +402,9 @@ def render(report: MergeReport) -> list[str]:
                        "approved: the judge approves them on your behalf or asks you a "
                        "question with the question tool")
         if report.new_exempt:
-            out.append("plumb: the new trace.exempt globs wait for approval the same way; "
-                       "otherwise remove them")
+            # shortcut: no route approves a glob since plumb approve went, until SR-288 picks one
+            out.append("plumb: nothing can approve a new trace.exempt glob yet (the judge "
+                       "approves records only); remove it to merge")
         if report.untraced:
             out.append("plumb: for the untraced changes, ask the agent to read them back and "
                        "record a requirement linked implemented_by them; or, if they need no "

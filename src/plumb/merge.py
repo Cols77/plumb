@@ -12,7 +12,8 @@ Over ``<base>..HEAD`` plus uncommitted changes:
    test of an example the owner confirmed) changed since the approval pinned its content
    waits as "acceptance test changed", shown with the example and the test's diff. A
    ``trace.exempt`` glob added in the range is not
-   honoured until the owner confirms it (``plumb approve --exempt``), and a path that was
+   honoured until an approval entry lists it (no route writes one since ``plumb approve``
+   went: SR-288), and a path that was
    source under the merge base's config stays source, so a config edit hides nothing;
 2. the approvals and revocations added in the range are listed, agent-relayed ones marked with
    the prompt digest they cite;

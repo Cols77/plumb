@@ -41,7 +41,8 @@ CONFIG_TEMPLATE = """\
 # escalation: {max_requirements: 3, max_features: 1, diff_lines: 400, diff_files: 10}
 # trace:
 #   exempt: []                 # source globs that need no requirement (untraced changes);
-#                              # a glob added on a branch waits for plumb approve --exempt
+#                              # a glob added on a branch is not honoured at the merge;
+#                              # nothing approves one yet (SR-288)
 """
 
 CLAIMS_TEMPLATE = """\
