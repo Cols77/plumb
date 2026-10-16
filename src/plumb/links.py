@@ -622,6 +622,8 @@ def repin_after_tests(core: Core, selector: str, *,
             continue
         if meaning.unchanged is None:
             result.refused.append((link.id, f"{NO_MODEL}: {meaning.reason}"))
+            if meaning.unreachable:
+                result.unreachable = meaning.reason
         elif not meaning.unchanged:
             _diagnose(core, result, record, link, shown, meaning.reason, diagnoser,
                       session, dry_run, auto)
