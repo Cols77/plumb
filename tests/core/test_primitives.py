@@ -70,7 +70,7 @@ def test_find_root_prefers_plumb_dir(tmp_path: Path) -> None:
 
 def test_config_defaults_without_file(tmp_path: Path) -> None:
     config = load_config(tmp_path)
-    assert config.verify.turn_budget_s == 15
+    assert config.verify.turn_budget_s == 60  # DEC-078
     assert config.verify.hard_limit_factor == 1.5
     assert config.hooks.brief_lines == 30
     assert "ok" in config.approve.affirmations

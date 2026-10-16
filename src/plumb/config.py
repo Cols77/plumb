@@ -215,6 +215,14 @@ class UnderstandConfig:
 
 
 @dataclass(frozen=True)
+class MergeConfig:
+    """The merge boundary (``plumb.boundary.cli.merge_settings``)."""
+
+    default_base: str | None = None   # unset: the detected default branch
+    prepush_run_full: bool = True
+
+
+@dataclass(frozen=True)
 class Config:
     source_dirs: tuple[str, ...] = ("src", "tests")
     # whether config.yaml names source_dirs; when it does not, plumb.trace also counts a code
@@ -236,6 +244,7 @@ class Config:
     resolve: ResolveConfig = field(default_factory=ResolveConfig)
     awareness: AwarenessConfig = field(default_factory=AwarenessConfig)
     understand: UnderstandConfig = field(default_factory=UnderstandConfig)
+    merge: MergeConfig = field(default_factory=MergeConfig)
 
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
@@ -243,7 +252,7 @@ _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfi
            "triage": TriageConfig, "auto_approve": AutoApproveConfig,
            "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig,
            "present": PresentConfig, "resolve": ResolveConfig,
-           "awareness": AwarenessConfig, "understand": UnderstandConfig}
+           "awareness": AwarenessConfig, "understand": UnderstandConfig, "merge": MergeConfig}
 
 
 def _build(cls: type, data: Mapping[str, Any]) -> Any:

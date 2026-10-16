@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -35,6 +36,19 @@ links:
   to: SR-001
 ---
 """
+
+
+def scripted_judge(monkeypatch, where: Path) -> None:
+    """DEC-088: since DEC-060 / SR-174 the stale check waits without a judge, so these tests
+    get a scripted one (``PLUMB_FAKE_DISPATCH``) that says the edit changed the meaning and
+    brings it to the owner on a card lacking its consequences, which does not resolve the
+    link (SR-116), so the stale hold still blocks."""
+    script = where / "judge.json"
+    script.write_text(json.dumps({
+        "repin": {"verdict": "changed", "reason": "the value changed", "confidence": 0.9},
+        "diagnose": {"outcome": "owner", "explanation": "the value changed", "topic": "",
+                     "options": ["keep the new value", "undo the edit"]}}), "utf-8")
+    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
 
 
 def git(root: Path, *args: str) -> None:

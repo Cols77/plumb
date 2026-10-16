@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
-from hosts_helpers import make_project
+from hosts_helpers import make_project, scripted_judge
 
 from plumb.cli import main
 
@@ -53,6 +53,7 @@ def test_turn_start_reads_prompt_file(project: Path, tmp_path: Path, capsys) -> 
 
 def test_turn_end_prints_summary_and_block_exit_0(project: Path, monkeypatch,
                                                   capsys) -> None:
+    scripted_judge(monkeypatch, project.parent)
     monkeypatch.setattr("sys.stdin", io.StringIO("change add"))
     assert main(["turn", "start", "--session", "s1"]) == 0
     capsys.readouterr()

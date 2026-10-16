@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # End-to-end allowance includes process startup and filesystem scanning on Windows.
 # The owner requested this increase; configured in-process hook budgets are unchanged.
 HOOK_LIMIT_MS = 5000
+STOP_LIMIT_MS = 20_000  # DEC-078: the stop hook's soft budget is 20 s
 
 pytestmark = [pytest.mark.sr("SR-275"), pytest.mark.sr("SR-225"), pytest.mark.sr("SR-265")]
 
@@ -121,7 +122,12 @@ def adopted(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> Path:
     return repo
 
 
-def test_session_through_installed_hooks(adopted: Path) -> None:
+def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # DEC-088: Stop judges the stale link's meaning; a scripted judge stands in for 'claude -p'
+    script = adopted.parent / "judge.json"
+    script.write_text(json.dumps({"repin": {"verdict": "unchanged", "confidence": 0.9,
+                                            "reason": "only a comment was appended"}}), "utf-8")
+    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
     driver = _driver()
     steps = driver.drive(
         adopted, edit="src/pkg/mod.py",
@@ -182,7 +188,8 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
     # Every hook stays within the integration allowance; the test run has its own bound.
     for step in steps:
         if step.name != "covering tests":
-            assert step.ms < HOOK_LIMIT_MS, (step.name, step.ms)
+            limit = STOP_LIMIT_MS if step.name.startswith("Stop") else HOOK_LIMIT_MS
+            assert step.ms < limit, (step.name, step.ms)
     assert run.ms < 120_000
 
 

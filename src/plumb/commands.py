@@ -17,7 +17,7 @@ CONFIG_TEMPLATE = """\
 # source_dirs: [src, tests]      # unset: also any code file outside tests, docs and dot dirs
 # test_dirs: [tests]
 # verify:
-#   turn_budget_s: 15
+#   turn_budget_s: 60
 #   hard_limit_factor: 1.5
 #   fill_fraction: 0.65        # estimates (scaled by observed pace) fill 65 % of the budget
 #   sample_size: 10
