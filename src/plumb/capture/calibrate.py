@@ -1,5 +1,6 @@
-"""``plumb jev calibrate``: the backend measured on the owner's own decisions before any
-auto-approval (R12.1, R13 Q1; sp2 8.3, SR-042, DEC-018).
+"""``plumb jev calibrate``: the backend measured on the owner's own decisions (R12.1, R13 Q1;
+sp2 8.3, SR-042, DEC-018). A passing calibration raises the fast track's floor to its
+threshold; none is needed for the fast track (DEC-143).
 
 The labelled set is built from the log, per record kind (claim kind ``intent-readback`` for
 INT read-backs, ``example-restatement`` for requirements: their wording and every example):

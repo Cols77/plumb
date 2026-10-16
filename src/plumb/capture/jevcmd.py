@@ -5,8 +5,7 @@
 plumb never reads, prints or stores the secret. ``config auto-approve on|off`` writes the
 owner's ``config`` event through ``approvals.require_owner`` (refused under the session marker
 and outside an interactive terminal, on every host) and the ``config.yaml`` mirror; ``on``
-refuses, writing nothing, without JEV, its credential, or a passing calibration for the
-current resolved model version.
+refuses, writing nothing, without JEV or its credential (DEC-143: no calibration is needed).
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from plumb.capture.autoapprove import CALIBRATE_HINT, RECALIBRATE_HINT
+from plumb.capture.autoapprove import CALIBRATE_HINT
 
 if TYPE_CHECKING:
     from plumb.api import Core
@@ -224,12 +223,11 @@ def _mirror(core: Core, settings: Mapping[str, Any]) -> None:
 
 def auto_approve(core: Core, on: bool, *, backend: str = "jev", min_probability: float = 0.9,
                  min_confidence: str = "high") -> Any:
-    """The owner's switch. ``on`` checks JEV, its credential and a passing calibration for
-    the resolved model version first (exit 1, nothing written), then asks y/N in the owner's
-    terminal (``require_owner``)."""
+    """The owner's switch. ``on`` checks JEV and its credential first (exit 1, nothing
+    written; DEC-143: no calibration is needed), then asks y/N in the owner's terminal
+    (``require_owner``)."""
     from plumb.approvals import refuse_under_marker, require_owner
     from plumb.capture.autoapprove import jev_ready
-    from plumb.capture.calibrate import latest_calibration
 
     command = f"config auto-approve {'on' if on else 'off'}"
     refuse_under_marker(command)
@@ -243,19 +241,9 @@ def auto_approve(core: Core, on: bool, *, backend: str = "jev", min_probability:
         ready, why = jev_ready(core)
         if not ready:
             raise ConfigRefused(why)
-        calibration = latest_calibration(core)
-        per_kind = (calibration.payload.get("per_kind") or {}) if calibration else {}
-        if not any(isinstance(r, Mapping) and r.get("passing") for r in per_kind.values()):
-            raise ConfigRefused(f"no passing calibration ({CALIBRATE_HINT})")
-        reachable, version, note = _probe(core)
+        reachable, _, note = _probe(core)
         if not reachable:
             raise ConfigRefused(f"JEV did not answer ({note})")
-        measured = calibration.payload.get("model_version")
-        from plumb.judgment.tiers import same_version
-
-        if not same_version(version, measured):
-            raise ConfigRefused(f"the calibration measured {measured}, JEV now resolves "
-                                f"{version} ({RECALIBRATE_HINT})")
     require_owner(command, f"turn auto-approval {'ON' if on else 'off'}"
                   + (f" (jev, min probability {min_probability}, min confidence "
                      f"{min_confidence}) for records restating your own words" if on else "")
@@ -270,8 +258,8 @@ def auto_approve_typed(core: Core, on: bool, *, prompt_digest: str, quote: str) 
     ``config`` event the terminal writes, ``via: typed`` with the command as its proof (the
     prompt hook runs under the session marker). The caller (``typed.switch_now``) checked
     that the hook logged exactly that command. Thresholds the owner set in their terminal
-    are kept; whether it takes effect (JEV, its credential, a passing calibration for the
-    model) is ``auto_approve_state``'s, as for the terminal's switch."""
+    are kept; whether it takes effect (JEV and its credential) is ``auto_approve_state``'s,
+    as for the terminal's switch."""
     from plumb.capture.autoapprove import owner_config
     from plumb.capture.ownerconfig import TYPED_VIA
 

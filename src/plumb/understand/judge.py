@@ -361,8 +361,8 @@ def _after_round(core: Any, record: Any, raw: Mapping[str, Any], payload: Mappin
                  jev: Mapping[str, Any] | None, in_set: bool
                  ) -> tuple[str, dict[str, Any]] | None:
     """``(by, auto)`` when the record the owner answered about is clear after the round: a
-    ``supported`` verdict with nothing beyond or contradicting, given by JEV clearing it (a
-    passing calibration, above max(0.9, its threshold); never alone for a record of an
+    ``supported`` verdict with nothing beyond or contradicting, given by JEV clearing it
+    (above max(0.9, its calibrated threshold); never alone for a record of an
     escalated set), else by the judge model saying the intent is clear (SR-248 EX-4, EX-5).
     None: the next questions follow."""
     from plumb.capture.autoapprove import after_round

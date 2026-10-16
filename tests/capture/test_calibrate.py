@@ -53,12 +53,10 @@ def test_fewer_than_twenty_decisions_is_not_passing(repo: Path, write_record, mo
     result = entry.payload["per_kind"]["intent-readback"]
     assert not result["passing"] and "18 of your decisions, 20 needed" in result["reasons"]
     capsys.readouterr()
-    assert run(repo, "config", "auto-approve", "on") == 1  # EX-1: on refuses
-    refused = capsys.readouterr().err
-    assert "no passing calibration" in refused
-    assert "/plumb jev calibrate" in refused  # R14: the slash command, never the CLI
-    assert "plumb jev calibrate" not in refused.replace("/plumb jev calibrate", "")
-    assert "config" not in event_kinds(repo)
+    assert run(repo, "config", "auto-approve", "on") == 0  # EX-1 (DEC-143): on needs none
+    from plumb.capture.autoapprove import auto_approve_state
+
+    assert auto_approve_state(open_core(repo)).effective and "config" in event_kinds(repo)
 
 
 def test_generated_no_examples_count_up_to_half(repo: Path, write_record, monkeypatch,

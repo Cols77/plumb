@@ -69,8 +69,7 @@ def test_ex3_a_yes_no_calibration_does_not_serve_the_choice_form(
     assert calibration.payload["form"] == "yes_no"
     set_form(repo, stub, "choice")
     state = auto_approve_state(open_core(repo))
-    assert not state.effective and "choice form" in state.reason
-    assert "calibration" in state.reason
+    assert state.effective             # DEC-143: the floor alone; the calibration is unused
     text = "\n".join(status_lines(jev_status(open_core(repo))))
     assert "calibration for the choice form is needed" in text
     stub.close()
@@ -78,7 +77,8 @@ def test_ex3_a_yes_no_calibration_does_not_serve_the_choice_form(
 
 def test_the_verdict_cascade_does_not_use_a_calibration_of_the_other_form(
         repo: Path, write_record, monkeypatch) -> None:
-    """JEV is still asked and its score kept; nothing clears on the other form's threshold."""
+    """JEV is still asked and its score kept; the other form's threshold is not used, the
+    floor is 0.9 (DEC-143)."""
     from plumb.judgment import get_backend
     from plumb.understand import verdict
 
@@ -89,5 +89,6 @@ def test_the_verdict_cascade_does_not_use_a_calibration_of_the_other_form(
         {"digest": "sha256:" + "1" * 64, "text": "please build feature alphaa"}]}}
     scored, why = verdict._ask_jev(core, [entry], get_backend(core, hook=False))
     assert why == "" and scored["INT-100"]["score"] == 0.9
-    assert not scored["INT-100"]["clears"] and scored["INT-100"]["threshold"] is None
+    assert not scored["INT-100"]["clears"]          # 0.9 is not strictly above the floor
+    assert scored["INT-100"]["threshold"] == 0.9 and scored["INT-100"]["calibration"] is None
     stub.close()

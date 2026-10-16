@@ -60,23 +60,23 @@ def test_an_equivalent_model_name_does_not_suspend(ready) -> None:
     run_judge_job(repo, [intent])
     assert state_of(repo, intent) == "confirmed"
     state = auto_approve_state(open_core(repo))
-    assert not state.suspended and state.reason == "on"
+    assert state.reason == "on"
     from plumb.validate import validate
 
     assert not [f for f in validate(open_core(repo)) if f.severity == "error"]
 
 
 @pytest.mark.sr("SR-242")
-def test_a_judge_model_change_after_a_logged_calibration_suspends_settling(ready) -> None:
-    """SR-186 EX-4: the fingerprint's judge model differs from understand.judge_model now."""
+def test_a_judge_model_change_after_a_logged_calibration_keeps_the_fast_track(ready) -> None:
+    """SR-242 EX-10 under DEC-143: the fingerprint's judge model differs from
+    understand.judge_model now; nothing is suspended, the fast track stays on."""
     from plumb.capture.calibrate import fingerprint
 
     repo, _ = ready
     core = open_core(repo)
-    assert not auto_approve_state(core).suspended
     core.log_append("events", "calibration", {
         "backend": "jev", "model_version": "jev-1.13.0", "source": "logged",
         "per_kind": {"intent-readback": {"passing": True, "threshold": 0.5}},
         **fingerprint(core), "model": "sonnet"})          # made while judge_model was sonnet
     state = auto_approve_state(core)
-    assert state.suspended and state.reason.startswith("auto-approve suspended")
+    assert state.effective and state.reason == "on"
