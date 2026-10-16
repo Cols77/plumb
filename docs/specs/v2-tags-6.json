@@ -1,0 +1,346 @@
+[
+ {
+  "id": "DEC-001",
+  "behaviour": "The append-only logs are two hash-chained JSONL streams, events and evidence, merged by union in git.",
+  "theme": "records-and-links",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-002",
+  "behaviour": "The agent is kept from running plumb approve by declarative deny rules plus the CLI session-marker check.",
+  "theme": "confirmation",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-003",
+  "behaviour": "An approval the agent relays is recorded by plumb relay; plumb approve is the owner's alone.",
+  "theme": "confirmation",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-004",
+  "behaviour": "Prompt digests go to gitignored session state and are copied into the committed log only when an approval cites them.",
+  "theme": "confirmation",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "DEC-074 adds worktree lookup; compatible."
+ },
+ {
+  "id": "DEC-005",
+  "behaviour": "Each test run appends one compact evidence entry to the committed evidence log; the cache holds only a reuse index.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-006",
+  "behaviour": "The stop hook blocks once per turn asking the agent to run the changed covering tests; the hook never runs pytest.",
+  "theme": "hooks-and-budgets",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "Test time allowance later set by DEC-078."
+ },
+ {
+  "id": "DEC-007",
+  "behaviour": "The sub-project 1 commands are validate, tests map, tests run, hooks install and statusline, with concept names as aliases.",
+  "theme": "other",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-008",
+  "behaviour": "The session brief is about 30 lines with a hard cap of 40.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-009",
+  "behaviour": "Per-turn tests have a 15 s budget with a hard limit of 1.5 times that.",
+  "theme": "hooks-and-budgets",
+  "holds": "superseded",
+  "superseded_by": "DEC-078",
+  "note": "DEC-078 sets covering tests at 60 s per turn."
+ },
+ {
+  "id": "DEC-010",
+  "behaviour": "A test node that passed or flaked earlier and now fails is a regression even if its source changed; only a new red test is exempt.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-011",
+  "behaviour": "The minimal importer brings every imported record in as proposed, never approved.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-012",
+  "behaviour": "Links are stored in their source record's links list, with plumb link as the command.",
+  "theme": "records-and-links",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-013",
+  "behaviour": "Sub-project 1 is built core first, then bootstrap, then three lanes in parallel.",
+  "theme": "parallel-work",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Past build ordering."
+ },
+ {
+  "id": "DEC-014",
+  "behaviour": "Sub-projects 2 to 5 are built by a contracts phase alone, then five lanes in parallel on disjoint files.",
+  "theme": "parallel-work",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Past build ordering."
+ },
+ {
+  "id": "DEC-015",
+  "behaviour": "The importer completion's requirements sit in FEAT-004 beside the other host adapters.",
+  "theme": "records-and-links",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Placement decision for a past build."
+ },
+ {
+  "id": "DEC-016",
+  "behaviour": "Only the owner turns auto-approval on or off, through a logged config event the agent can never write.",
+  "theme": "confirmation",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "Later DEC-064/073 govern what auto-approval covers."
+ },
+ {
+  "id": "DEC-017",
+  "behaviour": "One grouped confirmation line names up to five records, then +N more, and the owner's ok approves exactly that pinned list.",
+  "theme": "confirmation",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "DEC-067 asks once per principle; related."
+ },
+ {
+  "id": "DEC-018",
+  "behaviour": "Calibration per record kind needs 20 owner decisions and 5 'no' examples, with JEV wrongly accepting none and accepting half of confirmed records.",
+  "theme": "judging-and-jev",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-019",
+  "behaviour": "Triage, config and jev commands and their data are built in capture; their owner-facing views in the presentation lane.",
+  "theme": "parallel-work",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Build-lane split."
+ },
+ {
+  "id": "DEC-020",
+  "behaviour": "An intent conflict is recorded inside the conflicted record as a conflict block with an IC id.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-021",
+  "behaviour": "Git's merge completes with the conflicted record unconfirmed, and the merge check holds it until the owner chooses.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-022",
+  "behaviour": "On an ID collision the first-parent branch keeps its IDs and the incoming record is renumbered.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-023",
+  "behaviour": "The plugin carries a ready-built plumb checked against source and sets up a private per-user, per-version copy of its tools.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-024",
+  "behaviour": "Background checks do the recording and guarding; the in-app panel draws the band and cards from what they recorded.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-025",
+  "behaviour": "A button press is proven by a random secret held only in the panel's memory, which the agent's shell cannot use.",
+  "theme": "confirmation",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-026",
+  "behaviour": "A rejected read-back is recaptured always; it counts as a calibration no only when the owner says it misread them.",
+  "theme": "judging-and-jev",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-027",
+  "behaviour": "A small model run through the host's dispatch, never the coding agent, reads the owner's messages for approvals and rejections.",
+  "theme": "judging-and-jev",
+  "holds": "unsure",
+  "superseded_by": "DEC-058",
+  "note": "DEC-058 removes the automatic check; DEC-069 keeps understand.model."
+ },
+ {
+  "id": "DEC-028",
+  "behaviour": "Long-running progress shows as a terminal bar or plain lines and also in the Claude Code status line.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-029",
+  "behaviour": "The proposed backlog is judged in one background pass and shown as one card per feature.",
+  "theme": "cards-and-owner-surface",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Backlog work-through; DEC-083 rebuilds records."
+ },
+ {
+  "id": "DEC-030",
+  "behaviour": "Settling switches on by itself once calibrated for agent-derived records, but the owner switches it on for intents.",
+  "theme": "judging-and-jev",
+  "holds": "superseded",
+  "superseded_by": "DEC-073",
+  "note": "DEC-040 removes settling by context; DEC-073 sets verdict confirmation."
+ },
+ {
+  "id": "DEC-031",
+  "behaviour": "Work order puts SP7 re-alignment in parallel with the everyday loop in separate worktrees.",
+  "theme": "parallel-work",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Past ordering of work."
+ },
+ {
+  "id": "DEC-032",
+  "behaviour": "Ask for a change puts the cursor in the message box prefilled with the topic, and the typed words are read against that card.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-033",
+  "behaviour": "No appears as a button only where the card suggests it, beside Ask for a change and Leave open.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-034",
+  "behaviour": "Leave open stops a card repeating at turn end until its record changes, while it stays listed as awaiting the owner.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-035",
+  "behaviour": "The Claude Code mod is built in parallel with slice 3 after the press and plugin slices.",
+  "theme": "parallel-work",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Build timing."
+ },
+ {
+  "id": "DEC-036",
+  "behaviour": "The grounding skill is named plumb-records so /plumb means one thing.",
+  "theme": "hosts-and-plugin",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Rename already done."
+ },
+ {
+  "id": "DEC-037",
+  "behaviour": "A missing proof does not block a merge; plumb names it and the owner decides.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-038",
+  "behaviour": "The judge keeps being calibrated with at most three open trial cards in the read-back shape.",
+  "theme": "judging-and-jev",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-039",
+  "behaviour": "A question the agent can recommend on becomes a flippable assumption; only an unrecommendable costly question blocks the build.",
+  "theme": "intent-capture-and-clarify",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-040",
+  "behaviour": "One judge reads the owner's words, calibrated by trial cards; settling by context is removed.",
+  "theme": "judging-and-jev",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-043",
+  "behaviour": "Diagrams use the architecture-diagram skill: instructions and a template, with the agent writing the SVG.",
+  "theme": "diagrams",
+  "holds": "unsure",
+  "superseded_by": "DEC-047",
+  "note": "DEC-047 has the diagram mod supply the renderer."
+ },
+ {
+  "id": "DEC-044",
+  "behaviour": "The diagram mod lives in its own repository, used beside plumb.",
+  "theme": "diagrams",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "DEC-045",
+  "behaviour": "The clarify check receives the agent's last reply, recent messages and repository facts, resolving references to earlier turns.",
+  "theme": "intent-capture-and-clarify",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Merge-conflict choice between two SR-128 versions."
+ }
+]
