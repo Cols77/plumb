@@ -55,7 +55,7 @@ def _diverged(tmp_path: Path, *, theirs_statement: str = THEIRS_STATEMENT,
     return root, other
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 @pytest.mark.parametrize("argv", [["check", "--merge", "main"],
                                   ["merge-check", "main", "--no-run"]])
 def test_merge_check_exits_4_with_card(repo: Path, argv: list[str]) -> None:
@@ -70,7 +70,7 @@ def test_merge_check_exits_4_with_card(repo: Path, argv: list[str]) -> None:
     assert data["intent_conflicts"][0]["ic"] == "IC-001"
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_hook_refuses_merge_commit_on_ic(tmp_path: Path) -> None:
     """SR-077 EX-2: git does not record the merge commit; the output names /plumb conflicts."""
     root, _ = _diverged(tmp_path)
@@ -84,7 +84,7 @@ def test_hook_refuses_merge_commit_on_ic(tmp_path: Path) -> None:
     assert "no test run" in output
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_commit_completes_after_choice(tmp_path: Path) -> None:
     """SR-077 EX-6: the owner's choice settles the held merge; it can be finished. The
     choice made during the merge is staged with its log entry (no ``git add`` here)."""
@@ -100,7 +100,7 @@ def test_commit_completes_after_choice(tmp_path: Path) -> None:
                        check=False).stdout.strip()
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_quick_check_holds_unconfirmed_and_undeclared(tmp_path: Path) -> None:
     """R17: no intent conflict, but the incoming change touches an unconfirmed requirement
     and a file no requirement declares: held, without a test run."""
@@ -122,7 +122,7 @@ def test_quick_check_holds_unconfirmed_and_undeclared(tmp_path: Path) -> None:
     assert "src/relay.py changed without a requirement that declares it" in output
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_quick_check_runs_no_tests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-077 EX-4 (R17): the merge-time check never starts the test suite (that runs once,
     at push)."""
@@ -140,7 +140,7 @@ def test_quick_check_runs_no_tests(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert report.exit == 4 and report.intent_conflicts
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_foreign_hook_untouched(repo: Path, capsys) -> None:
     """SR-077 EX-3: the foreign hook is untouched; the output says how to call plumb."""
     _hook(repo).parent.mkdir(parents=True, exist_ok=True)
@@ -157,7 +157,7 @@ def test_foreign_hook_untouched(repo: Path, capsys) -> None:
     assert _hook(repo).read_text(encoding="utf-8") == FOREIGN
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_foreign_commit_hook_untouched(repo: Path, capsys) -> None:
     """SR-077 EX-3: a foreign prepare-commit-msg hook is kept; --json names the line that
     calls plumb from it; the pre-merge-commit hook is still installed."""
@@ -177,7 +177,7 @@ def test_foreign_commit_hook_untouched(repo: Path, capsys) -> None:
     assert "your own prepare-commit-msg hook was kept" in capsys.readouterr().out
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_uninstall_removes_only_plumb_hook(repo: Path) -> None:
     _hook(repo).parent.mkdir(parents=True, exist_ok=True)
     _hook(repo).write_text(FOREIGN, encoding="utf-8")
@@ -217,7 +217,7 @@ def test_hooks_install_and_init_install_the_quick_check(repo: Path, tmp_path: Pa
     assert not _hook(repo).exists() and not push.exists() and not commit_hook.exists()
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 @pytest.mark.parametrize("argv", [["hooks", "install"], ["init"]])
 def test_adoption_keeps_a_foreign_pre_push_hook(repo: Path, argv: list[str],
                                                 capsys: pytest.CaptureFixture) -> None:
@@ -258,7 +258,7 @@ def _jev_configured(monkeypatch: pytest.MonkeyPatch) -> _CountingJev:
     return backend
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_quick_check_never_calls_a_judgment_backend(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """R17 CHEAP: with JEV configured, the pre-merge-commit check shows the card without a
@@ -277,7 +277,7 @@ def test_quick_check_never_calls_a_judgment_backend(
     assert [p for p in events(repo, "judgment") if p.get("subject") == "IC-001"] == []
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_pre_push_hook_never_calls_a_judgment_backend(
         repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
     """The pre-push hook's report shows conflict cards from logged judgments only; the
@@ -328,7 +328,7 @@ def _merge_report(root: Path):
     return check(open_core(root))
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_merge_check_holds_a_link_the_branch_left_stale(tmp_path: Path) -> None:
     """SR-166 EX-3: a branch edits a linked file without repinning: held, naming the link."""
     root, other = _branch_pair(tmp_path)
@@ -339,7 +339,7 @@ def test_merge_check_holds_a_link_the_branch_left_stale(tmp_path: Path) -> None:
     assert "links this merge leaves stale" in "\n".join(report.lines)
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_merge_check_names_a_link_added_to_a_file_no_test_covers(tmp_path: Path) -> None:
     """SR-166 EX-3: a branch links a .md no test covers: named, merge held."""
     root, other = _branch_pair(tmp_path)
@@ -353,7 +353,7 @@ def test_merge_check_names_a_link_added_to_a_file_no_test_covers(tmp_path: Path)
     assert not any("src/a.py" in line for line in report.untested_links)
 
 
-@pytest.mark.sr("SR-165")
+@pytest.mark.sr("SR-237")
 def test_merge_check_asks_about_contradicting_requirements(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-165 EX-2: a branch adds a requirement a live one contradicts: exit 4, both named."""
@@ -378,7 +378,7 @@ def test_merge_check_asks_about_contradicting_requirements(
     assert report.exit == 4
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_merge_check_clean_merge_has_no_link_findings(tmp_path: Path) -> None:
     """No regression: a merge touching neither links nor requirements names nothing new."""
     root, other = _branch_pair(tmp_path)
@@ -404,7 +404,7 @@ class _Counting:
                         confidence=self.confidence, tier="act", backend="jev", fingerprint="f")
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_merge_check_does_not_hold_on_links_already_stale_at_base(tmp_path: Path) -> None:
     """SR-166: only new problems hold: a link stale before the fork is old debt."""
     root = make_repo(tmp_path / "main")
@@ -425,7 +425,7 @@ def test_merge_check_does_not_hold_on_links_already_stale_at_base(tmp_path: Path
     assert report.stale_links == () and report.exit != 1
 
 
-@pytest.mark.sr("SR-165")
+@pytest.mark.sr("SR-237")
 def test_merge_check_judges_only_reworded_requirements_and_holds_on_sure_verdicts(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A repin (links only) is not judged; an unsure 'contradicts' is a note, not a hold."""
@@ -449,7 +449,7 @@ def test_merge_check_judges_only_reworded_requirements_and_holds_on_sure_verdict
     assert report.exit != 1
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_merge_check_cli_report_names_untested_links_and_contradictions(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
     """``plumb merge-check`` prints the pre-merge hook's sections, with its exit code."""

@@ -16,7 +16,7 @@ from plumb.api import open_core
 from plumb.understand import cardstore, clarify, cmd_clarify, files, gate, hooks, worker
 from understand.fakes import owner_level
 
-pytestmark = pytest.mark.sr("SR-103")
+pytestmark = pytest.mark.sr("SR-223")
 
 SESSION = "s1"
 CARD = {"intent": "yes", "topic": "exporting data", "gap": True,

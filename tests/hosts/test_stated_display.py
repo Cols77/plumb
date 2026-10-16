@@ -20,7 +20,7 @@ from plumb.api import open_core
 from plumb.cli import main
 from plumb.hosts.common import instruction_block
 
-pytestmark = pytest.mark.sr("SR-053")
+pytestmark = pytest.mark.sr("SR-282")
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def _last_prompt(repo: Path) -> dict:
     return json.loads(path.read_text("utf-8").splitlines()[-1])
 
 
-@pytest.mark.sr("SR-056")
+@pytest.mark.sr("SR-283")
 def test_unseen_stop_marks_nothing_shown(project: Path, monkeypatch, capsys) -> None:
     """A host that could not show the summary (Hermes without it in the reply): a bare "ok"
     relays nothing it never saw."""

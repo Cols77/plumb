@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.capture.clarify import next_question, open_decisions
 from plumb.capture.records import decide
 
-pytestmark = pytest.mark.sr("SR-043")
+pytestmark = pytest.mark.sr("SR-223")
 
 
 @pytest.fixture

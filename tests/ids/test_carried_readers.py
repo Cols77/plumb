@@ -19,7 +19,7 @@ from plumb.api import open_core
 from plumb.boundary import merge_report
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-071")
+pytestmark = pytest.mark.sr("SR-257")
 
 
 def _requirement(root: Path, title: str, source: str) -> str:

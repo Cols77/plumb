@@ -9,7 +9,7 @@ import pytest
 from plumb.hashing import hash_path
 from plumb.model import parse_record
 
-pytestmark = pytest.mark.sr("SR-002")
+pytestmark = pytest.mark.sr("SR-230")
 
 BASE = """---
 id: SR-001
@@ -127,7 +127,7 @@ def _rewrite(path: Path, old: str, new: str) -> None:
     path.write_bytes(path.read_bytes().replace(old.encode(), new.encode()))
 
 
-@pytest.mark.sr("SR-058")
+@pytest.mark.sr("SR-238")
 def test_symbol_end_ignores_edits_elsewhere(code: Path) -> None:
     from plumb.contracts import Target
     from plumb.hashing import hash_target
@@ -151,7 +151,7 @@ def test_symbol_end_ignores_edits_elsewhere(code: Path) -> None:
     assert hash_target(code, {}, method) == first_method
 
 
-@pytest.mark.sr("SR-058")
+@pytest.mark.sr("SR-238")
 def test_test_node_drops_parametrize_ids(code: Path) -> None:
     from plumb.contracts import Target
     from plumb.hashing import hash_target
@@ -168,7 +168,7 @@ def test_test_node_drops_parametrize_ids(code: Path) -> None:
     assert hash_target(code, {}, Target(test="tests/test_x.py::TestBox::test_open")) != nested
 
 
-@pytest.mark.sr("SR-058")
+@pytest.mark.sr("SR-238")
 def test_missing_symbol_dangles(code: Path) -> None:
     from plumb.contracts import Target
     from plumb.hashing import hash_target

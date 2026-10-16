@@ -14,7 +14,7 @@ from plumb.contracts import Applied, DispatchError, NoModel
 from plumb.understand import dispatch, files, jobs, queue, worker
 from understand.fakes import FakeDispatcher, FakeKind, fake_kinds
 
-pytestmark = pytest.mark.sr("SR-104")
+pytestmark = pytest.mark.sr("SR-273")
 
 SCHEMA = {"type": "object", "properties": {"items": {"type": "array"}}, "required": ["items"]}
 

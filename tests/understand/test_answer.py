@@ -11,7 +11,7 @@ from understand.test_read_job import SESSION, make_core, open_card, record_text
 from plumb.contracts import Choice
 from plumb.understand import answer, trial
 
-pytestmark = pytest.mark.sr("SR-101")
+pytestmark = pytest.mark.sr("SR-214")
 
 
 @pytest.fixture
@@ -57,7 +57,7 @@ def test_leave_open_and_ask_for_a_change_confirm_nothing(core, said: str, status
     assert after.id == card.id and after.status == status and after.answers == ()
 
 
-@pytest.mark.sr("SR-086")
+@pytest.mark.sr("SR-209")
 def test_a_pick_carrying_its_wording_is_applied_not_left_waiting(core) -> None:
     """A ``change`` choice that carries its wording (a version, an option) is a pick, applied
     like any answer; only Ask for a change (no wording) leaves the card ``change_requested``."""
@@ -72,7 +72,7 @@ def test_a_pick_carrying_its_wording_is_applied_not_left_waiting(core) -> None:
     assert [a.answer for a in after.answers] == ["change: the second version"]
 
 
-@pytest.mark.sr("SR-130")
+@pytest.mark.sr("SR-214")
 def test_an_answer_to_a_record_that_changed_asks_which_version(
         core, repo: Path, write_record) -> None:
     from plumb.api import open_core

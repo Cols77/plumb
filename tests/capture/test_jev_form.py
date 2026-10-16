@@ -13,7 +13,7 @@ from jev_fixtures import calibrated
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-183")
+pytestmark = pytest.mark.sr("SR-244")
 
 
 def set_form(repo: Path, stub: JevStub, form: str | None) -> None:

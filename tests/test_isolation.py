@@ -23,7 +23,7 @@ def test_probe_sees_none_of_the_outer_environment(tmp_path: Path) -> None:
     assert os.environ["PLUMB_HOME"] == os.environ["HOME"]
 
 
-@pytest.mark.sr("SR-005")
+@pytest.mark.sr("SR-208")
 def test_variables_set_outside_are_not_seen_inside_a_test() -> None:
     outer_home = str(Path(__file__).resolve().parent)
     env = dict(os.environ, **{

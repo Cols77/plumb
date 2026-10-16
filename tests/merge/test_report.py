@@ -31,7 +31,7 @@ def base(repo: Path) -> tuple[Path, str]:
     return repo, commit(repo, "base")
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_touched_unconfirmed_exits_4(base) -> None:
     """SR-047 EX-1: a branch changes a proposed requirement's implementing file."""
     root, sha = base
@@ -48,7 +48,7 @@ def test_touched_unconfirmed_exits_4(base) -> None:
     assert "plumb approve SR-001 INT-001" in text
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_validate_merge_and_merge_check_agree(base, capsys) -> None:
     """SR-047 EX-3: the report-only form and merge-check exit with the same code."""
     root, sha = base
@@ -75,7 +75,7 @@ def _escalated(root: Path) -> None:
     write(root, ".plumb/requirements/SR-003.md", SR3)
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_set_member_counts_only_with_full_set_approval(base) -> None:
     """A touched member of an escalated set is confirmed only by an approval that pins
     every member's current hash."""
@@ -95,7 +95,7 @@ def test_set_member_counts_only_with_full_set_approval(base) -> None:
     assert report.awaiting == () and report.exit == 0
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_range_error_exits_2(base) -> None:
     root, _ = base
     report = merge_report(open_core(root), "no-such-ref", run_full=False)
@@ -103,7 +103,7 @@ def test_range_error_exits_2(base) -> None:
     assert "cannot read the range" in render(report)[0]
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_report_covers_uncommitted_and_branch(base) -> None:
     root, _ = base
     git(root, "checkout", "-q", "-b", "feat")

@@ -13,7 +13,7 @@ from plumb.api import open_core
 from plumb.contracts import FullPending, NodeEvidence, StatusSnapshot
 from plumb.hosts.claude_code import snapshot, statusline
 
-pytestmark = pytest.mark.sr("SR-013")
+pytestmark = pytest.mark.sr("SR-263")
 
 SR1 = "---\nid: SR-001\ntitle: One\nstatement: s1\n---\n"
 SR2 = "---\nid: SR-002\ntitle: Two\nstatement: s2\n---\n"

@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # The owner requested this increase; configured in-process hook budgets are unchanged.
 HOOK_LIMIT_MS = 5000
 
-pytestmark = [pytest.mark.sr("SR-014"), pytest.mark.sr("SR-010"), pytest.mark.sr("SR-012")]
+pytestmark = [pytest.mark.sr("SR-275"), pytest.mark.sr("SR-225"), pytest.mark.sr("SR-265")]
 
 INT = """---
 id: INT-001
@@ -73,8 +73,8 @@ FILES = {
     "src/pkg/mod.py": "def add(a, b):\n    return a + b\n\n\ndef mul(a, b):\n"
                       "    return a * b\n",
     "tests/test_mod.py": "import pytest\n\nfrom pkg.mod import add, mul\n\n\n"
-                         "@pytest.mark.sr(\"SR-001\")\ndef test_add():\n"
-                         "    assert add(1, 2) == 3\n\n\n@pytest.mark.sr(\"SR-002\")\n"
+                         "@pytest.mark.sr(\"SR-230\")\ndef test_add():\n"
+                         "    assert add(1, 2) == 3\n\n\n@pytest.mark.sr(\"SR-230\")\n"
                          "def test_mul():\n    assert mul(2, 3) == 6\n",
     ".plumb/config.yaml": "verify:\n  flaky_rerun: false\n",
 }
@@ -187,9 +187,9 @@ def test_session_through_installed_hooks(adopted: Path) -> None:
 
 
 
-@pytest.mark.sr("SR-034")
-@pytest.mark.sr("SR-043")
-@pytest.mark.sr("SR-062")
+@pytest.mark.sr("SR-235")
+@pytest.mark.sr("SR-223")
+@pytest.mark.sr("SR-267")
 def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
     """The capture flow (sp2, R1, R2, R11): a read-back shown as an intent card, a proposed
     example, the decision that matters asked once, and the owner's "ok" relayed for exactly
@@ -230,7 +230,7 @@ def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
 BATCH_BASE = "9dd86c6"
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_merge_check_on_plumb_reports_the_owners_pending_confirmations() -> None:
     """plumb merge-check on plumb's own repository (report only, --no-run): plumb's records
     await the owner (no agent approves them), so the boundary is not green and lists them."""

@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyAnswer, ClarifyQuestion, GateState
 from plumb.understand import cardstore, clarify, effects, files, gate, hooks, worker
 
-pytestmark = pytest.mark.sr("SR-103")
+pytestmark = pytest.mark.sr("SR-223")
 
 SESSION = "s1"
 

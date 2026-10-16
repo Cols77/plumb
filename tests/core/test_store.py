@@ -9,7 +9,7 @@ import pytest
 from plumb.paths import PlumbPaths
 from plumb.store import Store
 
-pytestmark = pytest.mark.sr("SR-001")
+pytestmark = pytest.mark.sr("SR-230")
 
 
 def test_new_id_per_kind_and_nc_four_digits(repo: Path, write_record) -> None:

@@ -11,7 +11,7 @@ import pytest
 
 from plumb.hosts.claude_code import hookio
 
-pytestmark = pytest.mark.sr("SR-014")
+pytestmark = pytest.mark.sr("SR-275")
 
 
 def _run(handler, repo: Path, payload: str, **kwargs) -> tuple[int, str]:

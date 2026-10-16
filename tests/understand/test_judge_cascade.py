@@ -24,7 +24,7 @@ from understand.test_judge_job import (
 from plumb.api import open_core
 from plumb.contracts import Judgment
 
-pytestmark = pytest.mark.sr("SR-182")
+pytestmark = pytest.mark.sr("SR-242")
 
 THRESHOLD = 0.43
 

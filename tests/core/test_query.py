@@ -10,7 +10,7 @@ from plumb import approvals, cli
 from plumb.api import open_core
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-009")
+pytestmark = pytest.mark.sr("SR-278")
 
 
 def _sr(n: int, title: str, statement: str, extra: str = "") -> str:

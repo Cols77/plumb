@@ -60,7 +60,7 @@ def _drift(repo: Path, capsys) -> tuple[int, dict]:
     return code, json.loads(capsys.readouterr().out)
 
 
-@pytest.mark.sr("SR-003")
+@pytest.mark.sr("SR-231")
 def test_drift_clean_when_links_current_and_examples_covered(repo, write_record, capsys):
     _setup(repo, write_record)
     capsys.readouterr()
@@ -71,7 +71,7 @@ def test_drift_clean_when_links_current_and_examples_covered(repo, write_record,
                          "merge boundary; plumb fidelity <SR>)"]
 
 
-@pytest.mark.sr("SR-003")
+@pytest.mark.sr("SR-231")
 def test_drift_reports_stale_link_with_moved_end(repo, write_record, capsys):
     _setup(repo, write_record)
     (repo / "src" / "links.py").write_text("def pin():\n    return 2\n", encoding="utf-8")
@@ -84,7 +84,7 @@ def test_drift_reports_stale_link_with_moved_end(repo, write_record, capsys):
     assert "SR-001#1 stale (target moved: src/links.py)" in capsys.readouterr().out
 
 
-@pytest.mark.sr("SR-003")
+@pytest.mark.sr("SR-231")
 def test_drift_reports_dangling_link(repo, write_record, capsys):
     _setup(repo, write_record)
     (repo / "src" / "links.py").unlink()
@@ -93,7 +93,7 @@ def test_drift_reports_dangling_link(repo, write_record, capsys):
     assert [d["link"] for d in data["dangling"]] == ["SR-001#1"]
 
 
-@pytest.mark.sr("SR-003")
+@pytest.mark.sr("SR-231")
 def test_drift_reports_uncovered_examples_of_any_requirement(repo, write_record, capsys):
     write_record(repo, INT)
     write_record(repo, SR)
@@ -102,7 +102,7 @@ def test_drift_reports_uncovered_examples_of_any_requirement(repo, write_record,
     assert data["uncovered_examples"] == {"SR-001": ["EX-1", "EX-2"]}
 
 
-@pytest.mark.sr("SR-004")
+@pytest.mark.sr("SR-206")
 def test_drift_reports_unconfirmed_edit(repo, write_record, capsys):
     _setup(repo, write_record)
     assert cli.main(["approve", "SR-001", "--root", str(repo)]) == 0
@@ -114,7 +114,7 @@ def test_drift_reports_unconfirmed_edit(repo, write_record, capsys):
     assert data["unconfirmed_edits"] == ["SR-001"]
 
 
-@pytest.mark.sr("SR-022")
+@pytest.mark.sr("SR-246")
 def test_drift_reports_fidelity_only_after_a_judgment(repo, write_record, capsys):
     """Never-judged fidelity is advisory (listed at the merge boundary, R4); a judgment that
     says drifts or unsure, or whose ends moved since, is a drift signal."""

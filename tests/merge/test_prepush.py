@@ -13,7 +13,7 @@ from plumb import cli
 from plumb.boundary import install_pre_push_hook
 from plumb.boundary.prepush import HOOK_MARKER, ForeignHookError, uninstall_pre_push_hook
 
-pytestmark = pytest.mark.sr("SR-051")
+pytestmark = pytest.mark.sr("SR-262")
 
 FOREIGN = "#!/bin/sh\necho foreign\n"
 

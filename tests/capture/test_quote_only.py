@@ -14,7 +14,7 @@ from plumb.capture.calibrate import calibrate
 from plumb.capture.jevcmd import jev_status, status_lines
 from plumb.capture.triage import triage
 
-pytestmark = pytest.mark.sr("SR-190")
+pytestmark = pytest.mark.sr("SR-241")
 
 QUOTE = "please build feature alpha"
 

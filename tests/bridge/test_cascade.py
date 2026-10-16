@@ -13,7 +13,7 @@ from plumb.contracts import EscalationRequest, Judgment, LLMCascade
 from plumb.judgment import get_cascade
 from plumb.judgment.cascade import HostAgentCascade, reaches_owner
 
-pytestmark = [pytest.mark.sr("SR-024"), pytest.mark.sr("SR-021")]
+pytestmark = [pytest.mark.sr("SR-242"), pytest.mark.sr("SR-245")]
 
 
 def _judgment(tier: str, subject: str = "SR-004") -> Judgment:

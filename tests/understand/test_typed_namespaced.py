@@ -24,7 +24,7 @@ from understand.test_read_job import (
     state,
 )
 
-pytestmark = pytest.mark.sr("SR-120")
+pytestmark = pytest.mark.sr("SR-202")
 
 NEGATIVES = ["/plumbing go", "/plumb:other go", "/plumb:plumbing go", "/plumb:plumb:plumb go",
              "/plumb:go", "/plumb:plumbgo", "plumb:plumb go", "/Plumb:plumb go"]

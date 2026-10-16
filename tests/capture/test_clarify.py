@@ -13,7 +13,7 @@ from plumb.api import open_core
 from plumb.capture.clarify import clarify, next_question
 from plumb.judgment import FakeBackend
 
-pytestmark = pytest.mark.sr("SR-043")
+pytestmark = pytest.mark.sr("SR-223")
 
 EX = [{"id": "EX-1", "given": "an approved requirement", "when": "its statement is edited",
        "then": "the requirement is an unconfirmed edit"}]

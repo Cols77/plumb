@@ -12,7 +12,7 @@ from awareness.gitrepo import add_worktree, commit_all, make_repo, requirement
 from plumb.awareness import publish as pub
 from plumb.hosts.claude_code import post_edit, prompt, session_start, stop
 
-pytestmark = pytest.mark.sr("SR-078")
+pytestmark = pytest.mark.sr("SR-258")
 
 
 def _call(module, root: Path, payload: str, **kwargs) -> str:  # noqa: ANN001

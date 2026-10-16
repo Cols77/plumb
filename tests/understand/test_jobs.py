@@ -8,7 +8,7 @@ import pytest
 
 from plumb.understand import files, jobs
 
-pytestmark = pytest.mark.sr("SR-104")
+pytestmark = pytest.mark.sr("SR-273")
 
 INPUTS = {"message": {"digest": "sha256:a", "text": "yes please"}, "shown": []}
 

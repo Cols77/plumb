@@ -21,7 +21,7 @@ from plumb.api import open_core
 from plumb.understand import cards as card_text
 from plumb.understand import summary
 
-pytestmark = pytest.mark.sr("SR-086")
+pytestmark = pytest.mark.sr("SR-209")
 
 ASK_CHANGE, LEAVE_OPEN = 0, 1          # a stop-hook card's buttons, in order
 

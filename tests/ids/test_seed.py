@@ -13,7 +13,7 @@ from plumb import ids
 from plumb.ids import ref as ref_mod
 from plumb.paths import PlumbPaths
 
-pytestmark = pytest.mark.sr("SR-070")
+pytestmark = pytest.mark.sr("SR-257")
 
 
 def high(root: Path) -> dict:

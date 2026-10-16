@@ -4,7 +4,7 @@ import pytest
 from mod.helpers import SESSION, sample_card
 from understand.test_read_job import make_core, open_card, record_text
 
-pytestmark = pytest.mark.sr("SR-177")
+pytestmark = pytest.mark.sr("SR-270")
 
 
 @pytest.fixture

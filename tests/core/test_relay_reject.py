@@ -17,7 +17,7 @@ from capture.capture_helpers import log_prompt, record_text, run
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-096")
+pytestmark = pytest.mark.sr("SR-215")
 
 CASES = [
     ("INT-016: that records your solution, not what I asked",

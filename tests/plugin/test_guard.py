@@ -24,7 +24,7 @@ from .helpers import (
     sentinel_bin,
 )
 
-pytestmark = [pytest.mark.sr("SR-112")]
+pytestmark = [pytest.mark.sr("SR-209")]
 
 LAUNCHERS = (
     "plumb",

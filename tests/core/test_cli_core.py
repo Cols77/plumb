@@ -37,7 +37,7 @@ requirements: [SR-001]
 """
 
 
-@pytest.mark.sr("SR-025")
+@pytest.mark.sr("SR-280")
 def test_init_is_idempotent_and_writes_ignore_and_attributes(tmp_path: Path) -> None:
     root = tmp_path / "r"
     root.mkdir()
@@ -61,7 +61,7 @@ def test_init_is_idempotent_and_writes_ignore_and_attributes(tmp_path: Path) -> 
     assert before == after
 
 
-@pytest.mark.sr("SR-009")
+@pytest.mark.sr("SR-278")
 def test_status_json_counts(repo: Path, write_record, capsys: pytest.CaptureFixture[str]) -> None:
     write_record(repo, INT)
     write_record(repo, SR)
@@ -79,7 +79,7 @@ def test_status_json_counts(repo: Path, write_record, capsys: pytest.CaptureFixt
     assert data["verification"] == "unavailable" or isinstance(data["verification"], dict)
 
 
-@pytest.mark.sr("SR-003")
+@pytest.mark.sr("SR-231")
 def test_link_cli_target_forms(repo: Path, write_record,
                                capsys: pytest.CaptureFixture[str]) -> None:
     write_record(repo, INT)

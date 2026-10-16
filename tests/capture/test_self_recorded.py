@@ -13,7 +13,7 @@ from logutil import legacy_relay
 from plumb.api import open_core
 from plumb.capture.confirmations import confirmation_counts, confirmation_label
 
-pytestmark = pytest.mark.sr("SR-069")
+pytestmark = pytest.mark.sr("SR-208")
 
 
 @pytest.fixture

@@ -14,7 +14,7 @@ from mergedriver.mdhelpers import conflicted, parse
 from plumb import cli
 from plumb.hosts.claude_code import session_start, stop
 
-pytestmark = pytest.mark.sr("SR-076")
+pytestmark = pytest.mark.sr("SR-256")
 SR = ".plumb/requirements/SR-005.md"
 
 

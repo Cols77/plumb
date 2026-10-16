@@ -1,0 +1,45 @@
+{
+ "file": "P7",
+ "findings": [
+  {
+   "level": "medium",
+   "requirement": "The log is append-only, one hash-chained file per entry",
+   "what": "Check 7 and 2. The file lists SR-153 and SR-074 under this requirement in one_offs, but neither is superseded by any requirement, and none of their examples is in examples_kept or examples_dropped except SR-153/EX-2, which is carried as the 'interrupted batch' example without being named. Both are confirmed with linked tests (SR-153: 5 tests; SR-074: 9 tests). SR-153/EX-1, EX-3 and EX-4 (batched verdict writes reduce head and lock operations, coalesced progress writes, later jobs see earlier events) and SR-074/EX-1 to EX-5 (log migrate: idempotent, refuses a line whose digest does not match, legacy branch still merges) are neither carried nor listed as dropped with a reason. The assumption about SR-074 explains only that reading the legacy format is not durable, not why the migrate command's examples go. The cluster file gives the drop reason 'one-off record'; add the SR-153 and SR-074 entries to examples_dropped with a real reason, or supersede both here."
+  },
+  {
+   "level": "medium",
+   "requirement": "A requirement is one durable behaviour; a replaced record is retired with its trail",
+   "what": "Check 3 and 4, several things in one and some not observable. The statement joins (a) the retirement behaviour (retired-example warning, unlink allowed, test deletion, claims check), (b) an authoring rule for the agent (one behaviour per requirement, a fix goes under its requirement, one intent per principle) that no plumb check enforces (SR-195 has 0 tests), and (c) a development rule (a newer decision wins over an older test). Example 1 (three requirements about the confirmation rule are replaced by one) is the version 2 rewrite dressed as a behaviour. Example 2 (a fix claims the requirement and no new one appears) names nothing plumb does to make it so. Example 10 ends 'the test follows the newer decision and the older example is reworded or superseded, logged once; the owner is not asked per test', which no one can watch plumb do. Example 11 ends 'retiring goes through a superseding record, never deletion', yet plumb only reports dangling links, so a deleted record nobody links to passes silently; the intent's wont 'Delete a record without a supersedes trail' has no stated check. Split the retirement behaviour from the authoring discipline, and either state what plumb does when a record disappears or move the rule to a skill and say so."
+  },
+  {
+   "level": "medium",
+   "requirement": "Capture turns the owner's words into linked records in one call",
+   "what": "Check 3, a capture write plus two other behaviours. Examples 6 and 7 (a decision keeps its alternatives and changes only by a superseding decision) are the decision rule, examples 8, 9 and 10 (naming the requirements a new intent changes or contradicts, one intent per principle) are intent-conflict detection, and examples 1 to 5 are the one-call capture. Example 9 (a contradiction between two requirements) is SR-165/EX-2 about one specific pair of relay rules, a one-off dressed as an example, and overlaps example 8. Split the decision rule and the changed-requirements naming from the capture write."
+  },
+  {
+   "level": "medium",
+   "requirement": "Capture turns the owner's words into linked records in one call",
+   "what": "Check 4, vague then-clauses. Example 5 ends 'is proposed or an unconfirmed edit', two states the owner cannot tell apart (v2 has proposed and approved only). Example 8 ends 'plumb names those requirements and the capture supersedes or rewords them', an either-or with no place where the naming appears. Example 9 ends 'the contradiction is named before the work goes on, and reaches the owner only as a question to arbitrate', with no place or form for 'named'. Example 10 ends 'the requirements it changes are named at capture' with the same gap. Example 3 says 'the owner is asked only if the change drops or changes older intent', a negative condition with no observable outcome for the case that does not ask. State where the names appear (the capture output for the agent) and which record states result."
+  },
+  {
+   "level": "low",
+   "requirement": "A link pins both ends and changes only through logged commands",
+   "what": "Check 3. Staleness and dangling reporting (examples 1 to 3) and the three agent commands repin, unlink and relink with their guards (examples 4 to 13) are two behaviours in one requirement, 13 examples long. The cluster theme joins them, so this is only a suggestion to split unlink and relink from the pinning rule."
+  },
+  {
+   "level": "low",
+   "requirement": "A record is a Markdown file named by its id, hashed by its meaning",
+   "what": "Check 2 wording. The SR-002 statement says the hash also ignores 'derived blocks'. The draft statement drops that clause and no example or entry in examples_dropped says why; SR-002 has 4 tests for 3 examples, so one of them may assert it. Carry the clause or list it as dropped with a reason. The requirement also holds two behaviours (identity by frontmatter id, and the content hash); it is acceptable only because both belong to the one record format."
+  },
+  {
+   "level": "low",
+   "requirement": "The pi-agent-factory import is read-only, idempotent and never manufactures approval",
+   "what": "Check 2 wording. SR-059/EX-4 is listed in examples_kept but only its third branch (an approval the agent appended itself) is carried. Its first two branches (an agent session, or a consent file pinning the current SR-077, leaves SR-077 proposed) are replaced by import example 4 (a matching consent approves by import), which is the intended P2 change named in the assumptions, but examples_dropped is empty. List that part as dropped with the P2 reason. Also, example 7 does not say how plumb tells an approval the agent appended from one an import wrote, so its given is not checkable; say what marks an import-written approval. SR-058 has 12 tests for 3 examples; the statement compresses its mappings (verification refs to links naming their AC, upstream and relates_to, corrects links for NCs) into 'relations as symbol and test-node link ends', so name them or list them as dropped."
+  },
+  {
+   "level": "low",
+   "requirement": "The log is append-only, one hash-chained file per entry",
+   "what": "Check 1 wording. The statement says entries are 'never edited' and example 5 reports an entry file removed while a later entry names it, with no mention of the P15 archive segments, so the requirement as written contradicts compaction. The carve-out sits only in the intent's wont and assumptions. Add one clause, 'except by the archive compaction of P15, which keeps each digest and prev', to the statement. SR-006's 'two streams (evidence, events)' is dropped without a line in examples_dropped."
+  }
+ ]
+}

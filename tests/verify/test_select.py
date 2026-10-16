@@ -25,7 +25,7 @@ def _select(root: Path, changed, **kw):
     return select_tests(core, build_map(core), changed, **kw)
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_doc_only_selects_nothing(project: Path) -> None:
     sel = _select(project, ["docs/guide.md", "README.md"])
     assert sel.doc_only is True
@@ -33,7 +33,7 @@ def test_doc_only_selects_nothing(project: Path) -> None:
     assert sel.unknown_coverage == ()
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_priority_order_verified_by_literal_import(project: Path) -> None:
     write(project, "tests/test_uses_lonely.py",
           "from pkg.lonely import VALUE\n\n\ndef test_value():\n    assert VALUE\n")
@@ -51,14 +51,14 @@ def test_priority_order_verified_by_literal_import(project: Path) -> None:
     assert sel.unknown_coverage == ()
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_import_closure_nearest_first_and_changed_test_selects_itself(project: Path) -> None:
     sel = _select(project, ["src/pkg/mod.py", "tests/test_paths.py"])
     assert sel.nodes == ("tests/test_paths.py", "tests/test_mod.py", "tests/test_helper.py")
     assert all(sel.reasons[n] == "import" for n in sel.nodes)
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_infra_change_sets_full_pending_and_adds_nothing(project: Path) -> None:
     write(project, "tests/conftest.py", "")
     sel = _select(project, ["pyproject.toml", "tests/conftest.py"])
@@ -66,7 +66,7 @@ def test_infra_change_sets_full_pending_and_adds_nothing(project: Path) -> None:
     assert sel.nodes == ()
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_unknown_coverage_samples_nearest_bounded(project: Path) -> None:
     for i in range(12):
         write(project, f"tests/sub/test_s{i:02d}.py", "def test_x():\n    assert True\n")
@@ -81,7 +81,7 @@ def test_unknown_coverage_samples_nearest_bounded(project: Path) -> None:
     assert again.sampled == sel.sampled
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_budget_defers_overflow(project: Path) -> None:
     durations = {"tests/test_mod.py::test_add": 4.0, "tests/test_mod.py::test_add_zero": 4.0,
                  "tests/test_helper.py::test_twice": 9.0}
@@ -91,7 +91,7 @@ def test_budget_defers_overflow(project: Path) -> None:
     assert sel.expected_s == 8.0
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_unknown_duration_counts_one_second(project: Path) -> None:
     for i in range(5):
         write(project, f"tests/test_m{i}.py", "import pkg.mod\n\n\ndef test_x():\n    pass\n")
@@ -102,7 +102,7 @@ def test_unknown_duration_counts_one_second(project: Path) -> None:
     assert len(sel.deferred) == 5
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_selection_fills_a_fraction_of_the_budget_scaled_by_observed_time(
         project: Path) -> None:
     """A run slower than its estimate must not fill the whole budget (hard limit 1.5x)."""
@@ -114,7 +114,7 @@ def test_selection_fills_a_fraction_of_the_budget_scaled_by_observed_time(
     assert len(slow.nodes) == 3 and slow.expected_s == 6.0
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_selection_never_contains_whole_suite_marker(project: Path) -> None:
     sel = _select(project, ["src/pkg/mod.py", "src/pkg/lonely.py", "pyproject.toml",
                             "docs/guide.md", "tests"])
@@ -123,7 +123,7 @@ def test_selection_never_contains_whole_suite_marker(project: Path) -> None:
         assert node.split("::", 1)[0].endswith(".py")
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_parametrized_durations_count_for_their_node() -> None:
     from plumb.verify.select import expected_duration
 
@@ -138,7 +138,7 @@ def test_parametrized_durations_count_for_their_node() -> None:
     assert expected_duration("tests/t.py", nodes_of, durations, 1.0) == 1.75
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_verify_is_a_verify_api(project: Path) -> None:
     from plumb.contracts import VerifyAPI
     from plumb.verify import open_verify
@@ -146,7 +146,7 @@ def test_verify_is_a_verify_api(project: Path) -> None:
     assert isinstance(open_verify(open_core(project)), VerifyAPI)
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_a_file_longer_than_the_whole_budget_is_taken_in_parts(project: Path) -> None:
     """A lone test file whose estimate exceeds the turn budget runs only the nodes that fit
     the fill (never the whole file into the hard limit); the rest is deferred."""

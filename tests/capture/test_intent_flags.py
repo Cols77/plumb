@@ -11,7 +11,7 @@ from plumb.api import open_core
 from plumb.capture.flags import flag_line, intent_flags
 from plumb.judgment import FakeBackend, JudgmentUnavailable
 
-pytestmark = pytest.mark.sr("SR-038")
+pytestmark = pytest.mark.sr("SR-225")
 
 FIXTURE = Path(__file__).parent / "fixtures" / "intent_prompts.yaml"
 DATA = yaml.safe_load(FIXTURE.read_text(encoding="utf-8"))

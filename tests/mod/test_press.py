@@ -15,7 +15,7 @@ from plumb import confirm
 from plumb.api import open_core
 from plumb.understand import cards, cardstore, read
 
-pytestmark = pytest.mark.sr("SR-086")
+pytestmark = pytest.mark.sr("SR-209")
 
 CONFIRM, NO, FIX_IT, ASK_CHANGE, LEAVE_OPEN = 0, 1, 2, 3, 4     # a trial card's buttons, in order
 

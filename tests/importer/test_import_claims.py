@@ -13,7 +13,7 @@ from plumb.api import open_core
 from plumb.claims import load_policy
 from plumb.importer.pi_factory import import_pi_factory
 
-pytestmark = pytest.mark.sr("SR-058")
+pytestmark = pytest.mark.sr("SR-238")
 
 POLICY = """# Commit-claim traceability config (SR-049).
 epoch: "0f6576309598f232600fef2f5bceeb6279f23fa8"

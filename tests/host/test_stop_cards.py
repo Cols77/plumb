@@ -18,7 +18,7 @@ from plumb.api import open_core
 from plumb.contracts import NodeEvidence, Target
 from plumb.hosts.claude_code import stop
 
-pytestmark = pytest.mark.sr("SR-012")
+pytestmark = pytest.mark.sr("SR-265")
 
 SESSION = "s1"
 NODE = "tests/test_a.py::test_a"
@@ -221,7 +221,7 @@ STOP_LIST = "def summary():\n    return ['- SR-030 proposed, say ok to confirm']
 REQUEST = "add a short list of the proposed records at the end of each turn"
 
 
-@pytest.mark.sr("SR-113")
+@pytest.mark.sr("SR-198")
 def test_sr113_ex2_code_that_drifted_from_an_agreed_intent_is_a_drift_card(
         repo: Path, write_record, hook_input, monkeypatch) -> None:
     """SR-113 EX-2: INT-008 and SR-012 agree, and a turn the owner asked for adds a list-style
@@ -263,7 +263,7 @@ def test_sr113_ex2_code_that_drifted_from_an_agreed_intent_is_a_drift_card(
 # --------------------------------------------------------------------------- SR-116
 
 
-@pytest.mark.sr("SR-116")
+@pytest.mark.sr("SR-267")
 def test_sr116_ex1_a_stale_card_shows_everything_to_choose(project: Path,
                                                             hook_input) -> None:
     """EX-1: the end-of-turn text shows the requirement's current wording, the change itself,

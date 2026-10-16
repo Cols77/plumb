@@ -14,7 +14,7 @@ import pytest
 from plumb.hosts.claude_code import install, pretool
 from plumb.understand import gate
 
-pytestmark = pytest.mark.sr("SR-103")
+pytestmark = pytest.mark.sr("SR-223")
 
 SESSION = "7f3a9c52-1d4e-4b6a-9a10-2c5d8e0f1b34"
 SCRIPT = Path(install.__file__).parent / "templates" / "gate.sh"
@@ -189,7 +189,7 @@ def test_the_hook_route_is_listed_in_the_help(capsys: pytest.CaptureFixture) -> 
     assert "pre-tool" in capsys.readouterr().out
 
 
-@pytest.mark.sr("SR-121")
+@pytest.mark.sr("SR-226")
 def test_python_route_walks_up_from_a_subfolder(repo: Path,
                                                 monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-121: a session started in src/ reads the gate of the .plumb/ above it, as gate.sh

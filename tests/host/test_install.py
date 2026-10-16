@@ -11,7 +11,7 @@ import pytest
 
 from plumb.hosts.claude_code import install
 
-pytestmark = pytest.mark.sr("SR-015")
+pytestmark = pytest.mark.sr("SR-279")
 
 ALL_HOOKS = ("session-start", "prompt", "post-edit", "stop")
 UV = install.Launcher("uv", "uv run --no-sync plumb", "uv run --no-sync plumb")
@@ -38,7 +38,7 @@ def _install(repo: Path, **kwargs) -> install.InstallReport:
     return install.install(repo, **kwargs)
 
 
-@pytest.mark.sr("SR-005")
+@pytest.mark.sr("SR-208")
 def test_install_writes_hooks_statusline_env_and_deny_rules(repo: Path, no_claims) -> None:
     _install(repo)
     settings = _settings(repo)
@@ -257,7 +257,7 @@ def test_hooks_status_reports_installed_parts(repo: Path, no_claims) -> None:
         assert part in after
 
 
-@pytest.mark.sr("SR-009")
+@pytest.mark.sr("SR-278")
 def test_slash_command_brief_why_impact(repo: Path, no_claims) -> None:
     _install(repo)
     text = (repo / ".claude" / "commands" / "plumb.md").read_text(encoding="utf-8")
@@ -266,7 +266,7 @@ def test_slash_command_brief_why_impact(repo: Path, no_claims) -> None:
         assert f"Bash(uv run --no-sync plumb {name}:*)" in text
 
 
-@pytest.mark.sr("SR-033")
+@pytest.mark.sr("SR-203")
 def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> None:
     """/plumb advertises explain with plain-language arguments, keeps why as an alias, and
     advertises only subcommands the CLI has (R9: the /plumb why bug)."""
@@ -290,7 +290,7 @@ def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> N
     assert "not available in this build" not in cli._HELP
 
 
-@pytest.mark.sr("SR-026")
+@pytest.mark.sr("SR-200")
 def test_claude_md_block_asks_for_a_read_back_of_each_request(repo: Path, no_claims) -> None:
     """The always-loaded block carries the read-back rule, not only the on-demand skill."""
     _install(repo)

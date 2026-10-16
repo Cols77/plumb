@@ -1,0 +1,775 @@
+{
+ "principle": "P7",
+ "intent": {
+  "quote": "I fear that there are actually many duplicates, or that the actual definition of an SR is actually blur currently in the plumb project.",
+  "source_int": "INT-073",
+  "readback": "The records are your intent written down, and there are few of them: each requirement states one durable behaviour you can observe, with examples and a proof. Every record is hashed so a change of meaning shows and its links go stale, and nothing is lost: a record is only retired, with a trail to what replaced it. A fix of a behaviour already stated goes under that requirement, never a new one, and each principle you state is one intent.",
+  "will": [
+   "Keep every record as a Markdown file named by its frontmatter id, with a hash that changes only when its meaning changes.",
+   "Pin both ends of every link, report a moved end as stale, and change links only through logged repin, unlink and relink.",
+   "Keep an append-only, hash-chained log, one never-edited file per entry, with tampering reported.",
+   "Hold one durable observable behaviour per requirement; claim a fix under the requirement it restores.",
+   "Retire a replaced record with a supersedes trail; it stops reaching you and stops being checked, and its uncarried examples' tests are unlinked.",
+   "Capture your words as a pre-intent with context and write the formal records in one call, naming the requirements the new intent changes.",
+   "Import pi-agent-factory's records read-only and idempotently, approving only what an upstream human consent pins."
+  ],
+  "wont": [
+   "Delete a record without a supersedes trail.",
+   "Create a new requirement for a fix of a behaviour already stated.",
+   "Ask you to read records, cards or ids to approve them: a judge-validated interpretation counts (P3, P9).",
+   "Edit or remove a log entry outside the archive compaction of P15.",
+   "Write to the pi-agent-factory source during an import."
+  ],
+  "assumptions": [
+   "Repin, unlink and relink are the agent's commands; they take record ids, which P2 allows since no owner command does.",
+   "'Approved' covers both the owner's answer and a judge-validated interpretation (P3); the only-test refusal protects both.",
+   "The P15 compaction of old log entries into archive segments is the only sanctioned rewrite of the log, and validate still chains through it; that behaviour is P15's requirement, not this one's.",
+   "The legacy events.jsonl and evidence.jsonl migration (SR-074) has run, so reading the legacy format is not a durable behaviour.",
+   "SR-059's clause that a by-import approval is written only after the owner confirms it in their own terminal goes: under P2 the owner runs no command, so the import writes it from a matching consent and an agent-appended one never counts.",
+   "Anchors SR-149, SR-195 and SR-165 carry no feature; the link and retirement requirements go under FEAT-001 (records core, as SR-003 and SR-001), capture under FEAT-002 (as SR-034 and SR-035)."
+  ]
+ },
+ "requirements": [
+  {
+   "title": "A record is a Markdown file named by its id, hashed by its meaning",
+   "statement": "plumb keeps every record (INT, SR, DEC, FEAT, NC) as a Markdown file with YAML frontmatter under .plumb/; its identity is its frontmatter id, never its filename; a malformed or duplicate id is reported. Its content hash covers the meaning (every frontmatter field except links, plus the normalized body), so it ignores YAML style, key order, CRLF and trailing whitespace and changes when the meaning changes.",
+   "examples": [
+    {
+     "given": "a file .plumb/requirements/anything.md whose frontmatter id is SR-007",
+     "when": "plumb loads the records",
+     "then": "the record is SR-007, whatever the filename"
+    },
+    {
+     "given": "two record files that carry the same id SR-001",
+     "when": "plumb validate runs",
+     "then": "it reports a duplicate-id error naming both files"
+    },
+    {
+     "given": "a record whose frontmatter id is SR-1x",
+     "when": "the record is parsed",
+     "then": "it is rejected as a malformed id"
+    },
+    {
+     "given": "a record with a pinned hash",
+     "when": "the file is re-saved with CRLF line endings, reordered keys and trailing spaces",
+     "then": "its hash is unchanged"
+    },
+    {
+     "given": "a record with a pinned hash",
+     "when": "its statement is edited",
+     "then": "its hash changes and every link pinned to it goes stale"
+    },
+    {
+     "given": "a linked source file",
+     "when": "it is re-saved with CRLF line endings and no other change",
+     "then": "the file end's hash is unchanged"
+    },
+    {
+     "given": "a record whose only change is a new link in its links list",
+     "when": "its hash is computed",
+     "then": "the hash is unchanged, since links are not part of the meaning"
+    }
+   ],
+   "examples_kept": [
+    "SR-001/EX-1",
+    "SR-001/EX-2",
+    "SR-001/EX-3",
+    "SR-002/EX-1",
+    "SR-002/EX-2",
+    "SR-002/EX-3"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: the AI shows, in a scratch repository, a record renamed on disk still loading under its id, a CRLF re-save leaving its hash and links current, and a one-word change of its statement turning its links stale in the status.",
+    "kind": "command"
+   },
+   "feature": "FEAT-001",
+   "supersedes": [
+    "SR-001",
+    "SR-002"
+   ],
+   "implemented_by": [
+    "src/plumb/hashing.py",
+    "src/plumb/model.py",
+    "src/plumb/normalize.py",
+    "src/plumb/store.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "A link pins both ends and changes only through logged commands",
+   "statement": "A link lives in its source record and pins the content hash of both ends; plumb reports it stale (naming which end moved) when either hash differs, dangling (an error) when its target is missing, unpinned (a warning) without a pin. Links are repinned, removed or moved only through the agent's repin, unlink and relink commands, each logging the old and new ends, unlink and relink with a required note; none of them approves a record.",
+   "examples": [
+    {
+     "given": "SR-001 verified_by a test file with current pins",
+     "when": "the test file's content changes",
+     "then": "plumb reports the link stale with the target moved"
+    },
+    {
+     "given": "the same link",
+     "when": "the test file is re-saved with CRLF line endings only",
+     "then": "the link stays current"
+    },
+    {
+     "given": "a link whose target record or file does not exist",
+     "when": "plumb validate runs",
+     "then": "it reports a dangling-link error"
+    },
+    {
+     "given": "a stale link",
+     "when": "the agent repins it",
+     "then": "its pins are refreshed, a repin event is logged and no record becomes approved"
+    },
+    {
+     "given": "a record has links #0..#22 and #5 points at a test file that moved",
+     "when": "the agent unlinks #5 with a note saying where the test went",
+     "then": "the record has 22 links, the old #6 is now #5, the output lists each renumbered link, and one unlink entry logs the removed link, its target, pin and note"
+    },
+    {
+     "given": "a record with no link #40",
+     "when": "the agent unlinks #40",
+     "then": "it exits 1 saying there is no such link, and the record file is unchanged"
+    },
+    {
+     "given": "any link",
+     "when": "unlink or relink runs without a note",
+     "then": "it exits with a usage error and changes nothing"
+    },
+    {
+     "given": "a link that is the only verified_by link of an approved example, and its target still exists",
+     "when": "the agent unlinks it",
+     "then": "it is refused, saying the approved example would lose its only test and naming relink instead; the record is unchanged"
+    },
+    {
+     "given": "a dangling link that is the only verified_by link of an approved example",
+     "when": "the agent unlinks it",
+     "then": "it is removed (a dangling link proves nothing) and the output says the example now has no test"
+    },
+    {
+     "given": "link #5 verified_by a test path that no longer exists",
+     "when": "the agent relinks #5 to the test's new path with a note",
+     "then": "#5 keeps its number, kind and example, points at the new path pinned to both ends as they are now, and one relink entry logs both targets"
+    },
+    {
+     "given": "a new target that does not exist",
+     "when": "the agent relinks to it",
+     "then": "it exits 1 naming the missing target and the record is unchanged"
+    },
+    {
+     "given": "the record already has a link with the same kind, target and example",
+     "when": "a relink would make link n a copy of it",
+     "then": "it is refused, naming the existing link and suggesting unlink"
+    },
+    {
+     "given": "a record-only link kind given a file target",
+     "when": "the agent relinks to it",
+     "then": "it is refused with the same message plumb link gives"
+    }
+   ],
+   "examples_kept": [
+    "SR-003/EX-1",
+    "SR-003/EX-2",
+    "SR-003/EX-3",
+    "SR-003/EX-4",
+    "SR-148/EX-1",
+    "SR-148/EX-2",
+    "SR-148/EX-3",
+    "SR-148/EX-4",
+    "SR-148/EX-5",
+    "SR-149/EX-1",
+    "SR-149/EX-2",
+    "SR-149/EX-3",
+    "SR-149/EX-4"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: the AI edits a covering test in a scratch repository and shows the status naming the stale link, then relinks and unlinks with notes and shows the two log entries, the renumbered links, and the refusal on an approved example's only test.",
+    "kind": "command"
+   },
+   "feature": "FEAT-001",
+   "supersedes": [
+    "SR-003",
+    "SR-148",
+    "SR-149"
+   ],
+   "implemented_by": [
+    "src/plumb/cli.py",
+    "src/plumb/commands.py",
+    "src/plumb/links.py"
+   ],
+   "decides": [
+    "DEC-048",
+    "DEC-049"
+   ]
+  },
+  {
+   "title": "The log is append-only, one hash-chained file per entry",
+   "statement": "Every log entry is written through one append function as its own JSON file under .plumb/log/<kind>/, created without replacing and never edited, carrying its digest and the previous entry's digest found from a rebuildable head pointer; branches that both append never conflict and a forked chain is accepted. plumb validate reports an edited entry, a removed entry a later one names, and an unparsable file. An entry is visible to the next reader as soon as it is appended, within one worker pass too.",
+   "examples": [
+    {
+     "given": "two worktrees that each append approvals, prompts and test runs",
+     "when": "one branch is merged into the other",
+     "then": "git reports no conflict under .plumb/log and plumb validate accepts the forked chain"
+    },
+    {
+     "given": "two writers in one worktree in the same second",
+     "when": "both append",
+     "then": "two distinct files exist and neither replaced the other"
+    },
+    {
+     "given": "a committed entry file edited by hand",
+     "when": "plumb validate runs",
+     "then": "it reports that file as modified"
+    },
+    {
+     "given": "the head pointer in .plumb/cache was deleted",
+     "when": "the next entry is appended",
+     "then": "its prev is the stream's latest entry, found by a scan"
+    },
+    {
+     "given": "an entry file deleted while a later entry names it as prev",
+     "when": "plumb validate runs",
+     "then": "it reports the missing entry"
+    },
+    {
+     "given": "a file under .plumb/log that is not valid JSON",
+     "when": "plumb validate runs",
+     "then": "it reports the file as unparsable"
+    },
+    {
+     "given": "a batch of verdicts interrupted after some entries were written",
+     "when": "the next append runs",
+     "then": "it extends the chain from the last entry actually on disk, not from an older head pointer"
+    },
+    {
+     "given": "a worker pass running several jobs",
+     "when": "an earlier job appends its verdicts",
+     "then": "a later job in the same pass reads those entries, and the pass's final progress counts every job"
+    }
+   ],
+   "examples_kept": [
+    "SR-073/EX-1",
+    "SR-073/EX-2",
+    "SR-073/EX-3",
+    "SR-073/EX-4",
+    "SR-153/EX-2",
+    "SR-153/EX-4"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-006/EX-1",
+     "why": "same rule as SR-073/EX-3 (an edited entry is reported), now said of an entry file rather than a line"
+    },
+    {
+     "id": "SR-006/EX-2",
+     "why": "same rule as SR-073/EX-1 (branches merge without a log conflict, the forked chain is accepted)"
+    },
+    {
+     "id": "SR-006/EX-3",
+     "why": "interleaved lines cannot happen with one file per entry; SR-073/EX-2 states the rule that holds"
+    },
+    {
+     "id": "SR-153/EX-1",
+     "why": "bounded batches that cut head and lock operations are a performance tactic of the worker, not a behaviour the owner can observe; what holds (each verdict its own chained entry) is this requirement's statement"
+    },
+    {
+     "id": "SR-153/EX-3",
+     "why": "coalescing identical progress writes is a performance tactic; what the owner sees of progress is P12's and P13's progress requirements"
+    },
+    {
+     "id": "SR-074/EX-1",
+     "why": "plumb log migrate converted the legacy events.jsonl and evidence.jsonl once; no legacy file remains in this repository and version 2 reads and compacts only per-entry files (P15), so the migration is not a durable behaviour"
+    },
+    {
+     "id": "SR-074/EX-2",
+     "why": "plumb log migrate converted the legacy events.jsonl and evidence.jsonl once; no legacy file remains in this repository and version 2 reads and compacts only per-entry files (P15), so the migration is not a durable behaviour"
+    },
+    {
+     "id": "SR-074/EX-3",
+     "why": "plumb log migrate converted the legacy events.jsonl and evidence.jsonl once; no legacy file remains in this repository and version 2 reads and compacts only per-entry files (P15), so the migration is not a durable behaviour"
+    },
+    {
+     "id": "SR-074/EX-4",
+     "why": "plumb log migrate converted the legacy events.jsonl and evidence.jsonl once; no legacy file remains in this repository and version 2 reads and compacts only per-entry files (P15), so the migration is not a durable behaviour"
+    },
+    {
+     "id": "SR-074/EX-5",
+     "why": "plumb log migrate converted the legacy events.jsonl and evidence.jsonl once; no legacy file remains in this repository and version 2 reads and compacts only per-entry files (P15), so the migration is not a durable behaviour"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended for the owner to decide: the AI merges two worktrees that both appended entries and shows no conflict under .plumb/log and a clean validate, then hand-edits one entry and shows validate naming it.",
+    "kind": "command"
+   },
+   "feature": "FEAT-006",
+   "supersedes": [
+    "SR-006",
+    "SR-073"
+   ],
+   "implemented_by": [
+    "src/plumb/api.py",
+    "src/plumb/log.py",
+    "src/plumb/paths.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "A replaced record is retired with its trail, and its tests follow",
+   "statement": "A superseded record is retired, not deleted: its history and supersedes trail stay, it no longer reaches the owner or the staleness check, tests of the examples the new record carries relink to it, others are unlinked, and plumb validate warns about a retired example still verified by a test. plumb reports a deleted record only through the links that named it.",
+   "examples": [
+    {
+     "given": "an old requirement describes behaviour a newer one replaced",
+     "when": "the newer one is linked as superseding it",
+     "then": "the old one's links no longer appear among the stale links and no question reaches the owner about them"
+    },
+    {
+     "given": "a requirement that still describes current behaviour but whose links moved",
+     "when": "it is reviewed",
+     "then": "it is repinned, not retired"
+    },
+    {
+     "given": "SR-002 supersedes SR-001 and SR-001/EX-1, which SR-002 does not carry, is still verified by tests/test_a.py",
+     "when": "plumb validate runs",
+     "then": "it warns [retired-example] that SR-001/EX-1 is retired by SR-002 but still verified by tests/test_a.py and says to unlink the test and drop it when it covers nothing else; it never says to move the test to SR-002 or keep SR-001"
+    },
+    {
+     "given": "SR-001 is approved, SR-002 supersedes it, and SR-001#3 is the only test of SR-001/EX-2",
+     "when": "the agent unlinks SR-001#3 with a note",
+     "then": "the link is removed: a superseded record's example is retired, so the only-test refusal does not protect it"
+    },
+    {
+     "given": "a test function whose sr markers name only superseded records and that no live record links to",
+     "when": "its retired examples are unlinked",
+     "then": "the test function is deleted (the whole file when nothing live remains); a test a live record still links to stays and only loses the retired id from its marker"
+    },
+    {
+     "given": "SR-001 has two tests verifying EX-1 and SR-002 supersedes it verifying neither",
+     "when": "plumb validate runs",
+     "then": "both links are warned, one per link"
+    },
+    {
+     "given": "a commit with trailer SR-001 that unlinks tests/test_a.py from SR-001 and deletes the file",
+     "when": "plumb claims check runs over it",
+     "then": "tests/test_a.py is declared: a path a claimed record linked in the commit's parent counts"
+    },
+    {
+     "given": "a record file deleted outright instead of superseded",
+     "when": "plumb validate runs",
+     "then": "the links naming it are reported dangling; a deleted record no link names is not reported, so the never-delete rule is the agent's skill's"
+    }
+   ],
+   "examples_kept": [
+    "SR-164/EX-1",
+    "SR-164/EX-2",
+    "SR-188/EX-1",
+    "SR-188/EX-2",
+    "SR-188/EX-3",
+    "SR-188/EX-4",
+    "SR-188/EX-5"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a scratch repository, the AI supersedes a requirement and shows the status listing no stale link from the retired one, plumb explain on it reaching its successor, and validate warning about a test left on a retired example until it is unlinked.",
+    "kind": "command"
+   },
+   "feature": "FEAT-001",
+   "supersedes": [
+    "SR-164",
+    "SR-188"
+   ],
+   "implemented_by": [
+    ".claude/skills/plumb-records/SKILL.md",
+    "plugin/skills/plumb-records/SKILL.md",
+    "src/plumb/capture/capture.py",
+    "src/plumb/claims.py",
+    "src/plumb/commands.py",
+    "src/plumb/hosts/claude_code/templates/skills/plumb-records/SKILL.md",
+    "src/plumb/links.py",
+    "src/plumb/validate.py"
+   ],
+   "decides": [
+    "DEC-065",
+    "DEC-084"
+   ]
+  },
+  {
+   "title": "A requirement is one durable behaviour, and a fix goes under its requirement",
+   "statement": "Each requirement states one durable observable behaviour with examples and a proof, under a feature; a fix of a stated behaviour is claimed under its requirement (or an NC when it was broken), never as a new requirement; one intent per principle; a newer decision wins over an older example's test. No plumb check enforces this: the rule lives in plumb's plumb-records skill, which the agent follows, and in commit trailers that claim the requirement fixed.",
+   "examples": [
+    {
+     "given": "plumb's installed plumb-records skill",
+     "when": "the agent reads it",
+     "then": "it says each requirement states one durable observable behaviour, a fix of a stated behaviour is claimed under its requirement or recorded as an NC, never as a new requirement, there is one intent per principle, and a record is retired through a superseding record, never deleted"
+    },
+    {
+     "given": "a behaviour a requirement states is broken (a background process opens a console window)",
+     "when": "it is fixed",
+     "then": "the fixing commit's trailer claims that requirement, and no new requirement appears"
+    },
+    {
+     "given": "a newer decision changed a behaviour that an older approved example's test still asserts",
+     "when": "the agent finds the conflict",
+     "then": "the agent's plumb-records skill tells it that the test follows the newer decision and the older example is reworded or superseded through the judge cascade, and that the owner is not asked per test"
+    }
+   ],
+   "examples_kept": [
+    "SR-195/EX-2"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-195/EX-1",
+     "why": "it describes the version 2 landing itself, a one-time event rather than a durable behaviour; the retirement it relies on is carried by the retirement requirement"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended for the owner to decide: the AI fixes a broken behaviour in a scratch repository and shows the commit's trailer naming its requirement with no new requirement written, and the skill's text stating the rule.",
+    "kind": "command"
+   },
+   "feature": "FEAT-001",
+   "supersedes": [
+    "SR-195"
+   ],
+   "implemented_by": [
+    ".claude/skills/plumb-records/SKILL.md",
+    "plugin/skills/plumb-records/SKILL.md",
+    "src/plumb/hosts/claude_code/templates/skills/plumb-records/SKILL.md"
+   ],
+   "decides": [
+    "DEC-088"
+   ]
+  },
+  {
+   "title": "Capture turns the owner's words into linked records in one call",
+   "statement": "One capture call keeps the owner's words with their context as a pre-intent and writes the agent's formal intent, requirement and decision records with pinned links, ids allocated without collision, all proposed until the judge cascade validates them; the quote must be verbatim in the logged prompt.",
+   "examples": [
+    {
+     "given": "a capture document with the owner's quote and context, a formal intent, one requirement with two examples and one decision",
+     "when": "plumb capture runs",
+     "then": "one pre-intent, one INT, one SR with EX-1 and EX-2 and one DEC exist, each proposed, the SR and DEC derived from the INT and the INT from the pre-intent, and the output is text for the agent, not a card for the owner"
+    },
+    {
+     "given": "a capture document whose quote is not a verbatim span of the logged prompt",
+     "when": "plumb capture runs",
+     "then": "it exits 2 and writes nothing"
+    },
+    {
+     "given": "a document updating the examples of an approved SR",
+     "when": "plumb capture runs",
+     "then": "the SR becomes an unconfirmed edit and goes back through the judge cascade; no question reaches the owner while the judge finds the change keeps the older intent"
+    },
+    {
+     "given": "any capture document",
+     "when": "plumb capture --dry-run runs",
+     "then": "it prints what it would write and writes no file and no event"
+    },
+    {
+     "given": "SR-004 has EX-1 and EX-2",
+     "when": "the agent adds an example to SR-004",
+     "then": "SR-004 gains EX-3; an approved SR-004 becomes an unconfirmed edit, a proposed one stays proposed"
+    },
+    {
+     "given": "the judge cascade validates a captured interpretation",
+     "when": "the records are approved",
+     "then": "they are marked judge-approved and the trail from the pre-intent to each formal record is kept"
+    }
+   ],
+   "examples_kept": [
+    "SR-035/EX-1",
+    "SR-034/EX-1",
+    "SR-034/EX-2",
+    "SR-034/EX-3",
+    "SR-034/EX-4"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a live session the owner states a small new intent in plain words; the AI then shows the pre-intent with its context, the formal records derived from it, and the judge's verdict marking them approved, all without the owner reading a card.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-002",
+   "supersedes": [
+    "SR-034"
+   ],
+   "implemented_by": [
+    "src/plumb/awareness/early.py",
+    "src/plumb/capture/__init__.py",
+    "src/plumb/capture/api.py",
+    "src/plumb/capture/autoapprove.py",
+    "src/plumb/capture/capture.py",
+    "src/plumb/capture/cli.py",
+    "src/plumb/capture/confirmations.py",
+    "src/plumb/capture/records.py",
+    "src/plumb/cli.py",
+    "src/plumb/confirm.py",
+    "tests/capture/capture_helpers.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "A decision keeps its alternatives and changes only by a superseding decision",
+   "statement": "A decision records the question, the chosen option, its alternatives and whether it matters; it is never edited to change its choice: a new decision supersedes it and the old one stays unchanged.",
+   "examples": [
+    {
+     "given": "two readings of a request fit",
+     "when": "the agent records a decision choosing A with B as alternative and matters true",
+     "then": "a DEC with chosen A, alternatives [B] and matters true is written, proposed"
+    },
+    {
+     "given": "DEC-020 is approved",
+     "when": "the agent records a decision superseding DEC-020 with B chosen",
+     "then": "a new DEC with a supersedes link to DEC-020 is written and DEC-020 is unchanged"
+    }
+   ],
+   "examples_kept": [
+    "SR-035/EX-2",
+    "SR-035/EX-3"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: the AI records a decision with an alternative in a scratch repository, then supersedes it, and shows both records with the old one unchanged.",
+    "kind": "command"
+   },
+   "feature": "FEAT-002",
+   "supersedes": [
+    "SR-035"
+   ],
+   "implemented_by": [
+    "src/plumb/capture/records.py",
+    "src/plumb/capture/cli.py",
+    "src/plumb/cli.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "A capture names the requirements its new intent changes or contradicts",
+   "statement": "When an intent is captured, plumb finds the existing requirements whose meaning it changes or contradicts and names them by title in the capture output for the agent, so the same capture supersedes or rewords them instead of leaving them to go stale; a contradiction it cannot resolve reaches the owner only as one question to arbitrate.",
+   "examples": [
+    {
+     "given": "a new intent removes behaviour that existing requirements still describe",
+     "when": "it is captured",
+     "then": "the capture output for the agent names those requirements by title, and the same capture supersedes or rewords each, so none is left describing the removed behaviour"
+    },
+    {
+     "given": "a new requirement says the agent relays the owner's conflict choice while another says it never does",
+     "when": "it is captured or merged",
+     "then": "the capture output for the agent names the contradiction, nothing is approved, and it reaches the owner only as one question-tool question to arbitrate"
+    },
+    {
+     "given": "the owner states a new principle",
+     "when": "it is captured",
+     "then": "one intent records it, and the capture output for the agent names the requirements it changes"
+    }
+   ],
+   "examples_kept": [
+    "SR-165/EX-1",
+    "SR-165/EX-2",
+    "SR-195/EX-3"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a live session the owner states an intent that removes a behaviour an existing requirement describes; the agent's capture output names that requirement and the same capture supersedes it.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-002",
+   "supersedes": [
+    "SR-165"
+   ],
+   "implemented_by": [
+    "src/plumb/capture/capture.py",
+    "src/plumb/capture/api.py",
+    "src/plumb/awareness/early.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "The pi-agent-factory import is read-only, idempotent and never manufactures approval",
+   "statement": "plumb import reads pi-agent-factory's register (requirements, features with bundles, NCs and their relations as symbol and test-node link ends) without writing to it; a dry run prints the plan; a repeated import changes nothing. Every imported record is proposed, except a requirement whose upstream human consent pins its current content, which is approved by import citing that consent; an approval the agent appended itself never approves.",
+   "examples": [
+    {
+     "given": "a scratch target and a source",
+     "when": "plumb import --dry-run runs",
+     "then": "it prints create lines for every record and the target is unchanged"
+    },
+    {
+     "given": "a target after one import",
+     "when": "the same import runs again",
+     "then": "no file changes and no import event is appended"
+    },
+    {
+     "given": "the source SR-003 statement changed",
+     "when": "the import runs again",
+     "then": "the plan shows update SR-003 statement and the record is rewritten, re-pinned and proposed"
+    },
+    {
+     "given": "a consent file for SR-077 whose requirement_sha256 matches the current SR-077 file",
+     "when": "the import runs",
+     "then": "SR-077 is approved by import and the approval cites the consent file"
+    },
+    {
+     "given": "a consent file pinning an older SR-078 content",
+     "when": "the import runs",
+     "then": "SR-078 is proposed"
+    },
+    {
+     "given": "a consent file with reviewer agent",
+     "when": "the import runs",
+     "then": "it is ignored and the SR is proposed"
+    },
+    {
+     "given": "a by import approval the agent appended itself, not written by an import from a matching consent",
+     "when": "plumb status reads the log",
+     "then": "SR-077 stays proposed and the approval is ignored"
+    },
+    {
+     "given": "an SR binding implemented_by path src/x.py symbol mod:fn",
+     "when": "it is imported into a target holding src/x.py",
+     "then": "the link names src/x.py::fn and an edit elsewhere in src/x.py leaves it current"
+    },
+    {
+     "given": "FEAT-001 lists SR-050 that its bundle lacks",
+     "when": "the import runs",
+     "then": "FEAT-001's requirements include SR-050 and a membership-difference finding names it"
+    },
+    {
+     "given": "any import",
+     "when": "it finishes",
+     "then": "the source tree's files and git status are unchanged"
+    },
+    {
+     "given": "a pi-agent-factory checkout with an approved SR-012 and no consent file",
+     "when": "plumb import runs",
+     "then": "SR-012 is imported as proposed and the checkout is unchanged"
+    }
+   ],
+   "examples_kept": [
+    "SR-060/EX-1",
+    "SR-060/EX-2",
+    "SR-060/EX-3",
+    "SR-059/EX-1",
+    "SR-059/EX-2",
+    "SR-059/EX-3",
+    "SR-059/EX-4",
+    "SR-058/EX-1",
+    "SR-058/EX-2",
+    "SR-058/EX-3",
+    "SR-023/EX-1"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: the AI imports the pi-agent-factory fixture twice into a scratch target and shows the dry-run plan, the second run changing nothing, the source's git status unchanged, and only the consent-pinned requirement approved by import.",
+    "kind": "command"
+   },
+   "feature": "FEAT-004",
+   "supersedes": [
+    "SR-023",
+    "SR-058",
+    "SR-059",
+    "SR-060"
+   ],
+   "implemented_by": [
+    "src/plumb/confirm.py",
+    "src/plumb/hashing.py",
+    "src/plumb/importer/__init__.py",
+    "src/plumb/importer/apply.py",
+    "src/plumb/importer/claims.py",
+    "src/plumb/importer/cli.py",
+    "src/plumb/importer/consent.py",
+    "src/plumb/importer/pi_factory.py",
+    "src/plumb/importer/plan.py",
+    "src/plumb/importer/recheck.py",
+    "src/plumb/links.py",
+    "src/plumb/validate.py",
+    "tests/bridge/fixtures/pi_factory/.factory/planning/JEV-REVIEW-INTEGRATION/consent/SR-077.json",
+    "tests/bridge/fixtures/pi_factory/.factory/planning/JEV-REVIEW-INTEGRATION/consent/SR-078.json",
+    "tests/bridge/fixtures/pi_factory/requirements/SR-078.md",
+    "tests/importer/importer_helpers.py"
+   ],
+   "decides": []
+  }
+ ],
+ "decisions": [
+  {
+   "question": "When a link is removed, what happens to the numbers of the links after it?",
+   "chosen": "they move down by one, and the command prints every new number",
+   "alternatives": [
+    "leave a removed placeholder so numbers never change"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-048"
+   ]
+  },
+  {
+   "question": "Who may remove or move a link?",
+   "chosen": "the agent, like plumb link, with a required note logged; removing an approved example's only live test is refused",
+   "alternatives": [
+    "only the owner from their own terminal"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-049"
+   ]
+  },
+  {
+   "question": "What is a requirement, and how is a record set replaced?",
+   "chosen": "one durable observable behaviour with examples and a proof; a fix of a stated behaviour goes under its requirement; an intent is one per principle; a set is replaced in place, older records retired with a supersedes trail and one repin pass",
+   "alternatives": [
+    "one per request, as before",
+    "both shapes, each marked behaviour or change",
+    "a new repository",
+    "purge the proposed records only and keep the confirmed ones as they are"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-083",
+    "DEC-084"
+   ]
+  },
+  {
+   "question": "What does a passing test on a retired example mean?",
+   "chosen": "retired means gone: the test is unlinked, and deleted when it covers nothing live; the superseding record keeps only the tests of what it states",
+   "alternatives": [
+    "the behaviour lives on: the test's marker, or the example itself, moves to the superseding record"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-065"
+   ]
+  },
+  {
+   "question": "When a newer decision changed a behaviour that an older approved example's test still asserts, do the tests follow the newer decision?",
+   "chosen": "yes, the newer decision wins: the tests are updated to the newer behaviour and the older example is reworded or superseded, logged once",
+   "alternatives": [
+    "ask the owner per test",
+    "settle each in the version 2 rewrite"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-088"
+   ]
+  }
+ ],
+ "retired_decisions": [
+  {
+   "id": "DEC-001",
+   "why": "overturned by its own alternative: the log is one file per entry under .plumb/log/<kind>/ (INT-022, the append-only log requirement), not two JSONL streams"
+  },
+  {
+   "id": "DEC-011",
+   "why": "superseded by the full importer: a requirement whose upstream human consent pins its current content is approved by import (the import requirement); everything else stays proposed"
+  },
+  {
+   "id": "DEC-012",
+   "why": "matters false and an implementation choice; its rule (links live in their source record) is stated by the link requirement"
+  }
+ ],
+ "one_offs": [
+  {
+   "id": "SR-153",
+   "under": "The log is append-only, one hash-chained file per entry"
+  },
+  {
+   "id": "SR-074",
+   "under": "The log is append-only, one hash-chained file per entry"
+  }
+ ]
+}

@@ -19,7 +19,7 @@ from understand.test_judge_job import (
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-191")
+pytestmark = pytest.mark.sr("SR-248")
 
 
 def owner_on(root: Path, probability: float = 0.7, confidence: str = "medium") -> None:

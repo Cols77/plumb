@@ -18,7 +18,7 @@ from plumb.hosts.claude_code import snapshot, statusline
 from plumb.present import owner_text
 from plumb.understand import files
 
-pytestmark = pytest.mark.sr("SR-108")
+pytestmark = pytest.mark.sr("SR-272")
 
 SESSION = "s1"
 

@@ -17,7 +17,7 @@ from plumb import ids
 from plumb.api import open_core
 from plumb.cli import main
 
-pytestmark = pytest.mark.sr("SR-072")
+pytestmark = pytest.mark.sr("SR-257")
 
 LINKS = [{"kind": "implemented_by", "path": "a.py"}]
 TITLE = "imported on both sides"

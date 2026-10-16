@@ -11,7 +11,7 @@ import pytest
 from plumb import approvals, cli
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-005")
+pytestmark = pytest.mark.sr("SR-208")
 
 SR1 = "---\nid: SR-001\ntitle: Links pin both ends\nstatement: s1\n---\n"
 SR2 = "---\nid: SR-002\ntitle: Hashes ignore format\nstatement: s2\n---\n"
@@ -80,7 +80,7 @@ def test_approve_proposed_pins_all_listed(setup: Path,
     assert cli.main(["approve", "SR-404", *root]) == 1
 
 
-@pytest.mark.sr("SR-028")
+@pytest.mark.sr("SR-260")
 def test_approval_records_the_ends_a_requirement_owns(setup: Path) -> None:
     from plumb.contracts import Target
 

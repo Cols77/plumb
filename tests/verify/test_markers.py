@@ -9,18 +9,18 @@ from plumb.verify.markers import collect_markers, test_nodes
 SOURCE = '''
 import pytest
 
-pytestmark = pytest.mark.sr("SR-009")
+pytestmark = pytest.mark.sr("SR-278")
 
 
-@pytest.mark.sr("SR-001")
+@pytest.mark.sr("SR-230")
 @pytest.mark.parametrize("x", [1, 2])
 def test_one(x):
     assert x
 
 
-@pytest.mark.sr("SR-002")
+@pytest.mark.sr("SR-230")
 class TestThing:
-    @pytest.mark.sr("SR-003")
+    @pytest.mark.sr("SR-231")
     def test_two(self):
         pass
 
@@ -38,7 +38,7 @@ def not_a_test():
 '''
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_collects_sr_markers_on_functions_and_classes() -> None:
     nodes = collect_markers(SOURCE, "tests/test_x.py")
     assert nodes["tests/test_x.py::test_one"] == {"SR-001", "SR-009"}
@@ -47,7 +47,7 @@ def test_collects_sr_markers_on_functions_and_classes() -> None:
     assert "tests/test_x.py::not_a_test" not in nodes
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_test_nodes_hash_their_own_source() -> None:
     nodes = test_nodes(SOURCE, "tests/test_x.py")
     assert set(nodes) == {"tests/test_x.py::test_one", "tests/test_x.py::TestThing::test_two",
@@ -60,7 +60,7 @@ def test_test_nodes_hash_their_own_source() -> None:
     assert crlf == nodes
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_unparsable_source_yields_nothing() -> None:
     assert collect_markers("def broken(:\n", "tests/t.py") == {}
     assert test_nodes("def broken(:\n", "tests/t.py") == {}

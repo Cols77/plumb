@@ -17,7 +17,7 @@ from plumb.contracts import Target
 from plumb.understand import clarify, cmd_intent, files, gate, hooks, typed, worker
 from understand.test_read_job import int_text, record_text
 
-pytestmark = pytest.mark.sr("SR-193")
+pytestmark = pytest.mark.sr("SR-222")
 
 SESSION = "s1"
 WORDS = "add multiply next to add"
@@ -87,7 +87,7 @@ def test_ex4_an_ordinary_message_opens_no_loop_and_runs_no_model(repo: Path,
     assert engine_standins.dispatcher.ran("clarify") == []
 
 
-@pytest.mark.sr("SR-194")
+@pytest.mark.sr("SR-222")
 def test_sr194_ex1_the_plan_gate_refuses_while_clarify_has_not_passed(
         intent: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     none = _findings(tmp_path)
@@ -96,7 +96,7 @@ def test_sr194_ex1_the_plan_gate_refuses_while_clarify_has_not_passed(
     assert _loop(intent)["stages"]["plan"] == {"state": "open"}
 
 
-@pytest.mark.sr("SR-194")
+@pytest.mark.sr("SR-222")
 def test_sr194_ex2_a_passed_clarify_gate_lets_the_plan_stage_run_and_records_it(
         intent: Path, tmp_path: Path) -> None:
     gate.close(intent, SESSION, DIGEST, gate.INTENT_CHANGE + " SR-040 SR-040/EX-1")
@@ -118,7 +118,7 @@ def test_sr194_ex2_a_passed_clarify_gate_lets_the_plan_stage_run_and_records_it(
     assert open_core(intent).status(["SR-040"])["SR-040"].confirmation == "proposed"
 
 
-@pytest.mark.sr("SR-169")
+@pytest.mark.sr("SR-225")
 @pytest.mark.parametrize("reason", [clarify.GATE_REASON_CARD, clarify.GATE_REASON_COULDNT,
                                     clarify.GATE_REASON_CHECKING])
 def test_a_passed_clarify_gate_leaves_a_hold_only_the_owner_or_the_check_opens(
@@ -142,7 +142,7 @@ def test_without_a_session_no_loop_is_claimed(intent: Path, tmp_path: Path,
     assert _loop(intent)["intent"] is None and gate.is_closed(intent, SESSION)
 
 
-@pytest.mark.sr("SR-197")
+@pytest.mark.sr("SR-253")
 def test_sr197_ex2_an_intent_no_requirement_derives_from_is_not_done(
         repo: Path, write_record: Any, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     write_record(repo, int_text(1))
@@ -155,7 +155,7 @@ def test_sr197_ex2_an_intent_no_requirement_derives_from_is_not_done(
     assert _loop(repo)["stages"]["build"] == {"state": "open"}
 
 
-@pytest.mark.sr("SR-194")
+@pytest.mark.sr("SR-222")
 def test_sr194_ex3_done_refuses_while_the_proof_is_not_shown(
         intent: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     assert _run(intent, "done", "--intent", "INT-001") == 1
@@ -169,7 +169,7 @@ def test_sr194_ex3_done_refuses_while_the_proof_is_not_shown(
     assert _loop(intent)["stages"]["build"] == {"state": "open"}
 
 
-@pytest.mark.sr("SR-197")
+@pytest.mark.sr("SR-253")
 def test_sr197_ex2_a_stated_proof_not_shown_keeps_the_intent_open(
         intent: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     low = _findings(tmp_path, "low")

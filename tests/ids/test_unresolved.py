@@ -19,7 +19,7 @@ from plumb import ids
 from plumb.api import open_core
 from plumb.cli import main
 
-pytestmark = pytest.mark.sr("SR-071")
+pytestmark = pytest.mark.sr("SR-257")
 
 FEAT = ".plumb/features/FEAT-001.md"
 SR_PATH = ".plumb/requirements/SR-002.md"
@@ -85,7 +85,7 @@ def test_dry_run_blocks_too(tmp_path: Path) -> None:
 def test_unmerged_test_file_naming_the_id_blocks(tmp_path: Path) -> None:
     s = scenario.build(tmp_path, merge=False)
     (s.clone / "tests" / "test_shared.py").write_text(
-        'import pytest\n\n\n@pytest.mark.sr("SR-002")\ndef test_shared():\n    pass\n',
+        'import pytest\n\n\n@pytest.mark.sr("SR-230")\ndef test_shared():\n    pass\n',
         encoding="utf-8")
     commit_all(s.clone, "shared test\n\nSR: SR-002")
     (s.origin / "tests" / "test_shared.py").write_text(

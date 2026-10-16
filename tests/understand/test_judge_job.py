@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.contracts import Job
 from understand.fakes import FakeDispatcher, owner_level
 
-pytestmark = pytest.mark.sr("SR-102")
+pytestmark = pytest.mark.sr("SR-239")
 
 SESSION = "s1"
 
@@ -267,7 +267,7 @@ def _open_readback(repo: Path, text: str = MESSAGE) -> str:
     return card.id
 
 
-@pytest.mark.sr("SR-152")
+@pytest.mark.sr("SR-239")
 def test_sr152_ex1_beyond_is_a_line_on_the_read_back_not_a_card(world: Path) -> None:
     core = open_core(world)
     card_id = _open_readback(world)
@@ -301,7 +301,7 @@ def test_ex4_contradicts_names_both_examples(world: Path, write_record) -> None:
     assert not [c for c in applied.cards if c.kind == "contradicts"]
 
 
-@pytest.mark.sr("SR-152")
+@pytest.mark.sr("SR-239")
 def test_sr152_ex2_contradicts_line_names_both_titles_and_the_confirmed_one(
         world: Path, write_record) -> None:
     write_record(world, requirement_text(
@@ -324,7 +324,7 @@ def test_sr152_ex2_contradicts_line_names_both_titles_and_the_confirmed_one(
     assert owner_level(card.evidence) == []
 
 
-@pytest.mark.sr("SR-152")
+@pytest.mark.sr("SR-239")
 def test_sr152_ex3_no_finding_leaves_the_read_back_unchanged(world: Path) -> None:
     core = open_core(world)
     _open_readback(world)
@@ -332,7 +332,7 @@ def test_sr152_ex3_no_finding_leaves_the_read_back_unchanged(world: Path) -> Non
     assert not [c for c in applied.cards if c.kind == "clarify"]
 
 
-@pytest.mark.sr("SR-152")
+@pytest.mark.sr("SR-239")
 def test_sr152_ex4_no_open_read_back_the_line_waits_for_its_own_request(world: Path) -> None:
     from plumb.understand import clarify, files, jobs
 

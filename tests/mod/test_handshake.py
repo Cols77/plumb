@@ -24,7 +24,7 @@ from understand.test_read_job import make_core, open_card, record_text
 from plumb.hosts.claude_code import session_start, stop
 from plumb.mod import handshake
 
-pytestmark = pytest.mark.sr("SR-087")
+pytestmark = pytest.mark.sr("SR-266")
 
 PLUGIN = Path(__file__).resolve().parents[2] / "plugin"
 
@@ -159,7 +159,7 @@ def test_session_start_injects_the_brief_and_says_so_unless_the_panel_owns_it(
     assert host["python"] == sys.executable
 
 
-@pytest.mark.sr("SR-173")
+@pytest.mark.sr("SR-266")
 def test_session_start_still_gives_the_agent_the_brief_when_the_panel_gives_the_background(
         core, monkeypatch, capsys, hook_input) -> None:
     """SR-173 EX-1: the panel is the owner's surface; the agent's channel keeps the brief."""

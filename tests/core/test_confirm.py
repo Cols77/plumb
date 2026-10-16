@@ -10,7 +10,7 @@ from plumb import approvals
 from plumb.api import open_core
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-004")
+pytestmark = pytest.mark.sr("SR-206")
 
 SR = """---
 id: SR-001
@@ -129,7 +129,7 @@ def test_button_approval_confirms_only_at_a_drawn_offer(setup: Path) -> None:
     assert _confirmation(setup) == "unconfirmed-edit"
 
 
-@pytest.mark.sr("SR-112")
+@pytest.mark.sr("SR-209")
 def test_button_approval_under_the_marker_or_with_another_key_confirms_nothing(
         setup: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-112 EX-7: a button approval the agent writes (under its marker, or without the

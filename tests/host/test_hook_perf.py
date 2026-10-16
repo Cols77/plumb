@@ -14,7 +14,7 @@ import pytest
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-014")
+pytestmark = pytest.mark.sr("SR-275")
 
 REPO = Path(__file__).resolve().parents[2]
 

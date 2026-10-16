@@ -13,7 +13,7 @@ from plumb import cli, log
 from plumb.api import open_core
 from plumb.paths import PlumbPaths
 
-pytestmark = pytest.mark.sr("SR-074")
+pytestmark = pytest.mark.sr("SR-232")
 
 SR = ("---\nid: SR-001\ntitle: Requirement\nstatement: s\nexamples:\n"
       "  - {id: EX-1, given: g, when: w, then: t}\n---\n")

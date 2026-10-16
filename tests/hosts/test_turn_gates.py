@@ -25,7 +25,7 @@ from hosts_helpers import git
 from plumb.api import open_core
 from plumb.cli import main
 
-pytestmark = pytest.mark.sr("SR-053")
+pytestmark = pytest.mark.sr("SR-282")
 
 ENTRY_POINTS = ("claude-code", "cli", "codex", "pi", "hermes")
 

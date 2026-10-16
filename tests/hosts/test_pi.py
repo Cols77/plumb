@@ -15,7 +15,7 @@ from plumb.cli import main
 from plumb.hosts.common import FALLBACK_PROMPT_LINE, NO_MARKER_LINE
 from plumb.hosts.pi import install as pi
 
-pytestmark = pytest.mark.sr("SR-055")
+pytestmark = pytest.mark.sr("SR-283")
 
 FOREIGN = "export default function (pi) {}\n"
 

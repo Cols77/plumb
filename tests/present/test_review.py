@@ -13,7 +13,7 @@ from plumb import approvals, cli
 from plumb.api import open_core
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-064")
+pytestmark = pytest.mark.sr("SR-202")
 
 DEC = """---
 id: DEC-001

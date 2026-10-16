@@ -11,7 +11,7 @@ from plumb.api import open_core
 from plumb.contracts import Target
 from plumb.importer.pi_factory import import_pi_factory
 
-pytestmark = pytest.mark.sr("SR-058")
+pytestmark = pytest.mark.sr("SR-238")
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ import pytest
 from plumb.contracts import DispatchError, Job
 from plumb.understand.dispatch import hermes
 
-pytestmark = pytest.mark.sr("SR-104")
+pytestmark = pytest.mark.sr("SR-273")
 
 SCHEMA = {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]}
 JOB = Job(id="read-0123456789abcdef", kind="read", session="s1", schema="read.v1")

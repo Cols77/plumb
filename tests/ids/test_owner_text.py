@@ -15,19 +15,19 @@ from plumb.present import owner_text
 from plumb.present.owner_text import bare_cli_verbs
 
 
-@pytest.mark.sr("SR-070")
+@pytest.mark.sr("SR-257")
 def test_bare_cli_verbs_flags_plumb_verbs() -> None:
     assert bare_cli_verbs("run plumb merge-fix now") == ["plumb merge-fix"]
     assert bare_cli_verbs("uv run plumb log migrate") == ["plumb log"]
     assert bare_cli_verbs("then plumb approve SR-001") == ["plumb approve"]
 
 
-@pytest.mark.sr("SR-070")
+@pytest.mark.sr("SR-257")
 def test_slash_command_passes() -> None:
     assert bare_cli_verbs("say /plumb merge-fix, or /plumb status") == []
 
 
-@pytest.mark.sr("SR-070")
+@pytest.mark.sr("SR-257")
 def test_plumb_colon_prefix_passes() -> None:
     assert bare_cli_verbs('plumb: SR-005 "relay checks" is also changed') == []
     assert bare_cli_verbs("plumb log: not available in this build") == []
@@ -38,13 +38,13 @@ IDS_CONSTANTS = ("ID_UNRESERVED", "ID_BUSY", "RENUMBERED", "APPROVAL_CARRIED",
                  "WOULD_RENUMBER", "FIX_REMAINS", "PREVIEW", "CARRIED", "CARRIED_GLANCE")
 
 
-@pytest.mark.sr("SR-070")
+@pytest.mark.sr("SR-257")
 def test_every_ids_constant_passes() -> None:
     for name in IDS_CONSTANTS:
         assert bare_cli_verbs(getattr(owner_text, name)) == [], name
 
 
-@pytest.mark.sr("SR-070")
+@pytest.mark.sr("SR-257")
 def test_fallback_line(tmp_path: Path, capsys) -> None:
     from plumb.commands import init_repo
 
@@ -56,7 +56,7 @@ def test_fallback_line(tmp_path: Path, capsys) -> None:
     assert "is not reserved" in err and bare_cli_verbs(err) == []
 
 
-@pytest.mark.sr("SR-070")
+@pytest.mark.sr("SR-257")
 def test_busy_error(tmp_path: Path, monkeypatch, capsys) -> None:
     from plumb.ids import ref as ref_mod
     from plumb.ids import reservation
@@ -73,7 +73,7 @@ def test_busy_error(tmp_path: Path, monkeypatch, capsys) -> None:
     assert "could not reserve an ID" in err and bare_cli_verbs(err) == []
 
 
-@pytest.mark.sr("SR-071")
+@pytest.mark.sr("SR-257")
 def test_merge_fix_output(tmp_path: Path, capsys) -> None:
     s = scenario.build(tmp_path)
     outputs = []
@@ -86,7 +86,7 @@ def test_merge_fix_output(tmp_path: Path, capsys) -> None:
         assert bare_cli_verbs(out) == [], out
 
 
-@pytest.mark.sr("SR-071")
+@pytest.mark.sr("SR-257")
 def test_carried_label_surfaces(tmp_path: Path, capsys) -> None:
     from plumb.api import open_core
     from plumb.boundary.glance import glance_line, glance_rows
@@ -102,7 +102,7 @@ def test_carried_label_surfaces(tmp_path: Path, capsys) -> None:
     assert "carried by renumber" in line and bare_cli_verbs(line) == []
 
 
-@pytest.mark.sr("SR-072")
+@pytest.mark.sr("SR-257")
 @pytest.mark.parametrize("command", [["check", "--merge", "main"],
                                      ["merge-check", "main", "--no-run"]])
 def test_collision_section(tmp_path: Path, capsys, command) -> None:

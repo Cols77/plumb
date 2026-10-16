@@ -24,7 +24,7 @@ from .helpers import (
     sentinel_bin,
 )
 
-pytestmark = [needs_sh, pytest.mark.sr("SR-083")]
+pytestmark = [needs_sh, pytest.mark.sr("SR-280")]
 HINT = {"systemMessage": owner_text.NOT_ADOPTED}
 
 
@@ -131,7 +131,7 @@ def test_a_folder_under_plumbs_own_home_is_not_adopted(tmp_path: Path) -> None:
     assert (result.returncode, result.stdout) == (0, "")
 
 
-@pytest.mark.sr("SR-122")
+@pytest.mark.sr("SR-202")
 def test_init_hint_puts_plumb_on_the_agents_path(setup: tuple[Path, dict[str, str], Path],
                                                  tmp_path: Path) -> None:
     """SR-122 EX-2: where the session start suggests /plumb init, the agent's shell gets the

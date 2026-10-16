@@ -12,7 +12,7 @@ import pytest
 
 from plumb.mcp.server import TOOL_NAMES, run_cli, serve
 
-pytestmark = pytest.mark.sr("SR-057")
+pytestmark = pytest.mark.sr("SR-285")
 
 SR1 = """---
 id: SR-001

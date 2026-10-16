@@ -15,7 +15,7 @@ from understand.test_judge_job import SESSION, build_job, verdict_answer
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-185")
+pytestmark = pytest.mark.sr("SR-245")
 
 
 class ClearsIntent(StubJev):

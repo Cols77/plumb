@@ -36,7 +36,7 @@ def _body(text: str) -> str:
     return text.split("---", 2)[2]
 
 
-@pytest.mark.sr("SR-120")
+@pytest.mark.sr("SR-202")
 def test_grounding_skill_is_plumb_records_with_its_references(repo: Path) -> None:
     """EX-1: the skills listed are plumb-records, plumb-clarify and plumb-intent; none is
     named plumb."""
@@ -53,7 +53,7 @@ def test_grounding_skill_is_plumb_records_with_its_references(repo: Path) -> Non
         assert name in skill, name
 
 
-@pytest.mark.sr("SR-120")
+@pytest.mark.sr("SR-202")
 def test_command_reads_the_references_where_this_install_put_them(repo: Path) -> None:
     """The plugin's command names its own root; the per-repository copy names .claude/."""
     assert "${CLAUDE_PLUGIN_ROOT}/skills/plumb-records/references/merge.md" in _command()
@@ -64,7 +64,7 @@ def test_command_reads_the_references_where_this_install_put_them(repo: Path) ->
         assert rel in text and (repo / rel).is_file(), name
 
 
-@pytest.mark.sr("SR-120")
+@pytest.mark.sr("SR-202")
 def test_install_removes_the_retired_plumb_skill_only_when_it_is_plumbs(repo: Path) -> None:
     old = repo / ".claude" / "skills" / "plumb"
     old.mkdir(parents=True)
@@ -85,7 +85,7 @@ def test_install_removes_the_retired_plumb_skill_only_when_it_is_plumbs(repo: Pa
     assert (old / "SKILL.md").is_file()
 
 
-@pytest.mark.sr("SR-120")
+@pytest.mark.sr("SR-202")
 def test_uninstall_removes_the_skills_and_their_references(repo: Path) -> None:
     claude = _installed(repo)
     install.uninstall(repo)
@@ -95,7 +95,7 @@ def test_uninstall_removes_the_skills_and_their_references(repo: Path) -> None:
     assert "skill: not installed" in status
 
 
-@pytest.mark.sr("SR-122")
+@pytest.mark.sr("SR-202")
 def test_clarify_skill_covers_every_answer_of_clarify_wait(repo: Path) -> None:
     """EX-1: waiting means build nothing and run clarify --wait again; every state the
     command can answer is named."""
@@ -112,7 +112,7 @@ def test_clarify_skill_covers_every_answer_of_clarify_wait(repo: Path) -> None:
     assert "clarify --wait" in head and "creates or changes intent" in head
 
 
-@pytest.mark.sr("SR-122")
+@pytest.mark.sr("SR-202")
 def test_records_skill_runs_clarify_wait_first_and_names_the_guarded_commands(
         repo: Path) -> None:
     skill = (_installed(repo) / "skills" / "plumb-records" / "SKILL.md").read_text(
@@ -125,7 +125,7 @@ def test_records_skill_runs_clarify_wait_first_and_names_the_guarded_commands(
         assert f"`{row.words[0]}" in skill or f"plumb {row.words[0]}" in skill, row.name
 
 
-@pytest.mark.sr("SR-122")
+@pytest.mark.sr("SR-202")
 def test_command_has_a_branch_for_each_typed_verb_and_a_fallback() -> None:
     """EX-2: /plumb init runs plumb init and reports it; EX-3: a typed approve approves
     nothing in the agent's session and the agent reports the status card."""
@@ -142,7 +142,7 @@ def test_command_has_a_branch_for_each_typed_verb_and_a_fallback() -> None:
     assert body.count("message_digest") == 1
 
 
-@pytest.mark.sr("SR-122")
+@pytest.mark.sr("SR-202")
 def test_command_allows_exactly_what_it_runs_and_no_owner_command() -> None:
     text = _command()
     allowed = _allowed(text)
@@ -171,7 +171,7 @@ def test_command_allows_exactly_what_it_runs_and_no_owner_command() -> None:
     assert "git add .plumb:*" in git and "git reset --keep ORIG_HEAD" in git
 
 
-@pytest.mark.sr("SR-122")
+@pytest.mark.sr("SR-202")
 def test_references_give_the_conflict_forms_and_a_capture_document_that_parses() -> None:
     refs = TEMPLATES / "skills" / "plumb-records" / "references"
     conflicts = (refs / "conflicts.md").read_text(encoding="utf-8")

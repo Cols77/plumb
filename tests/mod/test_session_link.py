@@ -22,7 +22,7 @@ from mod.helpers import DIGEST, SESSION, run_mod
 from plumb.hosts.claude_code import hookio, session_start
 from plumb.mod import handshake
 
-pytestmark = pytest.mark.sr("SR-125")
+pytestmark = pytest.mark.sr("SR-264")
 
 
 def _host(root: Path) -> dict | None:

@@ -12,7 +12,7 @@ from plumb.capture.escalation import escalation
 from plumb.contracts import DiffStats
 from plumb.judgment import FakeBackend
 
-pytestmark = pytest.mark.sr("SR-036")
+pytestmark = pytest.mark.sr("SR-228")
 
 EX = [{"id": "EX-1", "given": "a = 1 and b = 2", "when": "add runs", "then": "it returns 3"}]
 

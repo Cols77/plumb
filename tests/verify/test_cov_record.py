@@ -33,7 +33,7 @@ def _map(root: Path, **kw):
     return verify, report
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_collect_once_records_every_test(project: Path) -> None:
     verify, report = _map(project)
     assert set(report.recorded) == NODES
@@ -47,7 +47,7 @@ def test_collect_once_records_every_test(project: Path) -> None:
     assert fm.tests_executing(MOD, "add", "other-env") == []
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_unchanged_test_not_rerun_for_recording(project: Path) -> None:
     _map(project)
     _, again = _map(project)
@@ -56,7 +56,7 @@ def test_unchanged_test_not_rerun_for_recording(project: Path) -> None:
     assert again.fresh == len(NODES)
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_refresh_only_stale_tests(project: Path) -> None:
     _map(project)
     write(project, "tests/test_helper.py",
@@ -66,7 +66,7 @@ def test_refresh_only_stale_tests(project: Path) -> None:
     assert report.recorded == ["tests/test_helper.py::test_twice"]
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_workers_combine_data_files(project: Path, tmp_path: Path) -> None:
     from coverage import CoverageData
 
@@ -88,7 +88,7 @@ def test_workers_combine_data_files(project: Path, tmp_path: Path) -> None:
     assert set(report.recorded) == NODES
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_coverage_absent_says_so_and_selects_by_closure(project: Path,
                                                          monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb.verify import runner

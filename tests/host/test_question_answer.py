@@ -10,7 +10,7 @@ import pytest
 from plumb.api import open_core
 from plumb.hosts.claude_code import question_answer
 
-pytestmark = pytest.mark.sr("SR-156")
+pytestmark = pytest.mark.sr("SR-212")
 
 ASKED = {"questions": [{"question": "Run the slow tests now or later?", "header": "Tests",
                         "options": [{"label": "now", "description": ""},

@@ -27,7 +27,7 @@ from awareness.scenario import capture
 from plumb import cli
 from plumb.api import open_core
 
-pytestmark = [pytest.mark.sr("SR-081"), pytest.mark.sr("SR-077")]
+pytestmark = [pytest.mark.sr("SR-259"), pytest.mark.sr("SR-260")]
 SR = ".plumb/requirements/SR-005.md"
 OURS = "A relay pins only the records the owner's words affirm."
 THEIRS = "A relay pins the stated group, named by its title."

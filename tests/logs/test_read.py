@@ -30,7 +30,7 @@ def _put(paths: PlumbPaths, raw: dict, name: str | None = None) -> str:
     return f"{raw['kind']}/{file_name}"
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_order_at_then_chain_then_name(paths: PlumbPaths) -> None:
     a = legacy_entry("approval", {"n": "a"}, None, at="2026-10-05T12:00:05Z")
     # same second, chained after a, but its name sorts first
@@ -52,7 +52,7 @@ def test_order_at_then_chain_then_name(paths: PlumbPaths) -> None:
     assert [e.payload["n"] for e in log.read(paths, "events")][-2:] == ["d", "c"]
 
 
-@pytest.mark.sr("SR-074")
+@pytest.mark.sr("SR-232")
 def test_both_formats_deduplicated_by_digest(paths: PlumbPaths) -> None:
     first = legacy_entry("repin", {"i": 0}, None)
     second = legacy_entry("repin", {"i": 1}, first["digest"], at="2026-10-05T12:00:01Z")
@@ -67,7 +67,7 @@ def test_both_formats_deduplicated_by_digest(paths: PlumbPaths) -> None:
     assert log.verify_chain(paths, "events") == []
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_pack_cache_reads_only_new_files(paths: PlumbPaths,
                                          monkeypatch: pytest.MonkeyPatch) -> None:
     for i in range(3):
@@ -90,7 +90,7 @@ def test_pack_cache_reads_only_new_files(paths: PlumbPaths,
     assert opened == [new.name.split("/", 1)[1]]
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_pack_cache_drops_vanished_names(paths: PlumbPaths) -> None:
     entries = [log.append(paths, "events", "repin", {"i": i}) for i in range(3)]
     list(log.read(paths, "events"))
@@ -101,7 +101,7 @@ def test_pack_cache_drops_vanished_names(paths: PlumbPaths) -> None:
     assert entries[1].name not in pack["files"]
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_corrupt_pack_cache_rebuilt(paths: PlumbPaths) -> None:
     entries = [log.append(paths, "events", "repin", {"i": i}) for i in range(2)]
     list(log.read(paths, "events"))
@@ -116,7 +116,7 @@ def test_corrupt_pack_cache_rebuilt(paths: PlumbPaths) -> None:
     assert next(iter(log.read(paths, "events"))).payload == {"i": 7}
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_since_skips_applied_names(paths: PlumbPaths) -> None:
     entries = [log.append(paths, "events", "repin", {"i": i}) for i in range(3)]
     applied = {entries[0].name, entries[1].name}

@@ -12,7 +12,7 @@ from plumb.progress import Reporter, status_text
 from plumb.understand import files
 from understand.fakes import owner_level
 
-pytestmark = pytest.mark.sr("SR-108")
+pytestmark = pytest.mark.sr("SR-272")
 
 
 class Clock:
@@ -147,7 +147,7 @@ def test_no_stream_means_no_display_at_all(tmp_path: Path, capsys: pytest.Captur
     assert captured.out == "" and captured.err == ""
 
 
-@pytest.mark.sr("SR-153")
+@pytest.mark.sr("SR-232")
 def test_duplicate_updates_coalesce_but_heartbeat_and_changes_publish(tmp_path, monkeypatch):
     import os
 
@@ -180,7 +180,7 @@ def test_duplicate_updates_coalesce_but_heartbeat_and_changes_publish(tmp_path, 
     assert len(writes) == 7 and _file(tmp_path, "s1")["state"] == "failed"
 
 
-@pytest.mark.sr("SR-153")
+@pytest.mark.sr("SR-232")
 def test_failed_progress_write_is_retried_without_waiting(tmp_path, monkeypatch):
     import os
 

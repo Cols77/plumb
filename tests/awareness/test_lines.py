@@ -12,7 +12,7 @@ from plumb.api import open_core
 from plumb.awareness import publish as pub
 from plumb.present.render import status_card
 
-pytestmark = pytest.mark.sr("SR-078")
+pytestmark = pytest.mark.sr("SR-258")
 
 
 def _many(tmp_path: Path, n: int) -> Path:

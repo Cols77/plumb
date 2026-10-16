@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 from hosts_helpers import make_project
 
-pytestmark = pytest.mark.sr("SR-053")
+pytestmark = pytest.mark.sr("SR-282")
 
 # The brief sleeps past its watchdog (cut to 0.3 s for the session-start event only) and
 # notes each call; the prompt event keeps the real limit.

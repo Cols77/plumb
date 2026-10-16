@@ -15,7 +15,7 @@ from capture_helpers import (
 from plumb.api import open_core
 from plumb.capture.spec import set_hash, set_state
 
-pytestmark = pytest.mark.sr("SR-037")
+pytestmark = pytest.mark.sr("SR-227")
 
 
 @pytest.fixture

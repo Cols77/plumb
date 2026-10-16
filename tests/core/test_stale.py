@@ -12,7 +12,7 @@ from plumb import stale
 from plumb.api import open_core
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-111")
+pytestmark = pytest.mark.sr("SR-198")
 
 SR5 = """---
 id: SR-005

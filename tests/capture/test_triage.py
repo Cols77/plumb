@@ -18,7 +18,7 @@ from capture_helpers import (
 from plumb.api import open_core
 from plumb.capture.triage import triage
 
-pytestmark = pytest.mark.sr("SR-040")
+pytestmark = pytest.mark.sr("SR-227")
 
 
 @pytest.fixture(autouse=True)

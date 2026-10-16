@@ -11,7 +11,7 @@ import pytest
 from plumb import cli
 from plumb.claims import claims_check, glob_match, load_policy
 
-pytestmark = pytest.mark.sr("SR-007")
+pytestmark = pytest.mark.sr("SR-261")
 
 SR_003 = """---
 id: SR-003
@@ -59,7 +59,7 @@ def test_claims_reports_undeclared_paths(ranged) -> None:
                                      "claims": ["SR-003"]}]
 
 
-@pytest.mark.sr("SR-188")
+@pytest.mark.sr("SR-233")
 def test_a_deleted_test_is_declared_by_the_record_that_linked_it_before(ranged) -> None:
     repo, _ = ranged
     base = _commit(repo, {"tests/test_links.py": "def test(): pass\n"}, "test\n\nSR: SR-003")

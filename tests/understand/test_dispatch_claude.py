@@ -13,7 +13,7 @@ from plumb.understand import agents
 from plumb.understand.dispatch import claude_code
 from understand.fakes import fake_claude
 
-pytestmark = pytest.mark.sr("SR-104")
+pytestmark = pytest.mark.sr("SR-273")
 
 _REAL_ENV = dict(os.environ)   # before the isolation fixtures: the live test needs the login
 

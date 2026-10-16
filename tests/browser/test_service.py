@@ -11,7 +11,7 @@ from plumb.api import open_core
 from plumb.mod import session
 from plumb.understand import cardstore, recheck_button
 
-pytestmark = pytest.mark.sr("SR-176")
+pytestmark = pytest.mark.sr("SR-269")
 
 
 def test_browser_readback_approves_exact_multiple_record_hashes(core):

@@ -13,7 +13,7 @@ from awareness.gitrepo import add_worktree, commit_all, make_repo, requirement
 from plumb.api import open_core
 from plumb.awareness import publish as pub
 
-pytestmark = pytest.mark.sr("SR-079")
+pytestmark = pytest.mark.sr("SR-258")
 
 
 def _setup(tmp_path: Path) -> tuple[Path, Path]:

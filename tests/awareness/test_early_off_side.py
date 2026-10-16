@@ -20,7 +20,7 @@ from plumb import cli
 from plumb.api import open_core
 from plumb.awareness import early
 
-pytestmark = pytest.mark.sr("SR-081")
+pytestmark = pytest.mark.sr("SR-259")
 A = "A reminder is sent 48 hours before the deadline."
 B = "A reminder is sent 2 hours before the deadline."
 

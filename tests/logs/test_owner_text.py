@@ -12,7 +12,7 @@ from plumb import cli
 from plumb.api import open_core
 from plumb.present.owner_text import LEGACY_LOG, bare_cli_verbs
 
-pytestmark = pytest.mark.sr("SR-074")
+pytestmark = pytest.mark.sr("SR-232")
 
 
 def _legacy(root: Path) -> None:

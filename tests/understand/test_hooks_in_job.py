@@ -13,7 +13,7 @@ import pytest
 from plumb.api import Core
 from plumb.understand import jobs, queue, worker
 
-pytestmark = pytest.mark.sr("SR-104")
+pytestmark = pytest.mark.sr("SR-273")
 
 HOOKS = ("session-start", "prompt", "post-edit", "stop", "pre-tool")
 

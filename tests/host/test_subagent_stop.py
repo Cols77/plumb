@@ -15,7 +15,7 @@ from plumb.api import open_core
 from plumb.contracts import Target
 from plumb.hosts.claude_code import subagent_stop
 
-pytestmark = pytest.mark.sr("SR-166")
+pytestmark = pytest.mark.sr("SR-198")
 
 SR1 = """---
 id: SR-001

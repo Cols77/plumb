@@ -1,0 +1,82 @@
+{
+ "principle": "P13",
+ "file": "C:/coding/plumb-wt/v2/docs/specs/v2-drafts/P13.check.json",
+ "checks_passed": {
+  "2": "all 8 superseded SRs' examples (SR-192 4, SR-181 4, SR-104 12, SR-014 3, SR-011 2, SR-063 5, SR-032 5, SR-009 2) are in examples_kept (none twice) or examples_dropped (SR-011/EX-2, with a reason the confirmed P13 backs); the one gap is the compare line inside SR-032/EX-3, reported above",
+  "6": "the quote 'Also increase the timeout for all hooks' equals INT-072's quote in the dump word for word",
+  "7": "SR-192, 181, 104, 014, 011 (C34) and SR-063, 032, 009 (C35) are each superseded exactly once across all drafts; SR-108 is superseded by the P12 draft, not here; DEC-077, 078, 063, 009 are superseded once and DEC-008 retired with a reason",
+  "8": "no owner command takes an id and no card or read-back is read or pressed; plumb show and plumb brief --all appear only in agent-facing lines; limits are changed by asking in plain words"
+ },
+ "findings": [
+  {
+   "level": "medium",
+   "requirement": "plumb's model work runs as batched background jobs that open no window",
+   "what": "Check 1 against the confirmed principle P6 and SR-171 (P6 supersedes it): the statement says reading, judging 'and clarifying' run as background jobs that 'hooks queue', and example 1 says the prompt hook queues a read job on every owner message. P6 confirms clarification on the owner's command only (/plumb intent, through the question tool) and 'An ordinary message opens no loop'; SR-171 says nothing runs on an ordinary message when neither a question is waiting nor the last reply showed something to answer. Drop 'clarifying' from the hook-queued jobs (SR-104's 'clarify job collected by plumb clarify --wait' is rightly not carried) and condition example 1 on the last reply having shown something to answer."
+  },
+  {
+   "level": "medium",
+   "requirement": "plumb's model work runs as batched background jobs that open no window",
+   "what": "Check 3: two behaviours in one. Title and statement join (a) batched, dispatcher-isolated background model jobs (queue, batching, recompute from logs, retry, no rule fallback, the headless-session flags of example 6) and (b) the Windows launch of any background process with no console window (examples 10 to 13, from SR-192, which has its own DEC-077). A window regression and a job-queue regression are different failures with different proofs. Split into two requirements (SR-192 and DEC-077 go with the second), or the one proof plan cannot cover both."
+  },
+  {
+   "level": "medium",
+   "requirement": "plumb's model work runs as batched background jobs that open no window",
+   "what": "Check 4: example 14 ('a job that keeps failing turn after turn ... the case goes to the debug workflow, which works out what is missing before any question reaches the owner') has no observable threshold (how many turns) and no observable outcome (what appears where). The statement also says a failing job 'is retried next turn' with no limit, so the two clauses do not say when retry stops and routing starts. State the count and what the owner or the ledger shows."
+  },
+  {
+   "level": "low",
+   "requirement": "plumb's model work runs as batched background jobs that open no window",
+   "what": "Check 8 wording: example 8 starts from 'a turn whose previous reply showed five records and one open question'. Under P2/P3/P12 the owner reads no records to answer; say 'five questions' or similar. Also example 3 has the plumb line report the unreachable model at every turn end, while the P8 draft says plumb says so once per session window; align the two."
+  },
+  {
+   "level": "low",
+   "requirement": "plumb's model work runs as batched background jobs that open no window",
+   "what": "Check 5: the proof plan ends with 'the job ledger then shows one read job for the turn'. The ledger is an internal file the owner does not watch; what the owner can watch is the absence of a window and the agent carrying on. Drop the ledger clause or show it through the progress mod."
+  },
+  {
+   "level": "medium",
+   "requirement": "Hook time limits are generous settings the owner can raise",
+   "what": "Check 3: two behaviours in one. The statement ends with 'the post-edit hook records each edited path within its limit' and example 10 asserts the touched-list recording (SR-011/EX-1). Edit tracking is a different observable behaviour from 'time limits are settings'. Give SR-011/EX-1 its own requirement, or restate it as the post-edit hook finishing within its 5 s budget and move the touched-list assertion elsewhere."
+  },
+  {
+   "level": "medium",
+   "requirement": "Hook time limits are generous settings the owner can raise",
+   "what": "Check 4/5: examples 5 and 6 do not hold together and example 6 is not something the owner can watch. Example 5 says that on 'up to a minute' the hard limit becomes 60 s and the next hook is cut only after 60 s; but the host hook timeouts are 60 s (plugin/hooks/hooks.json, written by scripts/build_plugin.py from a fixed HOOKS table with no config input), so the host kills a hook at 60 s, before 60 s plus the stop grace, until example 6's 'plugin is rebuilt' happens. Nothing says who rebuilds or when, and the code has no such step, so example 6 is a new behaviour presented as kept. Say who rebuilds and when the owner sees it, or cap the owner-raised value below the host timeout minus the grace and say so."
+  },
+  {
+   "level": "medium",
+   "requirement": "Hook time limits are generous settings the owner can raise",
+   "what": "Check 4/2: example 9 ('a hook raises an internal error ... it writes the error to the session error log and the case goes to the debug workflow') has no observable then-clause for its second half. It also silently drops 'exits 0' from SR-014/EX-2, which the code still does (hookio.py: 'always exits 0') and tests cover, while SR-014/EX-2 is in examples_kept and not in examples_dropped. Keep 'exits 0' in the then-clause, or list the dropped part with its reason (the owner's 'Not sure those are requirements')."
+  },
+  {
+   "level": "low",
+   "requirement": "Hook time limits are generous settings the owner can raise",
+   "what": "Check 5: the proof plan's live part ('sees the agent apply it and the plugin's host timeouts stay above it') shows nothing the owner can see; host timeouts are in a generated file. Show the limit being applied through a hung hook cut at the new value."
+  },
+  {
+   "level": "medium",
+   "requirement": "Long plumb work shows an animated progress bar in a small mod",
+   "what": "Check 3: duplicates the P12 draft's requirement 'Long plumb work shows its step and progress', which supersedes SR-108 and already says the band 'animates while plumb works', shows elapsed time when the total is unknown, replaces the bar with one failure line naming the step, and shows nothing under two seconds. R3's examples 1 to 4 restate SR-104/EX-10 to 12 and SR-108/EX-4. Two requirements for one behaviour break P7; the draft's own assumption admits the overlap. Keep here only what is specific to the Claude Code mod (or move it into the P12 requirement) and agree one threshold: R3 says 'longer than a hook budget' (5 s or 20 s) yet its example 1 shows the mod at 8 s, while P12 and SR-108 say about two seconds."
+  },
+  {
+   "level": "medium",
+   "requirement": "Long plumb work shows an animated progress bar in a small mod",
+   "what": "Check 3/4: example 6 (Codex, Pi or Hermes install gets no Claude Code mod) is P14's behaviour ('each host installs only its own things') placed in a progress requirement, and the P14 draft does not carry it; move it there. Also 'longer than a hook budget' in the statement is vague: there are two budgets (5 s and 20 s) and background jobs have none."
+  },
+  {
+   "level": "medium",
+   "requirement": "The agent gets each relevant record once, and a brief of about 30 lines",
+   "what": "Check 3: two behaviours in one. The per-prompt emitter (inject each relevant record once, again on hash change or /clear, never cut a must line, point to plumb show) and the session brief (plumb brief about 30 lines, cap 40, and the compact session-start brief) are separate observable behaviours on different surfaces, from different records (SR-063/SR-032 vs SR-009). Examples 6, 7 and 12 test the brief, the other ten the emitter. Split in two."
+  },
+  {
+   "level": "medium",
+   "requirement": "The agent gets each relevant record once, and a brief of about 30 lines",
+   "what": "Check 2: SR-032/EX-3 says the approved record is injected 'once with the compare line'. Example 10 drops 'with the compare line' while SR-032/EX-3 is listed in examples_kept and not in examples_dropped. The code still prints 'plumb: compare this request with the confirmed examples of ...' (src/plumb/hosts/claude_code/prompt.py line 302) and tests/host/test_prompt.py::test_compare_line_when_confirmed_records_injected covers it; the compare line appears in no other record or draft. Carry it or list it in examples_dropped with a reason (SR-032 is only proposed, so medium rather than high)."
+  },
+  {
+   "level": "medium",
+   "requirement": "intent",
+   "what": "The intent contradicts itself: 'wont' says not to make 'keeps the agent's context small' a requirement and the readback says it is no longer the owner's requirement, yet 'will' ends with 'Give the agent each relevant record once per session through one emitter, with a short session brief' and requirement 4 is entirely that behaviour. The confirmed P13 text drops the context-small requirement, while INT-016 (confirmed) and SR-063/SR-009 (confirmed, with tests) keep the behaviour. Attribute the retained behaviour to INT-016 and word the wont as 'P13 does not state it' rather than 'will not make it a requirement'. The single quote (INT-072) also carries only the limits; the windows, progress and context parts have no quote of their own (low if one quote per intent is by design)."
+  }
+ ]
+}

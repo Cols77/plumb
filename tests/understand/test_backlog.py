@@ -16,7 +16,7 @@ from plumb.present import owner_text
 from understand.fakes import FakeDispatcher, owner_level
 from understand.test_judge_job import SESSION, intent_text, log_prompt, requirement_text
 
-pytestmark = pytest.mark.sr("SR-107")
+pytestmark = pytest.mark.sr("SR-252")
 
 MESSAGE = "Build the whole checking story: what holds a merge, what it says, how it recovers."
 
@@ -79,7 +79,7 @@ def run_pass(repo: Path, box: Any, jobs: int | None = None) -> list[str]:
     return ran
 
 
-@pytest.mark.sr("SR-153")
+@pytest.mark.sr("SR-232")
 def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
         repo: Path, write_record, engine_standins) -> None:
     from plumb.understand import backlog, worker

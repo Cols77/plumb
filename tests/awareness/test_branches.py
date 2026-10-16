@@ -47,7 +47,7 @@ def _counting(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     return calls
 
 
-@pytest.mark.sr("SR-078")
+@pytest.mark.sr("SR-258")
 def test_branch_without_worktree_reported_at_session_start(tmp_path: Path) -> None:
     """SR-078 EX-3: a branch without a worktree whose commits changed SR-007."""
     main = _repo(tmp_path)
@@ -57,7 +57,7 @@ def test_branch_without_worktree_reported_at_session_start(tmp_path: Path) -> No
         'plumb: SR-007 "thing 7" is also being changed on branch feat-y']
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_unmoved_tip_runs_no_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-079 EX-2: a branch whose tip has not moved since the last scan runs no git."""
     main = _repo(tmp_path)
@@ -70,7 +70,7 @@ def test_unmoved_tip_runs_no_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert lines and "feat-y" in lines[0]
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_scan_capped_by_branch_max(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     main = _repo(tmp_path)
     for n in range(1, 5):
@@ -86,7 +86,7 @@ def test_scan_capped_by_branch_max(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert sorted(cache["branches"]) == ["b1", "b2", "b3", "b4"]
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_scan_capped_by_deadline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     main = _repo(tmp_path)
     _branch(main, "b1", "SR-001", "b1's version")
@@ -102,7 +102,7 @@ def test_scan_capped_by_deadline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert "awareness skipped (budget)" in errors
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_default_branch_skipped(tmp_path: Path) -> None:
     main = _repo(tmp_path)
     run_git(main, "checkout", "-q", "-b", "side")

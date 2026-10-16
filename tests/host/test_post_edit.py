@@ -12,7 +12,7 @@ import pytest
 
 from plumb.hosts.claude_code import post_edit
 
-pytestmark = pytest.mark.sr("SR-011")
+pytestmark = pytest.mark.sr("SR-276")
 
 
 def _touched(repo: Path, session: str = "test-session") -> list[str]:

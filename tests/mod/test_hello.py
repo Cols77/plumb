@@ -11,7 +11,7 @@ from mod.helpers import DIGEST, KEY, SESSION, kinds, mod_json, run_mod
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-086")
+pytestmark = pytest.mark.sr("SR-209")
 
 
 def test_first_registration_wins_and_a_second_is_refused(repo: Path, monkeypatch,

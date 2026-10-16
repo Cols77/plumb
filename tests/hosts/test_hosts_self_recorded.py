@@ -22,7 +22,7 @@ from plumb.cli import main
 from plumb.confirm import SELF_RECORDED
 from plumb.merge import merge_check
 
-pytestmark = pytest.mark.sr("SR-053")
+pytestmark = pytest.mark.sr("SR-282")
 
 OK = "ok SR-001"
 

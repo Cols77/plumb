@@ -20,7 +20,7 @@ from plumb.api import open_core
 from plumb.contracts import Judgment
 from plumb.mergedriver import conflict_card, open_conflicts
 
-pytestmark = pytest.mark.sr("SR-076")
+pytestmark = pytest.mark.sr("SR-256")
 
 
 def test_card_shows_both_versions_and_what_merged(repo: Path) -> None:

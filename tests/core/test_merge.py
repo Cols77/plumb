@@ -15,7 +15,7 @@ from plumb.api import open_core
 from plumb.contracts import Target
 from plumb.merge import merge_check
 
-pytestmark = pytest.mark.sr("SR-008")
+pytestmark = pytest.mark.sr("SR-260")
 
 INT = "---\nid: INT-001\ntitle: Grounded\nquote: q\nreadback: Ground the work.\n---\n"
 SR1 = """---
@@ -213,7 +213,7 @@ def test_merge_log_integrity_still_catches_edit_of_merge_base_line(base, capsys)
     assert "log integrity: FAILED" in out
 
 
-@pytest.mark.sr("SR-026")
+@pytest.mark.sr("SR-200")
 def test_merge_puts_untraced_changes_to_the_owner(base, capsys) -> None:
     """A changed source path no requirement owns escaped the read-back: the merge waits."""
     root, sha = base
@@ -230,7 +230,7 @@ def test_merge_puts_untraced_changes_to_the_owner(base, capsys) -> None:
     assert json.loads(capsys.readouterr().out)["untraced"] == ["src/mul.py"]
 
 
-@pytest.mark.sr("SR-026")
+@pytest.mark.sr("SR-200")
 def test_merge_untraced_change_cleared_by_a_link_or_an_exemption(base, capsys) -> None:
     root, sha = base
     (root / "src" / "mul.py").write_text("x = 1\n", "utf-8")
@@ -267,7 +267,7 @@ def _untraced_waits(root: Path, sha: str, capsys) -> None:
     assert "untraced changes (no requirement owns them): src/z.py" in out
 
 
-@pytest.mark.sr("SR-028")
+@pytest.mark.sr("SR-260")
 def test_link_command_widening_a_confirmed_requirement_waits_for_the_owner(
         confirmed_base, capsys, monkeypatch) -> None:
     root, sha = confirmed_base
@@ -293,7 +293,7 @@ def test_link_command_widening_a_confirmed_requirement_waits_for_the_owner(
     assert code == 0, out
 
 
-@pytest.mark.sr("SR-028")
+@pytest.mark.sr("SR-260")
 def test_frontmatter_edit_adding_a_link_waits_for_the_owner(confirmed_base, capsys) -> None:
     root, sha = confirmed_base
     path = root / ".plumb" / "requirements" / "SR-001.md"
@@ -307,7 +307,7 @@ def test_frontmatter_edit_adding_a_link_waits_for_the_owner(confirmed_base, caps
     assert "new link in this range: implemented_by src/z.py (now owned by SR-001)" in out
 
 
-@pytest.mark.sr("SR-028")
+@pytest.mark.sr("SR-260")
 def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
                                                          monkeypatch) -> None:
     root, sha = confirmed_base
@@ -328,14 +328,14 @@ def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
     assert "owner trace.exempt src/**" in out
 
 
-@pytest.mark.sr("SR-028")
+@pytest.mark.sr("SR-260")
 def test_narrowing_the_layout_in_the_range_hides_no_change(confirmed_base, capsys) -> None:
     root, sha = confirmed_base
     (root / ".plumb" / "config.yaml").write_text("test_dirs: [src, tests]\n", "utf-8")
     _untraced_waits(root, sha, capsys)
 
 
-@pytest.mark.sr("SR-029")
+@pytest.mark.sr("SR-200")
 def test_merge_puts_untraced_flat_layout_and_root_files_to_the_owner(repo, capsys) -> None:
     """No source_dirs configured: a flat package and a root module are source too."""
     (repo / "mypkg").mkdir()

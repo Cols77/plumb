@@ -15,7 +15,7 @@ from plumb.hosts.claude_code import statusline
 from plumb.hosts.claude_code.snapshot import build_snapshot, snapshot_dict
 from plumb.present.render import card_state, status_card
 
-pytestmark = pytest.mark.sr("SR-061")
+pytestmark = pytest.mark.sr("SR-263")
 
 
 def _snap(**kwargs) -> StatusSnapshot:

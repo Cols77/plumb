@@ -16,7 +16,7 @@ from plumb.contracts import Target
 from plumb.merge import merge_check
 from plumb.verify import open_verify
 
-pytestmark = pytest.mark.sr("SR-027")
+pytestmark = pytest.mark.sr("SR-254")
 
 INT = "---\nid: INT-001\ntitle: Adding\nquote: q\nreadback: Add numbers.\n---\n"
 BROKEN = "def add(a, b):\n    return a - b\n"

@@ -23,7 +23,7 @@ from plumb.api import open_core
 from plumb.boundary import MergeReport, exit_code, merge_report, render
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-048")
+pytestmark = pytest.mark.sr("SR-254")
 
 SR1 = "---\nid: SR-001\ntitle: Links pin both ends\nstatement: Both ends are pinned.\n---\n"
 

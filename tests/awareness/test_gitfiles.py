@@ -11,7 +11,7 @@ import pytest
 from awareness.gitrepo import add_worktree, commit_all, make_repo, run_git
 from plumb.awareness import gitfiles
 
-pytestmark = pytest.mark.sr("SR-079")
+pytestmark = pytest.mark.sr("SR-258")
 
 
 def _no_git(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -18,7 +18,7 @@ from plumb.present import owner_text
 from plumb.understand import cardstore, summary, tidy, worker
 from understand.test_judge_job import SESSION, requirement_text
 
-pytestmark = pytest.mark.sr("SR-162")
+pytestmark = pytest.mark.sr("SR-217")
 
 SAYS = "A conflict may be answered through the agent in chat"
 

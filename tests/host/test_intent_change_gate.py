@@ -16,7 +16,7 @@ from plumb.api import open_core
 from plumb.hosts.claude_code import prompt
 from plumb.understand import files, gate
 
-pytestmark = pytest.mark.sr("SR-196")
+pytestmark = pytest.mark.sr("SR-225")
 
 SR1 = """---
 id: SR-001

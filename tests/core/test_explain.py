@@ -12,7 +12,7 @@ from plumb import cli
 from plumb.api import open_core
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-033")
+pytestmark = pytest.mark.sr("SR-203")
 
 INT = """---
 id: INT-001

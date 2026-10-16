@@ -18,7 +18,7 @@ from plumb.api import open_core
 from plumb.contracts import NodeEvidence, Target
 from plumb.hosts.claude_code import stop
 
-pytestmark = pytest.mark.sr("SR-111")
+pytestmark = pytest.mark.sr("SR-198")
 
 NODE = "tests/test_a.py::test_a"
 SR1 = """---
@@ -200,7 +200,7 @@ def test_card_counts_as_resolved_for_the_hold(project: Path, hook_input) -> None
     assert _block(out) is None
 
 
-@pytest.mark.sr("SR-116")
+@pytest.mark.sr("SR-267")
 def test_an_incomplete_card_is_held_and_the_agent_told_what_it_lacks(
         project: Path, hook_input) -> None:
     start_turn(project)
@@ -289,7 +289,7 @@ def test_rewording_the_requirement_alone_is_not_held(project: Path, hook_input) 
     assert _block(run_stop(project, hook_input, verify=_verify(), active=True)) is None
 
 
-@pytest.mark.sr("SR-174")
+@pytest.mark.sr("SR-245")
 def test_ex2_a_stale_check_waiting_for_the_judge_does_not_hold_the_turn(
         project: Path, hook_input, monkeypatch) -> None:
     from plumb import links

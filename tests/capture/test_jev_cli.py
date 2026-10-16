@@ -10,7 +10,7 @@ from capture_helpers import KEY, JevStub, run, use_jev
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-039")
+pytestmark = pytest.mark.sr("SR-243")
 
 SECRET = "ts-secret-value-0123456789"
 

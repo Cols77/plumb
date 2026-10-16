@@ -10,7 +10,7 @@ from plumb import log
 from plumb.api import Core
 from plumb.paths import PlumbPaths
 
-pytestmark = pytest.mark.sr("SR-153")
+pytestmark = pytest.mark.sr("SR-232")
 
 
 def io_counts(monkeypatch, paths):

@@ -13,7 +13,7 @@ from merge_helpers import commit, git, project, write
 from plumb import approvals, cli
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-052")
+pytestmark = pytest.mark.sr("SR-260")
 
 
 def _snapshot(root: Path) -> dict[str, str]:

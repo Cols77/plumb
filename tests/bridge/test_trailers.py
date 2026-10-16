@@ -11,7 +11,7 @@ import pytest
 from plumb import cli
 from plumb.claims import ForeignHookError, check_msg, install_commit_msg_hook
 
-pytestmark = pytest.mark.sr("SR-007")
+pytestmark = pytest.mark.sr("SR-261")
 
 SR_001 = """---
 id: SR-001
@@ -128,7 +128,7 @@ def test_trailers_cli(repo: Path, write_record, capsys) -> None:
 # -- MERGE MS3: git's own revert, merge and fixup messages over exempt paths only ---------
 
 
-@pytest.mark.sr("SR-049")
+@pytest.mark.sr("SR-260")
 @pytest.mark.parametrize("message", ['Revert "add docs"\n\nThis reverts commit abc.\n',
                                      "Merge branch 'feat'\n", "fixup! add docs\n",
                                      "squash! add docs\n"])
@@ -146,7 +146,7 @@ def test_generated_message_over_exempt_paths_passes(repo: Path, write_record,
     assert check_msg(repo, message)[0] == 1  # a non-exempt path still needs a trailer
 
 
-@pytest.mark.sr("SR-049")
+@pytest.mark.sr("SR-260")
 def test_plain_message_over_exempt_paths_still_needs_trailer(repo: Path, write_record) -> None:
     write_record(repo, SR_001)
     _require(repo)
@@ -168,7 +168,7 @@ class _FakeCaptureApi:
         return [f"plumb: warning: {sr_ids[0]} may not be served by {paths[0]}"]
 
 
-@pytest.mark.sr("SR-044")
+@pytest.mark.sr("SR-200")
 def test_diff_serves_warning_never_blocks(repo: Path, write_record, monkeypatch) -> None:
     import types
 

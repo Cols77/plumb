@@ -13,7 +13,7 @@ from understand.test_read_job import clarify_card, open_card
 from plumb.api import open_core
 from plumb.understand import files, gate, hooks
 
-pytestmark = pytest.mark.sr("SR-171")
+pytestmark = pytest.mark.sr("SR-222")
 
 SESSION = "s1"
 WORDS = "make the status line show the branch name"

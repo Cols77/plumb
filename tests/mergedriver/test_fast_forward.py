@@ -57,7 +57,7 @@ def _assert_not_recorded(root: Path, before: str, output: str) -> None:
     assert "no test run" in output
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_init_makes_merges_into_main_record_a_merge_commit(tmp_path: Path) -> None:
     root, _ = _adopted(tmp_path)
     assert NO_FF in run_git(root, "config", "--get", "branch.main.mergeoptions").stdout
@@ -68,7 +68,7 @@ def test_init_makes_merges_into_main_record_a_merge_commit(tmp_path: Path) -> No
     assert not (root / ".git" / "hooks" / "post-merge").exists()
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_plain_merge_that_would_fast_forward_is_held(tmp_path: Path) -> None:
     """SR-077 EX-13: ``git merge feat-x`` with main not moved: a merge commit is prepared
     and the quick check holds it; main does not move."""
@@ -83,7 +83,7 @@ def test_plain_merge_that_would_fast_forward_is_held(tmp_path: Path) -> None:
     assert "finish the merge" in output
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_pull_that_would_fast_forward_is_held(tmp_path: Path) -> None:
     """SR-077 EX-13: ``git pull`` of feat-x into main, which would fast-forward."""
     root, other = _adopted(tmp_path)
@@ -95,7 +95,7 @@ def test_pull_that_would_fast_forward_is_held(tmp_path: Path) -> None:
     _assert_not_recorded(root, before, output)
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 @pytest.mark.parametrize("command", [["merge", "--ff-only", "feat-x"],
                                      ["pull", "--ff-only", ".", "feat-x"]])
 def test_ff_only_is_put_back(tmp_path: Path, command: list[str]) -> None:
@@ -117,7 +117,7 @@ def test_ff_only_is_put_back(tmp_path: Path, command: list[str]) -> None:
     assert status.strip() == "?? local.txt"
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_clean_fast_forward_stays(tmp_path: Path) -> None:
     """A fast-forward the check does not hold keeps git's own result."""
     root, other = _adopted(tmp_path)
@@ -128,7 +128,7 @@ def test_clean_fast_forward_stays(tmp_path: Path) -> None:
     assert "nothing holds this merge" in done.stdout + done.stderr
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_owner_option_kept_and_hold_switch(tmp_path: Path) -> None:
     """An owner's own fast-forward option stays (the post-merge hook still checks), and
     ``plumb.mergeHold=false`` lets a fast-forward through."""

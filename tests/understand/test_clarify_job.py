@@ -16,7 +16,7 @@ from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyAnswer
 from plumb.understand import cardstore, clarify, effects, files, gate, worker
 
-pytestmark = pytest.mark.sr("SR-103")
+pytestmark = pytest.mark.sr("SR-223")
 
 SESSION = "s1"
 SR = ("---\nid: SR-001\ntitle: Export users as CSV\nfeature: FEAT-001\n"
@@ -427,7 +427,7 @@ def test_sr131_yes_to_the_spec_session_keeps_the_gate_closed(
     assert gate.is_closed(repo, SESSION)
 
 
-@pytest.mark.sr("SR-131")
+@pytest.mark.sr("SR-223")
 def test_sr131_ex4_a_vague_answer_keeps_the_choice_card_and_opens_no_read_back(
         repo: Path, engine_standins: Any) -> None:
     gaps = {"intent": "yes", "topic": "export", "gaps": [
@@ -498,7 +498,7 @@ def test_sr131_ex4_ok_go_on_while_the_card_waits_starts_no_new_request(
     assert gate.is_closed(repo, SESSION)
 
 
-@pytest.mark.sr("SR-154")
+@pytest.mark.sr("SR-223")
 def test_sr154_operating_the_tools_is_not_a_request() -> None:
     """Only a change to the repository's own system raises a card (the model is told so)."""
     prompt = (Path(clarify.__file__).parent / "agents" / "clarify.md").read_text(

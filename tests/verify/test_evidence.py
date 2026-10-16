@@ -26,7 +26,7 @@ def _entries(root: Path) -> list[dict]:
     return entries(root, "evidence")
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_run_appends_test_run_entry_with_tree_and_env(project: Path) -> None:
     report = open_verify(open_core(project)).run(nodes=["tests/test_mod.py"])
     assert report.ok
@@ -47,7 +47,7 @@ def test_run_appends_test_run_entry_with_tree_and_env(project: Path) -> None:
     assert payload["self"] == payload_checksum(payload)
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_fresh_pass_requires_matching_closure_test_and_env_key(project: Path) -> None:
     open_verify(open_core(project)).run(nodes=["tests/test_helper.py"])
     node = "tests/test_helper.py::test_twice"
@@ -61,7 +61,7 @@ def test_fresh_pass_requires_matching_closure_test_and_env_key(project: Path) ->
     assert ev["tests/test_mod.py"].state == "none"
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_reuse_miss_names_differing_part() -> None:
     index = {"nodes": {}, "full": None}
     apply_entry(index, {"run_id": "r1", "env": {"env_key": "E"},
@@ -81,7 +81,7 @@ def test_reuse_miss_names_differing_part() -> None:
                            env_key="E").state == "fresh-pass"
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_observed_run_time_scales_the_estimates() -> None:
     """Each run's wall clock against its estimate adapts the budget fill (VS2)."""
     index = {"v": 1, "offset": 0, "prefix": None, "nodes": {}, "full": None, "removed": {}}
@@ -106,7 +106,7 @@ def test_observed_run_time_scales_the_estimates() -> None:
     assert index["scale"] == 3.0
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_index_rebuilt_from_log_after_cache_delete(repo: Path) -> None:
     core = open_core(repo)
     for run_id, outcome in (("r1", "passed"), ("r2", "failed")):
@@ -127,7 +127,7 @@ def test_index_rebuilt_from_log_after_cache_delete(repo: Path) -> None:
     assert load_index(open_core(repo))["nodes"]["t.py::a"]["last"]["run_id"] == "r3"
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_env_key_changes_with_lock_and_python(tmp_path: Path,
                                               monkeypatch: pytest.MonkeyPatch) -> None:
     base = envid.env_key(tmp_path)
@@ -140,7 +140,7 @@ def test_env_key_changes_with_lock_and_python(tmp_path: Path,
     assert envid.env_key(tmp_path) != with_lock
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_full_pending_cleared_by_full_run_evidence(project: Path) -> None:
     assert open_verify(open_core(project)).full_pending().pending is True
     report = open_verify(open_core(project)).run(full=True)

@@ -3,7 +3,7 @@ import pytest
 from plumb.browser import followup
 from plumb.hosts.claude_code.hookio import Deadline, HookContext
 
-pytestmark = pytest.mark.sr("SR-178")
+pytestmark = pytest.mark.sr("SR-269")
 
 
 def test_harness_notification_does_not_consume_user_turn_handoff(tmp_path):

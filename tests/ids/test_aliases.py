@@ -16,7 +16,7 @@ from plumb.api import open_core
 from plumb.capture.records import record_fields
 from plumb.cli import main
 
-pytestmark = pytest.mark.sr("SR-071")
+pytestmark = pytest.mark.sr("SR-257")
 
 
 def _fixed(tmp_path: Path, **kwargs) -> tuple[scenario.Scenario, str]:

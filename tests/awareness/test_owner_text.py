@@ -34,21 +34,21 @@ def _overlapping(tmp_path: Path, n: int = 5) -> Path:
     return main
 
 
-@pytest.mark.sr("SR-078")
+@pytest.mark.sr("SR-258")
 def test_brief_lines(tmp_path: Path) -> None:
     lines = awareness.brief_lines(open_core(_overlapping(tmp_path)))
     assert any("+2 more" in line and "/plumb status" in line for line in lines)
     assert bare_cli_verbs("\n".join(lines)) == []
 
 
-@pytest.mark.sr("SR-078")
+@pytest.mark.sr("SR-258")
 def test_delta_and_stop_lines(tmp_path: Path) -> None:
     lines = awareness.delta_lines(open_core(_overlapping(tmp_path)), ["SR-001", "SR-002"])
     assert len(lines) == 2
     assert bare_cli_verbs("\n".join(line.text for line in lines)) == []
 
 
-@pytest.mark.sr("SR-078")
+@pytest.mark.sr("SR-258")
 def test_status_card(tmp_path: Path) -> None:
     from plumb.hosts.claude_code.snapshot import build_snapshot
     from plumb.present.render import status_card
@@ -61,7 +61,7 @@ def test_status_card(tmp_path: Path) -> None:
         assert bare_cli_verbs(card) == []
 
 
-@pytest.mark.sr("SR-078")
+@pytest.mark.sr("SR-258")
 def test_status_section(tmp_path: Path) -> None:
     from plumb.cli import main as cli_main
 
@@ -82,7 +82,7 @@ def test_status_section(tmp_path: Path) -> None:
     assert bare_cli_verbs(card[card.index("also being changed elsewhere"):]) == []
 
 
-@pytest.mark.sr("SR-081")
+@pytest.mark.sr("SR-259")
 def test_early_conflict_card_and_lines(tmp_path: Path) -> None:
     """The early card, the recorded line and the known and settled lines (R17)."""
     from plumb import approvals
@@ -104,7 +104,7 @@ def test_early_conflict_card_and_lines(tmp_path: Path) -> None:
     assert bare_cli_verbs("\n".join(settled)) == []
 
 
-@pytest.mark.sr("SR-081")
+@pytest.mark.sr("SR-259")
 def test_clarify_inflight_lines(tmp_path: Path) -> None:
     from plumb.capture.clarify import clarify, view_lines
 

@@ -1,0 +1,409 @@
+{
+ "principle": "P5",
+ "intent": {
+  "quote": "Cards are only for complex decisions to make, allowing to see tradeoffs, context presented fully, and allowing the user to really study the pros and cons. Otherwise I guess usual question tool should be enough. Clarification should clarify high level decision invariants to allow to resolve most of the conflicts. It should resolve the philosophy. plumb tools should always look at the available intent to be able to try resolve issues before presenting them to the user.",
+  "source_int": "INT-070",
+  "readback": "plumb asks you only about what you want and the trade-offs, at the level of the principle a group of details hinges on, and settles everything your recorded intent already answers without asking. A question that stops standing goes away by itself, with one line saying so. When plumb itself cannot settle something (a bug, missing information, a judge loop that does not converge), it works it out in a debug workflow and asks you only as a last resort.",
+  "will": [
+   "before an issue reaches you, a judge reads it against your approved records and decisions and resolves what they answer, logged and reversible by saying so",
+   "an open question is withdrawn by itself when its link is current again, its records are approved or superseded, a newer request replaces it, its branch is gone, an approved record answers it, or it duplicates another",
+   "when several questions hinge on one principle, the principle is asked once through the question tool and the details are settled from your answer",
+   "what plumb cannot settle or converge on goes to a background debug workflow; you get a question about it only in last resort, in plain words",
+   "one plumb line at turn end says what was withdrawn, settled or sent to debugging"
+  ],
+  "wont": [
+   "ask you about anything your recorded intent already answers, or about plumb's own malfunctions before trying to resolve them",
+   "count a proposed (not yet approved) record as settling anything",
+   "answer a question for you: withdrawing one approves nothing",
+   "settle by word lists or rules: a judge derives each settlement, and with no judge reachable the step holds and plumb says so",
+   "show you cards, read-backs or record ids, or ask you to press anything"
+  ],
+  "assumptions": [
+   "'approved' means confirmed by the owner or judge-validated on the owner's behalf (P3); both settle questions, a proposed record never does",
+   "an open question is any item awaiting the owner (a question-tool or study-room question, an intent conflict); cards as a pressable thing are retired (P12)",
+   "a judge being unreachable is not a debug case: P8's hold applies",
+   "a detail the principle does not settle but which is a real intent choice is asked as its own specific question, not sent to debugging",
+   "the anchor SR-161 carries no feature; FEAT-008 (intent by exception, understood by models) is used as the closest"
+  ]
+ },
+ "requirements": [
+  {
+   "title": "An open question lives only while it stands",
+   "statement": "At each turn end, and right after a repin, relink or unlink, plumb withdraws by itself any open question that no longer stands: its link is current again or gone, its records are all approved or superseded, a newer request replaced it, its branch was merged, or its branch is gone. Each withdrawal is logged and named by title in the one plumb line; withdrawing approves nothing and the records stay as they were.",
+   "examples": [
+    {
+     "given": "an open stale-link issue on a requirement's covering test",
+     "when": "the agent repins that link after its tests pass",
+     "then": "the issue is withdrawn at once and the next turn end's plumb line says it was withdrawn because the link is current again, naming the requirement by title, not by id"
+    },
+    {
+     "given": "an open judge-cascade question about a requirement's wording",
+     "when": "that requirement is superseded",
+     "then": "at the turn end the question is withdrawn with the reason that the requirement was replaced"
+    },
+    {
+     "given": "an open question about an intent and its three requirements",
+     "when": "all four become approved, by the owner's answer or by judge validation",
+     "then": "the question is withdrawn at the turn end"
+    },
+    {
+     "given": "an open stale-link issue whose link is still stale",
+     "when": "the turn ends",
+     "then": "the issue stays"
+    },
+    {
+     "given": "an open question asking which findings to resolve, then a newer request from the owner naming them",
+     "when": "the newer request is captured",
+     "then": "the older question is withdrawn and only what the new request leaves open, if anything, remains"
+    },
+    {
+     "given": "an open question from a previous session whose branch is gone",
+     "when": "the status is shown",
+     "then": "it is not listed"
+    },
+    {
+     "given": "a withdrawn question",
+     "when": "the status is shown",
+     "then": "its records are still listed as not yet approved"
+    },
+    {
+     "given": "an open question two of whose three records are approved",
+     "when": "the turn ends",
+     "then": "the question stays, now about the one record left"
+    },
+    {
+     "given": "a requirement is superseded while the owner is answering its question in the question tool",
+     "when": "the answer arrives",
+     "then": "the answer is captured as intent against the replacing requirement, and the old question is withdrawn without asking again"
+    },
+    {
+     "given": "a branch with two open questions",
+     "when": "it is merged into main, or the remote copy of the branch is merged",
+     "then": "both questions are withdrawn, each named by title in the plumb line"
+    },
+    {
+     "given": "an open question on a feature branch",
+     "when": "main is merged into that feature branch",
+     "then": "nothing is withdrawn"
+    },
+    {
+     "given": "a branch made from main that is not yet merged, with an open question",
+     "when": "the turn ends",
+     "then": "the question stays"
+    }
+   ],
+   "examples_kept": [
+    "SR-161/EX-1",
+    "SR-161/EX-2",
+    "SR-161/EX-3",
+    "SR-161/EX-4",
+    "SR-132/EX-1",
+    "SR-132/EX-3",
+    "SR-132/EX-4",
+    "SR-132/EX-2"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-132/EX-2 (summary line)",
+     "why": "only its 'went in unconfirmed: <titles>' merge summary line is dropped: P11's merge holds unapproved intent instead of letting it in unconfirmed; the withdrawal at the merge is carried"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a live session, leave a stale link and an open question, then repin the link and have the records approved; the next plumb line names both withdrawals by title, the status no longer lists them, and the records' state is unchanged by the withdrawal itself.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-008",
+   "supersedes": [
+    "SR-161",
+    "SR-132"
+   ],
+   "implemented_by": [
+    "src/plumb/boundary/report.py",
+    "src/plumb/contracts.py",
+    "src/plumb/links.py",
+    "src/plumb/present/owner_text.py",
+    "src/plumb/stale.py",
+    "src/plumb/understand/backlog.py",
+    "src/plumb/understand/cardstore.py",
+    "src/plumb/understand/clarify.py",
+    "src/plumb/understand/summary.py",
+    "tests/understand/test_one_judge.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "plumb resolves from the recorded intent what it already answers before asking",
+   "statement": "Before a merge conflict, untraced change, gap or contradiction between two approved records reaches the owner, the judge reads it against the approved records and decisions: what they settle is applied and logged with the record that settles it, reversible by the owner's word. A proposed record never counts; it never answers for the owner. Only an intent choice or trade-off they leave open reaches the owner, as one question-tool question; with no judge the issue reaches the owner with no recommendation. Stale links are P1's.",
+   "examples": [
+    {
+     "given": "a merge conflict on a requirement where an approved decision already chose one side's principle",
+     "when": "the conflict is found",
+     "then": "the side the decision implies is applied and logged with the decision; no question"
+    },
+    {
+     "given": "two confirmed records contradict each other and the recorded intent already says which holds",
+     "when": "the stale check runs",
+     "then": "the record the intent contradicts is reworded to agree with it, the rewording is judge-approved and logged with that intent, and the owner is not asked"
+    },
+    {
+     "given": "an issue the approved records do not settle, or two approved records that contradict with no recorded intent saying which holds",
+     "when": "the judge reads them",
+     "then": "it reaches the owner as one question-tool question at the level of the principle, saying in plain words what the recorded intent says on each side, with no record ids"
+    },
+    {
+     "given": "no judge can be reached",
+     "when": "an issue is found",
+     "then": "plumb says so once; the issue is neither resolved by rule nor withheld: it reaches the owner as one question-tool question with no recommendation, as a merge conflict does under P11"
+    },
+    {
+     "given": "a resolution the owner disagrees with",
+     "when": "the owner says in conversation that it got that one wrong",
+     "then": "the resolution is reverted, the issue is back as it was, and the owner's words are captured as intent"
+    }
+   ],
+   "examples_kept": [
+    "SR-162/EX-5",
+    "SR-162/EX-7",
+    "SR-162/EX-8",
+    "SR-175/EX-3"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-162/EX-6",
+     "why": "the silent repin of a moved link that still covers its requirement is P1's drift requirement's, which carries it"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended for the owner to decide: a scripted session with one approved decision and two issues (a merge conflict the decision settles, and an open trade-off); the owner sees exactly one question-tool question, about the trade-off, and the plumb line says one issue was settled from the recorded intent.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-008",
+   "supersedes": [
+    "SR-162"
+   ],
+   "implemented_by": [
+    "src/plumb/present/owner_text.py",
+    "src/plumb/stale.py",
+    "src/plumb/understand/agents/tidy.md",
+    "src/plumb/understand/cardstore.py",
+    "src/plumb/understand/schemas/tidy.json",
+    "src/plumb/understand/summary.py",
+    "src/plumb/understand/tidy.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "An open question the approved records already answer, or that duplicates another, is withdrawn in the background",
+   "statement": "In the background, the judge reads each open question against the approved records and decisions and withdraws it only when an approved record answers it, quoting that record, or when it duplicates another open question, naming it. Unsure keeps it; a proposed record never counts; withdrawing approves nothing. Each withdrawal is logged.",
+   "examples": [
+    {
+     "given": "an open question asking whether a conflict may be answered through the agent in chat, and an approved decision saying it may",
+     "when": "the background check runs",
+     "then": "the question is withdrawn, quoting that decision's words"
+    },
+    {
+     "given": "the same question and only a proposed decision",
+     "when": "the background check runs",
+     "then": "the question stays"
+    },
+    {
+     "given": "two open stale-link issues on the same requirement asking the same thing",
+     "when": "the background check runs",
+     "then": "one is withdrawn as a duplicate naming the other"
+    },
+    {
+     "given": "the judge cannot be reached",
+     "when": "the background check runs",
+     "then": "nothing is withdrawn and the plumb line says once that the check could not run; it runs again when a judge is back"
+    },
+    {
+     "given": "the judge is unsure whether an approved record answers an open question",
+     "when": "the background check runs",
+     "then": "the question stays open and nothing is logged as resolved"
+    }
+   ],
+   "examples_kept": [
+    "SR-162/EX-1",
+    "SR-162/EX-2",
+    "SR-162/EX-3",
+    "SR-162/EX-4"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: a scripted session with one approved decision that answers an open question and a second, duplicate question; the next plumb line names both withdrawals by title, and a question only a proposed decision would answer stays.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-008",
+   "supersedes": [],
+   "implemented_by": [
+    "src/plumb/present/owner_text.py",
+    "src/plumb/stale.py",
+    "src/plumb/understand/agents/tidy.md",
+    "src/plumb/understand/cardstore.py",
+    "src/plumb/understand/schemas/tidy.json",
+    "src/plumb/understand/summary.py",
+    "src/plumb/understand/tidy.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "A principle is asked once and settles the questions that hinge on it",
+   "statement": "When several open questions, or the gaps of a request in the intent loop, hinge on one principle, plumb asks the principle once through the question tool, saying in plain words what it would settle, instead of each detail. Once the answer is validated, a background job settles each dependent question from the answer's words: withdrawn, link repinned, or record reworded and judge-validated, each citing the answer, logged, reversible, and counted in the plumb line.",
+   "examples": [
+    {
+     "given": "twenty open stale-link questions hinge on what counts as the owner's answer",
+     "when": "the turn ends",
+     "then": "one question-tool question asks that principle and says it would settle twenty questions; the twenty are not asked"
+    },
+    {
+     "given": "the owner answers the principle question and the judge validates the interpretation",
+     "when": "the settling job runs",
+     "then": "each of the twenty is withdrawn, repinned or reworded citing the answer, and the plumb line says how many of each"
+    },
+    {
+     "given": "a dependent question the judge cannot settle from the answer's words",
+     "when": "the settling job runs",
+     "then": "it stays open as its own specific question and the plumb line says one was not settled by the principle"
+    },
+    {
+     "given": "a settlement the owner disagrees with",
+     "when": "the owner says in conversation that it was wrong",
+     "then": "the question is back as it was and the repin or rewording is reverted"
+    },
+    {
+     "given": "the owner opens /plumb intent on a request whose five open gaps all hinge on one principle",
+     "when": "the clarification runs",
+     "then": "one question asks that principle and names in plain words the five gaps it settles; the five are not asked"
+    },
+    {
+     "given": "a detailed gap that no principle settles",
+     "when": "the clarification runs",
+     "then": "it is asked on its own, as a specific question"
+    },
+    {
+     "given": "an approved record is edited so its meaning changes older intent, with three records derived from the same principle",
+     "when": "the change needs the owner's arbitration",
+     "then": "one question about the principle is asked with the derived records named by title, never one question per record"
+    },
+    {
+     "given": "only one open question hinges on a principle",
+     "when": "the turn ends",
+     "then": "the question is asked as it is, with no extra principle question"
+    }
+   ],
+   "examples_kept": [
+    "SR-172/EX-1",
+    "SR-172/EX-2",
+    "SR-172/EX-3",
+    "SR-172/EX-4",
+    "SR-172/EX-5",
+    "SR-172/EX-6"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a live session, raise several issues that hinge on one principle; the owner sees a single question-tool question about the principle, answers it, and the next plumb line counts what was withdrawn, repinned and reworded, with nothing else asked.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-008",
+   "supersedes": [
+    "SR-172"
+   ],
+   "implemented_by": [
+    "src/plumb/stale.py",
+    "src/plumb/understand/cardstore.py",
+    "src/plumb/understand/summary.py",
+    "src/plumb/understand/tidy.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "What plumb cannot settle goes to a debug workflow, the owner last",
+   "statement": "When plumb cannot settle or converge (a failure in its own step, missing information, or a judge cascade still not clear after its round limit, 3 rounds by default per P9), it opens a debug workflow in the background. The workflow reads the log, the records and the repository, reruns the failed step once, and reports to the agent as text what happened and what is missing; the plumb line says how many cases are in debugging and how many it resolved. It may rerun a step; it never changes a record's meaning and never approves anything. An intent choice goes to the owner as a question, not to debugging.",
+   "examples": [
+    {
+     "given": "the judge cascade on a requirement is still not clear after 3 rounds (P9's default round limit)",
+     "when": "the limit is reached",
+     "then": "the plumb line says one case went to debugging, the agent gets one text line naming the requirement, and the owner is not asked about the requirement's wording"
+    },
+    {
+     "given": "the settling job fails with an error on one question",
+     "when": "the failure is caught",
+     "then": "the workflow reruns the step once; when the rerun passes, the plumb line says one case was resolved by debugging; when it fails again, the agent gets the error and its log entry as a plumb defect, and nothing is settled by rule"
+    },
+    {
+     "given": "an issue that is plumb's own failure, not an intent choice (a job error, a link to a file that no longer exists with nothing to repin to)",
+     "when": "the judge reads it",
+     "then": "it is not put to the owner as an intent question; it opens the debug workflow, and the plumb line says one case went to debugging"
+    },
+    {
+     "given": "a requirement's covering test was deleted and nothing in the repository covers its behaviour",
+     "when": "the stale check cannot repin",
+     "then": "the agent gets one text line naming the requirement and the deleted test, to restore it; the owner is asked only if the behaviour itself may no longer be wanted, which is an intent question"
+    },
+    {
+     "given": "no judge can be reached",
+     "when": "a step needs one",
+     "then": "this is not a debug case: plumb says so and holds the step (P8)"
+    },
+    {
+     "given": "an issue that is a real intent choice or trade-off",
+     "when": "it is found",
+     "then": "it goes to the owner as a question, not to the debug workflow"
+    },
+    {
+     "given": "a debug workflow is running",
+     "when": "the owner keeps working",
+     "then": "the owner's work is not stopped, and the status shows one line saying how many cases are in debugging"
+    }
+   ],
+   "examples_kept": [],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: a session with a scripted judge that never converges on one requirement; the owner sees one plumb line saying it went to debugging and no question.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-008",
+   "supersedes": [],
+   "implemented_by": [],
+   "decides": []
+  },
+  {
+   "title": "The debug workflow asks the owner only what it cannot find, once, in plain words",
+   "statement": "When the debug workflow has read the log, the records and the repository and still lacks what it needs, it asks the owner one question-tool question naming what it needs, in plain words and without ids or internals; it asks nothing it could find itself.",
+   "examples": [
+    {
+     "given": "the debug workflow cannot find the missing information in the log, the records or the repository",
+     "when": "it has exhausted what it can read",
+     "then": "it asks the owner one question-tool question about what it needs, in plain words, naming no ids or internals"
+    },
+    {
+     "given": "the debug workflow finds the missing information in the log",
+     "when": "it finishes",
+     "then": "the owner is asked nothing"
+    }
+   ],
+   "examples_kept": [],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: the same scripted session with the missing information withheld; exactly one plain-words question reaches the owner at the end, and none when it is present.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-008",
+   "supersedes": [],
+   "implemented_by": [],
+   "decides": []
+  }
+ ],
+ "decisions": [],
+ "retired_decisions": [
+  {
+   "id": "DEC-034",
+   "why": "'Leave open' is a card button; P12 retires cards as a thing the owner reads and presses, and an unanswered question-tool question is simply dismissed, capturing nothing (P4)"
+  },
+  {
+   "id": "DEC-067",
+   "why": "P3 removes owner reconfirmation of edits: an edit is validated by the judge and the owner is asked only to arbitrate a change of older intent; its surviving rule (asked once per principle with the derived records named, never one question per record) is carried by 'A principle is asked once and settles the questions that hinge on it'"
+  }
+ ],
+ "one_offs": []
+}

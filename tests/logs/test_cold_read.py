@@ -19,7 +19,7 @@ from logs.test_read_cost import populate
 from plumb import log
 from plumb.paths import PlumbPaths
 
-pytestmark = pytest.mark.sr("SR-073")
+pytestmark = pytest.mark.sr("SR-232")
 
 N = 40  # well above log.GIT_BATCH_MIN
 
@@ -111,7 +111,7 @@ def test_deleted_pack_cache_rebuilt_from_git(tmp_path: Path, direct_reads: list[
     assert direct_reads == []
 
 
-@pytest.mark.sr("SR-074")
+@pytest.mark.sr("SR-232")
 def test_migrate_leaves_a_warm_pack(tmp_path: Path, direct_reads: list[str]) -> None:
     main = make_repo(tmp_path / "main")
     prev = None

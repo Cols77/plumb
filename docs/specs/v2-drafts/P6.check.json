@@ -1,0 +1,48 @@
+{
+ "principle": "P6",
+ "file": "C:/coding/plumb-wt/v2/docs/specs/v2-drafts/P6.check.json",
+ "checks_passed": {
+  "1": "no draft example contradicts a confirmed example of a record it does not supersede, outside changes made by confirmed P6 (DEC-058 'no model on ordinary messages' is superseded explicitly; SR-021/EX-2 'hook does not block the prompt' is changed by P8)",
+  "2": "every example of the 21 superseded SRs is carried or dropped with a reason; SR-010/EX-1 (prompt naming a record lists it) is carried by P13's emitter examples",
+  "6": "quote matches INT-068 verbatim",
+  "7": "all 21 SRs of clusters 11, 17, 18, 20 are superseded exactly once; DECs 039, 058, 072, 079-082 superseded, DEC-017 retired",
+  "8": "no owner command with an id and no card to read or press"
+ },
+ "findings": [
+  {
+   "level": "medium",
+   "requirement": "The clarifier reads the owner's words in context and asks every blocking question, specific, through the question tool",
+   "what": "Check 3, two behaviours in one: 23 examples cover at least five distinct behaviours (reading context, assumption versus question policy, relevance filter, logging answers, the false-gap evaluation) and the statement states only the first three. The stale-link example (SR-147/EX-3, evidence line handed to the agent as text) is a stale-link/agent-text behaviour that has no clarifier connection and belongs under P12's 'agent gets everything as text' requirement, which does not carry it. The eval-set false-gap measurement (SR-103/EX-12) is a calibration-reporting behaviour. Split these off or move them."
+  },
+  {
+   "level": "medium",
+   "requirement": "Outside the loop the edit gate closes only when a request or edit would contradict or extend a confirmed record",
+   "what": "Check 3: the statement covers the gate policy and per-session/digest keying, but three examples (settings.json allows the hook but runs none; Claude Code started in src/; legacy install with hook commands, so the plugin hook does nothing) are the 'cannot be switched off by accident' and install-idempotence behaviours (SR-121, P14). Nothing in the statement or title covers them. Also the 30-prompt fixture example tests the judge's quality, not the gate."
+  },
+  {
+   "level": "medium",
+   "requirement": "A big request is handled as one set, repaired until clean and approved in one step",
+   "what": "Check 3: three behaviours under one title, namely suggesting the loop once on triggers (SR-036), repairing a set until clean (SR-094) and set-hash approval by the cascade (SR-037). The example 'plumb relay --set exits 3' only tests a removed legacy command, and 'the stop hook asks for suggestions / the diff-size trigger fires' is implementation wording. Split into suggestion, repair, and set approval."
+  },
+  {
+   "level": "medium",
+   "requirement": "/plumb intent opens one intent loop whose stages each run only on the previous stage's passed gate",
+   "what": "Check 3: the JEV 0.7 / Sonnet questions / above 0.9 example duplicates P9's cascade requirement (P9.json has the same 'JEV scores 0.7' example), the debug-workflow example duplicates P5's requirement, and 'intent not called done until the chosen proof is shown' is P10's. The loop requirement should reference these, not restate them, or they will drift apart. The JEV example also holds two outcomes (0.7 and above 0.9) in one then-clause."
+  },
+  {
+   "level": "medium",
+   "requirement": "/plumb intent opens one intent loop whose stages each run only on the previous stage's passed gate",
+   "what": "Check 4: 'no loop opens; the message is only grounded' is not observable ('grounded' is internal wording). The original (SR-193/EX-4) said 'no loop opens and no model runs', which stays true for this prompt because no confirmed record covers it, so weakening it was unnecessary. Same for Requirement 2: 'the intent is clarified as usual' (SR-154/EX-3) does not say what the owner sees."
+  },
+  {
+   "level": "medium",
+   "requirement": "A big request is handled as one set, repaired until clean and approved in one step",
+   "what": "Check 5: the proof asks the owner to read 'plumb status' showing a set hash and then to edit one member to see the set unconfirmed. The owner does not edit records, read hashes or run status commands (P2, P12), so this is not something the owner could watch. Replace with: the owner sees the one-line suggestion once, answers only the trade-off question, and the plumb line says the set was approved by the judge."
+  },
+  {
+   "level": "low",
+   "requirement": "The clarifier reads the owner's words in context and asks every blocking question, specific, through the question tool",
+   "what": "Check 4: the statement promises 'labelled, flippable assumption' but no example or then-clause says how the owner flips one now that cards are gone. Say it (for example, the owner says so in plain words and the next turn follows it) or drop 'flippable'."
+  }
+ ]
+}

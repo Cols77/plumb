@@ -34,7 +34,7 @@ from .helpers import (
     write_script,
 )
 
-pytestmark = [needs_sh, pytest.mark.sr("SR-082")]
+pytestmark = [needs_sh, pytest.mark.sr("SR-279")]
 
 
 def _poisoned_repo(root: Path, sentinel: Path) -> Path:

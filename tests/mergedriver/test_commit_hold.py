@@ -90,7 +90,7 @@ def _relay_theirs(root: Path) -> None:
 # --------------------------------------------------------------- the check reads the commit
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_template_steps_commit_the_choice(tmp_path: Path) -> None:
     """SR-077 EX-6, following the /plumb template exactly: the held merge, the relayed
     choice, then "finish the merge" (stage .plumb, the check, git commit). The merge commit
@@ -111,7 +111,7 @@ def test_template_steps_commit_the_choice(tmp_path: Path) -> None:
                    ".plumb").stdout == ""
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_choice_left_unstaged_holds_the_commit(tmp_path: Path,
                                                monkeypatch: pytest.MonkeyPatch) -> None:
     """The bug's own steps: the choice is written to the work tree but not staged, so the
@@ -135,7 +135,7 @@ def test_choice_left_unstaged_holds_the_commit(tmp_path: Path,
 # --------------------------------------------------------------- merges finished by hand
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 @pytest.mark.parametrize("how", ["text-conflict-then-commit", "no-commit-then-commit",
                                  "merge-continue"])
 def test_merge_finished_by_hand_is_held(tmp_path: Path, how: str) -> None:
@@ -160,7 +160,7 @@ def test_merge_finished_by_hand_is_held(tmp_path: Path, how: str) -> None:
     assert "IC-001" in output and "/plumb conflicts" in output and "finish the merge" in output
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_merge_finished_by_hand_holds_unconfirmed(tmp_path: Path) -> None:
     """SR-077 EX-9: with no intent conflict, a merge finished by hand that touches a
     requirement not yet confirmed is held like one git commits on its own."""
@@ -180,7 +180,7 @@ def test_merge_finished_by_hand_holds_unconfirmed(tmp_path: Path) -> None:
     assert 'SR-005 "relay checks" is not confirmed yet' in finished.stdout + finished.stderr
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_git_pull_is_held(tmp_path: Path) -> None:
     """SR-077 EX-9: git pull merges like git merge and is held the same way."""
     root = _diverged(tmp_path)
@@ -190,7 +190,7 @@ def test_git_pull_is_held(tmp_path: Path) -> None:
     assert "IC-001" in pulled.stdout + pulled.stderr
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_hold_can_be_switched_off_for_one_commit(tmp_path: Path) -> None:
     """``git -c plumb.mergeHold=false commit`` records a merge the owner wants recorded as
     it is (prepare-commit-msg has no --no-verify)."""
@@ -217,7 +217,7 @@ def _sequenced(tmp_path: Path, operation: str) -> tuple[Path, list[str], list[st
     return root, ["revert", "--no-edit", "HEAD~1"], ["revert", "--continue"]
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 @pytest.mark.parametrize("operation", ["rebase", "cherry-pick", "revert"])
 def test_sequencer_step_stops_and_is_held(tmp_path: Path, operation: str) -> None:
     """SR-077 EX-10: the driver stops a rebase, cherry-pick or revert step on the intent
@@ -241,7 +241,7 @@ def test_sequencer_step_stops_and_is_held(tmp_path: Path, operation: str) -> Non
     assert "conflict:" not in _committed(where)
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_ordinary_commit_skips_the_check(tmp_path: Path) -> None:
     """Outside a merge, rebase, cherry-pick or revert the hook's shell lines exit at once."""
     root = _adopted(tmp_path / "main")

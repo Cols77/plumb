@@ -10,7 +10,7 @@ from mod.test_handshake import _present, _register, _start_turn, _stop, core  # 
 
 from plumb.understand import cardstore
 
-pytestmark = pytest.mark.sr("SR-159")
+pytestmark = pytest.mark.sr("SR-265")
 
 
 def _message(out: str) -> str:

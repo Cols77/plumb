@@ -13,7 +13,7 @@ from plumb.api import open_core
 from plumb.contracts import FullPending, NodeEvidence, Target
 from plumb.hosts.claude_code import session_start
 
-pytestmark = pytest.mark.sr("SR-009")
+pytestmark = pytest.mark.sr("SR-278")
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +40,7 @@ def _many_records(repo: Path, write_record, count: int = 60) -> None:
         write_record(repo, f"---\nid: NC-{i:04d}\ntitle: Open problem {i}\nstatus: open\n---\n")
 
 
-@pytest.mark.sr("SR-032")
+@pytest.mark.sr("SR-277")
 def test_brief_is_a_few_lines_and_a_pointer_by_default(repo: Path, write_record,
                                                        hook_input) -> None:
     """R9: the session brief is a few lines plus a pointer, never every proposed record."""
@@ -161,7 +161,7 @@ def test_warm_brief_skips_the_test_map(repo: Path, write_record, hook_input,
     write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
     (repo / "tests").mkdir()
     (repo / "tests" / "test_one.py").write_text(
-        "import pytest\n\n\n@pytest.mark.sr('SR-001')\ndef test_one():\n    pass\n", "utf-8")
+        "import pytest\n\n\n@pytest.mark.sr('SR-230')\ndef test_one():\n    pass\n", "utf-8")
     cold = _run(repo, hook_input)
 
     def no_build(*args, **kwargs):
@@ -297,7 +297,7 @@ def test_a_slow_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> 
     assert _notice(out) == [] and out.startswith("plumb brief")
 
 
-@pytest.mark.sr("SR-135")
+@pytest.mark.sr("SR-210")
 def test_ex4_low_risk_records_give_no_offer_line(repo: Path, write_record, hook_input,
                                                  monkeypatch) -> None:
     """SR-135 EX-4: records the judge rates faithful to the owner's words add no approve line to

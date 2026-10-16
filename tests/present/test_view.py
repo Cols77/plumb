@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.contracts import Target
 from plumb.view import GENERATED
 
-pytestmark = pytest.mark.sr("SR-066")
+pytestmark = pytest.mark.sr("SR-205")
 
 
 @pytest.fixture

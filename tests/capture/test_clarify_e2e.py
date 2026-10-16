@@ -17,7 +17,7 @@ from capture_helpers import record_text, run
 from plumb.api import open_core
 from plumb.hosts.claude_code import stop
 
-pytestmark = pytest.mark.sr("SR-043")
+pytestmark = pytest.mark.sr("SR-223")
 
 REQUEST = "let users export their data"
 QUESTIONS = [

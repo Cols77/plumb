@@ -15,7 +15,7 @@ from plumb import ids
 from plumb.cli import main
 from plumb.paths import PlumbPaths
 
-pytestmark = pytest.mark.sr("SR-070")
+pytestmark = pytest.mark.sr("SR-257")
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "plumb"
 

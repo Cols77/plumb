@@ -20,7 +20,7 @@ from plumb.api import open_core
 from plumb.awareness import inflight
 from plumb.awareness import publish as pub
 
-pytestmark = pytest.mark.sr("SR-080")
+pytestmark = pytest.mark.sr("SR-258")
 
 
 def _stop_hook(root: Path, changed: list[str] | None = None) -> list[str]:

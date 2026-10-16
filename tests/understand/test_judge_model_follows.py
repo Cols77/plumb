@@ -13,7 +13,7 @@ from understand.test_judge_cascade import calibrate_to, configure, world  # noqa
 from plumb.api import open_core
 from plumb.contracts import DispatchError
 
-pytestmark = pytest.mark.sr("SR-186")
+pytestmark = pytest.mark.sr("SR-242")
 
 SETTINGS = "understand:\n  model: haiku\n  judge_model: sonnet\n  dispatch: claude-code\n"
 

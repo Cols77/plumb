@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.contracts import Resolution, Target
 from plumb.present import api
 
-pytestmark = pytest.mark.sr("SR-064")
+pytestmark = pytest.mark.sr("SR-202")
 
 LOGIN = """---
 id: SR-010

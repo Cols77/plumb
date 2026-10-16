@@ -11,7 +11,7 @@ from hosts_helpers import make_project
 
 from plumb.cli import main
 
-pytestmark = pytest.mark.sr("SR-053")
+pytestmark = pytest.mark.sr("SR-282")
 
 
 @pytest.fixture

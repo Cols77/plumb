@@ -10,7 +10,7 @@ from capture_helpers import event_kinds, log_prompt, run, tree_bytes
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-034")
+pytestmark = pytest.mark.sr("SR-235")
 
 PROMPT = "please add multiply next to add; 2 times 3 is 6"
 DOC = {
@@ -153,7 +153,7 @@ def _relay_doc(statement: str, **extra) -> dict:
             "requirements": [{"title": statement, "statement": statement, **extra}]}
 
 
-@pytest.mark.sr("SR-165")
+@pytest.mark.sr("SR-237")
 def test_capture_names_the_requirement_a_new_one_contradicts(calc: Path) -> None:
     """SR-165 EX-2: 'never relays the choice' next to 'relays the choice'."""
     from plumb.capture.capture import capture as run
@@ -168,7 +168,7 @@ def test_capture_names_the_requirement_a_new_one_contradicts(calc: Path) -> None
                for line in second.lines)
 
 
-@pytest.mark.sr("SR-165")
+@pytest.mark.sr("SR-237")
 def test_capture_supersedes_adds_the_link_and_names_nothing_for_it(calc: Path) -> None:
     from plumb.capture.capture import CaptureError, capture as run
 

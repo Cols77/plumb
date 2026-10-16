@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.boundary import merge_report, render
 from plumb.verify import open_verify
 
-pytestmark = pytest.mark.sr("SR-048")
+pytestmark = pytest.mark.sr("SR-254")
 
 FAILING = ("from pkg.mod import add\n\n\ndef test_add():\n    assert add(1, 2) == 4\n")
 

@@ -58,7 +58,7 @@ def typed(repo: Path, text: str) -> list[str]:
 # ---- SR-134 ------------------------------------------------------------------------------
 
 
-@pytest.mark.sr("SR-134")
+@pytest.mark.sr("SR-248")
 def test_ex1_a_supported_verdict_alone_confirms_nothing(repo: Path, write_record) -> None:
     ids = make_world(repo, write_record, 1)
     applied = judged(repo, ids, [0.99])
@@ -95,7 +95,7 @@ def judge_confirmed(repo: Path, write_record, monkeypatch) -> list[str]:
     stub.close()
 
 
-@pytest.mark.sr("SR-134")
+@pytest.mark.sr("SR-248")
 def test_ex3_auto_approve_on_and_calibrated_confirms_with_the_judges_verdict(
         repo: Path, judge_confirmed: list[str]) -> None:
     core = open_core(repo)
@@ -106,7 +106,7 @@ def test_ex3_auto_approve_on_and_calibrated_confirms_with_the_judges_verdict(
     assert approvals[0]["auto"]["score"] >= 0.9 and approvals[0]["auto"]["model_version"]
 
 
-@pytest.mark.sr("SR-134")
+@pytest.mark.sr("SR-248")
 def test_ex2_a_typed_settle_says_the_switch_is_gone_and_changes_nothing(
         repo: Path, write_record) -> None:
     make_world(repo, write_record, 1)
@@ -122,7 +122,7 @@ def test_a_record_the_judge_confirmed_gets_no_trial_card(
 # ---- SR-135 ------------------------------------------------------------------------------
 
 
-@pytest.mark.sr("SR-135")
+@pytest.mark.sr("SR-210")
 @pytest.mark.parametrize("text", ["/plumb undo {id}", "/plumb:plumb undo {id}"])
 def test_ex3_a_typed_undo_is_done_by_the_hook(
         repo: Path, judge_confirmed: list[str], text: str) -> None:
@@ -138,7 +138,7 @@ def test_ex3_a_typed_undo_is_done_by_the_hook(
     assert run(repo, "undo", sr) == 2                    # no such command any more
 
 
-@pytest.mark.sr("SR-135")
+@pytest.mark.sr("SR-210")
 def test_ex3_a_typed_undo_of_a_record_nobody_judged_changes_nothing(
         repo: Path, write_record) -> None:
     ids = make_world(repo, write_record, 1)
@@ -149,7 +149,7 @@ def test_ex3_a_typed_undo_of_a_record_nobody_judged_changes_nothing(
 # ---- SR-133 ------------------------------------------------------------------------------
 
 
-@pytest.mark.sr("SR-133")
+@pytest.mark.sr("SR-252")
 def test_ex1_a_card_is_one_record_with_its_words_and_date(repo: Path, write_record) -> None:
     said = "keep the plain checkout, the shop is small"
     digest = log_prompt(repo, said, at="2026-10-04T10:00:00Z")
@@ -167,7 +167,7 @@ def test_ex1_a_card_is_one_record_with_its_words_and_date(repo: Path, write_reco
     assert all(c.consequence for c in choices)
 
 
-@pytest.mark.sr("SR-133")
+@pytest.mark.sr("SR-252")
 def test_ex2_words_not_found_say_so_and_show_the_proposal_alone(
         repo: Path, write_record) -> None:
     log_prompt(repo, "something else entirely")
@@ -178,7 +178,7 @@ def test_ex2_words_not_found_say_so_and_show_the_proposal_alone(
     assert card.issue == "Totals are shown on the invoice"
 
 
-@pytest.mark.sr("SR-133")
+@pytest.mark.sr("SR-252")
 def test_ex3_three_cards_are_open_and_answering_one_opens_the_next(
         repo: Path, write_record) -> None:
     ids = make_world(repo, write_record, 5)
@@ -198,7 +198,7 @@ def test_ex3_three_cards_are_open_and_answering_one_opens_the_next(
 # ---- SR-132 ------------------------------------------------------------------------------
 
 
-@pytest.mark.sr("SR-132")
+@pytest.mark.sr("SR-216")
 def test_ex3_a_card_of_a_branch_that_is_gone_is_not_in_the_backlog(repo: Path) -> None:
     from plumb.contracts import CardState
 
@@ -208,7 +208,7 @@ def test_ex3_a_card_of_a_branch_that_is_gone_is_not_in_the_backlog(repo: Path) -
     assert [c.id for c in cardstore.load(repo, SESSION)] == ["clarify:a", "clarify:c"]
 
 
-@pytest.mark.sr("SR-132")
+@pytest.mark.sr("SR-216")
 def test_ex4_a_withdrawn_card_confirms_nothing_and_its_record_stays_proposed(
         repo: Path, write_record) -> None:
     ids = make_world(repo, write_record, 1)

@@ -13,7 +13,7 @@ from plumb.contracts import Target
 from plumb.mergedriver import conflicts
 from plumb.understand import cards, cardstore, files, summary
 
-pytestmark = [pytest.mark.sr("SR-176"), pytest.mark.sr("SR-178")]
+pytestmark = [pytest.mark.sr("SR-269"), pytest.mark.sr("SR-269")]
 
 
 @pytest.fixture

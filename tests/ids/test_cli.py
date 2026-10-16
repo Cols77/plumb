@@ -10,7 +10,7 @@ import pytest
 from ids import scenario
 from plumb.cli import main
 
-pytestmark = pytest.mark.sr("SR-071")
+pytestmark = pytest.mark.sr("SR-257")
 
 
 def test_output_names_titles_not_paths(tmp_path: Path, capsys) -> None:

@@ -36,7 +36,7 @@ def _two_sides(tmp_path: Path, **base_fields) -> tuple[Path, Path]:
     return root, other
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_non_overlapping_changes_merge_clean(tmp_path: Path) -> None:
     root, other = _two_sides(tmp_path)
     write_record(root, record(title="relay checks, scoped",
@@ -54,7 +54,7 @@ def test_non_overlapping_changes_merge_clean(tmp_path: Path) -> None:
     assert run_git(root, "status", "--porcelain").stdout.strip() == ""
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_content_conflict_becomes_ic(tmp_path: Path) -> None:
     """SR-076 EX-1: both statements kept, labels main and feat-x, unconfirmed, merged."""
     from plumb.approvals import approve
@@ -83,7 +83,7 @@ def test_content_conflict_becomes_ic(tmp_path: Path) -> None:
     assert shown.returncode == 0 and "Conflict  IC-001 on SR-005" in shown.stdout
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_rebase_uses_the_same_driver(tmp_path: Path) -> None:
     root, other = _two_sides(tmp_path)
     write_record(root, record(statement="A relay pins every stated record.",
@@ -98,7 +98,7 @@ def test_rebase_uses_the_same_driver(tmp_path: Path) -> None:
         ("EX-1", "t"), ("EX-2", "main"), ("EX-3", "feat")]
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_driver_under_300_ms(tmp_path: Path) -> None:
     """sp6 7.2: the driver itself (parse, merge, write) stays under 300 ms per file; the
     process start of a cold interpreter is measured separately and only bounded loosely."""

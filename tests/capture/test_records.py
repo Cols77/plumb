@@ -9,7 +9,7 @@ import pytest
 from plumb.api import open_core
 from plumb.cli import main
 
-pytestmark = pytest.mark.sr("SR-035")
+pytestmark = pytest.mark.sr("SR-236")
 
 SR_004 = """---
 id: SR-004
