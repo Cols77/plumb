@@ -16,10 +16,17 @@ import pytest
 from plumb.api import open_core
 from plumb.approvals import approval_items
 from plumb.confirm import checked
-from plumb.understand import judge
+from plumb.understand import judge, verdict
 from understand import test_judge_cascade
 from understand.fakes import FakeDispatcher, as_worker
-from understand.test_cascade_fast_track import approvals, asked, judged, verdict_of, write
+from understand.test_cascade_fast_track import (
+    approvals,
+    asked,
+    build_job,
+    judged,
+    verdict_of,
+    write,
+)
 from understand.test_judge_cascade import StubJev, calibrate_to, configure, fast_track_on
 from understand.test_judge_job import (
     MESSAGE,
@@ -136,6 +143,41 @@ def test_without_calibration_jev_at_0_92_approves_nothing_and_the_model_decides(
     assert [a["by"] for a in approvals(applied)] == ["auto-model"]
 
 
+@pytest.mark.sr("SR-248")
+@pytest.mark.parametrize("by", ["model", "jev"])
+def test_a_contradicts_verdict_carrying_a_clearing_jev_score_approves_nothing(
+        world: Path, monkeypatch: pytest.MonkeyPatch, by: str) -> None:
+    """After a round, a verdict that is not supported (here the model's or JEV's
+    contradiction) approves nothing, even when it carries a JEV mapping that clears."""
+    core = configure(world)
+    fast_track_on(core, monkeypatch, 0.93)
+    owner_answers(world, ["SR-001"])
+    job, done, _ = judged(open_core(world), ["SR-001"], StubJev(0.95), FakeDispatcher())
+    [raw] = done.answer["verdicts"]
+    assert raw["jev"]["clears"]
+    forged = {**done.answer, "verdicts": [{**raw, "by": by, "verdict": "contradicts",
+                                           "contradicts": ["every page, not public ones"],
+                                           "clear": True}]}
+    applied = judge.apply(open_core(world), job, forged)
+    assert approvals(applied) == []
+
+
+@pytest.mark.sr("SR-248")
+def test_an_answer_logged_after_the_job_was_built_approves_nothing(world: Path) -> None:
+    """The judge was shown answer A; answer B about the same version is logged before the
+    verdict is applied: the verdict cites A only and approves nothing (B is judged next)."""
+    first = owner_answers(world, ["SR-001"])
+    model = model_says(("SR-001", 0.9, True))
+    core = open_core(world)
+    job = build_job(core, ["SR-001"])
+    done = verdict.cascade(core, job, system="judge", schema={}, jev=None, dispatcher=model)
+    owner_answers(world, ["SR-001"], answer="Every page")
+    applied = judge.apply(open_core(world), job, done.answer)
+    assert approvals(applied) == []
+    assert verdict_of(applied, "SR-001")["answers"] == [first]
+    assert any("not shown" in n for n in applied.notes)
+
+
 # ---- SR-209 -------------------------------------------------------------------------------
 
 
@@ -203,16 +245,18 @@ def test_ex3_an_owner_quoted_approval_written_by_hand_is_not_accepted(
 
 
 @pytest.mark.sr("SR-210")
+@pytest.mark.parametrize("source", [{"by": "study-room"}, {"by": "owner", "via": "study-room"}])
 def test_ex3_a_study_room_approval_with_no_question_at_that_version_is_not_accepted(
-        world: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        world: Path, monkeypatch: pytest.MonkeyPatch, source: dict[str, str]) -> None:
     """SR-210 EX-3: an entry saying the owner answered in the study room, with no question
     put at that version: not accepted, and validation reports it."""
     monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
     core = open_core(world)
     core.log_append("events", "approval", {
-        "records": approval_items(core, ["SR-001"]), "by": "study-room",
-        "prompt_digest": None, "quote": "approved in the study room"})
-    assert problems(world)
+        "records": approval_items(core, ["SR-001"]), **source,
+        "prompt_digest": None, "quote": None})
+    [why] = problems(world)
+    assert "no question put at that version" in why
     assert state(world, "SR-001") == ("proposed", None)
     assert reported(world, "SR-001")
 

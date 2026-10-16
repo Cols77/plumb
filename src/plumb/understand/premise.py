@@ -26,9 +26,9 @@ class Premise:
     """What a record rests on. ``messages``: ``({"digest", "text"}, ...)`` (the owner's whole
     logged messages); ``question``: the stored question a short answer answered; ``parent``:
     the confirmed parent intent, if any; ``fragment``: the owner's words as the
-    record quotes them when no whole message is on file; ``answers``: ``({"question",
-    "options", "answer"}, ...)``, the owner's question-tool answers that name the record at its
-    current version."""
+    record quotes them when no whole message is on file; ``answers``: ``({"digest",
+    "question", "options", "answer"}, ...)``, the owner's question-tool answers (``digest``:
+    their log entry) that name the record at its current version."""
 
     messages: tuple[Mapping[str, str], ...] = ()
     question: str = ""
@@ -172,7 +172,7 @@ def answer_entries(core: Any, record: Any) -> list[Any]:
 def answers_of(core: Any, record: Any) -> tuple[dict[str, Any], ...]:
     """The owner's question-tool answers about ``record`` at its current hash
     (``answer_entries``), as the judge is shown them."""
-    return tuple({"question": str(e.payload.get("question") or ""),
+    return tuple({"digest": e.digest, "question": str(e.payload.get("question") or ""),
                   "options": list(e.payload.get("options") or ()),
                   "answer": str(e.payload.get("answer") or "")}
                  for e in answer_entries(core, record))

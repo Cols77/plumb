@@ -126,7 +126,9 @@ def test_ex6_an_answer_is_kept_with_its_question_and_the_record_stays_proposed(
     (job,) = judge_jobs(world)
     assert job.inputs["records"] == ["SR-001"]          # bare: the worker rebuilds the premise
     (rebuilt,) = judge.recompute(core, job)["records"]
-    assert rebuilt["premise"]["answers"] == [{"question": ASK, "options": entry["options"],
+    digest = next(e.digest for e in core.events() if e.kind == "question-answer")
+    assert rebuilt["premise"]["answers"] == [{"digest": digest, "question": ASK,
+                                              "options": entry["options"],
                                               "answer": "yes, that is what I meant"}]
     assert judge.open_questions(core, SESSION) == []
 

@@ -258,33 +258,41 @@ def _approve(core: Any, job: Job, ids: Sequence[str], item: Mapping[str, Any], b
 def _after_round(core: Any, record: Any, raw: Mapping[str, Any], payload: Mapping[str, Any],
                  jev: Mapping[str, Any] | None, in_set: bool
                  ) -> tuple[str, dict[str, Any]] | None:
-    """``(by, auto)`` when the record the owner answered about is clear after the round:
-    JEV clears it (a passing calibration, above max(0.9, its threshold); never alone for a
-    record of an escalated set), else the judge model says the intent is clear (SR-248 EX-4,
-    EX-5). None: the next questions follow."""
+    """``(by, auto)`` when the record the owner answered about is clear after the round: a
+    ``supported`` verdict with nothing beyond or contradicting, given by JEV clearing it (a
+    passing calibration, above max(0.9, its threshold); never alone for a record of an
+    escalated set), else by the judge model saying the intent is clear (SR-248 EX-4, EX-5).
+    None: the next questions follow."""
     from plumb.capture.autoapprove import after_round
     from plumb.judgment.verdict import JEV
 
-    if jev is not None and not in_set:
+    if payload["verdict"] != "supported" or payload["contradicts"] or payload["beyond"]:
+        return None
+    if raw.get("by") == JEV and jev is not None and jev.get("clears") and not in_set:
         auto = after_round(core, record, jev)
         if auto is not None:
             return "auto-jev", auto
-    if payload["verdict"] == "supported" and raw.get("clear") is True and raw.get("by") != JEV:
+    if raw.get("clear") is True and raw.get("by") != JEV:
         return "auto-model", {"model": payload["model"],
                               "model_version": str(raw.get("judge") or payload["model"]),
                               "confidence": payload["score"], "clear": True}
     return None
 
 
-def _clear_before(core: Any, record: Any) -> float | None:
-    """The confidence of a logged clear model verdict on ``record`` at its version after a
-    round, or None (a set waits for its other records across jobs)."""
+def _clear_before(core: Any, record: Any) -> tuple[float, list[str]] | None:
+    """The confidence and cited answers of the latest verdict on ``record`` at its version
+    after a round, when it is clear and cites every answer logged about it at that version;
+    else None (a set waits for its other records across jobs)."""
+    now = [e.digest for e in premise.answer_entries(core, record)]
     for e in reversed(core.events()):
         p = e.payload
         if e.kind == "verdict" and p.get("id") == record.id and p.get("hash") == record.hash \
-                and p.get("verdict") == "supported" and p.get("clear") is True \
                 and p.get("answers"):
-            return _confidence(p.get("score"))
+            if p.get("verdict") == "supported" and p.get("clear") is True \
+                    and not p.get("contradicts") and not p.get("beyond") \
+                    and p.get("answers") == now:
+                return _confidence(p.get("score")), now
+            return None
     return None
 
 
@@ -304,16 +312,15 @@ def _set_approvals(core: Any, job: Job, rounds: Mapping[str, tuple[Any, ...]],
             whole = set_ids(core, anchor)
         except SpecError:
             whole = []
-        clear = {i: rounds[i][1]["confidence"] for i in whole if i in rounds}
+        clear = {i: (rounds[i][1]["confidence"], rounds[i][2]) for i in whole if i in rounds}
         clear.update({i: c for i in whole if i not in clear
                       and (c := _clear_before(core, index[i])) is not None})
         if not whole or set(whole) - set(clear):
             held.update({i: anchor for i in whole if i in rounds})
             continue
-        answers = list(dict.fromkeys(e.digest for i in whole
-                                     for e in premise.answer_entries(core, index[i])))
+        answers = list(dict.fromkeys(d for i in whole for d in clear[i][1]))
         first = next(i for i in whole if i in rounds)
-        auto = {**rounds[first][1], "confidence": min(clear.values())}
+        auto = {**rounds[first][1], "confidence": min(c for c, _ in clear.values())}
         out += _approve(core, job, whole, asked[first], "auto-model", auto, known, answers,
                         set={"anchor": anchor, "hash": current_set_hash(core, anchor)})
     return out, held
@@ -457,7 +464,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     prompts_known = {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}
     judged: dict[str, str] = {}             # the records judged at their current version
     waits: dict[str, str] = {}              # record id -> why it waits
-    rounds: dict[str, tuple[Any, ...]] = {}  # set records clear after a round: (by, auto)
+    rounds: dict[str, tuple[Any, ...]] = {}  # clear set records: (by, auto, answers)
     from plumb.capture.spec import escalated_ids
 
     in_sets = escalated_ids(core)
@@ -500,13 +507,19 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                 if reason:              # SR-248 EX-6: not the owner's verified words
                     payload.update(premise="quote-only", premise_reason=reason)
         current = record is not None and record.hash == item["hash"]
-        cited = [e.digest for e in premise.answer_entries(core, record)] \
-            if current and given.get("answers") else []
+        cited = [str(a["digest"]) for a in given.get("answers") or ()
+                 if isinstance(a, Mapping) and a.get("digest")]   # the answers it was shown
         if cited:                       # judged after a question round, on these answers
             payload["answers"] = cited
         entries.append({"kind": "verdict", "payload": payload})
         if not current:
             notes.append(f"{item['id']} changed while it was judged; it is judged again")
+            continue
+        if given.get("answers") and cited != [e.digest for e in
+                                              premise.answer_entries(core, record)]:
+            # an answer logged since the job was built queued its own judge job
+            notes.append(f"{item['id']} has an answer the judge was not shown; it is judged "
+                         "again")
             continue
         judged[record.id] = record.hash
         if verdict == "waiting":            # SR-267 EX-9: the agent's own doubt asks nothing
@@ -514,7 +527,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         elif cited:                         # SR-248 EX-4, EX-5: approved after the round
             done = _after_round(core, record, raw, payload, jev, record.id in in_sets)
             if done is not None and record.id in in_sets:
-                rounds[record.id] = done    # a set is approved whole (P6)
+                rounds[record.id] = (*done, cited)  # a set is approved whole (P6)
             elif done is not None:
                 confirmed += _approve(core, job, [record.id], item, *done, prompts_known,
                                       cited)

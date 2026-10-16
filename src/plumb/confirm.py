@@ -15,9 +15,11 @@ an agent-relayed approval without its cited prompt, affirming quote or quote dig
 ``by: import`` approval that the import event it carries, written outside the agent session,
 did not approve: ``importer/recheck.py``) never confirms anything; ``plumb validate`` reports
 it as an error. So does an owner approval carrying a quote, which only a hand-written entry
-does (SR-210 EX-3): the judge worker's entries and plumb's reading of the owner's own answers
-approve. A judge approval (``auto-jev``, ``auto-model``) naming one record of an escalated
-spec set names every record of the set: a set is approved whole (P6).
+does, and an entry saying the owner answered in the study room (SR-210 EX-3): the judge
+worker's entries and plumb's reading of the owner's own answers approve. An owner approval
+with no quote stays valid: ``approvals.approve`` writes it for history and fixtures. A judge
+approval (``auto-jev``, ``auto-model``) naming one record of an escalated spec set names every
+record of the set: a set is approved whole (P6).
 """
 
 from __future__ import annotations
@@ -74,6 +76,11 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
         from plumb.importer.recheck import import_problem
 
         return import_problem(entry)  # self-contained: needs no log context
+    if by == "study-room" or payload.get("via") == "study-room":
+        # no study room puts questions in this version (plan section 3), so no such entry
+        # names a question at that version (SR-210 EX-3)
+        return (f"study-room {entry.kind} with no question put at that version: only the "
+                "judge worker's entries and plumb's reading of the owner's own answers approve")
     if by == "owner":
         if entry.marker != "none":
             return (f"owner {entry.kind} written under the agent session marker "
