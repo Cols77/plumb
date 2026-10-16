@@ -19,6 +19,8 @@ from plumb.verify.cli import report_lines
 pytestmark = pytest.mark.sr("SR-017")
 
 SLOW_TESTS = 16
+# pytest plus coverage start-up takes 10-20 s on a cold Windows box and counts against the hard
+# limit, so the limit (budget 16 x factor 2) leaves room for it and the tests still overrun it.
 
 
 @pytest.fixture
@@ -26,7 +28,7 @@ def project(repo: Path) -> Path:
     make_project(repo)
     body = "import time\n\nimport pkg.mod\n"
     for i in range(SLOW_TESTS):
-        body += f"\n\ndef test_slow_{i:02d}():\n    time.sleep(0.5)\n"
+        body += f"\n\ndef test_slow_{i:02d}():\n    time.sleep(2.0)\n"
     write(repo, "tests/test_slow.py", body)
     # every estimate is far too low: unknown tests count 0.05 s
     write(repo, ".plumb/config.yaml", "verify:\n  flaky_rerun: false\n  default_test_s: 0.05\n"
@@ -37,15 +39,15 @@ def project(repo: Path) -> Path:
 
 def test_overrun_records_finished_tests_and_learns_its_pace(project: Path) -> None:
     verify = open_verify(open_core(project))
-    first = verify.select(["src/pkg/mod.py"], budget_s=4)
+    first = verify.select(["src/pkg/mod.py"], budget_s=16)
     assert "tests/test_slow.py" in first.nodes  # 0.05 s each: everything fits
 
-    report = verify.run(changed=["src/pkg/mod.py"], budget_s=4)
+    report = verify.run(changed=["src/pkg/mod.py"], budget_s=16)
     assert report.timed_out is True
     passed = sorted(n for n, o in report.outcomes.items() if o == "passed")
     assert passed, "tests that finished before the hard limit are kept"
     lines = report_lines(report)
-    assert any("timeout after 8 s" in line and f"{len(report.outcomes)} finished" in line
+    assert any("timeout after 32 s" in line and f"{len(report.outcomes)} finished" in line
                for line in lines), lines
 
     again = open_verify(open_core(project))
@@ -53,6 +55,6 @@ def test_overrun_records_finished_tests_and_learns_its_pace(project: Path) -> No
     assert all(e.state == "fresh-pass" for e in evidence.values())
     assert again.index()["scale"] > 1.0
     # the next selection of the same change no longer schedules the slow file
-    second = again.select(["src/pkg/mod.py"], budget_s=4)
+    second = again.select(["src/pkg/mod.py"], budget_s=16)
     assert "tests/test_slow.py" not in second.nodes
     assert "tests/test_slow.py" in second.deferred
