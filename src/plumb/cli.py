@@ -64,11 +64,14 @@ ROUTES: dict[str, str] = {
     "plugin": "plumb.plugin.cli",
     # SP7 MOD: the commands only plumb's panel runs (hello, draw, press; key on stdin)
     "mod": "plumb.mod.cli",
+    "ui": "plumb.browser.cli",
 }
 
 _HELP = """usage: plumb <command> [options]
 
 Keep agent work aligned with the owner's intent.
+
+  ui           open the local browser issue workspace (--demo for an isolated example)
 
 records and integrity:
   init         adopt this repository (.plumb/)

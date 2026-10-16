@@ -23,7 +23,7 @@ Run plumb as `.venv/Scripts/python.exe -m plumb`. The owner's intent lives in fi
 - Ask with Claude Code's question tool by default; a card (plumb-clarify) only when the answer
   must change the owner's records or needs context, consequences or a diagram.
 - Never decide the owner approved: only their typed `/plumb approve <IDs>` or plumb's reader
-  of their next message confirms. Never run `.venv/Scripts/python.exe -m plumb approve`, `revoke`, `tests waive`,
+  of their next message confirms. Never run `.venv/Scripts/python.exe -m plumb approve`, `revoke`, `tests waive`, `ui`,
   `.venv/Scripts/python.exe -m plumb triage --approve`, `spec approve`, `config auto-approve`, `config show`,
   `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo`, `go`, `approve`
   are typed by the owner and done by the hook. Merges, conflict cards: references/merge.md,

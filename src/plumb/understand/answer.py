@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Any
 
-from plumb.contracts import Applied, CardState, Choice, ClarifyAnswer, ClarifyQuestion, Job
+from plumb.contracts import Applied, CardState, Choice, ClarifyAnswer, Job
 from plumb.present import owner_text
 
 # the kinds of card whose yes confirms a record: the version the card showed
@@ -46,6 +46,7 @@ class Button:
 
     offer_id: str
     key_digest: str = ""
+    surface: str = "mod"
 
 
 Source = OwnerWords | Button
@@ -82,7 +83,8 @@ def _rejection(core: Any, job: Job, digest: str, record: Any, evidence: str, con
 def _pressed(session: str, button: Button, card: str, question: str) -> dict[str, Any]:
     """What a button entry carries in place of the owner's words (C6)."""
     return {"by": "owner", "via": "button", "session": session, "offer": button.offer_id,
-            "key_digest": button.key_digest, "card": card, "question": question}
+            "key_digest": button.key_digest, "card": card, "question": question,
+            **({"surface": "browser"} if button.surface == "browser" else {})}
 
 
 def _open_cards(core: Any, session: str) -> list[CardState]:
@@ -186,7 +188,7 @@ def _left(work: Answering, card: CardState, choice: Choice) -> None:
 
 
 def apply_answer(work: Answering, *, card: str, question: str, record: str, hash: str,
-                 choice: Choice, source: Source) -> None:
+                 choice: Choice, source: Source, option: str | None = None) -> None:
     """An answer to the question ``question`` of the card ``card`` (``record`` at ``hash``:
     the version the card offered): recorded on the card, then the effect of the card's kind."""
     from plumb.understand import effects
@@ -234,7 +236,8 @@ def apply_answer(work: Answering, *, card: str, question: str, record: str, hash
     result = handler(
         core=work.core, job=work.job, card=state, question=question,
         entry={"answer": said, "change": choice.change, "confidence": confidence,
-               "evidence": evidence, "record": record, "hash": hash},
+               "evidence": evidence, "record": record, "hash": hash,
+               "option": option},
         message=work.message, digest=work.digest, accepted=said == "accepted" and passes,
         confirm=confirm, session=work.session, source=source)
     if isinstance(result, Applied):

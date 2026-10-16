@@ -37,10 +37,13 @@ class Unknown(LookupError):
 
 
 def _write(core: Any, session: str, applied: Any, closed_card: str | None) -> None:
-    from plumb import log
+    from plumb import log, stale
     from plumb.understand import cardstore
 
     closed = set(applied.closed) | ({closed_card} if closed_card else set())
+    for card in applied.cards:
+        if card.kind == "stale_link":
+            stale.save_decision(core, session, card)
     if applied.cards or closed:
         replaced = {c.id for c in applied.cards}
         kept = [dataclasses.replace(c, status="closed") if c.id in closed else c
@@ -67,15 +70,24 @@ def _model_records(core: Any, ids: list[str]) -> str:
 
 
 def press(core: Any, session: str, offer: str, index: int,
-          payload: Mapping[str, Any]) -> dict[str, Any]:
+          payload: Mapping[str, Any], *, surface: str = "mod") -> dict[str, Any]:
     """Answer the button ``index`` of ``offer`` (see the module doc). Raises ``Refused``
     (exit 3) or ``Unknown`` (exit 1 or 2) with nothing written."""
     from plumb.understand import answer, cardstore
 
-    digest = check_key(core.root, session, payload, "press")
-    drawn = offers_mod.load_offer(core.root, session, offer)
+    if surface == "browser":
+        from plumb.browser.session import check_key as browser_check_key
+        digest = browser_check_key(core.root, session, payload, "press")
+    elif surface == "mod":
+        digest = check_key(core.root, session, payload, "press")
+    else:
+        raise Refused("unknown owner surface")
+    drawn = offers_mod.load_offer(core.root, session, offer, surface=surface)
     if drawn is None:
         raise Refused("plumb mod press refused: no such card was drawn in this session")
+    if surface == "browser" and drawn.get("key_digest") != digest:
+        raise Refused("This offer belongs to an earlier browser registration; "
+                      "redraw before answering")
     buttons = [b for b in drawn.get("buttons") or () if isinstance(b, Mapping)]
     if not 0 <= index < len(buttons):
         raise Unknown(f"plumb mod press: the card has no button {index}", 2)
@@ -91,14 +103,24 @@ def press(core: Any, session: str, offer: str, index: int,
     built = offers_mod.turn_card(core.root, session, card_id) if card is None else None
     if card is None and built is None:
         raise Unknown("plumb mod press: that card no longer exists; nothing was written", 1)
+    current_card = card or built
+    if surface == "browser" and drawn.get("presentation") != offers_mod.presentation_digest(
+            core, session, current_card):
+        # Record drift still goes through the existing stale-record refusal/replacement path.
+        record = core.index().get(str(record_id)) if record_id else None
+        if not record_id or (record is not None and record.hash == shown_hash):
+            raise Refused("The card changed since it was shown. Refresh it before answering.")
     if built is not None:
         return _press_turn_card(core, session, offer, index, choice, built, question,
-                                record_id, shown_hash, digest)
+                                record_id, shown_hash, digest, surface=surface,
+                                request_id=str(payload.get("request_id") or ""))
     assert card is not None
     core.log_append("events", CARD_PRESS, {
         "session": session, "offer": offer, "card": card_id, "question": question,
         "choice": index, "answer": choice.answer, "label": choice.label,
         "record": record_id, "hash": shown_hash, "key_digest": digest,
+        **({"surface": "browser", "request_id": payload.get("request_id")}
+           if surface == "browser" else {}),
         # decided now, so a later edit of the record never turns a confirmed card blocked
         "stale": bool(record_id) and (core.index().get(str(record_id)) is None
                                       or core.index()[str(record_id)].hash != shown_hash)})
@@ -128,7 +150,8 @@ def press(core: Any, session: str, offer: str, index: int,
     else:
         answer.apply_answer(work, card=card_id, question=question, record=str(record_id or ""),
                             hash=shown_hash, choice=choice,
-                            source=answer.Button(offer_id=offer, key_digest=digest))
+                            source=answer.Button(offer_id=offer, key_digest=digest,
+                                                 surface=surface))
     applied = work.applied()
     _write(core, session, applied, closed_card)
     after = next((c for c in applied.cards if c.id == card_id), None)
@@ -184,7 +207,8 @@ def conflict_take(card: Any, choice: Choice) -> str | None:
 
 def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Choice,
                      card: Any, question: str, record_id: Any, shown_hash: str,
-                     digest: str) -> dict[str, Any]:
+                     digest: str, *, surface: str = "mod", request_id: str = ""
+                     ) -> dict[str, Any]:
     """A press on a card the stop hook built (not in ``cards.json``): it offers only Leave open
     (DEC-034: kept in ``turn_left.json`` until a record it shows changes) and Ask for a change
     (the owner's next message says what; nothing is stored). Neither confirms anything."""
@@ -197,7 +221,9 @@ def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Ch
         core.log_append("events", CARD_PRESS, {
             "session": session, "offer": offer, "card": card.id, "question": question,
             "choice": index, "answer": choice.answer, "label": choice.label,
-            "record": record_id, "hash": shown_hash, "key_digest": digest})
+            "record": record_id, "hash": shown_hash, "key_digest": digest,
+            **({"surface": "browser", "request_id": request_id}
+               if surface == "browser" else {})})
 
     if side is None:
         log_press()
@@ -235,4 +261,6 @@ def _press_turn_card(core: Any, session: str, offer: str, index: int, choice: Ch
                       prefill=owner_text.PRESS_PREFILL.format(topic=topic),
                       line=owner_text.PRESS_CHANGE.format(topic=topic),
                       model_note=owner_text.PRESS_MODEL_CHANGE.format(topic=topic))
+    if choice.answer != "open":
+        summary.clear_turn_left(core.root, session, card.id, result["status"])
     return result

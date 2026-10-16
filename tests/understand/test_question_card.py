@@ -64,6 +64,18 @@ def test_ex2_the_owner_answering_that_card_answers_it_and_raises_no_read_back(
     assert [(c.id, c.status) for c in cards] == [(card.id, "answered")]
 
 
+def test_ex2_a_clarify_that_reads_the_answer_as_a_request_still_raises_no_read_back(
+        repo: Path, tmp_path: Path, world: Any) -> None:
+    _turn_end(repo, tmp_path, ASK, [ASKED], world)
+    (card,) = cardstore.own_cards(repo, SESSION)
+    _reply(repo, world, "reword it please",
+           [{"id": f"{card.id}/{card.questions[0].id}", "hash": "", "answer": "change",
+             "change": "Reword it", "evidence": "reword it please", "confidence": 0.95}],
+           {"intent": "yes", "topic": "q", "gap": False, "gaps": []})
+    cards = cardstore.own_cards(repo, SESSION)
+    assert [(c.id, c.status) for c in cards] == [(card.id, "answered")]
+
+
 def test_ex3_an_answer_before_any_card_raises_the_card_and_applies_it(
         repo: Path, world: Any) -> None:
     core = _reply(repo, world, "keep it", [],
