@@ -57,19 +57,17 @@ def test_approve_refused_under_marker(setup: Path, monkeypatch: pytest.MonkeyPat
     with pytest.raises(approvals.Refused):
         approvals.revoke(open_core(setup), ["SR-001"])
     root = ["--root", str(setup)]
-    assert cli.main(["approve", "SR-001", *root]) == 3
+    assert cli.main(["approve", "SR-001", *root]) == 3          # SR-210: no such command
     assert cli.main(["approve", "--proposed", *root]) == 3
     assert cli.main(["revoke", "SR-001", *root]) == 3
-    assert "refused" in capsys.readouterr().err
+    assert "no longer exists" in capsys.readouterr().err
     assert list(open_core(setup).log_read("events")) == []
 
 
-def test_approve_proposed_pins_all_listed(setup: Path,
-                                          capsys: pytest.CaptureFixture[str]) -> None:
-    root = ["--root", str(setup)]
-    assert cli.main(["approve", "--proposed", *root]) == 0  # y/N answered in the terminal
-    out = capsys.readouterr().out
-    assert "SR-001" in out and "INT-001" in out
+def test_approve_proposed_pins_all_listed(setup: Path) -> None:
+    listed = [r[0] for r in approvals.pending(open_core(setup))]
+    assert "SR-001" in listed and "INT-001" in listed
+    approvals.approve(open_core(setup), listed)  # the library, y/N answered in the terminal
     entries = list(open_core(setup).log_read("events", kinds=["approval"]))
     assert len(entries) == 1
     pinned = {r["id"]: r["hash"] for r in entries[0].payload["records"]}
@@ -77,7 +75,8 @@ def test_approve_proposed_pins_all_listed(setup: Path,
     assert pinned == {i: index[i].hash for i in ("INT-001", "SR-001", "SR-002")}
     assert entries[0].payload["by"] == "owner" and entries[0].marker == "none"
     assert all(_confirmation(setup, i) == "confirmed" for i in pinned)
-    assert cli.main(["approve", "SR-404", *root]) == 1
+    with pytest.raises(approvals.ApprovalError):
+        approvals.approve(open_core(setup), ["SR-404"])
 
 
 @pytest.mark.sr("SR-260")

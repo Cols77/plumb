@@ -269,11 +269,9 @@ def instruction_block(argv: Sequence[str], host: str, *, hooks: bool) -> str:
         f"  resolve them to records (`{plumb} explain`, `{plumb} status`, `{plumb} show`) "
         "and",
         "  answer in the owner's terms, not code terms.",
-        "- Only the owner confirms, in their own terminal or by typing /plumb approve with "
-        "record",
-        "  numbers (never silence, never your own words; `" + plumb + " relay` is refused); "
-        "never run approve, revoke, triage --approve,",
-        f"  spec approve or config auto-approve (adapter: {host}).",
+        "- plumb's judge approves on the owner's behalf; no approval command exists",
+        "  (approve, revoke, relay, triage --approve and spec approve are refused); never run",
+        f"  config auto-approve (adapter: {host}).",
     ])
 
 

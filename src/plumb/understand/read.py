@@ -225,15 +225,10 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> str | None:
     from plumb.understand import typed
 
     parsed = typed.parse(entry.get("text"))
-    if parsed is not None:
-        if parsed.command in ("approve", "confirm") and parsed.ids:
-            typed.confirm_now(core, parsed, str(entry.get("digest") or ""), session)
-            return None                   # exact: the reader is not called
+    if parsed is not None:                # a typed "approve" is prose, read by meaning (SR-209)
         if parsed.command == "auto-approve":
             typed.switch_now(core, parsed, str(entry.get("digest") or ""), session)
-            return None                   # SR-115: the owner's switch, at once
-        if parsed.command not in ("approve", "confirm"):
-            return None                   # undo, go, settle: typed.on_prompt, clarify
+        return None                       # auto-approve, undo, go, settle: no reading
     job = build(core, session, message=entry)
     if job is None:
         return None

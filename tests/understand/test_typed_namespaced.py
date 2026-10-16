@@ -38,14 +38,20 @@ def in_repo(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 # ---- the grammar ----------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("words", ["approve SR-034", "confirm SR-034, DEC-017", "go",
-                                   "auto-approve on", "auto-approve off",
+@pytest.mark.parametrize("words", ["go", "auto-approve on", "auto-approve off",
                                    "undo SR-001"])
 def test_both_spellings_parse_the_same(words: str) -> None:
     plain = typed.parse(f"/plumb {words}")
     assert plain is not None
     assert typed.parse(f"/plumb:plumb {words}") == plain
     assert typed.parse(f"  /plumb:plumb\t{words}\n") == plain
+
+
+@pytest.mark.parametrize("words", ["approve SR-034", "confirm SR-034, DEC-017"])
+def test_a_past_typed_approval_is_read_the_same_in_both_spellings(words: str) -> None:
+    assert typed.parse(f"/plumb {words}") is None          # SR-209 EX-6: no longer a command
+    plain = typed.legacy_ids(f"/plumb {words}")
+    assert plain and typed.legacy_ids(f"/plumb:plumb {words}") == plain
 
 
 @pytest.mark.parametrize("text", NEGATIVES + ["/plumbing approve SR-034",
@@ -85,21 +91,16 @@ def core(repo: Path, write_record):
     return make_core(repo, write_record, [record_text(34)])
 
 
-def test_ex2_namespaced_approve_confirms_at_once(core, engine_standins) -> None:
+def test_ex2_namespaced_approve_confirms_nothing_and_is_read_as_prose(core,
+                                                                      engine_standins) -> None:
     state(core, ["SR-034"])
     text = "/plumb:plumb approve SR-034"
     digest = log_prompt(core, text)
-    assert read.on_prompt(ctx_for(core), core, {"digest": digest, "text": text}) is None
-    assert list(files.jobs_dir(core.root, SESSION).glob("*.json")) == []   # reader not called
+    assert read.on_prompt(ctx_for(core), core, {"digest": digest, "text": text}) is not None
+    assert list(files.jobs_dir(core.root, SESSION).glob("*.json")) != []   # the reader reads it
     after = open_core(core.root)
-    assert after.status(["SR-034"])["SR-034"].confirmation == "confirmed"
-    (entry,) = [e for e in after.events() if e.kind == "approval"]
-    assert entry.payload["quote"] == text and entry.payload["via"] == "command"
-    from plumb.confirm import entry_problem
-
-    # the re-check of the written approval reads the namespaced quote as the typed command
-    prompts = {e.payload.get("digest") for e in after.events() if e.kind == "prompt"}
-    assert entry_problem(entry, prompts, ()) is None
+    assert after.status(["SR-034"])["SR-034"].confirmation != "confirmed"
+    assert [e for e in after.events() if e.kind == "approval"] == []
 
 
 def test_ex3_plumbing_approve_confirms_nothing(core, engine_standins) -> None:

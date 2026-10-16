@@ -138,7 +138,9 @@ def test_every_route_names_a_module_path() -> None:
     expected = {"init", "new", "show", "link", "repin", "validate", "check", "status", "drift",
                 # SR-148, SR-149: `plumb unlink`, `plumb relink`
                 "unlink", "relink",
-                "brief", "explain", "why", "approve", "relay", "revoke", "tests", "map",
+                "brief", "explain", "why", "tests", "map",
+                # SR-210: refused as gone, still routed so they say so
+                "approve", "confirm", "relay", "revoke",
                 "verify", "impact", "hook", "hooks", "install", "statusline", "trailers",
                 "claims", "import", "fidelity", "judge", "judgment",
                 # sub-projects 2 to 5 (next-plan 3.2 item 4)

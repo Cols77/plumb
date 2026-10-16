@@ -104,27 +104,24 @@ def test_exclusions_shown_individually(project: Path, write_record) -> None:
     assert view.low_risk == ()
 
 
-def test_approve_low_risk_exact_hashes_owner_only(project: Path, monkeypatch,
-                                                  capsys) -> None:
-    hashes = {i.id: i.hash for i in triage(open_core(project)).low_risk}
+@pytest.mark.sr("SR-210")
+def test_triage_approve_no_longer_exists_even_in_the_owners_terminal(project: Path, monkeypatch,
+                                                                     capsys) -> None:
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
     assert run(project, "triage", "--approve", "low-risk") == 3
     assert "approval" not in event_kinds(project)
     monkeypatch.delenv("PLUMB_AGENT_SESSION")
-    assert run(project, "triage", "--approve", "low-risk") == 0  # the owner's terminal
-    [entry] = list(open_core(project).log_read("events", ["approval"]))
-    assert {r["id"]: r["hash"] for r in entry.payload["records"]} == hashes
-    assert entry.payload["by"] == "owner"
-    assert entry.payload["triage"]["group"] == "low-risk"
-    assert open_core(project).status(["INT-017"])["INT-017"].confirmation == "confirmed"
-    assert open_core(project).status(["DEC-001"])["DEC-001"].confirmation == "proposed"
+    assert run(project, "triage", "--approve", "low-risk") == 3  # the owner's terminal too
+    assert "no longer exists" in capsys.readouterr().err
+    assert "approval" not in event_kinds(project)
 
 
-def test_approve_low_risk_refused_without_terminal(project: Path, monkeypatch,
-                                                   capsys) -> None:
+@pytest.mark.sr("SR-210")
+def test_triage_approve_refused_without_terminal(project: Path, monkeypatch,
+                                                 capsys) -> None:
     agent_shell_setup(monkeypatch)
     assert run(project, "triage", "--approve", "low-risk") == 3
-    assert "not an interactive terminal" in capsys.readouterr().err
+    assert "no longer exists" in capsys.readouterr().err
     assert "approval" not in event_kinds(project)
 
 

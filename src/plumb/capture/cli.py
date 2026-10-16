@@ -1,9 +1,10 @@
 """Commands of sub-project 2 (sp2 5 to 9): ``capture``, ``new``, ``intent``, ``example``,
 ``decide``, ``escalate``, ``spec``, ``triage``, ``config``, ``jev`` and ``clarify``.
 
-Owner-only writes (``spec approve``, ``triage --approve``, ``config auto-approve``, the owner's
-``escalate decline``) go through ``approvals.require_owner`` only: refused under the session
-marker and outside an interactive terminal (exit 3), on every host.
+Owner-only writes (``config auto-approve``, the owner's ``escalate decline``) go through
+``approvals.require_owner`` only: refused under the session marker and outside an interactive
+terminal (exit 3), on every host. ``spec approve`` and ``triage --approve`` no longer exist:
+refused with exit 3, writing nothing (SR-210).
 """
 
 from __future__ import annotations
@@ -286,15 +287,22 @@ def cmd_escalate(command: str, argv: list[str]) -> int:
     return _guarded(act)
 
 
-def cmd_spec(command: str, argv: list[str]) -> int:
-    from plumb.capture.spec import SpecError, approve_set, set_state, show_lines
+def _gone(verb: str) -> int:
+    """An approval command that no longer exists (SR-210): refused, nothing recorded."""
+    print(f"plumb: {verb} no longer exists; nothing was recorded", file=sys.stderr)
+    return EXIT_REFUSED
 
+
+def cmd_spec(command: str, argv: list[str]) -> int:
+    from plumb.capture.spec import SpecError, set_state, show_lines
+
+    if argv[:1] == ["approve"]:
+        return _gone("spec approve")
     parser = _parser(command, "An escalated spec (an INT with mode escalated and members): "
-                     "show prints every member in full with the set hash; approve is the "
-                     "owner's one set-hash approval, in the owner's own terminal only.")
-    parser.add_argument("action", choices=["show", "approve", "state"])
+                     "show prints every member in full with the set hash; state says whether "
+                     "the judge approved the set whole.")
+    parser.add_argument("action", choices=["show", "state"])
     parser.add_argument("anchor", metavar="INT")
-    parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
     core = _core(args)
 
@@ -307,11 +315,6 @@ def cmd_spec(command: str, argv: list[str]) -> int:
                 state = set_state(core, args.anchor)
                 emit({"anchor": args.anchor, "state": state} if args.as_json
                      else f"{args.anchor}: {state}", args.as_json)
-            else:
-                entry = approve_set(core, args.anchor, note=args.note)  # asks y/N
-                print(f"plumb: approved the escalated spec {args.anchor} "
-                      f"({len(entry.payload['records'])} records, set "
-                      f"{entry.payload['set']['hash'][:19]})")
         except SpecError as exc:
             print(f"plumb: {exc}", file=sys.stderr)
             return EXIT_FINDINGS
@@ -324,26 +327,17 @@ def cmd_spec(command: str, argv: list[str]) -> int:
 
 
 def cmd_triage(command: str, argv: list[str]) -> int:
-    from plumb.capture.triage import approve_low_risk, log_triage, triage, view_lines
+    from plumb.capture.triage import log_triage, triage, view_lines
 
+    if any(a == "--approve" or a.startswith("--approve=") for a in argv):
+        return _gone("triage --approve")
     parser = _parser(command, "Proposed records grouped by faithfulness to your words (the "
                      "low-risk group first, riskier records individually). Advisory: it "
-                     "approves nothing. --approve low-risk is your one step, in your own "
-                     "terminal only.")
-    parser.add_argument("--approve", choices=["low-risk"], default=None)
-    parser.add_argument("--note", default="")
+                     "approves nothing.")
     args = parser.parse_args(argv)
     core = _core(args)
 
     def act() -> int:
-        if args.approve:
-            entry = approve_low_risk(core, note=args.note)  # asks y/N
-            ids = [r["id"] for r in entry.payload["records"]]
-            print(f"plumb: approved {', '.join(ids)} (low-risk group, by: owner)")
-            left_out = entry.payload["triage"].get("left_out") or []
-            if left_out:
-                print("plumb: changed since the listing, left out: " + ", ".join(left_out))
-            return 0
         view = triage(core)
         log_triage(core, view)
         if args.as_json:

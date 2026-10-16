@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb import links
+from plumb import approvals, links
 from plumb.api import open_core
 from plumb.contracts import Pin, Target
 
@@ -303,7 +303,7 @@ def test_unlink_without_a_note_is_a_usage_error(edit: Path) -> None:
 @pytest.mark.sr("SR-231")
 def test_unlink_refuses_the_only_live_test_of_a_confirmed_example(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert _cli(edit, "approve", "SR-001") == 0
+    approvals.approve(open_core(edit), ["SR-001"])
     before = _record_text(edit)
     capsys.readouterr()
     assert _cli(edit, "unlink", "SR-001#3", "--note", "x") == 1
@@ -317,7 +317,7 @@ def test_unlink_refuses_the_only_live_test_of_a_confirmed_example(
 @pytest.mark.sr("SR-231")
 def test_unlink_removes_a_dangling_only_test_of_a_confirmed_example(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert _cli(edit, "approve", "SR-001") == 0
+    approvals.approve(open_core(edit), ["SR-001"])
     (edit / "tests" / "test_b.py").unlink()
     capsys.readouterr()
     assert _cli(edit, "unlink", "SR-001#3", "--note", "the test is gone") == 0
@@ -381,7 +381,7 @@ def test_relink_refuses_a_kind_that_cannot_reach_the_target(
 @pytest.mark.sr("SR-231")
 def test_unlink_lets_a_retired_examples_test_go(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert _cli(edit, "approve", "SR-001") == 0
+    approvals.approve(open_core(edit), ["SR-001"])
     path = edit / ".plumb" / "requirements" / "SR-001.md"
     # EX-2 is retired (renumbered away); SR-001#3 still names it
     path.write_text(_record_text(edit).replace("id: EX-2", "id: EX-7"), encoding="utf-8")
@@ -395,7 +395,7 @@ def test_unlink_lets_a_retired_examples_test_go(
 def test_unlink_lets_a_superseded_records_only_test_go(
         edit: Path, write_record, capsys: pytest.CaptureFixture[str]) -> None:
     """DEC-065: every example of a superseded record is retired, so its tests go with it."""
-    assert _cli(edit, "approve", "SR-001") == 0
+    approvals.approve(open_core(edit), ["SR-001"])
     write_record(edit, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
     assert _cli(edit, "link", "SR-002", "supersedes", "SR-001") == 0
     capsys.readouterr()

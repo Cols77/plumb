@@ -40,6 +40,5 @@ def test_ex8_prose_undo_takes_nothing_back(core) -> None:
 def test_typed_command_replies_pass_the_owner_level_scan() -> None:
     from understand.fakes import owner_level
 
-    for reply in (owner_text.TYPED_CONFIRMED.format(titles="Pick a store, Add multiply"),
-                  owner_text.TYPED_NEEDS_IDS):
-        assert owner_level(reply) == []
+    reply = owner_text.TYPED_CONFIRMED.format(titles="Pick a store, Add multiply")
+    assert owner_level(reply) == []

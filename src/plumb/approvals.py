@@ -1,10 +1,10 @@
 """Approvals pinned to exact content, and the self-approval guard (spec 5.6).
 
-Only these confirm a record: the owner, with ``plumb approve`` in their own terminal (refused
-while the agent session marker ``PLUMB_AGENT_SESSION`` is set, and written only after a y/N
-answered in an interactive terminal: ``require_owner``, the one choke point of every owner-only
-write); the owner's typed ``/plumb approve`` naming record numbers; and the worker plumb starts,
-applying the reader's reading of the owner's own logged message (``plumb.understand``).
+Only the judge worker's entries and plumb's reading of the owner's own answers approve a record
+(SR-210): no approval command exists. ``approve`` and ``revoke`` stay as library functions for
+history and fixtures, behind ``require_owner`` (refused while the agent session marker
+``PLUMB_AGENT_SESSION`` is set, and written only after a y/N answered in an interactive
+terminal), the one choke point of every owner-only write.
 
 The coding agent decides nothing about what the owner approved: there is no relay command
 (SR-101 EX-9, SR-135). No fixed rule about the owner's words (affirmation words,
@@ -85,8 +85,8 @@ def refuse_under_marker(command: str) -> None:
     value = marker()
     if value:
         raise Refused(f"plumb {command} refused: the agent session marker is set "
-                      f"(PLUMB_AGENT_SESSION={value}). Only the owner approves, in their own "
-                      "terminal, or by typing /plumb approve with the record numbers.")
+                      f"(PLUMB_AGENT_SESSION={value}). Only the owner runs it, in their own "
+                      "terminal.")
 
 
 class Declined(Exception):
@@ -130,8 +130,7 @@ def require_owner(command: str, question: str) -> None:
     if answer is None:
         raise Refused(f"plumb {command} refused: not an interactive terminal. Owner-only "
                       "commands write only after a y/N answered in the owner's own terminal "
-                      "(stdin and stdout both terminals; in mintty, prefix winpty). The owner "
-                      "can also type /plumb approve with the record numbers.")
+                      "(stdin and stdout both terminals; in mintty, prefix winpty).")
     if answer.strip().lower() not in ("y", "yes"):
         raise Declined(f"plumb {command}: nothing written")
 

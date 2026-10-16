@@ -20,7 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
+from plumb import approvals, cli
+from plumb.api import open_core
 
 ROOT = Path(__file__).resolve().parents[2]
 # End-to-end allowance includes process startup and filesystem scanning on Windows.
@@ -113,8 +114,7 @@ def adopted(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> Path:
         assert cli.main(["link", sr, "verified_by", "tests/test_mod.py", "--example", "EX-1",
                          *root]) == 0
     # the owner confirms in their own terminal (no session marker in this process)
-    assert cli.main(["approve", "INT-001", "SR-001", "SR-002", "FEAT-001",
-                     *root]) == 0
+    approvals.approve(open_core(repo), ["INT-001", "SR-001", "SR-002", "FEAT-001"])
     assert cli.main(["tests", "map", *root]) == 0
     assert cli.main(["hooks", "install", "--launcher", "path", *root]) == 0
     _git(repo, "add", "-A")

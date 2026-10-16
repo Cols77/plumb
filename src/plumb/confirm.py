@@ -104,14 +104,13 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
         if payload.get("quote_digest") != sha256_text(quote):
             return f"agent-relayed {entry.kind} quote does not match its quote_digest"
         if entry.kind == "approval" and payload.get("via") == "command":
-            # SP8: a typed /plumb approve|confirm is checked by the parse, not by words
-            from plumb.understand.typed import parse
+            # SP8: a past typed /plumb approve|confirm (gone, SR-209) is checked by its parse
+            from plumb.understand.typed import legacy_ids
 
-            parsed = parse(quote)
+            typed_ids = legacy_ids(quote)
             named = {str(r.get("id")) for r in payload.get("records") or []
                      if isinstance(r, Mapping)}
-            if parsed is None or parsed.command not in ("approve", "confirm") \
-                    or not named <= set(parsed.ids):
+            if typed_ids is None or not named <= set(typed_ids):
                 return "agent-relayed command approval: the quote is not the typed command"
             return None
         choice = payload.get("choice")

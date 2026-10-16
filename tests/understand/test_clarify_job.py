@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from capture.capture_helpers import log_prompt, run
+from capture.capture_helpers import log_prompt
 from understand.fakes import FakeDispatcher, owner_level
 
+from plumb import approvals
 from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyAnswer
 from plumb.understand import cardstore, clarify, effects, files, gate, worker
@@ -216,7 +217,7 @@ def test_sr132_ex1_a_newer_read_back_withdraws_the_card_it_replaces(
 def test_ex2_request_that_maps_to_confirmed_requirement_no_choice(
         repo: Path, write_record: Any, engine_standins: Any) -> None:
     write_record(repo, SR)
-    assert run(repo, "approve", "SR-001") == 0
+    approvals.approve(open_core(repo), ["SR-001"])
     answer = {"intent": "yes", "topic": "export as CSV", "gaps": []}
     core, digest = _asked("export the user list as CSV", answer, repo, engine_standins)
     assert _cards(repo) == []                       # no read-back card (SR-252 EX-6)

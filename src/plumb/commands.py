@@ -1,5 +1,5 @@
-"""CORE commands: init, show, link, repin, validate, status, brief, explain (alias why), approve,
-revoke."""
+"""CORE commands: init, show, link, repin, validate, status, brief, explain (alias why); approve,
+revoke and relay are refused as gone (SR-210)."""
 
 from __future__ import annotations
 
@@ -445,71 +445,12 @@ def _guarded(action: Callable[[], object]) -> int:
     return 0
 
 
-def _approved_names(entry: Any) -> str:
-    """``SR-001, trace.exempt src/gen/*``: what an approval entry confirmed."""
-    names = [str(r["id"]) for r in entry.payload["records"]]
-    if entry.payload.get("exempt"):
-        names.append("trace.exempt " + " ".join(entry.payload["exempt"]))
-    return ", ".join(names)
-
-
-def cmd_approve(command: str, argv: list[str]) -> int:
-    from plumb import approvals
-
-    parser = _parser(command, "Owner approval of records at their current content, after a "
-                     "y/N answered in the owner's own interactive terminal. Refused under the "
-                     "agent session marker and outside an interactive terminal.")
-    parser.add_argument("ids", nargs="*", help="record IDs")
-    parser.add_argument("--proposed", action="store_true",
-                        help="every proposed or unconfirmed-edit record")
-    parser.add_argument("--exempt", action="store_true",
-                        help="also confirm the trace.exempt globs of .plumb/config.yaml")
-    parser.add_argument("--note", default="")
-    args = parser.parse_args(argv)
-    if not args.ids and not args.proposed and not args.exempt:
-        parser.error("name record IDs or pass --proposed or --exempt")
-    core = _core(args)
-
-    def act() -> None:
-        approvals.refuse_under_marker("approve")
-        ids = list(args.ids)
-        if args.proposed:
-            listed = approvals.pending(core)
-            if not listed and not ids and not args.exempt:
-                print("plumb: nothing awaits your confirmation")
-                return
-            for record_id, record_hash, state in listed:
-                title = core.index()[record_id].title
-                print(f"  {record_id} {state} {record_hash[:19]}  {title}")
-            ids += [r[0] for r in listed if r[0] not in ids]
-        entry = approvals.approve(core, ids, note=args.note, exempt=args.exempt)  # asks y/N
-        print(f"plumb: approved {_approved_names(entry)}")
-
-    return _guarded(act)
-
-
-def cmd_relay(command: str, argv: list[str]) -> int:
-    """Refused, always (SR-135): an agent-run prose relay no longer exists."""
-    del command, argv
-    print("plumb: relay no longer exists; nothing was recorded. The owner's typed /plumb approve, "
-          "or the reader's reading of their own message, are what confirm a record", file=sys.stderr)
+def cmd_gone(command: str, argv: list[str]) -> int:
+    """``approve``, ``revoke`` and ``relay``: refused, always, whoever runs them and whatever
+    stdin holds (SR-210). The judge approves on the owner's behalf; no approval command exists."""
+    del argv
+    print(f"plumb: {command} no longer exists; nothing was recorded", file=sys.stderr)
     return EXIT_REFUSED
-
-
-def cmd_revoke(command: str, argv: list[str]) -> int:
-    from plumb import approvals
-
-    parser = _parser(command, "Owner revocation of the latest approval of records.")
-    parser.add_argument("ids", nargs="+")
-    parser.add_argument("--note", default="")
-    args = parser.parse_args(argv)
-    core = _core(args)
-
-    def act() -> None:
-        entry = approvals.revoke(core, args.ids, note=args.note)
-        print("plumb: revoked " + ", ".join(r["id"] for r in entry.payload["records"]))
-
-    return _guarded(act)
 
 
 def cmd_validate(command: str, argv: list[str]) -> int:
@@ -883,9 +824,10 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "relink": cmd_relink,
     "repin": cmd_repin,
     "stale": cmd_stale,
-    "approve": cmd_approve,
-    "relay": cmd_relay,
-    "revoke": cmd_revoke,
+    "approve": cmd_gone,
+    "confirm": cmd_gone,
+    "relay": cmd_gone,
+    "revoke": cmd_gone,
     "validate": cmd_validate,
     "check": cmd_validate,
     "status": cmd_status,

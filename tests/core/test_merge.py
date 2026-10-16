@@ -319,9 +319,10 @@ def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
     assert merge_check(open_core(root), sha, as_json=True) == 4
     assert json.loads(capsys.readouterr().out)["new_exempt"] == ["src/**"]
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
-    assert cli.main(["approve", "--exempt", "--root", str(root)]) == 3  # owner only
+    with pytest.raises(approvals.Refused):                    # owner only
+        approvals.approve(open_core(root), [], exempt=True)
     monkeypatch.delenv("PLUMB_AGENT_SESSION")
-    assert cli.main(["approve", "--exempt", "--root", str(root)]) == 0
+    approvals.approve(open_core(root), [], exempt=True)
     capsys.readouterr()
     code, out = _check(root, sha, capsys)
     assert code == 0, out

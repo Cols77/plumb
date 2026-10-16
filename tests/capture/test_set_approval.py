@@ -13,7 +13,7 @@ from capture_helpers import (
 )
 
 from plumb.api import open_core
-from plumb.capture.spec import set_hash, set_state
+from plumb.capture.spec import approve_set, set_hash, set_state
 
 pytestmark = pytest.mark.sr("SR-227")
 
@@ -39,7 +39,7 @@ def test_set_hash_over_sorted_members(spec: Path, capsys) -> None:
     assert run(spec, "spec", "show", "INT-021") == 0
     out = capsys.readouterr().out
     assert "SR-070" in out and "SR-071" in out and "set hash: sha256:" in out
-    assert run(spec, "spec", "approve", "INT-021") == 0  # the owner's terminal (test)
+    approve_set(open_core(spec), "INT-021")  # the library, the owner's terminal (test)
     [entry] = approvals(spec)
     core = open_core(spec)
     index = core.index()
@@ -52,17 +52,21 @@ def test_set_hash_over_sorted_members(spec: Path, capsys) -> None:
     assert set_state(core, "INT-021") == "approved"
 
 
-def test_spec_approve_refused_under_marker(spec: Path, monkeypatch, capsys) -> None:
+@pytest.mark.sr("SR-210")
+def test_spec_approve_no_longer_exists(spec: Path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
     assert run(spec, "spec", "approve", "INT-021") == 3
-    assert "marker" in capsys.readouterr().err
+    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    assert run(spec, "spec", "approve", "INT-021") == 3    # the owner's terminal too
+    assert "no longer exists" in capsys.readouterr().err
     assert approvals(spec) == []
 
 
+@pytest.mark.sr("SR-210")
 def test_spec_approve_refused_without_terminal(spec: Path, monkeypatch, capsys) -> None:
     agent_shell_setup(monkeypatch)
     assert run(spec, "spec", "approve", "INT-021") == 3
-    assert "not an interactive terminal" in capsys.readouterr().err
+    assert "no longer exists" in capsys.readouterr().err
     assert "approval" not in event_kinds(spec)
 
 
@@ -72,7 +76,7 @@ def edit_member(repo: Path, record_id: str, old: str, new: str) -> None:
 
 
 def test_member_edit_unconfirms_member_and_set(spec: Path) -> None:
-    assert run(spec, "spec", "approve", "INT-021") == 0
+    approve_set(open_core(spec), "INT-021")
     path = spec / ".plumb" / "requirements" / "SR-071.md"
     path.write_text(path.read_text(encoding="utf-8").replace("rule 71", "rule 71 changed"),
                     encoding="utf-8")

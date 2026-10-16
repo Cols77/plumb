@@ -14,7 +14,7 @@ from jev_fixtures import calibrated
 from understand.test_one_judge import run_judge_job
 
 from plumb.api import open_core
-from plumb.capture.spec import set_state
+from plumb.capture.spec import approve_set, set_state
 
 pytestmark = [pytest.mark.sr("SR-250"), pytest.mark.sr("SR-227")]
 
@@ -86,8 +86,8 @@ def test_validate_rejects_auto_jev_of_a_record_of_an_escalated_set(ready) -> Non
     from plumb.validate import validate
 
     core = open_core(repo)
-    errors = [f for f in validate(core) if f.severity == "error" and f.subject == sr]
-    assert any("escalated spec set" in f.message for f in errors)
+    inert = [f for f in validate(core) if f.code == "inert-approval" and sr in f.subject]
+    assert any("escalated spec set" in f.message for f in inert)   # SR-251: a warning
     assert core.status([sr])[sr].confirmation == "proposed"
 
 
@@ -102,7 +102,7 @@ def test_triage_never_groups_a_record_of_an_escalated_set(repo: Path, write_reco
     view = triage(open_core(repo))
     assert "INT-022" not in [i.id for i in view.low_risk]
     why = {i.id: i.excluded for i in view.individual}
-    assert why["INT-022"] == "a member of the escalated spec INT-020"
+    assert why["INT-022"] == 'a member of the escalated set "a set"'
 
 
 def test_set_state_covers_records_derived_from_the_set(repo: Path, write_record) -> None:
@@ -111,7 +111,7 @@ def test_set_state_covers_records_derived_from_the_set(repo: Path, write_record)
                                    members=["SR-070"]))
     write_record(repo, record_text("SR-070", "export rule 70", statement="rule 70",
                                    links=[{"kind": "derives_from", "to": "INT-021"}]))
-    assert run(repo, "spec", "approve", "INT-021") == 0  # the owner's terminal (test)
+    approve_set(open_core(repo), "INT-021")  # the library, the owner's terminal (test)
     assert set_state(open_core(repo), "INT-021") == "approved"
     assert run(repo, "new", "requirement", "--title", "export rule 71", "--statement",
                "rule 71", "--derives-from", "INT-021") == 0
@@ -119,7 +119,7 @@ def test_set_state_covers_records_derived_from_the_set(repo: Path, write_record)
     added = sorted(set(core.index()) - {"INT-021", "SR-070"})
     [sr] = [i for i in added if i.startswith("SR-")]
     assert set_state(core, "INT-021") == "unconfirmed"
-    assert run(repo, "spec", "approve", "INT-021") == 0
+    approve_set(open_core(repo), "INT-021")
     core = open_core(repo)
     assert core.status([sr])[sr].confirmation == "confirmed"
     assert set_state(core, "INT-021") == "approved"

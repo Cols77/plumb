@@ -322,7 +322,7 @@ def test_routes_and_help_list_only_importable_verbs() -> None:
 
     for verb in ("understand", "clarify"):
         assert cli.ROUTES[verb] == "plumb.understand.cli"
-    assert not {"settle", "undo", "go", "confirm"} & set(cli.ROUTES)
+    assert not {"settle", "undo", "go"} & set(cli.ROUTES)
     assert cli._available("clarify")
     assert "clarify" in cli.help_text()
     saved = dict(cli.ROUTES)
@@ -554,8 +554,7 @@ def test_handler_for_raises_an_import_error_of_a_lane_module(
         effects.handler_for("anything")
 
 
-C2_TEXT = ("CONFIRM_YOU_SAID", "READBACK_CHANGE", "TYPED_CONFIRMED", "TYPED_NEEDS_IDS",
-           "BACKLOG_DONE")
+C2_TEXT = ("CONFIRM_YOU_SAID", "READBACK_CHANGE", "TYPED_CONFIRMED", "BACKLOG_DONE")
 
 
 @pytest.mark.parametrize("name", C2_TEXT)

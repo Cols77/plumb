@@ -272,8 +272,6 @@ READBACK_CHANGE = ('To be sure I have it: "{title}" should change so that {chang
 CARD_CHANGED_SINCE = ('Nothing was confirmed: "{title}" changed after I showed it to you. I am '
                       'showing you what it says now.')
 TYPED_CONFIRMED = "Confirmed: {titles}"
-TYPED_NEEDS_IDS = ("I could not tell which records you meant from those words alone, so they "
-                   "went to the reader; I will confirm what it finds.")
 TYPED_SETTLE_GONE = "That switch no longer exists; nothing changed. Records are confirmed by you, or by the judge reading your words when automatic confirmation is on."
 AUTO_APPROVE_SWITCHED = "Automatic confirmation is now {state}."
 AUTO_APPROVE_NOT_YET = "Automatic confirmation is switched on, but not in effect yet: {reason}."
