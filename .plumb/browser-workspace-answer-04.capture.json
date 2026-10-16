@@ -1,0 +1,33 @@
+{
+  "intent": {
+    "title": "Use the existing cards and mods as the browser behaviour baseline",
+    "quote": "But I Guess it should be the same behavior as it is the case now with cards and mods.",
+    "question": "How should coding-agent integration work for the browser issue-resolution UI?",
+    "readback": "Use the existing Plumb cards and Claude mod interaction as the behavioural baseline for the browser: present issues and their resolution choices, apply the owner's answer through Plumb, and carry any follow-up into the agent workflow. The browser-to-agent connection and location of follow-up conversation still need to be chosen.",
+    "will": [
+      "Preserve the meaning and effects of existing card actions.",
+      "Preserve the connection between issue resolution and agent follow-up.",
+      "Improve the browser presentation for understanding and resolving each issue type."
+    ],
+    "wont": [
+      "Invent a different agent autonomy policy merely because the interface moves to a browser."
+    ],
+    "assumptions": [
+      "Behavioural parity is the baseline, with gaps in actual resolution tracked explicitly.",
+      "The precise way a browser connects to the relevant coding-agent session remains to be evaluated."
+    ]
+  },
+  "decisions": [
+    {
+      "title": "Base browser resolution behaviour on existing cards and mods",
+      "question": "What behaviour should browser issue resolution follow?",
+      "chosen": "Use existing Plumb card and mod behaviour as the baseline, including the connection to agent follow-up.",
+      "alternatives": [
+        "Create a separate issue-resolution agent with a new autonomy model.",
+        "Build an approval-only browser disconnected from agent follow-up."
+      ],
+      "matters": true,
+      "rationale": "The owner suggested preserving current card/mod behaviour after reopening coding-agent integration."
+    }
+  ]
+}

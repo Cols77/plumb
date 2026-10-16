@@ -529,6 +529,34 @@ def _write_cards(root: Path | str, session: str, cards: list[dict[str, Any]]) ->
     _write_atomic(cards_path(root, session), json.dumps(cards, ensure_ascii=False, indent=1))
 
 
+def card_basis(core: Core, entry: Mapping[str, Any]) -> str:
+    """Meaning and link versions a decision concerns, excluding evaluation bookkeeping."""
+    from dataclasses import asdict
+
+    from plumb.understand import files
+
+    meaning = {k: v for k, v in entry.items() if k not in ("turn", "status", "decision")}
+    versions = [asdict(s.current) if s.current is not None else None
+                for s in core.link_states([str(entry.get("record") or "")])
+                if s.link.id == entry.get("link")]
+    return files.digest_of([meaning, versions])
+
+
+def save_decision(core: Core, session: str, card: Any) -> None:
+    """Persist the owner's answer separately from whether the stale link is resolved."""
+    from plumb.understand import files
+
+    entries = read_cards(core.root, session)
+    for entry in entries:
+        if entry.get("link") == card.id.removeprefix("stale:") \
+                and entry.get("status", "open") == "open":
+            entry["decision"] = {"status": card.status,
+                                 "answers": [files.answer_to_json(a) for a in card.answers],
+                                 "basis": card_basis(core, entry)}
+            _write_cards(core.root, session, entries)
+            return
+
+
 def add_card(root: Path | str, session: str, *, link: str, record: str, path: str,
              topic: str, issue: str, options: Sequence[str], recommended: int = 0,
              turn: int = 0, consequences: Sequence[str] | None = None, why: str = "",
@@ -550,6 +578,13 @@ def add_card(root: Path | str, session: str, *, link: str, record: str, path: st
         entry["why"] = str(why)
     if by:
         entry["by"] = str(by)
+    previous = open_card(root, session, link)
+    if previous and isinstance(previous.get("decision"), Mapping):
+        from plumb.api import open_core
+
+        decision = previous["decision"]
+        if decision.get("basis") == card_basis(open_core(root), entry):
+            entry["decision"] = dict(decision)
     cards = [c for c in read_cards(root, session)
              if not (c.get("link") == link and c.get("status") == "open")]
     cards.append(entry)

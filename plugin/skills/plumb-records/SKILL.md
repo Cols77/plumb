@@ -23,7 +23,7 @@ Run plumb as `plumb`. The owner's intent lives in files; read it before acting.
 - Ask with Claude Code's question tool by default; a card (plumb-clarify) only when the answer
   must change the owner's records or needs context, consequences or a diagram.
 - Never decide the owner approved: only their typed `/plumb approve <IDs>` or plumb's reader
-  of their next message confirms. Never run `plumb approve`, `revoke`, `tests waive`,
+  of their next message confirms. Never run `plumb approve`, `revoke`, `tests waive`, `ui`,
   `plumb triage --approve`, `spec approve`, `config auto-approve`, `config show`,
   `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo`, `go`, `approve`
   are typed by the owner and done by the hook. Merges, conflict cards: references/merge.md,

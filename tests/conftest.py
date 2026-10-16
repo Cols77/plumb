@@ -23,6 +23,19 @@ def git(root: Path, *args: str) -> str:
     return result.stdout
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption("--browser", action="store_true",
+                     help="also collect tests/browser, the browser workspace lane")
+
+
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
+    """The browser workspace lane runs only when asked for: ``--browser``, or its path named
+    (an argument's own parents are never asked here, so ``pytest tests/browser`` still runs)."""
+    if collection_path.name == "browser" and collection_path.parent.name == "tests":
+        return not config.getoption("--browser")
+    return None
+
+
 @pytest.fixture(autouse=True)
 def owner_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     """The test process stands in for the owner's interactive terminal: every owner-only
