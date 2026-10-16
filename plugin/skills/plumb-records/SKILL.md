@@ -4,8 +4,10 @@ description: Grounds work in this repository's plumb records (the owner's intent
 ---
 Run plumb as `plumb`. The owner's intent lives in files; read it before acting.
 
-- Only after the owner types `/plumb clarify <words>`, run `plumb clarify --wait` before
-  reading code (plumb-clarify has its answers); an ordinary message is read back in your reply.
+- After `capture`, on any message, run `plumb clarify --wait --json` and act on its answer
+  (rule 1 below, plumb-clarify): on an ordinary message it checks nothing of the request (read
+  it back in your reply) and answers `ask` with plumb's judge's questions, or `ready`. After
+  `/plumb clarify <words>`, also run it before reading code: it collects the request's check.
 - `.plumb/` holds INT (the owner's words), SR (given/when/then examples), DEC, FEAT and NC:
   `plumb brief` (intent now), `show <ID>` (examples, tests), `explain <words>` (why it is).
 - Before editing a file, grep `.plumb/test_map.txt` for it (no map: run `plumb tests map`);

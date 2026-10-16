@@ -125,5 +125,8 @@ def test_the_four_question_rules_are_in_each_skill(installed: Path) -> None:
         at = [text.find(rule) for rule in RULES]
         assert -1 not in at and at == sorted(at), name
         for gone in ("the read-back's ok confirms", "the owner confirms on the cards",
-                     "owner's ok confirms"):
+                     "owner's ok confirms",
+                     # rule 1 runs on every message: no text may say it never asks there
+                     "only gives the message digest", "answers ready at once",
+                     "Only after the owner types"):
             assert gone not in text, (name, gone)

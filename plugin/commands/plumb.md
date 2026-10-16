@@ -19,7 +19,7 @@ Typed otherwise (`/plumb Go`), plumb acted on nothing: undo, release or switch n
 yourself, and tell them to type it again in lower case.
 `<digest>` below is the sha256 of the owner's message: `message_digest` in
 `plumb clarify --wait --json` (12 or more hex digits are enough; on an ordinary message it
-answers ready at once and runs no check).
+checks nothing of the request and answers `ask` with plumb's judge's questions, or `ready`).
 
 - No argument, or `status`: run `plumb status --card` and give the card, what awaits
   them and drift in one or two lines; when it lists records also being changed on another

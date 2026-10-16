@@ -6,13 +6,15 @@ description: Clarifies the owner's intent before building, scaled to the request
 
 Make what gets built match what the owner means, with the fewest questions.
 
-On an ordinary message plumb runs no check: read the request back in your own reply (see
-Depth) and record it as proposed; `clarify --wait --json` there only gives the message
-digest. Only when the owner types `/plumb clarify <words>` is your first action
-`plumb clarify --wait`. Run it before you read
-code, plan or edit anything: edits are refused until it has answered, and do not build
-until the owner has answered any card or question it returns. It collects the check plumb
-started on the owner's message and says which of these things happened:
+On any message, after you record it as proposed (`capture`), run
+`plumb clarify --wait --json` and act on its answer. On an ordinary message plumb checks
+nothing of the request itself (read it back in your own reply, see Depth): the answer is
+`ask` with plumb's judge's questions on what you recorded, or `ready` with what the judge
+approved on the owner's behalf. When the owner types `/plumb clarify <words>`, your first
+action is `plumb clarify --wait`. Run it before you read code, plan or edit anything: edits
+are refused until it has answered, and do not build until the owner has answered any card or
+question it returns. It collects the check plumb started on the owner's message and says
+which of these things happened:
 
 - ready (nothing blocks the request, or it was only a question or an answer): go ahead. When
   it lists what it assumed, build on that and tell the owner in one line what you assumed;
@@ -36,7 +38,9 @@ started on the owner's message and says which of these things happened:
   builds nothing until the check runs again on their next message.
 - waiting (the check is not finished yet): build nothing and run `plumb clarify --wait`
   again, twice at most; still waiting after that, build nothing, tell the owner the check of
-  their request has not finished, and stop.
+  their request has not finished, and stop. On an ordinary message `waiting` means plumb's
+  judge is still reading the records: go on with the work and run it again before the turn
+  ends.
 - held (the request changes a record the owner confirmed and no intent loop ran for it): the
   line names the record and its examples; build nothing and run `plumb intent <the owner's
   words>` to open the loop for it, or stop and say in one line that edits are held until the

@@ -129,7 +129,7 @@ def test_skill_about_20_lines_names_test_map(repo: Path, no_claims) -> None:
         encoding="utf-8")
     assert skill.startswith("---\nname: plumb-records\n")  # SR-120: /plumb is the command
     body = skill.split("---", 2)[2].strip().splitlines()
-    assert 12 <= len(body) <= 26
+    assert 12 <= len(body) <= 40  # the context and the four question rules (SR-248)
     assert ".plumb/test_map.txt" in skill
     assert "uv run --no-sync plumb tests run --changed" in skill
     assert "never" in skill.lower() and "plumb approve" in skill
@@ -283,7 +283,7 @@ def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> N
     # (setup, status, calibrate: SR-039, R14); SR-122: every typed verb the command answers
     assert advertised == {"status", "intent", "clarify", "explain", "review", "impact", "view",
                           "jev",
-                          "approve", "init", "go", "undo", "conflicts",
+                          "init", "go", "undo", "conflicts",   # approve: gone (SR-208)
                           "merge-check", "inflight"}
     for name in (advertised - {"go", "undo"}) | {"why", "show"}:       # go, undo: typed only
         assert name in cli.ROUTES, name
