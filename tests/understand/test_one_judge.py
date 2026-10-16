@@ -16,6 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "capture"))
 from capture_helpers import log_prompt as hook_prompt  # noqa: E402
 from capture_helpers import run  # noqa: E402
 from jev_fixtures import calibrated  # noqa: E402
+
+from plumb.api import open_core  # noqa: E402
+from plumb.present import owner_text  # noqa: E402
+from plumb.understand import cardstore, files, hooks, judge, trial  # noqa: E402
 from understand.fakes import as_worker  # noqa: E402
 from understand.test_judge_job import (  # noqa: E402
     SESSION,
@@ -27,10 +31,6 @@ from understand.test_judge_job import (  # noqa: E402
     requirement_text,
     verdict_answer,
 )
-
-from plumb.api import open_core  # noqa: E402
-from plumb.present import owner_text  # noqa: E402
-from plumb.understand import cardstore, files, hooks, judge, trial  # noqa: E402
 
 CTX = SimpleNamespace(session_id=SESSION)
 
@@ -91,8 +91,22 @@ def judge_confirmed(repo: Path, write_record, monkeypatch) -> list[str]:
                     encoding="utf-8")
     assert run(repo, "capture", "--file", str(path), "--prompt",
                log_prompt(repo, PROMPT)) == 0
-    yield sorted(set(open_core(repo).index()) - before)
+    ids = sorted(set(open_core(repo).index()) - before)
+    run_judge_job(repo, ids)          # the fast track runs in the judge job (SR-242)
+    yield ids
     stub.close()
+
+
+def run_judge_job(repo: Path, ids: list[str]) -> None:
+    """The judge job over ``ids`` as the worker runs it: JEV first, the fast track, the
+    entries written with the worker's token."""
+    from plumb.understand import verdict
+    from understand.fakes import FakeDispatcher
+
+    core = open_core(repo)
+    job = judge.build(core, SESSION, records=ids)
+    done = verdict.cascade(core, job, system="judge", schema={}, dispatcher=FakeDispatcher())
+    write_applied(repo, judge.apply(core, job, done.answer))
 
 
 @pytest.mark.sr("SR-248")

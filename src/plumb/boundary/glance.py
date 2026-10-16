@@ -91,8 +91,8 @@ AUTO_KEYS = ("score", "model_version", "backend", "claim_kind", "calibration")
 
 def auto_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
     """The score, confidence label, model version, backend, claim kind and calibration of an
-    ``auto-jev`` approval, whichever shape wrote it: CAPTURE's writer
-    (``capture.autoapprove.gate``) nests them under ``payload["auto"]``, with the numeric
+    ``auto-jev`` approval, whichever shape wrote it: the judge job
+    (``understand.judge``) nests them under ``payload["auto"]``, with the numeric
     confidence in ``confidence`` and the label in ``confidence_label``; sp2 8.2 shows them at
     the top level. The one place the glance reads them, so the two never disagree."""
     nested = payload.get("auto")

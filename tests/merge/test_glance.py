@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from logutil import legacy_relay
 from merge_helpers import INT, SR2, commit, repin_all, write
+from understand.fakes import as_worker
 
 from plumb import approvals
 from plumb.api import open_core
@@ -75,10 +76,11 @@ def test_lists_auto_jev_with_score(base) -> None:
     root, sha = base
     core = open_core(root)
     record = core.index()["INT-001"]
-    core.log_append("events", "approval", {
-        "records": [{"id": "INT-001", "hash": record.hash}], "by": "auto-jev",
-        "score": 0.96, "confidence": "high", "prompt_digest": "sha256:" + "a" * 64,
-        "backend": "jev", "model_version": "jev-2026-09", "claim_kind": "intent"})
+    with as_worker(root, "s1"):      # only the worker writes an auto-jev approval (SR-210)
+        core.log_append("events", "approval", {
+            "records": [{"id": "INT-001", "hash": record.hash}], "by": "auto-jev",
+            "score": 0.96, "confidence": "high", "prompt_digest": "sha256:" + "a" * 64,
+            "backend": "jev", "model_version": "jev-2026-09", "claim_kind": "intent"})
     report = merge_report(open_core(root), sha, run_full=False)
     row = report.glance[0]
     assert row["by"] == "auto-jev" and row["score"] == 0.96
@@ -90,20 +92,22 @@ def test_lists_auto_jev_with_score(base) -> None:
 
 @pytest.mark.sr("SR-260")
 def test_lists_capture_written_auto_jev(base) -> None:
-    """Cross-lane: the payload exactly as CAPTURE's writer (``capture.autoapprove.gate``)
+    """Cross-lane: the payload exactly as the judge job's writer (``understand.judge``)
     records it, the fields nested under ``auto`` with the label in ``confidence_label``,
     shows its score, confidence label and model version (R8 B)."""
     root, sha = base
     core = open_core(root)
     record = core.index()["INT-001"]
-    core.log_append("events", "approval", {
-        "records": [{"id": "INT-001", "hash": record.hash}], "by": "auto-jev",
-        "prompt_digest": "sha256:" + "b" * 64, "quote": None, "quote_digest": None,
-        "auto": {"score": 0.97, "confidence": 0.91, "confidence_label": "high",
-                 "backend": "jev:jev-1.13.0", "model_version": "jev-1.13.0",
-                 "calibration": "sha256:" + "c" * 64, "claim_kind": "intent-readback",
-                 "threshold": 0.9, "prompt_via": "hook", "min_probability": 0.9,
-                 "min_confidence": "high", "parts": 1, "fingerprints": ["f"]}})
+    with as_worker(root, "s1"):      # only the worker writes an auto-jev approval (SR-210)
+        core.log_append("events", "approval", {
+            "records": [{"id": "INT-001", "hash": record.hash}], "by": "auto-jev",
+            "prompt_digest": "sha256:" + "b" * 64, "quote": None, "quote_digest": None,
+            "session": "s1",
+            "auto": {"score": 0.97, "confidence": 0.91, "confidence_label": "high",
+                     "backend": "jev:jev-1.13.0", "model_version": "jev-1.13.0",
+                     "calibration": "sha256:" + "c" * 64, "claim_kind": "intent-readback",
+                     "threshold": 0.9, "prompt_via": "hook", "min_probability": 0.9,
+                     "min_confidence": "high", "parts": 1, "fingerprints": ["f"]}})
     report = merge_report(open_core(root), sha, run_full=False)
     row = report.glance[0]
     assert (row["score"], row["confidence"], row["model_version"]) == (0.97, "high",

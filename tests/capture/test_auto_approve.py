@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from capture_helpers import log_prompt, run
 from jev_fixtures import calibrated
+from understand.test_one_judge import run_judge_job
 
 from plumb.api import open_core
 from plumb.capture.autoapprove import auto_approve_state
@@ -55,6 +56,8 @@ def test_an_equivalent_model_name_does_not_suspend(ready) -> None:
     digest = log_prompt(repo, PROMPT)
     assert capture(repo, {"intent": INTENT}, "--prompt", digest) == 0
     [intent] = new_ids(repo, before)
+    assert state_of(repo, intent) == "proposed"      # capture approves nothing (SR-242)
+    run_judge_job(repo, [intent])
     assert state_of(repo, intent) == "confirmed"
     state = auto_approve_state(open_core(repo))
     assert not state.suspended and state.reason == "on"

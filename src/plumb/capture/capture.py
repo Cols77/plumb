@@ -4,8 +4,8 @@ The document carries the owner's verbatim words, the restatement, what will and 
 done, labelled assumptions, requirements with given/when/then examples, decisions with
 alternatives, and updates of existing records. Everything is checked before anything is
 written (a failure writes nothing); every record written is ``proposed``; IDs come only from
-``Store.next_id`` and links only from ``CoreAPI.add_link`` (pinned at once). The auto-approval
-gate (sp2 8.2) is asked last and returns at once when auto-approval is off (the default).
+``Store.next_id`` and links only from ``CoreAPI.add_link`` (pinned at once). Capture only
+queues the judge job; JEV and the fast track run there (SR-242, SR-248).
 """
 
 from __future__ import annotations
@@ -356,18 +356,10 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
         if before is not None and before.confirmation == "confirmed" and \
                 rewritten.hash != record.hash:
             again.append(record_id)
-    auto: list[str] = []
-    waiting: list[str] = []
-    if prompt_digest and written:
-        from plumb.capture.autoapprove import gate
-
-        auto = list(gate(core, written, prompt_digest=prompt_digest, backend=backend,
-                         said=waiting))
+    # one cascade (SR-242): the judge job queued below asks JEV and takes the fast track
     statuses = core.status(written + updated)
-    lines = [f"{rid} {statuses[rid].confirmation}" + (" (confirmed by JEV)" if rid in auto
-                                                      else "") for rid in written + updated]
+    lines = [f"{rid} {statuses[rid].confirmation}" for rid in written + updated]
     lines += [f"{rid} was confirmed; this edit needs the owner again" for rid in again]
-    lines += waiting
     if updated:  # SR-111 EX-2: the records that derive from a reworded one may disagree now
         from plumb.stale import derived_lines
 
@@ -401,7 +393,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
                          f"{plan.intent_ref})")
     result = CaptureResult(written=tuple(written), updated=tuple(updated),
                            needs_owner_again=tuple(again), links=tuple(links),
-                           auto_approved=tuple(auto), lines=tuple(lines))
+                           lines=tuple(lines))
     _understand_after(core, doc, result, prompt_digest)
     return result
 

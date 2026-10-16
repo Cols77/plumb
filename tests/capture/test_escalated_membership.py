@@ -1,7 +1,7 @@
 """R8 B "NEVER for an escalated spec set": a record that derives from (or decides) an escalated
 INT belongs to its set even when the anchor's ``members`` does not list it
 (``plumb.capture.spec.escalated_sets``). One test per entry point that reads the rule: the
-auto-approval gate, the validate re-check, triage and the set state."""
+fast track in the judge job, the validate re-check, triage and the set state."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from capture_helpers import log_prompt, record_text, run
 from jev_fixtures import calibrated
+from understand.test_one_judge import run_judge_job
 
 from plumb.api import open_core
 from plumb.capture.spec import set_state
@@ -50,8 +51,8 @@ def state_of(repo: Path, record_id: str) -> str:
     return open_core(repo).status([record_id])[record_id].confirmation
 
 
-def test_gate_never_approves_a_record_captured_against_an_escalated_intent(ready,
-                                                                           capsys) -> None:
+def test_the_fast_track_never_approves_a_record_captured_against_an_escalated_intent(
+        ready, capsys) -> None:
     repo = ready
     before = set(open_core(repo).index())
     digest = log_prompt(repo, PROMPT)
@@ -62,8 +63,9 @@ def test_gate_never_approves_a_record_captured_against_an_escalated_intent(ready
     assert capture(repo, {"intent": anchor, "requirements": [REQUIREMENT]},
                    "--prompt", digest) == 0
     [sr] = new_ids(repo, before)
-    assert state_of(repo, sr) == "proposed"
     assert f"{sr} joined its set" in capsys.readouterr().out
+    run_judge_job(repo, [sr])
+    assert state_of(repo, sr) == "proposed"
     approvals = open_core(repo).log_read("events", ["approval"])
     assert not [e for e in approvals if e.payload.get("by") == "auto-jev"]
 
@@ -75,6 +77,7 @@ def test_validate_rejects_auto_jev_of_a_record_of_an_escalated_set(ready) -> Non
     assert capture(repo, {"intent": INTENT, "requirements": [REQUIREMENT]},
                    "--prompt", digest) == 0
     intent, sr = new_ids(repo, before)
+    run_judge_job(repo, [intent, sr])
     assert state_of(repo, sr) == "confirmed"  # auto-jev while the intent was incremental
     path = repo / ".plumb" / "intents" / f"{intent}.md"
     path.write_text(path.read_text(encoding="utf-8").replace("mode: incremental",

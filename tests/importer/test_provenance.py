@@ -371,10 +371,13 @@ def test_checked_entries_rechecks_import_and_auto_jev_approvals(
     core = open_core(repo)
     # an auto-jev approval with no owner config event and no calibration: it fails closed
     sr003 = core.index()["SR-003"].hash
-    core.log_append("events", "approval", {
-        "records": [{"id": "SR-003", "hash": sr003}], "by": "auto-jev", "score": 0.99,
-        "confidence": "high", "prompt_digest": "sha256:" + "5" * 64,
-        "backend_version": "jev-test", "quote": None})
+    from understand.fakes import as_worker
+
+    with as_worker(repo, "s1"):      # only the worker writes an auto-jev approval (SR-210)
+        core.log_append("events", "approval", {
+            "records": [{"id": "SR-003", "hash": sr003}], "by": "auto-jev", "score": 0.99,
+            "confidence": "high", "prompt_digest": "sha256:" + "5" * 64,
+            "backend_version": "jev-test", "quote": None})
     core = open_core(repo)
     checked = {str(e.payload.get("by")): problem
                for e, problem in checked_entries(core.events(),

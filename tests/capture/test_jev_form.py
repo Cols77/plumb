@@ -78,12 +78,16 @@ def test_ex3_a_yes_no_calibration_does_not_serve_the_choice_form(
 
 def test_the_verdict_cascade_does_not_use_a_calibration_of_the_other_form(
         repo: Path, write_record, monkeypatch) -> None:
+    """JEV is still asked and its score kept; nothing clears on the other form's threshold."""
+    from plumb.judgment import get_backend
     from plumb.understand import verdict
 
     stub = calibrated(repo, write_record, monkeypatch)
     set_form(repo, stub, "choice")
     core = open_core(repo)
-    cleared, why = verdict._ask_jev(core, [{"id": "INT-100", "kind": "intent"}],
-                                    object())
-    assert cleared == {} and "choice form" in why
+    entry = {"id": "INT-100", "kind": "intent", "premise": {"messages": [
+        {"digest": "sha256:" + "1" * 64, "text": "please build feature alphaa"}]}}
+    scored, why = verdict._ask_jev(core, [entry], get_backend(core, hook=False))
+    assert why == "" and scored["INT-100"]["score"] == 0.9
+    assert not scored["INT-100"]["clears"] and scored["INT-100"]["threshold"] is None
     stub.close()

@@ -26,7 +26,7 @@ from plumb.approvals import approval_items
 from plumb.contracts import Applied, CardState, Job
 from plumb.judgment.verdict import BY
 from plumb.present import owner_text
-from plumb.understand import backlog, cards, files, premise, trial
+from plumb.understand import backlog, files, premise, trial
 from plumb.understand import verdict as verdict_cascade
 
 kind = "judge"
@@ -278,9 +278,46 @@ def _confirms(core: Any, index: Mapping[str, Any], record: Any, raw: Mapping[str
             and premise_problem(_Prompts(core), index, record) is None)
 
 
+def _fast_tracked(core: Any, record: Any, raw: Mapping[str, Any],
+                  jev: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """The ``auto`` payload when JEV's verdict on ``record`` takes the fast track, else None."""
+    if record is None or jev is None or raw.get("by") != "jev" or not jev.get("clears"):
+        return None
+    from plumb.capture.autoapprove import fast_track
+
+    return fast_track(core, record, jev)
+
+
+def _auto_jev(core: Any, job: Job, record: Any, item: Mapping[str, Any],
+              auto: Mapping[str, Any], known: set[Any]) -> list[Mapping[str, Any]]:
+    """The ``by: auto-jev`` approval of ``record`` (written by the worker, carrying the
+    session), after the prompt event it cites when none is logged yet."""
+    messages = [m for m in (item.get("premise") or {}).get("messages") or ()
+                if isinstance(m, Mapping) and m.get("digest")]
+    digest = str(messages[0]["digest"]) if messages else ""
+    out: list[Mapping[str, Any]] = []
+    if digest and digest not in known:
+        from plumb.approvals import Refused, find_prompt
+
+        try:
+            found = find_prompt(core, digest)
+        except Refused:
+            found = {}
+        out.append({"kind": "prompt", "payload": {"digest": digest,
+                                                  "session": found.get("session"),
+                                                  "at": found.get("at")}})
+        known.add(digest)
+    out.append({"kind": "approval", "payload": {
+        "records": approval_items(core, [record.id]), "by": "auto-jev",
+        "prompt_digest": digest, "quote": None, "quote_digest": None,
+        "session": job.session, "job": job.id, "auto": dict(auto)}})
+    return out
+
+
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
-    """Log the verdicts; add the doubt lines to the read-back cards; give the supported records to the trial.
-    Returns it in memory; the worker writes it."""
+    """Log the verdicts (with JEV's score when it gave one); approve ``by: auto-jev`` the
+    records the fast track takes; add the doubt lines to the read-back cards; give the other
+    supported records to the trial. Returns it in memory; the worker writes it."""
     if core is None:
         return Applied(job=job.id)
     asked = {str(r.get("id")): r for r in job.inputs.get("records") or ()
@@ -293,6 +330,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     supported: list[trial.Candidate] = []
     fragments: list[Any] = []
     confirmed: list[Mapping[str, Any]] = []     # SR-191: records the judge model confirmed
+    prompts_known = {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}
     backlog_pass = job.inputs.get("pass") == backlog.PASS
     doubts: dict[str, list[str]] = {}       # read-back card id -> lines
     flagged: list[str] = []                 # every doubt line, for the backlog's end line
@@ -322,11 +360,23 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                 _Prompts(core), index, record) or "")
         if raw.get("by") in BY:         # SR-182: who answered; a verdict with none is no JEV's
             payload.update(by=raw["by"], judge=str(raw.get("judge") or ""))
+        jev = raw.get("jev") if isinstance(raw.get("jev"), Mapping) else None
+        if jev is not None:             # JEV's score, logged even when it does not clear
+            payload.update(jev_score=jev.get("score"), jev_clears=bool(jev.get("clears")))
+            if record is not None and not partial:
+                from plumb.capture.triage import _Prompts, premise_problem
+
+                reason = premise_problem(_Prompts(core), index, record)
+                if reason:              # SR-248 EX-6: not the owner's verified words
+                    payload.update(premise="quote-only", premise_reason=reason)
         entries.append({"kind": "verdict", "payload": payload})
         if record is None or record.hash != item["hash"]:
             notes.append(f"{item['id']} changed while it was judged; it is judged again")
             continue
-        if backlog_pass and partial:
+        auto = _fast_tracked(core, record, raw, jev)
+        if auto is not None:                # SR-248: approved on JEV's score, no question
+            confirmed += _auto_jev(core, job, record, item, auto, prompts_known)
+        elif backlog_pass and partial:
             fragments.append(record)        # the owner's words are not on file: one card says so
         elif verdict in ("beyond", "contradicts"):
             line = doubt_line(index, record, verdict, item.get("related") or (), contradicts)
