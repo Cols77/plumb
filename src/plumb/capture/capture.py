@@ -325,10 +325,10 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
             links.append(core.add_link(record.id, "implemented_by", Target(path=path)).id)
         for old in item["supersedes"]:
             links.append(core.add_link(record.id, "supersedes", Target(record=old)).id)
-            for ex, test in live_examples(core, old, record.id).items():  # SR-164
+            for ex, test in live_examples(core, old, record.id):  # SR-164
                 superseded_lines.append(
-                    f"plumb: {old}/{ex} is still verified by {test}: move it to {record.id} "
-                    f"(capture updates) before retiring {old}")
+                    f"plumb: {old}/{ex} is still verified by {test}: retire the test too "
+                    f"(plumb unlink; drop it when it covers nothing else), DEC-065")
     for item in plan.decisions:
         record = new_record(core, "decision", item["fields"])
         written.append(record.id)

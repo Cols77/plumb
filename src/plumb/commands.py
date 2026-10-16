@@ -163,7 +163,7 @@ def cmd_link(command: str, argv: list[str]) -> int:
     try:
         target = parse_cli_target(args.target)
         live = live_examples(core, target.record, args.source) if (
-            args.kind == "supersedes" and target.record) else {}
+            args.kind == "supersedes" and target.record) else []
         link = core.add_link(args.source, args.kind, target, args.example)
     except LinkUsageError as exc:
         print(f"plumb: {exc}", file=sys.stderr)
@@ -171,9 +171,9 @@ def cmd_link(command: str, argv: list[str]) -> int:
     except LinkError as exc:
         print(f"plumb: {exc}", file=sys.stderr)
         return 1
-    for ex, test in live.items():  # SR-164: print only, never refuse
-        print(f"plumb: {target.record}/{ex} is still verified by {test}: move it to "
-              f"{args.source} (capture updates) before retiring {target.record}")
+    for ex, test in live:  # SR-164: print only, never refuse
+        print(f"plumb: {target.record}/{ex} is still verified by {test}: retire the test too "
+              f"(plumb unlink; drop it when it covers nothing else), DEC-065")
     pin = link.pin
     data = {"link": link.id, "kind": link.kind, "target": args.target,
             "pin": None if pin is None else {"from": pin.source, "to": pin.target}}
