@@ -34,19 +34,23 @@ def offer_id(card: str, question: str, record_hash: str,
     return files.digest_of([card, question, record_hash, *named])
 
 
-def offers_dir(root: Path, session: str) -> Path:
-    return files.session_dir(root, session) / "offers"
+def offers_dir(root: Path, session: str, *, surface: str = "mod") -> Path:
+    if surface not in ("mod", "browser"):
+        raise ValueError("unknown owner surface")
+    name = "browser-offers" if surface == "browser" else "offers"
+    return files.session_dir(root, session) / name
 
 
-def offer_path(root: Path, session: str, offer: str) -> Path:
+def offer_path(root: Path, session: str, offer: str, *, surface: str = "mod") -> Path:
     name = offer.removeprefix("sha256:")
     if not name or not all(c in "0123456789abcdef" for c in name):
         name = "-"
-    return offers_dir(root, session) / f"{name}.json"
+    return offers_dir(root, session, surface=surface) / f"{name}.json"
 
 
-def load_offer(root: Path, session: str, offer: str) -> Mapping[str, Any] | None:
-    data = files.read_json(offer_path(root, session, offer))
+def load_offer(root: Path, session: str, offer: str, *, surface: str = "mod"
+               ) -> Mapping[str, Any] | None:
+    data = files.read_json(offer_path(root, session, offer, surface=surface))
     if not isinstance(data, Mapping) or data.get("offer_id") != offer \
             or data.get("session") != session:
         return None
@@ -86,7 +90,8 @@ def _button_json(n: int, choice: Choice) -> dict[str, Any]:
 
 
 def _record_offer(core: Any, session: str, data: Mapping[str, Any]) -> None:
-    path = offer_path(core.root, session, str(data["offer_id"]))
+    surface = str(data.get("surface") or "mod")
+    path = offer_path(core.root, session, str(data["offer_id"]), surface=surface)
     held = files.read_json(path)
     if isinstance(held, Mapping) and held.get("key_digest") == data["key_digest"]:
         return                                          # drawn before: the first draw stands
@@ -95,6 +100,8 @@ def _record_offer(core: Any, session: str, data: Mapping[str, Any]) -> None:
     files.write_json_atomic(path, dict(data))
     core.log_append("events", OFFER_KIND, {
         "session": session, "offer": data["offer_id"], "card": data["card"],
+        **({"surface": "browser", "presentation": data["presentation"]}
+           if surface == "browser" else {}),
         "question": data["question"], "record": data["record"], "hash": data["hash"],
         "records": data["records"],
         "key_digest": data["key_digest"], "drawn_at": data["drawn_at"],
@@ -145,7 +152,7 @@ def turn_card(root: Path, session: str, card_id: str) -> CardState | None:
 
 
 def _offers_of(core: Any, session: str, digest: str, stamp: str, card: CardState,
-               turn_built: bool) -> list[dict[str, Any]]:
+               turn_built: bool, *, surface: str = "mod") -> list[dict[str, Any]]:
     from plumb.understand import trial
     from plumb.understand.clarify import request_records
 
@@ -161,16 +168,39 @@ def _offers_of(core: Any, session: str, digest: str, stamp: str, card: CardState
             core, card.id.removeprefix("clarify:"))] if card.kind == "clarify" else []
         offer = offer_id(card.id, qid, record_hash, records)
         pressable = turn_buttons(card, question) if turn_built else buttons(card, question)
+        presentation = presentation_digest(core, session, card) if surface == "browser" else ""
+        if surface == "browser":
+            offer = files.digest_of([offer, presentation])
         data = {"offer_id": offer, "session": session, "card": card.id, "question": qid,
                 "record": record, "hash": record_hash, "records": records,
                 "key_digest": digest,
+                **({"surface": "browser", "presentation": presentation}
+                   if surface == "browser" else {}),
                 "drawn_at": stamp,
                 "buttons": [_button_json(n, c) for n, c in enumerate(pressable)]}
         _record_offer(core, session, data)
-        held = load_offer(core.root, session, offer) or data
+        held = load_offer(core.root, session, offer, surface=surface) or data
         offers.append({k: held[k] for k in ("offer_id", "question", "record", "hash",
                                               "buttons", "drawn_at")})
     return offers
+
+
+def presentation_digest(core: Any, session: str, card: CardState) -> str:
+    """Pin displayed meaning and options, excluding mutable answer/status bookkeeping."""
+    data = cardstore.card_to_json(card)
+    for key in ("status", "answers"):
+        data.pop(key, None)
+    if card.kind == "stale_link":
+        from plumb import stale
+
+        entry = stale.open_card(core.root, session, card.id.removeprefix("stale:"))
+        if entry is not None:
+            data["stale_basis"] = stale.card_basis(core, entry)
+    content = content_for(core, session, card)
+    if content is not None:
+        content = dict(content)
+        content.pop("status", None)
+    return files.digest_of([data, content])
 
 
 def settled_cards(core: Any, session: str) -> list[dict[str, Any]]:
@@ -187,7 +217,8 @@ def settled_cards(core: Any, session: str) -> list[dict[str, Any]]:
             for c in cards if held.get(c.id, ("",))[0] in ("blocked", "done")]
 
 
-def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
+def drawn_cards(core: Any, session: str, digest: str, *, surface: str = "mod"
+                ) -> list[dict[str, Any]]:
     """The cards the mod draws for ``session`` (as ``cards.json`` holds them), then the cards
     the stop hook built and drew at the last turn end (``summary.read_drawn``), each with its
     full content (SR-116, the same as the end-of-turn text) and each question with its offer and
@@ -208,7 +239,8 @@ def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
         waiting = state == "waiting" and card.status in cardstore.AWAITING
         out.append({**cardstore.card_to_json(card), "repeats": waiting, "state": state,
                     "reason": reason,
-                    "offers": _offers_of(core, session, digest, stamp, card, False),
+                    "offers": _offers_of(core, session, digest, stamp, card, False,
+                                         surface=surface),
                     "content": content_for(core, session, card)})
     left = summary.turn_left(core.root, session)
     for entry in summary.read_drawn(core.root, session):
@@ -223,11 +255,12 @@ def drawn_cards(core: Any, session: str, digest: str) -> list[dict[str, Any]]:
             continue
         if card.id in left:
             card = dataclasses.replace(card, status="left_open")
-        content = entry.get("content")
+        content = (content_for(core, session, card) if surface == "browser"
+                   else entry.get("content"))
         out.append({**cardstore.card_to_json(card),
                     "repeats": state == "waiting" and card.status in cardstore.AWAITING,
                     "state": state,
                     "reason": reason,
-                    "offers": _offers_of(core, session, digest, stamp, card, True),
+                    "offers": _offers_of(core, session, digest, stamp, card, True, surface=surface),
                     "content": dict(content) if isinstance(content, Mapping) else None})
     return out
