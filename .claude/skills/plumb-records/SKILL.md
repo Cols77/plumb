@@ -22,7 +22,7 @@ Run plumb as `.venv/Scripts/python.exe -m plumb`. The owner's intent lives in fi
   card (one question, the recommended option first); when one waits, say so, do not restate it.
 - Never decide that the owner approved: only their typed `/plumb approve <IDs>` or plumb's own
   reader of their next message confirms.
-- Never run `.venv/Scripts/python.exe -m plumb approve`, `revoke`, `tests waive`, `.venv/Scripts/python.exe -m plumb triage --approve`,
+- Never run `.venv/Scripts/python.exe -m plumb approve`, `revoke`, `tests waive`, `ui`, `.venv/Scripts/python.exe -m plumb triage --approve`,
   `spec approve`, `config auto-approve`, `config show`, `conflict choose`, `turn start`,
   `hook prompt`, `owner` or `mod`: they are the owner's or plumb's own.
   `undo`, `go` and `approve` are typed by the owner and done by the hook.

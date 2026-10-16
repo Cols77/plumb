@@ -33,19 +33,22 @@ class _Index:
         self.position: dict[str, int] = {}
         # every registration of a session (a resumed one registers again, with a new key) and
         # every drawing of an offer (drawn again under that new key)
-        self.hello: dict[str, list[tuple[int, str]]] = {}
-        self.offers: dict[tuple[str, str], list[tuple[int, Mapping[str, Any]]]] = {}
+        self.hello: dict[tuple[str, str], list[tuple[int, str]]] = {}
+        self.offers: dict[tuple[str, str, str], list[tuple[int, Mapping[str, Any]]]] = {}
         for n, entry in enumerate(events):
             self.position.setdefault(entry.digest, n)
             if entry.marker != "none":
                 continue
             payload = entry.payload
             session = str(payload.get("session") or "")
-            if entry.kind == HELLO_KIND:
+            surface = str(payload.get("surface") or "mod")
+            if (entry.kind == HELLO_KIND and surface == "mod") or (
+                    entry.kind == "browser-hello" and surface == "browser"):
                 key = str(payload.get("key_digest") or "")
-                self.hello.setdefault(session, []).append((n, key))
+                self.hello.setdefault((session, surface), []).append((n, key))
             elif entry.kind == OFFER_KIND:
-                drawn = self.offers.setdefault((session, str(payload.get("offer") or "")), [])
+                key = (session, surface, str(payload.get("offer") or ""))
+                drawn = self.offers.setdefault(key, [])
                 drawn.append((n, payload))
 
 
@@ -88,6 +91,9 @@ def ambient_core() -> Any:
 def problem(entry: LogEntry, core: Any) -> str | None:
     """Why the button approval ``entry`` fails its re-check, or None."""
     payload = entry.payload
+    surface = str(payload.get("surface") or "mod")
+    if surface not in ("mod", "browser"):
+        return "button approval: unknown owner surface"
     session, offer = str(payload.get("session") or ""), str(payload.get("offer") or "")
     digest = str(payload.get("key_digest") or "")
     records = [r for r in payload.get("records") or () if isinstance(r, Mapping)]
@@ -100,14 +106,16 @@ def problem(entry: LogEntry, core: Any) -> str | None:
     events = core.events()
     index = _index_of(events)
     at = index.position.get(entry.digest, len(events))
-    if not any(n < at and key == digest for n, key in index.hello.get(session, ())):
+    if not any(n < at and key == digest for n, key in index.hello.get((session, surface), ())):
         return "button approval: no panel registered that key for its session before it"
     from plumb.mod.session import accepted_digests, registration
+    if surface == "browser":
+        from plumb.browser.session import registration
 
     held = registration(core.root, session)
     if held is not None and digest not in accepted_digests(held):
         return "button approval: the key is not the one the session's panel holds"
-    drawn = [(n, p) for n, p in index.offers.get((session, offer), ()) if n < at]
+    drawn = [(n, p) for n, p in index.offers.get((session, surface, offer), ()) if n < at]
     if not drawn:
         return "button approval: its offer was not drawn in that session before it"
     # the drawing under the approval's key (a resumed session draws its offers again)

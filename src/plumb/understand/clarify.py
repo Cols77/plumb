@@ -16,8 +16,8 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import replace
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -460,7 +460,7 @@ def _gap_question(gap: Mapping[str, Any], n: int) -> ClarifyQuestion:
     ident = re.sub(r"[^a-z0-9_-]+", "-", str(gap.get("id") or "").lower()).strip("-") or f"q{n}"
     return ClarifyQuestion(
         id=ident, text=str(gap.get("question") or "").strip(), resolutions=tuple(suggestions),
-        choices=tuple(Choice(t, "change", t, c) for t, c in zip(suggestions, lines)))
+        choices=tuple(Choice(t, "change", t, c) for t, c in zip(suggestions, lines, strict=False)))
 
 
 def _already_answered(question: ClarifyQuestion, answered: Sequence[Mapping[str, Any]]) -> bool:
@@ -646,7 +646,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             questions=(ClarifyQuestion(id="spec", text=SPEC_QUESTION,
                                        resolutions=(SPEC_YES, SPEC_NO),
                                        choices=(Choice(SPEC_YES, "change", SPEC_YES, SPEC_YES_NOTE),
-                                                Choice(SPEC_NO, "accepted", consequence=SPEC_NO_NOTE))),),
+                                                Choice(SPEC_NO, "accepted",
+                                                       consequence=SPEC_NO_NOTE))),),
             status="open", turn=0, branch=cards[0].branch))
     elif blocking:
         gap, question = blocking[0]
@@ -724,7 +725,8 @@ def _clarify_pending(root: Path, session: str, digest: str) -> bool:
     return False
 
 
-def _shown_records(core: Any, session: str, card: str, source: Any) -> dict[tuple[str, str], str] | None:
+def _shown_records(core: Any, session: str, card: str, source: Any
+                   ) -> dict[tuple[str, str], str] | None:
     """The ``(id, hash)`` pairs the read-back was drawn with, each with the proposal shown: those
     of the offer pressed, or of the card's latest drawing; None when typed words answer a card
     never drawn in the panel."""
@@ -732,7 +734,8 @@ def _shown_records(core: Any, session: str, card: str, source: Any) -> dict[tupl
 
     offer = getattr(source, "offer_id", "")
     if offer:
-        held = [load_offer(core.root, session, offer)]
+        held = [load_offer(core.root, session, offer,
+                           surface=getattr(source, "surface", "mod"))]
     else:
         held = [files.read_json(p) for p in offers_dir(Path(core.root), session).glob("*.json")]
         held = sorted((h for h in held if isinstance(h, Mapping) and h.get("card") == card),
@@ -790,7 +793,8 @@ def _choice_effect(*, core: Any, card: CardState, job: Any = None, digest: str =
     if not (guessed and session):
         return None
     # "build with my best guesses": the request lists them, as the answer promised
-    guesses = [l for l in card.evidence.splitlines() if l.startswith(EVIDENCE_ASSUMED.format(text=""))]
+    guesses = [line for line in card.evidence.splitlines()
+               if line.startswith(EVIDENCE_ASSUMED.format(text=""))]
     want = card_id(digest or card.id.removeprefix("choice:"))
     return Applied(job="", cards=tuple(
         replace(c, evidence="\n".join([*c.evidence.splitlines(), *guesses]))
