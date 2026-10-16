@@ -10,11 +10,11 @@ On any message, after you record it as proposed (`capture`), run
 `{plumb} clarify --wait --json` and act on its answer. On an ordinary message plumb checks
 nothing of the request itself (read it back in your own reply, see Depth): the answer is
 `ask` with plumb's judge's questions on what you recorded, or `ready` with what the judge
-approved on the owner's behalf. When the owner types `/plumb clarify <words>`, your first
-action is `{plumb} clarify --wait`. Run it before you read code, plan or edit anything: edits
-are refused until it has answered, and do not build until the owner has answered any card or
-question it returns. It collects the check plumb started on the owner's message and says
-which of these things happened:
+approved on the owner's behalf. When the owner types `/plumb clarify <words>`, your
+first action is `{plumb} clarify --wait`. Run it before you read code, plan or edit
+anything: edits are refused until it has answered, and do not build until the owner has
+answered any card or question it returns. It collects the check plumb started on the
+owner's message and says which of these things happened:
 
 - ready (nothing blocks the request, or it was only a question or an answer): go ahead. When
   it lists what it assumed, build on that and tell the owner in one line what you assumed;
