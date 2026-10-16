@@ -3,9 +3,9 @@
 A verdict is JEV's (``by == "jev"``: its probability rose above max(0.9, the threshold
 calibrated on the owner's labels with no false accept)) or the judge model's
 (``by == "model"``). The first may take the fast track; the second never does, however high the
-model's own confidence. Until approval after a question round lands (DEC-141, SR-248), a
-supported model verdict on a proposed requirement or decision still confirms it ``by:
-auto-model`` above the owner's floor (SR-191, ``capture.autoapprove.model_floor``), unasked."""
+model's own confidence: a model verdict approves (``by: auto-model``) only after a question
+round, when it says the intent is clear; its confidence is logged, never compared (DEC-141,
+SR-248)."""
 
 from __future__ import annotations
 

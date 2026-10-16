@@ -19,6 +19,11 @@ a prompt the prompt hook did not log (a message the agent recorded itself, R13 Q
 JEV is unavailable. Each approval is ``by: auto-jev``, written by the worker only, with its
 score, confidence, prompt digest, backend, model version and the calibration it rests on,
 hash-pinned like any approval.
+
+After a question round (``after_round``) JEV approves a record the owner answered about without
+the switch, which governs approval without a question (SR-248): the approval cites the
+owner's answers, and a passing calibration, the strict floor and the minimum confidence label
+still apply (SR-251).
 """
 
 from __future__ import annotations
@@ -147,53 +152,25 @@ def _kind_threshold(calibration: LogEntry, kind: str) -> float | None:
 
 def verdict_refusal(verdict: Mapping[str, Any]) -> str | None:
     """SR-182: why a logged verdict may not feed auto-approval, or None. Only a supported
-    verdict marked as JEV's does; the judge model's never takes the fast track (its auto-model
-    path is ``model_floor``, SR-191), and one that says nobody never does."""
+    verdict marked as JEV's does; the judge model's never takes the fast track (it approves
+    only after a question round, ``by: auto-model``), and one that says nobody never does."""
     from plumb.judgment.verdict import refusal
 
     return refusal(verdict.get("by"), verdict.get("verdict"))
 
 
-def model_floor(config: Mapping[str, Any] | None, confidence: float) -> str | None:
-    """SR-191: why a judge model's verdict at ``confidence`` may not confirm under the owner's
-    auto-approve settings (their switch, min_probability, min_confidence), or None."""
-    from plumb.judgment.common import confidence_label
-
-    if not config or not config.get("enabled"):
-        return "auto-model approval without the owner's config auto-approve on before it"
-    floor = float(config.get("min_probability", 0.9))
-    if confidence < floor:
-        return f"auto-model confidence {confidence:.3f} is below the owner's minimum {floor:.3f}"
-    if CONFIDENCE_RANK[confidence_label(confidence)] < CONFIDENCE_RANK.get(
-            str(config.get("min_confidence", "high")), 2):
-        return "auto-model confidence is below the owner's minimum"
-    return None
-
-
 JEV_FLOOR = 0.9   # SR-248: JEV's floor; no threshold or owner setting lowers it
 
 
-def fast_track(core: Core, record: Any, jev: Mapping[str, Any]) -> dict[str, Any] | None:
-    """The ``auto`` payload of a ``by: auto-jev`` approval of ``record`` on JEV's scores
-    ``jev`` (``understand.verdict.jev_verdict``), or None when it may not take the fast track
-    (SR-248, SR-250): the owner's switch in effect with a passing same-version calibration,
-    JEV clearing every part strictly above its floor, the premise the owner's verified words,
-    the owner's minimum confidence label, and a proposed record never approved before and in
-    no escalated set."""
-    state = auto_approve_state(core)
-    if not state.effective or not jev.get("clears") or jev.get("threshold") is None:
+def _jev_auto(record: Any, jev: Mapping[str, Any], state: AutoApproveState
+              ) -> dict[str, Any] | None:
+    """The ``auto`` payload of JEV's scores ``jev`` on ``record``, or None unless JEV clears
+    it: a passing same-version calibration, every part strictly above max(0.9, the owner's
+    minimum, the threshold), and the owner's minimum confidence label."""
+    if not jev.get("clears") or jev.get("threshold") is None:
         return None
     if CLAIM_KIND.get(record.kind) != jev.get("claim_kind"):
         return None
-    from plumb.capture.spec import escalated_ids
-    from plumb.capture.triage import _Prompts, approved_before, premise_problem
-
-    if premise_problem(_Prompts(core), core.index(), record) is not None:
-        return None   # quote-only: the verdict is logged so, the judge model asks
-    if core.status([record.id])[record.id].confirmation != "proposed":
-        return None   # an edit of a confirmed record goes to the judge model's questions
-    if record.id in approved_before(core) or record.id in escalated_ids(core):
-        return None   # a set is approved whole (P6)
     floor = max(JEV_FLOOR, state.min_probability, float(jev["threshold"]))
     if float(jev.get("score") or 0.0) <= floor:
         return None
@@ -204,25 +181,63 @@ def fast_track(core: Core, record: Any, jev: Mapping[str, Any]) -> dict[str, Any
             "confidence_label": jev.get("confidence_label"), "backend": jev.get("judge"),
             "model_version": jev.get("model_version"), "calibration": jev.get("calibration"),
             "claim_kind": jev["claim_kind"], "judge": "jev", "threshold": jev["threshold"],
-            "prompt_via": "hook", "min_probability": state.min_probability,
-            "min_confidence": state.min_confidence, "parts": jev.get("parts"),
-            "fingerprints": list(jev.get("fingerprints") or ())}
+            "min_probability": state.min_probability, "min_confidence": state.min_confidence,
+            "parts": jev.get("parts"), "fingerprints": list(jev.get("fingerprints") or ())}
+
+
+def fast_track(core: Core, record: Any, jev: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The ``auto`` payload of a ``by: auto-jev`` approval of ``record`` on JEV's scores
+    ``jev`` (``understand.verdict.jev_verdict``), or None when it may not take the fast track
+    (SR-248, SR-250): the owner's switch in effect with a passing same-version calibration,
+    JEV clearing every part strictly above its floor, the premise the owner's verified words,
+    the owner's minimum confidence label, and a proposed record never approved before and in
+    no escalated set."""
+    state = auto_approve_state(core)
+    if not state.effective:
+        return None
+    auto = _jev_auto(record, jev, state)
+    if auto is None:
+        return None
+    from plumb.capture.spec import escalated_ids
+    from plumb.capture.triage import _Prompts, approved_before, premise_problem
+
+    if premise_problem(_Prompts(core), core.index(), record) is not None:
+        return None   # quote-only: the verdict is logged so, the judge model asks
+    if core.status([record.id])[record.id].confirmation != "proposed":
+        return None   # an edit of a confirmed record goes to the judge model's questions
+    if record.id in approved_before(core) or record.id in escalated_ids(core):
+        return None   # a set is approved whole (P6)
+    return {**auto, "prompt_via": "hook"}
+
+
+def after_round(core: Core, record: Any, jev: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The ``auto`` payload of an answer-cited ``by: auto-jev`` approval of ``record`` after a
+    question round (SR-248 EX-4), or None: JEV clears it as for the fast track, without the
+    switch; with no passing calibration JEV approves nothing (SR-251)."""
+    return _jev_auto(record, jev, auto_approve_state(core))
 
 
 def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
             calibrations: Mapping[str, LogEntry], prompts: set[str],
-            approved: set[str], escalated: Collection[str] = ()) -> str | None:
-    """Why an ``auto-jev`` approval fails its re-check, or None (sp2 8.2): an owner
-    ``config`` on before it, a passing calibration for the same model version, a cited
-    prompt event logged by the prompt hook (not self-recorded), a score strictly above the
-    recorded thresholds and 0.9, an eligible record kind, and no earlier owner, relayed or imported
-    approval of the record, and no record of an escalated spec set (``escalated``,
-    ``spec.escalated_ids``)."""
+            approved: set[str], escalated: Collection[str] = (),
+            answers: Mapping[str, Mapping[str, Any]] | None = None) -> str | None:
+    """Why an ``auto-jev`` approval fails its re-check, or None (sp2 8.2): a passing
+    calibration for the same model version, a score strictly above the recorded thresholds
+    and 0.9, the owner's minimum confidence label and an eligible record kind. On the fast
+    track, also an owner ``config`` on before it, a cited prompt event logged by the prompt
+    hook (not self-recorded), no earlier owner, relayed or imported approval of the record and
+    no record of an escalated spec set (``escalated``, ``spec.escalated_ids``). After a question
+    round (it cites ``answers``), each cited answer is a question-tool answer logged before it
+    (``answers``: digest -> payload) asked about each record at that version, in place of the
+    switch and the prompt event (SR-248 EX-4)."""
+    from plumb.understand.recheck_model import cited_answers_problem
+
     payload = entry.payload
     auto = payload.get("auto")
     if not isinstance(auto, Mapping):
         return "auto-jev approval carries no score"
-    if not config or not config.get("enabled"):
+    after_answers = bool(payload.get("answers"))
+    if not after_answers and (not config or not config.get("enabled")):
         return "auto-jev approval without the owner's config auto-approve on before it"
     calibration = calibrations.get(str(auto.get("calibration")))
     if calibration is None:
@@ -235,19 +250,24 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
     threshold = _kind_threshold(calibration, kind)
     if threshold is None:
         return f"auto-jev approval of claim kind {kind} without a passing calibration"
-    if payload.get("prompt_digest") not in prompts:
+    if after_answers:
+        why = cited_answers_problem(payload, answers or {}, "auto-jev")
+        if why:
+            return why
+    elif payload.get("prompt_digest") not in prompts:
         return "auto-jev approval cites no earlier prompt event"
-    if auto.get("prompt_via") != "hook" or payload.get("self_recorded"):
+    elif auto.get("prompt_via") != "hook" or payload.get("self_recorded"):
         return ("auto-jev approval rests on a message the agent recorded itself (not logged "
                 "by the prompt hook); only the owner or a relayed ok confirms it")
     try:
         score = float(auto.get("score"))
     except (TypeError, ValueError):
         return "auto-jev approval carries no score"
-    floor = max(JEV_FLOOR, float(config.get("min_probability", JEV_FLOOR)), threshold)
+    settings = config or {}
+    floor = max(JEV_FLOOR, float(settings.get("min_probability", JEV_FLOOR)), threshold)
     if score <= floor:     # SR-242 EX-5: only a score above the threshold stands on JEV
         return f"auto-jev score {score:.3f} is not above the threshold {floor:.3f}"
-    need = CONFIDENCE_RANK.get(str(config.get("min_confidence", "high")), 2)
+    need = CONFIDENCE_RANK.get(str(settings.get("min_confidence", "high")), 2)
     if CONFIDENCE_RANK.get(str(auto.get("confidence_label")), -1) < need:
         return "auto-jev confidence is below the owner's minimum"
     for item in payload.get("records") or []:
@@ -255,6 +275,8 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
         prefix = record_id.split("-", 1)[0]
         if {"INT": "intent-readback", "SR": "example-restatement"}.get(prefix) != kind:
             return f"auto-jev approval of {record_id}, which is not an eligible record"
+        if after_answers:
+            continue      # an edit or a set member is approved after its round
         if record_id in approved:
             return f"auto-jev approval of {record_id}, which had an approval before"
         if record_id in escalated:

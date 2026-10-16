@@ -11,9 +11,14 @@ relates to. Labelled assumptions are shown and left out of what is judged.
 ``supported``, 0 otherwise), approves ``by: auto-jev`` what the fast track takes, and writes
 the judge model's questions about the owner's intent to ``judge_questions.json`` for the
 question tool (SR-248, SR-267); a record no question covers waits with the waiting line
-(SR-245). No trial or read-back card is raised (SR-252 EX-6). It returns the log entries: the
-worker writes them. The kind registers the handlers of the trial, beyond and contradicts
-cards (``effects``; old cards of those kinds are still answered)."""
+(SR-245). After a question round (the premise holds the owner's answers at the record's
+version) a record is approved citing those answers: ``by: auto-jev`` when JEV clears it,
+else ``by: auto-model`` when the judge model says the intent is clear (its confidence is
+logged, never compared, DEC-141); otherwise the next questions follow. An escalated spec set
+is one approval, written when every record of it is clear at its version (P6). No trial or
+read-back card is raised (SR-252 EX-6). It returns the log entries: the worker writes them.
+The kind registers the handlers of the trial, beyond and contradicts cards (``effects``; old
+cards of those kinds are still answered)."""
 
 from __future__ import annotations
 
@@ -219,12 +224,14 @@ def _fast_tracked(core: Any, record: Any, raw: Mapping[str, Any],
     return fast_track(core, record, jev)
 
 
-def _auto_jev(core: Any, job: Job, record: Any, item: Mapping[str, Any],
-              auto: Mapping[str, Any], known: set[Any]) -> list[Mapping[str, Any]]:
-    """The ``by: auto-jev`` approval of ``record`` (written by the worker, carrying the
-    session), after the prompt event it cites when none is logged yet."""
+def _approve(core: Any, job: Job, ids: Sequence[str], item: Mapping[str, Any], by: str,
+             auto: Mapping[str, Any], known: set[Any], answers: Sequence[str] = (),
+             **extra: Any) -> list[Mapping[str, Any]]:
+    """The worker's ``by`` approval of ``ids`` (carrying the session and, after a question
+    round, the owner's ``answers``: question-answer entry digests), after the prompt event of
+    the owner's words it cites when none is logged yet."""
     messages = [m for m in (item.get("premise") or {}).get("messages") or ()
-                if isinstance(m, Mapping) and m.get("digest")]
+                if isinstance(m, Mapping) and m.get("digest") and not m.get("partial")]
     digest = str(messages[0]["digest"]) if messages else ""
     out: list[Mapping[str, Any]] = []
     if digest and digest not in known:
@@ -238,11 +245,78 @@ def _auto_jev(core: Any, job: Job, record: Any, item: Mapping[str, Any],
                                                   "session": found.get("session"),
                                                   "at": found.get("at")}})
         known.add(digest)
-    out.append({"kind": "approval", "payload": {
-        "records": approval_items(core, [record.id]), "by": "auto-jev",
-        "prompt_digest": digest, "quote": None, "quote_digest": None,
-        "session": job.session, "job": job.id, "auto": dict(auto)}})
+    payload = {"records": approval_items(core, ids), "by": by,
+               "prompt_digest": digest or (answers[0] if answers else ""), "quote": None,
+               "quote_digest": None, "session": job.session, "job": job.id,
+               "auto": dict(auto), **extra}
+    if answers:
+        payload["answers"] = list(answers)
+    out.append({"kind": "approval", "payload": payload})
     return out
+
+
+def _after_round(core: Any, record: Any, raw: Mapping[str, Any], payload: Mapping[str, Any],
+                 jev: Mapping[str, Any] | None, in_set: bool
+                 ) -> tuple[str, dict[str, Any]] | None:
+    """``(by, auto)`` when the record the owner answered about is clear after the round:
+    JEV clears it (a passing calibration, above max(0.9, its threshold); never alone for a
+    record of an escalated set), else the judge model says the intent is clear (SR-248 EX-4,
+    EX-5). None: the next questions follow."""
+    from plumb.capture.autoapprove import after_round
+    from plumb.judgment.verdict import JEV
+
+    if jev is not None and not in_set:
+        auto = after_round(core, record, jev)
+        if auto is not None:
+            return "auto-jev", auto
+    if payload["verdict"] == "supported" and raw.get("clear") is True and raw.get("by") != JEV:
+        return "auto-model", {"model": payload["model"],
+                              "model_version": str(raw.get("judge") or payload["model"]),
+                              "confidence": payload["score"], "clear": True}
+    return None
+
+
+def _clear_before(core: Any, record: Any) -> float | None:
+    """The confidence of a logged clear model verdict on ``record`` at its version after a
+    round, or None (a set waits for its other records across jobs)."""
+    for e in reversed(core.events()):
+        p = e.payload
+        if e.kind == "verdict" and p.get("id") == record.id and p.get("hash") == record.hash \
+                and p.get("verdict") == "supported" and p.get("clear") is True \
+                and p.get("answers"):
+            return _confidence(p.get("score"))
+    return None
+
+
+def _set_approvals(core: Any, job: Job, rounds: Mapping[str, tuple[Any, ...]],
+                   asked: Mapping[str, Mapping[str, Any]], known: set[Any]
+                   ) -> tuple[list[Mapping[str, Any]], dict[str, str]]:
+    """The one approval of each escalated set whose every record is clear at its version,
+    and the clear records still waiting for their set (id -> anchor)."""
+    from plumb.capture.spec import SpecError, current_set_hash, escalated_sets, set_ids
+
+    sets, owner = escalated_sets(core)
+    index = core.index()
+    out: list[Mapping[str, Any]] = []
+    held: dict[str, str] = {}
+    for anchor in dict.fromkeys(owner.get(i, i) for i in rounds):
+        try:
+            whole = set_ids(core, anchor)
+        except SpecError:
+            whole = []
+        clear = {i: rounds[i][1]["confidence"] for i in whole if i in rounds}
+        clear.update({i: c for i in whole if i not in clear
+                      and (c := _clear_before(core, index[i])) is not None})
+        if not whole or set(whole) - set(clear):
+            held.update({i: anchor for i in whole if i in rounds})
+            continue
+        answers = list(dict.fromkeys(e.digest for i in whole
+                                     for e in premise.answer_entries(core, index[i])))
+        first = next(i for i in whole if i in rounds)
+        auto = {**rounds[first][1], "confidence": min(clear.values())}
+        out += _approve(core, job, whole, asked[first], "auto-model", auto, known, answers,
+                        set={"anchor": anchor, "hash": current_set_hash(core, anchor)})
+    return out, held
 
 
 def question_key(text: str) -> str:
@@ -383,6 +457,10 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     prompts_known = {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}
     judged: dict[str, str] = {}             # the records judged at their current version
     waits: dict[str, str] = {}              # record id -> why it waits
+    rounds: dict[str, tuple[Any, ...]] = {}  # set records clear after a round: (by, auto)
+    from plumb.capture.spec import escalated_ids
+
+    in_sets = escalated_ids(core)
     for raw in answer.get("verdicts") or ():
         if not isinstance(raw, Mapping) or str(raw.get("id")) not in asked:
             continue
@@ -421,25 +499,43 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                 reason = premise_problem(_Prompts(core), index, record)
                 if reason:              # SR-248 EX-6: not the owner's verified words
                     payload.update(premise="quote-only", premise_reason=reason)
+        current = record is not None and record.hash == item["hash"]
+        cited = [e.digest for e in premise.answer_entries(core, record)] \
+            if current and given.get("answers") else []
+        if cited:                       # judged after a question round, on these answers
+            payload["answers"] = cited
         entries.append({"kind": "verdict", "payload": payload})
-        if record is None or record.hash != item["hash"]:
+        if not current:
             notes.append(f"{item['id']} changed while it was judged; it is judged again")
             continue
         judged[record.id] = record.hash
-        auto = _fast_tracked(core, record, raw, jev)
-        if auto is not None:                # SR-248: approved on JEV's score, no question
-            confirmed += _auto_jev(core, job, record, item, auto, prompts_known)
-        elif verdict == "waiting":          # SR-267 EX-9: the agent's own doubt asks nothing
+        if verdict == "waiting":            # SR-267 EX-9: the agent's own doubt asks nothing
             waits[record.id] = payload["reason"] or "the judge could not settle it"
+        elif cited:                         # SR-248 EX-4, EX-5: approved after the round
+            done = _after_round(core, record, raw, payload, jev, record.id in in_sets)
+            if done is not None and record.id in in_sets:
+                rounds[record.id] = done    # a set is approved whole (P6)
+            elif done is not None:
+                confirmed += _approve(core, job, [record.id], item, *done, prompts_known,
+                                      cited)
+        elif (auto := _fast_tracked(core, record, raw, jev)) is not None:
+            confirmed += _approve(core, job, [record.id], item, "auto-jev", auto,
+                                  prompts_known)    # SR-248: on JEV's score, no question
     for item_id in asked:
         if not any(e["payload"]["id"] == item_id for e in entries):
             notes.append(f"the judge gave no verdict for {item_id}")
+    held: dict[str, str] = {}
+    if rounds:
+        whole, held = _set_approvals(core, job, rounds, asked, prompts_known)
+        confirmed += whole
+        notes += [f"{i} is clear and waits for its set ({a})" for i, a in held.items()]
     approved = {str(i.get("id")) for e in confirmed if e["kind"] == "approval"
                 for i in e["payload"]["records"]}
     shaped, refused = _questions(job, answer, {
-        i: h for i, h in judged.items() if i not in approved and i not in waits}, index)
+        i: h for i, h in judged.items() if i not in approved | set(waits) | set(held)}, index)
     _write_questions(core, job, set(judged), shaped)
     covered = {i for q in [*shaped, *open_questions(core, job.session)] for i in _ids_of(q)}
+    covered |= set(held)
     why = "; ".join(refused) or "the judge asked no question about it"
     waits.update({i: why for i in judged if i not in approved | covered | set(waits)})
     if waits:

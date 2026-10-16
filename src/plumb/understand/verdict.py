@@ -152,15 +152,23 @@ def _ask_jev(core: Any, entries: list[Mapping[str, Any]], backend: Any
 
 def _fast(core: Any, entries: list[Mapping[str, Any]], scored: Mapping[str, Mapping[str, Any]]
           ) -> dict[str, Mapping[str, Any]]:
-    """The entries JEV clears that may take the fast track (SR-248): no model is asked."""
-    from plumb.capture.autoapprove import fast_track
+    """The entries JEV clears that may take the fast track, or that JEV clears after a question
+    round outside an escalated set (SR-248): no model is asked."""
+    from plumb.capture.autoapprove import after_round, fast_track
+    from plumb.capture.spec import escalated_ids
 
     index = core.index()
+    in_sets = escalated_ids(core)
     out: dict[str, Mapping[str, Any]] = {}
     for entry in entries:
         jev = scored.get(str(entry.get("id")))
         record = index.get(str(entry.get("id")))
-        if jev and jev["clears"] and record is not None and fast_track(core, record, jev):
+        if not jev or not jev["clears"] or record is None:
+            continue
+        if (entry.get("premise") or {}).get("answers"):
+            if record.id not in in_sets and after_round(core, record, jev):
+                out[record.id] = jev
+        elif fast_track(core, record, jev):
             out[record.id] = jev
     return out
 
