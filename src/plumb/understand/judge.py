@@ -166,10 +166,12 @@ def build(core: Any, session: str, **context: Any) -> Job | None:
 
 
 def recompute(core: Any, job: Job) -> Mapping[str, Any] | None:
-    """The inputs rebuilt from the logs, as they stand when the worker runs the job."""
+    """The inputs rebuilt from the logs, as they stand when the worker runs the job. A bare job
+    (the question-answer hook's) names its records by id alone."""
     if core is None:
         return None
-    ids = [str(r.get("id")) for r in job.inputs.get("records") or () if isinstance(r, Mapping)]
+    ids = [str(r.get("id")) if isinstance(r, Mapping) else str(r)
+           for r in job.inputs.get("records") or ()]
     records = entries_for(core, ids)
     if not records:
         return None
@@ -262,17 +264,29 @@ def _ids_of(question: Mapping[str, Any]) -> set[str]:
     return {str(r.get("id")) for r in question.get("records") or () if isinstance(r, Mapping)}
 
 
-def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
-    """The judge questions still waiting for the owner: not answered yet (no question-answer
-    entry with the same key), and asking about a record still unconfirmed at the version
-    asked."""
+def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
+    """The session's judge questions no question-answer entry answers yet, by its question's
+    key or the key it was matched to (``asked.key``). Reads no record (the hook calls it)."""
     asked = _logged_questions(core.root, session)
     if not asked:
         return []
+    answered: set[str] = set()
+    for e in core.events():
+        if e.kind == "question-answer" and e.payload.get("session") == session:
+            answered.add(question_key(str(e.payload.get("question") or "")))
+            if isinstance(e.payload.get("asked"), Mapping):
+                answered.add(str(e.payload["asked"].get("key")))
+    return [q for q in asked if q.get("key") not in answered]
+
+
+def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
+    """The judge questions still waiting for the owner: not answered yet (``unanswered``),
+    and asking about a record still unconfirmed at the version asked."""
+    asked = unanswered(core, session)
+    if not asked:
+        return []
     index, statuses = core.index(), core.status()
-    answered = {question_key(str(e.payload.get("question") or "")) for e in core.events()
-                if e.kind == "question-answer" and e.payload.get("session") == session}
-    return [q for q in asked if q.get("key") not in answered and any(
+    return [q for q in asked if any(
         str(r.get("id")) in index and index[str(r.get("id"))].hash == r.get("hash")
         and statuses[str(r.get("id"))].confirmation != "confirmed"
         for r in q.get("records") or () if isinstance(r, Mapping))]

@@ -148,3 +148,34 @@ def test_plumbs_own_runs_use_two_xdist_workers() -> None:
     workers = load_config(REPO).verify.workers
     assert workers == 2
     assert build_command(["tests/x.py"], workers=workers)[-3:] == ["-n", "2", "tests/x.py"]
+
+
+def test_the_question_answer_hook_on_a_large_session_stays_inside_its_budget(
+        repo: Path, write_record) -> None:
+    """Task 3: with 200 records and 500 prompts logged, the question-answer hook matches the
+    answer to the judge's open question and queues the judge job inside the post-edit budget
+    (it reads no record)."""
+    from understand.test_judge_job import log_prompt, requirement_text
+
+    from plumb.config import load_config
+    from plumb.understand import files, jobs, judge
+
+    for n in range(1, 201):
+        write_record(repo, requirement_text(n, f"Rule {n}", f"Rule {n} holds"))
+    for n in range(500):
+        log_prompt(repo, f"message {n}", session="perf")
+    index = open_core(repo).index()
+    ask = "Should every page load faster, or only the public ones?"
+    files.write_json_atomic(judge.questions_path(repo, "perf"), [{
+        "key": judge.question_key(ask), "job": "judge-0", "question": ask, "header": "Pages",
+        "records": [{"id": "SR-007", "hash": index["SR-007"].hash}], "options": []}])
+    payload = {"session_id": "perf", "transcript_path": "", "cwd": str(repo),
+               "hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion",
+               "tool_input": {"questions": [{"question": ask, "options": [
+                   {"label": "Public pages", "description": ""},
+                   {"label": "Every page", "description": ""}]}]},
+               "tool_response": {"answers": {ask: "Every page"}}}
+    budget = float(load_config(repo).hooks.budget_ms["post_edit"])
+    _, took = _call(repo, "question_answer", payload)
+    assert took <= budget * 0.9, f"question_answer: {took:.0f} ms against {budget:.0f} ms"
+    assert [j.inputs["records"] for j in jobs.queued(repo, "perf")] == [["SR-007"]]

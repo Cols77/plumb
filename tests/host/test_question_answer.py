@@ -1,4 +1,4 @@
-"""SR-156: the owner's answers to the question tool are logged, and change nothing else."""
+"""SR-156: the owner's answers to the question tool are logged, and change no record."""
 
 from __future__ import annotations
 
@@ -37,7 +37,9 @@ def test_logs_question_options_and_answer(repo: Path, hook_input) -> None:  # EX
     (entry,) = _answers(repo)
     assert entry.payload == {"session": "test-session",
                              "question": "Run the slow tests now or later?",
-                             "options": ["now", "later"], "answer": "later"}
+                             "options": [{"label": "now", "description": ""},
+                                         {"label": "later", "description": ""}],
+                             "answer": "later", "via": "question-tool"}
 
 
 def test_an_answer_that_says_confirm_confirms_nothing(repo: Path, hook_input) -> None:  # EX-2
@@ -47,6 +49,7 @@ def test_an_answer_that_says_confirm_confirms_nothing(repo: Path, hook_input) ->
 
 
 @pytest.mark.parametrize("response", [{"answers": {}}, {}, "dismissed", None])
-def test_a_dismissed_question_logs_nothing(repo: Path, hook_input, response: object) -> None:  # EX-3
+def test_a_dismissed_question_logs_nothing(repo: Path, hook_input,
+                                           response: object) -> None:  # EX-3
     assert _run(repo, hook_input, response) == ""
     assert _answers(repo) == []

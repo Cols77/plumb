@@ -68,11 +68,25 @@ def model_gap(core: Any, model: str) -> str:
 
 
 def _premise_text(entry: Mapping[str, Any]) -> str:
+    """The owner's whole messages, then each question-tool answer with its question and
+    options (SR-212 EX-8); a premise with no answer is the messages unchanged (EX-10)."""
     premise = entry.get("premise") or {}
     messages = [m for m in premise.get("messages") or () if isinstance(m, Mapping)]
     if not messages or all(m.get("partial") for m in messages):
         return ""            # the owner's words are not on file: nothing to ask JEV about
-    return "\n\n".join(str(m.get("text") or "") for m in messages)
+    parts = [str(m.get("text") or "") for m in messages]
+    for answer in premise.get("answers") or ():
+        options = "; ".join(_option_text(o) for o in answer.get("options") or ())
+        parts.append(f"Question: {answer.get('question')}\nOptions: {options}\n"
+                     f"Answer: {answer.get('answer')}")
+    return "\n\n".join(parts)
+
+
+def _option_text(option: Any) -> str:
+    if not isinstance(option, Mapping):
+        return str(option)
+    label, said = str(option.get("label") or ""), str(option.get("description") or "")
+    return f"{label} ({said})" if said else label
 
 
 def jev_verdict(core: Any, entry: Mapping[str, Any], backend: Any, calibration: Any

@@ -54,6 +54,7 @@ SHOW_COULDNT = ("The check could not be made and the owner has a card offering t
 WAITING = "The check of your request is not finished. Do not build yet."
 ASK_QUESTIONS = ("Ask these {n} questions with the question tool, one at a time, as given: each "
                  "question, header and option label and description verbatim.")
+UNMATCHED = "Ask these questions as given; the last answer matched none of them."
 JUDGING = ("plumb's judge is still reading the records; go on with the work and run clarify "
            "--wait again before the turn ends.")
 APPROVED = "approved on your behalf: {title} (judge-approved, {by}, {score})"
@@ -163,7 +164,13 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
     core = open_core(root)          # a detached worker may have written meanwhile
     questions = judge.open_questions(core, session)
     if questions:
-        return Outcome("ask", digest, [ASK_QUESTIONS.format(n=len(questions))], questions=[
+        answers = [e.payload for e in core.events() if e.kind == "question-answer"
+                   and e.payload.get("session") == session and e.at >= at]
+        # SR-212: the agent reworded the question, or asked one of its own
+        missed = bool(answers) and answers[-1].get("via") == "question-tool" \
+            and not answers[-1].get("asked")
+        line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
+        return Outcome("ask", digest, [line], questions=[
             {"question": q.get("question"), "header": q.get("header"),
              "options": q.get("options"), "multiSelect": False} for q in questions])
     return Outcome("ready", digest, [READY, *_approved(core, at)])
@@ -221,9 +228,8 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
          clock: Callable[[], float] = time.monotonic) -> Outcome:
     """Collect the clarify result of the owner's latest message (see the module doc)."""
     from plumb.progress import Reporter
-    from plumb.understand import worker
-
     from plumb.stale import SESSION_ENV, current_session
+    from plumb.understand import worker
 
     root = Path(core.root)
     # SR-169: this session's message, never the newest of whichever session logged last

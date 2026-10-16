@@ -2,7 +2,8 @@
 
 ``premise_of(core, record)`` gives what the judge is shown: the owner's whole logged message
 or messages the record derives from, the stored question when the answer was short, and the
-parent intent. It reads the committed log first (``premise`` entries: text and digest,
+parent intent, and the owner's question-tool answers about the record at its current version
+(``answers``, SR-212). It reads the committed log first (``premise`` entries: text and digest,
 written by ``commit`` when a record first takes a message as its premise), then the session's
 prompt log, so a record keeps its premise after the session log is gone. A record whose
 premise is only a fragment of the owner's words (older records) says so: ``fragment`` holds the
@@ -25,12 +26,15 @@ class Premise:
     """What a record rests on. ``messages``: ``({"digest", "text"}, ...)`` (the owner's whole
     logged messages); ``question``: the stored question a short answer answered; ``parent``:
     the confirmed parent intent, if any; ``fragment``: the owner's words as the
-    record quotes them when no whole message is on file."""
+    record quotes them when no whole message is on file; ``answers``: ``({"question",
+    "options", "answer"}, ...)``, the owner's question-tool answers that name the record at its
+    current version."""
 
     messages: tuple[Mapping[str, str], ...] = ()
     question: str = ""
     parent: str | None = None
     fragment: str = ""
+    answers: tuple[Mapping[str, Any], ...] = ()
 
     @property
     def on_file(self) -> bool:
@@ -46,7 +50,10 @@ class Premise:
         if not messages and self.fragment:
             messages = [{"digest": _sha(self.fragment), "text": self.fragment,
                          "partial": True}]
-        return {"messages": messages, "question": self.question, "parent": self.parent}
+        given = {"messages": messages, "question": self.question, "parent": self.parent}
+        if self.answers:                # absent when none: older inputs keep their digest
+            given["answers"] = [dict(a) for a in self.answers]
+        return given
 
 
 def _sha(text: str) -> str:
@@ -58,16 +65,15 @@ def _sha(text: str) -> str:
 def input_digest(premise: Mapping[str, Any]) -> str:
     """The digest a verdict and an approval carry for a job's ``premise`` object: the
     message's own digest when there is one message, else the digest of the sorted message
-    digests; nothing on file is ''."""
+    digests; nothing on file is ''. The owner's answers count only when there are some, so a
+    premise without them keeps its digest."""
+    from plumb.understand import files
+
     digests = sorted(str(m.get("digest")) for m in premise.get("messages") or ()
                      if isinstance(m, Mapping) and m.get("digest"))
-    if len(digests) == 1:
-        return digests[0]
-    if digests:
-        from plumb.understand import files
-
-        return files.digest_of(digests)
-    return ""
+    base = digests[0] if len(digests) == 1 else files.digest_of(digests) if digests else ""
+    answers = premise.get("answers") or []
+    return files.digest_of([base, answers]) if answers else base
 
 
 def digest_of(premise: Premise) -> str:
@@ -146,6 +152,25 @@ def _quote(record: Any) -> str:
     return " ".join(str(quote or "").split())
 
 
+def answers_of(core: Any, record: Any) -> tuple[dict[str, Any], ...]:
+    """The owner's question-tool answers whose ``asked`` names ``record`` at its current hash
+    (SR-212 EX-6, SR-209 EX-4: an answer about an older version is left out). Entries without
+    ``via`` or ``asked`` (older ones, text answers) never count."""
+    out: list[dict[str, Any]] = []
+    for entry in core.events():
+        p = entry.payload
+        asked = p.get("asked")
+        if entry.kind != "question-answer" or p.get("via") != "question-tool" \
+                or not isinstance(asked, Mapping):
+            continue
+        if any(isinstance(r, Mapping) and r.get("id") == record.id
+               and r.get("hash") == record.hash for r in asked.get("records") or ()):
+            out.append({"question": str(p.get("question") or ""),
+                        "options": list(p.get("options") or ()),
+                        "answer": str(p.get("answer") or "")})
+    return tuple(out)
+
+
 def premise_of(core: Any, record: Any, *, statuses: Mapping[str, Any] | None = None,
                known: Mapping[str, Mapping[str, Any]] | None = None) -> Premise:
     """The premise of ``record`` (see the module docstring)."""
@@ -177,7 +202,7 @@ def premise_of(core: Any, record: Any, *, statuses: Mapping[str, Any] | None = N
     if not messages:
         fragment = " ".join(q for q in (_quote(s) for s in sources) if q)
     return Premise(messages=tuple(messages), question=question, parent=parent,
-                   fragment=fragment)
+                   fragment=fragment, answers=answers_of(core, record))
 
 
 # --------------------------------------------------------------------------- committing
