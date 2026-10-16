@@ -599,7 +599,7 @@ def status_data(core) -> dict:
     for status in statuses.values():
         for state in status.links:
             links[state.state] += 1
-    failing = acceptance_failures(core)
+    failing = {i: v for i, v in acceptance_failures(core).items() if i not in retired}
     return {
         "records": records,
         "requirements": {"total": len(requirements),
