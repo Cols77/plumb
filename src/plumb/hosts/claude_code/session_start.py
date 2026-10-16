@@ -24,6 +24,7 @@ from plumb.hosts.claude_code.hookio import (
     HookContext,
     HookOutput,
     hook_budget,
+    read_json,
     run_hook,
 )
 from plumb.hosts.claude_code.providers import LAZY, verify_api
@@ -140,14 +141,17 @@ def brief(core: Any, tests_line: str) -> list[str]:
 
 
 def auto_approve_off(core: Any) -> str | None:
-    """``off`` when the owner never turned auto-approve on (no owner ``config`` event), known
-    without the judgment modules the full state would import; None when it must be worked
-    out (CAPTURE's ``auto_approve_state``, which snapshot defaults to)."""
+    """``off`` when the owner never turned auto-approve on (no owner ``config`` event), else
+    the last snapshot's value, both known without the judgment modules the full state would
+    import (HC2); None when it must be worked out (CAPTURE's ``auto_approve_state``, which
+    snapshot defaults to; the stop hook writes the full state again)."""
     from plumb.capture.ownerconfig import latest
 
-    if latest(core.events()) is not None:
-        return None
-    return None if core.config.auto_approve.enabled else "off"
+    if latest(core.events()) is None and not core.config.auto_approve.enabled:
+        return "off"
+    last = read_json(Path(core.root) / ".plumb" / "session" / "status.json")
+    known = last.get("auto_approve") if isinstance(last, dict) else None
+    return known if known in ("on", "off", "suspended") else None
 
 
 def conflicts_line(core: Any) -> str | None:
