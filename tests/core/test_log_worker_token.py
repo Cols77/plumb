@@ -47,7 +47,7 @@ def test_accepted_with_matching_token(paths: PlumbPaths,
 
 def test_other_by_values_unchanged(paths: PlumbPaths, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PLUMB_WORKER", raising=False)
-    for by in ("owner", "agent-relayed", "import", "auto-jev"):
+    for by in ("owner", "agent-relayed", "import"):
         assert log.worker_token_problem(paths.root, "s1", by) is None
         log.append(paths, "events", "approval", _approval(by))
     log.append(paths, "events", "revocation", {"by": "undone", "records": []})

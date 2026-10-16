@@ -118,7 +118,7 @@ def test_quick_check_holds_unconfirmed_and_undeclared(tmp_path: Path) -> None:
     merged = run_git(root, "merge", "--no-edit", "feat-x", check=False)
     output = merged.stdout + merged.stderr
     assert merged.returncode != 0
-    assert 'SR-005 "relay checks" is not confirmed yet' in output
+    assert '"relay checks" waits on a judge' in output
     assert "src/relay.py changed without a requirement that declares it" in output
 
 

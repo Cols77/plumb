@@ -92,7 +92,7 @@ def test_ex6_late_result_collected_by_next_wait_no_build_started(
     assert second.state == "card" and second.digest == digest
     cards = {c.kind: c for c in cardstore.own_cards(repo, SESSION)}
     assert cards["couldnt_check"].status == "closed"        # the late result replaced it
-    assert cards["clarify"].status == "open"
+    assert cards["choice"].status == "open" and "clarify" not in cards   # no read-back card
     assert len(engine_standins.dispatcher.ran("clarify")) == 1
 
 
@@ -193,7 +193,7 @@ def test_a_finished_check_that_left_no_card_is_not_waiting_for_ever(
     assert "waiting" not in states
 
 
-def test_a_read_back_with_no_blocking_choice_is_ready_with_its_assumptions(
+def test_a_request_with_no_blocking_choice_is_ready_and_draws_no_read_back(
         repo: Path, engine_standins: Any) -> None:
     engine_standins.dispatcher.script = {"clarify": {
         **NO_GAP, "readback": {"assumptions": ["the file is named after the user"]},
@@ -203,8 +203,8 @@ def test_a_read_back_with_no_blocking_choice_is_ready_with_its_assumptions(
     worker.run_once(core, SESSION)
     outcome = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
     assert outcome.state == "ready" and not gate.is_closed(repo, SESSION)
-    assert outcome.lines[1:] == [cmd_clarify.BUILD_ON, "Assumed: the file is named after the user",
-                                 "Assumed: Which data?: all"]
+    assert outcome.lines == [cmd_clarify.READY]
+    assert cardstore.own_cards(repo, SESSION) == []      # SR-252 EX-6: no read-back card
 
 
 def test_a_structure_question_tells_the_agent_to_draw_first(repo: Path,

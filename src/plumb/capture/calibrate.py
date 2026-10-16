@@ -5,10 +5,13 @@ The labelled set is built from the log, per record kind (claim kind ``intent-rea
 INT read-backs, ``example-restatement`` for requirements: their wording and every example):
 
 - yes: records the owner confirmed (``by: owner`` or ``agent-relayed``) at their current
-  content and never revoked;
+  content and never revoked, and records the judge approved citing the owner's question-tool
+  ``answers`` with no correction (source ``answer``, SR-252);
 - no (real): records the owner revoked, records edited after an auto-approval, and read-backs
   the owner rejected as a misreading of their words (a ``capture-error`` rejection, pinned at
-  its hash; an ``intent-change`` rejection gets no label, SR-096, DEC-026 A);
+  its hash; an ``intent-change`` rejection gets no label, SR-096, DEC-026 A). A rejection the
+  judge logged when the owner's answer corrected its reading (``by: owner-answer``, source
+  ``answer``) carries JEV's score logged at judgment time, used with no new call (SR-252 EX-4);
 - no (generated): deterministic variations of the yes records (a will flipped to won't, a
   flipped result, a changed number), labelled ``generated``.
 
@@ -51,11 +54,13 @@ class Item:
     hypotheses: tuple[str, ...]   # every part must be supported (R13 Q3)
     hash: str = ""                # the version of the record judged (the logged score's key)
     quote_only: str = ""          # why its premise is the quote alone (SR-190), else ""
+    score: float | None = None    # JEV's score pinned at judgment time (SR-252 EX-4)
 
 
 @dataclass
 class KindResult:
     items: int = 0                # real items: the owner's own decisions
+    answers: int = 0              # real items labelled by the owner's question-tool answers
     positives: int = 0
     real_negatives: int = 0
     generated_negatives: int = 0
@@ -149,24 +154,28 @@ def labelled_set(core: Core) -> list[Item]:
     standing = remaining(core)
     items: list[Item] = []
     seen_rejected: set[tuple[str, str]] = set()
+    corrected: set[tuple[str, str]] = set()
     for entry in core.events():
         if entry.kind != "rejection" or entry.payload.get("reason") != "capture-error":
             continue  # an intent change gets no label (SR-096, DEC-026 A)
+        answered = entry.payload.get("by") == "owner-answer"
         for pinned in entry.payload.get("records") or []:
             if not isinstance(pinned, Mapping):
                 continue
             record_id, pin = str(pinned.get("id")), str(pinned.get("hash"))
+            corrected.add((record_id, pin))
             kind, premise = pinned.get("kind"), str(pinned.get("premise") or "")
             parts = tuple(str(p) for p in pinned.get("hypotheses") or [])
             if kind not in KINDS.values() or not premise.strip() or not parts \
                     or (record_id, pin) in seen_rejected:
                 continue
             current = index.get(record_id)
-            if current is not None and current.hash == pin and \
+            if not answered and current is not None and current.hash == pin and \
                     statuses[record_id].confirmation == "confirmed":
                 continue  # the owner went on to confirm this very version
             seen_rejected.add((record_id, pin))
-            items.append(Item(record_id, str(kind), "no", "rejected", premise, parts, pin))
+            items.append(Item(record_id, str(kind), "no", "answer" if answered else "rejected",
+                              premise, parts, pin, score=_number(pinned.get("jev_score"))))
     for record_id in sorted(index):
         record = index[record_id]
         kind = KINDS.get(record.kind)
@@ -186,8 +195,20 @@ def labelled_set(core: Core) -> list[Item]:
         elif status.confirmation == "confirmed" and latest and \
                 latest[-1][1] in ("owner", "agent-relayed", "owner-words"):
             items.append(Item(record_id, kind, "yes", "owner", premise, parts, record.hash, thin))
+        elif status.confirmation == "confirmed" and latest and \
+                latest[-1][1] in ("auto-jev", "auto-model") and \
+                latest[-1][2].payload.get("answers") and \
+                (record_id, record.hash) not in corrected:   # approved on the owner's answers
+            items.append(Item(record_id, kind, "yes", "answer", premise, parts, record.hash,
+                              thin))
     generated = [v for item in items if item.label == "yes" for v in variations(item)]
     return items + generated
+
+
+def _number(raw: Any) -> float | None:
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return float(raw)
 
 
 def score(backend: Any, item: Item) -> tuple[float, str]:
@@ -220,6 +241,7 @@ def measure(core: Core, items: Sequence[Item], scores: Sequence[float]) -> dict[
         result.real_negatives = len(real_no)
         result.generated_negatives = len(gen_no)
         result.items = len(yes) + len(real_no)
+        result.answers = sum(i.source == "answer" for i, _ in pairs)
         result.quote_only = sum(bool(i.quote_only) for i, _ in pairs
                                 if not i.source.startswith("gen"))
         result.generated_counted = min(len(gen_no), len(real_no))  # at most half
@@ -250,22 +272,25 @@ def logged_scores(core: Core) -> tuple[dict[tuple[str, str], float], str]:
     """``{(record, hash): score}`` of JEV's logged verdicts (the latest of each) and the JEV
     version that gave the most recent one. The score is JEV's probability for a supported
     verdict and 0 otherwise, logged at judgment time (SR-106), so calibration needs no call.
-    Only a verdict marked as JEV's counts (SR-182): a judge model's confidence never sets
-    JEV's threshold, and an old verdict with no marker is not taken as JEV's."""
+    Only JEV's own score counts (SR-182): a verdict marked as JEV's, or the ``jev_score`` a
+    judge model's verdict logged beside its own (SR-252); a judge model's confidence never
+    sets JEV's threshold, and an old verdict with no marker is not taken as JEV's."""
     from plumb.judgment.verdict import JEV
 
     scores: dict[tuple[str, str], float] = {}
     model = ""
     for entry in core.events():
-        if entry.kind != "verdict" or entry.payload.get("by") != JEV:
-            continue
         payload = entry.payload
-        try:
-            scores[(str(payload.get("id")), str(payload.get("hash")))] = float(
-                payload.get("score") or 0)
-        except (TypeError, ValueError):
+        if entry.kind != "verdict":
             continue
-        model = str(payload.get("model") or model)
+        logged = _number(payload.get("jev_score"))
+        if logged is None and payload.get("by") == JEV:
+            logged = _number(payload.get("score") or 0)
+        if logged is None:
+            continue
+        scores[(str(payload.get("id")), str(payload.get("hash")))] = logged
+        model = str(payload.get("jev_version") or (
+            payload.get("model") if payload.get("by") == JEV else "") or model)
     return scores, model
 
 
@@ -279,14 +304,17 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
 
     logged, model = logged_scores(core)
     items = labelled_set(core)
-    source_logged = any((i.record, i.hash) in logged for i in items
-                        if not i.source.startswith("gen"))
+
+    def known(i: Item) -> bool:   # a pinned score or a logged verdict scores it, no call
+        return i.score is not None or (i.record, i.hash) in logged
+
+    source_logged = any(known(i) for i in items if not i.source.startswith("gen"))
     if source_logged:
         # generated 'no' examples share their source record's id and hash, so a logged verdict
         # would score them as the record they were made from; no verdict covers them
-        items = [i for i in items if not i.source.startswith("gen")
-                 and (i.record, i.hash) in logged]
-        scores = [logged[(i.record, i.hash)] for i in items]
+        items = [i for i in items if not i.source.startswith("gen") and known(i)]
+        scores = [i.score if i.score is not None else logged[(i.record, i.hash)]
+                  for i in items]
         name, version = "jev", model
     else:
         if backend is None:
@@ -324,7 +352,7 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
 
     payload = {"backend": name, "model_version": version, "form": output_form(core.config),
                "per_kind": {k: {key: getattr(r, key) for key in (
-                   "items", "positives", "real_negatives", "generated_negatives",
+                   "items", "answers", "positives", "real_negatives", "generated_negatives",
                    "generated_counted", "quote_only", "negatives", "threshold", "false_accept",
                    "recall", "passing", "reasons")} for k, r in results.items()},
                "labelled_set_digest": digest}

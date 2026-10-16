@@ -46,20 +46,19 @@ def test_review_has_the_five_sections(records: Path, capsys) -> None:
         assert heading in out
     # with no judge configured, CAPTURE's triage rates nothing and says why (INT-029)
     assert "judging unavailable: no judge: judgment.backend is not set" in out
-    assert 'question DEC-001 "Rounding mode": assumed half-up' in out
+    assert 'question "Rounding mode": assumed half-up' in out
     assert "gap: SR-002 has no code" in out
     assert "it approves nothing" in out
 
 
-def test_glance_lists_relayed_approvals_with_the_revoke_form(records: Path, hook_input,
+def test_glance_lists_relayed_approvals_and_names_no_command(records: Path, hook_input,
                                                              capsys) -> None:
     text = "ok SR-001"
     run_prompt(records, hook_input, text)
     legacy_relay(records, ["SR-001"], approvals.prompt_digest(text), "ok SR-001")
     out = _review(records, capsys)
-    assert 'SR-001 "add returns the sum of two numbers" relayed from your words "ok SR-001"' \
-        in out
-    assert "plumb revoke <ID>" in out
+    assert '"add returns the sum of two numbers" relayed from your words "ok SR-001"' in out
+    assert "plumb revoke" not in out and "say so in conversation" in out   # SR-267
 
 
 def test_drift_and_scope_by_plain_words(records: Path, capsys) -> None:
@@ -67,7 +66,7 @@ def test_drift_and_scope_by_plain_words(records: Path, capsys) -> None:
     out = _review(records, capsys, "how", "numbers", "are", "added")
     assert out.startswith("plumb review of SR-001")
     assert "1 stale link(s): SR-001#0 -> src/calc.py" in out
-    assert "DEC-001" not in out  # out of scope
+    assert "Rounding mode" not in out  # out of scope
 
 
 def test_triage_groups_from_capture(records: Path, capsys, monkeypatch) -> None:
@@ -79,5 +78,5 @@ def test_triage_groups_from_capture(records: Path, capsys, monkeypatch) -> None:
                                                     "INT-001"],
                  ownership_proposals=lambda core, paths: {})
     out = _review(records, capsys)
-    assert 'SR-002 "divide returns the quotient" (riskier 0.40)' in out
+    assert '  "divide returns the quotient" (riskier 0.40)' in out
     assert "hint: SR-002 may depend on INT-001" in out

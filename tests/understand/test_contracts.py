@@ -322,7 +322,7 @@ def test_routes_and_help_list_only_importable_verbs() -> None:
 
     for verb in ("understand", "clarify"):
         assert cli.ROUTES[verb] == "plumb.understand.cli"
-    assert not {"settle", "undo", "go", "confirm"} & set(cli.ROUTES)
+    assert not {"settle", "undo", "go"} & set(cli.ROUTES)
     assert cli._available("clarify")
     assert "clarify" in cli.help_text()
     saved = dict(cli.ROUTES)
@@ -554,8 +554,7 @@ def test_handler_for_raises_an_import_error_of_a_lane_module(
         effects.handler_for("anything")
 
 
-C2_TEXT = ("CONFIRM_YOU_SAID", "READBACK_CHANGE", "TYPED_CONFIRMED", "TYPED_NEEDS_IDS",
-           "BACKLOG_DONE")
+C2_TEXT = ("CONFIRM_YOU_SAID", "READBACK_CHANGE", "TYPED_CONFIRMED", "BACKLOG_DONE")
 
 
 @pytest.mark.parametrize("name", C2_TEXT)
@@ -570,8 +569,8 @@ def test_owner_text_constants_have_their_fields() -> None:
     from plumb.present import owner_text
 
     assert owner_text.CONFIRM_YOU_SAID.format(evidence="ok") == "you said: ok"
-    assert owner_text.BACKLOG_DONE.format(judged=160, cards=3) == (
-        "160 records judged, 3 cards waiting for you")
+    assert owner_text.BACKLOG_DONE.format(judged=160, questions=3) == (
+        "160 records judged, 3 questions waiting for you")
 
 
 def test_owner_level_flags_commands_ids_and_internal_words() -> None:

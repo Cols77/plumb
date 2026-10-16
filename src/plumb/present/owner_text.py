@@ -114,7 +114,7 @@ FOREIGN_PREPUSH_HOOK = ("plumb: your own pre-push hook was kept; say \"call plum
 COMMIT_HOLD_INSTALLED = ("plumb: merges finished by hand, rebases and cherry-picks get the same "
                          "quick check before git records them")
 PREMERGE_REMOVED = "plumb: merges are no longer checked before git records them"
-PREMERGE_UNCONFIRMED = "  {record} \"{title}\" is not confirmed yet; /plumb approve {record}"
+PREMERGE_UNCONFIRMED = "  \"{title}\" waits on a judge"   # no command, no id (SR-267)
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "
                        "to link it to the requirement it serves")
 PREMERGE_STALE_HEADER = ("links this merge leaves stale (repin each once its tests pass, or "
@@ -262,27 +262,22 @@ GATE_WAIT_NOTE = "Builds nothing until the check runs again on your next message
 GATE_CLOSED = "Waiting for your answer before building: {reason}"
 NOT_AVAILABLE = "not available in this build"
 CONFIRM_YOU_SAID = "you said: {evidence}"
-CONFIRM_BY_MODEL = ("{title}: confirmed by {model} reading your words ({confidence:.0%} sure); "
-                    "say /plumb undo {id} to take it back")
+JUDGE_APPROVED = "approved on your behalf by the judge"   # SR-251: "N approved on ..."
+AWAITS_QUESTIONS = ("awaits you: {n} question{s} about what you asked ({said}); the agent asks "
+                    "them with the question tool")
+AWAITS_JUDGE = "waiting on a judge: {n} record{s}"
+AWAITS_NOTHING = "awaits you: nothing"
 READBACK_CHANGE = ('To be sure I have it: "{title}" should change so that {change}. Say yes, '
                    'or tell me what to fix.')
 CARD_CHANGED_SINCE = ('Nothing was confirmed: "{title}" changed after I showed it to you. I am '
                       'showing you what it says now.')
 TYPED_CONFIRMED = "Confirmed: {titles}"
-TYPED_NEEDS_IDS = ("I could not tell which records you meant from those words alone, so they "
-                   "went to the reader; I will confirm what it finds.")
 TYPED_SETTLE_GONE = "That switch no longer exists; nothing changed. Records are confirmed by you, or by the judge reading your words when automatic confirmation is on."
 AUTO_APPROVE_SWITCHED = "Automatic confirmation is now {state}."
 AUTO_APPROVE_NOT_YET = "Automatic confirmation is switched on, but not in effect yet: {reason}."
-BACKLOG_DONE = "{judged} records judged, {cards} cards waiting for you"
+BACKLOG_DONE = "{judged} records judged, {questions} questions waiting for you"
 
 # -- JUDGE: the cards, the trial and the summary
-DOUBT_BEYOND = ("You did not ask for {title}; Yes confirms it too, so choose Not quite to "
-                "drop it")
-DOUBT_CONTRADICTS = ('You confirmed {other}; {title} contradicts it. Yes confirms {title} too, '
-                     "so choose Not quite to keep only {other}")
-DOUBT_CONTRADICTS_UNNAMED = ("{title} contradicts something you said. Yes confirms it too, so "
-                             "choose Not quite to drop it")
 BEYOND_KEEP = "Keep it: this is what I meant"
 BEYOND_DROP = "Drop it"
 BEYOND_REWORD = "Reword it (say how)"

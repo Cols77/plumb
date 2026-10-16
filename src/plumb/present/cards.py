@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 BY = {"owner": "you", "agent-relayed": "you (relayed)", "auto-jev": "JEV", "import": "import",
-      "owner-words": "you"}
+      "owner-words": "you", "auto-model": "the judge model"}
 INTENT_FILE = "intent.json"
 
 
@@ -102,14 +102,30 @@ def _label(core: Any, record_id: str) -> str:
         else ("" if label.startswith("confirmed by") else label)
 
 
+def judge_label(status: Any) -> str | None:
+    """SR-251: a judge approval with its judge, model and score, "judge-approved (auto-jev,
+    jev-1.13, 0.96)" or "judge-approved (auto-model, haiku, 0.8)"; None for any other."""
+    by = str(getattr(status, "approved_by", "") or "")
+    if by not in ("auto-jev", "auto-model"):
+        return None
+    auto = getattr(status, "auto", None) or {}
+    jev = by == "auto-jev"
+    model = auto.get("model_version" if jev else "model")
+    score = auto.get("score" if jev else "confidence")
+    parts = [by] + ([str(model)] if model else []) + (
+        [f"{round(float(score), 2):g}"] if isinstance(score, (int, float)) else [])
+    return f"judge-approved ({', '.join(parts)})"
+
+
 def confirmed_label(core: Any, record_id: str, status: Any) -> str | None:
     """Who confirmed a confirmed record, in the owner's terms: "confirmed by you", "confirmed
-    by you (relayed)", "confirmed by JEV", with CAPTURE's extra words such as "self-recorded
-    message" (R8 B, R13 Q4); None for a record that is not confirmed. The one label every
-    surface that states a record's confirmation uses: the cards, ``plumb show``, ``plumb
-    explain`` and the vault."""
+    by you (relayed)", a judge approval's ``judge_label`` (SR-251), with CAPTURE's extra words
+    such as "self-recorded message" (R8 B, R13 Q4); None for a record that is not confirmed.
+    The one label every surface that states a record's confirmation uses: the cards, ``plumb
+    show``, ``plumb explain`` and the vault."""
     if status is None or status.confirmation != "confirmed" or not status.approved_by:
         return None
+    judged = judge_label(status)
     who = BY.get(str(status.approved_by), str(status.approved_by))
     extra = _label(core, record_id)
     carried_from = getattr(status, "carried_from", None)
@@ -117,7 +133,43 @@ def confirmed_label(core: Any, record_id: str, status: Any) -> str | None:
         from plumb.present.owner_text import carried
 
         extra = ", ".join(x for x in (extra, carried(carried_from, record_id)) if x)
-    return f"confirmed by {who}" + (f", {extra}" if extra else "")
+    return (judged or f"confirmed by {who}") + (f", {extra}" if extra else "")
+
+
+def judge_lines(core: Any, statuses: Mapping[str, Any], cap: int = 5) -> list[str]:
+    """SR-251: each judge-approved record by title with its ``judge_label``, at most ``cap``
+    of them and a count of the rest."""
+    index = core.index()
+    rows = [f"{index[i].title}: {label}" for i, s in sorted(statuses.items())
+            if i in index and (label := judge_label(s))]
+    more = [f"  +{len(rows) - cap} more judge-approved"] if len(rows) > cap else []
+    return [f"  {r}" for r in rows[:cap]] + more
+
+
+def awaiting_lines(core: Any, statuses: Mapping[str, Any]) -> list[str]:
+    """What awaits the owner, counted and with no id (SR-267): the judge's open questions with
+    the request they came from, then how many records wait on a judge; never an approve hint."""
+    from plumb.present import owner_text
+
+    asked: list[Mapping[str, Any]] = []
+    sessions = Path(core.root) / ".plumb" / "session"
+    # judge.QUESTIONS_FILE, named here so the session start never imports the judge
+    for path in sorted(sessions.glob("*/judge_questions.json")):
+        try:
+            from plumb.understand import judge
+
+            asked += judge.open_questions(core, path.parent.name)
+        except Exception:  # noqa: BLE001 - a status line never fails the command
+            continue
+    lines = []
+    if asked:
+        said = str(asked[0].get("question") or "").rsplit("\n\n", 1)[-1]
+        lines.append(owner_text.AWAITS_QUESTIONS.format(
+            n=len(asked), s="s" if len(asked) > 1 else "", said=said))
+    waiting = sum(s.confirmation != "confirmed" for s in statuses.values())
+    if waiting:
+        lines.append(owner_text.AWAITS_JUDGE.format(n=waiting, s="s" if waiting > 1 else ""))
+    return lines or [owner_text.AWAITS_NOTHING]
 
 
 def early_say(core: Any, record: Any) -> str:

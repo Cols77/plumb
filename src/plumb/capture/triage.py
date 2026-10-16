@@ -14,9 +14,7 @@ logged; otherwise "quote not verified") and nothing in it contradicts them (a ch
 number, a flipped will/won't or result: ``textjudge.contradiction``). Either problem rates
 the record "riskier" and shows it individually, whatever the backend scored.
 
-Triage never approves anything by itself. ``plumb triage --approve low-risk`` is the owner's
-one step from the owner's own terminal (``approvals.require_owner``) and approves exactly the
-listed hashes.
+Triage never approves anything; ``plumb triage --approve`` no longer exists (SR-210).
 """
 
 from __future__ import annotations
@@ -201,9 +199,10 @@ def exclusion(core: Core, record: Record, statuses: Mapping[str, Any],
     if record.kind == "decision" and record.fields.get("matters") is True:
         return "a decision that matters"
     if record.id in set_members:
-        return f"a member of the escalated spec {set_members[record.id]}"
+        anchor = core.index().get(set_members[record.id])     # by title, no id (SR-267)
+        return f'a member of the escalated set "{anchor.title if anchor else "?"}"'
     if record.kind == "intent" and record.fields.get("mode") == "escalated":
-        return "an escalated spec (approved as a set: plumb spec show)"
+        return "an escalated set (approved as a whole)"
     if record.id in approved_before or statuses[record.id].confirmation == "unconfirmed-edit":
         return "an edit of a record you confirmed before"
     if not premise.strip():
@@ -384,17 +383,16 @@ def view_lines(view: TriageView) -> list[str]:
     if view.low_risk:
         lines.append(f"low-risk group: {len(view.low_risk)} records rated faithful to your "
                      "words")
-        lines += [f"  {i.id} {i.hash[:19]}  {i.title}" for i in view.low_risk]
-        lines.append("  approve them: plumb triage --approve low-risk (your terminal)")
+        lines += [f"  {i.title}" for i in view.low_risk]    # no id, no approve hint (SR-267)
     if view.individual:
         lines.append(f"individually: {len(view.individual)} records")
         for item in view.individual:
             words = outcome_words(item)
             kept = item.excluded and not item.excluded.startswith(words)
             why = f"; {item.excluded}" if kept else ""
-            lines.append(f"  {item.id} ({words}{why})  {item.title}")
+            lines.append(f"  {item.title} ({words}{why})")
     if not view.low_risk and not view.individual:
-        lines.append("nothing awaits your confirmation")
+        lines.append("nothing waits on a judge")
     return lines
 
 
@@ -413,40 +411,3 @@ def log_triage(core: Core, view: TriageView) -> None:
     if last and last[-1].payload.get("digest") == digest:
         return
     core.log_append("events", "triage", {**payload, "digest": digest})
-
-
-def approve_low_risk(core: Core, *, backend: Any = None, note: str = "",
-                     echo: Any = print) -> Any:
-    """``plumb triage --approve low-risk``: the owner's one step, from the owner's own
-    terminal only. Lists the group with hashes, asks y/N (no flag skips it), then approves
-    exactly the listed hashes; a record changed since the listing is left out and named."""
-    from plumb.approvals import (
-        ApprovalError,
-        approval_items,
-        refuse_under_marker,
-        require_owner,
-    )
-
-    refuse_under_marker("triage --approve")
-    view = triage(core, backend=backend)
-    if not view.low_risk:
-        raise ApprovalError("the low-risk group is empty: nothing to approve")
-    for item in view.low_risk:
-        echo(f"  {item.id} {item.hash[:19]}  {item.title}")
-    require_owner("triage --approve", f"approve these {len(view.low_risk)} records at the "
-                  "listed content, as yourself (by: owner)?")
-    from plumb.api import open_core
-
-    fresh = open_core(core.root)
-    index = fresh.index()
-    kept = [i for i in view.low_risk if i.id in index and index[i.id].hash == i.hash]
-    left_out = [i.id for i in view.low_risk if i not in kept]
-    if not kept:
-        raise ApprovalError("every listed record changed since the listing: "
-                            + ", ".join(left_out))
-    payload = {"records": approval_items(fresh, [i.id for i in kept]), "by": "owner",
-               "prompt_digest": None, "quote": None, "quote_digest": None,
-               "affirmation": None, "stated_set": None, "note": note,
-               "triage": {"group": GROUP, "backend": view.backend,
-                          "scores": {i.id: i.score for i in kept}, "left_out": left_out}}
-    return fresh.log_append("events", "approval", payload)

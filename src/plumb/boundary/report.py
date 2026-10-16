@@ -389,31 +389,31 @@ def render(report: MergeReport) -> list[str]:
     if report.untraced:
         out.append("untraced changes (no requirement owns them): " + _names(report.untraced))
     if report.awaiting or report.untraced or report.new_exempt:
-        out.append("merge waits for your confirmation:")
+        out.append("merge waits for approval:")
         out.extend(_awaiting_lines(report))
         out.extend(_capped([f"  untraced {p}: no read-back or example covers this change"
                             for p in report.untraced]))
         out.extend(_capped([f"  trace.exempt {g}: added in this range; it exempts paths from "
-                            "any requirement and is not honoured until you confirm it"
+                            "any requirement and is not honoured until it is approved"
                             for g in report.new_exempt]))
-        if report.awaiting:
-            ids = [str(a["id"]) for a in report.awaiting]
-            more = (f" ({MORE.format(n=len(ids) - CAP)} to confirm too)"
-                    if len(ids) > CAP else "")
-            out.append(f"plumb: merge waits for your confirmation: `plumb approve "
-                       f"{' '.join(ids[:CAP])}`{more}, or say ok in the session")
+        if report.awaiting:     # counted, no id and no command (SR-260 EX-8, SR-267)
+            n = len(report.awaiting)
+            out.append(f"plumb: merge waits for {n} record{'s' if n > 1 else ''} to be "
+                       "approved: the judge approves them on your behalf or asks you a "
+                       "question with the question tool")
         if report.new_exempt:
-            out.append("plumb: to keep the new trace.exempt globs, `plumb approve --exempt`, or "
-                       "say ok to the exemption in the session; otherwise remove them")
+            # shortcut: no route approves a glob since plumb approve went, until SR-288 picks one
+            out.append("plumb: nothing can approve a new trace.exempt glob yet (the judge "
+                       "approves records only); remove it to merge")
         if report.untraced:
             out.append("plumb: for the untraced changes, ask the agent to read them back and "
-                       "record a proposed SR linked implemented_by them, then confirm it; or, "
-                       "if they need no requirement, list them under trace.exempt in "
-                       ".plumb/config.yaml and confirm that with `plumb approve --exempt`")
+                       "record a requirement linked implemented_by them; or, if they need no "
+                       "requirement, list them under trace.exempt in .plumb/config.yaml")
     else:
         out.append("confirmation: every touched requirement is confirmed")
     if report.glance:
-        out.append("approvals in range (for a glance; revoke what you did not mean):")
+        out.append("approvals in range (for a glance; to undo one you did not mean, say so "
+                   "in conversation):")
         out.extend(_capped([glance_line(row) for row in report.glance]))
     else:
         out.append("approvals in range: none")

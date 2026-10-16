@@ -7,6 +7,11 @@ after a timeout is collected by the next ``--wait``; a timeout or a failed check
 "couldn't check" card in the card store and keeps the gate closed. Nothing here opens the
 gate: only the check's own result, the owner's answers, or the owner's release do.
 
+An ordinary message is not checked: ``--wait`` collects the judge jobs queued since the owner
+last spoke and answers ``ask`` with the judge's open questions for the question tool (SR-248),
+or ``ready`` with what the judge approved on the owner's behalf. The questions never close the
+gate.
+
 Without ``--wait`` the command is today's clarification-depth helper, unchanged."""
 
 from __future__ import annotations
@@ -47,20 +52,28 @@ SHOW_COULDNT = ("The check could not be made and the owner has a card offering t
                 "wait. Say so in one line; nothing was built, and nothing is built until they "
                 "say to build anyway.")
 WAITING = "The check of your request is not finished. Do not build yet."
+ASK_QUESTIONS = ("Ask these {n} questions with the question tool, one at a time, as given: each "
+                 "question, header and option label and description verbatim.")
+UNMATCHED = "Ask these questions as given; the last answer matched none of them."
+JUDGING = ("plumb's judge is still reading the records; go on with the work and run clarify "
+           "--wait again before the turn ends.")
+APPROVED = "approved on your behalf: {title} (judge-approved, {by}, {score})"
 HELD = ("plumb: edits are held ({reason}): this request changes a confirmed record and no "
         "intent loop ran for it. /plumb intent opens the loop; the owner's /plumb go releases.")
 
 
 @dataclasses.dataclass
 class Outcome:
-    state: str                 # ready | card | escalation | couldnt_check | waiting | held
+    state: str           # ready | ask | card | escalation | couldnt_check | waiting | held
     digest: str = ""
     lines: list[str] = dataclasses.field(default_factory=list)
     card: str = ""
+    questions: list[dict[str, Any]] = dataclasses.field(default_factory=list)
 
     def as_json(self) -> dict[str, Any]:
+        shown = {"questions": self.questions} if self.state == "ask" else {}
         return {"state": self.state, "message_digest": self.digest, "card": self.card,
-                "lines": self.lines}
+                "lines": self.lines, **shown}
 
 
 def latest_prompt(core: Any, session: str | None) -> Mapping[str, Any] | None:
@@ -94,6 +107,73 @@ def _jobs_of(root: Path, session: str, kind: str, digest: str) -> list[Job]:
         if isinstance(message, Mapping) and message.get("digest") == digest:
             found.append(job)
     return found
+
+
+def _since(core: Any, session: str, logged: Mapping[str, Any]) -> str:
+    """When the owner last spoke in the session: their latest message or question-tool answer."""
+    answers = [e.at for e in core.events()
+               if e.kind == "question-answer" and e.payload.get("session") == session]
+    return max([str(logged.get("at") or ""), *answers])
+
+
+def _judge_jobs_since(root: Path, session: str, at: str) -> list[Job]:
+    """The session's judge jobs queued since ``at``, whatever their records."""
+    from plumb.understand import jobs
+
+    return [j for j in jobs.queued(root, session) if j.kind == "judge" and j.created >= at]
+
+
+def _approved(core: Any, at: str) -> list[str]:
+    """One line per record the judge approved on the owner's behalf since ``at``, by title."""
+    index = core.index()
+    out: list[str] = []
+    for entry in core.events():
+        p = entry.payload
+        if entry.kind != "approval" or entry.at < at or p.get("by") not in ("auto-jev",
+                                                                           "auto-model"):
+            continue
+        auto = p.get("auto") if isinstance(p.get("auto"), Mapping) else {}
+        score = auto.get("score", auto.get("confidence"))
+        for item in p.get("records") or ():
+            record = index.get(str(item.get("id"))) if isinstance(item, Mapping) else None
+            if record is not None:
+                out.append(APPROVED.format(title=record.title, by=p["by"], score=score))
+    return out
+
+
+def _judged(core: Any, session: str, digest: str, at: str, limit: float,
+            sleep: Callable[[float], None], clock: Callable[[], float]) -> Outcome:
+    """SR-248: the judge jobs queued since the owner last spoke, collected: ``waiting`` while
+    one runs past the limit, ``ask`` while its questions are open, else ``ready`` with what the
+    judge approved. The questions never close the gate (P6)."""
+    from plumb.api import open_core
+    from plumb.understand import judge, worker
+
+    root = Path(core.root)
+    started, ran = clock(), False
+    while pending := [j for j in _judge_jobs_since(root, session, at)
+                      if result_of(root, session, j.id) is None]:
+        if not ran:
+            for job in pending:
+                worker.run_once(core, session, job.id)
+            ran = True
+            continue
+        if clock() - started >= limit:
+            return Outcome("waiting", digest, [JUDGING])
+        sleep(POLL_S)
+    core = open_core(root)          # a detached worker may have written meanwhile
+    questions = judge.open_questions(core, session)
+    if questions:
+        answers = [e.payload for e in core.events() if e.kind == "question-answer"
+                   and e.payload.get("session") == session and e.at >= at]
+        # SR-212: the agent reworded the question, or asked one of its own
+        missed = bool(answers) and answers[-1].get("via") == "question-tool" \
+            and not answers[-1].get("asked")
+        line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
+        return Outcome("ask", digest, [line], questions=[
+            {"question": q.get("question"), "header": q.get("header"),
+             "options": q.get("options"), "multiSelect": False} for q in questions])
+    return Outcome("ready", digest, [READY, *_approved(core, at)])
 
 
 def result_of(root: Path, session: str, job_id: str) -> JobResult | None:
@@ -148,9 +228,8 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
          clock: Callable[[], float] = time.monotonic) -> Outcome:
     """Collect the clarify result of the owner's latest message (see the module doc)."""
     from plumb.progress import Reporter
-    from plumb.understand import worker
-
     from plumb.stale import SESSION_ENV, current_session
+    from plumb.understand import worker
 
     root = Path(core.root)
     # SR-169: this session's message, never the newest of whichever session logged last
@@ -161,13 +240,14 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
         return Outcome("ready", "", [READY])
     session = str(logged.get("session") or session or "default")
     digest = str(logged["digest"])
+    limit = float(timeout if timeout is not None else core.config.understand.clarify_wait_s)
     if clarify.commanded_words(str(logged.get("text") or "")) is None:
         # SR-171: no commanded check of this message; one still holding the gate keeps its digest
         held = gate.state(root, session)
         if not gate.is_closed(root, session) or not held.message_digest:
-            return Outcome("ready", digest, [READY])
+            return _judged(core, session, digest, _since(core, session, logged), limit, sleep,
+                           clock)
         digest = held.message_digest
-    limit = float(timeout if timeout is not None else core.config.understand.clarify_wait_s)
     if gate.state(root, session).message_digest != digest and not gate.is_closed(root, session):
         gate.close(root, session, digest, clarify.GATE_REASON_CHECKING)   # no hook closed it
     if not gate.is_closed(root, session):

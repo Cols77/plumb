@@ -177,7 +177,7 @@ def test_merge_finished_by_hand_holds_unconfirmed(tmp_path: Path) -> None:
     _git(root, "merge", "--no-commit", "feat-x")
     finished = _git(root, "commit", "-m", "Merge feat-x\n\nSR: SR-005")
     assert finished.returncode != 0 and _head(root) == head
-    assert 'SR-005 "relay checks" is not confirmed yet' in finished.stdout + finished.stderr
+    assert '"relay checks" waits on a judge' in finished.stdout + finished.stderr
 
 
 @pytest.mark.sr("SR-260")

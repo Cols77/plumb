@@ -8,11 +8,23 @@ intent when the owner confirmed it, next to the owner's confirmed records it
 relates to. Labelled assumptions are shown and left out of what is judged.
 
 ``apply`` logs one ``verdict`` per record (the score is the model's confidence for
-``supported``, 0 otherwise), puts a line on the request's open read-back card for ``beyond``
-and ``contradicts`` (SR-152: the next read-back drawn when none is open), and gives
-``supported`` to the trial, which asks the owner (nothing is confirmed from a verdict alone). It
-only returns what to write: the worker writes it. The kind registers the handlers of the trial,
-beyond and contradicts cards (``effects``; old cards of those kinds are still answered)."""
+``supported``, 0 otherwise), approves ``by: auto-jev`` what the fast track takes, and writes
+the judge model's questions about the owner's intent to ``judge_questions.json`` for the
+question tool (SR-248, SR-267); a record no question covers waits with the waiting line
+(SR-245). After a question round (the premise holds the owner's answers at the record's
+version) a record is approved citing those answers: ``by: auto-jev`` when JEV clears it,
+else ``by: auto-model`` when the judge model says the intent is clear (its confidence is
+logged, never compared, DEC-141); otherwise the next questions follow. An escalated spec set
+is one approval, written when every record of it is clear at its version (P6). No trial or
+read-back card is raised (SR-252 EX-6). Each source of a judged premise (the owner's message,
+a question-tool answer) is kept once as a ``pre-intent`` with its question, options and the
+reply it answered, and every approval names those sources in its ``trail`` (SR-208, SR-209).
+A record the owner's latest words contradict is sent back for the agent to reword (SR-209
+EX-2). When the judge says an answer corrects its reading, one ``capture-error`` rejection
+pins the record at the asked hash with the premise, the parts and JEV's score, a real 'no'
+for calibration (SR-252 EX-4). It returns the log entries: the worker writes them.
+The kind registers the handlers of the trial, beyond and contradicts cards (``effects``; old
+cards of those kinds are still answered)."""
 
 from __future__ import annotations
 
@@ -23,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from plumb.approvals import approval_items
-from plumb.contracts import Applied, CardState, Job
+from plumb.contracts import Applied, Job
 from plumb.judgment.verdict import BY
 from plumb.present import owner_text
 from plumb.understand import backlog, cards, files, premise, trial
@@ -35,7 +47,13 @@ HERE = Path(__file__).resolve().parent
 KINDS_JUDGED = ("intent", "requirement", "decision")
 RELATED_MAX = 12
 TEXT_WIDTH = 1200
-VERDICTS = ("supported", "beyond", "contradicts")
+VERDICTS = ("supported", "beyond", "contradicts", "waiting")
+QUESTIONS_FILE = "judge_questions.json"
+HEADER_MAX = 12          # the question tool's chip
+_PLUMB_WORDS = re.compile(r"\b(?:proposed|settled|trial|records?|judge[sd]?)\b",
+                          re.IGNORECASE)
+_LEFT_IN = re.compile(r"(?<![\w-])(?:INT|SR|DEC|FEAT|NC|IC)-\d+|sha256:"
+                      r"|\b[0-9a-f]{12,}\b")      # a record id or a digest left in
 
 
 def _load_schema() -> Mapping[str, Any]:
@@ -159,10 +177,12 @@ def build(core: Any, session: str, **context: Any) -> Job | None:
 
 
 def recompute(core: Any, job: Job) -> Mapping[str, Any] | None:
-    """The inputs rebuilt from the logs, as they stand when the worker runs the job."""
+    """The inputs rebuilt from the logs, as they stand when the worker runs the job. A bare job
+    (the question-answer hook's) names its records by id alone."""
     if core is None:
         return None
-    ids = [str(r.get("id")) for r in job.inputs.get("records") or () if isinstance(r, Mapping)]
+    ids = [str(r.get("id")) if isinstance(r, Mapping) else str(r)
+           for r in job.inputs.get("records") or ()]
     records = entries_for(core, ids)
     if not records:
         return None
@@ -200,87 +220,344 @@ def _strings(value: Any) -> list[str]:
     return [_flat(v) for v in value or () if _flat(v)]
 
 
-def _request_card(index: Mapping[str, Any], record: Any) -> str:
-    """The id of the read-back card of the request ``record`` came from ('' when unknown)."""
-    from plumb.understand import clarify
+def _fast_tracked(core: Any, record: Any, raw: Mapping[str, Any],
+                  jev: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """The ``auto`` payload when JEV's verdict on ``record`` takes the fast track, else None."""
+    if record is None or jev is None or raw.get("by") != "jev" or not jev.get("clears"):
+        return None
+    from plumb.capture.autoapprove import fast_track
 
-    seen: set[str] = set()
-    todo = [record]
-    while todo:
-        r = todo.pop()
-        if r.id in seen:
-            continue
-        seen.add(r.id)
-        said = str(r.fields.get("prompt") or "")
-        if r.kind == "intent" and len(said) >= 12:
-            return clarify.card_id(said)
-        todo += [index[link.target.record] for link in r.links
-                 if link.kind in ("derives_from", "decides") and link.target.record in index]
-    return ""
+    return fast_track(core, record, jev)
 
 
-def doubt_line(index: Mapping[str, Any], record: Any, verdict: str,
-               related: Sequence[Any] = (), contradicts: Sequence[str] = ()) -> str:
-    """SR-152: the one line a ``beyond`` or ``contradicts`` verdict adds to a read-back."""
-    if verdict == "beyond":
-        return owner_text.DOUBT_BEYOND.format(title=record.title)
-    named = [str(r.get("id")) for r in related if isinstance(r, Mapping)
-             and str(r.get("id")) in index and any(
-                 re.search(rf"\b{re.escape(str(r.get('id')))}\b", c) for c in contradicts)]
-    other = index[named[0]] if named else None      # the record the judge named, not the first
-    if other is None:
-        return owner_text.DOUBT_CONTRADICTS_UNNAMED.format(title=record.title)
-    return owner_text.DOUBT_CONTRADICTS.format(title=record.title, other=other.title)
+def _approve(core: Any, job: Job, ids: Sequence[str], item: Mapping[str, Any], by: str,
+             auto: Mapping[str, Any], known: set[Any], answers: Sequence[str] = (),
+             **extra: Any) -> list[Mapping[str, Any]]:
+    """The worker's ``by`` approval of ``ids`` (carrying the session, the ``trail`` of
+    pre-intent sources and, after a question round, the owner's ``answers``: question-answer
+    entry digests), after the prompt event of the owner's words it cites when none is logged
+    yet."""
+    messages = [m for m in (item.get("premise") or {}).get("messages") or ()
+                if isinstance(m, Mapping) and m.get("digest") and not m.get("partial")]
+    digest = str(messages[0]["digest"]) if messages else ""
+    out: list[Mapping[str, Any]] = []
+    if digest and digest not in known:
+        from plumb.approvals import Refused, find_prompt
 
-
-def pending_lines(core: Any, session: str, card: str) -> list[str]:
-    """The doubt lines of the session's judged records of the request whose read-back is
-    ``card`` that no card carries yet (still unconfirmed, still as judged)."""
-    from plumb import log
-    from plumb.understand import cardstore, jobs
-
-    root = Path(core.root)
-    judged = {j.id: j for j in jobs.queued(root, session) if j.kind == kind}
-    shown = "\n".join(c.evidence for c in cardstore.own_cards(root, session))
-    index = core.index()
-    out: list[str] = []
-    for entry in log.read(core.paths, "events", ["verdict"]):
-        p = entry.payload
-        job = judged.get(str(p.get("job")))
-        record = index.get(str(p.get("id")))
-        if (job is None or record is None or record.hash != p.get("hash")
-                or _request_card(index, record) != card
-                or p.get("verdict") not in ("beyond", "contradicts")
-                or core.status([record.id])[record.id].confirmation == "confirmed"):
-            continue
-        item = next((r for r in job.inputs.get("records") or () if r.get("id") == record.id), {})
-        line = doubt_line(index, record, str(p["verdict"]), item.get("related") or (),
-                          _strings(p.get("contradicts")))
-        if line not in shown and line not in out:
-            out.append(line)
+        try:
+            found = find_prompt(core, digest)
+        except Refused:
+            found = {}
+        out.append({"kind": "prompt", "payload": {"digest": digest,
+                                                  "session": found.get("session"),
+                                                  "at": found.get("at")}})
+        known.add(digest)
+    payload = {"records": approval_items(core, ids), "by": by,
+               "prompt_digest": digest or (answers[0] if answers else ""), "quote": None,
+               "quote_digest": None, "session": job.session, "job": job.id,
+               "auto": dict(auto), "trail": _trail([item], _pre_intents(core)), **extra}
+    if answers:
+        payload["answers"] = list(answers)
+    out.append({"kind": "approval", "payload": payload})
     return out
 
 
-def _confirms(core: Any, index: Mapping[str, Any], record: Any, raw: Mapping[str, Any],
-              confidence: float) -> bool:
-    """SR-191: whether the judge model's supported verdict confirms ``record`` itself: a
-    proposed requirement or decision whose premise is the owner's verified words. An intent,
-    JEV's verdict and a quote-only premise never do, nor does a confidence under the owner's
-    auto-approve settings (the verdict is logged, nothing is confirmed)."""
-    from plumb.capture.autoapprove import model_floor, owner_config
-    from plumb.capture.triage import _Prompts, premise_problem
+def _pre_intents(core: Any) -> dict[str, Mapping[str, Any]]:
+    """Entry digest -> payload of the logged ``pre-intent`` entries."""
+    return {e.digest: e.payload for e in core.events() if e.kind == "pre-intent"}
 
-    if model_floor(owner_config(core.events()), confidence) is not None:
-        return False
 
-    return (raw.get("by") == "model" and record.kind in ("requirement", "decision")
-            and core.status([record.id])[record.id].confirmation == "proposed"
-            and premise_problem(_Prompts(core), index, record) is None)
+def context_of(core: Any, digest: str) -> str:
+    """The excerpt of the reply the owner's message ``digest`` answered: the conversation the
+    prompt hook froze for it (``clarify.frozen_context``), read only; '' when none is on file."""
+    from plumb.approvals import Refused, find_prompt
+    from plumb.understand.clarify import context_path
+
+    try:
+        session = str(find_prompt(core, digest).get("session") or "")
+    except Refused:
+        return ""
+    frozen = files.read_json(context_path(Path(core.root), session, digest))
+    talk = frozen.get("context") if isinstance(frozen, Mapping) else None
+    return str(talk.get("last_reply") or "") if isinstance(talk, Mapping) else ""
+
+
+def _sources(item: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The owner's words a judged premise rests on: whole messages, then answers."""
+    given = item.get("premise") or {}
+    return [*(m for m in given.get("messages") or () if isinstance(m, Mapping)
+              and m.get("digest") and not m.get("partial")),
+            *(a for a in given.get("answers") or () if isinstance(a, Mapping)
+              and a.get("digest"))]
+
+
+def _trail(items: Sequence[Mapping[str, Any]], pre: Mapping[str, Mapping[str, Any]]
+           ) -> list[str]:
+    """The pre-intents an approval rests on, each named by its source (one pre-intent per
+    source; a read pre-intent cited as an answer is named by the message it keeps)."""
+    out = [str(pre[s["digest"]].get("source")) if s["digest"] in pre else str(s["digest"])
+           for item in items for s in _sources(item)]
+    return list(dict.fromkeys(out))
+
+
+def _new_pre_intents(core: Any, session: str, items: Sequence[Mapping[str, Any]]
+                     ) -> list[Mapping[str, Any]]:
+    """One ``pre-intent`` per premise source of ``items`` not logged yet (SR-208 EX-4, SR-212):
+    the owner's words verbatim with the question, the options and the reply they answered.
+    A read pre-intent cited as an answer is one already."""
+    pre = _pre_intents(core)
+    known = {str(p.get("source")) for p in pre.values()}
+    out: list[Mapping[str, Any]] = []
+    for item in items:
+        question = str((item.get("premise") or {}).get("question") or "")
+        for source in _sources(item):
+            digest = str(source["digest"])
+            if digest in known or digest in pre:
+                continue
+            known.add(digest)
+            answer = "answer" in source
+            out.append({"kind": "pre-intent", "payload": {
+                "source": digest, "session": session,
+                "text": str(source.get("answer" if answer else "text") or ""),
+                "question": str(source.get("question") or "") if answer else question,
+                "options": list(source.get("options") or ()) if answer else [],
+                "context": "" if answer else context_of(core, digest)}})
+    return out
+
+
+def _correction(job: Job, item: Mapping[str, Any], record: Any, index: Mapping[str, Any],
+                jev: Mapping[str, Any] | None, cited: Sequence[str]) -> Mapping[str, Any]:
+    """SR-252 EX-4: the owner's answer corrected the judge's reading of ``record``. One
+    ``capture-error`` rejection pinned at the asked hash, with the premise and the parts JEV
+    was asked about and JEV's score of this judgment, so calibration labels it 'no' with no
+    new model call."""
+    from plumb.capture.calibrate import _hypotheses
+
+    pinned: dict[str, Any] = {
+        "id": record.id, "hash": item["hash"],
+        "kind": verdict_cascade.CLAIM_KIND.get(record.kind),
+        "premise": verdict_cascade._premise_text(item),
+        "hypotheses": list(_hypotheses(index, record)[1])}
+    if jev is not None and jev.get("score") is not None:
+        pinned["jev_score"] = jev["score"]
+    return {"kind": "rejection", "payload": {
+        "by": "owner-answer", "session": job.session, "job": job.id, "records": [pinned],
+        "reason": "capture-error", "answers": list(cited)}}
+
+
+def _sent_back(core: Any, session: str, sent: Mapping[str, str]) -> str:
+    """SR-209 EX-2: the owner's latest words contradict these records; the agent rewords each
+    and the edit goes back to the judge."""
+    from plumb.understand import worker
+
+    line = "plumb: the owner's words contradict " + "; ".join(
+        f"{i} ({why})" for i, why in sent.items()) + ": reword it to agree with them; " \
+        "the edit goes back to the judge"
+    worker.say(core.root, session, line)
+    return line
+
+
+def _after_round(core: Any, record: Any, raw: Mapping[str, Any], payload: Mapping[str, Any],
+                 jev: Mapping[str, Any] | None, in_set: bool
+                 ) -> tuple[str, dict[str, Any]] | None:
+    """``(by, auto)`` when the record the owner answered about is clear after the round: a
+    ``supported`` verdict with nothing beyond or contradicting, given by JEV clearing it (a
+    passing calibration, above max(0.9, its threshold); never alone for a record of an
+    escalated set), else by the judge model saying the intent is clear (SR-248 EX-4, EX-5).
+    None: the next questions follow."""
+    from plumb.capture.autoapprove import after_round
+    from plumb.judgment.verdict import JEV
+
+    if payload["verdict"] != "supported" or payload["contradicts"] or payload["beyond"]:
+        return None
+    if payload.get("answer_corrects"):  # SR-252 EX-4: a corrected reading is never approved
+        return None
+    if raw.get("by") == JEV and jev is not None and jev.get("clears") and not in_set:
+        auto = after_round(core, record, jev)
+        if auto is not None:
+            return "auto-jev", auto
+    if raw.get("clear") is True and raw.get("by") != JEV:
+        return "auto-model", {"model": payload["model"],
+                              "model_version": str(raw.get("judge") or payload["model"]),
+                              "confidence": payload["score"], "clear": True}
+    return None
+
+
+def _clear_before(core: Any, record: Any) -> tuple[float, list[str]] | None:
+    """The confidence and cited answers of the latest verdict on ``record`` at its version
+    after a round, when it is clear and cites every answer logged about it at that version;
+    else None (a set waits for its other records across jobs)."""
+    now = [e.digest for e in premise.answer_entries(core, record)]
+    for e in reversed(core.events()):
+        p = e.payload
+        if e.kind == "verdict" and p.get("id") == record.id and p.get("hash") == record.hash \
+                and p.get("answers"):
+            if p.get("verdict") == "supported" and p.get("clear") is True \
+                    and not p.get("contradicts") and not p.get("beyond") \
+                    and p.get("answers") == now:
+                return _confidence(p.get("score")), now
+            return None
+    return None
+
+
+def _set_approvals(core: Any, job: Job, rounds: Mapping[str, tuple[Any, ...]],
+                   asked: Mapping[str, Mapping[str, Any]], known: set[Any]
+                   ) -> tuple[list[Mapping[str, Any]], dict[str, str]]:
+    """The one approval of each escalated set whose every record is clear at its version,
+    and the clear records still waiting for their set (id -> anchor)."""
+    from plumb.capture.spec import SpecError, current_set_hash, escalated_sets, set_ids
+
+    sets, owner = escalated_sets(core)
+    index = core.index()
+    out: list[Mapping[str, Any]] = []
+    held: dict[str, str] = {}
+    for anchor in dict.fromkeys(owner.get(i, i) for i in rounds):
+        try:
+            whole = set_ids(core, anchor)
+        except SpecError:
+            whole = []
+        clear = {i: (rounds[i][1]["confidence"], rounds[i][2]) for i in whole if i in rounds}
+        clear.update({i: c for i in whole if i not in clear
+                      and (c := _clear_before(core, index[i])) is not None})
+        if not whole or set(whole) - set(clear):
+            held.update({i: anchor for i in whole if i in rounds})
+            continue
+        answers = list(dict.fromkeys(d for i in whole for d in clear[i][1]))
+        first = next(i for i in whole if i in rounds)
+        auto = {**rounds[first][1], "confidence": min(c for c, _ in clear.values())}
+        out += _approve(core, job, whole, asked[first], "auto-model", auto, known, answers,
+                        set={"anchor": anchor, "hash": current_set_hash(core, anchor)},
+                        trail=_trail([asked[i] for i in whole if i in asked],
+                                     _pre_intents(core)))
+    return out, held
+
+
+def question_key(text: str) -> str:
+    """The key a question is matched by: lowercase, whitespace collapsed, "(Recommended)" out."""
+    return " ".join(str(text).lower().replace("(recommended)", "").split())
+
+
+def questions_path(root: Any, session: str) -> Path:
+    """The session's open judge questions; only the worker writes it."""
+    return files.session_dir(Path(root), session) / QUESTIONS_FILE
+
+
+def _logged_questions(root: Any, session: str) -> list[Mapping[str, Any]]:
+    raw = files.read_json(questions_path(root, session))
+    return [q for q in raw if isinstance(q, Mapping)] if isinstance(raw, list) else []
+
+
+def _ids_of(question: Mapping[str, Any]) -> set[str]:
+    return {str(r.get("id")) for r in question.get("records") or () if isinstance(r, Mapping)}
+
+
+def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
+    """The session's judge questions no question-answer entry answers yet, by its question's
+    key or the key it was matched to (``asked.key``). Reads no record (the hook calls it)."""
+    asked = _logged_questions(core.root, session)
+    if not asked:
+        return []
+    answered: set[str] = set()
+    for e in core.events():
+        if e.kind == "question-answer" and e.payload.get("session") == session:
+            answered.add(question_key(str(e.payload.get("question") or "")))
+            if isinstance(e.payload.get("asked"), Mapping):
+                answered.add(str(e.payload["asked"].get("key")))
+    return [q for q in asked if q.get("key") not in answered]
+
+
+def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
+    """The judge questions still waiting for the owner: not answered yet (``unanswered``),
+    and asking about a record still unconfirmed at the version asked."""
+    asked = unanswered(core, session)
+    if not asked:
+        return []
+    index, statuses = core.index(), core.status()
+    return [q for q in asked if any(
+        str(r.get("id")) in index and index[str(r.get("id"))].hash == r.get("hash")
+        and statuses[str(r.get("id"))].confirmation != "confirmed"
+        for r in q.get("records") or () if isinstance(r, Mapping))]
+
+
+def _shaped(raw: Any, job: Job, judged: Mapping[str, str], index: Mapping[str, Any]
+            ) -> tuple[dict[str, Any] | None, str]:
+    """A judge question as the question tool shows it, or ``(None, why it waits)`` (SR-245
+    EX-7, SR-267 EX-4): its request folded into the question, the reason into the recommended
+    option; record numbers in the owner's terms; plumb's own words never shown."""
+    if not isinstance(raw, Mapping):
+        return None, "a question is out of schema"
+    ids = [i for i in dict.fromkeys(str(r) for r in raw.get("records") or ()) if i in judged]
+    options = [o for o in raw.get("options") or () if isinstance(o, Mapping)]
+    request = raw.get("request") if isinstance(raw.get("request"), Mapping) else {}
+    words, date = _flat(request.get("words")), _flat(request.get("date"))
+    shown = [cards.plain(_flat(v), index) for v in (
+        raw.get("question"), raw.get("header"), raw.get("recommended_reason"),
+        *(o.get(k) for o in options for k in ("label", "consequence")))]
+    if not ids or not words or not 2 <= len(options) <= 4 or not all(shown):
+        return None, ("a question lacks its records, the request, two to four options, their "
+                      "consequences or the reason for the recommended one")
+    if any(_PLUMB_WORDS.search(t) or _LEFT_IN.search(t) for t in shown):
+        return None, "a question names plumb's own words"
+    text, header, reason, *rest = shown
+    said = f'You said on {date}: "{words}"' if date else f'You said: "{words}"'
+    question = f"{text}\n\n{said}"
+    pairs = list(zip(rest[::2], rest[1::2], strict=True))
+    return {"key": question_key(question), "job": job.id,
+            "records": [{"id": i, "hash": judged[i]} for i in ids],
+            "question": question, "header": header[:HEADER_MAX].strip(),
+            "options": [{"label": f"{label} (Recommended)" if n == 0 else label,
+                         "description": f"{consequence} Recommended: {reason}" if n == 0
+                         else consequence}
+                        for n, (label, consequence) in enumerate(pairs)]}, ""
+
+
+def _questions(job: Job, answer: Mapping[str, Any], judged: Mapping[str, str],
+               index: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The judge's questions shaped for the owner, and why the others wait."""
+    shaped: list[dict[str, Any]] = []
+    why: list[str] = []
+    for raw in answer.get("questions") or ():
+        made, reason = _shaped(raw, job, judged, index)
+        if made is None:
+            why.append(reason)
+        elif made["key"] not in {q["key"] for q in shaped}:
+            shaped.append(made)
+    return shaped, why
+
+
+def _write_questions(core: Any, job: Job, judged: set[str], new: list[dict[str, Any]]) -> None:
+    """The open questions file with this job's questions: the same question asked again
+    gathers the records of both; a question whose every record this job judged again goes."""
+    by_key = {q["key"]: q for q in new}
+    old = _logged_questions(core.root, job.session)
+    for q in old:
+        same = by_key.get(str(q.get("key")))
+        if same is not None:
+            same["records"] += [r for r in q.get("records") or () if isinstance(r, Mapping)
+                                and str(r.get("id")) not in judged | _ids_of(same)]
+    kept = [q for q in old if q.get("key") not in by_key and not _ids_of(q) <= judged]
+    if new or len(kept) != len(old):
+        files.write_json_atomic(questions_path(core.root, job.session), [*kept, *new])
+
+
+def _say_waiting(core: Any, session: str, waits: Mapping[str, str]) -> str:
+    """SR-245: the records nobody can settle wait, and the once-per-window line says so."""
+    from plumb.judgment import waiting_line
+
+    why = "; ".join(f"{i}: {w}" for i, w in waits.items())
+    line = waiting_line(core.root, verdict_cascade.STEP, why) or ""
+    if line:
+        from plumb.understand import worker
+
+        worker.say(core.root, session, line)
+    return f"waiting: {why}"
 
 
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
-    """Log the verdicts; add the doubt lines to the read-back cards; give the supported records to the trial.
-    Returns it in memory; the worker writes it."""
+    """Log the verdicts (with JEV's score when it gave one); approve ``by: auto-jev`` the
+    records the fast track takes; write the judge's questions about the others for the
+    question tool (``judge_questions.json``), and say once that a record no question covers
+    waits. No card is raised. Returns the log entries in memory; the worker writes them."""
     if core is None:
         return Applied(job=job.id)
     asked = {str(r.get("id")): r for r in job.inputs.get("records") or ()
@@ -288,14 +565,17 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     index = core.index()
     model = str(answer.get("model") or core.config.understand.judge_model)
     entries: list[Mapping[str, Any]] = []
-    new_cards: list[CardState] = []
     notes: list[str] = []
-    supported: list[trial.Candidate] = []
-    fragments: list[Any] = []
-    confirmed: list[Mapping[str, Any]] = []     # SR-191: records the judge model confirmed
-    backlog_pass = job.inputs.get("pass") == backlog.PASS
-    doubts: dict[str, list[str]] = {}       # read-back card id -> lines
-    flagged: list[str] = []                 # every doubt line, for the backlog's end line
+    confirmed: list[Mapping[str, Any]] = []
+    corrections: list[Mapping[str, Any]] = []   # the owner's answers correcting a reading
+    prompts_known = {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}
+    judged: dict[str, str] = {}             # the records judged at their current version
+    waits: dict[str, str] = {}              # record id -> why it waits
+    rounds: dict[str, tuple[Any, ...]] = {}  # clear set records: (by, auto, answers)
+    sent: dict[str, str] = {}               # contradicted by the owner's answer: reworded
+    from plumb.capture.spec import escalated_ids
+
+    in_sets = escalated_ids(core)
     for raw in answer.get("verdicts") or ():
         if not isinstance(raw, Mapping) or str(raw.get("id")) not in asked:
             continue
@@ -312,6 +592,9 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                    "beyond": beyond, "contradicts": contradicts,
                    "score": confidence if verdict == "supported" else 0,
                    "model": str(raw.get("model") or model), "premise_digest": digest}
+        payload.update({k: bool(raw[k]) for k in ("clear", "answer_corrects") if k in raw})
+        if verdict == "waiting":
+            payload["reason"] = _flat(raw.get("reason"))
         given = item.get("premise") or {}
         partial = bool(given.get("messages")) and all(
             m.get("partial") for m in given["messages"])
@@ -322,46 +605,75 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                 _Prompts(core), index, record) or "")
         if raw.get("by") in BY:         # SR-182: who answered; a verdict with none is no JEV's
             payload.update(by=raw["by"], judge=str(raw.get("judge") or ""))
+        jev = raw.get("jev") if isinstance(raw.get("jev"), Mapping) else None
+        if jev is not None:             # JEV's score, logged even when it does not clear
+            payload.update(jev_score=jev.get("score"), jev_clears=bool(jev.get("clears")),
+                           jev_version=jev.get("model_version"))
+            if record is not None and not partial:
+                from plumb.capture.triage import _Prompts, premise_problem
+
+                reason = premise_problem(_Prompts(core), index, record)
+                if reason:              # SR-248 EX-6: not the owner's verified words
+                    payload.update(premise="quote-only", premise_reason=reason)
+        current = record is not None and record.hash == item["hash"]
+        cited = [str(a["digest"]) for a in given.get("answers") or ()
+                 if isinstance(a, Mapping) and a.get("digest")]   # the answers it was shown
+        if cited:                       # judged after a question round, on these answers
+            payload["answers"] = cited
         entries.append({"kind": "verdict", "payload": payload})
-        if record is None or record.hash != item["hash"]:
+        if not current:
             notes.append(f"{item['id']} changed while it was judged; it is judged again")
             continue
-        if backlog_pass and partial:
-            fragments.append(record)        # the owner's words are not on file: one card says so
-        elif verdict in ("beyond", "contradicts"):
-            line = doubt_line(index, record, verdict, item.get("related") or (), contradicts)
-            doubts.setdefault(_request_card(index, record), []).append(line)
-            flagged.append(line)
-        elif _confirms(core, index, record, raw, confidence):
-            confirmed.append({"kind": "approval", "payload": {   # SR-191
-                "records": approval_items(core, [record.id]), "by": "auto-model",
-                "prompt_digest": digest, "job": job.id,
-                "auto": {"model": payload["model"], "confidence": confidence}}})
-        else:
-            supported.append(trial.Candidate(record, confidence, item["premise"], ""))
+        if given.get("answers") and cited != [e.digest for e in
+                                              premise.answer_entries(core, record)]:
+            # an answer logged since the job was built queued its own judge job
+            notes.append(f"{item['id']} has an answer the judge was not shown; it is judged "
+                         "again")
+            continue
+        judged[record.id] = record.hash
+        if cited and payload.get("answer_corrects"):   # SR-252 EX-4: a real 'no' label
+            corrections.append(_correction(job, item, record, index, jev, cited))
+        if verdict == "waiting":            # SR-267 EX-9: the agent's own doubt asks nothing
+            waits[record.id] = payload["reason"] or "the judge could not settle it"
+        elif cited and verdict == "contradicts":    # SR-209 EX-2: the agent rewords it
+            sent[record.id] = "; ".join(contradicts) or "the owner's answer says otherwise"
+        elif cited:                         # SR-248 EX-4, EX-5: approved after the round
+            done = _after_round(core, record, raw, payload, jev, record.id in in_sets)
+            if done is not None and record.id in in_sets:
+                rounds[record.id] = (*done, cited)  # a set is approved whole (P6)
+            elif done is not None:
+                confirmed += _approve(core, job, [record.id], item, *done, prompts_known,
+                                      cited)
+        elif (auto := _fast_tracked(core, record, raw, jev)) is not None:
+            confirmed += _approve(core, job, [record.id], item, "auto-jev", auto,
+                                  prompts_known)    # SR-248: on JEV's score, no question
     for item_id in asked:
         if not any(e["payload"]["id"] == item_id for e in entries):
             notes.append(f"the judge gave no verdict for {item_id}")
-    if backlog_pass:
-        done = backlog.after_job(core, job, supported=supported,
-                                 verdicts=[e["payload"] for e in entries
-                                           if e["kind"] == "verdict"],
-                                 fragments=fragments, flagged=flagged)
-        new_cards.extend(done.cards)
-        notes.extend(done.notes)
-    else:
-        new_cards.extend(trial.cards_for(core, job.session, supported))
-    if doubts:
-        from dataclasses import replace
-
-        from plumb.understand import cardstore
-
-        for card in cardstore.own_cards(Path(core.root), job.session):
-            more = [d for d in doubts.get(card.id, ()) if d not in card.evidence.splitlines()]
-            if card.kind == "clarify" and card.status in cardstore.AWAITING and more:
-                new_cards.append(replace(card, evidence="\n".join(
-                    [*([card.evidence] if card.evidence else []), *more])))
-    return Applied(job=job.id, cards=tuple(new_cards), entries=(*entries, *confirmed),
+    held: dict[str, str] = {}
+    if rounds:
+        whole, held = _set_approvals(core, job, rounds, asked, prompts_known)
+        confirmed += whole
+        notes += [f"{i} is clear and waits for its set ({a})" for i, a in held.items()]
+    approved = {str(i.get("id")) for e in confirmed if e["kind"] == "approval"
+                for i in e["payload"]["records"]}
+    shaped, refused = _questions(job, answer, {
+        i: h for i, h in judged.items()
+        if i not in approved | set(waits) | set(held) | set(sent)}, index)
+    _write_questions(core, job, set(judged), shaped)
+    covered = {i for q in [*shaped, *open_questions(core, job.session)] for i in _ids_of(q)}
+    covered |= set(held) | set(sent)
+    why = "; ".join(refused) or "the judge asked no question about it"
+    waits.update({i: why for i in judged if i not in approved | covered | set(waits)})
+    if waits:
+        notes.append(_say_waiting(core, job.session, waits))
+    if sent:
+        notes.append(_sent_back(core, job.session, sent))
+    if job.inputs.get("pass") == backlog.PASS:
+        notes.extend(backlog.after_job(core, job, verdicts=[
+            e["payload"] for e in entries if e["kind"] == "verdict"]).notes)
+    kept = _new_pre_intents(core, job.session, [asked[i] for i in judged])
+    return Applied(job=job.id, entries=(*entries, *corrections, *kept, *confirmed),
                    notes=tuple(notes))
 
 

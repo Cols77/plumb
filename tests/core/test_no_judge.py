@@ -36,17 +36,25 @@ def _vcs(root: Path, *args: str) -> None:
 
 
 def test_ex1_auto_approval_without_a_key_says_so_once_and_approves_nothing(
-        repo: Path, monkeypatch) -> None:
+        repo: Path, write_record, monkeypatch) -> None:
+    from understand.fakes import FakeDispatcher
+    from understand.test_judge_job import build_job, make_world, verdict_answer
+
+    from plumb.understand import judge, verdict
+
+    ids = make_world(repo, write_record, 1)
     core = open_core(repo)
     on = SimpleNamespace(configured=True, effective=False, reason="the JEV credential is absent")
     monkeypatch.setattr(autoapprove, "auto_approve_state", lambda core: on)
     monkeypatch.setattr(autoapprove, "jev_ready", lambda core: (False, "no key"))
-    said: list[str] = []
-    assert autoapprove.gate(core, ["SR-001"], prompt_digest="d", said=said) == []
-    assert len(said) == 1 and "auto-approval is waiting" in said[0] and "no key" in said[0]
-    assert not list(core.log_read("events", ["approval"]))
-    autoapprove.gate(core, ["SR-001"], prompt_digest="d", said=said)
-    assert len(said) == 1   # once per session
+    model = FakeDispatcher({"judge": verdict_answer(("SR-001", "supported", 0.9))})
+    job = build_job(core, ids)
+    done = verdict.cascade(core, job, system="judge", schema={}, jev=None, dispatcher=model)
+    assert "auto-approval is waiting" in done.line and "no key" in done.line
+    applied = judge.apply(core, job, done.answer)
+    assert [e for e in applied.entries if e["payload"].get("by") == "auto-jev"] == []
+    again = verdict.cascade(core, job, system="judge", schema={}, jev=None, dispatcher=model)
+    assert again.line == ""   # once per session
 
 
 @pytest.fixture

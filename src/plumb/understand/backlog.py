@@ -7,9 +7,8 @@ their versions, so the same records are the same job), and a pass a failure inte
 on the next turn from where it stopped: ``start`` queues only the records that have no judgment
 at their current version.
 
-What the pass finds comes as trial cards when it ends (``trial.cards_for``, three open at most);
-a flagged record (beyond, contradicts) is an issue card instead; a record whose premise is only
-a fragment of the owner's words gets a trial card that says its words were not found.
+What the pass finds takes the question route of every judged record: the judge model's
+questions go to the question tool, a fragment of the owner's words included (no trial card).
 
 While it runs the pass reports "judging the backlog" with the records judged and the total
 (``progress.Reporter``); when it ends the last job writes the end line."""
@@ -21,7 +20,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from plumb.contracts import CardState
 from plumb.present import owner_text
 from plumb.understand import files
 
@@ -40,7 +38,6 @@ class Started:
 
 @dataclass
 class After:
-    cards: list[CardState] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
 
@@ -136,15 +133,12 @@ def holding(core: Any, session: str) -> set[str]:
 # --------------------------------------------------------------------------- cards
 
 
-def after_job(core: Any, job: Any, *, supported: Sequence[Any],
-              verdicts: Sequence[Mapping[str, Any]], fragments: Sequence[Any],
-              flagged: Sequence[CardState]) -> After:
+def after_job(core: Any, job: Any, *, verdicts: Sequence[Mapping[str, Any]]) -> After:
     """Called by ``judge.apply`` for a job of the pass: report the progress; when this job
-    finishes the pass, open the trial cards and write the end line. ``supported`` are the
-    supported records of the last job and ``fragments`` the records whose original words are
-    not on file (their trial card says so); neither is in the log yet."""
+    finishes the pass, write the end line. The records take the question route as any judged
+    record does (no trial card); ``verdicts`` are this job's, not in the log yet."""
     from plumb.progress import Reporter
-    from plumb.understand import trial
+    from plumb.understand import judge
 
     records = proposed(core)
     judged = judged_ids(core, records) | {str(v["id"]) for v in verdicts}
@@ -155,14 +149,9 @@ def after_job(core: Any, job: Any, *, supported: Sequence[Any],
     if waiting_for:
         reporter.update(owner_text.STEP_JUDGING_BACKLOG, done, total)
         return After()
-    scores = {str(v["id"]): float(v.get("score") or 0) for v in verdicts}
-    seen = {c.record.id for c in supported}
-    extra = [*supported, *(trial.Candidate(r, scores.get(r.id, 0.0), {}) for r in fragments
-                           if r.id not in seen)]
-    built = trial.cards_for(core, job.session, extra, pass_done=True)
-    reporter.done(final=owner_text.BACKLOG_DONE.format(judged=done,
-                                                       cards=len(built) + len(flagged)))
-    return After(cards=built)
+    reporter.done(final=owner_text.BACKLOG_DONE.format(
+        judged=done, questions=len(judge.open_questions(core, job.session))))
+    return After()
 
 
 def run(command: str, argv: list[str]) -> int:

@@ -12,7 +12,7 @@ phase starts only when that command exits 0.
 
 Open: `{plumb} intent open --wait` on the owner's words. It drafts the candidates (what will
 be done, what won't, assumptions labelled) and says which check it ran; act on that answer
-as plumb-clarify does (ready, a card, couldn't check, waiting).
+as plumb-clarify does (ready, ask, a card, couldn't check, waiting).
 
 Stage A, clarify and integrate, until `{plumb} intent gate clarify` passes:
 
@@ -52,5 +52,17 @@ is missing; `{plumb} intent status` says which gate is open. When the edit hook 
 link stale, before the turn ends: repin it after its tests pass, relink it when the code
 moved, or card it when the meaning changed.
 
-The owner confirms records on the cards or by typing `/plumb approve <IDs>`; the loop and its
-judge confirm nothing. Speak in the owner's terms; paste nothing capture prints.
+The loop's gates approve nothing. Speak in the owner's terms; paste nothing capture prints.
+
+Questions and approval: plumb's judge approves on the owner's behalf; no approval command
+exists, and you never decide on your own that the owner approved.
+1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each `question`,
+   `header` and option `label` and `description` to AskUserQuestion verbatim, one call per
+   question, in order. Never restate a question in prose.
+2. Never answer, infer or default a question for the owner, never pick the recommended option
+   for them, and never write or read `judge_questions.json` or any approval.
+3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
+   question, stop asking, tell the owner in one plain line that the work waits for their
+   answer, and do not rerun `ask` in a loop.
+4. Any other question to the owner also goes through the question tool, with options and
+   their consequences.

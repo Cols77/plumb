@@ -57,19 +57,19 @@ def clip(text: str, width: int) -> str:
 
 
 def status_card(snapshot: Any, *, ascii: bool = False) -> str:
-    """``plumb ✓ aligned · "add multiply next to add" · SR 12/14 ok (2 by JEV) · 1 awaits
+    """``plumb ✓ aligned · "add multiply next to add" · SR 12/14 ok (2 judge-approved) · 1 awaits
     you``; with ``ascii`` the glyphs become words and ``|`` separators."""
     data = _data(snapshot)
     state = card_state(data)
     total = _int(data, "requirements_total")
     confirmed = _int(data, "requirements_confirmed")
     by = data.get("confirmed_by") if isinstance(data.get("confirmed_by"), Mapping) else {}
-    jev = _int(by, "auto-jev")
+    judged = _int(by, "auto-jev") + _int(by, "auto-model")
     parts = [state]
     summary = clip(data.get("intent_summary") or "", SUMMARY_WIDTH)
     if summary:
         parts.append(f'"{summary}"')
-    notes = ([f"{jev} by JEV"] if jev else [])
+    notes = ([f"{judged} judge-approved"] if judged else [])   # SR-251
     parts.append(f"SR {confirmed}/{total} ok" + (f" ({', '.join(notes)})" if notes else ""))
     proposed = _int(data, "proposed")
     if proposed:

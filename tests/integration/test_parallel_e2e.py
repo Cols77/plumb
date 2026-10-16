@@ -197,11 +197,12 @@ def test_two_worktrees_propose_change_and_merge(repo: Path, tmp_path: Path) -> N
     assert {sr_a, sr_b} <= set(feature.get("requirements") or [sr_a, sr_b])
     assert "conflict" in sr1, sr1                            # the clash, an intent conflict
 
-    # SR-001's content changed in the merge, so its links' pins show stale (spec 7.3); the
-    # agent reviews them and repins (never a confirmation). The conflict is the owner's.
+    # SR-001's content changed in the merge, so its links' pins and the early decision's
+    # pin on it show stale (spec 7.3); the agent reviews them and repins (never a
+    # confirmation). The conflict is the owner's.
     held = plumb(repo, "merge-check", "main", "--no-run")
     assert held.returncode == 1 and "stale link SR-001" in held.stdout, held.stdout
-    ok(repo, "repin", "SR-001", "--note", "reviewed after the merge")
+    ok(repo, "repin", "--all-stale", "--note", "reviewed after the merge")
     check = plumb(repo, "merge-check", "main", "--no-run")
     assert check.returncode == 4, check.stdout + check.stderr   # waits for the owner
     assert "intent conflicts wait for your choice (/plumb conflicts):" in check.stdout

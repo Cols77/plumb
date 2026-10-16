@@ -137,7 +137,7 @@ def test_ex12_failed_job_names_the_step_and_stops_running(
 
 def test_end_line_written_by_apply_is_not_removed(repo: Path, fake: FakeDispatcher,
                                                   monkeypatch: pytest.MonkeyPatch) -> None:
-    end = owner_text.BACKLOG_DONE.format(judged=160, cards=3)
+    end = owner_text.BACKLOG_DONE.format(judged=160, questions=3)
 
     def apply_judge(core, job, answer):
         Reporter(core.root, "s1", "judge").done(end)

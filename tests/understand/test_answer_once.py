@@ -50,7 +50,6 @@ def test_ex1_an_option_number_answers_the_card_shown_in_text(
         repo: Path, engine_standins: Any, intent: str) -> None:
     _asked("let users export their data", FORMAT, repo, engine_standins)
     (card,) = _by_kind(repo, "choice")
-    readback = _by_kind(repo, "clarify")[0].id
     core = _reply(repo, engine_standins, "2",
                   [{"id": f"{card.id}/format", "hash": "", "answer": "change",
                     "change": "the second way", "evidence": "2", "confidence": 0.95}],
@@ -59,7 +58,7 @@ def test_ex1_an_option_number_answers_the_card_shown_in_text(
     by_id = {c.id: c for c in _cards(repo)}
     assert by_id[card.id].status == "answered"
     assert by_id[card.id].answers[0].answer == "change: the second way"
-    assert set(by_id) == {card.id, readback}              # no 'Your request: 2' card
+    assert set(by_id) == {card.id}                        # no 'Your request: 2' card
     assert not gate.is_closed(repo, SESSION)
     assert any(e.payload.get("evidence") == "2" for e in core.events() if e.kind == "read-entry")
 

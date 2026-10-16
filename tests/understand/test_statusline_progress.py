@@ -125,7 +125,7 @@ def test_three_failures_flag(repo: Path, engine_standins) -> None:
 
 
 def test_end_line_shown_then_gone(repo: Path) -> None:
-    end = owner_text.BACKLOG_DONE.format(judged=160, cards=4)
+    end = owner_text.BACKLOG_DONE.format(judged=160, questions=4)
     _progress(repo, SESSION, step=end, kind="judge", state="done", ago=2)
     assert _line(repo).endswith(end)
     _progress(repo, SESSION, step=end, kind="judge", state="done", ago=40)

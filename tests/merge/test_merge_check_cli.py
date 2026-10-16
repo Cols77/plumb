@@ -79,7 +79,7 @@ def test_usage_errors(repo: Path, capsys) -> None:
     assert cli.main(["merge-check", "--bogus", "--root", str(repo)]) == 2
 
 
-def test_approve_line_capped(repo: Path) -> None:
+def test_merge_wait_line_is_counted_with_no_id(repo: Path) -> None:
     from plumb.boundary import merge_report, render
 
     base = _head(repo)
@@ -89,5 +89,5 @@ def test_approve_line_capped(repo: Path) -> None:
     report = merge_report(open_core(repo), base, run_full=False)
     assert len(report.awaiting) == 12 and report.exit == 4
     line = next(x for x in render(report) if x.startswith("plumb: merge waits"))
-    assert "SR-010`" in line and "SR-011" not in line
-    assert "+2 more (plumb merge-check --json) to confirm too" in line
+    assert line.startswith("plumb: merge waits for 12 records to be approved")   # counted
+    assert "SR-0" not in line and "plumb approve" not in line                     # SR-267

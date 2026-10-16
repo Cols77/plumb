@@ -159,12 +159,10 @@ uv run plumb verify --full       # runs the suite and records evidence
 uv run plumb status
 ```
 
-`status` shows `awaiting your confirmation: SR-001`. A new record stays `proposed` until you
-confirm it from your own terminal:
-
-```bash
-uv run plumb approve SR-001      # answer y at the prompt
-```
+A new record stays `proposed` until the judge approves it on your behalf: your logged words
+entail it (JEV above 0.9, calibrated), or the judge model asks you one question through the
+question tool and judges again with your answer. `status` counts what waits on a judge; no
+command approves a record, and the agent never writes an approval.
 
 Owner-only commands ask y/N in an interactive terminal and refuse to run without one (in
 Git Bash's mintty, prefix `winpty`), so an agent's shell cannot write an owner approval on
@@ -196,9 +194,9 @@ The install is idempotent and keeps every entry that does not belong to plumb. I
 
 - `.claude/settings.json`: the `SessionStart`, `UserPromptSubmit`, `PostToolUse` (on edits,
   async) and `Stop` hooks, the status line, the `PLUMB_AGENT_SESSION` marker, and deny rules
-  that stop the agent from running `plumb approve`, `plumb revoke`, `plumb tests waive`,
-  `plumb triage --approve`, `plumb spec approve` or `plumb config auto-approve`, or editing
-  `.plumb/log/`;
+  that stop the agent from running the owner's or plumb's own commands (`plumb tests waive`,
+  `plumb config auto-approve`, `plumb hook prompt`, `plumb hook question-answer`, ...) or
+  editing `.plumb/log/`;
 - `.claude/skills/plumb-records/SKILL.md` (with its `references/`), a short skill that tells the
   agent where the records and the test map are and which commands to use (`capture`,
   `decide`, `proof`), and
@@ -358,10 +356,10 @@ Every command accepts `--root ROOT` (by default, plumb walks up to the first dir
 holds `.plumb/`, else `.git`). Most commands accept `--json`. Run `plumb <command> --help` for
 the full options.
 
-Exit codes: `0` ok, `1` findings, `2` usage, `3` refused by the guard, `4` the merge waits for
-your confirmation (a touched requirement, a requirement widened by a new link, an untraced
-change no requirement owns, or a `trace.exempt` glob added on the branch: `plumb approve
---exempt`; or a confirmed requirement whose acceptance test changed since you confirmed it),
+Exit codes: `0` ok, `1` findings, `2` usage, `3` refused by the guard, `4` the merge waits on a
+judge or your answer (a touched requirement, a requirement widened by a new link, an untraced
+change no requirement owns, a `trace.exempt` glob added on the branch, or a confirmed
+requirement whose acceptance test changed since it was confirmed),
 `5` verification holds the merge (an acceptance test the change can affect fails or has no
 passing run on the current code, a regression is unresolved, including one hidden by
 rewriting the test, or `full verification pending` holds and no owner waiver covers this
@@ -380,7 +378,8 @@ exact change).
 | `plumb drift` | Drift signals only: stale and dangling links, unconfirmed edits, uncovered examples, and fidelity that a judgment no longer covers. |
 | `plumb brief [--all] [--max-lines N]` | The short intent brief (about 30 lines). |
 | `plumb explain WORDS...` (alias `why`) | Why a behaviour, a file or a record exists, in your terms: the requirement, your words it derives from, decisions, examples, test state and code. Takes plain words ("how totals are rounded"), a path or a record ID. In Claude Code, `/plumb explain <anything>`. |
-| `plumb approve IDS... [--proposed] [--exempt] [--note]` | Owner approval of records at their current content. It asks y/N in your interactive terminal and is refused under the agent session marker or without a terminal (an agent's shell, a pipe), on every host. `revoke` and `tests waive` work the same way. |
+| `plumb approve`, `plumb revoke`, `plumb confirm`, `plumb relay` | Gone (SR-210): refused with exit 3. The judge approves records on your behalf, from your logged words and your answers to its questions. |
+| ~~`plumb approve IDS... [--proposed] [--exempt] [--note]`~~ | (retired) Owner approval of records at their current content. It asks y/N in your interactive terminal and is refused under the agent session marker or without a terminal (an agent's shell, a pipe), on every host. `revoke` and `tests waive` work the same way. |
 | `plumb revoke IDS... [--note]` | Owner revocation of the latest approval. |
 
 ### Intent capture

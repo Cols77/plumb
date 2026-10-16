@@ -64,19 +64,22 @@ class LogError(RuntimeError):
     """An entry the log refuses to write (the reason is a plain sentence)."""
 
 
-# approvals written from the owner's words come from the worker
-WORKER_ONLY_BY = frozenset({"owner-words", "auto-model"})
+# approvals written from the owner's words or a judge's verdict come from the worker (SR-210)
+WORKER_ONLY_BY = frozenset({"owner-words", "auto-model", "auto-jev"})
+# entry kinds only the worker writes
+WORKER_ONLY_KINDS = frozenset({"pre-intent"})
 
 
 def worker_token_problem(root: Path | str, session: str | None, by: str) -> str | None:
-    """Why a ``by`` value may not be written here, or None. ``owner-words``
-    approvals need ``PLUMB_WORKER`` equal to the ``token`` of the session's ``worker.lock``
+    """Why a ``by`` value (or a worker-only entry kind) may not be written here, or None.
+    Those need ``PLUMB_WORKER`` equal to the ``token`` of the session's ``worker.lock``
     (tamper-evident, not tamper-proof). Other ``by`` values are not checked."""
-    if by not in WORKER_ONLY_BY:
+    if by not in WORKER_ONLY_BY | WORKER_ONLY_KINDS:
         return None
+    what = f"a {by} entry" if by in WORKER_ONLY_KINDS else f"a {by} approval"
     token = os.environ.get("PLUMB_WORKER")
     if not token:
-        return f"a {by} approval is written by the worker only (no worker token)"
+        return f"{what} is written by the worker only (no worker token)"
     base = Path(root) / ".plumb" / "session"
     locks = [base / session / "worker.lock"] if session else sorted(base.glob("*/worker.lock"))
     for lock in locks:
@@ -86,7 +89,7 @@ def worker_token_problem(root: Path | str, session: str | None, by: str) -> str 
             continue
         if held and held == token:
             return None
-    return f"a {by} approval is written by the worker only (the token does not match)"
+    return f"{what} is written by the worker only (the token does not match)"
 
 
 def current_marker() -> str:
@@ -636,10 +639,11 @@ def _validate_append(paths: PlumbPaths, stream: LogStream, kind: str,
     if stream_of(kind) != stream:
         raise ValueError(f"a {kind} entry belongs to the {stream_of(kind)} stream, "
                          f"not {stream}")
-    if kind == "approval" and payload.get("by") in WORKER_ONLY_BY:
+    by = kind if kind in WORKER_ONLY_KINDS else payload.get("by") if kind == "approval" else None
+    if by in WORKER_ONLY_BY | WORKER_ONLY_KINDS:
         session = payload.get("session")
         problem = worker_token_problem(paths.root, session if isinstance(session, str)
-                                       else None, str(payload.get("by")))
+                                       else None, str(by))
         if problem:
             raise LogError(problem)
 

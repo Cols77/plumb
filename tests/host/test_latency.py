@@ -174,7 +174,7 @@ def test_intent_lines_survive_cpu_contention(busy_repo: Path, hook_input) -> Non
 def _contended_turn(busy_repo: Path, hook_input, call) -> None:
     brief, _ = call("hook", "session-start", payload=hook_input("SessionStart"))
     assert brief.startswith("plumb brief")
-    assert "awaiting your confirmation: 53 proposed" in brief
+    assert "waiting on a judge: 53 records" in brief
     index = open_core(busy_repo).index()
     stated = busy_repo / ".plumb" / "session" / "stated.json"
     stated.write_text(json.dumps({"records": [

@@ -75,8 +75,9 @@ def test_groups_low_risk_first(project: Path, capsys) -> None:
     assert "DEC-001" in ids(view.individual)
     assert run(project, "triage") == 0
     out = capsys.readouterr().out.splitlines()
-    first = next(n for n, line in enumerate(out) if "INT-017" in line)
-    later = next(n for n, line in enumerate(out) if "DEC-001" in line)
+    first = next(n for n, line in enumerate(out) if "multiply number 17" in line)
+    later = next(n for n, line in enumerate(out) if line.startswith("  floats?"))
+    assert not any("INT-017" in line or "DEC-001" in line for line in out)   # SR-267
     assert first < later
     assert "triage" in event_kinds(project)
 
@@ -95,7 +96,7 @@ def test_exclusions_shown_individually(project: Path, write_record) -> None:
     view = triage(open_core(project))
     why = {i.id: i.excluded for i in view.individual}
     assert why["DEC-001"] == "a decision that matters"
-    assert why["INT-017"] == "a member of the escalated spec INT-020"
+    assert why["INT-017"] == 'a member of the escalated set "a set"'
     assert why["INT-019"] == "an edit of a record you confirmed before"
     assert why["FEAT-001"] == "no owner words to compare"
     assert why["INT-018"] is None  # riskier on its own merits
@@ -103,27 +104,24 @@ def test_exclusions_shown_individually(project: Path, write_record) -> None:
     assert view.low_risk == ()
 
 
-def test_approve_low_risk_exact_hashes_owner_only(project: Path, monkeypatch,
-                                                  capsys) -> None:
-    hashes = {i.id: i.hash for i in triage(open_core(project)).low_risk}
+@pytest.mark.sr("SR-210")
+def test_triage_approve_no_longer_exists_even_in_the_owners_terminal(project: Path, monkeypatch,
+                                                                     capsys) -> None:
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
     assert run(project, "triage", "--approve", "low-risk") == 3
     assert "approval" not in event_kinds(project)
     monkeypatch.delenv("PLUMB_AGENT_SESSION")
-    assert run(project, "triage", "--approve", "low-risk") == 0  # the owner's terminal
-    [entry] = list(open_core(project).log_read("events", ["approval"]))
-    assert {r["id"]: r["hash"] for r in entry.payload["records"]} == hashes
-    assert entry.payload["by"] == "owner"
-    assert entry.payload["triage"]["group"] == "low-risk"
-    assert open_core(project).status(["INT-017"])["INT-017"].confirmation == "confirmed"
-    assert open_core(project).status(["DEC-001"])["DEC-001"].confirmation == "proposed"
+    assert run(project, "triage", "--approve", "low-risk") == 3  # the owner's terminal too
+    assert "no longer exists" in capsys.readouterr().err
+    assert "approval" not in event_kinds(project)
 
 
-def test_approve_low_risk_refused_without_terminal(project: Path, monkeypatch,
-                                                   capsys) -> None:
+@pytest.mark.sr("SR-210")
+def test_triage_approve_refused_without_terminal(project: Path, monkeypatch,
+                                                 capsys) -> None:
     agent_shell_setup(monkeypatch)
     assert run(project, "triage", "--approve", "low-risk") == 3
-    assert "not an interactive terminal" in capsys.readouterr().err
+    assert "no longer exists" in capsys.readouterr().err
     assert "approval" not in event_kinds(project)
 
 

@@ -197,8 +197,9 @@ def deliver(ctx: Any, output: Any) -> Any:
 
 
 def turn_line(ctx: Any, before: Any, data: Mapping[str, Any]) -> str:
-    """SR-159: the one plumb line for a turn end with the panel running: new cards waiting,
-    answers applied (by the card's title), nothing when neither changed. Plain text: a hook's
+    """SR-159: the one plumb line for a turn end with the panel running: the judge's approvals
+    counted (SR-251), new cards waiting, answers applied (by the card's title), nothing when
+    none changed. Plain text: a hook's
     ``systemMessage`` cannot carry colour. ``turnline.json`` holds each card's state seen at
     the last turn end."""
     from plumb.api import open_core
@@ -217,7 +218,11 @@ def turn_line(ctx: Any, before: Any, data: Mapping[str, Any]) -> str:
                    for e in summary.read_drawn(ctx.root, ctx.session_id)})
     applied = [titles.get(k, k) for k, v in states.items()
                if v == "done" and seen.get(k) in ("waiting", "processing")]
-    lines = [f"plumb: your answer on {t} was applied" for t in applied]
+    from plumb.present.owner_text import JUDGE_APPROVED
+
+    lines = [f"plumb: {c}" for c in data.get("confirmations", ())  # SR-251: counted
+             if str(c).endswith(JUDGE_APPROVED)]
+    lines += [f"plumb: your answer on {t} was applied" for t in applied]
     if fresh:
         lines.append("plumb: 1 new card waits on the panel" if len(fresh) == 1
                      else f"plumb: {len(fresh)} new cards wait on the panel")

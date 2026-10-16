@@ -20,7 +20,9 @@ ROUTES: dict[str, str] = {
     "repin": "plumb.commands", "stale": "plumb.commands",
     "validate": "plumb.commands",
     "check": "plumb.commands",
-    "approve": "plumb.commands", "relay": "plumb.commands", "revoke": "plumb.commands",
+    # approve, confirm, relay, revoke: refused as gone, listed in no help line (SR-210)
+    "approve": "plumb.commands", "confirm": "plumb.commands", "relay": "plumb.commands",
+    "revoke": "plumb.commands",
     # PRESENT (sub-project 5): the owner's commands, plain words accepted
     "status": "plumb.present.cli", "brief": "plumb.present.cli", "drift": "plumb.present.cli",
     "show": "plumb.present.cli", "explain": "plumb.present.cli", "why": "plumb.present.cli",
@@ -84,12 +86,10 @@ records and integrity:
   stale        card: bring a stale link to the owner as a card; cards: list them in full
                (--incomplete: those lacking something)
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
-  status       counts, drift and records awaiting your confirmation (--card: the card)
+  status       counts, drift, what awaits you, judge approvals (--card: the card)
   brief        the short intent brief
   explain      why a behaviour, file or record exists, in plain terms (plain words, a path
                or an ID); alias why
-  approve      owner approval of records at their current content (owner's terminal only)
-  revoke       owner revocation
   proof        a requirement's planned proof (how you will see it working) and its evidence
   drift        drift signals only
   log          migrate: move legacy JSONL log lines into one file per entry (digests kept)
@@ -103,8 +103,8 @@ intent capture:
   decide       a decision: "I assumed A; B also fits" (--supersede for a confirmed one)
   clarify      the clarification depth and the questions that matter for a request
   escalate     escalation suggestions; decline (the owner said no)
-  spec         an escalated spec: show, approve (owner's terminal only)
-  triage       proposed records grouped by faithfulness; --approve low-risk (owner only)
+  spec         an escalated spec: show (every member in full, the set hash), state
+  triage       proposed records grouped by faithfulness (advisory; it approves nothing)
   config       auto-approve on|off and show (owner's terminal only)
   jev          status, setup (the credential variable's name only), calibrate
   quotes       recover: find older records' words in past session transcripts (shown on

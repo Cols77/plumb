@@ -96,8 +96,9 @@ def new_record(core: Core, kind: str, fields: Mapping[str, Any], body: str = "",
 SHORT_ANSWERS = frozenset({
     "yes", "no", "ok", "okay", "yep", "yeah", "nope", "sure", "fine", "agreed", "go",
     "do it", "go ahead", "sounds good", "looks good", "lgtm", "y", "n"})
-ANSWER_NEEDS_QUESTION = ("the quote is a short answer: record the question it answered "
-                         "(question) so the read-back is judged against both")
+ANSWER_NEEDS_QUESTION = ("this answer needs its question: the quote is a short answer; record "
+                         "the question it answered (question) so the read-back is judged "
+                         "against both")
 
 
 def is_short_answer(quote: Any) -> bool:

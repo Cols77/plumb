@@ -20,9 +20,9 @@ import pytest
 
 from plumb import links, stale
 from plumb.api import open_core
-from plumb.understand.repin import Meaning
 from plumb.present import owner_text
 from plumb.understand import files
+from plumb.understand.repin import Meaning
 from understand.fakes import owner_level
 from understand.harness import Session
 from understand.test_read_job import int_text, record_text
@@ -85,6 +85,21 @@ def owner_words_approvals(repo: Path) -> dict[str, dict[str, Any]]:
             for record in e.payload["records"]:
                 out[record["id"]] = dict(e.payload)
     return out
+
+
+def judge_approvals(repo: Path) -> dict[str, dict[str, Any]]:
+    """The judge's approvals (``auto-model``, ``auto-jev``) by record id."""
+    return {r["id"]: dict(e.payload) for e in events(repo, "approval")
+            if e.payload.get("by") in ("auto-model", "auto-jev") for r in e.payload["records"]}
+
+
+def judge_clear(*ids: str, **contradicted: list[str]) -> dict[str, Any]:
+    """The scripted judge model: each of ``ids`` supported and clear; each of
+    ``contradicted`` (id with '-' as '_') contradicted by the owner's words."""
+    return {"verdicts": [
+        *({"id": i, "verdict": "supported", "confidence": 0.9, "clear": True} for i in ids),
+        *({"id": i.replace("_", "-"), "verdict": "contradicts", "confidence": 0.9,
+           "contradicts": why, "clear": False} for i, why in contradicted.items())]}
 
 
 def last_digest(repo: Path) -> str:
@@ -196,8 +211,10 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
         {"id": "SR-088", "hash": index["SR-088"].hash, "answer": "change",
          "change": "some features stay internal", "confidence": 0.9,
          "evidence": "I am not sure I agree with SR-088"}]
-    s.script_path.write_text(json.dumps({"$delay": 10, "clarify": NOTHING,
-                                         "read": {"entries": entries}}), encoding="utf-8")
+    s.script_path.write_text(json.dumps({
+        "$delay": 10, "clarify": NOTHING, "read": {"entries": entries},
+        "judge": judge_clear("INT-008", SR_088=["some features stay internal"])}),
+        encoding="utf-8")
     s.start()
     s.say(message)
     lines: list[str] = []
@@ -207,19 +224,21 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
         time.sleep(0.2)
     lines.append(line)
     assert owner_text.STEP_READING in line                       # "reading your answer"
-    assert owner_words_approvals(repo) == {}                      # nothing confirmed meanwhile
+    assert events(repo, "approval") == []                        # nothing confirmed meanwhile
     assert s.worker_idle(40)
 
-    assert set(owner_words_approvals(repo)) == {"INT-008"}        # confirmed by their words
-    assert owner_words_approvals(repo)["INT-008"]["evidence"] == "INT-008 ok"
+    # the reading keeps the message as a pre-intent; the judge approves with the words
+    (kept,) = events(repo, "pre-intent")
+    assert kept.payload["text"] == message
+    assert set(judge_approvals(repo)) == {"INT-008"} and owner_words_approvals(repo) == {}
+    assert judge_approvals(repo)["INT-008"]["answers"] == [kept.digest]
     status = open_core(repo).status()
     assert status["INT-008"].confirmation == "confirmed"
-    assert status["SR-088"].confirmation != "confirmed"           # a change, not a yes
-    (change,) = [c for c in own_cards(s) if c["id"].startswith("change:SR-088")]
-    assert change["status"] == "open" and "some features stay internal" in change["issue"]
+    assert status["SR-088"].confirmation != "confirmed"           # sent back to be reworded
+    assert not [c for c in own_cards(s) if c["id"].startswith("change:")]
     assert len(calls(s, "read")) == 1                             # one read job for the message
     said = text_of(s.stop())
-    assert "you said" in said
+    assert owner_text.JUDGE_APPROVED in said
     lines.append(said)
     lines.append(s.status_line())
     at_owner_level(*[ln for ln in lines if ln],
@@ -238,7 +257,10 @@ def _capture_doc() -> dict[str, Any]:
             "requirements": requirements}
 
 
-def test_flow_3_capture_trial_and_calibration(repo: Path) -> None:
+def test_flow_3_capture_asks_through_the_question_tool_and_draws_no_trial(repo: Path) -> None:
+    """SR-248 EX-3, SR-252 EX-6: after a capture the judge model's question waits for the
+    question tool (``clarify --wait`` answers ``ask``); the turn end draws no trial or read-back
+    card and nothing is approved without a question round."""
     (repo / ".plumb" / "config.yaml").write_text(ROOMY, encoding="utf-8")
     s = Session(repo)
     s.start()
@@ -247,63 +269,35 @@ def test_flow_3_capture_trial_and_calibration(repo: Path) -> None:
           "and takes roots of whole numbers.")
     assert s.worker_idle(30)
 
-    # one capture: one judge job for the intent and the six requirements
-    scores = dict(zip((f"SR-00{n}" for n in range(1, 7)), (0.95, 0.93, 0.92, 0.9, 0.88, 0.4),
-                      strict=True))
-    verdicts = [{"id": rid, "verdict": "supported", "confidence": c} for rid, c in scores.items()]
-    verdicts.append({"id": "INT-001", "verdict": "supported", "confidence": 0.9})
-    model(s, judge={"verdicts": verdicts})
+    # one capture: one judge job for the intent and the six requirements, one question for all
+    ids = ["INT-001", *(f"SR-00{n}" for n in range(1, 7))]
+    asked = {"question": "Should the calculator work on whole numbers only?",
+             "header": "Numbers", "records": ids,
+             "options": [{"label": "Whole numbers", "consequence": "As you said; no decimals."},
+                         {"label": "Decimals too", "consequence": "Wider; more to build."}],
+             "recommended_reason": "you said whole numbers",
+             "request": {"words": "takes roots of whole numbers", "date": "16 Oct"}}
+    model(s, judge={"verdicts": [{"id": rid, "verdict": "supported", "confidence": 0.9}
+                                 for rid in ids], "questions": [asked]})
     (repo / "capture.json").write_text(json.dumps(_capture_doc()), encoding="utf-8")
     done = plumb(s, "capture", "--file", str(repo / "capture.json"), "--prompt",
                  short(last_digest(repo)))
     assert done.returncode == 0, done.stderr
     assert s.worker_idle(30)
     assert len(calls(s, "judge")) == 1
-    assert owner_words_approvals(repo) == {}                              # a trial only
 
-    # the trial: three cards of one record each, one of them below the threshold; the owner
-    # has not answered yet
+    waited = plumb(s, "clarify", "--wait", "--json")
+    assert waited.returncode == 0, waited.stderr
+    shown = json.loads(waited.stdout)
+    assert shown["state"] == "ask"
+    (question,) = shown["questions"]
+    assert question["options"][0]["label"] == "Whole numbers (Recommended)"
+    assert "takes roots of whole numbers" in question["question"]
+    at_owner_level(question["question"], *(o["description"] for o in question["options"]))
+
     s.stop()
-    trials = [c for c in own_cards(s) if c["kind"] == "trial"]
-    assert [len(c["questions"]) for c in trials] == [1, 1, 1]
-    assert [c["questions"][0]["record"] for c in trials] == ["SR-005", "SR-001", "SR-002"]
-
-    # the owner answers yes to two of them and no to the one below the threshold
-    index = open_core(repo).index()
-    entries = []
-    for card in trials:
-        q = card["questions"][0]
-        bad = q["record"] == "SR-005"
-        entries.append({
-            "id": f'{card["id"]}/{q["id"]}', "hash": index[q["record"]].hash,
-            "answer": "rejected" if bad else "accepted",
-            "rejection": "misread" if bad else None,
-            "evidence": "no to the fifth" if bad else "yes to all", "confidence": 0.95})
-    model(s, read={"entries": entries})
-    s.say("yes to all, but no to the fifth, no to the fifth")
-    assert s.worker_idle(30)
-    assert {r: p["label"] for r, p in owner_words_approvals(repo).items()} == {
-        "SR-001": "yes", "SR-002": "yes"}
-    (rejected,) = events(repo, "rejection")           # the fifth, a misreading
-    assert [r["id"] for r in rejected.payload["records"]] == ["SR-005"]
-    assert rejected.payload["reason"] == "capture-error"
-
-    # JEV's own logged verdicts (the judge model's never calibrate, SR-182)
-    core = open_core(repo)
-    for rid, c in scores.items():
-        core.log_append("events", "verdict", {
-            "id": rid, "hash": core.index()[rid].hash, "verdict": "supported", "score": c,
-            "by": "jev", "judge": "jev:test/jev-1", "model": "test/jev-1"})
-
-    # recalibration at the turn's end, from the logs: no model call
-    before = len(calls(s))
-    model(s, **{"$fail_when": {"contains": ""}})        # any model call now would fail
-    s.stop()
-    assert len(calls(s)) == before                       # recalibration called no model
-    assert [e for e in events(repo, "calibration") if e.payload.get("source") == "logged"]
-    assert not events(repo, "settle-config")             # nothing settles by context any more
-    # the next card opens when one was answered
-    assert len([c for c in own_cards(s) if c["kind"] == "trial" and c["status"] == "open"]) == 3
+    assert not [c for c in own_cards(s) if c["kind"] in ("trial", "clarify")]
+    assert not events(repo, "approval")                  # no approval without a question round
 
 
 # ---- (5) every failure of spec 9.1 ------------------------------------------------------------
@@ -331,12 +325,12 @@ def test_flow_5_failures_confirm_nothing_and_retry_next_turn(repo: Path, write_r
     assert "did not finish" in couldnt.lower()
     at_owner_level(couldnt, quoted=("INT-008 ok",))
 
-    # the model is back: the next turn retries the failed job and the confirmation lands
-    model(s, read=_accept_int8(index))
+    # the model is back: the next turn retries the failed job and the judge approves
+    model(s, read=_accept_int8(index), judge=judge_clear("INT-008"))
     s.say("what is left to do?")
     assert s.worker_idle(30)
-    assert set(owner_words_approvals(repo)) == {"INT-008"}
-    assert "you said" in text_of(s.stop())
+    assert set(judge_approvals(repo)) == {"INT-008"}
+    assert owner_text.JUDGE_APPROVED in text_of(s.stop())
 
 
 def test_flow_5_schema_failure_and_a_record_edited_after_it_was_shown(
@@ -395,16 +389,17 @@ def test_flow_5_a_job_not_finished_at_the_turns_end_is_collected_next_turn(
     s = Session(repo)
     show(s, ["INT-008"])
     s.script_path.write_text(json.dumps({"$delay": 3, "clarify": NOTHING,
-                                         "read": _accept_int8(index)}), encoding="utf-8")
+                                         "read": _accept_int8(index),
+                                         "judge": judge_clear("INT-008")}), encoding="utf-8")
     s.start()
     s.say("INT-008 ok")
-    assert "you said" not in text_of(s.stop())                      # still being read
-    assert owner_words_approvals(repo) == {}
+    assert owner_text.JUDGE_APPROVED not in text_of(s.stop())       # still being read
+    assert events(repo, "approval") == []
     assert s.worker_idle(40)
     model(s)
     s.say("carry on")
-    assert set(owner_words_approvals(repo)) == {"INT-008"}
-    assert "you said" in text_of(s.stop())
+    assert set(judge_approvals(repo)) == {"INT-008"}
+    assert owner_text.JUDGE_APPROVED in text_of(s.stop())
 
 
 # ---- (6) what the agent writes into the session's files confirms nothing -------------------------

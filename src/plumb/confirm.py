@@ -14,7 +14,12 @@ An approval that fails its re-check (an owner approval written under the agent s
 an agent-relayed approval without its cited prompt, affirming quote or quote digest, or a
 ``by: import`` approval that the import event it carries, written outside the agent session,
 did not approve: ``importer/recheck.py``) never confirms anything; ``plumb validate`` reports
-it as an error.
+it as an error. So does an owner approval carrying a quote, which only a hand-written entry
+does, and an entry saying the owner answered in the study room (SR-210 EX-3): the judge
+worker's entries and plumb's reading of the owner's own answers approve. An owner approval
+with no quote stays valid: ``approvals.approve`` writes it for history and fixtures. A judge
+approval (``auto-jev``, ``auto-model``) naming one record of an escalated spec set names every
+record of the set: a set is approved whole (P6).
 """
 
 from __future__ import annotations
@@ -71,6 +76,11 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
         from plumb.importer.recheck import import_problem
 
         return import_problem(entry)  # self-contained: needs no log context
+    if by == "study-room" or payload.get("via") == "study-room":
+        # no study room puts questions in this version (plan section 3), so no such entry
+        # names a question at that version (SR-210 EX-3)
+        return (f"study-room {entry.kind} with no question put at that version: only the "
+                "judge worker's entries and plumb's reading of the owner's own answers approve")
     if by == "owner":
         if entry.marker != "none":
             return (f"owner {entry.kind} written under the agent session marker "
@@ -80,6 +90,9 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
             from plumb.understand.recheck_button import problem as button_problem
 
             return button_problem(entry, core)
+        if entry.kind == "approval" and payload.get("quote"):
+            return ("owner approval quoting the owner's words, written by hand: only the judge "
+                    "worker's entries and plumb's reading of the owner's own answers approve")
         return None
     if by == "agent-relayed":
         digest = payload.get("prompt_digest")
@@ -91,14 +104,13 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
         if payload.get("quote_digest") != sha256_text(quote):
             return f"agent-relayed {entry.kind} quote does not match its quote_digest"
         if entry.kind == "approval" and payload.get("via") == "command":
-            # SP8: a typed /plumb approve|confirm is checked by the parse, not by words
-            from plumb.understand.typed import parse
+            # SP8: a past typed /plumb approve|confirm (gone, SR-209) is checked by its parse
+            from plumb.understand.typed import legacy_ids
 
-            parsed = parse(quote)
+            typed_ids = legacy_ids(quote)
             named = {str(r.get("id")) for r in payload.get("records") or []
                      if isinstance(r, Mapping)}
-            if parsed is None or parsed.command not in ("approve", "confirm") \
-                    or not named <= set(parsed.ids):
+            if typed_ids is None or not named <= set(typed_ids):
                 return "agent-relayed command approval: the quote is not the typed command"
             return None
         choice = payload.get("choice")
@@ -120,14 +132,32 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
     return f"{entry.kind} has an unknown source by={by!r}"
 
 
+def _split_set(payload: Mapping[str, Any], escalated: Collection[str]) -> str | None:
+    """Why a judge approval splits an escalated spec set (it names a record of the set but
+    not every one), or None. ``escalated``: ``escalated_of``, record id -> its set."""
+    if not isinstance(escalated, Mapping):
+        return None
+    named = {str(r.get("id")) for r in payload.get("records") or [] if isinstance(r, Mapping)}
+    for record_id in sorted(named):
+        whole = escalated.get(record_id)
+        if whole and not set(whole) <= named:
+            return (f"{payload.get('by')} approval of {record_id} without the rest of its "
+                    "escalated spec set: a set is approved whole")
+    return None
+
+
 def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
                     escalated: Collection[str] = (), core: Any = None
                     ) -> list[tuple[LogEntry, str | None]]:
     """Approval and revocation entries in log order, each with its re-check problem.
-    ``escalated``: the records of escalated spec sets (``escalated_of``), which no auto-jev
-    approval confirms; callers holding a Core use ``checked``/``remaining``."""
+    ``escalated``: the records of escalated spec sets (``escalated_of``: record id -> its
+    set), which no fast-track auto-jev approval confirms and a judge approval after a round
+    confirms only whole; callers holding a Core use ``checked``/``remaining``."""
     from plumb.capture.autoapprove import recheck
+    from plumb.understand.premise import ANSWER_VIA
+    from plumb.understand.recheck_model import cited_answers_problem
 
+    answers: dict[str, Mapping[str, Any]] = {}   # the owner's question-tool answers so far
     prompts: set[str] = set()
     calibrations: dict[str, LogEntry] = {}
     config: Mapping[str, Any] | None = None
@@ -145,15 +175,19 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
                 config = entry.payload["auto_approve"]
         elif entry.kind == "calibration":
             calibrations[entry.digest] = entry
+        elif entry.kind in ANSWER_VIA:
+            if ANSWER_VIA[entry.kind] == entry.payload.get("via"):
+                answers[entry.digest] = entry.payload   # a pre-intent: the worker's only
         elif entry.kind in ("approval", "revocation"):
             problem = entry_problem(entry, prompts, affirmations, core)
             by = entry.payload.get("by")
             if problem is None and by == "auto-jev":
-                problem = recheck(entry, config, calibrations, prompts, approved, escalated)
+                problem = recheck(entry, config, calibrations, prompts, approved, escalated,
+                                  answers)
             if problem is None and by == "auto-model" and entry.kind == "approval":
-                from plumb.capture.autoapprove import model_floor
-
-                problem = model_floor(config, float(entry.payload["auto"]["confidence"]))
+                problem = cited_answers_problem(entry.payload, answers, "auto-model")
+            if problem is None and by in ("auto-jev", "auto-model"):
+                problem = _split_set(entry.payload, escalated)
             if problem is None and entry.kind == "approval" and by != "auto-jev":
                 approved.update(str(r.get("id")) for r in entry.payload.get("records") or []
                                 if isinstance(r, Mapping))
@@ -196,12 +230,16 @@ def remaining_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
     return remaining
 
 
-def escalated_of(core: Core) -> frozenset[str]:
-    """The records of escalated spec sets (``plumb.capture.spec.escalated_ids``), which
-    no auto-jev approval confirms."""
-    from plumb.capture.spec import escalated_ids
+def escalated_of(core: Core) -> dict[str, frozenset[str]]:
+    """Every record of an escalated spec set, anchor included (the ids of
+    ``plumb.capture.spec.escalated_ids``), with the whole set it belongs to."""
+    from plumb.capture.spec import escalated_sets
 
-    return escalated_ids(core)
+    out: dict[str, frozenset[str]] = {}
+    for anchor, members in escalated_sets(core)[0].items():
+        whole = frozenset([anchor, *members])
+        out.update(dict.fromkeys(whole, whole))
+    return out
 
 
 def checked(core: Core) -> list[tuple[LogEntry, str | None]]:
@@ -338,6 +376,15 @@ def confirmation_of(record: Record,
     return "unconfirmed-edit", by
 
 
+def judge_auto(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The ``auto`` payload of a judge approval (SR-251), for its label (an older entry
+    carries its score at the top); None for any other approval."""
+    if payload.get("by") not in ("auto-jev", "auto-model"):
+        return None
+    auto = payload.get("auto")
+    return auto if isinstance(auto, Mapping) else payload
+
+
 def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordStatus]:
     index = core.index()
     selected = list(index) if ids is None else [i for i in ids if i in index]
@@ -383,5 +430,7 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
             covered=covered, uncovered_examples=uncovered, links=record_states,
             superseded_by=superseded.get(record_id), changed_tests=moved,
             self_recorded=self_recorded,
-            carried_from=carried.get(record_id) if confirmation == "confirmed" else None)
+            carried_from=carried.get(record_id) if confirmation == "confirmed" else None,
+            auto=judge_auto(latest[-1][2].payload) if latest and confirmation == "confirmed"
+            else None)
     return out

@@ -1,4 +1,6 @@
-"""R2/R3: applying the reader's answers after exact checks only (SR-101)."""
+"""R2/R3: applying the reader's answers after exact checks only (SR-101). A shown record the
+reading covers is confirmed by nothing here: the message is kept as a pre-intent naming it and
+a judge job reads them together (task 6 of the judge-approval plan, SR-209 EX-2)."""
 
 from __future__ import annotations
 
@@ -8,6 +10,11 @@ import threading
 from pathlib import Path
 
 import pytest
+
+from plumb.api import open_core
+from plumb.log import append, stream_of
+from plumb.present import owner_text
+from plumb.understand import cardstore, files, read
 from understand.fakes import FakeDispatcher, as_worker, owner_level
 from understand.test_read_job import (
     SESSION,
@@ -19,11 +26,6 @@ from understand.test_read_job import (
     record_text,
     state,
 )
-
-from plumb.api import open_core
-from plumb.log import append, stream_of
-from plumb.present import owner_text
-from plumb.understand import cardstore, files, read
 
 pytestmark = pytest.mark.sr("SR-214")
 
@@ -76,6 +78,19 @@ def approvals(core) -> dict[str, dict]:
     return out
 
 
+def covered(core) -> dict[str, str]:
+    """Record id -> version that the message's pre-intent (``via: read``) names."""
+    return {r["id"]: r["hash"] for e in entries_of(core, "pre-intent")
+            if e.payload.get("via") == "read" for r in e.payload["asked"]["records"]}
+
+
+def judge_jobs(core) -> list[list[str]]:
+    from plumb.understand import jobs
+
+    return [list(j.inputs["records"]) for j in jobs.queued(core.root, SESSION)
+            if j.kind == "judge"]
+
+
 @pytest.fixture
 def core(repo: Path, write_record):
     texts = [int_text(8, "Internal features"), record_text(88, "Plain words UX"),
@@ -84,38 +99,38 @@ def core(repo: Path, write_record):
     return make_core(repo, write_record, texts)
 
 
-def test_ex1_int008_ok_confirmed_sr088_change(core) -> None:
+def test_ex1_int008_ok_and_sr088_change_both_go_to_the_judge_with_the_words(core) -> None:
     message = ("INT-008 ok, I am not sure I agree with SR-088. In terms of UX, some features "
                "might have to remain internal to plumb.")
     after, applied, job = run(core, message, ["INT-008", "SR-088"], [
         entry_of(core, "INT-008", "accepted", "INT-008 ok"),
         entry_of(core, "SR-088", "change", "some features might have to remain internal to plumb",
                  change="some features stay internal to plumb")])
-    assert set(approvals(after)) == {"INT-008"}
-    payload = approvals(after)["INT-008"]
-    assert payload["evidence"] == "INT-008 ok" and payload["prompt_digest"] == job.inputs[
-        "message"]["digest"]
-    assert payload["job"] == job.id and payload["confidence"] == 0.95
-    assert payload["records"] == [{"id": "INT-008", "hash": core.index()["INT-008"].hash}]
-    (card,) = [c for c in cardstore.load(after.root, SESSION)]
-    assert "some features stay internal to plumb" in card.issue
-    assert card.topic == "Plain words UX" and card.questions[0].record == "SR-088"
+    assert approvals(after) == {} and cardstore.load(after.root, SESSION) == []
+    index = core.index()
+    assert covered(after) == {i: index[i].hash for i in ("INT-008", "SR-088")}
+    (kept,) = entries_of(after, "pre-intent")
+    assert kept.payload["text"] == message
+    assert kept.payload["source"] == job.inputs["message"]["digest"]
+    assert kept.payload["asked"]["job"] == job.id
+    assert judge_jobs(after) == [["INT-008", "SR-088"]]
 
 
-def test_ex2_int24_read_as_int024_all_three_confirmed(core) -> None:
+def test_ex2_int24_read_as_int024_all_three_judged(core) -> None:
     message = "Confirm SR-097, SR-098, INT-24"
     after, _, _ = run(core, message, ["SR-097", "SR-098", "INT-024"], [
         entry_of(core, "SR-097", "accepted", "Confirm SR-097"),
         entry_of(core, "SR-098", "accepted", "SR-098"),
         entry_of(core, "INT-24", "accepted", "INT-24")])
-    assert set(approvals(after)) == {"SR-097", "SR-098", "INT-024"}
+    assert set(covered(after)) == {"SR-097", "SR-098", "INT-024"}
+    assert approvals(after) == {}
 
 
 def test_ex3_unshown_record_is_noted_and_confirmed_by_nothing(core) -> None:
     after, applied, _ = run(core, "ok, and confirm SR-041 too", ["SR-040"], [
         entry_of(core, "SR-040", "accepted", "ok"),
         entry_of(core, "SR-041", "accepted", "confirm SR-041 too", hash="")])
-    assert set(approvals(after)) == {"SR-040"}
+    assert set(covered(after)) == {"SR-040"} and approvals(after) == {}
     assert cardstore.load(after.root, SESSION) == [] and applied.cards == ()
     assert any("SR-041" in note for note in applied.notes)
 
@@ -134,7 +149,7 @@ def test_ex5_edited_record_confirms_nothing_and_is_noted(core, repo, write_recor
     after, applied, _ = run(core, "ok", ["SR-040", "SR-041"], [
         entry_of(core, "SR-040", "accepted", "ok"),
         entry_of(core, "SR-041", "accepted", "ok")], edit=edit)
-    assert set(approvals(after)) == {"SR-041"}
+    assert set(covered(after)) == {"SR-041"} and approvals(after) == {}
     assert cardstore.load(after.root, SESSION) == []
     assert any("SR-040" in note for note in applied.notes)
 
@@ -186,16 +201,13 @@ def test_every_entry_is_logged_for_calibration(core) -> None:
     assert got["SR-040"]["message_digest"] == job.inputs["message"]["digest"]
 
 
-def test_confirmation_lines_say_you_said(core) -> None:
+def test_confirmation_lines_say_nothing_was_confirmed_by_the_reading(core) -> None:
     after, _, job = run(core, "INT-008 ok", ["INT-008"], [
         entry_of(core, "INT-008", "accepted", "INT-008 ok")])
-    lines = read.confirmation_lines(after, job.inputs["message"]["digest"])
-    assert len(lines) == 1
-    assert owner_text.CONFIRM_YOU_SAID.format(evidence="INT-008 ok") in lines[0]
-    assert "Internal features" in lines[0]
+    assert read.confirmation_lines(after, job.inputs["message"]["digest"]) == []
 
 
-def test_ex13_nothing_confirmed_while_the_job_runs_confirmed_when_it_returns(
+def test_ex13_nothing_confirmed_while_the_job_runs_judged_when_it_returns(
         core, engine_standins) -> None:
     from plumb.understand import queue, worker
 
@@ -212,9 +224,11 @@ def test_ex13_nothing_confirmed_while_the_job_runs_confirmed_when_it_returns(
     assert dispatcher.blocked.wait(10)
     assert approvals(open_core(core.root)) == {}
     assert read.describe(job) == owner_text.STEP_READING
+    assert covered(open_core(core.root)) == {}
     release.set()
     runner.join(10)
-    assert set(approvals(open_core(core.root))) == {"SR-040"}
+    after = open_core(core.root)
+    assert set(covered(after)) == {"SR-040"} and approvals(after) == {}
 
 
 def test_confirmation_and_readback_text_pass_the_owner_level_scan(core) -> None:

@@ -76,7 +76,7 @@ def test_merge_refuses_unconfirmed_touched_requirement(base, capsys) -> None:
     code, out = _check(root, sha, capsys)
     assert code == 4
     assert "SR-001" in out and "INT-001" in out and "SR-002" not in out
-    assert "plumb approve SR-001 INT-001" in out
+    assert "plumb: merge waits for 2 records to be approved" in out   # counted (SR-267)
     assert "given a link" in out
 
 
@@ -224,7 +224,7 @@ def test_merge_puts_untraced_changes_to_the_owner(base, capsys) -> None:
     assert "touched requirements: none" in out
     assert "untraced changes (no requirement owns them): src/mul.py" in out
     assert "confirmation: every touched requirement is confirmed" not in out
-    waits = out[out.index("merge waits for your confirmation:"):]
+    waits = out[out.index("merge waits for approval:"):]
     assert "untraced src/mul.py" in waits and "trace.exempt" in waits
     assert merge_check(open_core(root), sha, as_json=True) == 4
     assert json.loads(capsys.readouterr().out)["untraced"] == ["src/mul.py"]
@@ -307,7 +307,7 @@ def test_frontmatter_edit_adding_a_link_waits_for_the_owner(confirmed_base, caps
     assert "new link in this range: implemented_by src/z.py (now owned by SR-001)" in out
 
 
-@pytest.mark.sr("SR-260")
+@pytest.mark.sr("SR-260", "SR-288")
 def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
                                                          monkeypatch) -> None:
     root, sha = confirmed_base
@@ -316,12 +316,18 @@ def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
     assert code == 4, out
     assert "untraced changes (no requirement owns them): src/z.py" in out
     assert "trace.exempt src/**: added in this range" in out
+    assert "nothing can approve a new trace.exempt glob yet" in out           # SR-288 EX-1
+    assert "remove it to merge" in out and "plumb approve" not in out
+    assert cli.main(["approve", "--exempt", "--root", str(root)]) == 3        # SR-288 EX-2
+    assert "approve no longer exists" in capsys.readouterr().err
+    assert _check(root, sha, capsys)[0] == 4
     assert merge_check(open_core(root), sha, as_json=True) == 4
     assert json.loads(capsys.readouterr().out)["new_exempt"] == ["src/**"]
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
-    assert cli.main(["approve", "--exempt", "--root", str(root)]) == 3  # owner only
+    with pytest.raises(approvals.Refused):                    # owner only
+        approvals.approve(open_core(root), [], exempt=True)
     monkeypatch.delenv("PLUMB_AGENT_SESSION")
-    assert cli.main(["approve", "--exempt", "--root", str(root)]) == 0
+    approvals.approve(open_core(root), [], exempt=True)
     capsys.readouterr()
     code, out = _check(root, sha, capsys)
     assert code == 0, out

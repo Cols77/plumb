@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from logutil import legacy_relay
 from merge_helpers import INT, SR2, commit, repin_all, write
+from understand.fakes import as_worker
 
 from plumb import approvals
 from plumb.api import open_core
@@ -61,55 +62,59 @@ def test_lists_agent_relayed_with_quote(base) -> None:
     relayed = report.glance[0]
     assert relayed["quote"] == "SR-002 looks good, approved"
     assert relayed["prompt_digest"] == digest
-    assert relayed["revoke"] == "plumb revoke SR-002"
+    assert "revoke" not in relayed                      # SR-260 EX-9: no command named
     assert relayed["self_recorded"] is False
     text = _glance_text(report)
     assert 'AGENT-RELAYED SR-002 quote "SR-002 looks good, approved"' in text
-    assert digest[:19] in text and "plumb revoke SR-002" in text
+    assert digest[:19] in text and "plumb revoke" not in text
     assert "owner INT-001" in text
 
 
 @pytest.mark.sr("SR-260")
 def test_lists_auto_jev_with_score(base) -> None:
-    """SR-047 EX-2: an auto-jev approval shows its score, model version and revoke form."""
+    """SR-260 EX-9 (SR-251): an auto-jev approval is marked judge-approved with its model
+    version and score, and names no command."""
     root, sha = base
     core = open_core(root)
     record = core.index()["INT-001"]
-    core.log_append("events", "approval", {
-        "records": [{"id": "INT-001", "hash": record.hash}], "by": "auto-jev",
-        "score": 0.96, "confidence": "high", "prompt_digest": "sha256:" + "a" * 64,
-        "backend": "jev", "model_version": "jev-2026-09", "claim_kind": "intent"})
+    with as_worker(root, "s1"):      # only the worker writes an auto-jev approval (SR-210)
+        core.log_append("events", "approval", {
+            "records": [{"id": "INT-001", "hash": record.hash}], "by": "auto-jev",
+            "score": 0.96, "confidence": "high", "prompt_digest": "sha256:" + "a" * 64,
+            "backend": "jev", "model_version": "jev-2026-09", "claim_kind": "intent"})
     report = merge_report(open_core(root), sha, run_full=False)
     row = report.glance[0]
     assert row["by"] == "auto-jev" and row["score"] == 0.96
-    assert row["model_version"] == "jev-2026-09" and row["revoke"] == "plumb revoke INT-001"
+    assert row["model_version"] == "jev-2026-09" and "revoke" not in row
     text = _glance_text(report)
-    assert "AUTO-JEV INT-001 score 0.96 (high) model jev-2026-09" in text
-    assert "plumb revoke INT-001" in text
+    assert "INT-001 judge-approved (auto-jev, jev-2026-09, 0.96) (high)" in text
+    assert "plumb revoke" not in text
 
 
 @pytest.mark.sr("SR-260")
 def test_lists_capture_written_auto_jev(base) -> None:
-    """Cross-lane: the payload exactly as CAPTURE's writer (``capture.autoapprove.gate``)
+    """Cross-lane: the payload exactly as the judge job's writer (``understand.judge``)
     records it, the fields nested under ``auto`` with the label in ``confidence_label``,
     shows its score, confidence label and model version (R8 B)."""
     root, sha = base
     core = open_core(root)
     record = core.index()["INT-001"]
-    core.log_append("events", "approval", {
-        "records": [{"id": "INT-001", "hash": record.hash}], "by": "auto-jev",
-        "prompt_digest": "sha256:" + "b" * 64, "quote": None, "quote_digest": None,
-        "auto": {"score": 0.97, "confidence": 0.91, "confidence_label": "high",
-                 "backend": "jev:jev-1.13.0", "model_version": "jev-1.13.0",
-                 "calibration": "sha256:" + "c" * 64, "claim_kind": "intent-readback",
-                 "threshold": 0.9, "prompt_via": "hook", "min_probability": 0.9,
-                 "min_confidence": "high", "parts": 1, "fingerprints": ["f"]}})
+    with as_worker(root, "s1"):      # only the worker writes an auto-jev approval (SR-210)
+        core.log_append("events", "approval", {
+            "records": [{"id": "INT-001", "hash": record.hash}], "by": "auto-jev",
+            "prompt_digest": "sha256:" + "b" * 64, "quote": None, "quote_digest": None,
+            "session": "s1",
+            "auto": {"score": 0.97, "confidence": 0.91, "confidence_label": "high",
+                     "backend": "jev:jev-1.13.0", "model_version": "jev-1.13.0",
+                     "calibration": "sha256:" + "c" * 64, "claim_kind": "intent-readback",
+                     "threshold": 0.9, "prompt_via": "hook", "min_probability": 0.9,
+                     "min_confidence": "high", "parts": 1, "fingerprints": ["f"]}})
     report = merge_report(open_core(root), sha, run_full=False)
     row = report.glance[0]
     assert (row["score"], row["confidence"], row["model_version"]) == (0.97, "high",
                                                                        "jev-1.13.0")
     assert row["backend"] == "jev:jev-1.13.0" and row["claim_kind"] == "intent-readback"
-    assert "AUTO-JEV INT-001 score 0.97 (high) model jev-1.13.0" in _glance_text(report)
+    assert "INT-001 judge-approved (auto-jev, jev-1.13.0, 0.97) (high)" in _glance_text(report)
 
 
 @pytest.mark.sr("SR-260")
@@ -132,7 +137,7 @@ def test_revocations_and_import_listed_without_revoke_form(base) -> None:
     report = merge_report(open_core(root), sha, run_full=False)
     kinds = [(row["kind"], row["by"]) for row in report.glance]
     assert kinds == [("approval", "owner"), ("revocation", "owner")]
-    assert report.glance[1]["revoke"] is None
+    assert all("revoke" not in row for row in report.glance)   # SR-260 EX-9: no command
 
 
 @pytest.mark.sr("SR-247")

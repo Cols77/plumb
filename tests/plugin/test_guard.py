@@ -53,6 +53,7 @@ DENIED = (
     "config show",
     "turn start --prompt-file p.txt",
     "hook prompt",
+    "hook question-answer",
     "conflict choose INT-004 --take ours",
     "owner confirm SR-001",
     "mod hello --session s1 --json",

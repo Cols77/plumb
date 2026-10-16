@@ -4,8 +4,10 @@ description: Grounds work in this repository's plumb records (the owner's intent
 ---
 Run plumb as `.venv/Scripts/python.exe -m plumb`. The owner's intent lives in files; read it before acting.
 
-- Only after the owner types `/plumb clarify <words>`, run `.venv/Scripts/python.exe -m plumb clarify --wait` before
-  reading code (plumb-clarify has its answers); an ordinary message is read back in your reply.
+- After `capture`, on any message, run `.venv/Scripts/python.exe -m plumb clarify --wait --json` and act on its answer
+  (rule 1 below, plumb-clarify): on an ordinary message it checks nothing of the request (read
+  it back in your reply) and answers `ask` with plumb's judge's questions, or `ready`. After
+  `/plumb clarify <words>`, also run it before reading code: it collects the request's check.
 - `.plumb/` holds INT (the owner's words), SR (given/when/then examples), DEC, FEAT and NC:
   `.venv/Scripts/python.exe -m plumb brief` (intent now), `show <ID>` (examples, tests), `explain <words>` (why it is).
 - Before editing a file, grep `.plumb/test_map.txt` for it (no map: run `.venv/Scripts/python.exe -m plumb tests map`);
@@ -20,11 +22,21 @@ Run plumb as `.venv/Scripts/python.exe -m plumb`. The owner's intent lives in fi
   of what one states is a commit claiming it (or an NC), never a new requirement; an intent
   is one per principle. The proof, how the owner sees it working, is shown before done:
   `.venv/Scripts/python.exe -m plumb proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
-- Ask with Claude Code's question tool by default; a card (plumb-clarify) only when the answer
-  must change the owner's records or needs context, consequences or a diagram.
-- Never decide the owner approved: only their typed `/plumb approve <IDs>` or plumb's reader
-  of their next message confirms. Never run `.venv/Scripts/python.exe -m plumb approve`, `revoke`, `tests waive`, `ui`,
+- Never run `.venv/Scripts/python.exe -m plumb approve` or `revoke` (both gone), `tests waive`, `ui`,
   `.venv/Scripts/python.exe -m plumb triage --approve`, `spec approve`, `config auto-approve`, `config show`,
-  `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo`, `go`, `approve`
-  are typed by the owner and done by the hook. Merges, conflict cards: references/merge.md,
+  `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo` and `go` are typed
+  by the owner and done by the hook. Merges, conflict cards: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.
+
+Questions and approval: plumb's judge approves on the owner's behalf; no approval command
+exists, and you never decide on your own that the owner approved.
+1. After `capture`, run `.venv/Scripts/python.exe -m plumb clarify --wait --json`. On `ask`, pass each `question`,
+   `header` and option `label` and `description` to AskUserQuestion verbatim, one call per
+   question, in order. Never restate a question in prose.
+2. Never answer, infer or default a question for the owner, never pick the recommended option
+   for them, and never write or read `judge_questions.json` or any approval.
+3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
+   question, stop asking, tell the owner in one plain line that the work waits for their
+   answer, and do not rerun `ask` in a loop.
+4. Any other question to the owner also goes through the question tool, with options and
+   their consequences.

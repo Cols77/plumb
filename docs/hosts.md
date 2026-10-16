@@ -13,7 +13,8 @@ and renders the `TurnOutput`. The guard against self-approval is the same on eve
 every owner-only command writes through `approvals.require_owner`, which refuses under the
 session marker and refuses, marker or not, unless stdin and stdout are an interactive
 terminal where the owner answers `y`. In the tested marked/noninteractive shell boundary,
-`plumb approve` exits 3 and writes nothing on every host. This is not a guarantee about
+`plumb approve` (gone, SR-210: refused as no longer existing) exits 3 and writes nothing on
+every host. This is not a guarantee about
 every agent shell: PTYs, removable markers, and direct file writes are outside that tested
 boundary. Marker and TTY checks are defense in depth, not authenticated owner provenance.
 

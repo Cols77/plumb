@@ -1,5 +1,5 @@
-"""CORE commands: init, show, link, repin, validate, status, brief, explain (alias why), approve,
-revoke."""
+"""CORE commands: init, show, link, repin, validate, status, brief, explain (alias why); approve,
+revoke and relay are refused as gone (SR-210)."""
 
 from __future__ import annotations
 
@@ -41,7 +41,8 @@ CONFIG_TEMPLATE = """\
 # escalation: {max_requirements: 3, max_features: 1, diff_lines: 400, diff_files: 10}
 # trace:
 #   exempt: []                 # source globs that need no requirement (untraced changes);
-#                              # a glob added on a branch waits for plumb approve --exempt
+#                              # a glob added on a branch is not honoured at the merge;
+#                              # nothing approves one yet (SR-288)
 """
 
 CLAIMS_TEMPLATE = """\
@@ -445,71 +446,12 @@ def _guarded(action: Callable[[], object]) -> int:
     return 0
 
 
-def _approved_names(entry: Any) -> str:
-    """``SR-001, trace.exempt src/gen/*``: what an approval entry confirmed."""
-    names = [str(r["id"]) for r in entry.payload["records"]]
-    if entry.payload.get("exempt"):
-        names.append("trace.exempt " + " ".join(entry.payload["exempt"]))
-    return ", ".join(names)
-
-
-def cmd_approve(command: str, argv: list[str]) -> int:
-    from plumb import approvals
-
-    parser = _parser(command, "Owner approval of records at their current content, after a "
-                     "y/N answered in the owner's own interactive terminal. Refused under the "
-                     "agent session marker and outside an interactive terminal.")
-    parser.add_argument("ids", nargs="*", help="record IDs")
-    parser.add_argument("--proposed", action="store_true",
-                        help="every proposed or unconfirmed-edit record")
-    parser.add_argument("--exempt", action="store_true",
-                        help="also confirm the trace.exempt globs of .plumb/config.yaml")
-    parser.add_argument("--note", default="")
-    args = parser.parse_args(argv)
-    if not args.ids and not args.proposed and not args.exempt:
-        parser.error("name record IDs or pass --proposed or --exempt")
-    core = _core(args)
-
-    def act() -> None:
-        approvals.refuse_under_marker("approve")
-        ids = list(args.ids)
-        if args.proposed:
-            listed = approvals.pending(core)
-            if not listed and not ids and not args.exempt:
-                print("plumb: nothing awaits your confirmation")
-                return
-            for record_id, record_hash, state in listed:
-                title = core.index()[record_id].title
-                print(f"  {record_id} {state} {record_hash[:19]}  {title}")
-            ids += [r[0] for r in listed if r[0] not in ids]
-        entry = approvals.approve(core, ids, note=args.note, exempt=args.exempt)  # asks y/N
-        print(f"plumb: approved {_approved_names(entry)}")
-
-    return _guarded(act)
-
-
-def cmd_relay(command: str, argv: list[str]) -> int:
-    """Refused, always (SR-135): an agent-run prose relay no longer exists."""
-    del command, argv
-    print("plumb: relay no longer exists; nothing was recorded. The owner's typed /plumb approve, "
-          "or the reader's reading of their own message, are what confirm a record", file=sys.stderr)
+def cmd_gone(command: str, argv: list[str]) -> int:
+    """``approve``, ``revoke`` and ``relay``: refused, always, whoever runs them and whatever
+    stdin holds (SR-210). The judge approves on the owner's behalf; no approval command exists."""
+    del argv
+    print(f"plumb: {command} no longer exists; nothing was recorded", file=sys.stderr)
     return EXIT_REFUSED
-
-
-def cmd_revoke(command: str, argv: list[str]) -> int:
-    from plumb import approvals
-
-    parser = _parser(command, "Owner revocation of the latest approval of records.")
-    parser.add_argument("ids", nargs="+")
-    parser.add_argument("--note", default="")
-    args = parser.parse_args(argv)
-    core = _core(args)
-
-    def act() -> None:
-        entry = approvals.revoke(core, args.ids, note=args.note)
-        print("plumb: revoked " + ", ".join(r["id"] for r in entry.payload["records"]))
-
-    return _guarded(act)
 
 
 def cmd_validate(command: str, argv: list[str]) -> int:
@@ -517,7 +459,7 @@ def cmd_validate(command: str, argv: list[str]) -> int:
     from plumb.validate import report
 
     parser = _parser(command, "Check records, links, logs and approvals. --merge BASE also "
-                     "runs the merge-boundary checks (exit 4: waits for your confirmation).")
+                     "runs the merge-boundary checks (exit 4: waits on a judge or your answer).")
     parser.add_argument("--merge", metavar="BASE", default=None)
     args = parser.parse_args(argv)
     core = _core(args)
@@ -582,6 +524,7 @@ def _failing_text(record_id: str, item: dict) -> str:
 
 def status_data(core) -> dict:
     from plumb.contracts import KIND_PREFIX
+    from plumb.present.cards import awaiting_lines, judge_lines
     from plumb.query import retired_ids
 
     index = core.index()
@@ -613,6 +556,8 @@ def status_data(core) -> dict:
         "uncovered_examples": {i: list(s.uncovered_examples) for i, s in statuses.items()
                                if s.uncovered_examples and s.confirmation == "confirmed"},
         "awaiting": sorted(i for i, s in statuses.items() if s.confirmation != "confirmed"),
+        "awaits_you": awaiting_lines(core, statuses),
+        "judge_approved": judge_lines(core, statuses),
         "changed_tests": {i: list(s.changed_tests) for i, s in sorted(statuses.items())
                           if s.changed_tests},
         "verification": verification_state(core),
@@ -649,7 +594,7 @@ def _awareness_section(args: argparse.Namespace) -> list[str]:
 
 
 def cmd_status(command: str, argv: list[str]) -> int:
-    parser = _parser(command, "Counts, drift and records awaiting your confirmation.")
+    parser = _parser(command, "Counts, drift, what awaits you and the judge's approvals.")
     args = parser.parse_args(argv)
     data = status_data(_core(args))
     if args.as_json:
@@ -675,8 +620,10 @@ def cmd_status(command: str, argv: list[str]) -> int:
         f"unconfirmed edit {conf['unconfirmed-edit']}",
         f"links: current {links['current']}, stale {links['stale']}, dangling "
         f"{links['dangling']}, unpinned {links['unpinned']}",
-        "awaiting your confirmation: " + (", ".join(data["awaiting"]) or "none"),
+        *data["awaits_you"],
     ]
+    if data["judge_approved"]:
+        lines += ["judge-approved:", *data["judge_approved"]]
     for record_id, ends in data["changed_tests"].items():
         lines.append(f"acceptance test changed since you confirmed it: {record_id} "
                      + ", ".join(ends))
@@ -878,9 +825,10 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "relink": cmd_relink,
     "repin": cmd_repin,
     "stale": cmd_stale,
-    "approve": cmd_approve,
-    "relay": cmd_relay,
-    "revoke": cmd_revoke,
+    "approve": cmd_gone,
+    "confirm": cmd_gone,
+    "relay": cmd_gone,
+    "revoke": cmd_gone,
     "validate": cmd_validate,
     "check": cmd_validate,
     "status": cmd_status,

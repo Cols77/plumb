@@ -62,7 +62,7 @@ def test_brief_content(records: Path) -> None:
     assert lines[0].startswith("plumb brief")
     assert "FEAT-001 Records and integrity (3 SR)" in text
     assert "INT-001" in text and "make vibe coding grounded" in text
-    assert "awaiting your confirmation:" in text and "SR-001" in text
+    assert "waiting on a judge:" in text and "your confirmation" not in text
     assert "DEC-001" in text
     assert "drift:" in text
     assert "NC-0001" in text

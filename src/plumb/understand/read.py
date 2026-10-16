@@ -3,7 +3,9 @@ against the records the previous reply showed and the open cards.
 
 ``build`` (queue side) assembles the job from the logs; ``recompute`` (worker side) rebuilds
 the inputs from the logs alone, so a job file the agent wrote is never trusted; ``apply``
-confirms only after exact checks (task R2)."""
+acts only after exact checks (task R2). A message answering what the last reply showed
+confirms nothing here: it is kept as a ``pre-intent`` naming the records the reading covers,
+and the judge reads it with them (SR-209 EX-2, SR-212)."""
 
 from __future__ import annotations
 
@@ -223,15 +225,10 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> str | None:
     from plumb.understand import typed
 
     parsed = typed.parse(entry.get("text"))
-    if parsed is not None:
-        if parsed.command in ("approve", "confirm") and parsed.ids:
-            typed.confirm_now(core, parsed, str(entry.get("digest") or ""), session)
-            return None                   # exact: the reader is not called
+    if parsed is not None:                # a typed "approve" is prose, read by meaning (SR-209)
         if parsed.command == "auto-approve":
             typed.switch_now(core, parsed, str(entry.get("digest") or ""), session)
-            return None                   # SR-115: the owner's switch, at once
-        if parsed.command not in ("approve", "confirm"):
-            return None                   # undo, go, settle: typed.on_prompt, clarify
+        return None                       # auto-approve, undo, go, settle: no reading
     job = build(core, session, message=entry)
     if job is None:
         return None
@@ -294,8 +291,10 @@ def change_card(record: Any, change: str, evidence: str, digest: str) -> CardSta
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     """Apply the reader's entries after exact checks only (nothing here reads the words):
     the message is in the prompt log; the record was shown at that version and is still that
-    version; the evidence occurs in the message; an ``accepted`` entry at or above the
-    threshold confirms (``by: owner-words``). Every entry is logged as a ``read-entry``."""
+    version; the evidence occurs in the message. A card's answer goes to its card; a shown
+    record read as ``accepted`` or ``change`` is covered by the message's pre-intent and judged
+    (``_to_judge``), ``rejected`` is logged as a rejection. Every entry is logged as a
+    ``read-entry``."""
     if core is None:
         return Applied(job=job.id)
     from plumb.understand import answer as answer_mod
@@ -319,6 +318,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     items = [i for i in inputs.get("cards") or () if isinstance(i, Mapping)]
     by_id = {str(i["id"]): i for i in items}
     by_record = {str(i["record"]): i for i in items if i.get("record")}
+    covered: dict[str, str] = {}            # record id -> the version the reading covers
     raw_entries = answer.get("entries") if isinstance(answer, Mapping) else None
     for raw in raw_entries or ():
         if not isinstance(raw, Mapping):
@@ -359,14 +359,33 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             work.notes.append(f"{name} was not shown to the owner at this version; "
                               "nothing was confirmed")
             continue
-        if said == "accepted" and passes:
-            work.confirm(name, record.hash, evidence, confidence)
-        elif said == "rejected":
+        if said == "rejected":
             work.reject(record, evidence, confidence, raw.get("rejection"))
-        elif said == "change":
-            card = change_card(record, str(raw.get("change") or evidence), evidence, digest)
-            work.cards[card.id] = card
+        elif work.statuses[name].confirmation != "confirmed":
+            covered[name] = record.hash     # accepted or a change: the judge reads the words
+    if covered:
+        _to_judge(work, job, inputs, covered)
     return work.applied()
+
+
+def _to_judge(work: Any, job: Job, inputs: Mapping[str, Any], covered: Mapping[str, str]
+              ) -> None:
+    """The owner's message kept once as a ``pre-intent`` (``via: read``): verbatim, with the
+    records it answered as shown (``question``) and the reply's excerpt (``context``); its
+    ``asked`` names only the records the reading covers, at their version. One bare judge job
+    after this one judges them with it; nothing is confirmed here (SR-209 EX-2)."""
+    from plumb.understand import judge, queue
+
+    texts = {str(i.get("id")): str(i.get("text") or "") for i in inputs.get("shown") or ()
+             if isinstance(i, Mapping)}
+    work.entries.append({"kind": "pre-intent", "payload": {
+        "source": work.digest, "session": job.session, "text": work.message,
+        "question": "\n\n".join(texts[i] for i in covered if texts.get(i)), "options": [],
+        "context": judge.context_of(work.core, work.digest), "via": "read",
+        "asked": {"job": job.id,
+                  "records": [{"id": i, "hash": h} for i, h in covered.items()]}}})
+    queue.enqueue(work.core, files.make_job(judge.kind, job.session, judge.SCHEMA_ID,
+                                            {"records": list(covered)}, needs=job.id))
 
 
 # --------------------------------------------------------------------------- card kinds

@@ -74,21 +74,19 @@ def _confirmations(core: Any, turn: Any, told: Told | None = None) -> tuple[str,
         return tuple(lines)
     digest = turn.get("prompt_digest") if isinstance(turn, Mapping) else turn
     index = core.index()
+    judged: set[str] = set()
     for entry in core.events():
         payload = entry.payload
-        if (entry.kind != "approval" or payload.get("by") not in ("owner-words", "auto-model")
+        if (entry.kind != "approval" or payload.get("by") not in ("owner-words", "auto-model",
+                                                                 "auto-jev")
                 or entry.digest in told.confirmed):
             continue
         told.confirmed.add(entry.digest)
         told.dirty = True
-        if payload["by"] == "auto-model":     # SR-191: each model confirmation, once, with its undo
-            for record in payload.get("records") or ():
-                item = index.get(str(record.get("id")))
-                if item is not None and entry.at >= told.since and core.status(
-                        [item.id])[item.id].approved_by == "auto-model":
-                    lines.append(owner_text.CONFIRM_BY_MODEL.format(
-                        title=item.title, model=payload["auto"]["model"], id=item.id,
-                        confidence=payload["auto"]["confidence"]))
+        if payload["by"] != "owner-words":   # SR-251: judge approvals counted, once, no id
+            if entry.at >= told.since:
+                judged.update(str(r.get("id")) for r in payload.get("records") or ()
+                              if isinstance(r, Mapping) and str(r.get("id")) in index)
             continue
         if payload.get("prompt_digest") == digest or entry.at < told.since:
             continue                      # this turn's own (above), or older than the session
@@ -96,6 +94,11 @@ def _confirmations(core: Any, turn: Any, told: Told | None = None) -> tuple[str,
         for record in payload.get("records") or ():
             item = index.get(str(record.get("id")))
             lines.append(f"{item.title}: {said}" if item is not None else said)
+    if judged:
+        statuses = core.status(sorted(judged))
+        n = sum(s.approved_by in ("auto-jev", "auto-model") for s in statuses.values())
+        if n:
+            lines.append(f"{n} {owner_text.JUDGE_APPROVED}")
     return tuple(lines)
 
 
@@ -151,9 +154,7 @@ def _labels_since_calibration(entries: Sequence[Any]) -> bool:
 
 def _upkeep(core: Any, session: str, recalibrate: bool) -> list[CardState]:
     """The turn's upkeep, from the logs alone (no model): rerun the calibration from the logged
-    scores after an owner label, then top up the trial cards."""
-    from plumb.understand import trial
-
+    scores after an owner label. No trial card is drawn (SR-252 EX-6)."""
     entries = core.events()
     if recalibrate and any(e.kind == "verdict" for e in entries) and _labels_since_calibration(
             entries):
@@ -163,7 +164,7 @@ def _upkeep(core: Any, session: str, recalibrate: bool) -> list[CardState]:
             calibrate.calibrate(core)
         except Exception:  # noqa: BLE001 - upkeep never fails the turn
             pass
-    return trial.top_up(core, session)
+    return []
 
 
 def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (),

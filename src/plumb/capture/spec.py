@@ -5,8 +5,8 @@ The set is anchored on an ``INT`` with ``mode: escalated`` and a ``members`` lis
 ``approval`` event confirms the anchor and every member at their hashes and carries
 ``set: {anchor, hash}``, where the hash is ``sha256(canonical_json(sorted [id, hash]
 pairs))`` over the anchor and its members. An edit of any member afterwards makes that member
-an unconfirmed edit and the set ``unconfirmed``. Owner form: ``plumb spec approve`` through
-``approvals.require_owner``; relayed form: ``plumb relay --set`` with the owner's own words.
+an unconfirmed edit and the set ``unconfirmed``. No command writes it any more (SR-210):
+``approve_set`` stays as a library function for history and fixtures.
 """
 
 from __future__ import annotations
@@ -155,7 +155,8 @@ def set_payload(core: Core, anchor: str) -> tuple[list[dict[str, Any]], dict[str
 
 
 def show_lines(core: Core, anchor: str) -> list[str]:
-    """``plumb spec show``: every member in full, the set hash and the approval command."""
+    """``plumb spec show``: every member in full, the set hash and how it is approved (P6: a
+    set is approved whole; no approve command is named, SR-267)."""
     from plumb.readback import record_lines
 
     index = core.index()
@@ -167,13 +168,13 @@ def show_lines(core: Core, anchor: str) -> list[str]:
         lines.append(f"{record_id} ({record.kind}, {statuses[record_id].confirmation})")
         lines.extend("  " + line for line in record_lines(record))
     lines.append(f"set hash: {current_set_hash(core, anchor)}")
-    lines.append(f"approve (owner's terminal): plumb spec approve {anchor}")
+    lines.append("the judge approves the set whole on your behalf, or asks you about it")
     return lines
 
 
 def approve_set(core: Core, anchor: str, *, note: str = "") -> LogEntry:
-    """``plumb spec approve``: the owner's one set-hash approval, from the owner's own
-    terminal only (``approvals.require_owner``)."""
+    """The owner's one set-hash approval, from the owner's own terminal only
+    (``approvals.require_owner``): a library function; no command calls it (SR-210)."""
     from plumb.approvals import refuse_under_marker, require_owner
 
     refuse_under_marker("spec approve")

@@ -1,7 +1,7 @@
 """R8 B "NEVER for an escalated spec set": a record that derives from (or decides) an escalated
 INT belongs to its set even when the anchor's ``members`` does not list it
 (``plumb.capture.spec.escalated_sets``). One test per entry point that reads the rule: the
-auto-approval gate, the validate re-check, triage and the set state."""
+fast track in the judge job, the validate re-check, triage and the set state."""
 
 from __future__ import annotations
 
@@ -11,9 +11,10 @@ from pathlib import Path
 import pytest
 from capture_helpers import log_prompt, record_text, run
 from jev_fixtures import calibrated
+from understand.test_one_judge import run_judge_job
 
 from plumb.api import open_core
-from plumb.capture.spec import set_state
+from plumb.capture.spec import approve_set, set_state
 
 pytestmark = [pytest.mark.sr("SR-250"), pytest.mark.sr("SR-227")]
 
@@ -50,8 +51,8 @@ def state_of(repo: Path, record_id: str) -> str:
     return open_core(repo).status([record_id])[record_id].confirmation
 
 
-def test_gate_never_approves_a_record_captured_against_an_escalated_intent(ready,
-                                                                           capsys) -> None:
+def test_the_fast_track_never_approves_a_record_captured_against_an_escalated_intent(
+        ready, capsys) -> None:
     repo = ready
     before = set(open_core(repo).index())
     digest = log_prompt(repo, PROMPT)
@@ -62,8 +63,9 @@ def test_gate_never_approves_a_record_captured_against_an_escalated_intent(ready
     assert capture(repo, {"intent": anchor, "requirements": [REQUIREMENT]},
                    "--prompt", digest) == 0
     [sr] = new_ids(repo, before)
-    assert state_of(repo, sr) == "proposed"
     assert f"{sr} joined its set" in capsys.readouterr().out
+    run_judge_job(repo, [sr])
+    assert state_of(repo, sr) == "proposed"
     approvals = open_core(repo).log_read("events", ["approval"])
     assert not [e for e in approvals if e.payload.get("by") == "auto-jev"]
 
@@ -75,6 +77,7 @@ def test_validate_rejects_auto_jev_of_a_record_of_an_escalated_set(ready) -> Non
     assert capture(repo, {"intent": INTENT, "requirements": [REQUIREMENT]},
                    "--prompt", digest) == 0
     intent, sr = new_ids(repo, before)
+    run_judge_job(repo, [intent, sr])
     assert state_of(repo, sr) == "confirmed"  # auto-jev while the intent was incremental
     path = repo / ".plumb" / "intents" / f"{intent}.md"
     path.write_text(path.read_text(encoding="utf-8").replace("mode: incremental",
@@ -83,8 +86,8 @@ def test_validate_rejects_auto_jev_of_a_record_of_an_escalated_set(ready) -> Non
     from plumb.validate import validate
 
     core = open_core(repo)
-    errors = [f for f in validate(core) if f.severity == "error" and f.subject == sr]
-    assert any("escalated spec set" in f.message for f in errors)
+    inert = [f for f in validate(core) if f.code == "inert-approval" and sr in f.subject]
+    assert any("escalated spec set" in f.message for f in inert)   # SR-251: a warning
     assert core.status([sr])[sr].confirmation == "proposed"
 
 
@@ -99,7 +102,7 @@ def test_triage_never_groups_a_record_of_an_escalated_set(repo: Path, write_reco
     view = triage(open_core(repo))
     assert "INT-022" not in [i.id for i in view.low_risk]
     why = {i.id: i.excluded for i in view.individual}
-    assert why["INT-022"] == "a member of the escalated spec INT-020"
+    assert why["INT-022"] == 'a member of the escalated set "a set"'
 
 
 def test_set_state_covers_records_derived_from_the_set(repo: Path, write_record) -> None:
@@ -108,7 +111,7 @@ def test_set_state_covers_records_derived_from_the_set(repo: Path, write_record)
                                    members=["SR-070"]))
     write_record(repo, record_text("SR-070", "export rule 70", statement="rule 70",
                                    links=[{"kind": "derives_from", "to": "INT-021"}]))
-    assert run(repo, "spec", "approve", "INT-021") == 0  # the owner's terminal (test)
+    approve_set(open_core(repo), "INT-021")  # the library, the owner's terminal (test)
     assert set_state(open_core(repo), "INT-021") == "approved"
     assert run(repo, "new", "requirement", "--title", "export rule 71", "--statement",
                "rule 71", "--derives-from", "INT-021") == 0
@@ -116,7 +119,7 @@ def test_set_state_covers_records_derived_from_the_set(repo: Path, write_record)
     added = sorted(set(core.index()) - {"INT-021", "SR-070"})
     [sr] = [i for i in added if i.startswith("SR-")]
     assert set_state(core, "INT-021") == "unconfirmed"
-    assert run(repo, "spec", "approve", "INT-021") == 0
+    approve_set(open_core(repo), "INT-021")
     core = open_core(repo)
     assert core.status([sr])[sr].confirmation == "confirmed"
     assert set_state(core, "INT-021") == "approved"

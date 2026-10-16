@@ -45,7 +45,8 @@ def test_touched_unconfirmed_exits_4(base) -> None:
     assert exit_code(report) == 4 == report.exit
     text = "\n".join(render(report))
     assert "SR-001 (proposed) Links pin both ends" in text
-    assert "plumb approve SR-001 INT-001" in text
+    assert "plumb: merge waits for 2 records to be approved" in text     # counted (SR-267)
+    assert "plumb approve" not in text
 
 
 @pytest.mark.sr("SR-260")

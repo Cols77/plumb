@@ -59,12 +59,11 @@ def test_ex9_there_is_no_relay_command_so_a_prompt_reading_no_confirms_nothing(
     assert approvals_of(project) == []
 
 
-def test_the_typed_exact_command_still_parses_for_the_hook(project: Path) -> None:
+def test_the_typed_approve_is_no_longer_a_command_for_the_hook(project: Path) -> None:
     from plumb.understand import typed
 
-    parsed = typed.parse("/plumb approve SR-001")
-    assert parsed is not None and parsed.command == "approve"
-    assert list(parsed.ids) == ["SR-001"]
+    assert typed.parse("/plumb approve SR-001") is None       # SR-209 EX-6: read as prose
+    assert typed.legacy_ids("/plumb approve SR-001") == ("SR-001",)   # past entries re-checked
 
 
 def test_the_prompt_hook_no_longer_tells_the_agent_to_relay(
