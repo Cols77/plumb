@@ -6,9 +6,10 @@ Effective only when all of these hold:
   ``approvals.require_owner`` (``plumb config auto-approve on``), or from their typed
   ``/plumb auto-approve on`` the prompt hook saw (``ownerconfig``, SR-115). ``config.yaml``'s
   ``auto_approve`` is a mirror: on without that event is off, and ``plumb validate`` warns;
-- JEV is configured and its credential is present (nothing else auto-approves);
-- a passing ``calibration`` exists for the resolved model version; a different resolved
-  version suspends auto-approval until it is recalibrated.
+- JEV is configured and its credential is present (nothing else auto-approves).
+
+No calibration is needed (DEC-143): a passing one of the resolved model version and question
+form only raises the floor to its threshold; any other is ignored and nothing is suspended.
 
 The judge job asks JEV for every record (one cascade, SR-242); ``fast_track`` says whether a
 record JEV clears is approved there without a question (SR-248): a proposed INT or requirement
@@ -22,8 +23,7 @@ hash-pinned like any approval.
 
 After a question round (``after_round``) JEV approves a record the owner answered about without
 the switch, which governs approval without a question (SR-248): the approval cites the
-owner's answers, and a passing calibration, the strict floor and the minimum confidence label
-still apply (SR-251).
+owner's answers, and the strict floor and the minimum confidence label still apply (SR-251).
 """
 
 from __future__ import annotations
@@ -37,7 +37,6 @@ from plumb.judgment.tiers import same_version
 # R14/R18: owner-visible JEV and auto-approval text names the /plumb command or plain words,
 # never a CLI command (jev status, config show, the refusals of config auto-approve on).
 CALIBRATE_HINT = "say /plumb jev calibrate to measure it"
-RECALIBRATE_HINT = "say /plumb jev calibrate to measure it again"
 SETUP_HINT = "say /plumb jev setup openrouter, or /plumb jev setup typesafe"
 
 if TYPE_CHECKING:
@@ -89,38 +88,21 @@ def auto_approve_state(core: Core) -> AutoApproveState:
     mirror = bool(core.config.auto_approve.enabled)
     calibration = latest_calibration(core)
     calibrated = str(calibration.payload.get("model_version")) if calibration else None
-    passing = bool(calibration and any(
-        k.get("passing") for k in (calibration.payload.get("per_kind") or {}).values()
-        if isinstance(k, Mapping)))
     seen = _last_model_version(entries)
-    from plumb.capture.calibrate import fingerprint_stale
-
-    suspended = bool(configured and calibrated and (
-        (seen and not same_version(seen, calibrated)) or fingerprint_stale(core)))
     ready, why = jev_ready(core)
-    from plumb.capture.calibrate import form_gap
-
-    wrong_form = form_gap(core, calibration)
     if not configured:
         reason = "off"
     elif not ready:
         reason = why
-    elif wrong_form:
-        reason = f"{wrong_form}; {CALIBRATE_HINT}"
-    elif not passing:
-        reason = f"no passing calibration ({CALIBRATE_HINT})"
-    elif suspended:
-        reason = ("auto-approve suspended: the judge model, prompt or JEV model changed "
-                  f"({RECALIBRATE_HINT})")
     else:
-        reason = "on"
+        reason = "on"              # DEC-143: no calibration is needed
     settings = settings or {}
     return AutoApproveState(
         configured=configured, effective=reason == "on", reason=reason,
         backend=str(settings.get("backend") or "jev") if configured else None,
         min_probability=float(settings.get("min_probability", 0.9)),
         min_confidence=str(settings.get("min_confidence", "high")),
-        calibrated_version=calibrated, model_version=seen, suspended=suspended,
+        calibrated_version=calibrated, model_version=seen,
         mirror_mismatch=mirror and not configured, source=source_of(switch))
 
 
@@ -165,8 +147,8 @@ JEV_FLOOR = 0.9   # SR-248: JEV's floor; no threshold or owner setting lowers it
 def _jev_auto(record: Any, jev: Mapping[str, Any], state: AutoApproveState
               ) -> dict[str, Any] | None:
     """The ``auto`` payload of JEV's scores ``jev`` on ``record``, or None unless JEV clears
-    it: a passing same-version calibration, every part strictly above max(0.9, the owner's
-    minimum, the threshold), and the owner's minimum confidence label."""
+    it: every part strictly above max(0.9, the owner's minimum, the threshold), and the
+    owner's minimum confidence label."""
     if not jev.get("clears") or jev.get("threshold") is None:
         return None
     if CLAIM_KIND.get(record.kind) != jev.get("claim_kind"):
@@ -188,8 +170,8 @@ def _jev_auto(record: Any, jev: Mapping[str, Any], state: AutoApproveState
 def fast_track(core: Core, record: Any, jev: Mapping[str, Any]) -> dict[str, Any] | None:
     """The ``auto`` payload of a ``by: auto-jev`` approval of ``record`` on JEV's scores
     ``jev`` (``understand.verdict.jev_verdict``), or None when it may not take the fast track
-    (SR-248, SR-250): the owner's switch in effect with a passing same-version calibration,
-    JEV clearing every part strictly above its floor, the premise the owner's verified words,
+    (SR-248, SR-250): the owner's switch in effect, JEV clearing every part strictly above
+    its floor (DEC-143: calibrated or not), the premise the owner's verified words,
     the owner's minimum confidence label, and a proposed record never approved before and in
     no escalated set."""
     state = auto_approve_state(core)
@@ -213,7 +195,7 @@ def fast_track(core: Core, record: Any, jev: Mapping[str, Any]) -> dict[str, Any
 def after_round(core: Core, record: Any, jev: Mapping[str, Any]) -> dict[str, Any] | None:
     """The ``auto`` payload of an answer-cited ``by: auto-jev`` approval of ``record`` after a
     question round (SR-248 EX-4), or None: JEV clears it as for the fast track, without the
-    switch; with no passing calibration JEV approves nothing (SR-251)."""
+    switch (SR-251)."""
     return _jev_auto(record, jev, auto_approve_state(core))
 
 
@@ -221,9 +203,10 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
             calibrations: Mapping[str, LogEntry], prompts: set[str],
             approved: set[str], escalated: Collection[str] = (),
             answers: Mapping[str, Mapping[str, Any]] | None = None) -> str | None:
-    """Why an ``auto-jev`` approval fails its re-check, or None (sp2 8.2): a passing
-    calibration for the same model version, a score strictly above the recorded thresholds
-    and 0.9, the owner's minimum confidence label and an eligible record kind. On the fast
+    """Why an ``auto-jev`` approval fails its re-check, or None (sp2 8.2): the calibration it
+    cites, if any, passing for the same model version (DEC-143: none is needed), a score
+    strictly above the recorded thresholds and 0.9, the owner's minimum confidence label and
+    an eligible record kind. On the fast
     track, also an owner ``config`` on before it, a cited prompt event logged by the prompt
     hook (not self-recorded), no earlier owner, relayed or imported approval of the record and
     no record of an escalated spec set (``escalated``, ``spec.escalated_ids``). After a question
@@ -239,17 +222,20 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
     after_answers = bool(payload.get("answers"))
     if not after_answers and (not config or not config.get("enabled")):
         return "auto-jev approval without the owner's config auto-approve on before it"
-    calibration = calibrations.get(str(auto.get("calibration")))
-    if calibration is None:
-        return "auto-jev approval cites no earlier calibration"
-    if not same_version(calibration.payload.get("model_version"), auto.get("model_version")):
-        return "auto-jev approval by a model version its calibration did not measure"
     if auto.get("judge", "jev") != "jev":
         return "auto-jev approval rests on a judge model's verdict, which never approves"
     kind = str(auto.get("claim_kind"))
-    threshold = _kind_threshold(calibration, kind)
-    if threshold is None:
-        return f"auto-jev approval of claim kind {kind} without a passing calibration"
+    threshold = JEV_FLOOR                  # DEC-143: no calibration cited, the floor alone
+    if auto.get("calibration"):
+        calibration = calibrations.get(str(auto.get("calibration")))
+        if calibration is None:
+            return "auto-jev approval cites no earlier calibration"
+        if not same_version(calibration.payload.get("model_version"),
+                            auto.get("model_version")):
+            return "auto-jev approval by a model version its calibration did not measure"
+        threshold = _kind_threshold(calibration, kind)
+        if threshold is None:
+            return f"auto-jev approval of claim kind {kind} without a passing calibration"
     if after_answers:
         why = cited_answers_problem(payload, answers or {}, "auto-jev")
         if why:

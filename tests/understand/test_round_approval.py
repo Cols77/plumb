@@ -129,18 +129,19 @@ def test_ex5_jev_0_85_and_haiku_clear_at_0_8_approves_by_auto_model(
 
 
 @pytest.mark.sr("SR-248")
-def test_without_calibration_jev_at_0_92_approves_nothing_and_the_model_decides(
+def test_without_calibration_jev_at_0_92_approves_after_the_round(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No calibration, an answer and JEV 0.92: no auto-jev; the model is asked and decides."""
+    """DEC-143: no calibration, an answer and JEV 0.92: above the 0.9 floor, JEV approves
+    after the round and the model is not asked."""
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
     configure(world)
     owner_answers(world, ["SR-001"])
     model = model_says(("SR-001", 0.7, True))
     _, _, applied = judged(open_core(world), ["SR-001"], StubJev(0.92), model)
-    assert asked(model) == ["SR-001"]
+    assert asked(model) == []
     logged = verdict_of(applied, "SR-001")
-    assert logged["jev_score"] == 0.92 and logged["jev_clears"] is False
-    assert [a["by"] for a in approvals(applied)] == ["auto-model"]
+    assert logged["jev_score"] == 0.92 and logged["jev_clears"] is True
+    assert [a["by"] for a in approvals(applied)] == ["auto-jev"]
 
 
 @pytest.mark.sr("SR-248")

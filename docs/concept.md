@@ -319,8 +319,8 @@ Two forms the owner chose on 2026-10-06 (D14) sit beside these:
   your words".
 - **Auto-approval (D14 B).** Off by default. Only the owner turns it on, in the owner's
   terminal (`plumb config auto-approve on`, logged as an event; editing `config.yaml` alone
-  does not turn it on), and only after a passing calibration for the current JEV model
-  version (section 8). Then a record derived directly from the owner's own words (an `INT`
+  does not turn it on); a passing calibration for the current JEV model version (section 8)
+  raises its floor, none is needed (DEC-143). Then a record derived directly from the owner's own words (an `INT`
   read-back whose quote is verbatim in the logged prompt, an example restating the owner's
   given/when/then) that JEV judges entailed by that prompt is approved `by: auto-jev`. A
   requirement qualifies only when JEV judges that the owner's logged words support its
@@ -990,8 +990,8 @@ paths excluded and deterministic truncation. Every judgment is an append-only lo
 its request fingerprint. Judgments are advisory: they order, filter and annotate, and they
 never mark something fresh. They never confirm a record, with one exception the owner chose
 (D14 B, ruling R8): the narrow auto-approval of section 4.6, off by default, which only the
-owner turns on, only with JEV (never the heuristic), and only while a passing calibration
-(below) exists for the resolved model version.
+owner turns on, only with JEV (never the heuristic); a passing calibration (below) for the
+resolved model version raises its floor, none is needed (DEC-143).
 
 **JEV-assisted confirmation (D14, ruling R8).**
 
@@ -1004,7 +1004,7 @@ owner turns on, only with JEV (never the heuristic), and only while a passing ca
   terminal, recorded as an owner approval of exactly the listed hashes.
 - `plumb config auto-approve on|off [--backend jev] [--min-probability 0.9]
   [--min-confidence high]` and `plumb config show` run in the owner's terminal only and are
-  logged in the event log; `on` refuses when JEV is not configured or not calibrated.
+  logged in the event log; `on` refuses when JEV is not configured (DEC-143: calibrated or not).
 - `plumb jev status` (configured? provider, endpoint, key source label, reachable?
   normalized resolved version) and `plumb jev setup`, which records only the provider, model
   and the NAME of the environment variable that holds the credential (with `--env-file`, the
@@ -1025,9 +1025,8 @@ and sharper; all judgments are logged and advisory.
    result, a changed number); JEV must wrongly accept none of them. The split between real
    and generated examples is shown in `plumb jev status` and in the calibration log entry.
    The owner reaches it as `/plumb jev calibrate`; the agent runs it.
-   `plumb config auto-approve on` refuses
-   without a passing calibration for the current model version, and a version change
-   suspends auto-approval until it is recalibrated.
+   A passing calibration for the current model version raises the fast track's floor to its
+   threshold; none is needed, and a version change only means the floor again (DEC-143).
 2. **Edge alignment.** `plumb align [scope]` collects the scope deterministically (intent ->
    feature -> requirement -> example -> test -> code -> evidence) with a fingerprint, reports
    empty families as named gaps, and judges each edge with one question phrased for its edge

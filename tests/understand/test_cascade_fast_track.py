@@ -269,9 +269,9 @@ def owner_on(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.sr("SR-250")
-def test_ex5_a_new_jev_version_suspends_the_fast_track(owner_on: Any) -> None:
-    """SR-250 EX-5: JEV now resolves jev-1.14: nothing is fast-tracked and the status says
-    the fast track waits for a new calibration."""
+def test_ex5_a_new_jev_version_keeps_the_fast_track_on_the_floor(owner_on: Any) -> None:
+    """SR-250 EX-5 (DEC-143): JEV now resolves jev-1.14: the calibrated threshold no longer
+    applies, the intent is approved on the 0.9 floor and the status still says on."""
     from plumb.capture.autoapprove import auto_approve_state, state_line
 
     repo, stub = owner_on
@@ -279,11 +279,11 @@ def test_ex5_a_new_jev_version_suspends_the_fast_track(owner_on: Any) -> None:
     core = open_core(repo)
     model = model_for("INT-001")
     _, _, applied = judged(core, ["INT-001"], verdict.open_jev(core), model)
-    assert approvals(applied) == [] and asked(model) == ["INT-001"]
+    [approval] = approvals(applied)
+    assert approval["by"] == "auto-jev" and model.jobs == []
+    assert approval["auto"]["threshold"] == 0.9 and approval["auto"]["calibration"] is None
     state = auto_approve_state(open_core(repo))
-    assert state.suspended and not state.effective
-    line = state_line(state)
-    assert "suspended" in line and "calibrate" in line
+    assert state.effective and "on" in state_line(state)
 
 
 @pytest.mark.sr("SR-250")
@@ -352,10 +352,10 @@ def test_ex6_two_cleared_by_jev_are_applied_and_three_wait_for_the_model(
 
 
 @pytest.mark.sr("SR-248")
-def test_without_a_calibration_jev_is_asked_its_score_logged_and_the_model_judges(
+def test_without_a_calibration_jev_fast_tracks_on_the_floor(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No calibration: JEV is asked, ``jev_score`` logged, nothing fast-tracked, the record
-    goes to the model."""
+    """DEC-143: no calibration, the switch on, JEV at 0.99: the intent is fast-tracked on the
+    0.9 floor, citing no calibration; the model is not asked."""
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
     core = configure(world)
     core.log_append("events", "config", {"by": "owner", "auto_approve": {"enabled": True}})
@@ -363,9 +363,10 @@ def test_without_a_calibration_jev_is_asked_its_score_logged_and_the_model_judge
     _, _, applied = judged(core, ["INT-001"], jev, model)
     assert jev.calls == [("INT-001", "intent-readback")]
     logged = verdict_of(applied, "INT-001")
-    assert logged["jev_score"] == 0.99 and logged["jev_clears"] is False
-    assert logged["by"] == "model" and asked(model) == ["INT-001"]
-    assert approvals(applied) == []
+    assert logged["jev_score"] == 0.99 and logged["jev_clears"] is True
+    assert logged["by"] == "jev" and asked(model) == []
+    [approval] = approvals(applied)
+    assert approval["by"] == "auto-jev" and approval["auto"]["calibration"] is None
 
 
 @pytest.mark.sr("SR-210")

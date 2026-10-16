@@ -2,9 +2,9 @@
 owner's words?" for the judge job, like ``links.repin_after_tests`` (SR-114).
 
 JEV is asked first for every record with a premise and a claim kind, calibrated or not, and its
-score is logged with the verdict. It clears a record only with a passing same-version
-calibration and every part strictly above max(0.9, the threshold calibrated on the owner's
-labels with no false accept); a cleared record that may take the fast track
+score is logged with the verdict. It clears a record when every part is strictly above the
+floor: 0.9, raised to the threshold of a passing calibration of the same JEV version and
+question form (DEC-143: no calibration is needed); a cleared record that may take the fast track
 (``capture.autoapprove.fast_track``) is JEV's verdict, marked ``by: jev``, and the judge job
 approves it ``by: auto-jev``. Every other record goes to the judge model
 (``understand.judge_model``, haiku by default, sonnet allowed), marked ``by: model``: a model
@@ -93,10 +93,10 @@ def jev_verdict(core: Any, entry: Mapping[str, Any], backend: Any, calibration: 
                 ) -> dict[str, Any] | None:
     """JEV's scores of one entry, or None when it has no claim kind or no premise, or JEV did
     not answer as JEV: ``{score, clears, judge, model_version, confidence, confidence_label,
-    fingerprints, parts, calibration, threshold, claim_kind}``. ``clears`` only with a passing
-    calibration of the same version and question form, and every part strictly above
-    max(0.9, its threshold) (SR-242 EX-5). Raises ``JudgmentUnavailable`` when JEV cannot
-    answer."""
+    fingerprints, parts, calibration, threshold, claim_kind}``. ``clears`` when every part is
+    strictly above the floor, max(0.9, the threshold of a passing calibration of the same
+    version and question form) (SR-242 EX-5, DEC-143); ``threshold`` is that floor. Raises
+    ``JudgmentUnavailable`` when JEV cannot answer."""
     from plumb.capture.autoapprove import JEV_FLOOR, _kind_threshold
     from plumb.capture.calibrate import _hypotheses, form_gap
     from plumb.judgment.tiers import same_version
@@ -115,24 +115,25 @@ def jev_verdict(core: Any, entry: Mapping[str, Any], backend: Any, calibration: 
     threshold = None
     if calibration is not None and not form_gap(core, calibration):   # SR-183: same form
         threshold = _kind_threshold(calibration, kind)
-    current = threshold is not None and same_version(
-        version, calibration.payload.get("model_version"))
-    floor = max(JEV_FLOOR, threshold or 0.0)
+        if threshold is not None and not same_version(
+                version, calibration.payload.get("model_version")):
+            threshold = None            # another version's calibration raises nothing
+    floor = max(JEV_FLOOR, threshold or 0.0)   # DEC-143: the floor needs no calibration
     weakest = min(judgments, key=lambda j: j.probability or 0.0)
     return {"score": round(weakest.probability or 0.0, 6),
-            "clears": current and all(j.verdict == "entailed" and (j.probability or 0.0) > floor
-                                      for j in judgments),
+            "clears": all(j.verdict == "entailed" and (j.probability or 0.0) > floor
+                          for j in judgments),
             "judge": judgments[0].backend, "model_version": version,
             "confidence": weakest.confidence, "confidence_label": weakest.confidence_label,
             "fingerprints": [j.fingerprint for j in judgments], "parts": len(judgments),
-            "calibration": calibration.digest if calibration is not None else None,
-            "threshold": threshold, "claim_kind": kind}
+            "calibration": calibration.digest if threshold is not None else None,
+            "threshold": floor, "claim_kind": kind}
 
 
 def _ask_jev(core: Any, entries: list[Mapping[str, Any]], backend: Any
              ) -> tuple[dict[str, dict[str, Any]], str]:
     """``({id: JEV's scores}, why JEV stopped)``: JEV is asked whenever a backend exists; a
-    missing or other-form calibration only means nothing clears."""
+    missing or other-form calibration only means the 0.9 floor (DEC-143)."""
     from plumb.capture.calibrate import latest_calibration
     from plumb.judgment import JudgmentUnavailable
 

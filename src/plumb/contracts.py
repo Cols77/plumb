@@ -428,7 +428,6 @@ class AutoApproveState:
     min_confidence: str = "high"
     calibrated_version: str | None = None
     model_version: str | None = None       # last resolved JEV version seen
-    suspended: bool = False                # model changed since calibration
     mirror_mismatch: bool = False          # config.yaml says on without the owner's event
     source: str | None = None              # where the owner's latest switch came from
 

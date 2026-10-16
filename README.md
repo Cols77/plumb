@@ -393,7 +393,7 @@ exact change).
 | `plumb escalate check\|decline` | Escalation suggestions for large, risky or cross-cutting work; `decline` is yours. |
 | `plumb spec show\|approve\|state INT` | An escalated up-front spec; `approve` (your terminal) pins the set hash. |
 | `plumb triage [--approve low-risk]` | Proposed records grouped by faithfulness to your words; `--approve low-risk` confirms exactly the listed hashes in one step (your terminal). |
-| `plumb config auto-approve on\|off`, `config show`, `config card full\|compact\|off` | The opt-in auto-approval (off by default; refused without a passing calibration) and the card verbosity. Your terminal only. |
+| `plumb config auto-approve on\|off`, `config show`, `config card full\|compact\|off` | The opt-in auto-approval (off by default; needs JEV and its credential, no calibration: DEC-143) and the card verbosity. Your terminal only. |
 | `plumb jev status [--probe]\|setup [--provider typesafe\|openrouter] [--env-var NAME] [--env-file PATH]\|calibrate` | The optional JEV backend (the agent runs it when you say `/plumb jev status`, `/plumb jev setup openrouter` or `/plumb jev calibrate`): provider, endpoint, where the key comes from (a label, never the key), reachability and the normalized resolved version; setup records the provider, model and the credential variable's NAME; calibration on your own decisions. |
 
 ### Owner views (plain words; none approves anything)

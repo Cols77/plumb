@@ -210,15 +210,17 @@ def test_a_jev_that_cannot_answer_sends_the_record_to_the_model(world: Path) -> 
     assert by_id(cascaded)["INT-001"]["by"] == "model"
 
 
-def test_without_a_passing_calibration_jev_scores_but_does_not_give_the_verdict(
+def test_without_a_calibration_jev_clears_on_the_floor_but_the_switch_is_off(
         world: Path) -> None:
+    """DEC-143: no calibration: JEV clears above 0.9; the owner never switched the fast
+    track on, so the model still gives the verdict."""
     core = configure(world)
     model = FakeDispatcher({"judge": verdict_answer(("INT-001", "supported", 0.9))})
     jev = StubJev(0.99)
     _, cascaded = run(core, ["INT-001"], jev=jev, model=model)
     v = by_id(cascaded)["INT-001"]
     assert v["by"] == "model" and jev.calls == [("INT-001", "intent-readback")]
-    assert v["jev"]["score"] == 0.99 and not v["jev"]["clears"]
+    assert v["jev"]["score"] == 0.99 and v["jev"]["clears"] and v["jev"]["threshold"] == 0.9
 
 
 def test_ex4_neither_reachable_the_verdict_waits_and_says_so_once(world: Path) -> None:
