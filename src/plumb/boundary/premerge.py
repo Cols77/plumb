@@ -662,7 +662,7 @@ def render(report: PremergeReport) -> list[str]:
         for conflict in report.intent_conflicts:
             out.extend(str(line) for line in conflict.get("card") or [])
     if report.unconfirmed:
-        out.append("requirements this merge touches wait for your confirmation:")
+        out.append("requirements this merge touches wait for approval:")
         out.extend(_capped([owner_text.PREMERGE_UNCONFIRMED.format(record=r["id"],
                                                                    title=r["title"])
                             for r in report.unconfirmed]))

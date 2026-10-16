@@ -84,7 +84,7 @@ records and integrity:
   stale        card: bring a stale link to the owner as a card; cards: list them in full
                (--incomplete: those lacking something)
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
-  status       counts, drift and records awaiting your confirmation (--card: the card)
+  status       counts, drift, what awaits you, judge approvals (--card: the card)
   brief        the short intent brief
   explain      why a behaviour, file or record exists, in plain terms (plain words, a path
                or an ID); alias why

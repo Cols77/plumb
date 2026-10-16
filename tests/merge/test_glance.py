@@ -62,17 +62,18 @@ def test_lists_agent_relayed_with_quote(base) -> None:
     relayed = report.glance[0]
     assert relayed["quote"] == "SR-002 looks good, approved"
     assert relayed["prompt_digest"] == digest
-    assert relayed["revoke"] == "plumb revoke SR-002"
+    assert "revoke" not in relayed                      # SR-260 EX-9: no command named
     assert relayed["self_recorded"] is False
     text = _glance_text(report)
     assert 'AGENT-RELAYED SR-002 quote "SR-002 looks good, approved"' in text
-    assert digest[:19] in text and "plumb revoke SR-002" in text
+    assert digest[:19] in text and "plumb revoke" not in text
     assert "owner INT-001" in text
 
 
 @pytest.mark.sr("SR-260")
 def test_lists_auto_jev_with_score(base) -> None:
-    """SR-047 EX-2: an auto-jev approval shows its score, model version and revoke form."""
+    """SR-260 EX-9 (SR-251): an auto-jev approval is marked judge-approved with its model
+    version and score, and names no command."""
     root, sha = base
     core = open_core(root)
     record = core.index()["INT-001"]
@@ -84,10 +85,10 @@ def test_lists_auto_jev_with_score(base) -> None:
     report = merge_report(open_core(root), sha, run_full=False)
     row = report.glance[0]
     assert row["by"] == "auto-jev" and row["score"] == 0.96
-    assert row["model_version"] == "jev-2026-09" and row["revoke"] == "plumb revoke INT-001"
+    assert row["model_version"] == "jev-2026-09" and "revoke" not in row
     text = _glance_text(report)
-    assert "AUTO-JEV INT-001 score 0.96 (high) model jev-2026-09" in text
-    assert "plumb revoke INT-001" in text
+    assert "INT-001 judge-approved (auto-jev, jev-2026-09, 0.96) (high)" in text
+    assert "plumb revoke" not in text
 
 
 @pytest.mark.sr("SR-260")
@@ -113,7 +114,7 @@ def test_lists_capture_written_auto_jev(base) -> None:
     assert (row["score"], row["confidence"], row["model_version"]) == (0.97, "high",
                                                                        "jev-1.13.0")
     assert row["backend"] == "jev:jev-1.13.0" and row["claim_kind"] == "intent-readback"
-    assert "AUTO-JEV INT-001 score 0.97 (high) model jev-1.13.0" in _glance_text(report)
+    assert "INT-001 judge-approved (auto-jev, jev-1.13.0, 0.97) (high)" in _glance_text(report)
 
 
 @pytest.mark.sr("SR-260")
@@ -136,7 +137,7 @@ def test_revocations_and_import_listed_without_revoke_form(base) -> None:
     report = merge_report(open_core(root), sha, run_full=False)
     kinds = [(row["kind"], row["by"]) for row in report.glance]
     assert kinds == [("approval", "owner"), ("revocation", "owner")]
-    assert report.glance[1]["revoke"] is None
+    assert all("revoke" not in row for row in report.glance)   # SR-260 EX-9: no command
 
 
 @pytest.mark.sr("SR-247")

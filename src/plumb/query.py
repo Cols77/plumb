@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from plumb.contracts import Record
@@ -74,13 +74,10 @@ def _clip(text: str, width: int = 100) -> str:
     return text if len(text) <= width else text[: width - 3] + "..."
 
 
-def _ids(ids: Sequence[str], shown: int = 8) -> str:
-    head = ", ".join(ids[:shown])
-    return head + (f", +{len(ids) - shown} more" if len(ids) > shown else "")
-
-
 def brief_lines(core: Core, max_lines: int = 30, *, show_all: bool = False) -> list[str]:
     """The intent brief: about 30 lines, never more than 40 unless ``show_all``."""
+    from plumb.present.cards import awaiting_lines, judge_label
+
     cap = max_lines if show_all else min(max_lines, HARD_CAP)
     index = core.index()
     statuses = core.status()
@@ -110,18 +107,15 @@ def brief_lines(core: Core, max_lines: int = 30, *, show_all: bool = False) -> l
             quote = record.fields.get("quote")
             if isinstance(quote, list):
                 quote = " / ".join(map(str, quote))
+            judged = judge_label(statuses[record.id])        # SR-251
             items.append("  " + _clip(f"{record.id} {record.title}"
+                                      + (f" ({judged})" if judged else "")
                                       + (f": \"{quote}\"" if quote else "")))
         if items:
             intent_items.append((label, items))
 
-    proposed = [i for i, s in sorted(statuses.items())
-                if s.confirmation == "proposed" and i not in superseded]
-    edited = [i for i, s in sorted(statuses.items()) if s.confirmation == "unconfirmed-edit"]
-    awaiting = "awaiting your confirmation: " + (
-        f"{len(proposed)} proposed ({_ids(proposed)})" if proposed else "0 proposed")
-    if edited:
-        awaiting += f", {len(edited)} unconfirmed edit ({_ids(edited)})"
+    # counted, no id and no approve hint (SR-267): the judge's questions, what waits on it
+    awaiting = awaiting_lines(core, {i: s for i, s in statuses.items() if i not in superseded})
 
     decisions = [r for r in of_kind("decision") if r.fields.get("matters") is True
                  and statuses[r.id].confirmation != "confirmed"]
@@ -148,7 +142,7 @@ def brief_lines(core: Core, max_lines: int = 30, *, show_all: bool = False) -> l
             nc_line += f"; +{len(open_ncs) - len(shown)} more (plumb brief --all)"
 
     fixed_before = [header, feature_line]
-    fixed_after = [line for line in (awaiting, decision_line, drift, nc_line) if line]
+    fixed_after = [line for line in (*awaiting, decision_line, drift, nc_line) if line]
     budget = cap - len(fixed_before) - len(fixed_after)
     intent_lines: list[str] = []
     total_items = sum(len(items) for _, items in intent_items)
@@ -191,7 +185,7 @@ def compact_brief_lines(core: Core) -> list[str]:
     ints, ints_ok = count("intent")
     header = (f"plumb brief: {features} feature(s), {srs} SR ({srs_ok} confirmed), "
               f"{ints} INT ({ints_ok} confirmed)")
-    keep = ("awaiting your confirmation:", "decisions that matter", "drift:")
+    keep = ("awaits you:", "waiting on a judge:", "decisions that matter", "drift:")
     lines = [header]
     for line in full:
         if line.startswith(keep):

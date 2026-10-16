@@ -375,6 +375,15 @@ def confirmation_of(record: Record,
     return "unconfirmed-edit", by
 
 
+def judge_auto(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The ``auto`` payload of a judge approval (SR-251), for its label (an older entry
+    carries its score at the top); None for any other approval."""
+    if payload.get("by") not in ("auto-jev", "auto-model"):
+        return None
+    auto = payload.get("auto")
+    return auto if isinstance(auto, Mapping) else payload
+
+
 def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordStatus]:
     index = core.index()
     selected = list(index) if ids is None else [i for i in ids if i in index]
@@ -420,5 +429,7 @@ def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordSt
             covered=covered, uncovered_examples=uncovered, links=record_states,
             superseded_by=superseded.get(record_id), changed_tests=moved,
             self_recorded=self_recorded,
-            carried_from=carried.get(record_id) if confirmation == "confirmed" else None)
+            carried_from=carried.get(record_id) if confirmation == "confirmed" else None,
+            auto=judge_auto(latest[-1][2].payload) if latest and confirmation == "confirmed"
+            else None)
     return out

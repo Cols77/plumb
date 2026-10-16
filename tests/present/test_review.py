@@ -51,7 +51,7 @@ def test_review_has_the_five_sections(records: Path, capsys) -> None:
     assert "it approves nothing" in out
 
 
-def test_glance_lists_relayed_approvals_with_the_revoke_form(records: Path, hook_input,
+def test_glance_lists_relayed_approvals_and_names_no_command(records: Path, hook_input,
                                                              capsys) -> None:
     text = "ok SR-001"
     run_prompt(records, hook_input, text)
@@ -59,7 +59,7 @@ def test_glance_lists_relayed_approvals_with_the_revoke_form(records: Path, hook
     out = _review(records, capsys)
     assert 'SR-001 "add returns the sum of two numbers" relayed from your words "ok SR-001"' \
         in out
-    assert "plumb revoke <ID>" in out
+    assert "plumb revoke" not in out and "say so in conversation" in out   # SR-267
 
 
 def test_drift_and_scope_by_plain_words(records: Path, capsys) -> None:

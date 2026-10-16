@@ -26,12 +26,14 @@ def _snap(**kwargs) -> StatusSnapshot:
     return StatusSnapshot(**base)
 
 
-def test_awaits_you_with_jev_count() -> None:
-    """EX-1: 12 of 14 confirmed, 2 by JEV, one proposed record."""
+@pytest.mark.sr("SR-251")
+def test_awaits_you_with_judge_count() -> None:
+    """EX-1: 12 of 14 confirmed, 2 by the judges (JEV and the judge model counted together),
+    one proposed record."""
     card = status_card(_snap(requirements_confirmed=12, proposed=1,
-                             confirmed_by={"owner": 10, "auto-jev": 2}))
+                             confirmed_by={"owner": 10, "auto-jev": 1, "auto-model": 1}))
     assert card == ('plumb ● awaits you · "add multiply next to add" · '
-                    "SR 12/14 ok (2 by JEV) · 1 awaits you")
+                    "SR 12/14 ok (2 judge-approved) · 1 awaits you")
 
 
 def test_aligned() -> None:
@@ -56,9 +58,9 @@ def test_regression_wins_over_everything() -> None:
 
 
 def test_jev_count_only_with_auto_approvals() -> None:
-    """EX-2: no auto-approval, no "by JEV" count."""
+    """EX-2: no judge approval, no "judge-approved" count."""
     card = status_card(_snap(confirmed_by={"owner": 14}))
-    assert "JEV" not in card and "SR 14/14 ok" in card
+    assert "judge-approved" not in card and "SR 14/14 ok" in card
 
 
 def test_ascii_fallback() -> None:

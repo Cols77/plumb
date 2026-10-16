@@ -245,7 +245,7 @@ def test_brief_kept_when_cut(repo: Path, hook_input, write_record, monkeypatch) 
     monkeypatch.setattr(session_start, "hook_budget", lambda name: (lambda root: 0.001))
     lines = _start(repo, hook_input, verify=FakeVerify())
     assert lines[0].startswith("plumb brief")
-    assert "awaiting your confirmation: 1 proposed (SR-001)" in lines
+    assert "waiting on a judge: 1 record" in lines
     assert "tests: not checked (budget)" in lines
 
 

@@ -86,7 +86,7 @@ def test_brief_lists_awaiting_confirmation_and_drift(repo: Path, write_record,
                             "tests/test_a.py::test_x", "fresh-fail")},
                         pending=FullPending(True, ("uv.lock",)))
     out = _run(repo, hook_input, verify=verify)
-    assert "awaiting your confirmation: 1 proposed (SR-001)" in out
+    assert "waiting on a judge: 1 record" in out
     assert "drift: stale 1" in out
     assert ("tests: 1 failing (tests/test_a.py::test_x) | full verification pending (uv.lock)"
             in out)
@@ -147,7 +147,7 @@ def test_brief_survives_a_budget_cut(repo: Path, write_record, hook_input,
     verify = FakeVerify()
     out = _run(repo, hook_input, verify=verify).splitlines()
     assert out[0].startswith("plumb brief")
-    assert "awaiting your confirmation: 1 proposed (SR-001)" in out
+    assert "waiting on a judge: 1 record" in out
     assert "tests: not checked (budget)" in out
     assert out[-1] == "plumb: check skipped (budget): tests"
 
@@ -310,7 +310,8 @@ def test_ex4_low_risk_records_give_no_offer_line(repo: Path, write_record, hook_
     write_record(repo, record_text("INT-011", "multiply number 11", quote=said, readback=said,
                                    will=["multiply number 11"], prompt=_digest(said)))
     out = _run(repo, hook_input)
-    assert "INT-011" in out and "rated faithful" not in out and "approve the" not in out
+    assert "waiting on a judge: 1 record" in out and "rated faithful" not in out
+    assert "approve the" not in out
 
 
 def _digest(text: str) -> str:

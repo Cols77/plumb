@@ -155,7 +155,8 @@ def set_payload(core: Core, anchor: str) -> tuple[list[dict[str, Any]], dict[str
 
 
 def show_lines(core: Core, anchor: str) -> list[str]:
-    """``plumb spec show``: every member in full, the set hash and the approval command."""
+    """``plumb spec show``: every member in full, the set hash and how it is approved (P6: a
+    set is approved whole; no approve command is named, SR-267)."""
     from plumb.readback import record_lines
 
     index = core.index()
@@ -167,7 +168,7 @@ def show_lines(core: Core, anchor: str) -> list[str]:
         lines.append(f"{record_id} ({record.kind}, {statuses[record_id].confirmation})")
         lines.extend("  " + line for line in record_lines(record))
     lines.append(f"set hash: {current_set_hash(core, anchor)}")
-    lines.append(f"approve (owner's terminal): plumb spec approve {anchor}")
+    lines.append("the judge approves the set whole on your behalf, or asks you about it")
     return lines
 
 

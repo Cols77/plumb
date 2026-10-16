@@ -2,9 +2,10 @@
 
 Errors: unloadable or duplicate records, malformed IDs, link kinds not allowed between their
 ends, dangling links and references, broken log chains, approvals failing their re-check.
-Warnings: stale and unpinned links, unconfirmed edits, confirmed examples without a test, an
-SR without a derives_from link to an INT, a matters-false DEC deciding a confirmed record, and
-one summary line for proposed records awaiting the owner.
+Warnings: a judge approval failing its re-check (inert, SR-251), stale and unpinned links,
+unconfirmed edits, confirmed examples without a test, an SR without a derives_from link to an
+INT, a matters-false DEC deciding a confirmed record, and one summary line for proposed
+records awaiting the owner.
 """
 
 from __future__ import annotations
@@ -202,6 +203,11 @@ def validate(core: Core) -> list[Finding]:
         if problem:
             ids = ", ".join(str(r.get("id")) for r in entry.payload.get("records") or []
                             if isinstance(r, Mapping))
+            if entry.kind == "approval" and entry.payload.get("by") in ("auto-jev",
+                                                                      "auto-model"):
+                add("warning", "inert-approval", ids or entry.digest[:19],  # SR-251
+                    f"{problem} (entry {entry.digest[:19]}); it approves nothing")
+                continue
             add("error", "approval", ids or entry.digest[:19],
                 f"{problem} (entry {entry.digest[:19]}); it confirms nothing")
     # renumber entries (sp6 5.4): the approvals they carry exist and pin the incoming words

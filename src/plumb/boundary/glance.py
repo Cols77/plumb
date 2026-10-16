@@ -1,20 +1,24 @@
 """The glance: approvals and revocations added in the range, for a quick owner look (sp3 3.2).
 
-Agent-relayed approvals carry the owner's quote and the prompt digest (R2); auto-jev
-approvals carry the score, the confidence label and the model version (R8 B); a relay that
-rests on a message the agent recorded itself (a host without a prompt hook) is labelled
-"self-recorded message" (R13 Q4). Each approval row ends with its revoke command. The glance
-is never a question and never changes the exit code.
+Agent-relayed approvals carry the owner's quote and the prompt digest (R2); a judge approval
+is marked "judge-approved (auto-jev, model, score)" (SR-251); a relay that rests on a message
+the agent recorded itself (a host without a prompt hook) is labelled "self-recorded message"
+(R13 Q4). No row names a command (SR-260 EX-9). The glance is never a question and never
+changes the exit code.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
+from types import SimpleNamespace
 from typing import Any
 
+from plumb.confirm import judge_auto
+from plumb.present.cards import judge_label
+
 # Rows in this order: what the owner did not type in their own terminal comes first.
-GROUP_ORDER = ("agent-relayed", "auto-jev", "owner-words", "owner", "import")
+GROUP_ORDER = ("agent-relayed", "auto-jev", "auto-model", "owner-words", "owner", "import")
 SELF_RECORDED_VIA = frozenset({"turn", "turn-start", "cli", "agent", "self"})
 SELF_RECORDED_HOSTS = frozenset({"cli"})
 
@@ -126,8 +130,6 @@ def glance_rows(core: Any, base_digests: Iterable[str]) -> list[dict[str, Any]]:
             "exempt": [str(g) for g in payload.get("exempt") or []],
             "quote": payload.get("quote"), "prompt_digest": payload.get("prompt_digest"),
             "marker": entry.marker, "digest": entry.digest,
-            "revoke": (f"plumb revoke {' '.join(ids)}"
-                       if entry.kind == "approval" and ids else None),
             "self_recorded": False,
         }
         if by == "agent-relayed":
@@ -137,6 +139,8 @@ def glance_rows(core: Any, base_digests: Iterable[str]) -> list[dict[str, Any]]:
             row.update(_message(payload, prompt_log, core))
         if by == "auto-jev":
             row.update(auto_fields(payload))
+        if by in ("auto-jev", "auto-model") and entry.kind == "approval":   # SR-251, SR-260
+            row["judge"] = judge_label(SimpleNamespace(approved_by=by, auto=judge_auto(payload)))
         if isinstance(payload.get("triage"), Mapping):
             row["triage"] = str(payload["triage"].get("group") or "")
         if isinstance(payload.get("set"), Mapping):
@@ -160,7 +164,8 @@ def _renumber_rows(core: Any, known: set[str]) -> list[dict[str, Any]]:
 
 
 def glance_line(row: Mapping[str, Any]) -> str:
-    """One line per row, ending with the revoke command for an approval."""
+    """One line per row; a judge approval marked with its judge, model and score. No row
+    names a command: the owner undoes an approval by saying so in conversation (SR-260)."""
     if row.get("kind") == "renumber":
         from plumb.present.owner_text import CARRIED_GLANCE
 
@@ -178,9 +183,10 @@ def glance_line(row: Mapping[str, Any]) -> str:
             line += " (the same message also objects or asks for a change)"
         if row.get("prompt_text") and row["prompt_text"] != row.get("quote"):
             line += f" message \"{_clip(str(row['prompt_text']))}\""
-    elif by == "auto-jev":
-        line = (f"  {kind}AUTO-JEV {what} score {row.get('score')} ({row.get('confidence')}) "
-                f"model {row.get('model_version')} prompt {str(row['prompt_digest'])[:19]}")
+    elif row.get("judge"):
+        line = f"  {kind}{what} {row['judge']}"
+        if by == "auto-jev":
+            line += f" ({row.get('confidence')}) prompt {str(row['prompt_digest'])[:19]}"
     else:
         line = f"  {kind}{by} {what}"
         if row.get("triage"):
@@ -189,7 +195,4 @@ def glance_line(row: Mapping[str, Any]) -> str:
             line += f" (set approval of {row['set']})"
         if row.get("consent"):
             line += f" (consent {row['consent']})"
-    line += f" at {row['at']}"
-    if row.get("revoke"):
-        line += f" | {row['revoke']}"
-    return line
+    return line + f" at {row['at']}"

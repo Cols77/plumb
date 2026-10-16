@@ -62,11 +62,12 @@ def test_notes_carry_state_badges_and_wikilinks(records: Path, capsys) -> None:
     assert "[[SR-001.EX-1]] given a = 1 and b = 2" in note
     assert "[[test--tests__test_calc.py|tests/test_calc.py]]" in note
     assert "[[code--src__app__calc.py|src/app/calc.py]]" in note
-    assert "`plumb approve SR-001`" in note
+    assert "plumb approve" not in note and "## Waiting on a judge" in note   # SR-267
     assert "[[SR-001]]" in (out / "test--tests__test_calc.py.md").read_text("utf-8")
     assert "derives_from [[INT-001]]" in (out / "SR-002.md").read_text("utf-8")
     awaiting = (out / "awaiting-you.md").read_text("utf-8")
-    assert "plumb triage --approve low-risk" in awaiting and "plumb approve SR-002" in awaiting
+    assert "plumb triage" not in awaiting and "plumb approve" not in awaiting
+    assert "[[SR-002]]" in awaiting
 
 
 def test_note_edit_changes_no_state(records: Path, capsys) -> None:

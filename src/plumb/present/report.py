@@ -40,12 +40,13 @@ def status_card_lines(core: Any) -> dict[str, Any]:
                               intent_summary=_intent_summary(core))
     present = getattr(core.config, "present", None)
     lines = [status_card(snapshot, ascii=bool(getattr(present, "ascii", False)))]
+    from plumb.present.cards import awaiting_lines, judge_lines
+
     awaiting = sorted(i for i, s in statuses.items() if s.confirmation != "confirmed")
-    if awaiting:
-        shown = ", ".join(awaiting[:6]) + (f" +{len(awaiting) - 6} more"
-                                            if len(awaiting) > 6 else "")
-        lines.append(f"awaits you: {shown} (their cards and /plumb approve confirm them; "
-                     "plumb triage groups them)")
+    lines += awaiting_lines(core, statuses)          # counted, no id, no approve hint (SR-267)
+    judged = judge_lines(core, statuses)
+    if judged:
+        lines += ["judge-approved:", *judged]        # SR-251
     stale = [s.link.id for st in statuses.values() for s in st.links if s.state == "stale"]
     dangling = [s.link.id for st in statuses.values() for s in st.links
                 if s.state == "dangling"]

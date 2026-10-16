@@ -582,6 +582,7 @@ def _failing_text(record_id: str, item: dict) -> str:
 
 def status_data(core) -> dict:
     from plumb.contracts import KIND_PREFIX
+    from plumb.present.cards import awaiting_lines, judge_lines
     from plumb.query import retired_ids
 
     index = core.index()
@@ -613,6 +614,8 @@ def status_data(core) -> dict:
         "uncovered_examples": {i: list(s.uncovered_examples) for i, s in statuses.items()
                                if s.uncovered_examples and s.confirmation == "confirmed"},
         "awaiting": sorted(i for i, s in statuses.items() if s.confirmation != "confirmed"),
+        "awaits_you": awaiting_lines(core, statuses),
+        "judge_approved": judge_lines(core, statuses),
         "changed_tests": {i: list(s.changed_tests) for i, s in sorted(statuses.items())
                           if s.changed_tests},
         "verification": verification_state(core),
@@ -649,7 +652,7 @@ def _awareness_section(args: argparse.Namespace) -> list[str]:
 
 
 def cmd_status(command: str, argv: list[str]) -> int:
-    parser = _parser(command, "Counts, drift and records awaiting your confirmation.")
+    parser = _parser(command, "Counts, drift, what awaits you and the judge's approvals.")
     args = parser.parse_args(argv)
     data = status_data(_core(args))
     if args.as_json:
@@ -675,8 +678,10 @@ def cmd_status(command: str, argv: list[str]) -> int:
         f"unconfirmed edit {conf['unconfirmed-edit']}",
         f"links: current {links['current']}, stale {links['stale']}, dangling "
         f"{links['dangling']}, unpinned {links['unpinned']}",
-        "awaiting your confirmation: " + (", ".join(data["awaiting"]) or "none"),
+        *data["awaits_you"],
     ]
+    if data["judge_approved"]:
+        lines += ["judge-approved:", *data["judge_approved"]]
     for record_id, ends in data["changed_tests"].items():
         lines.append(f"acceptance test changed since you confirmed it: {record_id} "
                      + ", ".join(ends))

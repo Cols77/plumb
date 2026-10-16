@@ -67,7 +67,7 @@ def test_ex1_a_clear_requirement_after_a_round_is_approved_by_the_model_and_list
     assert applied.cards == ()                   # nothing left to ask the owner
     told = Told(core.root, SESSION, "2000-01-01T00:00:00Z")
     (line,) = _confirmations(core, None, told)
-    assert "haiku" in line
+    assert line == "1 approved on your behalf by the judge"     # SR-251: counted, no id
     assert _confirmations(core, None, told) == ()   # said once
 
 

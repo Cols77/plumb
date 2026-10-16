@@ -76,7 +76,7 @@ def test_merge_refuses_unconfirmed_touched_requirement(base, capsys) -> None:
     code, out = _check(root, sha, capsys)
     assert code == 4
     assert "SR-001" in out and "INT-001" in out and "SR-002" not in out
-    assert "plumb approve SR-001 INT-001" in out
+    assert "plumb: merge waits for 2 records to be approved" in out   # counted (SR-267)
     assert "given a link" in out
 
 
@@ -224,7 +224,7 @@ def test_merge_puts_untraced_changes_to_the_owner(base, capsys) -> None:
     assert "touched requirements: none" in out
     assert "untraced changes (no requirement owns them): src/mul.py" in out
     assert "confirmation: every touched requirement is confirmed" not in out
-    waits = out[out.index("merge waits for your confirmation:"):]
+    waits = out[out.index("merge waits for approval:"):]
     assert "untraced src/mul.py" in waits and "trace.exempt" in waits
     assert merge_check(open_core(root), sha, as_json=True) == 4
     assert json.loads(capsys.readouterr().out)["untraced"] == ["src/mul.py"]

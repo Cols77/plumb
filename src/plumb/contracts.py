@@ -99,6 +99,8 @@ class RecordStatus:
     # R17: the confirmation stands only through an approval a renumber carried (the old ID
     # the owner approved, same words); every surface labels it "carried by renumber"
     carried_from: str | None = None
+    # SR-251: the standing judge approval's ``auto`` payload (by: auto-jev or auto-model)
+    auto: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)

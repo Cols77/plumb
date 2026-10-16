@@ -24,8 +24,8 @@ from plumb.text import quote_label
 
 MAX_MATCHES = 3
 
-_STATE = {"confirmed": "confirmed", "proposed": "proposed, awaiting your confirmation",
-          "unconfirmed-edit": "changed since you confirmed it, awaiting you"}
+_STATE = {"confirmed": "confirmed", "proposed": "proposed, waiting on a judge",
+          "unconfirmed-edit": "changed since it was approved, waiting on a judge"}
 
 
 def _clip(text: Any, width: int = 160) -> str:

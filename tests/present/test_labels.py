@@ -1,5 +1,6 @@
-"""Every surface that states a confirmed record says who confirmed it: you, you (relayed),
-JEV, with the "self-recorded message" label (R8 B, R13 Q4). One label path
+"""Every surface that states a confirmed record says who confirmed it: you, you (relayed), a
+judge with its model and score ("judge-approved (auto-jev, jev-1.13, 0.96)", SR-251), with the
+"self-recorded message" label (R8 B, R13 Q4). One label path
 (``plumb.present.cards.confirmed_label``); one test per surface."""
 
 from __future__ import annotations
@@ -17,9 +18,12 @@ from plumb.contracts import Target
 SELF = "self-recorded message"
 CASES = [("owner", "", "confirmed by you"),
          ("agent-relayed", "", "confirmed by you (relayed)"),
-         ("auto-jev", "", "confirmed by JEV"),
+         ("auto-jev", "", "judge-approved (auto-jev, jev-1.13, 0.96)"),
+         ("auto-model", "", "judge-approved (auto-model, haiku, 0.8)"),
          ("agent-relayed", SELF, f"confirmed by you (relayed), {SELF}")]
-IDS = ["owner", "agent-relayed", "auto-jev", "self-recorded"]
+IDS = ["owner", "agent-relayed", "auto-jev", "auto-model", "self-recorded"]
+AUTO = {"auto-jev": {"score": 0.96, "model_version": "jev-1.13"},
+        "auto-model": {"model": "haiku", "confidence": 0.8}}
 
 
 @pytest.fixture
@@ -38,11 +42,12 @@ def _confirmed(monkeypatch, by: str, extra: str) -> None:
         for record_id in ("SR-002", "INT-001"):
             if record_id in out:
                 out[record_id] = dataclasses.replace(out[record_id], confirmation="confirmed",
-                                                     approved_by=by)
+                                                     approved_by=by, auto=AUTO.get(by))
         return out
 
     monkeypatch.setattr(api.Core, "status", status)
-    words = {"owner": "you", "agent-relayed": "you (relayed)", "auto-jev": "JEV"}[by]
+    words = {"owner": "you", "agent-relayed": "you (relayed)", "auto-jev": "JEV",
+             "auto-model": "auto-model"}[by]
     fake_capture(monkeypatch, confirmation_label=lambda core, record_id: (
         f"confirmed by {words}" + (f", {extra}" if extra else "")))
 
