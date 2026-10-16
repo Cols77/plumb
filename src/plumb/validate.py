@@ -107,10 +107,10 @@ def validate(core: Core) -> list[Finding]:
                         "the newer one is usually the owner's current intent")
                 from plumb.links import live_examples  # SR-164: a retired record's tests
 
-                for ex, test in live_examples(core, old, record.id).items():
-                    add("warning", "retired-example", link.id,
-                        f"{old}/{ex} is retired but still verified by {test}: move it to "
-                        f"{record.id} or keep {old}")
+                for ex, test in live_examples(core, old, record.id):
+                    add("warning", "retired-example", link.id,  # DEC-065: retired means gone
+                        f"{old}/{ex} is retired by {record.id} but still verified by {test}: "
+                        f"retire the test too: unlink it, and drop it when it covers nothing else")
         if record.kind == "requirement":
             feature = record.fields.get("feature")
             if feature is not None and str(feature) not in index:
