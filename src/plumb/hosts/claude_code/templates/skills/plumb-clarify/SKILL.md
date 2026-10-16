@@ -11,12 +11,14 @@ Depth) and record it as proposed; `clarify --wait --json` there only gives the m
 digest. Only when the owner types `/plumb clarify <words>` is your first action
 `{plumb} clarify --wait`. Run it before you read
 code, plan or edit anything: edits are refused until it has answered, and do not build
-until the owner has answered any card it returns. It collects the check plumb started on the
-owner's message and says which of five things happened:
+until the owner has answered any card or question it returns. It collects the check plumb
+started on the owner's message and says which of these things happened:
 
 - ready (nothing blocks the request, or it was only a question or an answer): go ahead. When
   it lists what it assumed, build on that and tell the owner in one line what you assumed;
   they flip an assumption by saying so.
+- ask (plumb's judge has questions about what the owner meant): put them to the owner as
+  the rules below say, then run `{plumb} clarify --wait --json` again after their answers.
 - a choice card (the one question that blocks, because no answer is better supported; its
   recommended option comes first): the question
   is on the card the owner sees, so say in one line that it waits there and do not restate it
@@ -40,9 +42,10 @@ owner's message and says which of five things happened:
   words>` to open the loop for it, or stop and say in one line that edits are held until the
   owner types `/plumb go`.
 
-With `--json` the answer is `{state, message_digest, card, lines}`; `state` is `ready`,
-`card`, `escalation`, `couldnt_check`, `waiting` or `held`. `message_digest` is the sha256 of the
-owner's message: the `<digest>` that `--prompt` takes (12 or more hex digits are enough).
+With `--json` the answer is `{state, message_digest, card, lines}` (and `questions` on
+`ask`); `state` is `ready`, `ask`, `card`, `escalation`, `couldnt_check`, `waiting` or
+`held`. `message_digest` is the sha256 of the owner's message: the `<digest>` that `--prompt`
+takes (12 or more hex digits are enough).
 
 Once you are past that, `{plumb} clarify "<the request>"` says the depth, what confirmed
 records already answer, and (with `--questions q.json`, see
@@ -72,8 +75,8 @@ Depth:
   answer first. Agree purpose and what
   success looks like first; then 2-3 approaches with trade-offs and your recommendation; then
   record the set (`capture` with `"mode": "escalated"` in its intent) and present it as an
-  up-front spec: `{plumb} spec show INT-###`. Write no code for it until the owner approves
-  the set.
+  up-front spec: `{plumb} spec show INT-###`. Write no code for it until plumb's judge
+  approves the set whole, after the owner's answers.
 
 Discipline:
 
@@ -82,18 +85,29 @@ Discipline:
 - Speak in the owner's terms (behaviours, examples), never in code terms.
 - One question at a time, grill-style: the recommended answer comes first. A question you can
   recommend on is an "I assume" line, never a card.
-- Two card shapes only: a read-back of the request (the owner's ok confirms its records, a
-  correction changes them) and a choice (one question, each option with what it does, the
-  recommended one first). Nothing else is a card.
+- One card shape only, raised by plumb's check: a choice (one question, each option with
+  what it does, the recommended one first). Nothing else is a card; your read-back is a line
+  in your reply, never a card, and approves nothing.
 - Once the owner says "go" or "ok", stop asking: remaining unknowns become labelled
   assumptions, which never block.
 - Outside an accepted spec session, never ask in your own words about the owner's intent;
-  the cards ask.
+  plumb's judge asks, through the question tool.
 - Any other quick question (which of two files, a name, now or later) goes to the owner with
-  Claude Code's question tool by default. A card only when the answer must change the
-  owner's records (confirm, conflict, stale link, a decision that matters) or the question
-  needs context, consequences or a diagram to answer. The question tool's answer is logged
-  as the owner's words but confirms nothing.
+  Claude Code's question tool (rule 4 below).
 
-Output: the records (INT, SR with examples, DEC), all proposed until the owner confirms the
-request's read-back on its card. Paste nothing of what capture prints into your reply.
+Output: the records (INT, SR with examples, DEC), all proposed until plumb's judge approves
+them on the owner's behalf. Paste nothing of what capture prints into your reply.
+
+Questions and approval: plumb's judge approves on the owner's behalf; no approval command
+exists, and you never decide on your own that the owner approved.
+1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each `question`,
+   `header` and option `label` and `description` to AskUserQuestion verbatim, one call per
+   question, in order. Never restate a question in prose.
+2. Never answer, infer or default a question for the owner, never pick the recommended option
+   for them, and never write or read `judge_questions.json` or any approval.
+3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
+   question, stop asking, tell the owner in one plain line that the work waits for their
+   answer, and do not rerun `ask` in a loop. `clarify --wait` names a dismissed question once,
+   then answers `waiting`.
+4. Any other question to the owner also goes through the question tool, with options and
+   their consequences.

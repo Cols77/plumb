@@ -20,11 +20,22 @@ Run plumb as `plumb`. The owner's intent lives in files; read it before acting.
   of what one states is a commit claiming it (or an NC), never a new requirement; an intent
   is one per principle. The proof, how the owner sees it working, is shown before done:
   `plumb proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
-- Ask with Claude Code's question tool by default; a card (plumb-clarify) only when the answer
-  must change the owner's records or needs context, consequences or a diagram.
-- Never decide the owner approved: only their typed `/plumb approve <IDs>` or plumb's reader
-  of their next message confirms. Never run `plumb approve`, `revoke`, `tests waive`, `ui`,
+- Never run `plumb approve` or `revoke` (both gone), `tests waive`, `ui`,
   `plumb triage --approve`, `spec approve`, `config auto-approve`, `config show`,
-  `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo`, `go`, `approve`
-  are typed by the owner and done by the hook. Merges, conflict cards: references/merge.md,
+  `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo` and `go` are typed
+  by the owner and done by the hook. Merges, conflict cards: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.
+
+Questions and approval: plumb's judge approves on the owner's behalf; no approval command
+exists, and you never decide on your own that the owner approved.
+1. After `capture`, run `plumb clarify --wait --json`. On `ask`, pass each `question`,
+   `header` and option `label` and `description` to AskUserQuestion verbatim, one call per
+   question, in order. Never restate a question in prose.
+2. Never answer, infer or default a question for the owner, never pick the recommended option
+   for them, and never write or read `judge_questions.json` or any approval.
+3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
+   question, stop asking, tell the owner in one plain line that the work waits for their
+   answer, and do not rerun `ask` in a loop. `clarify --wait` names a dismissed question once,
+   then answers `waiting`.
+4. Any other question to the owner also goes through the question tool, with options and
+   their consequences.

@@ -101,7 +101,8 @@ def test_clarify_skill_covers_every_answer_of_clarify_wait(repo: Path) -> None:
     command can answer is named."""
     states = re.search(r"state: str\s+# (.+)", Path(cmd_clarify.__file__).read_text(
         encoding="utf-8")).group(1).split(" | ")
-    assert set(states) == {"ready", "card", "escalation", "couldnt_check", "waiting"}
+    assert set(states) == {"ready", "ask", "card", "escalation", "couldnt_check", "waiting",
+                           "held"}
     skill = (_installed(repo) / "skills" / "plumb-clarify" / "SKILL.md").read_text(
         encoding="utf-8")
     for state in states:
@@ -118,7 +119,8 @@ def test_records_skill_runs_clarify_wait_first_and_names_the_guarded_commands(
     skill = (_installed(repo) / "skills" / "plumb-records" / "SKILL.md").read_text(
         encoding="utf-8")
     first = _body(skill).strip().split("\n- ")[1]
-    assert first.startswith("Only after the owner types `/plumb clarify <words>`, run `plumb clarify --wait`")
+    assert first.startswith(
+        "Only after the owner types `/plumb clarify <words>`, run `plumb clarify --wait`")
     assert "message_digest" in skill and "sha256" in skill
     assert "plumb tests map" in skill  # what to run when the test map is missing
     for row in TABLE:
@@ -133,7 +135,7 @@ def test_command_has_a_branch_for_each_typed_verb_and_a_fallback() -> None:
     assert "ignoring case" in body
     init = body[body.index("- `init`"):].split("\n- ", 1)[0]
     assert "run `{plumb} init`" in init and "report what it printed" in init
-    typed = body[body.index("- `go`, `approve <IDs>`"):].split("\n- ", 1)[0]
+    typed = body[body.index("- `go`, `undo <ID>`"):].split("\n- ", 1)[0]
     assert "Run nothing to approve" in typed and "`{plumb} status --card`" in typed
     assert "install what plumb needs" in body
     assert "`{plumb} resolve <their words>`" in body

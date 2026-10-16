@@ -1,6 +1,6 @@
 ---
-description: plumb in plain words - status, explain anything, review, confirm or approve records, what a change would reach, the Obsidian view, adopt this repository (init), build without a failed check (go), undo a confirmed record, typed auto-approve on or off, conflicts, merges, other branches' work, the JEV judge (setup, status, calibration), installing what plumb needs
-argument-hint: "status | intent <words> | clarify <words> | explain <anything> | review [<anything>] | approve <IDs> | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
+description: plumb in plain words - status, explain anything, review, what a change would reach, the Obsidian view, adopt this repository (init), build without a failed check (go), undo a confirmed record, typed auto-approve on or off, conflicts, merges, other branches' work, the JEV judge (setup, status, calibration), installing what plumb needs
+argument-hint: "status | intent <words> | clarify <words> | explain <anything> | review [<anything>] | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
 allowed-tools: Bash(plumb status:*), Bash(plumb brief:*), Bash(plumb explain:*), Bash(plumb why:*), Bash(plumb review:*), Bash(plumb impact:*), Bash(plumb view:*), Bash(plumb show:*), Bash(plumb resolve:*), Bash(plumb align:*), Bash(plumb init:*), Bash(plumb plugin migrate:*), Bash(plumb clarify --wait:*), Bash(plumb intent:*), Bash(plumb validate:*), Bash(plumb conflicts:*), Bash(plumb conflict propose:*), Bash(plumb merge-check:*), Bash(plumb inflight:*), Bash(plumb jev status:*), Bash(plumb jev setup:*), Bash(plumb jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
@@ -13,10 +13,10 @@ Answer with titles, the owner's own words, examples and test states; mention cod
 only when asked.
 
 Pick the branch by the first word of the arguments, ignoring case (`Status` is `status`),
-except for the typed commands (`go`, `approve <IDs>`, `undo <ID>`, `auto-approve`): plumb acts
-on those only typed in lower case as the whole message.
-Typed otherwise (`/plumb Approve SR-034`), plumb acted on nothing: confirm, release or switch
-nothing yourself, and tell them to type it again in lower case.
+except for the typed commands (`go`, `undo <ID>`, `auto-approve`): plumb acts on those only
+typed in lower case as the whole message.
+Typed otherwise (`/plumb Go`), plumb acted on nothing: undo, release or switch nothing
+yourself, and tell them to type it again in lower case.
 `<digest>` below is the sha256 of the owner's message: `message_digest` in
 `plumb clarify --wait --json` (12 or more hex digits are enough; on an ordinary message it
 answers ready at once and runs no check).
@@ -29,9 +29,9 @@ answers ready at once and runs no check).
   plumb here"): run `plumb init` and report what it printed in their terms. When it says
   plumb is set up here the old way and they say "move plumb to the plugin", run
   `plumb plugin migrate` and report it.
-- `go`, `approve <IDs>`, `undo <ID>` or `auto-approve on|off`, typed as the
+- `go`, `undo <ID>` or `auto-approve on|off`, typed as the
   whole message: plumb's prompt hook already acted on it when the message arrived (released
-  the failed check, confirmed those records, took that record back, switched
+  the failed check, took that record back, switched
   automatic confirmation) and logged it as the owner's own. Run nothing to approve, release
   or switch: run `plumb status --card`
   and report the card, and for auto-approve whether it is on and, when not in effect yet,
@@ -49,10 +49,9 @@ answers ready at once and runs no check).
   their tests pass.
 - `review [<anything>]`: run `plumb review [<their words>]` and walk them through what
   awaits them, the approvals they did not type, drift, alignment and the merge state.
-- `confirm <anything>` or `approve <anything>` naming things in words: run
-  `plumb resolve <their words>`, name the matches by title and tell them to type
-  `/plumb approve` with the numbers or answer the read-back. You confirm nothing and never
-  relay their words.
+- `confirm <anything>` or `approve <anything>`: no approval command exists; plumb's judge
+  approves on their behalf, from their answers. Run `plumb status --card` and say in one
+  line what waits for their answers or for the judge. You approve nothing yourself.
 - `impact <anything>`: run `plumb impact <their words>` and say in plain terms what a
   change would reach.
 - `view`: run `plumb view --open` and tell them the Obsidian vault is open (generated;
@@ -91,5 +90,19 @@ answers ready at once and runs no check).
 - Anything else: run `plumb resolve <their words>`, then ask which of the matches they
   meant, in their terms, and follow that branch.
 
-Never run a command that is the owner's own (`approve`, `revoke`, `config auto-approve`,
-`conflict choose`): plumb refuses it from your session. Change nothing else.
+Never run a command that is the owner's own (`config auto-approve`, `conflict choose`): plumb
+refuses it from your session; `approve` and `revoke` no longer exist. Change nothing else.
+
+Questions and approval: plumb's judge approves on the owner's behalf; no approval command
+exists, and you never decide on your own that the owner approved.
+1. After `capture`, run `plumb clarify --wait --json`. On `ask`, pass each `question`,
+   `header` and option `label` and `description` to AskUserQuestion verbatim, one call per
+   question, in order. Never restate a question in prose.
+2. Never answer, infer or default a question for the owner, never pick the recommended option
+   for them, and never write or read `judge_questions.json` or any approval.
+3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
+   question, stop asking, tell the owner in one plain line that the work waits for their
+   answer, and do not rerun `ask` in a loop. `clarify --wait` names a dismissed question once,
+   then answers `waiting`.
+4. Any other question to the owner also goes through the question tool, with options and
+   their consequences.
