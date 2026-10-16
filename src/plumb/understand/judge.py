@@ -20,7 +20,9 @@ read-back card is raised (SR-252 EX-6). Each source of a judged premise (the own
 a question-tool answer) is kept once as a ``pre-intent`` with its question, options and the
 reply it answered, and every approval names those sources in its ``trail`` (SR-208, SR-209).
 A record the owner's latest words contradict is sent back for the agent to reword (SR-209
-EX-2). It returns the log entries: the worker writes them.
+EX-2). When the judge says an answer corrects its reading, one ``capture-error`` rejection
+pins the record at the asked hash with the premise, the parts and JEV's score, a real 'no'
+for calibration (SR-252 EX-4). It returns the log entries: the worker writes them.
 The kind registers the handlers of the trial, beyond and contradicts cards (``effects``; old
 cards of those kinds are still answered)."""
 
@@ -323,6 +325,26 @@ def _new_pre_intents(core: Any, session: str, items: Sequence[Mapping[str, Any]]
     return out
 
 
+def _correction(job: Job, item: Mapping[str, Any], record: Any, index: Mapping[str, Any],
+                jev: Mapping[str, Any] | None, cited: Sequence[str]) -> Mapping[str, Any]:
+    """SR-252 EX-4: the owner's answer corrected the judge's reading of ``record``. One
+    ``capture-error`` rejection pinned at the asked hash, with the premise and the parts JEV
+    was asked about and JEV's score of this judgment, so calibration labels it 'no' with no
+    new model call."""
+    from plumb.capture.calibrate import _hypotheses
+
+    pinned: dict[str, Any] = {
+        "id": record.id, "hash": item["hash"],
+        "kind": verdict_cascade.CLAIM_KIND.get(record.kind),
+        "premise": verdict_cascade._premise_text(item),
+        "hypotheses": list(_hypotheses(index, record)[1])}
+    if jev is not None and jev.get("score") is not None:
+        pinned["jev_score"] = jev["score"]
+    return {"kind": "rejection", "payload": {
+        "by": "owner-answer", "session": job.session, "job": job.id, "records": [pinned],
+        "reason": "capture-error", "answers": list(cited)}}
+
+
 def _sent_back(core: Any, session: str, sent: Mapping[str, str]) -> str:
     """SR-209 EX-2: the owner's latest words contradict these records; the agent rewords each
     and the edit goes back to the judge."""
@@ -543,6 +565,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     entries: list[Mapping[str, Any]] = []
     notes: list[str] = []
     confirmed: list[Mapping[str, Any]] = []
+    corrections: list[Mapping[str, Any]] = []   # the owner's answers correcting a reading
     prompts_known = {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}
     judged: dict[str, str] = {}             # the records judged at their current version
     waits: dict[str, str] = {}              # record id -> why it waits
@@ -582,7 +605,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             payload.update(by=raw["by"], judge=str(raw.get("judge") or ""))
         jev = raw.get("jev") if isinstance(raw.get("jev"), Mapping) else None
         if jev is not None:             # JEV's score, logged even when it does not clear
-            payload.update(jev_score=jev.get("score"), jev_clears=bool(jev.get("clears")))
+            payload.update(jev_score=jev.get("score"), jev_clears=bool(jev.get("clears")),
+                           jev_version=jev.get("model_version"))
             if record is not None and not partial:
                 from plumb.capture.triage import _Prompts, premise_problem
 
@@ -605,6 +629,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                          "again")
             continue
         judged[record.id] = record.hash
+        if cited and payload.get("answer_corrects"):   # SR-252 EX-4: a real 'no' label
+            corrections.append(_correction(job, item, record, index, jev, cited))
         if verdict == "waiting":            # SR-267 EX-9: the agent's own doubt asks nothing
             waits[record.id] = payload["reason"] or "the judge could not settle it"
         elif cited and verdict == "contradicts":    # SR-209 EX-2: the agent rewords it
@@ -645,7 +671,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         notes.extend(backlog.after_job(core, job, verdicts=[
             e["payload"] for e in entries if e["kind"] == "verdict"]).notes)
     kept = _new_pre_intents(core, job.session, [asked[i] for i in judged])
-    return Applied(job=job.id, entries=(*entries, *kept, *confirmed), notes=tuple(notes))
+    return Applied(job=job.id, entries=(*entries, *corrections, *kept, *confirmed),
+                   notes=tuple(notes))
 
 
 # --------------------------------------------------------------------------- capture

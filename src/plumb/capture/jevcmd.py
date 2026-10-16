@@ -90,7 +90,8 @@ def jev_status(core: Core, *, probe: bool = False) -> dict[str, Any]:
         out["form_needed"] = form_gap(core, calibration)
         out["calibration"] = {
             kind: {"passing": r.get("passing"), "threshold": r.get("threshold"),
-                   "decisions": r.get("items"), "real_no": r.get("real_negatives"),
+                   "decisions": r.get("items"), "answers": r.get("answers") or 0,
+                   "real_no": r.get("real_negatives"),
                    "generated_no": r.get("generated_negatives"),
                    "generated_counted": r.get("generated_counted"),
                    "quote_only": r.get("quote_only")}
@@ -131,10 +132,13 @@ def status_lines(data: Mapping[str, Any]) -> list[str]:
         if data.get("form_needed"):
             lines.append(f"{data['form_needed']}; {CALIBRATE_HINT}")
         for kind, r in calibration.items():
+            threshold = r.get("threshold")
             lines.append(f"  {kind}: {'passing' if r['passing'] else 'not passing'}; "
-                         f"{r['decisions']} of your decisions, 'no' examples "
+                         f"{r['decisions']} of your decisions ({r.get('answers') or 0} from "
+                         f"your answers), 'no' examples "
                          f"{r['real_no']} real + {r['generated_counted']} generated counted "
-                         f"(of {r['generated_no']})")
+                         f"(of {r['generated_no']}); threshold "
+                         f"{'-' if threshold is None else f'{threshold:.3f}'}")
             if r.get("quote_only"):
                 lines.append(f"    quote-only: {r['quote_only']} of {r['decisions']} judged on "
                              "the owner's quote alone, no whole message on file")
