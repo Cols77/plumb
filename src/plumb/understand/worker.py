@@ -171,6 +171,15 @@ def start_detached(root: Path, session: str) -> None:
 
 # ---- running jobs ---------------------------------------------------------------------------
 
+def say(root: Path, session: str, line: str) -> None:
+    """A once-per-window line for the agent: it waits in the session's notes for the next
+    prompt hook (``prompt.agent_notes``), as the stop hook's warnings do."""
+    path = files.session_dir(Path(root), session) / "agent_notes.json"
+    notes = files.read_json(path)
+    with contextlib.suppress(OSError):
+        files.write_json_atomic(path, [*(notes if isinstance(notes, list) else []), line])
+
+
 def _note(core: Any, kind: str, job: str, detail: str) -> None:
     core.log_append("events", "job-note", {"kind": kind, "job": job, "detail": detail})
 
@@ -384,12 +393,7 @@ class _Pass:
                                 files.job_to_json(again))
 
     def _say(self, line: str) -> None:
-        """A once-per-window line for the agent: it waits in the session's notes for the next
-        prompt hook (``prompt.agent_notes``), as the stop hook's warnings do."""
-        path = files.session_dir(self.root, self.session) / "agent_notes.json"
-        notes = files.read_json(path)
-        with contextlib.suppress(OSError):
-            files.write_json_atomic(path, [*(notes if isinstance(notes, list) else []), line])
+        say(self.root, self.session, line)
 
     def _ask(self, module: Any, job: Job, reporter: Any, step: str, counts: tuple[int, int],
              started: str, t0: float

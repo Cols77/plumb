@@ -267,21 +267,6 @@ def _open_readback(repo: Path, text: str = MESSAGE) -> str:
     return card.id
 
 
-@pytest.mark.sr("SR-239")
-def test_sr152_ex1_beyond_is_a_line_on_the_read_back_not_a_card(world: Path) -> None:
-    core = open_core(world)
-    card_id = _open_readback(world)
-    job = build_job(core, ["SR-001"])
-    applied = _apply(core, job, verdict_answer(
-        ("SR-001", "beyond", 0.9), beyond={"SR-001": ["a two second limit"]}))
-    (card,) = applied.cards
-    assert card.id == card_id and card.kind == "clarify"
-    assert card.evidence.splitlines() == [
-        "Assumed: public pages",
-        "You did not ask for Pages load in two seconds; Yes confirms it too, so choose Not quite to drop it"]
-    assert owner_level(card.evidence) == []
-
-
 def test_ex4_contradicts_names_both_examples(world: Path, write_record) -> None:
     write_record(world, requirement_text(
         2, "Pages load in five seconds", "Public pages load within five seconds",
@@ -302,29 +287,6 @@ def test_ex4_contradicts_names_both_examples(world: Path, write_record) -> None:
 
 
 @pytest.mark.sr("SR-239")
-def test_sr152_ex2_contradicts_line_names_both_titles_and_the_confirmed_one(
-        world: Path, write_record) -> None:
-    write_record(world, requirement_text(
-        2, "Pages load in five seconds", "Public pages load within five seconds",
-        intent=1, feature="FEAT-001",
-        examples=(("a public page", "it is requested", "it loads within 5 seconds"),)))
-    core = open_core(world)
-    approve(core, "INT-001")        # the intent is confirmed too: not the one named
-    approve(core, "SR-001")
-    core = open_core(world)
-    _open_readback(world)
-    job = build_job(core, ["SR-002"])
-    applied = _apply(core, job, verdict_answer(
-        ("SR-002", "contradicts", 0.9), contradicts={"SR-002": ["SR-002 conflicts with SR-001"]}))
-    (card,) = applied.cards
-    assert card.evidence.splitlines()[-1] == (
-        "You confirmed Pages load in two seconds; Pages load in five seconds contradicts it. "
-        "Yes confirms Pages load in five seconds too, so choose Not quite to keep only "
-        "Pages load in two seconds")
-    assert owner_level(card.evidence) == []
-
-
-@pytest.mark.sr("SR-239")
 def test_sr152_ex3_no_finding_leaves_the_read_back_unchanged(world: Path) -> None:
     core = open_core(world)
     _open_readback(world)
@@ -332,33 +294,7 @@ def test_sr152_ex3_no_finding_leaves_the_read_back_unchanged(world: Path) -> Non
     assert not [c for c in applied.cards if c.kind == "clarify"]
 
 
-@pytest.mark.sr("SR-239")
-def test_sr152_ex4_no_open_read_back_the_line_waits_for_its_own_request(world: Path) -> None:
-    from plumb.understand import clarify, files, jobs
-
-    core = open_core(world)
-    job = build_job(core, ["SR-001"])
-    applied = _apply(core, job, verdict_answer(
-        ("SR-001", "beyond", 0.9), beyond={"SR-001": ["a two second limit"]}))
-    assert applied.cards == ()                         # no read-back open: no card, no line yet
-    files.write_json_atomic(jobs.job_path(world, SESSION, job.id), files.job_to_json(job))
-    for e in applied.entries:
-        core.log_append("events", e["kind"], dict(e["payload"]))
-
-    def drawn_for(text: str) -> list[str]:
-        digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-        asked = clarify.build(open_core(world), SESSION, message={"digest": digest, "text": text})
-        (card,) = clarify.apply(open_core(world), asked, {"intent": "yes", "readback": {
-            "proposal": "Do the thing"}}).cards
-        return card.evidence.splitlines()
-
-    assert drawn_for("another request") == []          # not this record's request
-    assert drawn_for(MESSAGE) == [                      # its own request's read-back
-        "You did not ask for Pages load in two seconds; Yes confirms it too, so choose Not quite "
-        "to drop it"]
-
-
-def test_ex5_option_picked_decision_supported_is_not_settled_waits_as_card(
+def test_ex5_option_picked_decision_supported_is_not_settled_and_raises_no_card(
         repo: Path, write_record) -> None:
     question = "Cache or no cache? A: add a cache. B: no cache."
     digest = log_prompt(repo, "A")
@@ -370,8 +306,7 @@ def test_ex5_option_picked_decision_supported_is_not_settled_waits_as_card(
     assert entry_of(job, "DEC-001")["premise"]["question"] == question
     applied = _apply(core, job, verdict_answer(("DEC-001", "supported", 0.99)))
     assert not [e for e in applied.entries if e["kind"] == "approval"]
-    (card,) = applied.cards
-    assert card.kind == "trial" and [q.record for q in card.questions] == ["DEC-001"]
+    assert applied.cards == ()                  # no trial card: the question route (SR-252 EX-6)
 
 
 def test_a_changed_record_is_not_carded_or_settled(world: Path) -> None:
@@ -422,8 +357,13 @@ def test_the_schema_is_a_checkable_answer_shape() -> None:
 
     assert judge.schema["id"] == "judge.v1"
     item = judge.schema["properties"]["verdicts"]["items"]
-    assert item["properties"]["verdict"]["enum"] == ["supported", "beyond", "contradicts"]
+    assert item["properties"]["verdict"]["enum"] == ["supported", "beyond", "contradicts",
+                                                     "waiting"]
     assert set(item["required"]) >= {"id", "verdict", "confidence"}
+    assert {"clear", "answer_corrects"} <= set(item["properties"])
+    asked = judge.schema["properties"]["questions"]["items"]["properties"]
+    assert set(asked) == {"question", "header", "options", "recommended_reason", "request",
+                          "records"}
     assert FakeDispatcher().available() is None
 
 
@@ -487,7 +427,7 @@ def test_an_updated_record_joins_the_job(repo: Path, engine_standins) -> None:
     assert sorted(len(j.inputs["records"]) for j in jobs) == [1, 7]
 
 
-def test_the_worker_applies_the_verdicts_and_the_cards(repo: Path, engine_standins) -> None:
+def test_the_worker_applies_the_verdicts_and_raises_no_card(repo: Path, engine_standins) -> None:
     from plumb.understand import cardstore, worker
 
     result = _capture_six(repo)
@@ -502,10 +442,9 @@ def test_the_worker_applies_the_verdicts_and_the_cards(repo: Path, engine_standi
     logged = [e.payload for e in open_core(repo).events() if e.kind == "verdict"]
     assert {v["id"]: (v["verdict"], v["score"]) for v in logged} == {
         ids[0]: ("supported", 0.95), ids[1]: ("supported", 0.9), ids[2]: ("beyond", 0)}
-    kinds = sorted(c.kind for c in cardstore.load(repo, SESSION))
-    assert "beyond" not in kinds and kinds.count("trial") == 1   # the intent still asks
-    status = open_core(repo).status(ids[:2])           # SR-191: the model confirmed the requirement
-    assert status[ids[0]].confirmation == "proposed" and status[ids[1]].approved_by == "auto-model"
+    assert cardstore.load(repo, SESSION) == []          # no trial or beyond card (SR-252 EX-6)
+    status = open_core(repo).status(ids[:2])           # no approval without a question round
+    assert [status[i].confirmation for i in ids[:2]] == ["proposed", "proposed"]
 
 
 # ---- J9a: the judge cases of the evaluation set ---------------------------------------------

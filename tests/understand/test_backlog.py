@@ -52,11 +52,22 @@ def bulk(repo: Path, write_record, plan: dict[str, int], *, prompt: bool = True)
     return out
 
 
+def question(*ids: str, words: str = MESSAGE) -> dict[str, Any]:
+    """One well-shaped judge question settling ``ids``."""
+    return {"question": "Should a held merge say why in one line?", "header": "Merge hold",
+            "options": [{"label": "One line", "consequence": "Says it briefly; no detail."},
+                        {"label": "A full report", "consequence": "Says all; it is long."}],
+            "recommended_reason": "you asked for what it says, briefly",
+            "request": {"words": words, "date": "6 Oct"}, "records": list(ids)}
+
+
 def answering(score: float = 0.95, verdicts: dict[str, str] | None = None):
-    """A fake judge: every record in the job is supported at ``score`` unless named."""
+    """A fake judge: every record in the job is supported at ``score`` unless named, and one
+    question settles them all."""
     def answer(job: Job) -> dict[str, Any]:
         said = verdicts or {}
-        return {"verdicts": [{"id": r["id"], "verdict": said.get(r["id"], "supported"),
+        return {"questions": [question(*(r["id"] for r in job.inputs["records"]))],
+                "verdicts": [{"id": r["id"], "verdict": said.get(r["id"], "supported"),
                               "confidence": score,
                               "beyond": ["more than you said"] if said.get(r["id"]) == "beyond"
                               else [],
@@ -82,7 +93,7 @@ def run_pass(repo: Path, box: Any, jobs: int | None = None) -> list[str]:
 @pytest.mark.sr("SR-232")
 def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
         repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog, worker
+    from plumb.understand import backlog, judge, worker
 
     ids = bulk(repo, write_record, {"alpha": 3, "beta": 3, "gamma": 3})
     backlog.start(open_core(repo), SESSION)
@@ -99,8 +110,10 @@ def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
     assert len(ran) == 3 and seen == [0, 4, 8]
     assert len([e for e in core.events() if e.kind == "verdict"]) == sum(map(len, ids.values()))
     assert progress(repo).state == "done"
-    assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=12, cards=3)
-    assert len(open_cards(repo)) == 3
+    assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=12, questions=1)
+    assert open_cards(repo) == []                       # questions, no trial card (SR-252 EX-6)
+    (asked,) = judge.open_questions(open_core(repo), SESSION)    # one question asked once
+    assert len(asked["records"]) == 12
     assert worker.run_once(core, SESSION) == []
 
 
@@ -146,33 +159,34 @@ def test_sr107_ex1_150_records_one_pass_no_per_turn_limit_done_jobs_not_rerun(
     assert [r["id"] for r in last.inputs["records"]] == ["SR-007"]
 
 
-def test_sr107_ex2_fragment_premise_gets_a_card_that_shows_its_words_alone(
+def test_sr107_ex2_fragment_premise_takes_the_question_route(
         repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog
+    """SR-248 EX-6: a record judged on a fragment of the owner's words is asked about through
+    the question tool, not on a trial card."""
+    from plumb.understand import backlog, judge
 
     bulk(repo, write_record, {"the checks": 0}, prompt=False)    # a quote, no logged message
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.99)}
     run_pass(repo, engine_standins)
-    (card,) = open_cards(repo)
-    assert card.kind == "trial" and card.topic == "Intent about the checks"
-    assert card.issue == "Intent about the checks"                # its read-back
-    assert card.questions[0].record == "INT-001"
+    assert open_cards(repo) == []
+    (asked,) = judge.open_questions(open_core(repo), SESSION)
+    assert [r["id"] for r in asked["records"]] == ["INT-001"]
     seen = engine_standins.dispatcher.jobs[0].inputs["records"][0]["premise"]["messages"][0]
     assert seen["partial"] is True
 
 
-def test_sr107_ex3_18_supported_open_three_trial_cards_one_record_each(
+def test_sr107_ex3_18_supported_take_one_question_and_no_trial_card(
         repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog
+    from plumb.understand import backlog, judge
 
     bulk(repo, write_record, {"the merge check": 17})        # and their intent: 18 records
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.95)}
     run_pass(repo, engine_standins)
-    cards = open_cards(repo)
-    assert [c.kind for c in cards] == ["trial"] * 3
-    assert all(len(c.questions) == 1 for c in cards)
+    assert open_cards(repo) == []
+    (asked,) = judge.open_questions(open_core(repo), SESSION)
+    assert len(asked["records"]) == 18
     assert not [e for e in open_core(repo).events() if e.kind == "approval"]
 
 
@@ -185,11 +199,8 @@ def test_sr107_ex5_three_flagged_are_not_trial_cards_and_raise_no_card(
     flagged = {ids[2]: "beyond", ids[3]: "beyond", ids[4]: "contradicts"}
     engine_standins.dispatcher.script = {"judge": answering(0.95, flagged)}
     run_pass(repo, engine_standins)
-    cards = open_cards(repo)
-    assert not [c for c in cards if c.kind in ("beyond", "contradicts")]   # SR-152: a line
-    on_trial = {c.questions[0].record for c in cards if c.kind == "trial"}
-    assert on_trial.isdisjoint(flagged) and len(on_trial) == 3     # 8 records, 3 flagged
-    assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=8, cards=6)   # 3 + 3
+    assert open_cards(repo) == []                       # flagged or not: no card
+    assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=8, questions=1)
 
 
 def test_sr107_ex6_progress_10_of_160(repo: Path, write_record, engine_standins) -> None:
@@ -206,7 +217,7 @@ def test_sr107_ex6_progress_10_of_160(repo: Path, write_record, engine_standins)
     assert shown.kind == "judge"
 
 
-def test_backlog_end_line_counts_judged_and_cards_awaiting(
+def test_backlog_end_line_counts_judged_and_questions_awaiting(
         repo: Path, write_record, engine_standins) -> None:
     """Spec 8: when the pass ends the progress file is done, with the end line."""
     from plumb.understand import backlog
@@ -219,9 +230,9 @@ def test_backlog_end_line_counts_judged_and_cards_awaiting(
     run_pass(repo, engine_standins)
     shown = progress(repo)
     assert shown.state == "done"
-    assert shown.step == owner_text.BACKLOG_DONE.format(judged=160, cards=3)
+    assert shown.step == owner_text.BACKLOG_DONE.format(judged=160, questions=1)
     assert owner_level(shown.step) == []
-    assert len([c for c in open_cards(repo) if c.kind == "trial"]) == 3
+    assert open_cards(repo) == []
 
 
 def test_sr107_ex7_model_unreachable_midway_resumes_without_rejudging(
@@ -279,9 +290,9 @@ def test_the_pass_holds_its_records_back_from_the_trial_until_it_ends(
     assert trial.top_up(open_core(repo), SESSION) == []           # no trial batch mid-pass
 
 
-def test_a_decision_in_the_backlog_is_a_trial_card_of_its_own(repo: Path, write_record,
-                                                            engine_standins) -> None:
-    from plumb.understand import backlog
+def test_a_decision_in_the_backlog_takes_the_question_route(repo: Path, write_record,
+                                                          engine_standins) -> None:
+    from plumb.understand import backlog, judge
     from understand.test_judge_job import decision_text
 
     bulk(repo, write_record, {"alpha": 2})
@@ -289,18 +300,21 @@ def test_a_decision_in_the_backlog_is_a_trial_card_of_its_own(repo: Path, write_
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.99)}
     run_pass(repo, engine_standins)
-    (single,) = [c for c in open_cards(repo) if c.questions[0].record == "DEC-001"]
-    assert single.kind == "trial" and single.issue == "You chose decimal"
+    assert open_cards(repo) == []
+    asked = {r["id"] for q in judge.open_questions(open_core(repo), SESSION)
+             for r in q["records"]}
+    assert "DEC-001" in asked
 
 
-def test_one_record_below_the_threshold_is_drawn_first(repo: Path, write_record,
-                                                      engine_standins) -> None:
-    from plumb.understand import backlog
+def test_a_record_below_the_threshold_is_asked_like_the_others(repo: Path, write_record,
+                                                              engine_standins) -> None:
+    from plumb.understand import backlog, judge
 
     ids = bulk(repo, write_record, {"alpha": 5})["alpha"]
 
     def graded(job: Job):
-        return {"verdicts": [{"id": r["id"], "verdict": "supported",
+        return {"questions": [question(*(r["id"] for r in job.inputs["records"]))],
+                "verdicts": [{"id": r["id"], "verdict": "supported",
                               "confidence": 0.5 if r["id"] == ids[3] else 0.95,
                               "beyond": [], "contradicts": []}
                              for r in job.inputs["records"]]}
@@ -308,8 +322,9 @@ def test_one_record_below_the_threshold_is_drawn_first(repo: Path, write_record,
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": graded}
     run_pass(repo, engine_standins)
-    cards = open_cards(repo)
-    assert len(cards) == 3 and cards[0].questions[0].record == ids[3]
+    assert open_cards(repo) == []
+    (asked,) = judge.open_questions(open_core(repo), SESSION)
+    assert ids[3] in {r["id"] for r in asked["records"]}
     assert FakeDispatcher().available() is None
 
 

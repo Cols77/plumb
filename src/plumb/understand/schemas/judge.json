@@ -1,6 +1,6 @@
 {
   "id": "judge.v1",
-  "title": "The judge's answer: one verdict per record",
+  "title": "The judge's answer: one verdict per record, and the questions for the owner",
   "type": "object",
   "required": ["verdicts"],
   "properties": {
@@ -11,10 +11,30 @@
         "required": ["id", "verdict", "confidence"],
         "properties": {
           "id": {"type": "string"},
-          "verdict": {"type": "string", "enum": ["supported", "beyond", "contradicts"]},
+          "verdict": {"type": "string",
+                      "enum": ["supported", "beyond", "contradicts", "waiting"]},
           "beyond": {"type": "array", "items": {"type": "string"}},
           "contradicts": {"type": "array", "items": {"type": "string"}},
+          "reason": {"type": "string"},
+          "clear": {"type": "boolean"},
+          "answer_corrects": {"type": "boolean"},
           "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "question": {"type": "string"},
+          "header": {"type": "string"},
+          "options": {"type": "array", "items": {"type": "object", "properties": {
+            "label": {"type": "string"}, "consequence": {"type": "string"}}}},
+          "recommended_reason": {"type": "string"},
+          "request": {"type": "object", "properties": {
+            "words": {"type": "string"}, "date": {"type": "string"}}},
+          "records": {"type": "array", "items": {"type": "string"}}
         }
       }
     }

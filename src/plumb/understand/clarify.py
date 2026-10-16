@@ -38,8 +38,7 @@ ISSUE_ESCALATION = ("{n} things would change what I build; going through them to
                     "short spec session beats {n} separate questions")
 EVIDENCE_GAPS = "The {n} things: {text}"
 SPEC_YES_NOTE = "Nothing is built until we have been through them together"
-SPEC_NO_NOTE = "Builds now on the guesses listed on your request; you can correct them there"
-WAITS_ON = "Nothing is built until you answer the question below."
+SPEC_NO_NOTE = "Builds now on the guesses listed with this question"
 CHOICE_TOPIC = 'One question about your request of {date}: "{text}"'
 SPEC_QUESTION = "Shall we go through them in a short spec session first?"
 SPEC_YES = "Yes, a short spec session"
@@ -621,26 +620,14 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     gaps = [(g, _gap_question(g, n)) for n, g in enumerate(answer.get("gaps") or (), 1)
             if isinstance(g, Mapping)]
     gaps = [(g, q) for g, q in gaps if q.text and not _already_answered(q, answered)]
-    raw = answer.get("readback")
-    readback: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}
     # SR-131: only a gap with no better-supported answer is asked, and one at most; two or
-    # more are a spec session offered; a gap that is not blocking is assumed
+    # more are a spec session offered; a gap that is not blocking is assumed. No read-back
+    # card is drawn: the judge's questions go to the question tool (SR-252 EX-6, SR-267)
     open_gaps = [(g, q) for g, q in gaps if g.get("blocking")]
     escalate = len(open_gaps) > MAX_QUESTIONS
     blocking = [] if escalate else open_gaps[:1]
-    # a gap not asked (not blocking, past the first, or all of them when a spec session is
-    # offered) is a guess on the read-back, so the owner can still flip it
-    asked = {id(g) for g, _ in blocking}
-    lines = [EVIDENCE_ASSUMED.format(text=t) for t in _clean(readback.get("assumptions"))]
-    lines += [EVIDENCE_ASSUMED.format(text=f"{q.text}: {q.resolutions[0]}")
-              for g, q in gaps if id(g) not in asked and (escalate or not g.get("blocking"))
-              and q.resolutions and not (escalate and g.get("blocking"))]
-    from plumb.understand import judge
-
-    lines += judge.pending_lines(core, session, card_id(digest))   # SR-152: this request's doubts
-    if escalate or blocking:
-        lines.insert(0, WAITS_ON)
-    cards = [_readback_card(root, digest, text, readback, lines)]
+    branch = repository(root)["branch"]
+    cards: list[CardState] = []
     topic = CHOICE_TOPIC.format(date=_now()[:10], text=_clipped(text))
     if escalate:
         cards.append(CardState(
@@ -656,7 +643,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                                        choices=(Choice(SPEC_YES, "change", SPEC_YES, SPEC_YES_NOTE),
                                                 Choice(SPEC_NO, "accepted",
                                                        consequence=SPEC_NO_NOTE))),),
-            status="open", turn=0, branch=cards[0].branch))
+            status="open", turn=0, branch=branch))
     elif blocking:
         gap, question = blocking[0]
         changes = "; ".join(c.consequence for c in question.choices if c.consequence)
@@ -664,7 +651,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             id=choice_id(digest), kind="choice", topic=topic, issue=question.text,
             evidence=EVIDENCE_CHANGES.format(text=changes) if changes else "",
             resolutions=question.resolutions, questions=(question,), status="open", turn=0,
-            branch=cards[0].branch,
+            branch=branch,
             diagram=(f".plumb/session/{session}/diagrams/{short(digest)}.html"
                      if gap.get("diagram") else "")))
     mine = {c.id for c in cards}
@@ -672,7 +659,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             and any(c.id == i and c.status in cardstore.AWAITING for c in own)]
     if moot:
         cardstore.withdraw(root, session, moot)
-    if len(cards) > 1:
+    if cards:      # a choice card holds the gate; the judge's questions never do (P6)
         gate.refresh(root, session, digest,
                      GATE_REASON_ESCALATION if escalate else GATE_REASON_CARD)
     elif hold := intent_change_hold(core, session, digest):

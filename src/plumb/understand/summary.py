@@ -151,9 +151,7 @@ def _labels_since_calibration(entries: Sequence[Any]) -> bool:
 
 def _upkeep(core: Any, session: str, recalibrate: bool) -> list[CardState]:
     """The turn's upkeep, from the logs alone (no model): rerun the calibration from the logged
-    scores after an owner label, then top up the trial cards."""
-    from plumb.understand import trial
-
+    scores after an owner label. No trial card is drawn (SR-252 EX-6)."""
     entries = core.events()
     if recalibrate and any(e.kind == "verdict" for e in entries) and _labels_since_calibration(
             entries):
@@ -163,7 +161,7 @@ def _upkeep(core: Any, session: str, recalibrate: bool) -> list[CardState]:
             calibrate.calibrate(core)
         except Exception:  # noqa: BLE001 - upkeep never fails the turn
             pass
-    return trial.top_up(core, session)
+    return []
 
 
 def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (),

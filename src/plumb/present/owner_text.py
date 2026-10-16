@@ -274,15 +274,9 @@ TYPED_NEEDS_IDS = ("I could not tell which records you meant from those words al
 TYPED_SETTLE_GONE = "That switch no longer exists; nothing changed. Records are confirmed by you, or by the judge reading your words when automatic confirmation is on."
 AUTO_APPROVE_SWITCHED = "Automatic confirmation is now {state}."
 AUTO_APPROVE_NOT_YET = "Automatic confirmation is switched on, but not in effect yet: {reason}."
-BACKLOG_DONE = "{judged} records judged, {cards} cards waiting for you"
+BACKLOG_DONE = "{judged} records judged, {questions} questions waiting for you"
 
 # -- JUDGE: the cards, the trial and the summary
-DOUBT_BEYOND = ("You did not ask for {title}; Yes confirms it too, so choose Not quite to "
-                "drop it")
-DOUBT_CONTRADICTS = ('You confirmed {other}; {title} contradicts it. Yes confirms {title} too, '
-                     "so choose Not quite to keep only {other}")
-DOUBT_CONTRADICTS_UNNAMED = ("{title} contradicts something you said. Yes confirms it too, so "
-                             "choose Not quite to drop it")
 BEYOND_KEEP = "Keep it: this is what I meant"
 BEYOND_DROP = "Drop it"
 BEYOND_REWORD = "Reword it (say how)"

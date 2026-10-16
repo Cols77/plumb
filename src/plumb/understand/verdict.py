@@ -25,6 +25,7 @@ from plumb.judgment.verdict import JEV, MODEL
 
 STEP = "the verdict"
 CLAIM_KIND = {"intent": "intent-readback", "requirement": "example-restatement"}
+INPUT_MAX = 60_000        # characters the judge model is given at most
 _UNSET: Any = object()
 
 
@@ -193,12 +194,14 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
         except NoModel as exc:
             gap = str(exc)
         sub = dataclasses.replace(job, inputs={**job.inputs, "records": rest})
+        user = json.dumps(sub.inputs, ensure_ascii=False, sort_keys=True, indent=1)
+        if not gap and len(user) > INPUT_MAX:     # SR-245 EX-8: the size is named
+            gap = f"the records are too large for the judge model ({len(user)} characters)"
         try:
             if gap:
                 raise DispatchError("start", f"{jev_cause}; {gap}" if jev_cause else gap)
-            answer = dict(dispatcher.run(
-                sub, system=system, schema=schema, on_step=on_step,
-                user=json.dumps(sub.inputs, ensure_ascii=False, sort_keys=True, indent=1)))
+            answer = dict(dispatcher.run(sub, system=system, schema=schema, on_step=on_step,
+                                         user=user))
         except DispatchError as exc:     # SR-185: these records wait; the others go on
             left, why = rest, exc.message
         else:

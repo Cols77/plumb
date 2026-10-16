@@ -1,5 +1,6 @@
-"""SR-187: a message that answers a card and adds a request has the answer applied to the card
-and the new request read back; the model is scripted."""
+"""SR-187: a message that answers a card and adds a request has the answer applied to the card;
+the new request draws no read-back card (SR-252 EX-6: the judge's questions cover its records
+once captured); the model is scripted."""
 
 from __future__ import annotations
 
@@ -27,18 +28,16 @@ def _answering(repo: Path, world: Any, readback: dict[str, Any]) -> tuple[str, A
     return card.id, [c for c in _cards(repo) if c.id not in first]
 
 
-def test_ex2_the_card_is_answered_and_only_the_new_request_is_read_back(
+def test_ex2_the_card_is_answered_and_the_new_request_draws_no_read_back(
         repo: Path, engine_standins: Any) -> None:
     card, new = _answering(repo, engine_standins, {"proposal": f"Your request: {READS}"})
     assert {c.id: c.status for c in _cards(repo)}[card] == "answered"
-    (readback,) = new
-    assert READS in readback.issue and WORDS not in readback.issue
+    assert new == []
 
 
-def test_ex4_an_unclear_new_request_is_read_back_with_what_was_unclear(
+def test_ex4_an_assumption_in_the_new_request_draws_no_read_back_card(
         repo: Path, engine_standins: Any) -> None:
     card, new = _answering(repo, engine_standins, {
         "proposal": f"Your request: {READS}", "assumptions": ["resizable by dragging or by menu"]})
     assert {c.id: c.status for c in _cards(repo)}[card] == "answered"
-    (readback,) = new
-    assert "resizable by dragging or by menu" in readback.evidence
+    assert new == []

@@ -238,7 +238,10 @@ def _capture_doc() -> dict[str, Any]:
             "requirements": requirements}
 
 
-def test_flow_3_capture_trial_and_calibration(repo: Path) -> None:
+def test_flow_3_capture_asks_through_the_question_tool_and_draws_no_trial(repo: Path) -> None:
+    """SR-248 EX-3, SR-252 EX-6: after a capture the judge model's question waits for the
+    question tool (``clarify --wait`` answers ``ask``); the turn end draws no trial or read-back
+    card and nothing is approved without a question round."""
     (repo / ".plumb" / "config.yaml").write_text(ROOMY, encoding="utf-8")
     s = Session(repo)
     s.start()
@@ -247,63 +250,35 @@ def test_flow_3_capture_trial_and_calibration(repo: Path) -> None:
           "and takes roots of whole numbers.")
     assert s.worker_idle(30)
 
-    # one capture: one judge job for the intent and the six requirements
-    scores = dict(zip((f"SR-00{n}" for n in range(1, 7)), (0.95, 0.93, 0.92, 0.9, 0.88, 0.4),
-                      strict=True))
-    verdicts = [{"id": rid, "verdict": "supported", "confidence": c} for rid, c in scores.items()]
-    verdicts.append({"id": "INT-001", "verdict": "supported", "confidence": 0.9})
-    model(s, judge={"verdicts": verdicts})
+    # one capture: one judge job for the intent and the six requirements, one question for all
+    ids = ["INT-001", *(f"SR-00{n}" for n in range(1, 7))]
+    asked = {"question": "Should the calculator work on whole numbers only?",
+             "header": "Numbers", "records": ids,
+             "options": [{"label": "Whole numbers", "consequence": "As you said; no decimals."},
+                         {"label": "Decimals too", "consequence": "Wider; more to build."}],
+             "recommended_reason": "you said whole numbers",
+             "request": {"words": "takes roots of whole numbers", "date": "16 Oct"}}
+    model(s, judge={"verdicts": [{"id": rid, "verdict": "supported", "confidence": 0.9}
+                                 for rid in ids], "questions": [asked]})
     (repo / "capture.json").write_text(json.dumps(_capture_doc()), encoding="utf-8")
     done = plumb(s, "capture", "--file", str(repo / "capture.json"), "--prompt",
                  short(last_digest(repo)))
     assert done.returncode == 0, done.stderr
     assert s.worker_idle(30)
     assert len(calls(s, "judge")) == 1
-    assert owner_words_approvals(repo) == {}                              # a trial only
 
-    # the trial: three cards of one record each, one of them below the threshold; the owner
-    # has not answered yet
+    waited = plumb(s, "clarify", "--wait", "--json")
+    assert waited.returncode == 0, waited.stderr
+    shown = json.loads(waited.stdout)
+    assert shown["state"] == "ask"
+    (question,) = shown["questions"]
+    assert question["options"][0]["label"] == "Whole numbers (Recommended)"
+    assert "takes roots of whole numbers" in question["question"]
+    at_owner_level(question["question"], *(o["description"] for o in question["options"]))
+
     s.stop()
-    trials = [c for c in own_cards(s) if c["kind"] == "trial"]
-    assert [len(c["questions"]) for c in trials] == [1, 1, 1]
-    assert [c["questions"][0]["record"] for c in trials] == ["SR-005", "SR-001", "SR-002"]
-
-    # the owner answers yes to two of them and no to the one below the threshold
-    index = open_core(repo).index()
-    entries = []
-    for card in trials:
-        q = card["questions"][0]
-        bad = q["record"] == "SR-005"
-        entries.append({
-            "id": f'{card["id"]}/{q["id"]}', "hash": index[q["record"]].hash,
-            "answer": "rejected" if bad else "accepted",
-            "rejection": "misread" if bad else None,
-            "evidence": "no to the fifth" if bad else "yes to all", "confidence": 0.95})
-    model(s, read={"entries": entries})
-    s.say("yes to all, but no to the fifth, no to the fifth")
-    assert s.worker_idle(30)
-    assert {r: p["label"] for r, p in owner_words_approvals(repo).items()} == {
-        "SR-001": "yes", "SR-002": "yes"}
-    (rejected,) = events(repo, "rejection")           # the fifth, a misreading
-    assert [r["id"] for r in rejected.payload["records"]] == ["SR-005"]
-    assert rejected.payload["reason"] == "capture-error"
-
-    # JEV's own logged verdicts (the judge model's never calibrate, SR-182)
-    core = open_core(repo)
-    for rid, c in scores.items():
-        core.log_append("events", "verdict", {
-            "id": rid, "hash": core.index()[rid].hash, "verdict": "supported", "score": c,
-            "by": "jev", "judge": "jev:test/jev-1", "model": "test/jev-1"})
-
-    # recalibration at the turn's end, from the logs: no model call
-    before = len(calls(s))
-    model(s, **{"$fail_when": {"contains": ""}})        # any model call now would fail
-    s.stop()
-    assert len(calls(s)) == before                       # recalibration called no model
-    assert [e for e in events(repo, "calibration") if e.payload.get("source") == "logged"]
-    assert not events(repo, "settle-config")             # nothing settles by context any more
-    # the next card opens when one was answered
-    assert len([c for c in own_cards(s) if c["kind"] == "trial" and c["status"] == "open"]) == 3
+    assert not [c for c in own_cards(s) if c["kind"] in ("trial", "clarify")]
+    assert not events(repo, "approval")                  # no approval without a question round
 
 
 # ---- (5) every failure of spec 9.1 ------------------------------------------------------------

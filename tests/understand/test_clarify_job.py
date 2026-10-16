@@ -75,24 +75,14 @@ def test_sr131_ex2_one_blocking_choice_the_rest_assumptions(
                             blocking=True, diagram=False),
                        _gap("scope", "Which of their data goes in the export?")]}
     core, digest = _asked("let users export their data", answer, repo, engine_standins)
-    (readback,) = _by_kind(repo, "clarify")
-    assert readback.id == clarify.card_id(digest)
-    assert readback.issue == "Let a user download their data as one file."
-    assert readback.topic.startswith("Your request of ")
-    assert readback.topic.endswith('"let users export their data"')
-    assert [t for t, _ in clarify.assumptions(readback)] == [
-        "the file is named after the user",
-        "Which of their data goes in the export?: the first way"]
-    assert readback.evidence.splitlines()[-1] == "Not doing: export other people's data"
-    assert "send it by mail" not in readback.evidence          # at most one won't
-    assert [c.label for c in readback.questions[0].choices] == ["Yes, that is what I meant", "Not quite"]
+    assert _by_kind(repo, "clarify") == []          # SR-252 EX-6: no read-back card
     (choice,) = _by_kind(repo, "choice")
     assert choice.id == clarify.choice_id(digest) and choice.issue.startswith("Which file")
     assert choice.questions[0].resolutions[0] == "the second way"    # the recommended one first
     assert [c.consequence for c in choice.questions[0].choices][0] == "costs an hour"
     assert choice.evidence.startswith("What changes: ") and choice.diagram == ""
     assert gate.is_closed(repo, SESSION)
-    assert owner_level(_text(readback) + _text(choice)) == []
+    assert owner_level(_text(choice)) == []
     assert not _gate_entries(core)
 
 
@@ -101,9 +91,7 @@ def test_sr131_ex3_three_gaps_with_recommendations_are_assumptions_and_no_card(
     answer = {"intent": "yes", "topic": "export", "gaps": [
         _gap("a", "First?"), _gap("b", "Second?"), _gap("c", "Third?")]}
     core, digest = _asked("export things", answer, repo, engine_standins)
-    (readback,) = _cards(repo)
-    assert [t for t, _ in clarify.assumptions(readback)] == [
-        "First?: the first way", "Second?: the first way", "Third?: the first way"]
+    assert _cards(repo) == []                       # assumed; no read-back card (SR-252 EX-6)
     assert not gate.is_closed(repo, SESSION)
     assert [e["digest"] for e in _gate_entries(core)] == [digest]
 
@@ -204,7 +192,7 @@ def test_sr131_two_blocking_gaps_offer_a_spec_session_not_a_guess(
     _asked("do two things", answer, repo, engine_standins)
     (choice,) = _by_kind(repo, "choice")
     assert clarify.is_escalation(choice)
-    assert "Assumed: " not in _by_kind(repo, "clarify")[0].evidence
+    assert _by_kind(repo, "clarify") == []
 
 
 def test_sr132_ex1_a_newer_read_back_withdraws_the_card_it_replaces(
@@ -220,9 +208,9 @@ def test_sr132_ex1_a_newer_read_back_withdraws_the_card_it_replaces(
     by_id = {c.id: c for c in _cards(repo)}
     assert by_id[older].status == "withdrawn"
     assert [c.id for c in _by_kind(repo, "choice")] == []
-    assert by_id[clarify.card_id(new)].status == "open"
+    assert clarify.card_id(new) not in by_id                 # no read-back card (SR-252 EX-6)
     sent = engine_standins.dispatcher.jobs[-1].inputs
-    assert [c["id"] for c in sent["open_cards"]] == [clarify.card_id(old), older]
+    assert [c["id"] for c in sent["open_cards"]] == [older]
 
 
 def test_ex2_request_that_maps_to_confirmed_requirement_no_choice(
@@ -231,7 +219,7 @@ def test_ex2_request_that_maps_to_confirmed_requirement_no_choice(
     assert run(repo, "approve", "SR-001") == 0
     answer = {"intent": "yes", "topic": "export as CSV", "gaps": []}
     core, digest = _asked("export the user list as CSV", answer, repo, engine_standins)
-    assert [c.kind for c in _cards(repo)] == ["clarify"]
+    assert _cards(repo) == []                       # no read-back card (SR-252 EX-6)
     sent = engine_standins.dispatcher.jobs[0].inputs
     assert [t["id"] for t in sent["touched"]] == ["SR-001"]
     assert sent["touched"][0]["status"] == "confirmed"
@@ -258,9 +246,7 @@ def test_sr131_many_gaps_with_a_recommendation_are_assumed_not_asked(
     gaps = [_gap(f"g{n}", f"Question number {n}?") for n in range(1, 6)]
     answer = {"intent": "yes", "topic": "a big feature", "gaps": gaps}
     _asked("rebuild the billing system", answer, repo, engine_standins)
-    assert _by_kind(repo, "choice") == []
-    (card,) = _by_kind(repo, "clarify")
-    assert card.evidence.count("Assumed:") >= 5
+    assert _cards(repo) == []                       # assumed, no read-back card (SR-252 EX-6)
     assert not gate.is_closed(repo, SESSION)
 
 
@@ -290,11 +276,12 @@ def _request(repo: Path, write_record: Any, digest: str) -> None:
 
 def test_sr130_ex1_an_ok_on_the_read_back_confirms_the_whole_request(
         repo: Path, write_record: Any, engine_standins: Any) -> None:
+    """A read-back card already open before the judge's questions replaced it."""
     core, digest = _asked("let users export", {"intent": "yes", "topic": "export"}, repo,
                           engine_standins)
     _request(repo, write_record, digest)
     core = open_core(repo)
-    (card,) = _by_kind(repo, "clarify")
+    card = clarify._readback_card(repo, digest, "let users export", {"proposal": "Export"}, [])
     answered = CardState(**{**card.__dict__, "status": "answered", "answers": (
         ClarifyAnswer(clarify.READBACK_ID, "accepted", digest),)})
     confirmed: list[str] = []
@@ -476,9 +463,9 @@ def test_sr131_no_to_the_spec_session_opens_the_gate_and_lists_the_guesses(
         repo: Path, engine_standins: Any) -> None:
     _offer_answered(repo, engine_standins, clarify.SPEC_NO)
     assert not gate.is_closed(repo, SESSION)
-    (request,) = _by_kind(repo, "clarify")
-    assert "Assumed: First?: the first way" in request.evidence
-    assert "Assumed: Second?: the first way" in request.evidence
+    (offer,) = [c for c in _cards(repo) if c.kind == "choice"]     # the guesses are listed on it
+    assert "Assumed: First?: the first way" in offer.evidence
+    assert "Assumed: Second?: the first way" in offer.evidence
 
 
 def test_sr131_yes_to_the_spec_session_keeps_the_gate_closed(
@@ -540,8 +527,10 @@ def test_sr131_ex4_ok_go_on_while_the_card_waits_starts_no_new_request(
     unanswered; the check's new read-back for it is dropped and the hold stays closed."""
     gaps = {"intent": "yes", "topic": "export", "gaps": [
         _gap("format", "Which format?", blocking=True)]}
-    core, _ = _asked("let users export their data", gaps, repo, engine_standins)
-    (readback,) = _by_kind(repo, "clarify")
+    core, first = _asked("let users export their data", gaps, repo, engine_standins)
+    readback = clarify._readback_card(repo, first, "let users export their data",
+                                      {"proposal": "Export"}, [])    # one opened before
+    cardstore.save(repo, SESSION, [*_cards(repo), readback])
     digest = log_prompt(repo, "ok go on", session=SESSION)
     gate.close(repo, SESSION, digest, "your request is being checked")
     core.log_append("events", "read-entry", {

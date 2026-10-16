@@ -63,7 +63,7 @@ def test_ex1_a_supported_verdict_alone_confirms_nothing(repo: Path, write_record
     ids = make_world(repo, write_record, 1)
     applied = judged(repo, ids, [0.99])
     assert [e for e in applied.entries if e["kind"] == "approval"] == []
-    assert [c.kind for c in applied.cards] == ["trial"]
+    assert applied.cards == ()                           # SR-252 EX-6: no trial card either
     assert "settle" not in json.dumps([dataclasses.asdict(c) for c in applied.cards]).lower()
     write_applied(repo, applied)
     assert open_core(repo).status(ids)["SR-001"].confirmation == "proposed"
@@ -170,7 +170,10 @@ def test_ex1_a_card_is_one_record_with_its_words_and_date(repo: Path, write_reco
     write_record(repo, intent_text(1, said, "A plain checkout", prompt=digest))
     write_record(repo, decision_text(1, "Which checkout?", "plain checkout", intent=1,
                                      alternatives=("a wizard",)))
-    (card,) = judged(repo, ["DEC-001"], [0.9]).cards
+    assert judged(repo, ["DEC-001"], [0.9]).cards == ()   # SR-252 EX-6: the judge draws none
+    core = open_core(repo)                                 # a trial card opened before
+    (item,) = judge.entries_for(core, ["DEC-001"])
+    card = trial.card(core, trial.Candidate(core.index()["DEC-001"], 0.9, item["premise"]))
     assert card.kind == "trial" and len(card.questions) == 1
     assert card.id.startswith("trial:DEC-001@") and card.topic == "Which checkout?"
     assert said in card.evidence and "4 Oct" in card.evidence
@@ -196,16 +199,16 @@ def test_ex2_words_not_found_say_so_and_show_the_proposal_alone(
 def test_ex3_three_cards_are_open_and_answering_one_opens_the_next(
         repo: Path, write_record) -> None:
     ids = make_world(repo, write_record, 5)
-    applied = judged(repo, ids, [0.99, 0.95, 0.9, 0.85, 0.8])
-    write_applied(repo, applied)
-    assert len(applied.cards) == trial.MAX_OPEN == 3
-    cardstore.save(repo, SESSION, applied.cards)
+    write_applied(repo, judged(repo, ids, [0.99, 0.95, 0.9, 0.85, 0.8]))
+    drawn = trial.top_up(open_core(repo), SESSION)      # trial cards opened before (SR-252 EX-6)
+    assert len(drawn) == trial.MAX_OPEN == 3
+    cardstore.save(repo, SESSION, drawn)
     assert trial.top_up(open_core(repo), SESSION) == []
-    first, *rest = applied.cards
+    first, *rest = drawn
     approve(open_core(repo), first.questions[0].record)          # the owner said yes
     cardstore.save(repo, SESSION, [dataclasses.replace(first, status="answered"), *rest])
     (fourth,) = trial.top_up(open_core(repo), SESSION)
-    shown = {c.id for c in applied.cards}
+    shown = {c.id for c in drawn}
     assert fourth.id not in shown and fourth.kind == "trial"
 
 
@@ -226,9 +229,10 @@ def test_ex3_a_card_of_a_branch_that_is_gone_is_not_in_the_backlog(repo: Path) -
 def test_ex4_a_withdrawn_card_confirms_nothing_and_its_record_stays_proposed(
         repo: Path, write_record) -> None:
     ids = make_world(repo, write_record, 1)
-    applied = judged(repo, ids, [0.9])
-    cardstore.save(repo, SESSION, applied.cards)
-    cardstore.withdraw(repo, SESSION, [applied.cards[0].id])
+    write_applied(repo, judged(repo, ids, [0.9]))
+    drawn = trial.top_up(open_core(repo), SESSION)      # a trial card opened before
+    cardstore.save(repo, SESSION, drawn)
+    cardstore.withdraw(repo, SESSION, [drawn[0].id])
     assert cardstore.load(repo, SESSION) == []
     assert [c.status for c in cardstore.own_cards(repo, SESSION)] == ["withdrawn"]
     assert open_core(repo).status(ids)["SR-001"].confirmation == "proposed"

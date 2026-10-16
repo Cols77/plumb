@@ -41,7 +41,11 @@ def _asked(repo: Path, engine_standins: Any, answer: dict[str, Any]) -> tuple[An
 
 def test_ex1_a_readback_is_the_proposal_the_assumptions_and_one_wont(
         repo: Path, engine_standins) -> None:
-    core, card = _asked(repo, engine_standins, {"gaps": [], "readback": READBACK})
+    """A read-back card opened before (a request draws none now, SR-252 EX-6) still shows."""
+    core = open_core(repo)
+    card = clarify._readback_card(repo, "sha256:" + "ab" * 32, "do the findings above", READBACK,
+                                  [clarify.EVIDENCE_ASSUMED.format(text=a)
+                                   for a in READBACK["assumptions"]])
     item = fullcard.content(core, card)
     assert item["wont"] == "touch main"
     assert item["assumptions"] == READBACK["assumptions"]
@@ -109,11 +113,11 @@ def test_an_option_with_no_consequence_is_printed_alone_without_a_placeholder(
 
 @pytest.mark.sr("SR-239")
 def test_every_doubt_line_of_a_readback_is_shown(repo: Path) -> None:
-    from plumb.present import owner_text
-
-    doubts = [owner_text.DOUBT_BEYOND.format(title=t) for t in ("Alpha", "Beta")]
+    doubts = [f"You did not ask for {t}; Yes confirms it too, so choose Not quite to drop it"
+              for t in ("Alpha", "Beta")]          # lines on a read-back opened before
     card = CardState(id="clarify:1", kind="clarify", topic="t", issue="i",
-                     evidence=chr(10).join([clarify.WAITS_ON, "a context line", *doubts]),
+                     evidence=chr(10).join(["Nothing is built until you answer the question "
+                                            "below.", "a context line", *doubts]),
                      resolutions=("Yes",))
     context = fullcard.content(open_core(repo), card)["context"]
     assert all(d in context for d in doubts)

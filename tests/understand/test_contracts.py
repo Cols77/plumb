@@ -570,8 +570,8 @@ def test_owner_text_constants_have_their_fields() -> None:
     from plumb.present import owner_text
 
     assert owner_text.CONFIRM_YOU_SAID.format(evidence="ok") == "you said: ok"
-    assert owner_text.BACKLOG_DONE.format(judged=160, cards=3) == (
-        "160 records judged, 3 cards waiting for you")
+    assert owner_text.BACKLOG_DONE.format(judged=160, questions=3) == (
+        "160 records judged, 3 questions waiting for you")
 
 
 def test_owner_level_flags_commands_ids_and_internal_words() -> None:

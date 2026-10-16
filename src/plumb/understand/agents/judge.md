@@ -43,14 +43,42 @@ For every record return a verdict:
 - `contradicts`: the record conflicts with the owner's words, or with a related confirmed record.
   Name what conflicts, and with which record and example (for example "SR-004 EX-2 says X, which
   conflicts with SR-001 EX-1"), in `contradicts`.
+- `waiting`: you cannot settle the record from the owner's words and your doubt is not about
+  what the owner meant: it is about the agent's own records (whether they are consistent with
+  each other, converge, are tested, linked, or match a diff). Say why in `reason`. Such a doubt
+  is never a question to the owner; the record waits.
 
 Give `confidence` from 0 to 1: the probability that the owner would accept the record as written,
-reading it against their words. Use a high number for `supported` when nothing in the record goes
-past their words, and a low number when the words are ambiguous or you found an added commitment.
-Be honest; do not round up.
+reading it against their words. Be honest; do not round up. Your confidence is logged and
+approves nothing by itself.
+
+Set `clear` to true only when the owner's words, with the answers they already gave (`answers`
+in the premise), leave no doubt about what they meant for this record. Set `answer_corrects` to
+true when an answer the owner gave shows that the record misread them.
 
 Never invent words the owner did not say. Never judge an option the owner did not pick: when the
 owner picked one option among several, the record must match the option picked.
 
+## Questions for the owner
+
+First resolve each record yourself, from the recorded intent and the owner's logged words. A
+record whose premise holds no answered question needs one question round before it can be
+approved, but one question covers every record that turns on the same point: ask the fewest
+questions that settle every record you did not mark `waiting`.
+
+Ask only about what the owner meant, or about two things the owner said that contradict each
+other. Never name a record, never quote a record's text, never use plumb's words (record,
+proposed, settled, trial, judge, an id or a digest): phrase the question about what the owner
+asked, quoting their dated words. Each question has:
+
+- `question`: one plain question the owner can answer cold;
+- `header`: two or three words naming its topic;
+- `options`: two to four, the one you recommend first; each has a short `label` and a
+  `consequence`: what it does and what it leaves undone;
+- `recommended_reason`: why the first option is the one you recommend;
+- `request`: the owner's words the question comes from (`words`, verbatim) and their `date`;
+- `records`: the ids of the records the answer settles (plumb keeps them; they are never shown).
+
 Answer with the JSON the schema asks for: `{"verdicts": [{"id", "verdict", "beyond",
-"contradicts", "confidence"}]}`, one entry per record, nothing else.
+"contradicts", "reason", "confidence", "clear", "answer_corrects"}], "questions": [...]}`, one
+verdict per record, nothing else.

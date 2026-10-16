@@ -2,13 +2,13 @@
 record each, and each press is a labelled owner answer that calibration counts.
 
 The trace: the judge's logged ``supported`` verdicts wait in the log (``trial.from_log``); the
-stop hook's upkeep (``trial.top_up``) puts up to three trial cards, one record each, in
-``cards.json``; ``plumb mod draw`` offers each its Yes, No and Fix it; ``plumb
-mod press`` answers through the one answer path: Yes is ``approval {by: owner, via: button,
-label: yes}``, No is a ``capture-error`` rejection (a misreading) with the read-back it
-rejected; when a card is answered its ``trial`` entry is logged; the next turn end reruns
-the calibration from the logged scores (no model call) and ``plumb jev status`` shows the yes
-and the real 'no' examples."""
+turn end draws no trial card any more (SR-252 EX-6), so the cards here are ones opened before
+(``trial.top_up``, up to three, one record each, in ``cards.json``); ``plumb mod draw``
+offers each its Yes, No and Fix it; ``plumb mod press`` answers through the one answer path:
+Yes is ``approval {by: owner, via: button, label: yes}``, No is a ``capture-error`` rejection
+(a misreading) with the read-back it rejected; when a card is answered its ``trial`` entry is
+logged; the next turn end reruns the calibration from the logged scores (no model call) and
+``plumb jev status`` shows the yes and the real 'no' examples."""
 
 from __future__ import annotations
 
@@ -41,8 +41,10 @@ def _world(repo: Path, write_record, scores: list[float]) -> list[str]:
     core = open_core(repo)
     job = judge.build(core, SESSION, records=ids)
     assert job is not None
-    applied = judge.apply(core, job, verdict_answer(
-        *((i, "supported", s) for i, s in zip(ids, scores, strict=True))))
+    answer = verdict_answer(*((i, "supported", s) for i, s in zip(ids, scores, strict=True)))
+    for given in answer["verdicts"]:       # JEV's scores: only they calibrate (SR-182)
+        given.update(by="jev", judge="jev:jev-1", model="jev-1")
+    applied = judge.apply(core, job, answer)
     for entry in applied.entries:          # the worker writes the verdicts; not the cards:
         core.log_append("events", entry["kind"], entry["payload"])   # the log holds them back
     return ids
@@ -72,12 +74,16 @@ def _trial(drawn: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 @pytest.fixture
 def batch(repo: Path, write_record, monkeypatch, capsys):
-    """Three supported requirements held back by the log, a turn end, the panel registered and
-    the cards drawn: ``(ids, {record: card})``."""
+    """Three supported requirements held back by the log, their trial cards opened before the
+    turn end stopped drawing them, the panel registered and the cards drawn:
+    ``(ids, {record: card})``."""
+    from plumb.understand import trial
+
     ids = _world(repo, write_record, [0.95, 0.9, 0.97])
     assert cardstore.own_cards(repo, SESSION) == []
-    text = _turn_end(repo)
-    assert any("Operation" in t for t in text)
+    assert not any("Operation" in t for t in _turn_end(repo))     # SR-252 EX-6: none drawn
+    assert cardstore.own_cards(repo, SESSION) == []
+    cardstore.save(repo, SESSION, trial.top_up(open_core(repo), SESSION))
     assert run_mod(monkeypatch, capsys, repo, "hello", stdin={"key_digest": DIGEST})[0] == 0
     return ids, _trial(_draw(monkeypatch, capsys, repo))
 
