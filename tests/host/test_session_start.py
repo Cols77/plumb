@@ -161,7 +161,7 @@ def test_warm_brief_skips_the_test_map(repo: Path, write_record, hook_input,
     write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
     (repo / "tests").mkdir()
     (repo / "tests" / "test_one.py").write_text(
-        "import pytest\n\n\n@pytest.mark.sr('SR-230')\ndef test_one():\n    pass\n", "utf-8")
+        "import pytest\n\n\n@pytest.mark.sr('SR-001')\ndef test_one():\n    pass\n", "utf-8")
     cold = _run(repo, hook_input)
 
     def no_build(*args, **kwargs):

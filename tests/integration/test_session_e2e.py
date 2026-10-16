@@ -75,8 +75,8 @@ FILES = {
     "src/pkg/mod.py": "def add(a, b):\n    return a + b\n\n\ndef mul(a, b):\n"
                       "    return a * b\n",
     "tests/test_mod.py": "import pytest\n\nfrom pkg.mod import add, mul\n\n\n"
-                         "@pytest.mark.sr(\"SR-230\")\ndef test_add():\n"
-                         "    assert add(1, 2) == 3\n\n\n@pytest.mark.sr(\"SR-230\")\n"
+                         "@pytest.mark.sr(\"SR-001\")\ndef test_add():\n"
+                         "    assert add(1, 2) == 3\n\n\n@pytest.mark.sr(\"SR-002\")\n"
                          "def test_mul():\n    assert mul(2, 3) == 6\n",
     ".plumb/config.yaml": "verify:\n  flaky_rerun: false\n",
 }

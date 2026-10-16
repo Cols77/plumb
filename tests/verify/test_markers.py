@@ -9,18 +9,18 @@ from plumb.verify.markers import collect_markers, test_nodes
 SOURCE = '''
 import pytest
 
-pytestmark = pytest.mark.sr("SR-278")
+pytestmark = pytest.mark.sr("SR-009")
 
 
-@pytest.mark.sr("SR-230")
+@pytest.mark.sr("SR-001")
 @pytest.mark.parametrize("x", [1, 2])
 def test_one(x):
     assert x
 
 
-@pytest.mark.sr("SR-230")
+@pytest.mark.sr("SR-002")
 class TestThing:
-    @pytest.mark.sr("SR-231")
+    @pytest.mark.sr("SR-003")
     def test_two(self):
         pass
 
