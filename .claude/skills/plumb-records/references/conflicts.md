@@ -2,9 +2,9 @@
 
 Two kinds of conflict card ask the owner which version of the same intent holds. The card is
 the only ask: say in one line that it waits, never restate it, and never choose for them
-(`.venv/Scripts/python.exe -m plumb conflict choose` is the owner's own terminal). Their answer
-arrives by pressing a side on a merge conflict's card; an early conflict is answered with
-their own typed choose.
+(`.venv/Scripts/python.exe -m plumb conflict choose` is the owner's own terminal). Their answer arrives by pressing a
+side on a merge conflict's card, or in their own words in chat, which plumb reads against the
+card itself; an early conflict is answered with their own typed choose.
 
 ## Before any work: another branch has this intent in flight
 
@@ -16,7 +16,10 @@ the answer at once.
 ## After a merge: two versions left in a record
 
 `.venv/Scripts/python.exe -m plumb conflicts` lists them; the cards reach the owner at the end of your turn, and pressing
-a side chooses (or their own typed choose). If they describe a combination, write it with
+a side chooses (or their own typed choose). They may answer in chat instead: plumb reads
+their reply against the card and applies it when they clearly pick one version with no
+change asked; otherwise the conflict stays open. Carry nothing yourself: relaying their
+words is refused. If they describe a combination, write it with
 `.venv/Scripts/python.exe -m plumb conflict propose <IC> --file <fields.yaml>` (a YAML mapping of the conflicting
 fields). It is shown as a third version and applies nothing until they choose it.
 

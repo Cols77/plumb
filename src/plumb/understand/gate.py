@@ -107,18 +107,25 @@ def problems(core: Any) -> list[str]:
     return out
 
 
+# SR-196: the reason prefix of a gate the prompt hook closes on a request that changes a
+# confirmed record while no intent loop ran for it; the owner's /plumb go releases it too
+INTENT_CHANGE = "intent change:"
+
 RELEASE_WORDS = {"typed": "the owner typed the release", "button": "the owner pressed Build anyway",
                  "owner-words": "the owner's words, read at the reader's threshold"}
 
 
 def failed_check_open(root: Path, session: str) -> bool:
     """The gate is closed for a message whose check failed (its "couldn't check" card is
-    still in the card store): the one kind of closure the owner may release."""
+    still in the card store) or on an intent change (SR-196): the closures the owner may
+    release."""
     from plumb.understand import cardstore
 
     current = state(Path(root), session)
     if current.state != "closed":
         return False
+    if current.reason.startswith(INTENT_CHANGE):
+        return True
     wanted = "couldnt_check:" + current.message_digest.removeprefix("sha256:")[:12]
     return any(c.id == wanted and c.status == "open"
                for c in cardstore.own_cards(Path(root), session))

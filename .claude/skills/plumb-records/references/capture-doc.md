@@ -32,6 +32,9 @@ sha256 of the owner's message: `message_digest` in `.venv/Scripts/python.exe -m 
 - `proof` is how the owner will see it working, matched to what changed: `kind` is
   `live-session` (anything drawn on screen), `hook`, `command` or `other`. Record the evidence
   once shown: `.venv/Scripts/python.exe -m plumb proof SR-### --evidence <path> --summary "..." --passed`.
+- `supersedes: ["SR-076"]` on a requirement retires existing requirements the new one replaces
+  (a `supersedes` link; capture names the old one's still-tested examples, so move them with
+  `updates` first). Capture also names live requirements the new ones contradict or may change.
 - `implemented_by` names the paths the requirement changes; `decides: ["#1"]` points at the
   first requirement of this document.
 - An escalated request sets `"mode": "escalated"` in `intent`; then show

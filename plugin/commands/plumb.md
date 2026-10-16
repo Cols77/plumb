@@ -1,7 +1,7 @@
 ---
 description: plumb in plain words - status, explain anything, review, confirm or approve records, what a change would reach, the Obsidian view, adopt this repository (init), build without a failed check (go), undo a confirmed record, typed auto-approve on or off, conflicts, merges, other branches' work, the JEV judge (setup, status, calibration), installing what plumb needs
-argument-hint: "status | clarify <words> | explain <anything> | review [<anything>] | approve <IDs> | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
-allowed-tools: Bash(plumb status:*), Bash(plumb brief:*), Bash(plumb explain:*), Bash(plumb why:*), Bash(plumb review:*), Bash(plumb impact:*), Bash(plumb view:*), Bash(plumb show:*), Bash(plumb resolve:*), Bash(plumb align:*), Bash(plumb init:*), Bash(plumb plugin migrate:*), Bash(plumb clarify --wait:*), Bash(plumb validate:*), Bash(plumb conflicts:*), Bash(plumb conflict propose:*), Bash(plumb merge-check:*), Bash(plumb inflight:*), Bash(plumb jev status:*), Bash(plumb jev setup:*), Bash(plumb jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
+argument-hint: "status | intent <words> | clarify <words> | explain <anything> | review [<anything>] | approve <IDs> | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
+allowed-tools: Bash(plumb status:*), Bash(plumb brief:*), Bash(plumb explain:*), Bash(plumb why:*), Bash(plumb review:*), Bash(plumb impact:*), Bash(plumb view:*), Bash(plumb show:*), Bash(plumb resolve:*), Bash(plumb align:*), Bash(plumb init:*), Bash(plumb plugin migrate:*), Bash(plumb clarify --wait:*), Bash(plumb intent:*), Bash(plumb validate:*), Bash(plumb conflicts:*), Bash(plumb conflict propose:*), Bash(plumb merge-check:*), Bash(plumb inflight:*), Bash(plumb jev status:*), Bash(plumb jev setup:*), Bash(plumb jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -38,9 +38,12 @@ answers ready at once and runs no check).
   what is missing. The same words inside a sentence ("turn auto-approve on") change
   nothing: tell them to type the command as the whole message.
 - `settle ...`: that switch no longer exists; the prompt hook said so. Change and run nothing.
-- `clarify <words>`: plumb checks those words as a request (a read-back card, questions,
-  edits held until answered). Run `plumb clarify --wait`, then follow the plumb-clarify
-  skill for its answer. Ordinary messages are not checked.
+- `intent <words>`: the owner opens the intent loop on those words (questions through the
+  question tool until the intent is clear on its own and against the confirmed records, one
+  judge gate, then the records, the plan and the build with the proof they stated). Run
+  `plumb intent open --wait`, then follow the plumb-intent skill stage by stage. Ordinary
+  messages open no loop.
+- `clarify <words>`: the same as `intent <words>`; follow that branch.
 - `explain <anything>` (also `why <anything>`): run `plumb explain <their words>` and say
   why it exists: the owner's words it comes from, the decisions, the examples and whether
   their tests pass.

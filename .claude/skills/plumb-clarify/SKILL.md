@@ -1,12 +1,15 @@
 ---
 name: plumb-clarify
-description: Clarifies the owner's intent before building, scaled to the request. Use on every owner request, to act on what `clarify --wait` answers (ready, a card, a spec session offered, couldn't check, waiting), and to choose the depth and the questions whenever a request creates or changes intent (a new feature, a changed behaviour, an ambiguous ask). Not for choosing questions on tidy-ups or on intent the owner already confirmed; the --wait step still comes first there.
+description: Clarifies the owner's intent before building, scaled to the request. Use on every owner request to read it back, and after the owner types /plumb clarify to act on what `clarify --wait` answers (ready, a card, a spec session offered, couldn't check, waiting), and to choose the depth and the questions whenever a request creates or changes intent (a new feature, a changed behaviour, an ambiguous ask). Not for choosing questions on tidy-ups or on intent the owner already confirmed; the --wait step still comes first there.
 ---
 # plumb-clarify
 
 Make what gets built match what the owner means, with the fewest questions.
 
-Your first action on every owner request is `.venv/Scripts/python.exe -m plumb clarify --wait`. Run it before you read
+On an ordinary message plumb runs no check: read the request back in your own reply (see
+Depth) and record it as proposed; `clarify --wait --json` there only gives the message
+digest. Only when the owner types `/plumb clarify <words>` is your first action
+`.venv/Scripts/python.exe -m plumb clarify --wait`. Run it before you read
 code, plan or edit anything: edits are refused until it has answered, and do not build
 until the owner has answered any card it returns. It collects the check plumb started on the
 owner's message and says which of five things happened:
@@ -49,7 +52,8 @@ is recorded: ../plumb-records/references/conflicts.md.
 
 Depth:
 
-- trivial (maps to confirmed intent, or a small unambiguous change): no questions. One line
+- trivial (maps to confirmed intent, or a small unambiguous change): no questions. A request
+  that changes what an existing requirement says is not trivial. One line
   of read-back: "Doing X, as already confirmed in <the record's title>; nothing else
   changes."
 - incremental (new or partly specified intent): write back your understanding, separating
@@ -79,7 +83,13 @@ Discipline:
   recommended one first). Nothing else is a card.
 - Once the owner says "go" or "ok", stop asking: remaining unknowns become labelled
   assumptions, which never block.
-- Outside an accepted spec session, never ask in your own words; the cards ask.
+- Outside an accepted spec session, never ask in your own words about the owner's intent;
+  the cards ask.
+- Any other quick question (which of two files, a name, now or later) goes to the owner with
+  Claude Code's question tool by default. A card only when the answer must change the
+  owner's records (confirm, conflict, stale link, a decision that matters) or the question
+  needs context, consequences or a diagram to answer. The question tool's answer is logged
+  as the owner's words but confirms nothing.
 
 Output: the records (INT, SR with examples, DEC), all proposed until the owner confirms the
 request's read-back on its card. Paste nothing of what capture prints into your reply.
