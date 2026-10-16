@@ -58,6 +58,7 @@ _TYPED = ("only the owner's typed command does this: run it with --prompt and th
           "the owner's message that is exactly that command")
 _MOD = "this is the plumb panel's own step; only a press in the panel runs it"
 _LOG = "the prompt hook logs the owner's messages itself"
+_ANSWER = "plumb's own hook logs the owner's answers itself"
 
 TABLE: tuple[Row, ...] = (
     Row(("ui",), _OWNER, legacy=True),
@@ -70,6 +71,8 @@ TABLE: tuple[Row, ...] = (
     Row(("config", "show"), _OWNER, legacy=True),
     Row(("turn", "start"), _LOG, legacy=True),
     Row(("hook", "prompt"), _LOG, legacy=True),
+    # SR-210: an answer feeds the judge's approval; a forged one must not reach the log
+    Row(("hook", "question-answer"), _ANSWER, legacy=True),
     # the legacy rule denies it outright (a prefix rule cannot see --prompt); the hook lets the
     # owner's relayed choice through to the command, which re-checks it (sp6 8.4)
     Row(("conflict", "choose"), _TYPED, unless=PROOF, legacy=True),

@@ -883,12 +883,13 @@ def on_prompt(ctx: Any, core: Any, entry: Any, *, after: str | None = None) -> l
         if gate.release(core, session, "typed", digest=digest):
             return [GATE_RELEASED]
         return []
-    words = commanded_words(text)
-    if words is None:
-        return []                         # SR-171 EX-1: an ordinary message is not checked
-    gate.close(Path(core.root), session, digest, GATE_REASON_CHECKING)
     data = getattr(ctx, "data", None)
     transcript = data.get("transcript_path") if isinstance(data, Mapping) else None
+    words = commanded_words(text)
+    if words is None:                     # SR-171 EX-1: an ordinary message is not checked;
+        frozen_context(Path(core.root), session, digest, transcript, text)   # SR-208 EX-4:
+        return []                         # the judge's pre-intent keeps the reply it answered
+    gate.close(Path(core.root), session, digest, GATE_REASON_CHECKING)
     build(core, session, message={"digest": digest, "text": text}, after=after,
           transcript=transcript)
     return [owner_text.GATE_CLOSED.format(reason=GATE_REASON_CHECKING)]

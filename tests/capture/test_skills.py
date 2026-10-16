@@ -18,8 +18,7 @@ RULES = (
      "option for them, and never write or read `judge_questions.json` or any approval."),
     ("If the question tool is unavailable (a subagent or headless run) or the owner dismisses "
      "a question, stop asking, tell the owner in one plain line that the work waits for their "
-     "answer, and do not rerun `ask` in a loop. `clarify --wait` names a dismissed question "
-     "once, then answers `waiting`."),
+     "answer, and do not rerun `ask` in a loop."),
     ("Any other question to the owner also goes through the question tool, with options and "
      "their consequences."),
 )

@@ -103,6 +103,16 @@ export const GUARD_TABLE: GuardRow[] = [
   },
   {
     "words": [
+      "hook",
+      "question-answer"
+    ],
+    "firstOf": [],
+    "unless": null,
+    "legacy": true,
+    "why": "plumb's own hook logs the owner's answers itself"
+  },
+  {
+    "words": [
       "conflict",
       "choose"
     ],

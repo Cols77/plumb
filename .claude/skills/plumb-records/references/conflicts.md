@@ -18,7 +18,7 @@ the answer at once.
 `.venv/Scripts/python.exe -m plumb conflicts` lists them; the cards reach the owner at the end of your turn, and pressing
 a side chooses (or their own typed choose). They may answer in chat instead: plumb reads
 their reply against the card and applies it when they clearly pick one version with no
-change asked; otherwise the conflict stays open. Carry nothing yourself: relaying their
+change asked; otherwise the conflict stays open. Carry nothing yourself: passing on their
 words is refused. If they describe a combination, write it with
 `.venv/Scripts/python.exe -m plumb conflict propose <IC> --file <fields.yaml>` (a YAML mapping of the conflicting
 fields). It is shown as a third version and applies nothing until they choose it.

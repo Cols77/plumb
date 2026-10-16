@@ -89,6 +89,30 @@ def test_ex4_the_pre_intent_keeps_the_sentence_with_its_context_and_the_intent_l
     assert [e for e in again.entries if e["kind"] == "pre-intent"] == []   # once per source
 
 
+def test_ex4_the_prompt_hook_freezes_the_context_of_an_ordinary_message(
+        repo: Path, tmp_path: Path) -> None:
+    """SR-208 EX-4: the reply the sentence answered is frozen when the message arrives (the
+    judge worker has no transcript), for an ordinary message as for a commanded one."""
+    from types import SimpleNamespace
+
+    from plumb.understand import judge
+
+    words = "the reminders should go by email"
+    reply = "Here are the notification settings: reminders go by push, quiet hours are off."
+    transcript = tmp_path / "t.jsonl"
+    with transcript.open("w", encoding="utf-8", newline="\n") as handle:
+        for entry in ({"type": "user", "message": {"role": "user", "content": "settings?"}},
+                      {"type": "assistant", "message": {"role": "assistant", "content": [
+                          {"type": "text", "text": reply}]}},
+                      {"type": "user", "message": {"role": "user", "content": words}}):
+            handle.write(json.dumps(entry) + "\n")
+    digest = log_prompt(repo, words)
+    core = open_core(repo)
+    ctx = SimpleNamespace(session_id=SESSION, data={"transcript_path": str(transcript)})
+    assert clarify.on_prompt(ctx, core, {"digest": digest, "text": words}) == []
+    assert judge.context_of(core, digest) == reply
+
+
 # ---- SR-212 -------------------------------------------------------------------------------
 
 
