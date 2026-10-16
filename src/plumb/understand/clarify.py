@@ -826,11 +826,12 @@ def is_typed_go(text: str) -> bool:
 
 
 def commanded_words(text: str) -> str | None:
-    """The words of a typed ``/plumb clarify <words>`` (SR-171), else None."""
+    """The words of a typed ``/plumb clarify <words>`` (SR-171) or ``/plumb intent <words>``
+    (SR-193), else None."""
     from plumb.understand import typed
 
     parsed = typed.parse(text)
-    return parsed.words if parsed is not None and parsed.command == "clarify" else None
+    return parsed.words if parsed is not None and parsed.command in ("clarify", "intent") else None
 
 
 def _typed_settle(text: str) -> bool:

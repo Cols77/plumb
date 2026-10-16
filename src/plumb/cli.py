@@ -37,7 +37,8 @@ ROUTES: dict[str, str] = {
     "import": "plumb.importer.cli", "fidelity": "plumb.judgment.cli",
     "judge": "plumb.judgment.cli", "judgment": "plumb.judgment.cli",
     # CAPTURE (sub-project 2)
-    "capture": "plumb.capture.cli", "new": "plumb.capture.cli", "intent": "plumb.capture.cli",
+    "capture": "plumb.capture.cli", "new": "plumb.capture.cli",
+    "intent": "plumb.understand.cli",   # open|gate|done|status: the loop; else the INT capture
     "example": "plumb.capture.cli", "decide": "plumb.capture.cli",
     "escalate": "plumb.capture.cli", "spec": "plumb.capture.cli",
     "triage": "plumb.capture.cli", "config": "plumb.capture.cli", "jev": "plumb.capture.cli",
@@ -93,7 +94,8 @@ records and integrity:
 intent capture:
   capture      record a whole read-back (INT, SR with examples, DEC) in one call, proposed
   new          one record of a kind (intent, requirement, decision, feature, nc)
-  intent       the owner's words and your read-back as an INT
+  intent       the owner's words and your read-back as an INT; open | gate clarify|plan
+               --intent ID --findings FILE | done --intent ID | status: the intent loop
   example      append a given/when/then example to a requirement
   decide       a decision: "I assumed A; B also fits" (--supersede for a confirmed one)
   clarify      the clarification depth and the questions that matter for a request
