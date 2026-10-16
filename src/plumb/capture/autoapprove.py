@@ -147,8 +147,8 @@ def _kind_threshold(calibration: LogEntry, kind: str) -> float | None:
 
 def verdict_refusal(verdict: Mapping[str, Any]) -> str | None:
     """SR-182: why a logged verdict may not feed auto-approval, or None. Only a supported
-    verdict marked as JEV's does; the judge model's approves only after a question round
-    (DEC-141), and one that says nobody never does."""
+    verdict marked as JEV's does; the judge model's never takes the fast track (its auto-model
+    path is ``model_floor``, SR-191), and one that says nobody never does."""
     from plumb.judgment.verdict import refusal
 
     return refusal(verdict.get("by"), verdict.get("verdict"))
