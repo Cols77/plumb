@@ -33,7 +33,7 @@ links:
   to: INT-018
   pin:
     from: sha256:5b8f93efe16c4c37ef7c5876f36d9e2c13bc04658dd2642b8b436a02e2e23d2a
-    to: sha256:04fa3d6960be5133aa1ea2bab77178e21bed28fe61a93d49ffa48a4631c6ad21
+    to: sha256:14948f1123e434ff0b99bbe82f17c114a6ca42c2b00db3eb02e31cc413cba897
 - kind: derives_from
   to: INT-019
   pin:
@@ -43,5 +43,5 @@ links:
   to: INT-021
   pin:
     from: sha256:5b8f93efe16c4c37ef7c5876f36d9e2c13bc04658dd2642b8b436a02e2e23d2a
-    to: sha256:90ba88266f9d17b0c8d5f8a50cdf25ac5108cc800b6829538460c1dbb46c1fb3
+    to: sha256:a75f55dc4bea96a06cc4e50099ff55ff890e57ad4e6ac1a740ff9d84864fcfa5
 ---

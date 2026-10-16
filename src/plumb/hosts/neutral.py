@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -170,7 +171,17 @@ def handle_event(event: TurnEvent, *, deadline: Deadline | None = None,
     if kept is not None:
         ctx.kept = kept
     out = _handler(event.kind, verify, backend, unjudged)(ctx)
-    return to_turn_output(event, out)
+    output = to_turn_output(event, out)
+    if event.kind == "stop" and event.host in SELF_RECORDING_HOSTS:
+        # `plumb turn end` has no next prompt hook: it gives the agent what the stop queued
+        try:
+            from plumb.hosts.claude_code.prompt import queued_for_agent
+
+            notes = tuple(queued_for_agent(ctx))
+        except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+            notes = ()
+        output = replace(output, agent_context=(*output.agent_context, *notes))
+    return output
 
 
 def as_json(output: TurnOutput) -> str:

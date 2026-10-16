@@ -472,6 +472,22 @@ def turn_left(root: Any, session: str) -> dict[str, Any]:
     return dict(raw) if isinstance(raw, Mapping) else {}
 
 
+def clear_turn_left(root: Any, session: str, card_id: str, status: str) -> None:
+    """A later successful decision replaces the owner's earlier Leave open."""
+    held = turn_left(root, session)
+    if card_id in held:
+        del held[card_id]
+        files.write_json_atomic(files.session_dir(root, session) / TURN_LEFT, held)
+    drawn = read_drawn(root, session)
+    for entry in drawn:
+        if entry.get("turn_built") and entry["card"].get("id") == card_id:
+            entry["card"]["status"] = status
+            if isinstance(entry.get("content"), dict):
+                entry["content"]["status"] = status
+            files.write_json_atomic(files.session_dir(root, session) / DRAWN, drawn)
+            break
+
+
 def _turn_left_now(core: Any, session: str, built: Sequence[CardState]) -> set[str]:
     """The stop hook's cards still left open this turn end: the owner pressed Leave open and
     no record the card shows changed since (a changed one returns, DEC-034). Entries for cards

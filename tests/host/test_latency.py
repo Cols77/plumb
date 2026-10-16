@@ -46,6 +46,20 @@ def busy_repo(repo: Path, write_record) -> Path:
     return repo
 
 
+def _scripted_judge(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
+    """DEC-088: since DEC-060 / SR-174 the stale check waits without a judge, so the turn end
+    gets a scripted one (``PLUMB_FAKE_DISPATCH``) that says the edit changed the meaning and
+    brings it to the owner as a card."""
+    script = root.parent / "judge.json"
+    script.write_text(json.dumps({
+        "repin": {"verdict": "changed", "reason": "the value changed", "confidence": 0.9},
+        "diagnose": {"outcome": "owner", "explanation": "the value changed", "topic": "",
+                     "options": ["keep the new value", "undo the edit"],
+                     "consequences": ["the requirement follows", "the code goes back"],
+                     "why": "the owner decides what the value is"}}), "utf-8")
+    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+
+
 def _time_ms(fn) -> float:
     runs = []
     for _ in range(3):
@@ -55,8 +69,10 @@ def _time_ms(fn) -> float:
     return statistics.median(runs)
 
 
-def test_hooks_within_in_process_budget(busy_repo: Path, hook_input) -> None:
+def test_hooks_within_in_process_budget(busy_repo: Path, hook_input,
+                                        monkeypatch: pytest.MonkeyPatch) -> None:
     root = busy_repo
+    _scripted_judge(monkeypatch, root)
     from fakes import FakeVerify
 
     verify = FakeVerify(nodes=("tests/test_x.py::test_x",))
@@ -79,18 +95,20 @@ def test_hooks_within_in_process_budget(busy_repo: Path, hook_input) -> None:
     timings["post-edit"] = _time_ms(lambda: run(post_edit, edit))
     stop_input = hook_input("Stop", stop_hook_active=True)
     timings["stop"] = _time_ms(lambda: run(stop, stop_input, verify=verify, unjudged=None))
-    # cards only (SR-012): the stale card the hold filed for the edited requirement's link
-    assert '"Requirement 3 about links"' in json.loads(run(stop, stop_input, verify=verify,
-                                                            unjudged=None))["systemMessage"]
+    # cards only (SR-012): the card the judged stale check filed for the edited requirement
+    assert "Requirement 3 about links" in json.loads(run(stop, stop_input, verify=verify,
+                                                          unjudged=None))["systemMessage"]
     over = {k: round(v) for k, v in timings.items() if v > BUDGET_MS[k]}
     assert not over, f"over budget (ms): {over}; all: {timings}"
     errors = root / ".plumb" / "session" / "errors.log"
     assert not errors.exists(), errors.read_text("utf-8")
 
 
-def test_cli_drives_the_hooks(busy_repo: Path, hook_input) -> None:
+def test_cli_drives_the_hooks(busy_repo: Path, hook_input,
+                              monkeypatch: pytest.MonkeyPatch) -> None:
     """The real entry point, as Claude Code calls it (one subprocess per hook)."""
     root = str(busy_repo)
+    _scripted_judge(monkeypatch, busy_repo)
 
     def call(*args: str, payload: str = "") -> str:
         result = subprocess.run([sys.executable, "-m", "plumb", *args, "--root", root],

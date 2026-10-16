@@ -6,6 +6,15 @@ export type GuardRow = { words: string[]; firstOf: string[]; unless: string | nu
 export const GUARD_TABLE: GuardRow[] = [
   {
     "words": [
+      "ui"
+    ],
+    "firstOf": [],
+    "unless": null,
+    "legacy": true,
+    "why": "only the owner can do this, in their own terminal or by a button"
+  },
+  {
+    "words": [
       "approve"
     ],
     "firstOf": [],

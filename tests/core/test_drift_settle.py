@@ -157,3 +157,22 @@ def test_ex3_a_contradiction_with_an_unconfirmed_record_files_no_card(
     _contradiction(monkeypatch, "SR-002")
     _settle(project)
     assert stale.read_cards(project, "s1") == [] and _state(project) == "stale"
+
+
+@pytest.mark.sr("SR-174")
+def test_sr174_an_http_error_from_the_judge_is_waiting_not_unresolved(
+        project: Path, monkeypatch) -> None:
+    from plumb.contracts import DispatchError
+
+    class Broken:
+        name = "api"
+
+        def run(self, *a, **k):
+            raise DispatchError("request", "HTTP 400 bad key")
+
+    (project / "src" / "calc.py").write_text(REFACTORED, "utf-8")
+    monkeypatch.setattr(repin, "open_judge", lambda core: repin.ModelMeaningJudge(Broken()))
+    core = open_core(project)
+    waiting: set[str] = set()
+    said = stale.settle_drift(core, "s1", stale.stale_rows(core), waiting)
+    assert waiting == {"SR-001"} and said and _state(project) == "stale"

@@ -60,6 +60,7 @@ _MOD = "this is the plumb panel's own step; only a press in the panel runs it"
 _LOG = "the prompt hook logs the owner's messages itself"
 
 TABLE: tuple[Row, ...] = (
+    Row(("ui",), _OWNER, legacy=True),
     Row(("approve",), _OWNER, legacy=True),
     Row(("revoke",), _OWNER, legacy=True),
     Row(("tests", "waive"), _OWNER, legacy=True),
