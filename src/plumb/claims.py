@@ -281,6 +281,32 @@ def _declared_paths(index: Mapping[str, Any], record_id: str) -> set[str]:
     return out
 
 
+def _deleted_in(root: Path, sha: str, path: str) -> bool:
+    return subprocess.run(["git", "cat-file", "-e", f"{sha}:{path}"], cwd=root,
+                          capture_output=True).returncode != 0
+
+
+def _declared_before(root: Path, sha: str, index: Mapping[str, Any], record_id: str) -> set[str]:
+    """The paths ``record_id`` linked in ``sha``'s parent: a commit that unlinks a test and
+    deletes it (SR-188) is declared by the record that linked it, which cannot link a file
+    that no longer exists. Only a deleted path is looked up here: a file that still exists
+    needs a current link (SR-007, SR-049)."""
+    from plumb.model import RecordError, parse_record
+
+    record = index.get(record_id)
+    if record is None:
+        return set()
+    shown = subprocess.run(["git", "show", f"{sha}^:{record.path}"], cwd=root,
+                           capture_output=True, text=True, encoding="utf-8")
+    if shown.returncode != 0:
+        return set()
+    try:
+        before = parse_record(shown.stdout, record.path)
+    except RecordError:
+        return set()
+    return _declared_paths({record_id: before}, record_id)
+
+
 def claims_check(root: Path, rng: str | None = None) -> dict[str, Any]:
     """Undeclared paths over a range (default: the commits not on ``main``)."""
     from plumb.api import open_core
@@ -305,9 +331,15 @@ def claims_check(root: Path, rng: str | None = None) -> dict[str, Any]:
         declared: set[str] = set()
         for record_id in ids:
             declared |= _declared_paths(index, record_id)
+        before: set[str] | None = None
         for path in paths:
             if path in declared or exempting_glob(policy, path) is not None:
                 continue
+            if _deleted_in(root, sha, path):
+                if before is None:
+                    before = set().union(*(_declared_before(root, sha, index, i) for i in ids))
+                if path in before:
+                    continue
             if any(sha.startswith(c) and p == path for c, p in baseline):
                 waived.append({"commit": sha, "path": path})
                 continue
