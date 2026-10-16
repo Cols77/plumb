@@ -53,7 +53,7 @@ def _awaiting(core: Any, scope: set[str] | None) -> list[str]:
                 rating = (item.rating if item.score is None
                           else f"{item.rating} {item.score:.2f}")
             why = f"; {item.excluded}" if getattr(item, "excluded", None) else ""
-            lines.append(f"  {item.id} \"{item.title}\" ({rating}{why})")
+            lines.append(f"  \"{item.title}\" ({rating}{why})")   # no id (SR-267)
     else:
         pending = [i for i, s in sorted(statuses.items()) if s.confirmation != "confirmed"
                    and _in_scope(i, scope)]
@@ -63,24 +63,25 @@ def _awaiting(core: Any, scope: set[str] | None) -> list[str]:
                      if cause else
                      "  no judgments available: every record is shown individually")
         if pending:
-            names = ", ".join(pending[:8]) + (f" +{len(pending) - 8} more"
-                                              if len(pending) > 8 else "")
-            lines.append(f"  {len(pending)} proposed or edited, waiting on a judge: {names}")
+            from plumb.present.owner_text import AWAITS_JUDGE
+
+            n = len(pending)
+            lines.append("  " + AWAITS_JUDGE.format(n=n, s="" if n == 1 else "s"))
     try:
         from plumb.capture import spec
 
         anchors = sorted(set(spec.set_of(core).values()))
         for anchor in anchors:
             if _in_scope(anchor, scope) and spec.set_state(core, anchor) != "approved":
-                lines.append(f"  escalated spec {anchor} \"{index[anchor].title}\" awaits "
-                             "your set approval (plumb spec show)")
+                lines.append(f"  the set \"{index[anchor].title}\" waits on a judge, "
+                             "as a whole")
     except Exception:  # noqa: BLE001 - an absent lane: no escalated sets to list
         pass
     for record_id, record in sorted(index.items()):
         if record.kind == "decision" and record.fields.get("matters") is True \
                 and statuses[record_id].confirmation != "confirmed" \
                 and _in_scope(record_id, scope):
-            lines.append(f"  question {record_id} \"{record.title}\": assumed "
+            lines.append(f"  question \"{record.title}\": assumed "
                          f"{record.fields.get('chosen') or '?'}")
     if len(lines) == 1:
         lines.append("  nothing")
@@ -116,7 +117,7 @@ def _glance(core: Any, scope: set[str] | None) -> list[str]:
                 how = f"relayed from your words \"{entry.payload.get('quote') or ''}\""
                 if entry.payload.get("prompt_objects") is True:
                     how += " (the same message also objected or asked for a change)"
-            lines.append(f"  {record_id} \"{index[record_id].title}\" {how}, {entry.at}")
+            lines.append(f"  \"{index[record_id].title}\" {how}, {entry.at}")
     if len(lines) == 1:
         lines.append("  none")
     return lines
@@ -212,7 +213,7 @@ def _merge(core: Any, base: str) -> list[str]:
     except Exception as exc:  # noqa: BLE001
         return [f"5. merge state: unavailable ({exc})"]
     code = int(getattr(report, "exit", 0) or 0)
-    meaning = {0: "ready", 1: "findings to fix", 4: "waits for your confirmation",
+    meaning = {0: "ready", 1: "findings to fix", 4: "waits on a judge or your answer",
                5: "verification holds it"}.get(code, f"exit {code}")
     awaiting = len(getattr(report, "awaiting", ()) or ())
     untraced = len(getattr(report, "untraced", ()) or ())

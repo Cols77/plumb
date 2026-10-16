@@ -517,7 +517,7 @@ def cmd_validate(command: str, argv: list[str]) -> int:
     from plumb.validate import report
 
     parser = _parser(command, "Check records, links, logs and approvals. --merge BASE also "
-                     "runs the merge-boundary checks (exit 4: waits for your confirmation).")
+                     "runs the merge-boundary checks (exit 4: waits on a judge or your answer).")
     parser.add_argument("--merge", metavar="BASE", default=None)
     args = parser.parse_args(argv)
     core = _core(args)

@@ -114,7 +114,7 @@ FOREIGN_PREPUSH_HOOK = ("plumb: your own pre-push hook was kept; say \"call plum
 COMMIT_HOLD_INSTALLED = ("plumb: merges finished by hand, rebases and cherry-picks get the same "
                          "quick check before git records them")
 PREMERGE_REMOVED = "plumb: merges are no longer checked before git records them"
-PREMERGE_UNCONFIRMED = "  {record} \"{title}\" is not confirmed yet"   # no command (SR-267)
+PREMERGE_UNCONFIRMED = "  \"{title}\" waits on a judge"   # no command, no id (SR-267)
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "
                        "to link it to the requirement it serves")
 PREMERGE_STALE_HEADER = ("links this merge leaves stale (repin each once its tests pass, or "

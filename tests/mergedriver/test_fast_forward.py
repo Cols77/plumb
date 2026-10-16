@@ -53,7 +53,7 @@ def _held_work(other: Path) -> None:
 
 def _assert_not_recorded(root: Path, before: str, output: str) -> None:
     assert _head(root) == before, output
-    assert 'SR-005 "relay checks" is not confirmed yet' in output
+    assert '"relay checks" waits on a judge' in output
     assert "no test run" in output
 
 

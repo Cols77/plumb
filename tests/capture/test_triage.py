@@ -75,8 +75,9 @@ def test_groups_low_risk_first(project: Path, capsys) -> None:
     assert "DEC-001" in ids(view.individual)
     assert run(project, "triage") == 0
     out = capsys.readouterr().out.splitlines()
-    first = next(n for n, line in enumerate(out) if "INT-017" in line)
-    later = next(n for n, line in enumerate(out) if "DEC-001" in line)
+    first = next(n for n, line in enumerate(out) if "multiply number 17" in line)
+    later = next(n for n, line in enumerate(out) if line.startswith("  floats?"))
+    assert not any("INT-017" in line or "DEC-001" in line for line in out)   # SR-267
     assert first < later
     assert "triage" in event_kinds(project)
 
@@ -95,7 +96,7 @@ def test_exclusions_shown_individually(project: Path, write_record) -> None:
     view = triage(open_core(project))
     why = {i.id: i.excluded for i in view.individual}
     assert why["DEC-001"] == "a decision that matters"
-    assert why["INT-017"] == "a member of the escalated spec INT-020"
+    assert why["INT-017"] == 'a member of the escalated set "a set"'
     assert why["INT-019"] == "an edit of a record you confirmed before"
     assert why["FEAT-001"] == "no owner words to compare"
     assert why["INT-018"] is None  # riskier on its own merits
