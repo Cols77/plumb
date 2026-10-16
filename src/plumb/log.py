@@ -65,7 +65,7 @@ class LogError(RuntimeError):
 
 
 # approvals written from the owner's words come from the worker
-WORKER_ONLY_BY = frozenset({"owner-words"})
+WORKER_ONLY_BY = frozenset({"owner-words", "auto-model"})
 
 
 def worker_token_problem(root: Path | str, session: str | None, by: str) -> str | None:

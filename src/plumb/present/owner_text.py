@@ -117,6 +117,13 @@ PREMERGE_REMOVED = "plumb: merges are no longer checked before git records them"
 PREMERGE_UNCONFIRMED = "  {record} \"{title}\" is not confirmed yet; /plumb approve {record}"
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "
                        "to link it to the requirement it serves")
+PREMERGE_STALE_HEADER = ("links this merge leaves stale (repin each once its tests pass, or "
+                         "card it):")
+PREMERGE_UNTESTED_HEADER = "links this merge adds to files no test covers:"
+PREMERGE_CONTRADICTIONS_HEADER = "requirements that contradict each other:"
+PREMERGE_CONTRADICTIONS_NOTE = ("requirements that may contradict each other (the judge was not "
+                                "sure, so this does not hold the merge):")
+PREMERGE_NOT_JUDGED = "plumb: could not judge whether the new requirements contradict live ones"
 PREMERGE_COLLISION = ("  {record}: two different records hold this ID; /plumb merge-fix fixes "
                       "it")
 PREMERGE_OK = "plumb: merge check: nothing holds this merge"
@@ -255,6 +262,8 @@ GATE_WAIT_NOTE = "Builds nothing until the check runs again on your next message
 GATE_CLOSED = "Waiting for your answer before building: {reason}"
 NOT_AVAILABLE = "not available in this build"
 CONFIRM_YOU_SAID = "you said: {evidence}"
+CONFIRM_BY_MODEL = ("{title}: confirmed by {model} reading your words ({confidence:.0%} sure); "
+                    "say /plumb undo {id} to take it back")
 READBACK_CHANGE = ('To be sure I have it: "{title}" should change so that {change}. Say yes, '
                    'or tell me what to fix.')
 CARD_CHANGED_SINCE = ('Nothing was confirmed: "{title}" changed after I showed it to you. I am '

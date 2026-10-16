@@ -236,6 +236,57 @@ def _judge(backend: Any, theirs: str, record: Any) -> tuple[str, str, bool]:
     return verdict, f"{label} ({who}, {confidence:.2f})", sure
 
 
+# the term overlap above which a live requirement is judged against a new one (SR-165)
+LIVE_OVERLAP = 1.5   # query.overlap is a weighted term count, not 0..1: related pairs score 1.9+, unrelated ~0.5
+
+
+LIVE_LIMIT = 8   # judged per new requirement: a related pair can rank 4th by words alone
+
+
+def check_live(core: Any, ids: Sequence[str], *, exclude: Sequence[str] = (),
+               backend: Any = None, limit: int = LIVE_LIMIT) -> list[str]:
+    """SR-165: the live requirements whose meaning the new requirements ``ids`` may change
+    or contradict, named so they are superseded or reworded in the same capture. Advisory:
+    never raises."""
+    return [line for line, _sure in check_live_rows(core, ids, exclude=exclude,
+                                                    backend=backend, limit=limit)]
+
+
+def check_live_rows(core: Any, ids: Sequence[str], *, exclude: Sequence[str] = (),
+                    backend: Any = None, limit: int = LIVE_LIMIT) -> list[tuple[str, bool]]:
+    """``check_live`` with, per line, whether the verdict is confident (JEV above its bar)."""
+    try:
+        from plumb import query
+
+        index = core.index()
+        skip = query.retired_ids(index) | set(ids) | set(exclude)
+        judge = None
+        out: list[tuple[str, bool]] = []
+        for new_id in ids:
+            new = index.get(new_id)
+            if new is None or new.kind != "requirement":
+                continue
+            wanted = query.terms(query.record_text(new))
+            scored = sorted(((query.overlap(wanted, query.terms(query.record_text(r))), r.id)
+                             for r in index.values()
+                             if r.kind == "requirement" and r.id not in skip), reverse=True)
+            hits = [(score, i) for score, i in scored[:limit] if score > LIVE_OVERLAP]
+            judge = judge if judge is not None else _backend(core, backend)
+            for rank, (_, old_id) in enumerate(hits):
+                verdict, why, sure = _judge(judge, query.record_text(index[old_id]), new)
+                if verdict == "contradicts":
+                    out.append((f"{new_id} contradicts {old_id} ({why}): supersede {old_id} "
+                                f"(supersedes: [{old_id}]) or reword it (updates), or bring "
+                                "it to the owner", sure))
+                elif (rank == 0 and not (verdict == "benign" and sure)) or why.startswith(
+                        ("judging unavailable", "no judgment")):
+                    out.append((f"{new_id} may change what {old_id} says ({why}): supersede, "
+                                "reword, or leave it", False))
+        return out
+    except Exception as exc:  # noqa: BLE001 - advisory
+        return [(f"plumb: live requirements not checked ({exc})", False)]
+
+
 def check_text(core: Any, request: str, *, backend: Any = None) -> EarlyCheck:
     """The read-back check of ``plumb clarify``: the records the request names or strongly
     matches, against other branches' claims, before anything is written."""

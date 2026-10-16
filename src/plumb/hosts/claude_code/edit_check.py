@@ -14,11 +14,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TextIO
 
-from plumb.hosts.claude_code.hookio import HookContext, HookOutput, hook_budget, run_hook
+from plumb.hosts.claude_code.hookio import (
+    HookContext,
+    HookOutput,
+    _plumb_root,
+    hook_budget,
+    read_json,
+    run_hook,
+    write_json_atomic,
+)
 from plumb.hosts.claude_code.post_edit import repo_relative
 
 
-def _edited_path(ctx: HookContext) -> str | None:
+def _edited_path(ctx: HookContext) -> tuple[Path, str] | None:
+    """``(root, path in it)``: the file's own adopted root when it lies outside this one (a
+    workflow agent in another worktree), recorded for the subagent-stop hook (SR-166)."""
     tool_input = ctx.data.get("tool_input")
     if not isinstance(tool_input, dict):
         return None
@@ -26,30 +36,64 @@ def _edited_path(ctx: HookContext) -> str | None:
     if not isinstance(raw, str):
         return None
     cwd = ctx.data.get("cwd")
-    return repo_relative(ctx.root, raw, cwd if isinstance(cwd, str) else None)
+    cwd = cwd if isinstance(cwd, str) else None
+    root = ctx.root
+    rel = repo_relative(root, raw, cwd)
+    if rel is None and Path(raw).is_absolute():
+        other = _plumb_root(Path(raw).parent)
+        rel = repo_relative(other, raw, cwd) if other is not None else None
+        root = other if rel is not None and other is not None else root
+    if rel is None:
+        return None
+    return root, rel
+
+
+def _note_stale(ctx: HookContext, root: Path, link_ids: list[str]) -> None:
+    """Record, per agent and root, the stale links this edit's notices named, so the
+    subagent-stop hook re-checks only those (``agent_roots.json``, SR-166)."""
+    path = ctx.session_dir / "agent_roots.json"
+    roots = read_json(path)
+    roots = roots if isinstance(roots, dict) else {}
+    agent = str(ctx.data.get("agent_id") or "main")
+    mine = roots.get(agent) if isinstance(roots.get(agent), dict) else {}
+    known = mine.get(str(root)) or []
+    if str(root) in mine and set(link_ids) <= set(known):
+        return
+    mine[str(root)] = [*dict.fromkeys([*known, *link_ids])]
+    roots[agent] = mine
+    write_json_atomic(path, roots)
 
 
 def handle(ctx: HookContext) -> HookOutput | None:
-    rel = _edited_path(ctx)
-    if rel is None or rel.startswith(".plumb/session/") or rel.startswith(".plumb/cache/"):
+    edited = _edited_path(ctx)
+    if edited is None:
+        return None
+    root, rel = edited
+    if rel.startswith(".plumb/session/") or rel.startswith(".plumb/cache/"):
         return None
     from plumb import stale
 
-    root = ctx.root
-    if stale.load_linkmap(root) is None:
-        return None  # no map yet: the stop hook says it
     core = None
-    if stale.linkmap_outdated(root) and not ctx.deadline.expired():
+    if stale.load_linkmap(root) is None:
+        if root == ctx.root or ctx.deadline.expired():
+            return None  # no map yet: the session's own stop hook says it
+        from plumb.api import open_core  # a worktree no session prompted in: SR-166 EX-1
+
+        core = open_core(root)
+        stale.ensure_linkmap(core)
+    elif stale.linkmap_outdated(root) and not ctx.deadline.expired():
         from plumb.api import open_core
 
         core = open_core(root)
         stale.ensure_linkmap(core)
     baseline = stale.read_baseline(root, ctx.session_id)
     said: list[tuple[str, str, str]] = []  # (told key, state, line)
+    made: list[str] = []  # the stale links this edit made, told or not
     for item in stale.stale_after_edit(root, rel):
         before = baseline.get(item.link)
         if isinstance(before, dict) and (before.get("now") or [None, None])[1] == item.now:
             continue  # stale before the turn and not moved by it
+        made.append(item.link)
         state = item.now or "missing"
         if stale.was_told(root, ctx.session_id, item.link, state):
             continue
@@ -67,9 +111,11 @@ def handle(ctx: HookContext) -> HookOutput | None:
             if isinstance(before, dict) and (before.get("now") or [None, None])[1] == (
                     index[target].hash):
                 continue
+            made.append(link)
             if stale.was_told(root, ctx.session_id, f"derived:{link}", state):
                 continue
             said.append((f"derived:{link}", state, stale.derived_line(source, target, kind)))
+    _note_stale(ctx, root, made)
     if not said:
         return None
     shown = said[:stale.MAX_NOTICES]

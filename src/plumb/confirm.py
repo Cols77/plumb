@@ -63,6 +63,10 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
                 and payload.get("prompt_digest") not in prompt_digests):
             return f"{by} {entry.kind} cites no earlier prompt event"
         return reason
+    if by == "auto-model":   # SR-191: the judge model's verdict on the owner's verified words
+        from plumb.understand.recheck import problem
+
+        return problem(entry, core)
     if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)
         from plumb.importer.recheck import import_problem
 
@@ -146,6 +150,10 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
             by = entry.payload.get("by")
             if problem is None and by == "auto-jev":
                 problem = recheck(entry, config, calibrations, prompts, approved, escalated)
+            if problem is None and by == "auto-model" and entry.kind == "approval":
+                from plumb.capture.autoapprove import model_floor
+
+                problem = model_floor(config, float(entry.payload["auto"]["confidence"]))
             if problem is None and entry.kind == "approval" and by != "auto-jev":
                 approved.update(str(r.get("id")) for r in entry.payload.get("records") or []
                                 if isinstance(r, Mapping))
@@ -311,7 +319,7 @@ def changed_tests(states: Iterable[Any], pinned: Mapping[str, set[str]]) -> tupl
     out: list[str] = []
     for state in states:
         end = verified_end(state.link)
-        if end is None or end not in pinned:
+        if state.state == "retired" or end is None or end not in pinned:
             continue
         now = state.current.target if state.current is not None else None
         if now is None or now not in pinned[end]:

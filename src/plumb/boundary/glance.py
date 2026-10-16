@@ -30,17 +30,13 @@ def _marks_self_recorded(item: Mapping[str, Any] | None) -> bool:
 
 def _prompt_log(core: Any) -> dict[str, Mapping[str, Any]]:
     out: dict[str, Mapping[str, Any]] = {}
-    try:
-        with open(core.paths.prompts, encoding="utf-8") as handle:
-            for line in handle:
-                try:
-                    item = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(item, Mapping) and isinstance(item.get("digest"), str):
-                    out.setdefault(item["digest"], item)
-    except OSError:
-        pass
+    for line in core.paths.prompt_lines():
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(item, Mapping) and isinstance(item.get("digest"), str):
+            out.setdefault(item["digest"], item)
     return out
 
 

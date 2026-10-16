@@ -105,7 +105,7 @@ def test_blocks_once_when_covering_tests_not_fresh(project: Path, hook_input) ->
     # the command names this turn's paths, so other uncommitted work cannot crowd the
     # turn's own covering tests out of the budget
     assert reason == ("plumb: run 'plumb tests run --paths src/calc.py' (covering tests of "
-                      "this turn, budget 15 s), then finish your reply.")
+                      "this turn, budget 60 s), then finish your reply.")
     assert verify.select_calls == [("src/calc.py",)]
 
 
@@ -333,7 +333,7 @@ class _SlowVerify(FakeVerify):
     def select(self, changed, *, budget_s=None):
         result = super().select(changed, budget_s=budget_s)
         assert self.clock is not None
-        self.clock.now += 5.0
+        self.clock.now += 25.0        # past the 20 s stop budget (SR-181)
         return result
 
 
@@ -366,7 +366,7 @@ class _SlowCore:
 
     def status(self, *args, **kwargs):
         result = self._core.status(*args, **kwargs)
-        self._clock.now += 5.0
+        self._clock.now += 25.0       # past the 20 s stop budget (SR-181)
         return result
 
     def __getattr__(self, name: str):

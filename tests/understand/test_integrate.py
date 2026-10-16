@@ -38,7 +38,8 @@ def test_calibration_from_logged_scores_leaves_the_generated_no_examples_out(
         record = core.index()[f"SR-00{n}"]
         core.log_append("events", "verdict", {
             "job": "judge-1", "id": record.id, "hash": record.hash, "verdict": "supported",
-            "beyond": [], "contradicts": [], "score": 0.9, "model": "haiku",
+            "beyond": [], "contradicts": [], "score": 0.9, "by": "jev",
+            "judge": "jev:test/jev-1", "model": "test/jev-1",
             "premise_digest": "sha256:2"})
     with as_worker(repo, SESSION):
         for n in range(1, 4):

@@ -19,7 +19,7 @@ ID_RE = r"^(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})$"
 LinkKind = Literal["derives_from", "decides", "upstream", "relates_to", "implemented_by",
                    "verified_by", "corrects", "supersedes"]
 Confirmation = Literal["proposed", "confirmed", "unconfirmed-edit"]
-ApprovalBy = Literal["owner", "agent-relayed", "import", "auto-jev", "owner-words"]
+ApprovalBy = Literal["owner", "agent-relayed", "import", "auto-jev", "owner-words", "auto-model"]
 LogStream = Literal["events", "evidence"]
 
 
@@ -76,7 +76,7 @@ class Record:
 @dataclass(frozen=True)
 class LinkState:
     link: Link
-    state: Literal["current", "stale", "dangling", "unpinned"]
+    state: Literal["current", "stale", "dangling", "unpinned", "retired"]
     moved: Literal["source", "target", "both"] | None = None
     current: Pin | None = None  # current hashes, when both ends exist
 
@@ -295,7 +295,7 @@ class JudgmentBackend(Protocol):
     # the gated entailment of auto-approval, sp2 8.2)
     version: str                          # resolved model version, "none" otherwise
     def entailment(self, premise: str, hypothesis: str, *, subject: str,
-                   claim_kind: str) -> Judgment: ...       # entailed | not-entailed | unsure
+                   claim_kind: str, quote_only: str | None = None) -> Judgment: ...  # entailed | not-entailed | unsure
     def contradiction(self, prompt: str, record: Record) -> Judgment: ...
     # verdict contradicts | extends | benign
     def choose(self, question: str, options: Sequence[str], *, subject: str,

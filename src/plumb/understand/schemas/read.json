@@ -17,6 +17,7 @@
           "hash": {"type": "string", "description": "The hash of the record as shown; empty for a card question."},
           "answer": {"type": "string", "enum": ["accepted", "rejected", "change", "open"]},
           "rejection": {"type": ["string", "null"], "enum": ["misread", "intent-changed", null]},
+          "option": {"type": ["string", "null"], "description": "For a card with choices: the label of the choice the person's words pick, copied from its choices, even when they name it in other words; null when they pick none or it is unclear."},
           "change": {"type": ["string", "null"], "description": "What the owner asked to change, or the chosen version or combination."},
           "option": {"type": ["string", "null"], "description": "For a card that offers choices: the exact label of the one offered choice the message picks as it stands; null when it picks none or asks for a change to it."},
           "evidence": {"type": "string", "description": "The owner's exact words that carry this answer, copied from the message."},

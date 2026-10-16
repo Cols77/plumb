@@ -60,7 +60,7 @@ from plumb.trace import is_code_path
 IGNORED_PREFIXES = (".plumb/session/", ".plumb/cache/", ".plumb/log/", ".plumb/view/",
                     ".git/")
 IGNORED_FILES = (".plumb/test_map.txt",)
-GIT_TIMEOUT_S = 1.0  # most of the soft budget: under load git status alone can take 0.6 s
+GIT_TIMEOUT_S = 5.0  # a slice of the soft budget: under load git status alone can take 0.6 s
 STOP_GRACE_S = 1.0  # past the hard limit, only while the read-back is not yet kept (R1)
 GIT_SKIPPED = "change detection (git status)"
 MAX_INSTRUCTION_PATHS = 8
@@ -512,7 +512,9 @@ def queue_notes(ctx: HookContext, notes: Sequence[str]) -> None:
     the next prompt hook (``prompt.agent_notes``), panel or not. Never fails the stop."""
     if notes:
         try:
-            write_json_atomic(ctx.session_dir / ctx.session_id / "agent_notes.json", list(notes))
+            path = ctx.session_dir / ctx.session_id / "agent_notes.json"
+            kept = read_json(path)      # the worker's waiting lines (SR-185) wait there too
+            write_json_atomic(path, [*(kept if isinstance(kept, list) else []), *notes])
         except OSError:
             pass
 
@@ -568,6 +570,23 @@ def regression_cards(index: Mapping[str, Any], regressing: Mapping[str, Any],
     return out
 
 
+def card_released(root: Path, session: str, rows: Sequence[Any], index: Mapping[str, Any],
+                  turn_start: float, held: int) -> list[str]:
+    """The hold gave up on ``rows``: a stale card per link (the owner decides), and the note
+    saying the hold ended, per link."""
+    from plumb import stale
+    from plumb.present.owner_text import STALE_HOLD_ENDED
+
+    notes = []
+    for row in rows:
+        title = index[row.record].title if row.record in index else row.record
+        other = index[row.what].title if row.what in index else ""
+        stale.add_card(root, session, turn=int(turn_start),
+                       **stale.default_card(row, title, other))
+        notes.append(STALE_HOLD_ENDED.format(n=held, title=title))
+    return notes
+
+
 def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
                turn: Mapping[str, Any], turn_start: float) -> tuple[list[str], list[str]]:
     """SR-111 EX-3: ``(block reasons, summary lines)`` for the links this turn made stale.
@@ -617,16 +636,8 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
             missing = stale.incomplete_cards(ctx.root, ctx.session_id)
             return [*waiting, *stale.hold_lines(open_rows, held + 1, limit, missing),
                     *before], []
-        from plumb.present.owner_text import STALE_HOLD_ENDED
-
-        notes = []
-        for row in open_rows:
-            title = index[row.record].title if row.record in index else row.record
-            other = index[row.what].title if row.what in index else ""
-            stale.add_card(ctx.root, ctx.session_id, turn=int(turn_start),
-                           **stale.default_card(row, title, other))
-            notes.append(STALE_HOLD_ENDED.format(n=held, title=title))
-        return [], [*waiting, *notes]
+        return [], [*waiting, *card_released(ctx.root, ctx.session_id, open_rows, index,
+                                             turn_start, held)]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return [], []
 

@@ -120,6 +120,7 @@
         "card": {"type": "string", "description": "The id of the open card the message answers."},
         "question": {"type": "string", "description": "The question in the last reply the message answers, when there is no card."},
         "evidence": {"type": "string", "description": "The person's exact words that answer it, copied from the message."},
+        "also": {"type": "string", "description": "The new request the message adds besides the answer, in the person's words; leave out when the whole message is the answer."},
         "options": {
           "type": "array",
           "description": "With question, only when its answer would confirm, reject or change a record, choose a conflict's side or settle a stale link: the options the last reply offered (a plain yes or no are two).",

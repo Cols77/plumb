@@ -22,6 +22,12 @@ touches, and none for the rest. For every entry:
     When the message picks one of a card's offered `choices` just as it stands, set `option` to
     that choice's exact `label`; when it asks for any change to it, or picks none, leave `option` null.
   - `open`: the message does not settle it, or you cannot tell.
+- `option`: for a card question that has `choices`, the `label` of the choice the person's
+  words pick, copied from `choices`, even when they name it in other words (for a merge
+  conflict, "keep what main has" or "the other branch's" is the choice that keeps that side,
+  "ours" the one that keeps this one, "both" the one that keeps both). You judge which side
+  a name means from the card's text. When the side is not clear ("either could work"), set
+  `answer` to `open` and `option` to null.
 - `evidence` is the person's own words that carry the answer, copied exactly from the message
   (a contiguous part of it). Never paraphrase and never invent words.
 - `confidence` is how sure you are, from 0 to 1. Use a low value when the message is ambiguous,

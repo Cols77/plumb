@@ -315,8 +315,8 @@ def turn_before(core: Any, path: str) -> dict[str, str] | None:
 
     try:
         changed = os.stat(Path(core.root) / path).st_mtime
-        lines = Path(core.paths.prompts).read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
+        lines = core.paths.prompt_lines()
+    except OSError:
         return None
     best: dict[str, Any] | None = None
     for line in lines:

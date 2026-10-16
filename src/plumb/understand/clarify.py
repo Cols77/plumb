@@ -584,6 +584,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         return Applied(job=job.id, closed=closed)               # picks nothing; the card stays
     from plumb.understand import read
 
+    early: Applied | None = None
     said = answer.get("answers")     # SR-163: a clear answer to a question just put to the owner
     if isinstance(said, Mapping) and read.evidence_in(str(said.get("evidence") or ""), text):
         card = str(said.get("card") or "")
@@ -597,15 +598,17 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                 "session": session, "question": question, "options": [],
                 "answer": str(said["evidence"]), "message_digest": digest}},)
         raised = _raise_and_answer(core, job, said, text, digest) if entries else None
-        if raised is not None:      # SR-167: the card the turn end did not raise, answered now
-            return replace(raised, closed=(*closed, *raised.closed),
-                           entries=(*entries, *raised.entries))
-        return Applied(job=job.id, closed=closed, entries=entries)
+        early = (replace(raised, closed=(*closed, *raised.closed),   # SR-167: answered now
+                         entries=(*entries, *raised.entries)) if raised is not None
+                 else Applied(job=job.id, closed=closed, entries=entries))
+        if not (str(said.get("also") or "").strip() and str(answer.get("intent")) == "yes"):
+            return early      # SR-187: the whole message was the answer; no read-back
     own_ids = {c.id for c in own}
-    if any(e.kind == "read-entry" and e.payload.get("message_digest") == digest
-           and e.payload.get("answer") != "open"
-           and str(e.payload.get("id")).split("/", 1)[0] in own_ids
-           for e in core.events()):    # SR-167 EX-2: the reader answered a card: no read-back
+    if early is None and any(
+            e.kind == "read-entry" and e.payload.get("message_digest") == digest
+            and e.payload.get("answer") != "open"
+            and str(e.payload.get("id")).split("/", 1)[0] in own_ids
+            for e in core.events()):    # SR-167 EX-2: the reader answered a card: no read-back
         gate.open(core, session, digest, "clarify", "your message answers a question")
         return Applied(job=job.id, closed=closed)
     if str(answer.get("intent")) != "yes":
@@ -674,6 +677,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     else:
         gate.open(core, session, digest, "clarify",
                   "the questions are answered" if answered else "nothing is unclear")
+    if early is not None:     # SR-187: the answer is applied; the card read back is the new request's
+        return replace(early, cards=(*early.cards, *cards))
     return Applied(job=job.id, cards=tuple(cards), closed=closed)
 
 

@@ -154,7 +154,6 @@ def undo_now(core: Any, parsed: Typed, digest: str, session: str = "") -> TypedR
     """Take back the confirmation the judge or the owner's words gave the record a typed
     ``/plumb undo <ID>`` names, at once: the prompt must be one the hook logged, word for word;
     the record is proposed again (a ``revocation``, ``by: undone``, at its current version)."""
-    from plumb.normalize import normalize_text
     from plumb.understand.read import logged_prompt
 
     if parsed.command != "undo" or not parsed.ids:
@@ -162,19 +161,32 @@ def undo_now(core: Any, parsed: Typed, digest: str, session: str = "") -> TypedR
     logged = logged_prompt(core, digest)
     if logged is None or logged.get("via") != "hook" or parse(str(logged["text"])) != parsed:
         return TypedResult()
-    index, record_id = core.index(), parsed.ids[0]
+    return take_back(core, parsed.ids[0], digest, logged, session)
+
+
+def take_back(core: Any, record_id: str, digest: str = "", logged: Mapping[str, Any] | None = None,
+              session: str = "") -> TypedResult:
+    """The revocation of a confirmation plumb gave from the owner's words. Typed, it cites the
+    logged prompt; from the owner's terminal (``plumb understand undo``) it cites none and
+    ``problem`` accepts it only without the agent marker."""
+    from plumb.normalize import normalize_text
+
+    index = core.index()
     state = core.status([record_id]).get(record_id) if record_id in index else None
     if state is None or state.confirmation != "confirmed" or state.approved_by not in (
-            "auto-jev", "owner-words"):
+            "auto-jev", "owner-words", "auto-model"):
         return TypedResult(lines=(f"plumb: {record_id} was not confirmed by plumb reading your "
                                   "words; nothing changed.",))
-    if digest not in {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}:
-        core.log_append("events", "prompt", {"digest": digest,
-                                             "session": logged.get("session") or session,
-                                             "at": logged.get("at")})
+    cited: dict[str, Any] = {}
+    if logged is not None:
+        if digest not in {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}:
+            core.log_append("events", "prompt", {"digest": digest,
+                                                 "session": logged.get("session") or session,
+                                                 "at": logged.get("at")})
+        cited = {"prompt_digest": digest, "quote": normalize_text(str(logged["text"]))}
     core.log_append("events", "revocation", {
         "records": [{"id": record_id, "hash": index[record_id].hash}], "by": "undone",
-        "via": "typed", "prompt_digest": digest, "quote": normalize_text(str(logged["text"]))})
+        "via": "typed", **cited})
     return TypedResult(confirmed=(record_id,), lines=(
         f"plumb: {index[record_id].title} is proposed again and waits for you.",))
 

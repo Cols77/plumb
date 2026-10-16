@@ -6,7 +6,7 @@ but one ``merge-evidence`` entry on a green report. No candidate checkouts, tran
 admission or coordination locks, manifests or guarded publish: it reports and exits.
 
 Exit precedence: 1 (log integrity, validation errors, claims, stale or dangling links of a
-touched requirement) before 5 (verification) before 4 (the owner's confirmation); 0 is green.
+touched requirement, links the range leaves stale or adds to untested files) before 5 (verification) before 4 (the owner's confirmation); 0 is green.
 """
 
 from __future__ import annotations
@@ -60,6 +60,13 @@ class MergeReport:
     # SR-127, DEC-037: touched requirements whose proof was not shown working ({id, title,
     # why}: no proof, not run, failed); information for the owner, never a hold
     not_shown: tuple[Mapping[str, Any], ...] = ()
+    # SR-165, SR-166: the sections the pre-merge hook prints (``premerge.drift_problems``):
+    # new stale links and links to untested files hold (exit 1), contradictions wait (exit 4)
+    stale_links: tuple[str, ...] = ()
+    untested_links: tuple[str, ...] = ()
+    contradictions: tuple[str, ...] = ()
+    contradiction_notes: tuple[str, ...] = ()
+    judge_note: str = ""
 
 
 def as_dict(report: MergeReport) -> dict[str, Any]:
@@ -78,14 +85,16 @@ def exit_code(report: MergeReport) -> int:
     if report.error:
         return 2
     if report.integrity or report.claims.get("holds") or report.links or \
-            report.id_collisions or report.unmerged:
+            report.id_collisions or report.unmerged or report.stale_links or \
+            report.untested_links:
         return 1
     verification = report.verification
     full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
     unavailable = not verification.get("available")
     if report.regressions or report.failing or report.unverified or full_held or unavailable:
         return 5
-    if report.awaiting or report.untraced or report.new_exempt or report.intent_conflicts:
+    if report.awaiting or report.untraced or report.new_exempt or report.intent_conflicts or \
+            report.contradictions:
         return 4
     return 0
 
@@ -302,6 +311,10 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         not_shown=tuple(_not_shown(core, touched)))
     unmerged, conflicts = _merge_state(core, hook)
     report = _replace(report, unmerged=tuple(unmerged), intent_conflicts=tuple(conflicts))
+    if not hook:   # the pre-push hook makes no live judge call; the pre-merge hook did these
+        from plumb.boundary.premerge import drift_problems
+
+        report = _replace(report, **drift_problems(core, fork, paths))
     code = exit_code(report)
     evidence = None
     if code == 0 and run_full and identity is not None:
@@ -418,6 +431,9 @@ def render(report: MergeReport) -> list[str]:
     if report.links:
         out.append("links of touched requirements hold the merge:")
         out.extend(_capped([link_line(dict(row)) for row in report.links]))
+    from plumb.boundary.premerge import drift_lines
+
+    out.extend(drift_lines(report))
     if report.unmerged:
         from plumb.mergedriver.unmerged import unmerged_lines
 

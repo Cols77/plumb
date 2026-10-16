@@ -76,11 +76,20 @@ def _confirmations(core: Any, turn: Any, told: Told | None = None) -> tuple[str,
     index = core.index()
     for entry in core.events():
         payload = entry.payload
-        if (entry.kind != "approval" or payload.get("by") != "owner-words"
+        if (entry.kind != "approval" or payload.get("by") not in ("owner-words", "auto-model")
                 or entry.digest in told.confirmed):
             continue
         told.confirmed.add(entry.digest)
         told.dirty = True
+        if payload["by"] == "auto-model":     # SR-191: each model confirmation, once, with its undo
+            for record in payload.get("records") or ():
+                item = index.get(str(record.get("id")))
+                if item is not None and entry.at >= told.since and core.status(
+                        [item.id])[item.id].approved_by == "auto-model":
+                    lines.append(owner_text.CONFIRM_BY_MODEL.format(
+                        title=item.title, model=payload["auto"]["model"], id=item.id,
+                        confidence=payload["auto"]["confidence"]))
+            continue
         if payload.get("prompt_digest") == digest or entry.at < told.since:
             continue                      # this turn's own (above), or older than the session
         said = owner_text.CONFIRM_YOU_SAID.format(evidence=payload.get("evidence", ""))

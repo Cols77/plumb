@@ -11,7 +11,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" session-start",
-            "timeout": 10
+            "timeout": 60
           }
         ]
       }
@@ -22,7 +22,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" prompt",
-            "timeout": 10
+            "timeout": 60
           }
         ]
       }
@@ -34,7 +34,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" pre-tool",
-            "timeout": 10
+            "timeout": 60
           }
         ]
       }
@@ -46,7 +46,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" post-edit",
-            "timeout": 30,
+            "timeout": 120,
             "async": true
           }
         ]
@@ -57,7 +57,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" edit-check",
-            "timeout": 10
+            "timeout": 60
           }
         ]
       },
@@ -67,7 +67,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" question-answer",
-            "timeout": 30,
+            "timeout": 120,
             "async": true
           }
         ]
@@ -79,7 +79,18 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" stop",
-            "timeout": 30
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" subagent-stop",
+            "timeout": 120
           }
         ]
       }

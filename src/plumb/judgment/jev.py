@@ -41,6 +41,25 @@ SYSTEM_ONE_PATH = "/v1/systemone"
 CLI_TIMEOUT_S = 10.0
 FIDELITY_LEVELS = ("drifts", "unsure", "fits")
 
+# SR-183: the entailment question in its two forms (``judgment.jev.output``): one yes/no, or one
+# choice over the three verdicts of the judge job, whose probability of ``supported`` is read.
+YES_NO, CHOICE = "yes_no", "choice"
+JEV_CHOICE_QUESTION = ("Compare the record with the owner's words and the confirmed records. "
+                       "Which describes the record?")
+JEV_CHOICES = {
+    "supported": "it says what the owner said; rewording, concrete examples and labelled "
+                 "assumptions are fine; nothing is added, dropped or changed",
+    "beyond": "it adds a commitment (behaviour, scope or constraint) the owner did not ask "
+              "for and that is not a labelled assumption",
+    "contradicts": "it conflicts with the owner's words or with a confirmed record",
+}
+
+
+def output_form(config: Any) -> str:
+    """``yes_no`` (the default) or ``choice``: the form JEV's entailment question takes."""
+    jev = getattr(getattr(config, "judgment", None), "jev", None) or {}
+    return CHOICE if str(jev.get("output") or "").strip().lower() == CHOICE else YES_NO
+
 
 # --------------------------------------------------------------------------- key
 
@@ -292,7 +311,7 @@ class JevBackend:
         return record
 
     def _judgment(self, record: JudgmentRecord, name: str, action: str, subject: str,
-                  verdict: str, **extra: Any) -> Judgment:
+                  verdict: str, probability: float | None = None, **extra: Any) -> Judgment:
         from plumb.judgment.common import confidence_label
 
         answer = record.answers[name]
@@ -304,7 +323,8 @@ class JevBackend:
                             backend=f"jev:{record.resolved_version}",
                             fingerprint=record.request_fingerprint,
                             reasons=(f"{answer.kind} answer {answer.value}",),
-                            probability=_probability(answer, verdict),
+                            probability=(_probability(answer, verdict) if probability is None
+                                         else round(probability, 6)),
                             confidence_label=confidence_label(  # type: ignore[arg-type]
                                 answer.confidence))
         payload = {"subject": subject, "action": action, "verdict": verdict,
@@ -380,21 +400,37 @@ class JevBackend:
                               end_hashes=hashes, note="jev score (advisory)")
 
     # -- sp2 11.2
-    def entailment(self, premise: str, hypothesis: str, *, subject: str,
-                   claim_kind: str) -> Judgment:
+    def entailment(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str,
+                   quote_only: str | None = None) -> Judgment:
         """Do the owner's words (the premise) support every part of the claim? A Noul; the
-        judgment's probability is the vendor's probability of its verdict (sp2 8.2)."""
+        judgment's probability is the vendor's probability of its verdict (sp2 8.2).
+        ``quote_only`` (SR-190) is why the premise is the quote alone; the entry says so."""
+        mark = {"premise": "quote-only", "premise_reason": quote_only} if quote_only else {}
+        prefix = (f"Owner's words:\n{premise}\n\nClaim ({claim_kind}, {subject}):\n"
+                  f"{hypothesis}\n")
+        if output_form(self.core.config) == CHOICE:
+            # SR-183: one choice over supported, beyond and contradicts; the probability read
+            # is that of supported (the vendor's p of the verdict, as for a Noul: 1 - p when
+            # the choice is not supported, so calibration reads p of supported either way)
+            record = self._ask([("entailment", JudgmentQuestion.choice(
+                JEV_CHOICE_QUESTION, JEV_CHOICES))], prefix)
+            answer = record.answers["entailment"]
+            label = str(answer.value)
+            p = float(answer.probabilities.get("supported", 1.0 if label == "supported"
+                                               else 0.0))
+            verdict = "entailed" if label == "supported" else "not-entailed"
+            return self._judgment(record, "entailment", "faithfulness", subject, verdict,
+                                  probability=p if verdict == "entailed" else 1.0 - p,
+                                  claim_kind=claim_kind, form=CHOICE, choice=label, **mark)
         question = JudgmentQuestion.noul(
             "Do the owner's words support every part of the claim, with nothing added, "
             "dropped or changed?", "the owner's words support the whole claim",
             "the claim adds, drops or changes something the owner did not say")
-        prefix = (f"Owner's words:\n{premise}\n\nClaim ({claim_kind}, {subject}):\n"
-                  f"{hypothesis}\n")
         record = self._ask([("entailment", question)], prefix)
         p = float(record.answers["entailment"].value)
         verdict = "entailed" if p >= 0.5 else "not-entailed"
         return self._judgment(record, "entailment", "faithfulness", subject, verdict,
-                              claim_kind=claim_kind)
+                              claim_kind=claim_kind, form=YES_NO, **mark)
 
     def yes_probability(self, instructions: str, context: str, *, true: str = "yes",
                         false: str = "no") -> float | None:

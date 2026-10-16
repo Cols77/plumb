@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from plumb.contracts import DispatchError, Job, NoModel
+from plumb.judgment.jev import JEV_CHOICE_QUESTION, JEV_CHOICES  # SR-183: moved there
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_SET = HERE / "evalset" / "judge_labelled.json"
@@ -29,16 +30,6 @@ JEV_QUESTION = ("Is this record faithful to the owner's words and consistent wit
                 "confirmed records? yes means supported: it says what the owner said, with "
                 "nothing added, dropped or changed, and it does not conflict with the "
                 "confirmed records.")
-JEV_CHOICE_QUESTION = ("Compare the record with the owner's words and the confirmed records. "
-                       "Which describes the record?")
-JEV_CHOICES = {
-    "supported": "it says what the owner said; rewording, concrete examples and labelled "
-                 "assumptions are fine; nothing is added, dropped or changed",
-    "beyond": "it adds a commitment (behaviour, scope or constraint) the owner did not ask "
-              "for and that is not a labelled assumption",
-    "contradicts": "it conflicts with the owner's words or with a confirmed record",
-}
-
 
 class CompareError(Exception):
     """A judge could not answer; ``judge`` names it."""
@@ -197,13 +188,13 @@ def open_judges(core: Any, names: Sequence[str]) -> list[Any]:
             from plumb.understand.dispatch import configured
 
             try:
-                dispatcher = configured(core)
+                dispatcher = configured(core, model=core.config.understand.judge_model)
             except NoModel as exc:
                 raise CompareError("haiku", f"no model ({exc})") from exc
             reason = dispatcher.available()
             if reason:
                 raise CompareError("haiku", f"unavailable ({reason})")
-            judges.append(HaikuJudge(dispatcher, core.config.understand.model))
+            judges.append(HaikuJudge(dispatcher, core.config.understand.judge_model))
         elif name in ("jev", "jev-choice") or name.startswith("decide:"):
             from plumb.judgment import JudgmentUnavailable
             from plumb.judgment.jev import JevBackend, open_jev

@@ -22,9 +22,12 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from plumb.approvals import approval_items
 from plumb.contracts import Applied, CardState, Job
+from plumb.judgment.verdict import BY
 from plumb.present import owner_text
 from plumb.understand import backlog, cards, files, premise, trial
+from plumb.understand import verdict as verdict_cascade
 
 kind = "judge"
 SCHEMA_ID = "judge.v1"
@@ -175,6 +178,15 @@ def describe(job: Job) -> str:
     return owner_text.STEP_JUDGING.format(n=len(records))
 
 
+Waiting = verdict_cascade.Waiting
+
+
+def cascade(core: Any, job: Job, **context: Any) -> Any:
+    """SR-182: who answers this job. JEV first where its probability clears the calibrated
+    threshold, the judge model for the rest; ``Waiting`` when neither can be reached."""
+    return verdict_cascade.cascade(core, job, **context)
+
+
 def _confidence(value: Any) -> float:
     try:
         return round(min(1.0, max(0.0, float(value))), 6)
@@ -249,6 +261,23 @@ def pending_lines(core: Any, session: str, card: str) -> list[str]:
     return out
 
 
+def _confirms(core: Any, index: Mapping[str, Any], record: Any, raw: Mapping[str, Any],
+              confidence: float) -> bool:
+    """SR-191: whether the judge model's supported verdict confirms ``record`` itself: a
+    proposed requirement or decision whose premise is the owner's verified words. An intent,
+    JEV's verdict and a quote-only premise never do, nor does a confidence under the owner's
+    auto-approve settings (the verdict is logged, nothing is confirmed)."""
+    from plumb.capture.autoapprove import model_floor, owner_config
+    from plumb.capture.triage import _Prompts, premise_problem
+
+    if model_floor(owner_config(core.events()), confidence) is not None:
+        return False
+
+    return (raw.get("by") == "model" and record.kind in ("requirement", "decision")
+            and core.status([record.id])[record.id].confirmation == "proposed"
+            and premise_problem(_Prompts(core), index, record) is None)
+
+
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     """Log the verdicts; add the doubt lines to the read-back cards; give the supported records to the trial.
     Returns it in memory; the worker writes it."""
@@ -257,12 +286,13 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     asked = {str(r.get("id")): r for r in job.inputs.get("records") or ()
              if isinstance(r, Mapping)}
     index = core.index()
-    model = str(answer.get("model") or core.config.understand.model)
+    model = str(answer.get("model") or core.config.understand.judge_model)
     entries: list[Mapping[str, Any]] = []
     new_cards: list[CardState] = []
     notes: list[str] = []
     supported: list[trial.Candidate] = []
     fragments: list[Any] = []
+    confirmed: list[Mapping[str, Any]] = []     # SR-191: records the judge model confirmed
     backlog_pass = job.inputs.get("pass") == backlog.PASS
     doubts: dict[str, list[str]] = {}       # read-back card id -> lines
     flagged: list[str] = []                 # every doubt line, for the backlog's end line
@@ -277,24 +307,36 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         beyond, contradicts = _strings(raw.get("beyond")), _strings(raw.get("contradicts"))
         confidence = _confidence(raw.get("confidence"))
         digest = premise.input_digest(item.get("premise") or {})
+        record = index.get(item["id"])
         payload = {"job": job.id, "id": item["id"], "hash": item["hash"], "verdict": verdict,
                    "beyond": beyond, "contradicts": contradicts,
                    "score": confidence if verdict == "supported" else 0,
-                   "model": model, "premise_digest": digest}
-        entries.append({"kind": "verdict", "payload": payload})
-        record = index.get(item["id"])
-        if record is None or record.hash != item["hash"]:
-            notes.append(f"{item['id']} changed while it was judged; it is judged again")
-            continue
+                   "model": str(raw.get("model") or model), "premise_digest": digest}
         given = item.get("premise") or {}
         partial = bool(given.get("messages")) and all(
             m.get("partial") for m in given["messages"])
+        if partial and record is not None:    # SR-190: judged on the quote alone
+            from plumb.capture.triage import _Prompts, premise_problem
+
+            payload.update(premise="quote-only", premise_reason=premise_problem(
+                _Prompts(core), index, record) or "")
+        if raw.get("by") in BY:         # SR-182: who answered; a verdict with none is no JEV's
+            payload.update(by=raw["by"], judge=str(raw.get("judge") or ""))
+        entries.append({"kind": "verdict", "payload": payload})
+        if record is None or record.hash != item["hash"]:
+            notes.append(f"{item['id']} changed while it was judged; it is judged again")
+            continue
         if backlog_pass and partial:
             fragments.append(record)        # the owner's words are not on file: one card says so
         elif verdict in ("beyond", "contradicts"):
             line = doubt_line(index, record, verdict, item.get("related") or (), contradicts)
             doubts.setdefault(_request_card(index, record), []).append(line)
             flagged.append(line)
+        elif _confirms(core, index, record, raw, confidence):
+            confirmed.append({"kind": "approval", "payload": {   # SR-191
+                "records": approval_items(core, [record.id]), "by": "auto-model",
+                "prompt_digest": digest, "job": job.id,
+                "auto": {"model": payload["model"], "confidence": confidence}}})
         else:
             supported.append(trial.Candidate(record, confidence, item["premise"], ""))
     for item_id in asked:
@@ -319,7 +361,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             if card.kind == "clarify" and card.status in cardstore.AWAITING and more:
                 new_cards.append(replace(card, evidence="\n".join(
                     [*([card.evidence] if card.evidence else []), *more])))
-    return Applied(job=job.id, cards=tuple(new_cards), entries=tuple(entries),
+    return Applied(job=job.id, cards=tuple(new_cards), entries=(*entries, *confirmed),
                    notes=tuple(notes))
 
 

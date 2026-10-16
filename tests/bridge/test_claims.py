@@ -59,6 +59,23 @@ def test_claims_reports_undeclared_paths(ranged) -> None:
                                      "claims": ["SR-003"]}]
 
 
+@pytest.mark.sr("SR-188")
+def test_a_deleted_test_is_declared_by_the_record_that_linked_it_before(ranged) -> None:
+    repo, _ = ranged
+    base = _commit(repo, {"tests/test_links.py": "def test(): pass\n"}, "test\n\nSR: SR-003")
+    (repo / ".plumb" / "requirements" / "SR-003.md").write_text(
+        SR_003.replace("- kind: verified_by\n  path: tests/test_links.py\n", ""), "utf-8")
+    (repo / "tests" / "test_links.py").unlink()
+    _commit(repo, {}, "retire the test\n\nSR: SR-003")
+    assert claims_check(repo, f"{base}..HEAD")["undeclared"] == []
+    # a file that still exists needs a current link: unlinking and changing it is undeclared
+    (repo / ".plumb" / "requirements" / "SR-003.md").write_text(
+        SR_003.replace("- kind: implemented_by\n  path: src/links.py\n", ""), "utf-8")
+    sha = _commit(repo, {"src/links.py": "x = 2\n"}, "change\n\nSR: SR-003")
+    assert claims_check(repo, f"{base}..HEAD")["undeclared"] == [
+        {"commit": sha, "path": "src/links.py", "claims": ["SR-003"]}]
+
+
 def test_claims_default_exempt_globs(ranged) -> None:
     repo, base = ranged
     _commit(repo, {"docs/notes.md": "n\n", ".plumb/requirements/x.md": "",

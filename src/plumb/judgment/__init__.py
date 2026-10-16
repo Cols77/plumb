@@ -125,7 +125,7 @@ class _FixedBackend:
                                    confidence_label="low")
 
     def entailment(self, premise: str, hypothesis: str, *, subject: str,
-                   claim_kind: str) -> Judgment:
+                   claim_kind: str, quote_only: str | None = None) -> Judgment:
         return self._typed("faithfulness", subject, claim_kind, premise, hypothesis)
 
     def contradiction(self, prompt: str, record: Record) -> Judgment:

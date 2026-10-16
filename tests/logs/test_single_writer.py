@@ -15,11 +15,13 @@ LOG_REF = re.compile(r"log_dir|log_kind_dir|log_events|log_evidence|log_path\(|l
                      r"log_pack\(|\.plumb/log")
 WRITES = re.compile(r"write_text|write_bytes|\.touch\(|os\.link|os\.replace|unlink|"
                     r"os\.remove|open\([^)]*[\"'][wa]b?[\"']")
+# guard.py / pretool.py only refuse agent edits under the log
 # readers and declarations that name the log directory without writing under it
 # (ids/mergefix.py and mergedriver/conflicts.py only stage, with git add, the entries
 # log.append wrote)
 READERS = {"paths.py", "commands.py", "merge.py", "validate.py", "hosts/claude_code/install.py",
-           "hosts/claude_code/stop.py", "ids/mergefix.py", "mergedriver/conflicts.py"}
+           "hosts/claude_code/stop.py", "ids/mergefix.py", "mergedriver/conflicts.py",
+           "guard.py", "hosts/claude_code/pretool.py"}
 
 
 def test_only_log_py_writes_under_plumb_log() -> None:

@@ -158,16 +158,10 @@ def start_detached(root: Path, session: str) -> None:
         path = files.lock_path(root, session)
         if path.exists() and _lock_is_held(root, session, path):
             return None
-        options: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
-                                   "stderr": subprocess.DEVNULL, "cwd": str(root),
-                                   "close_fds": True}
-        if os.name == "nt":
-            options["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0x8)
-                                        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
-                                        | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
-        else:
-            options["start_new_session"] = True
-        env = {k: v for k, v in os.environ.items() if k not in ("PLUMB_WORKER", "PLUMB_JOB")}
+        from plumb.background import popen_options
+
+        options = popen_options(root)   # no console window for it or what it runs
+        env ={k: v for k, v in os.environ.items() if k not in ("PLUMB_WORKER", "PLUMB_JOB")}
         subprocess.Popen([sys.executable, "-m", "plumb", "understand", "worker", "--session",
                           session, "--root", str(root)], env=env, **options)
     except OSError:
@@ -358,15 +352,79 @@ class _Pass:
         step = self._step_text(job)
         with contextlib.suppress(Exception):
             reporter.update(step, *counts)
+        got = self._ask(module, job, reporter, step, counts, started, t0)
+        if got is None:
+            return
+        answer, dname, left = got
+        found = schema_check.problems(answer, module.schema)
+        if found:
+            self._error(job, "schema", "; ".join(found[:3]), started, t0, dname)
+            return
+        try:
+            with _as_worker(self.token):
+                _write_applied(self.core, self.session,
+                               module.apply(self.core, job, dict(answer)))
+            if left:
+                self._hold(job, left)
+        except Exception as exc:  # noqa: BLE001 - the kind or the log refused
+            self._error(job, "apply", f"{type(exc).__name__}: {exc}", started, t0,
+                        dname)
+            return
+        self._clear(reporter)
+        self._finish(job, JobResult(
+            job=job.id, status="ok", answer=dict(answer), dispatcher=dname,
+            started=started, finished=jobs.now(), run_s=round(time.perf_counter() - t0, 3)))
+
+    def _hold(self, job: Job, left: Any) -> None:
+        """SR-185: the records nobody could judge stay a job of their own, for the next run."""
+        again = files.make_job(job.kind, job.session, job.schema,
+                               {**job.inputs, "records": list(left)}, needs=job.needs,
+                               created=jobs.now())
+        files.write_json_atomic(jobs.job_path(self.root, job.session, again.id),
+                                files.job_to_json(again))
+
+    def _say(self, line: str) -> None:
+        """A once-per-window line for the agent: it waits in the session's notes for the next
+        prompt hook (``prompt.agent_notes``), as the stop hook's warnings do."""
+        path = files.session_dir(self.root, self.session) / "agent_notes.json"
+        notes = files.read_json(path)
+        with contextlib.suppress(OSError):
+            files.write_json_atomic(path, [*(notes if isinstance(notes, list) else []), line])
+
+    def _ask(self, module: Any, job: Job, reporter: Any, step: str, counts: tuple[int, int],
+             started: str, t0: float
+             ) -> tuple[dict[str, Any], str, tuple[Any, ...]] | None:
+        """The kind's answer, who gave it and the records it left, or None after the job's error was written."""
+        cascade = getattr(module, "cascade", None)
+        if cascade is not None:             # SR-182: the kind chooses who answers
+            try:
+                with _Ticker(self, reporter, step, float(getattr(
+                        self.core.config.understand, "progress_interval_s", 1) or 1), counts):
+                    done = cascade(self.core, job, system=agents.load(job.kind),
+                                   schema=module.schema)
+            except module.Waiting as wait:
+                if wait.line:
+                    self._say(wait.line)
+                self._error(job, "dispatch", str(wait.cause), started, t0)
+                return None
+            except DispatchError as exc:
+                self._error(job, exc.step, exc.message, started, t0)
+                return None
+            except Exception as exc:  # noqa: BLE001 - any failure of a judge is the job's
+                self._error(job, "run", f"{type(exc).__name__}: {exc}", started, t0)
+                return None
+            if done.line:
+                self._say(done.line)
+            return done.answer, done.dispatcher, done.left
         try:
             dispatcher = dispatch.configured(self.core)
         except NoModel as exc:
             self._error(job, "dispatch", str(exc), started, t0)
-            return
+            return None
         reason = dispatcher.available()
         if reason:
             self._error(job, "dispatch", reason, started, t0, dispatcher.name)
-            return
+            return None
         interval = float(getattr(self.core.config.understand, "progress_interval_s", 1) or 1)
         try:
             with _Ticker(self, reporter, step, interval, counts):
@@ -376,27 +434,12 @@ class _Pass:
                     schema=module.schema, on_step=lambda text: None)
         except DispatchError as exc:
             self._error(job, exc.step, exc.message, started, t0, dispatcher.name)
-            return
+            return None
         except Exception as exc:  # noqa: BLE001 - any failure of a dispatcher is the job's
             self._error(job, "run", f"{type(exc).__name__}: {exc}", started, t0,
                         dispatcher.name)
-            return
-        found = schema_check.problems(answer, module.schema)
-        if found:
-            self._error(job, "schema", "; ".join(found[:3]), started, t0, dispatcher.name)
-            return
-        try:
-            with _as_worker(self.token):
-                _write_applied(self.core, self.session,
-                               module.apply(self.core, job, dict(answer)))
-        except Exception as exc:  # noqa: BLE001 - the kind or the log refused
-            self._error(job, "apply", f"{type(exc).__name__}: {exc}", started, t0,
-                        dispatcher.name)
-            return
-        self._clear(reporter)
-        self._finish(job, JobResult(
-            job=job.id, status="ok", answer=dict(answer), dispatcher=dispatcher.name,
-            started=started, finished=jobs.now(), run_s=round(time.perf_counter() - t0, 3)))
+            return None
+        return dict(answer), dispatcher.name, ()
 
     def _carried(self, reporter: Any) -> tuple[int, int]:
         """The count a pass of many jobs (the backlog) left on the line a moment ago, so the

@@ -57,6 +57,31 @@ class PlumbPaths:
         self.escalations = self.session / "escalations.jsonl"
         self.errors = self.session / "errors.log"
 
+    @property
+    def prompt_logs(self) -> list[Path]:
+        """The prompt logs to read, oldest source first: a worktree's ``.git`` file names
+        ``<main>/.git/worktrees/<name>``, and the hook logs in the main checkout (SR-189)."""
+        logs = [self.prompts]
+        try:
+            gitdir = Path((self.root / ".git").read_text(encoding="utf-8").split(":", 1)[1].strip())
+        except (OSError, IndexError):  # not a worktree: ``.git`` is a folder, or absent
+            return logs
+        if gitdir.parent.name == "worktrees":
+            main = gitdir.parent.parent.parent / ".plumb" / "session" / "prompts.jsonl"
+            if main.resolve() != self.prompts.resolve():
+                logs.insert(0, main)
+        return logs
+
+    def prompt_lines(self) -> list[str]:
+        """Every line of the prompt logs, the checkout's own last so its entries win."""
+        lines: list[str] = []
+        for log in self.prompt_logs:
+            try:
+                lines.extend(log.read_text(encoding="utf-8").splitlines())
+            except (OSError, UnicodeDecodeError):
+                pass
+        return lines
+
     def session_dir(self, session_id: str) -> Path:
         return self.session / session_id
 

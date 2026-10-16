@@ -277,8 +277,9 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
         excluded = exclusion(core, record, statuses, before, members, premise)
         # the one low-risk admission (R8 A): the premise must be the owner's verified words
         # and nothing in the record may contradict them, whatever the backend scored
+        problem = premise_problem(prompts, index, record)   # also the quote-only mark (SR-190)
         unfaithful = None if excluded is not None else (
-            premise_problem(prompts, index, record) or _contradiction(premise, hypothesis))
+            problem or _contradiction(premise, hypothesis))
         score: float | None = None
         reason = ""
         used = name
@@ -291,8 +292,9 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
                 judged_against = bool(hit[3])
             elif time.monotonic() < deadline:
                 try:
-                    judgment = backend.entailment(premise, hypothesis, subject=record_id,
-                                                  claim_kind=kind)
+                    judgment = backend.entailment(
+                        premise, hypothesis, subject=record_id, claim_kind=kind,
+                        **({"quote_only": problem} if problem else {}))
                 except Exception as exc:  # noqa: BLE001
                     from plumb.judgment import JudgmentUnavailable
 

@@ -54,14 +54,13 @@ def _prompt_entries(core: Any) -> list[Mapping[str, Any]]:
 
     out: list[Mapping[str, Any]] = []
     try:
-        with open(core.paths.prompts, encoding="utf-8") as handle:
-            for line in handle:
-                try:
-                    item = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(item, Mapping) and is_owner_entry(item):
-                    out.append(item)
+        for line in core.paths.prompt_lines():
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(item, Mapping) and is_owner_entry(item):
+                out.append(item)
     except OSError:
         pass
     return out
@@ -345,7 +344,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             answer_mod.apply_answer(
                 work, card=str(item.get("card")), question=str(item.get("question") or ""),
                 record=str(item.get("record") or ""), hash=str(item.get("hash") or ""),
-                choice=Choice(answer=said, change=raw.get("change")), option=raw.get("option"),
+                choice=_picked(item, raw) or Choice(answer=said, change=raw.get("change")),
                 source=answer_mod.OwnerWords(job=job, digest=digest, evidence=evidence,
                                              confidence=confidence, passes=passes,
                                              rejection=raw.get("rejection")))
@@ -384,6 +383,15 @@ def _acknowledge_effect(**_: Any) -> Applied | None:
     return None
 
 
+def _picked(item: Mapping[str, Any], raw: Mapping[str, Any]) -> Choice | None:
+    """SR-187: the card's own choice the model named in ``option`` (a side picked in plain
+    words); None when it named none, so the answer reads as it was said."""
+    for c in item.get("choices") or ():
+        if c.get("label") and c["label"] == raw.get("option"):
+            return Choice(answer=str(c["answer"]), change=c.get("change") or c["label"])
+    return None
+
+
 def _conflict_effect(*, core: Any, card: CardState, entry: Mapping[str, Any], source: Any,
                      digest: str, **_: Any) -> Applied | None:
     """SR-170: a merge conflict card answered in words. When they clearly keep one version,
@@ -396,9 +404,12 @@ def _conflict_effect(*, core: Any, card: CardState, entry: Mapping[str, Any], so
     if not (isinstance(source, answer.OwnerWords) and source.passes):
         return None
 
-    picked = [c for c in card.questions[0].choices if c.label == entry.get("option")]
-    if entry.get("answer") == "rejected":
-        picked = []
+    def same(text: Any) -> bool:
+        return _collapse(str(text or "")).casefold() == _collapse(
+            str(entry.get("change") or "")).casefold()
+
+    picked = [c for c in card.questions[0].choices if c.answer == entry["answer"]
+              and (c.answer == "accepted" or same(c.change) or same(c.label))]
     take = conflict_take(card, picked[0]) if len(picked) == 1 else None
     if take is None:
         return None

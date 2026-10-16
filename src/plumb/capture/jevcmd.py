@@ -67,6 +67,9 @@ def jev_status(core: Core, *, probe: bool = False) -> dict[str, Any]:
         "credential_env": name, "credential": "present" if source else "absent",
         "model": jev.get("model"), "validated_against": jev.get("validated_against"),
     }
+    from plumb.judgment.jev import output_form
+
+    out["form"] = output_form(core.config)       # SR-183
     if source:
         out["credential_source"] = source  # a label (env, env-file, user-store), never a key
     if probe:
@@ -81,11 +84,16 @@ def jev_status(core: Core, *, probe: bool = False) -> dict[str, Any]:
     if calibration is not None:
         per_kind = calibration.payload.get("per_kind") or {}
         out["calibrated_version"] = calibration.payload.get("model_version")
+        from plumb.capture.calibrate import calibration_form, form_gap
+
+        out["calibrated_form"] = calibration_form(calibration)
+        out["form_needed"] = form_gap(core, calibration)
         out["calibration"] = {
             kind: {"passing": r.get("passing"), "threshold": r.get("threshold"),
                    "decisions": r.get("items"), "real_no": r.get("real_negatives"),
                    "generated_no": r.get("generated_negatives"),
-                   "generated_counted": r.get("generated_counted")}
+                   "generated_counted": r.get("generated_counted"),
+                   "quote_only": r.get("quote_only")}
             for kind, r in per_kind.items() if isinstance(r, Mapping)}
     else:
         out["calibration"] = f"none yet ({CALIBRATE_HINT})"
@@ -113,16 +121,23 @@ def status_lines(data: Mapping[str, Any]) -> list[str]:
         if data.get("version_drift"):
             lines.append(f"version drift: validated against {data.get('validated_against')}; "
                          "confident answers are escalated until it is revalidated")
+    lines.append(f"question form: {data.get('form', 'yes_no')}")
     lines.append(f"model: {data.get('model')} (validated against "
                  f"{data.get('validated_against')})")
     calibration = data["calibration"]
     if isinstance(calibration, Mapping):
-        lines.append(f"calibrated against: {data.get('calibrated_version')}")
+        lines.append(f"calibrated against: {data.get('calibrated_version')} "
+                     f"(question form {data.get('calibrated_form')})")
+        if data.get("form_needed"):
+            lines.append(f"{data['form_needed']}; {CALIBRATE_HINT}")
         for kind, r in calibration.items():
             lines.append(f"  {kind}: {'passing' if r['passing'] else 'not passing'}; "
                          f"{r['decisions']} of your decisions, 'no' examples "
                          f"{r['real_no']} real + {r['generated_counted']} generated counted "
                          f"(of {r['generated_no']})")
+            if r.get("quote_only"):
+                lines.append(f"    quote-only: {r['quote_only']} of {r['decisions']} judged on "
+                             "the owner's quote alone, no whole message on file")
     else:
         lines.append(f"calibration: {calibration}")
     lines.append(f"auto-approve: {data['auto_approve']}")

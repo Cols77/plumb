@@ -21,7 +21,7 @@ DEFAULT_AFFIRMATIONS = ("ok", "okay", "yes", "approve", "approved", "confirm", "
 
 @dataclass(frozen=True)
 class VerifyConfig:
-    turn_budget_s: float = 15
+    turn_budget_s: float = 60
     hard_limit_factor: float = 1.5
     fill_fraction: float = 0.65  # a selection's estimate fills this share of the budget
     sample_size: int = 10
@@ -34,12 +34,13 @@ class VerifyConfig:
 
 
 # Soft budgets per hook, from process start (SR-181). Generous on purpose: on a loaded 2-core
-# machine a 1.2-1.4 s budget cut the read-back and skipped the check on every turn. They sit
-# under the watchdog's hard limit (hookio.HARD_LIMIT_S, 6 s, or hooks.hard_limit_s), which is
-# the bound; a cut keeps the intent-translation lines (hookio.HookContext.keep). The host's own
-# hook timeouts (10 s and 30 s) stay above the hard limit plus the stop hook's grace.
+# machine a 4 s budget still skipped the check on most turns (pytest alone starts in 15 s
+# there). They sit under the watchdog's hard limit (hookio.HARD_LIMIT_S, 30 s, or
+# hooks.hard_limit_s), which is the bound; a cut keeps the intent-translation lines
+# (hookio.HookContext.keep). The host's own hook timeouts (60 s and 120 s) stay above the hard
+# limit plus the stop hook's grace.
 DEFAULT_HOOK_BUDGET_MS: Mapping[str, int] = {
-    "session_start": 4000, "prompt": 4000, "stop": 4000, "post_edit": 1000}
+    "session_start": 20000, "prompt": 20000, "stop": 20000, "post_edit": 5000}
 
 
 @dataclass(frozen=True)
@@ -69,7 +70,7 @@ class ApproveConfig:
 @dataclass(frozen=True)
 class JudgmentConfig:
     backend: str = ""
-    hook_timeout_ms: int = 800
+    hook_timeout_ms: int = 5000
     jev: Mapping[str, Any] = field(default_factory=lambda: jev_settings({}))
 
 
@@ -198,6 +199,7 @@ class UnderstandConfig:
 
     dispatch: str = "auto"       # auto | claude-code | hermes | openrouter
     model: str = "haiku"
+    judge_model: str = "haiku"       # SR-182: gives the verdict below JEV's threshold (or without JEV)
     repin_model: str = "sonnet"      # SR-111 EX-4: judges whether a stale link's change matters
     # SR-114: JEV repins alone at or above this probability, set from the labelled repin set
     # (``eval --repin``: the lowest threshold with no false repin); None leaves the tier off

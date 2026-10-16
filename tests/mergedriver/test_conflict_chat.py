@@ -109,3 +109,30 @@ def test_ex2_the_agent_cannot_relay_the_answer(repo: Path, capsys) -> None:
         assert "nothing was chosen" in capsys.readouterr().err
     assert (repo / SR).read_bytes() == before
     assert events(repo, "conflict-resolution") == []
+
+
+@pytest.mark.sr("SR-187")
+def test_sr187_ex1_a_side_in_plain_words_picks_the_option_the_model_names(repo: Path) -> None:
+    conflicted(repo)
+    shown(repo)
+    core = open_core(repo)
+    words = "keep what main has"
+    job = read.build(core, SESSION, message={"digest": log_prompt(repo, words), "text": words})
+    (item,) = [i for i in job.inputs["cards"] if i["kind"] == "conflict"]
+    entry = {"id": item["id"], "hash": "", "answer": "change", "option": "Keep this one",
+             "evidence": words, "confidence": 0.95}
+    with as_worker(repo, SESSION):
+        read.apply(core, job, {"entries": [entry]})
+    assert _statement(repo) == OURS_STATEMENT
+    (taken,) = events(repo, "conflict-resolution")
+    assert (taken["take"], taken["quote"]) == ("ours", words)
+
+
+@pytest.mark.sr("SR-187")
+def test_sr187_ex3_an_unclear_side_leaves_the_conflict_open(repo: Path) -> None:
+    conflicted(repo)
+    shown(repo)
+    before = (repo / SR).read_bytes()
+    _reply(repo, "hmm, either could work", "open", None)
+    assert (repo / SR).read_bytes() == before
+    assert events(repo, "conflict-resolution") == []

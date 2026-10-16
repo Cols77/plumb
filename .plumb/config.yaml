@@ -3,7 +3,7 @@
 # source_dirs: [src, tests]
 # test_dirs: [tests]
 # verify:
-#   turn_budget_s: 15
+#   turn_budget_s: 60
 #   hard_limit_factor: 1.5
 #   fill_fraction: 0.65        # estimates (scaled by observed pace) fill 65 % of the budget
 #   sample_size: 10
@@ -12,8 +12,8 @@
 #   flaky_rerun: true
 #   infra_globs: ["**/conftest.py", pyproject.toml, uv.lock, pytest.ini, tox.ini, setup.cfg]
 # hooks:
-#   hard_limit_s: 6    # the watchdog cuts a hook here (keep it under the host timeouts)
-#   budget_ms: {session_start: 4000, prompt: 4000, stop: 4000, post_edit: 1000}
+#   hard_limit_s: 30   # the watchdog cuts a hook here (keep it under the host timeouts)
+#   budget_ms: {session_start: 20000, prompt: 20000, stop: 20000, post_edit: 5000}
 #   brief_lines: 30
 #   prompt_lines: 20
 #   summary_proposed_cap: 3    # records shown in full per summary
@@ -22,7 +22,7 @@
 #                  go ahead, sounds good]
 # judgment:
 #   backend: heuristic         # heuristic | jev | disabled
-#   hook_timeout_ms: 800
+#   hook_timeout_ms: 5000
 # escalation: {max_requirements: 3, max_features: 1, diff_lines: 400, diff_files: 10}
 # trace:
 #   exempt: []                 # source globs that need no requirement (untraced changes)

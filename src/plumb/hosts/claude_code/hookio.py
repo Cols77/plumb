@@ -29,7 +29,7 @@ from plumb.paths import holds_records
 
 SKIP_BUDGET = "plumb: check skipped (budget)"
 SKIP_ERROR = "plumb: check skipped (error, see .plumb/session/errors.log)"
-HARD_LIMIT_S = 6.0  # SR-181: the watchdog's last resort when hooks.hard_limit_s is unset
+HARD_LIMIT_S = 30.0  # SR-181: the watchdog's last resort when hooks.hard_limit_s is unset
 _SESSION_RE = re.compile(r"[^A-Za-z0-9_-]+")
 
 

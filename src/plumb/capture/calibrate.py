@@ -50,6 +50,7 @@ class Item:
     premise: str
     hypotheses: tuple[str, ...]   # every part must be supported (R13 Q3)
     hash: str = ""                # the version of the record judged (the logged score's key)
+    quote_only: str = ""          # why its premise is the quote alone (SR-190), else ""
 
 
 @dataclass
@@ -59,6 +60,7 @@ class KindResult:
     real_negatives: int = 0
     generated_negatives: int = 0
     generated_counted: int = 0
+    quote_only: int = 0           # real items whose premise is the quote alone (SR-190)
     negatives: int = 0            # counted: real + generated up to half
     threshold: float | None = None
     false_accept: float = 0.0
@@ -126,6 +128,7 @@ def variations(item: Item) -> list[Item]:
 
 
 def labelled_set(core: Core) -> list[Item]:
+    from plumb.capture.triage import premise_problem
     from plumb.confirm import checked, remaining
 
     index = core.index()
@@ -172,16 +175,17 @@ def labelled_set(core: Core) -> list[Item]:
         premise, parts = _hypotheses(index, record, prompts)
         if not premise.strip():
             continue
+        thin = (premise_problem(prompts, index, record) or "") if prompts is not None else ""
         status = statuses[record_id]
         latest = standing.get(record_id) or []
         if record_id in revoked:
-            items.append(Item(record_id, kind, "no", "revoked", premise, parts, record.hash))
+            items.append(Item(record_id, kind, "no", "revoked", premise, parts, record.hash, thin))
         elif record_id in auto and status.confirmation == "unconfirmed-edit":
             items.append(Item(record_id, kind, "no", "edited-after-auto", premise, parts,
-                              record.hash))
+                              record.hash, thin))
         elif status.confirmation == "confirmed" and latest and \
                 latest[-1][1] in ("owner", "agent-relayed", "owner-words"):
-            items.append(Item(record_id, kind, "yes", "owner", premise, parts, record.hash))
+            items.append(Item(record_id, kind, "yes", "owner", premise, parts, record.hash, thin))
     generated = [v for item in items if item.label == "yes" for v in variations(item)]
     return items + generated
 
@@ -216,6 +220,8 @@ def measure(core: Core, items: Sequence[Item], scores: Sequence[float]) -> dict[
         result.real_negatives = len(real_no)
         result.generated_negatives = len(gen_no)
         result.items = len(yes) + len(real_no)
+        result.quote_only = sum(bool(i.quote_only) for i, _ in pairs
+                                if not i.source.startswith("gen"))
         result.generated_counted = min(len(gen_no), len(real_no))  # at most half
         result.negatives = len(real_no) + result.generated_counted
         negatives = real_no + gen_no
@@ -241,13 +247,17 @@ def measure(core: Core, items: Sequence[Item], scores: Sequence[float]) -> dict[
 
 
 def logged_scores(core: Core) -> tuple[dict[tuple[str, str], float], str]:
-    """``{(record, hash): score}`` of the judge's logged verdicts (the latest of each) and the
-    model that gave the most recent one. The score is the model's confidence for a supported
-    verdict and 0 otherwise, logged at judgment time (SR-106), so calibration needs no model."""
+    """``{(record, hash): score}`` of JEV's logged verdicts (the latest of each) and the JEV
+    version that gave the most recent one. The score is JEV's probability for a supported
+    verdict and 0 otherwise, logged at judgment time (SR-106), so calibration needs no call.
+    Only a verdict marked as JEV's counts (SR-182): a judge model's confidence never sets
+    JEV's threshold, and an old verdict with no marker is not taken as JEV's."""
+    from plumb.judgment.verdict import JEV
+
     scores: dict[tuple[str, str], float] = {}
     model = ""
     for entry in core.events():
-        if entry.kind != "verdict":
+        if entry.kind != "verdict" or entry.payload.get("by") != JEV:
             continue
         payload = entry.payload
         try:
@@ -277,7 +287,7 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
         items = [i for i in items if not i.source.startswith("gen")
                  and (i.record, i.hash) in logged]
         scores = [logged[(i.record, i.hash)] for i in items]
-        name, version = "judge", model
+        name, version = "jev", model
     else:
         if backend is None:
             from plumb.judgment import JudgmentUnavailable, get_backend
@@ -310,11 +320,13 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
     results = measure(core, items, scores)
     digest = sha256_bytes(canonical_json([[i.record, i.kind, i.label, i.source,
                                            list(i.hypotheses)] for i in items]))
-    payload = {"backend": name, "model_version": version,
+    from plumb.judgment.jev import output_form
+
+    payload = {"backend": name, "model_version": version, "form": output_form(core.config),
                "per_kind": {k: {key: getattr(r, key) for key in (
                    "items", "positives", "real_negatives", "generated_negatives",
-                   "generated_counted", "negatives", "threshold", "false_accept", "recall",
-                   "passing", "reasons")} for k, r in results.items()},
+                   "generated_counted", "quote_only", "negatives", "threshold", "false_accept",
+                   "recall", "passing", "reasons")} for k, r in results.items()},
                "labelled_set_digest": digest}
     if source_logged:
         payload["source"] = "logged"
@@ -324,15 +336,33 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
 
 
 def fingerprint(core: Core) -> dict[str, Any]:
-    """The model and prompt a logged calibration was made under: a change of either suspends
-    settling until the evaluation set passes again (SR-106)."""
+    """The judge model (SR-186) and prompt a logged calibration was made under: a change of
+    either suspends settling until the evaluation set passes again (SR-106)."""
     try:
         from plumb.understand.evalrun import prompt_digest
 
         digest = prompt_digest()
     except Exception:  # noqa: BLE001 - the fingerprint is advisory for the suspension check
         digest = ""
-    return {"model": core.config.understand.model, "prompt_digest": digest}
+    return {"model": core.config.understand.judge_model, "prompt_digest": digest}
+
+
+def calibration_form(calibration: Any) -> str:
+    """The question form a calibration measured (``yes_no`` when it records none, SR-183)."""
+    return str((calibration.payload.get("form") if calibration is not None else None)
+               or "yes_no")
+
+
+def form_gap(core: Core, calibration: Any) -> str | None:
+    """SR-183: why ``calibration`` may not serve JEV as configured now (it measured the other
+    question form), else None."""
+    from plumb.judgment.jev import output_form
+
+    want = output_form(core.config)
+    if calibration is None or calibration_form(calibration) == want:
+        return None
+    return (f"a calibration for the {want} form is needed (the last one measured "
+            f"{calibration_form(calibration)})")
 
 
 def latest_calibration(core: Core) -> Any:
@@ -344,6 +374,15 @@ def judge_calibrations(core: Core) -> list[Any]:
     """The calibrations made from the judge's logged scores (``source: logged``), oldest first."""
     return [e for e in core.events()
             if e.kind == "calibration" and e.payload.get("source") == "logged"]
+
+
+def fingerprint_stale(core: Core) -> bool:
+    """Whether the judge model or the prompt differs from the latest calibration's
+    fingerprint (SR-106, SR-186); a calibration that recorded none is not stale."""
+    latest = latest_calibration(core)
+    if latest is None or "prompt_digest" not in latest.payload:
+        return False
+    return any(latest.payload.get(k) != v for k, v in fingerprint(core).items())
 
 
 def latest_judge_calibration(core: Core) -> Any:

@@ -9,7 +9,8 @@ from typing import Any
 from plumb.contracts import LogEntry
 
 BY_MODULE = {"owner-words": "plumb.understand.recheck_words",
-             "undone": "plumb.understand.typed"}
+             "undone": "plumb.understand.typed",
+             "auto-model": "plumb.understand.recheck_model"}
 
 
 def problem(entry: LogEntry, core: Any) -> str | None:

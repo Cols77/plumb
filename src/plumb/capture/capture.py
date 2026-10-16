@@ -25,6 +25,7 @@ from plumb.capture.records import (
     short_title,
 )
 from plumb.contracts import CaptureResult, Target
+from plumb.links import live_examples
 
 if TYPE_CHECKING:
     from plumb.api import Core
@@ -147,7 +148,12 @@ class _Plan:
                 from plumb.capture.proof import proof_entry
 
                 fields["proof"] = proof_entry(item["proof"], f"requirements[{n}].proof")
-            self.requirements.append({"fields": fields, "paths": paths})
+            olds = [str(o) for o in _as_list(item.get("supersedes"), "supersedes")]
+            for old in olds:
+                if old not in index or index[old].kind != "requirement":
+                    raise CaptureError(f"requirements[{n}]: supersedes {old} is not an "
+                                       "existing requirement")
+            self.requirements.append({"fields": fields, "paths": paths, "supersedes": olds})
         if (self.requirements or doc.get("decisions")) and not (self.intent or self.intent_ref):
             raise CaptureError("requirements and decisions derive from an intent: give "
                                "intent (the owner's words) or an existing INT ID")
@@ -309,6 +315,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
         intent_id = new_record(core, "intent", fields).id
         written.append(intent_id)
     sr_ids: list[str] = []
+    superseded_lines: list[str] = []
     for item in plan.requirements:
         record = new_record(core, "requirement", item["fields"])
         sr_ids.append(record.id)
@@ -316,6 +323,12 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
         links.append(core.add_link(record.id, "derives_from", Target(record=intent_id)).id)
         for path in item["paths"]:
             links.append(core.add_link(record.id, "implemented_by", Target(path=path)).id)
+        for old in item["supersedes"]:
+            links.append(core.add_link(record.id, "supersedes", Target(record=old)).id)
+            for ex, test in live_examples(core, old, record.id):  # SR-164
+                superseded_lines.append(
+                    f"plumb: {old}/{ex} is still verified by {test}: retire the test too "
+                    f"(plumb unlink; drop it when it covers nothing else), DEC-065")
     for item in plan.decisions:
         record = new_record(core, "decision", item["fields"])
         written.append(record.id)
@@ -359,6 +372,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
         from plumb.stale import derived_lines
 
         lines += derived_lines(core, updated)
+    lines += superseded_lines
     lines += _unplanned_lines(core, written)
     lines += _kind_lines(core, written + updated)
     if unchecked:
@@ -370,6 +384,12 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
     early = _inflight_check(core, written, updated, intent_id, backend)
     written += [i for i in early["written"] if i not in written]
     lines += early["lines"]
+    from plumb.awareness.early import check_live
+
+    lines += check_live(core, [i for i in written + updated if i in core.index()
+                               and core.index()[i].kind == "requirement"],
+                        exclude=[o for item in plan.requirements for o in item["supersedes"]],
+                        backend=backend)
     if plan.intent_ref is not None and written:
         from plumb.capture.spec import set_of
 
