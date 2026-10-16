@@ -60,7 +60,7 @@ from plumb.trace import is_code_path
 IGNORED_PREFIXES = (".plumb/session/", ".plumb/cache/", ".plumb/log/", ".plumb/view/",
                     ".git/")
 IGNORED_FILES = (".plumb/test_map.txt",)
-GIT_TIMEOUT_S = 1.0  # most of the soft budget: under load git status alone can take 0.6 s
+GIT_TIMEOUT_S = 5.0  # a slice of the soft budget: under load git status alone can take 0.6 s
 STOP_GRACE_S = 1.0  # past the hard limit, only while the read-back is not yet kept (R1)
 GIT_SKIPPED = "change detection (git status)"
 MAX_INSTRUCTION_PATHS = 8

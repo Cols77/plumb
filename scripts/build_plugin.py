@@ -54,21 +54,21 @@ DIAGRAM_MARKETPLACE = "diagram-mod"   # where the diagram mod plumb's cards draw
 # (Claude Code event, matcher, plumb hook, async, timeout in seconds): SP7 4.3, with SR-111's
 # synchronous edit check and SP8's gate on PreToolUse (the guard covers Bash too). The timeout
 # bounds the whole command (sh, the launcher, Python's start); plumb's own watchdog cuts each
-# hook at 6 s (``hookio.HARD_LIMIT_S`` or ``hooks.hard_limit_s``; the stop hook's read-back
-# gets 1 s more), so these only keep a hung process from holding the session (SR-123).
+# hook at 30 s (``hookio.HARD_LIMIT_S`` or ``hooks.hard_limit_s``; the stop hook's read-back
+# gets 1 s more), so these only keep a hung process from holding the session (SR-123, SR-181).
 # post-edit and edit-check share a
 # matcher in two groups because only post-edit is async; they write different files under
 # ``.plumb/session/<id>/`` (``touched.txt``, ``stale_told.json``). MultiEdit stays: the legacy
 # installer (``plumb.hosts.claude_code.install``) and ``plumb.guard`` still name it.
 HOOKS: tuple[tuple[str, str | None, str, bool, int], ...] = (
-    ("SessionStart", "startup|resume|clear|compact", "session-start", False, 10),
-    ("UserPromptSubmit", None, "prompt", False, 10),
-    ("PreToolUse", "Bash|Edit|Write|MultiEdit|NotebookEdit", "pre-tool", False, 10),
-    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "post-edit", True, 30),
-    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "edit-check", False, 10),
-    ("PostToolUse", "AskUserQuestion", "question-answer", True, 30),
-    ("Stop", None, "stop", False, 30),
-    ("SubagentStop", None, "subagent-stop", False, 30),
+    ("SessionStart", "startup|resume|clear|compact", "session-start", False, 60),
+    ("UserPromptSubmit", None, "prompt", False, 60),
+    ("PreToolUse", "Bash|Edit|Write|MultiEdit|NotebookEdit", "pre-tool", False, 60),
+    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "post-edit", True, 120),
+    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "edit-check", False, 60),
+    ("PostToolUse", "AskUserQuestion", "question-answer", True, 120),
+    ("Stop", None, "stop", False, 120),
+    ("SubagentStop", None, "subagent-stop", False, 120),
 )
 # test-only files: they belong in tests/plugin/mod, never in the shipped plugin (SR-123)
 TEST_ONLY_NAMES = ("harness.ts", "fixtures.ts")

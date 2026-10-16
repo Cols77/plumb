@@ -165,7 +165,7 @@ def test_watchdog_prints_the_kept_lines(repo: Path, hook_input, tmp_path: Path) 
         "    ctx.keep(['plumb: relay line'])\n"
         "    time.sleep(5)\n"
         f"hookio.run_hook('t', h, stdin=io.StringIO('{{}}'), stdout=sys.stdout, root=r'{repo}',\n"
-        "                 budget_ms=100, watchdog=True, start=time.monotonic() - 1.7)\n",
+        "                 budget_ms=100, watchdog=True, start=time.monotonic() - 28.0)\n",
         encoding="utf-8")
     result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
                             timeout=30, check=False)
