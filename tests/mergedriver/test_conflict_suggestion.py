@@ -13,7 +13,7 @@ from plumb.mergedriver import open_conflicts
 from plumb.mergedriver.conflicts import propose
 from plumb.understand import cards, fullcard
 
-pytestmark = pytest.mark.sr("SR-158")
+pytestmark = pytest.mark.sr("SR-211")
 
 
 def _options(core, conflict) -> list[dict]:

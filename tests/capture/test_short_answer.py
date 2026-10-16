@@ -12,7 +12,7 @@ from plumb.api import open_core
 from plumb.capture.records import is_short_answer
 from plumb.capture.triage import claim
 
-pytestmark = pytest.mark.sr("SR-097")
+pytestmark = pytest.mark.sr("SR-212")
 
 QUESTION = "Mostly in the background, or a checkpoint every turn? A. Mostly in the " \
            "background, B. A checkpoint every turn"

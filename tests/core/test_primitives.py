@@ -18,7 +18,7 @@ from plumb.normalize import canonical_json, file_digest, normalize_text, sha256_
 from plumb.paths import PlumbPaths, find_root
 from plumb.text import CHANGE_WORDS, overlap, terms
 
-pytestmark = pytest.mark.sr("SR-002")
+pytestmark = pytest.mark.sr("SR-230")
 
 
 def test_crlf_and_lone_cr_become_lf() -> None:

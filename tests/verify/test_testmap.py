@@ -20,7 +20,7 @@ def project(repo: Path, write_record) -> Path:
     return repo
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_map_from_verified_by_links(project: Path) -> None:
     core = open_core(project)
     core.add_link("SR-001", "verified_by", Target(test="tests/test_helper.py::test_twice"))
@@ -29,13 +29,13 @@ def test_map_from_verified_by_links(project: Path) -> None:
     assert "tests/test_helper.py::test_twice" in tmap.records["SR-001"]
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_map_from_sr_markers(project: Path) -> None:
     tmap = build_map(open_core(project))
     assert tmap.records["SR-001"] == ["tests/test_mod.py::test_add"]
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_map_from_import_closure(project: Path) -> None:
     tmap = build_map(open_core(project))
     assert tmap.covering("src/pkg/mod.py") == ["tests/test_mod.py", "tests/test_helper.py"]
@@ -43,7 +43,7 @@ def test_map_from_import_closure(project: Path) -> None:
     assert tmap.closures["tests/test_helper.py"]["src/pkg/mod.py"] == 2
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_map_text_is_grepable(project: Path) -> None:
     build_map(open_core(project))
     lines = (project / ".plumb" / "test_map.txt").read_text(encoding="utf-8").splitlines()
@@ -55,7 +55,7 @@ def test_map_text_is_grepable(project: Path) -> None:
     assert deps.index("src/pkg/helper.py") < deps.index("src/pkg/mod.py")
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_map_cache_reparses_only_changed_files(project: Path) -> None:
     first = build_map(open_core(project))
     assert first.parsed >= 7
@@ -70,7 +70,7 @@ def test_map_cache_reparses_only_changed_files(project: Path) -> None:
     assert third.files["src/pkg/lonely.py"]["hash"] != first.files["src/pkg/lonely.py"]["hash"]
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_map_from_naming(project: Path) -> None:
     write(project, "src/pkg/widget.py", "X = 1\n")
     write(project, "tests/test_widget.py", "def test_widget():\n    assert True\n")

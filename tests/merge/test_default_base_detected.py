@@ -12,7 +12,7 @@ from plumb.api import open_core
 from plumb.awareness import publish
 from plumb.boundary.cli import merge_settings
 
-pytestmark = pytest.mark.sr("SR-132")
+pytestmark = pytest.mark.sr("SR-216")
 
 
 def test_the_base_is_detected_when_the_config_does_not_set_it(repo: Path) -> None:

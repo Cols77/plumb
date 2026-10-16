@@ -17,7 +17,7 @@ from capture_helpers import log_prompt, record_text, run
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-005")
+pytestmark = pytest.mark.sr("SR-208")
 
 CASES = [
     ('yes, apart from the zero example, that one is off', 'yes'),

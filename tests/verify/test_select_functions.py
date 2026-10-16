@@ -54,7 +54,7 @@ EXEC_NODES = [f"tests/test_exec.py::test_alpha_{i:02d}" for i in range(12)]
 IMPORTERS = {f"tests/test_imports_{i:02d}.py::test_present": [] for i in range(30)}
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_ex1_twelve_executing_tests_not_the_import_closure(project: Path) -> None:
     core = open_core(project)
     core.add_link("SR-001", "implemented_by", Target(path=CORE))
@@ -70,7 +70,7 @@ def test_ex1_twelve_executing_tests_not_the_import_closure(project: Path) -> Non
     assert not any("test_imports" in n for n in sel.nodes)
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_ex2_new_function_falls_back_to_closure_and_says_so(project: Path) -> None:
     core = open_core(project)
     fm = _record(core, {n: ["alpha"] for n in EXEC_NODES})
@@ -82,7 +82,7 @@ def test_ex2_new_function_falls_back_to_closure_and_says_so(project: Path) -> No
     assert sel.unknown_coverage == ()
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_requirement_linked_tests_added(project: Path) -> None:
     core = open_core(project)
     core.add_link("SR-001", "implemented_by", Target(path=CORE))
@@ -95,7 +95,7 @@ def test_requirement_linked_tests_added(project: Path) -> None:
     assert set(sel.nodes) == {EXEC_NODES[0], "tests/test_mod.py::test_add"}
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_nothing_recorded_never_runs_everything(project: Path) -> None:
     core = open_core(project)
     empty = FuncMap.open(core)
@@ -112,7 +112,7 @@ def test_nothing_recorded_never_runs_everything(project: Path) -> None:
     assert len(sel.nodes) < len(tests)
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_no_function_changed_uses_the_closure(project: Path) -> None:
     """A path whose functions are all as recorded (a comment, a reformat, an explicit
     --paths) keeps today's covering tests: never nothing."""
@@ -124,7 +124,7 @@ def test_no_function_changed_uses_the_closure(project: Path) -> None:
     assert sel.unrecorded == ()
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_tests_with_no_record_still_come_by_closure(project: Path) -> None:
     core = open_core(project)
     fm = _record(core, {n: ["alpha"] for n in EXEC_NODES} | {
@@ -136,7 +136,7 @@ def test_tests_with_no_record_still_come_by_closure(project: Path) -> None:
     assert all(sel.reasons[n] == "import" for n in unknown)
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_module_level_change_uses_the_closure(project: Path) -> None:
     core = open_core(project)
     fm = _record(core, {n: ["alpha"] for n in EXEC_NODES})
@@ -146,7 +146,7 @@ def test_module_level_change_uses_the_closure(project: Path) -> None:
     assert sel.unrecorded == ()
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_cli_lines(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     from plumb.verify.cli import cmd_select
 
@@ -161,7 +161,7 @@ def test_cli_lines(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert "(closure)" in out
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_coverage_off_is_todays_selection(project: Path) -> None:
     core = open_core(project)
     _record(core, {n: ["alpha"] for n in EXEC_NODES}, env=open_verify(core).env_key()).close()

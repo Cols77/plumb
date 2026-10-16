@@ -13,7 +13,7 @@ from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyAnswer, ClarifyQuestion
 from plumb.understand import cardstore, clarify, cmd_clarify, effects, gate, hooks, worker
 
-pytestmark = pytest.mark.sr("SR-169")
+pytestmark = pytest.mark.sr("SR-225")
 
 TEXT = "/plumb clarify let users export their data"  # SR-171: the check runs on the command
 CARD = {"intent": "yes", "topic": "exporting", "gap": True,

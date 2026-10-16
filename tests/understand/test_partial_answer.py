@@ -10,7 +10,7 @@ import pytest
 from understand.test_answer_once import FORMAT, _reply
 from understand.test_clarify_job import _asked, _by_kind, _cards
 
-pytestmark = pytest.mark.sr("SR-187")
+pytestmark = pytest.mark.sr("SR-214")
 WORDS = "2, and also make the pane resizable"
 READS = "make the pane resizable"
 

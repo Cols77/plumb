@@ -13,7 +13,7 @@ from plumb import approvals
 from plumb.api import open_core
 from plumb.boundary import merge_report, render
 
-pytestmark = pytest.mark.sr("SR-049")
+pytestmark = pytest.mark.sr("SR-260")
 
 
 @pytest.fixture

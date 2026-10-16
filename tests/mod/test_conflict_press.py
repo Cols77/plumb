@@ -14,7 +14,7 @@ from plumb.mergedriver import open_conflicts
 from plumb.understand import cards, cardstore, files, fullcard, summary
 
 
-@pytest.mark.sr("SR-150")
+@pytest.mark.sr("SR-211")
 def test_pressing_keep_mains_version_chooses_it(repo: Path, monkeypatch, capsys) -> None:
     conflicted(repo)
     core = open_core(repo)
@@ -36,7 +36,7 @@ def test_pressing_keep_mains_version_chooses_it(repo: Path, monkeypatch, capsys)
     assert (entry["take"], entry["by"]) == ("ours", "owner")
 
 
-@pytest.mark.sr("SR-150")
+@pytest.mark.sr("SR-211")
 def test_press_after_the_combined_version_changed_writes_nothing(repo: Path, monkeypatch,
                                                                  capsys) -> None:
     from plumb.mergedriver.conflicts import propose

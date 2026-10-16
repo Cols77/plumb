@@ -16,7 +16,7 @@ from plumb.contracts import Applied
 from plumb.understand import dispatch, files, jobs, queue, worker
 from understand.fakes import FakeClaude, FakeDispatcher, FakeKind, fake_claude, fake_kinds
 
-pytestmark = pytest.mark.sr("SR-104", "SR-101")
+pytestmark = pytest.mark.sr("SR-273", "SR-214")
 
 
 @pytest.fixture

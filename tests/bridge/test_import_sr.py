@@ -10,7 +10,7 @@ from pi_source_fixture import make_pi_source
 from plumb.api import open_core
 from plumb.importer.pi_factory import import_pi_factory
 
-pytestmark = pytest.mark.sr("SR-023")
+pytestmark = pytest.mark.sr("SR-238")
 
 
 @pytest.fixture

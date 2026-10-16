@@ -12,7 +12,7 @@ from understand.test_read_job import make_core, open_card, record_text
 
 from plumb.understand import cardstore, summary
 
-pytestmark = pytest.mark.sr("SR-160")
+pytestmark = pytest.mark.sr("SR-268")
 
 
 @pytest.fixture

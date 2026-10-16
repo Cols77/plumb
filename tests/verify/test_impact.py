@@ -21,7 +21,7 @@ quote: "add numbers"
 """
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_impact_lists_records_and_tests(repo: Path, write_record,
                                         capsys: pytest.CaptureFixture[str]) -> None:
     make_project(repo)

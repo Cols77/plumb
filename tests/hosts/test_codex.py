@@ -21,7 +21,7 @@ from plumb.cli import main
 from plumb.hosts.codex import install as codex
 from plumb.hosts.common import IS_WINDOWS, NO_MARKER_LINE, InstallError, shell_command
 
-pytestmark = pytest.mark.sr("SR-054")
+pytestmark = pytest.mark.sr("SR-283")
 
 FOREIGN_HOOK = {"type": "command", "command": "echo mine"}
 FOREIGN_TOML = '[mcp_servers.other]\ncommand = "other"\n'

@@ -13,7 +13,7 @@ from plumb.api import open_core
 from plumb.verify.runner import build_command, run_pytest, run_selection
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_run_never_passes_n_by_default() -> None:
     cmd = build_command(["tests/test_a.py"], workers=0)
     assert cmd[:3] == [sys.executable, "-m", "pytest"]
@@ -25,7 +25,7 @@ def test_run_never_passes_n_by_default() -> None:
     assert with_n[with_n.index("-n") + 1] == "2"
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_hard_limit_terminates_own_child(tmp_path: Path) -> None:
     root = tmp_path / "slow"
     write(root, "pytest.ini", "[pytest]\n")
@@ -37,7 +37,7 @@ def test_hard_limit_terminates_own_child(tmp_path: Path) -> None:
     assert result.finished is False
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_timeout_keeps_the_tests_that_finished_before_it(tmp_path: Path) -> None:
     """A timed-out run still reports every test that completed (setup, call, teardown)."""
     root = tmp_path / "partial"
@@ -53,7 +53,7 @@ def test_timeout_keeps_the_tests_that_finished_before_it(tmp_path: Path) -> None
     assert result.exit_status is None
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_run_discarded_when_inputs_change(repo: Path) -> None:
     make_project(repo)
     write(repo, "tests/test_mutates.py",
@@ -66,7 +66,7 @@ def test_run_discarded_when_inputs_change(repo: Path) -> None:
     assert clean.result.nodes["tests/test_helper.py::test_twice"]["outcome"] == "passed"
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_collection_error_does_not_stop_other_files(repo: Path) -> None:
     assert "--continue-on-collection-errors" in build_command(["tests/test_a.py"])
     make_project(repo)

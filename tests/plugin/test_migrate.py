@@ -26,7 +26,7 @@ from .helpers import (
     user_launcher,
 )
 
-pytestmark = [pytest.mark.sr("SR-084")]
+pytestmark = [pytest.mark.sr("SR-281")]
 OWN_HOOK = {"type": "command", "command": "echo my own check"}
 
 
@@ -129,7 +129,7 @@ def test_legacy_repo_hooks_run_once(tmp_path: Path) -> None:
     assert not sentinel.exists()
 
 
-@pytest.mark.sr("SR-120")
+@pytest.mark.sr("SR-202")
 def test_the_skill_under_its_retired_name_goes_and_an_owners_own_stays(
         tmp_path: Path, plugin_env: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """DEC-036: an install from before the rename wrote .claude/skills/plumb; migrating removes

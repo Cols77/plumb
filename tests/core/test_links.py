@@ -11,7 +11,7 @@ from plumb import links
 from plumb.api import open_core
 from plumb.contracts import Pin, Target
 
-pytestmark = pytest.mark.sr("SR-003")
+pytestmark = pytest.mark.sr("SR-231")
 
 INT = """---
 id: INT-001
@@ -191,7 +191,7 @@ def test_records_for_paths(setup: Path) -> None:
     assert mapping["other.py"] == ()
 
 
-@pytest.mark.sr("SR-058")
+@pytest.mark.sr("SR-238")
 def test_symbol_and_test_node_ends_from_the_cli_form(setup: Path) -> None:
     (setup / "src" / "mod.py").write_text("def fn():\n    return 1\n\n\ndef g():\n    pass\n",
                                           encoding="utf-8")
@@ -263,7 +263,7 @@ def _ends(repo: Path) -> list[str | None]:
             for link in open_core(repo).index()["SR-001"].links]
 
 
-@pytest.mark.sr("SR-148")
+@pytest.mark.sr("SR-231")
 def test_unlink_removes_a_dangling_link_renumbers_and_logs(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (edit / "tests" / "test_old.py").unlink()
@@ -282,7 +282,7 @@ def test_unlink_removes_a_dangling_link_renumbers_and_logs(
                                       {"from": "SR-001#3", "to": "SR-001#2"}]}]
 
 
-@pytest.mark.sr("SR-148")
+@pytest.mark.sr("SR-231")
 def test_unlink_of_a_missing_link_exits_1_and_changes_nothing(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     before = _record_text(edit)
@@ -292,7 +292,7 @@ def test_unlink_of_a_missing_link_exits_1_and_changes_nothing(
     assert _record_text(edit) == before
 
 
-@pytest.mark.sr("SR-148")
+@pytest.mark.sr("SR-231")
 def test_unlink_without_a_note_is_a_usage_error(edit: Path) -> None:
     before = _record_text(edit)
     assert _cli(edit, "unlink", "SR-001#1") == 2
@@ -300,7 +300,7 @@ def test_unlink_without_a_note_is_a_usage_error(edit: Path) -> None:
     assert list(open_core(edit).log_read("events", kinds=["unlink"])) == []
 
 
-@pytest.mark.sr("SR-148")
+@pytest.mark.sr("SR-231")
 def test_unlink_refuses_the_only_live_test_of_a_confirmed_example(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert _cli(edit, "approve", "SR-001") == 0
@@ -314,7 +314,7 @@ def test_unlink_refuses_the_only_live_test_of_a_confirmed_example(
     assert _cli(edit, "unlink", "SR-001#1", "--note", "a duplicate test") == 0
 
 
-@pytest.mark.sr("SR-148")
+@pytest.mark.sr("SR-231")
 def test_unlink_removes_a_dangling_only_test_of_a_confirmed_example(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert _cli(edit, "approve", "SR-001") == 0
@@ -325,7 +325,7 @@ def test_unlink_removes_a_dangling_only_test_of_a_confirmed_example(
     assert "tests/test_b.py" not in _ends(edit)
 
 
-@pytest.mark.sr("SR-149")
+@pytest.mark.sr("SR-231")
 def test_relink_points_a_dangling_link_at_the_new_target(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (edit / "tests" / "mod").mkdir()
@@ -347,7 +347,7 @@ def test_relink_points_a_dangling_link_at_the_new_target(
                                "pin": {"from": link.pin.source, "to": link.pin.target}}}]
 
 
-@pytest.mark.sr("SR-149")
+@pytest.mark.sr("SR-231")
 def test_relink_to_a_missing_target_exits_1_and_changes_nothing(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     before = _record_text(edit)
@@ -357,7 +357,7 @@ def test_relink_to_a_missing_target_exits_1_and_changes_nothing(
     assert _record_text(edit) == before
 
 
-@pytest.mark.sr("SR-149")
+@pytest.mark.sr("SR-231")
 def test_relink_refuses_to_copy_another_link(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     before = _record_text(edit)
@@ -368,7 +368,7 @@ def test_relink_refuses_to_copy_another_link(
     assert _record_text(edit) == before
 
 
-@pytest.mark.sr("SR-149")
+@pytest.mark.sr("SR-231")
 def test_relink_refuses_a_kind_that_cannot_reach_the_target(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     before = _record_text(edit)
@@ -378,7 +378,7 @@ def test_relink_refuses_a_kind_that_cannot_reach_the_target(
     assert _record_text(edit) == before
 
 
-@pytest.mark.sr("SR-148")
+@pytest.mark.sr("SR-231")
 def test_unlink_lets_a_retired_examples_test_go(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert _cli(edit, "approve", "SR-001") == 0
@@ -391,7 +391,7 @@ def test_unlink_lets_a_retired_examples_test_go(
     assert "no test" not in capsys.readouterr().out
 
 
-@pytest.mark.sr("SR-148")
+@pytest.mark.sr("SR-231")
 def test_unlink_lets_a_superseded_records_only_test_go(
         edit: Path, write_record, capsys: pytest.CaptureFixture[str]) -> None:
     """DEC-065: every example of a superseded record is retired, so its tests go with it."""
@@ -414,7 +414,7 @@ def _superseded(setup: Path, write_record):
     return open_core(setup), old_pin
 
 
-@pytest.mark.sr("SR-164")
+@pytest.mark.sr("SR-233")
 def test_a_superseded_requirements_moved_links_are_retired_not_stale(
         setup: Path, write_record) -> None:
     """SR-164 EX-1: stale rows, validate and stale selection show nothing for the retired one."""
@@ -427,14 +427,14 @@ def test_a_superseded_requirements_moved_links_are_retired_not_stale(
     assert "SR-001#0" not in str(core.status())
 
 
-@pytest.mark.sr("SR-164")
+@pytest.mark.sr("SR-233")
 def test_repin_all_stale_leaves_a_retired_pin(setup: Path, write_record) -> None:
     core, old_pin = _superseded(setup, write_record)
     assert links.repin(core, all_stale=True) == []
     assert open_core(setup).index()["SR-001"].links[0].pin == old_pin
 
 
-@pytest.mark.sr("SR-164")
+@pytest.mark.sr("SR-233")
 def test_superseding_names_the_examples_a_test_still_verifies(
         setup: Path, write_record, capsys) -> None:
     write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
@@ -476,7 +476,7 @@ def test_pin_on_a_committed_file_stores_no_blob(setup: Path) -> None:
     assert not list((setup / ".git" / "plumb").glob("pin_blobs.json"))
 
 
-@pytest.mark.sr("SR-164")
+@pytest.mark.sr("SR-233")
 def test_status_and_validate_work_on_a_confirmed_superseded_record_with_a_test(
         setup: Path, write_record) -> None:
     """A retired link has no current pin: status, changed_tests and validate must not read one."""
@@ -497,7 +497,7 @@ def test_status_and_validate_work_on_a_confirmed_superseded_record_with_a_test(
     assert core.status() and validate(core) is not None
 
 
-@pytest.mark.sr("SR-164")
+@pytest.mark.sr("SR-233")
 def test_an_older_record_superseding_a_newer_one_does_not_retire_it(
         setup: Path, write_record) -> None:
     """SR-076 over SR-150: the owner has not settled it (INT-058 A-1), so SR-150 stays tracked."""

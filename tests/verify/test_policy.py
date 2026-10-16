@@ -26,7 +26,7 @@ def project(repo: Path) -> Path:
     return repo
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_regression_requires_prior_pass_of_same_node() -> None:
     index: dict = {"nodes": {}, "full": None}
     _run(index, "r1", {"t.py::a": "passed"})
@@ -40,7 +40,7 @@ def test_regression_requires_prior_pass_of_same_node() -> None:
     assert is_regression(index, "t.py::a") is False
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_flaky_pass_counts_as_prior_pass() -> None:
     index: dict = {"nodes": {}, "full": None}
     _run(index, "r1", {"t.py::a": "flaky"})
@@ -48,7 +48,7 @@ def test_flaky_pass_counts_as_prior_pass() -> None:
     assert is_regression(index, "t.py::a") is True
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_never_passed_existing_node_is_not_regression() -> None:
     index: dict = {"nodes": {}, "full": None}
     _run(index, "r1", {"t.py::a": "failed"})
@@ -58,7 +58,7 @@ def test_never_passed_existing_node_is_not_regression() -> None:
     assert is_regression(index, "t.py::a") is False
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_regression_notes_test_source_changed() -> None:
     index: dict = {"nodes": {}, "full": None}
     _run(index, "r1", {"t.py::a": "passed"}, test_hash="T1")
@@ -73,7 +73,7 @@ def test_regression_notes_test_source_changed() -> None:
     assert "(test source" not in regression_instruction("t.py::a", "r1", False)
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_edited_test_that_passed_then_fails_is_regression(project: Path) -> None:
     first = open_verify(open_core(project)).run(nodes=["tests/test_helper.py"])
     assert first.ok
@@ -89,7 +89,7 @@ def test_edited_test_that_passed_then_fails_is_regression(project: Path) -> None
     assert ev.regression is True and ev.test_changed_since_pass is True
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_new_red_test_is_not_regression(project: Path) -> None:
     write(project, "tests/test_new.py", "def test_red():\n    assert False\n")
     report = open_verify(open_core(project)).run(nodes=["tests/test_new.py"])
@@ -100,7 +100,7 @@ def test_new_red_test_is_not_regression(project: Path) -> None:
     assert ev["tests/test_new.py::test_red"].regression is False
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_collection_error_of_passing_test_is_regression(project: Path) -> None:
     first = open_verify(open_core(project)).run(nodes=["tests/test_mod.py"])
     assert first.ok
@@ -120,7 +120,7 @@ def test_collection_error_of_passing_test_is_regression(project: Path) -> None:
     assert ev["tests/test_mod.py"].regression is True
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_collection_error_marks_only_selected_nodes(project: Path) -> None:
     first = open_verify(open_core(project)).run(nodes=["tests/test_mod.py"])
     assert first.ok

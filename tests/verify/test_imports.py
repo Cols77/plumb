@@ -30,7 +30,7 @@ def project(tmp_path: Path) -> Path:
     return root
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_import_edges_absolute_and_relative() -> None:
     edges = import_edges("import x.y\nfrom a import b\nfrom . import c\nfrom ..d import e\n")
     assert ("x.y", 0, ()) in edges
@@ -40,7 +40,7 @@ def test_import_edges_absolute_and_relative() -> None:
     assert import_edges("def broken(:\n") == []
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_relative_and_from_imports_resolve_to_files(project: Path) -> None:
     sources = ("src", "tests")
     assert direct_imports(project, "src/pkg/a.py", sources) == {"src/pkg/__init__.py",
@@ -50,7 +50,7 @@ def test_relative_and_from_imports_resolve_to_files(project: Path) -> None:
         "src/pkg/__init__.py", "src/pkg/a.py", "src/pkg/sub/__init__.py", "src/pkg/sub/e.py"}
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_transitive_closure(project: Path) -> None:
     depths = closure(project, "tests/test_a.py", ("src", "tests"))
     assert depths["tests/test_a.py"] == 0
@@ -60,7 +60,7 @@ def test_transitive_closure(project: Path) -> None:
     assert "src/pkg/sub/d.py" not in depths
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_unresolvable_imports_ignored(project: Path) -> None:
     depths = closure(project, "tests/test_a.py", ("src", "tests"))
     assert all(not key.startswith("missing") for key in depths)

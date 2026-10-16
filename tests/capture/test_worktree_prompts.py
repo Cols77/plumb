@@ -12,7 +12,7 @@ from plumb.api import open_core
 from plumb.approvals import find_prompt
 from plumb.understand.read import logged_prompt
 
-pytestmark = pytest.mark.sr("SR-189")
+pytestmark = pytest.mark.sr("SR-240")
 
 WHOLE = "add a pow function. Also keep the old add function, and say so in the README"
 

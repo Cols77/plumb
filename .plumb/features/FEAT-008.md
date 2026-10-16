@@ -1,14 +1,35 @@
 ---
 id: FEAT-008
-title: 'Sub-project 8: intent by exception, understood by models,...'
-description: 'You state intent as you would to a colleague. A model reads your answers and judges what
-  can be settled from your words; you are asked up front only about gaps that change what gets built,
-  and afterwards only about what plumb cannot establish with confidence, as cards with suggested resolutions.
-  Everything settled is shown in one line per turn and can be undone. Spec: docs/specs/sp8-intent-by-exception.md.'
+title: Intent by exception, understood by models
+description: You state intent as you would to a colleague. A model reads your answers and judges what
+  can be settled from your words; you are asked only about intent and trade-offs. Everything settled is
+  shown in one line per turn and can be undone.
+requirements:
+- SR-209
+- SR-210
+- SR-212
+- SR-213
+- SR-214
+- SR-215
+- SR-216
+- SR-217
+- SR-218
+- SR-219
+- SR-220
+- SR-221
+- SR-223
+- SR-224
+- SR-239
+- SR-240
+- SR-241
+- SR-248
+- SR-249
+- SR-273
+- SR-274
 links:
 - kind: derives_from
   to: INT-028
   pin:
-    from: sha256:ad92818565bcd4da3279e33ee981120f9e1302bd31f026a959d7e159e4a1cfaf
+    from: sha256:a409d9c9b4b169cf2e14e847ad1505b800fdabb99a91f0d99cf4f3914470456c
     to: sha256:d61a9800c2c271d0ab71517aa2d14376c92ed1458d9fff99bec052bfb890ec45
 ---

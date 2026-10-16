@@ -15,7 +15,7 @@ from plumb.api import open_core
 from plumb.present import owner_text
 from plumb.understand import read, trial
 
-pytestmark = pytest.mark.sr("SR-101")
+pytestmark = pytest.mark.sr("SR-214")
 
 
 @pytest.fixture

@@ -31,7 +31,7 @@ def _forked(root: Path) -> str:
     return "trunk"
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_modified_entry_file_since_fork_reported(root: Path) -> None:
     base = _forked(root)
     name = tamper(root, "events", -1, lambda t: t.replace("SR-001", "SR-002"))
@@ -44,7 +44,7 @@ def test_modified_entry_file_since_fork_reported(root: Path) -> None:
     assert len(problems) == 1 and name in problems[0]
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_deleted_entry_file_since_fork_reported(root: Path) -> None:
     base = _forked(root)
     name = delete(root, "events", 0)
@@ -54,7 +54,7 @@ def test_deleted_entry_file_since_fork_reported(root: Path) -> None:
     assert len(digests["events"]) == 1  # the surviving entry present at the fork
 
 
-@pytest.mark.sr("SR-074")
+@pytest.mark.sr("SR-232")
 def test_legacy_lines_at_fork_satisfied_by_migrated_entries(root: Path) -> None:
     first = legacy_entry("repin", {"i": 0}, None)
     second = legacy_entry("approval", {"records": []}, first["digest"])
@@ -78,7 +78,7 @@ def test_legacy_lines_at_fork_satisfied_by_migrated_entries(root: Path) -> None:
     assert any("events.jsonl: line 2 at merge-base" in p for p in problems), problems
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_evidence_index_rebuilds_on_out_of_order_entry(root: Path) -> None:
     core = open_core(root)
 

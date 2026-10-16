@@ -15,7 +15,7 @@ from plumb.judgment.model import (
 )
 from plumb.judgment.tiers import Thresholds, route
 
-pytestmark = pytest.mark.sr("SR-021")
+pytestmark = pytest.mark.sr("SR-245")
 
 T = Thresholds(accept=0.9, escalate_llm=0.5)
 
@@ -78,7 +78,7 @@ SAME_113 = ("jev-1.13", "jev-1.13.0", "typesafe/jev-1.13", "typesafe/jev-1.13-20
             "~typesafe/jev-1.13", "JEV-1.13.0")
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_normalize_version_folds_vendor_prefix_alias_marker_and_snapshot_date() -> None:
     from plumb.judgment.tiers import normalize_version, same_version
 
@@ -93,7 +93,7 @@ def test_normalize_version_folds_vendor_prefix_alias_marker_and_snapshot_date() 
     assert not same_version("jev-1.13", None)
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_route_treats_equivalent_names_as_the_validated_version() -> None:
     assert route(0.95, T, resolved_version="typesafe/jev-1.13-20260917",
                  validated_against="jev-1.13.0") == "accept"
@@ -103,7 +103,7 @@ def test_route_treats_equivalent_names_as_the_validated_version() -> None:
                  validated_against="typesafe/jev-1.13") == "escalate-llm"
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_context_limits_follow_the_normalized_version(monkeypatch) -> None:
     from plumb.judgment import state
 

@@ -27,7 +27,7 @@ from understand.fakes import owner_level
 from understand.harness import Session
 from understand.test_read_job import int_text, record_text
 
-pytestmark = pytest.mark.sr("SR-101", "SR-102", "SR-103", "SR-104", "SR-105", "SR-106",
+pytestmark = pytest.mark.sr("SR-214", "SR-239", "SR-223", "SR-273", "SR-267", "SR-252",
                             "SR-107", "SR-108", "SR-111")
 
 SID = "harness"

@@ -17,7 +17,7 @@ from plumb.contracts import Applied, DispatchError, Job
 from plumb.understand import dispatch, files, jobs, ledger, queue, worker
 from understand.fakes import FakeDispatcher, FakeKind, fake_kinds
 
-pytestmark = pytest.mark.sr("SR-104", "SR-103")
+pytestmark = pytest.mark.sr("SR-273", "SR-223")
 
 
 @pytest.fixture
@@ -273,7 +273,7 @@ def test_cmd_worker_runs_the_session_in_the_foreground(
     assert "not available in this build" in capsys.readouterr().err
 
 
-@pytest.mark.sr("SR-131")
+@pytest.mark.sr("SR-223")
 def test_an_applied_entry_is_seen_by_the_next_job_on_the_same_core(repo: Path) -> None:
     """SR-131 EX-4: the reader's entries reach a later job applied by the same worker (the
     request check reads them to keep a card open on a vague answer)."""

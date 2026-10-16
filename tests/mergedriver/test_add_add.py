@@ -10,7 +10,7 @@ from plumb.mergedriver import merge_texts
 LABELS = ("main", "feat-x")
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_same_id_different_content_exit_1_ours_kept() -> None:
     ours = record("SR-070", "one thing", statement="a")
     theirs = record("SR-070", "another thing", statement="b")
@@ -19,7 +19,7 @@ def test_same_id_different_content_exit_1_ours_kept() -> None:
     assert "created on both sides" in result.notes[0] and "/plumb merge-fix" in result.notes[0]
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_equal_content_exit_0() -> None:
     ours = record("SR-070", "one thing", statement="a")
     theirs = "---\ntitle: one thing\nid: SR-070\nstatement: a\n---\n"
@@ -27,7 +27,7 @@ def test_equal_content_exit_0() -> None:
     assert result.exit == 0 and result.conflict is None
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_unparsable_side_falls_back_to_text_merge() -> None:
     base = record(statement="a")
     ours = record(statement="b")
@@ -38,7 +38,7 @@ def test_unparsable_side_falls_back_to_text_merge() -> None:
     assert "keep mine" in result.notes[0] and "SR-005" in result.notes[0]
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_unparsable_side_clean_text_merge_exits_0() -> None:
     base = "not a record\nline\n"
     ours = "not a record\nline\nours\n"
@@ -47,7 +47,7 @@ def test_unparsable_side_clean_text_merge_exits_0() -> None:
     assert result.exit == 0 and result.text == "theirs\nnot a record\nline\nours\n"
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_validate_names_a_text_merged_record(repo) -> None:
     """sp6 7.6: a record file left with conflict markers is named in the owner's terms."""
     from mergedriver.mdhelpers import plumb, write_record

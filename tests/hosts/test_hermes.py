@@ -18,7 +18,7 @@ from plumb.cli import main
 from plumb.hosts.common import command_line, launcher_argv
 from plumb.hosts.hermes import install as hermes
 
-pytestmark = pytest.mark.sr("SR-056")
+pytestmark = pytest.mark.sr("SR-283")
 
 
 @pytest.fixture
@@ -712,7 +712,7 @@ def test_register_without_optional_skill_api_is_safe(tmp_path: Path) -> None:
     assert list(ctx.commands) == ["plumb"]
 
 
-@pytest.mark.sr("SR-053")
+@pytest.mark.sr("SR-282")
 def test_real_plumb_through_the_plugin(project: Path, monkeypatch) -> None:
     """The rendered plugin with a real plumb: the owner's prompt is logged via hook and the
     delta comes back as the turn's context."""
@@ -733,7 +733,7 @@ def test_real_plumb_through_the_plugin(project: Path, monkeypatch) -> None:
     assert len(prompts.read_text("utf-8").splitlines()) == 1
 
 
-@pytest.mark.sr("SR-120")
+@pytest.mark.sr("SR-202")
 def test_records_skill_ships_its_reference_files_and_retires_the_old_name(
         project: Path) -> None:
     """DEC-036: the records skill is plumb-records; the files it links travel with it, and the

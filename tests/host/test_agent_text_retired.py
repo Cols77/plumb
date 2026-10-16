@@ -10,7 +10,7 @@ from fakes import FakeVerify
 
 from plumb.hosts.claude_code import session_start
 
-pytestmark = pytest.mark.sr("SR-173")
+pytestmark = pytest.mark.sr("SR-266")
 
 
 def _start(repo: Path, hook_input) -> str:

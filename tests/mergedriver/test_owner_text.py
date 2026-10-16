@@ -36,7 +36,7 @@ def _clean(text: str) -> None:
     assert bare_cli_verbs(text) == [], text
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_driver_stderr() -> None:
     """Merged field by field, the add/add collision and the text fallback."""
     merged = merge_texts(record(statement="a"), record(statement="b"),
@@ -56,7 +56,7 @@ def test_driver_stderr() -> None:
         _clean("\n".join(result.notes))
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_driver_status(tmp_path: Path, capsys) -> None:
     root = make_repo(tmp_path / "r")
     _clean(status(root))
@@ -73,7 +73,7 @@ def test_driver_status(tmp_path: Path, capsys) -> None:
     _clean(owner_text.FOREIGN_PREPUSH_HOOK)
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_unmerged_section(tmp_path: Path) -> None:
     """modify/delete, an unparsable side and no driver, through the merge report."""
     from plumb.mergedriver.unmerged import unmerged_lines, unmerged_rows
@@ -107,7 +107,7 @@ def test_unmerged_section(tmp_path: Path) -> None:
     _clean("\n".join(unmerged_lines(rows)))
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_conflict_card(repo: Path) -> None:
     base = record(statement="s", examples=[ex(1), ex(2)])
     ours = record(statement="s1", examples=[ex(1), ex(2, then="ours")])
@@ -119,7 +119,7 @@ def test_conflict_card(repo: Path) -> None:
     _clean(plumb(repo, "show", "IC-001").stdout)
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_choose_messages(repo: Path, capsys: pytest.CaptureFixture) -> None:
     """The refusal (the agent's shell, a pipe) and the applied choice."""
     conflicted(repo)
@@ -134,7 +134,7 @@ def test_choose_messages(repo: Path, capsys: pytest.CaptureFixture) -> None:
     assert owner_text.CHOSEN.split("{")[0] in applied
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 def test_premerge_hook_output(tmp_path: Path) -> None:
     """The refusal with MERGE_HELD, and the foreign-hook install text."""
     root = make_repo(tmp_path / "r")
@@ -162,7 +162,7 @@ def test_premerge_hook_output(tmp_path: Path) -> None:
     _clean(foreign.stdout + foreign.stderr)
 
 
-@pytest.mark.sr("SR-077")
+@pytest.mark.sr("SR-260")
 @pytest.mark.parametrize("operation", ["merge", "rebase", "cherry-pick"])
 def test_commit_hold_output(operation: str) -> None:
     """The quick check's lines for a step held on what git will not record, a record it

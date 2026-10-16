@@ -22,7 +22,7 @@ def project(repo: Path) -> Path:
     return repo
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_conftest_import_failure_turns_passes_into_regressions(project: Path) -> None:
     first = open_verify(open_core(project)).run(nodes=["tests/test_mod.py"])
     assert first.ok
@@ -40,7 +40,7 @@ def test_conftest_import_failure_turns_passes_into_regressions(project: Path) ->
     assert ev[node].regression is True
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_aborted_full_run_never_satisfies_full_pending(project: Path) -> None:
     write(project, "tests/conftest.py", BROKEN_CONFTEST)
     report = open_verify(open_core(project)).run(full=True)
@@ -50,7 +50,7 @@ def test_aborted_full_run_never_satisfies_full_pending(project: Path) -> None:
     assert pending.pending is True
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_unknown_node_id_falls_back_to_its_file(project: Path) -> None:
     report = open_verify(open_core(project)).run(
         nodes=["tests/test_mod.py::test_renamed", "tests/test_helper.py"])
@@ -62,7 +62,7 @@ def test_unknown_node_id_falls_back_to_its_file(project: Path) -> None:
     assert "tests/test_mod.py" in report.selection.nodes
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_index_rebuilds_when_log_prefix_changes(repo: Path) -> None:
     core = open_core(repo)
 
@@ -90,7 +90,7 @@ def test_index_rebuilds_when_log_prefix_changes(repo: Path) -> None:
     assert cached["applied"] == [a["digest"], b["digest"], lane["digest"]]
 
 
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
 def test_cli_run_exits_nonzero_when_pytest_aborts(project: Path,
                                                   capsys: pytest.CaptureFixture[str]) -> None:
     from plumb import cli
@@ -101,7 +101,7 @@ def test_cli_run_exits_nonzero_when_pytest_aborts(project: Path,
     assert "plumb: run aborted" in capsys.readouterr().out
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_runnable_targets_keep_known_ids_and_absorb_into_file(project: Path) -> None:
     verify = open_verify(open_core(project))
     assert verify.runnable_targets(["tests/test_mod.py::test_add",
@@ -112,7 +112,7 @@ def test_runnable_targets_keep_known_ids_and_absorb_into_file(project: Path) -> 
                                     "tests/test_mod.py::test_add_zero"]) == ["tests/test_mod.py"]
 
 
-@pytest.mark.sr("SR-027")
+@pytest.mark.sr("SR-254")
 @pytest.mark.parametrize("payload", [
     {"exit_status": 5, "nodes": []},  # nothing collected
     {"exit_status": 1, "collection_errors": ["tests/test_x.py"],
@@ -128,7 +128,7 @@ def test_full_run_without_a_clean_collection_never_clears_full_pending(payload) 
     assert index["full"] is None
 
 
-@pytest.mark.sr("SR-027")
+@pytest.mark.sr("SR-254")
 def test_full_run_that_collects_nothing_from_known_tests_is_aborted(project: Path) -> None:
     write(project, "pytest.ini", "[pytest]\ntestpaths = nowhere\npython_files = nope_*.py\n")
     report = open_verify(open_core(project)).run(full=True)

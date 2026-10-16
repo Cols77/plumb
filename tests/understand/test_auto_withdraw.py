@@ -24,7 +24,7 @@ from plumb.hosts.claude_code.hookio import Deadline, HookContext
 from plumb.understand import cardstore, summary
 from understand.test_judge_job import SESSION
 
-pytestmark = pytest.mark.sr("SR-161")
+pytestmark = pytest.mark.sr("SR-216")
 
 
 def _card_for_link(root: Path) -> None:

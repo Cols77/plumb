@@ -13,7 +13,7 @@ from understand.fakes import as_worker
 from understand.test_read_apply import approvals, entries_of, write_applied
 from understand.test_read_job import SESSION, log_prompt, make_core, open_card, record_text
 
-pytestmark = pytest.mark.sr("SR-101")
+pytestmark = pytest.mark.sr("SR-214")
 
 
 @pytest.fixture

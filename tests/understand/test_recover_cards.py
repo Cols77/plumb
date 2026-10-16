@@ -21,7 +21,7 @@ from understand.test_recover_quotes import (  # noqa: F401 - pytest fixtures
     transcripts,
 )
 
-pytestmark = pytest.mark.sr("SR-118")
+pytestmark = pytest.mark.sr("SR-249")
 
 SPAN = "Keep each card to one screen at most"
 REWORDING = "You want a weekly digest by email."

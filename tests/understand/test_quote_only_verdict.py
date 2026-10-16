@@ -15,7 +15,7 @@ from understand.test_judge_job import (
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-190")
+pytestmark = pytest.mark.sr("SR-241")
 
 
 def test_verdict_marks_a_quote_only_premise(world: Path, write_record) -> None:  # noqa: F811

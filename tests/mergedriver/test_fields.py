@@ -22,7 +22,7 @@ def fm(result) -> dict:
 BASE_LINK = link("derives_from", to="INT-001", pin="a")
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_links_added_on_both_sides_union() -> None:
     """SR-075 EX-1: verified_by on one side, implemented_by on the other: both kept."""
     base = record(statement="s", links=[BASE_LINK])
@@ -34,7 +34,7 @@ def test_links_added_on_both_sides_union() -> None:
     assert kinds == ["derives_from", "verified_by", "implemented_by"]
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_link_removed_on_one_side_removed() -> None:
     extra = link("implemented_by", path="src/a.py")
     base = record(statement="s", links=[BASE_LINK, extra])
@@ -44,7 +44,7 @@ def test_link_removed_on_one_side_removed() -> None:
     assert [x.get("path") for x in fm(result)["links"]] == [None, "t.py"]
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_pin_divergence_keeps_ours_no_conflict() -> None:
     base = record(statement="s", links=[link("derives_from", to="INT-001", pin="a")])
     ours = record(statement="s2", links=[link("derives_from", to="INT-001", pin="b")])
@@ -56,7 +56,7 @@ def test_pin_divergence_keeps_ours_no_conflict() -> None:
     assert links[0]["pin"]["from"] == "sha256:b" and len(links) == 2
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_pin_changed_on_one_side_only_taken() -> None:
     base = record(statement="s", links=[link("derives_from", to="INT-001", pin="a")])
     ours = record(statement="s", links=[link("derives_from", to="INT-001", pin="a"),
@@ -66,7 +66,7 @@ def test_pin_changed_on_one_side_only_taken() -> None:
     assert links[0]["pin"]["from"] == "sha256:c" and len(links) == 2
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_title_change_and_new_example_merge() -> None:
     """SR-075 EX-2: a new title on one side, EX-4 added on the other: both, no conflict."""
     examples = [ex(1), ex(2), ex(3)]
@@ -80,7 +80,7 @@ def test_title_change_and_new_example_merge() -> None:
     assert [e["id"] for e in data["examples"]] == ["EX-1", "EX-2", "EX-3", "EX-4"]
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_independent_fields_merge() -> None:
     base = record(statement="s", domain="d")
     ours = record(statement="s2", domain="d")
@@ -89,7 +89,7 @@ def test_independent_fields_merge() -> None:
     assert (data["statement"], data["domain"]) == ("s2", "d2")
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_string_lists_set_merge() -> None:
     base = record("INT-001", "i", will=["a", "b"], wont=["x"])
     ours = record("INT-001", "i", will=["a", "b", "c"], wont=["x"])
@@ -98,7 +98,7 @@ def test_string_lists_set_merge() -> None:
     assert fm(result)["will"] == ["b", "c", "d"] and result.conflict is None
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_same_item_rewritten_both_sides_conflicts() -> None:
     base = record("INT-001", "i", will=["a", "b"])
     ours = record("INT-001", "i", will=["a", "b1"])
@@ -110,7 +110,7 @@ def test_same_item_rewritten_both_sides_conflicts() -> None:
     assert data["conflict"]["fields"]["will"]["theirs"] == ["a", "b2"]
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_examples_added_both_sides_kept() -> None:
     base = record(statement="s", examples=[ex(1)])
     ours = record(statement="s", examples=[ex(1), ex(2, then="ours")])
@@ -119,7 +119,7 @@ def test_examples_added_both_sides_kept() -> None:
     assert [e["id"] for e in data["examples"]] == ["EX-1", "EX-2", "EX-3"]
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_same_new_ex_number_renumbered_with_links() -> None:
     """SR-075 EX-3: both add EX-3: the incoming one becomes EX-4, its link follows."""
     base = record(statement="s", examples=[ex(1), ex(2)])
@@ -137,7 +137,7 @@ def test_same_new_ex_number_renumbered_with_links() -> None:
     assert any("EX-4 from feat-x renumbered from EX-3" in n for n in result.merged)
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_example_changed_both_sides_conflicts() -> None:
     base = record(statement="s", examples=[ex(1), ex(2)])
     ours = record(statement="s", examples=[ex(1), ex(2, then="ours")])
@@ -148,7 +148,7 @@ def test_example_changed_both_sides_conflicts() -> None:
     assert data["examples"][1]["then"] == "ours"
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_example_removed_one_side_changed_other_conflicts() -> None:
     base = record(statement="s", examples=[ex(1), ex(2)])
     ours = record(statement="s", examples=[ex(1)])
@@ -158,7 +158,7 @@ def test_example_removed_one_side_changed_other_conflicts() -> None:
     assert block["ours"] is None and block["theirs"]["then"] == "changed"
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_scalar_conflict_block() -> None:
     """The block holds base, both versions, both labels and both hashes (spec 8.1)."""
     base = record(statement="A relay pins every stated record.")
@@ -178,7 +178,7 @@ def test_scalar_conflict_block() -> None:
     assert list(data)[-1] == "conflict"
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_body_clean_merge() -> None:
     body = "line one\n\nline two\n\nline three\n"
     base = record(statement="s", body=body)
@@ -189,7 +189,7 @@ def test_body_clean_merge() -> None:
     assert result.conflict is None
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_body_conflict() -> None:
     base = record(statement="s", body="text\n")
     ours = record(statement="s", body="ours text\n")
@@ -200,7 +200,7 @@ def test_body_conflict() -> None:
     assert data["conflict"]["fields"]["body"]["theirs"] == "theirs text\n"
 
 
-@pytest.mark.sr("SR-075")
+@pytest.mark.sr("SR-256")
 def test_formatting_only_difference_clean() -> None:
     base = record(statement="s", domain="d")
     ours = "---\nid: SR-005\ntitle: 'relay checks'\ndomain: d\nstatement: \"s\"\n---\n"
@@ -210,7 +210,7 @@ def test_formatting_only_difference_clean() -> None:
     assert record_hash(*parse(result.text)) == record_hash(*parse(base))
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_result_hash_matches_neither_side_on_conflict() -> None:
     base = record(statement="a")
     ours, theirs = record(statement="b"), record(statement="c")
@@ -218,7 +218,7 @@ def test_result_hash_matches_neither_side_on_conflict() -> None:
     assert merged not in (record_hash(*parse(ours)), record_hash(*parse(theirs)))
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_no_ic_reserved_without_a_conflict() -> None:
     counter = Counter()
     merge_texts(record(statement="a"), record(statement="b"), record(statement="a"),
@@ -246,7 +246,7 @@ def _assert_held(result, *kept: str) -> None:
         result.notes[0]
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_open_block_on_ours_is_never_replaced() -> None:
     """ours carries IC-001 (statement B vs C); feat-y changes the title while main did too:
     the merge never drops IC-001 or feat-x's C for a new IC-002."""
@@ -259,7 +259,7 @@ def test_open_block_on_ours_is_never_replaced() -> None:
     assert counter.n == 0
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_open_block_on_theirs_is_never_replaced() -> None:
     """theirs carries IC-001 and ours changed the same field again: held, nothing lost."""
     theirs = _with_open_block("B", "C")
@@ -271,7 +271,7 @@ def test_open_block_on_theirs_is_never_replaced() -> None:
     assert counter.n == 0
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_different_open_blocks_on_both_sides_are_held() -> None:
     """Both sides carry their own open block: neither is folded into a new one."""
     ours = _with_open_block("B", "C")
@@ -281,7 +281,7 @@ def test_different_open_blocks_on_both_sides_are_held() -> None:
     assert "theirs: C" in result.text and "theirs: E" in result.text
 
 
-@pytest.mark.sr("SR-076")
+@pytest.mark.sr("SR-256")
 def test_open_block_kept_when_the_merge_is_otherwise_clean() -> None:
     """A block on one side and an unrelated clean change on the other: the block stays."""
     ours = _with_open_block("B", "C")

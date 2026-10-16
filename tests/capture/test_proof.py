@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.contracts import Target
 from plumb.validate import validate
 
-pytestmark = pytest.mark.sr("SR-127")
+pytestmark = pytest.mark.sr("SR-253")
 
 INT = "---\nid: INT-001\ntitle: Grounded\nquote: q\nreadback: Ground the work.\n---\n"
 SR1 = """---

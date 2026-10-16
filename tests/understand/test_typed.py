@@ -20,7 +20,7 @@ from plumb.api import open_core
 from plumb.present import owner_text
 from plumb.understand import files, read, typed
 
-pytestmark = pytest.mark.sr("SR-101")
+pytestmark = pytest.mark.sr("SR-214")
 
 DEC = ("---\nid: DEC-017\ntitle: Pick a store\nquestion: which store?\noptions:\n- id: A\n"
        "  text: sqlite\nchosen: A\nstatus: proposed\n---\nbody\n")

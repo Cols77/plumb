@@ -8,7 +8,7 @@ import pytest
 
 from plumb.config import load_config
 
-pytestmark = pytest.mark.sr("SR-111", "SR-110")
+pytestmark = pytest.mark.sr("SR-198", "SR-255")
 
 
 def test_defaults(tmp_path: Path) -> None:

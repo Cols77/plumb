@@ -11,7 +11,7 @@ import pytest
 
 from .helpers import PLUGIN, REPO
 
-pytestmark = [pytest.mark.sr("SR-082"),
+pytestmark = [pytest.mark.sr("SR-279"),
               pytest.mark.skipif(shutil.which("claude") is None, reason="claude is not installed")]
 
 

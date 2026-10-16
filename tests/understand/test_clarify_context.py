@@ -15,7 +15,7 @@ from capture.capture_helpers import log_prompt
 from plumb.api import open_core
 from plumb.understand import clarify, evalrun, files, gate, worker
 
-pytestmark = pytest.mark.sr("SR-128")
+pytestmark = pytest.mark.sr("SR-223")
 
 SESSION = "s1"
 REQUEST = "Resolve all of the findings using a workflow."

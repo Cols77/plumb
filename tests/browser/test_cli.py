@@ -2,7 +2,7 @@ import pytest
 
 from plumb import cli
 
-pytestmark = pytest.mark.sr("SR-176")
+pytestmark = pytest.mark.sr("SR-269")
 
 
 def test_cli_help_routes_to_browser(capsys):

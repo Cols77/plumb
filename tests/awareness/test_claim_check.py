@@ -22,7 +22,7 @@ from plumb import cli
 from plumb.api import open_core
 from plumb.hosts.claude_code import stop
 
-pytestmark = pytest.mark.sr("SR-081")
+pytestmark = pytest.mark.sr("SR-259")
 THEIRS = "A relay pins the stated group, named by its title."
 OURS = "A relay pins only the records the owner's words affirm."
 

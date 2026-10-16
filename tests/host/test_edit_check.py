@@ -15,7 +15,7 @@ from plumb.api import open_core
 from plumb.contracts import Target
 from plumb.hosts.claude_code import edit_check, install
 
-pytestmark = pytest.mark.sr("SR-111")
+pytestmark = pytest.mark.sr("SR-198")
 
 SR5 = """---
 id: SR-005
@@ -184,7 +184,7 @@ def test_sr166_edit_outside_the_root_uses_the_files_own_root(project: Path, hook
     assert roots == {"a1": {str(other.resolve()): ["SR-005#0"]}}  # what subagent-stop rechecks
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_sr166_a_worktree_no_session_prompted_in_gets_its_map_built(project: Path, hook_input,
                                                                     tmp_path: Path,
                                                                     write_record) -> None:
@@ -204,7 +204,7 @@ def test_sr166_a_worktree_no_session_prompted_in_gets_its_map_built(project: Pat
     assert stale.load_linkmap(other) is not None
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_sr166_an_edit_that_makes_nothing_stale_records_no_link(project: Path,
                                                                 hook_input) -> None:
     (project / "src" / "x.py").write_text(CODE.replace("return x", "return -x"), "utf-8")

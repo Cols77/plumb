@@ -6,7 +6,7 @@ import pytest
 
 from plumb.model import RecordError, parse_record
 
-pytestmark = pytest.mark.sr("SR-001")
+pytestmark = pytest.mark.sr("SR-230")
 
 KINDS = {
     "INT-001": "intent", "SR-001": "requirement", "DEC-001": "decision",

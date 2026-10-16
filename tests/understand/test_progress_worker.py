@@ -18,7 +18,7 @@ from plumb.progress import Reporter, status_text
 from plumb.understand import dispatch, files, jobs, queue, worker
 from understand.fakes import FakeDispatcher, FakeKind, fake_kinds, owner_level
 
-pytestmark = pytest.mark.sr("SR-104", "SR-101")
+pytestmark = pytest.mark.sr("SR-273", "SR-214")
 
 
 @pytest.fixture

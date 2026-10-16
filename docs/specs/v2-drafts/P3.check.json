@@ -1,0 +1,55 @@
+{
+ "file": "P3",
+ "findings": [
+  {
+   "level": "medium",
+   "requirement": "An approval pins the exact content approved; any later edit goes back to the judge",
+   "what": "Check 3 and 4, two behaviours in one and a statement that does not cover its examples. The pin-and-edit rule (examples 1 to 3, 10) and the hidden-regression handling (examples 4 to 9) are separate behaviours. The statement only says 'a regression resolves only when the test body that passed before passes again'. It never says the stop hook blocks once, that status and drift name the hidden regression, that the merge exits 5, or that a hidden regression of an approved example is put to the owner as a change of older intent (examples 5, 6, 9). Split the hidden-regression handling out, or state those outcomes in the statement."
+  },
+  {
+   "level": "medium",
+   "requirement": "An approval pins the exact content approved; any later edit goes back to the judge",
+   "what": "Check 4 and 3, example 10 (statement 'reformatted with no change of meaning' keeps the hash) duplicates the record-hash behaviour of P7 (SR-002 ignores only YAML style, key order, CRLF, trailing whitespace) and is vague: a hash cannot tell a reformatting from a change of meaning, so a reworded statement changes it. Name what is reformatted (key order, line endings, trailing spaces) or leave the example to P7."
+  },
+  {
+   "level": "medium",
+   "requirement": "Only words plumb itself saw from the owner count, kept as a pre-intent with their context",
+   "what": "Check 3, two or three behaviours in one. The statement covers the origin filter (only the owner's own words count) and the pre-intent with its context. Examples 7 and 8 (a self-recorded label wherever an approval is shown) and example 10 (the installed skills say the agent never decides approval and name no relay) are not in the statement. The label is a separate behaviour carried over from SR-069. Add it to the statement or move it under the approval requirement."
+  },
+  {
+   "level": "medium",
+   "requirement": "A judge-validated interpretation approves on the owner's behalf; there is no approval command",
+   "what": "Check 3, several behaviours in one: judge approval on the owner's behalf, the agent being unable to write an approval (examples 1, 2, 7, 9, 10), the owner reversing by speaking (example 11), no offer or read-back card (example 12), and example 6, which restates the P9 cascade (Sonnet asks, then the judge reads again) that the draft's own assumption says P9 defines. Example 11 also repeats example 3 of the first requirement. Split the agent-cannot-approve guard from the judge approval, and keep the cascade and the reversal each in one place."
+  },
+  {
+   "level": "medium",
+   "requirement": "A judge-validated interpretation approves on the owner's behalf; there is no approval command",
+   "what": "Check 4, vague then-clauses. Example 4 ends 'the reminder intent stays with the judge cascade; no word list decided any of it', which names no record state the owner could watch (the old SR-112/EX-4 said INT-001 stays open). Example 5 ends 'the records it might touch stay with the judge cascade', also no observable state (say: no record changes state and no question is asked). Example 11 ends 'goes back through the loop'. Example 13 ends 'anything still open is asked through the question tool', conditional and unobservable (the same defect was found in P2's draft): state that the records are unchanged and no id is asked for."
+  },
+  {
+   "level": "low",
+   "requirement": "Only words plumb itself saw from the owner count, kept as a pre-intent with their context",
+   "what": "Check 2 wording: the drop reason for SR-046/EX-1 and EX-2 says the install belongs to P14, but P14.json does not carry them. The install of plumb-clarify beside plumb is carried by P2.json (line 34), and neither draft carries SR-046/EX-1's content (the skill names plumb capture, decide, clarify and triage). Both examples have linked tests, so the reason should point to the real carrier or the skill content should be carried."
+  },
+  {
+   "level": "low",
+   "requirement": "An approval pins the exact content approved; any later edit goes back to the judge",
+   "what": "Check 2 (weak): the SR-004 statement says 'a requirement is covered only when every example has a verified_by test'. The draft carries neither this clause nor a dropped-with-reason entry for it, and SR-004 has 4 tests for 3 examples, so the fourth may test it. I found no other draft that carries it (P7 and P10 cover links and regressions only). Carry it or list it as dropped with a reason."
+  },
+  {
+   "level": "low",
+   "requirement": "A judge-validated interpretation approves on the owner's behalf; there is no approval command",
+   "what": "Wording on the decision 'How is approval writing kept from the agent?' (supersedes DEC-002 and DEC-025): DEC-002 chose declarative permissions.deny rules plus the session marker, but the new chosen text drops the deny rules and lists 'Host permission deny rules alone' as an alternative, so what happens to the deny rules is unsaid. DEC-025, DEC-003 and DEC-067 are matters:false in the dump while the draft sets matters:true."
+  },
+  {
+   "level": "low",
+   "requirement": "Only words plumb itself saw from the owner count, kept as a pre-intent with their context",
+   "what": "Check 5, proof plan: 'the owner sees, in plumb's trail for that intent, that only their own sentence became a pre-intent' needs the owner to read a trail, and no owner-facing surface for it exists under P2 and P12 (little shown, nothing read to approve). It also needs another session to send a message. Name the surface the owner watches (for example plumb's one status line or a question answered from their own sentence) and who arranges the other session's message."
+  },
+  {
+   "level": "low",
+   "requirement": "An approval pins the exact content approved; any later edit goes back to the judge",
+   "what": "Wording: the statement says 'never approved or reversed by the owner, it is proposed', which reads as if the owner reverses the approval; the intent is 'never approved, or reversed by the owner'. Example 3 of this requirement and example 11 of the third state the same owner reversal."
+  }
+ ]
+}

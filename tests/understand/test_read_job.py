@@ -12,7 +12,7 @@ from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyQuestion
 from plumb.understand import cardstore, files
 
-pytestmark = pytest.mark.sr("SR-101")
+pytestmark = pytest.mark.sr("SR-214")
 
 SESSION = "s1"
 

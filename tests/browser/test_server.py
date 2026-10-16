@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-pytestmark = pytest.mark.sr("SR-176")
+pytestmark = pytest.mark.sr("SR-269")
 
 
 @pytest.fixture

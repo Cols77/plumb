@@ -14,7 +14,7 @@ from logutil import entry_files, legacy_entry, tamper, write_legacy
 from plumb import log
 from plumb.paths import PlumbPaths
 
-pytestmark = pytest.mark.sr("SR-006")
+pytestmark = pytest.mark.sr("SR-232")
 
 
 @pytest.fixture
@@ -124,7 +124,7 @@ def test_read_kinds_streams_and_legacy_offset(paths: PlumbPaths) -> None:
                                              since_offset=legacy[1].offset)] == [1]
 
 
-@pytest.mark.sr("SR-086")
+@pytest.mark.sr("SR-209")
 def test_card_press_and_button_approval_kinds(paths: PlumbPaths) -> None:
     """SP7 re-aligned C6: a button press is a ``card-press`` entry on the events stream, and
     the writer accepts an ``approval`` with ``by: owner, via: button`` (its re-check is

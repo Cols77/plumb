@@ -13,7 +13,7 @@ from plumb.contracts import Choice, ClarifyQuestion
 from plumb.present import owner_text as words
 from plumb.understand import cards, cardstore
 
-pytestmark = [pytest.mark.sr("SR-105"), pytest.mark.sr("SR-101")]
+pytestmark = [pytest.mark.sr("SR-267"), pytest.mark.sr("SR-214")]
 
 SESSION = "s1"
 

@@ -19,7 +19,7 @@ from plumb.api import open_core
 from plumb.capture.autoapprove import auto_approve_state
 from plumb.understand import files, read, typed
 
-pytestmark = pytest.mark.sr("SR-115")
+pytestmark = pytest.mark.sr("SR-250")
 
 
 @pytest.fixture

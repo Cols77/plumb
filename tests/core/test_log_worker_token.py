@@ -10,7 +10,7 @@ import pytest
 from plumb import log
 from plumb.paths import PlumbPaths
 
-pytestmark = pytest.mark.sr("SR-006")
+pytestmark = pytest.mark.sr("SR-232")
 
 TOKEN = "a1" * 16
 

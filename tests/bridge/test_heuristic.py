@@ -15,7 +15,7 @@ from plumb.api import open_core
 from plumb.contracts import JudgmentBackend, Link, LinkState, Pin, Target
 from plumb.judgment import JudgmentUnavailable, get_backend
 
-pytestmark = [pytest.mark.sr("SR-021"), pytest.mark.sr("SR-010")]
+pytestmark = [pytest.mark.sr("SR-245"), pytest.mark.sr("SR-225")]
 
 SR_004 = """---
 id: SR-004

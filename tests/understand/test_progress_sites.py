@@ -16,7 +16,7 @@ from plumb import progress
 from plumb.api import open_core
 from plumb.verify import runner
 
-pytestmark = pytest.mark.sr("SR-108")
+pytestmark = pytest.mark.sr("SR-272")
 
 
 class Pipe(io.StringIO):

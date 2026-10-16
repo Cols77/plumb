@@ -16,7 +16,7 @@ from plumb import approvals
 from plumb.api import open_core
 from plumb.capture.calibrate import calibrate, labelled_set
 
-pytestmark = pytest.mark.sr("SR-096")
+pytestmark = pytest.mark.sr("SR-215")
 
 
 @pytest.fixture

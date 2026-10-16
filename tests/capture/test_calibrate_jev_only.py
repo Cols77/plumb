@@ -14,7 +14,7 @@ from jev_fixtures import owner_decisions
 from plumb.api import open_core
 from plumb.capture.calibrate import calibrate, labelled_set, logged_scores
 
-pytestmark = pytest.mark.sr("SR-182")
+pytestmark = pytest.mark.sr("SR-242")
 
 
 def log_verdict(core: Any, record: str, digest: str, score: float, **marks: Any) -> None:

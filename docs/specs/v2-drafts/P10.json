@@ -1,0 +1,469 @@
+{
+ "principle": "P10",
+ "intent": {
+  "quote": "we need claude code and plumb to actually show the user it is working",
+  "source_int": "INT-034",
+  "readback": "Work is done only when you have been shown it working the way you chose: for every requirement the AI works out the best proof to show you and recommends it, and you decide what the proof is. Done and the merge are refused until that proof's evidence is recorded. Checking is by the tests that cover what changed, not the whole suite, and a merge is never green while an affected acceptance test lacks a passing run.",
+  "will": [
+   "Give every requirement a proof of how you will see it working, recommended by the AI after researching what fits the change, decided by you through the question tool or your own words.",
+   "Plan the code a proof needs, record the proof's evidence and where to see it once shown, and refuse done and the merge for a touched requirement without it.",
+   "Hold the merge while an acceptance test the change can affect fails or has no passing run on the current tree and environment, a regression is unresolved, or a named full run is pending.",
+   "Select each turn's tests by the functions they executed and the requirement's linked tests, from a grep-able test map, reusing evidence only on an exact match.",
+   "Run the full suite only for a named reason (shared test infrastructure), at most once per merge check, and let you waive it for one exact change through the question tool.",
+   "Route a proof or a test that cannot settle (a broken environment, a missing tool) to the debug workflow."
+  ],
+  "wont": [
+   "Count a passing test suite as the proof of a change you see.",
+   "Let a missing proof pass the merge with only a mention (the earlier rule).",
+   "Ask you for a record id or a shell command, or to read a proof the AI wrote in order to approve it.",
+   "Ask you about a regression or a failing test; they hold the merge until fixed.",
+   "Run the full suite routinely, or in place of an empty selection.",
+   "Let the agent waive a full run or a proof on your behalf."
+  ],
+  "assumptions": [
+   "Assumed: P10 overturns DEC-037 and INT-034's won't ('block a merge on a missing proof'): the merge now refuses a touched requirement without its proof's evidence.",
+   "Assumed: the owner's final say on a proof is an answer in the question tool (the recommended proof first) or the owner's own words naming it; a judge-validated interpretation (P3, P9) can record a proof the owner already stated but cannot choose one they did not.",
+   "Assumed: the proof gate applies to requirements a branch touches; requirements carried into v2 untouched are not refused at the merge for lacking evidence.",
+   "Assumed: a full run for a named reason (INT-027: shared test infrastructure) stays as the one exception to targeted verification, and its waiver moves from a terminal command to a question-tool answer (P2).",
+   "Assumed: covering-test time limits follow P13 (owner-set, may grow, progress shown); DEC-078's numbers are not fixed here.",
+   "Assumed: SR-127 and SR-110 name no feature; their requirements take SR-093's FEAT-007 and the other members' FEAT-001."
+  ]
+ },
+ "requirements": [
+  {
+   "title": "Every requirement carries the proof the owner chose, and done and the merge refuse without its evidence",
+   "statement": "Every requirement carries a proof: how the owner will see it working, matched to what changed, of kind live-session, hook, command or other. The agent researches the best proof and recommends it; the owner decides through the question tool or their own words, and a 'done when' line the owner states is taken as the proof without a question. The plan includes the code the proof needs. Once shown, the proof's evidence (where to see it) is recorded; done and the merge refuse a touched requirement without it. plumb's alignment check names, in plain words, every 'done when' item that no example covers.",
+   "examples": [
+    {
+     "given": "a requirement that changes what Claude Code draws",
+     "when": "the agent recommends its proof",
+     "then": "the recommendation is a live session capture showing the drawing, put to the owner through the question tool with the alternatives"
+    },
+    {
+     "given": "the owner answers the proof question with 'I open the panel and see the card'",
+     "when": "the loop writes the plan",
+     "then": "the plan carries that proof as a live-session proof and the code it needs"
+    },
+    {
+     "given": "the owner said \"it's done when I get a reminder three days before each deadline\"",
+     "when": "the agent records the intent",
+     "then": "its proof records \"you get a reminder three days before each deadline\" as how the owner will see it done, and no question about the proof is asked"
+    },
+    {
+     "given": "a request that states no success criterion",
+     "when": "the agent clarifies it",
+     "then": "plumb's hints to the agent say success is not stated, and the agent recommends a proof that the owner decides through the question tool"
+    },
+    {
+     "given": "a requirement whose proof has run",
+     "when": "the owner asks in plain words how it was shown working",
+     "then": "the proof and its evidence (where to see it) are given"
+    },
+    {
+     "given": "the build is finished and the proof was not shown",
+     "when": "the agent calls the intent done",
+     "then": "plumb says the proof is missing and the intent stays open"
+    },
+    {
+     "given": "a branch with one touched requirement whose proof was never shown",
+     "when": "the merge check runs",
+     "then": "it names that requirement as not shown working and refuses the merge until its evidence is recorded"
+    },
+    {
+     "given": "a \"done when\" item that no example covers",
+     "when": "plumb checks alignment",
+     "then": "it names that item as a gap in plain words"
+    },
+    {
+     "given": "an example that covers that \"done when\" item",
+     "when": "plumb checks alignment again",
+     "then": "the gap is gone"
+    },
+    {
+     "given": "a change the owner sees, and a proof that is only its passing tests",
+     "when": "the agent recommends a proof",
+     "then": "it recommends a way the owner sees the change, not the passing suite"
+    },
+    {
+     "given": "a live-session proof when no Claude Code session can be started in this environment (no display, or no host installed)",
+     "when": "the agent tries to show it",
+     "then": "done stays refused, the plumb line says one case went to debugging, and the owner gets one question only if the debug workflow cannot make the environment ready"
+    },
+    {
+     "given": "the owner later says the proof should be a browser demonstration instead",
+     "when": "plumb reads the message",
+     "then": "the requirement's proof becomes the browser demonstration, and done and the merge refuse it again until that demonstration's evidence is recorded"
+    }
+   ],
+   "examples_kept": [
+    "SR-127/EX-1",
+    "SR-127/EX-2",
+    "SR-093/EX-3",
+    "SR-093/EX-4",
+    "SR-197/EX-1",
+    "SR-197/EX-2"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-127/EX-3",
+     "why": "reversed: a requirement whose proof was never shown now holds the merge (P10: done and the merge refuse without the proof's evidence); carried reworded by example 7"
+    },
+    {
+     "id": "SR-093/EX-1",
+     "why": "changed: the intent card it showed is retired (P12); the owner's 'done when' line is recorded as the requirement's proof instead (example 3)"
+    },
+    {
+     "id": "SR-093/EX-2",
+     "why": "reversed: the owner is no longer left unasked about success; the agent recommends a proof and the owner decides it through the question tool (P10), example 4"
+    },
+    {
+     "id": "SR-093 (scope, non-goals and failure-case hints)",
+     "why": "the clarifier's gap reading (P6) now covers what a request leaves open; only the success hint is carried, as the proof recommendation of example 4"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a live session the owner opens /plumb intent with a small visible change; the question tool offers the agent's recommended proof first, with alternatives; the owner picks one; the agent calling it done before showing it is refused, naming the missing proof; after the proof is shown its evidence is recorded and done passes; a branch with another touched requirement lacking evidence is refused at the merge check.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-007",
+   "supersedes": [
+    "SR-127",
+    "SR-197",
+    "SR-093"
+   ],
+   "implemented_by": [
+    "src/plumb/boundary/report.py",
+    "src/plumb/capture/capture.py",
+    "src/plumb/capture/proof.py",
+    "src/plumb/capture/records.py",
+    "src/plumb/cli.py",
+    "src/plumb/hosts/claude_code/templates/skills/plumb-records/SKILL.md",
+    "src/plumb/hosts/claude_code/templates/skills/plumb-records/references/capture-doc.md",
+    "src/plumb/model.py",
+    "src/plumb/readback.py",
+    "src/plumb/understand/cmd_intent.py",
+    "src/plumb/validate.py"
+   ],
+   "decides": [
+    "DEC-037"
+   ]
+  },
+  {
+   "title": "A merge is never green while an affected acceptance test lacks a passing run on the current identity",
+   "statement": "The merge check refuses while an acceptance test of a touched requirement, or of one covering a changed path, fails or lacks a passing run on the current identity; a failure stays until a run passes it. A regression is an existing test that passed and now fails; a new red test is not one; a same-tree rerun pass is flaky. Shared test infrastructure sets full verification pending: the quick check at merge never runs tests, holds with exit 5 and has the agent ask the owner once, through the question tool, to run the full suite now or waive it for this exact change; the pre-push check runs the full suite once while it is still pending, and a passing run clears it. The report-only form and the running form give the same verdict on the same tree.",
+   "examples": [
+    {
+     "given": "confirmed SR-001 with EX-1 verified_by tests/test_mod.py, which passed, and add() changed to subtract",
+     "when": "the covering run fails test_add and the merge check runs",
+     "then": "it lists \"SR-001 EX-1 tests/test_mod.py (regression)\" and exits 5; after a fix and a passing run it exits 0"
+    },
+    {
+     "given": "the same regression",
+     "when": "plumb drift and plumb status run",
+     "then": "drift reports the failing acceptance test and exits 1; status counts SR-001 as failing and names EX-1"
+    },
+    {
+     "given": "tests/core/test_links.py::test_pin_drift passed with recorded evidence",
+     "when": "it now fails",
+     "then": "it is a regression listed at the merge check, which holds until a run passes it; the owner is not asked"
+    },
+    {
+     "given": "a test that passed with recorded evidence and whose source was then edited",
+     "when": "it now fails",
+     "then": "it is still a regression, noted test source changed since the pass"
+    },
+    {
+     "given": "a new test written test-first",
+     "when": "it fails on its first run",
+     "then": "it is not yet passing, not a regression, and nothing interrupts the turn"
+    },
+    {
+     "given": "confirmed SR-001 with EX-1 verified_by tests/test_mod.py, and a new test in it that has never passed",
+     "when": "the run fails it and the merge check runs",
+     "then": "it lists \"SR-001 EX-1 tests/test_mod.py (failing)\" and exits 5"
+    },
+    {
+     "given": "a failing acceptance test of SR-001",
+     "when": "src/pkg/mod.py changes again and no test is rerun",
+     "then": "the merge check still lists the failure marked stale and exits 5, drift still reports it, and a passing run clears it"
+    },
+    {
+     "given": "confirmed SR-001 whose acceptance test passed, then src/pkg/mod.py changed",
+     "when": "the merge check runs before any rerun",
+     "then": "it lists SR-001 EX-1 tests/test_mod.py as an unverified acceptance test and exits 5; after a passing run it exits 0"
+    },
+    {
+     "given": "confirmed SR-001 and SR-002 (doubling, verified_by tests/test_helper.py) with a passing full run, and a committed tests/conftest.py that breaks pkg.helper",
+     "when": "the merge check runs",
+     "then": "it says the full verification pending holds the merge, lists SR-001 and SR-002 as affected, and exits 5; after a run that fails test_helper it lists the regression and still exits 5"
+    },
+    {
+     "given": "the same project and a change to src/pkg/mod.py that breaks twice(), with only tests/test_mod.py rerun",
+     "when": "the merge check runs",
+     "then": "it lists SR-002 EX-1 tests/test_helper.py as unverified (stale) and exits 5; after rerunning it, as a failing regression, still 5"
+    },
+    {
+     "given": "a pyproject.toml comment change that leaves full verification pending",
+     "when": "the question tool asks the owner whether to run the full suite or waive it for this exact change, and the owner waives it",
+     "then": "the merge exits 0 and says the run is waived for this exact change; a later edit makes it 5 again"
+    },
+    {
+     "given": "full verification pending and no answer from the owner",
+     "when": "the agent writes a waiver itself",
+     "then": "the waiver is refused with exit 3 and the merge still exits 5"
+    },
+    {
+     "given": "uv.lock changed since the last full run",
+     "when": "the pre-push check runs",
+     "then": "the full suite runs once and full verification pending is cleared when it passes"
+    },
+    {
+     "given": "the full run fails a test",
+     "when": "the pre-push check finishes",
+     "then": "it ran the suite once, exits 5 and writes no merge-evidence event"
+    },
+    {
+     "given": "a passing full run on the same tree and environment identity",
+     "when": "the merge check runs",
+     "then": "no suite runs and the report says full run reused"
+    },
+    {
+     "given": "a full run that collected no tests (exit 5), hit a collection error, or ran nothing",
+     "when": "full verification pending is computed",
+     "then": "it is still pending"
+    },
+    {
+     "given": "a full run in which a test fails",
+     "when": "full verification pending is computed",
+     "then": "it stays pending, naming the failed test, until a run passes that test"
+    },
+    {
+     "given": "a test fails once",
+     "when": "it passes on the same-tree rerun",
+     "then": "evidence records flaky-pass with both attempts, neither a pass nor a regression"
+    },
+    {
+     "given": "a test that fails on every rerun with the same error on the merge base too, where nothing of the change is present (a broken environment)",
+     "when": "the merge check runs",
+     "then": "the merge check exits 5 naming the test, the plumb line says one case went to debugging, and no question reaches the owner"
+    }
+   ],
+   "examples_kept": [
+    "SR-027/EX-1",
+    "SR-027/EX-2",
+    "SR-020/EX-3",
+    "SR-020/EX-2",
+    "SR-027/EX-4",
+    "SR-027/EX-5",
+    "SR-027/EX-6",
+    "SR-031/EX-1",
+    "SR-031/EX-2",
+    "SR-048/EX-1",
+    "SR-048/EX-2",
+    "SR-048/EX-3",
+    "SR-027/EX-3",
+    "SR-027/EX-7",
+    "SR-019/EX-1"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-020/EX-1",
+     "why": "reversed: a regression no longer asks the owner; it holds the merge until a run passes it (P5, P10), carried reworded by example 3"
+    },
+    {
+     "id": "SR-031/EX-3",
+     "why": "changed: the owner waives through the question tool instead of a terminal command (P2); carried reworded by examples 11 and 12, with the agent's waiver still refused with exit 3"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a scratch repository the agent breaks a covered function and runs the merge check, which exits 5 naming the regression; after the fix and a passing run it is green; a pyproject.toml change brings the question tool's run-or-waive question, and the waiver turns red again after one more edit.",
+    "kind": "command"
+   },
+   "feature": "FEAT-003",
+   "supersedes": [
+    "SR-031",
+    "SR-027",
+    "SR-020",
+    "SR-019",
+    "SR-048"
+   ],
+   "implemented_by": [
+    "src/plumb/boundary/fullrun.py",
+    "src/plumb/boundary/report.py",
+    "src/plumb/cli.py",
+    "src/plumb/commands.py",
+    "src/plumb/contracts.py",
+    "src/plumb/merge.py",
+    "src/plumb/verify/api.py",
+    "src/plumb/verify/cli.py",
+    "src/plumb/verify/evidence.py",
+    "src/plumb/verify/policy.py",
+    "src/plumb/verify/runner.py"
+   ],
+   "decides": [
+    "DEC-010"
+   ]
+  },
+  {
+   "title": "Each turn's changes are verified by targeted covering tests, not the full suite",
+   "statement": "For the files a turn changes, plumb selects the tests that executed a changed function plus the changed requirement's linked tests, read from a grep-able test map; import closure only where no recorded test executed the code, saying so; a changed file no test executes or imports gets a bounded sample and sets full verification pending, as a change to shared test infrastructure does. Documentation selects nothing, and an empty selection runs nothing. Evidence is pinned to tree, import closure, test source and environment and reused only on an exact match. At turn end the stop hook asks the agent once to run the selection, in parallel, within a time limit the owner can raise; a run cut by the limit keeps what finished as evidence. Where the test map cannot be built within the hook's limit (a fresh clone), coverage counts as unknown and full verification pending.",
+   "examples": [
+    {
+     "given": "a change to one function in src/plumb/approvals.py that 12 tests executed when recorded",
+     "when": "plumb selects tests for the change",
+     "then": "those 12 tests and the tests linked to the requirement the function implements are selected, not the 424 tests whose imports reach approvals.py"
+    },
+    {
+     "given": "a new function no recorded test has executed",
+     "when": "plumb selects tests",
+     "then": "it falls back to the import closure for that file and says the function has no recorded test"
+    },
+    {
+     "given": "verify.workers set to 2 and pytest-xdist installed",
+     "when": "the selected tests run",
+     "then": "they run on two workers"
+    },
+    {
+     "given": "a test marked @pytest.mark.sr(\"SR-003\")",
+     "when": "plumb tests map runs",
+     "then": "test_map.txt has a line mapping SR-003 to that test"
+    },
+    {
+     "given": "a test that imports plumb.links",
+     "when": "plumb tests map runs",
+     "then": "src/plumb/links.py maps to that test"
+    },
+    {
+     "given": "a test passed with recorded evidence",
+     "when": "nothing in its closure, source or environment changed",
+     "then": "the evidence is reused and the test is not run"
+    },
+    {
+     "given": "the same test",
+     "when": "a module it imports changes",
+     "then": "the evidence is not reused and the test is selected"
+    },
+    {
+     "given": "only docs/concept.md changed",
+     "when": "covering tests are selected",
+     "then": "nothing is selected"
+    },
+    {
+     "given": "pyproject.toml changed",
+     "when": "covering tests are selected",
+     "then": "status says full verification pending and no full run starts"
+    },
+    {
+     "given": "a changed file that no test executes or imports",
+     "when": "covering tests are selected",
+     "then": "a bounded sample is selected and full verification pending is set"
+    },
+    {
+     "given": "a selection whose real run time exceeds its estimate and hits the hard limit",
+     "when": "the run times out",
+     "then": "the tests that finished before the limit are recorded as evidence and the next selection allows for the observed pace"
+    },
+    {
+     "given": "a repository whose test map is not built and cannot be built within the hook's time limit (a fresh clone)",
+     "when": "a turn changes src code and the stop hook (or plumb turn end, or a Codex, Pi or Hermes stop) runs",
+     "then": "the agent is asked to run plumb tests run --paths for the change, the summary says full verification pending (coverage unknown), the regression check of this turn's runs still runs, and the map is built outside the hook"
+    },
+    {
+     "given": "a turn that changed src/plumb/links.py",
+     "when": "the stop hook runs",
+     "then": "it asks the agent once to run the covering tests; the hook itself runs no test"
+    },
+    {
+     "given": "the owner raised the covering-test time limit in the settings",
+     "when": "a large selection runs",
+     "then": "it runs up to the new limit, and its progress shows while it runs"
+    },
+    {
+     "given": "a computed selection that is empty",
+     "when": "the agent runs the covering tests",
+     "then": "no test runs; the whole suite is never run in its place"
+    }
+   ],
+   "examples_kept": [
+    "SR-110/EX-1",
+    "SR-110/EX-2",
+    "SR-110/EX-3",
+    "SR-016/EX-1",
+    "SR-016/EX-2",
+    "SR-018/EX-1",
+    "SR-018/EX-2",
+    "SR-017/EX-1",
+    "SR-017/EX-2",
+    "SR-017/EX-3",
+    "SR-017/EX-4",
+    "SR-017/EX-5"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a live session the agent edits one function; at turn end the stop hook asks for the covering tests and the turn-end line shows the handful selected (beside the count the import closure would have taken) running on two workers; a following documentation-only turn selects nothing.",
+    "kind": "hook"
+   },
+   "feature": "FEAT-001",
+   "supersedes": [
+    "SR-110",
+    "SR-017",
+    "SR-016",
+    "SR-018"
+   ],
+   "implemented_by": [
+    "src/plumb/config.py",
+    "src/plumb/verify/__init__.py",
+    "src/plumb/verify/api.py",
+    "src/plumb/verify/cli.py",
+    "src/plumb/verify/envid.py",
+    "src/plumb/verify/evidence.py",
+    "src/plumb/verify/imports.py",
+    "src/plumb/verify/markers.py",
+    "src/plumb/verify/pytest_plugin.py",
+    "src/plumb/verify/runner.py",
+    "src/plumb/verify/select.py",
+    "src/plumb/verify/testmap.py"
+   ],
+   "decides": [
+    "DEC-006"
+   ]
+  }
+ ],
+ "decisions": [
+  {
+   "question": "Should a missing proof block done and the merge?",
+   "chosen": "Yes: done and the merge refuse a touched requirement until the proof the owner chose has been shown and its evidence recorded; the AI recommends the proof and the owner decides it.",
+   "alternatives": [
+    "plumb names the missing proof and the owner decides whether to merge (the earlier rule)",
+    "a passing test suite stands in for the proof"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-037"
+   ]
+  },
+  {
+   "question": "Who runs the covering tests each turn?",
+   "chosen": "At turn end the stop hook asks the agent once to run the covering tests for the change; the hook never runs a test itself.",
+   "alternatives": [
+    "The stop hook runs the tests itself.",
+    "The stop hook asks for a full verify."
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-006"
+   ]
+  }
+ ],
+ "retired_decisions": [
+  {
+   "id": "DEC-005",
+   "why": "matters false and an implementation choice; it named one .plumb/log/evidence.jsonl stream, overtaken by the one-file-per-entry log (P7) and P15's compaction; that evidence is pinned and committed is stated by the targeted verification requirement"
+  },
+  {
+   "id": "DEC-010",
+   "why": "matters false; its rule (an existing test that passed and now fails is a regression even if its source changed, only a new red test exempt) is stated by the merge requirement and its examples"
+  }
+ ],
+ "one_offs": []
+}

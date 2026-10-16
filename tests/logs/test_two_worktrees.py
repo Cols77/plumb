@@ -12,7 +12,7 @@ from plumb import approvals, log
 from plumb.api import open_core
 from plumb.validate import validate
 
-pytestmark = pytest.mark.sr("SR-073")
+pytestmark = pytest.mark.sr("SR-232")
 
 SR = ("---\nid: SR-00{n}\ntitle: Requirement {n}\nstatement: s{n}\nexamples:\n"
       "  - {{id: EX-1, given: g, when: w, then: t}}\n---\n")

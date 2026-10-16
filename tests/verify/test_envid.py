@@ -12,12 +12,12 @@ from plumb.verify import envid
 from plumb.verify.evidence import apply_entry, single_evidence
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_identity_none_without_pyvenv(tmp_path: Path) -> None:
     assert envid.content_identity(tmp_path, prefix=str(tmp_path / "no-venv")) is None
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_identity_of_this_environment_is_stable(tmp_path: Path) -> None:
     first = envid.content_identity(tmp_path)
     if not (Path(sys.prefix) / "pyvenv.cfg").exists():
@@ -27,7 +27,7 @@ def test_identity_of_this_environment_is_stable(tmp_path: Path) -> None:
     assert envid.content_identity(tmp_path) == first
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_identity_cached_under_env_key(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = []
 
@@ -45,7 +45,7 @@ def test_identity_cached_under_env_key(repo: Path, monkeypatch: pytest.MonkeyPat
     assert envid.cached_identity(open_core(repo), "K2") is None
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_unknown_identity_never_reused() -> None:
     index: dict = {"nodes": {}, "full": None}
     apply_entry(index, {"run_id": "r1", "env": {"env_key": "E", "identity": "I"},
@@ -63,7 +63,7 @@ def test_unknown_identity_never_reused() -> None:
     assert (got.state, got.reuse_miss) == ("stale", "identity")
 
 
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
 def test_env_key_reuses_the_cached_platform(tmp_path: Path, monkeypatch) -> None:
     """``platform.machine()`` costs a WMI query (about 0.2 s) on Windows: the env key caches
     it under .plumb/cache, keyed by the interpreter, and the key itself is unchanged."""

@@ -19,7 +19,7 @@ from plumb.understand.evalcompare import CompareError, Verdict
 from plumb.understand.evalrepin import Case
 from plumb.understand.repin import Meaning
 
-pytestmark = pytest.mark.sr("SR-111")
+pytestmark = pytest.mark.sr("SR-198")
 
 SR1 = """---
 id: SR-001

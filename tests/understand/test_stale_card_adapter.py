@@ -10,7 +10,7 @@ import pytest
 
 from plumb.understand import cardstore
 
-pytestmark = pytest.mark.sr("SR-111")
+pytestmark = pytest.mark.sr("SR-198")
 
 
 def _write(root: Path, entries: list[dict]) -> Path:

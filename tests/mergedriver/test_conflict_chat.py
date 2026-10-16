@@ -22,7 +22,7 @@ from plumb import cli
 from plumb.api import open_core
 from plumb.understand import read
 
-pytestmark = pytest.mark.sr("SR-170")
+pytestmark = pytest.mark.sr("SR-211")
 SR = ".plumb/requirements/SR-005.md"
 SESSION = "test-session"     # mdhelpers.log_prompt's
 
@@ -111,7 +111,7 @@ def test_ex2_the_agent_cannot_relay_the_answer(repo: Path, capsys) -> None:
     assert events(repo, "conflict-resolution") == []
 
 
-@pytest.mark.sr("SR-187")
+@pytest.mark.sr("SR-214")
 def test_sr187_ex1_a_side_in_plain_words_picks_the_option_the_model_names(repo: Path) -> None:
     conflicted(repo)
     shown(repo)
@@ -128,7 +128,7 @@ def test_sr187_ex1_a_side_in_plain_words_picks_the_option_the_model_names(repo: 
     assert (taken["take"], taken["quote"]) == ("ours", words)
 
 
-@pytest.mark.sr("SR-187")
+@pytest.mark.sr("SR-214")
 def test_sr187_ex3_an_unclear_side_leaves_the_conflict_open(repo: Path) -> None:
     conflicted(repo)
     shown(repo)

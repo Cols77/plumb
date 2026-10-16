@@ -13,7 +13,7 @@ from understand.test_read_job import make_core, record_text
 from plumb.contracts import CardState, ClarifyQuestion
 from plumb.mod import offers
 
-pytestmark = pytest.mark.sr("SR-116")
+pytestmark = pytest.mark.sr("SR-267")
 
 OPTIONS = ["keep it as is", "reword the requirement", "undo the change"]
 CONSEQUENCES = ["keeps the code; leaves the requirement unchecked",

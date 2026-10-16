@@ -17,7 +17,7 @@ from plumb.api import open_core
 from plumb.hosts.claude_code.hookio import Deadline, HookContext
 from plumb.understand import cardstore, summary, worker
 
-pytestmark = pytest.mark.sr("SR-167")
+pytestmark = pytest.mark.sr("SR-223")
 
 ASK = "Reword SR-001 to follow INT-028, or keep it?"
 OPTIONS = [{"label": "Reword it", "effect": "change", "consequence": "Rewrites it"},

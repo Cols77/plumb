@@ -13,7 +13,7 @@ import yaml
 from plumb.cli import main
 from plumb.mcp import cli as mcp
 
-pytestmark = pytest.mark.sr("SR-057")
+pytestmark = pytest.mark.sr("SR-285")
 
 
 @pytest.fixture

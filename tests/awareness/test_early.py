@@ -12,7 +12,7 @@ from plumb.api import open_core
 from plumb.awareness import inflight
 from plumb.contracts import Judgment
 
-pytestmark = pytest.mark.sr("SR-081")
+pytestmark = pytest.mark.sr("SR-259")
 
 
 class Judge:
@@ -353,7 +353,7 @@ class _Unavailable:
         raise JudgmentUnavailable("no model")
 
 
-@pytest.mark.sr("SR-165")
+@pytest.mark.sr("SR-237")
 def test_check_live_contradicts_benign_and_unavailable(tmp_path: Path) -> None:
     from plumb.awareness.early import check_live
 
@@ -373,7 +373,7 @@ def test_check_live_contradicts_benign_and_unavailable(tmp_path: Path) -> None:
     assert check_live(core, [new], backend=Judge("benign")) == []
 
 
-@pytest.mark.sr("SR-165")
+@pytest.mark.sr("SR-237")
 def test_check_live_judges_the_opposite_even_when_wordier_records_outrank_it(
         repo: Path, write_record) -> None:
     """SR-165 EX-2: SR-076 (the agent relays the choice) and SR-150 (never relayed) ranked 4th

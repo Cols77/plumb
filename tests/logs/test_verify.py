@@ -21,7 +21,7 @@ def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PlumbPaths:
     return p
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_edited_entry_reported_by_file(repo: Path) -> None:
     """SR-073 EX-3: a committed entry file edited by hand is reported as modified."""
     from plumb.validate import validate
@@ -36,7 +36,7 @@ def test_edited_entry_reported_by_file(repo: Path) -> None:
     assert any(name in f.message and f.severity == "error" for f in findings)
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_deleted_entry_named_by_prev_reported(paths: PlumbPaths) -> None:
     for i in range(3):
         log.append(paths, "events", "repin", {"i": i})
@@ -47,7 +47,7 @@ def test_deleted_entry_named_by_prev_reported(paths: PlumbPaths) -> None:
     assert "deleted entry" in problems[0]
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_unparsable_file_reported(paths: PlumbPaths) -> None:
     log.append(paths, "events", "repin", {})
     bad = paths.log_kind_dir("repin") / "20261005T120000.000001Z-0badf11e.json"
@@ -63,7 +63,7 @@ def test_unparsable_file_reported(paths: PlumbPaths) -> None:
     assert len(list(log.read(paths, "events"))) == 1  # readers skip them
 
 
-@pytest.mark.sr("SR-073")
+@pytest.mark.sr("SR-232")
 def test_forked_chain_accepted(paths: PlumbPaths) -> None:
     base = log.append(paths, "events", "repin", {"base": True})
     # two branches each appended after base: two entries with the same prev
@@ -76,7 +76,7 @@ def test_forked_chain_accepted(paths: PlumbPaths) -> None:
     assert len(list(log.read(paths, "events"))) == 3
 
 
-@pytest.mark.sr("SR-074")
+@pytest.mark.sr("SR-232")
 def test_migrated_suffix_must_match_digest(paths: PlumbPaths) -> None:
     raw = legacy_entry("repin", {}, None)
     good = log.migrated_name(raw)
@@ -87,7 +87,7 @@ def test_migrated_suffix_must_match_digest(paths: PlumbPaths) -> None:
     assert problems == [f"repin/{wrong}: migrated name does not match the entry's digest"]
 
 
-@pytest.mark.sr("SR-074")
+@pytest.mark.sr("SR-232")
 def test_legacy_lines_still_checked(paths: PlumbPaths) -> None:
     """During the transition a legacy line edited, deleted or reordered is still reported."""
     first = legacy_entry("repin", {"i": 0}, None)

@@ -18,7 +18,7 @@ from plumb.judgment import jev as jev_mod
 from plumb.judgment.model import JudgmentQuestion, JudgmentRequest
 from plumb.judgment.state import assemble_state, is_secret_path
 
-pytestmark = pytest.mark.sr("SR-021")
+pytestmark = pytest.mark.sr("SR-245")
 
 KEY = "ts-test-key-abcdefghij"
 SR_004 = """---
@@ -279,7 +279,7 @@ def test_drift_triage_through_jev(jev_repo) -> None:
 # -- sp2 7.2 and 11.2: the protocol additions over the stub; the credential's NAME (SR-039)
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_entailment_through_jev_carries_probability_and_label(jev_repo) -> None:
     repo, state = jev_repo
     core = open_core(repo)
@@ -305,7 +305,7 @@ def test_entailment_through_jev_carries_probability_and_label(jev_repo) -> None:
     assert a.verdict == "no"
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_credential_read_from_the_named_variable(jev_repo, monkeypatch) -> None:
     repo, state = jev_repo
     monkeypatch.delenv("TYPESAFE_API_KEY")
@@ -321,7 +321,7 @@ def test_credential_read_from_the_named_variable(jev_repo, monkeypatch) -> None:
     assert "MY_JEV_KEY" in str(caught.value)
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_the_new_methods_raise_when_jev_times_out(jev_repo) -> None:
     repo, state = jev_repo
     state.delay = 1.5
@@ -355,7 +355,7 @@ def _repo_bytes(repo: Path) -> bytes:
                     if p.is_file() and ".git" not in p.parts)
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_provider_preset_defaults_and_explicit_values_win() -> None:
     from plumb.config import config_from_mapping
 
@@ -377,7 +377,7 @@ def test_provider_preset_defaults_and_explicit_values_win() -> None:
     assert jev["base_url"] == "https://openrouter.ai"
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_openrouter_request_path_model_and_dated_version(repo: Path, stub, monkeypatch) -> None:
     state, url = stub
     state.model = "typesafe/jev-1.13-20260917"
@@ -406,7 +406,7 @@ def test_openrouter_request_path_model_and_dated_version(repo: Path, stub, monke
     assert OR_KEY.encode() not in _repo_bytes(repo)
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_explicit_path_and_float_usage(repo: Path, stub) -> None:
     state, url = stub
     state.usage = {"input_tokens": 63, "output_tokens": 1, "cost": 2.1e-05}
@@ -439,7 +439,7 @@ EMPTY=
 """
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_key_from_the_user_env_file(repo: Path, tmp_path: Path, monkeypatch) -> None:
     outside = tmp_path / "elsewhere" / ".env"
     outside.parent.mkdir()
@@ -461,7 +461,7 @@ def test_key_from_the_user_env_file(repo: Path, tmp_path: Path, monkeypatch) -> 
     assert jev_mod.key_source(repo, env={}, name="EMPTY") == "user-store"
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_env_file_inside_the_repository_is_refused(repo: Path, tmp_path: Path,
                                                     monkeypatch) -> None:
     inside = repo / ".env"
@@ -473,7 +473,7 @@ def test_env_file_inside_the_repository_is_refused(repo: Path, tmp_path: Path,
     assert jev_mod.resolve_key(repo, env={}, name="OPENROUTER_API_KEY") is None
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_backend_through_the_env_file_never_writes_the_key(repo: Path, stub, tmp_path: Path,
                                                            monkeypatch) -> None:
     state, url = stub
@@ -505,7 +505,7 @@ def _live_provider(repo: Path) -> str | None:
 
 
 @pytest.mark.jev_live
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_live_entailment(repo: Path, capsys) -> None:
     """One tiny synthetic request (no repository content) through whichever credential
     resolves, the env file included; skipped when none does."""

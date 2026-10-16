@@ -15,7 +15,7 @@ from plumb.api import open_core
 from plumb.contracts import Target
 from plumb.understand import repin
 
-pytestmark = pytest.mark.sr("SR-175")
+pytestmark = pytest.mark.sr("SR-198")
 
 SR1 = """---
 id: SR-001
@@ -159,7 +159,7 @@ def test_ex3_a_contradiction_with_an_unconfirmed_record_files_no_card(
     assert stale.read_cards(project, "s1") == [] and _state(project) == "stale"
 
 
-@pytest.mark.sr("SR-174")
+@pytest.mark.sr("SR-245")
 def test_sr174_an_http_error_from_the_judge_is_waiting_not_unresolved(
         project: Path, monkeypatch) -> None:
     from plumb.contracts import DispatchError

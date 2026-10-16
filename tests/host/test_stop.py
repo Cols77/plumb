@@ -16,7 +16,7 @@ from plumb.api import open_core
 from plumb.contracts import FullPending, NodeEvidence
 from plumb.hosts.claude_code import stop
 
-pytestmark = pytest.mark.sr("SR-012")
+pytestmark = pytest.mark.sr("SR-265")
 
 NODE = "tests/test_a.py::test_a"
 NODE2 = "tests/test_a.py::test_b"
@@ -202,7 +202,7 @@ def test_regression_blocks_with_owner_instruction(project: Path, hook_input) -> 
     assert "questions:" not in summary and "▸" not in summary
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_edited_test_regression_still_blocks(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "tests/test_a.py", "def test_a():\n    assert False\n")
@@ -214,7 +214,7 @@ def test_edited_test_regression_still_blocks(project: Path, hook_input) -> None:
     assert "now fails (test source changed since the pass)" in reason
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_new_red_test_never_asks(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "tests/test_new.py", "def test_new():\n    assert False\n")
@@ -453,7 +453,7 @@ def _note(repo: Path, session: str = "s1") -> dict | None:
     return json.loads(path.read_text("utf-8")) if path.is_file() else None
 
 
-@pytest.mark.sr("SR-026")
+@pytest.mark.sr("SR-200")
 def test_untraced_change_is_queued_for_the_agent(project: Path, hook_input) -> None:
     """SR-012 (cards only) leaves no summary line to name it to the owner in: the agent is
     told at the next prompt (SR-026 EX-1's "the summary names it" no longer holds)."""
@@ -465,7 +465,7 @@ def test_untraced_change_is_queued_for_the_agent(project: Path, hook_input) -> N
     assert _note(project)["paths"] == ["src/mul.py"]
 
 
-@pytest.mark.sr("SR-026")
+@pytest.mark.sr("SR-200")
 def test_untraced_change_rides_along_an_existing_block(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "src/mul.py", "def mul(a, b):\n    return a * b\n")
@@ -477,7 +477,7 @@ def test_untraced_change_rides_along_an_existing_block(project: Path, hook_input
     assert _note(project) is None  # already told in this turn
 
 
-@pytest.mark.sr("SR-026")
+@pytest.mark.sr("SR-200")
 def test_linked_change_is_not_untraced(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
@@ -486,7 +486,7 @@ def test_linked_change_is_not_untraced(project: Path, hook_input) -> None:
     assert _note(project) is None
 
 
-@pytest.mark.sr("SR-029")
+@pytest.mark.sr("SR-200")
 def test_flat_layout_and_root_files_are_untraced_at_the_stop(project: Path,
                                                               hook_input) -> None:
     """No source_dirs configured: a flat package module and a root script are named."""
@@ -501,7 +501,7 @@ def test_flat_layout_and_root_files_are_untraced_at_the_stop(project: Path,
 # -- SR-173 EX-2: the agent's warnings reach it as text, panel or not -------------------------
 
 
-@pytest.mark.sr("SR-173")
+@pytest.mark.sr("SR-266")
 def test_warnings_are_queued_for_the_agent_and_the_owner_text_stays_cards(
         project: Path, hook_input, monkeypatch) -> None:
     from plumb.awareness import turn as awareness

@@ -16,7 +16,7 @@ def _waivers(root: Path) -> list:
     return list(open_core(root).log_read("events", ["waiver"]))
 
 
-@pytest.mark.sr("SR-019")
+@pytest.mark.sr("SR-254")
 def test_waiver_refused_under_marker(repo: Path, monkeypatch: pytest.MonkeyPatch,
                                      capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "1")
@@ -27,7 +27,7 @@ def test_waiver_refused_under_marker(repo: Path, monkeypatch: pytest.MonkeyPatch
     assert _waivers(repo) == []
 
 
-@pytest.mark.sr("SR-019")
+@pytest.mark.sr("SR-254")
 def test_waiver_event_pinned_to_diff_digest(repo: Path,
                                             capsys: pytest.CaptureFixture[str]) -> None:
     root = ["--root", str(repo)]

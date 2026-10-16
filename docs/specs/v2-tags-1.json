@@ -1,0 +1,386 @@
+[
+ {
+  "id": "SR-049",
+  "behaviour": "The merge check holds a merge on undeclared paths, stale links, broken logs or a confirmed example's failing test.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-050",
+  "behaviour": "The merge check lists touched requirements lacking a fidelity judgment, advisory only, never changing the exit code.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-051",
+  "behaviour": "A pre-push hook runs the merge check, leaving foreign hooks untouched.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-052",
+  "behaviour": "The merge check is one lightweight process with no transactions or locks and a one-screen report.",
+  "theme": "verification-and-merge",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-053",
+  "behaviour": "Every host adapter serves one host-neutral turn API, with a CLI-only fallback.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-054",
+  "behaviour": "Hosts install codex writes a thin idempotent Codex adapter that preserves foreign entries.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-055",
+  "behaviour": "Hosts install pi renders a thin Pi extension mapping Pi events to plumb hook calls.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-056",
+  "behaviour": "Hosts install hermes renders a thin Hermes plugin registering the plumb command and hooks.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-057",
+  "behaviour": "A read-only MCP server over stdio exposes brief, relevant, show, explain, impact and drift.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-058",
+  "behaviour": "The pi-agent-factory importer maps relations, features and NCs to links with symbol and test-node ends.",
+  "theme": "records-and-links",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "Related to SR-023 importer."
+ },
+ {
+  "id": "SR-059",
+  "behaviour": "An imported record is confirmed only where an upstream human consent pins its current content.",
+  "theme": "confirmation",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-060",
+  "behaviour": "The import is idempotent and previews a dry-run plan of changes.",
+  "theme": "records-and-links",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-061",
+  "behaviour": "The status line and first summary line render a one-line status card with a plain-language intent.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "Related to SR-013."
+ },
+ {
+  "id": "SR-062",
+  "behaviour": "The full intent card shows only when it matters, with full, compact or off verbosity.",
+  "theme": "cards-and-owner-surface",
+  "holds": "superseded",
+  "superseded_by": "SR-129",
+  "note": "SR-129 lists it as superseded."
+ },
+ {
+  "id": "SR-063",
+  "behaviour": "Every hook output passes one emitter that deduplicates lines and enforces a token budget.",
+  "theme": "hooks-and-budgets",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-064",
+  "behaviour": "Owner commands accept plain words, resolve them to records and answer in the owner's terms.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-065",
+  "behaviour": "Confirm prepares full cards for records awaiting confirmation and never reads words itself.",
+  "theme": "confirmation",
+  "holds": "superseded",
+  "superseded_by": "SR-135",
+  "note": "SR-135 supersedes it."
+ },
+ {
+  "id": "SR-066",
+  "behaviour": "The view command writes a generated Obsidian vault and canvas that never approves anything.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-067",
+  "behaviour": "The align command judges each edge of a scope weakest first without changing any edge.",
+  "theme": "judging-and-jev",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-068",
+  "behaviour": "Every advertised owner verb is routed and its help exits zero; why aliases explain.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-069",
+  "behaviour": "Confirmations resting on a message the agent recorded itself are labelled self-recorded wherever shown.",
+  "theme": "confirmation",
+  "holds": "unsure",
+  "superseded_by": null,
+  "note": "Overlaps SR-168 and SR-112 on owner-only words."
+ },
+ {
+  "id": "SR-070",
+  "behaviour": "New record IDs are reserved through a shared git ref so worktrees never collide.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-071",
+  "behaviour": "Merge-fix renumbers colliding incoming IDs and rewrites the references the incoming side introduced.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-072",
+  "behaviour": "The merge check reports ID collisions with the plain fix.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-073",
+  "behaviour": "Every log entry is its own never-edited file under the log directory, hash-chained.",
+  "theme": "records-and-links",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-074",
+  "behaviour": "Migrating the old log files into per-entry files keeps every digest and reference unchanged.",
+  "theme": "records-and-links",
+  "holds": "one-off",
+  "superseded_by": null,
+  "note": "Migration of legacy logs."
+ },
+ {
+  "id": "SR-075",
+  "behaviour": "A git merge driver merges record files field by field against the merge base.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-076",
+  "behaviour": "A same-field content conflict becomes an intent conflict inside the record for the owner to resolve.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "Dump lists SR-150 in its supersedes."
+ },
+ {
+  "id": "SR-077",
+  "behaviour": "A quick merge check holds open intent conflicts as cards for the owner's choice.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-078",
+  "behaviour": "The owner is warned when another worktree or branch changes the same record.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-079",
+  "behaviour": "Awareness reads other worktrees read-only, cheaply, through per-worktree cached files.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-080",
+  "behaviour": "Intent in flight is shared as claims in a shared git ref.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-081",
+  "behaviour": "Intent conflicts with other branches' claims are caught at capture, before implementation.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-082",
+  "behaviour": "Plumb installs as a Claude Code plugin running its own private copy of its tools.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-083",
+  "behaviour": "Init adopts a project; projects not adopted stay silent.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "Related to SR-025."
+ },
+ {
+  "id": "SR-084",
+  "behaviour": "Projects set up the old way keep working and the plugin stays silent there until moved.",
+  "theme": "hosts-and-plugin",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "Transitional but still a stated behaviour."
+ },
+ {
+  "id": "SR-085",
+  "behaviour": "Plumb draws a status band, panel and cards inside Claude Code at the owner's level.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-086",
+  "behaviour": "Confirm buttons record the owner's confirmation of exactly what was shown, proved by a session secret.",
+  "theme": "confirmation",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": "SR-112 restates button as an owner-only path."
+ },
+ {
+  "id": "SR-087",
+  "behaviour": "Plumb gives Claude its background once per session and shows nothing twice.",
+  "theme": "hooks-and-budgets",
+  "holds": "superseded",
+  "superseded_by": "SR-159",
+  "note": "SR-159 supersedes it."
+ },
+ {
+  "id": "SR-088",
+  "behaviour": "Every owner-needed capability has an owner entry point; internal mechanisms stay internal.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-089",
+  "behaviour": "Owner-visible text names no shell command and speaks at the owner's level.",
+  "theme": "cards-and-owner-surface",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-090",
+  "behaviour": "An unrelated request in the same message never blocks an ok.",
+  "theme": "confirmation",
+  "holds": "superseded",
+  "superseded_by": "SR-101",
+  "note": "SR-101 supersedes it with a reader model."
+ },
+ {
+  "id": "SR-091",
+  "behaviour": "A bare yes or option letter records what question or proposal it answered.",
+  "theme": "confirmation",
+  "holds": "unsure",
+  "superseded_by": null,
+  "note": "Overlaps SR-097 and SR-156 on short answers."
+ },
+ {
+  "id": "SR-092",
+  "behaviour": "The clarify read-back questions itself and labels assumptions rather than asking.",
+  "theme": "intent-capture-and-clarify",
+  "holds": "unsure",
+  "superseded_by": null,
+  "note": "SR-131 restates assumptions versus gaps."
+ },
+ {
+  "id": "SR-093",
+  "behaviour": "An intent can state when it is done, and plumb tells the agent what a request leaves open.",
+  "theme": "intent-capture-and-clarify",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-094",
+  "behaviour": "A big plan is structurally checked and repaired before it is offered for confirmation.",
+  "theme": "intent-capture-and-clarify",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-095",
+  "behaviour": "A requirement left with two versions after a merge is shown once, as a choice card.",
+  "theme": "parallel-work",
+  "holds": "yes",
+  "superseded_by": null,
+  "note": ""
+ },
+ {
+  "id": "SR-096",
+  "behaviour": "A rejected read-back is recaptured, judged and offered again; it counts as no only when read so.",
+  "theme": "confirmation",
+  "holds": "unsure",
+  "superseded_by": null,
+  "note": "Overlaps SR-101 reader model."
+ }
+]

@@ -16,7 +16,7 @@ from plumb import ids
 from plumb.cli import main
 from plumb.paths import PlumbPaths
 
-pytestmark = pytest.mark.sr("SR-070")
+pytestmark = pytest.mark.sr("SR-257")
 
 
 def ref_data(root: Path) -> dict:

@@ -12,7 +12,7 @@ from plumb.api import open_core
 from plumb.contracts import DispatchError
 from understand.test_judge_job import intent_text, log_prompt, requirement_text
 
-pytestmark = pytest.mark.sr("SR-101", "SR-106", "SR-107", "SR-108")
+pytestmark = pytest.mark.sr("SR-214", "SR-252", "SR-252", "SR-272")
 
 SESSION = "s1"
 

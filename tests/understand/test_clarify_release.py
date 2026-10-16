@@ -15,7 +15,7 @@ from plumb.api import open_core
 from plumb.present import owner_text
 from plumb.understand import cardstore, clarify, cmd_clarify, effects, files, fullcard, gate, hooks, worker
 
-pytestmark = pytest.mark.sr("SR-103")
+pytestmark = pytest.mark.sr("SR-223")
 
 SESSION = "s1"
 

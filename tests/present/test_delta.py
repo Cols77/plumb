@@ -13,7 +13,7 @@ from plumb.api import open_core
 from plumb.hosts.claude_code.hookio import Deadline, HookContext
 from plumb.present import delta
 
-pytestmark = pytest.mark.sr("SR-063")
+pytestmark = pytest.mark.sr("SR-277")
 
 
 @pytest.fixture(autouse=True)

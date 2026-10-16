@@ -15,7 +15,7 @@ from plumb.present import owner_text
 
 from .helpers import PLUGIN, REPO
 
-pytestmark = [pytest.mark.sr("SR-082")]
+pytestmark = [pytest.mark.sr("SR-279")]
 
 
 def _build_plugin():
@@ -98,7 +98,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return module
 
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 def test_a_test_file_in_the_plugin_fails_the_check(isolated, capsys) -> None:
     """SR-123 EX-1: --check fails naming a *.test.tsx (and the harness, the fixtures)."""
     hooks = isolated.PLUGIN / "hooks"
@@ -117,12 +117,12 @@ def test_a_test_file_in_the_plugin_fails_the_check(isolated, capsys) -> None:
         assert any(line.startswith(f"{(hooks / name).as_posix()}:") for line in named), name
 
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 def test_no_test_files_ship_in_the_plugin() -> None:
     assert _build_plugin().test_only_files() == []
 
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 def test_every_hook_has_a_timeout() -> None:
     """Each hook is bounded; plumb's own watchdog (30 s, the stop read-back 1 s more) sits
     well inside each bound (DEC-078: 60 s, and 120 s for the stop and async hooks)."""
@@ -140,7 +140,7 @@ def test_every_hook_has_a_timeout() -> None:
     assert [g["hooks"][0].get("async", False) for g in post] == [True, False, True]
 
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 def test_skill_reference_files_are_rendered(isolated) -> None:
     skill = isolated.TEMPLATES / "skills" / "plumb-records"
     (skill / "references").mkdir(parents=True)
@@ -155,7 +155,7 @@ def test_skill_reference_files_are_rendered(isolated) -> None:
                      "skills/plumb-records/references/table.csv": "a,{plumb}\n"}
 
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 def test_a_renamed_skill_leaves_no_orphan(isolated) -> None:
     """A skill folder or reference with no template is stale, and the build removes it."""
     skill = isolated.TEMPLATES / "skills" / "plumb-records"
@@ -179,7 +179,7 @@ def test_a_renamed_skill_leaves_no_orphan(isolated) -> None:
     assert (isolated.PLUGIN / "skills").is_dir()
 
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 def test_the_plugin_ships_the_license() -> None:
     root = (REPO / "LICENSE").read_text(encoding="utf-8")
     assert root.startswith("MIT License") and "Colin AUBE" in root
@@ -187,7 +187,7 @@ def test_the_plugin_ships_the_license() -> None:
     assert (PLUGIN / "README.md").is_file()
 
 
-@pytest.mark.sr("SR-122")
+@pytest.mark.sr("SR-202")
 def test_plugin_command_reads_the_references_beside_the_plugin() -> None:
     """In a plugin install the skills' reference files exist only under the plugin
     (`plumb plugin migrate` deletes the .claude copies): the command points there."""
@@ -197,7 +197,7 @@ def test_plugin_command_reads_the_references_beside_the_plugin() -> None:
     assert ".claude/skills/" not in built
 
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 @pytest.mark.parametrize("name", ["x.spec.tsx", "x_test.ts", "x.test.ts"])
 def test_every_test_file_spelling_fails_the_check(isolated, name: str) -> None:
     mod = isolated.PLUGIN / "mod"

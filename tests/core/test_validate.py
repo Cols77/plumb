@@ -15,7 +15,7 @@ from plumb.normalize import sha256_text
 from plumb.trailers import invalid_ids, parse_sr_trailer
 from plumb.validate import validate
 
-pytestmark = pytest.mark.sr("SR-003")
+pytestmark = pytest.mark.sr("SR-231")
 
 INT = "---\nid: INT-001\ntitle: Grounded\nquote: q\nreadback: r\n---\n"
 SR = """---
@@ -118,7 +118,7 @@ def test_tampered_log_line_is_error(clean: Path) -> None:
     assert "log" in _codes(clean, "error")
 
 
-@pytest.mark.sr("SR-007")
+@pytest.mark.sr("SR-261")
 def test_parse_sr_trailer_variants() -> None:
     message = ("core: pin links\n\nMentions SR-009 in prose.\n\nSR: SR-001, SR-002\r\n"
                "SR:SR-003\nSR: SR-001\nCo-Authored-By: x\n")
@@ -127,7 +127,7 @@ def test_parse_sr_trailer_variants() -> None:
     assert invalid_ids(("SR-001", "SR-1", "INT-001", "FEAT-002")) == ("SR-1",)
 
 
-@pytest.mark.sr("SR-165")
+@pytest.mark.sr("SR-237")
 def test_supersedes_a_newer_record_warns(clean: Path, write_record) -> None:
     write_record(clean, "---\nid: SR-002\ntitle: t\nstatement: s\nlinks:\n"
                  "  - {kind: derives_from, to: INT-001}\n---\n")

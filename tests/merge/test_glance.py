@@ -49,7 +49,7 @@ def _glance_text(report) -> str:
     return "\n".join(lines[start:])
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_lists_agent_relayed_with_quote(base) -> None:
     root, sha = base
     digest = _prompt(root, "SR-002 looks good, approved")
@@ -69,7 +69,7 @@ def test_lists_agent_relayed_with_quote(base) -> None:
     assert "owner INT-001" in text
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_lists_auto_jev_with_score(base) -> None:
     """SR-047 EX-2: an auto-jev approval shows its score, model version and revoke form."""
     root, sha = base
@@ -88,7 +88,7 @@ def test_lists_auto_jev_with_score(base) -> None:
     assert "plumb revoke INT-001" in text
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_lists_capture_written_auto_jev(base) -> None:
     """Cross-lane: the payload exactly as CAPTURE's writer (``capture.autoapprove.gate``)
     records it, the fields nested under ``auto`` with the label in ``confidence_label``,
@@ -112,7 +112,7 @@ def test_lists_capture_written_auto_jev(base) -> None:
     assert "AUTO-JEV INT-001 score 0.97 (high) model jev-1.13.0" in _glance_text(report)
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_self_recorded_message_labelled(base) -> None:
     """R13 Q4: a relay resting on a message the agent recorded itself (a host without a
     prompt hook) is labelled "self-recorded message"."""
@@ -124,7 +124,7 @@ def test_self_recorded_message_labelled(base) -> None:
     assert "self-recorded message" in _glance_text(report)
 
 
-@pytest.mark.sr("SR-047")
+@pytest.mark.sr("SR-260")
 def test_revocations_and_import_listed_without_revoke_form(base) -> None:
     root, sha = base
     approvals.approve(open_core(root), ["SR-002"])
@@ -135,7 +135,7 @@ def test_revocations_and_import_listed_without_revoke_form(base) -> None:
     assert report.glance[1]["revoke"] is None
 
 
-@pytest.mark.sr("SR-050")
+@pytest.mark.sr("SR-247")
 def test_repinned_unjudged_listed_not_held(base) -> None:
     """A confirmed requirement whose implementing end changed and was repinned with no
     fidelity judgment is a glance item, not a wait."""
@@ -150,7 +150,7 @@ def test_repinned_unjudged_listed_not_held(base) -> None:
     assert any("repinned without a judgment: SR-001" in line for line in render(report))
 
 
-@pytest.mark.sr("SR-050")
+@pytest.mark.sr("SR-247")
 def test_fidelity_never_changes_exit(base) -> None:
     """SR-050 EX-1 and EX-2: unjudged and drifts are listed; the exit stays the rest's."""
     root, _ = base
@@ -184,7 +184,7 @@ class _FakeJev:
                         fingerprint=packet.fingerprint)
 
 
-@pytest.mark.sr("SR-050")
+@pytest.mark.sr("SR-247")
 def test_jev_prescores_fidelity_without_recording(base, monkeypatch) -> None:
     """MS1: with JEV configured, up to five packets are scored and shown; nothing is logged
     as the host agent's judgment and the exit is unchanged."""

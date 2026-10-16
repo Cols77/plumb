@@ -27,7 +27,7 @@ from plumb.api import open_core
 from plumb.awareness import inflight
 from plumb.hosts.claude_code import prompt
 
-pytestmark = pytest.mark.sr("SR-081")
+pytestmark = pytest.mark.sr("SR-259")
 
 MAIN = "A relay pins only the records the owner's words affirm."
 FEAT_X = "A relay pins the stated group, named by its title."

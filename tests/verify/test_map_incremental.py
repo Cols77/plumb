@@ -37,8 +37,8 @@ def _count_fs_checks(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
     return calls
 
 
-@pytest.mark.sr("SR-016")
-@pytest.mark.sr("SR-014")
+@pytest.mark.sr("SR-255")
+@pytest.mark.sr("SR-275")
 def test_adding_a_file_resolves_edges_from_the_scanned_set(project: Path, monkeypatch) -> None:
     build_map(open_core(project))
     write(project, "tests/test_new.py", "from pkg.helper import twice\nimport json\n\n\n"
@@ -52,7 +52,7 @@ def test_adding_a_file_resolves_edges_from_the_scanned_set(project: Path, monkey
     assert "tests/test_new.py" in tmap.covering("src/pkg/mod.py")  # transitively
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_new_module_satisfies_an_existing_import(project: Path) -> None:
     write(project, "tests/test_later.py", "from pkg.later import VALUE\n\n\n"
           "def test_later():\n    assert VALUE == 2\n")
@@ -63,7 +63,7 @@ def test_new_module_satisfies_an_existing_import(project: Path) -> None:
     assert tmap.covering("src/pkg/later.py") == ["tests/test_later.py"]
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_cached_map_equals_a_full_rebuild(project: Path) -> None:
     build_map(open_core(project))
     write(project, "tests/test_extra.py", "from pkg import mod\n\n\ndef test_x():\n"
@@ -74,7 +74,7 @@ def test_cached_map_equals_a_full_rebuild(project: Path) -> None:
     assert warm.as_dict() == cold.as_dict()
 
 
-@pytest.mark.sr("SR-016")
+@pytest.mark.sr("SR-255")
 def test_string_resolver_agrees_with_the_filesystem_resolver(project: Path) -> None:
     write(project, "src/pkg/sub/__init__.py", "")
     write(project, "src/pkg/sub/deep.py", "from .. import mod\nfrom ...pkg import helper\n"

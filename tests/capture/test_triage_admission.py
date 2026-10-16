@@ -17,7 +17,7 @@ from capture_helpers import log_prompt, record_text, run, use_coverage_judge
 from plumb.api import open_core
 from plumb.capture.triage import CONTRADICTS, UNVERIFIED, triage
 
-pytestmark = pytest.mark.sr("SR-040")
+pytestmark = pytest.mark.sr("SR-227")
 
 
 @pytest.fixture(autouse=True)

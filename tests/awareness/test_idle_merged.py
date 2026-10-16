@@ -44,14 +44,14 @@ def _idle_merged(tmp_path: Path, *, merge: bool = True) -> Path:
     return mine
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_unmerged_committed_worktree_still_shows(tmp_path: Path) -> None:
     """Control: until the default branch holds it, the committed work is still in flight."""
     mine = _idle_merged(tmp_path, merge=False)
     assert awareness.delta_lines(open_core(mine), ["SR-005"])[0].text == LINE
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_session_start_brief_drops_merged_idle_worktree(tmp_path: Path) -> None:
     mine = _idle_merged(tmp_path)
     core = open_core(mine)
@@ -59,27 +59,27 @@ def test_session_start_brief_drops_merged_idle_worktree(tmp_path: Path) -> None:
     assert awareness.brief_lines(open_core(mine)) == []
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_prompt_delta_drops_merged_idle_worktree(tmp_path: Path) -> None:
     mine = _idle_merged(tmp_path)
     assert awareness.delta_lines(open_core(mine), ["SR-005"]) == []
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_stop_overlap_drops_merged_idle_worktree(tmp_path: Path) -> None:
     mine = _idle_merged(tmp_path)
     lines = at_stop(open_core(mine), [".plumb/requirements/SR-005.md"], ["SR-005"])
     assert [line.text for line in lines] == []
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_plumb_status_drops_merged_idle_worktree(tmp_path: Path) -> None:
     mine = _idle_merged(tmp_path)
     lines = awareness.status_section(open_core(mine))
     assert not any("feat-x" in line for line in lines), lines
 
 
-@pytest.mark.sr("SR-079")
+@pytest.mark.sr("SR-258")
 def test_status_line_drops_merged_idle_worktree(tmp_path: Path) -> None:
     mine = _idle_merged(tmp_path)
     assert awareness.snapshot_fields(open_core(mine), ["SR-005"]) == {}

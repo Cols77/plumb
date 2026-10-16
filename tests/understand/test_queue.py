@@ -12,7 +12,7 @@ from plumb.api import Core
 from plumb.contracts import JobResult
 from plumb.understand import files, jobs, ledger, queue, worker
 
-pytestmark = pytest.mark.sr("SR-104")
+pytestmark = pytest.mark.sr("SR-273")
 
 
 @pytest.fixture

@@ -11,7 +11,7 @@ from understand.test_read_job import SESSION, make_core, record_text
 from plumb.api import open_core
 from plumb.understand.threshold import MIN_LABELS, reader_threshold
 
-pytestmark = pytest.mark.sr("SR-101")
+pytestmark = pytest.mark.sr("SR-214")
 
 
 @pytest.fixture

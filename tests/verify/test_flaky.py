@@ -21,7 +21,7 @@ def project(repo: Path) -> Path:
     return repo
 
 
-@pytest.mark.sr("SR-019")
+@pytest.mark.sr("SR-254")
 def test_flaky_rerun_same_tree_records_both_attempts(project: Path, tmp_path: Path) -> None:
     flag = (tmp_path / f"flag-{uuid.uuid4().hex}").as_posix()
     write(project, "tests/test_flaky.py",
@@ -41,7 +41,7 @@ def test_flaky_rerun_same_tree_records_both_attempts(project: Path, tmp_path: Pa
     assert ev.state == "flaky-pass"
 
 
-@pytest.mark.sr("SR-019")
+@pytest.mark.sr("SR-254")
 def test_no_rerun_when_tree_changed(project: Path) -> None:
     write(project, "tests/test_dirty.py",
           "from pathlib import Path\n\n\ndef test_dirties():\n"
@@ -53,7 +53,7 @@ def test_no_rerun_when_tree_changed(project: Path) -> None:
     assert last["nodes"][0]["attempts"] == ["failed"]
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_removed_after_passing_listed(project: Path) -> None:
     first = open_verify(open_core(project)).run(nodes=["tests/test_mod.py"])
     assert first.ok

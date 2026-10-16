@@ -13,7 +13,7 @@ from jev_fixtures import calibrated
 from plumb.api import open_core
 from plumb.capture.autoapprove import auto_approve_state
 
-pytestmark = pytest.mark.sr("SR-115")
+pytestmark = pytest.mark.sr("SR-250")
 
 
 def hook_reads(repo: Path, text: str) -> str:

@@ -47,7 +47,7 @@ def _confirmed(monkeypatch, by: str, extra: str) -> None:
         f"confirmed by {words}" + (f", {extra}" if extra else "")))
 
 
-@pytest.mark.sr("SR-064")
+@pytest.mark.sr("SR-202")
 @pytest.mark.parametrize(("by", "extra", "label"), CASES, ids=IDS)
 def test_show_says_who_confirmed(records: Path, capsys, monkeypatch, by, extra,
                                  label) -> None:
@@ -56,7 +56,7 @@ def test_show_says_who_confirmed(records: Path, capsys, monkeypatch, by, extra,
     assert capsys.readouterr().out.startswith(f"SR-002 (requirement, {label}) ")
 
 
-@pytest.mark.sr("SR-064")
+@pytest.mark.sr("SR-202")
 @pytest.mark.parametrize(("by", "extra", "label"), CASES, ids=IDS)
 def test_explain_says_who_confirmed(records: Path, capsys, monkeypatch, by, extra,
                                     label) -> None:
@@ -67,7 +67,7 @@ def test_explain_says_who_confirmed(records: Path, capsys, monkeypatch, by, extr
     assert f'INT-001 "add multiply next to add" ({label})' in out
 
 
-@pytest.mark.sr("SR-066")
+@pytest.mark.sr("SR-205")
 @pytest.mark.parametrize(("by", "extra", "label"), CASES, ids=IDS)
 def test_vault_note_says_who_confirmed(records: Path, capsys, monkeypatch, by, extra,
                                        label) -> None:

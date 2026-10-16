@@ -21,7 +21,7 @@ from plumb.hosts.claude_code import hookio, session_start
 from plumb.mod import handshake
 from plumb.mod import session as mod_session
 
-pytestmark = pytest.mark.sr("SR-126")
+pytestmark = pytest.mark.sr("SR-264")
 
 NEW_DIGEST = mod_session.key_digest(OTHER_KEY)
 CONFIRM = 0

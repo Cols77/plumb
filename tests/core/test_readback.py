@@ -10,7 +10,7 @@ from plumb import cli
 from plumb.api import open_core
 from plumb.readback import record_lines
 
-pytestmark = pytest.mark.sr("SR-012")
+pytestmark = pytest.mark.sr("SR-265")
 
 INT = """---
 id: INT-001

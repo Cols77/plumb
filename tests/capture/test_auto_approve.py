@@ -46,7 +46,7 @@ def state_of(repo: Path, record_id: str) -> str:
     return open_core(repo).status([record_id])[record_id].confirmation
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_an_equivalent_model_name_does_not_suspend(ready) -> None:
     """OpenRouter names the calibrated jev-1.13.0 typesafe/jev-1.13-20260917: same version."""
     repo, stub = ready
@@ -63,7 +63,7 @@ def test_an_equivalent_model_name_does_not_suspend(ready) -> None:
     assert not [f for f in validate(open_core(repo)) if f.severity == "error"]
 
 
-@pytest.mark.sr("SR-186")
+@pytest.mark.sr("SR-242")
 def test_a_judge_model_change_after_a_logged_calibration_suspends_settling(ready) -> None:
     """SR-186 EX-4: the fingerprint's judge model differs from understand.judge_model now."""
     from plumb.capture.calibrate import fingerprint

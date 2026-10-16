@@ -14,7 +14,7 @@ from plumb import approvals
 from plumb.api import open_core
 from plumb.hosts.claude_code import prompt
 
-pytestmark = pytest.mark.sr("SR-010")
+pytestmark = pytest.mark.sr("SR-225")
 
 
 @pytest.fixture(autouse=True)
@@ -121,7 +121,7 @@ def test_injects_named_records_first(records: Path, hook_input) -> None:
     assert any(line.startswith("SR-009") for line in record_lines)
 
 
-@pytest.mark.sr("SR-032")
+@pytest.mark.sr("SR-277")
 def test_injects_one_line_per_record_within_the_budget(records: Path, hook_input,
                                                        write_record) -> None:
     """R9: one line per relevant record (ID, state, title); examples and tests stay behind
@@ -177,7 +177,7 @@ def test_backend_unavailable_degrades(records: Path, hook_input) -> None:
     assert "plumb: compare this request" in out
 
 
-@pytest.mark.sr("SR-021")
+@pytest.mark.sr("SR-245")
 def test_unreachable_judge_is_one_line_once_per_session_and_never_blocks(
         records: Path, hook_input) -> None:
     """SR-021 EX-1: a jev judge with no key. The hook says so in one line, once per session,
@@ -196,7 +196,7 @@ def test_unreachable_judge_is_one_line_once_per_session_and_never_blocks(
     assert "judging unavailable" not in second  # once per session
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_jev_without_its_key_says_so_once_and_judges_nothing_by_rules(
         records: Path, hook_input) -> None:
     """SR-039 EX-1: judgment.backend jev and the key variable unset (conftest clears it).
@@ -215,7 +215,7 @@ def test_jev_without_its_key_says_so_once_and_judges_nothing_by_rules(
     assert not (records / ".plumb" / "session" / "intent_flags.jsonl").exists()
 
 
-@pytest.mark.sr("SR-021")
+@pytest.mark.sr("SR-245")
 def test_no_judge_configured_names_the_setting(records: Path, hook_input) -> None:
     _confirm(records, "SR-004")
     out = _run(records, hook_input, "SR-004 should now change", backend=prompt.LAZY)
@@ -237,7 +237,7 @@ def test_nothing_relevant_prints_nothing(records: Path, hook_input) -> None:
 # --- SHOULD items -----------------------------------------------------------------------
 
 
-@pytest.mark.sr("SR-024")
+@pytest.mark.sr("SR-242")
 def test_prints_queued_escalations(records: Path, hook_input) -> None:
     queue = records / ".plumb" / "session" / "escalations.jsonl"
     queue.parent.mkdir(parents=True, exist_ok=True)
@@ -324,7 +324,7 @@ def _queue_untraced(repo: Path, paths: list[str], session: str = "s1") -> Path:
     return note
 
 
-@pytest.mark.sr("SR-026")
+@pytest.mark.sr("SR-200")
 def test_next_prompt_tells_the_agent_to_trace_the_untraced_change(records: Path,
                                                                   hook_input) -> None:
     (records / "src").mkdir()
@@ -338,7 +338,7 @@ def test_next_prompt_tells_the_agent_to_trace_the_untraced_change(records: Path,
     assert "untraced change" not in _run(records, hook_input, "and modulo")
 
 
-@pytest.mark.sr("SR-026")
+@pytest.mark.sr("SR-200")
 def test_queued_path_linked_since_is_not_repeated(records: Path, hook_input) -> None:
     from plumb.contracts import Target
 
@@ -352,7 +352,7 @@ def test_queued_path_linked_since_is_not_repeated(records: Path, hook_input) -> 
 # -- R9 context economy: a deduplicated delta per session (SR-032) ----------------------------
 
 
-@pytest.mark.sr("SR-032")
+@pytest.mark.sr("SR-277")
 def test_second_prompt_naming_an_unchanged_record_injects_nothing(records: Path,
                                                                    hook_input) -> None:
     first = _run(records, hook_input, "SR-003 stale links")
@@ -362,7 +362,7 @@ def test_second_prompt_naming_an_unchanged_record_injects_nothing(records: Path,
     assert "SR-003 [proposed]" in _run(records, hook_input, "SR-003 stale links", session="s2")
 
 
-@pytest.mark.sr("SR-032")
+@pytest.mark.sr("SR-277")
 def test_changed_record_is_injected_again_as_one_line(records: Path, hook_input) -> None:
     _run(records, hook_input, "SR-003 and SR-004")
     path = records / ".plumb" / "requirements" / "SR-003.md"
@@ -372,7 +372,7 @@ def test_changed_record_is_injected_again_as_one_line(records: Path, hook_input)
         "SR-003 [proposed] Links pin both ends"]
 
 
-@pytest.mark.sr("SR-032")
+@pytest.mark.sr("SR-277")
 def test_confirmation_change_is_injected_again(records: Path, hook_input) -> None:
     _run(records, hook_input, "SR-004 approvals")
     _confirm(records, "SR-004")
@@ -383,7 +383,7 @@ def test_confirmation_change_is_injected_again(records: Path, hook_input) -> Non
     assert "compare this request" not in _run(records, hook_input, "SR-004 approvals")
 
 
-@pytest.mark.sr("SR-032")
+@pytest.mark.sr("SR-277")
 def test_records_cut_by_the_budget_come_on_a_later_prompt(records: Path, hook_input,
                                                           write_record) -> None:
     (records / ".plumb" / "config.yaml").write_text("hooks:\n  prompt_tokens: 10\n", "utf-8")
@@ -394,7 +394,7 @@ def test_records_cut_by_the_budget_come_on_a_later_prompt(records: Path, hook_in
     assert "SR-004 [proposed]" in second and "SR-003 [proposed]" not in second
 
 
-@pytest.mark.sr("SR-032")
+@pytest.mark.sr("SR-277")
 def test_session_clear_resets_what_the_agent_has_seen(records: Path, hook_input) -> None:
     from plumb.hosts.claude_code import session_start
 
@@ -465,7 +465,7 @@ def _logged(repo: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
 
 
-@pytest.mark.sr("SR-112")
+@pytest.mark.sr("SR-209")
 @pytest.mark.parametrize("note", [
     "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>",
     "<system-reminder>\nthe task tools have not been used\n</system-reminder>",
@@ -482,7 +482,7 @@ def test_harness_notification_is_logged_as_such_and_queues_no_job(
     assert not (records / ".plumb" / "session" / "s1" / "turn.json").exists()
 
 
-@pytest.mark.sr("SR-112")
+@pytest.mark.sr("SR-209")
 @pytest.mark.parametrize("note", [
     "<task-notification>\n<status>done</status>\n</task-notification>",
     "<system-reminder>\nnoise\n</system-reminder>",
@@ -500,7 +500,7 @@ def test_owner_text_with_appended_notification_logs_only_the_owner_text(
     assert seen == ["please fix the stale links"]
 
 
-@pytest.mark.sr("SR-173")
+@pytest.mark.sr("SR-266")
 def test_the_next_prompt_hands_the_agent_the_stop_hooks_queued_notes(
         records: Path, hook_input) -> None:
     notes = records / ".plumb" / "session" / "s1" / "agent_notes.json"

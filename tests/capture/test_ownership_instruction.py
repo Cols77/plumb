@@ -23,7 +23,7 @@ from capture_helpers import record_text
 from plumb.api import open_core
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-044")
+pytestmark = pytest.mark.sr("SR-200")
 
 PROPOSED = "src/app/mod.py: SR-001 may own this (proposed)"
 DEC1 = record_text("DEC-001", "Integers only", question="Should add accept floats?",

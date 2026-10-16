@@ -15,7 +15,7 @@ from plumb.cli import main
 from plumb.contracts import Target
 from plumb.understand.repin import Meaning
 
-pytestmark = pytest.mark.sr("SR-111")
+pytestmark = pytest.mark.sr("SR-198")
 
 SR1 = """---
 id: SR-001
@@ -133,7 +133,7 @@ def test_model_unreachable_refuses_and_repins_nothing(project: Path, judge) -> N
     assert not list(open_core(project).log_read("events", ["repin"]))
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_pin_on_an_uncommitted_version_is_found_and_repinned(project: Path) -> None:
     """SR-166 EX-2: the pinned uncommitted version is kept in git's object store."""
     (project / "src" / "later.py").write_text(DEF_F, "utf-8")

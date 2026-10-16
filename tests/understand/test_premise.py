@@ -10,7 +10,7 @@ import pytest
 from plumb.api import open_core
 from understand.test_judge_job import intent_text, log_prompt, requirement_text
 
-pytestmark = pytest.mark.sr("SR-102")
+pytestmark = pytest.mark.sr("SR-239")
 
 PROMPT = "please add multiply next to add; 2 times 3 is 6"
 DOC = {

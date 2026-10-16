@@ -1,0 +1,768 @@
+{
+ "principle": "P8",
+ "intent": {
+  "quote": "My intent is that most of the time the system shouldn't rely on deterministic tooling to understand intent or process text, unless we're sure the deterministic solution can handle any type of situation.",
+  "source_int": "INT-029",
+  "readback": "Every record the agent writes or changes is checked by a judge independent of the coding agent, against everything you said and the context you said it in, not just a quoted fragment. JEV answers first when it is confident past the threshold calibrated on your own answers; otherwise the judge model you configured answers, and one judge_model setting governs everything about verdicts. When no judge can be reached, plumb tells you once and holds only the steps that need a verdict; it never decides by fixed rules instead.",
+  "will": [
+   "Judge every new or changed record, and every stale link, against your whole logged words and their context, from any checkout of the repository.",
+   "Ask JEV first and the configured judge model below JEV's calibrated threshold, logging which judge gave each verdict and with what confidence.",
+   "Mark a judgment made on a quote alone, and never fast-track a record on it.",
+   "Keep JEV's provider, credential name and question form as settings, with the key never written into the repository.",
+   "With no judge reachable, say so once, apply the verdicts already given, and hold only what needs a verdict until a judge answers.",
+   "Judge code against its requirements edge by edge, weakest first, as advice, and list unjudged touched requirements at the merge."
+  ],
+  "wont": [
+   "Decide any verdict by keyword, heuristic or other fixed rule, as a fallback or otherwise.",
+   "Let the coding agent that wrote a record or the code be its judge.",
+   "Show you the judge's doubts as a card or a read-back line to read; they reach you only as questions through the question tool.",
+   "Ask you for a record id or a shell command to judge, align or set anything up.",
+   "Hold your prompt, or work that needs no judge, because a judge is unreachable.",
+   "Change, create or remove a link because of a fidelity judgment."
+  ],
+  "assumptions": [
+   "Assumed: the 'configured judge model' of P8 is the same model P9's cascade calls Sonnet; judge_model names it and its default follows P9, Haiku still allowed.",
+   "Assumed: 'above its calibrated threshold' is strict, so a JEV probability equal to the threshold goes to the judge model (old SR-182 said 'at or above').",
+   "Assumed: the owner's words outlive the session through P3's pre-intent record, so the old rule copying the premise message into the committed log (SR-102) gives way to DEC-074 (prompt text is not copied into the tracked log).",
+   "Assumed: low-confidence judgments go to the judge model, not to the host coding agent (old SR-024), because P8 asks for an independent judge.",
+   "Assumed: a judge that keeps failing in the same way (repeated out-of-schema answers) is a case that cannot settle and goes to P5's debug workflow.",
+   "Assumed: agent-side commands such as alignment and fidelity may still take record ids; only owner commands never do (P2)."
+  ]
+ },
+ "requirements": [
+  {
+   "title": "An independent judge checks every new or changed record against the owner's whole words",
+   "statement": "A model independent of the coding agent judges each new or changed record (one job per capture) against its premise: the owner's whole logged message or pre-intent with its context, the question a short answer answered, and the approved records, labelled assumptions left out. It returns supported, beyond or contradicts with what and its confidence, logged; a doubt reaches the owner only as a question-tool question.",
+   "examples": [
+    {
+     "given": "an intent's first interpretation adds one line per record and a token budget, and the owner's message asked only for a smarter way that does not bloat the context",
+     "when": "the judge runs",
+     "then": "beyond: one line per record and a token budget"
+    },
+    {
+     "given": "an interpretation states maintenance mode as decided, and the owner said \"consider stopping developments on pi-agent-factory if it takes too much RAM\"",
+     "when": "the judge runs",
+     "then": "beyond: maintenance mode is stated as decided"
+    },
+    {
+     "given": "an interpretation built from the owner's answer B with its question",
+     "when": "the judge runs",
+     "then": "supported"
+    },
+    {
+     "given": "a requirement whose example contradicts an example of an approved requirement",
+     "when": "the judge runs",
+     "then": "contradicts, naming both examples"
+    },
+    {
+     "given": "the owner answered \"A\" in the question tool to a question offering A and B",
+     "when": "the judge runs on the record built from that answer",
+     "then": "the question is part of the premise, and the judge is asked whether the owner would object to the record given that question and answer"
+    },
+    {
+     "given": "a capture writes an intent and six requirements from one owner message",
+     "when": "the capture finishes",
+     "then": "one judge job covers the seven records"
+    },
+    {
+     "given": "the judge finds a record goes beyond or contradicts the owner's words",
+     "when": "the verdict is logged",
+     "then": "no card and no read-back line is drawn; the owner gets the judge model's question about that finding through the question tool, naming the record by title"
+    },
+    {
+     "given": "a requirement written with a labelled assumption the owner never stated",
+     "when": "the judge runs",
+     "then": "the assumption is not judged and does not make the verdict beyond"
+    }
+   ],
+   "examples_kept": [
+    "SR-102/EX-1",
+    "SR-102/EX-2",
+    "SR-102/EX-3",
+    "SR-102/EX-4",
+    "SR-102/EX-6",
+    "SR-102/EX-7",
+    "SR-102/EX-8"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-102/EX-5",
+     "why": "trial and confirm cards are retired (P2, P3, P12); an option picked in the question tool is the owner's own answer and its record follows the P9 cascade"
+    },
+    {
+     "id": "SR-152/EX-2",
+     "why": "the read-back card is retired (P3, P12); a contradiction reaches the owner as one question through the question tool (P3, P9), not a card line"
+    },
+    {
+     "id": "SR-152/EX-3",
+     "why": "the read-back card is retired (P3, P12)"
+    },
+    {
+     "id": "SR-152/EX-4",
+     "why": "the read-back card is retired (P3, P12)"
+    },
+    {
+     "id": "SR-152/EX-1",
+     "why": "inverted: the read-back card line it draws is retired with the cards (P3, P12); a judge's doubt now reaches the owner as a question-tool question"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended: in a live session the owner states a small intent and the agent deliberately adds one requirement the owner never asked for; the owner gets one question-tool question naming that requirement as going beyond their words, and nothing else. The owner decides whether this is the proof.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-008",
+   "supersedes": [
+    "SR-102",
+    "SR-152"
+   ],
+   "implemented_by": [
+    "src/plumb/approvals.py",
+    "src/plumb/boundary/glance.py",
+    "src/plumb/capture/calibrate.py",
+    "src/plumb/capture/jevcmd.py",
+    "src/plumb/capture/triage.py",
+    "src/plumb/contracts.py",
+    "src/plumb/judgment/__init__.py",
+    "src/plumb/judgment/jev.py",
+    "src/plumb/paths.py",
+    "src/plumb/present/owner_text.py",
+    "src/plumb/understand/agents/judge.md",
+    "src/plumb/understand/backlog.py",
+    "src/plumb/understand/cardcontent.py",
+    "src/plumb/understand/cards.py",
+    "src/plumb/understand/clarify.py",
+    "src/plumb/understand/cmd_clarify.py",
+    "src/plumb/understand/evalset/judge.json",
+    "src/plumb/understand/judge.py",
+    "src/plumb/understand/premise.py",
+    "src/plumb/understand/read.py",
+    "src/plumb/understand/repin.py",
+    "src/plumb/understand/schemas/judge.json",
+    "src/plumb/understand/trial.py",
+    "tests/capture/capture_helpers.py"
+   ],
+   "decides": [
+    "DEC-074",
+    "DEC-050"
+   ]
+  },
+  {
+   "title": "The judge's premise is found wherever the owner's words were logged",
+   "statement": "The judge reads the owner's message from the main checkout's session log in any worktree of the repository, and from the worktree's own log too, the latest entry of a digest winning; a checkout that is not a worktree reads only its own log; a fresh clone with no session log judges against the record's pre-intent. Nothing is copied between logs.",
+   "examples": [
+    {
+     "given": "a fresh clone with no session log and a record whose pre-intent holds the owner's sentence and its context",
+     "when": "the judge runs",
+     "then": "it judges the record against that pre-intent"
+    },
+    {
+     "given": "an intent whose prompt digest names a message the hook logged in the main checkout",
+     "when": "the judge runs in a worktree of that repository",
+     "then": "the premise is the whole message, as in the main checkout, and no line is copied into the worktree"
+    },
+    {
+     "given": "a worktree with its own session log holding a line the main checkout lacks",
+     "when": "a prompt is looked up",
+     "then": "both logs are read and the latest entry of a digest wins"
+    },
+    {
+     "given": "a checkout that is not a worktree",
+     "when": "a prompt is looked up",
+     "then": "only its own log is read"
+    }
+   ],
+   "examples_kept": [
+    "SR-189/EX-1",
+    "SR-189/EX-2",
+    "SR-189/EX-3",
+    "SR-189/EX-4"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended: in a live session in a worktree, the owner states a small intent; the judge's verdict on it is the same as in the main checkout, and the worktree's log gains no copied line. The owner decides whether this is the proof.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-008",
+   "supersedes": [
+    "SR-189"
+   ],
+   "implemented_by": [
+    "src/plumb/understand/premise.py",
+    "src/plumb/paths.py",
+    "src/plumb/understand/judge.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "A judgment made on the quote alone is marked so, never fast-tracks, and is counted at calibration",
+   "statement": "When no logged message holds the owner's words, the judgment says premise: quote-only with the reason, and such a judgment never fast-tracks the record; calibration counts how many labels rest on quote-only premises and JEV status says so. A judgment on the whole message carries no mark.",
+   "examples": [
+    {
+     "given": "an intent with no logged prompt",
+     "when": "the judge runs",
+     "then": "the judgment entry says premise: quote-only, reason: no prompt named, and that judgment never fast-tracks the record"
+    },
+    {
+     "given": "25 of 46 labelled intents have a quote-only premise",
+     "when": "calibration runs",
+     "then": "the calibration entry records quote_only: 25 of 46 and the JEV status line says so"
+    },
+    {
+     "given": "a record whose premise is the whole message",
+     "when": "it is judged",
+     "then": "the entry carries no quote-only mark"
+    }
+   ],
+   "examples_kept": [
+    "SR-190/EX-1",
+    "SR-190/EX-2",
+    "SR-190/EX-3"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended: the owner says /plumb jev status on a project whose older intents have no logged prompt and sees how many labels rest on the quote alone. The owner decides whether this is the proof.",
+    "kind": "command"
+   },
+   "feature": "FEAT-008",
+   "supersedes": [
+    "SR-190"
+   ],
+   "implemented_by": [
+    "src/plumb/understand/judge.py",
+    "src/plumb/capture/calibrate.py",
+    "src/plumb/capture/jevcmd.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "Verdicts come from one cascade, JEV first, else the judge model, following judge_model",
+   "statement": "Every verdict, a record against the owner's words or a stale link's repin, asks JEV first; above its threshold calibrated on the owner's labels with no false accept, JEV's verdict stands; below it, with JEV not configured or its version drifted, the configured judge model gives it, logged with the model's name. judge_model governs verdicts, their evaluation run and the calibration fingerprint; understand.model reads the owner's words.",
+   "examples": [
+    {
+     "given": "JEV gives 0.95 for an intent's interpretation and the calibrated threshold is 0.43",
+     "when": "the verdict is asked",
+     "then": "the verdict is supported on JEV's answer, the judge model is not called, and the fast track may use it"
+    },
+    {
+     "given": "JEV gives 0.3 for a requirement's example restatement",
+     "when": "the verdict is asked",
+     "then": "the judge model judges it, logged with its name, and the record does not take the fast track on JEV"
+    },
+    {
+     "given": "judge_model is sonnet",
+     "when": "a verdict falls below JEV's threshold",
+     "then": "Sonnet gives it, logged with the model's name"
+    },
+    {
+     "given": "a JEV intent-change judgment with confidence 0.6, below the threshold",
+     "when": "the cascade runs",
+     "then": "the judge model judges it; no escalation request is written for the coding agent"
+    },
+    {
+     "given": "JEV's probability equals the calibrated threshold exactly",
+     "when": "the verdict is asked",
+     "then": "the judge model judges it; only a probability above the threshold stands on JEV"
+    },
+    {
+     "given": "thresholds validated against jev-1.13.0",
+     "when": "JEV resolves typesafe/jev-1.13-20260917, or jev-1.14",
+     "then": "the dated OpenRouter name is the same version and a confident answer is accepted with version_drift false; jev-1.14 is drift and the judge model judges"
+    },
+    {
+     "given": "judge_model is sonnet and understand.model is haiku",
+     "when": "the evaluation run over the labelled set is made",
+     "then": "Sonnet judges and the run log names sonnet"
+    },
+    {
+     "given": "the same settings",
+     "when": "a logged calibration records its fingerprint",
+     "then": "the fingerprint names sonnet as the judge model"
+    },
+    {
+     "given": "the same settings",
+     "when": "a clarify or read job runs",
+     "then": "Haiku reads the owner's words, as understand.model says"
+    },
+    {
+     "given": "judge_model changes after a logged calibration",
+     "when": "the stale check runs",
+     "then": "the fast track is suspended until the evaluation set passes again, as for a prompt change"
+    },
+    {
+     "given": "an edit adds a new command to commands.py and JEV gives 0.95 that a requirement's repin path is untouched, above the calibrated threshold",
+     "when": "the stale link is resolved",
+     "then": "it is repinned on JEV's answer and the judge model is not asked"
+    },
+    {
+     "given": "JEV gives 0.4 for a requirement's stale link",
+     "when": "the link is resolved",
+     "then": "the judge model judges it with the requirement and the diff; on unchanged it is repinned"
+    },
+    {
+     "given": "no labelled set has set JEV's threshold yet, or JEV is unreachable",
+     "when": "a link is resolved",
+     "then": "JEV is skipped and the judge model judges; nothing is repinned on a guess"
+    }
+   ],
+   "examples_kept": [
+    "SR-182/EX-1",
+    "SR-182/EX-2",
+    "SR-182/EX-3",
+    "SR-021/EX-3",
+    "SR-186/EX-1",
+    "SR-186/EX-2",
+    "SR-186/EX-3",
+    "SR-186/EX-4",
+    "SR-114/EX-1",
+    "SR-114/EX-2",
+    "SR-114/EX-6"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-024/EX-1",
+     "why": "reversed: the escalation hand-off to the host agent is replaced; below JEV's threshold the judge model judges, and the coding agent never judges a verdict (P8's independence). Example 4 now states that no escalation request is written"
+    },
+    {
+     "id": "SR-114/EX-3",
+     "why": "what follows a judge model's 'requirement changed' verdict (reword, send back to development, or ask the owner) is P1's drift requirement, which carries it from SR-113; the cascade only gives the verdict"
+    },
+    {
+     "id": "SR-114/EX-4",
+     "why": "what follows a judge model's 'requirement changed' verdict (reword, send back to development, or ask the owner) is P1's drift requirement, which carries it from SR-113; the cascade only gives the verdict"
+    },
+    {
+     "id": "SR-114/EX-5",
+     "why": "what follows a judge model's 'requirement changed' verdict (reword, send back to development, or ask the owner) is P1's drift requirement, which carries it from SR-113; the cascade only gives the verdict"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended: in a live session with judge_model set to sonnet and JEV unsure on one of two small intents, the owner sees the plumb line say one record was approved on JEV's verdict and the other on Sonnet's, and /plumb jev status name Sonnet as the judge model. The owner decides whether this is the proof.",
+    "kind": "command"
+   },
+   "feature": "FEAT-002",
+   "supersedes": [
+    "SR-182",
+    "SR-186",
+    "SR-114",
+    "SR-024"
+   ],
+   "implemented_by": [
+    "src/plumb/capture/autoapprove.py",
+    "src/plumb/capture/calibrate.py",
+    "src/plumb/commands.py",
+    "src/plumb/config.py",
+    "src/plumb/judgment/__init__.py",
+    "src/plumb/judgment/cascade.py",
+    "src/plumb/judgment/verdict.py",
+    "src/plumb/links.py",
+    "src/plumb/understand/agents/diagnose.md",
+    "src/plumb/understand/evalcompare.py",
+    "src/plumb/understand/evalrun.py",
+    "src/plumb/understand/judge.py",
+    "src/plumb/understand/repin.py",
+    "src/plumb/understand/verdict.py",
+    "src/plumb/understand/worker.py",
+    "tests/understand/fakes.py"
+   ],
+   "decides": [
+    "DEC-064",
+    "DEC-069",
+    "DEC-055"
+   ]
+  },
+  {
+   "title": "JEV's provider and credential name are settings; the key never enters the repository",
+   "statement": "JEV is reached only through the judgment protocol; its provider preset, model and credential variable are settings. The key is read from the environment or a user-level env file outside the repository, never written to any repository file, log, notice or output; JEV status reports provider, endpoint, key source, reachability and version without the key.",
+   "examples": [
+    {
+     "given": "judgment.backend jev and no credential in the environment",
+     "when": "a hook asks for an intent-change judgment",
+     "then": "plumb says the JEV credential is missing, naming the variable, once for the session; no heuristic answers"
+    },
+    {
+     "given": "any repository",
+     "when": "plumb jev setup --env-var MY_KEY runs",
+     "then": "config.yaml names MY_KEY, a jev-setup event holds the name, and no secret is written anywhere"
+    },
+    {
+     "given": "judgment.jev says provider: openrouter and nothing else",
+     "when": "plumb loads its config",
+     "then": "JEV posts to https://openrouter.ai/api/alpha/decisions with model typesafe/jev-1.13, validated against typesafe/jev-1.13, reading OPENROUTER_API_KEY; any judgment.jev value set explicitly (base_url, path, model, validated_against, credential_env) wins over the preset"
+    },
+    {
+     "given": "OPENROUTER_API_KEY is not in the environment and ~/.config/plumb/jev.json names an env file outside the repository that holds it",
+     "when": "plumb resolves the JEV key",
+     "then": "the key is read from that file in place, the source label is env-file, and the key is written to no repository file, log entry, judgment record, notice or output; an env file inside the repository is refused"
+    },
+    {
+     "given": "the owner says /plumb jev setup openrouter and names an env file outside the repository",
+     "when": "the agent runs the setup",
+     "then": "config.yaml gets only provider, model and the variable name, the user-level jev.json names the variable and the env file, and /plumb jev status shows the provider, endpoint, key source label, reachability and the normalized resolved version, never the key"
+    },
+    {
+     "given": "an earlier setup left a base_url, path or validated version for one JEV provider",
+     "when": "the owner says /plumb jev setup with another provider",
+     "then": "config.yaml keeps none of the earlier provider's base_url, path, model or validated_against; the new provider's preset applies; other judgment.jev settings such as thresholds stay"
+    },
+    {
+     "given": "JEV is set up or not, calibrated or not, the fast track on or off",
+     "when": "the owner says /plumb jev status or /plumb jev calibrate",
+     "then": "the status and refusal text name /plumb commands or plain words, never a plumb CLI command, a record id or 'in your terminal'"
+    }
+   ],
+   "examples_kept": [
+    "SR-039/EX-1",
+    "SR-039/EX-2",
+    "SR-039/EX-4",
+    "SR-039/EX-5",
+    "SR-039/EX-6",
+    "SR-039/EX-8",
+    "SR-039/EX-9"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-039/EX-3",
+     "why": "a property of plumb's own test suite (how the jev_live tests behave), not behaviour the owner observes; the key never leaving the user-level file is carried by the env-file example"
+    },
+    {
+     "id": "SR-039/EX-7",
+     "why": "a property of plumb's own test suite (how the jev_live tests behave), not behaviour the owner observes; the key never leaving the user-level file is carried by the env-file example"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended: in a scratch repository the owner says /plumb jev setup openrouter naming an env file outside it, then /plumb jev status; the owner sees status show reachability and version without the key, and watches the agent search the repository and its log for the key and find nothing. The owner decides whether this is the proof.",
+    "kind": "command"
+   },
+   "feature": "FEAT-002",
+   "supersedes": [
+    "SR-039"
+   ],
+   "implemented_by": [
+    "pyproject.toml",
+    "src/plumb/capture/autoapprove.py",
+    "src/plumb/capture/calibrate.py",
+    "src/plumb/capture/cli.py",
+    "src/plumb/capture/configfile.py",
+    "src/plumb/capture/jevcmd.py",
+    "src/plumb/config.py",
+    "src/plumb/contracts.py",
+    "src/plumb/hosts/claude_code/templates/plumb-command.md",
+    "src/plumb/judgment/__init__.py",
+    "src/plumb/judgment/cli.py",
+    "src/plumb/judgment/jev.py",
+    "src/plumb/judgment/model.py",
+    "src/plumb/judgment/tiers.py",
+    "src/plumb/understand/evalcompare.py",
+    "src/plumb/understand/verdict.py",
+    "tests/conftest.py"
+   ],
+   "decides": [
+    "DEC-056"
+   ]
+  },
+  {
+   "title": "JEV's question form is a setting, and a calibration counts only for the form it measured",
+   "statement": "jev.output sets how JEV is asked: yes/no by default, or the three-way choice over supported, beyond and contradicts, whose probability of supported is used and logged with the form. A calibration measured with one form is not used for the other.",
+   "examples": [
+    {
+     "given": "jev.output is unset",
+     "when": "JEV is asked",
+     "then": "it is asked yes/no"
+    },
+    {
+     "given": "jev.output is choice",
+     "when": "JEV is asked",
+     "then": "it is asked the three-way choice over supported, beyond and contradicts, the probability of supported is used, and the log names the form"
+    },
+    {
+     "given": "a calibration measured with yes_no",
+     "when": "jev.output is switched to choice",
+     "then": "the fast track does not run on the old calibration and JEV status says a calibration for the choice form is needed"
+    }
+   ],
+   "examples_kept": [
+    "SR-183/EX-1",
+    "SR-183/EX-2",
+    "SR-183/EX-3"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended: the owner says to switch JEV to the choice form and /plumb jev status then says a calibration for the choice form is needed. The owner decides whether this is the proof.",
+    "kind": "command"
+   },
+   "feature": "FEAT-002",
+   "supersedes": [
+    "SR-183"
+   ],
+   "implemented_by": [
+    "src/plumb/judgment/jev.py",
+    "src/plumb/capture/calibrate.py",
+    "src/plumb/config.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "With no judge reachable, plumb says so once and holds only what needs a verdict",
+   "statement": "When no judge can answer a record (not configured, no key, timeout, service down, an out-of-schema answer, a diff too large), plumb says once per session window (from the session's start, or the judge's last answer, until the judge answers again) which judge, why and what waits; verdicts already given are applied at once, and only the unanswered records and the steps needing them (fast track, triage, calibration, the stale check, which never holds the turn for it) hold until a judge answers. Work needing no judge goes on, the owner's prompt is never held, nothing is decided by rule.",
+   "examples": [
+    {
+     "given": "no judge is configured",
+     "when": "the prompt hook judges an intent change",
+     "then": "plumb says no judgment model is configured, naming the setting, the prompt goes through, and no rule-based judge answers"
+    },
+    {
+     "given": "a JEV key is configured and JEV times out",
+     "when": "a judgment is requested",
+     "then": "plumb says JEV timed out; nothing falls back to a heuristic, the step needing it holds, and the prompt is not held"
+    },
+    {
+     "given": "the judge's key is missing",
+     "when": "the fast track would run",
+     "then": "one line says the judge is unreachable and the approval holds; nothing is approved by rule"
+    },
+    {
+     "given": "the judge's key is missing",
+     "when": "the agent edits a file and the turn ends with no stale link",
+     "then": "work goes on; the turn is not held"
+    },
+    {
+     "given": "the judge is back",
+     "when": "the held step runs again",
+     "then": "it completes and the line is gone"
+    },
+    {
+     "given": "a judge job of five records, JEV clears two, and the judge model is unreachable",
+     "when": "the job runs",
+     "then": "the two verdicts are applied and logged as JEV's, the three others wait, and one line says they wait for the judge model"
+    },
+    {
+     "given": "the judge model answers out of schema for a job",
+     "when": "the job runs",
+     "then": "its records wait with the same waiting line, not an unresolved error"
+    },
+    {
+     "given": "the diff of a job is too large for the judge model",
+     "when": "the job runs",
+     "then": "its records wait with the waiting line that names the size"
+    },
+    {
+     "given": "every record of a job is answered",
+     "when": "the job runs",
+     "then": "nothing waits and no line is printed"
+    },
+    {
+     "given": "the judge stays unreachable across two turns of the same session window",
+     "when": "each turn ends",
+     "then": "the line is printed once, not every turn"
+    },
+    {
+     "given": "the judge model answered out of schema for a job, and its records were retried once",
+     "when": "plumb cannot settle the job",
+     "then": "the records keep waiting with the waiting line, and the plumb line says one case went to debugging"
+    }
+   ],
+   "examples_kept": [
+    "SR-021/EX-1",
+    "SR-021/EX-2",
+    "SR-174/EX-1",
+    "SR-174/EX-2",
+    "SR-174/EX-3",
+    "SR-185/EX-1",
+    "SR-185/EX-2",
+    "SR-185/EX-3",
+    "SR-185/EX-4",
+    "SR-182/EX-4"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended: in a live session with the JEV key and the judge model both made unreachable, the owner states a small intent and the agent edits a file; the owner sees one line naming the judge and why, the records of the request waiting, the edit and the turn going on, then the key restored and the line gone on the next turn. The owner decides whether this is the proof.",
+    "kind": "hook"
+   },
+   "feature": "FEAT-002",
+   "supersedes": [
+    "SR-021",
+    "SR-174",
+    "SR-185"
+   ],
+   "implemented_by": [
+    "src/plumb/capture/autoapprove.py",
+    "src/plumb/capture/capture.py",
+    "src/plumb/hosts/claude_code/stop.py",
+    "src/plumb/judgment/__init__.py",
+    "src/plumb/judgment/jev.py",
+    "src/plumb/judgment/model.py",
+    "src/plumb/judgment/state.py",
+    "src/plumb/judgment/tiers.py",
+    "src/plumb/links.py",
+    "src/plumb/stale.py",
+    "src/plumb/understand/judge.py",
+    "src/plumb/understand/repin.py",
+    "src/plumb/understand/verdict.py",
+    "src/plumb/understand/worker.py"
+   ],
+   "decides": [
+    "DEC-060",
+    "DEC-068"
+   ]
+  },
+  {
+   "title": "Code is judged against its requirements edge by edge, weakest first, advisory",
+   "statement": "For a scope along existing links (intent, feature, requirement, example, test, code, evidence), plumb builds a fidelity packet with a fingerprint, names empty families as gaps, asks the judge cascade, never the coding agent, one question per edge and lists edges weakest first, never creating, removing or marking an edge. With no judge, edges are listed unjudged with the cause.",
+   "examples": [
+    {
+     "given": "a requirement with its second example linked to no test",
+     "when": "the scope is aligned",
+     "then": "it reports the gap \"<requirement>/EX-2 has no test\""
+    },
+    {
+     "given": "the judge answering no for the requirement-to-code edge",
+     "when": "the scope is aligned",
+     "then": "that edge is listed first and every link state is unchanged"
+    },
+    {
+     "given": "no judge set up",
+     "when": "the scope is aligned",
+     "then": "every edge is listed as unjudged with no score, it prints \"judging unavailable: no judge\", and the gap is still reported"
+    },
+    {
+     "given": "a requirement with implemented_by and verified_by links",
+     "when": "its fidelity packet is built",
+     "then": "the packet holds the statement, examples, linked file contents and test evidence"
+    },
+    {
+     "given": "a fidelity edge JEV scores below its threshold",
+     "when": "the edge is judged",
+     "then": "the judge model judges it; the coding agent that wrote the code does not"
+    },
+    {
+     "given": "the owner asks in plain words whether the code still does what a requirement says",
+     "when": "the agent answers",
+     "then": "it runs the alignment on that requirement itself; the owner never types a command or an id"
+    }
+   ],
+   "examples_kept": [
+    "SR-067/EX-1",
+    "SR-067/EX-2",
+    "SR-067/EX-3",
+    "SR-022/EX-1"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-022 (statement)",
+     "why": "its host agent judging the packet is replaced: the judge cascade judges each edge and the coding agent that wrote the code never does (P8); the packet itself is carried by SR-022/EX-1"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended: in a scratch repository with one requirement whose example has no test and a judge scripted to answer no on its code edge, the owner asks in plain words whether the code still does what the requirement says; the agent's answer names the gap and the weakest edge first, and the status shows every link unchanged. The owner decides whether this is the proof.",
+    "kind": "command"
+   },
+   "feature": "FEAT-005",
+   "supersedes": [
+    "SR-067",
+    "SR-022"
+   ],
+   "implemented_by": [
+    "src/plumb/align.py",
+    "src/plumb/boundary/fidelity.py",
+    "src/plumb/judgment/cli.py",
+    "src/plumb/judgment/fidelity.py",
+    "src/plumb/present/cli.py",
+    "src/plumb/present/review.py",
+    "tests/present/present_helpers.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "The merge check lists touched requirements unjudged or drifting, without changing its exit code",
+   "statement": "The merge check lists each touched requirement with no fidelity judgment for its current ends, or judged drifts or unsure; fidelity never changes its exit code.",
+   "examples": [
+    {
+     "given": "a touched requirement with no fidelity judgment for its current ends",
+     "when": "the merge check runs",
+     "then": "it lists the requirement as unjudged and the exit code is unchanged"
+    },
+    {
+     "given": "a judgment drifts on a touched requirement",
+     "when": "the rest of the merge report is green",
+     "then": "the exit code is 0 and the drifts verdict is listed"
+    }
+   ],
+   "examples_kept": [
+    "SR-050/EX-1",
+    "SR-050/EX-2"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended: the owner watches a merge of a branch touching a requirement judged to drift; the merge goes through and its report lists the requirement as drifting. The owner decides whether this is the proof.",
+    "kind": "hook"
+   },
+   "feature": "FEAT-005",
+   "supersedes": [
+    "SR-050"
+   ],
+   "implemented_by": [
+    "src/plumb/boundary/fidelity.py",
+    "src/plumb/boundary/report.py"
+   ],
+   "decides": []
+  }
+ ],
+ "decisions": [
+  {
+   "question": "Which judge gives a verdict, and which setting governs it?",
+   "chosen": "A cascade: JEV above its threshold calibrated on the owner's labels with no false accept decides; below it, or with JEV not configured or drifted, the judge model named by judge_model decides. judge_model governs verdicts, their evaluation run and the calibration fingerprint; understand.model stays the reader of the owner's words. Whether a verdict approves follows P9's fast track.",
+   "alternatives": [
+    "One judge model for everything",
+    "JEV alone",
+    "One model for all jobs: drop judge_model"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-064",
+    "DEC-069",
+    "DEC-055"
+   ]
+  },
+  {
+   "question": "When no judge can answer, or a judge job is only partly answered, what does plumb do?",
+   "chosen": "Say so once, apply the verdicts already given, and hold only the unanswered records and the steps needing them until a judge answers; work needing no judge goes on; nothing is decided by rule.",
+   "alternatives": [
+    "Say so once and skip, never hold",
+    "Fall back to simple rules",
+    "The whole job waits until every record has a verdict"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-060",
+    "DEC-068"
+   ]
+  },
+  {
+   "question": "Where does a worktree find the owner's prompt text?",
+   "chosen": "In the main checkout's session log, reached through git's common directory; prompt text is not copied into the tracked log.",
+   "alternatives": [
+    "Track the prompt text under .plumb/log so every checkout has it.",
+    "Keep copying lines by hand into each worktree."
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-074"
+   ]
+  }
+ ],
+ "retired_decisions": [
+  {
+   "id": "DEC-050",
+   "why": "Chose a line on the read-back card for the judge's doubts; read-back cards are retired (P3, P12) and doubts reach the owner only as question-tool questions (P9)."
+  },
+  {
+   "id": "DEC-055",
+   "why": "Low stakes (matters false); Sonnet as an option is now just a value of judge_model, folded into the cascade decision."
+  },
+  {
+   "id": "DEC-056",
+   "why": "Low stakes (matters false); keeping JEV's choice output as a configuration is carried by the jev.output setting in the JEV settings requirement."
+  }
+ ],
+ "one_offs": []
+}

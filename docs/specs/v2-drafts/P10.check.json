@@ -1,0 +1,62 @@
+{
+ "principle": "P10",
+ "file": "C:/coding/plumb-wt/v2/docs/specs/v2-drafts/P10.check.json",
+ "checks_passed": {
+  "1": "no draft example contradicts a confirmed example of a non-superseded record outside the changes made by confirmed principles; searched SR-008, SR-030, SR-047, SR-049, SR-051, SR-052, SR-108, SR-142, SR-179 and DEC-078 (SR-030's hidden-regression rule is only a wording risk, see low finding; INT-034's won't 'block a merge on a missing proof' and DEC-037 are overturned by P10)",
+  "6": "the intent quote matches INT-034 verbatim",
+  "7": "all 12 SRs of clusters 19, 32 and 33 (SR-197, 127, 093; SR-048, 031, 027, 020, 019, 018; SR-110, 017, 016) are superseded exactly once (SR-018 sits under the targeted verification requirement); DEC-037 and DEC-006 superseded, DEC-005 and DEC-010 retired",
+  "8": "no owner command takes an id and no card or read-back line is read or pressed"
+ },
+ "findings": [
+  {
+   "level": "medium",
+   "requirement": "A merge is never green while an affected acceptance test lacks a passing run on the current identity",
+   "what": "Check 2 and bookkeeping: reversed or reworded confirmed examples are listed in examples_kept without a reason. SR-127/EX-3 (3 linked tests: the merge is NOT blocked by an unshown proof), SR-093/EX-2 (the owner is asked nothing about success) and SR-020/EX-1 (a regression and the owner is asked) are now inverted by the draft (merge refuses; owner decides the proof; owner is not asked), and SR-093/EX-1 (the intent card shows 'Done when:') lost its card (P12). P10 and P5 authorise the changes, so this is not a contradiction, but each should sit in examples_dropped (or a 'changed' list) with the reason, otherwise the old behaviour the code still has has no recorded replacement. The same applies to SR-031/EX-3 (owner runs plumb tests waive in a terminal; now a question-tool answer, exit 3 for the agent marker is not carried)."
+  },
+  {
+   "level": "medium",
+   "requirement": "A merge is never green while an affected acceptance test lacks a passing run on the current identity",
+   "what": "Check 4: the outcomes of 'full verification pending' are not distinguished. Example 9 (conftest.py breaks a helper) only holds and exits 5 with no run; example 11 (pyproject.toml) has the question tool ask run-or-waive; example 13 (uv.lock) runs the suite once with no question. The draft also merges the report-only form (SR-031/SR-047 validate --merge) with the running form (SR-048 merge-check) under 'the merge check', so a reader cannot tell when the suite runs, when the owner is asked and when it only holds. State the rule once (who runs it, when the owner is asked) and make the examples agree."
+  },
+  {
+   "level": "medium",
+   "requirement": "Every requirement carries the proof the owner chose, and done and the merge refuse without its evidence",
+   "what": "Check 3: two behaviours in one. Examples 8 and 9 (a 'done when' item no example covers is named as a gap, then the gap goes) are the alignment check of SR-093, which the statement never mentions; and example 3 folds the 'done when' item into the proof ('its proof records ...') while examples 8 and 9 still treat 'done when' as a separate item. Either state the alignment gap in the statement and keep it as its own requirement, or say that done-when is the proof and drop the gap wording. SR-093's statement behaviour of telling the agent what a request leaves open (scope, non-goals, failure cases, not only success) is also not carried or listed as dropped (SR-093 has no linked tests, so low weight)."
+  },
+  {
+   "level": "medium",
+   "requirement": "Each turn's changes are verified by targeted covering tests, not the full suite",
+   "what": "Check 3 and statement mismatch: the requirement bundles selection from the map, exact-match evidence reuse (examples 6, 7), the stop hook delegating to the agent (examples 12, 13), the owner-set time budget (example 14) and the shared-infrastructure pending flag (example 9). The statement says nothing about the bounded sample, the pending flag, the timeout recording or the fresh-clone case that examples 9 to 12 assert. Evidence reuse and the hook's one ask are separate behaviours; at least say them in the statement, or split."
+  },
+  {
+   "level": "medium",
+   "requirement": "Every requirement carries the proof the owner chose, and done and the merge refuse without its evidence",
+   "what": "Check 4: vague then-clauses. Example 11 'the owner is asked only as a last resort' and its given 'the environment lacks what it needs' cannot be observed or set up; example 12 'evidence of the old proof no longer counts' names no observable (say the merge check refuses again until the new proof is shown). R2 example 18 has the same fault in its given: 'an error plumb cannot tie to the change' has no test that decides it."
+  },
+  {
+   "level": "low",
+   "requirement": "A merge is never green while an affected acceptance test lacks a passing run on the current identity",
+   "what": "Wording: the statement says a failure 'stays until a run passes it', but confirmed SR-030/EX-5 (not superseded here) says a pass on a rewritten test body marks the regression hidden and only a pass on the original body resolves it. The examples do not collide with it, but the statement is too broad; say 'a run of the test that failed'. Also the regression rule drops 'or passed flaky' (SR-020, DEC-010), while DEC-010's retirement reason claims the examples state it."
+  },
+  {
+   "level": "low",
+   "requirement": "A merge is never green while an affected acceptance test lacks a passing run on the current identity",
+   "what": "Bookkeeping: SR-048's rule that a green report appends one merge-evidence event pinning run, tree and environment has no example (example 14 only says a failing run writes none). R2 also lists decides DEC-010 while DEC-010 is in retired_decisions, and DEC-005's retirement reason says 'pinned and committed' is stated by the targeted verification requirement, but R3's statement never says evidence is committed."
+  },
+  {
+   "level": "low",
+   "requirement": "Every requirement carries the proof the owner chose, and done and the merge refuse without its evidence",
+   "what": "Wording: the refusal for a missing proof (examples 6, 7) gives no exit code or precedence, while SR-049 fixes precedence 1, 5, 4 for the merge report; and the intent's quote is INT-034 only, yet its readback and will items on targeted verification and the full-run waiver come from INT-027, whose quote is not given (the quote itself is verbatim, check 6 passes)."
+  },
+  {
+   "level": "low",
+   "requirement": "Each turn's changes are verified by targeted covering tests, not the full suite",
+   "what": "Proof plan (check 5): it promises a turn-end line showing the handful selected 'beside the count the import closure would have taken' and that a documentation-only turn 'selects nothing' on the line, but no example states that the turn-end line shows either. Add that to an example or soften the plan. The R2 plan is watchable (a scratch repository, merge check output) but has the agent, not the owner, doing the set-up; say the owner watches the output."
+  },
+  {
+   "level": "low",
+   "requirement": "A merge is never green while an affected acceptance test lacks a passing run on the current identity",
+   "what": "Wording (check 8, not violated): example 2 has status name SR-001 and EX-1, which is the owner's own status view; if it is owner-facing, say 'names the requirement and the example in plain words'. No owner command takes an id and no card or read-back line is read or pressed in the draft."
+  }
+ ]
+}

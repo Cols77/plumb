@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.capture.hints import drift_hints
 from plumb.judgment import FakeBackend
 
-pytestmark = pytest.mark.sr("SR-045")
+pytestmark = pytest.mark.sr("SR-199")
 
 SR4 = ".plumb/requirements/SR-004.md"
 

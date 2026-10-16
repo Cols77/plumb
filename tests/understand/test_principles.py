@@ -17,7 +17,7 @@ from plumb.hosts.claude_code.hookio import Deadline, HookContext
 from plumb.understand import cardstore, summary, tidy, worker
 from understand.test_judge_job import SESSION, requirement_text
 
-pytestmark = pytest.mark.sr("SR-172")
+pytestmark = pytest.mark.sr("SR-219")
 
 DECIDES = "the owner's answer is what the owner typed or pressed, never the agent's reading"
 CODE = "def add(a, b):\n    return a + b\n"

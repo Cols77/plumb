@@ -16,7 +16,7 @@ def installed(repo: Path) -> Path:
     return repo
 
 
-@pytest.mark.sr("SR-046")
+@pytest.mark.sr("SR-208")
 def test_plumb_records_skill_names_capture_helpers(installed: Path) -> None:
     skill = (installed / ".claude" / "skills" / "plumb-records" / "SKILL.md").read_text(
         encoding="utf-8")
@@ -30,7 +30,7 @@ def test_plumb_records_skill_names_capture_helpers(installed: Path) -> None:
         assert owner_only in skill
 
 
-@pytest.mark.sr("SR-043")
+@pytest.mark.sr("SR-223")
 def test_clarify_skill_states_depths_and_discipline(installed: Path) -> None:
     assert skill_names() == ["plumb-clarify", "plumb-intent", "plumb-records"]
     path = installed / ".claude" / "skills" / "plumb-clarify" / "SKILL.md"
@@ -45,7 +45,7 @@ def test_clarify_skill_states_depths_and_discipline(installed: Path) -> None:
     assert "{plumb}" not in skill
 
 
-@pytest.mark.sr("SR-157")
+@pytest.mark.sr("SR-223")
 def test_skills_ask_with_the_question_tool_unless_a_card_fits(installed: Path) -> None:
     skills = {name: " ".join((installed / ".claude" / "skills" / name / "SKILL.md")
                              .read_text(encoding="utf-8").split())
@@ -58,7 +58,7 @@ def test_skills_ask_with_the_question_tool_unless_a_card_fits(installed: Path) -
     assert "never ask in your own words about the owner's intent" in skills["plumb-clarify"]
 
 
-@pytest.mark.sr("SR-046")
+@pytest.mark.sr("SR-208")
 def test_skills_uninstalled_and_owner_commands_denied(installed: Path) -> None:
     from plumb.hosts.claude_code.install import Launcher
 

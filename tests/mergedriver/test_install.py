@@ -12,7 +12,7 @@ from plumb import cli
 from plumb.mergedriver import install, status, uninstall
 from plumb.mergedriver.gitconfig import ATTR_LINES, driver_command
 
-pytestmark = pytest.mark.sr("SR-075")
+pytestmark = pytest.mark.sr("SR-256")
 
 
 def _attrs(root: Path) -> list[str]:

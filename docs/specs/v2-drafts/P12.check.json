@@ -1,0 +1,57 @@
+{
+ "principle": "P12",
+ "file": "C:/coding/plumb-wt/v2/docs/specs/v2-drafts/P12.check.json",
+ "checked": {
+  "1": "no draft example contradicts a confirmed example of a non-superseded SR or DEC outside the changes made by P2/P3/P12 (searched the dump for card, panel, band, status line, plumb line, pane, diagram, progress, workspace in confirmed SR examples and all DEC chosen texts); the cards of other clusters (SR-086, SR-124, SR-130, SR-132, SR-147, SR-161) are retired by other principles' drafts",
+  "6": "intent.quote equals INT-049's quote verbatim",
+  "7": "all 26 old SRs of C22, C24, C25, C38, C39, C40 are superseded exactly once, plus one-offs SR-179, SR-180, SR-142 placed",
+  "8": "no id-based owner command, no card or read-back; agent-facing ids (conflict id, records with ids) stay on the agent channel only"
+ },
+ "findings": [
+  {
+   "level": "medium",
+   "requirement": "The owner's status shows where intent stands, in one line",
+   "what": "(3) Two behaviours plus fix-style examples in one requirement: what the status line/band shows (state, intent, counts, ASCII, reads state file only) and whether the band connects and explains why it is off (no-Python line, refused hello, host.json written before slow steps, older per-repository hooks, host.json unwritable). The last five examples are SR-125/SR-126 fix regressions; split the connection/explanation behaviour into its own requirement."
+  },
+  {
+   "level": "medium",
+   "requirement": "The browser study room holds the questions that need studying",
+   "what": "(3) Several behaviours in one: stepping Back/Next, grouping by state (waiting, being processed, blocked, done), exact-content answers, safe diagram drawing and fallbacks, once-only follow-up delivery to the source session, and persistence after restart. Examples 13 to 17 (restart keeps the answer, invalid option refused, custom combination not done, band registration kept) are SR-180 one-off defect guards dressed as behaviour. Split at least into navigation and state grouping, diagram embedding, and answer delivery."
+  },
+  {
+   "level": "medium",
+   "requirement": "The study room's tests run only when asked for",
+   "what": "(3) A developer pytest collection setting (including the 'no import file mismatch' fix in example 5), not a durable behaviour of plumb as the owner observes it; it is a one-off that the cluster already treated as a requirement but it fits P7's 'one durable observable behaviour' poorly. Better as an example under the study-room requirement or a note, since the owner cannot meaningfully watch it."
+  },
+  {
+   "level": "medium",
+   "requirement": "The browser study room holds the questions that need studying",
+   "what": "(4) Then-clause 'the answer is still recorded and the question shows its state' (server restart example) does not say which state; SR-180/EX-1 said 'settled state'. Name it (for example 'done') so it can be observed."
+  },
+  {
+   "level": "medium",
+   "requirement": "A question to the owner stands alone and holds what is needed to choose",
+   "what": "(2) SR-062/EX-5 (confirmed record with 2 linked tests: a judge flag of a possible change of a confirmed requirement shows the owner nothing unless the agent edits the flagged record or writes a linking record) is dropped with the reason 'belongs to P6', but the P6 draft does not mention SR-062 and its gate requirement closes the gate on the flag instead. The behaviour is neither carried nor truly handed over; either carry it as an example here or make P6 list it."
+  },
+  {
+   "level": "low",
+   "requirement": "The agent gets everything as text",
+   "what": "(3) Mixes the agent-channel behaviour with a legacy no-op: the full/compact/off setting 'has no effect and plumb tells the agent once that it is retired' preserves a dead setting in a rewritten record set (P15 tidy would remove it). Also 'notes for the model never shown to the owner as typed' (SR-087/EX-3) is in the statement with no example; SR-087/EX-1 to EX-5 are dropped only with the generic reason 'the cluster drops them', pointing to P13."
+  },
+  {
+   "level": "low",
+   "requirement": "A question about structure or flow comes with a diagram",
+   "what": "(3) Last example (the plugin ships no diagram skill or mod) is a packaging rule belonging to P14, separate from drawing a diagram for a structural question; SR-146's detail of saving the file under the session diagrams folder and naming it is not carried."
+  },
+  {
+   "level": "low",
+   "requirement": "Long plumb work shows its step and progress",
+   "what": "(5) Proof plan promises 'a screenshot of the status line and band animating'; a screenshot cannot show animation, use a short recording. Also P13 notes an overlap on the animated band: keep the band animation in only one of the two drafts."
+  },
+  {
+   "level": "low",
+   "requirement": "A question to the owner stands alone and holds what is needed to choose",
+   "what": "(4) 'readable cold' and 'plumb vocabulary' in the statement are not observable beyond the listed words; the last example (unsure records, no contradiction, nothing put to the owner) is a P5/P3 rule about not asking, a second behaviour inside this requirement."
+  }
+ ]
+}

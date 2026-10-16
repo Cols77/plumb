@@ -10,7 +10,7 @@ from plumb.api import open_core
 from plumb.contracts import Target
 from plumb.trace import owned_paths, untraced_paths
 
-pytestmark = pytest.mark.sr("SR-026")
+pytestmark = pytest.mark.sr("SR-200")
 
 SR1 = """---
 id: SR-001
@@ -64,7 +64,7 @@ def test_windows_separators_and_duplicates_are_normalized(linked: Path) -> None:
         "src/mul.py"]
 
 
-@pytest.mark.sr("SR-029")
+@pytest.mark.sr("SR-200")
 def test_flat_layout_and_root_code_files_are_source_by_default(linked: Path) -> None:
     """No source_dirs in config.yaml: a code file outside tests, docs and dot dirs is source,
     so a repository not laid out as src/ is not invisible to the trace."""
@@ -76,7 +76,7 @@ def test_flat_layout_and_root_code_files_are_source_by_default(linked: Path) -> 
                                            "scripts/tool.py", "web/app.ts"]
 
 
-@pytest.mark.sr("SR-029")
+@pytest.mark.sr("SR-200")
 def test_configured_source_dirs_are_the_only_source(linked: Path) -> None:
     (linked / ".plumb" / "config.yaml").write_text("source_dirs: [lib]\n", encoding="utf-8")
     core = open_core(linked)
@@ -84,7 +84,7 @@ def test_configured_source_dirs_are_the_only_source(linked: Path) -> None:
     assert untraced_paths(core, ["lib/x.py", "tool.py", "src/mul.py"]) == ["lib/x.py"]
 
 
-@pytest.mark.sr("SR-029")
+@pytest.mark.sr("SR-200")
 def test_verify_selection_shares_the_source_definition(linked: Path) -> None:
     """The covering-test selection samples for the same paths the trace calls source."""
     from plumb.trace import is_code_path

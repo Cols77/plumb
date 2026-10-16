@@ -14,7 +14,7 @@ from plumb.align import align, align_lines, collect
 from plumb.api import open_core
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-067")
+pytestmark = pytest.mark.sr("SR-246")
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ from jev_fixtures import default_noul, owner_decisions
 from plumb.api import open_core
 from plumb.capture.calibrate import calibrate, labelled_set
 
-pytestmark = pytest.mark.sr("SR-042")
+pytestmark = pytest.mark.sr("SR-252")
 
 
 @pytest.fixture

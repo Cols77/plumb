@@ -15,7 +15,7 @@ from plumb import awareness
 from plumb.api import open_core
 from plumb.awareness import publish as pub
 
-pytestmark = pytest.mark.sr("SR-079")
+pytestmark = pytest.mark.sr("SR-258")
 
 
 def _five(tmp_path: Path) -> Path:

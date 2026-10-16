@@ -40,7 +40,7 @@ examples:
 ---
 """
 SUBTRACT = "def add(a, b):\n    return a - b\n"
-REWRITTEN = ("import pytest\n\nfrom pkg.mod import add\n\n\n@pytest.mark.sr(\"SR-001\")\n"
+REWRITTEN = ("import pytest\n\nfrom pkg.mod import add\n\n\n@pytest.mark.sr(\"SR-230\")\n"
              "def test_add():\n    assert add(1, 2) == -1\n\n\ndef test_add_zero():\n"
              "    assert add(0, 0) == 0\n")
 

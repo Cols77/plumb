@@ -15,7 +15,7 @@ from plumb.mergedriver import open_conflicts
 from plumb.mergedriver.conflicts import propose
 from plumb.understand import cards, fullcard
 
-pytestmark = pytest.mark.sr("SR-151")
+pytestmark = pytest.mark.sr("SR-267")
 IDS = re.compile(r"\b(IC|SR|INT|DEC)-\d+")
 
 

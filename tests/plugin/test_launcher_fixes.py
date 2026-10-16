@@ -77,7 +77,7 @@ def _fake_python(path: Path, log: Path, version_ok: bool = True, flag: str = "")
 
 # SR-119: the setup's own failure ---------------------------------------------------------------
 
-@pytest.mark.sr("SR-119")
+@pytest.mark.sr("SR-279")
 def test_bootstrap_without_python_exits_2(tmp_path: Path) -> None:
     """EX-1: no uv and no Python 3.12 or later: exit 2 and the plain sentence."""
     _no_python_beside_sh()
@@ -94,7 +94,7 @@ def test_bootstrap_without_python_exits_2(tmp_path: Path) -> None:
     assert "venv" not in log.read_text(encoding="utf-8")
 
 
-@pytest.mark.sr("SR-119")
+@pytest.mark.sr("SR-279")
 def test_failed_install_exits_non_zero_and_cleans_up(tmp_path: Path) -> None:
     """EX-2: pip fails: a non-zero exit, no half-built folder, the lock released."""
     log = tmp_path / "uv.log"
@@ -122,7 +122,7 @@ def _wait_ready(home: Path, timeout: float = 60) -> None:
         time.sleep(0.2)
 
 
-@pytest.mark.sr("SR-119")
+@pytest.mark.sr("SR-279")
 def test_session_start_sets_up_with_python_exe_only(tmp_path: Path) -> None:
     """EX-3: python.org's Windows install (python.exe 3.12, no python3.12, no uv): the session
     start begins the setup instead of saying Python is missing, and the setup uses it."""
@@ -143,7 +143,7 @@ def test_session_start_sets_up_with_python_exe_only(tmp_path: Path) -> None:
     assert "argv:-m pip install" in Path(f"{log}.venv").read_text(encoding="utf-8")
 
 
-@pytest.mark.sr("SR-119")
+@pytest.mark.sr("SR-279")
 def test_bootstrap_with_the_py_launcher_only(tmp_path: Path) -> None:
     """The Windows launcher ``py -3.12`` is tried too, and its flag passed to every call."""
     _no_python_beside_sh()
@@ -157,7 +157,7 @@ def test_bootstrap_with_the_py_launcher_only(tmp_path: Path) -> None:
     assert (home / "current.json").is_file()
 
 
-@pytest.mark.sr("SR-119")
+@pytest.mark.sr("SR-279")
 def test_probe_agrees_with_the_build(tmp_path: Path) -> None:
     _no_python_beside_sh()
     assert SH is not None
@@ -173,7 +173,7 @@ def test_probe_agrees_with_the_build(tmp_path: Path) -> None:
     assert not (tmp_path / "home" / "current.json").exists()
 
 
-@pytest.mark.sr("SR-119")
+@pytest.mark.sr("SR-279")
 def test_stale_lock_taken_over_when_find_is_not_posix(tmp_path: Path) -> None:
     """A ``find`` on the PATH that knows no -mmin (Windows' FIND.EXE) does not keep a stale lock
     in place: the POSIX find is used when the system has one."""
@@ -243,7 +243,7 @@ def _legacy_settings(root: Path, gate: bool) -> None:
     _settings(root, {"permissions": {"deny": ["Bash(plumb hook prompt:*)"]}, "hooks": hooks})
 
 
-@pytest.mark.sr("SR-121")
+@pytest.mark.sr("SR-226")
 @pytest.mark.parametrize("compact", [False, True])
 def test_deny_rule_naming_plumb_hook_does_not_silence_the_gate(tmp_path: Path,
                                                                compact: bool) -> None:
@@ -264,7 +264,7 @@ def test_deny_rule_naming_plumb_hook_does_not_silence_the_gate(tmp_path: Path,
     assert not sentinel.exists()
 
 
-@pytest.mark.sr("SR-121")
+@pytest.mark.sr("SR-226")
 def test_gate_found_from_a_subfolder(tmp_path: Path) -> None:
     """EX-2: Claude Code started in src/: the gate of the repository's .plumb/ still refuses."""
     root = adopted_repo(tmp_path / "repo")
@@ -279,7 +279,7 @@ def test_gate_found_from_a_subfolder(tmp_path: Path) -> None:
     assert not sentinel.exists()
 
 
-@pytest.mark.sr("SR-121")
+@pytest.mark.sr("SR-226")
 def test_gate_script_alone_keeps_the_project_folder() -> None:
     """The per-repository install runs gate.sh without PLUMB_ROOT: the project folder, then the
     working folder, is where the gate is read."""
@@ -288,7 +288,7 @@ def test_gate_script_alone_keeps_the_project_folder() -> None:
     assert '"${PLUMB_ROOT:-${CLAUDE_PROJECT_DIR:-.}}/.plumb/session/$session/gate"' in text
 
 
-@pytest.mark.sr("SR-121")
+@pytest.mark.sr("SR-226")
 def test_gate_template_reads_plumb_root(tmp_path: Path) -> None:
     """gate.sh (the template the bundle copies) prefers PLUMB_ROOT, then CLAUDE_PROJECT_DIR."""
     assert SH is not None
@@ -308,7 +308,7 @@ def test_gate_template_reads_plumb_root(tmp_path: Path) -> None:
         assert ('"deny"' in result.stdout) is refused, values
 
 
-@pytest.mark.sr("SR-121")
+@pytest.mark.sr("SR-226")
 @pytest.mark.parametrize("event", ["session-start", "prompt", "pre-tool", "post-edit",
                                    "edit-check", "stop"])
 def test_legacy_install_runs_alone(tmp_path: Path, event: str) -> None:
@@ -326,7 +326,7 @@ def test_legacy_install_runs_alone(tmp_path: Path, event: str) -> None:
     assert not sentinel.exists()
 
 
-@pytest.mark.sr("SR-121")
+@pytest.mark.sr("SR-226")
 def test_legacy_install_without_a_gate_keeps_the_plugin_gate(tmp_path: Path) -> None:
     """A legacy install that runs plumb hook but registers no gate.sh: the plugin's pre-tool
     still refuses an edit while the gate is closed, and starts no Python."""
@@ -345,7 +345,7 @@ def test_legacy_install_without_a_gate_keeps_the_plugin_gate(tmp_path: Path) -> 
 
 # SR-123: the guard looks at the tool's input; plumb.cmd finds Git's sh ------------------------
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 def test_repository_named_plumb_starts_no_python(tmp_path: Path) -> None:
     """EX-2: the repository's path contains 'plumb': ls starts no Python for the guard."""
     root = adopted_repo(tmp_path / "plumb-work" / "plumb")
@@ -361,7 +361,7 @@ def test_repository_named_plumb_starts_no_python(tmp_path: Path) -> None:
     assert sentinel.exists()
 
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 @pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe")
 def test_plumb_cmd_finds_git_sh(tmp_path: Path) -> None:
     """EX-3: cmd.exe without sh on its PATH: plumb.cmd runs plumb with Git for Windows' sh."""
@@ -391,7 +391,7 @@ def test_plumb_cmd_finds_git_sh(tmp_path: Path) -> None:
 # after the second review: the probe before any folder, plumb.cmd's home, the guard's cut,
 # a value ending in an escaped backslash, the legacy gate from a subfolder ---------------------
 
-@pytest.mark.sr("SR-119")
+@pytest.mark.sr("SR-279")
 def test_bootstrap_without_python_creates_no_folders(tmp_path: Path) -> None:
     """EX-1: no Python: the setup leaves nothing under PLUMB_HOME (no empty env/ or bin/)."""
     _no_python_beside_sh()
@@ -404,7 +404,7 @@ def test_bootstrap_without_python_creates_no_folders(tmp_path: Path) -> None:
     assert not (home / "bin").exists()
 
 
-@pytest.mark.sr("SR-119")
+@pytest.mark.sr("SR-279")
 @pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe reads Windows paths")
 def test_user_plumb_cmd_names_home_as_windows_does(tmp_path: Path) -> None:
     """PLUMB_HOME/bin/plumb.cmd sets PLUMB_HOME as C:/..., never /c/... (which a Windows
@@ -422,7 +422,7 @@ def test_user_plumb_cmd_names_home_as_windows_does(tmp_path: Path) -> None:
     assert line[len('@set "PLUMB_HOME='):][1] == ":", line
 
 
-@pytest.mark.sr("SR-123")
+@pytest.mark.sr("SR-279")
 def test_keys_after_the_tool_input_start_no_python(tmp_path: Path) -> None:
     """EX-2: tool_use_id and permission_mode come after tool_input; a value naming the
     repository there does not count as the call naming plumb."""
@@ -436,7 +436,7 @@ def test_keys_after_the_tool_input_start_no_python(tmp_path: Path) -> None:
     assert not sentinel.exists()
 
 
-@pytest.mark.sr("SR-121")
+@pytest.mark.sr("SR-226")
 def test_a_command_ending_in_a_backslash_is_read_to_its_quote(tmp_path: Path) -> None:
     """EX-3: a hook command ending in an escaped backslash closes at its quote, so the next
     hook's command (here the old install's `plumb hook stop`) is still read and the plugin's
@@ -454,7 +454,7 @@ def test_a_command_ending_in_a_backslash_is_read_to_its_quote(tmp_path: Path) ->
     assert not sentinel.exists()
 
 
-@pytest.mark.sr("SR-121")
+@pytest.mark.sr("SR-226")
 def test_legacy_gate_found_from_a_subfolder(tmp_path: Path) -> None:
     """The per-repository gate.sh, run with no PLUMB_ROOT from a session started in src/,
     reads the gate of the .plumb/ above it; the walk stops at the git root."""

@@ -11,7 +11,7 @@ import pytest
 
 from .helpers import PLUGIN, REPO
 
-pytestmark = [pytest.mark.sr("SR-123")]
+pytestmark = [pytest.mark.sr("SR-279")]
 
 
 def _stand():

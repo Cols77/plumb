@@ -19,7 +19,7 @@ from plumb.contracts import DispatchError
 from plumb.understand import cardcontent, recover
 from plumb.understand.recover import Cascade, ModelExaminer, ModelPicker
 
-pytestmark = pytest.mark.sr("SR-118")
+pytestmark = pytest.mark.sr("SR-249")
 
 INT9 = """---
 id: INT-009

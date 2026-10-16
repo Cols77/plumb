@@ -13,7 +13,7 @@ from plumb.api import open_core
 from plumb.contracts import NodeEvidence
 from plumb.judgment.fidelity import MAX_END_CHARS, build_packet, judge, unjudged
 
-pytestmark = pytest.mark.sr("SR-022")
+pytestmark = pytest.mark.sr("SR-246")
 
 SR_001 = """---
 id: SR-001
@@ -133,7 +133,7 @@ def test_judgment_never_confirms_or_freshens(fid: Path) -> None:
     assert kinds == ["judgment"]
 
 
-@pytest.mark.sr("SR-050", "SR-153")
+@pytest.mark.sr("SR-247", "SR-232")
 @pytest.mark.parametrize("batch", [False, True])
 @pytest.mark.parametrize("stream,kind", [("events", "judgment"), ("evidence", "test-run")])
 def test_boundary_backend_view_suppresses_log_mutations(fid: Path, batch, stream, kind) -> None:

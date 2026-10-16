@@ -21,7 +21,7 @@ from capture_helpers import event_kinds, log_prompt, record_text, run, write_sta
 
 from plumb.api import open_core
 
-pytestmark = pytest.mark.sr("SR-069")
+pytestmark = pytest.mark.sr("SR-208")
 
 OK = "ok, go ahead"
 REFUSED = "not logged by the prompt hook"

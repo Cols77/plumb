@@ -25,7 +25,7 @@ from plumb.log import append, stream_of
 from plumb.present import owner_text
 from plumb.understand import cardstore, files, read
 
-pytestmark = pytest.mark.sr("SR-101")
+pytestmark = pytest.mark.sr("SR-214")
 
 
 def write_applied(core, applied) -> None:

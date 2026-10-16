@@ -1,0 +1,889 @@
+{
+ "principle": "P11",
+ "intent": {
+  "quote": "We should always work from a clean or managed environment. If there could be a hook that automatically understands what test is connected to what requirement and run them automatically based on stale detection, that would be great. And also of course stale detection should also be a hook and be resolved as soon as possible. I'd rather not run plumb test full if possible and only perform targeted validation as much as possible unless you see an issue with this.",
+  "source_int": "INT-027",
+  "readback": "Several agents, worktrees and clones work on one repository at once, kept in step by awareness rather than locks: each line of work shares the intent it has in flight, record files merge field by field, and record ids never collide. A same-field clash or a contradicting capture becomes one intent conflict that you arbitrate through a question. The merge is the one place where unapproved or conflicting intent is held; nothing else stops the work.",
+  "will": [
+   "Share each branch's intent in flight with every other worktree, read-only and cheaply, and tell the agent when another branch changes the same record.",
+   "Merge record files field by field, so only a real same-field clash becomes an intent conflict.",
+   "Put a contradiction between two lines of work to you as one question (question tool, or the study room when there is more to study), before anything is built when it is caught at capture.",
+   "Reserve record ids through a shared git ref and renumber the ones that still collide across clones at the merge, without rewriting history.",
+   "Hold a merge, a rebase step or a push, and only those, while touched intent is unapproved, a conflict is open, ids collide, paths are undeclared, links are stale or the log is broken."
+  ],
+  "wont": [
+   "Locks, leases, admission or any shared mutable runtime state; a claim is a signal, never a lock.",
+   "Transaction machinery, candidate checkouts or a test run at merge time; at push only the covering tests run, and the full suite only when full verification is pending (P10).",
+   "Rewriting git history.",
+   "Let the agent pick the side of an intent conflict that no recorded intent or answer of yours settles.",
+   "Ask you to type a command or name a record id to settle a conflict or approve a merge."
+  ],
+  "assumptions": [
+   "A touched requirement counts as approved at the merge when you approved it or the judge cascade validated it against your words (P3, P9); judge approvals are listed in the merge report and you reverse one by saying so.",
+   "A new link or a trace exemption added on a branch is approved the same way as a record, never on the agent's word alone.",
+   "The quick merge-time check and the pre-push hook are installed when plumb adopts a repository; a hook plumb did not write is left alone.",
+   "Settling an intent conflict from an answer you already gave on the same two versions is resolving from recorded intent (P5), not the agent choosing."
+  ]
+ },
+ "requirements": [
+  {
+   "title": "Record files merge field by field, and a same-field clash becomes one intent conflict",
+   "statement": "plumb's merge driver merges a record file field by field against the merge base, so links, independent fields and examples added on either side merge on their own; an example number added on both sides is renumbered and its links follow, and the driver is declared once however often it is installed. When both sides change the same field differently, the record stays readable, carries one intent conflict holding the base, both versions and their branch labels, and is unconfirmed; every plumb surface shows it once, as that conflict, until it is settled, and a later merge that meets the same record again keeps the open conflict. The owner arbitrates it as P3 says; the chosen version is taken, logged with the owner's words, and the record is confirmed again when that version was; with no judge the question carries no recommendation; then nothing about it remains.",
+   "examples": [
+    {
+     "given": "one side adds a verified_by link to SR-005 and the other side adds an implemented_by link",
+     "when": "git merges them",
+     "then": "SR-005 has both links and nothing conflicts"
+    },
+    {
+     "given": "one side changes SR-005's title and the other adds an example EX-4",
+     "when": "git merges them",
+     "then": "the result has the new title and EX-4, with no intent conflict"
+    },
+    {
+     "given": "both sides add a new example numbered EX-3 with different content",
+     "when": "git merges them",
+     "then": "the incoming one becomes EX-4 and its verified_by link's example is rewritten to EX-4"
+    },
+    {
+     "given": "plumb installed its merge driver twice in one repository",
+     "when": ".plumb/.gitattributes and git config are read",
+     "then": "the record driver is declared once and other attributes are kept"
+    },
+    {
+     "given": "main changed SR-005's statement one way and feat-x changed it another way",
+     "when": "feat-x is merged into main",
+     "then": "SR-005 carries one intent conflict with both statements and the labels main and feat-x, and SR-005 is unconfirmed"
+    },
+    {
+     "given": "a merge left the \"deadline reminders\" requirement with two versions",
+     "when": "the merge check runs",
+     "then": "the merge waits, names the conflict once by the requirement's title, and lists nothing else about it"
+    },
+    {
+     "given": "the same two versions",
+     "when": "the drift report and the status are shown",
+     "then": "the requirement appears once, as an intent conflict waiting for the owner's answer"
+    },
+    {
+     "given": "the owner answers, through the question tool, keep feat-x's version of \"deadline reminders\"",
+     "when": "the drift report runs",
+     "then": "nothing about \"deadline reminders\" remains"
+    },
+    {
+     "given": "the owner's answer keeps feat-x's version of \"relay checks\"",
+     "when": "the answer is recorded",
+     "then": "the record takes feat-x's statement, the conflict is gone, the resolution is logged with the owner's words, and the record is confirmed again if feat-x's version was confirmed"
+    },
+    {
+     "given": "no judge is reachable",
+     "when": "the conflict is put to the owner",
+     "then": "the question says no recommendation is available and why, and answering works the same"
+    },
+    {
+     "given": "SR-005 still carries an open intent conflict between main and feat-x",
+     "when": "feat-y, which changed SR-005 again where main also changed it, is merged",
+     "then": "git leaves SR-005 unmerged with both versions in the file; the open conflict and feat-x's statement are kept and no new conflict replaces them"
+    }
+   ],
+   "examples_kept": [
+    "SR-075/EX-1",
+    "SR-075/EX-2",
+    "SR-075/EX-3",
+    "SR-075/EX-4",
+    "SR-076/EX-1",
+    "SR-095/EX-1",
+    "SR-095/EX-2",
+    "SR-095/EX-3",
+    "SR-076/EX-3",
+    "SR-076/EX-5",
+    "SR-076/EX-6"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-076/EX-2",
+     "why": "how the conflict is put to the owner (one question, both versions by branch, no id) is P3's arbitration requirement, which carries it"
+    },
+    {
+     "id": "SR-076/EX-4",
+     "why": "the agent cannot choose a side: carried by P3's arbitration requirement (relay and quoted choose refused, exit 3)"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a scratch repository two branches change one requirement, one adding a link, an example and one wording of the statement, the other a link and a different wording of the statement; the owner watches the merge in a live session: the links and the example merge silently, and the two statements arrive as one question-tool question showing both versions; after the answer, status shows nothing left about it.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-007",
+   "supersedes": [
+    "SR-075",
+    "SR-076",
+    "SR-095"
+   ],
+   "implemented_by": [
+    "src/plumb/mergedriver/__init__.py",
+    "src/plumb/mergedriver/cli.py",
+    "src/plumb/mergedriver/driver.py",
+    "src/plumb/mergedriver/gitconfig.py",
+    "src/plumb/mergedriver/merge.py",
+    "src/plumb/present/owner_text.py",
+    "tests/mergedriver/__init__.py",
+    "tests/mergedriver/mdhelpers.py",
+    "src/plumb/mergedriver/conflicts.py"
+   ],
+   "decides": [
+    "DEC-020",
+    "DEC-021"
+   ]
+  },
+  {
+   "title": "Record ids never collide across worktrees and clones",
+   "statement": "Every new record id is reserved through one shared git ref with compare-and-swap, so worktrees of one repository never receive the same id. Ids that still collide across clones are renumbered at the merge: the branch merged into keeps its ids, the incoming record takes a newly reserved id with every reference its side introduced, history is never rewritten, an unchanged record keeps its approval, and the merge check holds any collision left.",
+   "examples": [
+    {
+     "given": "two worktrees of one repository whose highest requirement is SR-069",
+     "when": "each creates a requirement at the same moment",
+     "then": "one gets SR-070 and the other SR-071, and refs/plumb/ids records 71 for SR"
+    },
+    {
+     "given": "a local branch that is not checked out holds SR-075 and refs/plumb/ids does not exist yet",
+     "when": "the first record is created",
+     "then": "the ref is seeded from every local branch and the new requirement is SR-076"
+    },
+    {
+     "given": "another process moved refs/plumb/ids between the read and the update",
+     "when": "the reservation's compare-and-swap fails",
+     "then": "plumb re-reads the ref and reserves the next free number, never reusing one"
+    },
+    {
+     "given": "a dry-run capture",
+     "when": "it previews the ids it would write",
+     "then": "refs/plumb/ids is unchanged"
+    },
+    {
+     "given": "a directory that is not a git repository",
+     "when": "a new requirement is created",
+     "then": "the record gets the highest local number plus one and the agent is told the id is not reserved"
+    },
+    {
+     "given": "a clone created SR-070 \"export csv\" while this repository created SR-070 \"relay checks\"",
+     "when": "the clone's branch is merged and merge-fix runs",
+     "then": "\"relay checks\" stays SR-070, \"export csv\" gets the next reserved id, and every reference the clone added names the new id"
+    },
+    {
+     "given": "the clone's commits carry \"SR: SR-070\" trailers",
+     "when": "merge-fix renumbers",
+     "then": "those commits are unchanged in git log, the claims check reads their trailers as the new id, and the merge message's trailer is rewritten"
+    },
+    {
+     "given": "\"export csv\" was approved on the clone at its content",
+     "when": "merge-fix renumbers it with no other change",
+     "then": "it stays confirmed under its new id, while an approval of different content is not carried"
+    },
+    {
+     "given": "a record on this repository's side that references SR-070",
+     "when": "merge-fix runs",
+     "then": "that reference still names SR-070"
+    },
+    {
+     "given": "merge-fix already ran",
+     "when": "it runs again",
+     "then": "it reports nothing to fix and writes nothing"
+    },
+    {
+     "given": "merge-fix renumbered \"export csv\" from SR-070 to SR-081 with no other change, and it had been approved",
+     "when": "the record is shown or the merge report lists approvals",
+     "then": "its confirmation is labelled \"carried by renumber SR-070 -> SR-081\", and any later edit of its words drops the carried approval"
+    },
+    {
+     "given": "a merge result in which two record files both declare SR-070",
+     "when": "the merge check runs",
+     "then": "it holds the merge with exit 1, names both files and says merge-fix fixes it; the agent runs merge-fix without asking the owner"
+    },
+    {
+     "given": "an in-progress merge with a requirement file both sides added",
+     "when": "the merge check runs on it",
+     "then": "it exits 1 with the collision named"
+    },
+    {
+     "given": "merge-fix has renumbered the collision",
+     "when": "the check runs again",
+     "then": "no collision is reported"
+    }
+   ],
+   "examples_kept": [
+    "SR-070/EX-1",
+    "SR-070/EX-2",
+    "SR-070/EX-3",
+    "SR-070/EX-4",
+    "SR-070/EX-5",
+    "SR-071/EX-1",
+    "SR-071/EX-2",
+    "SR-071/EX-3",
+    "SR-071/EX-4",
+    "SR-071/EX-5",
+    "SR-071/EX-6",
+    "SR-072/EX-1",
+    "SR-072/EX-2",
+    "SR-072/EX-3"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: one command script in a scratch repository creates a requirement in two worktrees at once and shows two different ids, then merges a clone that reused an id and shows merge-fix renumbering it with its references while git log is unchanged; the owner reads the printed before and after.",
+    "kind": "command"
+   },
+   "feature": "FEAT-006",
+   "supersedes": [
+    "SR-070",
+    "SR-071",
+    "SR-072"
+   ],
+   "implemented_by": [
+    "src/plumb/capture/capture.py",
+    "src/plumb/cli.py",
+    "src/plumb/contracts.py",
+    "src/plumb/ids/__init__.py",
+    "src/plumb/ids/cli.py",
+    "src/plumb/ids/ref.py",
+    "src/plumb/ids/reservation.py",
+    "src/plumb/importer/apply.py",
+    "src/plumb/present/owner_text.py",
+    "src/plumb/store.py",
+    "tests/ids/__init__.py",
+    "tests/ids/gitrepo.py",
+    "src/plumb/approvals.py",
+    "src/plumb/boundary/glance.py",
+    "src/plumb/boundary/report.py",
+    "src/plumb/claims.py",
+    "src/plumb/confirm.py",
+    "src/plumb/ids/aliases.py",
+    "src/plumb/ids/collision.py",
+    "src/plumb/ids/mergefix.py",
+    "src/plumb/ids/rewrite.py",
+    "src/plumb/merge.py",
+    "src/plumb/present/cards.py",
+    "src/plumb/validate.py",
+    "tests/ids/scenario.py"
+   ],
+   "decides": [
+    "DEC-022"
+   ]
+  },
+  {
+   "title": "Intent in flight is shared, and a contradicting capture is caught before any build",
+   "statement": "Each worktree shares the intent it has in flight as a claim in a shared git ref, a signal never a lock, cleared when its branch merges or is deleted, and reads other worktrees read-only and cheaply: under 50 ms with warm caches, no git process for a branch whose tip has not moved, and nothing written in another worktree. The agent is told, one line per record and once per session, when another branch changes a record it works on; nothing is refused or held.",
+   "examples": [
+    {
+     "given": "five other worktrees",
+     "when": "the prompt hook computes overlaps with warm caches",
+     "then": "it takes under 50 ms and starts no git process"
+    },
+    {
+     "given": "a branch whose tip has not moved since the last scan",
+     "when": "a session starts",
+     "then": "no git command runs for that branch"
+    },
+    {
+     "given": "another worktree",
+     "when": "the awareness check runs",
+     "then": "no file in that worktree is created or modified"
+    },
+    {
+     "given": "a worktree that was removed while its changing.json path is still recorded",
+     "when": "the check runs",
+     "then": "that worktree is ignored"
+    },
+    {
+     "given": "feat-x's session published its edit of SR-005 as pending, the edit was then committed with no session to publish again, and main merged feat-x while its worktree stays on disk, idle",
+     "when": "another worktree's session brief, prompt or stop hook, or status looks at what other worktrees are changing",
+     "then": "feat-x is not named as changing SR-005"
+    },
+    {
+     "given": "worktree feat-x has edited SR-005",
+     "when": "a session starts in main's worktree",
+     "then": "the brief tells the agent SR-005 \"relay checks\" is also being changed on branch feat-x"
+    },
+    {
+     "given": "that line was given once this session",
+     "when": "the next prompt is about relay checks again and feat-x has not changed SR-005 since",
+     "then": "no line is repeated"
+    },
+    {
+     "given": "a branch without a worktree whose commits changed SR-007",
+     "when": "a session starts",
+     "then": "the brief names SR-007 and that branch"
+    },
+    {
+     "given": "no other worktree or branch changes a record this session touches",
+     "when": "the hooks run",
+     "then": "no awareness line is given"
+    },
+    {
+     "given": "a session on branch feat-x captures a change to SR-005 \"relay checks\"",
+     "when": "the capture completes",
+     "then": "refs/plumb/claims holds a claim naming SR-005, branch feat-x and a one-line summary of the request"
+    },
+    {
+     "given": "two worktrees record a claim at the same moment",
+     "when": "both write the register",
+     "then": "both claims are kept and no update is lost"
+    },
+    {
+     "given": "a claim recorded on branch feat-x",
+     "when": "feat-x is merged into main, or deleted",
+     "then": "the claim no longer appears in the register"
+    },
+    {
+     "given": "another branch claims SR-005",
+     "when": "this worktree edits or captures SR-005",
+     "then": "nothing is refused, locked or held; plumb only informs"
+    },
+    {
+     "given": "feat-x's change to SR-005 was merged into main with a merge commit, and feat-x then got one more commit",
+     "when": "main changes SR-005 again or shows the brief or status",
+     "then": "feat-x's merged version is no longer in flight: no question or decision is raised and no line names feat-x"
+    }
+   ],
+   "examples_kept": [
+    "SR-079/EX-1",
+    "SR-079/EX-2",
+    "SR-079/EX-3",
+    "SR-079/EX-4",
+    "SR-079/EX-5",
+    "SR-078/EX-1",
+    "SR-078/EX-2",
+    "SR-078/EX-3",
+    "SR-078/EX-4",
+    "SR-080/EX-1",
+    "SR-080/EX-2",
+    "SR-080/EX-3",
+    "SR-080/EX-4",
+    "SR-080/EX-5"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: two live sessions in two worktrees; the owner asks one to change a requirement and watches the other session's agent say that branch is changing it, once.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-006",
+   "supersedes": [
+    "SR-078",
+    "SR-079",
+    "SR-080"
+   ],
+   "implemented_by": [
+    "src/plumb/awareness/__init__.py",
+    "src/plumb/awareness/lines.py",
+    "src/plumb/commands.py",
+    "src/plumb/contracts.py",
+    "src/plumb/hosts/claude_code/prompt.py",
+    "src/plumb/hosts/claude_code/session_start.py",
+    "src/plumb/hosts/claude_code/snapshot.py",
+    "src/plumb/hosts/claude_code/stop.py",
+    "src/plumb/hosts/claude_code/templates/plumb-command.md",
+    "src/plumb/present/owner_text.py",
+    "src/plumb/present/render.py",
+    "src/plumb/present/report.py",
+    "src/plumb/awareness/gitfiles.py",
+    "src/plumb/awareness/publish.py",
+    "src/plumb/awareness/scan.py",
+    "src/plumb/awareness/turn.py",
+    "src/plumb/config.py",
+    "src/plumb/hosts/claude_code/post_edit.py",
+    "src/plumb/awareness/cli.py",
+    "src/plumb/awareness/inflight.py",
+    "src/plumb/cli.py",
+    "src/plumb/approvals.py",
+    "src/plumb/awareness/answer.py",
+    "src/plumb/awareness/early.py",
+    "src/plumb/capture/capture.py",
+    "src/plumb/capture/clarify.py",
+    "src/plumb/capture/records.py",
+    "src/plumb/confirm.py",
+    "src/plumb/hosts/claude_code/templates/skills/plumb-clarify/SKILL.md",
+    "src/plumb/mergedriver/cli.py",
+    "src/plumb/mergedriver/conflicts.py",
+    "src/plumb/present/cards.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "A capture that contradicts another branch's claim is put to the owner before anything is built",
+   "statement": "When a capture or direct edit would change a record another branch has claimed, or the judge finds a new requirement contradicts another branch's claim in the same feature, the agent asks the owner one question through the question tool showing both versions by branch, before any record is written, and one early decision that matters is raised once; it outlives the question and is answered by it. A compatible overlap is one warning line. With no judge, or an unsure JEV, the overlap counts as unsure, never as compatible. Until a record matches the owner's answer, the agent is told every turn that it differs and status lists it; a record that changed on main after this branch started is named as such.",
+   "examples": [
+    {
+     "given": "branch feat-x claimed a change to SR-005 \"relay checks\"",
+     "when": "this worktree captures a different change to SR-005, by capture or a direct edit",
+     "then": "before any record is written the agent asks the owner one question through the question tool showing both versions by branch, and one decision that matters is raised"
+    },
+    {
+     "given": "branch feat-x claimed new intent in FEAT-002",
+     "when": "this worktree captures a new requirement in FEAT-002 that the judge finds contradictory",
+     "then": "the same question is asked and the decision is recorded"
+    },
+    {
+     "given": "branch feat-x claimed new intent in FEAT-002",
+     "when": "this worktree captures a new requirement in FEAT-002 the judge does not find contradictory",
+     "then": "only a one-line warning naming the record and feat-x reaches the agent, and no decision is written"
+    },
+    {
+     "given": "the conflict on SR-005 was already raised as a decision on branch feat-x",
+     "when": "this worktree captures SR-005 again",
+     "then": "no second decision is written and the line names that decision's question, with the owner's answer once given"
+    },
+    {
+     "given": "the agent asked the owner the conflict on SR-005",
+     "when": "the owner answers \"keep feat-x's\" in the question tool",
+     "then": "the decision holds that version, recorded from the owner's answer, and feat-x's next awareness line names it without a further turn"
+    },
+    {
+     "given": "branch feat-x claimed new intent in FEAT-002 and no judge can be reached, or JEV is unsure on an overlapping new requirement",
+     "when": "the capture runs",
+     "then": "the agent is told both versions and why plumb could not judge (\"judging unavailable: <cause>\"); the overlap is treated as unsure, never as compatible, and put to the owner if the versions differ; no word rule judges in its place"
+    },
+    {
+     "given": "feat-b raised an early decision on SR-005 against feat-a, main merged one of them, and the decision is unanswered",
+     "when": "the conflict is put to the owner on main",
+     "then": "both versions are labelled by branch, never as \"this work\"; while a merge leaves an intent conflict on SR-005 only that conflict is asked, and its answer also answers the decision"
+    },
+    {
+     "given": "the owner kept feat-x's version of SR-005 and main's SR-005 still holds another version",
+     "when": "main's next prompt or stop hook runs, or status is shown",
+     "then": "the agent is told every turn that SR-005 differs from the owner's answer until it matches, and status lists it"
+    },
+    {
+     "given": "the owner kept main's version of SR-005, the answer merged into feat-x, and a later request changed SR-005 again on feat-x",
+     "when": "feat-x's next prompt or stop hook runs or the brief is shown",
+     "then": "SR-005 is not named as holding the turned-down version; only a record still holding that version is named (the answer is a signal, never a lock)"
+    },
+    {
+     "given": "feat-x started from main; main then changed and committed SR-005, so main's claim cleared",
+     "when": "feat-x captures or edits different words for SR-005",
+     "then": "the question shows main's version and this branch's, one decision is raised once, and feat-x's brief and status say SR-005 changed on main after this branch started; nothing is raised once feat-x holds main's version or leaves SR-005 as it started"
+    }
+   ],
+   "examples_kept": [
+    "SR-081/EX-1",
+    "SR-081/EX-11",
+    "SR-081/EX-2",
+    "SR-081/EX-3",
+    "SR-081/EX-4",
+    "SR-081/EX-6",
+    "SR-081/EX-8",
+    "SR-081/EX-10",
+    "SR-081/EX-12",
+    "SR-081/EX-13",
+    "SR-081/EX-14"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-081/EX-5",
+     "why": "the clarify read-back that told the agent a card waits at turn end is retired (P2, P12); the question is asked through the question tool before anything is written, covered by the kept SR-081/EX-1"
+    },
+    {
+     "id": "SR-081/EX-7",
+     "why": "the owner naming a decision id (\"ok DEC-001, keep feat-x's\") and a bare ok on a decision no longer exist (P2: no owner command takes an id; no approval command)"
+    },
+    {
+     "id": "SR-081/EX-9",
+     "why": "read-back cards answered in the card's words are retired (P3, P12); the question-tool answer is the kept SR-081/EX-6"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended for the owner to decide: two live sessions in two worktrees; after the first changes a requirement, the owner asks the second for a contradicting change and gets one question-tool question before any code is written; after the answer, the other branch's next line names the decision.",
+    "kind": "live-session"
+   },
+   "feature": "FEAT-006",
+   "supersedes": [
+    "SR-081"
+   ],
+   "implemented_by": [
+    "src/plumb/awareness/__init__.py",
+    "src/plumb/awareness/lines.py",
+    "src/plumb/commands.py",
+    "src/plumb/contracts.py",
+    "src/plumb/hosts/claude_code/prompt.py",
+    "src/plumb/hosts/claude_code/session_start.py",
+    "src/plumb/hosts/claude_code/snapshot.py",
+    "src/plumb/hosts/claude_code/stop.py",
+    "src/plumb/hosts/claude_code/templates/plumb-command.md",
+    "src/plumb/present/owner_text.py",
+    "src/plumb/present/render.py",
+    "src/plumb/present/report.py",
+    "src/plumb/awareness/gitfiles.py",
+    "src/plumb/awareness/publish.py",
+    "src/plumb/awareness/scan.py",
+    "src/plumb/awareness/turn.py",
+    "src/plumb/config.py",
+    "src/plumb/hosts/claude_code/post_edit.py",
+    "src/plumb/awareness/cli.py",
+    "src/plumb/awareness/inflight.py",
+    "src/plumb/cli.py",
+    "src/plumb/approvals.py",
+    "src/plumb/awareness/answer.py",
+    "src/plumb/awareness/early.py",
+    "src/plumb/capture/capture.py",
+    "src/plumb/capture/clarify.py",
+    "src/plumb/capture/records.py",
+    "src/plumb/confirm.py",
+    "src/plumb/hosts/claude_code/templates/skills/plumb-clarify/SKILL.md",
+    "src/plumb/mergedriver/cli.py",
+    "src/plumb/mergedriver/conflicts.py",
+    "src/plumb/present/cards.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "The merge is the one hold on unapproved or conflicting intent",
+   "statement": "One lightweight merge check runs when git records a merge, rebase, cherry-pick or revert step (quick, no tests) and at push, where the pre-push hook runs the same check with the covering tests and the full suite only when full verification is pending (P10). A merge is held until every touched requirement is approved, by the owner or the judge, at its current hash, no link or exemption added since is unapproved, no intent conflict is open, no ids collide, commits touch only paths their trailers' requirements declare, links are fresh and point at tested files, no affected acceptance test fails or lacks a passing run, and the log is intact. A rebase, cherry-pick or revert step is held while it meets an open intent conflict on a record. The check exits 1 for an undeclared path, a stale or dangling link or a broken log, 5 for a failing or unverified acceptance test and 4 for unapproved or conflicting intent, reporting the first of 1, 5 and 4 that applies; its report fits one screen.",
+   "examples": [
+    {
+     "given": "any repository",
+     "when": "the merge check runs without tests",
+     "then": "no file outside .plumb/cache changes"
+    },
+    {
+     "given": "25 untraced paths",
+     "when": "the report renders",
+     "then": "it shows 10 and \"+15 more\" with the full list in its JSON form"
+    },
+    {
+     "given": "plumb's pre-push hook and a branch whose report exits 4",
+     "when": "git push runs",
+     "then": "the push is refused"
+    },
+    {
+     "given": "a commit claiming SR-004 that changes an undeclared path",
+     "when": "the merge check runs",
+     "then": "it names the path with the fix and exits 1"
+    },
+    {
+     "given": "a touched requirement whose implemented_by link is stale",
+     "when": "the merge check runs",
+     "then": "it names the moved end and the repin and exits 1"
+    },
+    {
+     "given": "a confirmed example whose acceptance test fails and an unconfirmed touched record",
+     "when": "the merge check runs",
+     "then": "it exits 5 (precedence 1, then 5, then 4)"
+    },
+    {
+     "given": "a merge that adds a stale link, or a link to a file no test covers",
+     "when": "it is merged",
+     "then": "the merge is held naming them"
+    },
+    {
+     "given": "a branch that changes SR-034's implementing file while SR-034 is proposed and not yet judge-approved",
+     "when": "the merge check runs",
+     "then": "it lists SR-034 by title as awaiting approval and exits 4"
+    },
+    {
+     "given": "a judge approval of INT-030 in the range",
+     "when": "the merge check runs",
+     "then": "the report marks it judge-approved with its score and model version and names no command; the owner reverses it by saying so in conversation"
+    },
+    {
+     "given": "any branch",
+     "when": "the merge check without tests and its report-only form run on the same tree",
+     "then": "both exit with the same code"
+    },
+    {
+     "given": "confirmed SR-001 at the merge base and a changed src/z.py that no requirement owns",
+     "when": "the agent links SR-001 implemented_by src/z.py and the merge check runs",
+     "then": "SR-001 stays confirmed but is listed as extended with \"new link in this range implemented_by src/z.py\" and the check exits 4; once the extension is approved (judge-validated against the owner's words, else the owner's answer through the question tool) it exits 0"
+    },
+    {
+     "given": "the same range",
+     "when": "the agent adds the same link by editing SR-001's frontmatter",
+     "then": "the check lists the same new link and exits 4"
+    },
+    {
+     "given": "the same range",
+     "when": "the agent appends src/** to trace.exempt in .plumb/config.yaml",
+     "then": "src/z.py is still listed as untraced, the exemption is listed as added in this range and the check exits 4; once the exemption is approved it exits 0 and lists it among the approvals"
+    },
+    {
+     "given": "the same range",
+     "when": "the agent sets test_dirs to [src, tests]",
+     "then": "src/z.py is still listed as untraced and the check exits 4"
+    },
+    {
+     "given": "a trace.exempt glob added in the range",
+     "when": "the agent asserts the owner's approval of it, even quoting words that name it (\"ok, exempt src/gen/*\")",
+     "then": "nothing is recorded and the check keeps listing the exemption as added and exits 4; only the owner's own logged words, judge-validated, or the owner's question-tool answer approve it"
+    },
+    {
+     "given": "the touched SR-001 is approved at its current hash",
+     "when": "the merge check runs",
+     "then": "it exits 0"
+    },
+    {
+     "given": "a merge result with an open intent conflict",
+     "when": "the merge check runs",
+     "then": "it exits 4 and names the conflict by the requirement's title for the agent to put to the owner"
+    },
+    {
+     "given": "the quick merge check is installed",
+     "when": "git merge produces an intent conflict",
+     "then": "git does not record the merge commit and the output names what holds it"
+    },
+    {
+     "given": "the quick merge check is installed",
+     "when": "git merge runs on a branch whose tests were never run",
+     "then": "the check reports what holds the merge without starting any test run"
+    },
+    {
+     "given": "a merge held by an open intent conflict",
+     "when": "the owner answers it and the touched requirements are approved",
+     "then": "the quick check passes and the merge can be finished"
+    },
+    {
+     "given": "JEV is configured and a merge leaves an intent conflict open",
+     "when": "the quick merge check or the pre-push hook reports it",
+     "then": "no judgment is requested and nothing is written to the log; a judgment is shown only when one is already logged"
+    },
+    {
+     "given": "the quick merge check is installed and a merge leaves an intent conflict open or touches an unapproved requirement",
+     "when": "the merge is finished by hand: git commit after a text conflict or after git merge --no-commit, git merge --continue, or git pull",
+     "then": "git does not record the merge commit and the output names what holds it; a conflict left out of the commit holds it too"
+    },
+    {
+     "given": "the quick merge check is installed",
+     "when": "a rebase, cherry-pick or revert step meets an intent conflict on a record",
+     "then": "git stops on the record; continuing with the conflict still in it is refused, and after the owner's answer the step continues with the chosen version"
+    },
+    {
+     "given": "the owner already answered an early conflict choosing between exactly the two versions of SR-005 a merge meets",
+     "when": "the merge check meets the resulting intent conflict",
+     "then": "it is settled from that answer (logged and staged), nothing is asked again, and finishing the merge records it"
+    },
+    {
+     "given": "an early decision on SR-005 was never answered and a merge leaves an intent conflict on SR-005",
+     "when": "the merge check runs and the owner then answers the conflict",
+     "then": "only the conflict is asked (the decision is not asked beside it), and the owner's answer also answers the decision"
+    },
+    {
+     "given": "main has not moved since feat-x branched, and feat-x touches an unapproved requirement and a file no requirement declares",
+     "when": "feat-x is merged into main with a plain git merge, a git pull, or an explicit fast-forward",
+     "then": "nothing held stays recorded on main: a plain merge or pull records a merge commit the quick check holds, and an explicit fast-forward is checked after git made it and main is put back where it was, local changes kept, and the agent is told what holds it"
+    }
+   ],
+   "examples_kept": [
+    "SR-052/EX-1",
+    "SR-052/EX-2",
+    "SR-051/EX-2",
+    "SR-049/EX-1",
+    "SR-049/EX-2",
+    "SR-049/EX-3",
+    "SR-047/EX-1",
+    "SR-047/EX-2",
+    "SR-047/EX-3",
+    "SR-028/EX-1",
+    "SR-028/EX-2",
+    "SR-028/EX-3",
+    "SR-028/EX-4",
+    "SR-028/EX-5",
+    "SR-008/EX-2",
+    "SR-007/EX-3",
+    "SR-077/EX-1",
+    "SR-077/EX-2",
+    "SR-077/EX-4",
+    "SR-077/EX-6",
+    "SR-077/EX-7",
+    "SR-077/EX-9",
+    "SR-077/EX-10",
+    "SR-077/EX-11",
+    "SR-077/EX-12",
+    "SR-077/EX-13",
+    "SR-166/EX-3"
+   ],
+   "examples_dropped": [
+    {
+     "id": "SR-047/EX-4",
+     "why": "agent relay no longer exists (SR-135); approval is the owner's answer or a judge-validated interpretation (P3)"
+    },
+    {
+     "id": "SR-008/EX-1",
+     "why": "names an approval command with an id for the owner; P2 has no owner command taking an id and no approval command"
+    },
+    {
+     "id": "SR-008/EX-3",
+     "why": "agent relay no longer exists (SR-135); judge approvals are listed by the kept SR-047/EX-2"
+    },
+    {
+     "id": "SR-077/EX-5",
+     "why": "folded into the kept SR-077/EX-8, which says the same with the pre-push hook"
+    }
+   ],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a scratch repository adopted by plumb, the owner watches git merge of a branch touching an unapproved requirement be refused by the quick hook naming why in plain words, then succeed once the requirement is approved; git push then runs the check with the covering tests only.",
+    "kind": "hook"
+   },
+   "feature": "FEAT-003",
+   "supersedes": [
+    "SR-008",
+    "SR-028",
+    "SR-047",
+    "SR-049",
+    "SR-052",
+    "SR-077"
+   ],
+   "implemented_by": [
+    "src/plumb/claims.py",
+    "src/plumb/trailers.py",
+    "src/plumb/merge.py",
+    "src/plumb/approvals.py",
+    "src/plumb/commands.py",
+    "src/plumb/trace.py",
+    "src/plumb/boundary/__init__.py",
+    "src/plumb/boundary/cli.py",
+    "src/plumb/boundary/glance.py",
+    "src/plumb/boundary/report.py",
+    "src/plumb/cli.py",
+    "tests/merge/merge_helpers.py",
+    "src/plumb/boundary/gates.py",
+    "src/plumb/boundary/prepush.py",
+    "src/plumb/boundary/premerge.py",
+    "src/plumb/hosts/claude_code/install.py",
+    "src/plumb/mergedriver/driver.py",
+    "src/plumb/mergedriver/unmerged.py",
+    "src/plumb/present/owner_text.py"
+   ],
+   "decides": [
+    "DEC-021"
+   ]
+  },
+  {
+   "title": "A commit names the requirements it serves in a trailer, checked at commit",
+   "statement": "A commit message's SR: trailer lines name the requirements the commit serves, in order. Once trailers are required, the commit-msg check rejects a message naming an unknown requirement or none, except a revert, merge or fixup message whose staged paths are all exempt.",
+   "examples": [
+    {
+     "given": "require_trailer is true and git writes a revert, merge or fixup message for a commit whose staged paths are all exempt",
+     "when": "the commit-msg hook checks the message",
+     "then": "the commit is accepted without an SR trailer, and a plain message still needs one"
+    },
+    {
+     "given": "a commit message with the trailer line \"SR: SR-003, SR-004\"",
+     "when": "the trailer is parsed",
+     "then": "SR-003 and SR-004 are claimed, in order"
+    },
+    {
+     "given": "require_trailer is true",
+     "when": "a commit message names SR-999, which does not exist",
+     "then": "the commit-msg check rejects it"
+    }
+   ],
+   "examples_kept": [
+    "SR-049/EX-4",
+    "SR-007/EX-1",
+    "SR-007/EX-2"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: in a scratch repository with trailers required, the agent commits once naming a requirement that does not exist (refused) and once with a valid trailer (accepted).",
+    "kind": "hook"
+   },
+   "feature": "FEAT-003",
+   "supersedes": [
+    "SR-007"
+   ],
+   "implemented_by": [
+    "src/plumb/trailers.py",
+    "src/plumb/claims.py",
+    "src/plumb/boundary/premerge.py"
+   ],
+   "decides": []
+  },
+  {
+   "title": "plumb's git hooks are installed on adoption and leave hooks plumb did not write alone",
+   "statement": "Adopting a repository installs the quick merge check and the pre-push hook. A hook plumb did not write is never changed; the agent is told how to call plumb from it.",
+   "examples": [
+    {
+     "given": "a repository with a foreign pre-push hook",
+     "when": "plumb installs its pre-push hook",
+     "then": "the foreign hook is unchanged and the agent is told how to call plumb from it"
+    },
+    {
+     "given": "a foreign pre-merge-commit hook",
+     "when": "plumb installs its hooks",
+     "then": "the foreign hook is untouched and the agent is told how to call plumb from it"
+    },
+    {
+     "given": "a repository plumb adopted",
+     "when": "git hooks are listed",
+     "then": "the quick merge check and the pre-push hook (the merge check with covering tests, and the full suite only when full verification is pending) are both installed, and a pre-push hook plumb did not write is left untouched"
+    }
+   ],
+   "examples_kept": [
+    "SR-051/EX-1",
+    "SR-077/EX-3",
+    "SR-077/EX-8"
+   ],
+   "examples_dropped": [],
+   "proof": {
+    "plan": "Recommended for the owner to decide: adopt a scratch repository that already has its own pre-push hook; the hook is unchanged, the agent says how to call plumb from it, and the quick merge check is listed among git's hooks.",
+    "kind": "hook"
+   },
+   "feature": "FEAT-003",
+   "supersedes": [
+    "SR-051"
+   ],
+   "implemented_by": [
+    "src/plumb/boundary/prepush.py",
+    "src/plumb/boundary/premerge.py",
+    "src/plumb/hosts/claude_code/install.py"
+   ],
+   "decides": []
+  }
+ ],
+ "decisions": [
+  {
+   "question": "Where is an intent conflict recorded?",
+   "chosen": "inside the conflicted record file, as a conflict block with its own IC id",
+   "alternatives": [
+    "a separate .plumb/conflicts/IC-###.md record file"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-020"
+   ]
+  },
+  {
+   "question": "What happens to git's merge when a record has an intent conflict?",
+   "chosen": "the merge driver completes, leaving the record unconfirmed with the conflict inside it; the merge check (the quick merge-time hook and the pre-push hook) holds the merge until the conflict is settled",
+   "alternatives": [
+    "the driver stops git's merge until the owner chooses"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-021"
+   ]
+  },
+  {
+   "question": "Which record keeps the id when two clones created the same one?",
+   "chosen": "the first parent (the branch merged into) keeps its ids and the incoming record is renumbered",
+   "alternatives": [
+    "the older record keeps its id",
+    "the owner picks each time"
+   ],
+   "matters": true,
+   "supersedes": [
+    "DEC-022"
+   ]
+  }
+ ],
+ "retired_decisions": [
+  {
+   "id": "DEC-071",
+   "why": "a branch-version conflict on SR-184 whose two quoted versions are word-for-word the same; version 2 supersedes SR-184, so the question no longer stands (P5)"
+  },
+  {
+   "id": "DEC-075",
+   "why": "a branch-version conflict on SR-182, which version 2 supersedes with the P9 cascade, so the question no longer stands (P5)"
+  },
+  {
+   "id": "DEC-085",
+   "why": "a one-time choice about landing the done work under the old record set, not a durable rule; version 2 lands on the owner's word, and afterwards the merge stays the one hold under P11"
+  }
+ ],
+ "one_offs": []
+}

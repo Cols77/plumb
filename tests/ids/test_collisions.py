@@ -13,7 +13,7 @@ from plumb import ids
 from plumb.api import open_core
 from plumb.cli import main
 
-pytestmark = pytest.mark.sr("SR-072")
+pytestmark = pytest.mark.sr("SR-257")
 
 
 def test_unmerged_add_add_is_a_collision(tmp_path: Path) -> None:
@@ -157,7 +157,7 @@ def test_kept_one_committed_merge_is_fixed_by_merge_fix(tmp_path: Path, capsys) 
     dec = index["DEC-001"]
     assert [lk.target.record for lk in dec.links if lk.kind == "decides"] == ["SR-003"]
     marker = (s.origin / "tests" / "test_export.py").read_text(encoding="utf-8")
-    assert marker.count('mark.sr("SR-003")') == 2
+    assert marker.count('mark.sr("SR-231")') == 2
     assert ids.collisions(open_core(s.origin), "HEAD^1") == ()
     assert main(["merge-fix", "--root", str(s.origin)]) == 0
     assert "nothing to fix" in capsys.readouterr().out

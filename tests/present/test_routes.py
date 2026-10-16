@@ -10,7 +10,7 @@ from present_helpers import SR1, write_all
 
 from plumb import cli
 
-pytestmark = pytest.mark.sr("SR-068")
+pytestmark = pytest.mark.sr("SR-202")
 
 TEMPLATE = (Path(cli.__file__).parent / "hosts" / "claude_code" / "templates"
             / "plumb-command.md")
@@ -74,7 +74,7 @@ def test_help_lists_only_importable_verbs(monkeypatch) -> None:
     assert cli.main(["ghost"]) == 2
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_plumb_command_routes_jev_setup_and_status() -> None:
     """R14: the owner reaches JEV setup and status through /plumb, never a shell."""
     text = TEMPLATE.read_text(encoding="utf-8")
@@ -84,7 +84,7 @@ def test_plumb_command_routes_jev_setup_and_status() -> None:
     assert "{plumb} jev status --probe" in text
 
 
-@pytest.mark.sr("SR-039")
+@pytest.mark.sr("SR-243")
 def test_plumb_command_routes_jev_calibrate() -> None:
     """R14: the owner reaches calibration as /plumb jev calibrate; the agent runs the CLI."""
     text = TEMPLATE.read_text(encoding="utf-8")

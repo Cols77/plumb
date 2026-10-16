@@ -18,7 +18,7 @@ import plumb.verify.testmap as testmap
 from plumb.api import open_core
 from plumb.verify import open_verify
 
-pytestmark = [pytest.mark.sr("SR-014"), pytest.mark.sr("SR-016")]
+pytestmark = [pytest.mark.sr("SR-275"), pytest.mark.sr("SR-255")]
 
 
 @pytest.fixture

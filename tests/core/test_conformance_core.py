@@ -10,7 +10,7 @@ from plumb.api import open_core
 from plumb.contracts import CoreAPI
 
 
-@pytest.mark.sr("SR-001")
+@pytest.mark.sr("SR-230")
 def test_open_core_is_a_core_api(repo: Path) -> None:
     core = open_core(repo)
     assert isinstance(core, CoreAPI)

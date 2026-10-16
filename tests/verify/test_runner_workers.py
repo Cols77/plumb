@@ -33,7 +33,7 @@ def _seen(root: Path) -> set[str]:
     return set((root / "tests" / "seen.txt").read_text(encoding="utf-8").split())
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_ex3_two_workers_with_xdist(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = _project(repo, 2, monkeypatch)
     verify = open_verify(open_core(root), hook=False)
@@ -44,7 +44,7 @@ def test_ex3_two_workers_with_xdist(repo: Path, monkeypatch: pytest.MonkeyPatch)
     assert not any("xdist" in line for line in report_lines(report))
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_xdist_missing_runs_serial_and_says_so(repo: Path,
                                                 monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "xdist_available", lambda: False)
@@ -60,7 +60,7 @@ def test_xdist_missing_runs_serial_and_says_so(repo: Path,
     assert _seen(root) == {"main"}
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_run_selection_passes_workers(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = _project(repo, 2, monkeypatch)
     seen: list[int] = []

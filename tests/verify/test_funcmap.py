@@ -24,7 +24,7 @@ def _record(fm: FuncMap, node: str, executed, env: str = "env-a", digest: str = 
     fm.record_test(node, node.split("::")[0], digest, env, {(SRC, q) for q in executed})
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_roundtrip(fm: FuncMap, tmp_path: Path) -> None:
     _record(fm, "tests/test_mod.py::test_add", ["add"])
     _record(fm, "tests/test_mod.py::test_both", ["add", "sub"])
@@ -37,7 +37,7 @@ def test_roundtrip(fm: FuncMap, tmp_path: Path) -> None:
     assert again.entry("tests/test_mod.py::test_add") == ("tests/test_mod.py", "d1", "env-a")
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_function_hash_ignores_formatting(tmp_path: Path) -> None:
     write(tmp_path, SRC, "def add(a, b):\n    return a+b  # sum\n")
     before = file_functions(tmp_path, SRC)
@@ -49,7 +49,7 @@ def test_function_hash_ignores_formatting(tmp_path: Path) -> None:
     assert after[MODULE] == before[MODULE]
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_changed_function_found(fm: FuncMap, tmp_path: Path) -> None:
     _record(fm, "tests/test_mod.py::test_add", ["add"])
     assert fm.functions_changed([SRC]) == []
@@ -61,7 +61,7 @@ def test_changed_function_found(fm: FuncMap, tmp_path: Path) -> None:
     assert [(c.qualname, c.kind) for c in fm.functions_changed([SRC])] == [(MODULE, "changed")]
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_new_function_has_no_tests(fm: FuncMap, tmp_path: Path) -> None:
     _record(fm, "tests/test_mod.py::test_add", ["add"])
     write(tmp_path, SRC, BODY + "\n\ndef mul(a, b):\n    return a * b\n")
@@ -70,7 +70,7 @@ def test_new_function_has_no_tests(fm: FuncMap, tmp_path: Path) -> None:
     assert fm.tests_executing(SRC, "mul", "env-a") == []
 
 
-@pytest.mark.sr("SR-110")
+@pytest.mark.sr("SR-255")
 def test_env_key_change_invalidates(fm: FuncMap) -> None:
     _record(fm, "tests/test_mod.py::test_add", ["add"], env="env-a")
     assert fm.tests_executing(SRC, "add", "env-b") == []

@@ -14,7 +14,7 @@ from plumb.capture.ownership import diff_serves, node_proposals, ownership_propo
 from plumb.contracts import Target
 from plumb.judgment import FakeBackend
 
-pytestmark = pytest.mark.sr("SR-044")
+pytestmark = pytest.mark.sr("SR-200")
 
 EX = [{"id": "EX-1", "given": "a = 1 and b = 2", "when": "add runs",
        "then": "it returns the sum 3"}]

@@ -20,7 +20,7 @@ def _run(*argv: str) -> tuple[int, str]:
     return code, out.getvalue()
 
 
-@pytest.mark.sr("SR-080")
+@pytest.mark.sr("SR-258")
 def test_list_and_drop(tmp_path: Path) -> None:
     main, other = setup(tmp_path)
     assert _run("inflight", "--root", str(main)) == (
@@ -37,7 +37,7 @@ def test_list_and_drop(tmp_path: Path) -> None:
         "intent in flight on other branches: none\n")
 
 
-@pytest.mark.sr("SR-081")
+@pytest.mark.sr("SR-259")
 def test_check_exits_1_with_the_card(tmp_path: Path) -> None:
     main, other = setup(tmp_path)
     change(other, "feat-x's version")
@@ -48,7 +48,7 @@ def test_check_exits_1_with_the_card(tmp_path: Path) -> None:
     assert (code, text) == (0, "")
 
 
-@pytest.mark.sr("SR-080")
+@pytest.mark.sr("SR-258")
 def test_sync_claims_plain_edits(tmp_path: Path) -> None:
     from awareness.gitrepo import requirement
     from plumb.awareness import inflight

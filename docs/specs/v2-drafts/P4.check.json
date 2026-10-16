@@ -1,0 +1,55 @@
+{
+ "file": "P4",
+ "findings": [
+  {
+   "level": "medium",
+   "requirement": "The owner's message is read by meaning; the clear part is taken and only the unclear part asked again",
+   "what": "Check 2: SR-101 (16 linked tests) states that an item is answered only when it was shown at that version and the evidence words occur in the owner's message. EX-3 (an item not shown is not taken) and EX-5 (a record edited after it was shown) are dropped with reasons about ids and owner approval, which do not describe them, and no kept or new example carries the guard. No other draft carries it either (searched P1 to P15). Add an example: a result whose words do not occur in the message, or which names something the last reply did not show, takes nothing. Or drop EX-3 and EX-5 with the true reason."
+  },
+  {
+   "level": "medium",
+   "requirement": "An owner answer is captured with the question it answered, once, and rationalized into the intent",
+   "what": "Check 3, several behaviours in one: keeping an answer with its question and closing it, rationalizing into the set, what the judge receives (SR-097), and the JEV above 0.9 fast track ('said yes to one proposal ... fast-tracked'). The fast-track example is P9's behaviour and P9 already has the 0.93 / 0.7 cascade examples. Split rationalization into its own requirement and move the fast-track example to P9."
+  },
+  {
+   "level": "medium",
+   "requirement": "The owner's message is read by meaning; the clear part is taken and only the unclear part asked again",
+   "what": "Check 3, too many behaviours: reading per item and taking the clear part; the learned reader threshold; the in-flight read job; reversal with calibration labels; worker recompute and refused agent relay (P3's rule, with SR-101/EX-7 and EX-9); no reader reachable (P8's hold); and a merge-conflict question with keep this one / keep the other / both (SR-130/EX-3, P11's conflict question). The statement names only the first, the threshold and the reversal. Split reversal and calibration into one requirement, move the provenance and conflict-question examples to P3 and P11, and keep this one to reading by meaning."
+  },
+  {
+   "level": "medium",
+   "requirement": "An owner answer is captured with the question it answered, once, and rationalized into the intent",
+   "what": "Check 4 and internal contradiction: the example 'a bare answer said to reply to a proposal plumb never showed -> it is refused: an answer is kept only with a question the owner was actually shown' states a general rule. The example 'a capture whose quote is A and no question' says the capture warns and still records the intent (confirmed SR-097/EX-2). The general sentence contradicts the second. Narrow it to 'refused: the proposal it claims to answer was never shown'."
+  },
+  {
+   "level": "medium",
+   "requirement": "The owner's message is read by meaning; the clear part is taken and only the unclear part asked again",
+   "what": "Check 4, vague then-clauses. (a) 'the threshold becomes the value those answers support' names no value or method; give a number for a given set, e.g. 20 answers where agreement holds only above 0.8 give 0.8. (b) 'a request the reader cannot read' as a given cannot be staged; name a concrete unreadable request. (c) 'the agent's file captures nothing and is reported' does not say where it is reported. The same applies to the first requirement's 'the requirement is approved only when the judge validates that interpretation', which states a condition, not an observable state after the answer is logged: say the requirement is still unapproved right after the log."
+  },
+  {
+   "level": "low",
+   "requirement": "An owner answer is captured with the question it answered, once, and rationalized into the intent",
+   "what": "Check 4, coverage of 'coherent on its own and between its elements': both rationalization examples show one new answer against older intent. No example shows two pieces from one owner message that contradict each other, and the statement promises coherence between elements."
+  },
+  {
+   "level": "low",
+   "requirement": "The owner's message is read by meaning; the clear part is taken and only the unclear part asked again",
+   "what": "Check 5, proof: the owner is asked to see 'the calibration label noted' and a 'judge-approved record' misread. P12 leaves the owner a small status and one plumb line, so a label is not watchable, and a scratch repository may have no passing calibration to produce a judge-approved record (P9 draft: fewer than 20 labelled intents means none fast-tracked). The reader's evaluation set is a command-level check, but the proof kind is only live-session. Say how the record becomes judge-approved in the scratch repository, and show the label through the agent's reply."
+  },
+  {
+   "level": "low",
+   "requirement": "The owner's message is read by meaning; the clear part is taken and only the unclear part asked again",
+   "what": "Wording: the example 'words reversing a record that no prompt the hook logged holds | the agent passes them on' (SR-096/EX-4) implies an agent relay, which the intent's 'wont' (the agent's own relay does not stand for the owner's words) and the relay-refused example say is gone. Reword: 'a reversal is read from words the hook did not log'."
+  },
+  {
+   "level": "low",
+   "requirement": "An owner answer is captured with the question it answered, once, and rationalized into the intent",
+   "what": "Bookkeeping: SR-156/EX-2 (and SR-101/EX-1, SR-090/EX-2, SR-163/EX-4) sit in examples_kept although their outcomes were reworded (SR-156/EX-2 changes from 'only a card press or typed command confirms' to 'the judge validates'). List reworded examples with the principle that changed them (P3). INT-028 and INT-025 (the cluster's intents, confirmed) and INT-029 are not cited in the intent; say that the new intent carries them, or list what they add."
+  },
+  {
+   "level": "low",
+   "requirement": "The owner's message is read by meaning; the clear part is taken and only the unclear part asked again",
+   "what": "implemented_by (both requirements) links code of retired owner surfaces: approvals.py, confirm.py, typed.py, recheck_button.py, cards.py, cardstore.py, offers.py, summary.py. Link only code the requirement keeps, and let the P15 tidy remove the rest."
+  }
+ ]
+}

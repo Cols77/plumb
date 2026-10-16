@@ -15,7 +15,7 @@ from understand.test_read_job import make_core, open_card, record_text, state
 from plumb.api import open_core
 from plumb.understand import clarify, gate, queue, read, worker
 
-pytestmark = pytest.mark.sr("SR-163")
+pytestmark = pytest.mark.sr("SR-212")
 
 FORMAT = {"intent": "yes", "topic": "export", "gaps": [_gap("format", "Which format?",
                                                             blocking=True)]}

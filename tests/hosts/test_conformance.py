@@ -12,7 +12,7 @@ from hosts_helpers import QuietVerify, make_project, scripted_judge
 from plumb.contracts import TurnEvent
 from plumb.hosts.neutral import HOSTS, SELF_RECORDING_HOSTS, handle_event
 
-pytestmark = pytest.mark.sr("SR-053")
+pytestmark = pytest.mark.sr("SR-282")
 
 
 def _session(root: Path, host: str) -> list[tuple]:

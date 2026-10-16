@@ -22,7 +22,7 @@ from plumb import cli
 from plumb.api import open_core
 from plumb.mergedriver import open_conflicts
 
-pytestmark = pytest.mark.sr("SR-076")
+pytestmark = pytest.mark.sr("SR-256")
 SR = ".plumb/requirements/SR-005.md"
 
 
@@ -137,7 +137,7 @@ def test_owners_own_choice_of_mains_version_is_unchanged(repo: Path) -> None:
     assert (entry["take"], entry["by"]) == ("ours", "owner")
 
 
-@pytest.mark.sr("SR-170")
+@pytest.mark.sr("SR-211")
 def test_no_template_or_skill_names_the_relay() -> None:
     """SR-150 EX-3, back under DEC-057: no conflict relay or quoted choose is named in the
     skills and command."""

@@ -16,7 +16,7 @@ from plumb.api import open_core
 from plumb.verify import open_verify
 from plumb.verify.cli import report_lines
 
-pytestmark = pytest.mark.sr("SR-017")
+pytestmark = pytest.mark.sr("SR-255")
 
 SLOW_TESTS = 16
 # pytest plus coverage start-up takes 10-20 s on a cold Windows box and counts against the hard

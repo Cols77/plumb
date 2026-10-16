@@ -21,7 +21,7 @@ from plumb.contracts import DispatchError, Target
 from plumb.understand import repin
 from plumb.understand.repin import JevTier, Meaning, ModelDiagnoser
 
-pytestmark = pytest.mark.sr("SR-114")
+pytestmark = pytest.mark.sr("SR-242")
 
 INT1 = """---
 id: INT-001
@@ -327,7 +327,7 @@ def test_config_reads_the_cascade_settings() -> None:
     assert settings.repin_jev_threshold == 0.83 and settings.diagnose_model == "opus"
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_sr166_default_runner_lets_the_meaning_judge_gate_when_no_test_covers(project: Path,
                                                                 monkeypatch) -> None:
     class Lane:
@@ -339,7 +339,7 @@ def test_sr166_default_runner_lets_the_meaning_judge_gate_when_no_test_covers(pr
     assert ok and detail == "no test covers notes.md: judged on meaning only"
 
 
-@pytest.mark.sr("SR-166")
+@pytest.mark.sr("SR-198")
 def test_sr166_untested_end_repins_on_meaning_with_the_gap_in_the_note(project: Path) -> None:
     _edit(project, REFORMATTED)
     untested = "no test covers src/calc.py: judged on meaning only"

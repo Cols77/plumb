@@ -14,7 +14,7 @@ from plumb.api import open_core
 from plumb.contracts import CardState, Choice, ClarifyQuestion
 from plumb.understand import cardstore, clarify, fullcard, gate, worker
 
-pytestmark = [pytest.mark.sr("SR-129"), pytest.mark.sr("SR-145")]
+pytestmark = [pytest.mark.sr("SR-267"), pytest.mark.sr("SR-271")]
 
 SESSION = "s1"
 SR = ("---\nid: SR-001\ntitle: Export users as CSV\nfeature: FEAT-001\n"
@@ -107,7 +107,7 @@ def test_an_option_with_no_consequence_is_printed_alone_without_a_placeholder(
     assert "not written" not in text
 
 
-@pytest.mark.sr("SR-152")
+@pytest.mark.sr("SR-239")
 def test_every_doubt_line_of_a_readback_is_shown(repo: Path) -> None:
     from plumb.present import owner_text
 

@@ -14,7 +14,7 @@ from plumb.understand import cardstore
 from plumb.contracts import CardState, ClarifyQuestion
 
 
-@pytest.mark.sr("SR-132")
+@pytest.mark.sr("SR-216")
 def test_merge_withdraws_branch_cards(tmp_path: Path, capsys) -> None:
     root = make_repo(tmp_path / "main")
     write_record(root, record(title="Relay checks", statement="s", examples=[ex(1)]))
@@ -38,7 +38,7 @@ def test_merge_withdraws_branch_cards(tmp_path: Path, capsys) -> None:
     assert open_core(root).status(["SR-005"])["SR-005"].confirmation == "proposed"
 
 
-@pytest.mark.sr("SR-132")
+@pytest.mark.sr("SR-216")
 def test_syncing_main_into_a_feature_branch_withdraws_nothing(tmp_path: Path, capsys) -> None:
     root = make_repo(tmp_path / "main")
     run_git(root, "checkout", "-q", "-b", "feat-x")
@@ -57,7 +57,7 @@ def test_syncing_main_into_a_feature_branch_withdraws_nothing(tmp_path: Path, ca
     assert [c.status for c in cardstore.own_cards(root, "s1")] == ["open"]
 
 
-@pytest.mark.sr("SR-132")
+@pytest.mark.sr("SR-216")
 def test_an_older_post_merge_hook_is_refreshed_so_every_merge_reaches_the_withdrawal(
         tmp_path: Path) -> None:
     from plumb.boundary.premerge import POST_HOOK_MARKER, post_hook_path, refresh_post_hook
@@ -77,7 +77,7 @@ def test_an_older_post_merge_hook_is_refreshed_so_every_merge_reaches_the_withdr
     assert "exec python -m plumb merge-check --hook post-merge" in text
 
 
-@pytest.mark.sr("SR-132")
+@pytest.mark.sr("SR-216")
 def test_merging_the_remote_copy_of_a_branch_withdraws_its_cards(tmp_path: Path, capsys) -> None:
     root = make_repo(tmp_path / "main")
     run_git(root, "checkout", "-q", "-b", "feat-x")
@@ -93,7 +93,7 @@ def test_merging_the_remote_copy_of_a_branch_withdraws_its_cards(tmp_path: Path,
     assert [c.status for c in cardstore.own_cards(root, "s1")] == ["withdrawn"]
 
 
-@pytest.mark.sr("SR-132")
+@pytest.mark.sr("SR-216")
 def test_a_branch_made_from_main_and_not_yet_merged_keeps_its_cards(tmp_path: Path) -> None:
     root = make_repo(tmp_path / "main")
     run_git(root, "branch", "fresh")
@@ -107,7 +107,7 @@ def test_a_branch_made_from_main_and_not_yet_merged_keeps_its_cards(tmp_path: Pa
     assert [c.status for c in cardstore.own_cards(root, "s1")] == ["open"]
 
 
-@pytest.mark.sr("SR-132")
+@pytest.mark.sr("SR-216")
 def test_a_card_on_the_checked_out_branch_of_a_repository_with_no_commit_is_not_gone(
         tmp_path: Path) -> None:
     root = tmp_path / "fresh"

@@ -12,7 +12,7 @@ from plumb.present import owner_text
 
 from .helpers import PLUGIN, git, git_repo, needs_sh, user_launcher
 
-pytestmark = [pytest.mark.sr("SR-083")]
+pytestmark = [pytest.mark.sr("SR-280")]
 HOOKS = ("commit-msg", "pre-merge-commit", "prepare-commit-msg", "post-merge", "pre-push")
 
 

@@ -36,7 +36,7 @@ from plumb.contracts import (
 )
 from plumb.understand import files
 
-pytestmark = pytest.mark.sr("SR-103", "SR-104", "SR-105")
+pytestmark = pytest.mark.sr("SR-223", "SR-273", "SR-267")
 
 DATA_CLASSES = (Job, JobError, JobResult, ReadItem, ReadCard, ReaderEntry, JudgeVerdict,
                 ClarifyQuestion, ClarifyAnswer, CardState, Applied, GateState,
@@ -115,7 +115,7 @@ def test_committed_log_kinds_are_accepted(repo: Path) -> None:
         assert core.log_append("events", kind, payload).kind == kind
 
 
-@pytest.mark.sr("SR-086")
+@pytest.mark.sr("SR-209")
 def test_card_store_round_trips_choices_and_the_button_statuses(tmp_path: Path) -> None:
     from plumb.understand import cardstore
 
@@ -144,7 +144,7 @@ def test_card_store_round_trips_choices_and_the_button_statuses(tmp_path: Path) 
     assert ClarifyQuestion("q", "t", ("a",)).choices == ()   # positional use is unchanged
 
 
-@pytest.mark.sr("SR-086")
+@pytest.mark.sr("SR-209")
 def test_button_approval_is_accepted_by_the_log_and_refused_by_its_recheck(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb import confirm

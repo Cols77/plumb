@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.sr("SR-073")
+pytestmark = pytest.mark.sr("SR-232")
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "plumb"
 LOG_REF = re.compile(r"log_dir|log_kind_dir|log_events|log_evidence|log_path\(|log_head|"

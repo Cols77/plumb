@@ -15,7 +15,7 @@ from plumb.capture import autoapprove
 from plumb.contracts import Target
 from plumb.understand import repin
 
-pytestmark = pytest.mark.sr("SR-174")
+pytestmark = pytest.mark.sr("SR-245")
 
 SR1 = """---
 id: SR-001

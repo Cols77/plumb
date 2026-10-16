@@ -22,8 +22,8 @@ def _json(capsys: pytest.CaptureFixture[str]) -> dict:
     return json.loads(capsys.readouterr().out)
 
 
-@pytest.mark.sr("SR-016")
-@pytest.mark.sr("SR-017")
+@pytest.mark.sr("SR-255")
+@pytest.mark.sr("SR-255")
 def test_tests_map_select_run_commands(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     root = ["--root", str(project)]
     assert cli.main(["tests", "map", *root]) == 0
@@ -53,7 +53,7 @@ def test_tests_map_select_run_commands(project: Path, capsys: pytest.CaptureFixt
                                     "tests/test_helper.py::test_twice"}
 
 
-@pytest.mark.sr("SR-020")
+@pytest.mark.sr("SR-254")
 def test_run_prints_regression_instruction(project: Path,
                                            capsys: pytest.CaptureFixture[str]) -> None:
     root = ["--root", str(project)]
@@ -71,8 +71,8 @@ def test_run_prints_regression_instruction(project: Path,
     assert "regression" not in out
 
 
-@pytest.mark.sr("SR-016")
-@pytest.mark.sr("SR-018")
+@pytest.mark.sr("SR-255")
+@pytest.mark.sr("SR-255")
 def test_aliases_map_and_verify(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     root = ["--root", str(project)]
     assert cli.main(["map", "--json", *root]) == 0

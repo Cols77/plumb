@@ -13,7 +13,7 @@ from awareness.scenario import change, setup
 from plumb.api import open_core
 from plumb.awareness import inflight
 
-pytestmark = pytest.mark.sr("SR-080")
+pytestmark = pytest.mark.sr("SR-258")
 
 
 def _claims(root: Path) -> list[dict]:

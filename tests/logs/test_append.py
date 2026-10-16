@@ -12,7 +12,7 @@ import pytest
 from plumb import log
 from plumb.paths import PlumbPaths
 
-pytestmark = pytest.mark.sr("SR-073")
+pytestmark = pytest.mark.sr("SR-232")
 
 
 @pytest.fixture

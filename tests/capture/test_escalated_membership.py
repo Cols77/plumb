@@ -15,7 +15,7 @@ from jev_fixtures import calibrated
 from plumb.api import open_core
 from plumb.capture.spec import set_state
 
-pytestmark = [pytest.mark.sr("SR-041"), pytest.mark.sr("SR-037")]
+pytestmark = [pytest.mark.sr("SR-250"), pytest.mark.sr("SR-227")]
 
 PROMPT = "add multiply next to add; multiply returns the product of two numbers"
 INTENT = {"quote": "add multiply next to add", "readback": "add multiply next to add",
