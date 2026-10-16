@@ -582,9 +582,12 @@ def _failing_text(record_id: str, item: dict) -> str:
 
 def status_data(core) -> dict:
     from plumb.contracts import KIND_PREFIX
+    from plumb.query import retired_ids
 
     index = core.index()
-    statuses = core.status()
+    retired = retired_ids(index)   # SR-233: a retired record counts nowhere
+    index = {i: r for i, r in index.items() if i not in retired}
+    statuses = {i: s for i, s in core.status().items() if i not in retired}
     records = dict.fromkeys(KIND_PREFIX, 0)
     for record in index.values():
         records[record.kind] += 1

@@ -117,19 +117,29 @@ def test_flipped_will_is_never_rated_faithful(repo: Path, write_record) -> None:
     assert low_risk(repo) == ["INT-008"]
 
 
-def test_changed_number_is_never_rated_faithful(repo: Path, write_record) -> None:
-    """The owner said "it returns -2"; an example that returns 2 contradicts it."""
+def test_a_number_the_owner_never_said_is_no_contradiction(repo: Path, write_record) -> None:
+    """DEC-140: the number is the agent's formalization; only the judge rates it."""
     digest = log_prompt(repo, NEG)
     write_record(repo, record_text("INT-007", "add neg", quote=NEG, readback="add neg",
                                    prompt=digest.removeprefix("sha256:")[:16]))
-    for record_id, result in (("SR-007", "it returns 2"), ("SR-008", "it returns -2")):
-        write_record(repo, record_text(
-            record_id, "neg", statement="neg is called on 2",
-            examples=[{"id": "EX-1", "given": "2", "when": "neg is called", "then": result}],
-            links=[{"kind": "derives_from", "to": "INT-007"}]))
-    found = item(repo, "SR-007")
-    assert found.excluded.startswith(CONTRADICTS) and "number 2" in found.excluded
-    assert "SR-008" in low_risk(repo)
+    write_record(repo, record_text(
+        "SR-007", "neg", statement="neg is called on 2",
+        examples=[{"id": "EX-1", "given": "2", "when": "neg is called", "then": "it returns 2"}],
+        links=[{"kind": "derives_from", "to": "INT-007"}]))
+    assert "SR-007" in low_risk(repo)
+
+
+def test_a_prompt_plumb_logged_without_a_via_is_the_owners_words(repo: Path, write_record,
+                                                                  ) -> None:
+    """SR-240, SR-208: a migrated entry has no via; only a self-recorded one is refused."""
+    digest = log_prompt(repo, NEG, via=None)
+    write_record(repo, record_text("INT-007", "add neg", quote=NEG, readback="add neg",
+                                   prompt=digest.removeprefix("sha256:")[:16]))
+    assert "INT-007" in low_risk(repo)
+    other = log_prompt(repo, "add abs", via="turn")
+    write_record(repo, record_text("INT-008", "add abs", quote="add abs", readback="add abs",
+                                   prompt=other.removeprefix("sha256:")[:16]))
+    assert item(repo, "INT-008").excluded.startswith(UNVERIFIED)
 
 
 def test_calibration_variations_never_join_the_group() -> None:
@@ -145,6 +155,8 @@ def test_calibration_variations_never_join_the_group() -> None:
     kinds = []
     for no in variations(yes):
         kinds.append(no.source)
+        if no.source == "generated:changed-number":   # DEC-140: a number is the judge's call
+            continue
         assert contradiction(premise, "\n".join(no.hypotheses)) is not None, no.source
     assert sorted(kinds) == ["generated:changed-number", "generated:flipped-result",
                              "generated:will-to-wont"]

@@ -1,6 +1,6 @@
-"""SR-196: the edit gate closes on a request that changes a confirmed record while no intent
-loop ran for it, names the record and its example, and the owner's typed /plumb go releases
-it; a request that touches nothing confirmed runs no model and holds nothing."""
+"""SR-225: the prompt hook flags a request that may change a confirmed record and holds
+nothing itself (the clarify job holds once it finds a request: a question never holds); a
+request that touches nothing confirmed runs no model."""
 
 from __future__ import annotations
 
@@ -61,14 +61,26 @@ def _run(repo: Path, hook_input, text: str, backend: FakeBackend | None = None) 
     return out.getvalue()
 
 
-def test_ex1_gate_closes_naming_the_record_and_example_until_the_owner_releases(
-        records: Path, hook_input) -> None:
-    out = _run(records, hook_input, "make add subtract instead, SR-001")
-    state = gate.state(records, SESSION)
-    assert state.state == "closed" and state.reason == "intent change: SR-001 EX-1"
-    assert "plumb: edits are held (intent change: SR-001 EX-1)" in out
-    # the typed /plumb go releases it, as it releases a failed check
-    assert gate.release(open_core(records), SESSION, "typed")
+def test_ex1_the_hook_flags_the_record_and_holds_nothing_itself(records: Path,
+                                                                hook_input) -> None:
+    import json
+
+    text = "make add subtract instead, SR-001"
+    out = _run(records, hook_input, text)
+    assert "this may change SR-001" in out and "edits are held" not in out
+    assert gate.state(records, SESSION).state == "open"
+    rows = [json.loads(line) for line in
+            (records / ".plumb" / "session" / "intent_flags.jsonl").read_text("utf-8").splitlines()]
+    digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    assert [(r["session"], r["prompt_digest"], r["subject"]) for r in rows] \
+        == [(SESSION, digest, "SR-001")]
+    # the clarify job turns the flag into the hold once it finds a request (SR-225 EX-1)
+    core = open_core(records)
+    from plumb.understand import clarify
+
+    assert clarify.intent_change_hold(core, SESSION, digest) == "intent change: SR-001 EX-1"
+    gate.close(records, SESSION, digest, "intent change: SR-001 EX-1")
+    assert gate.release(core, SESSION, "typed")   # the typed /plumb go releases it
     assert gate.state(records, SESSION).state == "open"
 
 

@@ -107,8 +107,8 @@ def problems(core: Any) -> list[str]:
     return out
 
 
-# SR-196: the reason prefix of a gate the prompt hook closes on a request that changes a
-# confirmed record while no intent loop ran for it; the owner's /plumb go releases it too
+# SR-225: the reason prefix of a gate the clarify job keeps closed on a request that changes
+# a confirmed record while no intent loop ran for it; the owner's /plumb go releases it too
 INTENT_CHANGE = "intent change:"
 
 RELEASE_WORDS = {"typed": "the owner typed the release", "button": "the owner pressed Build anyway",

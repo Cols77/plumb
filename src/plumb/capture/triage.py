@@ -127,8 +127,8 @@ CLAIM_VERSION = "claim2"  # the cache key changes when what is judged changes
 
 class _Prompts:
     """The owner's logged prompts, read once per triage: ``text(prefix)`` is the text of the
-    hook-logged prompt a record's ``prompt`` digest prefix names, or None (unknown, not
-    hashing to its digest, or recorded by the agent itself: ``via`` other than ``hook``)."""
+    prompt plumb itself logged that a record's ``prompt`` digest prefix names, or None
+    (unknown, not hashing to its digest, or recorded by the agent itself, SR-208)."""
 
     def __init__(self, core: Core) -> None:
         self.core = core
@@ -145,7 +145,9 @@ class _Prompts:
                 entry = find_prompt(self.core, key)
             except Refused:
                 entry = None
-            ok = entry is not None and entry.get("via") == "hook"
+            from plumb.boundary.glance import SELF_RECORDED_VIA
+
+            ok = entry is not None and str(entry.get("via") or "") not in SELF_RECORDED_VIA
             self.cache[key] = str(entry["text"]) if ok and entry is not None else None
         return self.cache[key]
 
@@ -247,11 +249,13 @@ def triage(core: Core, ids: Iterable[str] | None = None, *, backend: Any = None,
            hook: bool = False) -> TriageView:
     """The triage view of the proposed or edited records (all, or ``ids``)."""
     from plumb.capture.spec import set_of
+    from plumb.query import retired_ids
 
     index = core.index()
     statuses = core.status()
+    retired = retired_ids(index)
     wanted = [i for i in (ids if ids is not None else sorted(index, key=_order))
-              if i in index and statuses[i].confirmation != "confirmed"]
+              if i in index and i not in retired and statuses[i].confirmation != "confirmed"]
     unavailable = ""
     if backend is None:
         from plumb.judgment import JudgmentUnavailable, get_backend
