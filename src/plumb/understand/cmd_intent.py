@@ -1,0 +1,250 @@
+"""The intent loop's commands and state (SR-193, SR-194, SR-197; DEC-082).
+
+``plumb intent open [--wait]`` collects the check of the owner's latest ``/plumb intent
+<words>`` (``cmd_clarify.wait``) and opens the loop's state file; an ordinary message opens
+none. ``plumb intent gate clarify|plan --intent INT-### --findings FILE`` records a stage's
+judge gate: it passes only when no high or medium finding remains, and ``plan`` refuses while
+``clarify`` has not passed. ``plumb intent done --intent INT-###`` refuses while the plan gate
+has not passed or a requirement of the intent lacks proof evidence that passed. ``plumb intent
+status`` lists the open loops.
+
+State lives in ``.plumb/session/<id>/intent/<digest12>.json``. It carries no authority: it
+confirms nothing, and the records stay proposed until the owner confirms them.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from plumb.cliutil import EXIT_FINDINGS, EXIT_USAGE, add_common, emit, resolve_root
+from plumb.understand import files, gate
+
+LOOP_VERBS = ("open", "gate", "done", "status")
+STAGES = ("clarify", "plan", "build")
+LEVELS = ("high", "medium", "low")
+BLOCKING = ("high", "medium")
+GATE_OPEN_REASON = "the intent loop reached a clear intent"
+
+
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def loop_path(root: Path, session: str, digest: str) -> Path:
+    return files.session_dir(root, session) / "intent" / (
+        digest.removeprefix("sha256:")[:12] + ".json")
+
+
+def open_loop(root: Path, session: str, digest: str) -> Path:
+    """Open the loop state of the commanded message ``digest`` (idempotent)."""
+    path = loop_path(root, session, digest)
+    if not path.exists():
+        files.write_json_atomic(path, {
+            "digest": digest, "intent": None, "opened_at": _now(),
+            "stages": {stage: {"state": "open"} for stage in STAGES}})
+    return path
+
+
+def loops(root: Path, session: str | None = None) -> list[tuple[Path, dict[str, Any]]]:
+    """Every loop state file (of one session, or all), newest opened last."""
+    folder = Path(root) / ".plumb" / "session"
+    found = []
+    for path in sorted(folder.glob(f"{session or '*'}/intent/*.json")):
+        data = files.read_json(path)
+        if isinstance(data, Mapping) and isinstance(data.get("stages"), Mapping):
+            found.append((path, dict(data)))
+    return sorted(found, key=lambda item: str(item[1].get("opened_at", "")))
+
+
+def _find(root: Path, session: str | None, intent: str) -> tuple[Path, dict[str, Any]]:
+    """The loop of ``intent``, else this session's newest loop no intent claimed yet (it is
+    claimed). With no session known nothing is claimed: another session's loop is not ours."""
+    found = loops(root, session)
+    for path, data in reversed(found):
+        if data.get("intent") == intent:
+            return path, data
+    for path, data in reversed(found if session else []):
+        if data.get("intent") is None:
+            data["intent"] = intent
+            return path, data
+    raise LookupError(f"no open loop for {intent}: plumb intent open comes first"
+                      + ("" if session else " (or name the session with --session)"))
+
+
+def _passed(data: Mapping[str, Any], stage: str) -> bool:
+    return data["stages"].get(stage, {}).get("state") == "passed"
+
+
+def _session(args: argparse.Namespace, root: Path) -> str | None:
+    from plumb.stale import SESSION_ENV, current_session
+
+    if args.session:
+        return str(args.session)
+    return current_session(root) if any(os.environ.get(n) for n in SESSION_ENV) else None
+
+
+def _intent(core: Any, intent: str) -> None:
+    record = core.index().get(intent)
+    if record is None or record.kind != "intent":
+        raise LookupError(f"no intent {intent}")
+
+
+def requirements_of(core: Any, intent: str) -> list[str]:
+    """The requirements linked to ``intent`` (derives_from or decides)."""
+    return sorted(r.id for r in core.index().values() if r.kind == "requirement" and any(
+        link.kind in ("derives_from", "decides") and link.target.record == intent
+        for link in r.links))
+
+
+def findings_from(path: str) -> list[dict[str, str]]:
+    """The findings file: a JSON list of ``{level: high|medium|low, what}``."""
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"--findings {path}: {exc}") from exc
+    if not isinstance(raw, list) or not all(isinstance(f, Mapping) for f in raw):
+        raise ValueError(f"--findings {path}: a JSON list of {{level, what}}")
+    out = []
+    for finding in raw:
+        level = str(finding.get("level") or "").lower()
+        if level not in LEVELS:
+            raise ValueError(f"--findings {path}: level is one of {', '.join(LEVELS)}")
+        out.append({"level": level, "what": str(finding.get("what") or "")})
+    return out
+
+
+# --------------------------------------------------------------------------- verbs
+
+
+def cmd_open(core: Any, args: argparse.Namespace) -> int:
+    from plumb.understand import clarify, cmd_clarify
+
+    root = Path(core.root)
+    session = _session(args, root)
+    outcome = cmd_clarify.wait(core, session, timeout=args.timeout, stream=sys.stderr)
+    logged = cmd_clarify.latest_prompt(core, session)
+    opened = None
+    # SR-193 EX-4: an ordinary message opens no loop
+    if logged is not None and logged.get("digest") == outcome.digest and outcome.digest \
+            and clarify.commanded_words(str(logged.get("text") or "")) is not None:
+        opened = open_loop(root, str(logged.get("session") or session or "default"),
+                           outcome.digest)
+    lines = [*outcome.lines, *(["plumb: intent loop open: " + opened.as_posix()] if opened else [])]
+    emit({**outcome.as_json(), "loop": opened.as_posix() if opened else None, "lines": lines}
+         if args.as_json else lines, args.as_json)
+    return 0
+
+
+def cmd_gate(core: Any, args: argparse.Namespace) -> int:
+    root = Path(core.root)
+    _intent(core, args.intent)
+    path, data = _find(root, _session(args, root), args.intent)
+    findings = findings_from(args.findings)
+    if args.stage == "plan" and not _passed(data, "clarify"):
+        print("plumb: the clarify gate has not passed; plumb intent gate clarify comes first",
+              file=sys.stderr)
+        return EXIT_FINDINGS
+    blocking = [f for f in findings if f["level"] in BLOCKING]
+    if blocking:
+        print(f"plumb: the {args.stage} gate does not pass: {len(blocking)} finding(s) above low "
+              "remain; fix them and judge again", file=sys.stderr)
+        for finding in blocking:
+            print(f"  {finding['level']}: {finding['what']}", file=sys.stderr)
+        return EXIT_FINDINGS
+    data["stages"][args.stage] = {"state": "passed", "at": _now(), "findings": len(findings)}
+    files.write_json_atomic(path, data)
+    core.log_append("events", "intent-gate", {"intent": args.intent, "digest": data["digest"],
+                                              "stage": args.stage, "findings": len(findings)})
+    # SR-196: the loop opens only the hold of an intent change; a waiting card or a failed
+    # check keeps the gate closed until the owner answers or releases it (SR-169 EX-3)
+    if args.stage == "clarify" and gate.closed_reason(root, path.parent.parent.name).startswith(
+            gate.INTENT_CHANGE):
+        gate.open(core, path.parent.parent.name, data["digest"], "intent", GATE_OPEN_REASON)
+    print(f"plumb: {args.intent}: the {args.stage} gate passed "
+          f"({len(findings)} low finding(s) left)")
+    return 0
+
+
+def cmd_done(core: Any, args: argparse.Namespace) -> int:
+    from plumb.capture import proof
+
+    root = Path(core.root)
+    _intent(core, args.intent)
+    path, data = _find(root, _session(args, root), args.intent)
+    missing = [] if _passed(data, "plan") else ["the plan gate has not passed"]
+    required = requirements_of(core, args.intent)
+    if not required:     # SR-197 EX-2: nothing captured is no proof shown
+        missing.append(f"no requirement derives from {args.intent}: no proof to show")
+    missing += [f"{row['id']} ({row['title']}): proof {row['why']}"
+                for row in proof.not_shown(core, required)]
+    if missing:
+        print(f"plumb: {args.intent} is not done; the intent stays open:", file=sys.stderr)
+        for line in missing:
+            print(f"  {line}", file=sys.stderr)
+        return EXIT_FINDINGS
+    data["stages"]["build"] = {"state": "passed", "at": _now()}
+    files.write_json_atomic(path, data)
+    core.log_append("events", "intent-done", {"intent": args.intent, "digest": data["digest"]})
+    print(f"plumb: {args.intent} done: every proof shown (the records stay as they are)")
+    return 0
+
+
+def cmd_status(core: Any, args: argparse.Namespace) -> int:
+    root = Path(core.root)
+    found = [(p, d) for p, d in loops(root, _session(args, root)) if not _passed(d, "build")]
+    if args.as_json:
+        emit([d for _, d in found], True)
+        return 0
+    for _, data in found:
+        states = ", ".join(f"{s} {data['stages'].get(s, {}).get('state', 'open')}" for s in STAGES)
+        print(f"{data.get('intent') or data['digest'].removeprefix('sha256:')[:12]}: {states}")
+    if not found:
+        print("plumb: no intent loop is open")
+    return 0
+
+
+def run(command: str, argv: list[str]) -> int:
+    if not argv or argv[0] not in LOOP_VERBS:
+        from plumb.capture import cli as capture_cli
+
+        return int(capture_cli.run(command, argv) or 0)
+    parser = argparse.ArgumentParser(
+        prog="plumb intent",
+        description="The intent loop: open it on the owner's /plumb intent <words>, record "
+                    "each stage's judge gate, call it done once every proof is shown, or list "
+                    "the open loops. Confirms nothing.")
+    verbs = parser.add_subparsers(dest="verb", required=True)
+    opener = verbs.add_parser("open")
+    opener.add_argument("--wait", action="store_true", help="(always waits)")
+    opener.add_argument("--timeout", type=float, default=None)
+    gater = verbs.add_parser("gate")
+    gater.add_argument("stage", choices=("clarify", "plan"))
+    gater.add_argument("--intent", required=True, metavar="INT-###")
+    gater.add_argument("--findings", required=True, metavar="FILE",
+                       help="JSON list of {level: high|medium|low, what}")
+    doner = verbs.add_parser("done")
+    doner.add_argument("--intent", required=True, metavar="INT-###")
+    verbs.add_parser("status")
+    for sub in (opener, gater, doner, verbs.choices["status"]):
+        add_common(sub)
+        sub.add_argument("--session", default=None)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else EXIT_USAGE
+    from plumb.api import open_core
+
+    core = open_core(resolve_root(args.root))
+    try:
+        return {"open": cmd_open, "gate": cmd_gate, "done": cmd_done, "status": cmd_status}[
+            args.verb](core, args)
+    except (LookupError, ValueError) as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return EXIT_FINDINGS if isinstance(exc, LookupError) else EXIT_USAGE

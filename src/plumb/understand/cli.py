@@ -1,4 +1,4 @@
-"""Thin router of ``plumb understand``, ``quotes`` and ``clarify``."""
+"""Thin router of ``plumb understand``, ``quotes``, ``clarify`` and ``intent``."""
 
 from __future__ import annotations
 
@@ -17,6 +17,11 @@ def run(command: str, argv: list[str]) -> int:
         from plumb.understand import cmd_clarify
 
         return int(cmd_clarify.run(command, argv) or 0)
+    if command == "intent":
+        # open|gate|done|status is the intent loop (SR-193, SR-194); anything else captures an INT
+        from plumb.understand import cmd_intent
+
+        return int(cmd_intent.run(command, argv) or 0)
     if command == "understand" and argv and argv[0] == "eval":
         from plumb.understand import evalrun
 

@@ -13,12 +13,12 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
   pass. When the stop hook asks, run the command it names (`{plumb} tests run --changed`).
   A workflow agent's stop is held on each stale link its work made: repin, reword or card it.
 - Read back each request in the owner's terms and record it in one call: `{plumb} capture
-  --prompt <digest> --file <doc.json>` (references/capture-doc.md); paste none of its output.
-  All proposed; never blocking. Two readings: `{plumb} decide --question Q --chosen A --alt B`.
-  `<digest>` (sha256 of the owner's message, 12+ hex) is `message_digest` of `{plumb} clarify
-  --wait --json`. Act on capture's "contradicts"/"may change" lines: supersede only when every
-  still-tested example of the old record is covered or moved via `updates`, else reword.
-- Plan each requirement's proof, how the owner sees it working, and show it before done:
+  --prompt <digest> --file <doc.json>` (references/capture-doc.md). Proposed; never blocking.
+  Two readings: `{plumb} decide --question Q --chosen A --alt B`. `<digest>` (sha256 of the
+  message) is `message_digest` of `{plumb} clarify --wait --json`. A requirement is one
+  durable, observable behaviour with examples and a proof, naming what it supersedes; a fix
+  of what one states is a commit claiming it (or an NC), never a new requirement; an intent
+  is one per principle. The proof, how the owner sees it working, is shown before done:
   `{plumb} proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
 - Ask with Claude Code's question tool by default; a card (plumb-clarify) only when the answer
   must change the owner's records or needs context, consequences or a diagram.

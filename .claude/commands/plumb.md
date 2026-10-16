@@ -1,7 +1,7 @@
 ---
 description: plumb in plain words - status, explain anything, review, confirm or approve records, what a change would reach, the Obsidian view, adopt this repository (init), build without a failed check (go), undo a confirmed record, typed auto-approve on or off, conflicts, merges, other branches' work, the JEV judge (setup, status, calibration), installing what plumb needs
-argument-hint: "status | explain <anything> | review [<anything>] | approve <IDs> | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
-allowed-tools: Bash(.venv/Scripts/python.exe -m plumb status:*), Bash(.venv/Scripts/python.exe -m plumb brief:*), Bash(.venv/Scripts/python.exe -m plumb explain:*), Bash(.venv/Scripts/python.exe -m plumb why:*), Bash(.venv/Scripts/python.exe -m plumb review:*), Bash(.venv/Scripts/python.exe -m plumb impact:*), Bash(.venv/Scripts/python.exe -m plumb view:*), Bash(.venv/Scripts/python.exe -m plumb show:*), Bash(.venv/Scripts/python.exe -m plumb resolve:*), Bash(.venv/Scripts/python.exe -m plumb align:*), Bash(.venv/Scripts/python.exe -m plumb init:*), Bash(.venv/Scripts/python.exe -m plumb plugin migrate:*), Bash(.venv/Scripts/python.exe -m plumb clarify --wait:*), Bash(.venv/Scripts/python.exe -m plumb validate:*), Bash(.venv/Scripts/python.exe -m plumb conflicts:*), Bash(.venv/Scripts/python.exe -m plumb conflict propose:*), Bash(.venv/Scripts/python.exe -m plumb merge-check:*), Bash(.venv/Scripts/python.exe -m plumb inflight:*), Bash(.venv/Scripts/python.exe -m plumb jev status:*), Bash(.venv/Scripts/python.exe -m plumb jev setup:*), Bash(.venv/Scripts/python.exe -m plumb jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
+argument-hint: "status | intent <words> | clarify <words> | explain <anything> | review [<anything>] | approve <IDs> | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
+allowed-tools: Bash(.venv/Scripts/python.exe -m plumb status:*), Bash(.venv/Scripts/python.exe -m plumb brief:*), Bash(.venv/Scripts/python.exe -m plumb explain:*), Bash(.venv/Scripts/python.exe -m plumb why:*), Bash(.venv/Scripts/python.exe -m plumb review:*), Bash(.venv/Scripts/python.exe -m plumb impact:*), Bash(.venv/Scripts/python.exe -m plumb view:*), Bash(.venv/Scripts/python.exe -m plumb show:*), Bash(.venv/Scripts/python.exe -m plumb resolve:*), Bash(.venv/Scripts/python.exe -m plumb align:*), Bash(.venv/Scripts/python.exe -m plumb init:*), Bash(.venv/Scripts/python.exe -m plumb plugin migrate:*), Bash(.venv/Scripts/python.exe -m plumb clarify --wait:*), Bash(.venv/Scripts/python.exe -m plumb intent:*), Bash(.venv/Scripts/python.exe -m plumb validate:*), Bash(.venv/Scripts/python.exe -m plumb conflicts:*), Bash(.venv/Scripts/python.exe -m plumb conflict propose:*), Bash(.venv/Scripts/python.exe -m plumb merge-check:*), Bash(.venv/Scripts/python.exe -m plumb inflight:*), Bash(.venv/Scripts/python.exe -m plumb jev status:*), Bash(.venv/Scripts/python.exe -m plumb jev setup:*), Bash(.venv/Scripts/python.exe -m plumb jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -18,7 +18,8 @@ on those only typed in lower case as the whole message.
 Typed otherwise (`/plumb Approve SR-034`), plumb acted on nothing: confirm, release or switch
 nothing yourself, and tell them to type it again in lower case.
 `<digest>` below is the sha256 of the owner's message: `message_digest` in
-`.venv/Scripts/python.exe -m plumb clarify --wait --json` (12 or more hex digits are enough).
+`.venv/Scripts/python.exe -m plumb clarify --wait --json` (12 or more hex digits are enough; on an ordinary message it
+answers ready at once and runs no check).
 
 - No argument, or `status`: run `.venv/Scripts/python.exe -m plumb status --card` and give the card, what awaits
   them and drift in one or two lines; when it lists records also being changed on another
@@ -37,6 +38,12 @@ nothing yourself, and tell them to type it again in lower case.
   what is missing. The same words inside a sentence ("turn auto-approve on") change
   nothing: tell them to type the command as the whole message.
 - `settle ...`: that switch no longer exists; the prompt hook said so. Change and run nothing.
+- `intent <words>`: the owner opens the intent loop on those words (questions through the
+  question tool until the intent is clear on its own and against the confirmed records, one
+  judge gate, then the records, the plan and the build with the proof they stated). Run
+  `.venv/Scripts/python.exe -m plumb intent open --wait`, then follow the plumb-intent skill stage by stage. Ordinary
+  messages open no loop.
+- `clarify <words>`: the same as `intent <words>`; follow that branch.
 - `explain <anything>` (also `why <anything>`): run `.venv/Scripts/python.exe -m plumb explain <their words>` and say
   why it exists: the owner's words it comes from, the decisions, the examples and whether
   their tests pass.
@@ -57,7 +64,7 @@ nothing yourself, and tell them to type it again in lower case.
 - `conflicts` (or "what conflicts?"): run `.venv/Scripts/python.exe -m plumb conflicts [<their words>]`, say in their
   terms what each side wants, and follow
   .claude/skills/plumb-records/references/conflicts.md:
-  the card takes their answer; you choose nothing.
+  the card takes their answer, or plumb reads their chat reply; you choose nothing.
 - `merge-check`, or "finish the merge", "merge <branch>", "continue the rebase", "undo the
   merge", "keep mine" on a record file, installing plumb's git hooks: follow
   .claude/skills/plumb-records/references/merge.md.
