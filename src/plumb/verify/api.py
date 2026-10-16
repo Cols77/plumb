@@ -35,14 +35,9 @@ def spawn_map_build(root: Path) -> bool:
             return False
     except OSError:
         pass
-    options: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
-                               "stderr": subprocess.DEVNULL, "cwd": str(root),
-                               "close_fds": True}
-    if os.name == "nt":
-        options["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0x8)
-                                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200))
-    else:
-        options["start_new_session"] = True
+    from plumb.background import popen_options
+
+    options = popen_options(root)   # no console window for it or for its git and pytest calls
     try:
         lock.parent.mkdir(parents=True, exist_ok=True)
         lock.write_text(str(os.getpid()), encoding="utf-8")

@@ -62,7 +62,7 @@ def test_the_hard_limit_still_cuts_at_the_configured_value(repo: Path, tmp_path:
 
 def test_the_settings_are_read_from_config_yaml(repo: Path) -> None:
     """EX-3: configured values win; unset ones fall back to the defaults."""
-    assert hookio.hard_limit_s(repo) == hookio.HARD_LIMIT_S == 6.0
+    assert hookio.hard_limit_s(repo) == hookio.HARD_LIMIT_S == 30.0
     (repo / ".plumb" / "config.yaml").write_text(
         "hooks:\n  hard_limit_s: 3.5\n  budget_ms: {stop: 2500}\n", encoding="utf-8")
     hooks = load_config(repo).hooks
