@@ -99,7 +99,7 @@ def test_sr194_ex1_the_plan_gate_refuses_while_clarify_has_not_passed(
 @pytest.mark.sr("SR-194")
 def test_sr194_ex2_a_passed_clarify_gate_lets_the_plan_stage_run_and_records_it(
         intent: Path, tmp_path: Path) -> None:
-    gate.close(intent, SESSION, DIGEST, "checking")
+    gate.close(intent, SESSION, DIGEST, gate.INTENT_CHANGE + " SR-040 SR-040/EX-1")
     high = _findings(tmp_path, "high", "low")
     assert _run(intent, "gate", "clarify", "--intent", "INT-001", "--findings", high) == 1
     assert _loop(intent)["stages"]["clarify"] == {"state": "open"}
@@ -116,6 +116,43 @@ def test_sr194_ex2_a_passed_clarify_gate_lets_the_plan_stage_run_and_records_it(
     assert [e["stage"] for e in events] == ["clarify", "plan"]
     assert events[0] == {"intent": "INT-001", "digest": DIGEST, "stage": "clarify", "findings": 1}
     assert open_core(intent).status(["SR-040"])["SR-040"].confirmation == "proposed"
+
+
+@pytest.mark.sr("SR-169")
+@pytest.mark.parametrize("reason", [clarify.GATE_REASON_CARD, clarify.GATE_REASON_COULDNT,
+                                    clarify.GATE_REASON_CHECKING])
+def test_a_passed_clarify_gate_leaves_a_hold_only_the_owner_or_the_check_opens(
+        intent: Path, tmp_path: Path, reason: str) -> None:
+    gate.close(intent, SESSION, DIGEST, reason)
+    low = _findings(tmp_path, "low")
+    assert _run(intent, "gate", "clarify", "--intent", "INT-001", "--findings", low) == 0
+    assert gate.is_closed(intent, SESSION) and gate.closed_reason(intent, SESSION) == reason
+
+
+def test_without_a_session_no_loop_is_claimed(intent: Path, tmp_path: Path,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    from plumb.stale import SESSION_ENV
+
+    for name in SESSION_ENV:
+        monkeypatch.delenv(name, raising=False)
+    gate.close(intent, SESSION, DIGEST, gate.INTENT_CHANGE + " SR-040")
+    argv = ["gate", "clarify", "--intent", "INT-001", "--findings", _findings(tmp_path, "low"),
+            "--root", str(intent)]
+    assert cmd_intent.run("intent", argv) == 1
+    assert _loop(intent)["intent"] is None and gate.is_closed(intent, SESSION)
+
+
+@pytest.mark.sr("SR-197")
+def test_sr197_ex2_an_intent_no_requirement_derives_from_is_not_done(
+        repo: Path, write_record: Any, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    write_record(repo, int_text(1))
+    cmd_intent.open_loop(repo, SESSION, DIGEST)
+    low = _findings(tmp_path, "low")
+    _run(repo, "gate", "clarify", "--intent", "INT-001", "--findings", low)
+    _run(repo, "gate", "plan", "--intent", "INT-001", "--findings", low)
+    assert _run(repo, "done", "--intent", "INT-001") == 1
+    assert "no requirement derives from INT-001" in capsys.readouterr().err
+    assert _loop(repo)["stages"]["build"] == {"state": "open"}
 
 
 @pytest.mark.sr("SR-194")

@@ -6,6 +6,9 @@ description: Runs the intent loop the owner opened with /plumb intent <words>, s
 
 Make the owner's idea an intent that is coherent on its own and with what is confirmed, then
 build it and show it working. Three stages, each closed by a gate the next refuses to skip.
+Run the stages as phases of a Workflow script; each phase ends on its stage's gate command
+(`.venv/Scripts/python.exe -m plumb intent gate clarify`, `.venv/Scripts/python.exe -m plumb intent gate plan`, `.venv/Scripts/python.exe -m plumb intent done`) and the next
+phase starts only when that command exits 0.
 
 Open: `.venv/Scripts/python.exe -m plumb intent open --wait` on the owner's words. It drafts the candidates (what will
 be done, what won't, assumptions labelled) and says which check it ran; act on that answer
@@ -21,7 +24,8 @@ Stage A, clarify and integrate, until `.venv/Scripts/python.exe -m plumb intent 
 - Check each candidate against the confirmed records: `.venv/Scripts/python.exe -m plumb show <ID>` for the examples it
   touches, `.venv/Scripts/python.exe -m plumb inflight` for the same intent on another branch, and capture's "may
   change" and "contradicts" lines. A contradiction or an extension is a question to the
-  owner, never a silent choice.
+  owner, naming the requirement and its example, asked before the candidate is written;
+  never a silent choice.
 - Ask the owner how they will see this working ("how will you see this working?"); that is
   the proof, recorded on each requirement with `.venv/Scripts/python.exe -m plumb proof SR-### --plan ... --kind
   live-session|hook|command|other`.
@@ -32,16 +36,21 @@ Stage A, clarify and integrate, until `.venv/Scripts/python.exe -m plumb intent 
   from `.venv/Scripts/python.exe -m plumb align` (low). Fix and judge again until only low remain, then
   `.venv/Scripts/python.exe -m plumb intent gate clarify --findings <file>`.
 
-Stage B, update records and plans, until `.venv/Scripts/python.exe -m plumb intent gate plan` passes: apply the record
-updates (`.venv/Scripts/python.exe -m plumb relink`, `.venv/Scripts/python.exe -m plumb unlink --note`, `.venv/Scripts/python.exe -m plumb repin --after-tests`), run
-`.venv/Scripts/python.exe -m plumb stale` for what the new and reworded requirements leave uncovered, write the plan
+Stage B, update records and plans, only once `.venv/Scripts/python.exe -m plumb intent status` shows clarify passed,
+until `.venv/Scripts/python.exe -m plumb intent gate plan` passes: apply the record updates (`.venv/Scripts/python.exe -m plumb relink` moves
+each link of a superseded requirement to the new one with a note;
+`.venv/Scripts/python.exe -m plumb repin --after-tests` pins it once the linked tests pass;
+`.venv/Scripts/python.exe -m plumb unlink --note` drops the test of a retired example, deleted in the same commit),
+run `.venv/Scripts/python.exe -m plumb stale` for what the new and reworded requirements leave uncovered, write the plan
 (one acceptance test per example, the code the proof needs), review it against the intent,
 the requirements and staleness, fix until only low findings remain, then
 `.venv/Scripts/python.exe -m plumb intent gate plan --findings <file>`.
 
 Stage C, build and prove: build the plan, show the proof the owner stated, record it with
 `.venv/Scripts/python.exe -m plumb proof SR-### --evidence ...`, then `.venv/Scripts/python.exe -m plumb intent done`. It refuses while a proof
-is missing; `.venv/Scripts/python.exe -m plumb intent status` says which gate is open.
+is missing; `.venv/Scripts/python.exe -m plumb intent status` says which gate is open. When the edit hook reports a
+link stale, before the turn ends: repin it after its tests pass, relink it when the code
+moved, or card it when the meaning changed.
 
 The owner confirms records on the cards or by typing `/plumb approve <IDs>`; the loop and its
 judge confirm nothing. Speak in the owner's terms; paste nothing capture prints.

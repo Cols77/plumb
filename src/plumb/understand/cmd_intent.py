@@ -64,16 +64,18 @@ def loops(root: Path, session: str | None = None) -> list[tuple[Path, dict[str, 
 
 
 def _find(root: Path, session: str | None, intent: str) -> tuple[Path, dict[str, Any]]:
-    """The loop of ``intent``, else the newest loop no intent claimed yet (it is claimed)."""
+    """The loop of ``intent``, else this session's newest loop no intent claimed yet (it is
+    claimed). With no session known nothing is claimed: another session's loop is not ours."""
     found = loops(root, session)
     for path, data in reversed(found):
         if data.get("intent") == intent:
             return path, data
-    for path, data in reversed(found):
+    for path, data in reversed(found if session else []):
         if data.get("intent") is None:
             data["intent"] = intent
             return path, data
-    raise LookupError(f"no open loop for {intent}: plumb intent open comes first")
+    raise LookupError(f"no open loop for {intent}: plumb intent open comes first"
+                      + ("" if session else " (or name the session with --session)"))
 
 
 def _passed(data: Mapping[str, Any], stage: str) -> bool:
@@ -160,7 +162,10 @@ def cmd_gate(core: Any, args: argparse.Namespace) -> int:
     files.write_json_atomic(path, data)
     core.log_append("events", "intent-gate", {"intent": args.intent, "digest": data["digest"],
                                               "stage": args.stage, "findings": len(findings)})
-    if args.stage == "clarify":
+    # SR-196: the loop opens only the hold of an intent change; a waiting card or a failed
+    # check keeps the gate closed until the owner answers or releases it (SR-169 EX-3)
+    if args.stage == "clarify" and gate.closed_reason(root, path.parent.parent.name).startswith(
+            gate.INTENT_CHANGE):
         gate.open(core, path.parent.parent.name, data["digest"], "intent", GATE_OPEN_REASON)
     print(f"plumb: {args.intent}: the {args.stage} gate passed "
           f"({len(findings)} low finding(s) left)")
@@ -174,8 +179,11 @@ def cmd_done(core: Any, args: argparse.Namespace) -> int:
     _intent(core, args.intent)
     path, data = _find(root, _session(args, root), args.intent)
     missing = [] if _passed(data, "plan") else ["the plan gate has not passed"]
+    required = requirements_of(core, args.intent)
+    if not required:     # SR-197 EX-2: nothing captured is no proof shown
+        missing.append(f"no requirement derives from {args.intent}: no proof to show")
     missing += [f"{row['id']} ({row['title']}): proof {row['why']}"
-                for row in proof.not_shown(core, requirements_of(core, args.intent))]
+                for row in proof.not_shown(core, required)]
     if missing:
         print(f"plumb: {args.intent} is not done; the intent stays open:", file=sys.stderr)
         for line in missing:
