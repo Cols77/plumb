@@ -40,14 +40,17 @@ def problem(entry: LogEntry, core: Any) -> str | None:
 def cited_answers_problem(payload: Mapping[str, Any], logged: Mapping[str, Mapping[str, Any]],
                           by: str) -> str | None:
     """Why the answers an approval cites do not carry it, or None. ``logged``: digest ->
-    payload of the question-answer entries logged before the approval."""
+    payload of the question-answer entries (and the read path's ``pre-intent`` entries,
+    ``via: read``) logged before the approval."""
+    from plumb.understand.premise import ANSWER_VIA
+
     cited = payload.get("answers")
     if not isinstance(cited, list) or not cited:
         return f"{by} approval cites no answer of the owner"
     asked: set[tuple[str, str]] = set()
     for digest in cited:
         answer = logged.get(str(digest))
-        if answer is None or answer.get("via") != "question-tool" \
+        if answer is None or answer.get("via") not in ANSWER_VIA.values() \
                 or not isinstance(answer.get("asked"), Mapping):
             return f"{by} approval cites an answer that is no earlier question-tool answer"
         asked |= {(str(r.get("id")), str(r.get("hash")))

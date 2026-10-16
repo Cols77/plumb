@@ -272,10 +272,16 @@ def _entry(core: Core, prompt: str) -> Mapping[str, Any]:
         raise CaptureError(str(exc)) from exc
 
 
-def _lacks_question(plan: _Plan) -> bool:
-    """A new intent quoting a short answer without the question it answered (SR-097)."""
-    return (plan.intent is not None and is_short_answer(plan.intent["quote"])
-            and not plan.intent.get("question"))
+def _lacks_question(core: Core, plan: _Plan) -> bool:
+    """A new intent quoting a short answer with no stored question and no question-tool
+    answer saying it (SR-097, SR-212 EX-9): it still records, with one warning."""
+    if plan.intent is None or not is_short_answer(plan.intent["quote"]) \
+            or plan.intent.get("question"):
+        return False
+    said = " ".join(str(plan.intent["quote"]).lower().split())
+    return not any(e.kind == "question-answer" and e.payload.get("via") == "question-tool"
+                   and " ".join(str(e.payload.get("answer") or "").lower().split()) == said
+                   for e in core.events())
 
 
 def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = None,
@@ -295,7 +301,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
                   for r in plan.requirements]
         lines += [f"DEC (new) would be proposed: {d['fields']['title']}" for d in plan.decisions]
         lines += [f"{rid} would be updated" for rid, _ in plan.updates]
-        if _lacks_question(plan):
+        if _lacks_question(core, plan):
             lines.append(ANSWER_NEEDS_QUESTION)
         lines += _inflight_preview(core, plan, backend)
         return CaptureResult(lines=tuple(lines), dry_run=True)
@@ -369,7 +375,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
     lines += _kind_lines(core, written + updated)
     if unchecked:
         lines.append(UNCHECKED_NOTE)
-    if _lacks_question(plan):
+    if _lacks_question(core, plan):
         lines.append(ANSWER_NEEDS_QUESTION)
     # R17: other branches' intent in flight, checked at capture before any implementation;
     # a contradiction is shown as an early card and asked once (a DEC)

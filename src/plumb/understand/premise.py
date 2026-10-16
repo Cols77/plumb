@@ -152,15 +152,19 @@ def _quote(record: Any) -> str:
     return " ".join(str(quote or "").split())
 
 
+ANSWER_VIA = {"question-answer": "question-tool", "pre-intent": "read"}
+
+
 def answer_entries(core: Any, record: Any) -> list[Any]:
-    """The question-answer log entries whose ``asked`` names ``record`` at its current hash
-    (SR-212 EX-6, SR-209 EX-4: an answer about an older version is left out). Entries without
-    ``via: question-tool`` or ``asked`` (older ones, text answers) never count."""
+    """The owner's answers whose ``asked`` names ``record`` at its current hash (SR-212 EX-6,
+    SR-209 EX-4: an answer about an older version is left out): question-tool answers, and the
+    worker's ``pre-intent`` of a message answering what the last reply showed (``via: read``,
+    SR-209 EX-2). Entries without that ``via`` or ``asked`` (older ones) never count."""
     out: list[Any] = []
     for entry in core.events():
         p = entry.payload
         asked = p.get("asked")
-        if entry.kind != "question-answer" or p.get("via") != "question-tool" \
+        if entry.kind not in ANSWER_VIA or ANSWER_VIA[entry.kind] != p.get("via") \
                 or not isinstance(asked, Mapping):
             continue
         if any(isinstance(r, Mapping) and r.get("id") == record.id
@@ -174,7 +178,7 @@ def answers_of(core: Any, record: Any) -> tuple[dict[str, Any], ...]:
     (``answer_entries``), as the judge is shown them."""
     return tuple({"digest": e.digest, "question": str(e.payload.get("question") or ""),
                   "options": list(e.payload.get("options") or ()),
-                  "answer": str(e.payload.get("answer") or "")}
+                  "answer": str(e.payload.get("answer") or e.payload.get("text") or "")}
                  for e in answer_entries(core, record))
 
 

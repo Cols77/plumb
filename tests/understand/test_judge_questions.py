@@ -106,7 +106,8 @@ def test_ex7_linked_tested_and_consistent_is_not_approved_and_says_nothing_settl
     applied = applied_on(world, ["SR-001"], answer(
         ("SR-001", "supported"), questions=[asking("SR-001")],
         **{"SR-001": {"clear": True, "confidence": 0.99}}))
-    assert [e["kind"] for e in applied.entries] == ["verdict"] and applied.cards == ()
+    assert [e["kind"] for e in applied.entries
+            if e["kind"] != "pre-intent"] == ["verdict"] and applied.cards == ()
     assert summary._upkeep(open_core(world), SESSION, recalibrate=False) == []
     status = open_core(world).status(["SR-001"])["SR-001"]
     assert status.confirmation == "proposed"

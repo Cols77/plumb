@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from understand.fakes import as_worker
 from understand.test_judge_job import intent_text, log_prompt, requirement_text, verdict_answer
 
 from mod.helpers import DIGEST, KEY, SESSION, run_mod
@@ -45,8 +46,9 @@ def _world(repo: Path, write_record, scores: list[float]) -> list[str]:
     for given in answer["verdicts"]:       # JEV's scores: only they calibrate (SR-182)
         given.update(by="jev", judge="jev:jev-1", model="jev-1")
     applied = judge.apply(core, job, answer)
-    for entry in applied.entries:          # the worker writes the verdicts; not the cards:
-        core.log_append("events", entry["kind"], entry["payload"])   # the log holds them back
+    with as_worker(repo, SESSION):         # the worker writes the verdicts; not the cards:
+        for entry in applied.entries:      # the log holds them back
+            core.log_append("events", entry["kind"], entry["payload"])
     return ids
 
 
@@ -140,8 +142,8 @@ def _fixture(name: str) -> Any:
     import json
     import re
 
-    text = (Path(__file__).resolve().parents[2] / "tests" / "plugin" / "mod" / "fixtures.ts").read_text(
-        encoding="utf-8")
+    text = (Path(__file__).resolve().parents[2] / "tests" / "plugin" / "mod"
+            / "fixtures.ts").read_text(encoding="utf-8")
     found = re.search(rf"// BEGIN {name}\n.*?= (.*?)\n// END {name}", text, re.S)
     assert found, name
     return json.loads(found.group(1))

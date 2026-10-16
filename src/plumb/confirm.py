@@ -155,6 +155,7 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
     set), which no fast-track auto-jev approval confirms and a judge approval after a round
     confirms only whole; callers holding a Core use ``checked``/``remaining``."""
     from plumb.capture.autoapprove import recheck
+    from plumb.understand.premise import ANSWER_VIA
     from plumb.understand.recheck_model import cited_answers_problem
 
     answers: dict[str, Mapping[str, Any]] = {}   # the owner's question-tool answers so far
@@ -175,8 +176,9 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
                 config = entry.payload["auto_approve"]
         elif entry.kind == "calibration":
             calibrations[entry.digest] = entry
-        elif entry.kind == "question-answer":
-            answers[entry.digest] = entry.payload
+        elif entry.kind in ANSWER_VIA:
+            if ANSWER_VIA[entry.kind] == entry.payload.get("via"):
+                answers[entry.digest] = entry.payload   # a pre-intent: the worker's only
         elif entry.kind in ("approval", "revocation"):
             problem = entry_problem(entry, prompts, affirmations, core)
             by = entry.payload.get("by")

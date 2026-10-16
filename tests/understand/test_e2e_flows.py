@@ -20,9 +20,9 @@ import pytest
 
 from plumb import links, stale
 from plumb.api import open_core
-from plumb.understand.repin import Meaning
 from plumb.present import owner_text
 from plumb.understand import files
+from plumb.understand.repin import Meaning
 from understand.fakes import owner_level
 from understand.harness import Session
 from understand.test_read_job import int_text, record_text
@@ -85,6 +85,21 @@ def owner_words_approvals(repo: Path) -> dict[str, dict[str, Any]]:
             for record in e.payload["records"]:
                 out[record["id"]] = dict(e.payload)
     return out
+
+
+def judge_approvals(repo: Path) -> dict[str, dict[str, Any]]:
+    """The judge's approvals (``auto-model``, ``auto-jev``) by record id."""
+    return {r["id"]: dict(e.payload) for e in events(repo, "approval")
+            if e.payload.get("by") in ("auto-model", "auto-jev") for r in e.payload["records"]}
+
+
+def judge_clear(*ids: str, **contradicted: list[str]) -> dict[str, Any]:
+    """The scripted judge model: each of ``ids`` supported and clear; each of
+    ``contradicted`` (id with '-' as '_') contradicted by the owner's words."""
+    return {"verdicts": [
+        *({"id": i, "verdict": "supported", "confidence": 0.9, "clear": True} for i in ids),
+        *({"id": i.replace("_", "-"), "verdict": "contradicts", "confidence": 0.9,
+           "contradicts": why, "clear": False} for i, why in contradicted.items())]}
 
 
 def last_digest(repo: Path) -> str:
@@ -196,8 +211,10 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
         {"id": "SR-088", "hash": index["SR-088"].hash, "answer": "change",
          "change": "some features stay internal", "confidence": 0.9,
          "evidence": "I am not sure I agree with SR-088"}]
-    s.script_path.write_text(json.dumps({"$delay": 10, "clarify": NOTHING,
-                                         "read": {"entries": entries}}), encoding="utf-8")
+    s.script_path.write_text(json.dumps({
+        "$delay": 10, "clarify": NOTHING, "read": {"entries": entries},
+        "judge": judge_clear("INT-008", SR_088=["some features stay internal"])}),
+        encoding="utf-8")
     s.start()
     s.say(message)
     lines: list[str] = []
@@ -207,19 +224,21 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
         time.sleep(0.2)
     lines.append(line)
     assert owner_text.STEP_READING in line                       # "reading your answer"
-    assert owner_words_approvals(repo) == {}                      # nothing confirmed meanwhile
+    assert events(repo, "approval") == []                        # nothing confirmed meanwhile
     assert s.worker_idle(40)
 
-    assert set(owner_words_approvals(repo)) == {"INT-008"}        # confirmed by their words
-    assert owner_words_approvals(repo)["INT-008"]["evidence"] == "INT-008 ok"
+    # the reading keeps the message as a pre-intent; the judge approves with the words
+    (kept,) = events(repo, "pre-intent")
+    assert kept.payload["text"] == message
+    assert set(judge_approvals(repo)) == {"INT-008"} and owner_words_approvals(repo) == {}
+    assert judge_approvals(repo)["INT-008"]["answers"] == [kept.digest]
     status = open_core(repo).status()
     assert status["INT-008"].confirmation == "confirmed"
-    assert status["SR-088"].confirmation != "confirmed"           # a change, not a yes
-    (change,) = [c for c in own_cards(s) if c["id"].startswith("change:SR-088")]
-    assert change["status"] == "open" and "some features stay internal" in change["issue"]
+    assert status["SR-088"].confirmation != "confirmed"           # sent back to be reworded
+    assert not [c for c in own_cards(s) if c["id"].startswith("change:")]
     assert len(calls(s, "read")) == 1                             # one read job for the message
     said = text_of(s.stop())
-    assert "you said" in said
+    assert owner_text.JUDGE_APPROVED in said
     lines.append(said)
     lines.append(s.status_line())
     at_owner_level(*[ln for ln in lines if ln],
@@ -306,12 +325,12 @@ def test_flow_5_failures_confirm_nothing_and_retry_next_turn(repo: Path, write_r
     assert "did not finish" in couldnt.lower()
     at_owner_level(couldnt, quoted=("INT-008 ok",))
 
-    # the model is back: the next turn retries the failed job and the confirmation lands
-    model(s, read=_accept_int8(index))
+    # the model is back: the next turn retries the failed job and the judge approves
+    model(s, read=_accept_int8(index), judge=judge_clear("INT-008"))
     s.say("what is left to do?")
     assert s.worker_idle(30)
-    assert set(owner_words_approvals(repo)) == {"INT-008"}
-    assert "you said" in text_of(s.stop())
+    assert set(judge_approvals(repo)) == {"INT-008"}
+    assert owner_text.JUDGE_APPROVED in text_of(s.stop())
 
 
 def test_flow_5_schema_failure_and_a_record_edited_after_it_was_shown(
@@ -370,16 +389,17 @@ def test_flow_5_a_job_not_finished_at_the_turns_end_is_collected_next_turn(
     s = Session(repo)
     show(s, ["INT-008"])
     s.script_path.write_text(json.dumps({"$delay": 3, "clarify": NOTHING,
-                                         "read": _accept_int8(index)}), encoding="utf-8")
+                                         "read": _accept_int8(index),
+                                         "judge": judge_clear("INT-008")}), encoding="utf-8")
     s.start()
     s.say("INT-008 ok")
-    assert "you said" not in text_of(s.stop())                      # still being read
-    assert owner_words_approvals(repo) == {}
+    assert owner_text.JUDGE_APPROVED not in text_of(s.stop())       # still being read
+    assert events(repo, "approval") == []
     assert s.worker_idle(40)
     model(s)
     s.say("carry on")
-    assert set(owner_words_approvals(repo)) == {"INT-008"}
-    assert "you said" in text_of(s.stop())
+    assert set(judge_approvals(repo)) == {"INT-008"}
+    assert owner_text.JUDGE_APPROVED in text_of(s.stop())
 
 
 # ---- (6) what the agent writes into the session's files confirms nothing -------------------------

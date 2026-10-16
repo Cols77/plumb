@@ -16,7 +16,11 @@ version) a record is approved citing those answers: ``by: auto-jev`` when JEV cl
 else ``by: auto-model`` when the judge model says the intent is clear (its confidence is
 logged, never compared, DEC-141); otherwise the next questions follow. An escalated spec set
 is one approval, written when every record of it is clear at its version (P6). No trial or
-read-back card is raised (SR-252 EX-6). It returns the log entries: the worker writes them.
+read-back card is raised (SR-252 EX-6). Each source of a judged premise (the owner's message,
+a question-tool answer) is kept once as a ``pre-intent`` with its question, options and the
+reply it answered, and every approval names those sources in its ``trail`` (SR-208, SR-209).
+A record the owner's latest words contradict is sent back for the agent to reword (SR-209
+EX-2). It returns the log entries: the worker writes them.
 The kind registers the handlers of the trial, beyond and contradicts cards (``effects``; old
 cards of those kinds are still answered)."""
 
@@ -227,9 +231,10 @@ def _fast_tracked(core: Any, record: Any, raw: Mapping[str, Any],
 def _approve(core: Any, job: Job, ids: Sequence[str], item: Mapping[str, Any], by: str,
              auto: Mapping[str, Any], known: set[Any], answers: Sequence[str] = (),
              **extra: Any) -> list[Mapping[str, Any]]:
-    """The worker's ``by`` approval of ``ids`` (carrying the session and, after a question
-    round, the owner's ``answers``: question-answer entry digests), after the prompt event of
-    the owner's words it cites when none is logged yet."""
+    """The worker's ``by`` approval of ``ids`` (carrying the session, the ``trail`` of
+    pre-intent sources and, after a question round, the owner's ``answers``: question-answer
+    entry digests), after the prompt event of the owner's words it cites when none is logged
+    yet."""
     messages = [m for m in (item.get("premise") or {}).get("messages") or ()
                 if isinstance(m, Mapping) and m.get("digest") and not m.get("partial")]
     digest = str(messages[0]["digest"]) if messages else ""
@@ -248,11 +253,86 @@ def _approve(core: Any, job: Job, ids: Sequence[str], item: Mapping[str, Any], b
     payload = {"records": approval_items(core, ids), "by": by,
                "prompt_digest": digest or (answers[0] if answers else ""), "quote": None,
                "quote_digest": None, "session": job.session, "job": job.id,
-               "auto": dict(auto), **extra}
+               "auto": dict(auto), "trail": _trail([item], _pre_intents(core)), **extra}
     if answers:
         payload["answers"] = list(answers)
     out.append({"kind": "approval", "payload": payload})
     return out
+
+
+def _pre_intents(core: Any) -> dict[str, Mapping[str, Any]]:
+    """Entry digest -> payload of the logged ``pre-intent`` entries."""
+    return {e.digest: e.payload for e in core.events() if e.kind == "pre-intent"}
+
+
+def context_of(core: Any, digest: str) -> str:
+    """The excerpt of the reply the owner's message ``digest`` answered: the conversation the
+    prompt hook froze for it (``clarify.frozen_context``), read only; '' when none is on file."""
+    from plumb.approvals import Refused, find_prompt
+    from plumb.understand.clarify import context_path
+
+    try:
+        session = str(find_prompt(core, digest).get("session") or "")
+    except Refused:
+        return ""
+    frozen = files.read_json(context_path(Path(core.root), session, digest))
+    talk = frozen.get("context") if isinstance(frozen, Mapping) else None
+    return str(talk.get("last_reply") or "") if isinstance(talk, Mapping) else ""
+
+
+def _sources(item: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The owner's words a judged premise rests on: whole messages, then answers."""
+    given = item.get("premise") or {}
+    return [*(m for m in given.get("messages") or () if isinstance(m, Mapping)
+              and m.get("digest") and not m.get("partial")),
+            *(a for a in given.get("answers") or () if isinstance(a, Mapping)
+              and a.get("digest"))]
+
+
+def _trail(items: Sequence[Mapping[str, Any]], pre: Mapping[str, Mapping[str, Any]]
+           ) -> list[str]:
+    """The pre-intents an approval rests on, each named by its source (one pre-intent per
+    source; a read pre-intent cited as an answer is named by the message it keeps)."""
+    out = [str(pre[s["digest"]].get("source")) if s["digest"] in pre else str(s["digest"])
+           for item in items for s in _sources(item)]
+    return list(dict.fromkeys(out))
+
+
+def _new_pre_intents(core: Any, session: str, items: Sequence[Mapping[str, Any]]
+                     ) -> list[Mapping[str, Any]]:
+    """One ``pre-intent`` per premise source of ``items`` not logged yet (SR-208 EX-4, SR-212):
+    the owner's words verbatim with the question, the options and the reply they answered.
+    A read pre-intent cited as an answer is one already."""
+    pre = _pre_intents(core)
+    known = {str(p.get("source")) for p in pre.values()}
+    out: list[Mapping[str, Any]] = []
+    for item in items:
+        question = str((item.get("premise") or {}).get("question") or "")
+        for source in _sources(item):
+            digest = str(source["digest"])
+            if digest in known or digest in pre:
+                continue
+            known.add(digest)
+            answer = "answer" in source
+            out.append({"kind": "pre-intent", "payload": {
+                "source": digest, "session": session,
+                "text": str(source.get("answer" if answer else "text") or ""),
+                "question": str(source.get("question") or "") if answer else question,
+                "options": list(source.get("options") or ()) if answer else [],
+                "context": "" if answer else context_of(core, digest)}})
+    return out
+
+
+def _sent_back(core: Any, session: str, sent: Mapping[str, str]) -> str:
+    """SR-209 EX-2: the owner's latest words contradict these records; the agent rewords each
+    and the edit goes back to the judge."""
+    from plumb.understand import worker
+
+    line = "plumb: the owner's words contradict " + "; ".join(
+        f"{i} ({why})" for i, why in sent.items()) + ": reword it to agree with them; " \
+        "the edit goes back to the judge"
+    worker.say(core.root, session, line)
+    return line
 
 
 def _after_round(core: Any, record: Any, raw: Mapping[str, Any], payload: Mapping[str, Any],
@@ -322,7 +402,9 @@ def _set_approvals(core: Any, job: Job, rounds: Mapping[str, tuple[Any, ...]],
         first = next(i for i in whole if i in rounds)
         auto = {**rounds[first][1], "confidence": min(c for c, _ in clear.values())}
         out += _approve(core, job, whole, asked[first], "auto-model", auto, known, answers,
-                        set={"anchor": anchor, "hash": current_set_hash(core, anchor)})
+                        set={"anchor": anchor, "hash": current_set_hash(core, anchor)},
+                        trail=_trail([asked[i] for i in whole if i in asked],
+                                     _pre_intents(core)))
     return out, held
 
 
@@ -465,6 +547,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     judged: dict[str, str] = {}             # the records judged at their current version
     waits: dict[str, str] = {}              # record id -> why it waits
     rounds: dict[str, tuple[Any, ...]] = {}  # clear set records: (by, auto, answers)
+    sent: dict[str, str] = {}               # contradicted by the owner's answer: reworded
     from plumb.capture.spec import escalated_ids
 
     in_sets = escalated_ids(core)
@@ -524,6 +607,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         judged[record.id] = record.hash
         if verdict == "waiting":            # SR-267 EX-9: the agent's own doubt asks nothing
             waits[record.id] = payload["reason"] or "the judge could not settle it"
+        elif cited and verdict == "contradicts":    # SR-209 EX-2: the agent rewords it
+            sent[record.id] = "; ".join(contradicts) or "the owner's answer says otherwise"
         elif cited:                         # SR-248 EX-4, EX-5: approved after the round
             done = _after_round(core, record, raw, payload, jev, record.id in in_sets)
             if done is not None and record.id in in_sets:
@@ -545,18 +630,22 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     approved = {str(i.get("id")) for e in confirmed if e["kind"] == "approval"
                 for i in e["payload"]["records"]}
     shaped, refused = _questions(job, answer, {
-        i: h for i, h in judged.items() if i not in approved | set(waits) | set(held)}, index)
+        i: h for i, h in judged.items()
+        if i not in approved | set(waits) | set(held) | set(sent)}, index)
     _write_questions(core, job, set(judged), shaped)
     covered = {i for q in [*shaped, *open_questions(core, job.session)] for i in _ids_of(q)}
-    covered |= set(held)
+    covered |= set(held) | set(sent)
     why = "; ".join(refused) or "the judge asked no question about it"
     waits.update({i: why for i in judged if i not in approved | covered | set(waits)})
     if waits:
         notes.append(_say_waiting(core, job.session, waits))
+    if sent:
+        notes.append(_sent_back(core, job.session, sent))
     if job.inputs.get("pass") == backlog.PASS:
         notes.extend(backlog.after_job(core, job, verdicts=[
             e["payload"] for e in entries if e["kind"] == "verdict"]).notes)
-    return Applied(job=job.id, entries=(*entries, *confirmed), notes=tuple(notes))
+    kept = _new_pre_intents(core, job.session, [asked[i] for i in judged])
+    return Applied(job=job.id, entries=(*entries, *kept, *confirmed), notes=tuple(notes))
 
 
 # --------------------------------------------------------------------------- capture
