@@ -675,6 +675,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     if len(cards) > 1:
         gate.refresh(root, session, digest,
                      GATE_REASON_ESCALATION if escalate else GATE_REASON_CARD)
+    elif hold := intent_change_hold(core, session, digest):
+        gate.refresh(root, session, digest, hold)   # SR-225: only a request holds
     else:
         gate.open(core, session, digest, "clarify",
                   "the questions are answered" if answered else "nothing is unclear")
@@ -720,6 +722,32 @@ def write_couldnt_check(root: Path, session: str, digest: str, why: str = "",
 
 
 # ---------------------------------------------------------------- the card effects
+
+
+def intent_change_hold(core: Any, session: str, digest: str) -> str:
+    """SR-225: the gate reason for a request the prompt hook flagged as changing a confirmed
+    record (``intent_flags.jsonl``) while no intent loop ran for it (``plumb intent open``
+    writes ``intent/<digest12>.json``); "" otherwise. The reader has already found a request
+    in the message: a question or a notice never reaches this."""
+    root = Path(core.root)
+    short = digest.removeprefix("sha256:")[:12]
+    if (files.session_dir(root, session) / "intent" / f"{short}.json").is_file():
+        return ""
+    try:
+        rows = [json.loads(line) for line in (files.session_dir(root, session).parent
+                                              / "intent_flags.jsonl")
+                .read_text(encoding="utf-8").splitlines() if line.strip()]
+    except (OSError, ValueError):
+        return ""
+    index = core.index()
+    for row in rows:
+        if not isinstance(row, Mapping) or row.get("session") != session \
+                or row.get("prompt_digest") != digest:
+            continue
+        record = index.get(str(row.get("subject")))
+        if record is not None:
+            return " ".join([gate.INTENT_CHANGE, record.id, *(e.id for e in record.examples)])
+    return ""
 
 
 def _clarify_pending(root: Path, session: str, digest: str) -> bool:

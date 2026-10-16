@@ -70,9 +70,6 @@ def overlap_share(a: Iterable[str], b: Iterable[str]) -> float:
 
 # --------------------------------------------------------------------------- contradiction
 
-# A number as written: a sign only when nothing word-like is glued before it ("-2", not
-# the "-" of "a-2").
-_NUMBER = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?|(?<=[A-Za-z])\d+(?:\.\d+)?")
 _NEGATION = re.compile(
     r"(?<![\w'])(?:not|no|never|none|nothing|without|cannot|can't|don't|doesn't|didn't"
     r"|won't|wont|isn't|aren't|shouldn't|mustn't|no\s+longer|neither|nor)(?![\w'])")
@@ -82,21 +79,6 @@ _CLAUSE = re.compile(r"[.!?;,:]+(?=\s|$)|\n|(?<![\w])(?:but|however|and\s+then)(
 _FILLER = frozenset({"true", "case", "that"})
 
 
-def _numbers(text: str) -> dict[float, int]:
-    out: dict[float, int] = {}
-    for match in _NUMBER.finditer(text):
-        try:
-            value = float(match.group())
-        except ValueError:
-            continue
-        out[value] = out.get(value, 0) + 1
-    return out
-
-
-def _show(value: float) -> str:
-    return str(int(value)) if value == int(value) else str(value)
-
-
 def _clauses(text: str) -> list[str]:
     return [c.strip() for c in _CLAUSE.split(text) if c and c.strip()]
 
@@ -104,15 +86,14 @@ def _clauses(text: str) -> list[str]:
 def contradiction(premise: str, hypothesis: str) -> str | None:
     """Why ``hypothesis`` contradicts the owner's words ``premise``, or None (R8 A, R13 Q1).
 
-    Cheap, deterministic checks for the "no" cases the owner named: a changed number (a
-    number of a hypothesis line that the premise does not hold as often, sign included:
-    "returns 2" against "returns -2"), a flipped will/won't (a will line, a read-back or a
-    result holding every word of something the premise negates: "change add" against "do
-    not change add") and the reverse (a won't line, or a negated result, whose words all sit
-    in a clause the premise states positively: "it is not true that it returns 8" against
-    "then it returns 8"). Term coverage alone ignores all three."""
+    Cheap, deterministic checks for the "no" cases the owner named: a flipped will/won't (a
+    will line, a read-back or a result holding every word of something the premise negates:
+    "change add" against "do not change add") and the reverse (a won't line, or a negated
+    result, whose words all sit in a clause the premise states positively: "it is not true
+    that it returns 8" against "then it returns 8"). Term coverage alone ignores both. A
+    number the owner never said is the agent's formalization, not a contradiction (DEC-140).
+    """
     text = premise.translate(_APOSTROPHES).lower()
-    have = _numbers(text)
     negated_scopes: list[frozenset[str]] = []
     positive: list[frozenset[str]] = []
     for clause in _clauses(text):
@@ -133,10 +114,6 @@ def contradiction(premise: str, hypothesis: str) -> str | None:
         body = (line[label.end():] if label else line).strip()
         if not body:
             continue
-        for value, count in _numbers(body.lower()).items():
-            if have.get(value, 0) < count:
-                return (f"the number {_show(value)} in \"{body[:60]}\" is not in your words "
-                        "as often")
         words = stems(body) - _FILLER
         negation = _NEGATION.search(body.lower())
         negated = kind in ("won't", "wont") or negation is not None

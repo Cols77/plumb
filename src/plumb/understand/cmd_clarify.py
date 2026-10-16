@@ -47,11 +47,13 @@ SHOW_COULDNT = ("The check could not be made and the owner has a card offering t
                 "wait. Say so in one line; nothing was built, and nothing is built until they "
                 "say to build anyway.")
 WAITING = "The check of your request is not finished. Do not build yet."
+HELD = ("plumb: edits are held ({reason}): this request changes a confirmed record and no "
+        "intent loop ran for it. /plumb intent opens the loop; the owner's /plumb go releases.")
 
 
 @dataclasses.dataclass
 class Outcome:
-    state: str                                 # ready | card | escalation | couldnt_check | waiting
+    state: str                 # ready | card | escalation | couldnt_check | waiting | held
     digest: str = ""
     lines: list[str] = dataclasses.field(default_factory=list)
     card: str = ""
@@ -115,6 +117,9 @@ def _outcome_from_state(core: Any, session: str, digest: str) -> Outcome:
         readback = cards.get(clarify.card_id(digest))
         assumed = readback.evidence.splitlines() if readback else []
         return Outcome("ready", digest, [READY, BUILD_ON, *assumed] if assumed else [READY])
+    reason = gate.state(root, session).reason
+    if reason.startswith(gate.INTENT_CHANGE):   # SR-225: the check found a request that changes
+        return Outcome("held", digest, [HELD.format(reason=reason)])   # a confirmed record
     choice = cards.get(clarify.choice_id(digest))
     if choice is None:   # SR-131 EX-4: an earlier blocking card still holds the gate
         choice = next((c for c in cardstore.own_cards(root, session) if c.kind == "choice"

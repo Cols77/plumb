@@ -35,9 +35,13 @@ owner's message and says which of five things happened:
 - waiting (the check is not finished yet): build nothing and run `plumb clarify --wait`
   again, twice at most; still waiting after that, build nothing, tell the owner the check of
   their request has not finished, and stop.
+- held (the request changes a record the owner confirmed and no intent loop ran for it): the
+  line names the record and its examples; build nothing and run `plumb intent <the owner's
+  words>` to open the loop for it, or stop and say in one line that edits are held until the
+  owner types `/plumb go`.
 
 With `--json` the answer is `{state, message_digest, card, lines}`; `state` is `ready`,
-`card`, `escalation`, `couldnt_check` or `waiting`. `message_digest` is the sha256 of the
+`card`, `escalation`, `couldnt_check`, `waiting` or `held`. `message_digest` is the sha256 of the
 owner's message: the `<digest>` that `--prompt` takes (12 or more hex digits are enough).
 
 Once you are past that, `plumb clarify "<the request>"` says the depth, what confirmed

@@ -108,6 +108,66 @@ def test_sr131_ex3_three_gaps_with_recommendations_are_assumptions_and_no_card(
     assert [e["digest"] for e in _gate_entries(core)] == [digest]
 
 
+def _flag(repo: Path, text: str, subject: str = "SR-001") -> str:
+    """The prompt hook's flag: this request may change the confirmed ``subject``."""
+    import hashlib
+
+    digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    path = repo / ".plumb" / "session" / "intent_flags.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"session": SESSION, "prompt_digest": digest,
+                                 "subject": subject}) + "\n")
+    return digest
+
+
+SR1 = """---
+id: SR-001
+title: add adds
+feature: FEAT-001
+statement: add(a, b) returns the sum of a and b.
+examples:
+- id: EX-1
+  given: the numbers 1 and 2
+  when: add(1, 2) is called
+  then: it returns 3
+---
+"""
+
+
+def test_sr225_ex1_a_flagged_request_keeps_the_gate_closed_naming_the_example(
+        repo: Path, engine_standins: Any, write_record) -> None:
+    write_record(repo, SR1)
+    text = "make add subtract instead"
+    _flag(repo, text)
+    answer = {"intent": "yes", "topic": "add", "readback": {"proposal": "make add subtract"}}
+    _asked(text, answer, repo, engine_standins)
+    state = gate.state(repo, SESSION)
+    assert state.state == "closed" and state.reason == "intent change: SR-001 EX-1"
+
+
+def test_sr225_ex7_a_flagged_question_never_closes_the_gate(
+        repo: Path, engine_standins: Any, write_record) -> None:
+    write_record(repo, SR1)
+    text = "why does add return 3 here?"
+    _flag(repo, text)
+    _asked(text, {"intent": "no", "topic": "add"}, repo, engine_standins)
+    assert not gate.is_closed(repo, SESSION)
+
+
+def test_sr225_ex4_no_hold_when_the_loop_ran_for_this_request(
+        repo: Path, engine_standins: Any, write_record) -> None:
+    write_record(repo, SR1)
+    text = "make add subtract instead"
+    digest = _flag(repo, text)
+    loop = files.session_dir(repo, SESSION) / "intent" / f"{digest[7:19]}.json"
+    loop.parent.mkdir(parents=True, exist_ok=True)
+    loop.write_text("{}", encoding="utf-8")
+    answer = {"intent": "yes", "topic": "add", "readback": {"proposal": "make add subtract"}}
+    _asked(text, answer, repo, engine_standins)
+    assert not gate.is_closed(repo, SESSION)
+
+
 def test_sr131_ex1_a_resolved_reference_is_an_assumption_and_the_work_starts(
         repo: Path, engine_standins: Any) -> None:
     answer = {"intent": "yes", "topic": "the findings", "readback": {

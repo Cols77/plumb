@@ -292,11 +292,6 @@ def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
                            "prompt_digest": digest, "subject": judgment.subject,
                            "confidence": judgment.confidence,
                            "backend": judgment.backend, "tier": judgment.tier})
-        first = next((index[s] for s in flagged if s in index), None)
-        if first is not None:
-            held = intent_change_hold(ctx, digest, first)
-            if held is not None:
-                out.append(held)
     compare = [r.id for r in confirmed if injected is None or r.id in injected]
     if compare:
         out.append(Line("plumb: compare this request with the confirmed examples of "
@@ -305,27 +300,6 @@ def intent_lines(ctx: HookContext, core: Any, index: Mapping[str, Any],
                         "before editing.", subject="compare:" + ",".join(compare),
                         state=",".join(seen_key(index[i], statuses.get(i)) for i in compare)))
     return out, flagged
-
-
-def intent_change_hold(ctx: HookContext, digest: str, record: Any) -> Any:
-    """SR-196: the request changes the confirmed ``record`` and no intent loop ran for it
-    (``plumb intent open`` writes ``intent/<digest12>.json`` in the session): close the edit
-    gate naming the record and its examples, and say so in one line. A gate closed for
-    another reason (a check in flight) is left as it is. None when nothing was closed."""
-    from plumb.present.delta import Line
-    from plumb.understand import files, gate
-
-    short = digest.removeprefix("sha256:")[:12]
-    if (files.session_dir(ctx.root, ctx.session_id) / "intent" / f"{short}.json").is_file():
-        return None
-    current = gate.state(ctx.root, ctx.session_id)
-    if current.state == "closed" and not current.reason.startswith(gate.INTENT_CHANGE):
-        return None
-    reason = " ".join([gate.INTENT_CHANGE, record.id, *(e.id for e in record.examples)])
-    gate.close(ctx.root, ctx.session_id, digest, reason)
-    return Line(f"plumb: edits are held ({reason}): /plumb intent opens the loop for this "
-                "request; /plumb go releases it.", subject="gate:intent-change", state=digest,
-                must=True, per_turn=True)
 
 
 def awareness_lines(core: Any, ids: Sequence[str]) -> list[Any]:
