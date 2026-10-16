@@ -38,8 +38,8 @@ def detected_base(root: Path) -> str:
 
 def merge_settings(core: Any) -> dict[str, Any]:
     """``merge.default_base`` (the detected default branch when unset) and
-    ``merge.prepush_run_full`` (true), from the config when it carries the section, else read
-    from ``.plumb/config.yaml`` directly."""
+    ``merge.prepush_run_full`` (true), from the config (``MergeConfig``; a fake without the
+    section gets the defaults)."""
     out = _configured(core)
     out["default_base"] = out["default_base"] or detected_base(Path(core.root))
     return out
@@ -48,27 +48,12 @@ def merge_settings(core: Any) -> dict[str, Any]:
 def _configured(core: Any) -> dict[str, Any]:
     out: dict[str, Any] = {"default_base": None, "prepush_run_full": True}
     section = getattr(core.config, "merge", None)
-    if section is not None:
-        for key in out:
-            value = getattr(section, key, None)
-            if value is None and isinstance(section, Mapping):
-                value = section.get(key)
-            if value is not None:
-                out[key] = value
-        return out
-    try:
-        import yaml
-
-        data = yaml.safe_load((Path(core.root) / ".plumb" / "config.yaml")
-                              .read_text(encoding="utf-8")) or {}
-    except (OSError, ValueError, ImportError):
-        return out
-    merge = data.get("merge") if isinstance(data, Mapping) else None
-    if isinstance(merge, Mapping):
-        if isinstance(merge.get("default_base"), str) and merge["default_base"].strip():
-            out["default_base"] = merge["default_base"].strip()
-        if isinstance(merge.get("prepush_run_full"), bool):
-            out["prepush_run_full"] = merge["prepush_run_full"]
+    for key in out:
+        value = getattr(section, key, None)
+        if value is None and isinstance(section, Mapping):
+            value = section.get(key)
+        if value is not None:
+            out[key] = value
     return out
 
 

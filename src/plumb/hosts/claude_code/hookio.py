@@ -392,6 +392,11 @@ def read_json(path: Path) -> Any:
 def hard_limit_s(root: Path) -> float:
     """The watchdog's hard limit: ``hooks.hard_limit_s`` when set, else ``HARD_LIMIT_S``."""
     try:
+        # the post-edit fast path stays standard library only (SR-011): the config is parsed
+        # only when config.yaml sets the key (a commented-out default does not count)
+        if not re.search(r"^\s*hard_limit_s\s*:",
+                         (root / ".plumb" / "config.yaml").read_text(encoding="utf-8"), re.M):
+            return HARD_LIMIT_S
         from plumb.config import load_config
 
         configured = load_config(root).hooks.hard_limit_s
