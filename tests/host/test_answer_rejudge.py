@@ -248,6 +248,21 @@ def test_an_unmatched_answer_gives_the_one_line(world: Path, hook_input) -> None
 
 
 @pytest.mark.sr("SR-212")
+def test_an_unrelated_answer_is_not_taken_for_the_one_open_question(
+        world: Path, hook_input) -> None:
+    """One open question; the agent asks something else with its own options (SR-212 EX-4):
+    the answer is logged without ``asked``, no judge job, and ``clarify --wait`` says the line."""
+    judge_asks(world, (ASK, ["SR-001"]))
+    answer(world, hook_input, "Run the slow tests now or later?", "Later",
+           options=[{"label": "Now", "description": "Wait for them."},
+                    {"label": "Later", "description": "Run them at the end."}])
+    assert "asked" not in logged(world)[0] and judge_jobs(world) == []
+    outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=1)
+    assert (outcome.state, outcome.lines) == ("ask", [cmd_clarify.UNMATCHED])
+    assert len(outcome.questions) == 1
+
+
+@pytest.mark.sr("SR-212")
 def test_an_empty_answers_keeps_the_premise_digest(world: Path) -> None:
     """A premise without answers has the digest it had before answers existed; one with an
     answer has another."""

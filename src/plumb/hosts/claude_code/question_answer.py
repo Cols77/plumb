@@ -3,10 +3,11 @@
 Logs one ``question-answer`` entry per answered question (session, question, the options shown
 with their descriptions, the answer, ``via: question-tool``) as the owner's words, read from the
 host's record of the tool call (SR-208 EX-5). An answer to one of the judge's questions
-(``judge_questions.json``, matched by its key, or the session's one open question) names the
-records asked about at their version (``asked``), and one bare judge job is queued for them: the
-worker rebuilds the premise with the answer and judges again (SR-212). The hook reads no record
-and approves nothing. A dismissed or unanswered question logs nothing.
+(``judge_questions.json``, matched by its key, or the session's one open question when the
+answer is one of its option labels) names the records asked about at their version (``asked``),
+and one bare judge job is queued for them: the worker rebuilds the premise with the answer and
+judges again (SR-212). The hook reads no record and approves nothing.
+A dismissed or unanswered question logs nothing.
 """
 
 from __future__ import annotations
@@ -44,10 +45,13 @@ def handle(ctx: HookContext) -> HookOutput | None:
 
     core = open_core(ctx.root)
     left = list(judge.unanswered(core, ctx.session_id))
+    key_of = judge.question_key
     for entry in entries:
-        key = judge.question_key(entry["question"])
+        key = key_of(entry["question"])
         found = next((q for q in left if q.get("key") == key), None)
-        if found is None and len(left) == 1:     # the agent reworded the one open question
+        if found is None and len(left) == 1 and key_of(entry["answer"]) in {
+                key_of(o.get("label")) for o in left[0].get("options") or ()
+                if isinstance(o, dict)}:     # the one open question reworded: its option picked
             found = left[0]
         if found is not None:
             left.remove(found)
