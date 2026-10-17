@@ -362,8 +362,9 @@ def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], l
             ["git", "merge-base", "--is-ancestor", f"refs/heads/{branch}", head], cwd=root,
             capture_output=True).returncode == 0
         # a fork's tip is an ancestor of main too, even after a fast-forward merge puts its own
-        # commits there; only the branch reflog tells them apart (any entry past its creation)
-        own = any(not x.startswith("branch: Created") for x in _git(
+        # commits there; only the branch reflog tells them apart: a real commit entry (a reset
+        # or rebase alone is no work of its own)
+        own = any(x.startswith("commit") for x in _git(
             root, "reflog", "show", "--format=%gs", f"refs/heads/{branch}").splitlines())
         if not merged or not own:
             continue

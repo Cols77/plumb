@@ -345,6 +345,17 @@ def test_ex14_a_fast_forward_merged_branch_with_its_own_commit_is_removed(
     assert not tree.exists() and result["worktrees"] == ["wt-ff"]
 
 
+@pytest.mark.sr("SR-320")
+def test_ex15_a_reset_only_branch_is_kept_like_a_fresh_fork(repo: Path,
+                                                            tmp_path: Path) -> None:
+    tree = tmp_path / "wt-reset"
+    run_git(repo, "worktree", "add", "-q", "-b", "reset", str(tree))
+    sha, before = land_branch(repo, lambda root: docs(root, "docs/x.md"))
+    run_git(tree, "reset", "-q", "--hard", sha)  # a reflog entry that is no commit
+    result = landing.land(repo, sha, before)
+    assert tree.exists() and result["worktrees"] == [] and result["kept"] == []
+
+
 @pytest.mark.sr("SR-296")
 def test_ex11_a_second_landing_run_queues_no_judge_job_twice(repo: Path, write_record,
                                                               engine_standins) -> None:
