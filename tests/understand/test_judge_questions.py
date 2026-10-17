@@ -476,3 +476,62 @@ def test_ex4_the_quote_is_the_owners_words_the_question_is_about_or_none(
     off = {"words": "/plumb intent Keep plumb fit by itself.", "date": "6 Oct"}
     (question,) = shaped_of(world, asking("SR-001", request=off))
     assert "You said" not in question["question"]
+
+
+# ---- DEC-191, DEC-192, SR-299 #2 ---------------------------------------------------------------
+
+
+def _transcript(repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, text: str) -> None:
+    from plumb.understand import recover
+
+    folder = tmp_path / "projects" / recover.project_dir_name(repo)
+    folder.mkdir(parents=True)
+    line = {"type": "user", "timestamp": "2026-10-04T09:12:00.000Z", "sessionId": "s1",
+            "message": {"role": "user", "content": text}}
+    (folder / "s1.jsonl").write_text(json.dumps(line), encoding="utf-8")
+    monkeypatch.setenv("PLUMB_TRANSCRIPTS_DIR", str(tmp_path / "projects"))
+
+
+@pytest.mark.sr("SR-309")
+@pytest.mark.sr("SR-249")
+def test_dec191_words_found_in_a_past_transcript_are_quoted_with_their_date(
+        world: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # noqa: F811
+    _transcript(world, monkeypatch, tmp_path, "Please also cache the front page")
+    ask = asking("SR-001", request={"words": "also cache the front page", "date": "9 Oct"})
+    (question,) = shaped_of(world, ask)
+    assert 'You said on 4 Oct: "also cache the front page"' in question["question"]
+
+
+@pytest.mark.sr("SR-309")
+@pytest.mark.sr("SR-249")
+def test_dec191_an_older_record_with_words_in_no_transcript_says_none_were_found(
+        world: Path, write_record, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:  # noqa: F811
+    write_record(world, intent_text(2, "Cache the front page", "Cache the front page"))
+    monkeypatch.setenv("PLUMB_TRANSCRIPTS_DIR", str(tmp_path / "none"))
+    applied_on(world, ["INT-002"], answer(("INT-002", "supported"), questions=[
+        asking("INT-002", request={"words": "cache it", "date": "9 Oct"})]))
+    (question,) = written(world)
+    assert "You said" not in question["question"]
+    assert "found none of your words" in question["question"]
+
+
+@pytest.mark.sr("SR-299")
+def test_dec192_a_question_without_a_quote_reaches_the_owner(world: Path) -> None:  # noqa: F811
+    (question,) = shaped_of(world, asking("SR-001", request={}))
+    assert "You said" not in question["question"] and len(question["options"]) == 2
+
+
+@pytest.mark.sr("SR-299")
+def test_ex1_ex3_a_question_short_of_records_or_options_does_not_reject_the_answer(
+        world: Path) -> None:  # noqa: F811
+    from plumb.understand import schema as schema_check
+
+    bare = {k: v for k, v in asking("SR-001").items() if k != "records"}
+    one = asking("SR-001", options=[{"label": "Only", "consequence": "Nothing else."}])
+    given = answer(("SR-001", "supported"), questions=[bare, one])
+    assert schema_check.problems(given, judge.schema) == []
+    applied = applied_on(world, ["SR-001"], given)
+    (question,) = written(world)                     # the bare one is shown with the job's records
+    assert question["records"][0]["id"] == "SR-001"
+    assert any(e["kind"] == "verdict" for e in applied.entries)
