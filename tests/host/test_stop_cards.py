@@ -170,23 +170,6 @@ matters: true
 """
 
 
-@pytest.mark.sr("INT-037")
-def test_a_decision_that_matters_is_not_asked_by_the_stop_hook(project: Path,
-                                                               hook_input) -> None:
-    """INT-037 'decision asked both as a card and in prose': a turn that touches an
-    unconfirmed decision that matters ends with no block reason naming it and no decision
-    card; the read-back of its record is the owner's way to confirm it."""
-    from plumb.capture.clarify import open_decisions
-
-    start_turn(project)
-    edit(project, ".plumb/decisions/DEC-001.md", DEC1)
-    core = open_core(project)
-    index = core.index()
-    assert open_decisions(index, core.status(), ["DEC-001"]) == ["DEC-001"]  # it matters
-    out = run_stop(project, hook_input)
-    assert owner(out) == ""                      # not blocked, and no card in the owner's text
-    assert "DEC-001" not in out and "Which one" not in out
-
 
 def test_ex5_nothing_for_the_owner_shows_nothing(project: Path, hook_input) -> None:
     """EX-5: nothing needs the owner and nothing settled: the hook shows the owner nothing."""

@@ -23,8 +23,8 @@ requirements:
 - SR-281
 links:
 - kind: derives_from
-  to: INT-023
+  to: INT-076
   pin:
     from: sha256:f7f0f4a787403fc1b1f7bd1bed62b26bd7d53f68bc2cfe54bf546757325be6ab
-    to: sha256:8b04b8103842ecad20f54a4946d18ba5d5353acd275890ff3814e3772fa94e58
+    to: sha256:179fe2baec43ee4eafd8f639d77a41ae0ea853cdc36f0ec8f408080412276cc8
 ---

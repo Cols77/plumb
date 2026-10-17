@@ -28,8 +28,8 @@ requirements:
 - SR-274
 links:
 - kind: derives_from
-  to: INT-028
+  to: INT-077
   pin:
     from: sha256:a409d9c9b4b169cf2e14e847ad1505b800fdabb99a91f0d99cf4f3914470456c
-    to: sha256:d61a9800c2c271d0ab71517aa2d14376c92ed1458d9fff99bec052bfb890ec45
+    to: sha256:03b2fdad2603662bfd32d9cab7f3fbcc2cb081f1143e1c0787de69285d2743f7
 ---
