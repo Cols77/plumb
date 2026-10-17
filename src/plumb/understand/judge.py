@@ -518,6 +518,18 @@ def _answered_by(index: Mapping[str, Any], ids: Sequence[str], labels: Sequence[
     return ""
 
 
+def _own_words(core: Any, ids: Sequence[str], index: Mapping[str, Any]) -> str:
+    """SR-249 EX-1: with no quote from the judge, an older record's own quoted words, when a
+    past session transcript holds them (its first part: ``exact_match`` holds every part)."""
+    from plumb.understand import recover
+
+    older = [index[i] for i in ids
+             if i in index and not premise.premise_of(core, index[i]).messages]
+    messages = recover.owner_messages(core.root) if older else []
+    return next((recover.quote_parts(rec)[0] for rec in older
+                 if recover.exact_match(rec, messages)), "")
+
+
 def _said_in(core: Any, ids: Sequence[str], words: str, index: Mapping[str, Any]
              ) -> tuple[bool, str, bool]:
     """SR-309 EX-4, DEC-191: ``(said, date, older)``: ``words`` are in an owner message the
@@ -560,6 +572,7 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
     if any(_PLUMB_WORDS.search(t) or _LEFT_IN.search(t) for t in shown):
         return None, "a question names plumb's own words"
     text, header, reason, *rest = shown
+    words = words or _own_words(core, ids, index)
     heard, found_on, older = _said_in(core, ids, words, index)
     date = found_on or date
     said = f'You said on {date}: "{words}"' if date else f'You said: "{words}"'

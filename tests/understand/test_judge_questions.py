@@ -516,6 +516,18 @@ def test_dec191_an_older_record_with_words_in_no_transcript_says_none_were_found
     assert "found none of your words" in question["question"]
 
 
+@pytest.mark.sr("SR-249")
+def test_ex1_an_older_records_own_words_are_looked_for_when_the_judge_quotes_none(
+        world: Path, write_record, monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+        tmp_path: Path) -> None:
+    write_record(world, intent_text(2, "Cache the front page", "Cache the front page"))
+    _transcript(world, monkeypatch, tmp_path, "Cache the front page, please")
+    applied_on(world, ["INT-002"], answer(("INT-002", "supported"), questions=[
+        asking("INT-002", request={})]))
+    (question,) = written(world)
+    assert 'You said on 4 Oct: "Cache the front page"' in question["question"]
+
+
 @pytest.mark.sr("SR-299")
 def test_dec192_a_question_without_a_quote_reaches_the_owner(world: Path) -> None:  # noqa: F811
     (question,) = shaped_of(world, asking("SR-001", request={}))

@@ -25,7 +25,6 @@ import heapq
 import json
 import os
 import re
-import subprocess
 import time
 import uuid
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
@@ -480,6 +479,8 @@ def _read_from_git(paths: PlumbPaths,
         prefix = paths.log_dir.relative_to(paths.root).as_posix()
     except ValueError:
         return {}
+    import subprocess  # lazy: the post-edit fast path imports this module (SR-287 EX-4)
+
     request = "".join(f":./{prefix}/{name}\n" for name, _, _ in misses).encode("ascii")
     try:
         result = subprocess.run(["git", "cat-file", "--batch"], cwd=paths.root, input=request,
@@ -1021,6 +1022,8 @@ def migrate(paths: PlumbPaths, *, dry_run: bool) -> MigrationReport:
 
 def tracked_names(root: Path) -> set[str]:
     """The committed entry files (``kind/file``) of the log, as ``git ls-files`` lists them."""
+    import subprocess
+
     prefix = ".plumb/log/"
     out = subprocess.run(["git", "ls-files", "--", prefix], cwd=root, capture_output=True,
                          text=True, encoding="utf-8", errors="replace", check=True).stdout
@@ -1033,6 +1036,8 @@ def stage(root: Path, changed: Iterable[str]) -> None:
     changed = list(changed)
     if not changed:
         return
+    import subprocess
+
     done = subprocess.run(["git", "add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"],
                           cwd=root, input="\0".join(changed), env={**os.environ,
                           "GIT_LITERAL_PATHSPECS": "1"}, capture_output=True, text=True,
