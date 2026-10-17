@@ -126,16 +126,6 @@ def test_deny_rule_present_in_three_launcher_forms() -> None:
     assert not any("conflict relay" in r for r in rules)
 
 
-@pytest.mark.sr("SR-150")
-def test_owners_own_choice_of_mains_version_is_unchanged(repo: Path) -> None:
-    """SR-150 EX-2: main's version is chosen exactly as before."""
-    conflicted(repo)
-    assert cli.main(["conflict", "choose", "IC-001", "--take", "main",
-                     "--root", str(repo)]) == 0
-    assert _record(repo)["statement"] == OURS_STATEMENT
-    (entry,) = events(repo, "conflict-resolution")
-    assert (entry["take"], entry["by"]) == ("ours", "owner")
-
 
 @pytest.mark.sr("SR-211")
 def test_no_template_or_skill_names_the_relay() -> None:

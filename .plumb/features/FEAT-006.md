@@ -11,8 +11,8 @@ requirements:
 - SR-259
 links:
 - kind: derives_from
-  to: INT-022
+  to: INT-085
   pin:
     from: sha256:0446d52a04a487812cffbd1b70483636b1cdef2d9b978642b0d6b2b0a296e444
-    to: sha256:90036c8bd4a54fe839482df4a0d12bb89bef893cc325886cac24368385a1e688
+    to: sha256:6996243e001ff82db5e5e9d8b18eed0e12f4170867c76f86f476a8b73c986cc2
 ---

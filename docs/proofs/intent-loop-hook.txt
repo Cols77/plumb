@@ -1,7 +1,0 @@
-Hook-level evidence (no panel, no live session): the prompt hook (hooks.on_prompt / prompt.intent_lines) run in pytest against a temp repository with stand-in judges.
-$ pytest -rA tests/understand/test_intent_loop.py::test_ex1... ::test_ex4... tests/host/test_intent_change_gate.py
-PASSED tests/understand/test_intent_loop.py::test_ex1_the_typed_command_is_checked_and_opens_the_loop
-PASSED tests/host/test_intent_change_gate.py::test_ex1_gate_closes_naming_the_record_and_example_until_the_owner_releases
-PASSED tests/understand/test_intent_loop.py::test_ex4_an_ordinary_message_opens_no_loop_and_runs_no_model
-PASSED tests/host/test_intent_change_gate.py::test_ex2_gate_stays_open_when_the_loop_ran_for_this_request
-PASSED tests/host/test_intent_change_gate.py::test_ex3_nothing_confirmed_touched_keeps_the_gate_open_and_runs_no_model

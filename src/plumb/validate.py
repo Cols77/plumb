@@ -201,8 +201,11 @@ def validate(core: Core) -> list[Finding]:
         add("warning", "legacy-log", ".plumb/log", LEGACY_LOG.format(n=legacy))
     for entry, problem in checked(core):
         if problem:
-            ids = ", ".join(str(r.get("id")) for r in entry.payload.get("records") or []
-                            if isinstance(r, Mapping))
+            named = [str(r.get("id")) for r in entry.payload.get("records") or []
+                     if isinstance(r, Mapping)]
+            if named and not any(i in index for i in named):
+                continue        # DEC-145: every record it names left the tree; history only
+            ids = ", ".join(named)
             if entry.kind == "approval" and entry.payload.get("by") in ("auto-jev",
                                                                       "auto-model"):
                 add("warning", "inert-approval", ids or entry.digest[:19],  # SR-251

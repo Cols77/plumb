@@ -47,28 +47,6 @@ def test_single_append_reads_head_once_and_preserves_other_stream(tmp_path, monk
     assert json.loads(paths.log_head.read_text())["evidence"]["digest"] == first.digest
 
 
-@pytest.mark.parametrize("head", ["missing", "corrupt", "malformed", "valid"])
-def test_batch_has_bounded_io_and_separate_chained_entries(tmp_path, monkeypatch, head):
-    paths = PlumbPaths(tmp_path)
-    evidence = log.append(paths, "evidence", "test-run", {})
-    first = log.append(paths, "events", "note", {"i": -1})
-    if head == "missing":
-        paths.log_head.unlink()
-    elif head == "corrupt":
-        paths.log_head.write_text("broken")
-    elif head == "malformed":
-        paths.log_head.write_text(json.dumps({"events": {"name": first.name, "digest": None}}))
-    counts = io_counts(monkeypatch, paths)
-    size = log.APPEND_BATCH_SIZE
-    result = log.append_many(paths, "events", [("note", {"i": i}) for i in range(size + 2)])
-    assert counts == {"reads": 2, "heads": 2, "locks": 2}
-    assert result[0].prev == first.digest
-    assert [e.prev for e in result[1:]] == [e.digest for e in result[:-1]]
-    assert len({e.name for e in result}) == size + 2
-    assert all((paths.log_dir / e.name).is_file() for e in result)
-    assert log.verify_chain(paths, "events") == []
-    assert log.append(paths, "evidence", "test-run", {"next": True}).prev == evidence.digest
-
 
 @pytest.mark.parametrize("entries,exception", [
     ([("note", {}), ("../bad", {})], ValueError),

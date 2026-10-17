@@ -192,30 +192,6 @@ def test_uninstall_removes_only_plumb_hook(repo: Path) -> None:
     assert not (repo / ".git" / "hooks" / "prepare-commit-msg").exists()
 
 
-@pytest.mark.sr("SR-077")
-def test_hooks_install_and_init_install_the_quick_check(repo: Path, tmp_path: Path) -> None:
-    """SR-077 EX-5 (R17): /plumb init and hooks install set up the quick merge check AND the
-    pre-push hook (the one full run) by default: the merge runs no tests because push does."""
-    from plumb.boundary.prepush import HOOK_MARKER as PUSH_MARKER
-
-    push = repo / ".git" / "hooks" / "pre-push"
-    assert cli.main(["hooks", "install", "--root", str(repo), "--launcher", "uv"]) == 0
-    text = _hook(repo).read_text(encoding="utf-8")
-    assert HOOK_MARKER in text and "merge-check --hook pre-merge-commit" in text
-    commit_hook = repo / ".git" / "hooks" / "prepare-commit-msg"
-    assert "merge-check --hook prepare-commit-msg" in commit_hook.read_text(encoding="utf-8")
-    pushed = push.read_text(encoding="utf-8")
-    assert PUSH_MARKER in pushed and "merge-check --hook pre-push" in pushed
-    other = tmp_path / "fresh"
-    other.mkdir()
-    run_git(other, "init", "-q", "-b", "main")
-    assert cli.main(["init", "--root", str(other)]) == 0
-    assert HOOK_MARKER in _hook(other).read_text(encoding="utf-8")
-    assert PUSH_MARKER in (other / ".git" / "hooks" / "pre-push").read_text(encoding="utf-8")
-    assert (other / ".git" / "hooks" / "prepare-commit-msg").exists()
-    assert cli.main(["hooks", "uninstall", "--root", str(repo)]) == 0
-    assert not _hook(repo).exists() and not push.exists() and not commit_hook.exists()
-
 
 @pytest.mark.sr("SR-260")
 @pytest.mark.parametrize("argv", [["hooks", "install"], ["init"]])

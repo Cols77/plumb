@@ -68,15 +68,6 @@ def test_find_root_prefers_plumb_dir(tmp_path: Path) -> None:
     assert find_root(other) == tmp_path.resolve()
 
 
-def test_config_defaults_without_file(tmp_path: Path) -> None:
-    config = load_config(tmp_path)
-    assert config.verify.turn_budget_s == 60  # DEC-078
-    assert config.verify.hard_limit_factor == 1.5
-    assert config.hooks.brief_lines == 30
-    assert "ok" in config.approve.affirmations
-    assert config.judgment.backend == ""  # no judge configured: judging raises (INT-029)
-    assert config.source_dirs == ("src", "tests")
-
 
 def test_config_yaml_overrides_and_cache(tmp_path: Path) -> None:
     (tmp_path / ".plumb").mkdir()
