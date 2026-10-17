@@ -150,6 +150,22 @@ def snapshot_dict(snapshot: StatusSnapshot) -> dict[str, Any]:
     return data
 
 
+def refresh_judge_count(core: Any) -> None:
+    """SR-251: a turn with no edit writes no snapshot, yet the judge approves in the background;
+    only the band's judge-approved count is brought up to date in ``status.json``."""
+    from plumb.hosts.claude_code.hookio import read_json
+    from plumb.present.cards import judge_label
+
+    path = Path(core.root) / ".plumb" / "session" / "status.json"
+    data = read_json(path)
+    if not isinstance(data, dict):
+        return
+    index = core.index()
+    count = sum(i in index and judge_label(s) is not None for i, s in core.status().items())
+    if data.get("judge_approved") != count:
+        write_json_atomic(path, {**data, "judge_approved": count})
+
+
 def write_snapshot(root: Path, snapshot: StatusSnapshot, *, present: Any = None,
                    failures: int | None = None) -> Path:
     """Write ``status.json``; ``present`` (``config.present``) carries the display

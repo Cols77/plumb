@@ -269,6 +269,12 @@ def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
     before = _drawn_before(core, ctx.session_id)
     text = understand_parts(ctx, core, turn, fresh=fresh, shown=shown)
     write_stated(ctx, turn, {}, [], early=early, conflicts=conflict_entries(core))
+    from plumb.hosts.claude_code.snapshot import refresh_judge_count
+
+    try:
+        refresh_judge_count(core)
+    except Exception:  # noqa: BLE001 - the band's count is advisory; the turn end goes on
+        pass
     return owner_output(ctx, core, text, before)
 
 

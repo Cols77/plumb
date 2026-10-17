@@ -175,3 +175,18 @@ def test_ex1_the_band_counts_every_record_status_lists_judge_approved(
     listed = _cli(capsys, "status", "--root", str(world)).count(LABEL)
     assert snap.judge_approved == listed == 2
     assert snap.confirmed_by.get("auto-model") == 1   # the SR count beside it is unchanged
+
+
+@pytest.mark.sr("SR-251")
+def test_ex1_a_turn_without_an_edit_brings_the_band_count_up_to_date(
+        world: Path) -> None:  # noqa: F811
+    """SR-251 EX-1: the judge approves between turns; a turn that edits nothing still updates
+    the band's count (round 4: the band showed none while status listed 2)."""
+    from plumb.hosts.claude_code.snapshot import (build_snapshot, refresh_judge_count,
+                                                  write_snapshot)
+
+    write_snapshot(world, build_snapshot(open_core(world)))
+    judged(world, ("SR-001", "supported", 0.8), ("INT-001", "supported", 0.8))
+    refresh_judge_count(open_core(world))
+    data = json.loads((world / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert data["judge_approved"] == 2
