@@ -48,7 +48,8 @@ def test_sr291_ex2_clarify_with_two_of_four_questions_answered(intent: Path) -> 
     assert _run(intent, "progress", "--task", "clarifying", "--done", "2", "--total", "4") == 0
     loop = _loop(intent)
     assert loop["step"] == "clarify"
-    assert loop["tasks"] == {"label": "clarifying", "done": 2, "total": 4, "started_at": started}
+    assert loop["tasks"] == {"label": "clarifying", "done": 2, "total": 4, "started_at": started,
+                             "left": []}
 
 
 def test_sr291_ex3_build_with_an_unknown_total(intent: Path, tmp_path: Path) -> None:
@@ -100,7 +101,7 @@ def test_sr291_ex7_ex8_a_workflow_phase_gate_reports_through_plumb(intent: Path,
                 "--done", "2", "--total", "4") == 0
     loop = _loop(intent)
     assert loop["step"] == "build"
-    assert set(loop["tasks"]) == {"label", "done", "total", "started_at"}
+    assert set(loop["tasks"]) == {"label", "done", "total", "started_at", "left"}
     assert {k: loop["tasks"][k] for k in ("label", "done", "total")} == {
         "label": f"colours gate {gate}", "done": 2, "total": 4}
 

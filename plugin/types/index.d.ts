@@ -111,6 +111,22 @@ export type PlumbStatus = {
   card: string
   loop?: PlumbLoop | null
   study?: string
+  /** the new study's slug, which the band's press opens in the room (SR-294) */
+  studySlug?: string
+  /** the requirements a judge approved (auto-jev, auto-model), counted in the head (SR-251) */
+  judged?: number
+}
+
+/** What the loop pane shows (SR-305), as `plumb intent status --json` gives the open loop:
+ * its steps' gates with the low findings left, the task and the tasks left, the records of
+ * its intent by title, and each requirement's proof shown or not. */
+export type PlumbLoopPane = {
+  step: string
+  stopped: string
+  stages: Record<string, { state: string; left: string[] }>
+  task: { label: string; done: number; total: number | null; left: string[] } | null
+  records: string[]
+  proofs: { title: string; shown: boolean }[]
 }
 
 /** What the panel draws, as plumb last answered it. */
@@ -138,8 +154,8 @@ declare module 'claude-code' {
       told: PlumbTold | null
       view: PlumbView
       band: PlumbBand
-      /** the card the pane shows, among those waiting */
-      pane: { index: number }
+      /** the card the pane shows, among those waiting; the loop it shows instead (SR-305) */
+      pane: { index: number; loop?: PlumbLoopPane | null }
     }
   }
 }

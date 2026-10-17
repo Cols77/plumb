@@ -9,6 +9,9 @@ All of them take ``--session <id>`` and read one JSON object on stdin; none take
   buttons; records each offer the first time it is drawn. Answer ``{session, cards}``.
 - ``press``  ``--offer <offer_id> --choice <n>``, stdin ``{"key": "<64 hex>"}``: one button.
   Answer: see ``plumb.mod.press``.
+- ``room``   ``--study <slug>``, stdin ``{"key": "<64 hex>"}``: the owner pressed the band's new
+  study line: the browser room opens on it and the study is marked opened (SR-294). Answer
+  ``{origin, slug, status}``.
 
 Exit codes: 0 done, 1 the card no longer exists, 2 usage (no such button), 3 refused (the agent
 session marker, no panel registered, no key, another key, an offer never drawn): nothing
@@ -34,11 +37,12 @@ def _answer(data: Any, as_json: bool) -> None:
 
 def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="plumb mod")
-    parser.add_argument("action", choices=("hello", "draw", "press"))
+    parser.add_argument("action", choices=("hello", "draw", "press", "room"))
     add_common(parser)
     parser.add_argument("--session", required=True)
     parser.add_argument("--offer", default=None)
     parser.add_argument("--choice", type=int, default=None)
+    parser.add_argument("--study", default=None)
     args = parser.parse_args(argv)
     from plumb.api import open_core
     from plumb.mod import offers, press, session
@@ -59,6 +63,16 @@ def run(command: str, argv: list[str]) -> int:
                      "cards": offers.drawn_cards(core, args.session, digest),
                      "settled": offers.settled_cards(core, args.session)}, args.as_json)
             return EXIT_OK
+        if args.action == "room":
+            from plumb.browser import launch
+
+            session.check_key(root, args.session, payload, "room")
+            if not args.study:
+                print("plumb mod room: --study is required", file=sys.stderr)
+                return EXIT_USAGE
+            _answer(launch.open_study(root, args.session, str(payload["key"]).lower(),
+                                      args.study), args.as_json)
+            return EXIT_OK
         if not args.offer or args.choice is None:
             print("plumb mod press: --offer and --choice are required", file=sys.stderr)
             return EXIT_USAGE
@@ -72,3 +86,6 @@ def run(command: str, argv: list[str]) -> int:
     except press.Unknown as exc:
         print(str(exc), file=sys.stderr)
         return exc.exit_code
+    except (LookupError, OSError) as exc:      # room: no such study, or it did not start
+        print(f"plumb mod {args.action}: {exc}", file=sys.stderr)
+        return 1

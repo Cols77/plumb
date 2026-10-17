@@ -13,7 +13,7 @@
   let connection = $state('Connecting'); let loadError = $state(''); let loading = $state(false); let busy = $state(false);
   let feedback = $state<Record<string, {error?: string; result?: PressResult}>>({});
   let drafts = $state<Record<string, string>>({}); let composers = $state<Record<string, number | undefined>>({});
-  let refused = $state<Record<string, boolean>>({}); let section = $state<'issues' | 'studies'>('issues');
+  let refused = $state<Record<string, boolean>>({}); let section = $state<'issues' | 'studies'>(new URLSearchParams(location.search).has('study') ? 'studies' : 'issues');  // SR-294 EX-3: the band's press opens the room on a study
   const pending = new Map<string, string>();
   let generation = 0; let alive = true;
   let viewport = $state(window.innerWidth); let drawer = $state(false); let drawerButton = $state<HTMLButtonElement>(); let inbox = $state<HTMLElement>(); let help: HTMLDialogElement;

@@ -34,7 +34,7 @@ export type World = {
   logs: string[]
   fills: string[]
   opened: string[]
-  opens: { id: string; columns?: number }[]
+  opens: { id: string; columns?: number; closeOnEscape?: boolean }[]
   /** What `plumb mod <action>` answers: its exit code and JSON, by action and argv. */
   answer: (action: string, argv: string[]) => { exitCode: number; data: unknown }
   canFill: boolean
@@ -146,7 +146,7 @@ export function install(on: On, w: World): MockClock {
   })
   on('ui.open', (_$, e) => {
     w.opened.push(e.id)
-    w.opens.push({ id: e.id, columns: e.columns })
+    w.opens.push({ id: e.id, columns: e.columns, ...(e.closeOnEscape ? { closeOnEscape: true } : {}) })
     return { value: { isPlaced: true } as any }
   })
   on('prompt.fill', (_$, e) => {

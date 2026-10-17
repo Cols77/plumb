@@ -5,8 +5,8 @@
 none. ``plumb intent gate clarify|plan --intent INT-### --findings FILE`` records a stage's
 judge gate: it passes only when no high or medium finding remains, and ``plan`` refuses while
 ``clarify`` has not passed; a refused gate leaves ``stopped`` (what the loop waits for) in the
-state. ``plumb intent progress --task <words> [--done N --total M]`` sets the current step's task
-the band's bar draws (SR-291). ``plumb intent done --intent INT-###`` refuses while the plan gate
+state. ``plumb intent progress --task <words> [--done N --total M] [--left <words>]...`` sets the
+current step's task the band's bar draws (SR-291) and the tasks left its pane names (SR-305). ``plumb intent done --intent INT-###`` refuses while the plan gate
 has not passed or a requirement of the intent lacks proof evidence that passed. ``plumb intent
 status`` lists the open loops.
 
@@ -193,7 +193,9 @@ def cmd_gate(core: Any, args: argparse.Namespace) -> int:
         for finding in blocking:
             print(f"  {finding['level']}: {finding['what']}", file=sys.stderr)
         return EXIT_FINDINGS
-    data["stages"][args.stage] = {"state": "passed", "at": _now(), "findings": len(findings)}
+    # SR-305: the pane names the low findings left
+    data["stages"][args.stage] = {"state": "passed", "at": _now(), "findings": len(findings),
+                                  "left": [f["what"] for f in findings]}
     data.update(tasks=None, stopped=None)   # the next step starts with no task drawn
     save(path, data)
     core.log_append("events", "intent-gate", {"intent": args.intent, "digest": data["digest"],
@@ -255,18 +257,39 @@ def cmd_progress(core: Any, args: argparse.Namespace) -> int:
     held = data.get("tasks") if isinstance(data.get("tasks"), Mapping) else {}
     data["tasks"] = {"label": args.task, "done": args.done or 0, "total": args.total,
                      "started_at": held.get("started_at") if held.get("label") == args.task
-                     else _now()}
+                     else _now(), "left": list(args.left or ())}
     save(path, data)
     total = f"/{args.total}" if args.total else ""
     print(f"plumb: {data['step']}: {args.task} · {args.done or 0}{total}")
     return 0
 
 
+def _pane(core: Any, data: Mapping[str, Any]) -> dict[str, Any]:
+    """SR-305: what the band's loop pane adds to the state: the records of the loop's intent
+    (the intent and the requirements and decisions linked to it) by title, and each
+    requirement's proof shown or not."""
+    from plumb.capture import proof
+
+    intent = data.get("intent")
+    index = core.index()
+    if not intent or intent not in index:
+        return {"records": [], "proofs": []}
+    linked = sorted(r.id for r in index.values() if any(
+        link.kind in ("derives_from", "decides") and link.target.record == intent
+        for link in r.links))
+    required = requirements_of(core, intent)
+    missing = {row["id"] for row in proof.not_shown(core, required)}
+    return {"records": [{"id": i, "kind": index[i].kind, "title": index[i].title}
+                        for i in [intent, *linked]],
+            "proofs": [{"id": i, "title": index[i].title, "shown": i not in missing}
+                       for i in required]}
+
+
 def cmd_status(core: Any, args: argparse.Namespace) -> int:
     root = Path(core.root)
     found = [(p, d) for p, d in loops(root, _session(args, root)) if not _passed(d, "build")]
     if args.as_json:
-        emit([d for _, d in found], True)
+        emit([{**d, **_pane(core, d)} for _, d in found], True)
         return 0
     for _, data in found:
         states = ", ".join(f"{s} {data['stages'].get(s, {}).get('state', 'open')}" for s in STAGES)
@@ -302,6 +325,8 @@ def run(command: str, argv: list[str]) -> int:
     progress.add_argument("--task", required=True, metavar="WORDS")
     progress.add_argument("--done", type=int, default=None)
     progress.add_argument("--total", type=int, default=None)
+    progress.add_argument("--left", action="append", metavar="WORDS",
+                          help="a task still to do (repeat); the loop pane names them")
     for sub in (opener, gater, doner, verbs.choices["status"], progress):
         add_common(sub)
         sub.add_argument("--session", default=None)

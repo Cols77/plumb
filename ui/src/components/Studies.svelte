@@ -30,7 +30,7 @@
     try { understanding = await api<Understanding>('/api/understanding', capability, {text: draft}); draft = understanding.text; saved = 'Your understanding is saved.'; error = ''; }
     catch (cause) { error = cause instanceof Error ? cause.message : 'Unable to save.'; } finally { busy = false; }
   }
-  onMount(() => { void load(); const timer = setInterval(() => { if (!document.hidden) void load(); }, 15000); return () => clearInterval(timer); });
+  onMount(() => { const asked = new URLSearchParams(location.search).get('study'); void (asked ? choose(asked) : load()); const timer = setInterval(() => { if (!document.hidden) void load(); }, 15000); return () => clearInterval(timer); });
 </script>
 <div class="studies">
   <nav class="study-list" aria-label="Studies">

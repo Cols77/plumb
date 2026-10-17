@@ -166,7 +166,11 @@ def write_present(ctx: Any, turn: Mapping[str, Any]) -> dict[str, Any]:
     core = open_core(ctx.root)
     started = _turn_start(turn)
     parts = ctx.extra.get("stop_parts")
-    data = {"turn": int(started), "confirmations": list(getattr(parts, "confirmations", ()) or ()),
+    from plumb.present.owner_text import JUDGE_APPROVED
+
+    # SR-251: the band's status counts judge approvals; no line of the band for them alone
+    said = [c for c in getattr(parts, "confirmations", ()) or () if not c.endswith(JUDGE_APPROVED)]
+    data = {"turn": int(started), "confirmations": said,
             "session": ctx.session_id, "cards": present_cards(core, ctx.session_id, int(started)),
             "turn_id": str(turn.get("turn_id") or ""),
             "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}

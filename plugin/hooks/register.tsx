@@ -18,7 +18,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { PlumbBand, PlumbLink, PlumbLoop, PlumbTold, PlumbView } from '../types'
+import type { PlumbBand, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbTold, PlumbView } from '../types'
 import { CardView, contentKey, findPress, Grouped, perFeature, stateOf } from './cards'
 import type { Ui } from './cards'
 import * as plumb from './plumb'
@@ -48,7 +48,7 @@ const degradedAtom = atom({ plugin: 'plumb', key: 'degraded' } as const, false)
 const toldAtom = atom({ plugin: 'plumb', key: 'told' } as const, null as PlumbTold | null)
 const viewAtom = atom({ plugin: 'plumb', key: 'view' } as const, EMPTY_VIEW)
 const bandAtom = atom({ plugin: 'plumb', key: 'band' } as const, BAND)
-const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const, { index: 0 })
+const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const, { index: 0, loop: null as PlumbLoopPane | null })
 
 // the width the pane asks for when it docks beside the conversation
 const PANE_COLUMNS = 80
@@ -58,18 +58,18 @@ function statusLine(view: PlumbView, named = true): string {
   const state = view.status?.state ?? ''
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
   const word = waiting ? T.awaiting(waiting) : state || T.nothingAwaits
-  return [`${named ? `${T.name} ` : ''}${glyph} ${word}`, view.status?.progress].filter(Boolean).join(' · ')
+  const judged = view.status?.judged ? T.judged(view.status.judged) : '' // SR-251
+  return [`${named ? `${T.name} ` : ''}${glyph} ${word}`, judged, view.status?.progress].filter(Boolean).join(' · ')
 }
 
 /** The pinned status notice: the host heads it with plumb's name already (SR-290). */
 const noticeLine = (view: PlumbView) => statusLine(view, false)
 
-/** The band's status read again (files only, no process): null when nothing moved, else the
- * status and the study just written, to announce once (SR-291, SR-294). */
+/** The band's status read again (files only, no process): null when nothing moved (SR-291).
+ * A new study gets no toast: the band's line announces it (SR-294 EX-1). */
 async function reread(io: Io, link: PlumbLink, view: PlumbView) {
   const status = await plumb.readStatus(io, link)
-  if (JSON.stringify(status) === JSON.stringify(view.status)) return null
-  return { status, study: status.study && status.study !== view.status?.study ? status.study : '' }
+  return JSON.stringify(status) === JSON.stringify(view.status) ? null : { status }
 }
 
 // SR-291 EX-7: a workflow's agents raise no event in the owner's session, so the band reads
@@ -101,15 +101,19 @@ function unlinkedLine(u: Unlinked): string {
 const LOOP_STEPS = ['clarify', 'plan', 'build', 'proven']
 const BAR_CELLS = 10
 
+/** A step's mark: done, current (stopped where a gate refused), to come. */
+function stepMark(loop: { step: string; stopped: string }, i: number): string {
+  const at = LOOP_STEPS.indexOf(loop.step)
+  return i < at ? '✓' : i > at ? '○' : loop.stopped ? '✗' : '●'
+}
+
 /** An intent loop's lines under the status (SR-291): the strip of its steps in plum (done,
  * current, to come; a refused gate marks the current one stopped and names what it waits for),
  * then the current step's task, a brass fill of done over total, or the elapsed time with no
- * fill when the total is unknown. */
+ * fill when the total is unknown. The strip is a Button: its press opens the loop's pane (SR-305). */
 function loopLines(ui: Ui, loop: PlumbLoop, color: string, brass: string) {
-  const { Box, Text } = ui
-  const at = LOOP_STEPS.indexOf(loop.step)
-  const strip = LOOP_STEPS.map((s, i) =>
-    `${s} ${i < at ? '✓' : i > at ? '○' : loop.stopped ? '✗' : '●'}`).join('  ')
+  const { Box, Button, Text } = ui
+  const strip = LOOP_STEPS.map((s, i) => `${s} ${stepMark(loop, i)}`).join('  ')
   const task = loop.task
   const filled = task?.total ? Math.round(BAR_CELLS * Math.min(task.done, task.total) / task.total) : 0
   // a workflow phase's gate reports itself (DEC-157): the step, the phase of the script's, the gate
@@ -117,7 +121,9 @@ function loopLines(ui: Ui, loop: PlumbLoop, color: string, brass: string) {
     ? `${loop.step} · slice ${task.done}/${task.total} · ${task.label}`
     : [task?.label, task?.total ? `${task?.done}/${task.total}` : task?.elapsed].filter(Boolean).join(' · ')
   return [
-    <Text key="loop:strip" color={color}>{loop.stopped ? `${strip} · ${T.stopped(loop.stopped)}` : strip}</Text>,
+    <Button key="loop" plain onPress={() => {}}>
+      <Text key="loop:strip" color={color}>{loop.stopped ? `${strip} · ${T.stopped(loop.stopped)}` : strip}</Text>
+    </Button>,
     task ? (
       <Box key="loop:bar" flexDirection="row" gap={1}>
         {task.total ? <Text key="loop:fill" color={brass}>{'█'.repeat(filled) + '░'.repeat(BAR_CELLS - filled)}</Text> : null}
@@ -125,6 +131,38 @@ function loopLines(ui: Ui, loop: PlumbLoop, color: string, brass: string) {
       </Box>
     ) : null,
   ]
+}
+
+/** The loop pane (SR-305): each step with its gate and the low findings left, the build's
+ * tasks done and left, the records of the loop's intent and each requirement's proof, by title;
+ * never an agent, a count of them or tokens. */
+function loopPane(ui: Ui, loop: PlumbLoopPane, color: string, brass: string) {
+  const { Box, Text } = ui
+  const rows = LOOP_STEPS.map((s, i) => {
+    const left = loop.stages[s]?.left ?? []
+    const now = s === loop.step ? loop.task : null
+    const notes = [left.length ? T.lowLeft(left.length) : '', now?.left.length ? T.tasksLeft(now.left) : '']
+    const head = `${s} ${stepMark(loop, i)}${now?.total ? ` ${now.done}/${now.total}` : ''}`
+    return (
+      <Box key={`step:${s}`} flexDirection="column">
+        <Text key={`step:${s}:head`} color={color}>{[head, ...notes].filter(Boolean).join(' · ')}</Text>
+        {left.map((what, n) => <Text key={`low:${s}:${n}`} dimColor>{`  low: ${what}`}</Text>)}
+      </Box>
+    )
+  })
+  return (
+    <Box flexDirection="column">
+      {rows}
+      {loop.records.length ? <Text key="records" bold color={color}>{T.records}</Text> : null}
+      {loop.records.map((title, n) => <Text key={`record:${n}`}>{`  ${title}`}</Text>)}
+      {loop.proofs.length ? <Text key="proofs" bold color={color}>{T.proofs}</Text> : null}
+      {loop.proofs.map((p, n) => (
+        <Text key={`proof:${n}`} color={p.shown ? brass : undefined}>
+          {`  ${p.shown ? '✓' : '○'} ${p.title}: ${p.shown ? T.shown : T.notShown}`}
+        </Text>
+      ))}
+    </Box>
+  )
 }
 
 /** The band: one line of status, the cards awaiting per feature, then the awaiting card in
@@ -153,7 +191,12 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
       </Box>
       {view.status?.loop ? loopLines(ui, view.status.loop, color, brass) : null}
-      {view.status?.loop && view.status.study ? <Text key="loop:study" color={brass}>{T.newStudy(view.status.study)}</Text> : null}
+      {view.status?.loop && view.status.study ? (
+        // SR-294 EX-3: a press (click, or the arrows and Enter) opens the room on the study
+        <Button key="study" plain onPress={() => {}}>
+          <Text key="loop:study" color={brass}>{T.newStudy(view.status.study)}</Text>
+        </Button>
+      ) : null}
       {waiting.length ? <Text key="waiting">{`${T.awaiting(waiting.length)}: ${perFeature(waiting)}`}</Text> : null}
       {leftOpen.length ? <Text key="left" dimColor>{`${T.leftOpen(leftOpen.length)}: ${perFeature(leftOpen)}`}</Text> : null}
       {view.line ? <Text key="line" dimColor>{view.line}</Text> : null}
@@ -205,7 +248,6 @@ export const register: Register = on => {
         const moved = await reread(io, link, await read($, viewAtom))
         if (moved === null) return
         const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
-        if (moved.study) $.ui.toast(T.newStudy(moved.study))
         $.ui.status(noticeLine(view))
       } catch {
         // the band keeps what it drew; the turn's end reads it again
@@ -384,8 +426,6 @@ export const register: Register = on => {
     const before = await read($, viewAtom)
     const snap = await plumb.snapshot(io, link, before, band.shown, true)
     await update($, viewAtom, () => snap.view)
-    const study = snap.view.status?.study
-    if (study && study !== before.status?.study) $.ui.toast(T.newStudy(study)) // SR-294: once, as it appears
     if (snap.fresh) {
       await update($, bandAtom, b => ({ ...b, isHidden: false }))
       $.ui.toast(T.toastAwaiting(snap.view.cards.filter(c => c.repeats).length))
@@ -428,7 +468,6 @@ export const register: Register = on => {
       const moved = await reread(io, link, await read($, viewAtom))
       if (moved === null) return ran
       const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
-      if (moved.study) $.ui.toast(T.newStudy(moved.study))
       $.ui.status(noticeLine(view))
     } catch {
       // the band keeps what it drew; the turn's end reads it again
@@ -460,14 +499,14 @@ export const register: Register = on => {
       return next(e)
     }
     if (key === 'pane') {
-      await update($, paneAtom, () => ({ index: 0 }))
+      await update($, paneAtom, () => ({ index: 0, loop: null }))
       await $.ui.open({ id: PANE, title: T.paneTitle, columns: PANE_COLUMNS })
       return next(e)
     }
     if (key === 'back' || key === 'next') {
       // Back on the first and Next on the last stay where they are
       const last = view.cards.filter(c => c.repeats).length - 1
-      await update($, paneAtom, p => ({ index: Math.max(0, Math.min(last, Math.min(p.index, last) + (key === 'next' ? 1 : -1))) }))
+      await update($, paneAtom, p => ({ ...p, index: Math.max(0, Math.min(last, Math.min(p.index, last) + (key === 'next' ? 1 : -1))) }))
       return next(e)
     }
     const link = await read($, linkAtom)
@@ -489,9 +528,23 @@ export const register: Register = on => {
       }),
       diagram: diagramOf($),
     }
+    if (key === 'loop') {
+      // SR-305: the loop as plumb knows it, in the docked pane; Esc closes it, the band stays
+      const loop = await plumb.loopPane(io, link)
+      if (loop === null) return next(e)
+      await update($, paneAtom, () => ({ index: 0, loop }))
+      await $.ui.open({ id: PANE, title: T.loopTitle, columns: PANE_COLUMNS, closeOnEscape: true })
+      return next(e)
+    }
     let line = ''
     let note = ''
-    if (key.startsWith('press:')) {
+    if (key === 'study') {
+      // SR-294 EX-3, EX-4: the room opens on the study, which is marked opened, so its line goes
+      const slug = view.status?.studySlug
+      if (!slug) return next(e)
+      const ran = await plumb.room(io, link, slug)
+      line = ran.ok ? '' : T.roomFailed
+    } else if (key.startsWith('press:')) {
       const found = findPress(view.cards, key)
       if (found === null) return next(e)
       const ran = await plumb.press(io, link, found.offer.offer_id, found.button.index)
@@ -539,6 +592,16 @@ export const register: Register = on => {
     const ui = uiOf($, e)
     const { Box, Button, Text } = ui
     const room = e.props.bodyColumns - 4 // less the card's frame and padding
+    const pane = await read($, paneAtom)
+    if (pane.loop) {
+      let theme: unknown
+      try {
+        theme = (await $.config.list()).find(row => row.key === 'theme')?.value
+      } catch {
+        // a surface without the settings rows: the dark shade
+      }
+      return loopPane(ui, pane.loop, plumbColor(theme), brassColor(theme))
+    }
     const cards = (await read($, viewAtom)).cards
     const waiting = cards.filter(c => c.repeats)
     // SR-160: the other states (left open, being processed, blocked, done) listed below

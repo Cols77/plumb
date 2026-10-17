@@ -22,7 +22,8 @@ The owner's band shows the loop's step and the current task: as you go, run
 `plumb intent progress --task <words> --done N --total M` in the owner's words
 (`clarifying` with the questions answered of those to ask, `writing the plan` with the plan
 items written of the plan's, `building` with the plan items built; leave `--total` out when
-it is not known). A refused gate shows on the band by itself.
+it is not known); while building, add `--left "<item>"` for each plan item not built yet, which
+the owner's loop pane names. A refused gate shows on the band by itself.
 
 Stage A, clarify and integrate, until `plumb intent gate clarify` passes:
 
