@@ -20,6 +20,8 @@ for _name in [n for n in sys.modules if n == "plumb" or n.startswith("plumb.")]:
     if not str(getattr(sys.modules[_name], "__file__", "") or "").startswith(_SRC):
         del sys.modules[_name]
 
+pytest_plugins = ["loadbound"]
+
 _KIND_DIRS = {"INT": "intents", "SR": "requirements", "DEC": "decisions", "FEAT": "features",
               "NC": "ncs"}
 _ID_LINE = re.compile(r"^id:\s*['\"]?((?:INT|SR|DEC|FEAT|NC)-\d+)", re.MULTILINE)

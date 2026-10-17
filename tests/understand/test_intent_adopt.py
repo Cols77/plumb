@@ -75,3 +75,13 @@ def test_ex3_two_open_loops_and_no_choice_takes_over_neither(
     assert {p: p.read_text(encoding="utf-8") for p in (old, other)} == before
     assert gate.is_closed(repo, OLD)
     assert _adopt(repo, "--from-session", OLD) == 0
+
+
+def test_ex1_tasks_and_progress_fields_carry_over_verbatim(repo: Path) -> None:
+    old = _opened(repo)
+    data = files.read_json(old)
+    data.update({"tasks": [{"id": "T1", "state": "done"}], "progress": {"done": 1}})
+    files.write_json_atomic(old, data)
+    assert _adopt(repo) == 0
+    mine = files.read_json(cmd_intent.loop_path(repo, NEW, DIGEST))
+    assert mine["tasks"] == data["tasks"] and mine["progress"] == data["progress"]

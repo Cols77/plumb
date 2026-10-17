@@ -66,6 +66,7 @@ def _call(root: Path, module: str, payload: dict[str, object]) -> tuple[str, flo
     return found["out"], found["ms"]
 
 
+@pytest.mark.load_bound
 def test_hooks_on_plumbs_own_records_finish_inside_their_budgets(own_copy: Path) -> None:
     from plumb.config import load_config
 
@@ -93,6 +94,7 @@ def test_hooks_on_plumbs_own_records_finish_inside_their_budgets(own_copy: Path)
     assert not errors.exists(), errors.read_text("utf-8")
 
 
+@pytest.mark.load_bound
 def test_hookio_imports_only_what_a_hook_always_needs() -> None:
     code = ("import json, sys, time\n"
             "start = time.perf_counter()\n"
@@ -150,6 +152,7 @@ def test_plumbs_own_runs_use_two_xdist_workers() -> None:
     assert build_command(["tests/x.py"], workers=workers)[-3:] == ["-n", "2", "tests/x.py"]
 
 
+@pytest.mark.load_bound
 def test_the_question_answer_hook_on_a_large_session_stays_inside_its_budget(
         repo: Path, write_record) -> None:
     """Task 3: with 200 records and 500 prompts logged, the question-answer hook matches the

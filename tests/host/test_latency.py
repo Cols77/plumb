@@ -69,6 +69,7 @@ def _time_ms(fn) -> float:
     return statistics.median(runs)
 
 
+@pytest.mark.load_bound
 def test_hooks_within_in_process_budget(busy_repo: Path, hook_input,
                                         monkeypatch: pytest.MonkeyPatch) -> None:
     root = busy_repo
@@ -152,6 +153,7 @@ class _CpuContention:
                 proc.kill()
 
 
+@pytest.mark.load_bound
 def test_intent_lines_survive_cpu_contention(busy_repo: Path, hook_input) -> None:
     """Under full CPU contention the hooks may cut evidence detail, never the brief, the
     relevant records, the relay line or the proposed read-back (spec 10, R1). The caches are

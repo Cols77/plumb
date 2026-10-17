@@ -45,6 +45,7 @@ def _timed(paths: PlumbPaths) -> tuple[float, int]:
     return time.perf_counter() - start, count
 
 
+@pytest.mark.load_bound
 def test_read_cost(tmp_path: Path) -> None:
     """Cold: a worktree ``git worktree add`` has just written, beside the main worktree
     whose hooks have read the log; no pack cache there and no priming pass. Cold again: a

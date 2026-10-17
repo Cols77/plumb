@@ -89,12 +89,14 @@ def _cold_best(own_copy: Path) -> tuple[float, str]:
     return _COLD[key]
 
 
+@pytest.mark.load_bound
 def test_cold_start_over_budget_today(own_copy: Path) -> None:
     """The plan's target: the best of four cold runs at most 0.9 of the budget."""
     best, _ = _cold_best(own_copy)
     assert best <= BUDGET_MS * 0.9, f"cold session start {best:.0f} ms against {BUDGET_MS:.0f}"
 
 
+@pytest.mark.load_bound
 def test_cold_best_of_four_inside_90_percent_of_budget(own_copy: Path) -> None:
     best, _ = _cold_best(own_copy)
     assert best <= BUDGET_MS * 0.9, f"cold session start {best:.0f} ms against {BUDGET_MS:.0f}"
@@ -106,6 +108,7 @@ def test_cold_has_no_check_skipped_line(own_copy: Path) -> None:
     assert out.splitlines()[0].startswith("plumb brief")
 
 
+@pytest.mark.load_bound
 def test_warm_start_inside_target(own_copy: Path) -> None:
     """Best of four warm runs at most 900 ms, on plumb's own records."""
     _call(own_copy)  # fills the caches

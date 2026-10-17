@@ -33,6 +33,7 @@ def _five(tmp_path: Path) -> Path:
     return main
 
 
+@pytest.mark.load_bound
 def test_five_worktrees_under_50_ms_warm_no_git_process(tmp_path: Path,
                                                         monkeypatch: pytest.MonkeyPatch
                                                         ) -> None:
@@ -54,7 +55,7 @@ def test_five_worktrees_under_50_ms_warm_no_git_process(tmp_path: Path,
         lines = awareness.delta_lines(core, ids)
         runs.append((time.perf_counter() - start) * 1000)
     assert len(lines) == 5
-    assert statistics.median(runs) < 50, runs
+    assert statistics.median(runs) < 50, f"over the 50 ms budget: {runs}"
 
 
 def test_budget_exhausted_skips_quietly(tmp_path: Path) -> None:
