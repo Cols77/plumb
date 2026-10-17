@@ -288,3 +288,29 @@ def test_sr295_ex3_stale_links_and_untraced_files_alone_show_the_owner_nothing(
     assert _stop(confirmed, hook_input) == {}
     assert stale_note in _agent(confirmed)
     assert summary.ASK_OWNER not in stale_note
+
+
+@pytest.mark.sr("SR-295")
+def test_sr295_a_card_only_in_the_agents_channel_is_not_shown_to_the_owner(tmp_path: Path
+                                                                           ) -> None:
+    """A card the stop drew went to the agent alone: a bare 'ok' must not confirm it. Only
+    plumb's panel, active this turn, puts the drawn card before the owner."""
+    from types import SimpleNamespace
+
+    session_dir = tmp_path / ".plumb" / "session" / SESSION
+    session_dir.mkdir(parents=True)
+    ctx = SimpleNamespace(root=tmp_path, session_id=SESSION, session_dir=session_dir,
+                          extra={"display": "owner"})
+    turn = {"turn_start": time.time() - 0.5, "prompt_digest": "sha256:" + "a" * 64}
+    index = {"SR-001": SimpleNamespace(hash="sha256:1")}
+
+    def stated() -> list:
+        stop.write_stated(ctx, turn, index, ["SR-001"], {"SR-001": "sha256:1"})
+        data = json.loads((session_dir / "stated.json").read_text("utf-8"))
+        return [(r["id"], r["shown"]) for r in data["records"]]
+
+    assert stated() == [("SR-001", False)]
+    (session_dir / "mod.json").write_text(json.dumps({
+        "active": True, "heartbeat": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}),
+        "utf-8")
+    assert stated() == [("SR-001", True)]

@@ -10,7 +10,7 @@ sp7-realign-sp8 C7, slice 3).
    an error or the watchdog still shows them. Then the covering tests and fidelity. Write
    ``status.json`` (the status line: the status card lives there, never in the owner's text)
    and the stated set (``stated.json``): a stated record is ``shown`` only when a card drew it
-   in full.
+   in full on plumb's panel (without it the cards reach the agent only, SR-295).
 4. At most one block per turn, never when the host says ``stop_hook_active``: covering tests
    without fresh evidence (the agent runs ``plumb tests run --paths <this turn's paths>`` in
    its turn; the hook never runs pytest) and a regression (trigger 3, R3: a node that passed
@@ -223,7 +223,8 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     """The stated set of this reply: what a bare affirmation of the owner may confirm.
 
     The one writer of ``stated.json``, so it holds the guarantee "``shown`` only when the
-    owner sees the summary" for every host (``ctx.extra["display"]``, set by
+    owner sees the card" for every host: a drawn card reaches the owner only while plumb's
+    panel is active (``present.json``), otherwise the agent's channel alone (SR-295) (``ctx.extra["display"]``, set by
     ``hosts.neutral.handle_event``): ``owner`` (the host shows ``owner_lines``) keeps
     ``shown``; ``unseen`` (the host could not show them) writes no record as shown;
     ``status`` (a status refresh, e.g. Codex's ``notify``) leaves the stated set of the reply
@@ -234,7 +235,8 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     if display == "status":
         return
     seen = display == "owner"
-    shown = set(shown) if seen else set()
+    # SR-295: cards go to the agent's channel; a drawn card reached the owner only on the panel
+    shown = set(shown) if seen and _panel_shows(ctx, turn) else set()
     data: dict[str, Any] = {
         "at": utc_now(), "session": ctx.session_id,
         "reply_after_prompt": turn.get("prompt_digest"),
@@ -244,6 +246,16 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     if seen and early:  # R17: the early conflict cards this reply showed the owner
         data["early"] = [dict(c) for c in early]
     write_json_atomic(ctx.session_dir / "stated.json", data)
+
+
+def _panel_shows(ctx: HookContext, turn: Mapping[str, Any]) -> bool:
+    """The panel is active this turn, so the drawn cards reach the owner (``present.json``)."""
+    try:
+        from plumb.mod.handshake import active
+
+        return active(ctx.root, ctx.session_id, float(turn.get("turn_start") or 0))
+    except Exception:  # noqa: BLE001 - unknown means unseen: a bare "ok" confirms nothing
+        return False
 
 
 def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
