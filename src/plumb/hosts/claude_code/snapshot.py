@@ -76,6 +76,8 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
         full_pending = verify.full_pending()
     tests, failing, regressions = (tests_summary if tests_summary is not None
                                    else tests_state(evidence))
+    from plumb.present.cards import judge_label
+
     confirmed_by: dict[str, int] = {}
     for status in requirements:
         if status.confirmation == "confirmed" and status.approved_by:
@@ -100,6 +102,7 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
         skipped=skipped,
         intent_summary=intent_summary,
         confirmed_by=confirmed_by,
+        judge_approved=sum(i in index and judge_label(s) is not None for i, s in statuses.items()),
         auto_approve=auto_approve if auto_approve is not None else auto_approve_state(core),
         conflicts=open_conflict_count(core),
         **overlap_fields(core, awareness),

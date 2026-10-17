@@ -72,6 +72,15 @@ async function reread(io: Io, link: PlumbLink, view: PlumbView) {
   return JSON.stringify(status) === JSON.stringify(view.status) ? null : { status }
 }
 
+/** SR-305: the loop pane, while open, follows the band: read again when the band's status moved.
+ * A closed pane is never told (the host gives no close event), so it is read again at most once
+ * per move of the status; cleared when the loop is gone. */
+async function refreshPane($: any, io: Io, link: PlumbLink) {
+  if ((await read($, paneAtom)).loop === null) return
+  const loop = await plumb.loopPane(io, link)
+  await update($, paneAtom, p => ({ ...p, loop: p.loop === null ? null : loop }))
+}
+
 // SR-291 EX-7: a workflow's agents raise no event in the owner's session, so the band reads
 // its files again on this period (the mod API has no file watch)
 const POLL_MS = 2000
@@ -191,8 +200,8 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
       </Box>
       {view.status?.loop ? loopLines(ui, view.status.loop, color, brass) : null}
-      {view.status?.loop && view.status.study ? (
-        // SR-294 EX-3: a press (click, or the arrows and Enter) opens the room on the study
+      {view.status?.study ? (
+        // SR-294: the line stays after the loop closes, until opened; a press opens the room on it
         <Button key="study" plain onPress={() => {}}>
           <Text key="loop:study" color={brass}>{T.newStudy(view.status.study)}</Text>
         </Button>
@@ -249,6 +258,7 @@ export const register: Register = on => {
         if (moved === null) return
         const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
         $.ui.status(noticeLine(view))
+        await refreshPane($, io, link)
       } catch {
         // the band keeps what it drew; the turn's end reads it again
       } finally {
@@ -469,6 +479,7 @@ export const register: Register = on => {
       if (moved === null) return ran
       const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
       $.ui.status(noticeLine(view))
+      await refreshPane($, io, link)
     } catch {
       // the band keeps what it drew; the turn's end reads it again
     }

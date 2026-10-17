@@ -95,6 +95,25 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
+    test('SR-305 EX-1: the open pane follows the band: build 3/4 becomes 4/4 on the next read', async ($, on) => {
+      const w = loopWorld()
+      const clock = install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loop' })
+      const view = await $.ui.mount(pane(surface))
+      expect((await view.find({ type: 'Text', text: /^build / }))?.text).toBe('build ● 3/4 · left: the pane of the loop')
+      const done = { ...STATUS[0], tasks: { ...STATUS[0]!.tasks, done: 4, left: [] } }
+      STATUS[0] = done // what `plumb intent status --json` answers now
+      w.files[LOOP] = JSON.stringify(done)
+      await clock.advance(2000) // the band's period (POLL_MS in register.tsx)
+      expect((await band.find({ type: 'Text', text: /building · 4\/4/ }))).toBeDefined()
+      expect((await view.find({ type: 'Text', text: /^build / }))?.text).toBe('build ● 4/4')
+      STATUS[0] = { ...done, tasks: { ...done.tasks, done: 3, left: ['the pane of the loop'] } }
+      await view.unmount()
+      await band.unmount()
+    })
+
     test('SR-305 EX-5: no loop open: no strip, and nothing opens the pane for a loop', async ($, on) => {
       const w = loopWorld(null)
       install(on, w)
@@ -115,6 +134,18 @@ for (const surface of SURFACES) {
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: 'plumb ● 2 await you · 1 judge-approved' })).toBeDefined()
       expect(w.statuses.at(-1)).toBe('● 2 await you · 1 judge-approved')
+      await band.unmount()
+    })
+
+    test("SR-251 EX-1: the band counts every record the judge approved, as plumb status lists them", async ($, on) => {
+      const w = world()
+      // round 3: 2 requirements and 4 decisions judge-approved; confirmed_by counts requirements only
+      w.files[`${ROOT}/.plumb/session/status.json`] = JSON.stringify({ state: 'awaits you', intent_summary: '',
+        confirmed_by: { 'auto-model': 2 }, judge_approved: 6, present: { card: 'full' } })
+      install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      expect(await band.find({ type: 'Text', text: 'plumb ● 2 await you · 6 judge-approved' })).toBeDefined()
       await band.unmount()
     })
   })

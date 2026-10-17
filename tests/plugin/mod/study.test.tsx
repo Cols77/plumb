@@ -19,7 +19,7 @@ function study(status: string): string {
     `why: "the plan adds a job"\nstatus: ${JSON.stringify(status)}\n---\n\nA dispatcher hands each job to a worker.\n`
 }
 
-async function band($: any, on: any, surface: (typeof SURFACES)[number]) {
+async function band($: any, on: any, surface: (typeof SURFACES)[number], loop = true) {
   const w = world()
   const answer = w.answer
   // what plumb mod room does: the room opens on the study, which is marked opened
@@ -28,7 +28,7 @@ async function band($: any, on: any, surface: (typeof SURFACES)[number]) {
     w.files[STUDY] = study('opened')
     return { exitCode: 0, data: { origin: 'http://127.0.0.1:50123', slug: SLUG, status: 'opened' } }
   }
-  w.files[LOOP] = JSON.stringify({ digest: 'sha256:' + 'a'.repeat(64), intent: 'INT-001', opened_at: '2026-10-11T11:00:00Z',
+  if (loop) w.files[LOOP] = JSON.stringify({ digest: 'sha256:' + 'a'.repeat(64), intent: 'INT-001', opened_at: '2026-10-11T11:00:00Z',
     step: 'plan', tasks: null, stopped: null, stages: {} })
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false }, text: '' }) as any)
   install(on, w)
@@ -75,6 +75,17 @@ for (const surface of SURFACES) {
       expect(key).toMatch(/^[0-9a-f]{64}$/)
       expect(room?.argv.join(' ')).not.toContain(key)
       expect(room?.env.PLUMB_AGENT_SESSION).toBe('')
+      await ui.unmount()
+    })
+
+    test('SR-294 EX-2: the loop closed and the study is still new: the band keeps its line', async ($, on) => {
+      const { w, ui } = await band($, on, surface, false)
+      w.files[STUDY] = study('new')
+      await $.turn.complete(TURN_DONE)
+      expect(await ui.find({ type: 'Text', text: /^clarify / })).toBeUndefined()
+      expect((await ui.find({ type: 'Text', text: /^new study/ }))?.text).toBe(LINE)
+      await ui.press({ key: 'study' })
+      expect(rooms(w)).toHaveLength(1)
       await ui.unmount()
     })
 

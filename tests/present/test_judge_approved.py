@@ -161,3 +161,17 @@ def test_triage_review_and_merge_check_name_no_approve_hint_and_no_id(
     for text in ("\n".join(triage[1:]), "\n".join(listed), sections, "\n".join(merge)):
         assert not HINT.search(text), text
         assert not ID.search(text.replace(LABEL, "")), text
+
+
+@pytest.mark.sr("SR-251")
+def test_ex1_the_band_counts_every_record_status_lists_judge_approved(
+        world: Path, capsys) -> None:  # noqa: F811
+    """SR-251 EX-1: the band's status counts the judge approvals ``plumb status`` lists, of any
+    kind (round 3: the band said 2 where status listed 6, its decisions left out)."""
+    from plumb.hosts.claude_code.snapshot import build_snapshot
+
+    judged(world, ("SR-001", "supported", 0.8), ("INT-001", "supported", 0.8))
+    snap = build_snapshot(open_core(world))
+    listed = _cli(capsys, "status", "--root", str(world)).count(LABEL)
+    assert snap.judge_approved == listed == 2
+    assert snap.confirmed_by.get("auto-model") == 1   # the SR count beside it is unchanged

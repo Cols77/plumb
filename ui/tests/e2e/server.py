@@ -57,6 +57,32 @@ for name, ic in (("e2e-conflict-other", "IC-002"), ("e2e-proposed", "IC-003"), (
     files.write_json_atomic(files.session_dir(root, name) / summary.DRAWN,
                             [summary._drawn_entry(core, name, card, "open", turn_built=True)])
 (sessions / "empty-session").mkdir()
+# SR-293: studies drawn as Markdown with a mermaid diagram, and one whose diagram is broken
+from plumb import study  # noqa: E402
+
+FENCE = "`" * 3
+study.add(root, title="How plumb's background jobs run", why="the plan adds a job", loop="e2e",
+          step="plan", body=f"""## The dispatcher
+
+A **dispatcher** hands each job to a worker.
+
+| | plumb | cron |
+|---|---|---|
+| runs | 6 | 5 |
+
+{FENCE}mermaid
+flowchart LR
+  D[dispatcher] --> W[worker]
+{FENCE}
+""")
+study.add(root, title="A broken diagram", why="a typo in the diagram", loop="e2e", step="build",
+          body=f"""Some words.
+
+{FENCE}mermaid
+flowchart LR
+  D[dispatcher -->
+{FENCE}
+""")
 static = Path(__file__).resolve().parents[3] / "src/plumb/browser/static"
 # A project with no source session at all, on its own port.
 bare = Path(tempfile.mkdtemp(prefix="plumb-e2e-bare-")) / "bare"

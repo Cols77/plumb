@@ -218,7 +218,23 @@ code { overflow-wrap:anywhere; }
 .studies { display:grid; grid-template-columns:280px minmax(0,1fr); flex:1; min-height:0; }
 .study-list { background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; }
 .study-new { color:var(--brass); border:1px solid var(--wait-ring); padding:0 5px; border-radius:3px; }
-.study-diagram { border:1px solid var(--line2); border-left:3px solid var(--brass); border-radius:5px; padding:12px; margin:16px 0; white-space:pre; }
+/* SR-293: a study drawn as Markdown, its diagrams drawn by mermaid in plum and brass */
+.study-body { line-height:1.65; overflow-wrap:anywhere; max-width:76ch; }
+.study-body h1,.study-body h2,.study-body h3,.study-body h4 { margin:22px 0 8px; line-height:1.3; }
+.study-body h1 { font-size:20px; }.study-body h2 { font-size:17px; }.study-body h3,.study-body h4 { font-size:14px; }
+.study-body p,.study-body ul,.study-body ol { margin:10px 0; }.study-body li { margin:3px 0; }
+.study-body strong { color:var(--text); }.study-body em { color:var(--muted); }
+.study-body a { color:var(--plumb); }
+.study-body code { font:12px var(--mono); background:var(--elev); padding:1px 5px; border-radius:3px; }
+.study-body pre { background:var(--term); border:1px solid var(--line2); border-radius:5px; padding:12px; overflow:auto; }
+.study-body pre code { background:none; padding:0; }
+.study-body table { border-collapse:collapse; margin:14px 0; font-size:13px; display:block; overflow-x:auto; }
+.study-body th,.study-body td { border:1px solid var(--line2); padding:5px 10px; text-align:left; }
+.study-body th { background:var(--elev); color:var(--plumb); }
+.study-body blockquote { margin:12px 0; padding:2px 14px; border-left:3px solid var(--plumb); color:var(--muted); }
+.study-diagram { border:1px solid var(--line2); border-left:3px solid var(--brass); border-radius:5px; padding:12px; margin:16px 0; overflow-x:auto; }
+.study-diagram svg { max-width:100%; height:auto; }
+.study-diagram-note { color:var(--brass); font-size:12px; margin:16px 0 4px; }
 .studies textarea { margin:12px 0; font:13px var(--mono); }
 .section-tabs { display:flex; gap:4px; }.section-tabs button[aria-pressed='true'] { color:var(--plumb); border-color:var(--plumb); }
 .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }

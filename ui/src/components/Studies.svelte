@@ -1,15 +1,18 @@
 <script lang="ts">
   // Studies and the Understanding page (SR-292..294; DEC-151): beside the questions, never an
   // answer to a session (DEC-152). A study about a conflict lays out both sides; no choice here.
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { api } from '../lib/api';
+  import { drawDiagrams, studyHtml } from '../lib/markdown';
   import type { Study, StudyList, Understanding } from '../lib/types';
   let { capability }: { capability: string } = $props();
   let studies = $state<Study[]>([]); let understanding = $state<Understanding>({text:'',knows:[],needs:[]});
   let selected = $state(''); let open = $state<Study>(); let draft = $state(''); let error = $state(''); let saved = $state(''); let busy = $state(false);
   const UNDERSTANDING = '#understanding';
-  // shortcut: a mermaid block shows as its source; bundle a renderer if owners need it drawn
-  const parts = (body: string) => body.split(/```mermaid\n([\s\S]*?)```/).map((text, i) => ({diagram: i % 2 === 1, text: text.trim()})).filter(p => p.text);
+  let bodyEl = $state<HTMLElement>();
+  const html = $derived(studyHtml(open?.body ?? ''));
+  // SR-293: the diagrams are drawn once the study's HTML is in place
+  $effect(() => { void html; const el = bodyEl; if (el) void tick().then(() => drawDiagrams(el)); });
   async function load() {
     try { const data = await api<StudyList>('/api/studies', capability); studies = data.studies; understanding = data.understanding; if (selected === UNDERSTANDING && !busy) draft = understanding.text; error = ''; }
     catch (cause) { error = cause instanceof Error ? cause.message : 'Unable to load the studies.'; }
@@ -50,7 +53,7 @@
     {:else if open}
       <span class="eyebrow">Study · {open.step} step</span><h1>{open.title}</h1>
       <p class="issue-lead">{open.why}</p>
-      {#each parts(open.body ?? '') as part}{#if part.diagram}<pre class="source-code study-diagram" aria-label="Diagram source">{part.text}</pre>{:else}<p class="prose">{part.text}</p>{/if}{/each}
+      <div class="study-body" bind:this={bodyEl}>{@html html}</div>
       <div class="answer-buttons"><button class="primary" disabled={busy} onclick={() => void mark('known')}>I know this</button><button disabled={busy} onclick={() => void mark('deeper')}>Go deeper</button></div>
       <p class="muted">These correct your understanding only; they answer nothing in a session.</p>
     {:else}<div class="main-empty"><span class="plumb-mark" aria-hidden="true">◈</span><h1>Studies</h1><p>Open a study, or your understanding.</p></div>{/if}

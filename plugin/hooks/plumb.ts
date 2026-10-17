@@ -343,7 +343,8 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
   const status = await readJson(io, join(link.root, '.plumb', 'session', 'status.json'))
   const progress = await readJson(io, join(sessionDir(link.root, link.session), 'progress'))
   const study = await readStudy(io, link)
-  // SR-251: the requirements a judge approved, as the status card counts them
+  // SR-251: the records a judge approved, the set `plumb status` lists (judge_approved); an
+  // older status.json without it counts the requirements in confirmed_by
   const by = status?.confirmed_by && typeof status.confirmed_by === 'object' ? status.confirmed_by : {}
   let step = ''
   if (progress && progress.state === 'running' && progress.step) {
@@ -359,7 +360,7 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     loop: await readLoop(io, link),
     study: study.title,
     studySlug: study.slug,
-    judged: Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0),
+    judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
   }
 }
 
