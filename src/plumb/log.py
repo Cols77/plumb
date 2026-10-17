@@ -54,6 +54,11 @@ _KIND_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _NAME_RE = re.compile(r"^(\d{8}T\d{6})\.(\d{6})Z-([0-9a-f]{8})\.json$")
 _AT_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$")
 _MIGRATED_MICROS = "000000"
+# SR-287: a kind's archive segment, one canonical entry per line, appended by the landing's
+# compaction. Hooks and session start read live entry files only (``LIVE_ONLY``, set by the
+# hook runner); every other reader (validate, explain, calibration, judge jobs) reads through.
+SEGMENT = "archive.jsonl"
+LIVE_ONLY = False
 
 
 class LogLockTimeout(RuntimeError):
@@ -284,14 +289,15 @@ def _entry_files(directory: str) -> Iterator[os.DirEntry[str]]:
 class _Scan:
     """One listing of a stream's entry files through its pack cache."""
 
-    __slots__ = ("files", "fresh", "changed", "order")
+    __slots__ = ("files", "fresh", "changed", "order", "segments")
 
     def __init__(self, files: dict[str, dict[str, Any]], fresh: dict[str, Any],
-                 changed: bool, order: list[str] | None) -> None:
+                 changed: bool, order: list[str] | None, segments: list[str]) -> None:
         self.files = files          # kind/file -> parsed entry (parsable files only)
         self.fresh = fresh          # the pack's file table for this listing
         self.changed = changed      # the table differs from the cached one
         self.order = order          # the cached read order, valid while nothing changed
+        self.segments = segments    # the kinds with an archive segment (SR-287)
 
 
 def _load_files(paths: PlumbPaths, stream: LogStream) -> dict[str, dict[str, Any]]:
@@ -324,9 +330,13 @@ def _scan(paths: PlumbPaths, stream: LogStream) -> _Scan:
     fresh: dict[str, Any] = {}
     out: dict[str, dict[str, Any]] = {}
     misses: list[tuple[str, str, int]] = []
+    segments: list[str] = []
     for kind, directory in _kind_dirs(paths, stream):
         prefix = kind + "/"
         for item in _entry_files(directory):
+            if item.name == SEGMENT:
+                segments.append(kind)
+                continue
             name = prefix + item.name
             try:
                 st = item.stat()  # free on Windows: it comes with the directory listing
@@ -347,7 +357,7 @@ def _scan(paths: PlumbPaths, stream: LogStream) -> _Scan:
             if raw is not None:
                 out[name] = raw
     changed = bool(misses) or len(fresh) != len(cached)
-    return _Scan(out, fresh, changed, None if changed else order)
+    return _Scan(out, fresh, changed, None if changed else order, segments)
 
 
 def _parse_entry(data: bytes) -> dict[str, Any] | None:
@@ -556,6 +566,23 @@ def _ordered(items: list[tuple[tuple[Any, ...], LogEntry]]) -> list[LogEntry]:
     return out
 
 
+def segment_lines(paths: PlumbPaths, stream: LogStream,
+                  kinds: Iterable[str] | None = None) -> Iterator[tuple[str, int, bytes]]:
+    """``(kind, line number, line)`` of every archive segment of ``stream`` (SR-287), or of
+    ``kinds`` only (the kinds a listing found a segment in)."""
+    wanted = None if kinds is None else set(kinds)
+    for kind, directory in _kind_dirs(paths, stream):
+        if wanted is not None and kind not in wanted:
+            continue
+        try:
+            data = (Path(directory) / SEGMENT).read_bytes()
+        except OSError:
+            continue
+        for number, line in enumerate(data.splitlines(), 1):
+            if line.strip():
+                yield kind, number, line
+
+
 def _all_entries(paths: PlumbPaths, stream: LogStream,
                  since_offset: int = 0) -> list[LogEntry]:
     scan = _scan(paths, stream)
@@ -563,6 +590,9 @@ def _all_entries(paths: PlumbPaths, stream: LogStream,
         legacy_present = paths.log_path(stream).stat().st_size > 0
     except OSError:
         legacy_present = False
+    archived = ([] if LIVE_ONLY or not scan.segments
+                else list(segment_lines(paths, stream, scan.segments)))
+    legacy_present = legacy_present or bool(archived)  # the cached order is of live files only
     if scan.order is not None and not legacy_present:
         files = scan.files  # warm: nothing changed since the order was computed
         if all(name in files for name in scan.order):
@@ -592,6 +622,14 @@ def _all_entries(paths: PlumbPaths, stream: LogStream,
         seen.add(digest)
         entry = _to_entry(stream, raw, offset, f"{legacy}:{number}")
         items.append(((entry.at, 0, "", "", offset), entry))
+    for kind, number, line in archived:
+        raw = _parse_entry(line)
+        if raw is None or str(raw.get("digest", "")) in seen:
+            continue
+        seen.add(str(raw.get("digest", "")))
+        name = f"{kind}/{SEGMENT}:{number}"
+        items.append(((str(raw.get("at", "")), 1, *_sort_name(name), 0),
+                      _to_entry(stream, raw, -1, name)))
     result = _ordered(items)
     if not legacy_present:  # the order depends on the entry files alone: cache it
         _write_pack(paths, stream, scan.fresh, [e.name for e in result])
@@ -762,6 +800,8 @@ def verify_chain(paths: PlumbPaths, stream: LogStream) -> list[str]:
         for item in sorted(_entry_files(directory), key=lambda e: e.name):
             name = f"{kind}/{item.name}"
             parsed = parse_name(item.name)
+            if item.name == SEGMENT:
+                continue
             if parsed is None:
                 problems.append(f"{name}: not an entry file name (<stamp>-<suffix>.json)")
                 continue
@@ -785,6 +825,20 @@ def verify_chain(paths: PlumbPaths, stream: LogStream) -> list[str]:
             if isinstance(digest, str):
                 digests.add(digest)
             files.append((name, raw))
+    for kind, number, line in segment_lines(paths, stream):
+        name = f"{kind}/{SEGMENT} line {number}"
+        raw = _parse_entry(line)
+        if raw is None:
+            problems.append(f"{name}: not a JSON object")
+            continue
+        if raw.get("digest") != entry_digest(raw):
+            problems.append(f"{name}: digest {str(raw.get('digest'))[:19]} does not match the "
+                            "entry (modified entry)")
+        if raw.get("kind") != kind:
+            problems.append(f"{name}: kind {raw.get('kind')!r} does not match its directory")
+        if isinstance(raw.get("digest"), str):
+            digests.add(raw["digest"])
+        files.append((name, raw))
     legacy: list[tuple[int, dict[str, Any] | None, str]] = []
     legacy_name = paths.log_path(stream).name
     for number, _, line in _legacy_lines(paths, stream):
@@ -819,6 +873,49 @@ def verify_chain(paths: PlumbPaths, stream: LogStream) -> list[str]:
         if isinstance(digest, str):
             earlier.add(digest)
     return problems
+
+
+def archive(paths: PlumbPaths, names: Iterable[str]) -> list[str]:
+    """Move entry files (``kind/file``) into their kind's archive segment (SR-287): each
+    entry appended once, unchanged (its digest and prev kept), then its file removed. Returns
+    the paths, relative to the root, of the segments written and the files removed."""
+    by_kind: dict[str, list[str]] = {}
+    for name in sorted(names, key=_sort_name):
+        kind, _, file_name = name.partition("/")
+        by_kind.setdefault(kind, []).append(file_name)
+    changed: list[str] = []
+    with _Lock(paths):
+        for kind, file_names in sorted(by_kind.items()):
+            directory = paths.log_kind_dir(kind)
+            segment = directory / SEGMENT
+            try:
+                have = {str(json.loads(line).get("digest")) for line in
+                        segment.read_bytes().splitlines() if line.strip()}
+            except (OSError, ValueError, AttributeError):
+                have = set()
+            lines: list[bytes] = []
+            moved: list[str] = []
+            for file_name in file_names:
+                raw = _read_json(directory / file_name)
+                if not isinstance(raw, dict) or raw.get("digest") != entry_digest(raw):
+                    continue  # an unreadable or edited entry stays where validate reports it
+                moved.append(file_name)
+                if str(raw.get("digest")) not in have:
+                    lines.append(canonical_json(raw) + b"\n")
+                    have.add(str(raw.get("digest")))
+            if lines:
+                with open(segment, "ab") as handle:
+                    handle.write(b"".join(lines))
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                changed.append(segment.relative_to(paths.root).as_posix())
+            for file_name in moved:  # removed only once the segment holds it
+                try:
+                    os.remove(directory / file_name)
+                    changed.append((directory / file_name).relative_to(paths.root).as_posix())
+                except OSError:
+                    pass
+    return changed
 
 
 # --------------------------------------------------------------------------- migration

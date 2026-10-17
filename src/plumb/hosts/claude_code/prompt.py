@@ -383,7 +383,14 @@ def agent_notes(ctx: HookContext) -> list[Any]:
         path.unlink()
     except OSError:
         pass
-    return [Line(str(n), oneshot=True) for n in notes] if isinstance(notes, list) else []
+    out = [Line(str(n), oneshot=True) for n in notes] if isinstance(notes, list) else []
+    try:  # SR-296, SR-300: the latest landing's line and its debug cases, once per session
+        from plumb.boundary.landing import lines
+
+        out += [Line(text, subject=f"landing:{key}", must=True) for key, text in lines(ctx.root)]
+    except Exception:  # noqa: BLE001 - advisory
+        pass
+    return out
 
 
 def queued_for_agent(ctx: HookContext) -> list[str]:

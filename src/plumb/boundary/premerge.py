@@ -828,10 +828,10 @@ def run_post_merge(root: Path) -> int:
     except Exception:  # noqa: BLE001
         pass
     if (_git(root, "config", "--bool", HOLD_KEY) or "").strip() == "false":
-        return 0
+        return _start_landing(root)
     found = fast_forward_of(root)
     if found is None:
-        return 0
+        return _start_landing(root)
     before, _after, name = found
     try:
         report = check(open_core(root), fast_forward=found)
@@ -843,7 +843,7 @@ def run_post_merge(root: Path) -> int:
     for line in report.lines:
         print(line)
     if not report.exit:
-        return 0
+        return _start_landing(root)
     try:
         _git(root, "reset", "-q", "--keep", before, check=True)
     except subprocess.CalledProcessError as exc:
@@ -851,6 +851,24 @@ def run_post_merge(root: Path) -> int:
         print(owner_text.FF_NOT_UNDONE.format(into=report.into, merging=name,
                                               why=why[-1] if why else "git refused"))
     return report.exit
+
+
+def _start_landing(root: Path) -> int:
+    """SR-296: work that landed on the default branch (a merge commit or a fast-forward)
+    starts the landing job, detached, so the hook stays within its time limit."""
+    try:
+        here = (_git(root, "symbolic-ref", "--short", "-q", "HEAD") or "").strip()
+        if here == default_branch_of(root):
+            before = (_git(root, "rev-parse", "-q", "--verify", "ORIG_HEAD") or "").strip()
+            head = (_git(root, "rev-parse", "HEAD") or "").strip()
+            moved = before and head and before != head
+            if moved and _git(root, "merge-base", "--is-ancestor", before, head) is not None:
+                from plumb.boundary import landing
+
+                landing.spawn(root, head, before)
+    except Exception:  # noqa: BLE001 - advisory: never fails the hook
+        pass
+    return 0
 
 
 def run_hook(core: Any, hook: str = HOOK) -> int:

@@ -311,6 +311,10 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     was_hook = getattr(lane, "HOOK_PROCESS", False)
     if lane is not None:  # every VerifyAPI this hook opens is in hook mode (R5)
         lane.HOOK_PROCESS = True
+    from plumb import log as plumb_log
+
+    was_live = plumb_log.LIVE_ONLY
+    plumb_log.LIVE_ONLY = True  # SR-287 EX-4: a hook never opens an archive segment
     try:
         data = read_input(stdin)
         found = find_hook_root(data, root)
@@ -363,6 +367,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
         _close_hash_cache()
         if lane is not None:
             lane.HOOK_PROCESS = was_hook
+        plumb_log.LIVE_ONLY = was_live
     return 0
 
 
