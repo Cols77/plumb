@@ -35,6 +35,7 @@ export type World = {
   fills: string[]
   opened: string[]
   opens: { id: string; columns?: number; closeOnEscape?: boolean }[]
+  closed: string[]
   /** What `plumb mod <action>` answers: its exit code and JSON, by action and argv. */
   answer: (action: string, argv: string[]) => { exitCode: number; data: unknown }
   canFill: boolean
@@ -63,6 +64,7 @@ export function world(over: Partial<World> = {}): World {
     fills: [],
     opened: [],
     opens: [],
+    closed: [],
     canFill: true,
     answer: (action, argv) => {
       if (action === 'hello') return { exitCode: 0, data: { active: true, since: '2026-10-11T12:00:00Z', session: SESSION } }
@@ -148,6 +150,10 @@ export function install(on: On, w: World): MockClock {
     w.opened.push(e.id)
     w.opens.push({ id: e.id, columns: e.columns, ...(e.closeOnEscape ? { closeOnEscape: true } : {}) })
     return { value: { isPlaced: true } as any }
+  })
+  on('ui.close', (_$, e) => {
+    w.closed.push(e.id)
+    return { value: undefined }
   })
   on('prompt.fill', (_$, e) => {
     if (w.canFill) w.fills.push(e.text)

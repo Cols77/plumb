@@ -39,6 +39,7 @@ export const T = {
   nothingAwaits: 'nothing awaits you',
   stopped: (what: string) => `stopped, waits for ${what}`,
   newStudy: (title: string) => `new study: ${title}`,
+  newStudies: (n: number) => (n === 1 ? 'new study' : `${n} new studies`),
   judged: (n: number) => `${n} judge-approved`,
   roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',
   loopTitle: 'plumb: the intent loop',

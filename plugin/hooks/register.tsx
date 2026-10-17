@@ -74,9 +74,15 @@ async function reread(io: Io, link: PlumbLink, view: PlumbView) {
 
 /** SR-305: the loop pane, while open, follows the band: read again when the band's status moved.
  * A closed pane is never told (the host gives no close event), so it is read again at most once
- * per move of the status; cleared when the loop is gone. */
+ * per move of the status; closed when the loop is gone. */
 async function refreshPane($: any, io: Io, link: PlumbLink) {
   if ((await read($, paneAtom)).loop === null) return
+  if (!(await read($, viewAtom)).status?.loop) {
+    // the loop ended: its pane closes rather than fall back to the cards (round 4)
+    await update($, paneAtom, p => ({ ...p, loop: null }))
+    await $.ui.close({ id: PANE })
+    return
+  }
   const loop = await plumb.loopPane(io, link)
   await update($, paneAtom, p => ({ ...p, loop: p.loop === null ? null : loop }))
 }
@@ -192,20 +198,34 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
   const compact = view.status?.card === 'compact'
   const everyOpen = [...waiting, ...leftOpen]
   const shown = band.showAll ? everyOpen : compact ? [] : waiting.slice(0, 1)
+  const loop = view.status?.loop
+  const studies = view.status?.studies ?? []
   return (
     <Box flexDirection="column" width={columns}>
       <Box flexDirection="row" gap={1}>
         <Text bold color={color}>{head}</Text>
         {view.status?.summary ? <Text dimColor>{view.status.summary}</Text> : null}
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
+        {!loop && studies.length ? (
+          // SR-294 EX-5 (DEC-183): no loop open, the study folds into the one line; a press opens its menu
+          <Button key="studies" plain onPress={() => {}}>
+            <Text key="head:studies" color={brass}>{T.newStudies(studies.length)}</Text>
+          </Button>
+        ) : null}
       </Box>
-      {view.status?.loop ? loopLines(ui, view.status.loop, color, brass) : null}
-      {view.status?.study ? (
-        // SR-294: the line stays after the loop closes, until opened; a press opens the room on it
+      {loop ? loopLines(ui, loop, color, brass) : null}
+      {loop && view.status?.study ? (
+        // SR-291: while the loop is open, its third line; a press opens the room on the study
         <Button key="study" plain onPress={() => {}}>
           <Text key="loop:study" color={brass}>{T.newStudy(view.status.study)}</Text>
         </Button>
       ) : null}
+      {!loop && band.studies ? studies.map(st => (
+        // SR-294 EX-6: the small menu in the band, the new studies by title
+        <Button key={`study:${st.slug}`} plain onPress={() => {}}>
+          <Text key={`menu:${st.slug}`} color={brass}>{`  ${st.title}`}</Text>
+        </Button>
+      )) : null}
       {waiting.length ? <Text key="waiting">{`${T.awaiting(waiting.length)}: ${perFeature(waiting)}`}</Text> : null}
       {leftOpen.length ? <Text key="left" dimColor>{`${T.leftOpen(leftOpen.length)}: ${perFeature(leftOpen)}`}</Text> : null}
       {view.line ? <Text key="line" dimColor>{view.line}</Text> : null}
@@ -505,6 +525,10 @@ export const register: Register = on => {
       await update($, bandAtom, b => ({ ...b, showAll: true })) // records nothing, runs nothing
       return next(e)
     }
+    if (key === 'studies') {
+      await update($, bandAtom, b => ({ ...b, studies: !b.studies })) // opens or closes the menu
+      return next(e)
+    }
     if (key === 'fewer') {
       await update($, bandAtom, b => ({ ...b, showAll: false }))
       return next(e)
@@ -549,9 +573,11 @@ export const register: Register = on => {
     }
     let line = ''
     let note = ''
-    if (key === 'study') {
-      // SR-294 EX-3, EX-4: the room opens on the study, which is marked opened, so its line goes
-      const slug = view.status?.studySlug
+    if (key === 'study' || key.startsWith('study:')) {
+      // SR-294 EX-3, EX-4, EX-6: the room opens on the study, which is marked opened, so it leaves
+      // the band; a choice from the menu closes the menu
+      const slug = key === 'study' ? view.status?.studySlug : key.slice('study:'.length)
+      if (key !== 'study') await update($, bandAtom, b => ({ ...b, studies: false }))
       if (!slug) return next(e)
       const ran = await plumb.room(io, link, slug)
       line = ran.ok ? '' : T.roomFailed

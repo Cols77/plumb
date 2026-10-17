@@ -315,12 +315,12 @@ function front(text: string, key: string): string {
   }
 }
 
-/** The title and slug of the newest study still `new` in `.plumb/studies` (SR-294): the band
- * names it until the owner opens it in the room; empty when none waits. */
-export async function readStudy(io: Io, link: PlumbLink): Promise<{ title: string; slug: string }> {
+/** The studies still `new` in `.plumb/studies` (SR-294), oldest first by file name: the band
+ * names them until the owner opens each in the room; empty when none waits. */
+export async function readStudies(io: Io, link: PlumbLink): Promise<{ title: string; slug: string }[]> {
   const folder = join(link.root, '.plumb', 'studies')
   let names: string[] = []
-  const found = { title: '', slug: '' }
+  const found: { title: string; slug: string }[] = []
   try {
     names = (await io.list(folder)).filter(n => n.endsWith('.md')).sort()
   } catch {
@@ -330,7 +330,7 @@ export async function readStudy(io: Io, link: PlumbLink): Promise<{ title: strin
     try {
       const text = await io.read(join(folder, name))
       const title = front(text, 'title')
-      if (front(text, 'status') === 'new' && title) Object.assign(found, { title, slug: name.slice(0, -3) })
+      if (front(text, 'status') === 'new' && title) found.push({ title, slug: name.slice(0, -3) })
     } catch {
       // a study being written: the next read names it
     }
@@ -342,7 +342,8 @@ export async function readStudy(io: Io, link: PlumbLink): Promise<{ title: strin
 export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> {
   const status = await readJson(io, join(link.root, '.plumb', 'session', 'status.json'))
   const progress = await readJson(io, join(sessionDir(link.root, link.session), 'progress'))
-  const study = await readStudy(io, link)
+  const studies = await readStudies(io, link)
+  const study = studies.at(-1) ?? { title: '', slug: '' }
   // SR-251: the records a judge approved, the set `plumb status` lists (judge_approved); an
   // older status.json without it counts the requirements in confirmed_by
   const by = status?.confirmed_by && typeof status.confirmed_by === 'object' ? status.confirmed_by : {}
@@ -360,6 +361,7 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     loop: await readLoop(io, link),
     study: study.title,
     studySlug: study.slug,
+    studies,
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
   }
 }

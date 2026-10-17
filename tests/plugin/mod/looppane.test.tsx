@@ -114,6 +114,20 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
+    test("SR-291 EX-4: the loop ends while its pane is open: the pane closes, never 'nothing awaits you'", async ($, on) => {
+      const w = loopWorld()
+      const clock = install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loop' })
+      expect(w.closed).toEqual([])
+      w.files[LOOP] = JSON.stringify({ ...STATUS[0], step: 'proven' }) // intent done
+      await clock.advance(2000) // the band's period (POLL_MS in register.tsx)
+      expect(await band.find({ type: 'Text', text: /^clarify / })).toBeUndefined()
+      expect(w.closed).toEqual(['plumb-cards'])
+      await band.unmount()
+    })
+
     test('SR-305 EX-5: no loop open: no strip, and nothing opens the pane for a loop', async ($, on) => {
       const w = loopWorld(null)
       install(on, w)

@@ -13,6 +13,10 @@ const SLUG = 'how-plumb-s-background-jobs-run'
 const STUDY = `${ROOT}/.plumb/studies/${SLUG}.md`
 const TITLE = "How plumb's background jobs run"
 const LINE = `new study: ${TITLE}`
+const OTHER_SLUG = 'what-counts-as-a-word'
+const OTHER = `${ROOT}/.plumb/studies/${OTHER_SLUG}.md`
+const OTHER_TITLE = 'What counts as a word'
+const other = (status: string) => study(status).replace(JSON.stringify(TITLE), JSON.stringify(OTHER_TITLE))
 
 function study(status: string): string {
   return `---\ntitle: ${JSON.stringify(TITLE)}\ntopic: "background jobs"\nstep: "plan"\nloop: "aaaaaaaaaaaa"\n` +
@@ -78,14 +82,48 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
-    test('SR-294 EX-2: the loop closed and the study is still new: the band keeps its line', async ($, on) => {
+    test("SR-294 EX-5, SR-291 EX-9: the loop ended with a study still new: one line, ending with a brass 'new study'", async ($, on) => {
       const { w, ui } = await band($, on, surface, false)
       w.files[STUDY] = study('new')
       await $.turn.complete(TURN_DONE)
       expect(await ui.find({ type: 'Text', text: /^clarify / })).toBeUndefined()
-      expect((await ui.find({ type: 'Text', text: /^new study/ }))?.text).toBe(LINE)
-      await ui.press({ key: 'study' })
-      expect(rooms(w)).toHaveLength(1)
+      expect(await ui.find({ type: 'Text', text: /^new study:/ })).toBeUndefined() // no second line
+      expect(await ui.find({ key: 'study' })).toBeUndefined()
+      const press = await ui.find({ type: 'Text', text: 'new study' })
+      expect(press?.props.color).toBe(BRASS)
+      expect(await ui.find({ key: 'studies' })).toBeDefined()
+      expect(rooms(w)).toEqual([])
+      await ui.unmount()
+    })
+
+    test('SR-294 EX-5: two studies still new: the press counts them', async ($, on) => {
+      const { w, ui } = await band($, on, surface, false)
+      w.files[STUDY] = study('new')
+      w.files[OTHER] = other('new')
+      await $.turn.complete(TURN_DONE)
+      expect(await ui.find({ type: 'Text', text: '2 new studies' })).toBeDefined()
+      await ui.unmount()
+    })
+
+    test('SR-294 EX-6: the press opens a menu of the new studies by title; choosing one opens the room on it', async ($, on) => {
+      const { w, ui } = await band($, on, surface, false)
+      w.files[STUDY] = study('new')
+      w.files[OTHER] = other('new')
+      await $.turn.complete(TURN_DONE)
+      expect(await ui.find({ key: `study:${SLUG}` })).toBeUndefined() // closed until pressed
+      await ui.press({ key: 'studies' })
+      expect(await ui.find({ type: 'Text', text: `  ${TITLE}` })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: `  ${OTHER_TITLE}` })).toBeDefined()
+      await ui.press({ key: `study:${SLUG}` })
+      const [room] = rooms(w)
+      expect(room?.argv.slice(3)).toEqual(['mod', 'room', '--session', SESSION, '--root', ROOT, '--json', '--study', SLUG])
+      // the study leaves the list, the menu closes, the other still waits
+      expect(await ui.find({ type: 'Text', text: `  ${TITLE}` })).toBeUndefined()
+      expect(await ui.find({ key: `study:${OTHER_SLUG}` })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: 'new study' })).toBeDefined()
+      await ui.press({ key: 'studies' })
+      expect(await ui.find({ key: `study:${SLUG}` })).toBeUndefined()
+      expect(await ui.find({ key: `study:${OTHER_SLUG}` })).toBeDefined()
       await ui.unmount()
     })
 
