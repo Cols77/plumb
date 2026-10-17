@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from plumb.present import owner_text
-from plumb.understand import files
+from plumb.understand import files, jobs
 
 PASS = "backlog"
 KINDS_JUDGED = ("intent", "requirement", "decision")
@@ -34,6 +34,7 @@ class Started:
     jobs: list[str] = field(default_factory=list)
     records: int = 0
     total: int = 0
+    line: str = ""           # SR-245: the one line saying no judge can be reached
 
 
 @dataclass
@@ -83,17 +84,72 @@ def group_of(index: Mapping[str, Any], record: Any) -> str:
     return record.id
 
 
+def queued_ids(core: Any, session: str) -> set[str]:
+    """The records a judge job of the session still waiting to run covers at their current
+    version (SR-298 EX-3): they are not queued twice."""
+    index = core.index()
+    return {str(r["id"]) for job in jobs.pending(core.root, session) if job.kind == "judge"
+            for r in job.inputs.get("records") or () if isinstance(r, Mapping)
+            and str(r.get("id")) in index and index[str(r["id"])].hash == r.get("hash")}
+
+
+def waiting(core: Any, session: str) -> list[str]:
+    """The records with no judgment of their current version and no job queued for it."""
+    records = proposed(core)
+    skip = judged_ids(core, records) | queued_ids(core, session)
+    return [r.id for r in records if r.id not in skip]
+
+
+def spawn(core: Any, session: str) -> bool:
+    """At session start: when records wait, queue them in a detached process, so the hook only
+    enqueues and returns (SR-298 EX-1). Never raises; nothing started for no records."""
+    import os
+    import subprocess
+    import sys
+
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("PLUMB_FAKE_DISPATCH"):
+        return False
+    try:
+        if not waiting(core, session):
+            return False
+        from plumb.background import popen_options
+
+        env = {k: v for k, v in os.environ.items() if k not in ("PLUMB_WORKER", "PLUMB_JOB")}
+        subprocess.Popen([sys.executable, "-m", "plumb", "understand", "backlog", "--session",
+                          session, "--root", str(core.root)], env=env,
+                         **popen_options(core.root))
+    except Exception:  # noqa: BLE001 - a hook calls this
+        return False
+    return True
+
+
+def queue_waiting(core: Any, session: str) -> Started:
+    """Queue the waiting records (session start's process, the landing job). With no judge
+    reachable, SR-245 holds: one line says which and why, and nothing else changes."""
+    from plumb.understand import verdict
+
+    if not waiting(core, session):
+        return Started()
+    model = str(core.config.understand.judge_model)
+    gap = verdict.model_gap(core, model)
+    if gap and verdict.open_jev(core) is None:
+        from plumb.judgment import waiting_line
+
+        return Started(line=waiting_line(core.root, "the backlog", f"{model}: {gap}") or "")
+    return start(core, session, queued_ids(core, session))
+
+
 # --------------------------------------------------------------------------- the pass
 
 
-def start(core: Any, session: str) -> Started:
+def start(core: Any, session: str, skip: set[str] = frozenset()) -> Started:
     """Queue the judge jobs of the pass: one per intent, covering the records that have no
-    judgment of their current version. Idempotent: a job is its records, so jobs already
+    judgment of their current version (and not in ``skip``). Idempotent: a job is its records, so jobs already
     queued or done are the same jobs. Marks the pass as started so ``resume`` continues it."""
     from plumb.understand import judge, queue
 
     records = proposed(core)
-    done = judged_ids(core, records)
+    done = judged_ids(core, records) | skip
     index = core.index()
     groups: dict[str, list[str]] = {}
     for record in records:
@@ -166,7 +222,8 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("--session", default=files.CLI_SESSION)
     args = parser.parse_args(argv)
     core = open_core(resolve_root(args.root))
-    started = start(core, args.session)
-    print(owner_text.BACKLOG_STARTED.format(records=started.records, jobs=len(started.jobs))
-          if started.jobs else owner_text.BACKLOG_NOTHING)
+    started = queue_waiting(core, args.session)
+    print(started.line or (owner_text.BACKLOG_STARTED.format(
+        records=started.records, jobs=len(started.jobs)) if started.jobs
+        else owner_text.BACKLOG_NOTHING))
     return 0

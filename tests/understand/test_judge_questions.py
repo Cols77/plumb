@@ -6,6 +6,7 @@ never shown: its records wait with the waiting line. JEV and the model are stubs
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import types
@@ -356,3 +357,73 @@ def test_open_questions_leave_the_gate_open_a_choice_card_closes_it_and_its_answ
     clarify._choice_effect(core=open_core(world), card=answered,
                            job=types.SimpleNamespace(session=SESSION), digest=digest)
     assert not gate.is_closed(world, SESSION)
+
+
+# ---- SR-299, SR-298 ---------------------------------------------------------------------------
+
+LOGGED_ANSWER = Path(__file__).parent / "fixtures" / "judge-malformed-questions.json"
+
+
+@pytest.mark.sr("SR-299")
+def test_ex1_the_logged_answer_without_records_reaches_the_owner(
+        world: Path) -> None:  # noqa: F811
+    """SR-299 EX-1: the 2026-10-16 answer (three questions, none naming records) is replayed:
+    three questions are written for the question tool and no verdict waits."""
+    logged = json.loads(LOGGED_ANSWER.read_text(encoding="utf-8"))["answer"]
+    assert len(logged["questions"]) == 3 and not any(q.get("records") for q in logged["questions"])
+    applied = applied_on(world, ["SR-001"], {
+        "verdicts": [{"id": "SR-001", "verdict": "beyond", "confidence": 0.3, "beyond": ["x"]}],
+        "questions": logged["questions"]})
+    assert len(written(world)) == 3
+    assert all(q["records"][0]["id"] == "SR-001" for q in written(world))
+    assert notes(world) == [] and applied.notes == ()
+
+
+@pytest.mark.sr("SR-299")
+def test_ex2_the_answer_format_requires_the_records_of_each_question() -> None:
+    """SR-299 EX-2: the schema and the judge's instructions require ``records`` and two to four
+    options."""
+    item = judge._load_schema()["properties"]["questions"]["items"]
+    assert "records" in item["required"]
+    assert (item["properties"]["options"]["minItems"], item["properties"]["options"]["maxItems"]
+            ) == (2, 4)
+    assert "required" in judge.system_prompt().split("- `records`:")[1].split("\n")[0]
+
+
+@pytest.mark.sr("SR-299")
+def test_ex3_a_question_with_one_option_is_asked_again_once(
+        world: Path) -> None:  # noqa: F811
+    """SR-299 EX-3: a one-option question is retried once; when it fails again it waits and
+    the other verdicts are applied."""
+    core = configure(world)
+    bad = asking("SR-001", options=[{"label": "Only", "consequence": "Nothing else."}])
+    model = FakeDispatcher({"judge": answer(("SR-001", "supported"), questions=[bad])})
+    job = build_job(core, ["SR-001"])
+    done = verdict.cascade(core, job, system="judge", schema={}, jev=StubJev(0.1),
+                           dispatcher=model)
+    assert len(model.ran("judge")) == 2                 # asked again once, no more
+    applied = judge.apply(core, job, done.answer)
+    assert written(world) == [] and any(e["kind"] == "verdict" for e in applied.entries)
+    assert notes(world)                                  # the record waits and says why
+    good = FakeDispatcher({"judge": answer(("SR-001", "supported"),
+                                           questions=[asking("SR-001")])})
+    verdict.cascade(core, job, system="judge", schema={}, jev=StubJev(0.1), dispatcher=good)
+    assert len(good.ran("judge")) == 1                   # a usable question is not retried
+
+
+@pytest.mark.sr("SR-298")
+def test_ex2_a_job_over_the_limit_is_split_not_failed(world: Path) -> None:  # noqa: F811
+    """SR-298 EX-2: records making a 62,000-character job go as two or more model jobs each
+    under the limit, and none fails as too large."""
+    core = configure(world)
+    job = build_job(core, ["SR-001"])
+    entries = [{**job.inputs["records"][0], "id": f"SR-{n:03d}", "text": "x" * 20_000}
+               for n in range(100, 103)]
+    big = dataclasses.replace(job, inputs={**job.inputs, "records": entries})
+    model = FakeDispatcher({"judge": lambda j: answer(*[(r["id"], "supported")
+                                                        for r in j.inputs["records"]])})
+    done = verdict.cascade(core, big, system="judge", schema={}, jev=StubJev(0.1),
+                           dispatcher=model)
+    assert len(model.ran("judge")) >= 2 and not done.left
+    assert all(len(c["user"]) <= verdict.INPUT_MAX for c in model.calls)
+    assert {v["id"] for v in done.answer["verdicts"]} == {e["id"] for e in entries}

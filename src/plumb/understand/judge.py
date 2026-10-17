@@ -487,6 +487,7 @@ def _shaped(raw: Any, job: Job, judged: Mapping[str, str], index: Mapping[str, A
     if not isinstance(raw, Mapping):
         return None, "a question is out of schema"
     ids = [i for i in dict.fromkeys(str(r) for r in raw.get("records") or ()) if i in judged]
+    ids = ids or list(judged)    # SR-299: a question naming none settles the records of its job
     options = [o for o in raw.get("options") or () if isinstance(o, Mapping)]
     request = raw.get("request") if isinstance(raw.get("request"), Mapping) else {}
     words, date = _flat(request.get("words")), _flat(request.get("date"))
