@@ -119,3 +119,25 @@ test('SR-291: the bar moves within the turn, read again after the agent runs plu
   expect((await ui.find({ type: 'Text', text: TASK }))?.text).toBe('clarifying · 2/4')
   await ui.unmount()
 })
+
+test('SR-291 / SR-294: plumb intent progress in the PowerShell tool moves the bar within the turn', async ($, on) => {
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false }, text: '' }) as any)
+  const { w, ui } = await bandWith($, on, 'terminal',
+    loop('clarify', { label: 'clarifying', done: 1, total: 4, started_at: '2026-10-11T11:59:00Z' }))
+  w.files[LOOP] = loop('clarify', { label: 'clarifying', done: 3, total: 4, started_at: '2026-10-11T11:59:00Z' })
+  await $.tool.call({ tool: 'PowerShell', command: 'plumb intent progress --task clarifying --done 3 --total 4' } as any)
+  expect((await ui.find({ type: 'Text', text: TASK }))?.text).toBe('clarifying · 3/4')
+  await ui.unmount()
+})
+
+test("SR-291 EX-7: a workflow's agent moves the bar with no tool event in the owner's session", async ($, on) => {
+  const w = world()
+  w.files[LOOP] = loop('build', { label: 'colours gate passed', done: 1, total: 4, started_at: '2026-10-11T11:48:05Z' })
+  const clock = install(on, w)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'plumb', surface: 'terminal', ...BAND })
+  w.files[LOOP] = loop('build', { label: 'colours gate passed', done: 2, total: 4, started_at: '2026-10-11T11:48:05Z' })
+  await clock.advance(2000) // the band's period (POLL_MS in register.tsx)
+  expect((await ui.find({ type: 'Text', text: /^build · / }))?.text).toBe('build · slice 2/4 · colours gate passed')
+  await ui.unmount()
+})

@@ -58,10 +58,26 @@ def _stop(path: Path, data: dict[str, Any], what: str) -> None:
     save(path, data)
 
 
+def reset_head(root: Path, session: str) -> None:
+    """SR-291: a loop that opens or is done leaves the band's head clean: the session's
+    remembered intent, its summary in status.json and the last job's progress go (the next
+    turn's end names the intent again)."""
+    from plumb.present.cards import INTENT_FILE
+
+    for stale in (files.session_dir(root, session) / INTENT_FILE,
+                  files.progress_path(root, session)):
+        stale.unlink(missing_ok=True)
+    status_path = Path(root) / ".plumb" / "session" / "status.json"
+    status = files.read_json(status_path)
+    if isinstance(status, dict) and status.get("intent_summary"):
+        files.write_json_atomic(status_path, {**status, "intent_summary": ""})
+
+
 def open_loop(root: Path, session: str, digest: str) -> Path:
     """Open the loop state of the commanded message ``digest`` (idempotent)."""
     path = loop_path(root, session, digest)
     if not path.exists():
+        reset_head(root, session)
         save(path, {
             "digest": digest, "intent": None, "opened_at": _now(),
             "stages": {stage: {"state": "open"} for stage in STAGES}, "tasks": None,
@@ -213,6 +229,7 @@ def cmd_done(core: Any, args: argparse.Namespace) -> int:
     data["stages"]["build"] = {"state": "passed", "at": _now()}
     data.update(tasks=None, stopped=None)   # step proven: the loop is closed, the band one line
     save(path, data)
+    reset_head(root, path.parent.parent.name)
     core.log_append("events", "intent-done", {"intent": args.intent, "digest": data["digest"]})
     print(f"plumb: {args.intent} done: every proof shown (the records stay as they are)")
     return 0
@@ -222,8 +239,15 @@ def cmd_progress(core: Any, args: argparse.Namespace) -> int:
     """The current step's task in the owner's words, and how far it is (SR-291)."""
     root = Path(core.root)
     session = _session(args, root)
-    found = [(p, d) for p, d in loops(root, session) if not _passed(d, "build")]
-    if not session or not found:
+    found = [(p, d) for p, d in loops(root, session) if not _passed(d, "build")] if session else []
+    if not found:
+        # SR-291 EX-7: a workflow's agent may run under another session id (or none): the open
+        # loop is the owning session's, so its band moves; two sessions' loops are ambiguous
+        found = [(p, d) for p, d in loops(root) if not _passed(d, "build")]
+        if len({p.parent.parent.name for p, _ in found}) > 1:
+            raise LookupError("intent loops are open in more than one session: "
+                              "name the session with --session")
+    if not found:
         raise LookupError("no open intent loop in this session: plumb intent open comes first")
     if args.done is not None and args.done < 0 or args.total is not None and args.total < 1:
         raise ValueError("--done is 0 or more and --total 1 or more")

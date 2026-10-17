@@ -23,7 +23,7 @@ import { CardView, contentKey, findPress, Grouped, perFeature, stateOf } from '.
 import type { Ui } from './cards'
 import * as plumb from './plumb'
 import type { Hello, Io, Unlinked } from './plumb'
-import { BRASS, GLYPHS, plumbColor, T } from './text'
+import { brassColor, GLYPHS, plumbColor, T } from './text'
 
 /** The surface's element table; the terminal draws the diagram's rows, whatever else the table
  * holds (the live terminal lists an Svg that draws nothing). */
@@ -53,13 +53,29 @@ const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const, { index: 0 })
 // the width the pane asks for when it docks beside the conversation
 const PANE_COLUMNS = 80
 
-function statusLine(view: PlumbView): string {
+function statusLine(view: PlumbView, named = true): string {
   const waiting = view.cards.filter(c => c.repeats).length
   const state = view.status?.state ?? ''
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
   const word = waiting ? T.awaiting(waiting) : state || T.nothingAwaits
-  return [`${T.name} ${glyph} ${word}`, view.status?.progress].filter(Boolean).join(' · ')
+  return [`${named ? `${T.name} ` : ''}${glyph} ${word}`, view.status?.progress].filter(Boolean).join(' · ')
 }
+
+/** The pinned status notice: the host heads it with plumb's name already (SR-290). */
+const noticeLine = (view: PlumbView) => statusLine(view, false)
+
+/** The band's status read again (files only, no process): null when nothing moved, else the
+ * status and the study just written, to announce once (SR-291, SR-294). */
+async function reread(io: Io, link: PlumbLink, view: PlumbView) {
+  const status = await plumb.readStatus(io, link)
+  if (JSON.stringify(status) === JSON.stringify(view.status)) return null
+  return { status, study: status.study && status.study !== view.status?.study ? status.study : '' }
+}
+
+// SR-291 EX-7: a workflow's agents raise no event in the owner's session, so the band reads
+// its files again on this period (the mod API has no file watch)
+const POLL_MS = 2000
+let polling: { cancel: () => void } | null = null
 
 // the session-start hook writes host.json within its first second: about ten seconds of tries
 const RETRY_MS = 500
@@ -89,7 +105,7 @@ const BAR_CELLS = 10
  * current, to come; a refused gate marks the current one stopped and names what it waits for),
  * then the current step's task, a brass fill of done over total, or the elapsed time with no
  * fill when the total is unknown. */
-function loopLines(ui: Ui, loop: PlumbLoop, color: string) {
+function loopLines(ui: Ui, loop: PlumbLoop, color: string, brass: string) {
   const { Box, Text } = ui
   const at = LOOP_STEPS.indexOf(loop.step)
   const strip = LOOP_STEPS.map((s, i) =>
@@ -104,7 +120,7 @@ function loopLines(ui: Ui, loop: PlumbLoop, color: string) {
     <Text key="loop:strip" color={color}>{loop.stopped ? `${strip} · ${T.stopped(loop.stopped)}` : strip}</Text>,
     task ? (
       <Box key="loop:bar" flexDirection="row" gap={1}>
-        {task.total ? <Text key="loop:fill" color={BRASS}>{'█'.repeat(filled) + '░'.repeat(BAR_CELLS - filled)}</Text> : null}
+        {task.total ? <Text key="loop:fill" color={brass}>{'█'.repeat(filled) + '░'.repeat(BAR_CELLS - filled)}</Text> : null}
         <Text key="loop:task">{words}</Text>
       </Box>
     ) : null,
@@ -113,7 +129,7 @@ function loopLines(ui: Ui, loop: PlumbLoop, color: string) {
 
 /** The band: one line of status, the cards awaiting per feature, then the awaiting card in
  * full (every card with Show all). */
-function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, color: string) {
+function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, color: string, brass: string) {
   const { Box, Button, Text } = ui
   const head = statusLine(view)
   if (band.isHidden) {
@@ -136,8 +152,8 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
         {view.status?.summary ? <Text dimColor>{view.status.summary}</Text> : null}
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
       </Box>
-      {view.status?.loop ? loopLines(ui, view.status.loop, color) : null}
-      {view.status?.loop && view.status.study ? <Text key="loop:study" color={BRASS}>{T.newStudy(view.status.study)}</Text> : null}
+      {view.status?.loop ? loopLines(ui, view.status.loop, color, brass) : null}
+      {view.status?.loop && view.status.study ? <Text key="loop:study" color={brass}>{T.newStudy(view.status.study)}</Text> : null}
       {waiting.length ? <Text key="waiting">{`${T.awaiting(waiting.length)}: ${perFeature(waiting)}`}</Text> : null}
       {leftOpen.length ? <Text key="left" dimColor>{`${T.leftOpen(leftOpen.length)}: ${perFeature(leftOpen)}`}</Text> : null}
       {view.line ? <Text key="line" dimColor>{view.line}</Text> : null}
@@ -174,6 +190,29 @@ export const register: Register = on => {
       }),
       diagram: diagramOf($),
     }
+    try {
+      polling?.cancel() // a previous session's period in this process
+    } catch {
+      // already gone
+    }
+    let reading = false
+    polling = $.clock.every(POLL_MS, async () => {
+      if (reading) return
+      reading = true
+      try {
+        const link = await read($, linkAtom)
+        if (link === null || (await read($, degradedAtom))) return
+        const moved = await reread(io, link, await read($, viewAtom))
+        if (moved === null) return
+        const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
+        if (moved.study) $.ui.toast(T.newStudy(moved.study))
+        $.ui.status(noticeLine(view))
+      } catch {
+        // the band keeps what it drew; the turn's end reads it again
+      } finally {
+        reading = false
+      }
+    })
     // SR-126: why the panel cannot reach plumb, said once per session
     const tell = async (u: Unlinked) => {
       const session = await $.session.id()
@@ -187,7 +226,7 @@ export const register: Register = on => {
       const band = await read($, bandAtom)
       const snap = await plumb.snapshot(io, link, await read($, viewAtom), band.shown, false)
       await update($, viewAtom, () => snap.view)
-      $.ui.status(statusLine(snap.view))
+      $.ui.status(noticeLine(snap.view))
     }
     if ((await read($, degradedAtom)) || (await read($, linkAtom)) !== null) return started
     const said = await helloOnce(io)
@@ -282,7 +321,7 @@ export const register: Register = on => {
         // the band draws from now on: plumb's status at once (no process), the cards at the turn's end
         const view = { ...(await read($, viewAtom)), status: await plumb.readStatus(io, held) }
         await update($, viewAtom, () => view)
-        $.ui.status(statusLine(view))
+        $.ui.status(noticeLine(view))
         link = held
       } else if (said.unlinked !== null) {
         // SR-126: once per session; read again after the hello, which the start's retry may
@@ -351,7 +390,7 @@ export const register: Register = on => {
       await update($, bandAtom, b => ({ ...b, isHidden: false }))
       $.ui.toast(T.toastAwaiting(snap.view.cards.filter(c => c.repeats).length))
     }
-    $.ui.status(statusLine(snap.view))
+    $.ui.status(noticeLine(snap.view))
     return result // the answer is never rewritten; no summary line is added (realign a)
   }).catch(async ($, e, next) => {
     const result = await next(e)
@@ -364,13 +403,15 @@ export const register: Register = on => {
     return result
   })
 
-  // SR-291: `plumb intent progress` runs in the agent's Bash; the band's status (files only, no
-  // process) is read again after each, so the strip and the bar move within the turn, and a
-  // `plumb study add` is announced at once (SR-294)
-  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+  // SR-291: `plumb intent progress` runs in the agent's shell (Bash, PowerShell or any tool that
+  // runs a command); the band's status (files only, no process) is read again after each, so the
+  // strip and the bar move within the turn, and a `plumb study add` is announced at once (SR-294)
+  on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     try {
-      if (!/\b(intent|study)\b/.test(e.command) || (await read($, degradedAtom))) return ran
+      const command = (e as { command?: unknown }).command
+      if (typeof command !== 'string' || !/\b(intent|study)\b/.test(command) ||
+        (await read($, degradedAtom))) return ran
       const link = await read($, linkAtom)
       if (link === null) return ran
       const io: Io = {
@@ -384,10 +425,11 @@ export const register: Register = on => {
         now: () => $.clock.now(),
         env: async () => ({}),
       }
-      const status = await plumb.readStatus(io, link)
-      const before = (await read($, viewAtom)).status?.study
-      await update($, viewAtom, v => ({ ...v, status }))
-      if (status.study && status.study !== before) $.ui.toast(T.newStudy(status.study))
+      const moved = await reread(io, link, await read($, viewAtom))
+      if (moved === null) return ran
+      const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
+      if (moved.study) $.ui.toast(T.newStudy(moved.study))
+      $.ui.status(noticeLine(view))
     } catch {
       // the band keeps what it drew; the turn's end reads it again
     }
@@ -474,7 +516,7 @@ export const register: Register = on => {
     }
     const snap = await plumb.snapshot(io, link, { ...view, line }, band.shown, false)
     await update($, viewAtom, () => snap.view)
-    $.ui.status(statusLine(snap.view))
+    $.ui.status(noticeLine(snap.view))
     return next(e)
   })
 
@@ -490,7 +532,7 @@ export const register: Register = on => {
     } catch {
       // a surface without the settings rows: the dark shade
     }
-    return drawBand(ui, view, await read($, bandAtom), e.props.bodyColumns, plumbColor(theme))
+    return drawBand(ui, view, await read($, bandAtom), e.props.bodyColumns, plumbColor(theme), brassColor(theme))
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

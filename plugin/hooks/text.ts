@@ -14,11 +14,17 @@ export const GLYPHS: Record<string, string> = {
  * light theme, and brass for fills and highlights. Never Claude Code's orange, lavender, cyan or green. */
 export const PLUM = { dark: '#B05FB0', light: '#8E3B8E' }
 export const BRASS = '#C9A227'
+// brass on a light theme: about 4.9:1 on white, where #C9A227 is 2.4:1 (SR-290 EX-3)
+export const BRASS_LIGHT = '#8A6D0B'
+
+const isLight = (theme: unknown) => typeof theme === 'string' && theme.startsWith('light')
 
 /** The plum for the host's theme (`theme` in /config, as `light`, `light-daltonized`, ...);
  * the dark shade when the surface does not say. */
-export const plumbColor = (theme: unknown): string =>
-  typeof theme === 'string' && theme.startsWith('light') ? PLUM.light : PLUM.dark
+export const plumbColor = (theme: unknown): string => (isLight(theme) ? PLUM.light : PLUM.dark)
+
+/** The brass for the host's theme, by the same check as the plum. */
+export const brassColor = (theme: unknown): string => (isLight(theme) ? BRASS_LIGHT : BRASS)
 
 export const T = {
   name: 'plumb',
@@ -60,5 +66,5 @@ export const T = {
   noBox: (topic: string) =>
     ` The panel could not put "Change to '${topic}': " in the owner's message box: ask them, in ` +
     'one question in your next reply, what to change.',
-  toastAwaiting: (n: number) => `plumb: ${n === 1 ? 'a card awaits' : `${n} cards await`} you`,
+  toastAwaiting: (n: number) => `${n === 1 ? 'a card awaits' : `${n} cards await`} you`,
 }

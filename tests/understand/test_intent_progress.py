@@ -108,3 +108,50 @@ def test_sr291_ex7_ex8_a_workflow_phase_gate_reports_through_plumb(intent: Path,
 def test_progress_refuses_a_bad_count(intent: Path) -> None:
     assert _run(intent, "progress", "--task", "x", "--total", "0") != 0
     assert _loop(intent)["tasks"] is None
+
+
+def test_sr291_ex7_a_workflow_agent_under_another_session_moves_the_owning_loop(
+        intent: Path) -> None:
+    """SR-291 EX-7: a workflow's subagent runs `intent progress` under its own session id; the
+    open loop of the owning session takes it, so the main session's band moves."""
+    argv = ["progress", "--task", "colours gate passed", "--done", "2", "--total", "4",
+            "--root", str(intent), "--session", "subagent-1"]
+    assert cmd_intent.run("intent", argv) == 0
+    assert _loop(intent)["tasks"]["label"] == "colours gate passed"
+    cmd_intent.open_loop(intent, "other", "sha256:" + "b" * 64)   # a second session's loop
+    assert cmd_intent.run("intent", argv) != 0                    # whose is ambiguous
+
+
+def test_sr291_a_new_loop_and_intent_done_reset_the_band_head(intent: Path, tmp_path: Path,
+                                                              monkeypatch: pytest.MonkeyPatch
+                                                              ) -> None:
+    """SR-291: the band's head summary and progress from a previous loop do not carry over."""
+    import json
+
+    sdir = files.session_dir(intent, SESSION)
+    status = intent / ".plumb" / "session" / "status.json"
+
+    def stale() -> None:
+        (sdir / "intent.json").write_text(json.dumps({"id": "INT-001"}), encoding="utf-8")
+        files.progress_path(intent, SESSION).write_text(
+            json.dumps({"state": "running", "step": "reading the agent's questions to you"}),
+            encoding="utf-8")
+        status.write_text(json.dumps({"state": "aligned", "intent_summary": "old intent"}),
+                          encoding="utf-8")
+
+    def clean() -> None:
+        assert not (sdir / "intent.json").exists()
+        assert not files.progress_path(intent, SESSION).exists()
+        assert files.read_json(status) == {"state": "aligned", "intent_summary": ""}
+
+    stale()
+    cmd_intent.open_loop(intent, SESSION, "sha256:" + "c" * 64)
+    clean()
+    stale()
+    for stage in ("clarify", "plan"):
+        assert _run(intent, "gate", stage, "--intent", "INT-001",
+                    "--findings", _findings(tmp_path)) == 0
+    from plumb.capture import proof
+    monkeypatch.setattr(proof, "not_shown", lambda core, ids: [])
+    assert _run(intent, "done", "--intent", "INT-001") == 0
+    clean()

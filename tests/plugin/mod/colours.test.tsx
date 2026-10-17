@@ -3,7 +3,7 @@
 // a theme key that paints the host's prompts). Each case runs on the terminal and the desktop.
 import { describe, expect, test } from 'claude-code/testing'
 
-import { BRASS, PLUM, plumbColor } from '../../../plugin/hooks/text'
+import { BRASS, BRASS_LIGHT, brassColor, PLUM, plumbColor } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
 import { BAND, install, START, SURFACES, world } from './harness'
 
@@ -60,4 +60,31 @@ test('SR-290: the theme picks the shade; an unknown or absent theme is dark', ()
   expect(plumbColor('light-daltonized')).toBe(PLUM.light)
   expect(plumbColor('dark-ansi')).toBe(PLUM.dark)
   expect(plumbColor(undefined)).toBe(PLUM.dark)
+})
+
+test('SR-290 EX-3: on a light theme the brass is the darker one, readable on white', async ($, on) => {
+  const w = world()
+  w.files[`${ROOT}/.plumb/session/${SESSION}/intent/aaaaaaaaaaaa.json`] = JSON.stringify({ digest: 'sha256:' + 'a'.repeat(64),
+    intent: 'INT-001', opened_at: '2026-10-11T11:00:00Z', step: 'plan', stopped: null, stages: {},
+    tasks: { label: 'writing the plan', done: 3, total: 7, started_at: '2026-10-11T11:59:00Z' } })
+  install(on, w)
+  on('config.list', () => ({ value: [{ key: 'theme', label: 'Theme', kind: 'choice', value: 'light' }] }))
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'plumb', surface: 'terminal', ...BAND })
+  expect((await ui.find({ type: 'Text', text: /^[█░]+$/ }))?.props.color).toBe(BRASS_LIGHT)
+  await ui.unmount()
+})
+
+// WCAG contrast of a #RRGGBB text colour on white
+function onWhite(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+  return 1.05 / (0.2126 * r! + 0.7152 * g! + 0.0722 * b! + 0.05)
+}
+
+test('SR-290 EX-3: the light brass reads at 4.5:1 or more on white, the dark one would not', () => {
+  expect(brassColor('light')).toBe(BRASS_LIGHT)
+  expect(brassColor('dark')).toBe(BRASS)
+  expect(onWhite(BRASS_LIGHT)).toBeGreaterThanOrEqual(4.5)
+  expect(onWhite(BRASS)).toBeLessThan(3)
 })

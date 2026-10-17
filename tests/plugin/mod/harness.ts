@@ -4,6 +4,7 @@
 // recorded with its argv and stdin, so a test can say the key never reaches argv.
 import type { On } from 'claude-code'
 import { mock } from 'claude-code/testing'
+import type { MockClock } from 'claude-code/testing'
 
 import { DRAW, PRESS_CHANGE, PRESS_CONFIRM, PRESS_LEAVE_OPEN, PRESENT, PYTHON, ROOT, SESSION } from './fixtures'
 
@@ -84,9 +85,9 @@ export function norm(path: string): string {
 }
 
 /** The test's hooks beneath the panel: the host as `w` says it is. */
-export function install(on: On, w: World): void {
+export function install(on: On, w: World): MockClock {
   mock.env(on, {})
-  mock.clock(on, { now: NOW })
+  const clock = mock.clock(on, { now: NOW })
   // what the engine draws where the panel passes: an empty box
   on('ui.render', ($, e) => {
     const { Box } = $.ui.resolve(e) as any
@@ -152,6 +153,7 @@ export function install(on: On, w: World): void {
     if (w.canFill) w.fills.push(e.text)
     return { isFilled: w.canFill } as any
   })
+  return clock
 }
 
 export const START = { cwd: ROOT, surface: 'terminal' as const, isInteractive: true }
