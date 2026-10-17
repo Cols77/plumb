@@ -317,6 +317,8 @@ def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
         return state is not None and (state.confirmation == "confirmed"
                                       or state.superseded_by is not None)
 
+    if card.questions and all(q.record and q.record not in index for q in card.questions):
+        return None           # SR-289 EX-5: every record it asks about left the tree
     if card.kind in READ_BACK:
         return None if _settled(card, statuses) else card
     if card.kind in ("decision", "early_conflict", "test_changed"):
