@@ -159,6 +159,28 @@ def test_no_open_loop_no_study(repo: Path, tmp_path: Path) -> None:
 
 
 @pytest.mark.sr("SR-293")
+def test_sr293_ex6_a_passed_gate_tells_the_agent_to_pick_the_steps_study(
+        intent: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    """SR-293 EX-6: a gate that passes ends by telling the agent to pick the new step's study
+    (candidates, then one idea or none); nothing once the step has its idea."""
+    low = _findings(tmp_path, "low")
+    capsys.readouterr()
+    assert test_intent_loop._run(intent, "gate", "clarify", "--intent", "INT-001",
+                                 "--findings", low) == 0
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last.startswith("plumb: pick the plan step's study") and "study candidates" in last
+    assert "study propose" in last and "nothing" in last
+    assert _propose(intent, "How plumb's background jobs run") == 0
+    capsys.readouterr()
+    assert test_intent_loop._run(intent, "gate", "clarify", "--intent", "INT-001",
+                                 "--findings", low) == 0
+    assert "study" not in capsys.readouterr().out      # the plan step already has its idea
+    assert test_intent_loop._run(intent, "gate", "plan", "--intent", "INT-001",
+                                 "--findings", low) == 0
+    assert "pick the build step's study" in capsys.readouterr().out
+
+
+@pytest.mark.sr("SR-293")
 def test_sr293_ex6_a_proposed_study_is_only_an_idea(intent: Path) -> None:
     """SR-293 EX-6: proposing writes the idea (title, why, recommended depth), no page."""
     assert _propose(intent, "How plumb's background jobs run", "background jobs") == 0

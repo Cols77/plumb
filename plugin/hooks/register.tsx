@@ -543,47 +543,50 @@ export const register: Register = on => {
   // every Button the panel draws: what it does, by its key
   on('ui.press', async ($, e, next) => {
     if (e.plugin !== 'plumb') return next(e)
+    // the pressed Button's handler first, while its drawing still holds it: the work below
+    // redraws the band, and a Button it takes away (an idea's depths) frees its handle
+    const pressed = await next(e)
     const key = e.element
     const view = await read($, viewAtom)
     const band = await read($, bandAtom)
     if (key === 'hide') {
       await update($, bandAtom, b => ({ ...b, isHidden: true, showAll: false,
         shown: view.cards.map(contentKey) }))
-      return next(e)
+      return pressed
     }
     if (key === 'show') {
       await update($, bandAtom, b => ({ ...b, isHidden: false }))
-      return next(e)
+      return pressed
     }
     if (key === 'showall') {
       await update($, bandAtom, b => ({ ...b, showAll: true })) // records nothing, runs nothing
-      return next(e)
+      return pressed
     }
     if (key === 'studies') {
       await update($, bandAtom, b => ({ ...b, studies: !b.studies })) // opens or closes the menu
-      return next(e)
+      return pressed
     }
     if (key === 'idea') {
       await update($, bandAtom, b => ({ ...b, idea: !b.idea })) // shows or hides the choices
-      return next(e)
+      return pressed
     }
     if (key === 'fewer') {
       await update($, bandAtom, b => ({ ...b, showAll: false }))
-      return next(e)
+      return pressed
     }
     if (key === 'pane') {
       await update($, paneAtom, () => ({ index: 0, loop: null }))
       await $.ui.open({ id: PANE, title: T.paneTitle, columns: PANE_COLUMNS })
-      return next(e)
+      return pressed
     }
     if (key === 'back' || key === 'next') {
       // Back on the first and Next on the last stay where they are
       const last = view.cards.filter(c => c.repeats).length - 1
       await update($, paneAtom, p => ({ ...p, index: Math.max(0, Math.min(last, Math.min(p.index, last) + (key === 'next' ? 1 : -1))) }))
-      return next(e)
+      return pressed
     }
     const link = await read($, linkAtom)
-    if (link === null || (await read($, degradedAtom))) return next(e)
+    if (link === null || (await read($, degradedAtom))) return pressed
     const io: Io = {
       exists: p => $.fs.exists(p),
       read: async p => String(await $.fs.read(p)),
@@ -604,10 +607,10 @@ export const register: Register = on => {
     if (key === 'loop') {
       // SR-305: the loop as plumb knows it, in the docked pane; Esc closes it, the band stays
       const loop = await plumb.loopPane(io, link)
-      if (loop === null) return next(e)
+      if (loop === null) return pressed
       await update($, paneAtom, () => ({ index: 0, loop }))
       await $.ui.open({ id: PANE, title: T.loopTitle, columns: PANE_COLUMNS, closeOnEscape: true })
-      return next(e)
+      return pressed
     }
     let line = ''
     let note = ''
@@ -616,19 +619,19 @@ export const register: Register = on => {
       // the band; a choice from the menu closes the menu
       const slug = key === 'study' ? view.status?.studySlug : key.slice('study:'.length)
       if (key !== 'study') await update($, bandAtom, b => ({ ...b, studies: false }))
-      if (!slug) return next(e)
+      if (!slug) return pressed
       const ran = await plumb.room(io, link, slug)
       line = ran.ok ? '' : T.roomFailed
     } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:none') {
       // SR-294 EX-8, EX-9: the owner's choice on the idea is recorded; the room stays closed
       const idea = (view.status?.ideas ?? []).at(-1)
       await update($, bandAtom, b => ({ ...b, idea: false }))
-      if (!idea) return next(e)
+      if (!idea) return pressed
       const ran = await plumb.chooseStudy(io, link, idea.slug, key.slice('idea:'.length))
       line = ran.ok ? '' : T.chooseFailed
     } else if (key.startsWith('press:')) {
       const found = findPress(view.cards, key)
-      if (found === null) return next(e)
+      if (found === null) return pressed
       const ran = await plumb.press(io, link, found.offer.offer_id, found.button.index)
       line = ran.ok ? String(ran.data.line ?? '') : T.pressFailed
       note = ran.ok ? String(ran.data.model_note ?? '') : ''
@@ -638,7 +641,7 @@ export const register: Register = on => {
         if (!filled.isFilled) note += T.noBox(found.card.topic)
       }
     } else {
-      return next(e)
+      return pressed
     }
     // the owner's notice (the model never reads it) and the model's note (never shown as
     // typed), each its own row; a toast says it now (SP7 5.4, SR-087 EX-3)
@@ -652,7 +655,12 @@ export const register: Register = on => {
     const snap = await plumb.snapshot(io, link, { ...view, line }, band.shown, false)
     await update($, viewAtom, () => snap.view)
     $.ui.status(noticeLine(snap.view))
-    return next(e)
+    if (key.startsWith('idea:') || key.startsWith('study:')) {
+      // a choice takes its lines away: the band keeps its head line, the ring back on Hide
+      await $.ui.focus({ requestId: e.requestId, key: 'hide' }).catch(() => undefined)
+      await $.ui.scroll({ in: e.requestId, to: 'start' }).catch(() => undefined)
+    }
+    return pressed
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

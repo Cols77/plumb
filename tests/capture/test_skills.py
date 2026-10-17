@@ -129,3 +129,17 @@ def test_the_four_question_rules_are_in_each_skill(installed: Path) -> None:
                      "only gives the message digest", "answers ready at once",
                      "Only after the owner types"):
             assert gone not in text, (name, gone)
+
+
+@pytest.mark.sr("SR-293")
+def test_each_intent_stage_picks_its_study_before_its_gate(installed: Path) -> None:
+    """SR-293 EX-6: each stage of the loop proposes its step's study idea (or none) as its
+    last step before its gate, so the agent proposes without a prompt mentioning studies."""
+    text = _texts(installed)["plumb-intent"]
+    stages = [text.find(f"Stage {s},") for s in "ABC"] + [text.find("Studies:")]
+    assert -1 not in stages and stages == sorted(stages)
+    gates = ("intent gate clarify --findings", "intent gate plan --findings", "intent done`.")
+    for (start, end), gate in zip(zip(stages, stages[1:]), gates):
+        stage = text[start:end]
+        assert "plumb study propose" in stage and "study candidates" in stage
+        assert stage.rfind("study propose") < stage.rfind(gate), gate

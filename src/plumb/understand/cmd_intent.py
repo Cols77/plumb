@@ -207,7 +207,21 @@ def cmd_gate(core: Any, args: argparse.Namespace) -> int:
         gate.open(core, path.parent.parent.name, data["digest"], "intent", GATE_OPEN_REASON)
     print(f"plumb: {args.intent}: the {args.stage} gate passed "
           f"({len(findings)} low finding(s) left)")
+    _study_hint(root, path, data)
     return 0
+
+
+def _study_hint(root: Path, path: Path, data: Mapping[str, Any]) -> None:
+    """SR-293 EX-6: the step that starts picks its study on the agent's own initiative; nothing
+    once the step has its idea."""
+    from plumb import study
+
+    if any(s.get("loop") == path.stem and s.get("step") == data["step"]
+           for s in study.studies(root)):
+        return
+    print(f"plumb: pick the {data['step']} step's study: run plumb study candidates, then "
+          "plumb study propose --title --why --depth for one idea, or nothing when nothing "
+          "valuable stands out")
 
 
 def cmd_done(core: Any, args: argparse.Namespace) -> int:

@@ -42,6 +42,16 @@ Stage A, clarify and integrate, until `plumb intent gate clarify` passes:
   live-session|hook|command|other`.
 - Capture with `plumb capture --prompt <digest> --file <doc.json>` (`"mode": "escalated"`
   in the intent for a big one), naming in `supersedes` every record a new one replaces.
+- Last, the step's study (DEC-207): run `plumb study candidates --json` and propose at most
+  one study idea, none when nothing valuable stands out, none on a topic in `known` and never
+  one in `declined`. Pick from: a key architectural choice being made or built, a gap in the
+  owner's understanding (`picture`, `prompts`; a `deeper` line asks for more depth), what they
+  need to know to choose well later, an open conflict in `conflicts` laid out on both sides
+  choosing nothing, or a feature the work makes easy, labelled a suggestion. Propose the idea
+  only, never the study: `plumb study propose --title <it> --topic <what it is about>
+  --why <one line> --depth md|diagrams|video`, with the depth you recommend (diagrams when it
+  is about structure or flow). The band shows it; the owner accepts it at a depth or says not
+  now, and chooses, not you.
 - Findings for the gate, in a file: open conflicts (high), unanswered blocking questions
   (high), "may change" flags with no decision and no supersedes link (medium), weak edges
   from `plumb align` (low). Fix and judge again until only low remain, then
@@ -54,30 +64,23 @@ each link of a superseded requirement to the new one with a note;
 `plumb unlink --note` drops the test of a retired example, deleted in the same commit),
 run `plumb stale` for what the new and reworded requirements leave uncovered, write the plan
 (one acceptance test per example, the code the proof needs), review it against the intent,
-the requirements and staleness, fix until only low findings remain, then
-`plumb intent gate plan --findings <file>`.
+the requirements and staleness, fix until only low findings remain, pick the plan step's
+study as in stage A (`plumb study candidates --json`, then `plumb study propose` one
+idea or none), then `plumb intent gate plan --findings <file>`.
 
 Stage C, build and prove: build the plan, show the proof the owner stated, record it with
-`plumb proof SR-### --evidence ...`, then `plumb intent done`. It refuses while a proof
-is missing; `plumb intent status` says which gate is open. When the edit hook reports a
-link stale, before the turn ends: repin it after its tests pass, relink it when the code
-moved, or card it when the meaning changed.
+`plumb proof SR-### --evidence ...`, pick the build step's study as in stage A
+(`plumb study candidates --json`, then `plumb study propose` one idea or none), then
+`plumb intent done`. It refuses while a proof is missing; `plumb intent status` says
+which gate is open. When the edit hook reports a link stale, before the turn ends: repin it
+after its tests pass, relink it when the code moved, or card it when the meaning changed.
 
-Studies (DEC-207): as each stage ends, run `plumb study candidates --json` and propose at
-most one study idea for the step, none when nothing valuable stands out, none on a topic in
-`known` and never one in `declined`. Pick from: a key architectural choice being made or built,
-a gap in the owner's understanding (`picture`, `prompts`; a `deeper` line asks for more depth),
-what they need to know to choose well later, an open conflict in `conflicts` laid out on both
-sides choosing nothing, or a feature the work makes easy, labelled a suggestion. Propose the
-idea only, never the study: `plumb study propose --title <it> --topic <what it is about>
---why <one line> --depth md|diagrams|video`, with the depth you recommend (diagrams when it is
-about structure or flow). The band shows it; the owner accepts it at a depth (Markdown only,
-with diagrams) or says not now, and chooses, not you. Write no study before it is accepted.
-When plumb tells you an idea was accepted (the prompt's line, or `accepted` in the candidates),
-write it at that depth in plain words with the records' examples, a mermaid diagram only at
-depth `diagrams` and none at `md`, then `plumb study add <slug> --file <body.md>`; the band
-announces it and the owner reads it in the room when they choose. Never open the room, and
-never take 'I know this' or 'Go deeper' as an answer: they correct the picture only.
+Studies: write none before the owner accepts its idea. When plumb tells you an idea was
+accepted (the prompt's line, or `accepted` in the candidates), write it at that depth in plain
+words with the records' examples, a mermaid diagram only at depth `diagrams` and none at
+`md`, then `plumb study add <slug> --file <body.md>`; the band announces it and the owner
+reads it in the room when they choose. Never open the room, and never take 'I know this' or
+'Go deeper' as an answer: they correct the picture only.
 
 The loop's gates approve nothing. Speak in the owner's terms; paste nothing capture prints.
 
