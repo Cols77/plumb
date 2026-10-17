@@ -277,7 +277,7 @@ def land_worktree(repo: Path, tmp_path: Path, *, dirty: str = "", loop: bool = F
     return tree, landing.land(repo, head(repo), before)
 
 
-@pytest.mark.sr("SR-296")
+@pytest.mark.sr("SR-320")
 def test_ex7_a_merged_clean_worktree_is_removed_with_its_branch(repo: Path,
                                                                 tmp_path: Path) -> None:
     tree, result = land_worktree(repo, tmp_path, dirty=".plumb/log/x/y.json")
@@ -286,7 +286,7 @@ def test_ex7_a_merged_clean_worktree_is_removed_with_its_branch(repo: Path,
     assert "removed finished worktrees wt-feat" in landing.lines(repo)[0][1]
 
 
-@pytest.mark.sr("SR-296")
+@pytest.mark.sr("SR-320")
 def test_ex8_a_worktree_with_uncommitted_changes_is_kept_and_named(repo: Path,
                                                                     tmp_path: Path) -> None:
     tree, result = land_worktree(repo, tmp_path, dirty="notes.md")
@@ -294,7 +294,7 @@ def test_ex8_a_worktree_with_uncommitted_changes_is_kept_and_named(repo: Path,
     assert "worktree wt-feat finished but kept: uncommitted changes" in landing.lines(repo)[0][1]
 
 
-@pytest.mark.sr("SR-296")
+@pytest.mark.sr("SR-320")
 def test_ex9_a_worktree_named_by_an_open_loop_is_kept_and_named(repo: Path,
                                                                  tmp_path: Path) -> None:
     tree, result = land_worktree(repo, tmp_path, loop=True)
@@ -302,13 +302,47 @@ def test_ex9_a_worktree_named_by_an_open_loop_is_kept_and_named(repo: Path,
     assert "worktree wt-feat finished but kept: an open intent loop" in landing.lines(repo)[0][1]
 
 
-@pytest.mark.sr("SR-296")
+@pytest.mark.sr("SR-320")
 def test_ex10_an_unmerged_worktree_is_untouched_and_not_named(repo: Path,
                                                                tmp_path: Path) -> None:
     tree, result = land_worktree(repo, tmp_path, merge=False)
     assert tree.exists() and result["worktrees"] == [] and result["kept"] == []
     assert "wt-feat" not in landing.lines(repo)[0][1]
     assert run_git(repo, "branch", "--list", "feat").stdout.strip() != ""
+
+
+@pytest.mark.sr("SR-320")
+def test_ex12_a_worktree_kept_at_one_landing_is_removed_at_the_next(repo: Path,
+                                                                    tmp_path: Path) -> None:
+    tree, first = land_worktree(repo, tmp_path, dirty="notes.md")
+    assert tree.exists() and first["worktrees"] == []
+    (tree / "notes.md").unlink()
+    run_git(repo, "commit", "-q", "--allow-empty", "--no-verify", "-m", "next")
+    second = landing.land(repo, head(repo), run_git(repo, "rev-parse", "HEAD~1").stdout.strip())
+    assert not tree.exists() and second["worktrees"] == ["wt-feat"]
+
+
+@pytest.mark.sr("SR-320")
+def test_ex13_a_fresh_worktree_with_no_commits_is_never_removed(repo: Path,
+                                                                tmp_path: Path) -> None:
+    tree = tmp_path / "wt-fresh"
+    run_git(repo, "worktree", "add", "-q", "-b", "fresh", str(tree))
+    sha, before = land_branch(repo, lambda root: docs(root, "docs/x.md"))
+    result = landing.land(repo, sha, before)
+    assert tree.exists() and result["worktrees"] == [] and result["kept"] == []
+
+
+@pytest.mark.sr("SR-320")
+def test_ex14_a_fast_forward_merged_branch_with_its_own_commit_is_removed(
+        repo: Path, tmp_path: Path) -> None:
+    tree = tmp_path / "wt-ff"
+    before = head(repo)
+    run_git(repo, "worktree", "add", "-q", "-b", "ff", str(tree))
+    docs(tree, "work.md")
+    commit_all(tree, "work")
+    run_git(repo, "merge", "-q", "--ff-only", "--no-verify", "ff")
+    result = landing.land(repo, head(repo), before)
+    assert not tree.exists() and result["worktrees"] == ["wt-ff"]
 
 
 @pytest.mark.sr("SR-296")

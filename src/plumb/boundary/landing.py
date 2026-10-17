@@ -341,10 +341,11 @@ def _loop_names(root: Path, tree: Path, branch: str) -> bool:
 
 
 def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], list[str]]:
-    """``(removed, kept)`` worktree names: every other worktree whose branch this landing
-    merged (its tip in ``before..head``) is removed with its branch, unless it has uncommitted
-    work or an open intent loop names it; then it is named in ``kept`` with the reason. The
-    main checkout and ``root`` itself are never touched."""
+    """``(removed, kept)`` worktree names: every other worktree whose branch has a commit of its
+    own and is merged into ``head`` (this landing's or an earlier one's) is removed with its
+    branch, unless it has uncommitted work or an open intent loop names it; then it is named in
+    ``kept`` with the reason. The main checkout and ``root`` itself are never touched.
+    shortcut: ``before`` is unused now; drop it from the signature when callers change."""
     from plumb import log
 
     removed: list[str] = []
@@ -357,11 +358,14 @@ def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], l
         branch = fields.get("branch", "").removeprefix("refs/heads/")
         if not branch or tree in (main, Path(root).resolve()):
             continue
-        merged = lambda rev: subprocess.run(  # noqa: E731
-            ["git", "merge-base", "--is-ancestor", f"refs/heads/{branch}", rev], cwd=root,
+        merged = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", f"refs/heads/{branch}", head], cwd=root,
             capture_output=True).returncode == 0
-        # a tip already in ``before`` may be a branch just forked: only this landing's count
-        if not merged(head) or merged(before):
+        # a fork's tip is an ancestor of main too, even after a fast-forward merge puts its own
+        # commits there; only the branch reflog tells them apart (any entry past its creation)
+        own = any(not x.startswith("branch: Created") for x in _git(
+            root, "reflog", "show", "--format=%gs", f"refs/heads/{branch}").splitlines())
+        if not merged or not own:
             continue
         try:
             dirty = [x for x in _git(tree, "status", "--porcelain", "--untracked-files=all"
