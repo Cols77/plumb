@@ -267,6 +267,9 @@ def test_quick_check_never_calls_a_judgment_backend(
 
     backend = _jev_configured(monkeypatch)
     conflicted(repo)
+    (repo / "tests").mkdir(exist_ok=True)   # the link theirs adds must not dangle (SR-297)
+    (repo / "tests" / "test_relay.py").write_text("def test_x() -> None:\n    pass\n",
+                                                  encoding="utf-8")
     run_git(repo, "add", "-A")  # the merge result, as git stages it
     head = run_git(repo, "rev-parse", "HEAD").stdout.strip()
     monkeypatch.setattr(premerge, "incoming_heads", lambda root: [(head, "feat-x")])

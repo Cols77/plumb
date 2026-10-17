@@ -119,6 +119,8 @@ PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it;
                        "to link it to the requirement it serves")
 PREMERGE_STALE_HEADER = ("links this merge leaves stale (repin each once its tests pass, or "
                          "card it):")
+PREMERGE_VALIDATE_HEADER = ("errors this merge adds to the records (fix each record, or relink a "
+                            "link it broke, then commit):")
 PREMERGE_UNTESTED_HEADER = "links this merge adds to files no test covers:"
 PREMERGE_CONTRADICTIONS_HEADER = "requirements that contradict each other:"
 PREMERGE_CONTRADICTIONS_NOTE = ("requirements that may contradict each other (the judge was not "

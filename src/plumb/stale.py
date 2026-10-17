@@ -15,7 +15,8 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -334,32 +335,40 @@ BASE_RECORD_DIRS = (".plumb/decisions", ".plumb/features", ".plumb/intents", ".p
                     ".plumb/requirements")
 
 
-def stale_at(root: Path, base: str, rows: Sequence[Row]) -> set[str] | None:
-    """Of ``rows``, the link ids that were already stale at ``base`` (a git ref): the records
-    and the linked files are read from ``base`` into a temporary folder and judged there in
-    one pass (SR-166: only new problems hold). None when ``base`` cannot be read."""
+@contextmanager
+def base_core(root: Path, base: str, wanted: Sequence[str] = ()) -> Iterator[Core]:
+    """A core over the records of ``base`` (a git ref) and the ``wanted`` files, read into a
+    temporary folder. Raises when ``base`` cannot be read."""
     import io
     import subprocess
     import tarfile
     import tempfile
 
-    from plumb import links
     from plumb.api import open_core
+
+    listed = subprocess.run(["git", "ls-tree", "-r", "--name-only", base, "--",
+                             *BASE_RECORD_DIRS, *wanted], cwd=root, capture_output=True,
+                            text=True, encoding="utf-8", timeout=30,
+                            check=True).stdout.splitlines()
+    tar = subprocess.run(["git", "archive", "--format=tar", base, "--",
+                          *[p for p in listed if p]], cwd=root, capture_output=True,
+                         timeout=60, check=True).stdout
+    with tempfile.TemporaryDirectory(prefix="plumb-base-") as tmp:
+        tarfile.open(fileobj=io.BytesIO(tar)).extractall(tmp, filter="data")
+        yield open_core(Path(tmp))
+
+
+def stale_at(root: Path, base: str, rows: Sequence[Row]) -> set[str] | None:
+    """Of ``rows``, the link ids that were already stale at ``base`` (a git ref): the records
+    and the linked files are read from ``base`` into a temporary folder and judged there in
+    one pass (SR-166: only new problems hold). None when ``base`` cannot be read."""
+    from plumb import links
 
     if not rows:
         return set()
     wanted = sorted({r.what for r in rows if "/" in r.what or "." in r.what})
     try:
-        listed = subprocess.run(["git", "ls-tree", "-r", "--name-only", base, "--",
-                                 *BASE_RECORD_DIRS, *wanted], cwd=root, capture_output=True,
-                                text=True, encoding="utf-8", timeout=30,
-                                check=True).stdout.splitlines()
-        tar = subprocess.run(["git", "archive", "--format=tar", base, "--",
-                              *[p for p in listed if p]], cwd=root, capture_output=True,
-                             timeout=60, check=True).stdout
-        with tempfile.TemporaryDirectory(prefix="plumb-base-") as tmp:
-            tarfile.open(fileobj=io.BytesIO(tar)).extractall(tmp, filter="data")
-            core = open_core(Path(tmp))
+        with base_core(root, base, wanted) as core:
             wanted_links = {r.link for r in rows}
             return {st.link.id for st in links.link_states(core, {r.record for r in rows})
                     if st.state == "stale" and st.link.id in wanted_links}
