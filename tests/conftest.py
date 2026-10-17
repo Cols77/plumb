@@ -6,10 +6,19 @@ import json
 import os
 import re
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+
+# A worktree's tests import the worktree's own source, not the install the venv points at.
+_SRC = str(Path(__file__).resolve().parents[1] / "src")
+if sys.path[:1] != [_SRC]:
+    sys.path.insert(0, _SRC)
+for _name in [n for n in sys.modules if n == "plumb" or n.startswith("plumb.")]:
+    if not str(getattr(sys.modules[_name], "__file__", "") or "").startswith(_SRC):
+        del sys.modules[_name]
 
 _KIND_DIRS = {"INT": "intents", "SR": "requirements", "DEC": "decisions", "FEAT": "features",
               "NC": "ncs"}

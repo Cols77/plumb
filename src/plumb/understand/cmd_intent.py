@@ -26,7 +26,7 @@ from typing import Any
 from plumb.cliutil import EXIT_FINDINGS, EXIT_USAGE, add_common, emit, resolve_root
 from plumb.understand import files, gate
 
-LOOP_VERBS = ("open", "gate", "done", "status")
+LOOP_VERBS = ("open", "gate", "done", "status", "adopt")
 STAGES = ("clarify", "plan", "build")
 LEVELS = ("high", "medium", "low")
 BLOCKING = ("high", "medium")
@@ -66,7 +66,7 @@ def loops(root: Path, session: str | None = None) -> list[tuple[Path, dict[str, 
 def _find(root: Path, session: str | None, intent: str) -> tuple[Path, dict[str, Any]]:
     """The loop of ``intent``, else this session's newest loop no intent claimed yet (it is
     claimed). With no session known nothing is claimed: another session's loop is not ours."""
-    found = loops(root, session)
+    found = [(p, d) for p, d in loops(root, session) if not d.get("handed_to")]
     for path, data in reversed(found):
         if data.get("intent") == intent:
             return path, data
@@ -198,7 +198,8 @@ def cmd_done(core: Any, args: argparse.Namespace) -> int:
 
 def cmd_status(core: Any, args: argparse.Namespace) -> int:
     root = Path(core.root)
-    found = [(p, d) for p, d in loops(root, _session(args, root)) if not _passed(d, "build")]
+    found = [(p, d) for p, d in loops(root, _session(args, root)) if not _passed(d, "build")
+             and not d.get("handed_to")]
     if args.as_json:
         emit([d for _, d in found], True)
         return 0
@@ -207,6 +208,50 @@ def cmd_status(core: Any, args: argparse.Namespace) -> int:
         print(f"{data.get('intent') or data['digest'].removeprefix('sha256:')[:12]}: {states}")
     if not found:
         print("plumb: no intent loop is open")
+    return 0
+
+
+def _checkouts(root: Path) -> list[Path]:
+    """This checkout, then the main checkout when this is a worktree (SR-302 EX-2)."""
+    from plumb.awareness import gitfiles
+
+    common = gitfiles.common_dir(root)
+    main = common.parent if common is not None and common.name == ".git" else root
+    return [root, main] if main.resolve() != root.resolve() else [root]
+
+
+def cmd_adopt(core: Any, args: argparse.Namespace) -> int:
+    """SR-302: take over an open loop of another session: copy it into this session, mark the
+    old copy handed over and open the old session's gate."""
+    from plumb.api import open_core
+
+    root = Path(core.root)
+    session = _session(args, root)
+    if session is None:
+        print("plumb: name the session that takes the loop over with --session", file=sys.stderr)
+        return EXIT_USAGE
+    found = [(r, p, d) for r in _checkouts(root) for p, d in loops(r)
+             if not d.get("handed_to") and not _passed(d, "build")
+             and (r != root or p.parent.parent.name != session)
+             and (not args.from_session or p.parent.parent.name == args.from_session)
+             and (not args.intent or d.get("intent") == args.intent)
+             and (not args.digest or str(d["digest"]).removeprefix("sha256:").startswith(
+                 args.digest.removeprefix("sha256:")))]
+    if not found:
+        print("plumb: no open loop matches; nothing taken over", file=sys.stderr)
+        return EXIT_FINDINGS
+    old_root, path, data = max(found, key=lambda item: str(item[2].get("opened_at", "")))
+    old_session = path.parent.parent.name
+    mine = loop_path(root, session, data["digest"])
+    files.write_json_atomic(mine, {**data, "adopted_from": {"root": old_root.as_posix(),
+                                                           "session": old_session}})
+    files.write_json_atomic(path, {**data, "handed_to": {"root": root.as_posix(),
+                                                         "session": session, "at": _now()}})
+    held = gate.state(old_root, old_session)
+    if held.state == "closed":
+        gate.open(open_core(old_root), old_session, held.message_digest, "handover",
+                  f"the loop was taken over by session {session}")
+    print(f"plumb: {data.get('intent') or 'the loop'} taken over from session {old_session}")
     return 0
 
 
@@ -232,7 +277,11 @@ def run(command: str, argv: list[str]) -> int:
     doner = verbs.add_parser("done")
     doner.add_argument("--intent", required=True, metavar="INT-###")
     verbs.add_parser("status")
-    for sub in (opener, gater, doner, verbs.choices["status"]):
+    adopter = verbs.add_parser("adopt")
+    adopter.add_argument("--from-session", default=None)
+    adopter.add_argument("--intent", default=None, metavar="INT-###")
+    adopter.add_argument("--digest", default=None)
+    for sub in (opener, gater, doner, verbs.choices["status"], adopter):
         add_common(sub)
         sub.add_argument("--session", default=None)
     try:
@@ -243,7 +292,8 @@ def run(command: str, argv: list[str]) -> int:
 
     core = open_core(resolve_root(args.root))
     try:
-        return {"open": cmd_open, "gate": cmd_gate, "done": cmd_done, "status": cmd_status}[
+        return {"open": cmd_open, "gate": cmd_gate, "done": cmd_done, "status": cmd_status,
+                "adopt": cmd_adopt}[
             args.verb](core, args)
     except (LookupError, ValueError) as exc:
         print(f"plumb: {exc}", file=sys.stderr)
