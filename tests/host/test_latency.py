@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+from loadbound import assert_within
 
 from plumb.api import open_core
 from plumb.contracts import Target
@@ -99,8 +100,8 @@ def test_hooks_within_in_process_budget(busy_repo: Path, hook_input,
     # cards only (SR-012): the card the judged stale check filed for the edited requirement
     assert "Requirement 3 about links" in json.loads(run(stop, stop_input, verify=verify,
                                                           unjudged=None))["systemMessage"]
-    over = {k: round(v) for k, v in timings.items() if v > BUDGET_MS[k]}
-    assert not over, f"over budget (ms): {over}; all: {timings}"
+    for hook, took in timings.items():
+        assert_within(took, BUDGET_MS[hook], f"{hook} hook (ms)")
     errors = root / ".plumb" / "session" / "errors.log"
     assert not errors.exists(), errors.read_text("utf-8")
 
@@ -192,4 +193,4 @@ def _contended_turn(busy_repo: Path, hook_input, call) -> None:
         "PostToolUse", tool_name="Edit", tool_input={"file_path": str(record)}))
     raw, wall = call("hook", "stop", payload=hook_input("Stop", stop_hook_active=True))
     assert "decision" not in raw  # no decision is asked here (INT-037)
-    assert wall < 6.0, f"stop hook took {wall:.1f} s under contention"
+    assert_within(wall, 6.0, "stop hook under contention (s)")

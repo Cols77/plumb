@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from loadbound import assert_within
 
 from plumb.api import open_core
 
@@ -93,13 +94,13 @@ def _cold_best(own_copy: Path) -> tuple[float, str]:
 def test_cold_start_over_budget_today(own_copy: Path) -> None:
     """The plan's target: the best of four cold runs at most 0.9 of the budget."""
     best, _ = _cold_best(own_copy)
-    assert best <= BUDGET_MS * 0.9, f"cold session start {best:.0f} ms against {BUDGET_MS:.0f}"
+    assert_within(best, BUDGET_MS * 0.9, "cold session start (ms)")
 
 
 @pytest.mark.load_bound
 def test_cold_best_of_four_inside_90_percent_of_budget(own_copy: Path) -> None:
     best, _ = _cold_best(own_copy)
-    assert best <= BUDGET_MS * 0.9, f"cold session start {best:.0f} ms against {BUDGET_MS:.0f}"
+    assert_within(best, BUDGET_MS * 0.9, "cold session start (ms)")
 
 
 def test_cold_has_no_check_skipped_line(own_copy: Path) -> None:
@@ -113,7 +114,7 @@ def test_warm_start_inside_target(own_copy: Path) -> None:
     """Best of four warm runs at most 900 ms, on plumb's own records."""
     _call(own_copy)  # fills the caches
     best = min(_call(own_copy)[1] for _ in range(4))
-    assert best <= WARM_TARGET_MS, f"warm session start {best:.0f} ms against {WARM_TARGET_MS:.0f}"
+    assert_within(best, WARM_TARGET_MS, "warm session start (ms)")
 
 
 def test_timing_file_names_every_step(own_copy: Path) -> None:

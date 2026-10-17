@@ -46,7 +46,8 @@ def _suite(repo: Path, body: str) -> tuple[subprocess.CompletedProcess, list[dic
 
 
 def test_ex2_a_missed_time_budget_is_load_bound_with_one_debug_case(repo: Path) -> None:
-    done, cases = _suite(repo, "def test_t():\n    assert 9 < 1, 'took 9 ms, 1 ms budget'\n")
+    done, cases = _suite(repo, "from loadbound import assert_within\n"
+                         "def test_t():\n    assert_within(9, 1, 'took (ms)')\n")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "xfailed" in done.stdout
     assert [(c["kind"], c["state"]) for c in cases] == [("load-bound test", "open")]
@@ -55,5 +56,11 @@ def test_ex2_a_missed_time_budget_is_load_bound_with_one_debug_case(repo: Path) 
 
 def test_ex3_another_failed_assertion_fails_as_usual(repo: Path) -> None:
     done, cases = _suite(repo, "def test_t():\n    assert [1] == [2], 'wrong answer'\n")
+    assert done.returncode == 1 and "failed" in done.stdout
+    assert cases == []
+
+
+def test_ex3_an_assertion_mentioning_ms_that_is_no_budget_miss_fails_as_usual(repo: Path) -> None:
+    done, cases = _suite(repo, "def test_t():\n    assert 9 < 1, 'took 9 ms, 1 ms budget'\n")
     assert done.returncode == 1 and "failed" in done.stdout
     assert cases == []

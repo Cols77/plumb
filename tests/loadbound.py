@@ -7,7 +7,6 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import os
-import re
 import sys
 import time
 import warnings
@@ -18,8 +17,6 @@ import pytest
 
 FREE_BELOW = 50.0
 WAIT_LIMIT = 300.0
-# a time-budget assertion names the budget or a measured "<n> ms" / "<n> s"
-_BUDGET = re.compile(r"budget|\d\s*(ms|s)\b")
 _last: list[int] = []
 
 
@@ -49,8 +46,17 @@ def wait_for_free_cpu(busy: Callable[[], float] = cpu_busy, limit: float = WAIT_
     return True
 
 
+class BudgetMiss(AssertionError):
+    """A measured time went over its budget (DEC-186): the only failure counted as load-bound."""
+
+
+def assert_within(elapsed: float, budget: float, what: str) -> None:
+    if elapsed > budget:
+        raise BudgetMiss(f"{what}: {elapsed:.3g} over the budget of {budget:.3g}")
+
+
 def is_budget_failure(excinfo: pytest.ExceptionInfo) -> bool:
-    return excinfo.errisinstance(AssertionError) and bool(_BUDGET.search(str(excinfo.value)))
+    return excinfo.errisinstance(BudgetMiss)
 
 
 def _case(item: pytest.Item, excinfo: pytest.ExceptionInfo) -> None:
