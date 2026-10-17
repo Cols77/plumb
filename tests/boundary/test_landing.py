@@ -254,3 +254,73 @@ def test_ex1_entries_about_an_inflight_branchs_record_stay_live(repo: Path,
     live = [json.loads(p.read_text(encoding="utf-8"))["payload"]["record"]
             for p in (repo / ".plumb" / "log" / "card-settled").glob("*.json")]
     assert live == ["SR-050"]
+
+
+def land_worktree(repo: Path, tmp_path: Path, *, dirty: str = "", loop: bool = False,
+                  merge: bool = True) -> tuple[Path, dict[str, Any]]:
+    """A worktree on branch ``feat`` with one commit, merged into main (unless ``merge`` is
+    false); then the landing. ``dirty`` is an untracked file written in the worktree."""
+    tree = tmp_path / "wt-feat"
+    before = head(repo)
+    run_git(repo, "worktree", "add", "-q", "-b", "feat", str(tree))
+    docs(tree, "work.md")
+    commit_all(tree, "work")
+    if dirty:
+        docs(tree, dirty)
+    if loop:
+        path = repo / ".plumb" / "session" / "s9" / "intent" / "abc.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"digest": "sha256:abc", "intent": "INT-001", "note": "feat",
+                                    "stages": {"clarify": {"state": "open"}}}), "utf-8")
+    if merge:
+        run_git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "m", "feat")
+    return tree, landing.land(repo, head(repo), before)
+
+
+@pytest.mark.sr("SR-296")
+def test_ex7_a_merged_clean_worktree_is_removed_with_its_branch(repo: Path,
+                                                                tmp_path: Path) -> None:
+    tree, result = land_worktree(repo, tmp_path, dirty=".plumb/log/x/y.json")
+    assert not tree.exists() and result["worktrees"] == ["wt-feat"] and result["kept"] == []
+    assert run_git(repo, "branch", "--list", "feat").stdout.strip() == ""
+    assert "removed finished worktrees wt-feat" in landing.lines(repo)[0][1]
+
+
+@pytest.mark.sr("SR-296")
+def test_ex8_a_worktree_with_uncommitted_changes_is_kept_and_named(repo: Path,
+                                                                    tmp_path: Path) -> None:
+    tree, result = land_worktree(repo, tmp_path, dirty="notes.md")
+    assert tree.exists() and result["worktrees"] == []
+    assert "worktree wt-feat finished but kept: uncommitted changes" in landing.lines(repo)[0][1]
+
+
+@pytest.mark.sr("SR-296")
+def test_ex9_a_worktree_named_by_an_open_loop_is_kept_and_named(repo: Path,
+                                                                 tmp_path: Path) -> None:
+    tree, result = land_worktree(repo, tmp_path, loop=True)
+    assert tree.exists() and result["worktrees"] == []
+    assert "worktree wt-feat finished but kept: an open intent loop" in landing.lines(repo)[0][1]
+
+
+@pytest.mark.sr("SR-296")
+def test_ex10_an_unmerged_worktree_is_untouched_and_not_named(repo: Path,
+                                                               tmp_path: Path) -> None:
+    tree, result = land_worktree(repo, tmp_path, merge=False)
+    assert tree.exists() and result["worktrees"] == [] and result["kept"] == []
+    assert "wt-feat" not in landing.lines(repo)[0][1]
+    assert run_git(repo, "branch", "--list", "feat").stdout.strip() != ""
+
+
+@pytest.mark.sr("SR-296")
+def test_ex11_a_second_landing_run_queues_no_judge_job_twice(repo: Path, write_record,
+                                                              engine_standins) -> None:
+    from plumb.understand import backlog, files
+
+    bulk(repo, write_record, {"alpha": 3})
+    sha, before = land_branch(repo, lambda root: None)
+    landing.land(repo, sha, before, session=SESSION)
+    jobs = sorted(files.jobs_dir(repo, SESSION).glob("*.json"))
+    landing.marker(repo, sha).unlink()  # the marker lost: the run happens again
+    result = landing.land(repo, sha, before, session=SESSION)
+    assert result["queued"] == 0 and backlog.waiting(open_core(repo), SESSION) == []
+    assert sorted(files.jobs_dir(repo, SESSION).glob("*.json")) == jobs

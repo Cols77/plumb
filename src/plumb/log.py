@@ -1017,3 +1017,33 @@ def migrate(paths: PlumbPaths, *, dry_run: bool) -> MigrationReport:
     return MigrationReport(lines=lines, written=tuple(written), skipped=skipped,
                            refused=tuple(refused), truncated=tuple(truncated),
                            remaining=remaining, dry_run=dry_run)
+
+
+def tracked_names(root: Path) -> set[str]:
+    """The committed entry files (``kind/file``) of the log, as ``git ls-files`` lists them."""
+    prefix = ".plumb/log/"
+    out = subprocess.run(["git", "ls-files", "--", prefix], cwd=root, capture_output=True,
+                         text=True, encoding="utf-8", errors="replace", check=True).stdout
+    return {p[len(prefix):] for p in out.split("\n") if p.startswith(prefix)}
+
+
+def stage(root: Path, changed: Iterable[str]) -> None:
+    """``git add -A`` of the paths ``archive`` returned (segments written, files removed).
+    Nothing else is staged."""
+    changed = list(changed)
+    if not changed:
+        return
+    done = subprocess.run(["git", "add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"],
+                          cwd=root, input="\0".join(changed), env={**os.environ,
+                          "GIT_LITERAL_PATHSPECS": "1"}, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
+    if done.returncode:
+        raise RuntimeError(f"git add: {done.stderr.strip()[:200]}")
+
+
+def untracked_own(tree: Path, status_line: str) -> bool:
+    """Is this ``git status --porcelain`` line an untracked log or cache file of ``tree``:
+    plumb's own output, not uncommitted work?"""
+    own = PlumbPaths(tree)
+    skip = tuple(p.relative_to(tree).as_posix() + "/" for p in (own.log_dir, own.cache))
+    return status_line.startswith("?? ") and status_line[3:].startswith(skip)

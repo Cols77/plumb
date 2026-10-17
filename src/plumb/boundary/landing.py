@@ -1,9 +1,9 @@
 """The landing job (SR-296): after a merge into the default branch, in the background, in
 order: the tidy of what the landed records supersede (SR-286), the log compaction (SR-287),
-the judge backlog queued (SR-298), then every count the status still shows written down as
+the finished worktrees removed (DEC-190), the judge backlog queued (SR-298), then every count the status still shows written down as
 debug cases (SR-300). Each step's failure is itself a case and the next step still runs.
 
-It writes only main's tree and log (SR-301): never another worktree, another session's loop,
+It writes only main's tree and log (SR-301): never another worktree (but a finished, clean one it removes), another session's loop,
 gate or cards, and it keeps a path an in-flight branch changed. A marker under
 ``.plumb/cache/landed/`` makes a second run for the same landing change nothing; the marker
 holds the line the next turn reads (``lines``)."""
@@ -252,9 +252,7 @@ def compact(core: Any, before: str) -> list[str]:
     root = Path(core.root)
     stamp = int(_git(root, "log", "-1", "--format=%ct", before).strip())
     since_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stamp))
-    prefix = ".plumb/log/"
-    tracked = {p[len(prefix):] for p in _git(root, "ls-files", "--", prefix).split("\n")
-               if p.startswith(prefix)}
+    tracked = log.tracked_names(root)
     pending = inflight_ids(inflight_paths(root))
     return log.archive(core.paths, compaction(core, since_at, tracked, pending))
 
@@ -308,25 +306,77 @@ def status_cases(core: Any, session: str, queued_line: str) -> list[dict]:
 def _commit(root: Path, removed: list[str], archived: list[str], head: str) -> None:
     """One tidy commit of exactly these paths (``removed`` already staged by ``git rm``); the
     owner's other staged work stays staged."""
+    from plumb import log
+
     spec = root / ".plumb" / "cache" / f"landing-{head[:12]}.paths"
     spec.parent.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "GIT_LITERAL_PATHSPECS": "1"}
     message = f"plumb: tidy after the landing of {head[:12]}" + chr(10) * 2 + "SR: SR-296"
     try:
-        for args, paths in ((["add", "-A"], archived),
-                            (["commit", "-q", "--no-verify", "-m", message],
-                             [*removed, *archived])):
-            if not paths:
-                continue
-            spec.write_bytes(chr(0).join(paths).encode("utf-8"))
-            done = subprocess.run(["git", *args, f"--pathspec-from-file={spec}",
-                                   "--pathspec-file-nul"], cwd=root, env=env,
-                                  capture_output=True, text=True, encoding="utf-8",
-                                  errors="replace")
-            if done.returncode:
-                raise RuntimeError(f"git {args[0]}: {done.stderr.strip()[:200]}")
+        log.stage(root, archived)
+        spec.write_bytes(chr(0).join([*removed, *archived]).encode("utf-8"))
+        done = subprocess.run(["git", "commit", "-q", "--no-verify", "-m", message,
+                               f"--pathspec-from-file={spec}", "--pathspec-file-nul"],
+                              cwd=root, env={**os.environ, "GIT_LITERAL_PATHSPECS": "1"},
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace")
+        if done.returncode:
+            raise RuntimeError(f"git commit: {done.stderr.strip()[:200]}")
     finally:
         spec.unlink(missing_ok=True)
+
+
+# --------------------------------------------------------------------------- worktrees (DEC-190)
+
+
+def _loop_names(root: Path, tree: Path, branch: str) -> bool:
+    """Does an open loop (any session, in ``root`` or in ``tree``) name the worktree or branch?
+    shortcut: a text match on the loop file, as loops hold no worktree field; upgrade when
+    they do."""
+    from plumb.understand.cmd_intent import _passed, loops
+
+    needles = {branch, str(tree), tree.as_posix()}
+    return any(not d.get("handed_to") and not _passed(d, "build")
+               and any(n in json.dumps(d) for n in needles)
+               for r in (root, tree) for _, d in loops(r))
+
+
+def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], list[str]]:
+    """``(removed, kept)`` worktree names: every other worktree whose branch this landing
+    merged (its tip in ``before..head``) is removed with its branch, unless it has uncommitted
+    work or an open intent loop names it; then it is named in ``kept`` with the reason. The
+    main checkout and ``root`` itself are never touched."""
+    from plumb import log
+
+    removed: list[str] = []
+    kept: list[str] = []
+    listing = _git(root, "worktree", "list", "--porcelain").split(chr(10) * 2)
+    main = Path(listing[0].splitlines()[0][len("worktree "):]).resolve()
+    for block in listing[1:]:
+        fields = dict(line.partition(" ")[::2] for line in block.splitlines())
+        tree = Path(fields.get("worktree", "")).resolve()
+        branch = fields.get("branch", "").removeprefix("refs/heads/")
+        if not branch or tree in (main, Path(root).resolve()):
+            continue
+        merged = lambda rev: subprocess.run(  # noqa: E731
+            ["git", "merge-base", "--is-ancestor", f"refs/heads/{branch}", rev], cwd=root,
+            capture_output=True).returncode == 0
+        # a tip already in ``before`` may be a branch just forked: only this landing's count
+        if not merged(head) or merged(before):
+            continue
+        try:
+            dirty = [x for x in _git(tree, "status", "--porcelain", "--untracked-files=all"
+                                     ).splitlines() if not log.untracked_own(tree, x)]
+            reason = ("uncommitted changes" if dirty else
+                      "an open intent loop names it" if _loop_names(root, tree, branch) else "")
+            if not reason:
+                _git(root, "worktree", "remove", "--force", str(tree))
+                _git(root, "branch", "-d", branch)
+                removed.append(tree.name)
+                continue
+        except (OSError, subprocess.CalledProcessError) as exc:
+            reason = ((getattr(exc, "stderr", "") or str(exc)).strip().splitlines() or ["?"])[-1][:120]
+        kept.append(f"worktree {tree.name} finished but kept: {reason}")
+    return removed, kept
 
 
 def land(root: Path, head: str, before: str, session: str | None = None) -> dict[str, Any]:
@@ -345,6 +395,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     archived: list[str] = []
     queued = 0
     queued_line = ""
+    gone: list[str] = []
+    kept: list[str] = []
 
     def step(name: str, run: Any) -> None:
         try:
@@ -371,20 +423,28 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         if removed or archived:
             _commit(root, removed, archived, head)
 
+    def do_worktrees() -> None:
+        found = finished_worktrees(root, before, head)
+        gone.extend(found[0])
+        kept.extend(found[1])
+
     step("tidy", do_tidy)
     step("compaction", do_compact)
     step("commit", do_commit)
+    step("worktrees", do_worktrees)
     step("backlog", do_queue)
     step("counts", lambda: cases.extend(status_cases(open_core(root), session, queued_line)))
     moved = sum(1 for p in archived if not p.endswith("archive.jsonl"))
     parts = [f"tidied {', '.join([*removed, *outside])}" if removed or outside
              else "nothing to tidy",
              f"compacted {moved} log entries" if moved else "",
+             f"removed finished worktrees {', '.join(gone)}" if gone else "",
+             *kept,
              f"queued {queued} records for the judge",
              f"{len(cases)} cases went to debugging"]
     line = f"plumb: landing {head[:12]}: " + "; ".join(p for p in parts if p)
     result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
-              "queued": queued, "cases": len(cases)}
+              "queued": queued, "worktrees": gone, "kept": kept, "cases": len(cases)}
     summary.write_cases(open_core(root), head, [{**c, "state": "open"} for c in cases])
     files.write_json_atomic(done, result)
     return result

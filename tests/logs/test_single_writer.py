@@ -21,9 +21,7 @@ WRITES = re.compile(r"write_text|write_bytes|\.touch\(|os\.link|os\.replace|unli
 # log.append wrote)
 READERS = {"paths.py", "commands.py", "merge.py", "validate.py", "hosts/claude_code/install.py",
            "hosts/claude_code/stop.py", "ids/mergefix.py", "mergedriver/conflicts.py",
-           "guard.py", "hosts/claude_code/pretool.py",
-           # the landing job stages what log.archive moved (SR-287)
-           "boundary/landing.py"}
+           "guard.py", "hosts/claude_code/pretool.py"}
 
 
 def test_only_log_py_writes_under_plumb_log() -> None:
