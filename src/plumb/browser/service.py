@@ -133,6 +133,7 @@ class BrowserService:
             return {
                 "studies": [
                     {k: v for k, v in s.items() if k != "body"} for s in study.studies(self.root)
+                    if s["status"] in study.WRITTEN    # an idea has no page (DEC-207)
                 ],
                 "understanding": self._understanding(),
             }

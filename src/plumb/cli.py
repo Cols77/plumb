@@ -109,8 +109,9 @@ intent capture:
   triage       proposed records grouped by faithfulness (advisory; it approves nothing)
   config       auto-approve on|off and show (owner's terminal only)
   jev          status, setup (the credential variable's name only), calibrate
-  study        add | list | candidates | mark: at most one study per intent-loop step, read
-               in the browser room; the understanding picture it corrects
+  study        propose | add | list | candidates | mark: at most one study idea per
+               intent-loop step, written once the owner accepts it, read in the browser
+               room; the understanding picture it corrects
   quotes       recover: find older records' words in past session transcripts (shown on
                the card as found, not verified; it confirms nothing)
 

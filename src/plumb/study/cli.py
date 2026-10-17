@@ -1,7 +1,10 @@
-"""``plumb study add|list|candidates|mark`` (SR-292, SR-293).
+"""``plumb study propose|add|list|candidates|mark`` (SR-292, SR-293, SR-294; DEC-207).
 
-``add --title --why --file [--topic]`` writes a study of the session's open intent loop, for its
-current step, refusing a second one for that step; ``list`` prints the studies; ``candidates``
+``propose --title --why --depth md|diagrams|video [--topic]`` records an idea of a study for
+the session's open intent loop's current step (no page), refusing a second one for that step;
+the owner accepts it at a depth or declines it in the band (``plumb mod study``). ``add <slug>
+--file`` writes an accepted idea's study at the chosen depth; ``list`` prints the studies and
+ideas; ``candidates``
 prints what the agent picks a study from: the understanding picture, the owner's prompts so far,
 the open conflicts, the loop's records and the decisions that matter; ``mark <slug>
 opened|known|deeper`` is the room's own action, also open to the owner's terminal.
@@ -78,7 +81,7 @@ def candidates(core: Any, root: Path, loop: dict[str, Any], loop_id: str) -> dic
     return {
         "loop": {"id": loop_id, "intent": intent, "step": loop.get("step"),
                  "has_study": any(s["loop"] == loop_id and s["step"] == loop.get("step")
-                                  for s in held)},
+                                  for s in held)},     # an idea counts (SR-293 EX-5)
         "picture": picture,
         "known": picture["knows"],       # propose nothing on these (SR-292 EX-1, SR-293 EX-3)
         "deeper": picture["needs"],      # a deeper study is a candidate (EX-2)
@@ -88,8 +91,13 @@ def candidates(core: Any, root: Path, loop: dict[str, Any], loop_id: str) -> dic
         "matters": [{"id": r.id, "title": r.title} for r in index.values()
                     if r.kind == "decision" and r.fields.get("matters") is True
                     and any(link.target.record in ids for link in r.links)],
-        "studies": [{k: s.get(k, "") for k in ("slug", "title", "topic", "step", "status")}
-                    for s in held],
+        "studies": [{k: s.get(k, "") for k in ("slug", "title", "topic", "step", "status",
+                                                "depth")} for s in held],
+        # the owner said 'not now' to these: never propose them again (SR-293 EX-9)
+        "declined": [s.get("topic") or s["title"] for s in held if s["status"] == "declined"],
+        # accepted ideas still to write, at the owner's depth (SR-294 EX-8)
+        "accepted": [{k: s.get(k, "") for k in ("slug", "title", "depth")}
+                     for s in study.accepted(root)],
     }
 
 
@@ -99,11 +107,16 @@ def run(command: str, argv: list[str]) -> int:
         description="Studies the owner reads in the browser room, at most one per step of an "
                     "intent loop, and the understanding picture they correct. Approves nothing.")
     verbs = parser.add_subparsers(dest="verb", required=True)
-    adder = verbs.add_parser("add", help="a study of the open loop's current step")
-    adder.add_argument("--title", required=True)
-    adder.add_argument("--why", required=True, help="why it is worth reading now")
-    adder.add_argument("--file", required=True, help="the body: plain words, optional mermaid")
-    adder.add_argument("--topic", default=None, help="what it is about (default: the title)")
+    proposer = verbs.add_parser("propose", help="an idea of a study for the open loop's step")
+    proposer.add_argument("--title", required=True)
+    proposer.add_argument("--why", required=True, help="one line: why it is worth reading now")
+    proposer.add_argument("--depth", required=True, choices=study.DEPTHS,
+                          help="the depth you recommend; the owner chooses")
+    proposer.add_argument("--topic", default=None, help="what it is about (default: the title)")
+    adder = verbs.add_parser("add", help="write the study of an idea the owner accepted")
+    adder.add_argument("slug")
+    adder.add_argument("--file", required=True,
+                       help="the body: plain words, mermaid only at depth diagrams")
     verbs.add_parser("list")
     verbs.add_parser("candidates", help="what to pick this step's study from")
     marker = verbs.add_parser("mark")
@@ -118,17 +131,23 @@ def run(command: str, argv: list[str]) -> int:
         return int(exc.code) if isinstance(exc.code, int) else EXIT_USAGE
     root = resolve_root(args.root)
     try:
-        if args.verb == "add":
+        if args.verb == "propose":
             path, loop = _open_loop(root, args)
+            slug = study.propose(root, title=args.title, why=args.why, depth=args.depth,
+                                 loop=path.stem, step=str(loop.get("step")), topic=args.topic)
+            emit({"slug": slug} if args.as_json else
+                 f"plumb: study idea: {args.title} ({slug}); write nothing until the owner "
+                 "accepts it in the band", args.as_json)
+        elif args.verb == "add":
             body = Path(args.file).read_text(encoding="utf-8")
-            slug = study.add(root, title=args.title, why=args.why, body=body, loop=path.stem,
-                             step=str(loop.get("step")), topic=args.topic)
-            emit({"slug": slug} if args.as_json else f"plumb: new study: {args.title}",
-                 args.as_json)
+            slug = study.add(root, args.slug, body)
+            emit({"slug": slug} if args.as_json else
+                 f"plumb: new study: {study.get(root, slug)['title']}", args.as_json)
         elif args.verb == "list":
             held = study.studies(root)
             emit([{k: v for k, v in s.items() if k != "body"} for s in held] if args.as_json
-                 else [f"{s['status']:7} {s['step']:8} {s['title']} ({s['slug']})" for s in held]
+                 else [f"{s['status']:8} {s.get('depth') or '-':8} {s['step']:8} {s['title']} "
+                       f"({s['slug']})" for s in held]
                  or ["plumb: no study yet"], args.as_json)
         elif args.verb == "candidates":
             from plumb.api import open_core

@@ -41,6 +41,31 @@ async function band($: any, on: any, surface: (typeof SURFACES)[number], loop = 
 }
 
 const rooms = (w: ReturnType<typeof world>) => w.runs.filter(r => r.argv[4] === 'room')
+const chosen = (w: ReturnType<typeof world>) => w.runs.filter(r => r.argv[4] === 'study')
+
+// DEC-207: a study idea, as `plumb study propose` writes it: no page yet
+const IDEA_SLUG = 'how-the-dispatcher-hands-out-jobs'
+const IDEA = `${ROOT}/.plumb/studies/${IDEA_SLUG}.md`
+const IDEA_TITLE = 'How the dispatcher hands out jobs'
+const idea = (status: string, depth = '') =>
+  `---\ntitle: ${JSON.stringify(IDEA_TITLE)}\ntopic: "dispatcher"\nstep: "plan"\nloop: "aaaaaaaaaaaa"\n` +
+  `why: "the plan adds a dispatcher you will tune later"\nrecommend: "diagrams"\ndepth: ${JSON.stringify(depth)}\n` +
+  `status: ${JSON.stringify(status)}\n---\n`
+
+async function ideaBand($: any, on: any, surface: (typeof SURFACES)[number], loop = true) {
+  const made = await band($, on, surface, loop)
+  const answer = made.w.answer
+  // what plumb mod study does: the idea accepted at the depth, or declined
+  made.w.answer = (action, argv) => {
+    if (action !== 'study') return answer(action, argv)
+    const depth = argv[argv.indexOf('--depth') + 1]!
+    made.w.files[IDEA] = depth === 'none' ? idea('declined') : idea('accepted', depth)
+    return { exitCode: 0, data: { slug: IDEA_SLUG, status: depth === 'none' ? 'declined' : 'accepted', depth } }
+  }
+  made.w.files[IDEA] = idea('idea')
+  await $.turn.complete(TURN_DONE)
+  return made
+}
 
 for (const surface of SURFACES) {
   describe(`a new study on the ${surface}`, () => {
@@ -135,6 +160,65 @@ for (const surface of SURFACES) {
       await ui.press({ key: 'study' })
       expect(await ui.find({ type: 'Text', text: /^new study/ })).toBeUndefined()
       expect(w.toasts.filter(t => t.startsWith('new study'))).toEqual([])
+      await ui.unmount()
+    })
+
+    test("SR-294 EX-7: the band's study idea line; its press shows the why and the depths, the recommended one marked", async ($, on) => {
+      const { w, ui } = await ideaBand($, on, surface)
+      const line = await ui.find({ type: 'Text', text: `study idea: ${IDEA_TITLE}` })
+      expect(line?.props.color).toBe(BRASS)
+      expect(await ui.find({ key: 'idea:md' })).toBeUndefined() // closed until pressed
+      await ui.press({ key: 'idea' })
+      expect(await ui.find({ type: 'Text', text: '  the plan adds a dispatcher you will tune later' })).toBeDefined()
+      expect((await ui.find({ key: 'idea:md' }))?.props.label).toBe('Markdown only')
+      expect((await ui.find({ key: 'idea:diagrams' }))?.props.label).toBe('with diagrams (recommended)')
+      expect((await ui.find({ key: 'idea:none' }))?.props.label).toBe('not now')
+      // video is drawn dim, not offered: no Button to press until video studies exist
+      expect((await ui.find({ type: 'Text', text: 'video (not available yet)' }))?.props.dimColor).toBe(true)
+      expect(rooms(w)).toEqual([])
+      expect(w.toasts.filter(t => /study/.test(t))).toEqual([])
+      await ui.unmount()
+    })
+
+    test("SR-294 EX-8: choosing 'with diagrams' records it accepted at that depth, the key on stdin; the room stays closed", async ($, on) => {
+      const { w, ui } = await ideaBand($, on, surface)
+      await ui.press({ key: 'idea' })
+      await ui.press({ key: 'idea:diagrams' })
+      const [run] = chosen(w)
+      expect(run?.argv.slice(3)).toEqual(['mod', 'study', '--session', SESSION, '--root', ROOT, '--json',
+        '--study', IDEA_SLUG, '--depth', 'diagrams'])
+      const key = JSON.parse(run?.stdin ?? '{}').key as string
+      expect(key).toMatch(/^[0-9a-f]{64}$/)
+      expect(run?.argv.join(' ')).not.toContain(key)
+      expect(run?.env.PLUMB_AGENT_SESSION).toBe('')
+      expect(w.files[IDEA]).toContain('status: "accepted"')
+      expect(await ui.find({ type: 'Text', text: /^study idea/ })).toBeUndefined()
+      expect(rooms(w)).toEqual([])
+      await ui.unmount()
+    })
+
+    test("SR-294 EX-9: choosing 'not now': the idea's line is gone and nothing was written", async ($, on) => {
+      const { w, ui } = await ideaBand($, on, surface)
+      await ui.press({ key: 'idea' })
+      await ui.press({ key: 'idea:none' })
+      expect(chosen(w)[0]?.argv.slice(-2)).toEqual(['--depth', 'none'])
+      expect(await ui.find({ type: 'Text', text: /^study idea/ })).toBeUndefined()
+      expect(await ui.find({ key: 'idea:md' })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /^new study/ })).toBeUndefined()
+      expect(rooms(w)).toEqual([])
+      await ui.unmount()
+    })
+
+    test("SR-294 EX-7, DEC-183: an idea waiting after the loop folds into the one line as a brass 'study idea'", async ($, on) => {
+      const { w, ui } = await ideaBand($, on, surface, false)
+      expect(await ui.find({ type: 'Text', text: /^study idea:/ })).toBeUndefined() // no second line
+      const press = await ui.find({ type: 'Text', text: 'study idea' })
+      expect(press?.props.color).toBe(BRASS)
+      await ui.press({ key: 'idea' })
+      expect(await ui.find({ type: 'Text', text: `  ${IDEA_TITLE}: the plan adds a dispatcher you will tune later` })).toBeDefined()
+      await ui.press({ key: 'idea:md' })
+      expect(chosen(w)[0]?.argv.slice(-2)).toEqual(['--depth', 'md'])
+      expect(rooms(w)).toEqual([])
       await ui.unmount()
     })
   })

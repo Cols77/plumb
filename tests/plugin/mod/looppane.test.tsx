@@ -128,6 +128,26 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
+    test('SR-305 EX-6: plumb says the loop ended before the band does: the pane still closes by itself', async ($, on) => {
+      const w = loopWorld()
+      let open = true
+      const answer = w.answer
+      w.answer = (action, argv) => action === 'status' && !open ? { exitCode: 0, data: [] } : answer(action, argv)
+      const clock = install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loop' })
+      // intent done: `plumb intent status` has no open loop while the band's file still moves
+      open = false
+      w.files[LOOP] = JSON.stringify({ ...STATUS[0], tasks: { ...STATUS[0]!.tasks, done: 4 } })
+      await clock.advance(2000) // the band's period (POLL_MS in register.tsx)
+      expect(w.closed).toEqual(['plumb-cards'])
+      w.files[LOOP] = JSON.stringify({ ...STATUS[0], step: 'proven' })
+      await clock.advance(2000)
+      expect(w.closed).toEqual(['plumb-cards'])
+      await band.unmount()
+    })
+
     test('SR-305 EX-5: no loop open: no strip, and nothing opens the pane for a loop', async ($, on) => {
       const w = loopWorld(null)
       install(on, w)

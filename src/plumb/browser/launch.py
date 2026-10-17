@@ -62,7 +62,8 @@ def _start(root: Path, token: str) -> str:
 def open_study(root: Path, session: str, key: str, slug: str) -> dict[str, Any]:
     """Open the room on ``slug`` (starting it when this panel's room is not running), then
     mark the study opened so the band's line goes."""
-    study.get(root, slug)               # LookupError: no such study
+    if study.get(root, slug)["status"] not in study.WRITTEN:   # LookupError: no such study
+        raise LookupError("the study is not written yet")
     token = room_token(key)
     path = files.session_dir(root, session) / ROOM_FILE
     held = files.read_json(path)

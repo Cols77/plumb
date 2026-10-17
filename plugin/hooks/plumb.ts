@@ -315,12 +315,13 @@ function front(text: string, key: string): string {
   }
 }
 
-/** The studies still `new` in `.plumb/studies` (SR-294), oldest first by file name: the band
- * names them until the owner opens each in the room; empty when none waits. */
-export async function readStudies(io: Io, link: PlumbLink): Promise<{ title: string; slug: string }[]> {
+type StudyFile = { title: string; slug: string; status: string; why: string; recommend: string }
+
+/** Every study file in `.plumb/studies`, oldest first by file name. */
+async function studyFiles(io: Io, link: PlumbLink): Promise<StudyFile[]> {
   const folder = join(link.root, '.plumb', 'studies')
   let names: string[] = []
-  const found: { title: string; slug: string }[] = []
+  const found: StudyFile[] = []
   try {
     names = (await io.list(folder)).filter(n => n.endsWith('.md')).sort()
   } catch {
@@ -330,7 +331,10 @@ export async function readStudies(io: Io, link: PlumbLink): Promise<{ title: str
     try {
       const text = await io.read(join(folder, name))
       const title = front(text, 'title')
-      if (front(text, 'status') === 'new' && title) found.push({ title, slug: name.slice(0, -3) })
+      if (title) {
+        found.push({ title, slug: name.slice(0, -3), status: front(text, 'status'), why: front(text, 'why'),
+          recommend: front(text, 'recommend') })
+      }
     } catch {
       // a study being written: the next read names it
     }
@@ -338,12 +342,27 @@ export async function readStudies(io: Io, link: PlumbLink): Promise<{ title: str
   return found
 }
 
+/** The studies still `new` (SR-294): the band names them until the owner opens each in the
+ * room; empty when none waits. */
+export async function readStudies(io: Io, link: PlumbLink): Promise<{ title: string; slug: string }[]> {
+  return (await studyFiles(io, link)).filter(s => s.status === 'new').map(({ title, slug }) => ({ title, slug }))
+}
+
+/** The owner pressed a choice on a study idea (SR-294 EX-7..EX-9, DEC-207): plumb records it
+ * accepted at `depth` (`md`, `diagrams`) or declined (`none`); the room does not open. */
+export function chooseStudy(io: Io, link: PlumbLink, slug: string, depth: string): Promise<Ran> {
+  return plumbMod(io, link, 'study', { key: link.key }, ['--study', slug, '--depth', depth])
+}
+
 /** The band's first line: plumb's status card (status.json) and SP8's progress, if running. */
 export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> {
   const status = await readJson(io, join(link.root, '.plumb', 'session', 'status.json'))
   const progress = await readJson(io, join(sessionDir(link.root, link.session), 'progress'))
-  const studies = await readStudies(io, link)
+  const files = await studyFiles(io, link)
+  const studies = files.filter(s => s.status === 'new').map(({ title, slug }) => ({ title, slug }))
   const study = studies.at(-1) ?? { title: '', slug: '' }
+  // DEC-207: ideas waiting for the owner's choice, oldest first
+  const ideas = files.filter(s => s.status === 'idea').map(({ title, slug, why, recommend }) => ({ title, slug, why, recommend }))
   // SR-251: the records a judge approved, the set `plumb status` lists (judge_approved); an
   // older status.json without it counts the requirements in confirmed_by
   const by = status?.confirmed_by && typeof status.confirmed_by === 'object' ? status.confirmed_by : {}
@@ -362,6 +381,7 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     study: study.title,
     studySlug: study.slug,
     studies,
+    ideas,
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
   }
 }

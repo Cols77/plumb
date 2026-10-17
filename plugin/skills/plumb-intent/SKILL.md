@@ -63,17 +63,21 @@ is missing; `plumb intent status` says which gate is open. When the edit hook re
 link stale, before the turn ends: repin it after its tests pass, relink it when the code
 moved, or card it when the meaning changed.
 
-Studies: as each stage ends, run `plumb study candidates --json` and write at most one study
-for the step, none when nothing valuable stands out and none on a topic in `known`. Pick from:
-a key architectural choice being made or built, a gap in the owner's understanding (`picture`,
-`prompts`; a `deeper` line asks for more depth), what they need to know to choose well later,
-an open conflict in `conflicts` laid out on both sides choosing nothing, or a feature the work
-makes easy, labelled a suggestion. Write it in plain words with the records' examples and a
-mermaid diagram when it is about structure or flow, then
-`plumb study add --title <it> --topic <what it is about> --why <why now> --file <body.md>`;
-the band and a notification announce it, and the owner reads it in the room when they choose.
-Never open the room, and never take 'I know this' or 'Go deeper' as an answer: they correct
-the picture only.
+Studies (DEC-207): as each stage ends, run `plumb study candidates --json` and propose at
+most one study idea for the step, none when nothing valuable stands out, none on a topic in
+`known` and never one in `declined`. Pick from: a key architectural choice being made or built,
+a gap in the owner's understanding (`picture`, `prompts`; a `deeper` line asks for more depth),
+what they need to know to choose well later, an open conflict in `conflicts` laid out on both
+sides choosing nothing, or a feature the work makes easy, labelled a suggestion. Propose the
+idea only, never the study: `plumb study propose --title <it> --topic <what it is about>
+--why <one line> --depth md|diagrams|video`, with the depth you recommend (diagrams when it is
+about structure or flow). The band shows it; the owner accepts it at a depth (Markdown only,
+with diagrams) or says not now, and chooses, not you. Write no study before it is accepted.
+When plumb tells you an idea was accepted (the prompt's line, or `accepted` in the candidates),
+write it at that depth in plain words with the records' examples, a mermaid diagram only at
+depth `diagrams` and none at `md`, then `plumb study add <slug> --file <body.md>`; the band
+announces it and the owner reads it in the room when they choose. Never open the room, and
+never take 'I know this' or 'Go deeper' as an answer: they correct the picture only.
 
 The loop's gates approve nothing. Speak in the owner's terms; paste nothing capture prints.
 

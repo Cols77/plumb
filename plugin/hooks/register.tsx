@@ -74,16 +74,17 @@ async function reread(io: Io, link: PlumbLink, view: PlumbView) {
 
 /** SR-305: the loop pane, while open, follows the band: read again when the band's status moved.
  * A closed pane is never told (the host gives no close event), so it is read again at most once
- * per move of the status; closed when the loop is gone. */
+ * per move of the status; closed when the loop is gone, whether the band's files or
+ * `plumb intent status` say so first (SR-305 EX-6). */
 async function refreshPane($: any, io: Io, link: PlumbLink) {
   if ((await read($, paneAtom)).loop === null) return
-  if (!(await read($, viewAtom)).status?.loop) {
-    // the loop ended: its pane closes rather than fall back to the cards (round 4)
+  const loop = (await read($, viewAtom)).status?.loop ? await plumb.loopPane(io, link) : null
+  if (loop === null) {
+    // the loop ended: its pane closes rather than fall back to the cards (rounds 4 and 5)
     await update($, paneAtom, p => ({ ...p, loop: null }))
     await $.ui.close({ id: PANE })
     return
   }
-  const loop = await plumb.loopPane(io, link)
   await update($, paneAtom, p => ({ ...p, loop: p.loop === null ? null : loop }))
 }
 
@@ -180,6 +181,25 @@ function loopPane(ui: Ui, loop: PlumbLoopPane, color: string, brass: string) {
   )
 }
 
+/** A study idea's why and the depths the owner chooses from (SR-294 EX-7, DEC-207): Markdown
+ * only, with diagrams, video (drawn, not offered, until video studies exist), and 'not now';
+ * the agent's recommended depth marked. */
+function ideaChoices(ui: Ui, idea: { title: string; why: string; recommend: string }, titled: boolean, brass: string) {
+  const { Box, Button, Text } = ui
+  const label = (d: string) => T.depths[d] + (idea.recommend === d ? T.recommended : '')
+  return (
+    <Box key="idea:choices" flexDirection="column">
+      <Text key="idea:why" dimColor>{`  ${titled ? `${idea.title}: ` : ''}${idea.why}`}</Text>
+      <Box key="idea:depths" flexDirection="row" gap={1}>
+        <Button key="idea:md" label={label('md')} onPress={() => {}} />
+        <Button key="idea:diagrams" label={label('diagrams')} onPress={() => {}} />
+        <Text key="idea:video" dimColor>{label('video')}</Text>
+        <Button key="idea:none" label={T.notNow} onPress={() => {}} />
+      </Box>
+    </Box>
+  )
+}
+
 /** The band: one line of status, the cards awaiting per feature, then the awaiting card in
  * full (every card with Show all). */
 function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, color: string, brass: string) {
@@ -200,6 +220,7 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
   const shown = band.showAll ? everyOpen : compact ? [] : waiting.slice(0, 1)
   const loop = view.status?.loop
   const studies = view.status?.studies ?? []
+  const idea = (view.status?.ideas ?? []).at(-1) // DEC-207: the newest idea waiting for a choice
   return (
     <Box flexDirection="column" width={columns}>
       <Box flexDirection="row" gap={1}>
@@ -212,6 +233,12 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
             <Text key="head:studies" color={brass}>{T.newStudies(studies.length)}</Text>
           </Button>
         ) : null}
+        {!loop && idea ? (
+          // DEC-183 style: no loop open, the idea folds into the one line too
+          <Button key="idea" plain onPress={() => {}}>
+            <Text key="head:idea" color={brass}>{T.studyIdeaFolded}</Text>
+          </Button>
+        ) : null}
       </Box>
       {loop ? loopLines(ui, loop, color, brass) : null}
       {loop && view.status?.study ? (
@@ -220,6 +247,13 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
           <Text key="loop:study" color={brass}>{T.newStudy(view.status.study)}</Text>
         </Button>
       ) : null}
+      {loop && idea ? (
+        // SR-294: the agent's study idea, a brass line under the loop's; a press shows its choices
+        <Button key="idea" plain onPress={() => {}}>
+          <Text key="loop:idea" color={brass}>{T.studyIdea(idea.title)}</Text>
+        </Button>
+      ) : null}
+      {idea && band.idea ? ideaChoices(ui, idea, !loop, brass) : null}
       {!loop && band.studies ? studies.map(st => (
         // SR-294 EX-6: the small menu in the band, the new studies by title
         <Button key={`study:${st.slug}`} plain onPress={() => {}}>
@@ -529,6 +563,10 @@ export const register: Register = on => {
       await update($, bandAtom, b => ({ ...b, studies: !b.studies })) // opens or closes the menu
       return next(e)
     }
+    if (key === 'idea') {
+      await update($, bandAtom, b => ({ ...b, idea: !b.idea })) // shows or hides the choices
+      return next(e)
+    }
     if (key === 'fewer') {
       await update($, bandAtom, b => ({ ...b, showAll: false }))
       return next(e)
@@ -581,6 +619,13 @@ export const register: Register = on => {
       if (!slug) return next(e)
       const ran = await plumb.room(io, link, slug)
       line = ran.ok ? '' : T.roomFailed
+    } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:none') {
+      // SR-294 EX-8, EX-9: the owner's choice on the idea is recorded; the room stays closed
+      const idea = (view.status?.ideas ?? []).at(-1)
+      await update($, bandAtom, b => ({ ...b, idea: false }))
+      if (!idea) return next(e)
+      const ran = await plumb.chooseStudy(io, link, idea.slug, key.slice('idea:'.length))
+      line = ran.ok ? '' : T.chooseFailed
     } else if (key.startsWith('press:')) {
       const found = findPress(view.cards, key)
       if (found === null) return next(e)

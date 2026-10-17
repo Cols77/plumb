@@ -40,6 +40,12 @@ export const T = {
   stopped: (what: string) => `stopped, waits for ${what}`,
   newStudy: (title: string) => `new study: ${title}`,
   newStudies: (n: number) => (n === 1 ? 'new study' : `${n} new studies`),
+  studyIdea: (title: string) => `study idea: ${title}`,
+  studyIdeaFolded: 'study idea',
+  // DEC-207: the depths the owner chooses from; video is plumb-12's later work
+  depths: { md: 'Markdown only', diagrams: 'with diagrams', video: 'video (not available yet)' } as Record<string, string>,
+  notNow: 'not now',
+  chooseFailed: 'plumb could not record that choice; nothing changed. Try again.',
   judged: (n: number) => `${n} judge-approved`,
   roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',
   loopTitle: 'plumb: the intent loop',

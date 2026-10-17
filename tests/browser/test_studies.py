@@ -6,12 +6,12 @@ import threading
 import webbrowser
 
 import pytest
+from study.helpers import written
 from understand import test_intent_loop
 from understand.test_intent_loop import SESSION
 
 from plumb import study
 from plumb.api import open_core
-from plumb.study import cli
 
 from .test_server import auth, request
 
@@ -31,9 +31,7 @@ def room(intent, tmp_path, monkeypatch):
     monkeypatch.setattr(webbrowser, "open", lambda *a, **k: opened.append(a))
     body = tmp_path / "body.md"
     body.write_text("A dispatcher hands each job to a worker.\n", encoding="utf-8")
-    assert cli.run("study", ["add", "--title", TITLE, "--topic", "hooks",
-                             "--why", "the plan adds a job", "--file", str(body),
-                             "--root", str(intent), "--session", SESSION]) == 0
+    assert written(intent, SESSION, TITLE, "the plan adds a job", body, topic="hooks") == 0
     httpd = make_server(BrowserService(intent), port=0, token="test-token")
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()

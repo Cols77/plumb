@@ -1,9 +1,13 @@
-"""Studies and the understanding picture (SR-292, SR-293; DEC-152, DEC-154).
+"""Studies and the understanding picture (SR-292, SR-293, SR-294; DEC-152, DEC-154, DEC-207).
 
-A study is ``.plumb/studies/<slug>.md``: frontmatter ``title, topic, step, loop, why, status``
-(``new``, ``opened``, ``known``, ``deeper``), then the body in plain words with an optional
-mermaid diagram. ``.plumb/understanding.md`` is the picture of what the owner understands of
-the system: plain lines ``- knows: <topic>`` and ``- needs: <topic>``, which the owner edits in
+A study is ``.plumb/studies/<slug>.md``: frontmatter ``title, topic, step, loop, why,
+recommend, depth, status``, then the body in plain words with an optional mermaid diagram. It
+starts as an idea (DEC-207): a title, one line of why and the depth the agent recommends, with
+no body (``idea``). The owner's press in the band accepts it at a depth (``accepted``) or
+declines it (``declined``, never proposed again); only an accepted idea is written (``new``),
+at the chosen depth, then read (``opened``, ``known``, ``deeper``).
+
+``.plumb/understanding.md`` is the picture of what the owner understands of the system: plain lines ``- knows: <topic>`` and ``- needs: <topic>``, which the owner edits in
 the browser room. 'I know this' and 'Go deeper' change a study's status and the picture only:
 they are never an answer delivered to a session (DEC-152), and a study about an open conflict
 chooses nothing (DEC-154).
@@ -17,7 +21,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-STATUSES = ("new", "opened", "known", "deeper")
+IDEAS = ("idea", "accepted", "declined")
+WRITTEN = ("new", "opened", "known", "deeper")
+STATUSES = (*IDEAS, *WRITTEN)
+DEPTHS = ("md", "diagrams", "video")
+# shortcut: video studies are plumb-12's later work; add "video" here once they can be written
+OFFERED = ("md", "diagrams")
 MARKS = {"opened": "opened", "known": "known", "deeper": "deeper"}
 PICTURE_LIMIT = 65536
 _LINE = re.compile(r"^\s*-\s*(knows|needs)\s*:\s*(.+?)\s*$", re.IGNORECASE)
@@ -130,23 +139,80 @@ def slug_of(root: Path, title: str) -> str:
     return slug
 
 
-def add(root: Path, *, title: str, why: str, body: str, loop: str, step: str,
-        topic: str | None = None) -> str:
-    """Write a new study of ``loop``'s ``step``; its slug. At most one per step (SR-293 EX-5),
-    and none on a topic the picture says the owner knows (SR-292 EX-1, SR-293 EX-3)."""
+def _same(a: dict[str, Any], topic: str, title: str) -> bool:
+    return _key(a.get("topic") or a.get("title", "")) == _key(topic) or (
+        _key(a.get("title", "")) == _key(title))
+
+
+def propose(root: Path, *, title: str, why: str, depth: str, loop: str, step: str,
+            topic: str | None = None) -> str:
+    """An idea of a study for ``loop``'s ``step`` (SR-293 EX-6): no page is written. At most
+    one per step, ideas counted (EX-5); none on a topic the owner knows (SR-292 EX-1, SR-293
+    EX-3) or on an idea the owner declined (EX-9)."""
     topic = (topic or title).strip()
-    if not title.strip() or not body.strip():
-        raise ValueError("a study needs a title and a body")
+    if not title.strip() or not why.strip():
+        raise ValueError("a study idea needs a title and one line of why")
+    if depth not in DEPTHS:
+        raise ValueError(f"the recommended depth is one of {', '.join(DEPTHS)}")
     held = next((s for s in studies(root) if s.get("loop") == loop and s.get("step") == step),
                 None)
     if held:
         raise ValueError(f"the {step} step already has its study: {held['title']}")
     if knows(root, topic):
         raise ValueError(f"the owner knows {topic} (the understanding picture): no study")
+    if any(s["status"] == "declined" and _same(s, topic, title) for s in studies(root)):
+        raise ValueError(f"the owner declined a study of {topic}: it is not proposed again")
     slug = slug_of(root, title)
     _write(folder(root) / f"{slug}.md", _front({
-        "title": title.strip(), "topic": topic, "step": step, "loop": loop, "why": why.strip(),
-        "status": "new"}) + "\n" + body.strip() + "\n")
+        "title": title.strip(), "topic": topic, "step": step, "loop": loop,
+        "why": " ".join(why.split()), "recommend": depth, "depth": "", "status": "idea"}))
+    return slug
+
+
+def _fields(found: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in found.items() if k not in ("slug", "body", "status")}
+
+
+def choose(root: Path, slug: str, depth: str | None) -> dict[str, Any]:
+    """The owner's choice on an idea (SR-294 EX-7..EX-9): accepted at ``depth``, or declined
+    when ``depth`` is None ('not now'). Only the panel's key-checked press calls this."""
+    found = get(root, slug)
+    if found["status"] != "idea":
+        raise ValueError(f"the study {found['title']} is no longer an idea")
+    if depth is not None and depth not in OFFERED:
+        raise ValueError(f"the depth is one of {', '.join(OFFERED)}"
+                         + (" (video studies are not available yet)" if depth == "video" else ""))
+    _write(folder(root) / f"{slug}.md", _front({
+        **_fields(found), "depth": depth or "",
+        "status": "accepted" if depth else "declined"}) + found["body"])
+    return get(root, slug)
+
+
+def accepted(root: Path) -> list[dict[str, Any]]:
+    """The ideas the owner accepted and the agent has still to write, oldest first."""
+    return [s for s in studies(root) if s["status"] == "accepted"]
+
+
+def accepted_lines(root: Path) -> list[str]:
+    """What the agent is told at its next turn (SR-294 EX-8): each accepted idea at its depth."""
+    return [f"plumb: the owner accepted the study idea '{s['title']}' at depth {s['depth']}"
+            f"{' (no diagram)' if s['depth'] == 'md' else ''}: write it now with "
+            f"plumb study add {s['slug']} --file <body.md>" for s in accepted(root)]
+
+
+def add(root: Path, slug: str, body: str) -> str:
+    """Write the study of an idea the owner accepted, at the depth they chose (SR-293 EX-7,
+    EX-8): never before acceptance, and 'Markdown only' has no diagram."""
+    found = get(root, slug)
+    if found["status"] != "accepted":
+        raise ValueError(f"the study {found['title']} is not accepted by the owner"
+                         + (" yet: propose it and wait" if found["status"] == "idea" else ""))
+    if not body.strip():
+        raise ValueError("a study needs a body")
+    if found.get("depth") == "md" and "```mermaid" in body:
+        raise ValueError("the owner chose Markdown only: the study has no diagram")
+    _write(folder(root) / f"{slug}.md",
+           _front({**_fields(found), "status": "new"}) + "\n" + body.strip() + "\n")
     return slug
 
 
@@ -156,11 +222,12 @@ def mark(root: Path, slug: str, how: str) -> dict[str, Any]:
     if how not in MARKS:
         raise ValueError("mark is one of opened, known, deeper")
     study = get(root, slug)
+    if study["status"] not in WRITTEN:
+        raise LookupError(f"the study {study['title']} is not written yet")
     if how == "opened" and study["status"] != "new":
         return study    # opening again changes nothing
-    fields = {k: study.get(k, "") for k in ("title", "topic", "step", "loop", "why")}
     _write(folder(root) / f"{slug}.md",
-           _front({**fields, "status": MARKS[how]}) + study["body"])
+           _front({**_fields(study), "status": MARKS[how]}) + study["body"])
     if how == "known":
         _set_line(root, "knows", study["topic"] or study["title"])
     elif how == "deeper":

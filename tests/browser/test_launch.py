@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import pytest
 from mod.helpers import DIGEST, KEY, run_mod
+from study.helpers import written
 from understand import test_intent_loop
 from understand.test_intent_loop import SESSION
 
 from plumb import study
 from plumb.browser import launch
-from plumb.study import cli
 
 pytestmark = pytest.mark.sr("SR-294")
 
@@ -26,9 +26,7 @@ def announced(intent, tmp_path, monkeypatch, capsys):
     """A study added during the loop, the panel registered, and no real room or browser."""
     body = tmp_path / "body.md"
     body.write_text("A dispatcher hands each job to a worker.\n", encoding="utf-8")
-    assert cli.run("study", ["add", "--title", TITLE, "--why", "the plan adds a job",
-                             "--file", str(body), "--root", str(intent),
-                             "--session", SESSION]) == 0
+    assert written(intent, SESSION, TITLE, "the plan adds a job", body) == 0
     assert run_mod(monkeypatch, capsys, intent, "hello", "--session", SESSION,
                    stdin={"key_digest": DIGEST})[0] == 0
     seen = {"started": [], "opened": [], "alive": False}

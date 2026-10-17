@@ -12,6 +12,10 @@ All of them take ``--session <id>`` and read one JSON object on stdin; none take
 - ``room``   ``--study <slug>``, stdin ``{"key": "<64 hex>"}``: the owner pressed the band's new
   study line: the browser room opens on it and the study is marked opened (SR-294). Answer
   ``{origin, slug, status}``.
+- ``study``  ``--study <slug> --depth md|diagrams|none``, stdin ``{"key": "<64 hex>"}``: the
+  owner's choice on a study idea in the band: accepted at that depth, or declined ('not now',
+  ``none``) (SR-294 EX-7..EX-9, DEC-207). ``video`` is refused until video studies exist.
+  Answer ``{slug, status, depth}``. Never opens the room.
 
 Exit codes: 0 done, 1 the card no longer exists, 2 usage (no such button), 3 refused (the agent
 session marker, no panel registered, no key, another key, an offer never drawn): nothing
@@ -37,12 +41,13 @@ def _answer(data: Any, as_json: bool) -> None:
 
 def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="plumb mod")
-    parser.add_argument("action", choices=("hello", "draw", "press", "room"))
+    parser.add_argument("action", choices=("hello", "draw", "press", "room", "study"))
     add_common(parser)
     parser.add_argument("--session", required=True)
     parser.add_argument("--offer", default=None)
     parser.add_argument("--choice", type=int, default=None)
     parser.add_argument("--study", default=None)
+    parser.add_argument("--depth", default=None)
     args = parser.parse_args(argv)
     from plumb.api import open_core
     from plumb.mod import offers, press, session
@@ -72,6 +77,22 @@ def run(command: str, argv: list[str]) -> int:
                 return EXIT_USAGE
             _answer(launch.open_study(root, args.session, str(payload["key"]).lower(),
                                       args.study), args.as_json)
+            return EXIT_OK
+        if args.action == "study":
+            from plumb import study
+
+            session.check_key(root, args.session, payload, "study")
+            if not args.study or not args.depth:
+                print("plumb mod study: --study and --depth are required", file=sys.stderr)
+                return EXIT_USAGE
+            try:
+                chosen = study.choose(root, args.study,
+                                      None if args.depth == "none" else args.depth)
+            except ValueError as exc:
+                print(f"plumb mod study: {exc}", file=sys.stderr)
+                return EXIT_USAGE
+            _answer({"slug": args.study, "status": chosen["status"],
+                     "depth": chosen.get("depth", "")}, args.as_json)
             return EXIT_OK
         if not args.offer or args.choice is None:
             print("plumb mod press: --offer and --choice are required", file=sys.stderr)

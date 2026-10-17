@@ -115,6 +115,9 @@ export type PlumbStatus = {
   studySlug?: string
   /** every study still new, oldest first: the band's 'new study' menu once no loop is open (SR-294 EX-6) */
   studies?: { title: string; slug: string }[]
+  /** study ideas the agent proposed, waiting for the owner's choice, oldest first: the band's
+   * brass idea line, whose press shows the why and the depths (SR-294 EX-7, DEC-207) */
+  ideas?: { title: string; slug: string; why: string; recommend: string }[]
   /** the requirements a judge approved (auto-jev, auto-model), counted in the head (SR-251) */
   judged?: number
 }
@@ -148,6 +151,8 @@ export type PlumbBand = {
   shown: string[]
   /** the band's 'new study' menu is open (SR-294 EX-6) */
   studies?: boolean
+  /** the newest study idea's choices are shown (SR-294 EX-7) */
+  idea?: boolean
 }
 
 declare module 'claude-code' {
