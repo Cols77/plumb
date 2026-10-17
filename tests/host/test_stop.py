@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 import pytest
-from fakes import FakeVerify
+from fakes import FakeVerify, agent_notes
 
 from plumb import approvals
 from plumb.api import open_core
@@ -194,8 +194,9 @@ def test_regression_blocks_with_owner_instruction(project: Path, hook_input) -> 
                                           "turn.json").read_text("utf-8"))["asked"])
     out = run_stop(project, hook_input, verify=verify)
     assert _block(out) is None
-    summary = _summary(out)
-    # the owner gets a regression card (no requirement verifies it here: the test names it)
+    assert _summary(out) == "plumb: 1 question for you"      # SR-265: one line
+    summary = agent_notes(project)
+    # the agent gets the regression card to ask (no requirement verifies it: the test names it)
     assert summary.startswith(f"{NODE}\na test that passed before now fails: {NODE}")
     assert f"{NODE} passed in an earlier run and fails now (last run run-2)" in summary
     assert "  1. Fix the code so it passes again (recommended)" in summary

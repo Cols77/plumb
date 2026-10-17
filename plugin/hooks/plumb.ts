@@ -7,12 +7,14 @@
 // functions an `Io`: the few host calls they need, each a closure over the hook's own `$`.
 import type { ProcessRunInit, ProcessRunResult } from 'claude-code'
 
-import type { PlumbCard, PlumbLink, PlumbPresent, PlumbStatus, PlumbView } from '../types'
+import type { PlumbCard, PlumbLink, PlumbLoop, PlumbPresent, PlumbStatus, PlumbView } from '../types'
 import { contentKey } from './cards'
 
 export type Io = {
   exists: (path: string) => Promise<boolean>
   read: (path: string) => Promise<string>
+  /** The names of a folder's entries; none where it does not exist. */
+  list: (path: string) => Promise<string[]>
   write: (path: string, text: string) => Promise<void>
   run: (argv: readonly string[], init: ProcessRunInit) => Promise<ProcessRunResult>
   root: () => Promise<string>
@@ -223,6 +225,76 @@ export async function readPresent(io: Io, link: PlumbLink): Promise<PlumbPresent
   }
 }
 
+const STEPS = ['clarify', 'plan', 'build', 'proven']
+
+/** How long a task has run, in the owner's words: `40s`, `12m`, `2h 5m`. */
+export function elapsed(fromIso: string, now: number): string {
+  // shortcut: computed when the status is read (a tool call, a turn's end), so it does not tick
+  // while the agent is quiet; upgrade to a timer redraw if owners watch a long silent build
+  const s = Math.max(0, Math.floor((now - Date.parse(fromIso)) / 1000))
+  if (!Number.isFinite(s)) return ''
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
+/** The session's open intent loop (SR-291): its newest loop file whose step is not proven
+ * (`intent done` proves it, and the band is one line again); null when none is open. */
+export async function readLoop(io: Io, link: PlumbLink): Promise<PlumbLoop | null> {
+  const folder = join(sessionDir(link.root, link.session), 'intent')
+  let names: string[] = []
+  try {
+    names = (await io.list(folder)).filter(n => n.endsWith('.json'))
+  } catch {
+    return null
+  }
+  const open: any[] = []
+  for (const name of names) {
+    const data = await readJson(io, join(folder, name))
+    if (data && STEPS.includes(data.step) && data.step !== 'proven') open.push(data)
+  }
+  const loop = open.sort((a, b) => String(a.opened_at ?? '').localeCompare(String(b.opened_at ?? ''))).at(-1)
+  if (!loop) return null
+  const t = loop.tasks
+  const task = t && typeof t === 'object' && t.label
+    ? { label: String(t.label), done: Number(t.done ?? 0), total: t.total ? Number(t.total) : null,
+        elapsed: t.started_at ? elapsed(String(t.started_at), await io.now()) : '' }
+    : null
+  return { step: String(loop.step), task, stopped: String(loop.stopped ?? '') }
+}
+
+/** A frontmatter value of a study file: plumb writes each as JSON (valid YAML too). */
+function front(text: string, key: string): string {
+  const raw = new RegExp(`^${key}: (.*)$`, 'm').exec(text.split('\n---\n')[0] ?? '')?.[1] ?? ''
+  try {
+    return String(JSON.parse(raw))
+  } catch {
+    return raw
+  }
+}
+
+/** The title of the newest study still `new` in `.plumb/studies` (SR-294): the band names it
+ * until the owner opens it in the room; empty when none waits. */
+export async function readStudy(io: Io, link: PlumbLink): Promise<string> {
+  const folder = join(link.root, '.plumb', 'studies')
+  let names: string[] = []
+  try {
+    names = (await io.list(folder)).filter(n => n.endsWith('.md')).sort()
+  } catch {
+    return ''
+  }
+  let title = ''
+  for (const name of names) {
+    try {
+      const text = await io.read(join(folder, name))
+      if (front(text, 'status') === 'new') title = front(text, 'title') || title
+    } catch {
+      // a study being written: the next read names it
+    }
+  }
+  return title
+}
+
 /** The band's first line: plumb's status card (status.json) and SP8's progress, if running. */
 export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> {
   const status = await readJson(io, join(link.root, '.plumb', 'session', 'status.json'))
@@ -238,6 +310,8 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     summary: String(status?.intent_summary ?? ''),
     progress: step,
     card: String(status?.present?.card ?? 'full'),
+    loop: await readLoop(io, link),
+    study: await readStudy(io, link),
   }
 }
 

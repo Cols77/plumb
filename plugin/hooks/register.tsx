@@ -18,12 +18,12 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { PlumbBand, PlumbLink, PlumbTold, PlumbView } from '../types'
+import type { PlumbBand, PlumbLink, PlumbLoop, PlumbTold, PlumbView } from '../types'
 import { CardView, contentKey, findPress, Grouped, perFeature, stateOf } from './cards'
 import type { Ui } from './cards'
 import * as plumb from './plumb'
 import type { Hello, Io, Unlinked } from './plumb'
-import { GLYPHS, PLUMB_COLOR, T } from './text'
+import { BRASS, GLYPHS, plumbColor, T } from './text'
 
 /** The surface's element table; the terminal draws the diagram's rows, whatever else the table
  * holds (the live terminal lists an Svg that draws nothing). */
@@ -82,15 +82,44 @@ function unlinkedLine(u: Unlinked): string {
   return T.helloFailed(u.error)
 }
 
+const LOOP_STEPS = ['clarify', 'plan', 'build', 'proven']
+const BAR_CELLS = 10
+
+/** An intent loop's lines under the status (SR-291): the strip of its steps in plum (done,
+ * current, to come; a refused gate marks the current one stopped and names what it waits for),
+ * then the current step's task, a brass fill of done over total, or the elapsed time with no
+ * fill when the total is unknown. */
+function loopLines(ui: Ui, loop: PlumbLoop, color: string) {
+  const { Box, Text } = ui
+  const at = LOOP_STEPS.indexOf(loop.step)
+  const strip = LOOP_STEPS.map((s, i) =>
+    `${s} ${i < at ? '✓' : i > at ? '○' : loop.stopped ? '✗' : '●'}`).join('  ')
+  const task = loop.task
+  const filled = task?.total ? Math.round(BAR_CELLS * Math.min(task.done, task.total) / task.total) : 0
+  // a workflow phase's gate reports itself (DEC-157): the step, the phase of the script's, the gate
+  const words = task?.total && / gate (passed|failed)$/.test(task.label)
+    ? `${loop.step} · slice ${task.done}/${task.total} · ${task.label}`
+    : [task?.label, task?.total ? `${task?.done}/${task.total}` : task?.elapsed].filter(Boolean).join(' · ')
+  return [
+    <Text key="loop:strip" color={color}>{loop.stopped ? `${strip} · ${T.stopped(loop.stopped)}` : strip}</Text>,
+    task ? (
+      <Box key="loop:bar" flexDirection="row" gap={1}>
+        {task.total ? <Text key="loop:fill" color={BRASS}>{'█'.repeat(filled) + '░'.repeat(BAR_CELLS - filled)}</Text> : null}
+        <Text key="loop:task">{words}</Text>
+      </Box>
+    ) : null,
+  ]
+}
+
 /** The band: one line of status, the cards awaiting per feature, then the awaiting card in
  * full (every card with Show all). */
-function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number) {
+function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, color: string) {
   const { Box, Button, Text } = ui
   const head = statusLine(view)
   if (band.isHidden) {
     return (
       <Box flexDirection="row" gap={1}>
-        <Text color={PLUMB_COLOR} dimColor>{head}</Text>
+        <Text color={color} dimColor>{head}</Text>
         <Button key="show" label={T.show} plain onPress={() => {}} />
       </Box>
     )
@@ -103,10 +132,12 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number) {
   return (
     <Box flexDirection="column" width={columns}>
       <Box flexDirection="row" gap={1}>
-        <Text bold color={PLUMB_COLOR}>{head}</Text>
+        <Text bold color={color}>{head}</Text>
         {view.status?.summary ? <Text dimColor>{view.status.summary}</Text> : null}
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
       </Box>
+      {view.status?.loop ? loopLines(ui, view.status.loop, color) : null}
+      {view.status?.loop && view.status.study ? <Text key="loop:study" color={BRASS}>{T.newStudy(view.status.study)}</Text> : null}
       {waiting.length ? <Text key="waiting">{`${T.awaiting(waiting.length)}: ${perFeature(waiting)}`}</Text> : null}
       {leftOpen.length ? <Text key="left" dimColor>{`${T.leftOpen(leftOpen.length)}: ${perFeature(leftOpen)}`}</Text> : null}
       {view.line ? <Text key="line" dimColor>{view.line}</Text> : null}
@@ -129,6 +160,7 @@ export const register: Register = on => {
     const io: Io = {
       exists: p => $.fs.exists(p),
       read: async p => String(await $.fs.read(p)),
+      list: async p => (await $.fs.list(p)).map(f => f.name),
       write: (p, t) => $.fs.write(p, t),
       run: (argv, init) => $.process.run(argv, init),
       root: () => $.session.root(),
@@ -214,6 +246,7 @@ export const register: Register = on => {
     const io: Io = {
       exists: p => $.fs.exists(p),
       read: async p => String(await $.fs.read(p)),
+      list: async p => (await $.fs.list(p)).map(f => f.name),
       write: (p, t) => $.fs.write(p, t),
       run: (argv, init) => $.process.run(argv, init),
       root: () => $.session.root(),
@@ -291,6 +324,7 @@ export const register: Register = on => {
     const io: Io = {
       exists: p => $.fs.exists(p),
       read: async p => String(await $.fs.read(p)),
+      list: async p => (await $.fs.list(p)).map(f => f.name),
       write: (p, t) => $.fs.write(p, t),
       run: (argv, init) => $.process.run(argv, init),
       root: () => $.session.root(),
@@ -308,8 +342,11 @@ export const register: Register = on => {
     const link = await read($, linkAtom)
     if (link === null) return result
     const band = await read($, bandAtom)
-    const snap = await plumb.snapshot(io, link, await read($, viewAtom), band.shown, true)
+    const before = await read($, viewAtom)
+    const snap = await plumb.snapshot(io, link, before, band.shown, true)
     await update($, viewAtom, () => snap.view)
+    const study = snap.view.status?.study
+    if (study && study !== before.status?.study) $.ui.toast(T.newStudy(study)) // SR-294: once, as it appears
     if (snap.fresh) {
       await update($, bandAtom, b => ({ ...b, isHidden: false }))
       $.ui.toast(T.toastAwaiting(snap.view.cards.filter(c => c.repeats).length))
@@ -325,6 +362,36 @@ export const register: Register = on => {
       // a re-entry: this handler's own $ calls reject; the turn's answer still stands
     }
     return result
+  })
+
+  // SR-291: `plumb intent progress` runs in the agent's Bash; the band's status (files only, no
+  // process) is read again after each, so the strip and the bar move within the turn, and a
+  // `plumb study add` is announced at once (SR-294)
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    try {
+      if (!/\b(intent|study)\b/.test(e.command) || (await read($, degradedAtom))) return ran
+      const link = await read($, linkAtom)
+      if (link === null) return ran
+      const io: Io = {
+        exists: p => $.fs.exists(p),
+        read: async p => String(await $.fs.read(p)),
+        list: async p => (await $.fs.list(p)).map(f => f.name),
+        write: (p, t) => $.fs.write(p, t),
+        run: (argv, init) => $.process.run(argv, init),
+        root: () => $.session.root(),
+        id: () => $.session.id(),
+        now: () => $.clock.now(),
+        env: async () => ({}),
+      }
+      const status = await plumb.readStatus(io, link)
+      const before = (await read($, viewAtom)).status?.study
+      await update($, viewAtom, v => ({ ...v, status }))
+      if (status.study && status.study !== before) $.ui.toast(T.newStudy(status.study))
+    } catch {
+      // the band keeps what it drew; the turn's end reads it again
+    }
+    return ran
   })
 
   // every Button the panel draws: what it does, by its key
@@ -366,6 +433,7 @@ export const register: Register = on => {
     const io: Io = {
       exists: p => $.fs.exists(p),
       read: async p => String(await $.fs.read(p)),
+      list: async p => (await $.fs.list(p)).map(f => f.name),
       write: (p, t) => $.fs.write(p, t),
       run: (argv, init) => $.process.run(argv, init),
       root: () => $.session.root(),
@@ -416,7 +484,13 @@ export const register: Register = on => {
     const view = await read($, viewAtom)
     if (view.status?.card === 'off') return next(e)
     const ui = uiOf($, e)
-    return drawBand(ui, view, await read($, bandAtom), e.props.bodyColumns)
+    let theme: unknown
+    try {
+      theme = (await $.config.list()).find(row => row.key === 'theme')?.value
+    } catch {
+      // a surface without the settings rows: the dark shade
+    }
+    return drawBand(ui, view, await read($, bandAtom), e.props.bodyColumns, plumbColor(theme))
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

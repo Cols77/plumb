@@ -221,6 +221,10 @@ DRAWN = "drawn.json"             # every card drawn at the last turn end, with i
 TURN_LEFT = "turn_left.json"     # the stop hook's cards the owner left open, with what they showed
 WAITING = "cards_waiting.json"   # what the next prompt tells the agent (SR-116 EX-4)
 DRAW_MIN_S = 0.08                # a card's full content needs about this much of the budget
+TURN_LINE = "turnline.json"      # each card's state seen at the last turn end (SR-265)
+ASK_OWNER = ("plumb: only the owner can settle this; ask the owner now with the question tool, "
+             "in plain words with options and no id, or offer a study laying out both sides "
+             "when there is more to read; choose nothing yourself:")
 
 
 def _held(core: Any, session: str) -> list[CardState]:
@@ -409,7 +413,9 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
             item = fullcard.stale_content(core, entry, session=session)
         else:
             item = fullcard.content(core, card)
-        out.append(fullcard.render(item))
+        # SR-295: what only the owner can settle reaches the agent tagged to be asked
+        out.append(fullcard.render(item) if card.kind == "stale_link"
+                   else "\n".join((ASK_OWNER, fullcard.render(item))))
         drawn.append(card.topic)
         drawn_ids.append(card.id)
         kept.append({"card": cardstore.card_to_json(card), "content": item,
@@ -550,3 +556,48 @@ def waiting_line(root: Any, session: str, core: Any = None) -> str | None:
     named = "; ".join(f'"{t}"' for t in topics[:5]) + (
         f" and {len(topics) - 5} more" if len(topics) > 5 else "")
     return owner_text.CARDS_WAITING_AGENT.format(n=len(topics), topics=named)
+
+
+def drawn_ids(root: Any, session: str) -> set[str]:
+    """The ids of the cards drawn at the last turn end (read before this one redraws them)."""
+    return {str(e["card"].get("id")) for e in read_drawn(root, session)}
+
+
+def _named(core: Any, ids: Sequence[str]) -> str:
+    """The touched requirements in the owner's words: their features' titles, else theirs."""
+    index = core.index()
+    titles: dict[str, None] = {}
+    for i in ids:
+        feature = index[i].fields.get("feature")
+        titles.setdefault(index[feature].title if feature in index else index[i].title, None)
+    names = [f"'{t}'" for t in titles]
+    return ", ".join(names[:2]) + (f" and {len(names) - 2} more" if len(names) > 2 else "")
+
+
+def owner_line(core: Any, session: str, before: set[str], *, touched: Sequence[str] = (),
+               checks: tuple[int, int] = (0, 0)) -> str:
+    """SR-265: the owner's one plumb line at a turn end, or "" when nothing changed for them:
+    the new questions waiting (every card but a stale link, which the agent fixes, SR-295
+    EX-3), the answers applied (by the card's title), and the confirmed requirements the turn
+    touched with their checks (``checks``: passed, run). Never a card, an option or an id;
+    a judge's approval is the status line's count only (EX-7)."""
+    seen_path = files.session_dir(core.root, session) / TURN_LINE
+    seen = files.read_json(seen_path)
+    seen = seen if isinstance(seen, Mapping) else {}
+    states = {k: v[0] for k, v in cardstore.states(core, session).items()}
+    files.write_json_atomic(seen_path, states)
+    drawn = read_drawn(core.root, session)
+    titles = {c.id: c.topic for c in cardstore.load(core.root, session, open_only=False)}
+    titles.update({str(e["card"].get("id")): str(e["card"].get("topic")) for e in drawn})
+    asks = [e for e in drawn if e["card"].get("status") != "left_open"
+            and e["card"].get("kind") != "stale_link" and str(e["card"].get("id")) not in before]
+    parts = [f"{len(asks)} question{'s' if len(asks) > 1 else ''} for you"] if asks else []
+    parts += [f"your answer on {titles.get(k, k)} was applied" for k, v in states.items()
+              if v == "done" and seen.get(k) in ("waiting", "processing")]
+    passed, run = checks
+    if touched and run:
+        pass_ = "check passes" if run == 1 else "checks pass"
+        parts.append(f"aligned, touched {_named(core, touched)}, {run} {pass_}"
+                     if passed == run else
+                     f"touched {_named(core, touched)}, {passed} of {run} {pass_}")
+    return "plumb: " + "; ".join(parts) if parts else ""

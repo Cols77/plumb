@@ -21,13 +21,18 @@
   --text: #ede7df;
   --muted: #a8a095;
   --dim: #6f685f;
-  --accent: oklch(0.72 0.12 48);
-  --accent-soft: oklch(0.72 0.12 48 / 0.38);
-  --accent-ink: #1b1512;
+  /* plumb's own colours (SR-290), the mod's PLUM and BRASS in plugin/hooks/text.ts: the room
+     draws on dark surfaces whatever the system's scheme, so it keeps the dark-theme plum; the
+     darker shade fills. */
+  --plumb: #b05fb0;
+  --plumb-strong: #8e3b8e;
+  --brass: #c9a227;
+  --accent: var(--plumb);
+  --accent-soft: color-mix(in srgb, var(--plumb) 38%, transparent);
   --ok: oklch(0.76 0.12 150);
-  --wait: oklch(0.82 0.13 80);
-  --wait-soft: oklch(0.82 0.13 80 / 0.08);
-  --wait-ring: oklch(0.82 0.13 80 / 0.6);
+  --wait: var(--brass);
+  --wait-soft: color-mix(in srgb, var(--brass) 8%, transparent);
+  --wait-ring: color-mix(in srgb, var(--brass) 60%, transparent);
   --add: oklch(0.76 0.12 150);
   --del: oklch(0.72 0.14 25);
   --info: oklch(0.74 0.12 235);
@@ -116,7 +121,7 @@ body { line-height: 1.5; }
 button, .button { border:1px solid var(--line2); border-radius:5px; background:var(--elev); padding:7px 12px; cursor:pointer; font:inherit; color:var(--text); text-decoration:none; }
 button:hover:not(:disabled), .button:hover { border-color:var(--accent); background:var(--elev2); }
 button:disabled { opacity:.45; cursor:default; }
-button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; }
+button.primary { background:var(--plumb-strong); border-color:var(--plumb-strong); color:var(--text); font-weight:700; }
 button.quiet { background:transparent; color:var(--muted); }
 input, select, textarea { min-width:0; background:var(--bg); border:1px solid var(--line2); border-radius:5px; padding:9px 10px; }
 select { cursor:pointer; }
@@ -209,6 +214,14 @@ code { overflow-wrap:anywhere; }
 .record-status { border-left:2px solid var(--line2); padding-left:12px; margin:14px 0; }.record-status>p { margin:7px 0; font-size:12px; }.record-status .confirmed { color:var(--ok); }.record-links { padding-left:15px; font-size:11px; color:var(--muted); overflow-wrap:anywhere; }
 .help-dialog { background:var(--panel); color:var(--text); border:1px solid var(--line2); border-radius:8px; padding:30px; max-width:560px; width:calc(100% - 32px); box-shadow:0 20px 70px #0008; }.help-dialog::backdrop { background:#0009; }.help-dialog p { line-height:1.7; color:var(--muted); }.help-dialog form { text-align:right; margin-top:22px; }.help-dialog a { font-size:12px; }
 .mobile-bar,.drawer-close,.drawer-shade { display:none; }
+/* Studies beside the questions (DEC-151): the list, the study page in plum and brass */
+.studies { display:grid; grid-template-columns:280px minmax(0,1fr); flex:1; min-height:0; }
+.study-list { background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; }
+.study-new { color:var(--brass); border:1px solid var(--wait-ring); padding:0 5px; border-radius:3px; }
+.study-diagram { border:1px solid var(--line2); border-left:3px solid var(--brass); border-radius:5px; padding:12px; margin:16px 0; white-space:pre; }
+.studies textarea { margin:12px 0; font:13px var(--mono); }
+.section-tabs { display:flex; gap:4px; }.section-tabs button[aria-pressed='true'] { color:var(--plumb); border-color:var(--plumb); }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 @media (max-width:1250px) { .project-name { max-width:160px; }.session-control select { max-width:200px; }.connection { font-size:10px; }.workspace-header { padding:12px 16px; gap:10px; }.brand { gap:7px; } }
 @media (max-width:1099px) {
   html,body { overflow:auto; height:auto; min-height:100%; } #app { min-height:100vh; height:auto; }
@@ -217,6 +230,7 @@ code { overflow-wrap:anywhere; }
   .issue-detail { grid-column:3; overflow:visible; padding:28px; }.evidence-pane { grid-column:3; border-top:1px solid var(--line2); overflow:visible; }.pane-tabs { position:static; }.pane-content { padding:24px 28px; }.header-tools { flex-wrap:wrap; justify-content:flex-end; }.session-control>span { display:none; }.project-name { max-width:130px; }.connection { display:none; }
 }
 @media (max-width:759px) {
+  .studies { display:block; overflow:auto; }.study-list { border-right:0; border-bottom:1px solid var(--line); }
   .workspace-header { align-items:flex-start; flex-wrap:wrap; padding:12px 16px; gap:12px; }.brand { width:100%; }.project-name { max-width:none; flex:1; }.header-tools { width:100%; justify-content:flex-start; }.session-control { flex:1; }.session-control select { width:100%; max-width:none; }.brand strong { font-size:22px; }
   .mobile-bar { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); color:var(--muted); font-size:12px; }
   .workspace { display:block; min-height:0; }.left-divider { display:none; }.issue-detail { padding:24px 20px; overflow:visible; }.issue-topline { margin-bottom:18px; } h1 { font-size:27px; }.issue-lead { font-size:15px; }.decision-heading { display:block; }.decision-heading>.muted { display:block; margin-top:5px; }

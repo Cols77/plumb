@@ -9,10 +9,20 @@ build it and show it working. Three stages, each closed by a gate the next refus
 Run the stages as phases of a Workflow script; each phase ends on its stage's gate command
 (`{plumb} intent gate clarify`, `{plumb} intent gate plan`, `{plumb} intent done`) and the next
 phase starts only when that command exits 0.
+Each phase's gate agent ends by reporting its gate to the owner's band:
+`{plumb} intent progress --task "<phase> gate passed|failed" --done <k> --total <n>` (k
+the phase's place among the script's n phases); the band draws only that, the workflow view
+keeps the agents.
 
 Open: `{plumb} intent open --wait` on the owner's words. It drafts the candidates (what will
 be done, what won't, assumptions labelled) and says which check it ran; act on that answer
 as plumb-clarify does (ready, ask, a card, couldn't check, waiting).
+
+The owner's band shows the loop's step and the current task: as you go, run
+`{plumb} intent progress --task <words> --done N --total M` in the owner's words
+(`clarifying` with the questions answered of those to ask, `writing the plan` with the plan
+items written of the plan's, `building` with the plan items built; leave `--total` out when
+it is not known). A refused gate shows on the band by itself.
 
 Stage A, clarify and integrate, until `{plumb} intent gate clarify` passes:
 
@@ -51,6 +61,18 @@ Stage C, build and prove: build the plan, show the proof the owner stated, recor
 is missing; `{plumb} intent status` says which gate is open. When the edit hook reports a
 link stale, before the turn ends: repin it after its tests pass, relink it when the code
 moved, or card it when the meaning changed.
+
+Studies: as each stage ends, run `{plumb} study candidates --json` and write at most one study
+for the step, none when nothing valuable stands out and none on a topic in `known`. Pick from:
+a key architectural choice being made or built, a gap in the owner's understanding (`picture`,
+`prompts`; a `deeper` line asks for more depth), what they need to know to choose well later,
+an open conflict in `conflicts` laid out on both sides choosing nothing, or a feature the work
+makes easy, labelled a suggestion. Write it in plain words with the records' examples and a
+mermaid diagram when it is about structure or flow, then
+`{plumb} study add --title <it> --topic <what it is about> --why <why now> --file <body.md>`;
+the band and a notification announce it, and the owner reads it in the room when they choose.
+Never open the room, and never take 'I know this' or 'Go deeper' as an answer: they correct
+the picture only.
 
 The loop's gates approve nothing. Speak in the owner's terms; paste nothing capture prints.
 

@@ -8,7 +8,6 @@ from __future__ import annotations
 import io
 import json
 import re
-import types
 from pathlib import Path
 
 import pytest
@@ -36,14 +35,12 @@ def _cli(capsys, *argv: str) -> str:
 
 
 def _turn_end(root: Path) -> tuple[tuple[str, ...], str]:
-    """The stop hook's confirmations, then the panel's one plumb line from them."""
-    from plumb.mod.handshake import turn_line
-    from plumb.understand.summary import Told, _confirmations
+    """The stop hook's confirmations (the agent's), then the owner's one plumb line."""
+    from plumb.understand.summary import Told, _confirmations, owner_line
 
     told = Told(root, SESSION, "2000-01-01T00:00:00Z")
     lines = _confirmations(open_core(root), None, told)
-    ctx = types.SimpleNamespace(root=root, session_id=SESSION)
-    return lines, turn_line(ctx, {"cards": []}, {"confirmations": list(lines), "cards": []})
+    return lines, owner_line(open_core(root), SESSION, set())
 
 
 def _session_start(root: Path, hook_input) -> str:
@@ -63,7 +60,8 @@ def test_ex1_the_turn_end_counts_a_judge_approval_and_every_listing_labels_it(
     listed (show, explain, status, the status card)."""
     judged(world, ("SR-001", "supported", 0.8))
     lines, line = _turn_end(world)
-    assert lines == (COUNTED,) and line == f"plumb: {COUNTED}"
+    # SR-265 EX-7: the count is the agent's and the status line's; the owner gets no line
+    assert lines == (COUNTED,) and line == ""
     root = ["--root", str(world)]
     assert _cli(capsys, "show", *root, "SR-001").startswith(f"SR-001 (requirement, {LABEL}) ")
     assert LABEL in _cli(capsys, "explain", *root, "SR-001")

@@ -92,13 +92,25 @@ export type PlumbTold = {
   retry?: boolean
 }
 
+/** The session's open intent loop as the band draws it (SR-291): its current step, the
+ * step's task (no total: the elapsed time, read when the status was), and what a refused gate
+ * left it waiting for. */
+export type PlumbLoop = {
+  step: string
+  task: { label: string; done: number; total: number | null; elapsed: string } | null
+  stopped: string
+}
+
 /** The status the band's first line draws: plumb's status card, SP8's progress, and the
- * owner's card setting (full, compact or off). */
+ * owner's card setting (full, compact or off); `loop` while an intent loop is open; `study` the
+ * title of a study the owner has not opened yet (SR-294). */
 export type PlumbStatus = {
   state: string
   summary: string
   progress: string
   card: string
+  loop?: PlumbLoop | null
+  study?: string
 }
 
 /** What the panel draws, as plumb last answered it. */

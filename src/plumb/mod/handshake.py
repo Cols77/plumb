@@ -9,7 +9,7 @@ read that one small file:
   older than the turn's start), the owner's part of the stop hook goes to
   ``.plumb/session/<id>/present.json`` (``{turn, confirmations, cards}``; each card with its
   full content, SR-116) and no
-  ``systemMessage`` is printed (``deliver``).
+  ``systemMessage`` but the one owner line is printed (``deliver``).
   A block (the instruction to the agent) is unchanged. Otherwise the hook prints as before.
 - ``session-start``: first of all, before any step its budget can cut (SR-125), writes
   ``host.json`` (the interpreter that runs plumb, so the panel can run ``plumb mod`` with the
@@ -176,54 +176,14 @@ def write_present(ctx: Any, turn: Mapping[str, Any]) -> dict[str, Any]:
 
 def deliver(ctx: Any, output: Any) -> Any:
     """The stop hook's answer: unchanged without an active panel or for a block; otherwise
-    ``present.json`` is written and no ``systemMessage`` is printed. Any failure here prints
-    as before."""
+    ``present.json`` is written too; the stop's one owner line (SR-265) is printed either
+    way. Any failure here prints as before."""
     if output is not None and getattr(output, "block_reason", ""):
         return output
     try:
         turn = _turn(ctx)
-        if not active(ctx.root, ctx.session_id, _turn_start(turn)):
-            return output
-        before = files.read_json(present_path(ctx.root, ctx.session_id))
-        data = write_present(ctx, turn)
-        line = turn_line(ctx, before, data)
-    except Exception:  # noqa: BLE001 - the owner's summary is never lost to the panel
-        return output
-    if line:
-        from plumb.hosts.claude_code.hookio import HookOutput
-
-        return HookOutput(system_message=line)
-    return None
-
-
-def turn_line(ctx: Any, before: Any, data: Mapping[str, Any]) -> str:
-    """SR-159: the one plumb line for a turn end with the panel running: the judge's approvals
-    counted (SR-251), new cards waiting, answers applied (by the card's title), nothing when
-    none changed. Plain text: a hook's
-    ``systemMessage`` cannot carry colour. ``turnline.json`` holds each card's state seen at
-    the last turn end."""
-    from plumb.api import open_core
-    from plumb.understand import cardstore, summary
-
-    core = open_core(ctx.root)
-    seen_path = _session_file(ctx.root, ctx.session_id, "turnline.json")
-    seen = files.read_json(seen_path)
-    seen = seen if isinstance(seen, Mapping) else {}
-    states = {k: v[0] for k, v in cardstore.states(core, ctx.session_id).items()}
-    files.write_json_atomic(seen_path, states)
-    old = {str(c.get("id")) for c in (before or {}).get("cards", ()) if isinstance(c, Mapping)}
-    fresh = [c for c in data.get("cards", ()) if c.get("id") not in old]
-    titles = {c.id: c.topic for c in cardstore.load(core.root, ctx.session_id, open_only=False)}
-    titles.update({str(e["card"].get("id")): str(e["card"].get("topic"))
-                   for e in summary.read_drawn(ctx.root, ctx.session_id)})
-    applied = [titles.get(k, k) for k, v in states.items()
-               if v == "done" and seen.get(k) in ("waiting", "processing")]
-    from plumb.present.owner_text import JUDGE_APPROVED
-
-    lines = [f"plumb: {c}" for c in data.get("confirmations", ())  # SR-251: counted
-             if str(c).endswith(JUDGE_APPROVED)]
-    lines += [f"plumb: your answer on {t} was applied" for t in applied]
-    if fresh:
-        lines.append("plumb: 1 new card waits on the panel" if len(fresh) == 1
-                     else f"plumb: {len(fresh)} new cards wait on the panel")
-    return "\n".join(lines)
+        if active(ctx.root, ctx.session_id, _turn_start(turn)):
+            write_present(ctx, turn)
+    except Exception:  # noqa: BLE001 - the owner's line is never lost to the panel
+        pass
+    return output

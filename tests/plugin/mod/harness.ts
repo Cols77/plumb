@@ -105,6 +105,11 @@ export function install(on: On, w: World): void {
     const path = norm(e.path)
     return path in w.files ? { value: w.files[path] as string } : { deny: `ENOENT: ${path}` }
   })
+  on('fs.list', (_$, e) => {
+    const dir = `${norm(e.path)}/`
+    const names = new Set(Object.keys(w.files).filter(p => p.startsWith(dir)).map(p => p.slice(dir.length).split('/')[0]!))
+    return { value: [...names].map(name => ({ name, kind: 'file' as const })) as any }
+  })
   on('fs.write', (_$, e) => {
     const path = norm(e.path)
     w.writes.push({ path, text: e.text })

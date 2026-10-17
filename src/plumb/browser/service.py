@@ -6,6 +6,7 @@ import secrets
 import threading
 from pathlib import Path
 
+from plumb import study
 from plumb.api import open_core
 from plumb.browser import followup
 from plumb.browser import session as registration
@@ -124,6 +125,38 @@ class BrowserService:
                 "cards": cards,
                 "followups": followup.history(self.root, session),
             }
+
+    # Studies and the understanding picture (DEC-151): a section beside the questions. Its
+    # buttons correct the picture only; nothing reaches a session as an answer (DEC-152).
+    def studies(self):
+        with self.lock:
+            return {
+                "studies": [
+                    {k: v for k, v in s.items() if k != "body"} for s in study.studies(self.root)
+                ],
+                "understanding": self._understanding(),
+            }
+
+    def _understanding(self):
+        return {"text": study.picture_text(self.root), **study.picture(self.root)}
+
+    def open_study(self, slug):
+        """The owner reads a study: it is opened, and the band's study line goes (SR-294)."""
+        with self.lock:
+            return study.mark(self.root, slug, "opened")
+
+    def mark_study(self, slug, payload):
+        how = payload.get("mark")
+        if how not in ("known", "deeper"):
+            raise ValueError("mark must be known or deeper")
+        with self.lock:
+            marked = study.mark(self.root, slug, how)
+            return {"study": marked, "understanding": self._understanding()}
+
+    def save_understanding(self, payload):
+        with self.lock:
+            study.save_picture(self.root, payload.get("text"))
+            return self._understanding()
 
     def diagram(self, session, card_id):
         from plumb.browser import diagrams

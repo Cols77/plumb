@@ -4,12 +4,16 @@
 <words>`` (``cmd_clarify.wait``) and opens the loop's state file; an ordinary message opens
 none. ``plumb intent gate clarify|plan --intent INT-### --findings FILE`` records a stage's
 judge gate: it passes only when no high or medium finding remains, and ``plan`` refuses while
-``clarify`` has not passed. ``plumb intent done --intent INT-###`` refuses while the plan gate
+``clarify`` has not passed; a refused gate leaves ``stopped`` (what the loop waits for) in the
+state. ``plumb intent progress --task <words> [--done N --total M]`` sets the current step's task
+the band's bar draws (SR-291). ``plumb intent done --intent INT-###`` refuses while the plan gate
 has not passed or a requirement of the intent lacks proof evidence that passed. ``plumb intent
 status`` lists the open loops.
 
-State lives in ``.plumb/session/<id>/intent/<digest12>.json``. It carries no authority: it
-confirms nothing, and the records stay proposed until the owner confirms them.
+State lives in ``.plumb/session/<id>/intent/<digest12>.json``, with ``step`` (clarify, plan,
+build, proven) derived from its stages and ``tasks`` ``{label, done, total|null, started_at}``.
+It carries no authority: it confirms nothing, and the records stay proposed until the owner
+confirms them.
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ from typing import Any
 from plumb.cliutil import EXIT_FINDINGS, EXIT_USAGE, add_common, emit, resolve_root
 from plumb.understand import files, gate
 
-LOOP_VERBS = ("open", "gate", "done", "status")
+LOOP_VERBS = ("open", "gate", "done", "status", "progress")
 STAGES = ("clarify", "plan", "build")
 LEVELS = ("high", "medium", "low")
 BLOCKING = ("high", "medium")
@@ -42,13 +46,26 @@ def loop_path(root: Path, session: str, digest: str) -> Path:
         digest.removeprefix("sha256:")[:12] + ".json")
 
 
+def save(path: Path, data: dict[str, Any]) -> None:
+    """Write the loop state with its ``step``: the first stage not passed, ``proven`` after all."""
+    data["step"] = next((s for s in STAGES if not _passed(data, s)), "proven")
+    files.write_json_atomic(path, data)
+
+
+def _stop(path: Path, data: dict[str, Any], what: str) -> None:
+    """SR-291 EX-6: the loop's current step waits for ``what`` until the next pass."""
+    data["stopped"] = what
+    save(path, data)
+
+
 def open_loop(root: Path, session: str, digest: str) -> Path:
     """Open the loop state of the commanded message ``digest`` (idempotent)."""
     path = loop_path(root, session, digest)
     if not path.exists():
-        files.write_json_atomic(path, {
+        save(path, {
             "digest": digest, "intent": None, "opened_at": _now(),
-            "stages": {stage: {"state": "open"} for stage in STAGES}})
+            "stages": {stage: {"state": "open"} for stage in STAGES}, "tasks": None,
+            "stopped": None})
     return path
 
 
@@ -148,18 +165,21 @@ def cmd_gate(core: Any, args: argparse.Namespace) -> int:
     path, data = _find(root, _session(args, root), args.intent)
     findings = findings_from(args.findings)
     if args.stage == "plan" and not _passed(data, "clarify"):
+        _stop(path, data, "the clarify gate")
         print("plumb: the clarify gate has not passed; plumb intent gate clarify comes first",
               file=sys.stderr)
         return EXIT_FINDINGS
     blocking = [f for f in findings if f["level"] in BLOCKING]
     if blocking:
+        _stop(path, data, f"the {args.stage} gate: {len(blocking)} finding(s) to fix")
         print(f"plumb: the {args.stage} gate does not pass: {len(blocking)} finding(s) above low "
               "remain; fix them and judge again", file=sys.stderr)
         for finding in blocking:
             print(f"  {finding['level']}: {finding['what']}", file=sys.stderr)
         return EXIT_FINDINGS
     data["stages"][args.stage] = {"state": "passed", "at": _now(), "findings": len(findings)}
-    files.write_json_atomic(path, data)
+    data.update(tasks=None, stopped=None)   # the next step starts with no task drawn
+    save(path, data)
     core.log_append("events", "intent-gate", {"intent": args.intent, "digest": data["digest"],
                                               "stage": args.stage, "findings": len(findings)})
     # SR-196: the loop opens only the hold of an intent change; a waiting card or a failed
@@ -185,14 +205,36 @@ def cmd_done(core: Any, args: argparse.Namespace) -> int:
     missing += [f"{row['id']} ({row['title']}): proof {row['why']}"
                 for row in proof.not_shown(core, required)]
     if missing:
+        _stop(path, data, "proof shown" if _passed(data, "plan") else "the plan gate")
         print(f"plumb: {args.intent} is not done; the intent stays open:", file=sys.stderr)
         for line in missing:
             print(f"  {line}", file=sys.stderr)
         return EXIT_FINDINGS
     data["stages"]["build"] = {"state": "passed", "at": _now()}
-    files.write_json_atomic(path, data)
+    data.update(tasks=None, stopped=None)   # step proven: the loop is closed, the band one line
+    save(path, data)
     core.log_append("events", "intent-done", {"intent": args.intent, "digest": data["digest"]})
     print(f"plumb: {args.intent} done: every proof shown (the records stay as they are)")
+    return 0
+
+
+def cmd_progress(core: Any, args: argparse.Namespace) -> int:
+    """The current step's task in the owner's words, and how far it is (SR-291)."""
+    root = Path(core.root)
+    session = _session(args, root)
+    found = [(p, d) for p, d in loops(root, session) if not _passed(d, "build")]
+    if not session or not found:
+        raise LookupError("no open intent loop in this session: plumb intent open comes first")
+    if args.done is not None and args.done < 0 or args.total is not None and args.total < 1:
+        raise ValueError("--done is 0 or more and --total 1 or more")
+    path, data = found[-1]
+    held = data.get("tasks") if isinstance(data.get("tasks"), Mapping) else {}
+    data["tasks"] = {"label": args.task, "done": args.done or 0, "total": args.total,
+                     "started_at": held.get("started_at") if held.get("label") == args.task
+                     else _now()}
+    save(path, data)
+    total = f"/{args.total}" if args.total else ""
+    print(f"plumb: {data['step']}: {args.task} · {args.done or 0}{total}")
     return 0
 
 
@@ -232,7 +274,11 @@ def run(command: str, argv: list[str]) -> int:
     doner = verbs.add_parser("done")
     doner.add_argument("--intent", required=True, metavar="INT-###")
     verbs.add_parser("status")
-    for sub in (opener, gater, doner, verbs.choices["status"]):
+    progress = verbs.add_parser("progress", help="the current step's task, as the band draws it")
+    progress.add_argument("--task", required=True, metavar="WORDS")
+    progress.add_argument("--done", type=int, default=None)
+    progress.add_argument("--total", type=int, default=None)
+    for sub in (opener, gater, doner, verbs.choices["status"], progress):
         add_common(sub)
         sub.add_argument("--session", default=None)
     try:
@@ -243,7 +289,8 @@ def run(command: str, argv: list[str]) -> int:
 
     core = open_core(resolve_root(args.root))
     try:
-        return {"open": cmd_open, "gate": cmd_gate, "done": cmd_done, "status": cmd_status}[
+        return {"open": cmd_open, "gate": cmd_gate, "done": cmd_done, "status": cmd_status,
+                "progress": cmd_progress}[
             args.verb](core, args)
     except (LookupError, ValueError) as exc:
         print(f"plumb: {exc}", file=sys.stderr)
