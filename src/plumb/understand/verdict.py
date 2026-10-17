@@ -205,15 +205,25 @@ def _split(job: Job, entries: list[Mapping[str, Any]]) -> list[list[Mapping[str,
 def _ask(core: Any, dispatcher: Any, sub: Job, part: list[Mapping[str, Any]], system: str,
          schema: Mapping[str, Any], on_step: Callable[[str], None], user: str) -> dict[str, Any]:
     """The judge model's answer; asked once more when a question of it cannot be shown
-    (SR-299 EX-3). The second answer stands: its unusable questions wait as before."""
-    from plumb.understand import judge
+    (SR-299 EX-3). The second answer stands: its unusable questions wait as before, and the
+    job goes to debugging as a case."""
+    from plumb.understand import judge, summary
+
+    def unusable(answer: Mapping[str, Any]) -> list[str]:
+        return [why for q in answer.get("questions") or ()
+                for made, why in [judge._shaped(q, sub, judged, index)] if made is None]
 
     answer = dict(dispatcher.run(sub, system=system, schema=schema, on_step=on_step, user=user))
     index = core.index()
     judged = {str(e["id"]): str(e.get("hash")) for e in part}
-    if any(judge._shaped(q, sub, judged, index)[0] is None for q in answer.get("questions") or ()):
+    if unusable(answer):
         answer = dict(dispatcher.run(sub, system=system, schema=schema, on_step=on_step,
                                      user=user))
+        why = unusable(answer)
+        if why:
+            summary.write_cases(core, f"judge-{sub.id}-{part[0]['id']}", [{
+                "id": f"judge-question:{sub.id}", "kind": "judge-question",
+                "target": ", ".join(judged), "detail": f"asked twice: {why[0]}"}])
     return answer
 
 

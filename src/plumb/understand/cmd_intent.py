@@ -240,7 +240,14 @@ def cmd_adopt(core: Any, args: argparse.Namespace) -> int:
     if not found:
         print("plumb: no open loop matches; nothing taken over", file=sys.stderr)
         return EXIT_FINDINGS
-    old_root, path, data = max(found, key=lambda item: str(item[2].get("opened_at", "")))
+    if len(found) > 1:  # never guess: the others may be loops other sessions still run
+        print("plumb: more than one open loop matches; name one with --from-session, --intent "
+              "or --digest; nothing taken over:", file=sys.stderr)
+        for _r, p, d in found:
+            print(f"  session {p.parent.parent.name}: {d.get('intent') or 'no intent yet'} "
+                  f"({str(d['digest']).removeprefix('sha256:')[:12]})", file=sys.stderr)
+        return EXIT_FINDINGS
+    old_root, path, data = found[0]
     old_session = path.parent.parent.name
     mine = loop_path(root, session, data["digest"])
     files.write_json_atomic(mine, {**data, "adopted_from": {"root": old_root.as_posix(),

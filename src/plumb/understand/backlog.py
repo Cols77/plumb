@@ -93,11 +93,24 @@ def queued_ids(core: Any, session: str) -> set[str]:
             and str(r.get("id")) in index and index[str(r["id"])].hash == r.get("hash")}
 
 
+def other_loops(core: Any, session: str) -> set[str]:
+    """The intents of the loops other sessions of this checkout still run (SR-301): their own
+    gates judge their records; the backlog leaves them alone."""
+    from plumb.understand.cmd_intent import _passed, loops
+
+    return {str(d["intent"]) for p, d in loops(core.root) if d.get("intent")
+            and p.parent.parent.name != session and not d.get("handed_to")
+            and not _passed(d, "build")}
+
+
 def waiting(core: Any, session: str) -> list[str]:
-    """The records with no judgment of their current version and no job queued for it."""
+    """The records with no judgment of their current version and no job queued for it, not
+    of another session's open loop."""
     records = proposed(core)
+    index = core.index()
+    busy = other_loops(core, session)
     skip = judged_ids(core, records) | queued_ids(core, session)
-    return [r.id for r in records if r.id not in skip]
+    return [r.id for r in records if r.id not in skip and group_of(index, r) not in busy]
 
 
 def spawn(core: Any, session: str) -> bool:
@@ -116,19 +129,21 @@ def spawn(core: Any, session: str) -> bool:
 
         env = {k: v for k, v in os.environ.items() if k not in ("PLUMB_WORKER", "PLUMB_JOB")}
         subprocess.Popen([sys.executable, "-m", "plumb", "understand", "backlog", "--session",
-                          session, "--root", str(core.root)], env=env,
+                          session, "--root", str(core.root), "--queue-only"], env=env,
                          **popen_options(core.root))
     except Exception:  # noqa: BLE001 - a hook calls this
         return False
     return True
 
 
-def queue_waiting(core: Any, session: str) -> Started:
+def queue_waiting(core: Any, session: str, *, mark: bool = True) -> Started:
     """Queue the waiting records (session start's process, the landing job). With no judge
-    reachable, SR-245 holds: one line says which and why, and nothing else changes."""
+    reachable, SR-245 holds: one line says which and why, and nothing else changes. Without
+    ``mark`` no pass is marked: each turn end would otherwise run ``resume`` (hook latency)."""
     from plumb.understand import verdict
 
-    if not waiting(core, session):
+    ids = waiting(core, session)
+    if not ids:
         return Started()
     model = str(core.config.understand.judge_model)
     gap = verdict.model_gap(core, model)
@@ -136,13 +151,14 @@ def queue_waiting(core: Any, session: str) -> Started:
         from plumb.judgment import waiting_line
 
         return Started(line=waiting_line(core.root, "the backlog", f"{model}: {gap}") or "")
-    return start(core, session, queued_ids(core, session))
+    return start(core, session, {r.id for r in proposed(core)} - set(ids), mark=mark)
 
 
 # --------------------------------------------------------------------------- the pass
 
 
-def start(core: Any, session: str, skip: set[str] = frozenset()) -> Started:
+def start(core: Any, session: str, skip: set[str] = frozenset(), *,
+          mark: bool = True) -> Started:
     """Queue the judge jobs of the pass: one per intent, covering the records that have no
     judgment of their current version (and not in ``skip``). Idempotent: a job is its records, so jobs already
     queued or done are the same jobs. Marks the pass as started so ``resume`` continues it."""
@@ -162,8 +178,9 @@ def start(core: Any, session: str, skip: set[str] = frozenset()) -> Started:
         if job is not None:
             queue.enqueue(core, job)
             out.jobs.append(job.id)
-    files.write_json_atomic(marker_path(core.root, session), {
-        "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "total": len(records)})
+    if mark:
+        files.write_json_atomic(marker_path(core.root, session), {
+            "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "total": len(records)})
     return out
 
 
@@ -220,9 +237,10 @@ def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="plumb understand backlog")
     add_common(parser)
     parser.add_argument("--session", default=files.CLI_SESSION)
+    parser.add_argument("--queue-only", action="store_true")   # session start: no pass marked
     args = parser.parse_args(argv)
     core = open_core(resolve_root(args.root))
-    started = queue_waiting(core, args.session)
+    started = queue_waiting(core, args.session, mark=not args.queue_only)
     print(started.line or (owner_text.BACKLOG_STARTED.format(
         records=started.records, jobs=len(started.jobs)) if started.jobs
         else owner_text.BACKLOG_NOTHING))

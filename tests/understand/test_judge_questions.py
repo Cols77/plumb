@@ -405,6 +405,8 @@ def test_ex3_a_question_with_one_option_is_asked_again_once(
     applied = judge.apply(core, job, done.answer)
     assert written(world) == [] and any(e["kind"] == "verdict" for e in applied.entries)
     assert notes(world)                                  # the record waits and says why
+    (case,) = summary.open_cases(world)[0]               # and the job goes to debugging
+    assert case["kind"] == "judge-question" and "SR-001" in case["target"]
     good = FakeDispatcher({"judge": answer(("SR-001", "supported"),
                                            questions=[asking("SR-001")])})
     verdict.cascade(core, job, system="judge", schema={}, jev=StubJev(0.1), dispatcher=good)

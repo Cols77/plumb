@@ -94,7 +94,7 @@ def test_ex3_three_stale_links_become_three_cases(repo: Path,
                                                   monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb.understand import backlog
 
-    monkeypatch.setattr(backlog, "queue_waiting", lambda core, session: backlog.Started())
+    monkeypatch.setattr(backlog, "queue_waiting", lambda core, session, **kw: backlog.Started())
     write_record(repo, record("SR-001", "rule", statement="s", examples=[ex(1)]))
     docs(repo, "src/a.py", "src/b.py", "src/c.py")
     core = open_core(repo)
@@ -146,7 +146,7 @@ def test_ex6_a_failing_step_is_a_case_and_the_rest_still_run(
     queued: list[str] = []
     monkeypatch.setattr(landing, "tidy", broken)
     monkeypatch.setattr(backlog, "queue_waiting",
-                        lambda core, session: queued.append(session) or backlog.Started())
+                        lambda core, session, **kw: queued.append(session) or backlog.Started())
     sha, before = land_branch(repo, lambda root: docs(root, "x.txt"))
     result = landing.land(repo, sha, before)
     assert queued and landing.marker(repo, sha).exists()
@@ -209,3 +209,48 @@ def test_ex3_an_inflight_branch_merges_the_compacted_main_cleanly(repo: Path) ->
                      check=False)
     assert merged.returncode == 0, merged.stdout + merged.stderr
     assert [f.line() for f in validate(open_core(repo)) if f.severity == "error"] == []
+
+
+@pytest.mark.sr("SR-301")
+def test_ex1_a_worktree_named_for_the_tidy_is_never_removed(repo: Path, tmp_path: Path) -> None:
+    """SR-301 EX-1: a landing's tidy list names another worktree's folder (or one holding it):
+    the folder stays and the landing writes a case instead."""
+    holder = tmp_path / "trees"
+    other = holder / "other"
+    run_git(repo, "worktree", "add", "-q", "-b", "other", str(other))
+    sha, before = land_branch(repo, decision(str(holder), str(other)))
+    result = landing.land(repo, sha, before)
+    assert other.exists() and result["outside"] == []
+    assert {r["kind"] for r in debug_cases(repo, sha)} >= {"tidy-worktree"}
+
+
+@pytest.mark.sr("SR-301")
+def test_ex2_a_document_changed_uncommitted_in_another_worktree_stays(
+        repo: Path, tmp_path: Path) -> None:
+    """SR-301 EX-2: the in-flight change is not committed yet, only edited in its worktree."""
+    docs(repo, "docs/a.md", "docs/b.md")
+    commit_all(repo, "docs")
+    other = tmp_path / "other"
+    run_git(repo, "worktree", "add", "-q", "-b", "other", str(other))
+    (other / "docs" / "a.md").write_text("still working on it\n", encoding="utf-8")
+    sha, before = land_branch(repo, decision("docs/a.md", "docs/b.md"))
+    result = landing.land(repo, sha, before)
+    assert result["removed"] == ["docs/b.md"] and (repo / "docs" / "a.md").exists()
+
+
+@pytest.mark.sr("SR-301")
+def test_ex1_entries_about_an_inflight_branchs_record_stay_live(repo: Path,
+                                                                 tmp_path: Path) -> None:
+    """SR-301 EX-1: a card entry on main names SR-050, a record only an in-flight worktree
+    has: the compaction does not take it for retired; one naming no record anywhere moves."""
+    put(repo, "card-settled", {"record": "SR-050", "reason": "asked"})
+    put(repo, "card-settled", {"record": "SR-060", "reason": "retired: replaced"})
+    commit_all(repo, "cards")
+    other = tmp_path / "other"
+    run_git(repo, "worktree", "add", "-q", "-b", "other", str(other))
+    write_record(other, record("SR-050", "branch rule", statement="s", examples=[ex(1)]))
+    sha, before = land_branch(repo, lambda root: docs(root, "docs/x.md"))
+    landing.land(repo, sha, before)
+    live = [json.loads(p.read_text(encoding="utf-8"))["payload"]["record"]
+            for p in (repo / ".plumb" / "log" / "card-settled").glob("*.json")]
+    assert live == ["SR-050"]

@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -62,13 +62,40 @@ def spawn(root: Path, head: str, before: str) -> bool:
 # --------------------------------------------------------------------------- tidy (SR-286)
 
 
+def worktrees(root: Path) -> list[Path]:
+    """The other worktrees of this repository (SR-301: the landing never writes them)."""
+    here = Path(root).resolve()
+    listed = [Path(line[len("worktree "):]).resolve() for line in
+              _git(root, "worktree", "list", "--porcelain").splitlines()
+              if line.startswith("worktree ")]
+    return [w for w in listed if w != here]
+
+
 def inflight_paths(root: Path) -> set[str]:
-    """The paths the local branches not yet merged into HEAD changed since they forked."""
+    """The paths the local branches not yet merged into HEAD changed since they forked, and
+    the paths changed but not committed in another worktree (they land later)."""
     out: set[str] = set()
     for branch in _git(root, "for-each-ref", "--no-merged=HEAD", "--format=%(refname:short)",
                        "refs/heads").split():
         out |= set(_git(root, "diff", "--name-only", f"HEAD...{branch}").split("\n")) - {""}
+    for tree in worktrees(root):
+        try:
+            listed = _git(tree, "status", "--porcelain", "-z", "--untracked-files=all")
+        except (OSError, subprocess.CalledProcessError):
+            continue  # a pruned or unreadable worktree changes nothing here
+        items = iter(listed.split("\0"))
+        for item in items:
+            if len(item) > 3:
+                out.add(item[3:])
+                if item[0] in "RC":  # -z gives a rename's old path as the next bare item
+                    out.add(next(items, ""))
+        out.discard("")
     return out
+
+
+def inflight_ids(paths: Iterable[str]) -> set[str]:
+    """The record ids whose files ``paths`` (``inflight_paths``) name: records not landed."""
+    return {Path(p).stem for p in paths if p.startswith(".plumb/") and _ID.match(Path(p).stem)}
 
 
 def _landed_decisions(core: Any, before: str, head: str) -> list[Any]:
@@ -100,7 +127,13 @@ def tidy(core: Any, before: str, head: str) -> tuple[list[str], list[str], list[
         for item in [named] if isinstance(named, str) else named:
             path = Path(str(item))
             if path.is_absolute() and root.resolve() not in path.resolve().parents:
-                if path.exists():
+                held = [w for w in worktrees(root)
+                        if w == path.resolve() or path.resolve() in w.parents
+                        or w in path.resolve().parents]
+                if held:  # SR-301: never another worktree, nor a folder holding one
+                    cases.append({"id": f"tidy-worktree:{item}", "kind": "tidy-worktree",
+                                  "target": str(item), "detail": f"{held[0]} is a worktree"})
+                elif path.exists():
                     shutil.rmtree(path) if path.is_dir() else path.unlink()
                     outside.append(str(item))
                 continue
@@ -169,16 +202,20 @@ def _evidence_kept(entries: list[Any]) -> set[str]:
         or any(str(n.get("id")) in regressed for n in e.payload.get("nodes") or ()))}
 
 
-def compaction(core: Any, since_at: str, tracked: set[str]) -> list[str]:
+def compaction(core: Any, since_at: str, tracked: set[str],
+               pending: Collection[str] = ()) -> list[str]:
     """The committed entry files (``kind/file``) older than the records they served: every
     record they name superseded or retired; test-run evidence a newer run replaced; an entry
     of a ``BY_AGE`` kind naming no record, older than ``since_at``. An entry a staying entry
-    cites (its digest, or its payload's ``digest``) stays, and so on down the chain."""
+    cites (its digest, or its payload's ``digest``) stays, and so on down the chain. A record
+    of ``pending`` (an in-flight branch's, SR-301) is not retired for being absent here."""
     index = core.index()
     statuses = core.status()
 
     def gone(record_id: str) -> bool:
-        return record_id not in index or statuses[record_id].superseded_by is not None
+        if record_id not in index:
+            return record_id not in pending
+        return statuses[record_id].superseded_by is not None
 
     evidence = [e for e in core.log_read("evidence") if "/" in e.name]
     runs = [e for e in evidence if e.kind == "test-run"]
@@ -218,7 +255,8 @@ def compact(core: Any, before: str) -> list[str]:
     prefix = ".plumb/log/"
     tracked = {p[len(prefix):] for p in _git(root, "ls-files", "--", prefix).split("\n")
                if p.startswith(prefix)}
-    return log.archive(core.paths, compaction(core, since_at, tracked))
+    pending = inflight_ids(inflight_paths(root))
+    return log.archive(core.paths, compaction(core, since_at, tracked, pending))
 
 
 # --------------------------------------------------------------------------- counts
@@ -326,7 +364,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
 
     def do_queue() -> None:
         nonlocal queued, queued_line
-        started = backlog.queue_waiting(open_core(root), session)
+        started = backlog.queue_waiting(open_core(root), session, mark=False)
         queued, queued_line = started.records, started.line
 
     def do_commit() -> None:
@@ -353,26 +391,23 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
 
 
 def lines(root: Path) -> list[tuple[str, str]]:
-    """``(head, text)`` of the latest landing for the next turn: its line, then its open
-    debug cases (SR-300) when it left any."""
+    """``(key, text)`` for the next turn: the latest landing's line, then the open debug cases
+    (SR-300) with how many were resolved."""
     from plumb.understand import summary
 
     folder = Path(root) / ".plumb" / "cache" / "landed"
+    out: list[tuple[str, str]] = []
     try:
         latest = max(folder.glob("*.json"), key=lambda p: p.stat().st_mtime)
         data = json.loads(latest.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    head = latest.stem
-    out = [(head, str(data.get("line") or ""))] if data.get("line") else []
-    try:
-        rows = json.loads((Path(root) / ".plumb" / "cache" / "debug" / f"{head}.json")
-                          .read_text(encoding="utf-8"))
-        open_rows = [r for r in rows if r.get("state") == "open"]
-        if open_rows:
-            out.append((f"{head}:cases:{len(open_rows)}", summary.cases_text(open_rows)))
+        if data.get("line"):
+            out.append((latest.stem, str(data["line"])))
     except (OSError, ValueError, AttributeError):
         pass
+    open_rows, resolved = summary.open_cases(root)
+    if open_rows:
+        out.append((f"cases:{len(open_rows)}:{resolved}",
+                    summary.cases_text(open_rows, resolved)))
     return out
 
 

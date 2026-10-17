@@ -29,3 +29,16 @@ def test_ex1_three_cases_are_told_with_the_workflow_on_sonnet(repo: Path) -> Non
 def test_ex4_no_cases_write_nothing(repo: Path) -> None:
     summary.write_cases(open_core(repo), "abc123", [])
     assert not (repo / ".plumb" / "cache" / "debug").exists()
+
+
+def test_ex2_a_resolved_case_is_counted_and_no_longer_told(repo: Path) -> None:
+    """SR-300 EX-2: the debug workflow repins one stale link and marks its case done: the
+    next text counts it resolved and lists the two still open."""
+    from plumb.boundary import landing
+
+    summary.write_cases(open_core(repo), "abc123", CASES)
+    assert summary.resolve_cases(repo, ["c2"]) == 1
+    ((key, text),) = landing.lines(repo)
+    assert "2 debug cases open, 1 resolved" in text and "c2" not in text and key == "cases:2:1"
+    assert summary.resolve_cases(repo, ["c1", "c3"]) == 2
+    assert landing.lines(repo) == []

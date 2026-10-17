@@ -67,3 +67,35 @@ def test_ex4_no_judge_says_one_line_and_changes_nothing(
     assert queued(repo) == 0
     assert backlog.queue_waiting(core, SESSION).line == ""       # said once
     assert isinstance(engine_standins.dispatcher, FakeDispatcher)
+
+
+@pytest.mark.sr("SR-301")
+def test_ex1_another_sessions_open_loop_is_left_to_its_own_gate(
+        repo: Path, write_record, engine_standins) -> None:
+    """SR-301 EX-1: session s2 runs a loop on INT-001: the backlog of this session (or of a
+    landing) queues the other intent's records only."""
+    from plumb.understand import backlog, cmd_intent, files
+
+    ids = bulk(repo, write_record, {"alpha": 2, "beta": 2})
+    path = cmd_intent.open_loop(repo, "s2", "sha256:" + "c" * 64)
+    files.write_json_atomic(path, {**files.read_json(path), "intent": "INT-001"})
+    core = open_core(repo)
+    assert set(backlog.waiting(core, SESSION)) == set(ids["beta"])
+    assert backlog.queue_waiting(core, SESSION).records == len(ids["beta"])
+
+
+def test_ex1_the_session_start_queue_marks_no_pass_so_turn_ends_stay_fast(
+        repo: Path, write_record, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-298 EX-1: the spawned process queues only; no pass is marked, so no turn end runs
+    ``resume`` over the whole backlog afterwards."""
+    from plumb.understand import backlog
+
+    bulk(repo, write_record, {"alpha": 3})
+    core = open_core(repo)
+    spawned: list[Any] = []
+    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", "1")
+    monkeypatch.setattr("subprocess.Popen", lambda argv, **kw: spawned.append(argv))
+    assert backlog.spawn(core, SESSION) and "--queue-only" in spawned[0]
+    assert backlog.queue_waiting(core, SESSION, mark=False).records == 4
+    assert not backlog.marker_path(repo, SESSION).exists()
+    assert backlog.resume(core, SESSION).jobs == []

@@ -62,3 +62,16 @@ def test_ex3_nothing_matches_says_so_and_changes_nothing(
     assert "nothing taken over" in capsys.readouterr().err
     assert old.read_text(encoding="utf-8") == before
     assert not cmd_intent.loop_path(repo, NEW, DIGEST).exists()
+
+
+def test_ex3_two_open_loops_and_no_choice_takes_over_neither(
+        repo: Path, capsys: pytest.CaptureFixture) -> None:
+    """SR-302 EX-3: two sessions run loops; a take-over naming neither changes nothing."""
+    old = _opened(repo)
+    other = cmd_intent.open_loop(repo, "sc", "sha256:" + "c" * 64)
+    before = {p: p.read_text(encoding="utf-8") for p in (old, other)}
+    assert _adopt(repo) == 1
+    assert "more than one open loop" in capsys.readouterr().err
+    assert {p: p.read_text(encoding="utf-8") for p in (old, other)} == before
+    assert gate.is_closed(repo, OLD)
+    assert _adopt(repo, "--from-session", OLD) == 0
