@@ -429,3 +429,50 @@ def test_ex2_a_job_over_the_limit_is_split_not_failed(world: Path) -> None:  # n
     assert len(model.ran("judge")) >= 2 and not done.left
     assert all(len(c["user"]) <= verdict.INPUT_MAX for c in model.calls)
     assert {v["id"] for v in done.answer["verdicts"]} == {e["id"] for e in entries}
+
+
+# ---- SR-309 ---------------------------------------------------------------------------------
+
+
+def shaped_of(repo: Path, *questions: dict[str, Any]) -> list[dict[str, Any]]:
+    applied_on(repo, ["SR-001"], answer(("SR-001", "supported"), questions=list(questions)))
+    return written(repo)
+
+
+@pytest.mark.sr("SR-309")
+def test_ex1_a_long_header_keeps_whole_words_within_the_chip(world: Path) -> None:  # noqa: F811
+    (question,) = shaped_of(world, asking("SR-001", header="Existing validate errors"))
+    assert question["header"] == "Existing"
+    assert judge._whole_words("Hand clean-up first") == "Hand"
+    assert judge._whole_words("Which pages") == "Which pages"
+
+
+@pytest.mark.sr("SR-309")
+def test_ex2_one_recommended_marker_whatever_the_model_wrote(world: Path) -> None:  # noqa: F811
+    options = [{"label": "Public pages (recommended)", "consequence": "Speeds up visitors."},
+               {"label": "Every page", "consequence": "Speeds up all."}]
+    (question,) = shaped_of(world, asking("SR-001", options=options))
+    labels = [o["label"] for o in question["options"]]
+    assert labels == ["Public pages (Recommended)", "Every page"]
+
+
+@pytest.mark.sr("SR-309")
+def test_ex3_a_question_the_owner_already_answered_is_dropped(world: Path,
+                                                              write_record) -> None:  # noqa: F811
+    write_record(world, "---\nid: DEC-001\ntitle: Which pages\nquestion: Which pages?\n"
+                 "chosen: Every page, whatever it costs\nalternatives:\n- Public pages\n"
+                 "rationale: The owner chose it.\nmatters: true\nrecommended: Every page\n"
+                 "links:\n- kind: decides\n  to: SR-001\n---\n")
+    options = [{"label": "Public pages", "consequence": "Speeds up visitors."},
+               {"label": "Every page (recommended)", "consequence": "Speeds up all."}]
+    assert shaped_of(world, asking("SR-001", options=options)) == []
+
+
+@pytest.mark.sr("SR-309")
+def test_ex4_the_quote_is_the_owners_words_the_question_is_about_or_none(
+        world: Path) -> None:  # noqa: F811
+    (said,) = shaped_of(world, asking("SR-001"))
+    assert 'You said on 6 Oct: "I want pages to load faster"' in said["question"]
+    off = {"words": "/plumb intent Keep plumb fit by itself.", "date": "6 Oct"}
+    (question,) = shaped_of(world, asking("SR-001", request=off))
+    assert "You said" not in question["question"]

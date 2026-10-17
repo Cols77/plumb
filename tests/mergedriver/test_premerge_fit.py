@@ -1,4 +1,4 @@
-"""SR-297: the merge check refuses a landing that adds a validate error or a stale link."""
+"""SR-306: the merge check refuses a landing while validate shows any error or a link is left stale."""
 
 from __future__ import annotations
 
@@ -32,18 +32,19 @@ def _merge(root: Path):
 
 
 
-@pytest.mark.sr("SR-297")
-def test_ex1_a_new_validate_error_refuses_the_merge(tmp_path: Path) -> None:
+@pytest.mark.sr("SR-306")
+def test_ex1_a_validate_error_already_on_main_refuses_the_merge(tmp_path: Path) -> None:
     root, other = _pair(tmp_path)
-    path = other / ".plumb" / "requirements" / "SR-005.md"
-    path.write_text("not a record\n", encoding="utf-8")
-    commit_all(other, "break\n\nSR: SR-005")
+    (root / ".plumb" / "requirements" / "SR-005.md").write_text("not a record\n", encoding="utf-8")
+    commit_all(root, "break main\n\nSR: SR-005")
+    (other / "other.txt").write_text("feat\n", encoding="utf-8")
+    commit_all(other, "plain")
     report = _merge(root)
     assert report.exit == 1 and report.validate_errors
-    assert "errors this merge adds" in "\n".join(report.lines)
+    assert "validate errors in the records" in "\n".join(report.lines)
 
 
-@pytest.mark.sr("SR-297")
+@pytest.mark.sr("SR-306")
 def test_ex2_a_link_left_stale_names_the_repin(tmp_path: Path) -> None:
     root, other = _pair(tmp_path)
     (other / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
@@ -53,7 +54,7 @@ def test_ex2_a_link_left_stale_names_the_repin(tmp_path: Path) -> None:
     assert "repin each once its tests pass" in "\n".join(report.lines)
 
 
-@pytest.mark.sr("SR-297")
+@pytest.mark.sr("SR-306")
 def test_ex3_a_link_stale_at_the_base_does_not_hold(tmp_path: Path) -> None:
     root = make_repo(tmp_path / "main")
     write_record(root, record(statement="A relay pins every stated record.", examples=[ex(1)]))
@@ -73,7 +74,7 @@ def test_ex3_a_link_stale_at_the_base_does_not_hold(tmp_path: Path) -> None:
     assert report.stale_links == () and report.validate_errors == ()
 
 
-@pytest.mark.sr("SR-297")
+@pytest.mark.sr("SR-306")
 def test_ex4_a_clean_branch_goes_through(tmp_path: Path) -> None:
     root, other = _pair(tmp_path)
     (other / "other.txt").write_text("feat\n", encoding="utf-8")

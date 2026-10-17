@@ -211,7 +211,7 @@ def _ask(core: Any, dispatcher: Any, sub: Job, part: list[Mapping[str, Any]], sy
 
     def unusable(answer: Mapping[str, Any]) -> list[str]:
         return [why for q in answer.get("questions") or ()
-                for made, why in [judge._shaped(q, sub, judged, index)] if made is None]
+                for made, why in [judge._shaped(core, q, sub, judged, index)] if made is None]
 
     answer = dict(dispatcher.run(sub, system=system, schema=schema, on_step=on_step, user=user))
     index = core.index()

@@ -306,7 +306,7 @@ class PremergeReport:
     settled: tuple[str, ...] = ()        # R17: conflicts the owner's earlier answer settled
     stale_links: tuple[str, ...] = ()    # SR-166: links the merge leaves stale
     untested_links: tuple[str, ...] = ()  # SR-166: links the merge adds to files no test covers
-    validate_errors: tuple[str, ...] = ()  # SR-297: validate errors the merge adds
+    validate_errors: tuple[str, ...] = ()  # SR-306: every validate error of the result
     contradictions: tuple[str, ...] = ()  # SR-165: new requirements against live ones
     contradiction_notes: tuple[str, ...] = ()  # unsure verdicts: shown, never held on
     judge_note: str = ""                 # set when the contradiction check could not judge
@@ -497,7 +497,7 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
     conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
     stale_links, untested_links = _link_problems(core, base, paths, index)
-    validate_errors = _new_errors(core, base)
+    validate_errors = _errors(core)
     contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index)
     # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
     # the commit that finishes it ("finish the merge") records the settled version
@@ -560,24 +560,12 @@ def _link_problems(core: Any, base: str, paths: Sequence[str],
     return stale_links, untested
 
 
-def _new_errors(core: Any, base: str) -> list[str]:
-    """SR-297: the validate errors of the result that ``base`` did not have. Base is only
-    read when the result has errors, with the files its records link to."""
-    from plumb import stale
+def _errors(core: Any) -> list[str]:
+    """SR-306: every validate error of the result, whether or not the base had it."""
     from plumb.validate import validate
 
-    now = [f for f in validate(core) if f.severity == "error"]
-    if not now:
-        return []
-    try:
-        files = sorted({t for r in core.index().values() for ln in r.links
-                        for t in (ln.target.path, (ln.target.test or "").split("::", 1)[0]) if t})
-        with stale.base_core(Path(core.root), base, files) as old:
-            before = {(f.code, f.subject) for f in validate(old) if f.severity == "error"}
-    except Exception:  # noqa: BLE001 - an unreadable base: nothing is called new
-        return []
-    return [f"  [{f.code}] {f.subject}: {f.message}" for f in now
-            if (f.code, f.subject) not in before]
+    return [f"  [{f.code}] {f.subject}: {f.message}" for f in validate(core)
+            if f.severity == "error"]
 
 
 def drift_problems(core: Any, base: str, paths: Sequence[str]) -> dict[str, Any]:

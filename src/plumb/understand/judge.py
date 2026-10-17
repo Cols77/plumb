@@ -50,6 +50,7 @@ TEXT_WIDTH = 1200
 VERDICTS = ("supported", "beyond", "contradicts", "waiting")
 QUESTIONS_FILE = "judge_questions.json"
 HEADER_MAX = 12          # the question tool's chip
+_MARKER = re.compile(r"\s*\(recommended\)", re.IGNORECASE)
 _PLUMB_WORDS = re.compile(r"\b(?:proposed|settled|trial|records?|judge[sd]?)\b",
                           re.IGNORECASE)
 _LEFT_IN = re.compile(r"(?<![\w-])(?:INT|SR|DEC|FEAT|NC|IC)-\d+|sha256:"
@@ -479,7 +480,40 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
         for r in q.get("records") or () if isinstance(r, Mapping))]
 
 
-def _shaped(raw: Any, job: Job, judged: Mapping[str, str], index: Mapping[str, Any]
+def _whole_words(header: str) -> str:
+    """SR-309 EX-1: the header's words that fit the chip, dropped from the end, never cut."""
+    words = header.split()
+    while len(words) > 1 and len(" ".join(words)) > HEADER_MAX:
+        words.pop()
+    return " ".join(words)[:HEADER_MAX].strip()   # shortcut: one word over the chip is cut
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"[\w-]+", text.lower()))
+
+
+def _answered_by(index: Mapping[str, Any], ids: Sequence[str], labels: Sequence[str]) -> str:
+    """SR-309 EX-3: the decision that records the owner's answer to this question: it links
+    one of the question's records, and what it chose holds the words of one option."""
+    for rec in index.values():
+        if rec.kind != "decision" or not ids or not any(
+                ln.target.record in ids for ln in rec.links):
+            continue
+        chosen = _tokens(_flat(rec.fields.get("chosen")))
+        if any(len(t) > 1 and t <= chosen for t in map(_tokens, labels)):
+            return rec.id
+    return ""
+
+
+def _said_in(core: Any, ids: Sequence[str], words: str, index: Mapping[str, Any]) -> bool:
+    """SR-309 EX-4: ``words`` are in an owner message the records rest on."""
+    want = _flat(words).lower().rstrip(".")
+    return any(want in _flat(m.get("text")).lower()
+               for i in ids if i in index
+               for m in premise.premise_of(core, index[i]).messages)
+
+
+def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Mapping[str, Any]
             ) -> tuple[dict[str, Any] | None, str]:
     """A judge question as the question tool shows it, or ``(None, why it waits)`` (SR-245
     EX-7, SR-267 EX-4): its request folded into the question, the reason into the recommended
@@ -494,33 +528,36 @@ def _shaped(raw: Any, job: Job, judged: Mapping[str, str], index: Mapping[str, A
     shown = [cards.plain(_flat(v), index) for v in (
         raw.get("question"), raw.get("header"), raw.get("recommended_reason"),
         *(o.get(k) for o in options for k in ("label", "consequence")))]
-    if not ids or not words or not 2 <= len(options) <= 4 or not all(shown):
+    if not ids or not 2 <= len(options) <= 4 or not all(shown):
         return None, ("a question lacks its records, the request, two to four options, their "
                       "consequences or the reason for the recommended one")
     if any(_PLUMB_WORDS.search(t) or _LEFT_IN.search(t) for t in shown):
         return None, "a question names plumb's own words"
     text, header, reason, *rest = shown
     said = f'You said on {date}: "{words}"' if date else f'You said: "{words}"'
-    question = f"{text}\n\n{said}"
-    pairs = list(zip(rest[::2], rest[1::2], strict=True))
+    question = f"{text}\n\n{said}" if words and _said_in(core, ids, words, index) else text
+    pairs = [(_MARKER.sub("", label).strip(), c)
+             for label, c in zip(rest[::2], rest[1::2], strict=True)]
     return {"key": question_key(question), "job": job.id,
             "records": [{"id": i, "hash": judged[i]} for i in ids],
-            "question": question, "header": header[:HEADER_MAX].strip(),
+            "question": question, "header": _whole_words(header),
             "options": [{"label": f"{label} (Recommended)" if n == 0 else label,
                          "description": f"{consequence} Recommended: {reason}" if n == 0
                          else consequence}
                         for n, (label, consequence) in enumerate(pairs)]}, ""
 
 
-def _questions(job: Job, answer: Mapping[str, Any], judged: Mapping[str, str],
+def _questions(core: Any, job: Job, answer: Mapping[str, Any], judged: Mapping[str, str],
                index: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
     """The judge's questions shaped for the owner, and why the others wait."""
     shaped: list[dict[str, Any]] = []
     why: list[str] = []
     for raw in answer.get("questions") or ():
-        made, reason = _shaped(raw, job, judged, index)
-        if made is None:
-            why.append(reason)
+        made, reason = _shaped(core, raw, job, judged, index)
+        done = made and _answered_by(index, [r["id"] for r in made["records"]],
+                                     [_MARKER.sub("", o["label"]) for o in made["options"]])
+        if made is None or done:   # shortcut: an answered question is dropped, its records wait
+            why.append(reason or f"the owner already answered it ({done})")
         elif made["key"] not in {q["key"] for q in shaped}:
             shaped.append(made)
     return shaped, why
@@ -658,7 +695,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         notes += [f"{i} is clear and waits for its set ({a})" for i, a in held.items()]
     approved = {str(i.get("id")) for e in confirmed if e["kind"] == "approval"
                 for i in e["payload"]["records"]}
-    shaped, refused = _questions(job, answer, {
+    shaped, refused = _questions(core, job, answer, {
         i: h for i, h in judged.items()
         if i not in approved | set(waits) | set(held) | set(sent)}, index)
     _write_questions(core, job, set(judged), shaped)
