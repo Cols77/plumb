@@ -91,3 +91,10 @@ def test_ex5_a_card_about_a_gone_record_is_moot(repo: Path, write_record) -> Non
     card = CardState(id="c1", kind="decision", topic="old", questions=(
         ClarifyQuestion(id="q1", text="keep it?", record="DEC-001"),))
     assert summary._moot(core, card, core.status(), set()) is None
+    # an intent conflict card on a record the clean-up deleted (IC-002 on SR-103)
+    conflict = CardState(id="conflict:IC-002", kind="conflict", topic="old", questions=(
+        ClarifyQuestion(id="q1", text="which version?", record="SR-001"),))
+    assert summary._moot(core, conflict, core.status(), set()) is None
+    kept = CardState(id="conflict:IC-003", kind="conflict", topic="live", questions=(
+        ClarifyQuestion(id="q1", text="which version?", record="SR-002"),))
+    assert summary._moot(core, kept, core.status(), set()) is kept
