@@ -10,13 +10,13 @@ requirements:
 - SR-262
 links:
 - kind: derives_from
-  to: INT-006
+  to: INT-081
   pin:
     from: sha256:c17aeb109fc2c5b1d7b4565d6a0ec70c4d5ac3c8a16add5799e1c7798abc4d67
-    to: sha256:cffeba058fe60596217d83e91cf71f42a67044a8daf2986b625a678fc53f5720
+    to: sha256:3085c2fa82efd2e0f67770ccab015c44171d5a00f93e895e87dfcc18dfb54e22
 - kind: derives_from
-  to: INT-008
+  to: INT-079
   pin:
     from: sha256:c17aeb109fc2c5b1d7b4565d6a0ec70c4d5ac3c8a16add5799e1c7798abc4d67
-    to: sha256:61e5c924d9cd9015cf6b9fc0cc42cbc4b88c1c6fac045c9956a61c5917ebac97
+    to: sha256:ea3783dff83ce84a97d93aeff4fa4f14358e21adfb144c486b81c2ad75c93cdd
 ---

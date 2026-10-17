@@ -16,18 +16,18 @@ requirements:
 - SR-278
 links:
 - kind: derives_from
-  to: INT-016
+  to: INT-076
   pin:
     from: sha256:f53c80ba5d0173ae3da5613f32231d1d1dd345d3a9eeb832276754f41ac6c335
-    to: sha256:3c756f751ef8900585a2e88055ec92c6447ff2a8e115716a17f9e4b8c8f777e8
+    to: sha256:179fe2baec43ee4eafd8f639d77a41ae0ea853cdc36f0ec8f408080412276cc8
 - kind: derives_from
-  to: INT-020
+  to: INT-086
   pin:
     from: sha256:f53c80ba5d0173ae3da5613f32231d1d1dd345d3a9eeb832276754f41ac6c335
-    to: sha256:9143eb419bcafaba5f1b36ac47c30720bf2ccd70485e630aa2640aea5319cd70
+    to: sha256:170e624c6dc99fb046b46d96bbedb3bc4f2f84229f524a21518fd9161453f5c5
 - kind: derives_from
-  to: INT-019
+  to: INT-082
   pin:
     from: sha256:f53c80ba5d0173ae3da5613f32231d1d1dd345d3a9eeb832276754f41ac6c335
-    to: sha256:1c118c92893effbad86e53e48a7fdcdba9df8c27ca8f54699d2d6ca7591de6d9
+    to: sha256:4fffafac7bcce843c250a90f4a3529a218698db442413f28780f43c3a08bdc71
 ---

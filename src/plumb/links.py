@@ -143,6 +143,9 @@ def link_states(core: Core, ids: Iterable[str] | None = None,
             if record_id in retired:  # SR-164: a superseded record's pins are not tracked
                 out.append(LinkState(link=link, state="retired"))
                 continue
+            if link.kind == "supersedes" and link.target.record not in index:
+                out.append(LinkState(link=link, state="retired"))  # DEC-145: it went, per P15
+                continue
             out.append(_state_of(link, record.hash, core.hash_target(link.target)))
     return out
 

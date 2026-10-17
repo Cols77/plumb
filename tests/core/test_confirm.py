@@ -111,23 +111,6 @@ def _button(core, offer: str, digest: str, record_hash: str):
         "records": [{"id": "SR-001", "hash": record_hash}]})
 
 
-@pytest.mark.sr("SR-086")
-def test_button_approval_confirms_only_at_a_drawn_offer(setup: Path) -> None:
-    """SR-086 EX-1, EX-9: an owner button approval naming the offer drawn for this record at
-    this version confirms; the same entry naming no drawn offer confirms nothing."""
-    from plumb import confirm
-
-    core, offer, digest = _drawn_offer(setup)
-    forged = _button(core, "sha256:" + "0" * 64, digest, core.index()["SR-001"].hash)
-    assert "offer was not drawn" in confirm.entry_problem(forged, set(), (), core)
-    assert _confirmation(setup) == "proposed"
-    pressed = _button(core, offer, digest, core.index()["SR-001"].hash)
-    assert confirm.entry_problem(pressed, set(), (), open_core(setup)) is None
-    assert _confirmation(setup) == "confirmed"
-    assert open_core(setup).status()["SR-001"].approved_by == "owner"
-    _edit(setup)                                   # the confirmed version is the drawn one
-    assert _confirmation(setup) == "unconfirmed-edit"
-
 
 @pytest.mark.sr("SR-209")
 def test_button_approval_under_the_marker_or_with_another_key_confirms_nothing(

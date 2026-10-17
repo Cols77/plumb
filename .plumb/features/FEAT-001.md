@@ -19,13 +19,13 @@ requirements:
 - SR-287
 links:
 - kind: derives_from
-  to: INT-009
+  to: INT-088
   pin:
     from: sha256:cfca88ab60a00fc709ad66af7380bf0dabd5eda291d370832e9c64362e2a664b
-    to: sha256:ed0ac694f6656e50894b3cdf5449f062556ebc0905d51b4d42ff2ebc3f3672c2
+    to: sha256:8629506d3ed50deab8ee7874d8c5d370358f09838866e27e1ce75cc297324aa9
 - kind: derives_from
-  to: INT-004
+  to: INT-081
   pin:
     from: sha256:cfca88ab60a00fc709ad66af7380bf0dabd5eda291d370832e9c64362e2a664b
-    to: sha256:e8c75738c35e62e81269c4660610cf8ae8b8149c9b0361947c3069118aa81feb
+    to: sha256:3085c2fa82efd2e0f67770ccab015c44171d5a00f93e895e87dfcc18dfb54e22
 ---

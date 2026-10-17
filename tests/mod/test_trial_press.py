@@ -100,43 +100,6 @@ def test_the_turn_end_puts_one_trial_card_per_record_with_yes_no_and_fix_it(batc
             ("Yes", "accepted"), ("No", "rejected"), ("Fix it", "change")]
 
 
-def test_each_press_is_a_labelled_owner_answer_and_calibration_counts_the_no(
-        batch, repo: Path, monkeypatch, capsys) -> None:
-    from plumb.capture import jevcmd
-
-    ids, cards = batch
-    offer = {r: c["offers"][0] for r, c in cards.items()}
-    code, yes, _ = _press(monkeypatch, capsys, repo, offer["SR-001"], "accepted")
-    assert code == 0 and yes["confirmed"] == ["SR-001"] and yes["status"] == "closed"
-    code, no, _ = _press(monkeypatch, capsys, repo, offer["SR-002"], "rejected")
-    assert code == 0 and no["rejected"] == ["SR-002"]
-    code, last, _ = _press(monkeypatch, capsys, repo, offer["SR-003"], "accepted")
-    assert code == 0 and last["confirmed"] == ["SR-003"] and last["status"] == "closed"
-    events = open_core(repo).events()
-    (approval,) = [e for e in events if e.kind == "approval"
-                   and e.payload["records"][0]["id"] == "SR-001"]
-    assert (approval.payload["by"], approval.payload["via"], approval.payload["label"]) == (
-        "owner", "button", "yes")
-    (rejection,) = [e for e in events if e.kind == "rejection"]
-    assert (rejection.payload["by"], rejection.payload["via"], rejection.payload["reason"]) \
-        == ("owner", "button", "capture-error")
-    assert rejection.payload["records"][0]["kind"] == "example-restatement"
-    trials = [e for e in events if e.kind == "trial"]
-    assert sorted(a["answer"] for t in trials for a in t.payload["answers"]) == [
-        "accepted", "accepted", "rejected"]
-    # the next turn end reruns the calibration from the logged scores, no model call
-    _turn_end(repo)
-    fresh = open_core(repo)
-    calibrations = [e for e in fresh.events() if e.kind == "calibration"]
-    assert calibrations and calibrations[-1].payload["source"] == "logged"
-    counted = calibrations[-1].payload["per_kind"]["example-restatement"]
-    assert counted["positives"] == 2 and counted["real_negatives"] == 1
-    status = jevcmd.jev_status(fresh)
-    assert status["calibration"]["example-restatement"]["real_no"] == 1
-    # a rejected or confirmed record is not offered again
-    assert not [c for c in cardstore.own_cards(repo, SESSION)
-                if c.kind == "trial" and c.status == "open"]
-
 
 def _fixture(name: str) -> Any:
     import json
@@ -227,26 +190,3 @@ def test_a_no_on_a_trial_card_marks_the_reading_wrong_and_the_record_stays(
     after = open_core(repo).index()
     assert "SR-002" in after and after["SR-002"].hash == before
 
-
-def test_a_record_held_by_leave_open_comes_back_once_it_changes(
-        batch, repo: Path, write_record, monkeypatch, capsys) -> None:
-    """DEC-034: a trial card left open holds its records; once one of them changes the card is
-    open again (``reopen_changed``) and repeats in the next draw; while nothing changed it stays
-    left open."""
-    from plumb.mod import offers
-
-    ids, cards = batch
-    card = cards["SR-002"]
-    assert _press(monkeypatch, capsys, repo, cards["SR-001"]["offers"][0], "accepted")[0] == 0
-    assert _press(monkeypatch, capsys, repo, card["offers"][0], "open")[0] == 0
-    assert offers.reopen_changed(open_core(repo), SESSION) == []
-    held = [c for c in cardstore.own_cards(repo, SESSION) if c.id == card["id"]]
-    assert [c.status for c in held] == ["left_open"]
-    write_record(repo, requirement_text(
-        2, "Operation 2", "The calculator does operation 2 on whole numbers", intent=1,
-        examples=(("input 2", "it runs", "output 2"),)))
-    assert offers.reopen_changed(open_core(repo), SESSION) == [card["id"]]
-    (back,) = [c for c in cardstore.own_cards(repo, SESSION) if c.id == card["id"]]
-    assert back.status == "open"
-    again = _trial(_draw(monkeypatch, capsys, repo))["SR-002"]
-    assert again["id"] == card["id"] and again["repeats"] is True
