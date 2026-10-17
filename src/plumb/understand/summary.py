@@ -20,6 +20,7 @@ from __future__ import annotations
 import dataclasses
 import time
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from plumb.contracts import CardState, Choice, ClarifyQuestion, StopParts
@@ -29,6 +30,27 @@ from plumb.understand import cardstore, files, jobs
 
 UNDER_BUDGET_S = 0.35        # the upkeep (the log's cards, the offers) needs this much left
 CALIBRATE_S = 0.9            # rerunning the calibration needs this much left
+
+
+# --------------------------------------------------------------------------- debug cases
+
+
+def write_cases(core: Any, sha: str, cases: Sequence[Mapping[str, Any]]) -> None:
+    """Write a landing's debug cases to ``.plumb/cache/debug/<sha>.json`` (SR-300): a list of
+    ``{id, kind, target, detail, state}``, state ``open`` or ``resolved``. No cases, no file."""
+    keys = ("id", "kind", "target", "detail", "state")
+    rows = [{k: str(c.get(k) or ("open" if k == "state" else "")) for k in keys} for c in cases]
+    if rows:
+        files.write_json_atomic(Path(core.root) / ".plumb" / "cache" / "debug" / f"{sha}.json",
+                                rows)
+
+
+def cases_text(cases: Sequence[Mapping[str, Any]]) -> str:
+    """The text block that tells the agent its open cases (SR-300 EX-1)."""
+    lines = [f"- {c['id']} ({c['kind']}) {c['target']}: {c['detail']}" for c in cases]
+    return (f"plumb: {len(lines)} debug cases left by a landing:\n" + "\n".join(lines)
+            + "\nRun them as a Workflow on Sonnet: repin after tests, relink, rerun, card only "
+            "a changed meaning.")
 
 
 # --------------------------------------------------------------------------- what was told
