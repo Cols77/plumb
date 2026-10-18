@@ -190,20 +190,21 @@ alternatives:
 """
 
 
-def test_a_newer_decision_pinned_to_the_reworded_record_accounts_for_it(
+def test_a_newer_decision_pinned_to_the_reworded_record_is_read_by_the_judge(
         project: Path, write_record) -> None:
     """The owner decided again after the pin (DEC-002 is pinned to SR-001 as reworded): the
-    older decision's link is repinned naming it, and no model and no owner is asked."""
+    judge reads the rewording next to that answer and the verdict stays the cascade's
+    (SR-242); a kept meaning repins without the owner."""
     _reword(project, write_record, ", rounded to two decimals")
     write_record(project, DEC2)
     open_core(project).add_link("DEC-002", "decides", Target(record="SR-001"))
-    sonnet = Judge(False, "the sum is now rounded")
+    sonnet = Judge(True, "the rewording applies the later decision")
     result = _resolve(project, sonnet)
-    assert sonnet.asked == [] and result.refused == []
-    (change,) = result.changes
-    assert change["link"] == LINK and change["tier"] == "decision"
-    (entry,) = open_core(project).log_read("events", ["repin"])
-    assert "DEC-002" in entry.payload["note"] and _state(project) == "current"
+    (shown,) = sonnet.asked
+    assert "The owner decided later" in shown["requirement"]
+    assert "DEC-002: question: Is the sum rounded?" in shown["requirement"]
+    assert result.refused == [] and result.changes[0]["tier"] == "sonnet"
+    assert _state(project) == "current"
     assert judge.open_questions(open_core(project), "s1") == []
 
 

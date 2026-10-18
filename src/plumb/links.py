@@ -603,12 +603,6 @@ def repin_after_tests(core: Core, selector: str, *,
     for state in candidates:
         link = state.link
         target = index.get(link.target.record or "")
-        newer = _accounting_decision(index, link, target)
-        if newer is not None:   # a later owner decision asked for the rewording: nothing to judge
-            _repinned(core, result, link.id, "decision",
-                      f'{target.id} was reworded to apply {newer.id} "{newer.title}", which is '
-                      "pinned to it as it is now", dry_run)
-            continue
         texts = (_record_texts(core.root, target, link) if link.target.record is not None
                  else end_texts(core.root, link))
         if texts is None:
@@ -621,6 +615,10 @@ def repin_after_tests(core: Core, selector: str, *,
                      if record is not None else link.id,
                      link_id=link.id, link_kind=link.kind, path=path,
                      before=texts[0], after=texts[1])
+        newer = _later_decisions(index, link, target)
+        if newer:   # SR-242, INT-079: the cascade still decides, reading the owner's later answers
+            shown["requirement"] += ("\n\nThe owner decided later, on the record as it is now:\n"
+                                     + "\n".join(f"{d.id}: {record_text(d)}" for d in newer))
         p = jev.clears(**shown) if jev is not None else None
         if p is not None:   # EX-1: JEV alone, above its calibrated threshold
             why = f"JEV gives {p:.2f}, at or above its threshold {jev.threshold:.2f}"
@@ -650,20 +648,18 @@ def repin_after_tests(core: Core, selector: str, *,
     return result
 
 
-def _accounting_decision(index: Mapping[str, Record], link: Link,
-                         target: Record | None) -> Record | None:
-    """Another decision that decides ``target`` and is pinned to it as it is now: the owner
-    decided again after the pin, and the rewording applies that newer answer, so the older
-    decision's link is repinned with its name and the owner is asked nothing."""
+def _later_decisions(index: Mapping[str, Record], link: Link,
+                     target: Record | None) -> list[Record]:
+    """The other decisions that decide ``target`` and are pinned to it as it is now: the owner
+    decided again after this link's pin, so the judge reads the rewording next to those
+    answers (a rewording that applies them keeps the older decision's meaning); the verdict
+    stays the cascade's (SR-242)."""
     if target is None:
-        return None
-    for record in index.values():
-        if record.kind != "decision" or record.id == link.source:
-            continue
-        for other in record.links:
-            if other.target.record == target.id and other.pin is not None                     and other.pin.target == target.hash:
-                return record
-    return None
+        return []
+    return [record for record in index.values()
+            if record.kind == "decision" and record.id != link.source
+            and any(other.target.record == target.id and other.pin is not None
+                    and other.pin.target == target.hash for other in record.links)]
 
 
 def _record_texts(root: Path, target: Record | None, link: Link) -> tuple[str, str] | None:
