@@ -540,6 +540,14 @@ def _write_questions(core: Any, job: Job, judged: set[str], new: list[dict[str, 
         files.write_json_atomic(questions_path(core.root, job.session), [*kept, *new])
 
 
+def add_question(core: Any, session: str, question: Mapping[str, Any]) -> None:
+    """One question for the question tool from outside a judge job (the debug workflow's,
+    SR-300 EX-3), in the shape ``_shaped`` writes; the same key already open is not repeated."""
+    old = _logged_questions(core.root, session)
+    if all(q.get("key") != question.get("key") for q in old):
+        files.write_json_atomic(questions_path(core.root, session), [*old, dict(question)])
+
+
 def _say_waiting(core: Any, session: str, waits: Mapping[str, str]) -> str:
     """SR-245: the records nobody can settle wait, and the once-per-window line says so."""
     from plumb.judgment import waiting_line

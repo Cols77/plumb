@@ -556,16 +556,16 @@ def repin_after_tests(core: Core, selector: str, *,
     development. ``dry_run`` asks the models only: no tests run, nothing is repinned, no card
     is filed, and the links it would repin are listed in ``would``. ``auto`` (SR-175, the turn
     end): a rewording Opus proposes is recorded as an unconfirmed edit and the link repinned,
-    where the command only tells the agent to reword. Never confirms anything."""
+    where the command only tells the agent to reword. A link to a record (a decision's
+    ``decides``) runs no tests: the record as pinned and as it is now go to the same cascade,
+    and a changed meaning is one owner question through the question tool (SR-300 EX-3), not a
+    diagnosis. Never confirms anything."""
     result = AfterTests()
     states = _select_stale(core, selector)
     candidates: list[LinkState] = []
     for state in states:
         link = state.link
-        if link.target.record is not None:
-            result.refused.append((link.id, "it points at a record, not code: reword the "
-                                   "record so it agrees, or bring it to the owner as a card"))
-        elif state.moved != "target":
+        if state.moved != "target":
             result.refused.append((link.id, "the requirement itself was reworded since the "
                                    "pin: a test run cannot settle that; bring it to the owner "
                                    "as a card"))
@@ -584,27 +584,29 @@ def repin_after_tests(core: Core, selector: str, *,
         result.unreachable = meaning_check.judge_gap(core)
         return result
     untested = ""
-    if not dry_run:
-        paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
+    paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
+    if not dry_run and paths:   # a link to a record (SR-300 EX-3) has no tests to run
         ok, detail = (runner or default_runner(core))(paths)
         if not ok:
             result.refused += [(s.link.id, f"its linked tests do not pass ({detail})")
-                               for s in candidates]
-            return result
-        if detail.startswith("no test covers"):
+                               for s in candidates if target_path(s.link.target)]
+            candidates = [s for s in candidates if not target_path(s.link.target)]
+        elif detail.startswith("no test covers"):
             untested = f" (no test gate: {detail})"
     from plumb.understand.judge import record_text
 
     index = core.index()
     for state in candidates:
         link = state.link
-        texts = end_texts(core.root, link)
+        target = index.get(link.target.record or "")
+        texts = (_record_texts(core.root, target, link) if link.target.record is not None
+                 else end_texts(core.root, link))
         if texts is None:
             result.refused.append((link.id, "the earlier version of the end could not be "
                                    "found in git, so there is nothing to compare"))
             continue
         record = index.get(link.id.split("#")[0])
-        path = target_path(link.target) or ""
+        path = target_path(link.target) or (target.path if target is not None else "")
         shown = dict(requirement=f"{record.id}: {record.title}\n{record_text(record)}"
                      if record is not None else link.id,
                      link_id=link.id, link_kind=link.kind, path=path,
@@ -627,12 +629,70 @@ def repin_after_tests(core: Core, selector: str, *,
             result.refused.append((link.id, f"{NO_MODEL}: {meaning.reason}"))
             if meaning.unreachable:
                 result.unreachable = meaning.reason
+        elif not meaning.unchanged and target is not None:   # SR-300 EX-3, SR-221
+            _ask_owner(core, result, record, target, link, meaning.reason, session, dry_run)
         elif not meaning.unchanged:
             _diagnose(core, result, record, link, shown, meaning.reason, diagnoser,
                       session, dry_run, auto)
         else:
             _repinned(core, result, link.id, "sonnet", meaning.reason + untested, dry_run)
     return result
+
+
+def _record_texts(root: Path, target: Record | None, link: Link) -> tuple[str, str] | None:
+    """``(the target record as the pin saw it, as it is now)``, each as what it asserts: the
+    pinned version is looked for among the record file's committed versions (newest first);
+    None when it is not found."""
+    from plumb.model import parse_record
+    from plumb.understand.judge import record_text
+
+    if target is None or link.pin is None:
+        return None
+    listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", "--", target.path])
+    for sha in (listing or "").split():
+        text = _git_text(root, ["show", f"{sha}:{target.path}"])
+        try:
+            old = parse_record(text, target.path) if text is not None else None
+        except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
+            continue
+        if old is not None and old.hash == link.pin.target:
+            return record_text(old), record_text(target)
+    return None
+
+
+def _ask_owner(core: Core, result: AfterTests, record: Record | None, target: Record,
+               link: Link, reason: str, session: str | None, dry_run: bool) -> None:
+    """SR-300 EX-3, SR-221: the record a decision settles changed in meaning: one question to
+    the owner through the question tool, about the behaviour and in plain words; no card, no
+    diagnosis. The link stays stale until the answer is applied."""
+    from plumb import stale
+    from plumb.understand import judge
+
+    refusal = CHANGED.format(reason=reason)
+    if record is None or dry_run:
+        result.refused.append((link.id, f"{refusal} (dry run: no question asked)" if dry_run
+                               else refusal))
+        return
+    fields = record.fields
+    chosen = str(fields.get("chosen") or record.title)
+    asked = str(fields.get("question") or record.title)
+    text = (f'"{target.title}" changed since you answered "{chosen}" to "{asked}". '
+            f"Does your answer still hold for what it says now?\n\nWhat changed: {reason}")
+    where = session or stale.current_session(core.root)
+    judge.add_question(core, where, {
+        "key": judge.question_key(text), "job": f"debug:{link.id}",
+        "records": [{"id": target.id, "hash": target.hash},
+                    {"id": record.id, "hash": record.hash}],
+        "question": text, "header": "Decision",
+        "options": [{"label": "It still holds",
+                     "description": "Your answer is kept and tied to the new wording."},
+                    {"label": "It needs a new answer",
+                     "description": "The agent asks you again what to decide here."},
+                    {"label": "Undo the rewording",
+                     "description": "The record goes back to what it said when you "
+                                    "answered."}]})
+    result.refused.append((link.id, f"{refusal}; one question to the owner through the "
+                           f"question tool; on \"it still holds\", plumb repin {link.id}"))
 
 
 def _repinned(core: Core, result: AfterTests, link_id: str, tier: str, why: str,
