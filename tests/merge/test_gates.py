@@ -1,5 +1,5 @@
-"""M4: the claims, link and log-integrity gates (exit 1) and the exit precedence 1, 5, 4
-(sp3 5, SR-049)."""
+"""M4: the link and log-integrity gates (exit 1), the claims listed and never held (SR-260
+EX-4), and the exit precedence 1, 5, 4 (sp3 5, SR-049)."""
 
 from __future__ import annotations
 
@@ -27,27 +27,31 @@ def _text(report) -> str:
     return "\n".join(render(report))
 
 
-def test_undeclared_path_exits_1(confirmed) -> None:
-    """SR-049 EX-1: a commit claiming SR-002 changes a path SR-002 does not declare."""
+def test_undeclared_path_is_named_and_does_not_hold(confirmed) -> None:
+    """SR-049 EX-1, SR-260 EX-4: a commit claiming SR-002 changes a path SR-002 does not
+    declare: named with the fix, not held on."""
     root, sha = confirmed
     write(root, "src/pkg/extra.py", "y = 1\n")
     commit(root, "extra\n\nSR: SR-002")
     report = merge_report(open_core(root), sha, run_full=False)
     assert [u["path"] for u in report.claims["undeclared"]] == ["src/pkg/extra.py"]
-    assert report.exit == 1
+    # only the full run no one recorded yet holds it (SR-254), never the claim
+    assert not report.claims["holds"] and report.exit == 5, _text(report)
+    assert report.verification.get("full_pending")
     text = _text(report)
     assert "undeclared path src/pkg/extra.py" in text
     assert "plumb link SR-002 implemented_by src/pkg/extra.py" in text
 
 
-def test_unclaimed_commit_with_required_trailer_exits_1(confirmed) -> None:
+def test_unclaimed_commit_with_required_trailer_is_listed(confirmed) -> None:
     root, sha = confirmed
     write(root, ".plumb/claims.yaml", "require_trailer: true\n")
     write(root, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")
     repin_all(root)
     commit(root, "no trailer")
     report = merge_report(open_core(root), sha, run_full=False)
-    assert report.claims["unclaimed_commits"] and report.exit == 1
+    assert report.claims["unclaimed_commits"] and not report.claims["holds"]
+    assert report.exit == 5 and report.verification.get("full_pending")   # SR-254 only
     assert "no SR: trailer" in _text(report)
 
 
@@ -75,8 +79,8 @@ def test_dangling_link_exits_1(confirmed) -> None:
 
 
 def test_exit_precedence_1_5_4(confirmed) -> None:
-    """SR-049 EX-3: a failing confirmed acceptance test beats an unconfirmed touched record;
-    a broken log beats both."""
+    """SR-049 EX-3, SR-260 EX-6: a failing confirmed acceptance test holds (5) beside an
+    unconfirmed touched record and an undeclared path (listed); a broken log beats both."""
     root, sha = confirmed
     from plumb.verify import open_verify
 
@@ -89,9 +93,7 @@ def test_exit_precedence_1_5_4(confirmed) -> None:
     commit(root, "break add\n\nSR: SR-001\nSR: SR-002")
     report = merge_report(open_core(root), sha, run_full=False)
     assert report.failing and any(a["id"] == "SR-002" for a in report.awaiting)
-    assert report.claims["undeclared"] and report.exit == 1  # notes.txt is undeclared
-    write(root, ".plumb/claims.yaml", "exempt: [notes.txt]\n")
-    report = merge_report(open_core(root), sha, run_full=False)
+    assert report.claims["undeclared"]   # notes.txt is undeclared: listed only
     assert report.exit == 5, _text(report)
     from logutil import entries, tamper
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -59,7 +60,8 @@ def test_hooks_install_installs_pre_push(repo: Path) -> None:
 
 
 def test_hook_blocks_push_on_nonzero(repo: Path, tmp_path: Path) -> None:
-    """SR-051 EX-2: a branch whose report exits 4 cannot be pushed through the hook."""
+    """SR-051 EX-2, SR-260 EX-3: a branch whose report exits 4 (a question waits for the
+    owner on SR-001) cannot be pushed through the hook."""
     remote = tmp_path / "remote.git"
     subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
     git(repo, "remote", "add", "origin", str(remote))
@@ -69,6 +71,15 @@ def test_hook_blocks_push_on_nonzero(repo: Path, tmp_path: Path) -> None:
     write(repo, ".plumb/requirements/SR-001.md",
           "---\nid: SR-001\ntitle: New\nstatement: A new behaviour.\n---\n")
     commit(repo, "propose SR-001\n\nSR: SR-001")
+    from plumb.api import open_core
+
+    asked = repo / ".plumb" / "session" / "s1" / "judge_questions.json"
+    asked.parent.mkdir(parents=True, exist_ok=True)
+    asked.write_text(json.dumps([{
+        "key": "is it new?", "question": "Is it new?", "header": "New", "job": "j1",
+        "options": [{"label": "yes", "description": ""}],
+        "records": [{"id": "SR-001", "hash": open_core(repo).index()["SR-001"].hash}]}]),
+        encoding="utf-8")
     pushed = subprocess.run(["git", "push", "origin", "feat"], cwd=repo, capture_output=True,
                             text=True, encoding="utf-8", errors="replace")
     assert pushed.returncode != 0, pushed.stdout + pushed.stderr

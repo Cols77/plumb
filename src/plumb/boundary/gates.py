@@ -10,8 +10,8 @@ from typing import Any
 def claims_gate(core: Any, fork: str) -> dict[str, Any]:
     """``plumb claims check --range FORK..HEAD``, plus whether it holds the merge.
 
-    Holds on an undeclared path, or on a commit without an ``SR:`` trailer (touching a
-    non-exempt path) while ``require_trailer: true``."""
+    Lists an undeclared path, and a commit without an ``SR:`` trailer (touching a
+    non-exempt path) while ``require_trailer: true``; holds only when the check failed."""
     from plumb.claims import claims_check, load_policy
 
     try:
@@ -23,7 +23,9 @@ def claims_gate(core: Any, fork: str) -> dict[str, Any]:
     unclaimed = list(result.get("unclaimed_commits") or []) if policy.require_trailer else []
     out = dict(result)
     out["unclaimed_commits"] = unclaimed
-    out["holds"] = bool(result.get("undeclared") or unclaimed)
+    # SR-260 EX-4 (DEC-252): undeclared paths and unclaimed commits are listed, never held;
+    # only a claims check that could not read its policy holds (integrity, DEC-255)
+    out["holds"] = bool(result.get("problems"))
     return out
 
 

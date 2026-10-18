@@ -8,11 +8,20 @@ is ``{at, summary, where, passed}``: when it ran, what it showed, the path or li
 captured output, and whether it showed the change working.
 
 Both are the agent's notes, never the owner's word: they stay out of the record hash
-(``model.UNHASHED``), so recording them neither confirms nor unconfirms anything, and a
-missing proof is named (``plumb show``, ``plumb merge-check``), never a hold.
+(``model.UNHASHED``), so recording them neither confirms nor unconfirms anything. A missing
+proof is named (``plumb show``, ``plumb merge-check``); it holds only a merge into the default
+branch that delivers the requirement (an incoming commit's SR trailer), until the agent has
+shown it working and the owner confirmed it (SR-260, DEC-256, DEC-257).
+
+The owner's confirmation (DEC-257): ``plumb proof SR-### --ask`` (the agent, once the evidence
+passed) files a pending question in ``.plumb/session/<session>/proof_questions.json`` and
+prints the question-tool JSON; the question-answer hook tags the owner's answer to it with
+``proof: {record, hash, evidence_at}`` (``owner_confirmed`` reads it). The agent writes that
+log entry only through the hook.
 
 ``plumb proof SR-### [--plan TEXT] [--kind KIND]``
 ``plumb proof SR-### --evidence PATH_OR_LINK --summary TEXT (--passed | --failed)``
+``plumb proof SR-### --ask`` puts "Did you see it working?" to the owner.
 ``plumb proof SR-###`` alone prints the proof.
 """
 
@@ -33,6 +42,9 @@ if TYPE_CHECKING:
 
 KINDS = ("live-session", "hook", "command", "other")
 NOT_SHOWN = "not shown working yet"
+QUESTIONS_FILE = "proof_questions.json"
+YES = "Yes, I saw it working"
+NO = "No, not yet"
 
 
 def _flat(value: Any) -> str:
@@ -131,6 +143,87 @@ def not_shown(core: Core, ids: Sequence[str]) -> list[dict[str, Any]]:
     return rows
 
 
+# --------------------------------------------------------------------------- the owner's yes
+
+
+def questions_path(root: Any, session: str) -> Path:
+    """The session's pending proof questions (DEC-257); ``--ask`` adds, the hook removes."""
+    from plumb.understand import files
+
+    return files.session_dir(Path(root), session) / QUESTIONS_FILE
+
+
+def pending(root: Any, session: str) -> list[dict[str, Any]]:
+    from plumb.understand import files
+
+    raw = files.read_json(questions_path(root, session))
+    return [dict(q) for q in raw if isinstance(q, Mapping)] if isinstance(raw, list) else []
+
+
+def ask(core: Core, sr_id: str, session: str) -> dict[str, Any]:
+    """DEC-257: file the owner's "Did you see it working?" for ``sr_id`` as a pending proof
+    question ``{key, record, hash, evidence_at}`` and return the question-tool JSON; refused
+    (``CaptureError``) unless its evidence passed."""
+    from plumb.understand import files
+    from plumb.understand.judge import question_key
+
+    record = _requirement(core, sr_id)
+    evidence = evidence_of(record)
+    if evidence is None or not shown_working(record):
+        raise CaptureError(f"{sr_id} is not shown working: record passing evidence first "
+                           f"(plumb proof {sr_id} --evidence ... --summary ... --passed)")
+    summary = _flat(evidence.get("summary"))
+    where = _flat(evidence.get("where"))
+    question = f"Did you see {record.title} working?\n\n{summary}" + (
+        f" ({where})" if where else "")
+    entry = {"key": question_key(question), "record": record.id, "hash": record.hash,
+             "evidence_at": _flat(evidence.get("at"))}
+    kept = [q for q in pending(core.root, session) if q.get("record") != record.id]
+    files.write_json_atomic(questions_path(core.root, session), [*kept, entry])
+    return {"questions": [{
+        "question": question, "header": "Proof", "multiSelect": False,
+        "options": [{"label": YES, "description": "you watched the proof show it working; a "
+                     "merge into the default branch that delivers it no longer waits on it"},
+                    {"label": NO, "description": "a merge into the default branch that "
+                     "delivers it keeps waiting until you have seen it working"}]}]}
+
+
+def owner_confirmed(core: Core, record_id: str) -> bool:
+    """DEC-257: a question-answer entry, written by the question-answer hook, says the owner
+    saw ``record_id`` working at its current hash and evidence (``proof.record``,
+    ``proof.hash``, ``proof.evidence_at``, answer ``YES``)."""
+    record = core.index().get(record_id)
+    evidence = evidence_of(record) if record is not None else None
+    if record is None or evidence is None:
+        return False
+    at = _flat(evidence.get("at"))
+    for entry in core.events():
+        proof = entry.payload.get("proof") if entry.kind == "question-answer" else None
+        if isinstance(proof, Mapping) and proof.get("record") == record_id \
+                and proof.get("hash") == record.hash and proof.get("evidence_at") == at \
+                and entry.payload.get("answer") == YES:
+            return True
+    return False
+
+
+def unconfirmed_proofs(core: Core, ids: Sequence[str]) -> list[dict[str, Any]]:
+    """SR-260 (d), DEC-256: the requirements of ``ids`` (those a merge into the default
+    branch delivers) whose proof is not shown working or not confirmed by the owner:
+    ``{id, title, why}``, ``why`` ``not shown working`` or ``not confirmed by you``."""
+    index = core.index()
+    rows: list[dict[str, Any]] = []
+    for record_id in dict.fromkeys(ids):
+        record = index.get(record_id)
+        if record is None or record.kind != "requirement":
+            continue
+        if not shown_working(record):
+            rows.append({"id": record_id, "title": record.title, "why": "not shown working"})
+        elif not owner_confirmed(core, record_id):
+            rows.append({"id": record_id, "title": record.title,
+                         "why": "not confirmed by you"})
+    return rows
+
+
 def _where(core: Core, where: str) -> str:
     """A link as given; a path as a repository-relative path that exists."""
     where = where.strip()
@@ -200,8 +293,10 @@ def run(command: str, argv: list[str]) -> int:
         prog=f"plumb {command}",
         description="Record how the owner will see a requirement working (--plan, --kind) "
                     "and, once run, the evidence (--evidence, --summary, --passed or "
-                    "--failed). Never confirms anything; a missing proof is named, never a "
-                    "hold. With the ID alone, print the proof.")
+                    "--failed); --ask puts 'Did you see it working?' to the owner once the "
+                    "evidence passed. Never confirms a record; a proof holds only a merge "
+                    "into the default branch that delivers it. With the ID alone, print the "
+                    "proof.")
     parser.add_argument("sr", metavar="SR-###")
     parser.add_argument("--plan", default=None,
                         help="how the owner will see it working, matched to what changed")
@@ -212,6 +307,9 @@ def run(command: str, argv: list[str]) -> int:
     outcome = parser.add_mutually_exclusive_group()
     outcome.add_argument("--passed", action="store_true", default=None)
     outcome.add_argument("--failed", action="store_false", dest="passed", default=None)
+    parser.add_argument("--ask", action="store_true",
+                        help="print the question-tool JSON asking the owner whether they saw "
+                             "it working (refused unless the evidence passed)")
     add_common(parser)
     try:
         args = parser.parse_args(argv)
@@ -242,6 +340,11 @@ def run(command: str, argv: list[str]) -> int:
                              "--plan ... --kind ...")
         elif args.summary is not None or args.passed is not None:
             raise CaptureError("--summary, --passed and --failed go with --evidence")
+        if args.ask:
+            from plumb.stale import current_session
+
+            emit(ask(core, args.sr, current_session(core.root)), True)
+            return 0
     except CaptureError as exc:
         print(f"plumb: {exc}", file=sys.stderr)
         return EXIT_USAGE

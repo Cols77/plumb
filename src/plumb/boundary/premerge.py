@@ -1,14 +1,21 @@
 """The merge-time safety net: git's ``pre-merge-commit``, ``prepare-commit-msg`` and
 ``post-merge`` hooks (sp6 10, R17; SR-077).
 
-R17 (owner, 2026-10-07): a CHEAP merge-time check holds a merge carrying a leftover intent
-conflict, unconfirmed requirements or undeclared files, WITHOUT running the test suite; the
+R17 (owner, 2026-10-07): a CHEAP merge-time check, WITHOUT running the test suite; the
 single full suite runs at push (the pre-push hook). Never run the suite twice.
 
+What holds (SR-260, DEC-252, DEC-255 to DEC-257), first of 1, 5, 4: integrity (exit 1:
+unstaged or unreadable record files, a settled-once conflict, colliding ids, new stale links,
+new links to untested files, validate errors, a broken log); a failing test of a touched
+requirement read from the recorded evidence, and for a merge into the default branch a
+delivered requirement (an incoming SR trailer) whose proof is not shown working or not
+confirmed by the owner (exit 5); an open intent conflict, a contradiction the judge is sure
+of, or a question waiting for the owner on a required record (exit 4). Records waiting on a
+judge and paths no trailer declares are listed, never held.
+
 The guarantee: no commit that records another line's work is made (or, for a fast-forward
-of the default branch, stays) while what it records carries an open intent conflict (and,
-for a merge, a touched requirement not yet confirmed, a file no requirement declares or two
-records holding one ID). Its entry points, all through ``check``:
+of the default branch, stays) while what it records carries one of those. Its entry points,
+all through ``check``:
 
 - ``git merge`` (and ``git pull``) committing on its own: the ``pre-merge-commit`` hook.
 - ``git commit`` or ``git merge --continue`` finishing a merge (after a text conflict or
@@ -36,11 +43,11 @@ cannot be read (a text merge left in it). A merge is checked in full (``HEAD`` a
 incoming commits); a rebase, cherry-pick or revert step only for open intent conflicts (its
 own requirements are its branch's business until that branch merges).
 
-No test run, no verification evidence, no judgment backend call (cards show a judgment only
-when one is already logged: ``conflict_rows(hook=True)``), no log-integrity diff: a few
-git calls and the record index. Its one write: an intent conflict the owner already
-answered before work began is settled with that answer (R17, ``check``). A non-zero exit
-refuses the commit; the operation stays in progress until it is settled, then the owner says
+No test run (a failing test is read from the recorded evidence), no judgment backend call
+(cards show a judgment only when one is already logged: ``conflict_rows(hook=True)``), no
+log-integrity diff: a few git calls and the record index. Its one write: an intent conflict
+the owner already answered before work began is settled with that answer (R17, ``check``).
+A non-zero exit refuses the commit; the operation stays in progress until it is settled, then the owner says
 "finish the merge" (or "continue the rebase").
 
 ``plumb hooks install`` and ``plumb init`` install both hooks by default (R17); ``plumb
@@ -297,8 +304,12 @@ class PremergeReport:
     merging: str = ""
     into: str = ""
     touched: tuple[str, ...] = ()
-    unconfirmed: tuple[Mapping[str, Any], ...] = ()      # {id, title, state}
-    undeclared: tuple[Mapping[str, Any], ...] = ()       # {commit, path, claims}
+    unconfirmed: tuple[Mapping[str, Any], ...] = ()      # {id, title, state}: listed only
+    undeclared: tuple[Mapping[str, Any], ...] = ()       # {commit, path, claims}: listed only
+    claims_errors: tuple[str, ...] = ()  # the claims check could not read a range (exit 1)
+    questions: tuple[Mapping[str, Any], ...] = ()  # SR-260 EX-30 {key, records, titles} (4)
+    failing_tests: tuple[Mapping[str, Any], ...] = ()  # {id, title, test, state} (exit 5)
+    proofs: tuple[Mapping[str, Any], ...] = ()  # DEC-256 {id, title, why}, into default (5)
     intent_conflicts: tuple[Mapping[str, Any], ...] = ()  # {ic, record, title, card}
     collisions: tuple[Mapping[str, Any], ...] = ()       # {id, line}
     unstaged: tuple[str, ...] = ()       # .plumb/ paths that differ from the index committed
@@ -482,6 +493,7 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
                    and not waiting_on_conflict(index, i)]
 
     undeclared: list[dict[str, Any]] = []
+    claims_errors: list[str] = []
     for sha, _ in heads:
         try:
             result = claims_check(root, f"{base}..{sha}")
@@ -492,20 +504,26 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
                 for unclaimed in result.get("unclaimed_commits") or []:
                     undeclared.append({"commit": str(unclaimed), "path": None, "claims": []})
         except Exception as exc:  # noqa: BLE001 - an unreadable range holds, never crashes
-            undeclared.append({"commit": "", "path": None, "claims": [], "error": str(exc)})
+            claims_errors.append(f"  the claims check could not read {base}..{sha}: {exc}")
 
     conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
     stale_links, untested_links = _link_problems(core, base, paths, index)
     validate_errors = _errors(core, base)
     contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index)
+    questions = open_questions_on(core, required)
+    failing_tests = failing_tests_of(core, touched)
+    proofs = delivered_proofs(core, messages) if ours == default_branch_of(root) else []
     # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
     # the commit that finishes it ("finish the merge") records the settled version
-    held = bool(undeclared or collisions or unstaged or unreadable or settled
+    held = bool(claims_errors or collisions or unstaged or unreadable or settled
                 or stale_links or untested_links or validate_errors)
-    code = 1 if held else 4 if (conflicts or unconfirmed or contradictions) else 0
+    code = 1 if held else 5 if (failing_tests or proofs) else \
+        4 if (conflicts or contradictions or questions) else 0
     report = PremergeReport(merging=theirs, into=ours, touched=tuple(touched),
                             unconfirmed=tuple(unconfirmed), undeclared=tuple(undeclared),
+                            claims_errors=tuple(claims_errors), questions=tuple(questions),
+                            failing_tests=tuple(failing_tests), proofs=tuple(proofs),
                             intent_conflicts=tuple(conflicts), collisions=tuple(collisions),
                             unstaged=unstaged, unreadable=unreadable, settled=settled,
                             stale_links=tuple(stale_links), untested_links=tuple(untested_links),
@@ -515,6 +533,87 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
                             judge_note=judge_note,
                             operation=operation, exit=code)
     return _with_lines(report)
+
+
+def open_questions_on(core: Any, required: Sequence[str]) -> list[dict[str, Any]]:
+    """SR-260 EX-30: the judge's questions still waiting for the owner, in every session
+    (``judge.open_questions``), that ask about a record of ``required``: ``{key, question,
+    records, titles}``. Unreadable questions name nothing (the status line's rule)."""
+    want = set(required)
+    if not want:
+        return []
+    index = core.index()
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for path in sorted((Path(core.root) / ".plumb" / "session").glob("*/judge_questions.json")):
+        try:
+            from plumb.understand import judge
+
+            asked = judge.open_questions(core, path.parent.name)
+        except Exception:  # noqa: BLE001
+            continue
+        for question in asked:
+            ids = [str(r.get("id")) for r in question.get("records") or ()
+                   if isinstance(r, Mapping) and str(r.get("id")) in want]
+            key = str(question.get("key") or question.get("question") or "")
+            if ids and key not in seen:
+                seen.add(key)
+                rows.append({"key": key, "question": question.get("question"), "records": ids,
+                             "titles": [index[i].title for i in ids if i in index]})
+    return rows
+
+
+def failing_tests_of(core: Any, touched: Sequence[str]) -> list[dict[str, Any]]:
+    """SR-260 (c): the tests linked ``verified_by`` to ``touched`` whose latest recorded run
+    fails or regressed, read from the evidence (``cards.test_states``), no test run:
+    ``{id, title, test, state}``."""
+    from plumb.present.cards import test_states
+
+    index = core.index()
+    ends: dict[str, list[str]] = {}
+    for record_id in touched:
+        record = index.get(record_id)
+        for link in getattr(record, "links", ()):
+            end = link.target.test or link.target.path
+            if link.kind == "verified_by" and end:
+                ends.setdefault(str(end), []).append(record_id)
+    if not ends:
+        return []
+    states = test_states(core, list(ends))
+    return [{"id": i, "title": index[i].title, "test": end, "state": state}
+            for end, state in states.items() if state in ("not yet passing", "regression")
+            for i in dict.fromkeys(ends[end])]
+
+
+def delivered_proofs(core: Any, messages: Sequence[tuple[str, str]]) -> list[dict[str, Any]]:
+    """SR-260 (d), DEC-256, EX-28: the requirements the incoming commits' SR trailers name
+    (read through every renumber) whose proof is not shown working or not confirmed by the
+    owner (``proof.unconfirmed_proofs``). Asked only of a merge into the default branch."""
+    from plumb.capture.proof import unconfirmed_proofs
+    from plumb.claims import claimed_ids, trailer_aliases
+
+    if not messages:
+        return []
+    aliases = trailer_aliases(core)
+    ids = [i for sha, message in messages for i in claimed_ids(aliases, sha, message)]
+    return unconfirmed_proofs(core, ids)
+
+
+def merged_messages(root: Path, base: str) -> list[tuple[str, str]]:
+    """``(commit, message)`` of the commits a merge brings in: those of ``base..HEAD`` not
+    on HEAD's first-parent line (what earlier merges brought), and those of a merge in
+    progress (``incoming_heads``). A commit made on the branch itself is no delivery
+    (DEC-256: a proof holds a merge into the default branch, not a direct commit)."""
+    root = Path(root)
+    own = set((_git(root, "rev-list", "--first-parent", f"{base}..HEAD") or "").split())
+    ranges = [f"{base}..HEAD", *(f"HEAD..{sha}" for sha, _ in incoming_heads(root))]
+    out: list[tuple[str, str]] = []
+    for rng in ranges:
+        for entry in (_git(root, "log", "--format=%H%x1f%B%x00", rng) or "").split("\0"):
+            commit, _sep, message = entry.strip("\n").partition("\x1f")
+            if commit and message.strip() and commit not in own:
+                out.append((commit, message))
+    return out
 
 
 def _link_problems(core: Any, base: str, paths: Sequence[str],
@@ -682,6 +781,28 @@ def _contradictions(core: Any, base: str, paths: Sequence[str], index: Mapping[s
     return out, notes, ""
 
 
+def hold_lines(report: Any, into: str) -> list[str]:
+    """The questions, failing tests and unproven deliveries that hold a merge (SR-260 EX-28,
+    EX-30), by title (a premerge or a merge-check report)."""
+    out: list[str] = []
+    questions = getattr(report, "questions", ())
+    if questions:
+        out.append(owner_text.PREMERGE_QUESTIONS_HEADER)
+        out.extend(_capped([owner_text.PREMERGE_QUESTION.format(title=title)
+                            for q in questions for title in q.get("titles") or q["records"]]))
+    failing = getattr(report, "failing_tests", ())
+    if failing:
+        out.append(owner_text.PREMERGE_FAILING_HEADER)
+        out.extend(_capped([owner_text.PREMERGE_FAILING.format(**r) for r in failing]))
+    proofs = getattr(report, "proofs", ())
+    if proofs:
+        out.append(owner_text.PREMERGE_PROOFS_HEADER.format(into=into))
+        out.extend(_capped([(owner_text.PREMERGE_PROOF_NOT_SHOWN if r["why"] ==
+                             "not shown working" else owner_text.PREMERGE_PROOF_NOT_CONFIRMED)
+                            .format(title=r["title"]) for r in proofs]))
+    return out
+
+
 def _with_lines(report: PremergeReport) -> PremergeReport:
     from dataclasses import replace
 
@@ -716,17 +837,22 @@ def render(report: PremergeReport) -> list[str]:
         out.append(owner_text.CONFLICTS_HEADER)
         for conflict in report.intent_conflicts:
             out.extend(str(line) for line in conflict.get("card") or [])
-    if report.unconfirmed:
+    out.extend(hold_lines(report, report.into))
+    if report.unconfirmed:      # counted, listed, never held (SR-260 EX-8, EX-31)
         n = len(report.unconfirmed)
-        out.append(f"{n} requirement{'s' if n > 1 else ''} this merge touches wait on a judge:")
+        out.append(owner_text.PREMERGE_WAITING_HEADER.format(
+            n=n, s="s" if n > 1 else "", v="" if n > 1 else "s"))
         out.extend(_capped([owner_text.PREMERGE_UNCONFIRMED.format(title=r["title"])
                             for r in report.unconfirmed]))
     out.extend(drift_lines(report))
-    if report.undeclared:
-        out.append("files changed without a requirement that declares them:")
+    if report.undeclared:       # listed, never held (SR-260 EX-4)
+        out.append(owner_text.PREMERGE_UNDECLARED_HEADER)
         out.extend(_capped([owner_text.PREMERGE_UNDECLARED.format(
             path=r.get("path") or f"a commit without a requirement ({r['commit'][:12]})")
             for r in report.undeclared]))
+    if report.claims_errors:
+        out.append(owner_text.PREMERGE_UNREADABLE_HEADER)
+        out.extend(_capped(list(report.claims_errors)))
     if report.collisions:
         out.append("two different records hold one ID:")
         out.extend(_capped([owner_text.PREMERGE_COLLISION.format(record=r["id"])
