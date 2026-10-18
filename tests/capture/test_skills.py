@@ -22,7 +22,7 @@ RULES = (
     ("Any other question to the owner also goes through the question tool, with options and "
      "their consequences."),
 )
-NAMES = ("plumb-clarify", "plumb-intent", "plumb-records")
+NAMES = ("plumb-clarify", "plumb-debug", "plumb-intent", "plumb-records")
 
 
 @pytest.fixture
