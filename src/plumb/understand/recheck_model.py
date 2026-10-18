@@ -9,7 +9,7 @@ it approves at that version."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Any
 
 from plumb.contracts import LogEntry
@@ -38,11 +38,15 @@ def problem(entry: LogEntry, core: Any) -> str | None:
 
 
 def cited_answers_problem(payload: Mapping[str, Any], logged: Mapping[str, Mapping[str, Any]],
-                          by: str) -> str | None:
+                          by: str, confirmed: Collection[tuple[str, str]] = ()
+                          ) -> str | None:
     """Why the answers an approval cites do not carry it, or None. ``logged``: digest ->
     payload of the question-answer entries (and the read path's ``pre-intent`` entries,
-    ``via: read``) logged before the approval."""
-    from plumb.understand.premise import ANSWER_VIA
+    ``via: read``) logged before the approval; ``confirmed``: the ``(id, hash)`` pairs
+    approved before it. An answer carries the record at the version asked about or at a
+    later wording of a version never confirmed (SR-209 EX-4), never an edit of a confirmed
+    one (SR-248 EX-9)."""
+    from plumb.understand.premise import ANSWER_VIA, carries
 
     cited = payload.get("answers")
     if not isinstance(cited, list) or not cited:
@@ -56,8 +60,11 @@ def cited_answers_problem(payload: Mapping[str, Any], logged: Mapping[str, Mappi
         asked |= {(str(r.get("id")), str(r.get("hash")))
                   for r in answer["asked"].get("records") or () if isinstance(r, Mapping)}
     for item in payload.get("records") or ():
-        if isinstance(item, Mapping) and (str(item.get("id")), str(item.get("hash"))) \
-                not in asked:
-            return (f"{by} approval of {item.get('id')}: no cited answer was asked about it "
-                    "at that version")
+        if not isinstance(item, Mapping):
+            continue
+        rid, current = str(item.get("id")), str(item.get("hash"))
+        done = {h for i, h in confirmed if i == rid}
+        if not any(i == rid and carries(h, current, done) for i, h in asked):
+            return (f"{by} approval of {rid}: no cited answer was asked about it at that "
+                    "version or an unconfirmed earlier one")
     return None

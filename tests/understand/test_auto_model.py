@@ -138,5 +138,5 @@ def test_ex7_recheck_refuses_an_approval_with_no_round_or_not_clear_on_read(
             core.log_append("events", "approval", payload)
     core = open_core(world)
     whys = [w for e, w in checked(core) if e.kind == "approval"]
-    assert "no answer" in whys[0] and "clear" in whys[1] and "at that version" in whys[2]
+    assert "no answer" in whys[0] and "clear" in whys[1] and "asked about it" in whys[2]
     assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"
