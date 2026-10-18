@@ -3,7 +3,6 @@ name: plumb-records
 description: Grounds work in this repository's plumb records (the owner's intent, requirements with examples, decisions, tests). Use on every owner request, before changing code or tests, when the owner states or changes intent, or when a "plumb:" hook line appears. Not for answering the owner's typed /plumb command (the command does that) or for choosing which questions to ask (plumb-clarify).
 ---
 Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting.
-
 - After `capture`, on any message, run `{plumb} clarify --wait --json` and act on its answer
   (rule 1 below, plumb-clarify): on an ordinary message it checks nothing of the request (read
   it back in your reply) and answers `ask` with plumb's judge's questions, or `ready`. After
@@ -27,7 +26,6 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
   `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo` and `go` are typed
   by the owner and done by the hook. Merges, conflict cards: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.
-
 Questions and approval: plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.
 1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each `question`,
@@ -38,7 +36,9 @@ exists, and you never decide on your own that the owner approved.
 3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
    question, stop asking, tell the owner in one plain line that the work waits for their
    answer, and do not rerun `ask` in a loop.
-4. Any other question to the owner also goes through the question tool, with options and
-   their consequences.
-5. Stop-hook cards come to you as text. Ask one tagged "only the owner can settle this" at
-   once with the question tool, plainly, with options and no ids; fix the rest yourself.
+4. Any other question to the owner also goes through the question tool, with options and their consequences.
+5. The stop hook's cards come to you as text, never shown to the owner. One tagged "only the
+   owner can settle this" (an open conflict, a regression on a confirmed requirement, a drift
+   whose meaning changed): ask it at once with the question tool, in plain words with options
+   and no ids; a conflict needing both sides read may get a study laying out both, choosing
+   nothing. Stale links, untraced files and warnings are yours to fix, not the owner's.
