@@ -169,7 +169,9 @@ for (const surface of SURFACES) {
       expect(line?.props.color).toBe(BRASS)
       expect(await ui.find({ key: 'idea:md' })).toBeUndefined() // closed until pressed
       await ui.press({ key: 'idea' })
-      expect(await ui.find({ type: 'Text', text: '  the plan adds a dispatcher you will tune later' })).toBeDefined()
+      // the choices take the third line's place, so the why names the idea (SR-291, DEC-146)
+      expect(await ui.find({ type: 'Text', text: `  ${IDEA_TITLE}: the plan adds a dispatcher you will tune later` })).toBeDefined()
+      expect(await ui.find({ key: 'loop:third' })).toBeUndefined()
       expect((await ui.find({ key: 'idea:md' }))?.props.label).toBe('Markdown only')
       expect((await ui.find({ key: 'idea:diagrams' }))?.props.label).toBe('with diagrams (recommended)')
       expect((await ui.find({ key: 'idea:none' }))?.props.label).toBe('not now')
@@ -206,6 +208,19 @@ for (const surface of SURFACES) {
       expect(await ui.find({ key: 'idea:md' })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: /^new study/ })).toBeUndefined()
       expect(rooms(w)).toEqual([])
+      await ui.unmount()
+    })
+
+    test('SR-291 EX-3, DEC-146: a new study and an idea at once share the loop\'s third line', async ($, on) => {
+      const { w, ui } = await ideaBand($, on, surface)
+      w.files[STUDY] = study('new')
+      await $.turn.complete(TURN_DONE)
+      const third = await ui.find({ key: 'loop:third' })
+      expect(third).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: LINE })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: `study idea: ${IDEA_TITLE}` })).toBeDefined()
+      expect(JSON.stringify(third)).toContain(LINE)
+      expect(JSON.stringify(third)).toContain(`study idea: ${IDEA_TITLE}`)
       await ui.unmount()
     })
 

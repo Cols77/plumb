@@ -184,11 +184,13 @@ function loopPane(ui: Ui, loop: PlumbLoopPane, color: string, brass: string) {
 /** A study idea's why and the depths the owner chooses from (SR-294 EX-7, DEC-207): Markdown
  * only, with diagrams, video (drawn, not offered, until video studies exist), and 'not now';
  * the agent's recommended depth marked. */
-function ideaChoices(ui: Ui, idea: { title: string; why: string; recommend: string }, titled: boolean, brass: string) {
+function ideaChoices(ui: Ui, idea: { title: string; why: string; recommend: string }, titled: boolean, brass: string,
+                     inline = false) {
   const { Box, Button, Text } = ui
   const label = (d: string) => T.depths[d] + (idea.recommend === d ? T.recommended : '')
   return (
-    <Box key="idea:choices" flexDirection="column">
+    // inline: in a loop the choices take the third line's place, one row (SR-291, DEC-146)
+    <Box key="idea:choices" flexDirection={inline ? 'row' : 'column'} gap={inline ? 1 : 0}>
       <Text key="idea:why" dimColor>{`  ${titled ? `${idea.title}: ` : ''}${idea.why}`}</Text>
       <Box key="idea:depths" flexDirection="row" gap={1}>
         <Button key="idea:md" label={label('md')} onPress={() => {}} />
@@ -241,19 +243,24 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
         ) : null}
       </Box>
       {loop ? loopLines(ui, loop, color, brass) : null}
-      {loop && view.status?.study ? (
-        // SR-291: while the loop is open, its third line; a press opens the room on the study
-        <Button key="study" plain onPress={() => {}}>
-          <Text key="loop:study" color={brass}>{T.newStudy(view.status.study)}</Text>
-        </Button>
+      {loop && idea && band.idea ? ideaChoices(ui, idea, true, brass, true) : loop && (view.status?.study || idea) ? (
+        // SR-291, DEC-146: the loop's third and last line holds the new study and the idea side by side
+        <Box key="loop:third" flexDirection="row" gap={2}>
+          {view.status?.study ? (
+            // a press opens the room on the study
+            <Button key="study" plain onPress={() => {}}>
+              <Text key="loop:study" color={brass}>{T.newStudy(view.status.study)}</Text>
+            </Button>
+          ) : null}
+          {idea ? (
+            // SR-294: the agent's study idea; a press shows its choices
+            <Button key="idea" plain onPress={() => {}}>
+              <Text key="loop:idea" color={brass}>{T.studyIdea(idea.title)}</Text>
+            </Button>
+          ) : null}
+        </Box>
       ) : null}
-      {loop && idea ? (
-        // SR-294: the agent's study idea, a brass line under the loop's; a press shows its choices
-        <Button key="idea" plain onPress={() => {}}>
-          <Text key="loop:idea" color={brass}>{T.studyIdea(idea.title)}</Text>
-        </Button>
-      ) : null}
-      {idea && band.idea ? ideaChoices(ui, idea, !loop, brass) : null}
+      {!loop && idea && band.idea ? ideaChoices(ui, idea, true, brass) : null}
       {!loop && band.studies ? studies.map(st => (
         // SR-294 EX-6: the small menu in the band, the new studies by title
         <Button key={`study:${st.slug}`} plain onPress={() => {}}>
