@@ -38,8 +38,21 @@ def open_case(root: Path | str, *, id: str, kind: str, target: str, detail: str,
         row = {"id": id, "kind": kind, "target": target, "detail": detail, "state": "open",
                "log": log}
         path.write_text(json.dumps(row, ensure_ascii=False, indent=1), encoding="utf-8")
+        _queue_fix(root, id)
     except Exception:  # noqa: BLE001 - recording a case never fails the step that failed
         pass
+
+
+def _queue_fix(root: Path | str, case_id: str) -> None:
+    """SR-326: in plumb's own repository the case also becomes a background self-debug job."""
+    from plumb import selfdebug, stale
+    from plumb.api import open_core
+    from plumb.understand import queue
+    from plumb.understand import selfdebug as kind
+
+    core = open_core(Path(root))
+    if selfdebug.applies(core) is None:
+        queue.enqueue(core, kind.build(core, stale.current_session(core.root), case=case_id))
 
 
 def all_cases(root: Path | str) -> list[dict[str, Any]]:
@@ -136,8 +149,22 @@ def _store_cases(root: Path | str, found: list[dict[str, str]],
             if mine:
                 continue  # listed with the links
         out.append({"case": row["id"], "state": "open" if state == "open" else "resolved",
-                    "what": str(row.get("detail") or row.get("kind"))})
+                    "what": str(row.get("report") or row.get("detail") or row.get("kind"))})
     return out
+
+
+def _fix(core: Any, ids: list[str]) -> int:
+    """``plumb debug fix [id]``: the self-debug workflow on demand (SR-326)."""
+    from plumb import selfdebug
+
+    if (why := selfdebug.applies(core)) is not None:
+        print(f"plumb: debug fix: {why}")
+        return 1
+    todo = [c for c in open_cases(core.root) if not ids or c["id"] in ids]
+    outcomes = [(c["id"], selfdebug.fix(core, c)) for c in todo]
+    for case_id, out in outcomes:
+        print(out.line or f"  {case_id}: {out.state}: {out.detail}")
+    return 0 if outcomes and all(o.state == "fixed" for _, o in outcomes) else 1
 
 
 def run(command: str, argv: list[str]) -> int:
@@ -159,6 +186,8 @@ def run(command: str, argv: list[str]) -> int:
     if args.selector[:1] == ["done"]:
         print(f"plumb: debug: {resolve(core.root, args.selector[1:])} cases marked resolved")
         return 0
+    if args.selector[:1] == ["fix"]:
+        return _fix(core, args.selector[1:])
     found = cases(core, args.selector, dry_run=args.dry_run)
     if not args.selector:
         found += _store_cases(core.root, found, args.dry_run)
