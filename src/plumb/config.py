@@ -27,6 +27,9 @@ class VerifyConfig:
     sample_size: int = 10
     default_test_s: float = 1.0
     workers: int = 0
+    # the interpreter that runs the tests: "" picks the repository's .venv when it has one,
+    # else the interpreter plumb runs in (the plugin's own has no pytest)
+    python: str = ""
     flaky_rerun: bool = True
     infra_globs: tuple[str, ...] = DEFAULT_INFRA_GLOBS
     # SR-110: tests chosen by the functions they execute (auto), or by imports only (off)
@@ -215,6 +218,16 @@ class UnderstandConfig:
 
 
 @dataclass(frozen=True)
+class DebugConfig:
+    """SR-327: self-debug outside plumb's own repository, and issue reporting, both off."""
+
+    self_fix: bool = False
+    source: str = ""             # plumb's source checkout, where the fix lands on a branch
+    report_issues: bool = False
+    issues_repo: str = ""        # owner/name; empty: plumb's own GitHub repository
+
+
+@dataclass(frozen=True)
 class MergeConfig:
     """The merge boundary (``plumb.boundary.cli.merge_settings``)."""
 
@@ -245,6 +258,7 @@ class Config:
     awareness: AwarenessConfig = field(default_factory=AwarenessConfig)
     understand: UnderstandConfig = field(default_factory=UnderstandConfig)
     merge: MergeConfig = field(default_factory=MergeConfig)
+    debug: DebugConfig = field(default_factory=DebugConfig)
 
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
@@ -252,7 +266,8 @@ _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfi
            "triage": TriageConfig, "auto_approve": AutoApproveConfig,
            "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig,
            "present": PresentConfig, "resolve": ResolveConfig,
-           "awareness": AwarenessConfig, "understand": UnderstandConfig, "merge": MergeConfig}
+           "awareness": AwarenessConfig, "understand": UnderstandConfig, "merge": MergeConfig,
+           "debug": DebugConfig}
 
 
 def _build(cls: type, data: Mapping[str, Any]) -> Any:

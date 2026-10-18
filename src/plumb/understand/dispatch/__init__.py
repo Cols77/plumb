@@ -10,6 +10,7 @@ import json
 import os
 import time
 from collections.abc import Callable, Mapping
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +71,11 @@ def host_dispatcher() -> str | None:
     return None
 
 
+# SR-325 EX-5, DEC-260: a job retried after a failure gets a larger budget each time; the
+# worker sets the scale from the failures in a row before asking
+budget_scale: ContextVar[int] = ContextVar("plumb_budget_scale", default=1)
+
+
 def configured(core: Any, *, model: str | None = None) -> Dispatcher:
     """The one dispatcher; ``model`` overrides ``understand.model`` for one kind of job."""
     script = os.environ.get("PLUMB_FAKE_DISPATCH")
@@ -78,6 +84,7 @@ def configured(core: Any, *, model: str | None = None) -> Dispatcher:
     from plumb.config import UnderstandConfig
 
     settings = core.config.understand if core is not None else UnderstandConfig()
+    timeout_s = float(settings.timeout_s) * max(1, budget_scale.get())
     choice = str(settings.dispatch or "auto").strip().lower()
     if choice == "auto":
         choice = host_dispatcher() or ""
@@ -87,11 +94,11 @@ def configured(core: Any, *, model: str | None = None) -> Dispatcher:
     if choice == "claude-code":
         from plumb.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
-        return ClaudeCodeDispatcher(model=model or settings.model, timeout_s=settings.timeout_s)
+        return ClaudeCodeDispatcher(model=model or settings.model, timeout_s=timeout_s)
     if choice == "hermes":
         from plumb.understand.dispatch.hermes import HermesDispatcher
 
-        return HermesDispatcher(model=model or settings.model, timeout_s=settings.timeout_s)
+        return HermesDispatcher(model=model or settings.model, timeout_s=timeout_s)
     if choice == "openrouter":
         from plumb.understand.dispatch.openrouter import OpenRouterDispatcher
 
