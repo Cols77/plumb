@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+from loadbound import assert_within
 
 from plumb.api import open_core
 from plumb.contracts import Target
@@ -69,6 +70,7 @@ def _time_ms(fn) -> float:
     return statistics.median(runs)
 
 
+@pytest.mark.load_bound
 def test_hooks_within_in_process_budget(busy_repo: Path, hook_input,
                                         monkeypatch: pytest.MonkeyPatch) -> None:
     root = busy_repo
@@ -100,8 +102,8 @@ def test_hooks_within_in_process_budget(busy_repo: Path, hook_input,
     from fakes import agent_notes
 
     assert "Requirement 3 about links" in agent_notes(root, "test-session")
-    over = {k: round(v) for k, v in timings.items() if v > BUDGET_MS[k]}
-    assert not over, f"over budget (ms): {over}; all: {timings}"
+    for hook, took in timings.items():
+        assert_within(took, BUDGET_MS[hook], f"{hook} hook (ms)")
     errors = root / ".plumb" / "session" / "errors.log"
     assert not errors.exists(), errors.read_text("utf-8")
 
@@ -156,6 +158,7 @@ class _CpuContention:
                 proc.kill()
 
 
+@pytest.mark.load_bound
 def test_intent_lines_survive_cpu_contention(busy_repo: Path, hook_input) -> None:
     """Under full CPU contention the hooks may cut evidence detail, never the brief, the
     relevant records, the relay line or the proposed read-back (spec 10, R1). The caches are
@@ -194,4 +197,4 @@ def _contended_turn(busy_repo: Path, hook_input, call) -> None:
         "PostToolUse", tool_name="Edit", tool_input={"file_path": str(record)}))
     raw, wall = call("hook", "stop", payload=hook_input("Stop", stop_hook_active=True))
     assert "decision" not in raw  # no decision is asked here (INT-037)
-    assert wall < 6.0, f"stop hook took {wall:.1f} s under contention"
+    assert_within(wall, 6.0, "stop hook under contention (s)")

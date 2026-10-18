@@ -37,14 +37,12 @@ def test_edited_entry_reported_by_file(repo: Path) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_deleted_entry_named_by_prev_reported(paths: PlumbPaths) -> None:
+def test_deleted_entry_named_by_prev_not_reported(paths: PlumbPaths) -> None:
+    """SR-232 EX-5: verify reports no log error; the merge check refuses the deletion (SR-322)."""
     for i in range(3):
         log.append(paths, "events", "repin", {"i": i})
     delete(paths.root, "events", 1)
-    later = list(log.read(paths, "events"))[-1].name
-    problems = log.verify_chain(paths, "events")
-    assert len(problems) == 1 and problems[0].startswith(f"{later}: prev ")
-    assert "deleted entry" in problems[0]
+    assert log.verify_chain(paths, "events") == []
 
 
 @pytest.mark.sr("SR-232")
@@ -89,7 +87,7 @@ def test_migrated_suffix_must_match_digest(paths: PlumbPaths) -> None:
 
 @pytest.mark.sr("SR-232")
 def test_legacy_lines_still_checked(paths: PlumbPaths) -> None:
-    """During the transition a legacy line edited, deleted or reordered is still reported."""
+    """During the transition an edited legacy line is still reported; a reorder is no error (SR-322)."""
     first = legacy_entry("repin", {"i": 0}, None)
     second = legacy_entry("repin", {"i": 1}, first["digest"], at="2026-10-05T12:00:01Z")
     third = legacy_entry("repin", {"i": 2}, second["digest"], at="2026-10-05T12:00:02Z")
@@ -100,5 +98,4 @@ def test_legacy_lines_still_checked(paths: PlumbPaths) -> None:
                for p in log.verify_chain(paths, "events"))
     paths.log_events.unlink()
     write_legacy(paths.root, "events", [second, first, third])
-    assert any("events.jsonl line 1" in p and "prev" in p
-               for p in log.verify_chain(paths, "events"))
+    assert log.verify_chain(paths, "events") == []

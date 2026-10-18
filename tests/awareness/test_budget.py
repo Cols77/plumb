@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 import pytest
+from loadbound import assert_within
 
 from awareness.gitrepo import add_worktree, commit_all, make_repo, requirement
 from plumb import awareness
@@ -33,6 +34,7 @@ def _five(tmp_path: Path) -> Path:
     return main
 
 
+@pytest.mark.load_bound
 def test_five_worktrees_under_50_ms_warm_no_git_process(tmp_path: Path,
                                                         monkeypatch: pytest.MonkeyPatch
                                                         ) -> None:
@@ -54,7 +56,7 @@ def test_five_worktrees_under_50_ms_warm_no_git_process(tmp_path: Path,
         lines = awareness.delta_lines(core, ids)
         runs.append((time.perf_counter() - start) * 1000)
     assert len(lines) == 5
-    assert statistics.median(runs) < 50, runs
+    assert_within(statistics.median(runs), 50, f"five worktrees (ms), runs {runs}")
 
 
 def test_budget_exhausted_skips_quietly(tmp_path: Path) -> None:

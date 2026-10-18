@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,7 @@ TEXT_WIDTH = 1200
 VERDICTS = ("supported", "beyond", "contradicts", "waiting")
 QUESTIONS_FILE = "judge_questions.json"
 HEADER_MAX = 12          # the question tool's chip
+_MARKER = re.compile(r"\s*\(recommended\)", re.IGNORECASE)
 _PLUMB_WORDS = re.compile(r"\b(?:proposed|settled|trial|records?|judge[sd]?)\b",
                           re.IGNORECASE)
 _LEFT_IN = re.compile(r"(?<![\w-])(?:INT|SR|DEC|FEAT|NC|IC)-\d+|sha256:"
@@ -64,7 +66,19 @@ def _load_schema() -> Mapping[str, Any]:
     return {"id": SCHEMA_ID, **data}
 
 
-schema: Mapping[str, Any] = _load_schema()
+def _lenient(full: Mapping[str, Any]) -> Mapping[str, Any]:
+    """SR-299 EX-1, EX-3: the schema dispatchers and the worker check an answer against. The
+    model is asked for records and 2-4 options (schemas/judge.json, the judge's instructions);
+    a question short of them must not reject the whole answer: ``apply`` fills the records,
+    and the cascade retries the question once, then writes a debug case."""
+    out = json.loads(json.dumps(full))
+    item = out.get("properties", {}).get("questions", {}).get("items", {})
+    item["required"] = ["question"]
+    item.get("properties", {}).get("options", {}).pop("minItems", None)
+    return out
+
+
+schema: Mapping[str, Any] = _lenient(_load_schema())
 
 
 # --------------------------------------------------------------------------- record texts
@@ -479,7 +493,65 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
         for r in q.get("records") or () if isinstance(r, Mapping))]
 
 
-def _shaped(raw: Any, job: Job, judged: Mapping[str, str], index: Mapping[str, Any]
+def _whole_words(header: str) -> str:
+    """SR-309 EX-1: the header's words that fit the chip, dropped from the end, never cut."""
+    words = header.split()
+    while len(words) > 1 and len(" ".join(words)) > HEADER_MAX:
+        words.pop()
+    return " ".join(words)[:HEADER_MAX].strip()   # shortcut: one word over the chip is cut
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"[\w-]+", text.lower()))
+
+
+def _answered_by(index: Mapping[str, Any], ids: Sequence[str], labels: Sequence[str]) -> str:
+    """SR-309 EX-3: the decision that records the owner's answer to this question: it links
+    one of the question's records, and what it chose holds the words of one option."""
+    for rec in index.values():
+        if rec.kind != "decision" or not ids or not any(
+                ln.target.record in ids for ln in rec.links):
+            continue
+        chosen = _tokens(_flat(rec.fields.get("chosen")))
+        if any(len(t) > 1 and t <= chosen for t in map(_tokens, labels)):
+            return rec.id
+    return ""
+
+
+def _own_words(core: Any, ids: Sequence[str], index: Mapping[str, Any]) -> str:
+    """SR-249 EX-1: with no quote from the judge, an older record's own quoted words, when a
+    past session transcript holds them (its first part: ``exact_match`` holds every part)."""
+    from plumb.understand import recover
+
+    older = [index[i] for i in ids
+             if i in index and not premise.premise_of(core, index[i]).messages]
+    messages = recover.owner_messages(core.root) if older else []
+    return next((recover.quote_parts(rec)[0] for rec in older
+                 if recover.exact_match(rec, messages)), "")
+
+
+def _said_in(core: Any, ids: Sequence[str], words: str, index: Mapping[str, Any]
+             ) -> tuple[bool, str, bool]:
+    """SR-309 EX-4, DEC-191: ``(said, date, older)``: ``words`` are in an owner message the
+    records rest on (``date`` empty: the judge's own date stands), or in a past session
+    transcript the SR-249 search reads (``date`` is that message's day). ``older``: the
+    records rest on no logged message at all, so a miss in the transcripts is worth saying."""
+    from plumb.understand import recover
+
+    want = _flat(words).lower().rstrip(".")
+    logged = [m for i in ids if i in index
+              for m in premise.premise_of(core, index[i]).messages]
+    if want and any(want in _flat(m.get("text")).lower() for m in logged):
+        return True, "", False
+    if want:     # shortcut: transcripts are read per question, not cached
+        for m in recover.owner_messages(core.root):
+            if recover.holds(m.text, words.rstrip(". ")):
+                day = datetime.fromisoformat(m.at.replace("Z", "+00:00")) if m.at else None
+                return True, f"{day.day} {day:%b}" if day else "", False
+    return False, "", not logged
+
+
+def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Mapping[str, Any]
             ) -> tuple[dict[str, Any] | None, str]:
     """A judge question as the question tool shows it, or ``(None, why it waits)`` (SR-245
     EX-7, SR-267 EX-4): its request folded into the question, the reason into the recommended
@@ -487,39 +559,50 @@ def _shaped(raw: Any, job: Job, judged: Mapping[str, str], index: Mapping[str, A
     if not isinstance(raw, Mapping):
         return None, "a question is out of schema"
     ids = [i for i in dict.fromkeys(str(r) for r in raw.get("records") or ()) if i in judged]
+    ids = ids or list(judged)    # SR-299: a question naming none settles the records of its job
     options = [o for o in raw.get("options") or () if isinstance(o, Mapping)]
     request = raw.get("request") if isinstance(raw.get("request"), Mapping) else {}
     words, date = _flat(request.get("words")), _flat(request.get("date"))
     shown = [cards.plain(_flat(v), index) for v in (
         raw.get("question"), raw.get("header"), raw.get("recommended_reason"),
         *(o.get(k) for o in options for k in ("label", "consequence")))]
-    if not ids or not words or not 2 <= len(options) <= 4 or not all(shown):
-        return None, ("a question lacks its records, the request, two to four options, their "
-                      "consequences or the reason for the recommended one")
+    if not ids or not 2 <= len(options) <= 4 or not all(shown):
+        return None, ("a question lacks two to four options, their consequences or the "
+                      "reason for the recommended one")
     if any(_PLUMB_WORDS.search(t) or _LEFT_IN.search(t) for t in shown):
         return None, "a question names plumb's own words"
     text, header, reason, *rest = shown
+    words = words or _own_words(core, ids, index)
+    heard, found_on, older = _said_in(core, ids, words, index)
+    date = found_on or date
     said = f'You said on {date}: "{words}"' if date else f'You said: "{words}"'
-    question = f"{text}\n\n{said}"
-    pairs = list(zip(rest[::2], rest[1::2], strict=True))
+    # DEC-191/192: a quote is optional; an older record's missing words are said so
+    question = (f"{text}\n\n{said}" if heard else
+                f"{text}\n\nI found none of your words about this in your past sessions."
+                if older else text)
+    pairs = [(_MARKER.sub("", label).strip(), c)
+             for label, c in zip(rest[::2], rest[1::2], strict=True)]
     return {"key": question_key(question), "job": job.id,
             "records": [{"id": i, "hash": judged[i]} for i in ids],
-            "question": question, "header": header[:HEADER_MAX].strip(),
+            "question": question, "header": _whole_words(header),
             "options": [{"label": f"{label} (Recommended)" if n == 0 else label,
                          "description": f"{consequence} Recommended: {reason}" if n == 0
                          else consequence}
                         for n, (label, consequence) in enumerate(pairs)]}, ""
 
 
-def _questions(job: Job, answer: Mapping[str, Any], judged: Mapping[str, str],
-               index: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+def _questions(core: Any, job: Job, answer: Mapping[str, Any], judged: Mapping[str, str],
+               index: Mapping[str, Any]
+               ) -> tuple[list[dict[str, Any]], list[str]]:
     """The judge's questions shaped for the owner, and why the others wait."""
     shaped: list[dict[str, Any]] = []
     why: list[str] = []
     for raw in answer.get("questions") or ():
-        made, reason = _shaped(raw, job, judged, index)
-        if made is None:
-            why.append(reason)
+        made, reason = _shaped(core, raw, job, judged, index)
+        done = made and _answered_by(index, [r["id"] for r in made["records"]],
+                                     [_MARKER.sub("", o["label"]) for o in made["options"]])
+        if made is None or done:   # shortcut: an answered question is dropped, its records wait
+            why.append(reason or f"the owner already answered it ({done})")
         elif made["key"] not in {q["key"] for q in shaped}:
             shaped.append(made)
     return shaped, why
@@ -657,7 +740,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         notes += [f"{i} is clear and waits for its set ({a})" for i, a in held.items()]
     approved = {str(i.get("id")) for e in confirmed if e["kind"] == "approval"
                 for i in e["payload"]["records"]}
-    shaped, refused = _questions(job, answer, {
+    shaped, refused = _questions(core, job, answer, {
         i: h for i, h in judged.items()
         if i not in approved | set(waits) | set(held) | set(sent)}, index)
     _write_questions(core, job, set(judged), shaped)

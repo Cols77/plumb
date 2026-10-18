@@ -72,8 +72,7 @@ def test_sr291_ex4_intent_done_closes_the_loop(intent: Path, tmp_path: Path,
     from plumb.capture import proof
     monkeypatch.setattr(proof, "not_shown", lambda core, ids: [])
     assert _run(intent, "done", "--intent", "INT-001") == 0
-    loop = _loop(intent)
-    assert (loop["step"], loop["tasks"], loop["stopped"]) == ("proven", None, None)
+    assert _loop(intent) is None      # SR-308: the ended loop's state file is removed
     assert _run(intent, "progress", "--task", "late") != 0    # no open loop to draw
 
 

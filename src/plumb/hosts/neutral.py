@@ -172,6 +172,16 @@ def handle_event(event: TurnEvent, *, deadline: Deadline | None = None,
         ctx.kept = kept
     out = _handler(event.kind, verify, backend, unjudged)(ctx)
     output = to_turn_output(event, out)
+    if event.kind == "prompt":  # SR-296, SR-300, DEC-194: every host shows the landing
+        try:
+            from plumb.boundary.landing import lines
+            from plumb.present.delta import Line, emit
+
+            shown = emit(ctx, [Line(t, subject=f"landing:{k}", must=True)
+                               for k, t in lines(root)], "prompt")
+            output = replace(output, agent_context=(*output.agent_context, *shown))
+        except Exception:  # noqa: BLE001 - advisory
+            pass
     if event.kind == "stop" and event.host in SELF_RECORDING_HOSTS:
         # `plumb turn end` has no next prompt hook: it gives the agent what the stop queued
         try:

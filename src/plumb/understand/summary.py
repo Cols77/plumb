@@ -20,6 +20,7 @@ from __future__ import annotations
 import dataclasses
 import time
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from plumb.contracts import CardState, Choice, ClarifyQuestion, StopParts
@@ -29,6 +30,71 @@ from plumb.understand import cardstore, files, jobs
 
 UNDER_BUDGET_S = 0.35        # the upkeep (the log's cards, the offers) needs this much left
 CALIBRATE_S = 0.9            # rerunning the calibration needs this much left
+
+
+# --------------------------------------------------------------------------- debug cases
+
+
+def write_cases(core: Any, sha: str, cases: Sequence[Mapping[str, Any]]) -> None:
+    """Write a landing's debug cases to ``.plumb/cache/debug/<sha>.json`` (SR-300): a list of
+    ``{id, kind, target, detail, state}``, state ``open`` or ``resolved``. No cases, no file."""
+    keys = ("id", "kind", "target", "detail", "state")
+    rows = [{k: str(c.get(k) or ("open" if k == "state" else "")) for k in keys} for c in cases]
+    if rows:
+        files.write_json_atomic(Path(core.root) / ".plumb" / "cache" / "debug" / f"{sha}.json",
+                                rows)
+
+
+def cases_text(cases: Sequence[Mapping[str, Any]], resolved: int = 0) -> str:
+    """The text block that tells the agent its open cases (SR-300 EX-1)."""
+    lines = [f"- {c['id']} ({c['kind']}) {c['target']}: {c['detail']}" for c in cases]
+    return (f"plumb: {len(lines)} debug cases open, {resolved} resolved:\n" + "\n".join(lines)
+            + "\nRun them as a Workflow on Sonnet: repin after tests, relink, rerun, card only "
+            "a changed meaning; `plumb understand debug done <case id>` marks one resolved.")
+
+
+def open_cases(root: Path) -> tuple[list[dict[str, Any]], int]:
+    """``(open cases, resolved count)`` of the debug files that still hold an open case."""
+    rows: list[dict[str, Any]] = []
+    for path in sorted((Path(root) / ".plumb" / "cache" / "debug").glob("*.json")):
+        found = files.read_json(path)
+        if isinstance(found, list) and any(r.get("state") == "open" for r in found):
+            rows += [r for r in found if isinstance(r, dict)]
+    return [r for r in rows if r.get("state") == "open"], sum(
+        1 for r in rows if r.get("state") == "resolved")
+
+
+def resolve_cases(root: Path, ids: Sequence[str]) -> int:
+    """Mark the cases ``ids`` resolved in every debug file (SR-300 EX-2); how many changed."""
+    changed = 0
+    for path in (Path(root) / ".plumb" / "cache" / "debug").glob("*.json"):
+        rows = files.read_json(path)
+        if not isinstance(rows, list):
+            continue
+        hit = [r for r in rows if isinstance(r, dict) and r.get("id") in ids
+               and r.get("state") == "open"]
+        for row in hit:
+            row["state"] = "resolved"
+        if hit:
+            files.write_json_atomic(path, rows)
+            changed += len(hit)
+    return changed
+
+
+def run_debug(argv: Sequence[str]) -> int:
+    """``plumb understand debug done <case id>...``."""
+    import sys
+
+    from plumb.cliutil import resolve_root
+
+    if len(argv) < 2 or argv[0] != "done":
+        print("usage: plumb understand debug done <case id>...", file=sys.stderr)
+        return 2
+    root = resolve_root(None)
+    changed = resolve_cases(root, list(argv[1:]))
+    left, resolved = open_cases(root)
+    print(f"plumb: {changed} debug cases resolved; {len(left)} open, {resolved} resolved")
+    return 0 if changed else 1
 
 
 # --------------------------------------------------------------------------- what was told
@@ -321,6 +387,8 @@ def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
         return state is not None and (state.confirmation == "confirmed"
                                       or state.superseded_by is not None)
 
+    if card.questions and all(q.record and q.record not in index for q in card.questions):
+        return None           # SR-289 EX-5: every record it asks about left the tree
     if card.kind in READ_BACK:
         return None if _settled(card, statuses) else card
     if card.kind in ("decision", "early_conflict", "test_changed"):

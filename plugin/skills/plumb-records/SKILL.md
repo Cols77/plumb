@@ -40,8 +40,5 @@ exists, and you never decide on your own that the owner approved.
    answer, and do not rerun `ask` in a loop.
 4. Any other question to the owner also goes through the question tool, with options and
    their consequences.
-5. The stop hook's cards come to you as text, never shown to the owner. One tagged "only the
-   owner can settle this" (an open conflict, a regression on a confirmed requirement, a drift
-   whose meaning changed): ask it at once with the question tool, in plain words with options
-   and no ids; a conflict needing both sides read may get a study laying out both, choosing
-   nothing. Stale links, untraced files and warnings are yours to fix, not the owner's.
+5. Stop-hook cards come to you as text. Ask one tagged "only the owner can settle this" at
+   once with the question tool, plainly, with options and no ids; fix the rest yourself.
