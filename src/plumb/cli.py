@@ -87,7 +87,7 @@ records and integrity:
   stale        card: bring a stale link to the owner as a card; cards: list them in full
                (--incomplete: those lacking something)
   debug        the debug workflow: rerun each stale link once through tests and the
-               meaning cascade, say what it did and what it still needs (--dry-run)
+               meaning cascade, say what it did and what is missing (--dry-run)
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
   status       counts, drift, what awaits you, judge approvals (--card: the card)
   brief        the short intent brief
