@@ -71,7 +71,7 @@ def host_dispatcher() -> str | None:
     return None
 
 
-# SR-325 EX-5, DEC-255: a job retried after a failure gets a larger budget each time; the
+# SR-325 EX-5, DEC-260: a job retried after a failure gets a larger budget each time; the
 # worker sets the scale from the failures in a row before asking
 budget_scale: ContextVar[int] = ContextVar("plumb_budget_scale", default=1)
 

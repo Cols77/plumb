@@ -1,4 +1,4 @@
-"""SR-325 EX-5, DEC-255: a judge job that failed is retried with a larger budget than the last
+"""SR-325 EX-5, DEC-260: a judge job that failed is retried with a larger budget than the last
 time, and only the third failure in a row is a debug case."""
 
 from __future__ import annotations

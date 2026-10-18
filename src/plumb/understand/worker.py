@@ -38,7 +38,7 @@ _HELD: dict[tuple[str, str], str] = {}     # the locks this process holds: (root
 # ---- the lock -------------------------------------------------------------------------------
 
 def budget_scale_for(root: Path, session: str) -> int:
-    """SR-325 EX-5, DEC-255: one more than the failures in a row, so each retry of a failed
+    """SR-325 EX-5, DEC-260: one more than the failures in a row, so each retry of a failed
     job gets a larger budget than the last (the dispatcher's timeout is scaled by it)."""
     from plumb.understand import queue
 
