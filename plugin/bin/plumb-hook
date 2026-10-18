@@ -220,7 +220,91 @@ if [ "$event" = pre-tool ]; then
   esac
 fi
 
-# 4. plumb's own environment
+# 4. plumb's own repository runs its own code (SR-315): the checkout's source first on the
+#    path, with its .venv's interpreter, or, in a worktree without one, the main checkout's
+#    (named by the gitdir line of the worktree's .git file). When that code cannot start (no
+#    .venv, or the run fails), the packaged copy runs instead and the agent is told in one line.
+own=
+if [ -f "$root/src/plumb/__main__.py" ] && [ -f "$root/plugin/.claude-plugin/plugin.json" ]; then
+  main=$root
+  if [ -f "$root/.git" ]; then
+    read_file "$root/.git"
+    case $f in
+      gitdir:*/.git/worktrees/*)
+        slashes "${f#gitdir: }"
+        main=${s%%/.git/worktrees/*} ;;
+    esac
+  fi
+  for venv in "$root/.venv" "$main/.venv"; do
+    for candidate in "$venv/Scripts/python.exe" "$venv/bin/python"; do
+      if [ -f "$candidate" ]; then
+        # captured: a run that fails (the checkout cannot import) shows nothing of itself
+        if out=$(printf '%s\n' "$input" | PYTHONPATH="$root/src" PLUMB_HOME=$home \
+                 PLUMB_PLUGIN_ROOT=$plugin_root "$candidate" -m plumb hook "$event"); then
+          [ -n "$out" ] && printf '%s\n' "$out"
+          exit 0
+        fi
+        own=failed
+        break 2
+      fi
+    done
+  done
+  [ -n "$own" ] || own=missing
+fi
+
+join_note() {  # out = $out with $note at the start of the string value of key $1
+  head=${out%%\"$1\"*}
+  rest=${out#*\"$1\"}
+  pre=${rest%%\"*}
+  out="$head\"$1\"$pre\"$note\\n${rest#*\"}"
+}
+
+fallback_notice() {  # the packaged copy's output $out with the one line saying it ran instead
+  case $own in
+    missing) why="this checkout has no .venv" ;;
+    *) why="this checkout's code failed to start" ;;
+  esac
+  if [ -n "$ready" ]; then
+    note="plumb: $why, so this hook ran the plugin's packaged copy, not this code"
+  else
+    note="plumb: $why, and the plugin's packaged copy is not ready, so this hook did nothing"
+  fi
+  body=${out#\{}
+  case $out in
+    '{'*)
+      case $body in
+        *[!\ \}]*) ;;
+        *) out= ;;  # an empty object: answered as if nothing was printed
+      esac ;;
+  esac
+  case $out in
+    '') ;;
+    '{'*)
+      case $out in
+        *'"additionalContext"'*) join_note additionalContext ;;
+        *'"systemMessage"'*) join_note systemMessage ;;
+        *) out="{\"systemMessage\": \"$note\", $body" ;;
+      esac
+      printf '%s\n' "$out"
+      return 0 ;;
+    *)
+      printf '%s\n%s\n' "$out" "$note"
+      return 0 ;;
+  esac
+  case $event in
+    session-start) name=SessionStart ;;
+    prompt) name=UserPromptSubmit ;;
+    post-edit|edit-check) name=PostToolUse ;;
+    *) name= ;;
+  esac
+  if [ -n "$name" ]; then
+    printf '%s\n' "{\"hookSpecificOutput\": {\"hookEventName\": \"$name\", \"additionalContext\": \"$note\"}}"
+  else
+    printf '%s\n' "{\"systemMessage\": \"$note\"}"
+  fi
+}
+
+# 5. plumb's own environment
 read_file "$plugin_root/vendor/MANIFEST.json"
 field "$f" sha256
 want=$v
@@ -232,6 +316,12 @@ if [ -n "$want" ] && [ "$v" = "$want" ]; then
   python=$v
 fi
 if [ -z "$python" ] || [ ! -f "$python" ]; then
+  if [ -n "$own" ] && [ "$event" != session-start ]; then
+    out=
+    ready=
+    fallback_notice
+    exit 0
+  fi
   [ "$event" = session-start ] || exit 0
   # bin/plumb's own probe (uv, or a Python 3.12 or later under any of its names): the
   # build and this line never disagree (SR-119 EX-3); it runs only here, once per session
@@ -251,7 +341,14 @@ if [ -z "$python" ] || [ ! -f "$python" ]; then
   exit 0
 fi
 
-# 5. the hook itself
+# 6. the hook itself
+if [ -n "$own" ]; then
+  out=$(printf '%s\n' "$input" | PLUMB_HOME=$home PLUMB_PLUGIN_ROOT=$plugin_root \
+        "$python" -m plumb hook "$event")
+  ready=1
+  fallback_notice
+  exit 0
+fi
 printf '%s\n' "$input" | PLUMB_HOME=$home PLUMB_PLUGIN_ROOT=$plugin_root \
   "$python" -m plumb hook "$event"
 exit 0

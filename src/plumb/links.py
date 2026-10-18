@@ -704,7 +704,7 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
             "topic": topic, "explanation": found.explanation,
             "proposed_wording": found.proposed_wording, "options": list(found.options),
             "broken_example": found.broken_example, "turn": turn, "card": False,
-            "consequences": list(found.consequences), "why": found.why}
+            "consequences": list(found.consequences), "why": found.why, "other": found.other}
     asks = found.outcome == "owner"
     if found.outcome == "contradicts":   # SR-175 EX-3: only two confirmed records contradict
         known = core.status([record_id, found.other]) if found.other in core.index() else {}
