@@ -13,6 +13,7 @@ plugin/.claude-plugin/types/
 # SR-321: log kinds only the machine that wrote them needs
 .plumb/log/card-press/
 .plumb/log/card-settled/
+.plumb/log/card-unsettled/
 .plumb/log/card-withdrawn/
 .plumb/log/eval-run/
 .plumb/log/gate/

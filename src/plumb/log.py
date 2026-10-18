@@ -55,14 +55,13 @@ STREAM_OF_KIND: dict[str, LogStream] = {"test-run": "evidence", "merge-evidence"
 SHARED_KINDS = frozenset({
     "approval", "prompt", "config", "calibration", "pre-intent", "question-answer", "premise",
     "judgment", "test-run", "mod-hello", "offer",
-    # unclassified (owner to say which class; shared is the safe side meanwhile)
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
-    "conflict-resolution", "card-unsettled", "waiver",
+    "conflict-resolution", "waiver",
 })
 LOCAL_KINDS = frozenset({
     "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",
     "job-note", "triage", "merge-evidence", "repin", "relink", "unlink", "eval-run", "jev-setup",
-    "intent-gate", "intent-done",
+    "intent-gate", "intent-done", "card-unsettled",
 })
 
 _KIND_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -807,8 +806,8 @@ def stream_stamp(paths: PlumbPaths, stream: LogStream) -> str:
 
 def verify_chain(paths: PlumbPaths, stream: LogStream) -> list[str]:
     """Problems in a stream, naming the file or the legacy line: unparsable files and lines,
-    wrong digests (an edited entry), a file name that does not parse or a migrated name whose suffix does
-    not match its digest, and a legacy line whose ``prev`` is not an earlier line or entry."""
+    wrong digests (an edited entry or legacy line), a file name that does not parse or a migrated name whose
+    suffix does not match its digest. A ``prev`` naming no entry here is no problem (SR-322)."""
     problems: list[str] = []
     files: list[tuple[str, dict[str, Any]]] = []
     digests: set[str] = set()
@@ -869,21 +868,14 @@ def verify_chain(paths: PlumbPaths, stream: LogStream) -> list[str]:
             problems.append(f"{legacy_name} line {number}: not a JSON object")
             continue
         legacy.append((number, raw, legacy_name))
-    # SR-322: an entry file's ``prev`` naming no entry here is not a problem (another
-    # session's, branch's or a local kind's entry); the merge check refuses deletions.
-    earlier: set[str] = set()
+    # SR-322: a ``prev`` naming no entry here is not a problem (another session's, branch's or
+    # a local kind's entry), for entry files and legacy lines alike; the merge check refuses
+    # deletions.
     for number, raw, file_name in legacy:
         assert raw is not None
-        digest = raw.get("digest")
-        if digest != entry_digest(raw):
+        if raw.get("digest") != entry_digest(raw):
             problems.append(f"{file_name} line {number}: digest does not match the entry "
                             "(modified line)")
-        prev = raw.get("prev")
-        if prev is not None and prev not in earlier and prev not in digests:
-            problems.append(f"{file_name} line {number}: prev {str(prev)[:19]} is not an "
-                            "earlier line (deleted or reordered entry)")
-        if isinstance(digest, str):
-            earlier.add(digest)
     return problems
 
 

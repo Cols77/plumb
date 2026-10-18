@@ -18,7 +18,8 @@ WRITES = re.compile(r"write_text|write_bytes|\.touch\(|os\.link|os\.replace|unli
 # guard.py / pretool.py only refuse agent edits under the log
 # readers and declarations that name the log directory without writing under it
 # (ids/mergefix.py and mergedriver/conflicts.py only stage, with git add, the entries
-# log.append wrote)
+# log.append wrote; boundary/premerge.py, the merge check, only reads the log folder and never
+# writes it)
 READERS = {"paths.py", "commands.py", "merge.py", "validate.py", "hosts/claude_code/install.py",
            "hosts/claude_code/stop.py", "ids/mergefix.py", "mergedriver/conflicts.py",
            "guard.py", "hosts/claude_code/pretool.py", "boundary/premerge.py"}

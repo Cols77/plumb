@@ -87,7 +87,7 @@ def test_migrated_suffix_must_match_digest(paths: PlumbPaths) -> None:
 
 @pytest.mark.sr("SR-232")
 def test_legacy_lines_still_checked(paths: PlumbPaths) -> None:
-    """During the transition a legacy line edited, deleted or reordered is still reported."""
+    """During the transition an edited legacy line is still reported; a reorder is no error (SR-322)."""
     first = legacy_entry("repin", {"i": 0}, None)
     second = legacy_entry("repin", {"i": 1}, first["digest"], at="2026-10-05T12:00:01Z")
     third = legacy_entry("repin", {"i": 2}, second["digest"], at="2026-10-05T12:00:02Z")
@@ -98,5 +98,4 @@ def test_legacy_lines_still_checked(paths: PlumbPaths) -> None:
                for p in log.verify_chain(paths, "events"))
     paths.log_events.unlink()
     write_legacy(paths.root, "events", [second, first, third])
-    assert any("events.jsonl line 1" in p and "prev" in p
-               for p in log.verify_chain(paths, "events"))
+    assert log.verify_chain(paths, "events") == []

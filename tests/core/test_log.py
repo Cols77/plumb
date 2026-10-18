@@ -54,12 +54,12 @@ def test_missing_prev_not_reported(paths: PlumbPaths) -> None:
     assert problems == []  # DEC-224: a prev naming no entry here is not an error
 
 
-def test_reordered_legacy_lines_detected(paths: PlumbPaths) -> None:
+def test_reordered_legacy_lines_are_no_error(paths: PlumbPaths) -> None:  # SR-322, DEC-234
     first = legacy_entry("repin", {"i": 0}, None)
     second = legacy_entry("repin", {"i": 1}, first["digest"])
     third = legacy_entry("repin", {"i": 2}, second["digest"])
     write_legacy(paths.root, "events", [second, first, third])
-    assert log.verify_chain(paths, "events")
+    assert log.verify_chain(paths, "events") == []
 
 
 def test_union_merged_fork_accepted(paths: PlumbPaths, tmp_path: Path) -> None:
