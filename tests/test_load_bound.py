@@ -37,7 +37,7 @@ def _suite(repo: Path, body: str) -> tuple[subprocess.CompletedProcess, list[dic
         "pytest_plugins = ['loadbound']\n", encoding="utf-8")
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(_TESTS.parent / "src"), str(_TESTS)])}
     done = subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rx",
-                           "--rootdir", str(repo), "-c", "NUL" if os.name == "nt" else "/dev/null",
+                           "--rootdir", str(repo), "--confcutdir", str(repo), "-c", "NUL" if os.name == "nt" else "/dev/null",
                            str(repo / "test_t.py")], cwd=repo, env=env, capture_output=True,
                           text=True, encoding="utf-8", errors="replace", check=False)
     cases = [row for p in (repo / ".plumb" / "cache" / "debug").glob("*.json")
