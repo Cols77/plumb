@@ -67,7 +67,7 @@ def test_sr108_ex3_merge_check_line(repo: Path) -> None:
 def test_sr108_ex6_backlog_line(repo: Path) -> None:
     _progress(repo, SESSION, step="judging the backlog", kind="judge", done=10, total=160)
     line = _line(repo)
-    assert line.startswith("plumb ● awaits you")          # the card stays
+    assert line.startswith("plumb ▲ drift")          # the card stays
     assert line.endswith("judging the backlog · 10/160")
     assert owner_level("judging the backlog · 10/160") == []
 

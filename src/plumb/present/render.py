@@ -39,7 +39,7 @@ def card_state(snapshot: Any) -> str:
         return "regression"
     if tests == "failing":
         return "failing"
-    if _int(data, "proposed") > 0 or _int(data, "ask") > 0:
+    if _int(data, "ask") > 0:   # SR-263 EX-6: records the judge is checking are not the owner's
         return "awaits you"
     if _int(data, "stale_links") or _int(data, "dangling_links"):
         return "drift"
@@ -57,8 +57,8 @@ def clip(text: str, width: int) -> str:
 
 
 def status_card(snapshot: Any, *, ascii: bool = False) -> str:
-    """``plumb ✓ aligned · "add multiply next to add" · SR 12/14 ok (2 judge-approved) · 1 awaits
-    you``; with ``ascii`` the glyphs become words and ``|`` separators."""
+    """``plumb ✓ aligned · "add multiply next to add" · SR 12/14 ok (2 judge-approved) · 2 waiting on
+    a judge``; with ``ascii`` the glyphs become words and ``|`` separators."""
     data = _data(snapshot)
     state = card_state(data)
     total = _int(data, "requirements_total")
@@ -73,7 +73,7 @@ def status_card(snapshot: Any, *, ascii: bool = False) -> str:
     parts.append(f"SR {confirmed}/{total} ok" + (f" ({', '.join(notes)})" if notes else ""))
     proposed = _int(data, "proposed")
     if proposed:
-        parts.append(f"{proposed} awaits you")
+        parts.append(f"{proposed} waiting on a judge")
     stale = _int(data, "stale_links")
     if stale:
         parts.append(f"{stale} stale")
