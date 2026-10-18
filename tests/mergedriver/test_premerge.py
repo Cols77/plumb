@@ -130,15 +130,15 @@ def test_quick_check_lists_unconfirmed_and_undeclared(tmp_path: Path) -> None:
 @pytest.mark.sr("SR-260")
 def test_quick_check_runs_no_tests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-077 EX-4 (R17): the merge-time check never starts the test suite (that runs once,
-    at push)."""
+    at push); it reads the recorded evidence only (SR-260 EX-10, EX-19)."""
     import plumb.boundary.fullrun as fullrun
-    import plumb.verify as verify
+    from plumb.verify.api import Verify
 
     def boom(*_a, **_k):
         raise AssertionError("the quick merge check started a test run")
 
     monkeypatch.setattr(fullrun, "full_run", boom)
-    monkeypatch.setattr(verify, "open_verify", boom)
+    monkeypatch.setattr(Verify, "run", boom)
     root, _ = _diverged(tmp_path)
     run_git(root, "merge", "--no-edit", "--no-verify", "--no-commit", "feat-x", check=False)
     report = check(open_core(root))
@@ -255,7 +255,8 @@ def test_quick_check_never_calls_a_judgment_backend(
     head = run_git(repo, "rev-parse", "HEAD").stdout.strip()
     monkeypatch.setattr(premerge, "incoming_heads", lambda root: [(head, "feat-x")])
     report = check(open_core(repo), "merge")
-    assert report.exit == 4 and report.intent_conflicts
+    # tests/test_relay.py never ran: SR-254's test hold (5) comes before the conflict's 4
+    assert report.exit == 5 and report.intent_conflicts
     assert backend.calls == 0
     assert "  Compatible? no judgment available" in report.intent_conflicts[0]["card"]
     assert [p for p in events(repo, "judgment") if p.get("subject") == "IC-001"] == []

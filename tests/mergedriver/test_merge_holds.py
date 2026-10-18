@@ -15,6 +15,7 @@ import pytest
 from mergedriver.mdhelpers import commit_all, ex, make_repo, record, run_git, write_record
 from plumb import cli
 from plumb.api import open_core
+from plumb.boundary import merge_report
 from plumb.boundary.premerge import check
 from plumb.capture import proof
 from plumb.hosts.claude_code import question_answer
@@ -84,9 +85,23 @@ def test_unconfirmed_proof_holds_a_merge_into_main_until_the_owner_says_yes(
     asked = proof.ask(open_core(root), "SR-001", "test-session")
     _answer(root, hook_input, asked, proof.YES)
     assert proof.owner_confirmed(open_core(root), "SR-001")
-    run_git(root, "add", "-A", ".plumb")       # the answer's log entry goes with the merge
+    # the hook staged the answer's log entry with the merge: nothing left unstaged holds it
     report = check(open_core(root))
     assert report.exit == 0, report.lines
+
+
+def test_ex28_in_the_report_form(delivered, hook_input) -> None:
+    """EX-28, EX-10: the report-only form holds the same proof with 5, then passes after
+    the owner's yes."""
+    root, _ = delivered
+    run_git(root, "merge", "--no-commit", "--no-ff", "--no-verify", "feat-x")
+    report = merge_report(open_core(root), "HEAD", run_full=False)
+    assert [(r["id"], r["why"]) for r in report.proofs] == [("SR-001", "not confirmed by you")]
+    assert report.exit == 5 == check(open_core(root)).exit
+    _answer(root, hook_input, proof.ask(open_core(root), "SR-001", "test-session"),
+            proof.YES)
+    report = merge_report(open_core(root), "HEAD", run_full=False)
+    assert report.proofs == () and report.exit == 0 == check(open_core(root)).exit
 
 
 def test_a_proof_never_shown_holds_a_merge_into_main(tmp_path: Path) -> None:
@@ -228,3 +243,50 @@ def test_an_unrelated_answer_carries_no_proof(tmp_path: Path, hook_input) -> Non
     assert "proof" not in entry.payload
     assert not proof.owner_confirmed(open_core(root), "SR-001")
     assert len(proof.pending(root, "test-session")) == 1
+
+
+def test_a_hand_written_pending_entry_cannot_redirect_the_yes(tmp_path: Path,
+                                                               hook_input) -> None:
+    """DEC-257: ``.plumb/session`` is not guarded; a pending entry pointing SR-001's question
+    at SR-002, or at a question that is not the record's, confirms nothing."""
+    from plumb.understand import files
+
+    root = make_repo(tmp_path / "main")
+    _sr001(root)
+    write_record(root, record("SR-002", "other rule", statement="Other.", examples=[ex(1)]))
+    _shown(root)
+    proof.set_plan(open_core(root), "SR-002", "run it", "command")
+    proof.set_evidence(open_core(root), "SR-002", "https://x.test/2", "it ran", passed=True)
+    two = open_core(root).index()["SR-002"]
+    asked = proof.ask(open_core(root), "SR-001", "test-session")
+    (entry,) = proof.pending(root, "test-session")
+    files.write_json_atomic(proof.questions_path(root, "test-session"), [{
+        **entry, "record": "SR-002", "hash": two.hash,
+        "evidence_at": two.fields["evidence"]["at"]}])
+    _answer(root, hook_input, asked, proof.YES)
+    assert not proof.owner_confirmed(open_core(root), "SR-002")
+    assert not proof.owner_confirmed(open_core(root), "SR-001")
+    other = {"questions": [{"question": "Did you see the deploy working?", "header": "Proof",
+                            "options": [{"label": proof.YES, "description": ""}],
+                            "multiSelect": False}]}
+    files.write_json_atomic(proof.questions_path(root, "test-session"), [{
+        **entry, "key": question_answer_key(other["questions"][0]["question"])}])
+    _answer(root, hook_input, other, proof.YES)
+    assert not proof.owner_confirmed(open_core(root), "SR-001")
+    assert proof.pending(root, "test-session") == []
+
+
+def test_yes_must_be_among_the_options_shown(tmp_path: Path, hook_input) -> None:
+    root = make_repo(tmp_path / "main")
+    _sr001(root)
+    _shown(root)
+    asked = proof.ask(open_core(root), "SR-001", "test-session")
+    asked["questions"][0]["options"] = [{"label": "Sure", "description": ""}]
+    _answer(root, hook_input, asked, proof.YES)
+    assert not proof.owner_confirmed(open_core(root), "SR-001")
+
+
+def question_answer_key(text: str) -> str:
+    from plumb.understand.judge import question_key
+
+    return question_key(text)

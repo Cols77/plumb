@@ -124,8 +124,15 @@ PREMERGE_UNDECLARED_HEADER = ("files changed without a requirement that declares
 PREMERGE_QUESTIONS_HEADER = "questions wait for you (they hold the merge):"
 PREMERGE_QUESTION = ("  a question waits for you on \"{title}\"; the agent asks it with the "
                      "question tool")
-PREMERGE_FAILING_HEADER = ("tests of requirements this merge touches failed in their latest "
-                           "recorded run (they hold the merge):")
+PREMERGE_FAILING_HEADER = ("acceptance tests this merge can affect have no passing run on the "
+                           "current code (they hold the merge; the agent runs them):")
+PREMERGE_VERIFY_UNAVAILABLE = ("  the test evidence could not be read ({error}); it holds the "
+                               "merge: green needs test evidence")
+PREMERGE_FULL_PENDING = ("  the full test suite is pending ({reasons}); it holds the merge until "
+                         "a full run passes or you waive it for this change")
+PREMERGE_REGRESSION = "  {test} passed before and now fails (it holds the merge)"
+PREMERGE_CLAIMS_UNREADABLE_HEADER = ("the claims check could not read everything (listed; this "
+                                     "does not hold the merge):")
 PREMERGE_FAILING = "  \"{title}\": {test} ({state})"
 PREMERGE_PROOFS_HEADER = ("what this merge delivers into {into} is not proven yet (it holds the "
                           "merge):")

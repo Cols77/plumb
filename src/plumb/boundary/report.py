@@ -5,8 +5,8 @@ committed records and logs, runs the full suite at most once (``fullrun``), and 
 but one ``merge-evidence`` entry on a green report. No candidate checkouts, transactions,
 admission or coordination locks, manifests or guarded publish: it reports and exits.
 
-Exit precedence: 1 (log integrity, validation errors, an unreadable claims check, stale or
-dangling links of a touched requirement, links the range leaves stale or adds to untested
+Exit precedence: 1 (log integrity, validation errors, stale or dangling links of a touched
+requirement, links the range leaves stale or adds to untested
 files) before 5 (verification, and for work landing on the default branch a delivered
 requirement whose proof is not shown working or not confirmed by the owner) before 4 (an open
 intent conflict, a sure contradiction, a question waiting for the owner on a required record);
@@ -91,23 +91,32 @@ def exit_code(report: MergeReport) -> int:
     read (``available`` false or absent: the lane is missing, or reading the evidence, the
     tree identity or the test map raised) holds the merge with 5, like a pending full run.
     This is the one choke point for every entry (``merge-check``, ``validate --merge``, the
-    pre-push hook): each takes its exit from here. ``not_shown`` never counts (DEC-037);
-    ``awaiting``, ``untraced`` and ``new_exempt`` are listed and never count (SR-260)."""
+    pre-push hook): each takes its exit from here, and the quick check takes its test hold
+    from ``verification_holds`` too (SR-260 EX-10). ``not_shown`` never counts (DEC-037);
+    ``awaiting``, ``untraced``, ``new_exempt`` and the claims are listed and never count
+    (SR-260)."""
     if report.error:
         return 2
-    if report.integrity or report.claims.get("holds") or report.links or \
-            report.id_collisions or report.unmerged or report.stale_links or \
-            report.untested_links:
+    if report.integrity or report.links or report.id_collisions or report.unmerged or \
+            report.stale_links or report.untested_links:
         return 1
-    verification = report.verification
-    full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
-    unavailable = not verification.get("available")
-    if report.regressions or report.failing or report.unverified or full_held or unavailable \
-            or report.proofs:
+    if verification_holds(report.verification) or report.regressions or report.failing or \
+            report.unverified or report.proofs:
         return 5
     if report.intent_conflicts or report.contradictions or report.questions:
         return 4
     return 0
+
+
+def verification_holds(verification: Mapping[str, Any]) -> bool:
+    """SR-254, SR-260 (c): ``merge._verification`` holds the merge (exit 5) on a failing or
+    regressed acceptance test, one with no passing run on the current code, a full
+    verification pending and not waived, or a verification that could not be read (fails
+    closed). The one rule of both forms of the check (EX-10)."""
+    full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
+    return not verification.get("available") or full_held or bool(
+        verification.get("failing") or verification.get("unverified")
+        or verification.get("regressions"))
 
 
 # --------------------------------------------------------------------------- gathering
@@ -454,8 +463,7 @@ def render(report: MergeReport) -> list[str]:
     out.extend(collision_lines(report.id_collisions))
     claims = claims_lines(dict(report.claims))
     if claims:
-        out.append("claims hold the merge:" if report.claims.get("holds") else
-                   "claims (listed; undeclared paths do not hold the merge):")
+        out.append("claims (listed; they do not hold the merge):")
         out.extend(_capped([f"  {row}: {fix}" for row, fix in claims]))
     if report.links:
         out.append("links of touched requirements hold the merge:")

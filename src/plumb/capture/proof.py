@@ -168,16 +168,12 @@ def ask(core: Core, sr_id: str, session: str) -> dict[str, Any]:
     from plumb.understand.judge import question_key
 
     record = _requirement(core, sr_id)
-    evidence = evidence_of(record)
-    if evidence is None or not shown_working(record):
+    question = question_of(record)
+    if question is None:
         raise CaptureError(f"{sr_id} is not shown working: record passing evidence first "
                            f"(plumb proof {sr_id} --evidence ... --summary ... --passed)")
-    summary = _flat(evidence.get("summary"))
-    where = _flat(evidence.get("where"))
-    question = f"Did you see {record.title} working?\n\n{summary}" + (
-        f" ({where})" if where else "")
     entry = {"key": question_key(question), "record": record.id, "hash": record.hash,
-             "evidence_at": _flat(evidence.get("at"))}
+             "evidence_at": _flat(evidence_of(record).get("at"))}
     kept = [q for q in pending(core.root, session) if q.get("record") != record.id]
     files.write_json_atomic(questions_path(core.root, session), [*kept, entry])
     return {"questions": [{
@@ -186,6 +182,31 @@ def ask(core: Core, sr_id: str, session: str) -> dict[str, Any]:
                      "merge into the default branch that delivers it no longer waits on it"},
                     {"label": NO, "description": "a merge into the default branch that "
                      "delivers it keeps waiting until you have seen it working"}]}]}
+
+
+def question_of(record: Any) -> str | None:
+    """The owner's question for ``record``'s current passing evidence (its title, what the
+    evidence showed and where); None unless it is shown working."""
+    evidence = evidence_of(record)
+    if evidence is None or not shown_working(record):
+        return None
+    where = _flat(evidence.get("where"))
+    return f"Did you see {record.title} working?\n\n{_flat(evidence.get('summary'))}" + (
+        f" ({where})" if where else "")
+
+
+def confirmation(core: Core, record_id: Any, question: str,
+                 labels: Sequence[Any]) -> dict[str, Any] | None:
+    """The ``proof`` the question-answer hook puts on an answer (DEC-257): ``{record, hash,
+    evidence_at}`` only when the question asked is ``question_of`` that record now and YES was
+    among the options shown, so a pending entry written by hand cannot point the owner's yes
+    at another record, another question or evidence that did not pass."""
+    record = core.index().get(str(record_id))
+    if record is None or record.kind != "requirement" or YES not in labels \
+            or question_of(record) != question:
+        return None
+    return {"record": record.id, "hash": record.hash,
+            "evidence_at": _flat(evidence_of(record).get("at"))}
 
 
 def owner_confirmed(core: Core, record_id: str) -> bool:

@@ -36,7 +36,7 @@ def test_undeclared_path_is_named_and_does_not_hold(confirmed) -> None:
     report = merge_report(open_core(root), sha, run_full=False)
     assert [u["path"] for u in report.claims["undeclared"]] == ["src/pkg/extra.py"]
     # only the full run no one recorded yet holds it (SR-254), never the claim
-    assert not report.claims["holds"] and report.exit == 5, _text(report)
+    assert report.exit == 5, _text(report)
     assert report.verification.get("full_pending")
     text = _text(report)
     assert "undeclared path src/pkg/extra.py" in text
@@ -50,7 +50,7 @@ def test_unclaimed_commit_with_required_trailer_is_listed(confirmed) -> None:
     repin_all(root)
     commit(root, "no trailer")
     report = merge_report(open_core(root), sha, run_full=False)
-    assert report.claims["unclaimed_commits"] and not report.claims["holds"]
+    assert report.claims["unclaimed_commits"]
     assert report.exit == 5 and report.verification.get("full_pending")   # SR-254 only
     assert "no SR: trailer" in _text(report)
 

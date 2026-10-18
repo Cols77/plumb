@@ -6,12 +6,15 @@ single full suite runs at push (the pre-push hook). Never run the suite twice.
 
 What holds (SR-260, DEC-252, DEC-255 to DEC-257), first of 1, 5, 4: integrity (exit 1:
 unstaged or unreadable record files, a settled-once conflict, colliding ids, new stale links,
-new links to untested files, validate errors, a broken log); a failing test of a touched
-requirement read from the recorded evidence, and for a merge into the default branch a
+new links to untested files, validate errors, a broken log); what the report's
+``verification_holds`` holds on, read from the recorded evidence (SR-254: a failing or
+regressed acceptance test, one with no passing run on the current code, a full run pending,
+unreadable evidence), so both forms exit alike (EX-10), and for a merge into the default branch a
 delivered requirement (an incoming SR trailer) whose proof is not shown working or not
 confirmed by the owner (exit 5); an open intent conflict, a contradiction the judge is sure
 of, or a question waiting for the owner on a required record (exit 4). Records waiting on a
-judge and paths no trailer declares are listed, never held.
+judge, paths no trailer declares and a claims policy the check cannot read are listed, never
+held.
 
 The guarantee: no commit that records another line's work is made (or, for a fast-forward
 of the default branch, stays) while what it records carries one of those. Its entry points,
@@ -306,9 +309,10 @@ class PremergeReport:
     touched: tuple[str, ...] = ()
     unconfirmed: tuple[Mapping[str, Any], ...] = ()      # {id, title, state}: listed only
     undeclared: tuple[Mapping[str, Any], ...] = ()       # {commit, path, claims}: listed only
-    claims_errors: tuple[str, ...] = ()  # the claims check could not read a range (exit 1)
+    claims_errors: tuple[str, ...] = ()  # the claims check could not read a range: listed
     questions: tuple[Mapping[str, Any], ...] = ()  # SR-260 EX-30 {key, records, titles} (4)
     failing_tests: tuple[Mapping[str, Any], ...] = ()  # {id, title, test, state} (exit 5)
+    verify_lines: tuple[str, ...] = ()  # SR-254: pending, unavailable, regressions (exit 5)
     proofs: tuple[Mapping[str, Any], ...] = ()  # DEC-256 {id, title, why}, into default (5)
     intent_conflicts: tuple[Mapping[str, Any], ...] = ()  # {ic, record, title, card}
     collisions: tuple[Mapping[str, Any], ...] = ()       # {id, line}
@@ -503,7 +507,9 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
             if load_policy(root).require_trailer:
                 for unclaimed in result.get("unclaimed_commits") or []:
                     undeclared.append({"commit": str(unclaimed), "path": None, "claims": []})
-        except Exception as exc:  # noqa: BLE001 - an unreadable range holds, never crashes
+            claims_errors += [f"  .plumb/claims.yaml: {p}" for p in result.get("problems") or ()
+                              if f"  .plumb/claims.yaml: {p}" not in claims_errors]
+        except Exception as exc:  # noqa: BLE001 - listed like the report's (gates.claims_gate)
             claims_errors.append(f"  the claims check could not read {base}..{sha}: {exc}")
 
     conflicts = conflict_rows(core, hook=True)
@@ -512,18 +518,24 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
     validate_errors = _errors(core, base)
     contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index)
     questions = open_questions_on(core, required)
-    failing_tests = failing_tests_of(core, touched)
+    from plumb.boundary.report import verification_holds
+    from plumb.merge import _verification
+
+    # the report's own reading of the evidence, so both forms hold alike (EX-10); no test run
+    verification = _verification(core, touched, paths, base)
+    failing_tests = failing_tests_of(core, verification)
     proofs = delivered_proofs(core, messages) if ours == default_branch_of(root) else []
     # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
     # the commit that finishes it ("finish the merge") records the settled version
-    held = bool(claims_errors or collisions or unstaged or unreadable or settled
+    held = bool(collisions or unstaged or unreadable or settled
                 or stale_links or untested_links or validate_errors)
-    code = 1 if held else 5 if (failing_tests or proofs) else \
+    code = 1 if held else 5 if (verification_holds(verification) or proofs) else \
         4 if (conflicts or contradictions or questions) else 0
     report = PremergeReport(merging=theirs, into=ours, touched=tuple(touched),
                             unconfirmed=tuple(unconfirmed), undeclared=tuple(undeclared),
                             claims_errors=tuple(claims_errors), questions=tuple(questions),
                             failing_tests=tuple(failing_tests), proofs=tuple(proofs),
+                            verify_lines=tuple(verification_lines(verification)),
                             intent_conflicts=tuple(conflicts), collisions=tuple(collisions),
                             unstaged=unstaged, unreadable=unreadable, settled=settled,
                             stale_links=tuple(stale_links), untested_links=tuple(untested_links),
@@ -563,26 +575,38 @@ def open_questions_on(core: Any, required: Sequence[str]) -> list[dict[str, Any]
     return rows
 
 
-def failing_tests_of(core: Any, touched: Sequence[str]) -> list[dict[str, Any]]:
-    """SR-260 (c): the tests linked ``verified_by`` to ``touched`` whose latest recorded run
-    fails or regressed, read from the evidence (``cards.test_states``), no test run:
-    ``{id, title, test, state}``."""
-    from plumb.present.cards import test_states
-
+def failing_tests_of(core: Any, verification: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """SR-260 (c), SR-254: the acceptance tests ``merge._verification`` holds on, read from
+    the evidence with no test run (the report's ``failing`` and ``unverified``):
+    ``{id, title, test, state}``, ``state`` failing, regression, never run or stale."""
     index = core.index()
-    ends: dict[str, list[str]] = {}
-    for record_id in touched:
-        record = index.get(record_id)
-        for link in getattr(record, "links", ()):
-            end = link.target.test or link.target.path
-            if link.kind == "verified_by" and end:
-                ends.setdefault(str(end), []).append(record_id)
-    if not ends:
-        return []
-    states = test_states(core, list(ends))
-    return [{"id": i, "title": index[i].title, "test": end, "state": state}
-            for end, state in states.items() if state in ("not yet passing", "regression")
-            for i in dict.fromkeys(ends[end])]
+    rows: list[dict[str, Any]] = []
+    for key in ("failing", "unverified"):
+        for record_id, items in (verification.get(key) or {}).items():
+            for item in items:
+                if key == "failing":
+                    state = "regression" if item.get("regression") else "failing"
+                else:
+                    state = "never run" if item.get("state") == "none" else \
+                        "stale since its last pass"
+                rows.append({"id": record_id, "test": item.get("test"), "state": state,
+                             "title": getattr(index.get(record_id), "title", record_id)})
+    return rows
+
+
+def verification_lines(verification: Mapping[str, Any]) -> list[str]:
+    """The rest of what ``report.verification_holds`` holds on, in the owner's words: a
+    verification that could not be read, a full run pending, a regression."""
+    if not verification.get("available"):
+        return [owner_text.PREMERGE_VERIFY_UNAVAILABLE.format(
+            error=verification.get("error") or "no verification lane")]
+    out = []
+    if verification.get("full_pending") and not verification.get("full_waived"):
+        out.append(owner_text.PREMERGE_FULL_PENDING.format(
+            reasons=", ".join(verification.get("full_pending_reasons") or ())))
+    out += [owner_text.PREMERGE_REGRESSION.format(test=t)
+            for t in verification.get("regressions") or ()]
+    return out
 
 
 def delivered_proofs(core: Any, messages: Sequence[tuple[str, str]]) -> list[dict[str, Any]]:
@@ -794,6 +818,7 @@ def hold_lines(report: Any, into: str) -> list[str]:
     if failing:
         out.append(owner_text.PREMERGE_FAILING_HEADER)
         out.extend(_capped([owner_text.PREMERGE_FAILING.format(**r) for r in failing]))
+    out.extend(getattr(report, "verify_lines", ()))
     proofs = getattr(report, "proofs", ())
     if proofs:
         out.append(owner_text.PREMERGE_PROOFS_HEADER.format(into=into))
@@ -850,8 +875,8 @@ def render(report: PremergeReport) -> list[str]:
         out.extend(_capped([owner_text.PREMERGE_UNDECLARED.format(
             path=r.get("path") or f"a commit without a requirement ({r['commit'][:12]})")
             for r in report.undeclared]))
-    if report.claims_errors:
-        out.append(owner_text.PREMERGE_UNREADABLE_HEADER)
+    if report.claims_errors:    # listed, never held (gates.claims_gate)
+        out.append(owner_text.PREMERGE_CLAIMS_UNREADABLE_HEADER)
         out.extend(_capped(list(report.claims_errors)))
     if report.collisions:
         out.append("two different records hold one ID:")
