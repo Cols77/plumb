@@ -582,8 +582,7 @@ def _deleted_entries(root: Path, base: str) -> list[str]:
     gone = []
     for path in filter(None, out.split("\0")):
         parts = path.split("/")
-        shared = getattr(log, "SHARED_KINDS", None)  # shortcut: every kind is shared until T1
-        if len(parts) == 4 and parts[3].endswith(".json") and (shared is None or parts[2] in shared):
+        if len(parts) == 4 and parts[3].endswith(".json") and parts[2] in log.SHARED_KINDS:
             gone.append(path)
     kept: dict[str, set[str]] = {}
     rows = []
