@@ -153,6 +153,19 @@ def _store_cases(root: Path | str, found: list[dict[str, str]],
     return out
 
 
+def _elsewhere(core: Any, still_open: set[str]) -> None:
+    """SR-327: outside plumb's own repository a case whose rerun failed again ends with a
+    defect report (or, configured, a fix in the source checkout), once."""
+    from plumb import selfdebug
+
+    if selfdebug._own(Path(core.root)):
+        return
+    for row in open_cases(core.root):
+        if row["id"] in still_open and not row.get("report"):
+            if line := selfdebug.handle(core, row).line:
+                print(line)
+
+
 def _fix(core: Any, ids: list[str]) -> int:
     """``plumb debug fix [id]``: the self-debug workflow on demand (SR-326)."""
     from plumb import selfdebug
@@ -191,6 +204,8 @@ def run(command: str, argv: list[str]) -> int:
     found = cases(core, args.selector, dry_run=args.dry_run)
     if not args.selector:
         found += _store_cases(core.root, found, args.dry_run)
+        if not args.dry_run:
+            _elsewhere(core, {c["case"] for c in found if c["state"] == "open"})
     resolved = sum(c["state"] != "open" for c in found)
     if args.as_json:
         emit({"cases": found, "resolved": resolved}, True)

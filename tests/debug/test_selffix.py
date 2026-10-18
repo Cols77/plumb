@@ -15,6 +15,7 @@ import pytest
 
 from plumb import debug, selfdebug, stale
 from plumb.api import open_core
+from plumb.config import Config
 from plumb.contracts import Target
 from plumb.understand import jobs, judge, repin
 from plumb.understand import selfdebug as kind
@@ -229,4 +230,4 @@ def test_the_case_is_queued_as_a_background_job_only_in_plumbs_own_repository(
     assert selfdebug.applies(core) is None
     assert jobs.job_path(plumb_repo, job.session, job.id).exists()
     assert kind.recompute(core, job) == {"case": CASE}
-    assert "not plumb's own" in selfdebug.applies(SimpleNamespace(root=tmp_path))
+    assert "not plumb's own" in selfdebug.applies(SimpleNamespace(root=tmp_path, config=Config()))

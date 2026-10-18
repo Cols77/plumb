@@ -21,6 +21,7 @@ from typing import Any
 
 from plumb import debug
 
+ISSUES_REPO = "Cols77/plumb"
 Runner = Callable[[list[str]], tuple[bool, str]]
 ID = re.compile(r"\b(?:SR|DEC|INT)-\d+\b")
 FIX_SCHEMA = {"type": "object", "required": ["test"], "additionalProperties": True,
@@ -40,15 +41,22 @@ class Outcome:
     rounds: list[str] = field(default_factory=list)
 
 
-def applies(core: Any) -> str | None:
-    """None in plumb's own repository; else why self-debug does not run here."""
-    root = Path(core.root)
+def _own(root: Path) -> bool:
     try:
-        own = (root / "src" / "plumb" / "__init__.py").exists() and re.search(
-            r'^name\s*=\s*"plumb"', (root / "pyproject.toml").read_text("utf-8"), re.M)
+        return bool((root / "src" / "plumb" / "__init__.py").exists() and re.search(
+            r'^name\s*=\s*"plumb"', (root / "pyproject.toml").read_text("utf-8"), re.M))
     except OSError:
-        own = None
-    return None if own else "this is not plumb's own repository"
+        return False
+
+
+def applies(core: Any) -> str | None:
+    """None in plumb's own repository, or elsewhere with ``debug.self_fix`` on and
+    ``debug.source`` set (SR-327); else why self-debug does not run here."""
+    cfg = core.config.debug
+    if _own(Path(core.root)) or (cfg.self_fix and cfg.source):
+        return None
+    return ("self-debug is on but debug.source names no plumb checkout" if cfg.self_fix
+            else "this is not plumb's own repository")
 
 
 def _git(cwd: Path, *args: str, check: bool = True) -> str:
@@ -210,6 +218,8 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     from plumb.judgment import waiting_line
 
     root = Path(core.root)
+    if not _own(root):
+        return handle(core, case, rounds=rounds, fixer=fixer, runner=runner, judge=judge)
     wt, branch = _worktree(root, case["id"])
     wt_core = open_core(wt)
     session = stale.current_session(root)
@@ -250,3 +260,52 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     text = "; ".join(tried) + f". Missing: {why}. Nothing was committed (branch {branch})."
     debug.report(root, case["id"], text)
     return Outcome("reported", branch, text, rounds=tried)
+
+
+def handle(core: Any, case: dict[str, Any], **kw: Any) -> Outcome:
+    """SR-327: outside plumb's own repository, the fix in the configured source checkout
+    (the repository itself is never written), else a defect report."""
+    root = Path(core.root)
+    cfg = core.config.debug
+    if not (cfg.self_fix and cfg.source):
+        return report_elsewhere(core, case)
+    from plumb.api import open_core
+
+    src = open_core(Path(cfg.source))
+    path = debug._case_path(src.root, case["id"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({**case, "state": "open"}), encoding="utf-8")
+    out = fix(src, case, **kw)
+    if out.state == "fixed":
+        debug.resolve(root, [case["id"]])
+    elif out.state == "reported":
+        debug.report(root, case["id"], out.detail)
+    return out
+
+
+def report_elsewhere(core: Any, case: dict[str, Any]) -> Outcome:
+    """SR-327: the defect report for the agent (the case, plumb's log entry, the repro, what
+    is missing), nothing changed; with ``debug.report_issues`` and gh, one issue per case
+    carrying only that (DEC-247), its url stored on the case."""
+    import shutil
+
+    from plumb.judgment import notice_once
+
+    root, cfg = Path(core.root), core.config.debug
+    missing = applies(core) or "the fix did not run"
+    repro = "plumb debug" + (f" {case['target']}" if case.get("kind") == "stale-refused" else "")
+    text = (f"Defect in plumb, case {case['id']} ({case['kind']}): {case.get('detail', '')}\n"
+            f"Log entry: {case.get('log') or '(none)'}\nRepro: {repro}\n")
+    debug.report(root, case["id"], text + f"Missing: {missing}")
+    line = notice_once(root, f"selfdebug:{missing}", f"plumb: self-debug: {missing}; "
+                       "the defect is reported, nothing was changed") or ""
+    gh = shutil.which("gh")
+    if cfg.report_issues and gh and not case.get("issue"):
+        done = subprocess.run(
+            [gh, "issue", "create", "-R", cfg.issues_repo or ISSUES_REPO, "--title",
+             f"plumb defect: {case['kind']}: {str(case.get('detail', ''))[:80]}",
+             "--body-file", "-"], input=text, capture_output=True, text=True,
+            encoding="utf-8")
+        if done.returncode == 0 and done.stdout.strip():
+            debug._update(root, [case["id"]], issue=done.stdout.strip().splitlines()[-1])
+    return Outcome("reported", detail=text + f"Missing: {missing}", line=line)
