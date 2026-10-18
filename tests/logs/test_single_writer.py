@@ -19,10 +19,11 @@ WRITES = re.compile(r"write_text|write_bytes|\.touch\(|os\.link|os\.replace|unli
 # readers and declarations that name the log directory without writing under it
 # (ids/mergefix.py and mergedriver/conflicts.py only stage, with git add, the entries
 # log.append wrote; boundary/premerge.py, the merge check, only reads the log folder and never
-# writes it)
+# writes it; boundary/landing.py lists the untracked shared entries and commits them with git)
 READERS = {"paths.py", "commands.py", "merge.py", "validate.py", "hosts/claude_code/install.py",
            "hosts/claude_code/stop.py", "ids/mergefix.py", "mergedriver/conflicts.py",
-           "guard.py", "hosts/claude_code/pretool.py", "boundary/premerge.py"}
+           "guard.py", "hosts/claude_code/pretool.py", "boundary/premerge.py",
+           "boundary/landing.py"}
 
 
 def test_only_log_py_writes_under_plumb_log() -> None:
