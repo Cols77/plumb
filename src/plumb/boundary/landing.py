@@ -305,16 +305,6 @@ def status_cases(core: Any, session: str, queued_line: str) -> list[dict]:
 # --------------------------------------------------------------------------- the job
 
 
-def shared_uncommitted(root: Path) -> list[str]:
-    """SR-329: the uncommitted entries of shared log kinds in ``root``, whichever session wrote
-    them (local kinds are ignored by git, so they never appear)."""
-    from plumb import log
-
-    out = _git(root, "ls-files", "-o", "--exclude-standard", "-z", "--", ".plumb/log")
-    return sorted(p for p in out.split(chr(0)) if p.count("/") >= 3
-                  and p.split("/")[2] in log.SHARED_KINDS)
-
-
 def _commit(root: Path, removed: list[str], archived: list[str], head: str) -> None:
     """One tidy commit of exactly these paths (``removed`` already staged by ``git rm``); the
     owner's other staged work stays staged."""
@@ -441,7 +431,9 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         queued, queued_line = started.records, started.line
 
     def do_commit() -> None:
-        shared = shared_uncommitted(root)
+        from plumb import log
+
+        shared = log.shared_uncommitted(root)
         if removed or archived or shared:
             _commit(root, removed, [*archived, *shared], head)
 

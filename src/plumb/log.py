@@ -1033,6 +1033,18 @@ def tracked_names(root: Path) -> set[str]:
     return {p[len(prefix):] for p in out.split("\n") if p.startswith(prefix)}
 
 
+def shared_uncommitted(root: Path) -> list[str]:
+    """SR-329: the uncommitted entries of shared log kinds in ``root``, whichever session wrote
+    them (local kinds are ignored by git, so they never appear)."""
+    import subprocess
+
+    out = subprocess.run(["git", "ls-files", "-o", "--exclude-standard", "-z", "--", ".plumb/log"],
+                         cwd=root, capture_output=True, text=True, encoding="utf-8",
+                         errors="replace", check=True).stdout
+    return sorted(p for p in out.split(chr(0)) if p.count("/") >= 3
+                  and p.split("/")[2] in SHARED_KINDS)
+
+
 def stage(root: Path, changed: Iterable[str]) -> None:
     """``git add -A`` of the paths ``archive`` returned (segments written, files removed).
     Nothing else is staged."""
