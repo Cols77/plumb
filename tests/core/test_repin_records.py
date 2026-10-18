@@ -177,3 +177,45 @@ def test_plumb_debug_runs_the_cases_and_counts_them(project: Path, write_record,
     assert "1 cases, 1 resolved" in capsys.readouterr().out and _state(project) == "current"
     assert main(["debug"]) == 0 and "0 cases" in capsys.readouterr().out
     assert debug.cases(open_core(project), ["DEC-999"])[0]["what"] == "no record DEC-999"
+
+
+DEC2 = """---
+id: DEC-002
+title: Is the sum rounded?
+question: Is the sum rounded?
+chosen: 'Yes: add rounds the sum to two decimals'
+alternatives:
+- Keep the exact sum
+---
+"""
+
+
+def test_a_newer_decision_pinned_to_the_reworded_record_accounts_for_it(
+        project: Path, write_record) -> None:
+    """The owner decided again after the pin (DEC-002 is pinned to SR-001 as reworded): the
+    older decision's link is repinned naming it, and no model and no owner is asked."""
+    _reword(project, write_record, ", rounded to two decimals")
+    write_record(project, DEC2)
+    open_core(project).add_link("DEC-002", "decides", Target(record="SR-001"))
+    sonnet = Judge(False, "the sum is now rounded")
+    result = _resolve(project, sonnet)
+    assert sonnet.asked == [] and result.refused == []
+    (change,) = result.changes
+    assert change["link"] == LINK and change["tier"] == "decision"
+    (entry,) = open_core(project).log_read("events", ["repin"])
+    assert "DEC-002" in entry.payload["note"] and _state(project) == "current"
+    assert judge.open_questions(open_core(project), "s1") == []
+
+
+def test_a_rerun_replaces_the_question_and_a_repin_withdraws_it(
+        project: Path, write_record) -> None:
+    from plumb import links
+
+    _reword(project, write_record, ", rounded to two decimals")
+    _resolve(project, Judge(False, "the sum is now rounded"))
+    _resolve(project, Judge(False, "add rounds its result"))        # a rerun, read otherwise
+    (question,) = judge.open_questions(open_core(project), "s1")
+    assert "add rounds its result" in question["question"]
+    links.repin(open_core(project), LINK, note="the owner said it still holds")
+    assert judge.open_questions(open_core(project), "s1") == []
+    assert _state(project) == "current"
