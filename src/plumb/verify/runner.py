@@ -93,6 +93,52 @@ def coverage_available() -> bool:
 
 XDIST_MISSING = ("pytest-xdist is not installed: the tests run on one process "
                  "(verify.workers is {workers})")
+PYTEST_MISSING = ("pytest is not installed for {python}: install it there, or name the "
+                  "interpreter that has it in verify.python")
+_PROBED: dict[str, tuple[str | None, bool]] = {}
+
+
+def test_interpreter(root: Path | str, configured: str = "") -> str:
+    """The interpreter that runs the repository's tests: ``verify.python`` when set, else the
+    repository's ``.venv`` when it exists, else the one plumb runs in. Under the plugin that
+    last one is plumb's private environment, which has no pytest and none of the project's
+    test dependencies, so a project with a ``.venv`` is run there."""
+    if configured:
+        local = Path(root) / configured
+        return str(local) if not Path(configured).is_absolute() and local.exists() else configured
+    for rel in ("Scripts/python.exe", "bin/python"):
+        venv = Path(root) / ".venv" / rel
+        if venv.exists():
+            return str(venv)
+    return sys.executable
+
+
+def _probe(interpreter: str) -> tuple[str | None, bool]:
+    """``(why pytest cannot run there, whether plumb's own package must be put on its path)``
+    for ``interpreter``, asked once per process: the pytest plugin the run loads is plumb's."""
+    if interpreter in _PROBED:
+        return _PROBED[interpreter]
+    if interpreter == sys.executable:
+        found = (None if _find("pytest") else PYTEST_MISSING.format(python=interpreter), False)
+    else:
+        code = ("import importlib.util as u; print(int(u.find_spec('pytest') is None), "
+                "int(u.find_spec('plumb') is None))")
+        try:
+            out = subprocess.run([interpreter, "-c", code], capture_output=True, text=True,
+                                 timeout=30, check=False).stdout.split()
+        except (OSError, subprocess.SubprocessError):
+            out = []
+        no_pytest, no_plumb = (out + ["1", "1"])[:2]
+        found = (PYTEST_MISSING.format(python=interpreter) if no_pytest == "1" else None,
+                 no_plumb == "1")
+    _PROBED[interpreter] = found
+    return found
+
+
+def _find(name: str) -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec(name) is not None
 
 
 def effective_workers(workers: int, xdist: bool | None = None) -> tuple[int, str | None]:
@@ -107,9 +153,9 @@ def effective_workers(workers: int, xdist: bool | None = None) -> tuple[int, str
 
 
 def build_command(args: Sequence[str], *, workers: int = 0, xdist: bool | None = None,
-                  cov: bool = False) -> list[str]:
-    cmd = [sys.executable, "-m", "pytest", "-p", PLUGIN, "-p", "no:cacheprovider", "-q",
-           "--continue-on-collection-errors"]
+                  cov: bool = False, interpreter: str | None = None) -> list[str]:
+    cmd = [interpreter or sys.executable, "-m", "pytest", "-p", PLUGIN, "-p", "no:cacheprovider",
+           "-q", "--continue-on-collection-errors"]
     if cov:
         cmd += ["-p", COV_PLUGIN]
     if workers in (1, 2):
@@ -268,7 +314,7 @@ class StreamWatch:
 
 def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = None,
                workers: int = 0, cov: CovSpec | None = None, progress: Any = None,
-               step: str | None = None) -> RunResult:
+               step: str | None = None, interpreter: str | None = None) -> RunResult:
     """Run pytest once in ``root`` and read the plugin's report. With ``cov`` the coverage
     plugin writes one data file per process (``result.cov_files``). With ``progress`` (a
     ``progress.Reporter``) the run says ``step``, how many tests have finished of the total and
@@ -284,6 +330,19 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
     env["PLUMB_REPORT"] = report_path
     env.setdefault("PYTHONIOENCODING", "utf-8")
     result = RunResult()
+    interpreter = interpreter or sys.executable
+    missing, needs_plumb = _probe(interpreter)
+    if missing:   # no run at all: the lane says why instead of failing every test
+        result.notes.append(missing)
+        result.output = missing
+        result.exit_status = 1
+        return result
+    if needs_plumb:
+        import plumb
+
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(Path(plumb.__file__).resolve().parent.parent)]
+            + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
     used, note = effective_workers(workers)
     result.workers = used
     if note:
@@ -298,7 +357,7 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
             skip_file = cov.data_base + ".skip"
             Path(skip_file).write_text(chr(10).join(sorted(cov.skip)), encoding="utf-8")
             env["PLUMB_COV_SKIP"] = skip_file
-    cmd = build_command(args, workers=workers, cov=cov is not None)
+    cmd = build_command(args, workers=workers, cov=cov is not None, interpreter=interpreter)
     start = time.monotonic()
     if progress is None and _PROGRESS.get() is not None:
         progress, step = _PROGRESS.get()
@@ -402,7 +461,8 @@ def run_selection(core: Any, nodes: Sequence[str], *, full: bool = False,
     token = _PROGRESS.set((reporter, step))
     try:
         result = run_pytest(root, [] if full else list(nodes), timeout_s=timeout_s,
-                            workers=workers, cov=cov)
+                            workers=workers, cov=cov, interpreter=test_interpreter(
+                                root, str(getattr(core.config.verify, "python", "") or "")))
     except BaseException:
         if owned:
             reporter.failed(f"{step} stopped")

@@ -37,6 +37,14 @@ _HELD: dict[tuple[str, str], str] = {}     # the locks this process holds: (root
 
 # ---- the lock -------------------------------------------------------------------------------
 
+def budget_scale_for(root: Path, session: str) -> int:
+    """SR-325 EX-5, DEC-260: one more than the failures in a row, so each retry of a failed
+    job gets a larger budget than the last (the dispatcher's timeout is scaled by it)."""
+    from plumb.understand import queue
+
+    return 1 + queue.consecutive_failures(root, session)
+
+
 def _pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -280,7 +288,8 @@ class _Pass:
             from plumb import debug
 
             debug.open_case(self.root, id=f"job-{job.id}", kind="job-failed", target=job.id,
-                            detail=f"{job.kind} failed three times in a row",
+                            detail=f"{job.kind} failed three times in a row, each retry with "
+                                   "a larger budget",
                             log=json.dumps(new["last"]))
 
     def _finish(self, job: Job, result: JobResult) -> None:
@@ -426,11 +435,14 @@ class _Pass:
             if done.line:
                 self._say(done.line)
             return done.answer, done.dispatcher, done.left
+        scale = dispatch.budget_scale.set(budget_scale_for(self.root, self.session))
         try:
             dispatcher = dispatch.configured(self.core)
         except NoModel as exc:
             self._error(job, "dispatch", str(exc), started, t0)
             return None
+        finally:
+            dispatch.budget_scale.reset(scale)
         reason = dispatcher.available()
         if reason:
             self._error(job, "dispatch", reason, started, t0, dispatcher.name)

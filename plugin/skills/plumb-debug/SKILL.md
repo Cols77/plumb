@@ -21,3 +21,16 @@ nothing else is needed.
    owner as one question through the question tool, with options and what each one does;
    pass their answer on and rerun `plumb debug`. Ask the owner nothing any other way.
 5. `plumb debug done <id>...` closes a case you settled by hand. You confirm no record.
+
+Questions and approval: plumb's judge approves on the owner's behalf; no approval command
+exists, and you never decide on your own that the owner approved.
+1. After `capture`, run `plumb clarify --wait --json`. On `ask`, pass each `question`,
+   `header` and option `label` and `description` to AskUserQuestion verbatim, one call per
+   question, in order. Never restate a question in prose.
+2. Never answer, infer or default a question for the owner, never pick the recommended option
+   for them, and never write or read `judge_questions.json` or any approval.
+3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
+   question, stop asking, tell the owner in one plain line that the work waits for their
+   answer, and do not rerun `ask` in a loop.
+4. Any other question to the owner also goes through the question tool, with options and
+   their consequences.

@@ -566,15 +566,7 @@ def repin_after_tests(core: Core, selector: str, *,
     diagnosis. Never confirms anything."""
     result = AfterTests()
     states = _select_stale(core, selector)
-    candidates: list[LinkState] = []
-    for state in states:
-        link = state.link
-        if state.moved != "target":
-            result.refused.append((link.id, "the requirement itself was reworded since the "
-                                   "pin: a test run cannot settle that; bring it to the owner "
-                                   "as a card"))
-        else:
-            candidates.append(state)
+    candidates = list(states)   # a reworded requirement is judged too (its old wording shown)
     if not candidates:
         return result
     from plumb.understand import repin as meaning_check
@@ -603,12 +595,6 @@ def repin_after_tests(core: Core, selector: str, *,
     for state in candidates:
         link = state.link
         target = index.get(link.target.record or "")
-        newer = _accounting_decision(index, link, target)
-        if newer is not None:   # a later owner decision asked for the rewording: nothing to judge
-            _repinned(core, result, link.id, "decision",
-                      f'{target.id} was reworded to apply {newer.id} "{newer.title}", which is '
-                      "pinned to it as it is now", dry_run)
-            continue
         texts = (_record_texts(core.root, target, link) if link.target.record is not None
                  else end_texts(core.root, link))
         if texts is None:
@@ -617,10 +603,24 @@ def repin_after_tests(core: Core, selector: str, *,
             continue
         record = index.get(link.id.split("#")[0])
         path = target_path(link.target) or (target.path if target is not None else "")
+        reworded = ""
+        if state.moved != "target" and record is not None and link.pin is not None:
+            reworded = _pinned_text(core.root, record, link.pin.source) or ""
+            if not reworded:
+                result.refused.append((link.id, "the requirement as pinned could not be found "
+                                       "in git, so there is nothing to compare its wording to"))
+                continue
         shown = dict(requirement=f"{record.id}: {record.title}\n{record_text(record)}"
                      if record is not None else link.id,
                      link_id=link.id, link_kind=link.kind, path=path,
-                     before=texts[0], after=texts[1])
+                     before=texts[0], after=texts[1], requirement_before=reworded)
+        newer = _later_decisions(index, link, target or record)
+        if newer:   # SR-242, INT-079: the cascade still decides, reading the owner's later answers
+            shown["requirement"] += (
+                "\n\nThe owner decided later, on the record as it is now; a later answer "
+                "supersedes the earlier one on the same point, so a change that applies it "
+                "keeps the meaning:\n"
+                + "\n".join(f"{d.id}: {record_text(d)}" for d in newer))
         p = jev.clears(**shown) if jev is not None else None
         if p is not None:   # EX-1: JEV alone, above its calibrated threshold
             why = f"JEV gives {p:.2f}, at or above its threshold {jev.threshold:.2f}"
@@ -650,19 +650,35 @@ def repin_after_tests(core: Core, selector: str, *,
     return result
 
 
-def _accounting_decision(index: Mapping[str, Record], link: Link,
-                         target: Record | None) -> Record | None:
-    """Another decision that decides ``target`` and is pinned to it as it is now: the owner
-    decided again after the pin, and the rewording applies that newer answer, so the older
-    decision's link is repinned with its name and the owner is asked nothing."""
-    if target is None:
-        return None
-    for record in index.values():
-        if record.kind != "decision" or record.id == link.source:
+def _later_decisions(index: Mapping[str, Record], link: Link,
+                     about: Record | None) -> list[Record]:
+    """The other decisions that decide ``about`` (the record end of a decision's link, or the
+    requirement a code link serves) and are pinned to it as it is now: the owner decided again
+    after this link's pin, so the judge reads the change next to those answers (a change that
+    applies them keeps the meaning); the verdict stays the cascade's (SR-242)."""
+    if about is None:
+        return []
+    return [record for record in index.values()
+            if record.kind == "decision" and record.id != link.source
+            and any(other.target.record == about.id and other.pin is not None
+                    and other.pin.target == about.hash for other in record.links)]
+
+
+def _pinned_text(root: Path, record: Record, pin_hash: str) -> str | None:
+    """What ``record`` asserted at the version whose hash is ``pin_hash``, looked for among its
+    file's committed versions (newest first); None when it is not found."""
+    from plumb.model import parse_record
+    from plumb.understand.judge import record_text
+
+    listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", "--", record.path])
+    for sha in (listing or "").split():
+        text = _git_text(root, ["show", f"{sha}:{record.path}"])
+        try:
+            old = parse_record(text, record.path) if text is not None else None
+        except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
             continue
-        for other in record.links:
-            if other.target.record == target.id and other.pin is not None                     and other.pin.target == target.hash:
-                return record
+        if old is not None and old.hash == pin_hash:
+            return record_text(old)
     return None
 
 
@@ -670,21 +686,12 @@ def _record_texts(root: Path, target: Record | None, link: Link) -> tuple[str, s
     """``(the target record as the pin saw it, as it is now)``, each as what it asserts: the
     pinned version is looked for among the record file's committed versions (newest first);
     None when it is not found."""
-    from plumb.model import parse_record
     from plumb.understand.judge import record_text
 
     if target is None or link.pin is None:
         return None
-    listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", "--", target.path])
-    for sha in (listing or "").split():
-        text = _git_text(root, ["show", f"{sha}:{target.path}"])
-        try:
-            old = parse_record(text, target.path) if text is not None else None
-        except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
-            continue
-        if old is not None and old.hash == link.pin.target:
-            return record_text(old), record_text(target)
-    return None
+    old = _pinned_text(root, target, link.pin.target)
+    return None if old is None else (old, record_text(target))
 
 
 def _ask_owner(core: Core, result: AfterTests, record: Record | None, target: Record,
