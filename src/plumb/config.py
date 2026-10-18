@@ -27,6 +27,9 @@ class VerifyConfig:
     sample_size: int = 10
     default_test_s: float = 1.0
     workers: int = 0
+    # the interpreter that runs the tests: "" picks the repository's .venv when it has one,
+    # else the interpreter plumb runs in (the plugin's own has no pytest)
+    python: str = ""
     flaky_rerun: bool = True
     infra_globs: tuple[str, ...] = DEFAULT_INFRA_GLOBS
     # SR-110: tests chosen by the functions they execute (auto), or by imports only (off)
