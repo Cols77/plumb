@@ -49,6 +49,22 @@ SIBLING_MAX = 16  # other worktrees whose pack caches a cold read may consult
 STREAMS: tuple[LogStream, ...] = ("events", "evidence")
 STREAM_OF_KIND: dict[str, LogStream] = {"test-run": "evidence", "merge-evidence": "evidence"}
 
+# SR-321: the kinds another clone needs are committed; the rest are written where they were
+# but ignored by git (.gitignore lists exactly LOCAL_KINDS). A kind in neither set is a failing
+# test (tests/logs/test_kinds.py).
+SHARED_KINDS = frozenset({
+    "approval", "prompt", "config", "calibration", "pre-intent", "question-answer", "premise",
+    "judgment", "test-run", "mod-hello", "offer",
+    # unclassified (owner to say which class; shared is the safe side meanwhile)
+    "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
+    "conflict-resolution", "card-unsettled", "waiver",
+})
+LOCAL_KINDS = frozenset({
+    "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",
+    "job-note", "triage", "merge-evidence", "repin", "relink", "unlink", "eval-run", "jev-setup",
+    "intent-gate", "intent-done",
+})
+
 _KIND_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _NAME_RE = re.compile(r"^(\d{8}T\d{6})\.(\d{6})Z-([0-9a-f]{8})\.json$")
 _AT_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$")
@@ -1033,7 +1049,9 @@ def tracked_names(root: Path) -> set[str]:
 def stage(root: Path, changed: Iterable[str]) -> None:
     """``git add -A`` of the paths ``archive`` returned (segments written, files removed).
     Nothing else is staged."""
-    changed = list(changed)
+    # a local kind's entry is never staged (SR-321, SR-287 EX-16)
+    changed = [c for c in changed if not (c.startswith(".plumb/log/")
+                                          and c.split("/")[2] in LOCAL_KINDS)]
     if not changed:
         return
     import subprocess
