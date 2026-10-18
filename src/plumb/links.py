@@ -630,7 +630,8 @@ def repin_after_tests(core: Core, selector: str, *,
             if meaning.unreachable:
                 result.unreachable = meaning.reason
         elif not meaning.unchanged and target is not None:   # SR-300 EX-3, SR-221
-            _ask_owner(core, result, record, target, link, meaning.reason, session, dry_run)
+            _ask_owner(core, result, record, target, link, shown, meaning.reason, session,
+                       dry_run)
         elif not meaning.unchanged:
             _diagnose(core, result, record, link, shown, meaning.reason, diagnoser,
                       session, dry_run, auto)
@@ -661,7 +662,8 @@ def _record_texts(root: Path, target: Record | None, link: Link) -> tuple[str, s
 
 
 def _ask_owner(core: Core, result: AfterTests, record: Record | None, target: Record,
-               link: Link, reason: str, session: str | None, dry_run: bool) -> None:
+               link: Link, shown: Mapping[str, str], reason: str, session: str | None,
+               dry_run: bool) -> None:
     """SR-300 EX-3, SR-221: the record a decision settles changed in meaning: one question to
     the owner through the question tool, about the behaviour and in plain words; no card, no
     diagnosis. The link stays stale until the answer is applied."""
@@ -676,21 +678,41 @@ def _ask_owner(core: Core, result: AfterTests, record: Record | None, target: Re
     fields = record.fields
     chosen = str(fields.get("chosen") or record.title)
     asked = str(fields.get("question") or record.title)
+    said = str(fields.get("rationale") or "").strip()
+    came_from = "; ".join(i["text"].splitlines()[0] for i in _intents(core, record))
+    dated = (_git_text(core.root, ["log", "--diff-filter=A", "--format=%cs", "--",
+                                   record.path]) or "").split()
+    # SR-267: one question, readable cold: the request it came from and its date, both
+    # wordings side by side, the recommended option first with its reason, each option's
+    # consequence and what it leaves undone; the owner's terms, no plumb vocabulary
     text = (f'"{target.title}" changed since you answered "{chosen}" to "{asked}". '
-            f"Does your answer still hold for what it says now?\n\nWhat changed: {reason}")
+            f"Does your answer still hold for what it says now?\n\n"
+            f"Then: {shown['before']}\n\nNow: {shown['after']}\n\n"
+            f"What changed: {reason}\n\n"
+            f'It comes from your decision "{asked}"'
+            + (f" of {dated[-1]}" if dated else "")
+            + (f' under your request "{came_from}"' if came_from else "")
+            + (f" ({said})" if said else "") + ".")
     where = session or stale.current_session(core.root)
     judge.add_question(core, where, {
         "key": judge.question_key(text), "job": f"debug:{link.id}",
         "records": [{"id": target.id, "hash": target.hash},
                     {"id": record.id, "hash": record.hash}],
         "question": text, "header": "Decision",
-        "options": [{"label": "It still holds",
-                     "description": "Your answer is kept and tied to the new wording."},
-                    {"label": "It needs a new answer",
-                     "description": "The agent asks you again what to decide here."},
-                    {"label": "Undo the rewording",
-                     "description": "The record goes back to what it said when you "
-                                    "answered."}]})
+        "options": [{"label": "It needs a new answer (Recommended)",
+                     "description": f'Does: you are asked again what to decide, and "'
+                                    f'{target.title}" keeps its new wording. Leaves undone: '
+                                    "your old answer is not applied to the new wording. "
+                                    "Recommended: the change reads as one your answer did not "
+                                    "cover."},
+                    {"label": "It still holds",
+                     "description": "Does: your answer is kept and tied to the new wording. "
+                                    "Leaves undone: nothing is asked again and the reading "
+                                    "above is set aside."},
+                    {"label": "Undo the new wording",
+                     "description": f'Does: "{target.title}" goes back to what it said when you '
+                                    "answered. Leaves undone: the work that changed it is not "
+                                    "applied."}]})
     result.refused.append((link.id, f"{refusal}; one question to the owner through the "
                            f"question tool; on \"it still holds\", plumb repin {link.id}"))
 

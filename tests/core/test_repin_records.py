@@ -110,6 +110,22 @@ def test_ex3_a_changed_meaning_is_one_owner_question_not_a_card(
     assert "Adds numbers" in question["question"] and "exact sum" in question["question"]
     assert "SR-001" not in question["question"] and "#" not in question["question"]
     assert len(question["options"]) == 3 and all(o["description"] for o in question["options"])
+    # SR-267: the recommended option first with its reason, each one's consequence, the evidence
+    assert question["options"][0]["label"].endswith("(Recommended)")
+    assert "Recommended:" in question["options"][0]["description"]
+    assert "the sum is now rounded" in question["question"]
+    assert "comes from your decision" in question["question"]
+    assert "Then: add returns the sum." in question["question"]
+    assert "Now: add returns the sum, rounded to two decimals." in question["question"]
+    import re
+    import time
+
+    assert "judge" not in question["question"].lower()
+    assert time.strftime("%Y-") in question["question"]           # the decision's date
+    assert not re.search(r"(?<!\w)the (record|agent|rewording|link)(?!\w)",
+                         question["question"] + " ".join(o["description"]
+                                                         for o in question["options"]))
+    assert all("Leaves undone" in o["description"] for o in question["options"])
     # asked again, the same question is not repeated; a dry run asks nothing
     _resolve(project, Judge(False, "the sum is now rounded"))
     _resolve(project, Judge(False, "the sum is now rounded"), dry_run=True)
