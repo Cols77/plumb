@@ -383,7 +383,8 @@ def agent_notes(ctx: HookContext) -> list[Any]:
         path.unlink()
     except OSError:
         pass
-    return [Line(str(n), oneshot=True) for n in notes] if isinstance(notes, list) else []
+    out = [Line(str(n), oneshot=True) for n in notes] if isinstance(notes, list) else []
+    return out
 
 
 def queued_for_agent(ctx: HookContext) -> list[str]:

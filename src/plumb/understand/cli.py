@@ -30,6 +30,10 @@ def run(command: str, argv: list[str]) -> int:
         from plumb.understand import tidy
 
         return tidy.run("undo", argv[1:])
+    if command == "understand" and argv and argv[0] == "debug":
+        from plumb.understand import summary
+
+        return summary.run_debug(argv[1:])
     if command == "understand" and argv and argv[0] == "backlog":
         from plumb.understand import backlog
 

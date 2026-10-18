@@ -306,6 +306,7 @@ class PremergeReport:
     settled: tuple[str, ...] = ()        # R17: conflicts the owner's earlier answer settled
     stale_links: tuple[str, ...] = ()    # SR-166: links the merge leaves stale
     untested_links: tuple[str, ...] = ()  # SR-166: links the merge adds to files no test covers
+    validate_errors: tuple[str, ...] = ()  # SR-306: every validate error of the result
     contradictions: tuple[str, ...] = ()  # SR-165: new requirements against live ones
     contradiction_notes: tuple[str, ...] = ()  # unsure verdicts: shown, never held on
     judge_note: str = ""                 # set when the contradiction check could not judge
@@ -496,17 +497,19 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
     conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
     stale_links, untested_links = _link_problems(core, base, paths, index)
+    validate_errors = _errors(core, base)
     contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index)
     # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
     # the commit that finishes it ("finish the merge") records the settled version
     held = bool(undeclared or collisions or unstaged or unreadable or settled
-                or stale_links or untested_links)
+                or stale_links or untested_links or validate_errors)
     code = 1 if held else 4 if (conflicts or unconfirmed or contradictions) else 0
     report = PremergeReport(merging=theirs, into=ours, touched=tuple(touched),
                             unconfirmed=tuple(unconfirmed), undeclared=tuple(undeclared),
                             intent_conflicts=tuple(conflicts), collisions=tuple(collisions),
                             unstaged=unstaged, unreadable=unreadable, settled=settled,
                             stale_links=tuple(stale_links), untested_links=tuple(untested_links),
+                            validate_errors=tuple(validate_errors),
                             contradictions=tuple(contradictions),
                             contradiction_notes=tuple(contradiction_notes),
                             judge_note=judge_note,
@@ -557,6 +560,56 @@ def _link_problems(core: Any, base: str, paths: Sequence[str],
     return stale_links, untested
 
 
+def _errors(core: Any, base: str = "") -> list[str]:
+    """SR-306: every validate error of the result, whether or not the base had it. With
+    ``base``, SR-322: each committed log entry the result deletes from it that no archive
+    segment of its kind keeps."""
+    from plumb.validate import validate
+
+    rows = [f"  [{f.code}] {f.subject}: {f.message}" for f in validate(core)
+            if f.severity == "error"]
+    return rows + (_deleted_entries(Path(core.root), base) if base else [])
+
+
+def _deleted_entries(root: Path, base: str) -> list[str]:
+    """SR-322: the ``.plumb/log/<kind>/*.json`` entries of a shared kind deleted from
+    ``base`` in the checked-out result whose digest is in no archive segment of the result.
+    One git call; archives are read only when something was deleted."""
+    from plumb import log
+
+    out = _git(root, "diff", "--name-only", "-z", "--diff-filter=D", base, "--",
+               ".plumb/log") or ""
+    gone = []
+    for path in filter(None, out.split("\0")):
+        parts = path.split("/")
+        if len(parts) == 4 and parts[3].endswith(".json") and parts[2] in log.SHARED_KINDS:
+            gone.append(path)
+    kept: dict[str, set[str]] = {}
+    rows = []
+    for path in gone:
+        kind = path.split("/")[2]
+        if kind not in kept:
+            try:
+                lines = (root / ".plumb" / "log" / kind / log.SEGMENT).read_bytes().splitlines()
+            except OSError:
+                lines = []
+            kept[kind] = {m for m in (_digest_of(line) for line in lines) if m}
+        if _digest_of(_git(root, "show", f"{base}:{path}") or "") not in kept[kind]:
+            rows.append(f"  [log] {path}: committed log entry deleted by this merge and "
+                        "kept in no archive segment")
+    return rows
+
+
+def _digest_of(text: str | bytes) -> str | None:
+    import json
+
+    try:
+        raw = json.loads(text)
+    except ValueError:
+        return None
+    return str(raw.get("digest")) if isinstance(raw, dict) else None
+
+
 def drift_problems(core: Any, base: str, paths: Sequence[str]) -> dict[str, Any]:
     """The stale, untested-link and contradiction sections of a merge into ``base`` (SR-165,
     SR-166), as ``PremergeReport`` fields, for ``merge-check``'s report too."""
@@ -577,7 +630,9 @@ def drift_lines(report: Any) -> list[str]:
             out += [header, *_capped(rows)]
     if report.judge_note:
         out.append(report.judge_note)
-    for rows, header in ((report.stale_links, owner_text.PREMERGE_STALE_HEADER),
+    for rows, header in ((getattr(report, "validate_errors", ()),
+                          owner_text.PREMERGE_VALIDATE_HEADER),
+                         (report.stale_links, owner_text.PREMERGE_STALE_HEADER),
                          (report.untested_links, owner_text.PREMERGE_UNTESTED_HEADER)):
         if rows:
             out += [header, *_capped(rows)]
@@ -803,10 +858,10 @@ def run_post_merge(root: Path) -> int:
     except Exception:  # noqa: BLE001
         pass
     if (_git(root, "config", "--bool", HOLD_KEY) or "").strip() == "false":
-        return 0
+        return _start_landing(root)
     found = fast_forward_of(root)
     if found is None:
-        return 0
+        return _start_landing(root)
     before, _after, name = found
     try:
         report = check(open_core(root), fast_forward=found)
@@ -818,7 +873,7 @@ def run_post_merge(root: Path) -> int:
     for line in report.lines:
         print(line)
     if not report.exit:
-        return 0
+        return _start_landing(root)
     try:
         _git(root, "reset", "-q", "--keep", before, check=True)
     except subprocess.CalledProcessError as exc:
@@ -826,6 +881,24 @@ def run_post_merge(root: Path) -> int:
         print(owner_text.FF_NOT_UNDONE.format(into=report.into, merging=name,
                                               why=why[-1] if why else "git refused"))
     return report.exit
+
+
+def _start_landing(root: Path) -> int:
+    """SR-296: work that landed on the default branch (a merge commit or a fast-forward)
+    starts the landing job, detached, so the hook stays within its time limit."""
+    try:
+        here = (_git(root, "symbolic-ref", "--short", "-q", "HEAD") or "").strip()
+        if here == default_branch_of(root):
+            before = (_git(root, "rev-parse", "-q", "--verify", "ORIG_HEAD") or "").strip()
+            head = (_git(root, "rev-parse", "HEAD") or "").strip()
+            moved = before and head and before != head
+            if moved and _git(root, "merge-base", "--is-ancestor", before, head) is not None:
+                from plumb.boundary import landing
+
+                landing.spawn(root, head, before)
+    except Exception:  # noqa: BLE001 - advisory: never fails the hook
+        pass
+    return 0
 
 
 def run_hook(core: Any, hook: str = HOOK) -> int:

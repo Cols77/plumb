@@ -1,0 +1,175 @@
+{
+ "answer": {
+  "questions": [
+   {
+    "header": "Scope of clean-up",
+    "options": [
+     {
+      "consequence": "Replaced items and unused documents are deleted. References to deleted items stay unchanged and are not reported as broken. Tests and documents for dropped examples are removed with their references.",
+      "label": "Delete both, leave references as they are"
+     },
+     {
+      "consequence": "Replaced items and unused documents are deleted. References to deleted items are removed as well, so nothing names a gone item.",
+      "label": "Delete both, and remove references too"
+     },
+     {
+      "consequence": "Only documents nothing points to are removed. Replaced items and their references stay as they are.",
+      "label": "Delete only unused documents"
+     }
+    ],
+    "question": "You wrote: \"I suspect that there's actually a lot of dirty artifacts that should be removed. Help me clarify and clean up.\" Should the clean-up delete the old items that a newer item replaced, and the documents nothing points to? And when a newer item still names a deleted old one, should that reference be left as it is, without being reported as broken?",
+    "recommended_reason": "The first option matches 'dirty artifacts that should be removed' and leaves the reference handling as the owner had it, rather than adding new validation behaviour.",
+    "request": {
+     "date": "2026-10-17",
+     "words": "I suspect that there's actually a lot of dirty artifacts that should be removed. Help me clarify and clean up"
+    }
+   },
+   {
+    "header": "How to clean up",
+    "options": [
+     {
+      "consequence": "I remove the dirty items myself in one change with a list of what was removed. The cleanup tool and the log compaction stay to be built later.",
+      "label": "By hand, once"
+     },
+     {
+      "consequence": "I build the tidy tool and run it. Nothing is deleted by hand, and the cleanup takes longer.",
+      "label": "Build the tidy tool first"
+     }
+    ],
+    "question": "You wrote: \"Help me clarify and clean up.\" Should I do the clean-up by hand once, in a single change that lists what it removed, or should I first build a tool that does the tidying and run that?",
+    "recommended_reason": "The owner asked for the clean-up itself, so doing it once by hand matches the request most directly and avoids building a tool nobody asked for yet.",
+    "request": {
+     "date": "2026-10-17",
+     "words": "Help me clarify and clean up"
+    }
+   },
+   {
+    "header": "Pending checks",
+    "options": [
+     {
+      "consequence": "The clean-up only removes dirty items. The count of items waiting on a check stays as it is.",
+      "label": "No, leave the checks for later"
+     },
+     {
+      "consequence": "The pending checks run over the current items as part of the clean-up, which lowers the waiting count.",
+      "label": "Yes, run them now"
+     }
+    ],
+    "question": "You wrote: \"Help me clarify and clean up.\" Should the clean-up also run the pending checks over the current items, so fewer of them are waiting?",
+    "recommended_reason": "The owner asked to clean up dirty items. Running the pending checks is a separate piece of work they did not ask for, so leaving it out keeps the clean-up to what was requested.",
+    "request": {
+     "date": "2026-10-17",
+     "words": "Help me clarify and clean up"
+    }
+   }
+  ],
+  "verdicts": [
+   {
+    "answer_corrects": false,
+    "beyond": [
+     "Assumes a current item's reference to a deleted old item stays and validation stops flagging it as dangling. This changes what gets built, so it cannot pass as a labelled assumption. The owner asked only to clean up dirty files.",
+     "Adds 'run the pending checks over the current items so the count waiting goes down'. The owner did not ask for that."
+    ],
+    "by": "model",
+    "clear": false,
+    "confidence": 0.3,
+    "contradicts": [],
+    "id": "INT-089",
+    "jev": {
+     "calibration": null,
+     "claim_kind": "intent-readback",
+     "clears": false,
+     "confidence": 0.93,
+     "confidence_label": "high",
+     "fingerprints": [
+      "sha256:416ab4f83a99e831821db03202fdf397ef584c452a6d0d58241b3dcee88727a1"
+     ],
+     "judge": "jev:typesafe/jev-1.13-20260917",
+     "model_version": "typesafe/jev-1.13-20260917",
+     "parts": 1,
+     "score": 0.93,
+     "threshold": 0.9
+    },
+    "judge": "claude-code:haiku",
+    "model": "haiku",
+    "reason": "The owner's words are 'the status is very dirty... a lot of dirty artifacts that should be removed. Help me clarify and clean up'. Deleting replaced items and unused documents fits that. The reference-handling behaviour and the pending-checks run do not appear in the owner's words.",
+    "verdict": "beyond"
+   },
+   {
+    "answer_corrects": false,
+    "beyond": [
+     "EX-1 says 'plumb validate reports no dangling link for it'. That is a new validation behaviour the owner never asked for. The owner asked for dirty artifacts to be removed, not for validation to change how it treats references to deleted items."
+    ],
+    "by": "model",
+    "clear": false,
+    "confidence": 0.3,
+    "contradicts": [],
+    "id": "SR-289",
+    "jev": {
+     "calibration": null,
+     "claim_kind": "example-restatement",
+     "clears": false,
+     "confidence": 0.95,
+     "confidence_label": "high",
+     "fingerprints": [
+      "sha256:5ff23562f2c182a488f383c22214a0711fc6830cbf99d54d6912365e437926e1",
+      "sha256:959aca3aface401f9eac4669cbac38f3dd3b6dd0ce75e1261c9350d8d3a57f43",
+      "sha256:ce774089e0708b931f31ef31d01337706a0025719e26451f19fdb972ce7063ef",
+      "sha256:0a75de588bd542744d924ecc95b4ada81e398236a605e9fe7d37815a620fe449",
+      "sha256:75ed905988195c1f9600862bcf404cae21ecaeb5fe8ac20087a8338a04f9b556",
+      "sha256:89cee17a5a99a894e450b90436a3509d4c667f076ef4824a08e69f694a243a7a",
+      "sha256:96fa1c8ce6d660ee3ff76828fe90e234fc98549252cea56418bdbc014cc78030"
+     ],
+     "judge": "jev:typesafe/jev-1.13-20260917",
+     "model_version": "typesafe/jev-1.13-20260917",
+     "parts": 7,
+     "score": 0.95,
+     "threshold": 0.9
+    },
+    "judge": "claude-code:haiku",
+    "model": "haiku",
+    "reason": "Deleting replaced items, their tests and unused documents follows from 'a lot of dirty artifacts that should be removed'. Keeping the references as they are and having validation ignore them is the agent's own choice and is not in the owner's words.",
+    "verdict": "beyond"
+   },
+   {
+    "answer_corrects": false,
+    "beyond": [
+     "Records 'By hand once, in one landing' as the chosen option. The owner was never asked this question and never picked an option. The premise has no answered question, so the choice is the agent's, not the owner's."
+    ],
+    "by": "model",
+    "clear": false,
+    "confidence": 0.3,
+    "contradicts": [],
+    "id": "DEC-144",
+    "judge": "claude-code:haiku",
+    "model": "haiku",
+    "reason": "The owner's only words are 'Help me clarify and clean up'. They did not choose between doing the clean-up by hand and building a tidy job first.",
+    "verdict": "beyond"
+   },
+   {
+    "answer_corrects": false,
+    "beyond": [
+     "Records 'It stays as it is, naming the gone id... validate does not call it dangling' as the chosen option. The owner was never asked about references to deleted items and never chose this. It is a new commitment, not a restatement of their words."
+    ],
+    "by": "model",
+    "clear": false,
+    "confidence": 0.3,
+    "contradicts": [],
+    "id": "DEC-145",
+    "judge": "claude-code:haiku",
+    "model": "haiku",
+    "reason": "No answered question exists in the premise. The owner's words about dirty artifacts say nothing about what happens to references once the old item is removed.",
+    "verdict": "beyond"
+   }
+  ]
+ },
+ "dispatcher": "claude-code",
+ "error": null,
+ "finished": "2026-10-16T22:03:49Z",
+ "job": "judge-b5e8264ef4c1d01a",
+ "model": "",
+ "run_s": 38.759,
+ "started": "2026-10-16T22:03:10Z",
+ "status": "ok",
+ "v": 1
+}

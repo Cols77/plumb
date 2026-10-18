@@ -77,7 +77,8 @@ asked, quoting their dated words. Each question has:
   `consequence`: what it does and what it leaves undone;
 - `recommended_reason`: why the first option is the one you recommend;
 - `request`: the owner's words the question comes from (`words`, verbatim) and their `date`;
-- `records`: the ids of the records the answer settles (plumb keeps them; they are never shown).
+- `records`: required. The ids of the records this question settles; plumb uses them, the owner
+never sees them.
 
 Answer with the JSON the schema asks for: `{"verdicts": [{"id", "verdict", "beyond",
 "contradicts", "reason", "confidence", "clear", "answer_corrects"}], "questions": [...]}`, one
