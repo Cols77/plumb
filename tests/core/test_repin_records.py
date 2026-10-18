@@ -143,11 +143,16 @@ def test_pinned_version_not_in_git_is_refused_with_nothing_to_compare(
     assert link == LINK and "nothing to compare" in why and sonnet.asked == []
 
 
-def test_a_reworded_decision_is_still_refused(project: Path, write_record) -> None:
+def test_a_reworded_decision_is_judged_with_its_old_wording(project: Path, write_record) -> None:
+    """The decision itself was reworded since the pin: the judge reads its earlier wording
+    next to the record it decides, and a kept meaning repins."""
     path = project / ".plumb" / "decisions" / "DEC-001.md"   # the links stay
     path.write_text(path.read_text("utf-8").replace("exact sum", "sum as is"), "utf-8")
-    ((link, why),) = _resolve(project, Judge(True)).refused
-    assert link == LINK and "reworded since the pin" in why
+    sonnet = Judge(True)
+    result = _resolve(project, sonnet)
+    (shown,) = sonnet.asked
+    assert "exact sum" in shown["requirement_before"] and "sum as is" in shown["requirement"]
+    assert result.refused == [] and _state(project) == "current"
 
 
 def test_the_turn_end_heal_covers_record_links(project: Path, write_record, monkeypatch) -> None:

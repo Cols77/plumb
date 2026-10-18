@@ -154,13 +154,18 @@ def test_unlocatable_earlier_version_refused_without_the_blob_map(project: Path)
     assert result.changes == [] and "earlier version" in result.refused[0][1]
 
 
-def test_a_requirement_reworded_is_not_repinned_by_tests(project: Path) -> None:
+def test_a_requirement_reworded_is_judged_against_its_wording_now(project: Path) -> None:
+    """A test run alone cannot settle a reworded requirement: the judge reads the end against
+    the wording now, shown the earlier wording, and a kept meaning repins (SR-198 EX-12)."""
     path = project / ".plumb" / "requirements" / "SR-001.md"
     path.write_text(path.read_text("utf-8").replace("add returns the sum.",
                                                     "add returns the total."), "utf-8")
-    result = links.repin_after_tests(open_core(project), LINK, runner=Runner(),
-                                     judge=_backend("cosmetic"))
-    assert result.changes == [] and "requirement itself" in result.refused[0][1]
+    judge = _backend("cosmetic")
+    result = links.repin_after_tests(open_core(project), LINK, runner=Runner(), judge=judge)
+    (shown,) = judge.asked
+    assert "add returns the sum." in shown["requirement_before"]
+    assert "add returns the total." in shown["requirement"]
+    assert [c["link"] for c in result.changes] == [LINK] and result.refused == []
 
 
 def test_repin_never_confirms(project: Path) -> None:
