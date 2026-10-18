@@ -497,7 +497,7 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
     conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
     stale_links, untested_links = _link_problems(core, base, paths, index)
-    validate_errors = _errors(core)
+    validate_errors = _errors(core, base)
     contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index)
     # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
     # the commit that finishes it ("finish the merge") records the settled version
@@ -560,12 +560,55 @@ def _link_problems(core: Any, base: str, paths: Sequence[str],
     return stale_links, untested
 
 
-def _errors(core: Any) -> list[str]:
-    """SR-306: every validate error of the result, whether or not the base had it."""
+def _errors(core: Any, base: str = "") -> list[str]:
+    """SR-306: every validate error of the result, whether or not the base had it. With
+    ``base``, SR-322: each committed log entry the result deletes from it that no archive
+    segment of its kind keeps."""
     from plumb.validate import validate
 
-    return [f"  [{f.code}] {f.subject}: {f.message}" for f in validate(core)
+    rows = [f"  [{f.code}] {f.subject}: {f.message}" for f in validate(core)
             if f.severity == "error"]
+    return rows + (_deleted_entries(Path(core.root), base) if base else [])
+
+
+def _deleted_entries(root: Path, base: str) -> list[str]:
+    """SR-322: the ``.plumb/log/<kind>/*.json`` entries of a shared kind deleted from
+    ``base`` in the checked-out result whose digest is in no archive segment of the result.
+    One git call; archives are read only when something was deleted."""
+    from plumb import log
+
+    out = _git(root, "diff", "--name-only", "-z", "--diff-filter=D", base, "--",
+               ".plumb/log") or ""
+    gone = []
+    for path in filter(None, out.split("\0")):
+        parts = path.split("/")
+        shared = getattr(log, "SHARED_KINDS", None)  # shortcut: every kind is shared until T1
+        if len(parts) == 4 and parts[3].endswith(".json") and (shared is None or parts[2] in shared):
+            gone.append(path)
+    kept: dict[str, set[str]] = {}
+    rows = []
+    for path in gone:
+        kind = path.split("/")[2]
+        if kind not in kept:
+            try:
+                lines = (root / ".plumb" / "log" / kind / log.SEGMENT).read_bytes().splitlines()
+            except OSError:
+                lines = []
+            kept[kind] = {m for m in (_digest_of(line) for line in lines) if m}
+        if _digest_of(_git(root, "show", f"{base}:{path}") or "") not in kept[kind]:
+            rows.append(f"  [log] {path}: committed log entry deleted by this merge and "
+                        "kept in no archive segment")
+    return rows
+
+
+def _digest_of(text: str | bytes) -> str | None:
+    import json
+
+    try:
+        raw = json.loads(text)
+    except ValueError:
+        return None
+    return str(raw.get("digest")) if isinstance(raw, dict) else None
 
 
 def drift_problems(core: Any, base: str, paths: Sequence[str]) -> dict[str, Any]:

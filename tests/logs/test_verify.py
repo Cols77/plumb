@@ -37,14 +37,12 @@ def test_edited_entry_reported_by_file(repo: Path) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_deleted_entry_named_by_prev_reported(paths: PlumbPaths) -> None:
+def test_deleted_entry_named_by_prev_not_reported(paths: PlumbPaths) -> None:
+    """SR-232 EX-5: verify reports no log error; the merge check refuses the deletion (SR-322)."""
     for i in range(3):
         log.append(paths, "events", "repin", {"i": i})
     delete(paths.root, "events", 1)
-    later = list(log.read(paths, "events"))[-1].name
-    problems = log.verify_chain(paths, "events")
-    assert len(problems) == 1 and problems[0].startswith(f"{later}: prev ")
-    assert "deleted entry" in problems[0]
+    assert log.verify_chain(paths, "events") == []
 
 
 @pytest.mark.sr("SR-232")

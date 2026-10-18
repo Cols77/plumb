@@ -807,8 +807,7 @@ def stream_stamp(paths: PlumbPaths, stream: LogStream) -> str:
 
 def verify_chain(paths: PlumbPaths, stream: LogStream) -> list[str]:
     """Problems in a stream, naming the file or the legacy line: unparsable files and lines,
-    wrong digests (an edited entry), a ``prev`` that resolves to no entry (a deleted entry a
-    later one names), a file name that does not parse or a migrated name whose suffix does
+    wrong digests (an edited entry), a file name that does not parse or a migrated name whose suffix does
     not match its digest, and a legacy line whose ``prev`` is not an earlier line or entry."""
     problems: list[str] = []
     files: list[tuple[str, dict[str, Any]]] = []
@@ -870,12 +869,8 @@ def verify_chain(paths: PlumbPaths, stream: LogStream) -> list[str]:
             problems.append(f"{legacy_name} line {number}: not a JSON object")
             continue
         legacy.append((number, raw, legacy_name))
-    legacy_digests = {str(r.get("digest")) for _, r, _ in legacy if r is not None}
-    for name, raw in files:
-        prev = raw.get("prev")
-        if prev is not None and prev not in digests and prev not in legacy_digests:
-            problems.append(f"{name}: prev {str(prev)[:19]} names no entry of the stream "
-                            "(deleted entry)")
+    # SR-322: an entry file's ``prev`` naming no entry here is not a problem (another
+    # session's, branch's or a local kind's entry); the merge check refuses deletions.
     earlier: set[str] = set()
     for number, raw, file_name in legacy:
         assert raw is not None
