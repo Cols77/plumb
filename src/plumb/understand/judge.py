@@ -30,8 +30,8 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
-from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -625,10 +625,26 @@ def _write_questions(core: Any, job: Job, judged: set[str], new: list[dict[str, 
 
 def add_question(core: Any, session: str, question: Mapping[str, Any]) -> None:
     """One question for the question tool from outside a judge job (the debug workflow's,
-    SR-300 EX-3), in the shape ``_shaped`` writes; the same key already open is not repeated."""
-    old = _logged_questions(core.root, session)
-    if all(q.get("key") != question.get("key") for q in old):
-        files.write_json_atomic(questions_path(core.root, session), [*old, dict(question)])
+    SR-300 EX-3), in the shape ``_shaped`` writes. Its ``job`` names the link: a rerun's
+    question replaces the earlier one about the same link instead of piling up beside it."""
+    kept = [q for q in _logged_questions(core.root, session)
+            if q.get("job") != question.get("job")]
+    files.write_json_atomic(questions_path(core.root, session), [*kept, dict(question)])
+
+
+def drop_settled_questions(root: Any, still_stale: Collection[str]) -> None:
+    """Withdraw, in every session folder, the debug workflow's questions (``job`` is
+    ``debug:<link id>``) about links no longer stale: their link was repinned, relinked or
+    removed, so the question no longer stands (INT-079)."""
+    for path in (Path(root) / ".plumb" / "session").glob(f"*/{QUESTIONS_FILE}"):
+        raw = files.read_json(path)
+        if not isinstance(raw, list):
+            continue
+        kept = [q for q in raw if not (isinstance(q, Mapping) and str(q.get("job") or "")
+                                       .startswith("debug:")
+                                       and str(q["job"])[6:] not in still_stale)]
+        if len(kept) != len(raw):
+            files.write_json_atomic(path, kept)
 
 
 def _say_waiting(core: Any, session: str, waits: Mapping[str, str]) -> str:

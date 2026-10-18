@@ -291,10 +291,14 @@ def repin(core: Core, selector: str | None = None, *, all_stale: bool = False,
 
 
 def _withdraw_settled_cards(core: Core) -> None:
-    """SR-161: a stale card of a link just settled is withdrawn in every session folder."""
+    """SR-161: a stale card of a link just settled is withdrawn in every session folder, and so
+    is the debug workflow's question about it (SR-300 EX-3)."""
     from plumb import stale
+    from plumb.understand import judge
 
     stale.withdraw_settled(core)
+    judge.drop_settled_questions(core.root, {s.link.id for s in core.link_states()
+                                             if s.state == "stale"})
 
 
 def _named_link(core: Core, link_id: str) -> tuple[Record, Link]:
@@ -599,6 +603,12 @@ def repin_after_tests(core: Core, selector: str, *,
     for state in candidates:
         link = state.link
         target = index.get(link.target.record or "")
+        newer = _accounting_decision(index, link, target)
+        if newer is not None:   # a later owner decision asked for the rewording: nothing to judge
+            _repinned(core, result, link.id, "decision",
+                      f'{target.id} was reworded to apply {newer.id} "{newer.title}", which is '
+                      "pinned to it as it is now", dry_run)
+            continue
         texts = (_record_texts(core.root, target, link) if link.target.record is not None
                  else end_texts(core.root, link))
         if texts is None:
@@ -638,6 +648,22 @@ def repin_after_tests(core: Core, selector: str, *,
         else:
             _repinned(core, result, link.id, "sonnet", meaning.reason + untested, dry_run)
     return result
+
+
+def _accounting_decision(index: Mapping[str, Record], link: Link,
+                         target: Record | None) -> Record | None:
+    """Another decision that decides ``target`` and is pinned to it as it is now: the owner
+    decided again after the pin, and the rewording applies that newer answer, so the older
+    decision's link is repinned with its name and the owner is asked nothing."""
+    if target is None:
+        return None
+    for record in index.values():
+        if record.kind != "decision" or record.id == link.source:
+            continue
+        for other in record.links:
+            if other.target.record == target.id and other.pin is not None                     and other.pin.target == target.hash:
+                return record
+    return None
 
 
 def _record_texts(root: Path, target: Record | None, link: Link) -> tuple[str, str] | None:
