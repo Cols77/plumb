@@ -148,6 +148,9 @@ FF_NOT_UNDONE = ("plumb: {into} could not be put back ({why}); say \"undo the me
                  "{merging}\" before anything else")
 FOREIGN_POST_HOOK = ("plumb: your own post-merge hook was kept; say \"call plumb from my "
                      "post-merge hook\" so a fast-forward of the main branch is checked too")
+FOREIGN_LAND_HOOK = ("plumb: your own post-commit hook was kept; say \"call plumb from my "
+                     "post-commit hook\" so a merge you finish by hand starts the landing job")
+LAND_HOOK_INSTALLED = "plumb: a merge you finish by hand into the main branch starts the landing job"
 POST_HOOK_INSTALLED = ("plumb: a fast-forward of the main branch gets the same quick check "
                        "(it is put back when the check holds)")
 FF_HOLD_SET = ("plumb: merges into {branch} always record a merge commit, so the quick check "

@@ -59,7 +59,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from plumb import launcher
+from plumb import launcher, log
 from plumb.boundary.prepush import ForeignHookError
 from plumb.present import owner_text
 
@@ -69,7 +69,10 @@ COMMIT_HOOK = "prepare-commit-msg"
 COMMIT_HOOK_MARKER = "# plumb prepare-commit-msg hook"
 POST_HOOK = "post-merge"
 POST_HOOK_MARKER = "# plumb post-merge hook"
-MARKERS = {HOOK: HOOK_MARKER, COMMIT_HOOK: COMMIT_HOOK_MARKER, POST_HOOK: POST_HOOK_MARKER}
+LAND_HOOK = "post-commit"          # a merge finished by `git commit` fires no post-merge (SR-296)
+LAND_HOOK_MARKER = "# plumb post-commit hook"
+MARKERS = {HOOK: HOOK_MARKER, COMMIT_HOOK: COMMIT_HOOK_MARKER, POST_HOOK: POST_HOOK_MARKER,
+           LAND_HOOK: LAND_HOOK_MARKER}
 HOLD_KEY = "plumb.mergeHold"
 NL = "\n"
 NO_FF = "--no-ff"
@@ -142,6 +145,14 @@ def post_hook_text(interpreter: str) -> str:
                                      f"merge-check --hook {POST_HOOK}"))
 
 
+def land_hook_text(interpreter: str) -> str:
+    """post-commit: its shell line exits at once unless the commit has two parents."""
+    return (f"#!/bin/sh{NL}{LAND_HOOK_MARKER} (written by plumb; starts the landing job when a "
+            f"merge finished by hand lands on the default branch){NL}"
+            f'git rev-parse -q --verify HEAD^2 >/dev/null 2>&1 || exit 0{NL}'
+            + launcher.git_hook_line(interpreter, LAND_HOOK, f"merge-check --hook {LAND_HOOK}"))
+
+
 def refresh_post_hook(root: Path) -> None:
     """An older post-merge hook exits before Python for a merge commit and with mergeHold
     false; drop those lines so every merge reaches the withdrawal (SR-132)."""
@@ -171,7 +182,7 @@ def _install(root: Path, interpreter: str, hook: str) -> Path:
                                else owner_text.FOREIGN_COMMIT_HOOK)
     path.parent.mkdir(parents=True, exist_ok=True)
     text = {HOOK: hook_text, COMMIT_HOOK: commit_hook_text,
-            POST_HOOK: post_hook_text}[hook](interpreter)
+            POST_HOOK: post_hook_text, LAND_HOOK: land_hook_text}[hook](interpreter)
     path.write_bytes(text.encode("utf-8"))
     try:
         path.chmod(0o755)
@@ -198,6 +209,15 @@ def install_post_hook(root: Path, interpreter: str) -> Path:
     left untouched (the merge option is still set)."""
     ff_hold(root)
     return _install(root, interpreter, POST_HOOK)
+
+
+def install_land_hook(root: Path, interpreter: str) -> Path:
+    """Write plumb's post-commit hook (idempotent); a foreign hook raises ``ForeignHookError``."""
+    return _install(root, interpreter, LAND_HOOK)
+
+
+def land_hook_path(root: Path) -> Path:
+    return hook_path(root, LAND_HOOK)
 
 
 def post_hook_path(root: Path) -> Path:
@@ -374,6 +394,9 @@ def unstaged_plumb(root: Path) -> list[str]:
         x, y, path = item[0], item[1], item[3:]
         if x in "RC":
             i += 1  # a rename or copy names its source next
+        parts = path.split("/")
+        if x + y == "??" and parts[:2] == [".plumb", "log"] and parts[2:3]                 and parts[2] in log.SHARED_KINDS:
+            continue  # SR-329: the landing's tidy commit takes these; they never hold a merge
         if y != " ":
             found.append(path)
     return sorted(set(found))
@@ -883,13 +906,20 @@ def run_post_merge(root: Path) -> int:
     return report.exit
 
 
-def _start_landing(root: Path) -> int:
+def run_post_commit(root: Path) -> int:
+    """``plumb merge-check --hook post-commit``: a merge commit made by ``git commit`` (a held
+    merge the owner finished) starts the landing job as a ``git merge`` does. ORIG_HEAD is not
+    the pre-merge head here, so the first parent is."""
+    return _start_landing(Path(root), "HEAD^1")
+
+
+def _start_landing(root: Path, before_ref: str = "ORIG_HEAD") -> int:
     """SR-296: work that landed on the default branch (a merge commit or a fast-forward)
     starts the landing job, detached, so the hook stays within its time limit."""
     try:
         here = (_git(root, "symbolic-ref", "--short", "-q", "HEAD") or "").strip()
         if here == default_branch_of(root):
-            before = (_git(root, "rev-parse", "-q", "--verify", "ORIG_HEAD") or "").strip()
+            before = (_git(root, "rev-parse", "-q", "--verify", before_ref) or "").strip()
             head = (_git(root, "rev-parse", "HEAD") or "").strip()
             moved = before and head and before != head
             if moved and _git(root, "merge-base", "--is-ancestor", before, head) is not None:
