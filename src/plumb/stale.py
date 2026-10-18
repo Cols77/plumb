@@ -789,15 +789,21 @@ def settle_drift(core: Core, session: str, rows: Sequence[Row],
     unreachable model or a change to send back stays unresolved (SR-174: with one line saying
     the check waits, returned; ``waiting`` collects the records it waits on). Never fails
     the stop."""
+    from plumb import debug
     from plumb.judgment import waiting_line
-    from plumb.links import repin_after_tests
+    from plumb.links import NO_MODEL, repin_after_tests
 
     said: list[str] = []
     for record in sorted({r.record for r in rows}):
         try:
-            cause = repin_after_tests(core, record, session=session, auto=True).unreachable
+            step = repin_after_tests(core, record, session=session, auto=True)
         except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
             continue
+        cause = step.unreachable
+        for link, why in step.refused:  # SR-325 EX-2; no model holds instead (SR-220 EX-5)
+            if not why.startswith(NO_MODEL):
+                debug.open_case(core.root, id=link, kind="stale-refused", target=link,
+                                detail=why)
         if cause and waiting is not None:
             waiting.add(record)
         line = waiting_line(core.root, "the stale check", cause) if cause else None

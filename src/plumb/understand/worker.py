@@ -276,6 +276,12 @@ class _Pass:
                             "step": result.error.step if result.error else "",
                             "at": jobs.now()}}
         files.write_json_atomic(path, new)
+        if new["consecutive"] == 3:  # SR-325 EX-5: the third failure in a row is one case
+            from plumb import debug
+
+            debug.open_case(self.root, id=f"job-{job.id}", kind="job-failed", target=job.id,
+                            detail=f"{job.kind} failed three times in a row",
+                            log=json.dumps(new["last"]))
 
     def _finish(self, job: Job, result: JobResult) -> None:
         ledger.record(self.root, self.session, job.id)
