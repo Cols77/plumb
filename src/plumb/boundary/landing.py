@@ -283,7 +283,9 @@ def status_cases(core: Any, session: str, queued_line: str) -> list[dict]:
         verify = open_verify(core)
         mapped = verify.tests_for([i for i, r in core.index().items()
                                    if r.kind == "requirement"])
-        nodes = sorted({n for found in mapped.values() for n in found})
+        # only pytest files count: helpers and the .test.tsx files plumb never runs have no evidence
+        nodes = sorted({n for found in mapped.values() for n in found if re.fullmatch(
+            r"(test_.*|.*_test)\.py", n.split("::")[0].rsplit("/", 1)[-1])})
         for node, ev in (verify.evidence(nodes) if nodes else {}).items():
             if ev.state in ("fresh-fail", "none"):
                 kind = "failing-test" if ev.state == "fresh-fail" else "unrun-test"
