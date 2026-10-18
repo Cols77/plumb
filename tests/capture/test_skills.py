@@ -56,7 +56,7 @@ def test_plumb_records_skill_names_capture_helpers(installed: Path) -> None:
 
 @pytest.mark.sr("SR-223")
 def test_clarify_skill_states_depths_and_discipline(installed: Path) -> None:
-    assert skill_names() == ["plumb-clarify", "plumb-intent", "plumb-records"]
+    assert skill_names() == ["plumb-clarify", "plumb-debug", "plumb-intent", "plumb-records"]
     path = installed / ".claude" / "skills" / "plumb-clarify" / "SKILL.md"
     skill = path.read_text(encoding="utf-8")
     assert skill.startswith("---\nname: plumb-clarify\n")
