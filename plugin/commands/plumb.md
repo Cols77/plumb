@@ -57,7 +57,10 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
   their terms each case and whether it was resolved, would be, or is still open and why. It
   reruns plumb's own step once (tests, then the meaning judges); a record whose meaning
   changed under their decision reaches them as one question through the question tool, which
-  you pass on as in point 1 below. You decide nothing for them.
+  you pass on as in point 1 below. You decide nothing for them. `debug fix [<id>]` runs the
+  fix of a case on a branch of its own (never merged), `debug done <id>...` closes one by
+  hand; a case that ends as a defect report, you read to them in their terms. The stages are
+  in the plumb-debug skill.
 - `impact <anything>`: run `plumb impact <their words>` and say in plain terms what a
   change would reach.
 - `view`: run `plumb view --open` and tell them the Obsidian vault is open (generated;

@@ -27,9 +27,6 @@ ID = re.compile(r"\b(?:SR|DEC|INT)-\d+\b")
 FIX_SCHEMA = {"type": "object", "required": ["test"], "additionalProperties": True,
               "properties": {"test": {"type": "string"},
                              "files": {"type": "array", "items": {"type": "string"}}}}
-SYSTEM = ("You fix a defect in plumb's own code, in the git worktree you run in. Write a test "
-          "that fails because of the defect, then change the source under src/ until it "
-          "passes. Do not touch .plumb records. Answer with the test as path::name.")
 
 
 @dataclass
@@ -94,10 +91,11 @@ class FixerDispatcher:
         self.timeout_s = timeout_s
 
     def command(self, binary: str, model: str) -> list[str]:
+        from plumb.understand import agents
         from plumb.understand.dispatch.claude_code import cli_schema
 
-        agent = {"plumb-fixer": {"description": "plumb self-debug fixer", "prompt": SYSTEM}}
-        return [binary, "-p", "--agent", "plumb-fixer", "--agents", json.dumps(agent),
+        return [binary, "-p", "--agent", agents.name("fixer"),
+                "--agents", json.dumps(agents.definition("fixer"), ensure_ascii=False),
                 "--model", model, "--permission-mode", "acceptEdits",
                 "--json-schema", json.dumps(cli_schema(FIX_SCHEMA)), "--output-format", "json",
                 "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config",
@@ -228,10 +226,13 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     evidence, tried = _evidence(core, case), []
     old = os.environ.get("PLUMB_JOB")
     os.environ["PLUMB_JOB"] = "selfdebug"      # a hook in the fixer's run opens no case
+    models = [{"stage": "evidence", "model": core.config.understand.judge_model}]
     try:
         for n in range(1, rounds + 1):
             model = getattr(core.config.understand, "repin_model" if n == 1
                             else "diagnose_model")
+            models.append({"stage": f"round {n}", "model": model})
+            debug._update(root, [case["id"]], models=models)   # SR-328: the model per stage
             try:
                 got = fixer(round=n, case=case, evidence=evidence, worktree=wt, model=model,
                             previous=list(tried))
