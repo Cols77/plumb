@@ -283,7 +283,9 @@ def status_cases(core: Any, session: str, queued_line: str) -> list[dict]:
         verify = open_verify(core)
         mapped = verify.tests_for([i for i, r in core.index().items()
                                    if r.kind == "requirement"])
-        nodes = sorted({n for found in mapped.values() for n in found})
+        # only pytest files count: helpers and the .test.tsx files plumb never runs have no evidence
+        nodes = sorted({n for found in mapped.values() for n in found if re.fullmatch(
+            r"(test_.*|.*_test)\.py", n.split("::")[0].rsplit("/", 1)[-1])})
         for node, ev in (verify.evidence(nodes) if nodes else {}).items():
             if ev.state in ("fresh-fail", "none"):
                 kind = "failing-test" if ev.state == "fresh-fail" else "unrun-test"
@@ -328,16 +330,21 @@ def _commit(root: Path, removed: list[str], archived: list[str], head: str) -> N
 # --------------------------------------------------------------------------- worktrees (DEC-190)
 
 
-def _loop_names(root: Path, tree: Path, branch: str) -> bool:
-    """Does an open loop (any session, in ``root`` or in ``tree``) name the worktree or branch?
-    shortcut: a text match on the loop file, as loops hold no worktree field; upgrade when
-    they do."""
+def _loop_reason(root: Path, tree: Path, branch: str) -> str:
+    """Why an open loop (not handed on, build stage not passed) keeps the worktree: one lives in
+    the worktree's own session (an adopted loop's JSON names no path), or one in ``root``
+    names it. shortcut: a text match on the loop file, as loops hold no worktree field;
+    upgrade when they do."""
     from plumb.understand.cmd_intent import _passed, loops
 
+    def opened(r: Path) -> list[Any]:
+        return [d for _, d in loops(r) if not d.get("handed_to") and not _passed(d, "build")]
+
+    if opened(tree):
+        return "an open intent loop lives there"
     needles = {branch, str(tree), tree.as_posix()}
-    return any(not d.get("handed_to") and not _passed(d, "build")
-               and any(n in json.dumps(d) for n in needles)
-               for r in (root, tree) for _, d in loops(r))
+    named = any(n in json.dumps(d) for d in opened(root) for n in needles)
+    return "an open intent loop names it" if named else ""
 
 
 def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], list[str]]:
@@ -371,8 +378,7 @@ def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], l
         try:
             dirty = [x for x in _git(tree, "status", "--porcelain", "--untracked-files=all"
                                      ).splitlines() if not log.untracked_own(tree, x)]
-            reason = ("uncommitted changes" if dirty else
-                      "an open intent loop names it" if _loop_names(root, tree, branch) else "")
+            reason = "uncommitted changes" if dirty else _loop_reason(root, tree, branch)
             if not reason:
                 _git(root, "worktree", "remove", "--force", str(tree))
                 _git(root, "branch", "-d", branch)
@@ -425,8 +431,11 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         queued, queued_line = started.records, started.line
 
     def do_commit() -> None:
-        if removed or archived:
-            _commit(root, removed, archived, head)
+        from plumb import log
+
+        shared = log.shared_uncommitted(root)
+        if removed or archived or shared:
+            _commit(root, removed, [*archived, *shared], head)
 
     def do_worktrees() -> None:
         found = finished_worktrees(root, before, head)
