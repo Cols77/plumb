@@ -69,7 +69,8 @@ def _commit_lanes(main: Path, other: Path) -> None:
     from plumb.approvals import approve
 
     approve(open_core(other), ["SR-005"])
-    commit_all(other, "feat-x's relay\n\nSR: SR-005")
+    # no SR trailer: SR-005 is touched by its record, and delivers nothing to prove (DEC-256)
+    commit_all(other, "feat-x's relay")
     commit_all(main, "main's relay\n\nSR: SR-005")
 
 

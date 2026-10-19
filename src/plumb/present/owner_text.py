@@ -115,6 +115,31 @@ COMMIT_HOLD_INSTALLED = ("plumb: merges finished by hand, rebases and cherry-pic
                          "quick check before git records them")
 PREMERGE_REMOVED = "plumb: merges are no longer checked before git records them"
 PREMERGE_UNCONFIRMED = "  \"{title}\" waits on a judge"   # no command, no id (SR-267)
+# SR-260 (DEC-252): listed, never held on
+PREMERGE_WAITING_HEADER = ("{n} requirement{s} this merge touches wait{v} on a judge (listed; "
+                           "this does not hold the merge):")
+PREMERGE_UNDECLARED_HEADER = ("files changed without a requirement that declares them (listed; "
+                              "this does not hold the merge):")
+# SR-260 (DEC-252, DEC-256, DEC-257): what holds a merge besides conflicts and integrity
+PREMERGE_QUESTIONS_HEADER = "questions wait for you (they hold the merge):"
+PREMERGE_QUESTION = ("  a question waits for you on \"{title}\"; the agent asks it with the "
+                     "question tool")
+PREMERGE_FAILING_HEADER = ("acceptance tests this merge can affect have no passing run on the "
+                           "current code (they hold the merge; the agent runs them):")
+PREMERGE_VERIFY_UNAVAILABLE = ("  the test evidence could not be read ({error}); it holds the "
+                               "merge: green needs test evidence")
+PREMERGE_FULL_PENDING = ("  the full test suite is pending ({reasons}); it holds the merge until "
+                         "a full run passes or you waive it for this change")
+PREMERGE_REGRESSION = "  {test} passed before and now fails (it holds the merge)"
+PREMERGE_CLAIMS_UNREADABLE_HEADER = ("the claims check could not read everything (listed; this "
+                                     "does not hold the merge):")
+PREMERGE_FAILING = "  \"{title}\": {test} ({state})"
+PREMERGE_PROOFS_HEADER = ("what this merge delivers into {into} is not proven yet (it holds the "
+                          "merge):")
+PREMERGE_PROOF_NOT_SHOWN = ("  \"{title}\": its proof is not shown working yet; the agent shows "
+                            "it, then asks you whether you saw it working")
+PREMERGE_PROOF_NOT_CONFIRMED = ("  \"{title}\": you have not said you saw it working; the agent "
+                                "asks you with the question tool")
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "
                        "to link it to the requirement it serves")
 PREMERGE_STALE_HEADER = ("links this merge leaves stale (repin each once its tests pass, or "

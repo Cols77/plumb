@@ -38,10 +38,11 @@ def _body(text: str) -> str:
 
 @pytest.mark.sr("SR-202")
 def test_grounding_skill_is_plumb_records_with_its_references(repo: Path) -> None:
-    """EX-1: the skills listed are plumb-records, plumb-clarify and plumb-intent; none is
-    named plumb."""
+    """EX-1: the skills listed are plumb-records, plumb-clarify, plumb-debug (SR-328) and
+    plumb-intent; none is named plumb."""
     claude = _installed(repo)
-    assert install.skill_names() == ["plumb-clarify", "plumb-intent", "plumb-records"]
+    assert install.skill_names() == ["plumb-clarify", "plumb-debug", "plumb-intent",
+                                     "plumb-records"]
     assert not (claude / "skills" / "plumb").exists()
     for name in ("SKILL.md", "references/merge.md", "references/conflicts.md",
                  "references/capture-doc.md"):

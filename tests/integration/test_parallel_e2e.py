@@ -170,8 +170,10 @@ def test_two_worktrees_propose_change_and_merge(repo: Path, tmp_path: Path) -> N
     from plumb.approvals import approve
 
     approve(open_core(wt_a), ["SR-001", sr_a])               # the owner confirms feat-a's work
-    commit(wt_a, f"relay affirms\n\nSR: SR-001\nSR: {sr_a}")
-    commit(wt_b, f"relay groups\n\nSR: SR-001\nSR: {sr_b}")
+    # no SR trailers: the records are touched by their files, and a trailer would deliver
+    # requirements whose proofs hold a merge into main (SR-260, DEC-256)
+    commit(wt_a, "relay affirms")
+    commit(wt_b, "relay groups")
 
     # 3. merge feat-a: clean, and git records it (the quick check holds nothing)
     merged_a = git(repo, "merge", "--no-ff", "--no-edit", "feat-a", check=False)
