@@ -252,10 +252,11 @@ def instruction_block(argv: Sequence[str], host: str, *, hooks: bool) -> str:
         "",
         "- Records of the owner's intent live in `.plumb/` (INT, SR, DEC, FEAT, NC); the test",
         "  map is `.plumb/test_map.txt`.",
-        "- Read back each request in the owner's terms (what will and won't be done, "
-        "assumptions",
-        "  labelled) and record it as proposed with `" + plumb + " capture`; it never "
-        "blocks the work.",
+        "- Formalize each request that changes the system into proposed records linked to "
+        "the code",
+        "  it changes, for the judge to validate, with `" + plumb + " capture`; ask the owner "
+        "to read",
+        "  nothing back; it never blocks the work.",
         f"- `{plumb} brief` prints the current intent; `{plumb} show <ID>` prints a record's",
         f"  examples and tests; `{plumb} explain <words>` says why something exists.",
         f"- {when} `{plumb} turn start --session <id>` with the owner's message on stdin",

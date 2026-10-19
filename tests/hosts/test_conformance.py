@@ -69,3 +69,19 @@ def test_no_adapter_imports_another_adapter() -> None:
             others = {"codex", "pi", "hermes", "claude_code"} - {adapter}
             for other in others:
                 assert not re.search(rf"plumb\.hosts\.{other}\b", text), (path, other)
+
+
+def test_every_host_shows_the_landing_line_once(repo: Path, write_record, tmp_path: Path) -> None:
+    """DEC-194: the landing line reaches the agent from the shared core, on each host."""
+    make_project(repo, write_record)
+    landed = repo / ".plumb" / "cache" / "landed"
+    landed.mkdir(parents=True)
+    (landed / "abc.json").write_text('{"line": "plumb: landing abc: nothing to tidy"}', "utf-8")
+    for host in HOSTS:
+        copy = tmp_path / f"copy-{host}"
+        shutil.copytree(repo, copy)
+        got = [handle_event(TurnEvent(kind="prompt", root=copy, session_id="s1", host=host,
+                                      text="hello"), verify=QuietVerify(), backend=None,
+                            unjudged=None).agent_context for _ in range(2)]
+        assert sum("landing abc" in x for x in got[0]) == 1, host
+        assert not any("landing abc" in x for x in got[1]), host

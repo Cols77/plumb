@@ -35,12 +35,12 @@ def test_report_caps_lists(repo: Path, capsys) -> None:
     base = _head(repo)
     for n in range(25):
         write(repo, f"src/m{n:02d}.py", "x = 1\n")
-    assert cli.main(["merge-check", base, "--no-run", "--root", str(repo)]) == 4
+    assert cli.main(["merge-check", base, "--no-run", "--root", str(repo)]) == 0
     out = capsys.readouterr().out
     shown = [line for line in out.splitlines() if line.startswith("  untraced src/m")]
     assert len(shown) == 10
     assert "+15 more (plumb merge-check --json)" in out
-    assert cli.main(["merge-check", base, "--no-run", "--json", "--root", str(repo)]) == 4
+    assert cli.main(["merge-check", base, "--no-run", "--json", "--root", str(repo)]) == 0
     assert len(json.loads(capsys.readouterr().out)["untraced"]) == 25
 
 
@@ -55,7 +55,7 @@ def test_writes_nothing_but_merge_evidence(repo: Path, capsys) -> None:
     write(repo, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")
     before = _snapshot(repo)
     code = cli.main(["merge-check", sha, "--no-run", "--root", str(repo)])
-    assert code in (1, 4, 5)
+    assert code in (0, 1, 4, 5)
     assert _snapshot(repo) == before
     out = capsys.readouterr().out
     assert len([line for line in out.splitlines() if not line.startswith("  ")]) <= 20
@@ -87,7 +87,7 @@ def test_merge_wait_line_is_counted_with_no_id(repo: Path) -> None:
         write(repo, f".plumb/requirements/SR-{n:03d}.md",
               f"---\nid: SR-{n:03d}\ntitle: R{n}\nstatement: s{n}.\n---\n")
     report = merge_report(open_core(repo), base, run_full=False)
-    assert len(report.awaiting) == 12 and report.exit == 4
-    line = next(x for x in render(report) if x.startswith("plumb: merge waits"))
-    assert line.startswith("plumb: merge waits for 12 records to be approved")   # counted
+    assert len(report.awaiting) == 12 and report.exit == 0          # listed (SR-260 EX-31)
+    line = next(x for x in render(report) if x.startswith("plumb: waiting on a judge"))
+    assert line.startswith("plumb: waiting on a judge: 12 records")              # counted
     assert "SR-0" not in line and "plumb approve" not in line                     # SR-267

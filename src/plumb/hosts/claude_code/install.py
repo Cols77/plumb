@@ -471,6 +471,9 @@ def git_adoption(root: Path, interpreter: str, lines: list[str], dry_run: bool) 
                 "the quick check of fast-forwards into the main branch",
                 premerge.post_hook_path, premerge.post_hook_text, premerge.install_post_hook,
                 owner_text.POST_HOOK_INSTALLED, owner_text.FOREIGN_POST_HOOK)
+    _adopt_hook(root, interpreter, lines, dry_run, "the landing job of merges finished by hand",
+                premerge.land_hook_path, premerge.land_hook_text, premerge.install_land_hook,
+                owner_text.LAND_HOOK_INSTALLED, owner_text.FOREIGN_LAND_HOOK)
     try:  # every merge into the default branch records a merge commit (R17, ff_hold)
         if premerge.ff_hold(root, dry_run=dry_run):
             lines.append(owner_text.FF_HOLD_SET.format(branch=premerge.default_branch_of(root)))
@@ -601,7 +604,7 @@ def _git_unadoption(root: Path, report: InstallReport, dry_run: bool) -> None:
         report.changed.append("merge option")
         report.lines.append(f"plumb: {'would let' if dry_run else 'lets'} merges into the "
                             "main branch fast-forward again")
-    for hook in ("pre-merge-commit", "prepare-commit-msg", "post-merge"):
+    for hook in ("pre-merge-commit", "prepare-commit-msg", "post-merge", "post-commit"):
         if hook_state(root, hook) == "plumb":
             report.changed.append(hook)
             if not dry_run:

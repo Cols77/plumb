@@ -65,7 +65,7 @@ def test_run_selection_passes_workers(repo: Path, monkeypatch: pytest.MonkeyPatc
     root = _project(repo, 2, monkeypatch)
     seen: list[int] = []
 
-    def fake(root_: Path, args, *, timeout_s=None, workers=0, cov=None):
+    def fake(root_: Path, args, *, timeout_s=None, workers=0, cov=None, interpreter=None):
         seen.append(workers)
         return runner.RunResult()
 

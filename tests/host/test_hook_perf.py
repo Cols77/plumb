@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+from loadbound import assert_within
 
 from plumb.api import open_core
 
@@ -66,6 +67,7 @@ def _call(root: Path, module: str, payload: dict[str, object]) -> tuple[str, flo
     return found["out"], found["ms"]
 
 
+@pytest.mark.load_bound
 def test_hooks_on_plumbs_own_records_finish_inside_their_budgets(own_copy: Path) -> None:
     from plumb.config import load_config
 
@@ -87,12 +89,13 @@ def test_hooks_on_plumbs_own_records_finish_inside_their_budgets(own_copy: Path)
         runs = [_call(own_copy, module, {**base, **payload}) for _ in range(4)]
         out, best = min(runs, key=lambda run: run[1])  # a loaded machine slows single runs
         budget = float(budgets[module])
-        assert best <= budget * 0.9, f"{module}: {best:.0f} ms against a {budget:.0f} ms budget"
+        assert_within(best, budget * 0.9, f"{module} (ms)")
         assert "check skipped" not in out, f"{module}: {out}"
     errors = own_copy / ".plumb" / "session" / "errors.log"
     assert not errors.exists(), errors.read_text("utf-8")
 
 
+@pytest.mark.load_bound
 def test_hookio_imports_only_what_a_hook_always_needs() -> None:
     code = ("import json, sys, time\n"
             "start = time.perf_counter()\n"
@@ -107,7 +110,7 @@ def test_hookio_imports_only_what_a_hook_always_needs() -> None:
                   "plumb.api", "urllib.request"):
         assert heavy not in loaded, f"importing hookio also imports {heavy}"
     best = min(run["ms"] for run in runs)
-    assert best < 350, f"hookio import took {best:.0f} ms"
+    assert_within(best, 350, "hookio import (ms)")
 
 
 def test_a_warm_session_start_reads_no_record_file(
@@ -150,6 +153,7 @@ def test_plumbs_own_runs_use_two_xdist_workers() -> None:
     assert build_command(["tests/x.py"], workers=workers)[-3:] == ["-n", "2", "tests/x.py"]
 
 
+@pytest.mark.load_bound
 def test_the_question_answer_hook_on_a_large_session_stays_inside_its_budget(
         repo: Path, write_record) -> None:
     """Task 3: with 200 records and 500 prompts logged, the question-answer hook matches the
@@ -177,5 +181,5 @@ def test_the_question_answer_hook_on_a_large_session_stays_inside_its_budget(
                "tool_response": {"answers": {ask: "Every page"}}}
     budget = float(load_config(repo).hooks.budget_ms["post_edit"])
     _, took = _call(repo, "question_answer", payload)
-    assert took <= budget * 0.9, f"question_answer: {took:.0f} ms against {budget:.0f} ms"
+    assert_within(took, budget * 0.9, "question_answer (ms)")
     assert [j.inputs["records"] for j in jobs.queued(repo, "perf")] == [["SR-007"]]

@@ -291,10 +291,14 @@ def repin(core: Core, selector: str | None = None, *, all_stale: bool = False,
 
 
 def _withdraw_settled_cards(core: Core) -> None:
-    """SR-161: a stale card of a link just settled is withdrawn in every session folder."""
+    """SR-161: a stale card of a link just settled is withdrawn in every session folder, and so
+    is the debug workflow's question about it (SR-300 EX-3)."""
     from plumb import stale
+    from plumb.understand import judge
 
     stale.withdraw_settled(core)
+    judge.drop_settled_questions(core.root, {s.link.id for s in core.link_states()
+                                             if s.state == "stale"})
 
 
 def _named_link(core: Core, link_id: str) -> tuple[Record, Link]:
@@ -461,6 +465,18 @@ def _git_text(root: Path, args: list[str]) -> str | None:
         return None
 
 
+def _versions(root: Path, rel: str) -> list[str]:
+    """The commits holding ``rel``'s last versions, newest first: HEAD's, then, during a merge,
+    the incoming side's, whose history HEAD does not reach until the merge is recorded."""
+    revs = ["HEAD"] + (["MERGE_HEAD"] if _git_text(root, ["rev-parse", "-q", "--verify",
+                                                         "MERGE_HEAD"]) else [])
+    found: list[str] = []
+    for rev in revs:
+        listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", rev, "--", rel])
+        found += [sha for sha in (listing or "").split() if sha not in found]
+    return found
+
+
 def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
     """``(the end as the pin saw it, the end now)``: the pinned version is looked for among
     the file's committed versions (newest first); None when it is not found."""
@@ -481,8 +497,7 @@ def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
         now = _segment((Path(root) / rel).read_text(encoding="utf-8"), qualname)
     except (OSError, UnicodeDecodeError):
         return None
-    listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", "--", rel])
-    for sha in (listing or "").split():
+    for sha in _versions(root, rel):
         text = _git_text(root, ["show", f"{sha}:{rel}"])
         before = None if text is None else _segment(text, qualname)
         if before is not None and sha256_text(before) == link.pin.target:
@@ -556,21 +571,13 @@ def repin_after_tests(core: Core, selector: str, *,
     development. ``dry_run`` asks the models only: no tests run, nothing is repinned, no card
     is filed, and the links it would repin are listed in ``would``. ``auto`` (SR-175, the turn
     end): a rewording Opus proposes is recorded as an unconfirmed edit and the link repinned,
-    where the command only tells the agent to reword. Never confirms anything."""
+    where the command only tells the agent to reword. A link to a record (a decision's
+    ``decides``) runs no tests: the record as pinned and as it is now go to the same cascade,
+    and a changed meaning is one owner question through the question tool (SR-300 EX-3), not a
+    diagnosis. Never confirms anything."""
     result = AfterTests()
     states = _select_stale(core, selector)
-    candidates: list[LinkState] = []
-    for state in states:
-        link = state.link
-        if link.target.record is not None:
-            result.refused.append((link.id, "it points at a record, not code: reword the "
-                                   "record so it agrees, or bring it to the owner as a card"))
-        elif state.moved != "target":
-            result.refused.append((link.id, "the requirement itself was reworded since the "
-                                   "pin: a test run cannot settle that; bring it to the owner "
-                                   "as a card"))
-        else:
-            candidates.append(state)
+    candidates = list(states)   # a reworded requirement is judged too (its old wording shown)
     if not candidates:
         return result
     from plumb.understand import repin as meaning_check
@@ -584,31 +591,47 @@ def repin_after_tests(core: Core, selector: str, *,
         result.unreachable = meaning_check.judge_gap(core)
         return result
     untested = ""
-    if not dry_run:
-        paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
+    paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
+    if not dry_run and paths:   # a link to a record (SR-300 EX-3) has no tests to run
         ok, detail = (runner or default_runner(core))(paths)
         if not ok:
             result.refused += [(s.link.id, f"its linked tests do not pass ({detail})")
-                               for s in candidates]
-            return result
-        if detail.startswith("no test covers"):
+                               for s in candidates if target_path(s.link.target)]
+            candidates = [s for s in candidates if not target_path(s.link.target)]
+        elif detail.startswith("no test covers"):
             untested = f" (no test gate: {detail})"
     from plumb.understand.judge import record_text
 
     index = core.index()
     for state in candidates:
         link = state.link
-        texts = end_texts(core.root, link)
+        target = index.get(link.target.record or "")
+        texts = (_record_texts(core.root, target, link) if link.target.record is not None
+                 else end_texts(core.root, link))
         if texts is None:
             result.refused.append((link.id, "the earlier version of the end could not be "
                                    "found in git, so there is nothing to compare"))
             continue
         record = index.get(link.id.split("#")[0])
-        path = target_path(link.target) or ""
+        path = target_path(link.target) or (target.path if target is not None else "")
+        reworded = ""
+        if state.moved != "target" and record is not None and link.pin is not None:
+            reworded = _pinned_text(core.root, record, link.pin.source) or ""
+            if not reworded:
+                result.refused.append((link.id, "the requirement as pinned could not be found "
+                                       "in git, so there is nothing to compare its wording to"))
+                continue
         shown = dict(requirement=f"{record.id}: {record.title}\n{record_text(record)}"
                      if record is not None else link.id,
                      link_id=link.id, link_kind=link.kind, path=path,
-                     before=texts[0], after=texts[1])
+                     before=texts[0], after=texts[1], requirement_before=reworded)
+        newer = _later_decisions(index, link, target or record)
+        if newer:   # SR-242, INT-079: the cascade still decides, reading the owner's later answers
+            shown["requirement"] += (
+                "\n\nThe owner decided later, on the record as it is now; a later answer "
+                "supersedes the earlier one on the same point, so a change that applies it "
+                "keeps the meaning:\n"
+                + "\n".join(f"{d.id}: {record_text(d)}" for d in newer))
         p = jev.clears(**shown) if jev is not None else None
         if p is not None:   # EX-1: JEV alone, above its calibrated threshold
             why = f"JEV gives {p:.2f}, at or above its threshold {jev.threshold:.2f}"
@@ -627,12 +650,114 @@ def repin_after_tests(core: Core, selector: str, *,
             result.refused.append((link.id, f"{NO_MODEL}: {meaning.reason}"))
             if meaning.unreachable:
                 result.unreachable = meaning.reason
+        elif not meaning.unchanged and target is not None:   # SR-300 EX-3, SR-221
+            _ask_owner(core, result, record, target, link, shown, meaning.reason, session,
+                       dry_run)
         elif not meaning.unchanged:
             _diagnose(core, result, record, link, shown, meaning.reason, diagnoser,
                       session, dry_run, auto)
         else:
             _repinned(core, result, link.id, "sonnet", meaning.reason + untested, dry_run)
     return result
+
+
+def _later_decisions(index: Mapping[str, Record], link: Link,
+                     about: Record | None) -> list[Record]:
+    """The other decisions that decide ``about`` (the record end of a decision's link, or the
+    requirement a code link serves) and are pinned to it as it is now: the owner decided again
+    after this link's pin, so the judge reads the change next to those answers (a change that
+    applies them keeps the meaning); the verdict stays the cascade's (SR-242)."""
+    if about is None:
+        return []
+    return [record for record in index.values()
+            if record.kind == "decision" and record.id != link.source
+            and any(other.target.record == about.id and other.pin is not None
+                    and other.pin.target == about.hash for other in record.links)]
+
+
+def _pinned_text(root: Path, record: Record, pin_hash: str) -> str | None:
+    """What ``record`` asserted at the version whose hash is ``pin_hash``, looked for among its
+    file's committed versions (newest first); None when it is not found."""
+    from plumb.model import parse_record
+    from plumb.understand.judge import record_text
+
+    for sha in _versions(root, record.path):
+        text = _git_text(root, ["show", f"{sha}:{record.path}"])
+        try:
+            old = parse_record(text, record.path) if text is not None else None
+        except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
+            continue
+        if old is not None and old.hash == pin_hash:
+            return record_text(old)
+    return None
+
+
+def _record_texts(root: Path, target: Record | None, link: Link) -> tuple[str, str] | None:
+    """``(the target record as the pin saw it, as it is now)``, each as what it asserts: the
+    pinned version is looked for among the record file's committed versions (newest first);
+    None when it is not found."""
+    from plumb.understand.judge import record_text
+
+    if target is None or link.pin is None:
+        return None
+    old = _pinned_text(root, target, link.pin.target)
+    return None if old is None else (old, record_text(target))
+
+
+def _ask_owner(core: Core, result: AfterTests, record: Record | None, target: Record,
+               link: Link, shown: Mapping[str, str], reason: str, session: str | None,
+               dry_run: bool) -> None:
+    """SR-300 EX-3, SR-221: the record a decision settles changed in meaning: one question to
+    the owner through the question tool, about the behaviour and in plain words; no card, no
+    diagnosis. The link stays stale until the answer is applied."""
+    from plumb import stale
+    from plumb.understand import judge
+
+    refusal = CHANGED.format(reason=reason)
+    if record is None or dry_run:
+        result.refused.append((link.id, f"{refusal} (dry run: no question asked)" if dry_run
+                               else refusal))
+        return
+    fields = record.fields
+    chosen = str(fields.get("chosen") or record.title)
+    asked = str(fields.get("question") or record.title)
+    said = str(fields.get("rationale") or "").strip()
+    came_from = "; ".join(i["text"].splitlines()[0] for i in _intents(core, record))
+    dated = (_git_text(core.root, ["log", "--diff-filter=A", "--format=%cs", "--",
+                                   record.path]) or "").split()
+    # SR-267: one question, readable cold: the request it came from and its date, both
+    # wordings side by side, the recommended option first with its reason, each option's
+    # consequence and what it leaves undone; the owner's terms, no plumb vocabulary
+    text = (f'"{target.title}" changed since you answered "{chosen}" to "{asked}". '
+            f"Does your answer still hold for what it says now?\n\n"
+            f"Then: {shown['before']}\n\nNow: {shown['after']}\n\n"
+            f"What changed: {reason}\n\n"
+            f'It comes from your decision "{asked}"'
+            + (f" of {dated[-1]}" if dated else "")
+            + (f' under your request "{came_from}"' if came_from else "")
+            + (f" ({said})" if said else "") + ".")
+    where = session or stale.current_session(core.root)
+    judge.add_question(core, where, {
+        "key": judge.question_key(text), "job": f"debug:{link.id}",
+        "records": [{"id": target.id, "hash": target.hash},
+                    {"id": record.id, "hash": record.hash}],
+        "question": text, "header": "Decision",
+        "options": [{"label": "It needs a new answer (Recommended)",
+                     "description": f'Does: you are asked again what to decide, and "'
+                                    f'{target.title}" keeps its new wording. Leaves undone: '
+                                    "your old answer is not applied to the new wording. "
+                                    "Recommended: the change reads as one your answer did not "
+                                    "cover."},
+                    {"label": "It still holds",
+                     "description": "Does: your answer is kept and tied to the new wording. "
+                                    "Leaves undone: nothing is asked again and the reading "
+                                    "above is set aside."},
+                    {"label": "Undo the new wording",
+                     "description": f'Does: "{target.title}" goes back to what it said when you '
+                                    "answered. Leaves undone: the work that changed it is not "
+                                    "applied."}]})
+    result.refused.append((link.id, f"{refusal}; one question to the owner through the "
+                           f"question tool; on \"it still holds\", plumb repin {link.id}"))
 
 
 def _repinned(core: Core, result: AfterTests, link_id: str, tier: str, why: str,

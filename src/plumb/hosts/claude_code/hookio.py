@@ -311,6 +311,10 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     was_hook = getattr(lane, "HOOK_PROCESS", False)
     if lane is not None:  # every VerifyAPI this hook opens is in hook mode (R5)
         lane.HOOK_PROCESS = True
+    from plumb import log as plumb_log
+
+    was_live = plumb_log.LIVE_ONLY
+    plumb_log.LIVE_ONLY = True  # SR-287 EX-4: a hook never opens an archive segment
     try:
         data = read_input(stdin)
         found = find_hook_root(data, root)
@@ -352,7 +356,14 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
         writer.write(_cut_output(kept, skip_line(step) if kept.lines else SKIP_BUDGET,
                                  json_output))
     except Exception:  # noqa: BLE001 - plumb never blocks work on its own failure
-        log_error(found, name, _format_exc())
+        detail = _format_exc()
+        log_error(found, name, detail)
+        try:
+            from plumb import debug
+
+            debug.hook_error(found, name, detail)  # SR-325: one debug case, turn not held
+        except Exception:  # noqa: BLE001 - recording the case must not break the notice
+            pass
         try:
             writer.write(_cut_output(kept, SKIP_ERROR, json_output))
         except Exception:  # noqa: BLE001 - nothing more can be said on a broken stdout
@@ -363,6 +374,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
         _close_hash_cache()
         if lane is not None:
             lane.HOOK_PROCESS = was_hook
+        plumb_log.LIVE_ONLY = was_live
     return 0
 
 

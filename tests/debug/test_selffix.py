@@ -1,0 +1,233 @@
+"""SR-326: a debug case in plumb's own repository becomes a fix on a branch of its own: a
+worktree, a fixer that names a failing test, verification (the test fails without the source
+change and passes with it, covering tests, nothing stale, the judge keeps every meaning), a
+commit with the requirement trailer, or after three rounds a defect report. The fixer is
+scripted and edits a scratch plumb-shaped repository; the runner and the judge are stubbed;
+git is real."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from plumb import debug, selfdebug, stale
+from plumb.api import open_core
+from plumb.config import Config
+from plumb.contracts import Target
+from plumb.understand import jobs, judge, repin
+from plumb.understand import selfdebug as kind
+from plumb.understand.repin import Meaning
+
+pytestmark = pytest.mark.sr("SR-326")
+
+SR1 = """---
+id: SR-001
+title: Adds numbers
+feature: FEAT-001
+statement: add returns the sum{suffix}.
+---
+"""
+DEC1 = """---
+id: DEC-001
+title: Does add round its result?
+question: Does add round its result?
+chosen: 'No: add returns the exact sum'
+alternatives:
+- Round to two decimals
+---
+"""
+CASE = "hook-stop-1"
+BRANCH = "debug/hook-stop-1"
+TEST = "tests/test_calc.py::test_add"
+
+
+def _git(root: Path, *args: str) -> str:
+    done = subprocess.run(["git", *args], cwd=root, check=True, capture_output=True,
+                          text=True, encoding="utf-8")
+    return done.stdout
+
+
+@pytest.fixture(autouse=True)
+def no_real_models(monkeypatch) -> None:
+    monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
+    monkeypatch.setattr(repin, "open_diagnoser", lambda core: None)
+
+
+@pytest.fixture
+def plumb_repo(repo: Path, write_record) -> Path:
+    """A plumb-shaped repository with a defect in src/plumb/calc.py, a requirement whose code
+    link names it and a decision pinned to the requirement; one open debug case."""
+    (repo / "pyproject.toml").write_text('[project]\nname = "plumb"\n', "utf-8")
+    (repo / "src" / "plumb").mkdir(parents=True)
+    (repo / "src" / "plumb" / "__init__.py").write_text("", "utf-8")
+    (repo / "src" / "plumb" / "calc.py").write_text(
+        "def add(a, b):\n    return a - b  # BUG\n", "utf-8")
+    write_record(repo, SR1.format(suffix=""))
+    write_record(repo, DEC1)
+    core = open_core(repo)
+    core.add_link("SR-001", "implemented_by", Target(path="src/plumb/calc.py"))
+    core.add_link("DEC-001", "decides", Target(record="SR-001"))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "setup")
+    debug.open_case(repo, id=CASE, kind="hook-error", target="stop",
+                    detail="ValueError: add is wrong (SR-001)")
+    return repo
+
+
+class Fixer:
+    """Scripted: round n runs ``steps[n-1]`` on the worktree and names the test."""
+
+    def __init__(self, *steps) -> None:
+        self.steps, self.models, self.wt = list(steps), [], None
+
+    def __call__(self, *, round, case, evidence, worktree, model, previous):
+        self.models.append(model)
+        self.wt = worktree
+        self.evidence, self.previous = evidence, previous
+        self.steps[min(round, len(self.steps)) - 1](worktree)
+        return {"test": TEST, "files": []}
+
+
+def fixes_add(wt: Path) -> None:
+    (wt / "tests").mkdir(exist_ok=True)
+    (wt / "tests" / "test_calc.py").write_text(
+        "from plumb.calc import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n", "utf-8")
+    (wt / "src" / "plumb" / "calc.py").write_text(
+        "def add(a, b):\n    return a + b\n", "utf-8")
+
+
+def fixes_nothing(wt: Path) -> None:
+    (wt / "tests").mkdir(exist_ok=True)
+    (wt / "tests" / "test_calc.py").write_text("def test_add():\n    assert False\n", "utf-8")
+
+
+class Runner:
+    """Every run passes unless the worktree's calc.py still holds the defect."""
+
+    def __init__(self, fixer: Fixer) -> None:
+        self.fixer, self.calls = fixer, []
+
+    def __call__(self, paths):
+        ok = "BUG" not in (self.fixer.wt / "src" / "plumb" / "calc.py").read_text("utf-8")
+        self.calls.append((list(paths), ok))
+        return ok, "passed" if ok else "failed: the defect"
+
+
+class Judge:
+    def __init__(self, answer: Meaning) -> None:
+        self.answer, self.asked = answer, []
+
+    def same_meaning(self, **shown):
+        self.asked.append(shown)
+        return self.answer
+
+
+def _fix(repo: Path, fixer: Fixer, answer: Meaning, rounds: int = 3):
+    core = open_core(repo)
+    case = next(c for c in debug.open_cases(repo) if c["id"] == CASE)
+    runner, sonnet = Runner(fixer), Judge(answer)
+    out = selfdebug.fix(core, case, rounds=rounds, fixer=fixer, runner=runner, judge=sonnet)
+    return out, runner, sonnet
+
+
+def _state(repo: Path) -> str:
+    return next(c["state"] for c in debug.all_cases(repo) if c["id"] == CASE)
+
+
+def test_ex1_a_planted_defect_ends_as_a_branch_with_its_failing_then_passing_test(
+        plumb_repo: Path) -> None:
+    fixer = Fixer(fixes_add)
+    out, runner, sonnet = _fix(plumb_repo, fixer, Meaning(True, "wording only", 0.9))
+    assert out.state == "fixed" and out.branch == BRANCH, out.detail
+    assert _git(plumb_repo, "show", f"{BRANCH}:tests/test_calc.py").count("def test_add") == 1
+    assert "return a + b" in _git(plumb_repo, "show", f"{BRANCH}:src/plumb/calc.py")
+    assert "SR: SR-001" in _git(plumb_repo, "log", "-1", "--format=%B", BRANCH)
+    # the test failed without the source change, then passed with it; the covering tests passed
+    assert [c for c in runner.calls if c[0] == [TEST]] == [([TEST], True), ([TEST], False)]
+    assert (["src/plumb/calc.py"], True) in runner.calls
+    wt_core = open_core(fixer.wt)
+    assert [s.link.id for s in wt_core.link_states() if s.state != "current"] == []
+    assert len(sonnet.asked) == 1
+    assert [e.payload["case"] for e in open_core(plumb_repo).log_read(
+        "events", ["selfdebug-review"])] == [CASE]
+    assert _state(plumb_repo) == "resolved"
+    assert "SR-001" in fixer.evidence["records"] and fixer.models == ["sonnet"]
+
+
+def test_ex2_a_stale_link_is_repinned_when_the_meaning_holds_else_nothing_is_committed(
+        plumb_repo: Path) -> None:
+    fixer = Fixer(fixes_add)
+    out, _, _ = _fix(plumb_repo, fixer, Meaning(False, "add now adds"), rounds=1)
+    assert out.state == "reported" and "SR-001#0" in out.detail
+    assert _state(plumb_repo) == "open"
+    assert _git(plumb_repo, "rev-list", "--count", f"main..{BRANCH}").strip() == "0"
+    out, _, _ = _fix(plumb_repo, fixer, Meaning(True, "the same meaning"))
+    assert out.state == "fixed" and _state(plumb_repo) == "resolved"
+    assert _git(plumb_repo, "rev-list", "--count", f"main..{BRANCH}").strip() == "1"
+    assert all(s.state == "current" for s in open_core(fixer.wt).link_states(["SR-001"]))
+
+
+def test_ex3_a_changed_meaning_is_one_owner_question_and_no_commit(
+        plumb_repo: Path, write_record) -> None:
+    def rewords(wt: Path) -> None:
+        fixes_add(wt)
+        (wt / ".plumb" / "requirements" / "SR-001.md").write_text(
+            SR1.format(suffix=", rounded to two decimals"), "utf-8")
+
+    fixer = Fixer(rewords)
+    out, _, _ = _fix(plumb_repo, fixer, Meaning(False, "the sum is now rounded"))
+    assert out.state == "owner" and _state(plumb_repo) == "open"
+    assert _git(plumb_repo, "rev-list", "--count", f"main..{BRANCH}").strip() == "0"
+    asked = judge.questions_path(plumb_repo, stale.current_session(plumb_repo))
+    text = asked.read_text("utf-8")
+    assert text.count('"key"') == 1 and "rounded to two decimals" in text
+    assert "SR-001" not in text.split('"records"')[0]
+
+
+def test_ex4_three_failed_rounds_end_as_a_defect_report_and_ask_nothing(
+        plumb_repo: Path) -> None:
+    fixer = Fixer(fixes_nothing)
+    out, _, _ = _fix(plumb_repo, fixer, Meaning(True, "same"))
+    assert out.state == "reported" and len(out.rounds) == 3
+    assert fixer.models == ["sonnet", "opus", "opus"] and len(fixer.previous) == 2
+    (row,) = [c for c in debug.open_cases(plumb_repo) if c["id"] == CASE]
+    assert "round 1" in row["report"] and "round 3" in row["report"]
+    assert "Missing:" in row["report"] and "Nothing was committed" in row["report"]
+    assert _git(plumb_repo, "rev-list", "--count", f"main..{BRANCH}").strip() == "0"
+    assert not judge.questions_path(plumb_repo, stale.current_session(plumb_repo)).exists()
+
+
+def test_ex5_no_judge_holds_the_workflow_says_so_once_and_commits_nothing(
+        plumb_repo: Path) -> None:
+    fixer = Fixer(fixes_add)
+    out, _, _ = _fix(plumb_repo, fixer, Meaning(None, "no key", 0.0, unreachable=True))
+    assert out.state == "held" and "waiting" in out.line and len(fixer.models) == 1
+    assert _state(plumb_repo) == "open"
+    assert _git(plumb_repo, "rev-list", "--count", f"main..{BRANCH}").strip() == "0"
+    again, _, _ = _fix(plumb_repo, Fixer(fixes_add), Meaning(None, "no key", 0.0))
+    assert again.state == "held" and again.line == ""
+
+
+def test_ex6_the_main_checkout_is_not_written_and_not_merged(plumb_repo: Path) -> None:
+    head = _git(plumb_repo, "rev-parse", "HEAD")
+    calc = (plumb_repo / "src" / "plumb" / "calc.py").read_text("utf-8")
+    out, _, _ = _fix(plumb_repo, Fixer(fixes_add), Meaning(True, "same"))
+    assert out.state == "fixed"
+    assert _git(plumb_repo, "rev-parse", "HEAD") == head
+    assert _git(plumb_repo, "rev-parse", "main") == head
+    assert _git(plumb_repo, "status", "--porcelain", "--untracked-files=no") == ""
+    assert (plumb_repo / "src" / "plumb" / "calc.py").read_text("utf-8") == calc
+    assert not (plumb_repo / "tests" / "test_calc.py").exists()
+
+
+def test_the_case_is_queued_as_a_background_job_only_in_plumbs_own_repository(
+        plumb_repo: Path, tmp_path: Path) -> None:
+    core = open_core(plumb_repo)
+    job = kind.build(core, stale.current_session(plumb_repo), case=CASE)
+    assert selfdebug.applies(core) is None
+    assert jobs.job_path(plumb_repo, job.session, job.id).exists()
+    assert kind.recompute(core, job) == {"case": CASE}
+    assert "not plumb's own" in selfdebug.applies(SimpleNamespace(root=tmp_path, config=Config()))
