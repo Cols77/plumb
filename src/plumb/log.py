@@ -57,6 +57,7 @@ SHARED_KINDS = frozenset({
     "judgment", "test-run", "mod-hello", "offer",
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
     "conflict-resolution", "waiver",
+    "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
 })
 LOCAL_KINDS = frozenset({
     "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",
@@ -1031,6 +1032,18 @@ def tracked_names(root: Path) -> set[str]:
     out = subprocess.run(["git", "ls-files", "--", prefix], cwd=root, capture_output=True,
                          text=True, encoding="utf-8", errors="replace", check=True).stdout
     return {p[len(prefix):] for p in out.split("\n") if p.startswith(prefix)}
+
+
+def shared_uncommitted(root: Path) -> list[str]:
+    """SR-329: the uncommitted entries of shared log kinds in ``root``, whichever session wrote
+    them (local kinds are ignored by git, so they never appear)."""
+    import subprocess
+
+    out = subprocess.run(["git", "ls-files", "-o", "--exclude-standard", "-z", "--", ".plumb/log"],
+                         cwd=root, capture_output=True, text=True, encoding="utf-8",
+                         errors="replace", check=True).stdout
+    return sorted(p for p in out.split(chr(0)) if p.count("/") >= 3
+                  and p.split("/")[2] in SHARED_KINDS)
 
 
 def stage(root: Path, changed: Iterable[str]) -> None:

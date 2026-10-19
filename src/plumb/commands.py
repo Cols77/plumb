@@ -26,7 +26,8 @@ CONFIG_TEMPLATE = """\
 #   flaky_rerun: true
 #   infra_globs: ["**/conftest.py", pyproject.toml, uv.lock, pytest.ini, tox.ini, setup.cfg]
 # hooks:
-#   budget_ms: {session_start: 1400, prompt: 1200, stop: 1400, post_edit: 300}
+#   hard_limit_s: 90           # the watchdog cuts a hook here; at most 119 (host timeouts 120 s)
+#   budget_ms: {session_start: 60000, prompt: 60000, stop: 60000, post_edit: 15000}
 #   brief_lines: 30
 #   prompt_lines: 20
 #   prompt_tokens: 200         # per-prompt injection budget; records once per session

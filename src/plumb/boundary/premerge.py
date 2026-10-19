@@ -1,14 +1,24 @@
 """The merge-time safety net: git's ``pre-merge-commit``, ``prepare-commit-msg`` and
 ``post-merge`` hooks (sp6 10, R17; SR-077).
 
-R17 (owner, 2026-10-07): a CHEAP merge-time check holds a merge carrying a leftover intent
-conflict, unconfirmed requirements or undeclared files, WITHOUT running the test suite; the
+R17 (owner, 2026-10-07): a CHEAP merge-time check, WITHOUT running the test suite; the
 single full suite runs at push (the pre-push hook). Never run the suite twice.
 
+What holds (SR-260, DEC-252, DEC-255 to DEC-257), first of 1, 5, 4: integrity (exit 1:
+unstaged or unreadable record files, a settled-once conflict, colliding ids, new stale links,
+new links to untested files, validate errors, a broken log); what the report's
+``verification_holds`` holds on, read from the recorded evidence (SR-254: a failing or
+regressed acceptance test, one with no passing run on the current code, a full run pending,
+unreadable evidence), so both forms exit alike (EX-10), and for a merge into the default branch a
+delivered requirement (an incoming SR trailer) whose proof is not shown working or not
+confirmed by the owner (exit 5); an open intent conflict, a contradiction the judge is sure
+of, or a question waiting for the owner on a required record (exit 4). Records waiting on a
+judge, paths no trailer declares and a claims policy the check cannot read are listed, never
+held.
+
 The guarantee: no commit that records another line's work is made (or, for a fast-forward
-of the default branch, stays) while what it records carries an open intent conflict (and,
-for a merge, a touched requirement not yet confirmed, a file no requirement declares or two
-records holding one ID). Its entry points, all through ``check``:
+of the default branch, stays) while what it records carries one of those. Its entry points,
+all through ``check``:
 
 - ``git merge`` (and ``git pull``) committing on its own: the ``pre-merge-commit`` hook.
 - ``git commit`` or ``git merge --continue`` finishing a merge (after a text conflict or
@@ -36,11 +46,11 @@ cannot be read (a text merge left in it). A merge is checked in full (``HEAD`` a
 incoming commits); a rebase, cherry-pick or revert step only for open intent conflicts (its
 own requirements are its branch's business until that branch merges).
 
-No test run, no verification evidence, no judgment backend call (cards show a judgment only
-when one is already logged: ``conflict_rows(hook=True)``), no log-integrity diff: a few
-git calls and the record index. Its one write: an intent conflict the owner already
-answered before work began is settled with that answer (R17, ``check``). A non-zero exit
-refuses the commit; the operation stays in progress until it is settled, then the owner says
+No test run (a failing test is read from the recorded evidence), no judgment backend call
+(cards show a judgment only when one is already logged: ``conflict_rows(hook=True)``), no
+log-integrity diff: a few git calls and the record index. Its one write: an intent conflict
+the owner already answered before work began is settled with that answer (R17, ``check``).
+A non-zero exit refuses the commit; the operation stays in progress until it is settled, then the owner says
 "finish the merge" (or "continue the rebase").
 
 ``plumb hooks install`` and ``plumb init`` install both hooks by default (R17); ``plumb
@@ -69,7 +79,10 @@ COMMIT_HOOK = "prepare-commit-msg"
 COMMIT_HOOK_MARKER = "# plumb prepare-commit-msg hook"
 POST_HOOK = "post-merge"
 POST_HOOK_MARKER = "# plumb post-merge hook"
-MARKERS = {HOOK: HOOK_MARKER, COMMIT_HOOK: COMMIT_HOOK_MARKER, POST_HOOK: POST_HOOK_MARKER}
+LAND_HOOK = "post-commit"          # a merge finished by `git commit` fires no post-merge (SR-296)
+LAND_HOOK_MARKER = "# plumb post-commit hook"
+MARKERS = {HOOK: HOOK_MARKER, COMMIT_HOOK: COMMIT_HOOK_MARKER, POST_HOOK: POST_HOOK_MARKER,
+           LAND_HOOK: LAND_HOOK_MARKER}
 HOLD_KEY = "plumb.mergeHold"
 NL = "\n"
 NO_FF = "--no-ff"
@@ -142,6 +155,14 @@ def post_hook_text(interpreter: str) -> str:
                                      f"merge-check --hook {POST_HOOK}"))
 
 
+def land_hook_text(interpreter: str) -> str:
+    """post-commit: its shell line exits at once unless the commit has two parents."""
+    return (f"#!/bin/sh{NL}{LAND_HOOK_MARKER} (written by plumb; starts the landing job when a "
+            f"merge finished by hand lands on the default branch){NL}"
+            f'git rev-parse -q --verify HEAD^2 >/dev/null 2>&1 || exit 0{NL}'
+            + launcher.git_hook_line(interpreter, LAND_HOOK, f"merge-check --hook {LAND_HOOK}"))
+
+
 def refresh_post_hook(root: Path) -> None:
     """An older post-merge hook exits before Python for a merge commit and with mergeHold
     false; drop those lines so every merge reaches the withdrawal (SR-132)."""
@@ -171,7 +192,7 @@ def _install(root: Path, interpreter: str, hook: str) -> Path:
                                else owner_text.FOREIGN_COMMIT_HOOK)
     path.parent.mkdir(parents=True, exist_ok=True)
     text = {HOOK: hook_text, COMMIT_HOOK: commit_hook_text,
-            POST_HOOK: post_hook_text}[hook](interpreter)
+            POST_HOOK: post_hook_text, LAND_HOOK: land_hook_text}[hook](interpreter)
     path.write_bytes(text.encode("utf-8"))
     try:
         path.chmod(0o755)
@@ -198,6 +219,15 @@ def install_post_hook(root: Path, interpreter: str) -> Path:
     left untouched (the merge option is still set)."""
     ff_hold(root)
     return _install(root, interpreter, POST_HOOK)
+
+
+def install_land_hook(root: Path, interpreter: str) -> Path:
+    """Write plumb's post-commit hook (idempotent); a foreign hook raises ``ForeignHookError``."""
+    return _install(root, interpreter, LAND_HOOK)
+
+
+def land_hook_path(root: Path) -> Path:
+    return hook_path(root, LAND_HOOK)
 
 
 def post_hook_path(root: Path) -> Path:
@@ -297,8 +327,13 @@ class PremergeReport:
     merging: str = ""
     into: str = ""
     touched: tuple[str, ...] = ()
-    unconfirmed: tuple[Mapping[str, Any], ...] = ()      # {id, title, state}
-    undeclared: tuple[Mapping[str, Any], ...] = ()       # {commit, path, claims}
+    unconfirmed: tuple[Mapping[str, Any], ...] = ()      # {id, title, state}: listed only
+    undeclared: tuple[Mapping[str, Any], ...] = ()       # {commit, path, claims}: listed only
+    claims_errors: tuple[str, ...] = ()  # the claims check could not read a range: listed
+    questions: tuple[Mapping[str, Any], ...] = ()  # SR-260 EX-30 {key, records, titles} (4)
+    failing_tests: tuple[Mapping[str, Any], ...] = ()  # {id, title, test, state} (exit 5)
+    verify_lines: tuple[str, ...] = ()  # SR-254: pending, unavailable, regressions (exit 5)
+    proofs: tuple[Mapping[str, Any], ...] = ()  # DEC-256 {id, title, why}, into default (5)
     intent_conflicts: tuple[Mapping[str, Any], ...] = ()  # {ic, record, title, card}
     collisions: tuple[Mapping[str, Any], ...] = ()       # {id, line}
     unstaged: tuple[str, ...] = ()       # .plumb/ paths that differ from the index committed
@@ -374,7 +409,9 @@ def unstaged_plumb(root: Path) -> list[str]:
         x, y, path = item[0], item[1], item[3:]
         if x in "RC":
             i += 1  # a rename or copy names its source next
-        if y != " ":
+        # an untracked log entry is the landing job's to commit, never a hold (SR-329): the
+        # check's own judge calls write some while it runs
+        if y != " " and not (x == "?" and path.startswith(".plumb/log/")):
             found.append(path)
     return sorted(set(found))
 
@@ -482,6 +519,7 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
                    and not waiting_on_conflict(index, i)]
 
     undeclared: list[dict[str, Any]] = []
+    claims_errors: list[str] = []
     for sha, _ in heads:
         try:
             result = claims_check(root, f"{base}..{sha}")
@@ -491,21 +529,40 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
             if load_policy(root).require_trailer:
                 for unclaimed in result.get("unclaimed_commits") or []:
                     undeclared.append({"commit": str(unclaimed), "path": None, "claims": []})
-        except Exception as exc:  # noqa: BLE001 - an unreadable range holds, never crashes
-            undeclared.append({"commit": "", "path": None, "claims": [], "error": str(exc)})
+            claims_errors += [f"  .plumb/claims.yaml: {p}" for p in result.get("problems") or ()
+                              if f"  .plumb/claims.yaml: {p}" not in claims_errors]
+        except Exception as exc:  # noqa: BLE001 - listed like the report's (gates.claims_gate)
+            claims_errors.append(f"  the claims check could not read {base}..{sha}: {exc}")
 
     conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
     stale_links, untested_links = _link_problems(core, base, paths, index)
-    validate_errors = _errors(core, base)
-    contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index)
+    from plumb.validate import validate
+
+    findings = validate(core)   # one pass, shared by both checks (it re-reads the log chain)
+    validate_errors = _errors(core, base, findings)
+    contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index,
+                                                                      findings)
+    questions = open_questions_on(core, required)
+    from plumb.boundary.report import verification_holds
+    from plumb.merge import _verification
+
+    # the report's own reading of the evidence, so both forms hold alike (EX-10); no test run
+    verification = _verification(core, touched, paths, base)
+    failing_tests = failing_tests_of(core, verification)
+    main = ours == default_branch_of(root)   # DEC-271: tests, questions, proofs hold main only
+    proofs = delivered_proofs(core, messages) if main else []
     # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
     # the commit that finishes it ("finish the merge") records the settled version
-    held = bool(undeclared or collisions or unstaged or unreadable or settled
+    held = bool(collisions or unstaged or unreadable or settled
                 or stale_links or untested_links or validate_errors)
-    code = 1 if held else 4 if (conflicts or unconfirmed or contradictions) else 0
+    code = 1 if held else 5 if main and (verification_holds(verification) or proofs) else \
+        4 if (conflicts or contradictions or (main and questions)) else 0
     report = PremergeReport(merging=theirs, into=ours, touched=tuple(touched),
                             unconfirmed=tuple(unconfirmed), undeclared=tuple(undeclared),
+                            claims_errors=tuple(claims_errors), questions=tuple(questions),
+                            failing_tests=tuple(failing_tests), proofs=tuple(proofs),
+                            verify_lines=tuple(verification_lines(verification)),
                             intent_conflicts=tuple(conflicts), collisions=tuple(collisions),
                             unstaged=unstaged, unreadable=unreadable, settled=settled,
                             stale_links=tuple(stale_links), untested_links=tuple(untested_links),
@@ -515,6 +572,99 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
                             judge_note=judge_note,
                             operation=operation, exit=code)
     return _with_lines(report)
+
+
+def open_questions_on(core: Any, required: Sequence[str]) -> list[dict[str, Any]]:
+    """SR-260 EX-30: the judge's questions still waiting for the owner, in every session
+    (``judge.open_questions``), that ask about a record of ``required``: ``{key, question,
+    records, titles}``. Unreadable questions name nothing (the status line's rule)."""
+    want = set(required)
+    if not want:
+        return []
+    index = core.index()
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for path in sorted((Path(core.root) / ".plumb" / "session").glob("*/judge_questions.json")):
+        try:
+            from plumb.understand import judge
+
+            asked = judge.open_questions(core, path.parent.name)
+        except Exception:  # noqa: BLE001
+            continue
+        for question in asked:
+            ids = [str(r.get("id")) for r in question.get("records") or ()
+                   if isinstance(r, Mapping) and str(r.get("id")) in want]
+            key = str(question.get("key") or question.get("question") or "")
+            if ids and key not in seen:
+                seen.add(key)
+                rows.append({"key": key, "question": question.get("question"), "records": ids,
+                             "titles": [index[i].title for i in ids if i in index]})
+    return rows
+
+
+def failing_tests_of(core: Any, verification: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """SR-260 (c), SR-254: the acceptance tests ``merge._verification`` holds on, read from
+    the evidence with no test run (the report's ``failing`` and ``unverified``):
+    ``{id, title, test, state}``, ``state`` failing, regression, never run or stale."""
+    index = core.index()
+    rows: list[dict[str, Any]] = []
+    for key in ("failing", "unverified"):
+        for record_id, items in (verification.get(key) or {}).items():
+            for item in items:
+                if key == "failing":
+                    state = "regression" if item.get("regression") else "failing"
+                else:
+                    state = "never run" if item.get("state") == "none" else \
+                        "stale since its last pass"
+                rows.append({"id": record_id, "test": item.get("test"), "state": state,
+                             "title": getattr(index.get(record_id), "title", record_id)})
+    return rows
+
+
+def verification_lines(verification: Mapping[str, Any]) -> list[str]:
+    """The rest of what ``report.verification_holds`` holds on, in the owner's words: a
+    verification that could not be read, a full run pending, a regression."""
+    if not verification.get("available"):
+        return [owner_text.PREMERGE_VERIFY_UNAVAILABLE.format(
+            error=verification.get("error") or "no verification lane")]
+    out = []
+    if verification.get("full_pending") and not verification.get("full_waived"):
+        out.append(owner_text.PREMERGE_FULL_PENDING.format(
+            reasons=", ".join(verification.get("full_pending_reasons") or ())))
+    out += [owner_text.PREMERGE_REGRESSION.format(test=t)
+            for t in verification.get("regressions") or ()]
+    return out
+
+
+def delivered_proofs(core: Any, messages: Sequence[tuple[str, str]]) -> list[dict[str, Any]]:
+    """SR-260 (d), DEC-256, EX-28: the requirements the incoming commits' SR trailers name
+    (read through every renumber) whose proof is not shown working or not confirmed by the
+    owner (``proof.unconfirmed_proofs``). Asked only of a merge into the default branch."""
+    from plumb.capture.proof import unconfirmed_proofs
+    from plumb.claims import claimed_ids, trailer_aliases
+
+    if not messages:
+        return []
+    aliases = trailer_aliases(core)
+    ids = [i for sha, message in messages for i in claimed_ids(aliases, sha, message)]
+    return unconfirmed_proofs(core, ids)
+
+
+def merged_messages(root: Path, base: str) -> list[tuple[str, str]]:
+    """``(commit, message)`` of the commits a merge brings in: those of ``base..HEAD`` not
+    on HEAD's first-parent line (what earlier merges brought), and those of a merge in
+    progress (``incoming_heads``). A commit made on the branch itself is no delivery
+    (DEC-256: a proof holds a merge into the default branch, not a direct commit)."""
+    root = Path(root)
+    own = set((_git(root, "rev-list", "--first-parent", f"{base}..HEAD") or "").split())
+    ranges = [f"{base}..HEAD", *(f"HEAD..{sha}" for sha, _ in incoming_heads(root))]
+    out: list[tuple[str, str]] = []
+    for rng in ranges:
+        for entry in (_git(root, "log", "--format=%H%x1f%B%x00", rng) or "").split("\0"):
+            commit, _sep, message = entry.strip("\n").partition("\x1f")
+            if commit and message.strip() and commit not in own:
+                out.append((commit, message))
+    return out
 
 
 def _link_problems(core: Any, base: str, paths: Sequence[str],
@@ -560,14 +710,14 @@ def _link_problems(core: Any, base: str, paths: Sequence[str],
     return stale_links, untested
 
 
-def _errors(core: Any, base: str = "") -> list[str]:
+def _errors(core: Any, base: str = "", findings: Sequence[Any] | None = None) -> list[str]:
     """SR-306: every validate error of the result, whether or not the base had it. With
     ``base``, SR-322: each committed log entry the result deletes from it that no archive
     segment of its kind keeps."""
     from plumb.validate import validate
 
-    rows = [f"  [{f.code}] {f.subject}: {f.message}" for f in validate(core)
-            if f.severity == "error"]
+    rows = [f"  [{f.code}] {f.subject}: {f.message}"
+            for f in (validate(core) if findings is None else findings) if f.severity == "error"]
     return rows + (_deleted_entries(Path(core.root), base) if base else [])
 
 
@@ -659,8 +809,8 @@ def _reworded(core: Any, base: str, paths: Sequence[str], index: Mapping[str, An
     return out
 
 
-def _contradictions(core: Any, base: str, paths: Sequence[str], index: Mapping[str, Any]
-                    ) -> tuple[list[str], list[str], str]:
+def _contradictions(core: Any, base: str, paths: Sequence[str], index: Mapping[str, Any],
+                    findings: Sequence[Any] | None = None) -> tuple[list[str], list[str], str]:
     """SR-165 EX-2: the new or reworded requirements that contradict a live one, held only
     on a confident verdict and otherwise only noted (at most 5 each), with validate's
     ``supersedes`` warnings; the note when the judge could not be reached."""
@@ -677,9 +827,33 @@ def _contradictions(core: Any, base: str, paths: Sequence[str], index: Mapping[s
     if not said and any(k in line for line, _ in rows
                         for k in ("judging unavailable", "no judgment", "not checked")):
         return [], [], owner_text.PREMERGE_NOT_JUDGED
-    out += [f"  {f.subject}: {f.message}" for f in validate(core)
+    findings = validate(core) if findings is None else findings
+    out += [f"  {f.subject}: {f.message}" for f in findings
             if f.code == "supersedes" and f.subject.split("#")[0] in ids]
     return out, notes, ""
+
+
+def hold_lines(report: Any, into: str) -> list[str]:
+    """The questions, failing tests and unproven deliveries that hold a merge (SR-260 EX-28,
+    EX-30), by title (a premerge or a merge-check report)."""
+    out: list[str] = []
+    questions = getattr(report, "questions", ())
+    if questions:
+        out.append(owner_text.PREMERGE_QUESTIONS_HEADER)
+        out.extend(_capped([owner_text.PREMERGE_QUESTION.format(title=title)
+                            for q in questions for title in q.get("titles") or q["records"]]))
+    failing = getattr(report, "failing_tests", ())
+    if failing:
+        out.append(owner_text.PREMERGE_FAILING_HEADER)
+        out.extend(_capped([owner_text.PREMERGE_FAILING.format(**r) for r in failing]))
+    out.extend(getattr(report, "verify_lines", ()))
+    proofs = getattr(report, "proofs", ())
+    if proofs:
+        out.append(owner_text.PREMERGE_PROOFS_HEADER.format(into=into))
+        out.extend(_capped([(owner_text.PREMERGE_PROOF_NOT_SHOWN if r["why"] ==
+                             "not shown working" else owner_text.PREMERGE_PROOF_NOT_CONFIRMED)
+                            .format(title=r["title"]) for r in proofs]))
+    return out
 
 
 def _with_lines(report: PremergeReport) -> PremergeReport:
@@ -716,17 +890,22 @@ def render(report: PremergeReport) -> list[str]:
         out.append(owner_text.CONFLICTS_HEADER)
         for conflict in report.intent_conflicts:
             out.extend(str(line) for line in conflict.get("card") or [])
-    if report.unconfirmed:
+    out.extend(hold_lines(report, report.into))
+    if report.unconfirmed:      # counted, listed, never held (SR-260 EX-8, EX-31)
         n = len(report.unconfirmed)
-        out.append(f"{n} requirement{'s' if n > 1 else ''} this merge touches wait on a judge:")
+        out.append(owner_text.PREMERGE_WAITING_HEADER.format(
+            n=n, s="s" if n > 1 else "", v="" if n > 1 else "s"))
         out.extend(_capped([owner_text.PREMERGE_UNCONFIRMED.format(title=r["title"])
                             for r in report.unconfirmed]))
     out.extend(drift_lines(report))
-    if report.undeclared:
-        out.append("files changed without a requirement that declares them:")
+    if report.undeclared:       # listed, never held (SR-260 EX-4)
+        out.append(owner_text.PREMERGE_UNDECLARED_HEADER)
         out.extend(_capped([owner_text.PREMERGE_UNDECLARED.format(
             path=r.get("path") or f"a commit without a requirement ({r['commit'][:12]})")
             for r in report.undeclared]))
+    if report.claims_errors:    # listed, never held (gates.claims_gate)
+        out.append(owner_text.PREMERGE_CLAIMS_UNREADABLE_HEADER)
+        out.extend(_capped(list(report.claims_errors)))
     if report.collisions:
         out.append("two different records hold one ID:")
         out.extend(_capped([owner_text.PREMERGE_COLLISION.format(record=r["id"])
@@ -883,13 +1062,20 @@ def run_post_merge(root: Path) -> int:
     return report.exit
 
 
-def _start_landing(root: Path) -> int:
+def run_post_commit(root: Path) -> int:
+    """``plumb merge-check --hook post-commit``: a merge commit made by ``git commit`` (a held
+    merge the owner finished) starts the landing job as a ``git merge`` does. ORIG_HEAD is not
+    the pre-merge head here, so the first parent is."""
+    return _start_landing(Path(root), "HEAD^1")
+
+
+def _start_landing(root: Path, before_ref: str = "ORIG_HEAD") -> int:
     """SR-296: work that landed on the default branch (a merge commit or a fast-forward)
     starts the landing job, detached, so the hook stays within its time limit."""
     try:
         here = (_git(root, "symbolic-ref", "--short", "-q", "HEAD") or "").strip()
         if here == default_branch_of(root):
-            before = (_git(root, "rev-parse", "-q", "--verify", "ORIG_HEAD") or "").strip()
+            before = (_git(root, "rev-parse", "-q", "--verify", before_ref) or "").strip()
             head = (_git(root, "rev-parse", "HEAD") or "").strip()
             moved = before and head and before != head
             if moved and _git(root, "merge-base", "--is-ancestor", before, head) is not None:

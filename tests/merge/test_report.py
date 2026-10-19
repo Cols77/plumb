@@ -32,8 +32,9 @@ def base(repo: Path) -> tuple[Path, str]:
 
 
 @pytest.mark.sr("SR-260")
-def test_touched_unconfirmed_exits_4(base) -> None:
-    """SR-047 EX-1: a branch changes a proposed requirement's implementing file."""
+def test_touched_unconfirmed_is_listed_and_does_not_hold(base) -> None:
+    """SR-047 EX-1, SR-260 EX-8: a branch changes a proposed requirement's implementing
+    file: listed as waiting on a judge, counted, and not held on."""
     root, sha = base
     write(root, "src/mod.py", "x = 2\n")
     repin_all(root)
@@ -42,10 +43,10 @@ def test_touched_unconfirmed_exits_4(base) -> None:
     assert isinstance(report, MergeReport)
     assert report.touched == ("SR-001",)
     assert [a["id"] for a in report.awaiting] == ["SR-001", "INT-001"]
-    assert exit_code(report) == 4 == report.exit
+    assert exit_code(report) == 0 == report.exit
     text = "\n".join(render(report))
     assert "SR-001 (proposed) Links pin both ends" in text
-    assert "plumb: merge waits for 2 records to be approved" in text     # counted (SR-267)
+    assert "plumb: waiting on a judge: 2 records" in text     # counted (SR-267)
     assert "plumb approve" not in text
 
 
@@ -57,9 +58,9 @@ def test_validate_merge_and_merge_check_agree(base, capsys) -> None:
     write(root, "src/mod.py", "x = 2\n")  # uncommitted, link stale: exit 1
     assert cli.main(["validate", "--merge", sha, *args]) == 1
     assert cli.main(["merge-check", sha, "--no-run", *args]) == 1
-    repin_all(root)  # touched and unconfirmed: exit 4
-    assert cli.main(["validate", "--merge", sha, *args]) == 4
-    assert cli.main(["merge-check", sha, "--no-run", *args]) == 4
+    repin_all(root)  # touched and unconfirmed: listed, exit 0 (SR-260 EX-8)
+    assert cli.main(["validate", "--merge", sha, *args]) == 0
+    assert cli.main(["merge-check", sha, "--no-run", *args]) == 0
     approvals.approve(open_core(root), ["SR-001", "INT-001"])
     assert cli.main(["validate", "--merge", sha, *args]) == 0
     assert cli.main(["merge-check", sha, "--no-run", *args]) == 0
@@ -89,7 +90,7 @@ def test_set_member_counts_only_with_full_set_approval(base) -> None:
     report = merge_report(open_core(root), sha, run_full=False)
     states = {a["id"]: a["state"] for a in report.awaiting}
     assert states == {"SR-001": "set unconfirmed"}
-    assert report.exit == 4
+    assert report.exit == 0       # listed, never held (SR-260)
     assert "INT-002" in "\n".join(render(report))
     approvals.approve(open_core(root), ["SR-001", "SR-003"])  # the whole set
     report = merge_report(open_core(root), sha, run_full=False)

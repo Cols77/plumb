@@ -12,8 +12,8 @@
 #   flaky_rerun: true
 #   infra_globs: ["**/conftest.py", pyproject.toml, uv.lock, pytest.ini, tox.ini, setup.cfg]
 # hooks:
-#   hard_limit_s: 30   # the watchdog cuts a hook here (keep it under the host timeouts)
-#   budget_ms: {session_start: 20000, prompt: 20000, stop: 20000, post_edit: 5000}
+#   hard_limit_s: 90   # the watchdog cuts a hook here; at most 119 (host timeouts 120 s minus the stop grace)
+#   budget_ms: {session_start: 60000, prompt: 60000, stop: 60000, post_edit: 15000}
 #   brief_lines: 30
 #   prompt_lines: 20
 #   summary_proposed_cap: 3    # records shown in full per summary
