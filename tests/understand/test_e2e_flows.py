@@ -215,6 +215,7 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
         "judge": judge_clear("INT-008", SR_088=["some features stay internal"])}),
         encoding="utf-8")
     s.start()
+    assert s.worker_idle(40)     # SR-298: session start judges the waiting records first
     s.say(message)
     lines: list[str] = []
     deadline = time.monotonic() + 12

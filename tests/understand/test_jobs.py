@@ -41,6 +41,18 @@ def test_job_file_round_trips_and_lists_in_created_order(tmp_path: Path) -> None
     assert jobs.queued(tmp_path, "nobody") == []
 
 
+def test_the_owners_answer_is_read_before_the_backlog_pass(tmp_path: Path) -> None:
+    """A read queued after the backlog pass's judge jobs runs first; the backlog keeps its order."""
+    first = jobs.new_job("judge", "s1", "judge.v1", {"pass": "backlog", "n": 1},
+                         created="2026-01-01T00:00:00Z")
+    second = jobs.new_job("judge", "s1", "judge.v1", {"pass": "backlog", "n": 2},
+                          created="2026-01-01T00:00:01Z")
+    read = jobs.new_job("read", "s1", "read.v1", INPUTS, created="2026-01-01T00:00:02Z")
+    for job in (first, second, read):
+        files.write_json_atomic(jobs.job_path(tmp_path, "s1", job.id), files.job_to_json(job))
+    assert [j.id for j in jobs.queued(tmp_path, "s1")] == [read.id, first.id, second.id]
+
+
 def test_a_result_counts_only_with_the_workers_ledger_entry(tmp_path: Path) -> None:
     from plumb.contracts import JobResult
     from plumb.understand import ledger
