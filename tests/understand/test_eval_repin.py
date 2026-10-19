@@ -122,7 +122,7 @@ def test_build_case_rebuilds_what_repin_after_tests_shows(project: Path) -> None
     assert isinstance(case, Case)
     assert shown.shown == [dict(requirement=case.requirement, link_id=case.link_id,
                                 link_kind=case.link_kind, path=case.path,
-                                before=case.before, after=case.after)]
+                                before=case.before, after=case.after, requirement_before="")]
     assert "-    return a + b" in case.diff and "+    return a * b" in case.diff
 
 

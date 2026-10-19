@@ -389,7 +389,9 @@ def unstaged_plumb(root: Path) -> list[str]:
         x, y, path = item[0], item[1], item[3:]
         if x in "RC":
             i += 1  # a rename or copy names its source next
-        if y != " ":
+        # an untracked log entry is the landing job's to commit, never a hold (SR-329): the
+        # check's own judge calls write some while it runs
+        if y != " " and not (x == "?" and path.startswith(".plumb/log/")):
             found.append(path)
     return sorted(set(found))
 
@@ -515,8 +517,12 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
     conflicts = conflict_rows(core, hook=True)
     collisions = _collisions(core)
     stale_links, untested_links = _link_problems(core, base, paths, index)
-    validate_errors = _errors(core, base)
-    contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index)
+    from plumb.validate import validate
+
+    findings = validate(core)   # one pass, shared by both checks (it re-reads the log chain)
+    validate_errors = _errors(core, base, findings)
+    contradictions, contradiction_notes, judge_note = _contradictions(core, base, paths, index,
+                                                                      findings)
     questions = open_questions_on(core, required)
     from plumb.boundary.report import verification_holds
     from plumb.merge import _verification
@@ -524,13 +530,14 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
     # the report's own reading of the evidence, so both forms hold alike (EX-10); no test run
     verification = _verification(core, touched, paths, base)
     failing_tests = failing_tests_of(core, verification)
-    proofs = delivered_proofs(core, messages) if ours == default_branch_of(root) else []
+    main = ours == default_branch_of(root)   # DEC-271: tests, questions, proofs hold main only
+    proofs = delivered_proofs(core, messages) if main else []
     # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
     # the commit that finishes it ("finish the merge") records the settled version
     held = bool(collisions or unstaged or unreadable or settled
                 or stale_links or untested_links or validate_errors)
-    code = 1 if held else 5 if (verification_holds(verification) or proofs) else \
-        4 if (conflicts or contradictions or questions) else 0
+    code = 1 if held else 5 if main and (verification_holds(verification) or proofs) else \
+        4 if (conflicts or contradictions or (main and questions)) else 0
     report = PremergeReport(merging=theirs, into=ours, touched=tuple(touched),
                             unconfirmed=tuple(unconfirmed), undeclared=tuple(undeclared),
                             claims_errors=tuple(claims_errors), questions=tuple(questions),
@@ -683,14 +690,14 @@ def _link_problems(core: Any, base: str, paths: Sequence[str],
     return stale_links, untested
 
 
-def _errors(core: Any, base: str = "") -> list[str]:
+def _errors(core: Any, base: str = "", findings: Sequence[Any] | None = None) -> list[str]:
     """SR-306: every validate error of the result, whether or not the base had it. With
     ``base``, SR-322: each committed log entry the result deletes from it that no archive
     segment of its kind keeps."""
     from plumb.validate import validate
 
-    rows = [f"  [{f.code}] {f.subject}: {f.message}" for f in validate(core)
-            if f.severity == "error"]
+    rows = [f"  [{f.code}] {f.subject}: {f.message}"
+            for f in (validate(core) if findings is None else findings) if f.severity == "error"]
     return rows + (_deleted_entries(Path(core.root), base) if base else [])
 
 
@@ -782,8 +789,8 @@ def _reworded(core: Any, base: str, paths: Sequence[str], index: Mapping[str, An
     return out
 
 
-def _contradictions(core: Any, base: str, paths: Sequence[str], index: Mapping[str, Any]
-                    ) -> tuple[list[str], list[str], str]:
+def _contradictions(core: Any, base: str, paths: Sequence[str], index: Mapping[str, Any],
+                    findings: Sequence[Any] | None = None) -> tuple[list[str], list[str], str]:
     """SR-165 EX-2: the new or reworded requirements that contradict a live one, held only
     on a confident verdict and otherwise only noted (at most 5 each), with validate's
     ``supersedes`` warnings; the note when the judge could not be reached."""
@@ -800,7 +807,8 @@ def _contradictions(core: Any, base: str, paths: Sequence[str], index: Mapping[s
     if not said and any(k in line for line, _ in rows
                         for k in ("judging unavailable", "no judgment", "not checked")):
         return [], [], owner_text.PREMERGE_NOT_JUDGED
-    out += [f"  {f.subject}: {f.message}" for f in validate(core)
+    findings = validate(core) if findings is None else findings
+    out += [f"  {f.subject}: {f.message}" for f in findings
             if f.code == "supersedes" and f.subject.split("#")[0] in ids]
     return out, notes, ""
 

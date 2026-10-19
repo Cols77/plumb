@@ -27,7 +27,7 @@ kind = "repin"
 SCHEMA_ID = "repin.v1"
 HERE = Path(__file__).resolve().parent
 CONTEXT_LINES = 12
-DIFF_MAX = 60_000
+DIFF_MAX = 160_000   # Sonnet reads this much; the study room folds long diffs (SR-267 EX-6)
 
 
 def _load_schema() -> Mapping[str, Any]:
@@ -66,18 +66,24 @@ class ModelMeaningJudge:
         self.name = f"{getattr(dispatcher, 'name', 'model')}:{getattr(dispatcher, 'model', '')}"
 
     def same_meaning(self, *, requirement: str, link_id: str, link_kind: str, path: str,
-                     before: str, after: str) -> Meaning:
+                     before: str, after: str, requirement_before: str = "") -> Meaning:
+        """``requirement_before``: the requirement's wording at the pin when it was reworded
+        since; the end is then judged against the wording now, even with no code change."""
         from plumb.understand import agents
         from plumb.understand import schema as schema_check
 
         change = diff(before, after, path)
-        if not change:
+        if not change and not requirement_before:
             return Meaning(True, "the linked text is identical", 1.0)
         if len(change) > DIFF_MAX:
             return Meaning(None, f"the change is too large to judge ({len(change)} characters "
                                  "of diff)")
         inputs = {"requirement": requirement, "link": link_id, "link_kind": link_kind,
                   "path": path, "diff": change}
+        if requirement_before:
+            inputs["requirement_before"] = requirement_before
+            if not change:
+                inputs["end"] = after[:DIFF_MAX]
         digest = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode("utf-8")).hexdigest()
         job = Job(id=f"repin-{digest[:16]}", kind=kind, schema=SCHEMA_ID, inputs=inputs)
         try:
@@ -127,16 +133,21 @@ def open_judge(core: Any) -> ModelMeaningJudge | None:
 # changed) repins on JEV alone; below it, with JEV unreachable or with no threshold set,
 # Sonnet judges. A low answer is never a "changed" verdict: JEV just does not clear the link.
 
-JEV_QUESTION = ("Does the change leave everything the requirement and its examples rely on "
-                "as it was?")
+JEV_QUESTION = ("Does the linked end, as it is now, still do everything the requirement and "
+                "its examples say, with nothing they rely on removed, contradicted or broken?")
 
 
 def jev_prompt(*, requirement: str, link_id: str, link_kind: str, path: str,
-               change: str) -> str:
-    return (f"Requirement:\n{requirement}\n\n"
-            f"Link {link_id} ({link_kind}) to {path}\n\n"
-            f"The change to the linked end since it was pinned (unified diff):\n"
-            f"{change}\n")
+               change: str, requirement_before: str = "", end: str = "") -> str:
+    text = f"Requirement:\n{requirement}\n\n"
+    if requirement_before:
+        text += f"The requirement as it was when the link was pinned:\n{requirement_before}\n\n"
+    text += f"Link {link_id} ({link_kind}) to {path}\n\n"
+    if change:
+        text += f"The change to the linked end since it was pinned (unified diff):\n{change}\n"
+    else:
+        text += f"The linked end did not change; as it is:\n{end}\n"
+    return text
 
 
 def jev_probability(backend: Any, prompt: str) -> float:
@@ -161,14 +172,15 @@ class JevTier:
         self.backend, self.threshold = backend, float(threshold)
 
     def clears(self, *, requirement: str, link_id: str, link_kind: str, path: str,
-               before: str, after: str) -> float | None:
+               before: str, after: str, requirement_before: str = "") -> float | None:
         change = diff(before, after, path)
-        if not change or len(change) > DIFF_MAX:
+        if (not change and not requirement_before) or len(change) > DIFF_MAX:
             return None
         try:
             p = jev_probability(self.backend, jev_prompt(
                 requirement=requirement, link_id=link_id, link_kind=link_kind, path=path,
-                change=change))
+                change=change, requirement_before=requirement_before,
+                end="" if change else after[:DIFF_MAX]))
         except Exception:  # noqa: BLE001 - JEV unreachable or failing: Sonnet judges
             return None
         return p if p >= self.threshold else None

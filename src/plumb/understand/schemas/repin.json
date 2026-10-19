@@ -1,6 +1,6 @@
 {
   "id": "repin.v1",
-  "title": "Does the change alter what the requirement relies on?",
+  "title": "Does the end still do what the requirement says?",
   "type": "object",
   "required": ["verdict", "reason", "confidence"],
   "properties": {

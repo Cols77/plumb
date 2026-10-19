@@ -1,13 +1,15 @@
 """SR-260 (DEC-252, DEC-255 to DEC-257): what holds a merge, and what is only listed: a proof
 the owner has not confirmed holds a merge into the default branch (EX-28) and only that one
 (EX-29), a question waiting for the owner holds (EX-30), records waiting on a judge are
-counted and never hold (EX-31); ``plumb proof --ask`` and the question-answer hook carry the
+counted and never hold (EX-31), tests, questions and proofs hold only a merge into the
+default branch (EX-32, DEC-271); ``plumb proof --ask`` and the question-answer hook carry the
 owner's yes."""
 
 from __future__ import annotations
 
 import io
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,7 +18,7 @@ from mergedriver.mdhelpers import commit_all, ex, make_repo, record, run_git, wr
 from plumb import cli
 from plumb.api import open_core
 from plumb.boundary import merge_report
-from plumb.boundary.premerge import check
+from plumb.boundary.premerge import check, unstaged_plumb
 from plumb.capture import proof
 from plumb.hosts.claude_code import question_answer
 
@@ -133,26 +135,32 @@ def test_main_merged_into_a_feature_branch_holds_no_proof(tmp_path: Path) -> Non
     assert report.proofs == () and report.exit == 0, report.lines
 
 
-def test_a_question_waiting_for_the_owner_holds_with_4(tmp_path: Path) -> None:
-    """EX-30: an open judge question about SR-001, which the merge touches: exit 4, and the
-    report says a question waits for the owner, by the record's title."""
-    root = make_repo(tmp_path / "main")
-    _sr001(root)
-    commit_all(root, "SR-001")
-    feat = _branch(root, "feat-y", tmp_path / "feat")
-    _change(root, "src/x.py", "work\n\nSR: SR-001")
-    _change(feat, "notes.txt", "feature side")
-    core = open_core(feat)
+def _ask_about_sr001(root: Path) -> None:
+    """An open judge question to the owner about SR-001 as it reads in ``root`` now."""
     question = "Should links pin both ends?"
-    path = feat / ".plumb" / "session" / "s1" / "judge_questions.json"
+    path = root / ".plumb" / "session" / "s1" / "judge_questions.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([{
         "key": question.lower(), "question": question, "header": "Pins", "job": "j1",
         "options": [{"label": "yes", "description": ""}],
-        "records": [{"id": "SR-001", "hash": core.index()["SR-001"].hash}]}]),
+        "records": [{"id": "SR-001", "hash": open_core(root).index()["SR-001"].hash}]}]),
         encoding="utf-8")
-    run_git(feat, "merge", "--no-commit", "--no-ff", "--no-verify", "main")
-    report = check(open_core(feat))
+
+
+def test_a_question_waiting_for_the_owner_holds_with_4(tmp_path: Path) -> None:
+    """EX-30: an open judge question about SR-001, which a merge into main touches: exit 4,
+    and the report says a question waits for the owner, by the record's title."""
+    root = make_repo(tmp_path / "main")
+    _sr001(root)
+    commit_all(root, "SR-001")
+    feat = _branch(root, "feat-y", tmp_path / "feat")
+    write_record(feat, record("SR-001", TITLE, statement="Both ends are pinned, always.",
+                              examples=[ex(1)]))
+    commit_all(feat, "reword SR-001")
+    _change(root, "notes.txt", "main side")
+    run_git(root, "merge", "--no-commit", "--no-ff", "--no-verify", "feat-y")
+    _ask_about_sr001(root)
+    report = check(open_core(root))
     assert report.exit == 4, report.lines
     assert [q["records"] for q in report.questions] == [["SR-001"]]
     assert f'a question waits for you on "{TITLE}"' in "\n".join(report.lines)
@@ -178,6 +186,69 @@ def test_forty_records_waiting_on_a_judge_are_counted_and_do_not_hold(tmp_path: 
            "the merge):" in text
     assert "+30 more" in text
     assert report.exit == 0, report.lines
+
+
+@pytest.fixture
+def catching_up(repo: Path) -> Path:
+    """DEC-271: main breaks confirmed SR-001's linked test (its latest run fails, no full run
+    recorded) and an owner question waits on SR-001; feat merges main (no commit yet)."""
+    sys.path.insert(0, str(Path(__file__).parents[1] / "merge"))  # merge_helpers' project
+    from merge_helpers import commit, git, project, repin_all, write
+
+    from plumb import approvals
+    from plumb.verify import open_verify
+
+    project(repo)
+    approvals.approve(open_core(repo), ["SR-001", "SR-002", "INT-001"])
+    commit(repo, "project")
+    git(repo, "checkout", "-q", "-b", "feat")
+    write(repo, "notes.txt", "feature side\n")
+    commit(repo, "notes")
+    git(repo, "checkout", "-q", "main")
+    write(repo, "src/pkg/mod.py", "def add(a, b):\n    return a - b\n")
+    sr001 = repo / ".plumb/requirements/SR-001.md"
+    # reworded: unconfirmed, so the judge's question to the owner stays open
+    write(repo, ".plumb/requirements/SR-001.md", sr001.read_text(encoding="utf-8")
+          .replace("returns a + b.", "returns the sum a + b."))
+    repin_all(repo)
+    open_verify(open_core(repo)).run(nodes=["tests/test_mod.py"])
+    commit(repo, "break add\n\nSR: SR-001")
+    git(repo, "checkout", "-q", "feat")
+    git(repo, "merge", "--no-commit", "--no-ff", "--no-verify", "main")
+    _ask_about_sr001(repo)
+    return repo
+
+
+def test_main_merged_into_a_work_branch_lists_tests_and_questions_without_holding(
+        catching_up: Path) -> None:
+    """EX-32: the quick check lists the failing test, the pending full run and the question,
+    and holds on none of them (exit 0)."""
+    report = check(open_core(catching_up))
+    assert [(r["id"], r["state"]) for r in report.failing_tests] == [("SR-001", "failing")]
+    assert any("full" in line for line in report.verify_lines), report.lines
+    assert [q["records"] for q in report.questions] == [["SR-001"]]
+    assert report.exit == 0, report.lines
+
+
+def test_ex32_in_the_report_form(catching_up: Path) -> None:
+    """EX-32, EX-10: the report-only form lists the same and exits 0 like the quick check."""
+    report = merge_report(open_core(catching_up), "HEAD", run_full=False)
+    assert report.failing and report.verification.get("full_pending")
+    assert report.questions and not report.into_default
+    assert report.exit == 0 == check(open_core(catching_up)).exit
+
+
+def test_an_untracked_log_entry_is_not_unstaged(tmp_path: Path) -> None:
+    """SR-329: an untracked .plumb/log entry is the landing job's to commit; an untracked
+    record file still is unstaged."""
+    root = make_repo(tmp_path / "main")
+    _sr001(root)
+    commit_all(root, "SR-001")
+    entry = root / ".plumb" / "log" / "events" / "20990101T000000Z-x.json"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text("{}\n", encoding="utf-8")
+    write_record(root, record("SR-002", "other rule", statement="Other.", examples=[ex(1)]))
+    assert unstaged_plumb(root) == [".plumb/requirements/SR-002.md"]
 
 
 # --------------------------------------------------------------------------- proof --ask

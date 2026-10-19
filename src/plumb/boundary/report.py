@@ -77,6 +77,8 @@ class MergeReport:
     # SR-260 EX-28, DEC-256: work landing on the default branch delivers a requirement (an SR
     # trailer in the range) whose proof is not shown working or not confirmed (exit 5)
     proofs: tuple[Mapping[str, Any], ...] = ()        # {id, title, why}
+    # DEC-271: tests, questions and proofs hold only a merge into the default branch
+    into_default: bool = True
 
 
 def as_dict(report: MergeReport) -> dict[str, Any]:
@@ -100,10 +102,11 @@ def exit_code(report: MergeReport) -> int:
     if report.integrity or report.links or report.id_collisions or report.unmerged or \
             report.stale_links or report.untested_links:
         return 1
-    if verification_holds(report.verification) or report.regressions or report.failing or \
-            report.unverified or report.proofs:
+    main = report.into_default   # DEC-271: a work branch catching up holds on 1 and conflicts
+    if main and (verification_holds(report.verification) or report.regressions or
+                 report.failing or report.unverified or report.proofs):
         return 5
-    if report.intent_conflicts or report.contradictions or report.questions:
+    if report.intent_conflicts or report.contradictions or (main and report.questions):
         return 4
     return 0
 
@@ -326,8 +329,8 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         here = _git(core, "symbolic-ref", "--short", "-q", "HEAD").strip()
     except (GitError, OSError):
         here = ""
-    proofs = delivered_proofs(core, merged_messages(core.root, base)) \
-        if here == default_branch_of(core.root) else []
+    into_default = here == default_branch_of(core.root)
+    proofs = delivered_proofs(core, merged_messages(core.root, base)) if into_default else []
 
     report = MergeReport(
         base=base, fork=fork, head=head, changed=tuple(paths), touched=tuple(touched),
@@ -342,7 +345,8 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         verification=verification, run_full=run_full,
         legacy_log_lines=_legacy_log_lines(core),
         not_shown=tuple(_not_shown(core, touched)),
-        questions=tuple(open_questions_on(core, required)), proofs=tuple(proofs))
+        questions=tuple(open_questions_on(core, required)), proofs=tuple(proofs),
+        into_default=into_default)
     unmerged, conflicts = _merge_state(core, hook)
     report = _replace(report, unmerged=tuple(unmerged), intent_conflicts=tuple(conflicts))
     if not hook:   # the pre-push hook makes no live judge call; the pre-merge hook did these

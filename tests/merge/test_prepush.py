@@ -60,17 +60,18 @@ def test_hooks_install_installs_pre_push(repo: Path) -> None:
 
 
 def test_hook_blocks_push_on_nonzero(repo: Path, tmp_path: Path) -> None:
-    """SR-051 EX-2, SR-260 EX-3: a branch whose report exits 4 (a question waits for the
-    owner on SR-001) cannot be pushed through the hook."""
+    """SR-051 EX-2, SR-260 EX-3: main, whose report exits 4 (a question waits for the
+    owner on SR-001; questions hold only the default branch, DEC-271), cannot be pushed
+    through the hook."""
     remote = tmp_path / "remote.git"
     subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
     git(repo, "remote", "add", "origin", str(remote))
     git(repo, "push", "-q", "origin", "main")
+    before = git(repo, "rev-parse", "HEAD").strip()
     install_pre_push_hook(repo, sys.executable)
-    git(repo, "checkout", "-q", "-b", "feat")
     write(repo, ".plumb/requirements/SR-001.md",
           "---\nid: SR-001\ntitle: New\nstatement: A new behaviour.\n---\n")
-    commit(repo, "propose SR-001\n\nSR: SR-001")
+    commit(repo, "propose SR-001")   # no SR trailer: no proof is delivered (that would be 5)
     from plumb.api import open_core
 
     asked = repo / ".plumb" / "session" / "s1" / "judge_questions.json"
@@ -80,13 +81,13 @@ def test_hook_blocks_push_on_nonzero(repo: Path, tmp_path: Path) -> None:
         "options": [{"label": "yes", "description": ""}],
         "records": [{"id": "SR-001", "hash": open_core(repo).index()["SR-001"].hash}]}]),
         encoding="utf-8")
-    pushed = subprocess.run(["git", "push", "origin", "feat"], cwd=repo, capture_output=True,
+    pushed = subprocess.run(["git", "push", "origin", "main"], cwd=repo, capture_output=True,
                             text=True, encoding="utf-8", errors="replace")
     assert pushed.returncode != 0, pushed.stdout + pushed.stderr
     assert "SR-001" in pushed.stdout + pushed.stderr
-    probe = subprocess.run(["git", "ls-remote", str(remote), "refs/heads/feat"],
+    probe = subprocess.run(["git", "ls-remote", str(remote), "refs/heads/main"],
                            capture_output=True, text=True)
-    assert probe.stdout.strip() == ""
+    assert probe.stdout.split()[0] == before
 
 
 def test_hook_mode_reads_refs_and_allows_green(repo: Path, tmp_path: Path) -> None:
