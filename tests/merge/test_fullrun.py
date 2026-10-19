@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from merge_helpers import commit, project, repin_all, write
+from merge_helpers import commit, project, write
 
 from plumb import approvals
 from plumb.api import open_core
@@ -115,12 +115,11 @@ def test_merge_evidence_only_on_green(confirmed) -> None:
     # a second green check of the same identity reuses the run and adds no duplicate entry
     again = merge_report(open_core(root), sha, runner=Counting())
     assert again.full_run["reused"] and len(_evidence(root)) == 1
-    # an unconfirmed touched record: not green, nothing written
-    write(root, ".plumb/requirements/SR-002.md",
-          "---\nid: SR-002\ntitle: Other\nstatement: Something new.\n---\n")
-    repin_all(root)
-    waiting = merge_report(open_core(root), sha, runner=Counting())
-    assert waiting.exit == 4 and len(_evidence(root)) == 1
+    # a stale link of a touched record (an unconfirmed one no longer holds, SR-260): not
+    # green, nothing written
+    write(root, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")
+    held = merge_report(open_core(root), sha, runner=Counting())
+    assert held.exit == 1 and len(_evidence(root)) == 1
 
 
 # One full run per invocation, at every entry point that can reach ``fullrun.full_run``:

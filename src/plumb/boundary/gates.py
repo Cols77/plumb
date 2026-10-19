@@ -1,5 +1,5 @@
-"""Exit-1 gates of the merge boundary (sp3 5, SR-049): claims, links of touched records and
-log integrity. Each finding carries its fix."""
+"""Gates of the merge boundary (sp3 5, SR-049): the claims (listed, SR-260), links of touched
+records (exit 1). Each finding carries its fix."""
 
 from __future__ import annotations
 
@@ -8,22 +8,21 @@ from typing import Any
 
 
 def claims_gate(core: Any, fork: str) -> dict[str, Any]:
-    """``plumb claims check --range FORK..HEAD``, plus whether it holds the merge.
-
-    Holds on an undeclared path, or on a commit without an ``SR:`` trailer (touching a
-    non-exempt path) while ``require_trailer: true``."""
+    """``plumb claims check --range FORK..HEAD``, listed and never held (SR-260 EX-4,
+    DEC-252): an undeclared path, a commit without an ``SR:`` trailer (touching a non-exempt
+    path) while ``require_trailer: true``, and a policy or range the check cannot read (it
+    loses only what is listed, and is not in DEC-255's integrity list)."""
     from plumb.claims import claims_check, load_policy
 
     try:
         result = claims_check(core.root, f"{fork}..HEAD")
     except Exception as exc:  # an unreadable range is reported, never a crash
         return {"range": f"{fork}..HEAD", "undeclared": [], "unclaimed_commits": [],
-                "problems": [f"claims check failed: {exc}"], "holds": True}
+                "problems": [f"claims check failed: {exc}"]}
     policy = load_policy(core.root)
     unclaimed = list(result.get("unclaimed_commits") or []) if policy.require_trailer else []
     out = dict(result)
     out["unclaimed_commits"] = unclaimed
-    out["holds"] = bool(result.get("undeclared") or unclaimed)
     return out
 
 
