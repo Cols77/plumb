@@ -28,6 +28,8 @@ Run plumb as `plumb`. The owner's intent lives in files; read it before acting.
   by the owner and done by the hook. Merges, conflict cards: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.
 
+A hook time limit the owner asks for goes in `.plumb/config.yaml` `hooks.hard_limit_s`
+(budgets: `hooks.budget_ms`); the host allows at most 119 s: above that set 119, say why.
 Questions and approval: plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.
 1. After `capture`, run `plumb clarify --wait --json`. On `ask`, pass each `question`,

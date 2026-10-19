@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HOOK_LIMIT_MS = 5000
 STOP_LIMIT_MS = 20_000  # DEC-078: the stop hook's soft budget is 20 s
 
-pytestmark = [pytest.mark.sr("SR-275"), pytest.mark.sr("SR-225"), pytest.mark.sr("SR-265")]
+pytestmark = [pytest.mark.sr("SR-310"), pytest.mark.sr("SR-225"), pytest.mark.sr("SR-265")]
 
 INT = """---
 id: INT-001

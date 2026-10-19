@@ -124,15 +124,15 @@ def test_no_test_files_ship_in_the_plugin() -> None:
 
 @pytest.mark.sr("SR-279")
 def test_every_hook_has_a_timeout() -> None:
-    """Each hook is bounded; plumb's own watchdog (30 s, the stop read-back 1 s more) sits
-    well inside each bound (DEC-078: 60 s, and 120 s for the stop and async hooks)."""
+    """Each hook is bounded; plumb's own watchdog (90 s, the stop read-back 1 s more) sits
+    inside each bound (SR-310: 120 s for every hook)."""
     from plumb.hosts.claude_code.hookio import HARD_LIMIT_S
     from plumb.hosts.claude_code.stop import STOP_GRACE_S
 
     hooks = json.loads(_build_plugin().hooks_json())["hooks"]
     timeouts = {h["command"].rsplit(" ", 1)[1]: h["timeout"]
                 for groups in hooks.values() for g in groups for h in g["hooks"]}
-    assert timeouts == {"session-start": 60, "prompt": 60, "pre-tool": 60, "edit-check": 60,
+    assert timeouts == {"session-start": 120, "prompt": 120, "pre-tool": 120, "edit-check": 120,
                         "post-edit": 120, "question-answer": 120, "stop": 120,
                         "subagent-stop": 120}
     assert all(t > HARD_LIMIT_S + STOP_GRACE_S for t in timeouts.values())

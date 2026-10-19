@@ -38,7 +38,7 @@ def _count_fs_checks(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
 
 
 @pytest.mark.sr("SR-255")
-@pytest.mark.sr("SR-275")
+@pytest.mark.sr("SR-310")
 def test_adding_a_file_resolves_edges_from_the_scanned_set(project: Path, monkeypatch) -> None:
     build_map(open_core(project))
     write(project, "tests/test_new.py", "from pkg.helper import twice\nimport json\n\n\n"
