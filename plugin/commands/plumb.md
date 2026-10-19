@@ -52,14 +52,15 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
 - `confirm <anything>` or `approve <anything>`: no approval command exists; plumb's judge
   approves on their behalf, from their answers. Run `plumb status --card` and say in one
   line what waits for their answers or for the judge. You approve nothing yourself.
-- `debug` (also "what is stuck?", "what went wrong in plumb?", "is plumb fixing itself?"): run
-  `plumb debug` (add `--dry-run` when they only want to know what it would do) and tell them in
-  their terms what plumb could not settle on its own and what still needs them; the routine
-  fixes plumb made quietly stay out unless they ask for them. Never a record number, a link or a command: those
-  are yours, in the plumb-debug skill. A behaviour that changed under one of their decisions
-  reaches them as one question through the question tool, which you pass on as in point 1
-  below. You decide nothing for them. plumb reruns its own step once; a case it could not put
-  right ends as a defect report, which you read to them in their terms.
+- `debug` (also "what is stuck?", "what went wrong in plumb?", "is plumb fixing itself?"):
+  run `plumb debug` (add `--dry-run` when they only want to know what it would do) and tell
+  them in their terms what plumb could not settle on its own and what still needs them; the
+  routine fixes plumb made quietly stay out unless they ask for them. Never a record number,
+  a link or a command: those are yours, in the plumb-debug skill. A behaviour that changed
+  under one of their decisions reaches them as one question through the question tool, which
+  you pass on as in point 1 below. You decide nothing for them. plumb reruns its own step
+  once; a case it could not put right ends as a defect report, which you read to them in
+  their terms.
 - `impact <anything>`: run `plumb impact <their words>` and say in plain terms what a
   change would reach.
 - `view`: run `plumb view --open` and tell them the Obsidian vault is open (generated;
