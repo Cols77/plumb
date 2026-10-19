@@ -138,14 +138,15 @@ def test_merge_holds_a_regression_hidden_by_rewriting_the_test(confirmed, capsys
     assert "unverified acceptance tests: SR-002 EX-1 tests/test_helper.py" in out
 
 
-def test_merge_waits_for_the_owner_on_a_changed_acceptance_test(confirmed, capsys) -> None:
+def test_merge_lists_a_changed_acceptance_test_for_the_owner(confirmed, capsys) -> None:
+    """Listed as waiting, never held (SR-260, DEC-252): the test passes, so nothing holds."""
     root, base = confirmed
     write(root, "tests/test_mod.py", (root / "tests/test_mod.py").read_text("utf-8")
           + "\n\ndef test_add_more():\n    assert add(2, 2) == 4\n")
     assert open_verify(open_core(root)).run(nodes=["tests/test_mod.py"]).ok
     code = _check(root, base, as_json=True)
     data = json.loads(capsys.readouterr().out)
-    assert code == 4, data
+    assert code == 0, data
     assert data["awaiting"][0]["id"] == "SR-001"
     assert data["awaiting"][0]["state"] == "acceptance test changed"
     assert data["awaiting"][0]["changed_tests"] == ["tests/test_mod.py"]
