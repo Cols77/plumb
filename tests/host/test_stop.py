@@ -13,6 +13,7 @@ from fakes import FakeVerify, agent_notes
 
 from plumb import approvals
 from plumb.api import open_core
+from plumb.config import DEFAULT_HOOK_BUDGET_MS
 from plumb.contracts import FullPending, NodeEvidence
 from plumb.hosts.claude_code import stop
 
@@ -304,6 +305,9 @@ def test_writes_status_snapshot(project: Path, hook_input) -> None:
     assert data["tests"] == "regression" and data["ask"] == 1
 
 
+PAST_STOP_BUDGET_S = DEFAULT_HOOK_BUDGET_MS["stop"] / 1000 + 5.0   # SR-181, SR-310
+
+
 class _Clock:
     """A ``time`` stand-in for the hook deadline: frozen until a step advances it."""
 
@@ -334,7 +338,7 @@ class _SlowVerify(FakeVerify):
     def select(self, changed, *, budget_s=None):
         result = super().select(changed, budget_s=budget_s)
         assert self.clock is not None
-        self.clock.now += 25.0        # past the 20 s stop budget (SR-181)
+        self.clock.now += PAST_STOP_BUDGET_S
         return result
 
 
@@ -367,7 +371,7 @@ class _SlowCore:
 
     def status(self, *args, **kwargs):
         result = self._core.status(*args, **kwargs)
-        self._clock.now += 25.0       # past the 20 s stop budget (SR-181)
+        self._clock.now += PAST_STOP_BUDGET_S
         return result
 
     def __getattr__(self, name: str):

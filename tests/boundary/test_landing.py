@@ -369,3 +369,18 @@ def test_ex11_a_second_landing_run_queues_no_judge_job_twice(repo: Path, write_r
     result = landing.land(repo, sha, before, session=SESSION)
     assert result["queued"] == 0 and backlog.waiting(open_core(repo), SESSION) == []
     assert sorted(files.jobs_dir(repo, SESSION).glob("*.json")) == jobs
+
+
+@pytest.mark.sr("SR-296")
+def test_a_helper_or_tsx_file_linked_as_a_test_is_no_unrun_case(repo: Path) -> None:
+    from mergedriver.mdhelpers import link
+
+    write_record(repo, record("SR-001", "rule", statement="s", examples=[ex(1)], links=[
+        link("verified_by", path="tests/helper.py"),
+        link("verified_by", path="tests/plugin/a.test.tsx"),
+        link("verified_by", path="tests/test_real.py")]))
+    for name in ("helper.py", "plugin/a.test.tsx", "test_real.py"):
+        docs(repo, f"tests/{name}")
+    commit_all(repo, "linked")
+    cases = landing.status_cases(open_core(repo), "", "")
+    assert {c["target"] for c in cases if c["kind"] == "unrun-test"} <= {"tests/test_real.py"}

@@ -465,6 +465,18 @@ def _git_text(root: Path, args: list[str]) -> str | None:
         return None
 
 
+def _versions(root: Path, rel: str) -> list[str]:
+    """The commits holding ``rel``'s last versions, newest first: HEAD's, then, during a merge,
+    the incoming side's, whose history HEAD does not reach until the merge is recorded."""
+    revs = ["HEAD"] + (["MERGE_HEAD"] if _git_text(root, ["rev-parse", "-q", "--verify",
+                                                         "MERGE_HEAD"]) else [])
+    found: list[str] = []
+    for rev in revs:
+        listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", rev, "--", rel])
+        found += [sha for sha in (listing or "").split() if sha not in found]
+    return found
+
+
 def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
     """``(the end as the pin saw it, the end now)``: the pinned version is looked for among
     the file's committed versions (newest first); None when it is not found."""
@@ -485,8 +497,7 @@ def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
         now = _segment((Path(root) / rel).read_text(encoding="utf-8"), qualname)
     except (OSError, UnicodeDecodeError):
         return None
-    listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", "--", rel])
-    for sha in (listing or "").split():
+    for sha in _versions(root, rel):
         text = _git_text(root, ["show", f"{sha}:{rel}"])
         before = None if text is None else _segment(text, qualname)
         if before is not None and sha256_text(before) == link.pin.target:
@@ -670,8 +681,7 @@ def _pinned_text(root: Path, record: Record, pin_hash: str) -> str | None:
     from plumb.model import parse_record
     from plumb.understand.judge import record_text
 
-    listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", "--", record.path])
-    for sha in (listing or "").split():
+    for sha in _versions(root, record.path):
         text = _git_text(root, ["show", f"{sha}:{record.path}"])
         try:
             old = parse_record(text, record.path) if text is not None else None

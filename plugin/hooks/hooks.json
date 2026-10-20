@@ -11,7 +11,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" session-start",
-            "timeout": 60
+            "timeout": 120
           }
         ]
       }
@@ -22,7 +22,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" prompt",
-            "timeout": 60
+            "timeout": 120
           }
         ]
       }
@@ -34,7 +34,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" pre-tool",
-            "timeout": 60
+            "timeout": 120
           }
         ]
       }
@@ -57,7 +57,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" edit-check",
-            "timeout": 60
+            "timeout": 120
           }
         ]
       },

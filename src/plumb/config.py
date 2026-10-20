@@ -36,14 +36,14 @@ class VerifyConfig:
     coverage: str = "auto"
 
 
-# Soft budgets per hook, from process start (SR-181). Generous on purpose: on a loaded 2-core
+# Soft budgets per hook, from process start (SR-181, SR-310). Generous on purpose: on a loaded 2-core
 # machine a 4 s budget still skipped the check on most turns (pytest alone starts in 15 s
-# there). They sit under the watchdog's hard limit (hookio.HARD_LIMIT_S, 30 s, or
+# there). They sit under the watchdog's hard limit (hookio.HARD_LIMIT_S, 90 s, or
 # hooks.hard_limit_s), which is the bound; a cut keeps the intent-translation lines
-# (hookio.HookContext.keep). The host's own hook timeouts (60 s and 120 s) stay above the hard
+# (hookio.HookContext.keep). The host's own hook timeouts (120 s, SR-310) stay above the hard
 # limit plus the stop hook's grace.
 DEFAULT_HOOK_BUDGET_MS: Mapping[str, int] = {
-    "session_start": 20000, "prompt": 20000, "stop": 20000, "post_edit": 5000}
+    "session_start": 60000, "prompt": 60000, "stop": 60000, "post_edit": 15000}
 
 
 @dataclass(frozen=True)

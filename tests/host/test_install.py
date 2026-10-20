@@ -291,10 +291,13 @@ def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> N
 
 
 @pytest.mark.sr("SR-200")
-def test_claude_md_block_asks_for_a_read_back_of_each_request(repo: Path, no_claims) -> None:
-    """The always-loaded block carries the read-back rule, not only the on-demand skill."""
+def test_claude_md_block_formalizes_each_request_and_asks_no_read_back(repo: Path,
+                                                                       no_claims) -> None:
+    """EX-12: the always-loaded block turns each request into proposed records for the judge
+    and asks the owner to read nothing back."""
     _install(repo)
     text = " ".join((repo / "CLAUDE.md").read_text(encoding="utf-8").split())
-    assert "Read back each request and record it as proposed" in text
-    assert "what will and won't be done" in text and "assumptions labelled" in text
-    assert "implemented_by" in text
+    assert ("Formalize each request that changes the system into proposed records linked to "
+            "the code it changes, for the judge to validate") in text
+    assert "implemented_by" in text and "read nothing back" in text
+    assert "read back each request" not in text.lower()
