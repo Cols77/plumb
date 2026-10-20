@@ -585,7 +585,8 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
     return {"key": question_key(question), "job": job.id,
             "records": [{"id": i, "hash": judged[i]} for i in ids],
             "question": question, "header": _whole_words(header),
-            "options": [{"label": f"{label} (Recommended)" if n == 0 else label,
+            "options": [{"label": f"{label.replace('(Recommended)', '').strip()} (Recommended)"
+                         if n == 0 else label,    # the model may have marked it itself
                          "description": f"{consequence} Recommended: {reason}" if n == 0
                          else consequence}
                         for n, (label, consequence) in enumerate(pairs)]}, ""
