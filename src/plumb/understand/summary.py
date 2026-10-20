@@ -288,7 +288,7 @@ TURN_LEFT = "turn_left.json"     # the stop hook's cards the owner left open, wi
 WAITING = "cards_waiting.json"   # what the next prompt tells the agent (SR-116 EX-4)
 DRAW_MIN_S = 0.08                # a card's full content needs about this much of the budget
 TURN_LINE = "turnline.json"      # each card's state seen at the last turn end (SR-265)
-WAITING_KEY = "_waiting"       # the judge questions waiting at the last turn end, same file (SR-334)
+WAITING_KEY = "_waiting"      # judge questions waiting at the last turn end, same file (SR-334)
 ASK_OWNER = ("plumb: only the owner can settle this; ask the owner now with the question tool, "
              "in plain words with options and no id, or offer a study laying out both sides "
              "when there is more to read; choose nothing yourself:")
