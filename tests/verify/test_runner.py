@@ -7,9 +7,10 @@ import time
 from pathlib import Path
 
 import pytest
-from verify_helpers import make_project, write
+from verify_helpers import commit_all, make_project, write
 
 from plumb.api import open_core
+from plumb.verify import open_verify
 from plumb.verify.runner import build_command, run_pytest, run_selection
 
 
@@ -75,3 +76,31 @@ def test_collection_error_does_not_stop_other_files(repo: Path) -> None:
     result = run_pytest(repo, ["tests/test_broken.py", "tests/test_helper.py"], timeout_s=60)
     assert result.collection_errors == ["tests/test_broken.py"]
     assert result.nodes["tests/test_helper.py::test_twice"]["outcome"] == "passed"
+
+
+def test_the_tests_run_in_the_repositorys_venv_when_it_has_one(tmp_path: Path) -> None:
+    """Under the plugin, sys.executable is plumb's private environment, which has no pytest:
+    a repository's .venv runs its tests; verify.python names another one; else plumb's."""
+    from plumb.verify.runner import test_interpreter
+
+    assert test_interpreter(tmp_path) == sys.executable
+    venv = tmp_path / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    venv.parent.mkdir(parents=True)
+    venv.write_bytes(b"")
+    assert test_interpreter(tmp_path) == str(venv)
+    assert test_interpreter(tmp_path, "C:/other/python.exe") == "C:/other/python.exe"
+    assert build_command(["tests/test_a.py"], interpreter=str(venv))[0] == str(venv)
+
+
+def test_an_interpreter_without_pytest_aborts_the_run_saying_so(repo: Path, monkeypatch) -> None:
+    """No pytest in the interpreter is no test failure: nothing runs, no node is marked failed,
+    and the report says what is missing (the plugin's own environment has no pytest)."""
+    from plumb.verify import runner
+
+    make_project(repo)
+    commit_all(repo)
+    missing = runner.PYTEST_MISSING.format(python="C:/no/pytest/python.exe")
+    monkeypatch.setattr(runner, "_probe", lambda interpreter: (missing, False))
+    report = open_verify(open_core(repo)).run(nodes=["tests/test_mod.py"])
+    assert report.ok is False and report.aborted == missing
+    assert report.failed == [] and report.outcomes == {}

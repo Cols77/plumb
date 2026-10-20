@@ -81,8 +81,8 @@ def test_stop_writes_present_json_and_no_system_message_while_the_panel_is_activ
     started = _start_turn(core.root)
     _register(monkeypatch, capsys, core.root, heartbeat=started + 0.2)
     out = _stop(core.root, hook_input)
-    # the owner's decision (2026-10-14): one plumb line instead of silence (SR-159 EX-1)
-    assert json.loads(out) == {"systemMessage": "plumb: 1 new card waits on the panel"}
+    # one plumb line instead of silence (SR-159 EX-1), the same as without a panel (SR-265)
+    assert json.loads(out) == {"systemMessage": "plumb: 1 question for you"}
     present = _present(core.root)
     assert present is not None
     assert {"turn", "confirmations", "cards"} <= set(present)
@@ -103,8 +103,9 @@ def test_stop_prints_as_before_when_the_heartbeat_is_older_than_the_turn(
     _register(monkeypatch, capsys, core.root,
               heartbeat=started - handshake.HEARTBEAT_SLACK_S - 60)
     out = _stop(core.root, hook_input)
-    message = json.loads(out)["systemMessage"]
-    assert "Requirement 1" in message               # the card, as text
+    assert json.loads(out)["systemMessage"] == "plumb: 1 question for you"
+    notes = core.root / ".plumb" / "session" / SESSION / "agent_notes.json"
+    assert "Requirement 1" in notes.read_text("utf-8")   # the card, as text, is the agent's
     assert _present(core.root) is None
 
 
@@ -114,7 +115,7 @@ def test_stop_prints_as_before_without_a_panel_or_with_the_panel_off(
     assert json.loads(_stop(core.root, hook_input))["systemMessage"]
     assert _present(core.root) is None
     _register(monkeypatch, capsys, core.root, heartbeat=started + 0.2, active=False)
-    assert json.loads(_stop(core.root, hook_input))["systemMessage"]
+    _stop(core.root, hook_input)
     assert _present(core.root) is None
 
 
@@ -127,10 +128,9 @@ def test_a_block_is_unchanged_while_the_panel_is_active(core, monkeypatch, capsy
     block = HookOutput(block_reason="plumb: run the covering tests")
     assert handshake.deliver(ctx, block) is block
     assert _present(core.root) is None
-    shown = HookOutput(system_message="plumb: a card")
-    line = handshake.deliver(ctx, shown)      # one plumb line, not the card (SR-159 EX-1)
-    assert line is not None and line.system_message == "plumb: 1 new card waits on the panel"
-    assert "a card" not in line.system_message and _present(core.root) is not None
+    line = HookOutput(system_message="plumb: 1 question for you")
+    assert handshake.deliver(ctx, line) is line      # the stop's own line (SR-265)
+    assert _present(core.root) is not None
 
 
 # ---------------------------------------------------------------- session start

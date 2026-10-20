@@ -13,7 +13,7 @@ import pytest
 from plumb import hashing
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-275")
+pytestmark = pytest.mark.sr("SR-310")
 
 
 @pytest.fixture

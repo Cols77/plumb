@@ -328,8 +328,8 @@ def test_forged_by_import_is_proposed_through_the_cli(repo: Path, write_record,
 
 def test_hand_written_approval_with_a_made_up_event_is_flagged(repo: Path, write_record) -> None:
     """A raw log line carrying an import event that was never written: confirm's
-    self-contained re-check cannot see the log, so validate names it (and the broken chain);
-    tamper-evident, as concept 4.6 states."""
+    self-contained re-check cannot see the log, so validate names it; an earlier entry this
+    checkout does not hold is no log error any more (SR-322, DEC-224)."""
     from plumb.log import entry_digest
     from plumb.normalize import canonical_json
 
@@ -352,7 +352,7 @@ def test_hand_written_approval_with_a_made_up_event_is_flagged(repo: Path, write
     assert any("not the log entry right before it" in e for e in errors)
     from plumb.validate import validate
 
-    assert any(f.code == "log" for f in validate(open_core(repo)))
+    assert not any(f.code == "log" for f in validate(open_core(repo)))
 
 
 # One choke point, two lanes (review HIGH, next-plan 3.1): confirm.checked_entries re-checks

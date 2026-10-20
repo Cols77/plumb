@@ -88,16 +88,17 @@ def test_the_watchdog_hard_exit_still_leaves_host_json(repo, hook_input) -> None
     assert _brief(repo) == {"injected": True}
 
 
-def test_a_cut_prints_no_brief_while_the_panel_owns_the_background(repo, monkeypatch, capsys,
-                                                                    hook_input) -> None:
+@pytest.mark.sr("SR-266")
+def test_a_cut_still_prints_the_brief_while_the_panel_owns_the_background(
+        repo, monkeypatch, capsys, hook_input) -> None:
     assert run_mod(monkeypatch, capsys, repo, "hello", stdin={"key_digest": DIGEST})[0] == 0
     held = handshake.registration(repo, SESSION)
     (repo / ".plumb" / "session" / SESSION / "mod.json").write_text(
         json.dumps({**dict(held or {}), "background": True}), encoding="utf-8")
     _cut(monkeypatch, keep=["plumb: the records brief"])
     out = _start(repo, hook_input)
-    assert out.strip() == ""                       # the panel gives the background: no brief
-    assert _brief(repo) == {"injected": False}
+    assert "the records brief" in out              # SR-266 EX-1: the agent keeps the brief
+    assert _brief(repo) == {"injected": True}
     assert _host(repo) is not None
 
 

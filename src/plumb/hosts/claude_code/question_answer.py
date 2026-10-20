@@ -6,8 +6,15 @@ host's record of the tool call (SR-208 EX-5). An answer to one of the judge's qu
 (``judge_questions.json``, matched by its key, or the session's one open question when the
 answer is one of its option labels) names the records asked about at their version (``asked``),
 and one bare judge job is queued for them: the worker rebuilds the premise with the answer and
-judges again (SR-212). The hook reads no record and approves nothing.
-A dismissed or unanswered question logs nothing.
+judges again (SR-212). An answer to a pending proof question (``proof_questions.json``,
+filed by ``plumb proof SR-### --ask``, matched by its key) carries ``proof: {record, hash,
+evidence_at}`` and the pending question is removed: the owner's yes is the only confirmation
+of a proof (DEC-257, ``proof.owner_confirmed``). The proof is tagged only when the question
+shown is the one that record's current passing evidence asks, with YES among its options
+(``proof.confirmation``): ``.plumb/session`` is not guarded, so the pending entry only points.
+The hook approves nothing. During a merge, rebase, cherry-pick or revert the entries are staged
+(``conflicts.stage_choice``) so the commit that finishes it carries them (SR-260 EX-28). A
+dismissed or unanswered question logs nothing.
 """
 
 from __future__ import annotations
@@ -57,13 +64,39 @@ def handle(ctx: HookContext) -> HookOutput | None:
             left.remove(found)
             entry["asked"] = {"job": found.get("job"), "key": found.get("key"),
                               "records": list(found.get("records") or ())}
+    _tag_proofs(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
+    from plumb.mergedriver.conflicts import stage_choice
+
+    stage_choice(core)
     ids = [str(r.get("id")) for e in entries for r in (e.get("asked") or {}).get("records", ())
            if isinstance(r, dict)]
     if ids:      # the records are rebuilt from the logs by the worker (judge.recompute)
         queue.enqueue(core, files.make_job(judge.kind, ctx.session_id, judge.SCHEMA_ID, {
             "records": list(dict.fromkeys(ids)), "answered": [e.digest for e in logged]}))
     return None
+
+
+def _tag_proofs(core, session: str, entries: list[dict], key_of) -> None:
+    """DEC-257: each entry answering a pending proof question gets ``proof`` (when
+    ``proof.confirmation`` rebuilds that very question from the record) and that question
+    leaves the session's ``proof_questions.json``."""
+    from plumb.capture import proof
+    from plumb.understand import files
+
+    asked = proof.pending(core.root, session)
+    if not asked:
+        return
+    for entry in entries:
+        key = key_of(entry["question"])
+        found = next((q for q in asked if q.get("key") == key), None)
+        if found is not None:
+            asked.remove(found)
+            tag = proof.confirmation(core, found.get("record"), entry["question"],
+                                     [o["label"] for o in entry["options"]])
+            if tag is not None:
+                entry["proof"] = tag
+    files.write_json_atomic(proof.questions_path(core.root, session), asked)
 
 
 def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,

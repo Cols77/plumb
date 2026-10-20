@@ -92,13 +92,46 @@ export type PlumbTold = {
   retry?: boolean
 }
 
+/** The session's open intent loop as the band draws it (SR-291): its current step, the
+ * step's task (no total: the elapsed time, read when the status was), and what a refused gate
+ * left it waiting for. */
+export type PlumbLoop = {
+  step: string
+  task: { label: string; done: number; total: number | null; elapsed: string } | null
+  stopped: string
+}
+
 /** The status the band's first line draws: plumb's status card, SP8's progress, and the
- * owner's card setting (full, compact or off). */
+ * owner's card setting (full, compact or off); `loop` while an intent loop is open; `study` the
+ * title of a study the owner has not opened yet (SR-294). */
 export type PlumbStatus = {
   state: string
   summary: string
   progress: string
   card: string
+  loop?: PlumbLoop | null
+  study?: string
+  /** the new study's slug, which the band's press opens in the room (SR-294) */
+  studySlug?: string
+  /** every study still new, oldest first: the band's 'new study' menu once no loop is open (SR-294 EX-6) */
+  studies?: { title: string; slug: string }[]
+  /** study ideas the agent proposed, waiting for the owner's choice, oldest first: the band's
+   * brass idea line, whose press shows the why and the depths (SR-294 EX-7, DEC-207) */
+  ideas?: { title: string; slug: string; why: string; recommend: string }[]
+  /** the requirements a judge approved (auto-jev, auto-model), counted in the head (SR-251) */
+  judged?: number
+}
+
+/** What the loop pane shows (SR-305), as `plumb intent status --json` gives the open loop:
+ * its steps' gates with the low findings left, the task and the tasks left, the records of
+ * its intent by title, and each requirement's proof shown or not. */
+export type PlumbLoopPane = {
+  step: string
+  stopped: string
+  stages: Record<string, { state: string; left: string[] }>
+  task: { label: string; done: number; total: number | null; left: string[] } | null
+  records: string[]
+  proofs: { title: string; shown: boolean }[]
 }
 
 /** What the panel draws, as plumb last answered it. */
@@ -116,6 +149,10 @@ export type PlumbBand = {
   isHidden: boolean
   showAll: boolean
   shown: string[]
+  /** the band's 'new study' menu is open (SR-294 EX-6) */
+  studies?: boolean
+  /** the newest study idea's choices are shown (SR-294 EX-7) */
+  idea?: boolean
 }
 
 declare module 'claude-code' {
@@ -126,8 +163,8 @@ declare module 'claude-code' {
       told: PlumbTold | null
       view: PlumbView
       band: PlumbBand
-      /** the card the pane shows, among those waiting */
-      pane: { index: number }
+      /** the card the pane shows, among those waiting; the loop it shows instead (SR-305) */
+      pane: { index: number; loop?: PlumbLoopPane | null }
     }
   }
 }

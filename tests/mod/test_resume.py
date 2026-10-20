@@ -117,17 +117,18 @@ def test_presses_before_and_after_the_resume_both_recheck(core, monkeypatch, cap
         assert confirm.entry_problem(approval, set(), (), fresh) is None
 
 
-def test_a_cut_prints_nothing_while_the_panel_owns_the_background(core, monkeypatch, capsys,
-                                                                  hook_input) -> None:
-    """Nothing was owed: the watchdog's cut prints no skip notice either."""
+@pytest.mark.sr("SR-266")
+def test_a_cut_still_says_it_skipped_while_the_panel_owns_the_background(
+        core, monkeypatch, capsys, hook_input) -> None:
+    """SR-266 EX-1: the agent is still owed the brief, so the watchdog's cut says what it skipped."""
     assert _hello(monkeypatch, capsys, core.root, DIGEST)[0] == 0
     held = json.loads(mod_json(core.root).read_text(encoding="utf-8"))
     mod_json(core.root).write_text(json.dumps({**held, "background": True}), encoding="utf-8")
     kept = hookio.Kept()
     ctx = hookio.HookContext("session-start", {"source": "startup"}, core.root, SESSION,
                              hookio.Deadline(800, None), kept=kept)
-    assert handshake.session_start(ctx) is True
-    assert hookio._cut_output(kept, hookio.SKIP_BUDGET, True) == ""
+    handshake.session_start(ctx)
+    assert hookio.SKIP_BUDGET in hookio._cut_output(kept, hookio.SKIP_BUDGET, True)
 
 
 def test_a_broken_panel_file_keeps_the_brief(core, monkeypatch, hook_input) -> None:

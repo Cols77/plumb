@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HOOK_LIMIT_MS = 5000
 STOP_LIMIT_MS = 20_000  # DEC-078: the stop hook's soft budget is 20 s
 
-pytestmark = [pytest.mark.sr("SR-275"), pytest.mark.sr("SR-225"), pytest.mark.sr("SR-265")]
+pytestmark = [pytest.mark.sr("SR-310"), pytest.mark.sr("SR-225"), pytest.mark.sr("SR-265")]
 
 INT = """---
 id: INT-001
@@ -179,9 +179,10 @@ def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.Monk
     assert "tests/test_mod.py::test_add" in evidence
     assert "test-run" in evidence
 
-    # SR-012 EX-5: nothing needs the owner (confirmed records, covering tests passing, no
-    # question): the stop shows nothing; the state is the status line's (sp5 2), no summary
-    assert by_name["Stop (stop_hook_active)"].stdout.strip() == ""
+    # SR-265 EX-5: nothing to ask (confirmed records, covering tests passing, no question):
+    # one plumb line says what the turn touched and that its checks pass, nothing more
+    assert json.loads(by_name["Stop (stop_hook_active)"].stdout) == {
+        "systemMessage": "plumb: aligned, touched 'Arithmetic', 1 check passes"}
 
     assert by_name["statusline"].stdout.startswith("plumb ")  # the status card (sp5 2)
 
@@ -233,24 +234,40 @@ def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
     assert not slow, slow
 
 
-# the batch's base: the merge boundary of sub-projects 2 to 5 on plumb itself
-BATCH_BASE = "9dd86c6"
+SR_DIV = """---
+id: SR-003
+title: div returns the quotient of two numbers
+feature: FEAT-001
+statement: pkg.mod.div(a, b) returns the quotient a / b.
+examples:
+  - {id: EX-1, given: the numbers 6 and 3, when: div is called, then: it returns 2}
+proof:
+  plan: run div 6 3 and see 2
+  kind: command
+---
+"""
 
 
 @pytest.mark.sr("SR-260")
-def test_merge_check_on_plumb_reports_the_owners_pending_confirmations() -> None:
-    """plumb merge-check on plumb's own repository (report only, --no-run): plumb's records
-    await the owner (no agent approves them), so the boundary is not green and lists them."""
-    if not (ROOT / ".claude" / "settings.json").is_file():
-        pytest.skip("plumb's hooks are not installed in this checkout")
-    known = subprocess.run(["git", "cat-file", "-e", f"{BATCH_BASE}^{{commit}}"], cwd=ROOT,
-                           capture_output=True, check=False)
-    if known.returncode != 0:
-        pytest.skip(f"{BATCH_BASE} is not in this clone's history")
-    step = _driver().merge_check(ROOT, BATCH_BASE)
+def test_merge_check_on_plumb_reports_the_owners_pending_confirmations(
+        adopted: Path, write_record) -> None:
+    """The owner's choice (a scratch repository): a commit into main delivers SR-003, which the
+    owner has not confirmed and whose proof nobody has shown; plumb merge-check (report only,
+    --no-run) lists it as awaiting and holds the merge."""
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=adopted, capture_output=True,
+                          text=True, check=True).stdout.strip()
+    mod = adopted / "src" / "pkg" / "mod.py"
+    mod.write_text(mod.read_text(encoding="utf-8") + "\n\ndef div(a, b):\n    return a / b\n",
+                   encoding="utf-8")
+    write_record(adopted, SR_DIV)
+    assert cli.main(["link", "SR-003", "derives_from", "INT-001", "--root", str(adopted)]) == 0
+    assert cli.main(["link", "SR-003", "implemented_by", "src/pkg/mod.py",
+                     "--root", str(adopted)]) == 0
+    _git(adopted, "add", "-A")
+    _git(adopted, "commit", "-q", "-m", "div\n\nSR: SR-003", "--no-verify")
+    step = _driver().merge_check(adopted, base)
     assert step.code != 0, step.stdout[-2000:]
     report = json.loads(step.stdout)
     assert report["error"] is None and not report["integrity"]
     assert report["exit"] == step.code
-    assert report["awaiting"], "the owner's pending confirmations are listed"
-    assert {"SR-034", "SR-047", "SR-053", "SR-061"} <= {a["id"] for a in report["awaiting"]}
+    assert "SR-003" in {a["id"] for a in report["awaiting"]}, "the pending record is listed"

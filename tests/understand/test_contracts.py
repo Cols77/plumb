@@ -197,7 +197,7 @@ def test_every_kind_stub_follows_the_job_kind_protocol(name: str) -> None:
 def test_kinds_maps_the_kinds() -> None:
     from plumb.understand.kinds import KINDS
 
-    assert sorted(KINDS) == ["clarify", "judge", "question", "read", "tidy"]
+    assert sorted(KINDS) == ["clarify", "judge", "question", "read", "selfdebug", "tidy"]
 
 
 def _params(func) -> list[str]:

@@ -2,8 +2,8 @@
 
 ``premise_of(core, record)`` gives what the judge is shown: the owner's whole logged message
 or messages the record derives from, the stored question when the answer was short, and the
-parent intent, and the owner's question-tool answers about the record at its current version
-(``answers``, SR-212). It reads the committed log first (``premise`` entries: text and digest,
+parent intent, and the owner's question-tool answers about the record, at whichever version
+they were asked (``answers``, SR-212). It reads the committed log first (``premise`` entries: text and digest,
 written by ``commit`` when a record first takes a message as its premise), then the session's
 prompt log, so a record keeps its premise after the session log is gone. A record whose
 premise is only a fragment of the owner's words (older records) says so: ``fragment`` holds the
@@ -14,7 +14,7 @@ digest of its text."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,7 +28,7 @@ class Premise:
     the confirmed parent intent, if any; ``fragment``: the owner's words as the
     record quotes them when no whole message is on file; ``answers``: ``({"digest",
     "question", "options", "answer"}, ...)``, the owner's question-tool answers (``digest``:
-    their log entry) that name the record at its current version."""
+    their log entry) that name the record."""
 
     messages: tuple[Mapping[str, str], ...] = ()
     question: str = ""
@@ -156,21 +156,36 @@ ANSWER_VIA = {"question-answer": "question-tool", "pre-intent": "read"}
 
 
 def answer_entries(core: Any, record: Any) -> list[Any]:
-    """The owner's answers whose ``asked`` names ``record`` at its current hash (SR-212 EX-6,
-    SR-209 EX-4: an answer about an older version is left out): question-tool answers, and the
-    worker's ``pre-intent`` of a message answering what the last reply showed (``via: read``,
-    SR-209 EX-2). Entries without that ``via`` or ``asked`` (older ones) never count."""
+    """The owner's answers whose ``asked`` names ``record`` at its current version or at an
+    earlier one never confirmed (SR-212 EX-6, SR-209 EX-4: the agent rewords the record to
+    agree with the answer, and the reworded record goes back to the judge with that answer;
+    SR-248 EX-9: an edit of a record confirmed on that answer is asked about again):
+    question-tool answers, and the worker's ``pre-intent`` of a message answering what the
+    last reply showed (``via: read``, SR-209 EX-2). Entries without that ``via`` or ``asked``
+    (older ones) never count."""
     out: list[Any] = []
-    for entry in core.events():
+    events = core.events()
+    confirmed = {str(r.get("hash")) for e in events if e.kind == "approval"   # the record's
+                 for r in e.payload.get("records") or ()               # approved hashes
+                 if isinstance(r, Mapping) and r.get("id") == record.id}
+    for entry in events:
         p = entry.payload
         asked = p.get("asked")
         if entry.kind not in ANSWER_VIA or ANSWER_VIA[entry.kind] != p.get("via") \
                 or not isinstance(asked, Mapping):
             continue
         if any(isinstance(r, Mapping) and r.get("id") == record.id
-               and r.get("hash") == record.hash for r in asked.get("records") or ()):
+               and carries(str(r.get("hash")), record.hash, confirmed)
+               for r in asked.get("records") or ()):
             out.append(entry)
     return out
+
+
+def carries(asked: str, current: str, confirmed: Collection[str]) -> bool:
+    """Whether an answer asked about a record at hash ``asked`` counts for it at ``current``:
+    the same version, or an earlier one never confirmed (the answer is still the open
+    conversation about the record)."""
+    return asked == current or asked not in confirmed
 
 
 def answers_of(core: Any, record: Any) -> tuple[dict[str, Any], ...]:

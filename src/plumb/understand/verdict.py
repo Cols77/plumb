@@ -187,6 +187,46 @@ def _held_line(core: Any, cause: str) -> str:
     return waiting_line(core.root, "auto-approval", cause if ready else why) or ""
 
 
+def _dump(inputs: Mapping[str, Any]) -> str:
+    return json.dumps(inputs, ensure_ascii=False, sort_keys=True, indent=1)
+
+
+def _split(job: Job, entries: list[Mapping[str, Any]]) -> list[list[Mapping[str, Any]]]:
+    """The entries in consecutive parts each under ``INPUT_MAX`` as sent (SR-298 EX-2): a job
+    is never failed for its size while its records can be sent apart."""
+    parts: list[list[Mapping[str, Any]]] = [[]]
+    for entry in entries:
+        if parts[-1] and len(_dump({**job.inputs, "records": [*parts[-1], entry]})) > INPUT_MAX:
+            parts.append([])
+        parts[-1].append(entry)
+    return parts
+
+
+def _ask(core: Any, dispatcher: Any, sub: Job, part: list[Mapping[str, Any]], system: str,
+         schema: Mapping[str, Any], on_step: Callable[[str], None], user: str) -> dict[str, Any]:
+    """The judge model's answer; asked once more when a question of it cannot be shown
+    (SR-299 EX-3). The second answer stands: its unusable questions wait as before, and the
+    job goes to debugging as a case."""
+    from plumb.understand import judge, summary
+
+    def unusable(answer: Mapping[str, Any]) -> list[str]:
+        return [why for q in answer.get("questions") or ()
+                for made, why in [judge._shaped(core, q, sub, judged, index)] if made is None]
+
+    answer = dict(dispatcher.run(sub, system=system, schema=schema, on_step=on_step, user=user))
+    index = core.index()
+    judged = {str(e["id"]): str(e.get("hash")) for e in part}
+    if unusable(answer):
+        answer = dict(dispatcher.run(sub, system=system, schema=schema, on_step=on_step,
+                                     user=user))
+        why = unusable(answer)
+        if why:
+            summary.write_cases(core, f"judge-{sub.id}-{part[0]['id']}", [{
+                "id": f"judge-question:{sub.id}", "kind": "judge-question",
+                "target": ", ".join(judged), "detail": f"asked twice: {why[0]}"}])
+    return answer
+
+
 def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             on_step: Callable[[str], None] = lambda text: None, jev: Any = _UNSET,
             dispatcher: Any = None) -> Cascaded:
@@ -216,25 +256,31 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             gap = dispatcher.available() or ""
         except NoModel as exc:
             gap = str(exc)
-        sub = dataclasses.replace(job, inputs={**job.inputs, "records": rest})
-        user = json.dumps(sub.inputs, ensure_ascii=False, sort_keys=True, indent=1)
-        if not gap and len(user) > INPUT_MAX:     # SR-245 EX-8: the size is named
-            gap = f"the records are too large for the judge model ({len(user)} characters)"
-        try:
-            if gap:
-                raise DispatchError("start", f"{jev_cause}; {gap}" if jev_cause else gap)
-            answer = dict(dispatcher.run(sub, system=system, schema=schema, on_step=on_step,
-                                         user=user))
-        except DispatchError as exc:     # SR-185: these records wait; the others go on
-            left, why = rest, exc.message
-        else:
-            label = f"{getattr(dispatcher, 'name', 'model')}:{model}"
+        label = f"{getattr(dispatcher, 'name', 'model')}:{model}"
+        questions: list[Any] = []
+        parts = _split(job, rest)       # SR-298: split before sending
+        for n, part in enumerate(parts):
+            sub = dataclasses.replace(job, inputs={**job.inputs, "records": part})
+            user = _dump(sub.inputs)
+            if not gap and len(user) > INPUT_MAX:     # SR-245 EX-8: one record alone too big
+                gap = f"the records are too large for the judge model ({len(user)} characters)"
+            try:
+                if gap:
+                    raise DispatchError("start", f"{jev_cause}; {gap}" if jev_cause else gap)
+                answer = _ask(core, dispatcher, sub, part, system, schema, on_step, user)
+            except DispatchError as exc:     # SR-185: these records wait; the others go on
+                left, why = [e for p in parts[n:] for e in p], exc.message
+                break
             for raw in answer.get("verdicts") or ():
                 if isinstance(raw, Mapping):
                     got = scored.get(str(raw.get("id")))   # JEV's score is logged with it
                     verdicts.append({**raw, "by": MODEL, "judge": label, "model": model,
                                      **({"jev": dict(got)} if got else {})})
-            extra = {k: v for k, v in answer.items() if k != "verdicts"}
+            questions += answer.get("questions") or ()
+            extra = {k: v for k, v in answer.items() if k not in ("verdicts", "questions")}
+        if questions:
+            extra["questions"] = questions
+        if len(left) < len(rest):
             names.append(str(getattr(dispatcher, "name", "model")))
     line = held
     if left:
