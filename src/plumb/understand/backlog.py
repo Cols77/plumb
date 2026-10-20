@@ -219,7 +219,9 @@ def after_job(core: Any, job: Any, *, verdicts: Sequence[Mapping[str, Any]]) -> 
     total = max(int(job.inputs.get("total") or 0), len(records))
     done = total - len(waiting_for)
     reporter = Reporter(core.root, job.session, "judge")
-    if waiting_for:
+    queued = [j for j in jobs.pending(core.root, job.session)
+              if j.id != job.id and j.inputs.get("pass") == PASS]
+    if waiting_for and queued:    # with none queued the pass ends, or its line runs forever
         reporter.update(owner_text.STEP_JUDGING_BACKLOG, done, total)
         return After()
     reporter.done(final=owner_text.BACKLOG_DONE.format(
