@@ -167,7 +167,7 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: 'plumb ● 2 await you · 1 judge-approved' })).toBeDefined()
-      expect(w.statuses.at(-1)).toBe('● 2 await you · 1 judge-approved')
+      expect(w.statuses).toEqual([]) // the band alone shows the status: nothing pinned under the prompt
       await band.unmount()
     })
 

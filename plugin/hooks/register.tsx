@@ -53,17 +53,14 @@ const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const, { index: 0, loo
 // the width the pane asks for when it docks beside the conversation
 const PANE_COLUMNS = 80
 
-function statusLine(view: PlumbView, named = true): string {
+function statusLine(view: PlumbView): string {
   const waiting = view.cards.filter(c => c.repeats).length
   const state = view.status?.state ?? ''
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
   const word = waiting ? T.awaiting(waiting) : state || T.nothingAwaits
   const judged = view.status?.judged ? T.judged(view.status.judged) : '' // SR-251
-  return [`${named ? `${T.name} ` : ''}${glyph} ${word}`, judged, view.status?.progress].filter(Boolean).join(' · ')
+  return [`${T.name} ${glyph} ${word}`, judged, view.status?.progress].filter(Boolean).join(' · ')
 }
-
-/** The pinned status notice: the host heads it with plumb's name already (SR-290). */
-const noticeLine = (view: PlumbView) => statusLine(view, false)
 
 /** The band's status read again (files only, no process): null when nothing moved (SR-291).
  * A new study gets no toast: the band's line announces it (SR-294 EX-1). */
@@ -318,7 +315,6 @@ export const register: Register = on => {
         const moved = await reread(io, link, await read($, viewAtom))
         if (moved === null) return
         const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
-        $.ui.status(noticeLine(view))
         await refreshPane($, io, link)
       } catch {
         // the band keeps what it drew; the turn's end reads it again
@@ -339,7 +335,6 @@ export const register: Register = on => {
       const band = await read($, bandAtom)
       const snap = await plumb.snapshot(io, link, await read($, viewAtom), band.shown, false)
       await update($, viewAtom, () => snap.view)
-      $.ui.status(noticeLine(snap.view))
     }
     if ((await read($, degradedAtom)) || (await read($, linkAtom)) !== null) return started
     const said = await helloOnce(io)
@@ -434,7 +429,6 @@ export const register: Register = on => {
         // the band draws from now on: plumb's status at once (no process), the cards at the turn's end
         const view = { ...(await read($, viewAtom)), status: await plumb.readStatus(io, held) }
         await update($, viewAtom, () => view)
-        $.ui.status(noticeLine(view))
         link = held
       } else if (said.unlinked !== null) {
         // SR-126: once per session; read again after the hello, which the start's retry may
@@ -501,7 +495,6 @@ export const register: Register = on => {
       await update($, bandAtom, b => ({ ...b, isHidden: false }))
       $.ui.toast(T.toastAwaiting(snap.view.cards.filter(c => c.repeats).length))
     }
-    $.ui.status(noticeLine(snap.view))
     return result // the answer is never rewritten; no summary line is added (realign a)
   }).catch(async ($, e, next) => {
     const result = await next(e)
@@ -539,7 +532,6 @@ export const register: Register = on => {
       const moved = await reread(io, link, await read($, viewAtom))
       if (moved === null) return ran
       const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
-      $.ui.status(noticeLine(view))
       await refreshPane($, io, link)
     } catch {
       // the band keeps what it drew; the turn's end reads it again
@@ -661,7 +653,6 @@ export const register: Register = on => {
     }
     const snap = await plumb.snapshot(io, link, { ...view, line }, band.shown, false)
     await update($, viewAtom, () => snap.view)
-    $.ui.status(noticeLine(snap.view))
     if (key.startsWith('idea:') || key.startsWith('study:')) {
       // a choice takes its lines away: the band keeps its head line, the ring back on Hide
       await $.ui.focus({ requestId: e.requestId, key: 'hide' }).catch(() => undefined)
