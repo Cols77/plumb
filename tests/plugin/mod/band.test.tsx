@@ -93,7 +93,7 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await ui.find({ type: 'Text', text: 'plumb ● 2 await you · judging the backlog · 10/160' })).toBeDefined()
-      expect(w.statuses.at(-1)).toBe('● 2 await you · judging the backlog · 10/160') // SR-290: the host heads it 'plumb:', never 'plumb: plumb'
+      expect(w.statuses).toEqual([]) // the band alone shows the status: nothing pinned under the prompt
       await ui.unmount()
     })
 
