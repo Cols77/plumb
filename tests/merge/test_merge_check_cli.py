@@ -66,7 +66,7 @@ def test_default_base_and_green_exit(repo: Path, capsys) -> None:
     approvals.approve(open_core(repo), ["SR-001", "SR-002", "INT-001"])
     commit(repo, "project")
     git(repo, "checkout", "-q", "-b", "feat")
-    code = cli.main(["merge-check", "--root", str(repo)])  # BASE defaults to main
+    code = cli.main(["merge-check", "--run", "--root", str(repo)])  # BASE defaults to main
     out = capsys.readouterr().out
     assert code == 0, out
     assert out.startswith("plumb merge-check: main..HEAD")
