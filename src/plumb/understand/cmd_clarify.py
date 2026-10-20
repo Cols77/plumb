@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -76,8 +77,13 @@ class Outcome:
                 "lines": self.lines, **shown}
 
 
+_BARE_COMMAND = re.compile(r"/\S+")
+
+
 def latest_prompt(core: Any, session: str | None) -> Mapping[str, Any] | None:
-    """The newest owner message of the session (any session when none is named)."""
+    """The newest owner message of the session (any session when none is named). A bare slash
+    command (``/reload-plugins``) is no message of the owner's request: it never hides the
+    typed ``/plumb intent`` before it from ``intent open`` and ``--wait``."""
     from plumb.approvals import is_owner_entry
 
     newest: Mapping[str, Any] | None = None
@@ -90,7 +96,8 @@ def latest_prompt(core: Any, session: str | None) -> Mapping[str, Any] | None:
             continue
         if isinstance(entry, Mapping) and entry.get("digest") and is_owner_entry(entry) \
                 and (session is None or entry.get("session") == session) \
-                and not clarify.is_typed_go(str(entry.get("text") or "")):
+                and not clarify.is_typed_go(str(entry.get("text") or "")) \
+                and not _BARE_COMMAND.fullmatch(str(entry.get("text") or "").strip()):
             newest = entry
     return newest
 
