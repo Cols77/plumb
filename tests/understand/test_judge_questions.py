@@ -100,6 +100,20 @@ def test_ex3_below_the_calibrated_threshold_the_judge_models_questions_are_writt
 
 
 @pytest.mark.sr("SR-248")
+def test_a_label_the_model_already_marked_recommended_is_not_marked_twice(
+        world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    """The judge model wrote "(Recommended)" into its first label itself: the owner sees it
+    once, not "(Recommended) (Recommended)"."""
+    core = configure(world)
+    fast_track_on(core, monkeypatch, 0.93)
+    marked = asking("SR-001")
+    marked["options"][0]["label"] = "Public pages (Recommended)"
+    applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[marked]))
+    (question,) = written(world)
+    assert question["options"][0]["label"] == "Public pages (Recommended)"
+
+
+@pytest.mark.sr("SR-248")
 def test_ex7_linked_tested_and_consistent_is_not_approved_and_says_nothing_settled(
         world: Path) -> None:  # noqa: F811
     """SR-248 EX-7: a requirement the model finds supported and clear, with code and passing

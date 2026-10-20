@@ -95,3 +95,17 @@ class FakeCascade:
 
     def escalate(self, request: EscalationRequest) -> None:
         self.requests.append(request)
+
+
+def agent_notes(repo, session: str = "s1") -> str:
+    """SR-266: what the stop queued for the agent's channel (the cards in full, the warnings),
+    taken once, with SR-295's ask-the-owner tag left off each card."""
+    import json
+    from pathlib import Path
+
+    from plumb.understand.summary import ASK_OWNER
+
+    path = Path(repo) / ".plumb" / "session" / session / "agent_notes.json"
+    notes = json.loads(path.read_text("utf-8")) if path.exists() else []
+    path.unlink(missing_ok=True)
+    return "\n\n".join(str(n).removeprefix(ASK_OWNER + "\n") for n in notes)

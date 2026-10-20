@@ -12,6 +12,13 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> list[str]:
     understand layer never blocks the prompt."""
     lines: list[str] = []
     try:
+        from plumb import study
+
+        # SR-294 EX-8: the ideas the owner accepted in the band, to write at their depth
+        lines.extend(study.accepted_lines(ctx.root))
+    except Exception:  # noqa: BLE001 - the prompt is never blocked
+        pass
+    try:
         from plumb.understand import clarify, queue, read, typed
 
         lines.extend(typed.on_prompt(core, entry, getattr(ctx, "session_id", "")))

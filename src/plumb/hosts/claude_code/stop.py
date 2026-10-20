@@ -10,7 +10,7 @@ sp7-realign-sp8 C7, slice 3).
    an error or the watchdog still shows them. Then the covering tests and fidelity. Write
    ``status.json`` (the status line: the status card lives there, never in the owner's text)
    and the stated set (``stated.json``): a stated record is ``shown`` only when a card drew it
-   in full.
+   in full on plumb's panel (without it the cards reach the agent only, SR-295).
 4. At most one block per turn, never when the host says ``stop_hook_active``: covering tests
    without fresh evidence (the agent runs ``plumb tests run --paths <this turn's paths>`` in
    its turn; the hook never runs pytest) and a regression (trigger 3, R3: a node that passed
@@ -21,13 +21,14 @@ sp7-realign-sp8 C7, slice 3).
    about this turn (``per_turn``), so every turn whose covering tests lack fresh evidence
    blocks once, whatever the prompt's words. The block is for the agent; the owner sees none
    of it.
-5. Otherwise the owner's text is ``StopParts`` and nothing else (SR-012, SR-105 order): what
-   the owner's words confirmed, then the cards. The stop hook builds the cards of its own
-   facts (``plumb.understand.cards``): a regression, a changed acceptance test, a merge
+5. Otherwise ``StopParts`` (what the owner's words confirmed, then the cards) go to the
+   agent as text, queued for the next prompt (SR-266). The stop hook builds the cards of its
+   own facts (``plumb.understand.cards``): a regression, a changed acceptance test, a merge
    conflict, an early conflict; the summary of the understanding layer draws them with its own
-   and the stale-link and drift cards, each in full (SR-116). A decision is never asked here,
-   as a card or in the agent's words (INT-037). A turn with nothing for the owner shows
-   nothing.
+   and the stale-link and drift cards, each in full, those only the owner can settle tagged
+   for the agent to ask with the question tool (SR-295). The owner's text is at most one plumb
+   line (``summary.owner_line``, SR-265); a turn with nothing for the owner shows nothing. A
+   decision is never asked here, as a card or in the agent's words (INT-037).
 
 The deadline is checked before a step starts, never after it ends (spec 10): a step that
 would start past the soft budget is skipped and named in the status line, and results already
@@ -222,7 +223,8 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     """The stated set of this reply: what a bare affirmation of the owner may confirm.
 
     The one writer of ``stated.json``, so it holds the guarantee "``shown`` only when the
-    owner sees the summary" for every host (``ctx.extra["display"]``, set by
+    owner sees the card" for every host: a drawn card reaches the owner only while plumb's
+    panel is active (``present.json``), otherwise the agent's channel alone (SR-295) (``ctx.extra["display"]``, set by
     ``hosts.neutral.handle_event``): ``owner`` (the host shows ``owner_lines``) keeps
     ``shown``; ``unseen`` (the host could not show them) writes no record as shown;
     ``status`` (a status refresh, e.g. Codex's ``notify``) leaves the stated set of the reply
@@ -233,7 +235,8 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     if display == "status":
         return
     seen = display == "owner"
-    shown = set(shown) if seen else set()
+    # SR-295: cards go to the agent's channel; a drawn card reached the owner only on the panel
+    shown = set(shown) if seen and _panel_shows(ctx, turn) else set()
     data: dict[str, Any] = {
         "at": utc_now(), "session": ctx.session_id,
         "reply_after_prompt": turn.get("prompt_digest"),
@@ -245,6 +248,16 @@ def write_stated(ctx: HookContext, turn: Mapping[str, Any], index: Mapping[str, 
     write_json_atomic(ctx.session_dir / "stated.json", data)
 
 
+def _panel_shows(ctx: HookContext, turn: Mapping[str, Any]) -> bool:
+    """The panel is active this turn, so the drawn cards reach the owner (``present.json``)."""
+    try:
+        from plumb.mod.handshake import active
+
+        return active(ctx.root, ctx.session_id, float(turn.get("turn_start") or 0))
+    except Exception:  # noqa: BLE001 - unknown means unseen: a bare "ok" confirms nothing
+        return False
+
+
 def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
                skipped: Sequence[str]) -> HookOutput | None:
     """A turn with no edit: the cards plumb conflicts, capture or the clarify read-back asked
@@ -253,9 +266,16 @@ def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
         note_skipped(ctx.root, skipped)
     fresh, early = owner_cards(ctx, core, turn)
     shown: dict[str, str] = {}
+    before = _drawn_before(core, ctx.session_id)
     text = understand_parts(ctx, core, turn, fresh=fresh, shown=shown)
     write_stated(ctx, turn, {}, [], early=early, conflicts=conflict_entries(core))
-    return HookOutput(system_message="\n\n".join(text)) if text else None
+    from plumb.hosts.claude_code.snapshot import refresh_judge_count
+
+    try:
+        refresh_judge_count(core)
+    except Exception:  # noqa: BLE001 - the band's count is advisory; the turn end goes on
+        pass
+    return owner_output(ctx, core, text, before)
 
 
 class Verified(NamedTuple):
@@ -405,7 +425,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     queue_notes(ctx, [*stale_notes, *(line.text for line in aware),
                       *([skip_notice(skipped)] if skipped else [])])
 
-    return _cards(ctx, core, index, turn, v, test_cards, stated_ids, stamp)
+    confirmed = [i for i in touched_ids if index[i].kind == "requirement"
+                 and all_statuses[i].confirmation == "confirmed"]
+    return _cards(ctx, core, index, turn, v, test_cards, stated_ids, stamp, confirmed)
 
 
 def _early_state(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any],
@@ -492,19 +514,48 @@ def _block_reasons(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, A
 
 
 def _cards(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], v: Any,
-           test_cards: Sequence[Any], stated_ids: Sequence[str], stamp: int) -> HookOutput | None:
-    """The owner's cards, in full, and the stated set that goes with them."""
-    # cards only (SR-012, sp7-realign-sp8 C7): what the owner's words confirmed, then every
-    # card in full; the status card is the status line's, the agent's lines are the block's
+           test_cards: Sequence[Any], stated_ids: Sequence[str], stamp: int,
+           confirmed: Sequence[str] = ()) -> HookOutput | None:
+    """The cards, in full, to the agent; the owner's one line; the stated set."""
     passing = [n for n, e in (v.evidence or {}).items() if e.state in ("fresh-pass", "flaky-pass")]
     regression = regression_cards(index, v.regressing, v.masked, stamp)
     fresh, early = owner_cards(ctx, core, turn)
     shown: dict[str, str] = {}
+    before = _drawn_before(core, ctx.session_id)
     text = understand_parts(ctx, core, turn, extra=[*regression, *test_cards], fresh=fresh,
                             passing=passing, shown=shown)
     write_stated(ctx, turn, index, stated_ids, shown, early=early,
                  conflicts=conflict_entries(core))
-    return HookOutput(system_message="\n\n".join(text)) if text else None
+    return owner_output(ctx, core, text, before, touched=confirmed,
+                        checks=(len(passing), len(v.evidence or {})))
+
+
+def _drawn_before(core: Any, session: str) -> set[str]:
+    try:
+        from plumb.understand.summary import drawn_ids
+
+        return drawn_ids(core.root, session)
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        return set()
+
+
+def owner_output(ctx: HookContext, core: Any, text: Sequence[str], before: set[str], *,
+                 touched: Sequence[str] = (), checks: tuple[int, int] = (0, 0)
+                 ) -> HookOutput | None:
+    """SR-266: everything for the agent goes to its channel as text, queued for the next
+    prompt (the retired card setting named there, once per session); SR-265: the owner gets
+    at most one plumb line, or nothing."""
+    from plumb.config import CARD_RETIRED
+
+    retired = [CARD_RETIRED] if getattr(getattr(core.config, "present", None), "card", "") else []
+    queue_notes(ctx, [*retired, *text])
+    try:
+        from plumb.understand.summary import owner_line
+
+        line = owner_line(core, ctx.session_id, before, touched=touched, checks=checks)
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        line = ""
+    return HookOutput(system_message=line) if line else None
 
 
 def queue_notes(ctx: HookContext, notes: Sequence[str]) -> None:
@@ -646,7 +697,7 @@ def understand_parts(ctx: HookContext, core: Any, turn: Mapping[str, Any], *,
                      extra: Sequence[Any] = (), fresh: Sequence[Any] = (),
                      passing: Sequence[str] = (),
                      shown: dict[str, str] | None = None) -> list[str]:
-    """SR-105, SR-012: the owner's whole text at the end of a turn: what they confirmed by
+    """SR-266: the agent's text at the end of a turn: what the owner confirmed by
     their words, then the cards (``understand.summary.stop_parts``, which
     draws every card in full and keeps ``extra`` open across turns while it holds). Never
     fails the stop."""

@@ -497,10 +497,16 @@ class _Pass:
         self.report_unledgered()
         self.queued = {j.id: j for j in jobs.queued(self.root, self.session)}
         if job_id is not None:
-            wanted = [self.queued[job_id]] if job_id in self.queued else []
-        else:
-            wanted = list(self.queued.values())
-        for job in wanted:
+            for job in [self.queued[job_id]] if job_id in self.queued else []:
+                self.process(job)
+            return self.ran
+        # the queue is read again before each job: an answer queued meanwhile goes before the
+        # backlog pass's remaining jobs (jobs.queued sorts those last)
+        seen: set[str] = set()
+        while (job := next((j for j in jobs.queued(self.root, self.session)
+                            if j.id not in seen), None)) is not None:
+            seen.add(job.id)
+            self.queued[job.id] = job
             self.process(job)
         return self.ran
 

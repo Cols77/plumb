@@ -440,10 +440,9 @@ def settled_counts(counts: Mapping[str, int]) -> str:
     return ", ".join(said)
 TIDY_COULD_NOT_RUN = "I could not check whether your open questions are already answered; they all stay."
 # SR-116 EX-4: what the agent is told at the next prompt when cards were shown at turn end
-CARDS_WAITING_AGENT = ("plumb: {n} cards were shown to the owner at the end of the last turn "
-                       "and await their answer ({topics}). If you mention them, say in one line "
-                       "that cards are waiting; do not restate them or ask the owner to answer "
-                       "them in prose.")
+CARDS_WAITING_AGENT = ("plumb: {n} cards from the end of the last turn await the owner's "
+                       "answer ({topics}). Ask the ones only the owner can settle with the "
+                       "question tool, if not asked yet; do not restate them in prose.")
 
 # --------------------------------------------------------------------------- SP7 PRESS
 # What a button press on a card answers (sp7-realign-sp8 C3, C6; DEC-032, DEC-034). Titles,

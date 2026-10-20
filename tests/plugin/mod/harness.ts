@@ -4,6 +4,7 @@
 // recorded with its argv and stdin, so a test can say the key never reaches argv.
 import type { On } from 'claude-code'
 import { mock } from 'claude-code/testing'
+import type { MockClock } from 'claude-code/testing'
 
 import { DRAW, PRESS_CHANGE, PRESS_CONFIRM, PRESS_LEAVE_OPEN, PRESENT, PYTHON, ROOT, SESSION } from './fixtures'
 
@@ -33,7 +34,8 @@ export type World = {
   logs: string[]
   fills: string[]
   opened: string[]
-  opens: { id: string; columns?: number }[]
+  opens: { id: string; columns?: number; closeOnEscape?: boolean }[]
+  closed: string[]
   /** What `plumb mod <action>` answers: its exit code and JSON, by action and argv. */
   answer: (action: string, argv: string[]) => { exitCode: number; data: unknown }
   canFill: boolean
@@ -62,6 +64,7 @@ export function world(over: Partial<World> = {}): World {
     fills: [],
     opened: [],
     opens: [],
+    closed: [],
     canFill: true,
     answer: (action, argv) => {
       if (action === 'hello') return { exitCode: 0, data: { active: true, since: '2026-10-11T12:00:00Z', session: SESSION } }
@@ -84,9 +87,9 @@ export function norm(path: string): string {
 }
 
 /** The test's hooks beneath the panel: the host as `w` says it is. */
-export function install(on: On, w: World): void {
+export function install(on: On, w: World): MockClock {
   mock.env(on, {})
-  mock.clock(on, { now: NOW })
+  const clock = mock.clock(on, { now: NOW })
   // what the engine draws where the panel passes: an empty box
   on('ui.render', ($, e) => {
     const { Box } = $.ui.resolve(e) as any
@@ -104,6 +107,11 @@ export function install(on: On, w: World): void {
   on('fs.read', (_$, e) => {
     const path = norm(e.path)
     return path in w.files ? { value: w.files[path] as string } : { deny: `ENOENT: ${path}` }
+  })
+  on('fs.list', (_$, e) => {
+    const dir = `${norm(e.path)}/`
+    const names = new Set(Object.keys(w.files).filter(p => p.startsWith(dir)).map(p => p.slice(dir.length).split('/')[0]!))
+    return { value: [...names].map(name => ({ name, kind: 'file' as const })) as any }
   })
   on('fs.write', (_$, e) => {
     const path = norm(e.path)
@@ -140,13 +148,18 @@ export function install(on: On, w: World): void {
   })
   on('ui.open', (_$, e) => {
     w.opened.push(e.id)
-    w.opens.push({ id: e.id, columns: e.columns })
+    w.opens.push({ id: e.id, columns: e.columns, ...(e.closeOnEscape ? { closeOnEscape: true } : {}) })
     return { value: { isPlaced: true } as any }
+  })
+  on('ui.close', (_$, e) => {
+    w.closed.push(e.id)
+    return { value: undefined }
   })
   on('prompt.fill', (_$, e) => {
     if (w.canFill) w.fills.push(e.text)
     return { isFilled: w.canFill } as any
   })
+  return clock
 }
 
 export const START = { cwd: ROOT, surface: 'terminal' as const, isInteractive: true }

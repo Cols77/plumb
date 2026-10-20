@@ -166,7 +166,7 @@ class TraceConfig:
 
 
 CARD_RETIRED = ("plumb: the card setting (full, compact, off) is retired and has no effect; "
-                "cards are always drawn in full")
+                "cards go to the agent as text and the owner sees one plumb line at most")
 
 
 @dataclass(frozen=True)

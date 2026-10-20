@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
-from fakes import FakeVerify
+from fakes import FakeVerify, agent_notes
 
 from plumb import stale
 from plumb.api import open_core
@@ -123,6 +123,12 @@ def no_list_summary(text: str) -> None:
         assert banned not in text, banned
 
 
+def agent_cards(repo: Path, out: str) -> str:
+    """SR-266: the cards in full are the agent's; the owner's text is one plumb line at most."""
+    assert len(owner(out).splitlines()) <= 1
+    return agent_notes(repo, SESSION)
+
+
 def owner_level(text: str) -> list[str]:
     from understand.fakes import owner_level as scan
 
@@ -142,7 +148,7 @@ def test_ex2_a_regression_is_a_card_naming_the_test_and_what_it_checks(project: 
         NODE, "fresh-fail", regression=True, last_run="run-2")})
     first = json.loads(run_stop(project, hook_input, verify=verify))
     assert first["decision"] == "block"            # the agent is told first (trigger 3)
-    text = owner(run_stop(project, hook_input, verify=verify, active=True))
+    text = agent_cards(project, run_stop(project, hook_input, verify=verify, active=True))
     lines = text.splitlines()
     assert lines[0] == "Adds numbers"
     assert lines[1] == 'a test that passed before now fails: "Adds numbers"'
@@ -155,7 +161,7 @@ def test_ex2_a_regression_is_a_card_naming_the_test_and_what_it_checks(project: 
     # the card stays open: the next turn end draws it again while the test still fails
     start_turn(project)
     edit(project, "docs/notes.md", "notes\n")
-    again = owner(run_stop(project, hook_input, verify=FakeVerify()))
+    again = agent_cards(project, run_stop(project, hook_input, verify=FakeVerify()))
     assert again.startswith("Adds numbers")
 
 
@@ -233,7 +239,7 @@ def test_sr113_ex2_code_that_drifted_from_an_agreed_intent_is_a_drift_card(
                    consequences=["the list stays and the requirement says so; cards-only is "
                                  "dropped", "the list goes; the turn's request is not done"],
                    why="your intent says cards only, and the requirement still agrees with it")
-    text = owner(run_stop(repo, hook_input))
+    text = agent_cards(repo, run_stop(repo, hook_input))
     lines = text.splitlines()
     assert lines[:2] == ["End-of-turn cards", "the end of a turn now lists the proposed records"]
     assert f'the request behind the change: "{REQUEST}"' in lines[3]
@@ -262,7 +268,7 @@ def test_sr116_ex1_a_stale_card_shows_everything_to_choose(project: Path,
                                  "add keeps multiplying and the requirement says so"],
                    why="your words ask for a sum")
     verify = FakeVerify(nodes=(NODE,), evidence_map={NODE: NodeEvidence(NODE, "fresh-pass")})
-    text = owner(run_stop(project, hook_input, verify=verify))
+    text = agent_cards(project, run_stop(project, hook_input, verify=verify))
     lines = text.splitlines()
     assert lines[:3] == ["Adds numbers", "add now multiplies", "your words ask for a sum"]
     assert "  1. Undo the change (recommended) - add sums again; the multiplying is dropped" in (

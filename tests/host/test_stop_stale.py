@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
-from fakes import FakeVerify
+from fakes import FakeVerify, agent_notes
 
 from plumb import stale
 from plumb.api import open_core
@@ -170,9 +170,10 @@ def test_hold_ends_after_max_with_card(project: Path, hook_input) -> None:
         assert reason is not None and f"Held {n} of 3" in reason
     out = run_stop(project, hook_input, verify=_verify(), active=True)
     assert _block(out) is None
-    summary = _summary(out)
-    # the card the hold filed is complete (SR-116), so it is drawn: its title, then each option
-    assert summary.startswith("Adds numbers\n")
+    assert len(_summary(out).splitlines()) <= 1      # SR-265: one plumb line at most
+    summary = agent_notes(project)
+    # the card the hold filed is complete (SR-116), so the agent gets it: its title, each option
+    assert "\nAdds numbers\n" in f"\n{summary}"
     assert "  1. Keep the wording as it is (recommended) - Keeps" in (
         summary)
     (card,) = stale.read_cards(project, "s1")
@@ -234,7 +235,8 @@ def test_ex5_summary_names_requirement_change_and_resolutions_and_the_card_waits
                    consequences=["keeps both", "rewords it", "undoes it"], why="it is cosmetic")
     out = run_stop(project, hook_input, verify=_verify())
     assert _block(out) is None                         # the turn may end with the card waiting
-    lines = _summary(out).splitlines()
+    assert _summary(out) == ""                         # SR-295 EX-3: the agent's to fix
+    lines = agent_notes(project).splitlines()
     head = lines.index("add now sums its arguments in the other order") - 1
     assert lines[head] == "Adds numbers"
     options = [line for line in lines[head:] if line[:5] in ("  1. ", "  2. ", "  3. ")]
