@@ -56,6 +56,22 @@ def test_runs_queued_job_once(repo: Path, fake: FakeDispatcher,
     assert ledger.has(repo, "s1", job.id)
 
 
+def test_an_answer_queued_during_the_backlog_runs_before_its_remaining_jobs(
+        repo: Path, fake: FakeDispatcher, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The owner's answer arrives while the backlog pass runs: it goes next, not last."""
+    core = Core(repo)
+    first, second = (jobs.new_job("a", "s1", "a.v1", {"pass": "backlog", "n": n},
+                                  created=f"2026-01-01T00:00:0{n}Z") for n in (1, 2))
+    answer = _job("b", created="2026-01-01T00:00:05Z")
+    fake_kinds(monkeypatch, {
+        "a": FakeKind("a", apply=lambda c, job, a: (
+            queue.enqueue(c, answer) if job.id == first.id else None) or Applied(job=job.id)),
+        "b": FakeKind("b")})
+    for job in (first, second):
+        queue.enqueue(core, job)
+    assert worker.run_once(core, "s1") == [first.id, answer.id, second.id]
+
+
 def test_a_given_job_runs_alone_with_its_needs(repo: Path, fake: FakeDispatcher,
                                                monkeypatch: pytest.MonkeyPatch) -> None:
     fake_kinds(monkeypatch, {"a": FakeKind("a"), "b": FakeKind("b")})
