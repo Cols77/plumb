@@ -51,9 +51,11 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       w.broken = true
+      await $.turn.start(TURN) // the heartbeat cannot be written
       const done = await $.turn.complete(TURN_DONE)
       expect(done.text).toBe(TURN_DONE.answer) // the answer, unchanged
       expect(w.logs).toEqual(["plumb's panel is off for this session; plumb keeps working in the background."])
+      w.broken = false
       w.writes.length = 0
       await $.turn.start(TURN)
       expect(w.writes.filter(x => x.path === MOD)).toHaveLength(0)

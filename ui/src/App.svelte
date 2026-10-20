@@ -30,6 +30,7 @@
   const visible = $derived(cards.filter(card => (stateFilter === 'all' || card.state === stateFilter) && (kindFilter === 'all' || kindOf(card) === kindFilter) &&
     [card.topic, card.issue, card.evidence, card.content?.topic, card.content?.issue, ...(card.content?.context ?? [])].join(' ').toLowerCase().includes(query.trim().toLowerCase())));
   const active = $derived(cards.find(card => card.id === selected));
+  const at = $derived(visible.findIndex(card => card.id === selected));  // SR-333: one at a time, Back and Next
   const activeKey = $derived(`${session}:${selected}`);
   const message = $derived(feedback[activeKey]);
   const isNarrow = $derived(viewport < 760);
@@ -145,7 +146,7 @@
   <div class="left-divider"><Splitter value={leftWidth} min={220} max={380} reset={260} label="Resize issue inbox" title="Drag or use arrow keys. Double-click to reset." onresize={value => leftWidth=value} oncommit={value => saveWidth('plumb.inbox-width',value)}/></div>
   <main id="issue-detail" class="issue-detail" tabindex="-1" aria-busy={loading}>
     {#if active}
-      <div class="issue-topline"><span class="eyebrow">{human(kindOf(active))}{#if active.kind === 'clarify' || active.kind === 'trial'} · Read-back{/if}</span><span class="status-badge" class:waiting={active.state === 'waiting'}>{human(active.state)}</span></div>
+      <div class="issue-topline"><span class="eyebrow">{human(kindOf(active))}{#if active.kind === 'clarify' || active.kind === 'trial'} · Read-back{/if}</span>{#if at >= 0}<nav class="stepper" aria-label="Step through questions"><button disabled={at === 0} onclick={() => chooseCard(visible[at-1].id)}>Back</button><span>{at+1} of {visible.length}</span><button disabled={at === visible.length-1} onclick={() => chooseCard(visible[at+1].id)}>Next</button></nav>{/if}<span class="status-badge" class:waiting={active.state === 'waiting'}>{human(active.state)}</span></div>
       <h1>{titleOf(active)}</h1>
       {#if (active.content?.issue || active.issue) !== titleOf(active)}<p class="issue-lead">{active.content?.issue || active.issue}</p>{/if}
       {#if active.reason}<p class="reason">{active.reason}</p>{/if}

@@ -35,7 +35,10 @@
           "recommended_reason": {"type": "string"},
           "request": {"type": "object", "properties": {
             "words": {"type": "string"}, "date": {"type": "string"}}},
-          "records": {"type": "array", "items": {"type": "string"}}
+          "records": {"type": "array", "items": {"type": "string"}},
+          "principle": {"type": "string"},
+          "blocking": {"type": "boolean"},
+          "diagram": {"type": "boolean"}
         }
       }
     }

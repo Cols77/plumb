@@ -1,5 +1,5 @@
 """SP8 lane STALE, HA5 (SR-111): resolving a stale link: repin after the tests pass and a
-model judges the meaning unchanged, or bring it to the owner as a card."""
+model judges the meaning unchanged, or ask the owner with the question tool."""
 
 from __future__ import annotations
 

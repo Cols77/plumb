@@ -2,11 +2,14 @@
 
 ``propose --title --why --depth md|diagrams|video [--topic]`` records an idea of a study for
 the session's open intent loop's current step (no page), refusing a second one for that step;
-the owner accepts it at a depth or declines it in the band (``plumb mod study``). ``add <slug>
+the owner accepts it at a depth or declines it in the band (``plumb mod study``); with ``--for
+<question key>...`` it is studied ahead of those waiting judge questions, loop or not (SR-336),
+and while questions wait no other study is proposed. ``add <slug>
 --file`` writes an accepted idea's study at the chosen depth; ``list`` prints the studies and
 ideas; ``candidates``
-prints what the agent picks a study from: the understanding picture, the owner's prompts so far,
-the open conflicts, the loop's records and the decisions that matter; ``mark <slug>
+prints what the agent picks a study from: the understanding picture, the judge questions
+waiting on a topic the owner does not know, the owner's prompts so far, the open conflicts, the
+loop's records and the decisions that matter; ``mark <slug>
 opened|known|deeper`` is the room's own action, also open to the owner's terminal.
 """
 
@@ -70,7 +73,19 @@ def _conflicts(core: Any) -> list[dict[str, Any]]:
     return out
 
 
-def candidates(core: Any, root: Path, loop: dict[str, Any], loop_id: str) -> dict[str, Any]:
+def _waiting(core: Any, root: Path, session: str | None) -> list[dict[str, Any]]:
+    """SR-336 EX-1: the session's judge questions waiting for the owner on a topic (their
+    principle, else their header) the picture does not say they know."""
+    from plumb.understand import judge
+
+    asked = judge.open_questions(core, session) if session else []
+    out = [{"key": q.get("key"), "question": q.get("question"),
+            "topic": q.get("principle") or q.get("header") or ""} for q in asked]
+    return [q for q in out if not study.knows(root, q["topic"])]
+
+
+def candidates(core: Any, root: Path, loop: dict[str, Any], loop_id: str,
+               session: str | None = None) -> dict[str, Any]:
     from plumb.understand import cmd_intent
 
     index = core.index()
@@ -85,6 +100,8 @@ def candidates(core: Any, root: Path, loop: dict[str, Any], loop_id: str) -> dic
         "picture": picture,
         "known": picture["knows"],       # propose nothing on these (SR-292 EX-1, SR-293 EX-3)
         "deeper": picture["needs"],      # a deeper study is a candidate (EX-2)
+        # SR-336: study ahead of these first (propose --for their keys)
+        "waiting": _waiting(core, root, session),
         "prompts": _prompts(core),
         "conflicts": _conflicts(core),
         "records": [{"id": i, "title": index[i].title} for i in sorted(ids) if i in index],
@@ -113,6 +130,8 @@ def run(command: str, argv: list[str]) -> int:
     proposer.add_argument("--depth", required=True, choices=study.DEPTHS,
                           help="the depth you recommend; the owner chooses")
     proposer.add_argument("--topic", default=None, help="what it is about (default: the title)")
+    proposer.add_argument("--for", dest="serves", nargs="+", default=[], metavar="KEY",
+                          help="the keys of the waiting questions it is studied ahead of")
     adder = verbs.add_parser("add", help="write the study of an idea the owner accepted")
     adder.add_argument("slug")
     adder.add_argument("--file", required=True,
@@ -132,9 +151,19 @@ def run(command: str, argv: list[str]) -> int:
     root = resolve_root(args.root)
     try:
         if args.verb == "propose":
-            path, loop = _open_loop(root, args)
+            from plumb.api import open_core
+            from plumb.understand import cmd_intent
+
+            if args.serves:      # SR-336: ahead of waiting questions, inside a loop step or not
+                path, loop = Path(""), {"step": ""}
+            elif _waiting(open_core(root), root, cmd_intent._session(args, root)):
+                raise ValueError("questions wait for the owner: propose a study with --for "
+                                 "their keys (plumb study candidates), or nothing")
+            else:
+                path, loop = _open_loop(root, args)
             slug = study.propose(root, title=args.title, why=args.why, depth=args.depth,
-                                 loop=path.stem, step=str(loop.get("step")), topic=args.topic)
+                                 loop=path.stem, step=str(loop.get("step")), topic=args.topic,
+                                 serves=args.serves)
             emit({"slug": slug} if args.as_json else
                  f"plumb: study idea: {args.title} ({slug}); write nothing until the owner "
                  "accepts it in the band", args.as_json)
@@ -151,9 +180,16 @@ def run(command: str, argv: list[str]) -> int:
                  or ["plumb: no study yet"], args.as_json)
         elif args.verb == "candidates":
             from plumb.api import open_core
+            from plumb.understand import cmd_intent
 
-            path, loop = _open_loop(root, args)
-            found = candidates(open_core(root), root, loop, path.stem)
+            session = cmd_intent._session(args, root)
+            try:
+                path, loop = _open_loop(root, args)
+            except LookupError:     # SR-336: questions may wait outside a loop
+                if not session:
+                    raise
+                path, loop = Path(""), {}
+            found = candidates(open_core(root), root, loop, path.stem, session)
             if args.as_json:
                 emit(found, True)
             else:

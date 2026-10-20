@@ -3,6 +3,7 @@ EX-11)."""
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -12,6 +13,7 @@ from capture.capture_helpers import log_prompt
 from understand.fakes import owner_level
 
 from plumb.api import open_core
+from plumb.hosts.claude_code import question_answer
 from plumb.present import owner_text
 from plumb.understand import cardstore, clarify, cmd_clarify, effects, files, fullcard, gate, hooks, worker
 
@@ -66,6 +68,29 @@ def test_release_by_button_typed_go_or_prose_at_threshold_only(
     (card,) = [c for c in cardstore.own_cards(repo, SESSION) if c.kind == "couldnt_check"]
     assert card.status == "closed"
     assert gate.release(core, SESSION, "button") is False               # nothing left to release
+
+
+def test_release_by_the_question_tool_answer_build_anyway(
+        repo: Path, engine_standins: Any, hook_input: Any) -> None:
+    _failed_check(repo, engine_standins)
+
+    def answer(question: str, label: str) -> None:
+        asked = {"questions": [{"question": question, "header": "Check", "multiSelect": False,
+                                "options": [{"label": owner_text.GATE_WAIT, "description": ""},
+                                            {"label": label, "description": ""}]}]}
+        payload = hook_input("PostToolUse", tool_name="AskUserQuestion", tool_input=asked,
+                             tool_response={"answers": {question: label}}, session_id=SESSION)
+        assert question_answer.main(stdin=io.StringIO(payload), stdout=io.StringIO(),
+                                    root=repo) == 0
+
+    answer(clarify.COULDNT_QUESTION, owner_text.GATE_WAIT)           # waiting opens nothing
+    answer("Build without the check, then?", owner_text.GATE_BUILD_ANYWAY)   # another question
+    assert gate.is_closed(repo, SESSION) and not _entries(repo)
+    answer(clarify.COULDNT_QUESTION, owner_text.GATE_BUILD_ANYWAY)
+    assert not gate.is_closed(repo, SESSION)
+    assert [e["by"] for e in _entries(repo)] == ["release:button"]
+    (card,) = [c for c in cardstore.own_cards(repo, SESSION) if c.kind == "couldnt_check"]
+    assert card.status == "closed"
 
 
 def test_release_by_the_typed_go_the_prompt_hook_sees(repo: Path, engine_standins: Any) -> None:

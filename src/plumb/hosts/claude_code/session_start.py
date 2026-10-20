@@ -230,11 +230,6 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
     lines = emitter.add([Line(evidence_line(summary) if line == NOT_CHECKED else line)
                          for line in records_brief])
     ctx.keep(lines)
-    if getattr(getattr(core.config, "present", None), "card", ""):  # SR-173: retired setting
-        from plumb.config import CARD_RETIRED
-
-        lines += emitter.add([Line(CARD_RETIRED)])
-        ctx.keep(lines)
     conflicts = conflicts_line(core)  # sp6 8.3: a merge left intent awaiting the owner
     if conflicts:
         lines += emitter.add([Line(conflicts)])

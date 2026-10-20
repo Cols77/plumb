@@ -171,7 +171,7 @@ CARD_RETIRED = ("plumb: the card setting (full, compact, off) is retired and has
 
 @dataclass(frozen=True)
 class PresentConfig:
-    # retired (SR-173): the intent card's full | compact | off; read for the notice only
+    # retired (SR-173): the intent card's full | compact | off; read as off, ignored
     card: str = ""
     ascii: bool = False          # the status card without glyphs
 
