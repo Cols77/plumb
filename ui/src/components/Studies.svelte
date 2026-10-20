@@ -19,6 +19,8 @@
   }
   async function choose(slug: string) {
     selected = slug; saved = ''; open = undefined;
+    // the URL names the open study, so a reload onto a newer build (SR-342) comes back to it
+    const url = new URL(location.href); url.searchParams.set('study', slug); history.replaceState(history.state, '', url);
     if (slug === UNDERSTANDING) { draft = understanding.text; return; }
     try { open = await api<Study>(`/api/studies/${encodeURIComponent(slug)}/open`, capability, {}); await load(); }
     catch (cause) { error = cause instanceof Error ? cause.message : 'Unable to open the study.'; }
