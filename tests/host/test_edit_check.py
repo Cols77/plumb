@@ -30,7 +30,7 @@ examples:
 """
 CODE = "def f(a, b):\n    return a + b\n\n\ndef g(x):\n    return x\n"
 NOTICE = ("plumb: SR-005's link to src/x.py is stale: the file changed; rerun its tests and "
-          "repin, reword SR-005, or bring it to the owner as a card")
+          "repin, reword SR-005, or ask the owner with the question tool")
 
 
 @pytest.fixture

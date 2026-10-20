@@ -184,6 +184,8 @@ class _Plan:
                       "matters": bool(item.get("matters"))}
             if item.get("rationale"):
                 fields["rationale"] = " ".join(str(item["rationale"]).split())
+            if item.get("quote"):     # SR-335: the owner's words it rests on, verbatim
+                fields["quote"] = " ".join(str(item["quote"]).split())
             if recommended is not None:
                 fields["recommended"] = recommended
             self.decisions.append({"fields": fields, "decides": decides})

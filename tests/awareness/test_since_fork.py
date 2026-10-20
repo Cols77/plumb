@@ -26,6 +26,7 @@ from plumb import cli
 from plumb.api import open_core
 from plumb.awareness import inflight
 from plumb.hosts.claude_code import prompt
+from plumb.understand.summary import ASK_OWNER
 
 pytestmark = pytest.mark.sr("SR-259")
 
@@ -57,13 +58,15 @@ def _note(lines: str) -> None:
     assert 'over "relay checks" waits as a card' in lines, lines
 
 
-def _stop_card(reply: str) -> None:
+def _stop_card(lines: list[str], cards: str) -> None:
     """The stop hook's early conflict card (SR-012: a card in full, titles not IDs): main's
-    version and this work's, in the owner's words."""
+    version and this work's, in the owner's words, on the agent's channel; the owner's one
+    line counts it (SR-265)."""
     from awareness.test_claim_check import early_heads
 
-    heads = early_heads(reply, "relay checks")
-    assert heads and any(MAIN in h for h in heads), reply
+    assert lines == ["plumb: 1 question for you"], lines
+    heads = early_heads(cards, "relay checks")
+    assert heads and any(MAIN in h for h in heads), cards
 
 
 # -- capture
@@ -92,8 +95,7 @@ def test_the_owner_keeps_mains_and_the_lane_is_told(tmp_path: Path, hook_input: 
     _main, other = _main_landed(tmp_path)
     start_turn(other)
     change(other, FEAT_X)
-    _asked, reply = turn(other, hook_input)
-    _stop_card(reply)
+    _stop_card(*turn(other, hook_input))
     [dec] = _decisions(other)
     assert answer(other, dec.id, "keep main's") == 0
     dec = open_core(other).index()[dec.id]
@@ -136,9 +138,9 @@ def test_direct_edit_then_stop_hook_asks(tmp_path: Path, hook_input: Any) -> Non
     _main, other = _main_landed(tmp_path)
     start_turn(other)
     requirement(other, "SR-005", "relay checks", FEAT_X, feature="FEAT-002")
-    asked, reply = turn(other, hook_input)
-    assert "ask the owner now" not in asked, asked      # the card asks, never the agent
-    _stop_card(reply)
+    lines, cards = turn(other, hook_input)
+    _stop_card(lines, cards)              # never a block: the card asks, tagged (SR-295)
+    assert ASK_OWNER in cards, cards
     assert len(_decisions(other)) == 1
 
 

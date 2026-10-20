@@ -15,7 +15,7 @@ from plumb import stale
 from plumb.api import open_core
 from plumb.hosts.claude_code.hookio import Deadline, HookContext
 from plumb.understand import cardstore, summary, tidy, worker
-from understand.test_judge_job import SESSION, requirement_text
+from understand.test_judge_job import SESSION, log_prompt, requirement_text
 
 pytestmark = pytest.mark.sr("SR-219")
 
@@ -98,11 +98,26 @@ def test_ex2_a_confirmed_decision_settles_each_card_and_the_line_counts_them(
     assert "Settled from your decision: 1 withdrawn, 1 repinned" in _turn_end(repo)
 
 
-def test_a_proposed_decision_settles_nothing(repo: Path, world) -> None:
+@pytest.mark.sr("SR-335")
+def test_ex2_a_record_only_the_agent_wrote_settles_nothing(repo: Path, world) -> None:
     _grouped(repo)
     world.dispatcher.script = {"tidy": {"verdicts": [], "settlements": [SETTLE[0]]}}
     _run(repo, confirmed=False)
     assert len(cardstore.load(repo, SESSION)) == 2
+
+
+@pytest.mark.sr("SR-335")
+def test_ex1_a_decision_quoting_the_owners_answer_settles_before_approval(
+        repo: Path, world, write_record) -> None:
+    log_prompt(repo, f"Yes: {DECIDES}.")
+    write_record(repo, "---\nid: DEC-001\ntitle: What counts as your answer\nquestion: What "
+                 f"counts?\nchosen: Your words\nquote: {DECIDES}\nalternatives:\n- Any reading\n"
+                 "matters: true\nlinks:\n- kind: decides\n  to: SR-002\n---\n")
+    _grouped(repo)
+    world.dispatcher.script = {"tidy": {"verdicts": [], "settlements": [
+        {**SETTLE[0], "decision": "DEC-001", "quote": "What counts as your answer"}]}}
+    _run(repo, confirmed=False)
+    assert [c.id for c in cardstore.load(repo, SESSION)] == ["stale:SR-002#1"]
 
 
 def test_ex3_a_card_the_model_cannot_settle_stays_with_one_line(repo: Path, world) -> None:

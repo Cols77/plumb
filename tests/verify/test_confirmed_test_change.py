@@ -198,8 +198,12 @@ def test_stop_asks_when_a_test_was_rewritten_to_hide_a_regression(confirmed,
     assert ("SR-001 EX-1 \"given two numbers, when added, then the sum is returned\""
             in reason)
     # SR-012: the owner gets cards, never a summary: the hidden regression and the changed
-    # acceptance test of the confirmed example each reach the owner on a card
-    lines = _stop(root, hook_input, active=True)["systemMessage"].splitlines()
+    # acceptance test of the confirmed example each wait on a card; SR-265: the owner's one
+    # line counts both, the cards in full are the agent's to ask the owner with
+    from host.fakes import agent_notes
+
+    assert _stop(root, hook_input, active=True)["systemMessage"] == "plumb: 2 questions for you"
+    lines = agent_notes(root).splitlines()
     assert ("tests/test_mod.py::test_add passed, then failed, and passes now only "
             "because the test itself was changed") in lines
     assert ("the test that checks it was changed since you confirmed it: tests/test_mod.py; "

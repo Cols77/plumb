@@ -1,5 +1,5 @@
 // What plumb's panel says to the owner (SP7 6.3: titles and plain words, never IDs, paths of
-// plumb's own files, hashes or commands). The card texts themselves come from plumb.
+// plumb's own files, hashes or commands).
 
 export const GLYPHS: Record<string, string> = {
   aligned: '✓',
@@ -29,13 +29,6 @@ export const brassColor = (theme: unknown): string => (isLight(theme) ? BRASS_LI
 export const T = {
   name: 'plumb',
   awaiting: (n: number) => (n === 1 ? '1 awaits you' : `${n} await you`),
-  leftOpen: (n: number) => `${n} left open`,
-  groups: {
-    waiting: 'Waiting for you',
-    processing: 'Being processed',
-    blocked: 'Blocked',
-    done: 'Done this session',
-  } as Record<string, string>,
   nothingAwaits: 'nothing awaits you',
   stopped: (what: string) => `stopped, waits for ${what}`,
   newStudy: (title: string) => `new study: ${title}`,
@@ -48,6 +41,8 @@ export const T = {
   chooseFailed: 'plumb could not record that choice; nothing changed. Try again.',
   judged: (n: number) => `${n} judge-approved`,
   roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',
+  roomWaits: 'a question waits in the room',
+  roomQuestionFailed: 'plumb could not open the question in the browser room; nothing changed. Try again.',
   loopTitle: 'plumb: the intent loop',
   lowLeft: (n: number) => (n === 1 ? '1 low finding left' : `${n} low findings left`),
   tasksLeft: (left: string[]) => `left: ${left.join(', ')}`,
@@ -57,19 +52,7 @@ export const T = {
   notShown: 'not shown yet',
   hide: 'Hide',
   show: 'Show',
-  showAll: 'Show all',
-  showFewer: 'Show fewer',
-  openPane: 'Open in a pane',
-  back: 'Back',
-  next: 'Next',
-  nOfM: (n: number, m: number) => `${n} of ${m}`,
-  paneDocks: 'In fullscreen layout from 110 columns, this pane docks on the right beside the conversation.',
-  paneTitle: 'plumb: what awaits you',
   recommended: ' (recommended)',
-  assumed: 'Assumed: ',
-  wont: 'Not doing: ',
-  diagramLine: (path: string) => `Diagram: ${path} (open it to see it)`,
-  pressFailed: "plumb could not record that press; nothing changed. Try again, or answer in words.",
   degraded: "plumb's panel is off for this session; plumb keeps working in the background.",
   // SR-126: why the panel could not reach plumb, said once per session
   noPython: (looked: string[]) =>
@@ -79,8 +62,4 @@ export const T = {
     `plumb's panel is off: plumb could not start it (${error}); plumb keeps working in the background.`,
   helloRefused: (reason: string) =>
     `plumb's panel is off: plumb refused it (${reason}); plumb keeps working in the background.`,
-  noBox: (topic: string) =>
-    ` The panel could not put "Change to '${topic}': " in the owner's message box: ask them, in ` +
-    'one question in your next reply, what to change.',
-  toastAwaiting: (n: number) => `${n === 1 ? 'a card awaits' : `${n} cards await`} you`,
 }

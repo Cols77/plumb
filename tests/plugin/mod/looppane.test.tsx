@@ -38,7 +38,7 @@ function loopWorld(file: unknown = STATUS[0]) {
 }
 
 const pane = (surface: 'terminal' | 'desktop') => ({
-  plugin: 'plumb', surface, component: 'Pane' as const, requestId: 'plumb-cards',
+  plugin: 'plumb', surface, component: 'Pane' as const, requestId: 'plumb-loop',
   props: { title: 'plumb', bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 } },
 }) as any
 
@@ -89,7 +89,7 @@ for (const surface of SURFACES) {
 
     test('SR-305 EX-4: the pane docks and closes on Esc; the band stays', async ($, on) => {
       const { w, band, view } = await pressed($, on, surface)
-      expect(w.opens).toEqual([{ id: 'plumb-cards', columns: 80, closeOnEscape: true }])
+      expect(w.opens).toEqual([{ id: 'plumb-loop', columns: 80, closeOnEscape: true }])
       await view.unmount() // Esc: the host closes a pane opened with closeOnEscape
       expect(await band.find({ type: 'Text', text: /^clarify ✓  plan ✓  build ●/ })).toBeDefined()
       await band.unmount()
@@ -124,7 +124,7 @@ for (const surface of SURFACES) {
       w.files[LOOP] = JSON.stringify({ ...STATUS[0], step: 'proven' }) // intent done
       await clock.advance(2000) // the band's period (POLL_MS in register.tsx)
       expect(await band.find({ type: 'Text', text: /^clarify / })).toBeUndefined()
-      expect(w.closed).toEqual(['plumb-cards'])
+      expect(w.closed).toEqual(['plumb-loop'])
       await band.unmount()
     })
 
@@ -141,10 +141,10 @@ for (const surface of SURFACES) {
       open = false
       w.files[LOOP] = JSON.stringify({ ...STATUS[0], tasks: { ...STATUS[0]!.tasks, done: 4 } })
       await clock.advance(2000) // the band's period (POLL_MS in register.tsx)
-      expect(w.closed).toEqual(['plumb-cards'])
+      expect(w.closed).toEqual(['plumb-loop'])
       w.files[LOOP] = JSON.stringify({ ...STATUS[0], step: 'proven' })
       await clock.advance(2000)
-      expect(w.closed).toEqual(['plumb-cards'])
+      expect(w.closed).toEqual(['plumb-loop'])
       await band.unmount()
     })
 
@@ -162,7 +162,7 @@ for (const surface of SURFACES) {
     test("SR-251 EX-1: the band's status counts one judge approval", async ($, on) => {
       const w = world()
       w.files[`${ROOT}/.plumb/session/status.json`] = JSON.stringify({ state: 'awaits you', intent_summary: '',
-        confirmed_by: { 'auto-model': 1, owner: 4 }, present: { card: 'full' } })
+        awaiting: 2, confirmed_by: { 'auto-model': 1, owner: 4 } })
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
@@ -175,7 +175,7 @@ for (const surface of SURFACES) {
       const w = world()
       // round 3: 2 requirements and 4 decisions judge-approved; confirmed_by counts requirements only
       w.files[`${ROOT}/.plumb/session/status.json`] = JSON.stringify({ state: 'awaits you', intent_summary: '',
-        confirmed_by: { 'auto-model': 2 }, judge_approved: 6, present: { card: 'full' } })
+        awaiting: 2, confirmed_by: { 'auto-model': 2 }, judge_approved: 6 })
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })

@@ -383,10 +383,21 @@ def frozen_context(root: Path, session: str, digest: str, transcript: Any = None
     return frozen
 
 
+def sent_at(core: Any, digest: str) -> str:
+    """When the owner last sent the message: the same words sent again are checked again."""
+    from plumb.approvals import Refused, find_prompt
+
+    try:
+        return str(find_prompt(core, digest).get("at") or "")
+    except Refused:
+        return ""
+
+
 def _inputs(core: Any, session: str, digest: str, text: str,
             answered: Sequence[Mapping[str, str]], frozen: Mapping[str, Any] | None = None
             ) -> dict[str, Any]:
-    out = {"message": {"digest": digest, "text": text}, "touched": touched(core, text),
+    out = {"message": {"digest": digest, "text": text, "at": sent_at(core, digest)},
+           "touched": touched(core, text),
            "answered": [dict(a) for a in answered]}
     open_cards = [{"id": c.id, "topic": c.topic, "question": c.issue}
                   for c in cardstore.own_cards(Path(core.root), session)

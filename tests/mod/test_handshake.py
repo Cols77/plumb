@@ -4,29 +4,25 @@
 While the panel is active (registered and its heartbeat refreshed for this turn), the stop hook
 writes ``present.json`` and prints no ``systemMessage``; with a stale heartbeat, a panel marked
 off, or none, it prints as before. A block is unchanged. Session start writes ``host.json`` and
-injects the brief unless the panel owns the session background. The panel's TypeScript fixtures have
-the shape a real ``plumb mod draw`` answers."""
+injects the brief unless the panel owns the session background."""
 
 from __future__ import annotations
 
 import io
 import json
-import re
 import sys
 import time
 import types
 from pathlib import Path
 
 import pytest
-from mod.helpers import DIGEST, KEY, SESSION, mod_json, run_mod, sample_card
+from mod.helpers import DIGEST, SESSION, mod_json, run_mod, sample_card
 from understand.test_read_job import make_core, open_card, record_text
 
 from plumb.hosts.claude_code import session_start, stop
 from plumb.mod import handshake
 
 pytestmark = pytest.mark.sr("SR-266")
-
-PLUGIN = Path(__file__).resolve().parents[2] / "plugin"
 
 
 def _iso(epoch: float) -> str:
@@ -85,16 +81,10 @@ def test_stop_writes_present_json_and_no_system_message_while_the_panel_is_activ
     assert json.loads(out) == {"systemMessage": "plumb: 1 question for you"}
     present = _present(core.root)
     assert present is not None
-    assert {"turn", "confirmations", "cards"} <= set(present)
+    assert {"turn", "confirmations"} <= set(present) and "cards" not in present
     assert "settled" not in present and "settled_records" not in present
     assert present["turn"] == int(started) and present["session"] == SESSION
     assert present["turn_id"] == "t-1" and present["written_at"]
-    # the cards the end-of-turn text drew (slice 3), each with its full content (SR-116)
-    by_id = {c["id"]: c for c in present["cards"]}
-    card = by_id["card:SR-001"]
-    assert all(c["content"] and c["content"]["id"] == c["id"] for c in present["cards"])
-    assert card["id"] == "card:SR-001" and card["kind"] == "trial"
-    assert card["status"] == "open" and card["questions"][0]["record"] == "SR-001"
 
 
 def test_stop_prints_as_before_when_the_heartbeat_is_older_than_the_turn(
@@ -179,59 +169,6 @@ def test_a_registered_panel_without_the_background_leaves_the_brief_in(
 # ---------------------------------------------------------------- SR-116 content on draw
 
 
-def test_draw_carries_the_full_card_content_where_plumb_derives_it(core, monkeypatch,
-                                                                  capsys) -> None:
-    """SR-116 on the panel: every card's ``content`` is the end-of-turn full card
-    (``understand.fullcard``), for a stale link and for a card plumb built alike."""
-    from plumb import stale
-    from plumb.understand import fullcard
-
-    stale.add_card(core.root, SESSION, link="SR-001#0", record="SR-001", path="src/a.py",
-                   topic="Adds numbers", issue="the code it is linked to changed",
-                   options=["re-pin it", "reword it"], recommended=0, turn=1)
-    monkeypatch.setattr(fullcard, "stale_content", lambda core, entry, session="": {
-        "context": ["add returns the sum"], "link": entry["link"]})
-    _register(monkeypatch, capsys, core.root)
-    code, answer, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
-    assert code == 0
-    by_id = {c["id"]: c for c in answer["cards"]}
-    assert by_id["stale:SR-001#0"]["content"] == {
-        "context": ["add returns the sum"], "link": "SR-001#0"}
-    shown = by_id["card:SR-001"]["content"]
-    assert shown["kind"] == "trial"
-    assert shown["options"] and all("consequence" in o for o in shown["options"])
-    assert {"topic", "issue", "context", "assumptions", "wont", "diagram"} <= set(shown)
-
-
 # ---------------------------------------------------------------- the panel's fixtures
 
 
-def _fixture(name: str) -> object:
-    fixtures = PLUGIN.parent / "tests" / "plugin" / "mod" / "fixtures.ts"   # SR-123: not shipped
-    text = fixtures.read_text(encoding="utf-8")
-    found = re.search(rf"// BEGIN {name}\n.*?= (.*?)\n// END {name}", text, re.S)
-    assert found, name
-    return json.loads(found.group(1))
-
-
-def test_the_panel_fixtures_have_the_shape_of_a_real_draw_and_present(
-        core, monkeypatch, capsys, hook_input) -> None:
-    started = _start_turn(core.root)
-    _register(monkeypatch, capsys, core.root, heartbeat=started + 0.2)
-    _stop(core.root, hook_input)
-    code, drawn, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
-    assert code == 0
-    real_card = drawn["cards"][0]
-    fixture = _fixture("DRAW")
-    assert set(fixture) == set(drawn)
-    for card in fixture["cards"]:
-        assert set(card) == set(real_card)
-        for offer in card["offers"]:
-            assert set(offer) == set(real_card["offers"][0])
-            for button in offer["buttons"]:
-                assert set(button) == set(real_card["offers"][0]["buttons"][0])
-    assert set(_fixture("PRESENT")) == set(_present(core.root))
-    code, pressed, _ = run_mod(monkeypatch, capsys, core.root, "press", "--offer",
-                               real_card["offers"][0]["offer_id"], "--choice", "3",
-                               stdin={"key": KEY})
-    assert code == 0 and set(_fixture("PRESS_LEAVE_OPEN")) == set(pressed)
