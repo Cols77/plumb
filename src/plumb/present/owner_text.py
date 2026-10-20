@@ -286,6 +286,9 @@ STEP_JUDGING = "judging {n} records"
 STEP_JUDGING_BACKLOG = "judging the backlog"
 GATE_BUILD_ANYWAY = "Build anyway"
 GATE_WAIT = "Wait"
+# SR-333, DEC-294: a judge question with more to see than the question tool holds
+ROOM_STUDY = "Study it in the room"
+ROOM_STUDY_NOTE = "The room opens when you press the band's line; the question waits there."
 GATE_BUILD_NOTE = ("Builds now without the check; what the check would have caught is not "
                    "looked at")
 GATE_WAIT_NOTE = "Builds nothing until the check runs again on your next message"

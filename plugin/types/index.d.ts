@@ -49,6 +49,9 @@ export type PlumbStatus = {
   study?: string
   /** the new study's slug, which the band's press opens in the room (SR-294) */
   studySlug?: string
+  /** the card of the question the owner chose to study in the room: the band's brass line
+   * 'a question waits in the room', whose press opens the room on it (SR-333, DEC-294) */
+  roomCard?: string
   /** every study still new, oldest first: the band's 'new study' menu once no loop is open (SR-294 EX-6) */
   studies?: { title: string; slug: string }[]
   /** study ideas the agent proposed, waiting for the owner's choice, oldest first: the band's

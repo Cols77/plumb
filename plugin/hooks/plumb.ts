@@ -197,6 +197,12 @@ export function room(io: Io, link: PlumbLink, slug: string): Promise<Ran> {
   return plumbMod(io, link, 'room', { key: link.key }, ['--study', slug])
 }
 
+/** The owner pressed the band's 'a question waits in the room' (SR-333 EX-3, DEC-294): plumb
+ * opens the room on that question, as on a study, and the line goes. */
+export function roomQuestion(io: Io, link: PlumbLink, card: string): Promise<Ran> {
+  return plumbMod(io, link, 'room', { key: link.key }, ['--card', card])
+}
+
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 
 /** The session's open loop as the pane shows it (SR-305), from `plumb intent status --json`;
@@ -344,6 +350,8 @@ export function chooseStudy(io: Io, link: PlumbLink, slug: string, depth: string
 export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> {
   const status = await readJson(io, join(link.root, '.plumb', 'session', 'status.json'))
   const progress = await readJson(io, join(sessionDir(link.root, link.session), 'progress'))
+  // SR-333: the question this session's owner chose to study in the room, until their press
+  const room = await readJson(io, join(sessionDir(link.root, link.session), 'room_waits.json'))
   const files = await studyFiles(io, link)
   const studies = files.filter(s => s.status === 'new').map(({ title, slug }) => ({ title, slug }))
   const study = studies.at(-1) ?? { title: '', slug: '' }
@@ -366,6 +374,7 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     loop: await readLoop(io, link),
     study: study.title,
     studySlug: study.slug,
+    roomCard: String(room?.card ?? ''),
     studies,
     ideas,
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),

@@ -493,6 +493,18 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
         for r in q.get("records") or () if isinstance(r, Mapping))]
 
 
+def rejudge(core: Any, session: str, logged: Sequence[Any]) -> None:
+    """SR-212: the records the logged answers were asked about go back to the judge, one bare
+    job (the worker rebuilds their premise from the logs, ``recompute``)."""
+    from plumb.understand import queue
+
+    ids = [str(r.get("id")) for e in logged for r in (e.payload.get("asked") or {}).get(
+        "records", ()) if isinstance(r, Mapping)]
+    if ids:
+        queue.enqueue(core, files.make_job(kind, session, SCHEMA_ID, {
+            "records": list(dict.fromkeys(ids)), "answered": [e.digest for e in logged]}))
+
+
 def _whole_words(header: str) -> str:
     """SR-309 EX-1: the header's words that fit the chip, dropped from the end, never cut."""
     words = header.split()
@@ -599,6 +611,7 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
             # SR-334: one answer settles the questions sharing a principle
             "principle": _flat(raw.get("principle")).lower(),
             "blocking": raw.get("blocking") is True,
+            "diagram": raw.get("diagram") is True,     # SR-333: it offers the room
             "question": question, "header": _whole_words(header),
             "options": [{"label": f"{label.replace('(Recommended)', '').strip()} (Recommended)"
                          if n == 0 else label,    # the model may have marked it itself

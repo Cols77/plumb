@@ -60,6 +60,7 @@ JUDGING = ("plumb's judge is still reading the records; go on with the work and 
            "--wait again before the turn ends.")
 APPROVED = "approved on your behalf: {title} (judge-approved, {by}, {score})"
 ASKED_PER_TURN = 3      # SR-334
+ROOM_TEXT_MAX = 600     # SR-333: a question longer than this has more to see than the tool holds
 HELD = ("plumb: edits are held ({reason}): this request changes a confirmed record and no "
         "intent loop ran for it. /plumb intent opens the loop; the owner's /plumb go releases.")
 
@@ -162,6 +163,16 @@ def _by_principle(questions: list[Mapping[str, Any]], room: int) -> list[Mapping
     return firsts[:max(room, sum(1 for q in firsts if q.get("blocking")))]
 
 
+def _options(question: Mapping[str, Any]) -> list[Any]:
+    """SR-333 EX-1, EX-2: a question with more to see (a diagram, or a text over
+    ``ROOM_TEXT_MAX``) offers to study it in the room, last and within the tool's four options
+    (the room shows every option)."""
+    options = list(question.get("options") or ())
+    if not question.get("diagram") and len(str(question.get("question") or "")) <= ROOM_TEXT_MAX:
+        return options
+    return [*options[:3], {"label": owner_text.ROOM_STUDY,
+                           "description": owner_text.ROOM_STUDY_NOTE}]
+
 def _judged(core: Any, session: str, digest: str, at: str, limit: float,
             sleep: Callable[[float], None], clock: Callable[[], float], turn: str = "",
             mid_task: bool = False) -> Outcome:
@@ -194,11 +205,11 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
         answers = [e.payload for e in said if e.at >= at]
         # SR-212: the agent reworded the question, or asked one of its own
         missed = bool(answers) and answers[-1].get("via") == "question-tool" \
-            and not answers[-1].get("asked")
+            and not answers[-1].get("asked") and not answers[-1].get("room")
         line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
         return Outcome("ask", digest, [line], questions=[
             {"question": q.get("question"), "header": q.get("header"),
-             "options": q.get("options"), "multiSelect": False} for q in questions])
+             "options": _options(q), "multiSelect": False} for q in questions])
     return Outcome("ready", digest, [READY, *_approved(core, at)])
 
 

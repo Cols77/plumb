@@ -15,7 +15,10 @@ shown is the one that record's current passing evidence asks, with YES among its
 The hook approves nothing. During a merge, rebase, cherry-pick or revert the entries are staged
 (``conflicts.stage_choice``) so the commit that finishes it carries them (SR-260 EX-28). A
 dismissed or unanswered question logs nothing. The answer "Build anyway" to a failed check's
-"Build without the check?" releases the gate (``gate.release`` ... ``button``).
+"Build without the check?" releases the gate (``gate.release`` ... ``button``). The answer
+"Study it in the room" to a judge question judges nothing again: the question becomes a card
+waiting in the room, its entry carries ``room`` (the card and the question asked), the band's
+line names it (``question.to_room``), and the agent is told to draw its diagram (SR-333).
 """
 
 from __future__ import annotations
@@ -49,11 +52,13 @@ def handle(ctx: HookContext) -> HookOutput | None:
     if not entries:
         return None
     from plumb.api import open_core
-    from plumb.understand import files, judge, queue
+    from plumb.present import owner_text
+    from plumb.understand import judge
 
     core = open_core(ctx.root)
     left = list(judge.unanswered(core, ctx.session_id))
     key_of = judge.question_key
+    drawn = []
     for entry in entries:
         key = key_of(entry["question"])
         found = next((q for q in left if q.get("key") == key), None)
@@ -61,7 +66,16 @@ def handle(ctx: HookContext) -> HookOutput | None:
                 key_of(o.get("label")) for o in left[0].get("options") or ()
                 if isinstance(o, dict)}:     # the one open question reworded: its option picked
             found = left[0]
-        if found is not None:
+        if found is not None and entry["answer"] == owner_text.ROOM_STUDY:
+            from plumb.understand import question
+
+            left.remove(found)       # SR-333 EX-3: no answer yet; the question waits in the room
+            made = question.to_room(core, ctx.session_id, found)
+            if made is not None:
+                entry["room"] = {"card": made.id, **{k: found.get(k) for k in (
+                    "job", "key", "records", "question", "options")}}
+                drawn += [made] if made.diagram else []
+        elif found is not None:
             left.remove(found)
             # SR-334 EX-2: the answer to a principle reaches the records of all its questions
             group = [found, *(q for q in left if found.get("principle")
@@ -75,18 +89,18 @@ def handle(ctx: HookContext) -> HookOutput | None:
     from plumb.mergedriver.conflicts import stage_choice
 
     stage_choice(core)
-    from plumb.present import owner_text
     from plumb.understand import clarify, gate
 
     if any(e["question"] == clarify.COULDNT_QUESTION and e["answer"] == owner_text.GATE_BUILD_ANYWAY
            for e in entries):      # the owner's own button on a failed check (gate.release)
         gate.release(core, ctx.session_id, "button")
-    ids = [str(r.get("id")) for e in entries for r in (e.get("asked") or {}).get("records", ())
-           if isinstance(r, dict)]
-    if ids:      # the records are rebuilt from the logs by the worker (judge.recompute)
-        queue.enqueue(core, files.make_job(judge.kind, ctx.session_id, judge.SCHEMA_ID, {
-            "records": list(dict.fromkeys(ids)), "answered": [e.digest for e in logged]}))
-    return None
+    judge.rejudge(core, ctx.session_id, logged)
+    if not drawn:
+        return None
+    from plumb.understand import cmd_clarify
+
+    return HookOutput(additional_context="\n".join(cmd_clarify.DRAW.format(
+        path=c.diagram, question=c.issue, options="; ".join(c.resolutions)) for c in drawn))
 
 
 def _tag_proofs(core, session: str, entries: list[dict], key_of) -> None:

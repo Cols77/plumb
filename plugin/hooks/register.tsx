@@ -221,6 +221,12 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
           </Button>
         ) : null}
       </Box>
+      {view.status?.roomCard ? (
+        // SR-333 EX-3, DEC-294: the question the owner chose to study; a press opens the room on it
+        <Button key="roomq" plain onPress={() => {}}>
+          <Text key="line:roomq" color={brass}>{T.roomWaits}</Text>
+        </Button>
+      ) : null}
       {loop ? loopLines(ui, loop, color, brass) : null}
       {loop && idea && band.idea ? ideaChoices(ui, idea, true, brass, true) : loop && (view.status?.study || idea) ? (
         // SR-291, DEC-146: the loop's third and last line holds the new study and the idea side by side
@@ -554,7 +560,13 @@ export const register: Register = on => {
       return pressed
     }
     let line = ''
-    if (key === 'study' || key.startsWith('study:')) {
+    if (key === 'roomq') {
+      // SR-333 EX-3: the room opens on the question, which leaves the band
+      const card = view.status?.roomCard
+      if (!card) return pressed
+      const ran = await plumb.roomQuestion(io, link, card)
+      line = ran.ok ? '' : T.roomQuestionFailed
+    } else if (key === 'study' || key.startsWith('study:')) {
       // SR-294 EX-3, EX-4, EX-6: the room opens on the study, which is marked opened, so it leaves
       // the band; a choice from the menu closes the menu
       const slug = key === 'study' ? view.status?.studySlug : key.slice('study:'.length)

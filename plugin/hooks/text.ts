@@ -41,6 +41,8 @@ export const T = {
   chooseFailed: 'plumb could not record that choice; nothing changed. Try again.',
   judged: (n: number) => `${n} judge-approved`,
   roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',
+  roomWaits: 'a question waits in the room',
+  roomQuestionFailed: 'plumb could not open the question in the browser room; nothing changed. Try again.',
   loopTitle: 'plumb: the intent loop',
   lowLeft: (n: number) => (n === 1 ? '1 low finding left' : `${n} low findings left`),
   tasksLeft: (left: string[]) => `left: ${left.join(', ')}`,

@@ -82,6 +82,8 @@ never sees them;
 - `principle`: two to four words naming the principle the answer turns on; questions that one
   answer would settle share the same `principle`, word for word;
 - `blocking`: true only when the work under way cannot go on without the answer.
+- `diagram`: true only when the answer is best seen drawn: which parts talk to which, an order
+  of steps, or where something lives. For wording or scope it is false.
 
 Answer with the JSON the schema asks for: `{"verdicts": [{"id", "verdict", "beyond",
 "contradicts", "reason", "confidence", "clear", "answer_corrects"}], "questions": [...]}`, one
