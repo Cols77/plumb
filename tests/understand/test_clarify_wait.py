@@ -118,6 +118,24 @@ def test_same_job_never_runs_twice(repo: Path, engine_standins: Any) -> None:
     assert len(list(files.jobs_dir(repo, SESSION).glob("clarify-*.json"))) == 1
 
 
+def test_the_same_words_sent_again_get_their_own_check(repo: Path, engine_standins: Any) -> None:
+    text = "/plumb clarify let users export their data"
+    ctx = SimpleNamespace(session_id=SESSION)
+    engine_standins.dispatcher.failing("run", "the model could not be reached")
+    digest = log_prompt(repo, text, session=SESSION, at="2026-10-06T10:00:00Z")
+    hooks.on_prompt(ctx, open_core(repo), {"digest": digest, "text": text})
+    worker.run_once(open_core(repo), SESSION)
+    assert cmd_clarify.wait(open_core(repo), SESSION, timeout=5).state == "couldnt_check"
+    engine_standins.dispatcher.script = {"clarify": CARD}
+    assert log_prompt(repo, text, session=SESSION, at="2026-10-06T10:05:00Z") == digest
+    hooks.on_prompt(ctx, open_core(repo), {"digest": digest, "text": text})
+    worker.run_once(open_core(repo), SESSION)
+    assert cmd_clarify.wait(open_core(repo), SESSION, timeout=5).state == "card"
+    assert len(list(files.jobs_dir(repo, SESSION).glob("clarify-*.json"))) == 2
+    cards = {c.kind: c for c in cardstore.own_cards(repo, SESSION)}
+    assert cards["couldnt_check"].status == "closed" and cards["choice"].status == "open"
+
+
 def test_a_result_with_no_ledger_entry_counts_for_nothing(repo: Path,
                                                           engine_standins: Any) -> None:
     core, digest = _say(repo)

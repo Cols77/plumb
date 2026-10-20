@@ -2,9 +2,9 @@
 
 - ``session``: ``plumb mod hello`` registers the mod's key digest for a session in
   ``.plumb/session/<id>/mod.json`` (the first registration wins) and checks a press's key;
-- ``offers``: the cards the mod draws, each question with its offer and buttons, recorded when
+- ``offers``: the cards the room draws, each question with its offer and buttons, recorded when
   drawn (``offers/<offer>.json`` and an ``offer`` log entry);
-- ``press``: ``plumb mod press`` answers a drawn card through ``understand.answer``'s one
+- ``press``: the room's button answers a drawn card through ``understand.answer``'s one
   answer path with the ``Button`` source; every press is logged as a ``card-press``;
 - ``cli``: the routed command.
 
