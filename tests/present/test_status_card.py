@@ -29,11 +29,19 @@ def _snap(**kwargs) -> StatusSnapshot:
 @pytest.mark.sr("SR-251")
 def test_awaits_you_with_judge_count() -> None:
     """EX-1: 12 of 14 confirmed, 2 by the judges (JEV and the judge model counted together),
-    one proposed record."""
-    card = status_card(_snap(requirements_confirmed=12, proposed=1,
+    one question for the owner."""
+    card = status_card(_snap(requirements_confirmed=12, ask=1,
                              confirmed_by={"owner": 10, "auto-jev": 1, "auto-model": 1}))
     assert card == ('plumb ● awaits you · "add multiply next to add" · '
-                    "SR 12/14 ok (2 judge-approved) · 1 awaits you")
+                    "SR 12/14 ok (2 judge-approved) · 1 question")
+
+
+def test_ex6_records_the_judge_is_checking_do_not_make_the_status_await_you() -> None:
+    """EX-6: records waiting on a judge are counted as such; only a question awaits you."""
+    card = status_card(_snap(proposed=3))
+    assert card.startswith('plumb ✓ aligned') and "3 waiting on a judge" in card
+    assert "awaits you" not in card
+    assert card_state(_snap(proposed=3, ask=1)) == "awaits you"
 
 
 def test_aligned() -> None:
@@ -65,7 +73,7 @@ def test_jev_count_only_with_auto_approvals() -> None:
 
 def test_ascii_fallback() -> None:
     """EX-3: the ASCII card is ASCII only."""
-    card = status_card(_snap(requirements_confirmed=12, proposed=1, full_pending=True,
+    card = status_card(_snap(requirements_confirmed=12, ask=1, full_pending=True,
                              auto_approve="suspended", intent_summary="ajouter la multiplication é",
                              confirmed_by={"auto-jev": 2}), ascii=True)
     assert card.isascii()
@@ -116,10 +124,10 @@ def test_snapshot_counts_who_confirmed_and_the_session_intent(repo: Path, write_
     approvals.approve(core, ["SR-001"])
     snap = build_snapshot(open_core(repo), intent_summary="add multiply next to add")
     assert snap.confirmed_by == {"owner": 1}
-    assert snap.state == "awaits you"
+    assert snap.state == "aligned"   # SR-002 waits on a judge, not on the owner (EX-6)
     # the stop hook names the intent this session works on: SR-002 derives from INT-001
     touch(repo, ".plumb/requirements/SR-002.md")
     run_stop(repo, hook_input)
     data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert data["intent_summary"] == "add multiply next to add"
-    assert data["state"] == "awaits you"
+    assert data["state"] == "aligned"
