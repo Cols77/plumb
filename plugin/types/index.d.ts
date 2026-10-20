@@ -1,70 +1,5 @@
-// plumb's mod: the values it keeps in $.state (SP7 5.6) and the shapes `plumb mod` answers
-// (src/plumb/mod: draw, press; present.json from plumb.mod.handshake).
-
-/** One button of a drawn card question: a suggested choice, Ask for a change, Leave open. */
-export type PlumbButton = {
-  index: number
-  label: string
-  answer: 'accepted' | 'rejected' | 'change' | 'open'
-  change: string | null
-  consequence?: string
-}
-
-/** One question of a card as drawn, with the offer the press names. */
-export type PlumbOffer = {
-  offer_id: string
-  question: string
-  record: string | null
-  hash: string
-  drawn_at: string
-  buttons: PlumbButton[]
-}
-
-export type PlumbQuestion = {
-  id: string
-  text: string
-  resolutions: string[]
-  record: string | null
-  hash: string
-}
-
-/** What a card shows (SR-129): a read-back or a choice, as plumb derives it (understand.fullcard). */
-export type PlumbContent = {
-  topic: string
-  issue: string
-  context: string[]
-  assumptions: string[]
-  wont: string | null
-  options: { n: number; text: string; consequence: string | null; recommended: boolean }[]
-  diagram: string
-}
-
-/** A card as `plumb mod draw` answers it: the card as cards.json holds it, plus its offers. */
-export type PlumbCard = {
-  id: string
-  kind: string
-  topic: string
-  issue: string
-  evidence: string
-  resolutions: string[]
-  questions: PlumbQuestion[]
-  status: string
-  answers: unknown[]
-  owner_only: boolean
-  turn: number
-  repeats: boolean
-  /** SR-160: where the card stands: waiting, processing, blocked, done or left_open */
-  state?: string
-  /** why a blocked card could not be applied */
-  reason?: string
-  offers: PlumbOffer[]
-  content: PlumbContent | null
-  feature?: string
-  /** the path of the card's diagram file ('' for none) */
-  diagram?: string
-  /** the diagram drawn by the diagram mod's noun when the snapshot was taken (null: not drawn) */
-  drawn?: { rows: string[]; svg: string } | null
-}
+// plumb's mod: the values it keeps in $.state (SP7 5.6) and the shapes it reads from plumb
+// (status.json, `plumb intent status --json`; present.json from plumb.mod.handshake).
 
 /** present.json: what the stop hook hands the panel for a turn (sp7-realign-sp8 C7). */
 export type PlumbPresent = {
@@ -101,14 +36,15 @@ export type PlumbLoop = {
   stopped: string
 }
 
-/** The status the band's first line draws: plumb's status card, SP8's progress, and the
- * owner's card setting (full, compact or off); `loop` while an intent loop is open; `study` the
+/** The status the band's first line draws: plumb's status card, SP8's progress and the count
+ * of questions waiting for the owner (SR-337); `loop` while an intent loop is open; `study` the
  * title of a study the owner has not opened yet (SR-294). */
 export type PlumbStatus = {
   state: string
   summary: string
   progress: string
-  card: string
+  /** status.json's `awaiting`: the questions waiting for the owner, the head's "N await you" */
+  awaiting: number
   loop?: PlumbLoop | null
   study?: string
   /** the new study's slug, which the band's press opens in the room (SR-294) */
@@ -136,19 +72,15 @@ export type PlumbLoopPane = {
 
 /** What the panel draws, as plumb last answered it. */
 export type PlumbView = {
-  cards: PlumbCard[]
   present: PlumbPresent | null
   status: PlumbStatus | null
   /** The last press's answer, as the owner reads it. */
   line: string
 }
 
-/** How the owner left the band: hidden, every card shown, and the cards' contents when the
- * owner hid it (a new content shows the band again). */
+/** How the owner left the band: hidden until the owner presses Show, whatever arrives (SR-337). */
 export type PlumbBand = {
   isHidden: boolean
-  showAll: boolean
-  shown: string[]
   /** the band's 'new study' menu is open (SR-294 EX-6) */
   studies?: boolean
   /** the newest study idea's choices are shown (SR-294 EX-7) */
@@ -163,8 +95,8 @@ declare module 'claude-code' {
       told: PlumbTold | null
       view: PlumbView
       band: PlumbBand
-      /** the card the pane shows, among those waiting; the loop it shows instead (SR-305) */
-      pane: { index: number; loop?: PlumbLoopPane | null }
+      /** the loop the pane shows (SR-305) */
+      pane: { loop: PlumbLoopPane | null }
     }
   }
 }
