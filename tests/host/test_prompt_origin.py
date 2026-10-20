@@ -75,6 +75,9 @@ SHAPES = [
     ("bare_reminder", REMINDER, "notification"),
     ("cross_session", "[Cross-session delivery notice] your message to 6a18d0ce was delivered",
      "notification"),
+    ("cross_session_idle", "[Cross-session idle notice] 6a18d0ce is idle", "notification"),
+    ("agent_message", '<agent-message from="6a18d0ce">the build is done</agent-message>',
+     "notification"),
     ("command", CAVEAT, "command"),
 ]
 

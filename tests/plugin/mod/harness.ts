@@ -1,12 +1,12 @@
 // The world beneath plumb's panel in its tests (SP7 5.10): the repository's files, the
-// `plumb mod ...` answers recorded from real runs (fixtures.ts), the clock, and what the panel
-// showed (toasts, the status line, log lines, the message box, panes). Every process call is
+// `plumb mod ...` answers, the clock, and what the panel showed (toasts, the status line, log
+// lines, panes). Every process call is
 // recorded with its argv and stdin, so a test can say the key never reaches argv.
 import type { On } from 'claude-code'
 import { mock } from 'claude-code/testing'
 import type { MockClock } from 'claude-code/testing'
 
-import { DRAW, PRESS_CHANGE, PRESS_CONFIRM, PRESS_LEAVE_OPEN, PRESENT, PYTHON, ROOT, SESSION } from './fixtures'
+import { PRESENT, PYTHON, ROOT, SESSION } from './fixtures'
 
 export const SURFACES = ['terminal', 'desktop'] as const
 export const NOW = Date.parse('2026-10-11T12:00:05Z')
@@ -32,14 +32,12 @@ export type World = {
   toasts: string[]
   statuses: (string | undefined)[]
   logs: string[]
-  fills: string[]
   opened: string[]
   opens: { id: string; columns?: number; closeOnEscape?: boolean }[]
   closed: string[]
   /** What `plumb mod <action>` answers: its exit code and JSON, by action and argv. */
   answer: (action: string, argv: string[]) => { exitCode: number; data: unknown }
-  canFill: boolean
-  /** Every process call is refused: a hook of the panel fails. */
+  /** Every process call and file write is refused: a hook of the panel fails. */
   broken?: boolean
 }
 
@@ -54,26 +52,18 @@ export function world(over: Partial<World> = {}): World {
       [PYTHON]: '',
       [`${sessionDir}/mod.json`]: JSON.stringify(MOD_JSON),
       [`${sessionDir}/present.json`]: JSON.stringify(PRESENT),
-      [`${ROOT}/.plumb/session/status.json`]: JSON.stringify({ state: 'awaits you', intent_summary: 'invoices · late fees', present: { card: 'full' } }),
+      [`${ROOT}/.plumb/session/status.json`]: JSON.stringify({ state: 'awaits you', intent_summary: 'invoices · late fees', awaiting: 2 }),
     },
     writes: [],
     runs: [],
     toasts: [],
     statuses: [],
     logs: [],
-    fills: [],
     opened: [],
     opens: [],
     closed: [],
-    canFill: true,
     answer: (action, argv) => {
       if (action === 'hello') return { exitCode: 0, data: { active: true, since: '2026-10-11T12:00:00Z', session: SESSION } }
-      if (action === 'draw') return { exitCode: 0, data: DRAW }
-      if (action === 'press') {
-        const choice = argv[argv.indexOf('--choice') + 1]
-        const answer = choice === '3' ? PRESS_LEAVE_OPEN : choice === '2' ? PRESS_CHANGE : PRESS_CONFIRM
-        return { exitCode: 0, data: answer }
-      }
       return { exitCode: 2, data: null }
     },
     ...over,
@@ -115,6 +105,7 @@ export function install(on: On, w: World): MockClock {
   })
   on('fs.write', (_$, e) => {
     const path = norm(e.path)
+    if (w.broken) return { deny: 'the file could not be written' }
     w.writes.push({ path, text: e.text })
     w.files[path] = e.text
     return { value: undefined }
@@ -154,10 +145,6 @@ export function install(on: On, w: World): MockClock {
   on('ui.close', (_$, e) => {
     w.closed.push(e.id)
     return { value: undefined }
-  })
-  on('prompt.fill', (_$, e) => {
-    if (w.canFill) w.fills.push(e.text)
-    return { isFilled: w.canFill } as any
   })
   return clock
 }

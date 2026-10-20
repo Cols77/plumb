@@ -363,7 +363,7 @@ def test_the_schema_is_a_checkable_answer_shape() -> None:
     assert {"clear", "answer_corrects"} <= set(item["properties"])
     asked = judge.schema["properties"]["questions"]["items"]["properties"]
     assert set(asked) == {"question", "header", "options", "recommended_reason", "request",
-                          "records"}
+                          "records", "principle", "blocking", "diagram"}
     assert FakeDispatcher().available() is None
 
 

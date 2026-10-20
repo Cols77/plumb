@@ -198,7 +198,7 @@ def test_sr266_ex2_stale_links_untraced_files_and_warnings_go_to_the_agent(
 
 @pytest.mark.sr("SR-266")
 def test_sr266_ex3_the_retired_card_setting_is_told_to_the_agent_once(carded) -> None:
-    """SR-266 EX-3: full/compact/off has no effect; the agent is told once it is retired."""
+    """SR-266 EX-3: full/compact/off has no effect and nothing is told about it."""
     (carded.root / ".plumb" / "config.yaml").write_text("present:\n  card: compact\n", "utf-8")
 
     def stop_cli():
@@ -209,8 +209,7 @@ def test_sr266_ex3_the_retired_card_setting_is_told_to_the_agent_once(carded) ->
 
     first = stop_cli()
     assert first.owner_lines == ("plumb: 1 question for you",)       # no effect on the owner
-    assert sum(CARD_RETIRED in line for line in first.agent_context) == 1
-    assert not any(CARD_RETIRED in line for line in stop_cli().agent_context)
+    assert not any(CARD_RETIRED in line for line in first.agent_context)
 
 
 @pytest.mark.sr("SR-266")
