@@ -8,7 +8,6 @@ from __future__ import annotations
 import io
 import json
 import re
-import types
 from pathlib import Path
 
 import pytest
@@ -36,14 +35,12 @@ def _cli(capsys, *argv: str) -> str:
 
 
 def _turn_end(root: Path) -> tuple[tuple[str, ...], str]:
-    """The stop hook's confirmations, then the panel's one plumb line from them."""
-    from plumb.mod.handshake import turn_line
-    from plumb.understand.summary import Told, _confirmations
+    """The stop hook's confirmations (the agent's), then the owner's one plumb line."""
+    from plumb.understand.summary import Told, _confirmations, owner_line
 
     told = Told(root, SESSION, "2000-01-01T00:00:00Z")
     lines = _confirmations(open_core(root), None, told)
-    ctx = types.SimpleNamespace(root=root, session_id=SESSION)
-    return lines, turn_line(ctx, {"cards": []}, {"confirmations": list(lines), "cards": []})
+    return lines, owner_line(open_core(root), SESSION, set())
 
 
 def _session_start(root: Path, hook_input) -> str:
@@ -63,7 +60,8 @@ def test_ex1_the_turn_end_counts_a_judge_approval_and_every_listing_labels_it(
     listed (show, explain, status, the status card)."""
     judged(world, ("SR-001", "supported", 0.8))
     lines, line = _turn_end(world)
-    assert lines == (COUNTED,) and line == f"plumb: {COUNTED}"
+    # SR-265 EX-7: the count is the agent's and the status line's; the owner gets no line
+    assert lines == (COUNTED,) and line == ""
     root = ["--root", str(world)]
     assert _cli(capsys, "show", *root, "SR-001").startswith(f"SR-001 (requirement, {LABEL}) ")
     assert LABEL in _cli(capsys, "explain", *root, "SR-001")
@@ -163,3 +161,32 @@ def test_triage_review_and_merge_check_name_no_approve_hint_and_no_id(
     for text in ("\n".join(triage[1:]), "\n".join(listed), sections, "\n".join(merge)):
         assert not HINT.search(text), text
         assert not ID.search(text.replace(LABEL, "")), text
+
+
+@pytest.mark.sr("SR-251")
+def test_ex1_the_band_counts_every_record_status_lists_judge_approved(
+        world: Path, capsys) -> None:  # noqa: F811
+    """SR-251 EX-1: the band's status counts the judge approvals ``plumb status`` lists, of any
+    kind (round 3: the band said 2 where status listed 6, its decisions left out)."""
+    from plumb.hosts.claude_code.snapshot import build_snapshot
+
+    judged(world, ("SR-001", "supported", 0.8), ("INT-001", "supported", 0.8))
+    snap = build_snapshot(open_core(world))
+    listed = _cli(capsys, "status", "--root", str(world)).count(LABEL)
+    assert snap.judge_approved == listed == 2
+    assert snap.confirmed_by.get("auto-model") == 1   # the SR count beside it is unchanged
+
+
+@pytest.mark.sr("SR-251")
+def test_ex1_a_turn_without_an_edit_brings_the_band_count_up_to_date(
+        world: Path) -> None:  # noqa: F811
+    """SR-251 EX-1: the judge approves between turns; a turn that edits nothing still updates
+    the band's count (round 4: the band showed none while status listed 2)."""
+    from plumb.hosts.claude_code.snapshot import (build_snapshot, refresh_judge_count,
+                                                  write_snapshot)
+
+    write_snapshot(world, build_snapshot(open_core(world)))
+    judged(world, ("SR-001", "supported", 0.8), ("INT-001", "supported", 0.8))
+    refresh_judge_count(open_core(world))
+    data = json.loads((world / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert data["judge_approved"] == 2
