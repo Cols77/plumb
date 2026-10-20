@@ -597,6 +597,23 @@ def test_ex1_an_older_records_own_words_are_looked_for_when_the_judge_quotes_non
     assert 'You said on 4 Oct: "Cache the front page"' in question["question"]
 
 
+@pytest.mark.sr("SR-249")
+def test_ex1_a_transcript_match_is_quoted_with_its_date_and_approves_nothing(
+        world: Path, write_record, monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+        tmp_path: Path) -> None:
+    """SR-249 EX-1, without cards: the question quotes the found words with their date, and the
+    older record stays unconfirmed with no approval logged."""
+    write_record(world, intent_text(2, "Cache the front page", "Cache the front page"))
+    _transcript(world, monkeypatch, tmp_path, "Cache the front page, please")
+    applied_on(world, ["INT-002"], answer(("INT-002", "supported"), questions=[
+        asking("INT-002", request={})]))
+    (question,) = written(world)
+    assert 'You said on 4 Oct: "Cache the front page"' in question["question"]
+    core = open_core(world)
+    assert core.status()["INT-002"].confirmation != "confirmed"
+    assert not [e for e in core.events() if e.kind == "approval"]
+
+
 @pytest.mark.sr("SR-299")
 def test_dec192_a_question_without_a_quote_reaches_the_owner(world: Path) -> None:  # noqa: F811
     (question,) = shaped_of(world, asking("SR-001", request={}))
