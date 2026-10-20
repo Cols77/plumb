@@ -543,12 +543,9 @@ def owner_output(ctx: HookContext, core: Any, text: Sequence[str], before: set[s
                  touched: Sequence[str] = (), checks: tuple[int, int] = (0, 0)
                  ) -> HookOutput | None:
     """SR-266: everything for the agent goes to its channel as text, queued for the next
-    prompt (the retired card setting named there, once per session); SR-265: the owner gets
+    prompt; SR-265: the owner gets
     at most one plumb line, or nothing."""
-    from plumb.config import CARD_RETIRED
-
-    retired = [CARD_RETIRED] if getattr(getattr(core.config, "present", None), "card", "") else []
-    queue_notes(ctx, [*retired, *text])
+    queue_notes(ctx, text)
     try:
         from plumb.understand.summary import owner_line
 

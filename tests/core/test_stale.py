@@ -72,7 +72,7 @@ def test_ex1_function_edit_names_sr005_link(project: Path) -> None:
     assert [(s.record, s.link, s.path) for s in found] == [("SR-005", "SR-005#0", "src/x.py")]
     assert stale.notice(found[0]) == (
         "plumb: SR-005's link to src/x.py is stale: the file changed; rerun its tests and "
-        "repin, reword SR-005, or bring it to the owner as a card")
+        "repin, reword SR-005, or ask the owner with the question tool")
 
 
 def test_reformat_only_symbol_edit_not_stale(project: Path) -> None:

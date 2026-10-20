@@ -521,7 +521,7 @@ def _drawn_entry(core: Any, session: str, card: CardState, status: str, *,
 def read_drawn(root: Any, session: str) -> list[dict[str, Any]]:
     """Every card drawn at the last turn end (``{card, content, turn_built}``): the cards the
     owner reads, each with its full content (SR-116), and the stop hook's cards the owner left
-    open (status ``left_open``). What ``present.json`` and ``plumb mod draw`` carry."""
+    open (status ``left_open``). What the room draws."""
     raw = files.read_json(files.session_dir(root, session) / DRAWN)
     return [dict(e) for e in raw if isinstance(e, Mapping) and isinstance(e.get("card"), Mapping)
             ] if isinstance(raw, list) else []

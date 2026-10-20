@@ -20,13 +20,12 @@ def _start(repo: Path, hook_input) -> str:
     return out.getvalue()
 
 
-def test_a_set_card_mode_has_no_effect_and_plumb_says_it_is_retired(
+def test_a_set_card_mode_reads_as_off_and_plumb_says_nothing(
         repo: Path, hook_input) -> None:
     assert "retired" not in _start(repo, hook_input)
     (repo / ".plumb" / "config.yaml").write_text("present:\n  card: full\n", "utf-8")
     out = _start(repo, hook_input)
-    assert "plumb: the card setting (full, compact, off) is retired" in out
-    assert out.count("is retired") == 1
+    assert "retired" not in out
     import json
 
     status = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
