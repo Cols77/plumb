@@ -76,6 +76,18 @@ def test_ex1_three_principles_asked_and_the_turn_end_line_counts_the_rest(
     assert summary.owner_line(open_core(world), SESSION, set()) == "plumb: 59 questions for you"
 
 
+def test_dec297_the_turn_end_line_counts_waiting_questions_only_when_the_count_changes(
+        world: Path) -> None:  # noqa: F811
+    """DEC-297 (the owner: "Only when the count changes"): a quiet turn with old waiting
+    questions shows nothing; a turn that answers one says how many now wait."""
+    waiting(world, *backlog())
+    assert summary.owner_line(open_core(world), SESSION, set()) == "plumb: 62 questions for you"
+    assert summary.owner_line(open_core(world), SESSION, set()) == ""        # a quiet turn
+    answered_this_turn(world, [{"question": "Qno cache 0?"}])
+    assert summary.owner_line(open_core(world), SESSION, set()) == "plumb: 61 questions for you"
+    assert summary.owner_line(open_core(world), SESSION, set()) == ""
+
+
 def test_ex2_an_answer_to_a_principle_reaches_every_record_of_its_questions(
         world: Path, hook_input: Any, engine_standins: Any) -> None:  # noqa: F811
     waiting(world, ("Only the public pages?", "public pages only", False, ("INT-001",)),
