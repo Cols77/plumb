@@ -41,10 +41,14 @@ schema: Mapping[str, Any] = _load_schema()
 
 
 def _confirmed(core: Any) -> dict[str, str]:
-    """``{id: text}`` of the records the owner confirmed and nothing replaced."""
-    index = core.index()
+    """``{id: text}`` of the records the owner confirmed and nothing replaced, and (SR-335)
+    the decisions quoting the owner's own logged words, approved or not."""
+    from plumb.understand import premise
+
+    index, said = core.index(), premise.owner_words(core)
     return {i: read.record_text(index[i]) for i, s in core.status(list(index)).items()
-            if s.confirmation == "confirmed" and s.superseded_by is None and i in index}
+            if s.superseded_by is None and i in index and (
+                s.confirmation == "confirmed" or premise.owner_quoted(index[i], said))}
 
 
 def _inputs(core: Any, session: str) -> dict[str, Any] | None:
@@ -152,7 +156,7 @@ def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, s
         decision, quote = str(item.get("decision")), str(item.get("quote"))
         action = str(item.get("action"))
         if decision not in confirmed or not read.evidence_in(quote, confirmed[decision]):
-            action = "stays"      # a proposed decision, or words it does not hold, settle nothing
+            action = "stays"      # an agent-only proposal, or words not in it, settle nothing
         why = owner_text.TIDY_SETTLED.format(record=decision, quote=quote)
         link_id = card.id.removeprefix("stale:") if card.kind == "stale_link" else ""
         index = core.index()

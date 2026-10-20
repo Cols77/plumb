@@ -152,6 +152,10 @@ def press(core: Any, session: str, offer: str, index: int,
                             hash=shown_hash, choice=choice,
                             source=answer.Button(offer_id=offer, key_digest=digest,
                                                  surface=surface))
+        if not answer.is_left(choice):     # SR-333 EX-5: a judge question studied in the room
+            from plumb.understand import question as asked
+
+            asked.answered_in_room(core, session, card_id, choice.label)
     applied = work.applied()
     _write(core, session, applied, closed_card)
     after = next((c for c in applied.cards if c.id == card_id), None)

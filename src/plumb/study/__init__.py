@@ -5,7 +5,8 @@ recommend, depth, status``, then the body in plain words with an optional mermai
 starts as an idea (DEC-207): a title, one line of why and the depth the agent recommends, with
 no body (``idea``). The owner's press in the band accepts it at a depth (``accepted``) or
 declines it (``declined``, never proposed again); only an accepted idea is written (``new``),
-at the chosen depth, then read (``opened``, ``known``, ``deeper``).
+at the chosen depth, then read (``opened``, ``known``, ``deeper``). A study proposed ahead of
+the owner's waiting questions (SR-336) holds their keys in ``serves`` and belongs to no loop step.
 
 ``.plumb/understanding.md`` is the picture of what the owner understands of the system: plain lines ``- knows: <topic>`` and ``- needs: <topic>``, which the owner edits in
 the browser room. 'I know this' and 'Go deeper' change a study's status and the picture only:
@@ -24,11 +25,13 @@ from typing import Any
 IDEAS = ("idea", "accepted", "declined")
 WRITTEN = ("new", "opened", "known", "deeper")
 STATUSES = (*IDEAS, *WRITTEN)
+UNREAD = ("idea", "accepted", "new")    # proposed, accepted or written, not read yet
 DEPTHS = ("md", "diagrams", "video")
 # shortcut: video studies are plumb-12's later work; add "video" here once they can be written
 OFFERED = ("md", "diagrams")
 MARKS = {"opened": "opened", "known": "known", "deeper": "deeper"}
 PICTURE_LIMIT = 65536
+FIRST = "study_first.json"     # the session's 'Study it first' choice (SR-336)
 _LINE = re.compile(r"^\s*-\s*(knows|needs)\s*:\s*(.+?)\s*$", re.IGNORECASE)
 _SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,79}")
 
@@ -109,7 +112,8 @@ def _parse(path: Path) -> dict[str, Any] | None:
         return None
     if not isinstance(fields, dict) or fields.get("status") not in STATUSES:
         return None
-    return {**{k: str(v) if v is not None else "" for k, v in fields.items()},
+    return {**{k: v if isinstance(v, list) else str(v) if v is not None else ""
+               for k, v in fields.items()},
             "slug": path.stem, "body": body}
 
 
@@ -145,18 +149,22 @@ def _same(a: dict[str, Any], topic: str, title: str) -> bool:
 
 
 def propose(root: Path, *, title: str, why: str, depth: str, loop: str, step: str,
-            topic: str | None = None) -> str:
+            topic: str | None = None, serves: list[str] | None = None) -> str:
     """An idea of a study for ``loop``'s ``step`` (SR-293 EX-6): no page is written. At most
     one per step, ideas counted (EX-5); none on a topic the owner knows (SR-292 EX-1, SR-293
-    EX-3) or on an idea the owner declined (EX-9)."""
+    EX-3) or on an idea the owner declined (EX-9). ``serves``: the keys of the waiting
+    questions it is studied ahead of (SR-336), whatever the step, one idea waiting at a time."""
     topic = (topic or title).strip()
     if not title.strip() or not why.strip():
         raise ValueError("a study idea needs a title and one line of why")
     if depth not in DEPTHS:
         raise ValueError(f"the recommended depth is one of {', '.join(DEPTHS)}")
-    held = next((s for s in studies(root) if s.get("loop") == loop and s.get("step") == step),
-                None)
-    if held:
+    if serves:
+        held = next((s for s in studies(root) if s["status"] == "idea"), None)
+        if held:
+            raise ValueError(f"the owner has still to choose on the study idea {held['title']}")
+    elif held := next((s for s in studies(root)
+                       if s.get("loop") == loop and s.get("step") == step), None):
         raise ValueError(f"the {step} step already has its study: {held['title']}")
     if knows(root, topic):
         raise ValueError(f"the owner knows {topic} (the understanding picture): no study")
@@ -165,8 +173,43 @@ def propose(root: Path, *, title: str, why: str, depth: str, loop: str, step: st
     slug = slug_of(root, title)
     _write(folder(root) / f"{slug}.md", _front({
         "title": title.strip(), "topic": topic, "step": step, "loop": loop,
-        "why": " ".join(why.split()), "recommend": depth, "depth": "", "status": "idea"}))
+        "why": " ".join(why.split()), "recommend": depth, "depth": "", "status": "idea",
+        **({"serves": list(serves)} if serves else {})}))
     return slug
+
+
+def serving(root: Path, key: str) -> dict[str, Any] | None:
+    """SR-336 EX-1: the study not read yet (proposed, accepted or written) that serves the
+    waiting question ``key``, the newest."""
+    return next((s for s in reversed(studies(root)) if s["status"] in UNREAD
+                 and key in (s.get("serves") or ())), None)
+
+
+def first_path(root: Path, session: str) -> Path:
+    from plumb.understand import files
+
+    return files.session_dir(Path(root), session) / FIRST
+
+
+def study_first(root: Path, session: str, slug: str) -> None:
+    """SR-336 EX-2: the owner chose 'Study it first': the band's new-study line names this study
+    (its press opens the room on it, SR-294) and its questions wait until it is read."""
+    from plumb.understand import files
+
+    files.write_json_atomic(first_path(root, session), {"study": slug})
+
+
+def first_keys(root: Path, session: str) -> set[str]:
+    """The questions held back for the study the owner chose to read first, until it is read."""
+    from plumb.understand import files
+
+    raw = files.read_json(first_path(root, session))
+    slug = raw.get("study") if isinstance(raw, dict) else None
+    try:
+        found = get(root, slug)
+    except LookupError:
+        return set()
+    return set(found.get("serves") or ()) if found["status"] in UNREAD else set()
 
 
 def _fields(found: dict[str, Any]) -> dict[str, Any]:

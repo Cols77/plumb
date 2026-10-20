@@ -11,7 +11,7 @@ Run plumb as `plumb`. The owner's intent lives in files; read it before acting.
 - Before editing a file, grep `.plumb/test_map.txt` for it (no map: run `plumb tests map`);
   the tests listed cover it. Never rewrite a confirmed example's acceptance test to make it
   pass. When the stop hook asks, run the command it names (`plumb tests run --changed`).
-  A workflow agent's stop is held on each stale link its work made: repin, reword or card it.
+  A workflow agent's stop is held on each stale link its work made: repin, reword or ask it.
 - Formalize each request that changes the system as proposed records linked to its code, for
   the judge: `plumb capture --prompt <digest> --file <doc.json>` (references/capture-doc.md).
   No read-back. Two readings: `plumb decide --question Q --chosen A --alt B`. `<digest>`
@@ -40,5 +40,5 @@ exists, and you never decide on your own that the owner approved.
    their consequences.
 5. The stop hook's cards reach you as text, not the owner. One tagged "only the owner can
    settle this" (an open conflict, a regression on a confirmed requirement, a drift whose
-   meaning changed): ask it at once, plain words, options, no ids (a study may lay out both
-   sides, choosing nothing). Stale links, untraced files and warnings are yours to fix.
+   meaning changed): ask it at once with the question tool, plain words, options, no ids
+   (or offer a study of both sides). Stale links, untraced files and warnings are yours to fix.

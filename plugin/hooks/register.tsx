@@ -1,9 +1,8 @@
-// plumb's mod (SP7 5 as re-aligned by sp7-realign-sp8; SR-085, SR-086, SR-087, SR-116): the
-// band above the prompt (plumb's status, SP8's progress, the cards awaiting per feature), each
-// awaiting card in full with its buttons, Show all, a toast, the
-// owner's notice and the model's note after a press, and the fallback. plumb's command hooks
-// keep doing the work (DEC-024): while this panel is active the stop hook writes present.json
-// instead of printing.
+// plumb's mod (SP7 5 as re-aligned by sp7-realign-sp8; SR-085, SR-087, SR-116, SR-337): the
+// band above the prompt (plumb's status with the count of questions waiting, SP8's progress, the
+// intent loop's and the studies' lines; no card), the loop pane, the owner's notice after a
+// press, and the fallback. plumb's command hooks keep doing the work (DEC-024): while this panel
+// is active the stop hook writes present.json instead of printing.
 //
 // The engine wants every `$` call spelled at its hook's call site: each hook hands plumb.ts an
 // `Io` of closures over its own `$`, and every Button is answered by the `ui.press` hook below.
@@ -19,42 +18,31 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { PlumbBand, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbTold, PlumbView } from '../types'
-import { CardView, contentKey, findPress, Grouped, perFeature, stateOf } from './cards'
-import type { Ui } from './cards'
 import * as plumb from './plumb'
 import type { Hello, Io, Unlinked } from './plumb'
 import { brassColor, GLYPHS, plumbColor, T } from './text'
 
-/** The surface's element table; the terminal draws the diagram's rows, whatever else the table
- * holds (the live terminal lists an Svg that draws nothing). */
-const uiOf = ($: any, e: any): Ui => {
-  const t = $.ui.resolve(e)
-  return { Box: t.Box, Text: t.Text, Button: t.Button, Svg: e.surface === 'terminal' ? undefined : t.Svg }
-}
+/** The surface's element table, as `$.ui.resolve(e)` answers it. */
+type Ui = { Box: any; Text: any; Button: any }
 
-/** The diagram mod's noun (plumb's plugin.json lists the mod under `dependencies`); reached
- * untyped until the mod's contract declares `diagram.rows` and `diagram.svg`. */
-const diagramOf = ($: any): NonNullable<Io['diagram']> => async (text, columns) => ({
-  rows: await $.diagram.rows({ text, columns }),
-  svg: await $.diagram.svg(text),
-})
+const uiOf = ($: any, e: any): Ui => $.ui.resolve(e)
 
-const PANE = 'plumb-cards'
-const EMPTY_VIEW: PlumbView = { cards: [], present: null, status: null, line: '' }
-const BAND: PlumbBand = { isHidden: false, showAll: false, shown: [] }
+const PANE = 'plumb-loop'
+const EMPTY_VIEW: PlumbView = { present: null, status: null, line: '' }
+const BAND: PlumbBand = { isHidden: false }
 
 const linkAtom = atom({ plugin: 'plumb', key: 'link' } as const, null)
 const degradedAtom = atom({ plugin: 'plumb', key: 'degraded' } as const, false)
 const toldAtom = atom({ plugin: 'plumb', key: 'told' } as const, null as PlumbTold | null)
 const viewAtom = atom({ plugin: 'plumb', key: 'view' } as const, EMPTY_VIEW)
 const bandAtom = atom({ plugin: 'plumb', key: 'band' } as const, BAND)
-const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const, { index: 0, loop: null as PlumbLoopPane | null })
+const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const, { loop: null as PlumbLoopPane | null })
 
 // the width the pane asks for when it docks beside the conversation
 const PANE_COLUMNS = 80
 
 function statusLine(view: PlumbView): string {
-  const waiting = view.cards.filter(c => c.repeats).length
+  const waiting = view.status?.awaiting ?? 0 // SR-337 EX-1: status.json's count, never a card
   const state = view.status?.state ?? ''
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
   const word = waiting ? T.awaiting(waiting) : state || T.nothingAwaits
@@ -77,7 +65,7 @@ async function refreshPane($: any, io: Io, link: PlumbLink) {
   if ((await read($, paneAtom)).loop === null) return
   const loop = (await read($, viewAtom)).status?.loop ? await plumb.loopPane(io, link) : null
   if (loop === null) {
-    // the loop ended: its pane closes rather than fall back to the cards (rounds 4 and 5)
+    // the loop ended: its pane closes (rounds 4 and 5)
     await update($, paneAtom, p => ({ ...p, loop: null }))
     await $.ui.close({ id: PANE })
     return
@@ -199,8 +187,7 @@ function ideaChoices(ui: Ui, idea: { title: string; why: string; recommend: stri
   )
 }
 
-/** The band: one line of status, the cards awaiting per feature, then the awaiting card in
- * full (every card with Show all). */
+/** The band: one line of status, then the loop's and the studies' lines; no card (SR-337). */
 function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, color: string, brass: string) {
   const { Box, Button, Text } = ui
   const head = statusLine(view)
@@ -212,11 +199,6 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
       </Box>
     )
   }
-  const waiting = view.cards.filter(c => c.repeats)
-  const leftOpen = view.cards.filter(c => stateOf(c) === 'left_open')
-  const compact = view.status?.card === 'compact'
-  const everyOpen = [...waiting, ...leftOpen]
-  const shown = band.showAll ? everyOpen : compact ? [] : waiting.slice(0, 1)
   const loop = view.status?.loop
   const studies = view.status?.studies ?? []
   const idea = (view.status?.ideas ?? []).at(-1) // DEC-207: the newest idea waiting for a choice
@@ -239,6 +221,12 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
           </Button>
         ) : null}
       </Box>
+      {view.status?.roomCard ? (
+        // SR-333 EX-3, DEC-294: the question the owner chose to study; a press opens the room on it
+        <Button key="roomq" plain onPress={() => {}}>
+          <Text key="line:roomq" color={brass}>{T.roomWaits}</Text>
+        </Button>
+      ) : null}
       {loop ? loopLines(ui, loop, color, brass) : null}
       {loop && idea && band.idea ? ideaChoices(ui, idea, true, brass, true) : loop && (view.status?.study || idea) ? (
         // SR-291, DEC-146: the loop's third and last line holds the new study and the idea side by side
@@ -264,18 +252,8 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
           <Text key={`menu:${st.slug}`} color={brass}>{`  ${st.title}`}</Text>
         </Button>
       )) : null}
-      {waiting.length ? <Text key="waiting">{`${T.awaiting(waiting.length)}: ${perFeature(waiting)}`}</Text> : null}
-      {leftOpen.length ? <Text key="left" dimColor>{`${T.leftOpen(leftOpen.length)}: ${perFeature(leftOpen)}`}</Text> : null}
       {view.line ? <Text key="line" dimColor>{view.line}</Text> : null}
       {(view.present?.confirmations ?? []).map(c => <Text key={`confirmed:${c}`}>{c}</Text>)}
-      {shown.map(card => CardView(ui, card))}
-      {everyOpen.length > shown.length ? (
-        <Box flexDirection="row" gap={1}>
-          <Button key="showall" label={T.showAll} onPress={() => {}} />
-          <Button key="pane" label={T.openPane} onPress={() => {}} />
-        </Box>
-      ) : null}
-      {band.showAll ? <Button key="fewer" label={T.showFewer} onPress={() => {}} /> : null}
     </Box>
   )
 }
@@ -298,7 +276,6 @@ export const register: Register = on => {
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
       }),
-      diagram: diagramOf($),
     }
     try {
       polling?.cancel() // a previous session's period in this process
@@ -332,9 +309,8 @@ export const register: Register = on => {
     }
     const linked = async (link: PlumbLink) => {
       await update($, linkAtom, () => link)
-      const band = await read($, bandAtom)
-      const snap = await plumb.snapshot(io, link, await read($, viewAtom), band.shown, false)
-      await update($, viewAtom, () => snap.view)
+      const view = await plumb.snapshot(io, link, await read($, viewAtom), false)
+      await update($, viewAtom, () => view)
     }
     if ((await read($, degradedAtom)) || (await read($, linkAtom)) !== null) return started
     const said = await helloOnce(io)
@@ -426,7 +402,7 @@ export const register: Register = on => {
       if (said.link !== null) {
         const held = said.link
         await update($, linkAtom, () => held)
-        // the band draws from now on: plumb's status at once (no process), the cards at the turn's end
+        // the band draws from now on: plumb's status at once (no process)
         const view = { ...(await read($, viewAtom)), status: await plumb.readStatus(io, held) }
         await update($, viewAtom, () => view)
         link = held
@@ -482,19 +458,13 @@ export const register: Register = on => {
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
       }),
-      diagram: diagramOf($),
     }
     if (await read($, degradedAtom)) return result
     const link = await read($, linkAtom)
     if (link === null) return result
-    const band = await read($, bandAtom)
-    const before = await read($, viewAtom)
-    const snap = await plumb.snapshot(io, link, before, band.shown, true)
-    await update($, viewAtom, () => snap.view)
-    if (snap.fresh) {
-      await update($, bandAtom, b => ({ ...b, isHidden: false }))
-      $.ui.toast(T.toastAwaiting(snap.view.cards.filter(c => c.repeats).length))
-    }
+    // SR-337 EX-2: a hidden band stays hidden, whatever arrives, until the owner presses Show
+    const view = await plumb.snapshot(io, link, await read($, viewAtom), true)
+    await update($, viewAtom, () => view)
     return result // the answer is never rewritten; no summary line is added (realign a)
   }).catch(async ($, e, next) => {
     const result = await next(e)
@@ -547,18 +517,12 @@ export const register: Register = on => {
     const pressed = await next(e)
     const key = e.element
     const view = await read($, viewAtom)
-    const band = await read($, bandAtom)
     if (key === 'hide') {
-      await update($, bandAtom, b => ({ ...b, isHidden: true, showAll: false,
-        shown: view.cards.map(contentKey) }))
+      await update($, bandAtom, b => ({ ...b, isHidden: true }))
       return pressed
     }
     if (key === 'show') {
       await update($, bandAtom, b => ({ ...b, isHidden: false }))
-      return pressed
-    }
-    if (key === 'showall') {
-      await update($, bandAtom, b => ({ ...b, showAll: true })) // records nothing, runs nothing
       return pressed
     }
     if (key === 'studies') {
@@ -567,21 +531,6 @@ export const register: Register = on => {
     }
     if (key === 'idea') {
       await update($, bandAtom, b => ({ ...b, idea: !b.idea })) // shows or hides the choices
-      return pressed
-    }
-    if (key === 'fewer') {
-      await update($, bandAtom, b => ({ ...b, showAll: false }))
-      return pressed
-    }
-    if (key === 'pane') {
-      await update($, paneAtom, () => ({ index: 0, loop: null }))
-      await $.ui.open({ id: PANE, title: T.paneTitle, columns: PANE_COLUMNS })
-      return pressed
-    }
-    if (key === 'back' || key === 'next') {
-      // Back on the first and Next on the last stay where they are
-      const last = view.cards.filter(c => c.repeats).length - 1
-      await update($, paneAtom, p => ({ ...p, index: Math.max(0, Math.min(last, Math.min(p.index, last) + (key === 'next' ? 1 : -1))) }))
       return pressed
     }
     const link = await read($, linkAtom)
@@ -601,19 +550,23 @@ export const register: Register = on => {
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
       }),
-      diagram: diagramOf($),
     }
     if (key === 'loop') {
       // SR-305: the loop as plumb knows it, in the docked pane; Esc closes it, the band stays
       const loop = await plumb.loopPane(io, link)
       if (loop === null) return pressed
-      await update($, paneAtom, () => ({ index: 0, loop }))
+      await update($, paneAtom, () => ({ loop }))
       await $.ui.open({ id: PANE, title: T.loopTitle, columns: PANE_COLUMNS, closeOnEscape: true })
       return pressed
     }
     let line = ''
-    let note = ''
-    if (key === 'study' || key.startsWith('study:')) {
+    if (key === 'roomq') {
+      // SR-333 EX-3: the room opens on the question, which leaves the band
+      const card = view.status?.roomCard
+      if (!card) return pressed
+      const ran = await plumb.roomQuestion(io, link, card)
+      line = ran.ok ? '' : T.roomQuestionFailed
+    } else if (key === 'study' || key.startsWith('study:')) {
       // SR-294 EX-3, EX-4, EX-6: the room opens on the study, which is marked opened, so it leaves
       // the band; a choice from the menu closes the menu
       const slug = key === 'study' ? view.status?.studySlug : key.slice('study:'.length)
@@ -628,31 +581,17 @@ export const register: Register = on => {
       if (!idea) return pressed
       const ran = await plumb.chooseStudy(io, link, idea.slug, key.slice('idea:'.length))
       line = ran.ok ? '' : T.chooseFailed
-    } else if (key.startsWith('press:')) {
-      const found = findPress(view.cards, key)
-      if (found === null) return pressed
-      const ran = await plumb.press(io, link, found.offer.offer_id, found.button.index)
-      line = ran.ok ? String(ran.data.line ?? '') : T.pressFailed
-      note = ran.ok ? String(ran.data.model_note ?? '') : ''
-      if (ran.ok && ran.data.prefill) {
-        // DEC-032: the owner's words go to the message box, already started
-        const filled = await $.prompt.fill({ text: String(ran.data.prefill), mode: 'replace' })
-        if (!filled.isFilled) note += T.noBox(found.card.topic)
-      }
     } else {
       return pressed
     }
-    // the owner's notice (the model never reads it) and the model's note (never shown as
-    // typed), each its own row; a toast says it now (SP7 5.4, SR-087 EX-3)
+    // the owner's notice (the model never reads it), its own row; a toast says it now (SP7 5.4,
+    // SR-087 EX-3)
     if (line) {
       $.ui.toast(line)
       await $.session.append({ message: { type: 'system', content: [{ type: 'text', text: line }] } })
     }
-    if (note) {
-      await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: note }] } })
-    }
-    const snap = await plumb.snapshot(io, link, { ...view, line }, band.shown, false)
-    await update($, viewAtom, () => snap.view)
+    const drawn = await plumb.snapshot(io, link, { ...view, line }, false)
+    await update($, viewAtom, () => drawn)
     if (key.startsWith('idea:') || key.startsWith('study:')) {
       // a choice takes its lines away: the band keeps its head line, the ring back on Hide
       await $.ui.focus({ requestId: e.requestId, key: 'hide' }).catch(() => undefined)
@@ -665,7 +604,6 @@ export const register: Register = on => {
     if (e.props.hasSurvey) return next(e)
     if ((await read($, degradedAtom)) || (await read($, linkAtom)) === null) return next(e)
     const view = await read($, viewAtom)
-    if (view.status?.card === 'off') return next(e)
     const ui = uiOf($, e)
     let theme: unknown
     try {
@@ -678,40 +616,15 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = uiOf($, e)
-    const { Box, Button, Text } = ui
-    const room = e.props.bodyColumns - 4 // less the card's frame and padding
     const pane = await read($, paneAtom)
-    if (pane.loop) {
-      let theme: unknown
-      try {
-        theme = (await $.config.list()).find(row => row.key === 'theme')?.value
-      } catch {
-        // a surface without the settings rows: the dark shade
-      }
-      return loopPane(ui, pane.loop, plumbColor(theme), brassColor(theme))
+    // the pane shows only the intent loop (SR-305, SR-337); it closes when the loop ends
+    if (!pane.loop) return <ui.Box flexDirection="column" />
+    let theme: unknown
+    try {
+      theme = (await $.config.list()).find(row => row.key === 'theme')?.value
+    } catch {
+      // a surface without the settings rows: the dark shade
     }
-    const cards = (await read($, viewAtom)).cards
-    const waiting = cards.filter(c => c.repeats)
-    // SR-160: the other states (left open, being processed, blocked, done) listed below
-    const others = cards.filter(c => !c.repeats)
-    if (!cards.length) return <Text dimColor>{T.nothingAwaits}</Text>
-    const at = Math.min((await read($, paneAtom)).index, Math.max(waiting.length - 1, 0))
-    return (
-      <Box flexDirection="column">
-        {e.props.placement === 'inline' ? <Text dimColor>{T.paneDocks}</Text> : null}
-        {waiting.length ? (
-          <Box key="paged" flexDirection="column">
-            <Text bold>{`${T.groups.waiting} (${waiting.length})`}</Text>
-            <Box flexDirection="row" gap={1}>
-              <Button key="back" label={T.back} hotkey="b" onPress={() => {}} />
-              <Text>{T.nOfM(at + 1, waiting.length)}</Text>
-              <Button key="next" label={T.next} hotkey="n" onPress={() => {}} />
-            </Box>
-            {CardView(ui, waiting[at]!, room)}
-          </Box>
-        ) : null}
-        {others.length ? Grouped(ui, others, room) : null}
-      </Box>
-    )
+    return loopPane(ui, pane.loop, plumbColor(theme), brassColor(theme))
   })
 }

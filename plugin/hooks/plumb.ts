@@ -1,14 +1,13 @@
 // How plumb's panel reaches plumb (SP7 5.1, 5.7; DEC-025): it finds the repository and the
 // interpreter that runs plumb, makes the session's key, registers its digest with
-// `plumb mod hello`, and runs `plumb mod draw|press` with the key on stdin, never in argv,
+// `plumb mod hello`, and runs `plumb mod room|study` with the key on stdin, never in argv,
 // and with the agent session marker emptied.
 //
 // The engine wants every `$` call spelled at its hook's call site, so the hooks hand these
 // functions an `Io`: the few host calls they need, each a closure over the hook's own `$`.
 import type { ProcessRunInit, ProcessRunResult } from 'claude-code'
 
-import type { PlumbCard, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbPresent, PlumbStatus, PlumbView } from '../types'
-import { contentKey } from './cards'
+import type { PlumbLink, PlumbLoop, PlumbLoopPane, PlumbPresent, PlumbStatus, PlumbView } from '../types'
 
 export type Io = {
   exists: (path: string) => Promise<boolean>
@@ -21,8 +20,6 @@ export type Io = {
   id: () => Promise<string>
   now: () => Promise<number>
   env: () => Promise<Record<string, string | undefined>>
-  /** The diagram mod's noun on a text; it throws where the mod is not installed. */
-  diagram?: (text: string, columns: number) => Promise<{ rows: string[]; svg: string }>
 }
 
 export type Ran = { ok: boolean; exitCode: number; data: any; stderr: string }
@@ -194,21 +191,16 @@ export async function hello(io: Io): Promise<Hello> {
   return { link: null, unlinked: { why: 'failed', error, fallback: found.fallback } }
 }
 
-export async function draw(io: Io, link: PlumbLink): Promise<PlumbCard[] | null> {
-  const ran = await plumbMod(io, link, 'draw', { key: link.key })
-  return ran.ok && Array.isArray(ran.data?.cards)
-    ? ([...ran.data.cards, ...(ran.data.settled ?? [])] as PlumbCard[])
-    : null
-}
-
-export function press(io: Io, link: PlumbLink, offer: string, choice: number): Promise<Ran> {
-  return plumbMod(io, link, 'press', { key: link.key }, ['--offer', offer, '--choice', String(choice)])
-}
-
 /** The owner pressed the band's new study line (SR-294 EX-3): plumb opens the browser room on
  * it, starting the room when it is not running, and marks the study opened. */
 export function room(io: Io, link: PlumbLink, slug: string): Promise<Ran> {
   return plumbMod(io, link, 'room', { key: link.key }, ['--study', slug])
+}
+
+/** The owner pressed the band's 'a question waits in the room' (SR-333 EX-3, DEC-294): plumb
+ * opens the room on that question, as on a study, and the line goes. */
+export function roomQuestion(io: Io, link: PlumbLink, card: string): Promise<Ran> {
+  return plumbMod(io, link, 'room', { key: link.key }, ['--card', card])
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
@@ -358,9 +350,13 @@ export function chooseStudy(io: Io, link: PlumbLink, slug: string, depth: string
 export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> {
   const status = await readJson(io, join(link.root, '.plumb', 'session', 'status.json'))
   const progress = await readJson(io, join(sessionDir(link.root, link.session), 'progress'))
+  // SR-333: the question this session's owner chose to study in the room, until their press
+  const room = await readJson(io, join(sessionDir(link.root, link.session), 'room_waits.json'))
+  // SR-336 EX-2: the study the owner chose to read before answering its questions
+  const first = await readJson(io, join(sessionDir(link.root, link.session), 'study_first.json'))
   const files = await studyFiles(io, link)
   const studies = files.filter(s => s.status === 'new').map(({ title, slug }) => ({ title, slug }))
-  const study = studies.at(-1) ?? { title: '', slug: '' }
+  const study = studies.find(s => s.slug === first?.study) ?? studies.at(-1) ?? { title: '', slug: '' }
   // DEC-207: ideas waiting for the owner's choice, oldest first
   const ideas = files.filter(s => s.status === 'idea').map(({ title, slug, why, recommend }) => ({ title, slug, why, recommend }))
   // SR-251: the records a judge approved, the set `plumb status` lists (judge_approved); an
@@ -376,39 +372,20 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     state: String(status?.state ?? ''),
     summary: String(status?.intent_summary ?? ''),
     progress: step,
-    card: String(status?.present?.card ?? 'full'),
+    awaiting: Number(status?.awaiting ?? 0), // SR-337: the questions waiting for the owner
     loop: await readLoop(io, link),
     study: study.title,
     studySlug: study.slug,
+    roomCard: String(room?.card ?? ''),
     studies,
     ideas,
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
   }
 }
 
-const DIAGRAM_COLUMNS = 85 // the docked pane's body (INT-041/A-2)
-
-/** The card's diagram file drawn by the diagram mod's noun, taken with the snapshot, never in
- * the render hook; null when the file or the drawing fails. */
-async function drawn(io: Io, link: PlumbLink, card: PlumbCard): Promise<PlumbCard['drawn']> {
-  if (!card.diagram || !io.diagram) return null
-  try {
-    const path = /^([A-Za-z]:|[\\/])/.test(card.diagram) ? card.diagram : join(link.root, card.diagram)
-    return await io.diagram(await io.read(path), DIAGRAM_COLUMNS)
-  } catch {
-    return null
-  }
-}
-
-/** What plumb holds now: the cards (drawing them records their offers), the status and, at
- * the end of a turn, present.json. `fresh`: an awaiting card the owner has not hidden. */
-export async function snapshot(io: Io, link: PlumbLink, view: PlumbView, shown: string[],
-  atTurnEnd: boolean): Promise<{ view: PlumbView; fresh: number }> {
-  const cards = await draw(io, link)
-  if (io.diagram) for (const card of cards ?? []) card.drawn = await drawn(io, link, card)
+/** What plumb holds now: the status and, at the end of a turn, present.json. */
+export async function snapshot(io: Io, link: PlumbLink, view: PlumbView, atTurnEnd: boolean): Promise<PlumbView> {
   const status = await readStatus(io, link)
   const present = atTurnEnd ? await readPresent(io, link) : view.present
-  const next: PlumbView = { ...view, cards: cards ?? view.cards, status, present }
-  const fresh = next.cards.filter(c => c.repeats && !shown.includes(contentKey(c))).length
-  return { view: next, fresh }
+  return { ...view, status, present }
 }
