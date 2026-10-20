@@ -95,7 +95,9 @@ def latest_prompt(core: Any, session: str | None) -> Mapping[str, Any] | None:
     return newest
 
 
-def _jobs_of(root: Path, session: str, kind: str, digest: str) -> list[Job]:
+def _jobs_of(root: Path, session: str, kind: str, digest: str, at: str | None = None
+             ) -> list[Job]:
+    """The jobs of the message ``digest``; with ``at``, only those of its send at ``at``."""
     found: list[Job] = []
     folder = files.jobs_dir(root, session)
     for path in sorted(folder.glob(f"{kind}-*.json")) if folder.is_dir() else ():
@@ -104,7 +106,8 @@ def _jobs_of(root: Path, session: str, kind: str, digest: str) -> list[Job]:
             continue
         job = files.job_from_json(raw)
         message = job.inputs.get("message")
-        if isinstance(message, Mapping) and message.get("digest") == digest:
+        if isinstance(message, Mapping) and message.get("digest") == digest \
+                and (at is None or message.get("at", "") == at):
             found.append(job)
     return found
 
@@ -252,7 +255,7 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
         gate.close(root, session, digest, clarify.GATE_REASON_CHECKING)   # no hook closed it
     if not gate.is_closed(root, session):
         return _outcome_from_state(core, session, digest)
-    queued = _jobs_of(root, session, "clarify", digest)
+    queued = _jobs_of(root, session, "clarify", digest, clarify.logged_at(core, digest))
     ours = queued[-1] if queued else None
     started = clock()
     reporter = Reporter(root, None, "clarify", stream=stream)
