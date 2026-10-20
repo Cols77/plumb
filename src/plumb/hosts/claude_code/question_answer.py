@@ -14,7 +14,8 @@ shown is the one that record's current passing evidence asks, with YES among its
 (``proof.confirmation``): ``.plumb/session`` is not guarded, so the pending entry only points.
 The hook approves nothing. During a merge, rebase, cherry-pick or revert the entries are staged
 (``conflicts.stage_choice``) so the commit that finishes it carries them (SR-260 EX-28). A
-dismissed or unanswered question logs nothing.
+dismissed or unanswered question logs nothing. The answer "Build anyway" to a failed check's
+"Build without the check?" releases the gate (``gate.release`` ... ``button``).
 """
 
 from __future__ import annotations
@@ -69,6 +70,12 @@ def handle(ctx: HookContext) -> HookOutput | None:
     from plumb.mergedriver.conflicts import stage_choice
 
     stage_choice(core)
+    from plumb.present import owner_text
+    from plumb.understand import clarify, gate
+
+    if any(e["question"] == clarify.COULDNT_QUESTION and e["answer"] == owner_text.GATE_BUILD_ANYWAY
+           for e in entries):      # the owner's own button on a failed check (gate.release)
+        gate.release(core, ctx.session_id, "button")
     ids = [str(r.get("id")) for e in entries for r in (e.get("asked") or {}).get("records", ())
            if isinstance(r, dict)]
     if ids:      # the records are rebuilt from the logs by the worker (judge.recompute)
