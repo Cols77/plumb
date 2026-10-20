@@ -7,12 +7,14 @@
 // functions an `Io`: the few host calls they need, each a closure over the hook's own `$`.
 import type { ProcessRunInit, ProcessRunResult } from 'claude-code'
 
-import type { PlumbCard, PlumbLink, PlumbPresent, PlumbStatus, PlumbView } from '../types'
+import type { PlumbCard, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbPresent, PlumbStatus, PlumbView } from '../types'
 import { contentKey } from './cards'
 
 export type Io = {
   exists: (path: string) => Promise<boolean>
   read: (path: string) => Promise<string>
+  /** The names of a folder's entries; none where it does not exist. */
+  list: (path: string) => Promise<string[]>
   write: (path: string, text: string) => Promise<void>
   run: (argv: readonly string[], init: ProcessRunInit) => Promise<ProcessRunResult>
   root: () => Promise<string>
@@ -203,6 +205,48 @@ export function press(io: Io, link: PlumbLink, offer: string, choice: number): P
   return plumbMod(io, link, 'press', { key: link.key }, ['--offer', offer, '--choice', String(choice)])
 }
 
+/** The owner pressed the band's new study line (SR-294 EX-3): plumb opens the browser room on
+ * it, starting the room when it is not running, and marks the study opened. */
+export function room(io: Io, link: PlumbLink, slug: string): Promise<Ran> {
+  return plumbMod(io, link, 'room', { key: link.key }, ['--study', slug])
+}
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
+
+/** The session's open loop as the pane shows it (SR-305), from `plumb intent status --json`;
+ * null when none is open or plumb did not answer. */
+export async function loopPane(io: Io, link: PlumbLink): Promise<PlumbLoopPane | null> {
+  const ran = await io.run([link.python, '-m', 'plumb', 'intent', 'status', '--session', link.session,
+    '--root', link.root, '--json'], {
+    cwd: link.root,
+    env: { PLUMB_AGENT_SESSION: '', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+    timeoutMs: 60000,
+  })
+  let loops: any[] = []
+  try {
+    loops = ran.exitCode === 0 ? JSON.parse(ran.stdout) : []
+  } catch {
+    return null
+  }
+  const loop = Array.isArray(loops) ? loops.at(-1) : null
+  if (!loop || typeof loop !== 'object') return null
+  const stages: PlumbLoopPane['stages'] = {}
+  for (const [name, stage] of Object.entries(loop.stages ?? {}) as [string, any][]) {
+    stages[name] = { state: String(stage?.state ?? 'open'), left: strings(stage?.left) }
+  }
+  const t = loop.tasks
+  return {
+    step: String(loop.step ?? ''),
+    stopped: String(loop.stopped ?? ''),
+    stages,
+    task: t && typeof t === 'object' && t.label
+      ? { label: String(t.label), done: Number(t.done ?? 0), total: t.total ? Number(t.total) : null, left: strings(t.left) }
+      : null,
+    records: (Array.isArray(loop.records) ? loop.records : []).map((r: any) => String(r?.title ?? '')).filter(Boolean),
+    proofs: (Array.isArray(loop.proofs) ? loop.proofs : []).map((p: any) => ({ title: String(p?.title ?? ''), shown: p?.shown === true })),
+  }
+}
+
 /** The panel is alive this turn: refresh the heartbeat in mod.json (no process). */
 export async function heartbeat(io: Io, link: PlumbLink): Promise<void> {
   const path = join(sessionDir(link.root, link.session), 'mod.json')
@@ -223,10 +267,105 @@ export async function readPresent(io: Io, link: PlumbLink): Promise<PlumbPresent
   }
 }
 
+const STEPS = ['clarify', 'plan', 'build', 'proven']
+
+/** How long a task has run, in the owner's words: `40s`, `12m`, `2h 5m`. */
+export function elapsed(fromIso: string, now: number): string {
+  // shortcut: computed when the status is read (a tool call, a turn's end), so it does not tick
+  // while the agent is quiet; upgrade to a timer redraw if owners watch a long silent build
+  const s = Math.max(0, Math.floor((now - Date.parse(fromIso)) / 1000))
+  if (!Number.isFinite(s)) return ''
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
+/** The session's open intent loop (SR-291): its newest loop file whose step is not proven
+ * (`intent done` proves it, and the band is one line again); null when none is open. */
+export async function readLoop(io: Io, link: PlumbLink): Promise<PlumbLoop | null> {
+  const folder = join(sessionDir(link.root, link.session), 'intent')
+  let names: string[] = []
+  try {
+    names = (await io.list(folder)).filter(n => n.endsWith('.json'))
+  } catch {
+    return null
+  }
+  const open: any[] = []
+  for (const name of names) {
+    const data = await readJson(io, join(folder, name))
+    if (data && STEPS.includes(data.step) && data.step !== 'proven') open.push(data)
+  }
+  const loop = open.sort((a, b) => String(a.opened_at ?? '').localeCompare(String(b.opened_at ?? ''))).at(-1)
+  if (!loop) return null
+  const t = loop.tasks
+  const task = t && typeof t === 'object' && t.label
+    ? { label: String(t.label), done: Number(t.done ?? 0), total: t.total ? Number(t.total) : null,
+        elapsed: t.started_at ? elapsed(String(t.started_at), await io.now()) : '' }
+    : null
+  return { step: String(loop.step), task, stopped: String(loop.stopped ?? '') }
+}
+
+/** A frontmatter value of a study file: plumb writes each as JSON (valid YAML too). */
+function front(text: string, key: string): string {
+  const raw = new RegExp(`^${key}: (.*)$`, 'm').exec(text.split('\n---\n')[0] ?? '')?.[1] ?? ''
+  try {
+    return String(JSON.parse(raw))
+  } catch {
+    return raw
+  }
+}
+
+type StudyFile = { title: string; slug: string; status: string; why: string; recommend: string }
+
+/** Every study file in `.plumb/studies`, oldest first by file name. */
+async function studyFiles(io: Io, link: PlumbLink): Promise<StudyFile[]> {
+  const folder = join(link.root, '.plumb', 'studies')
+  let names: string[] = []
+  const found: StudyFile[] = []
+  try {
+    names = (await io.list(folder)).filter(n => n.endsWith('.md')).sort()
+  } catch {
+    return found
+  }
+  for (const name of names) {
+    try {
+      const text = await io.read(join(folder, name))
+      const title = front(text, 'title')
+      if (title) {
+        found.push({ title, slug: name.slice(0, -3), status: front(text, 'status'), why: front(text, 'why'),
+          recommend: front(text, 'recommend') })
+      }
+    } catch {
+      // a study being written: the next read names it
+    }
+  }
+  return found
+}
+
+/** The studies still `new` (SR-294): the band names them until the owner opens each in the
+ * room; empty when none waits. */
+export async function readStudies(io: Io, link: PlumbLink): Promise<{ title: string; slug: string }[]> {
+  return (await studyFiles(io, link)).filter(s => s.status === 'new').map(({ title, slug }) => ({ title, slug }))
+}
+
+/** The owner pressed a choice on a study idea (SR-294 EX-7..EX-9, DEC-207): plumb records it
+ * accepted at `depth` (`md`, `diagrams`) or declined (`none`); the room does not open. */
+export function chooseStudy(io: Io, link: PlumbLink, slug: string, depth: string): Promise<Ran> {
+  return plumbMod(io, link, 'study', { key: link.key }, ['--study', slug, '--depth', depth])
+}
+
 /** The band's first line: plumb's status card (status.json) and SP8's progress, if running. */
 export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> {
   const status = await readJson(io, join(link.root, '.plumb', 'session', 'status.json'))
   const progress = await readJson(io, join(sessionDir(link.root, link.session), 'progress'))
+  const files = await studyFiles(io, link)
+  const studies = files.filter(s => s.status === 'new').map(({ title, slug }) => ({ title, slug }))
+  const study = studies.at(-1) ?? { title: '', slug: '' }
+  // DEC-207: ideas waiting for the owner's choice, oldest first
+  const ideas = files.filter(s => s.status === 'idea').map(({ title, slug, why, recommend }) => ({ title, slug, why, recommend }))
+  // SR-251: the records a judge approved, the set `plumb status` lists (judge_approved); an
+  // older status.json without it counts the requirements in confirmed_by
+  const by = status?.confirmed_by && typeof status.confirmed_by === 'object' ? status.confirmed_by : {}
   let step = ''
   if (progress && progress.state === 'running' && progress.step) {
     step = progress.total
@@ -238,6 +377,12 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     summary: String(status?.intent_summary ?? ''),
     progress: step,
     card: String(status?.present?.card ?? 'full'),
+    loop: await readLoop(io, link),
+    study: study.title,
+    studySlug: study.slug,
+    studies,
+    ideas,
+    judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
   }
 }
 

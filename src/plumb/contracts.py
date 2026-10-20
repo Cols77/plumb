@@ -228,6 +228,7 @@ class StatusSnapshot:
     state: str = ""                       # aligned | awaits you | drift | failing | regression
     intent_summary: str = ""              # the session's intent in plain words (<= 40 chars)
     confirmed_by: Mapping[str, int] = field(default_factory=dict)  # owner, agent-relayed, ...
+    judge_approved: int = 0               # SR-251: records of any kind, as `plumb status` lists
     auto_approve: str = "off"             # on | off | suspended
     # sp6 9.4 (SR-078): records also being changed on another worktree or branch, and the
     # branches named on the card; open intent conflicts awaiting the owner (sp6 8.3)

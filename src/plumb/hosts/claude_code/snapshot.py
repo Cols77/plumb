@@ -76,6 +76,8 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
         full_pending = verify.full_pending()
     tests, failing, regressions = (tests_summary if tests_summary is not None
                                    else tests_state(evidence))
+    from plumb.present.cards import judge_label
+
     confirmed_by: dict[str, int] = {}
     for status in requirements:
         if status.confirmation == "confirmed" and status.approved_by:
@@ -100,6 +102,7 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
         skipped=skipped,
         intent_summary=intent_summary,
         confirmed_by=confirmed_by,
+        judge_approved=sum(i in index and judge_label(s) is not None for i, s in statuses.items()),
         auto_approve=auto_approve if auto_approve is not None else auto_approve_state(core),
         conflicts=open_conflict_count(core),
         **overlap_fields(core, awareness),
@@ -145,6 +148,22 @@ def snapshot_dict(snapshot: StatusSnapshot) -> dict[str, Any]:
     data = dataclasses.asdict(snapshot)
     data["v"] = SNAPSHOT_VERSION
     return data
+
+
+def refresh_judge_count(core: Any) -> None:
+    """SR-251: a turn with no edit writes no snapshot, yet the judge approves in the background;
+    only the band's judge-approved count is brought up to date in ``status.json``."""
+    from plumb.hosts.claude_code.hookio import read_json
+    from plumb.present.cards import judge_label
+
+    path = Path(core.root) / ".plumb" / "session" / "status.json"
+    data = read_json(path)
+    if not isinstance(data, dict):
+        return
+    index = core.index()
+    count = sum(i in index and judge_label(s) is not None for i, s in core.status().items())
+    if data.get("judge_approved") != count:
+        write_json_atomic(path, {**data, "judge_approved": count})
 
 
 def write_snapshot(root: Path, snapshot: StatusSnapshot, *, present: Any = None,

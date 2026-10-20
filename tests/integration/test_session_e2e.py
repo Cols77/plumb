@@ -179,9 +179,10 @@ def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.Monk
     assert "tests/test_mod.py::test_add" in evidence
     assert "test-run" in evidence
 
-    # SR-012 EX-5: nothing needs the owner (confirmed records, covering tests passing, no
-    # question): the stop shows nothing; the state is the status line's (sp5 2), no summary
-    assert by_name["Stop (stop_hook_active)"].stdout.strip() == ""
+    # SR-265 EX-5: nothing to ask (confirmed records, covering tests passing, no question):
+    # one plumb line says what the turn touched and that its checks pass, nothing more
+    assert json.loads(by_name["Stop (stop_hook_active)"].stdout) == {
+        "systemMessage": "plumb: aligned, touched 'Arithmetic', 1 check passes"}
 
     assert by_name["statusline"].stdout.startswith("plumb ")  # the status card (sp5 2)
 

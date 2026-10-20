@@ -118,6 +118,21 @@ class Handler(BaseHTTPRequestHandler):
             if self.command == "GET" and path == "/api/workspace":
                 self._send(200, self.server.service.workspace())
                 return
+            service = self.server.service
+            if path == "/api/studies" and self.command == "GET":
+                self._send(200, service.studies())
+                return
+            if path == "/api/understanding" and self.command == "POST":
+                self._send(200, service.save_understanding(payload))
+                return
+            match = re.fullmatch(r"/api/studies/([A-Za-z0-9][A-Za-z0-9-]{0,79})/(open|mark)", path)
+            if match and self.command == "POST":
+                slug, action = match.groups()
+                self._send(
+                    200, service.open_study(slug) if action == "open"
+                    else service.mark_study(slug, payload)
+                )
+                return
             match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]+)/(draw|press|diagram)", path)
             if not match:
                 self._error(404, "Unknown route")
