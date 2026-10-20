@@ -16,7 +16,7 @@ keeps the agents.
 
 Open: `{plumb} intent open --wait` on the owner's words. It drafts the candidates (what will
 be done, what won't, assumptions labelled) and says which check it ran; act on that answer
-as plumb-clarify does (ready, ask, a card, couldn't check, waiting).
+as plumb-clarify does (ready, ask, a choice question, couldn't check, waiting).
 
 The owner's band shows the loop's step and the current task: as you go, run
 `{plumb} intent progress --task <words> --done N --total M` in the owner's words
@@ -73,7 +73,8 @@ Stage C, build and prove: build the plan, show the proof the owner stated, recor
 (`{plumb} study candidates --json`, then `{plumb} study propose` one idea or none), then
 `{plumb} intent done`. It refuses while a proof is missing; `{plumb} intent status` says
 which gate is open. When the edit hook reports a link stale, before the turn ends: repin it
-after its tests pass, relink it when the code moved, or card it when the meaning changed.
+after its tests pass, relink it when the code moved, or ask it with the question tool when
+the meaning changed.
 
 Studies: write none before the owner accepts its idea. When plumb tells you an idea was
 accepted (the prompt's line, or `accepted` in the candidates), write it at that depth in plain

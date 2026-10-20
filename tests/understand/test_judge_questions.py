@@ -470,16 +470,71 @@ def test_ex2_one_recommended_marker_whatever_the_model_wrote(world: Path) -> Non
     assert labels == ["Public pages (Recommended)", "Every page"]
 
 
+PAGES = [{"label": "Public pages", "consequence": "Speeds up visitors."},
+         {"label": "Every page (recommended)", "consequence": "Speeds up all."}]
+
+
+def decision(repo: Path, write_record, chosen: str, **extra: str) -> None:
+    """A proposed DEC-001 deciding SR-001 (nobody approved it)."""
+    import yaml
+
+    data = {"id": "DEC-001", "title": "Which pages", "question": "Which pages?",
+            "chosen": chosen, "alternatives": ["Public pages"], "matters": True, **extra,
+            "links": [{"kind": "decides", "to": "SR-001"}]}
+    write_record(repo, "---\n" + yaml.safe_dump(data, sort_keys=False) + "---\n")
+
+
+def owner_picked(repo: Path, answer: str) -> None:
+    """The owner's answer in the question tool, as the hook logs it."""
+    open_core(repo).log_append("events", "question-answer", {
+        "session": SESSION, "question": "Which pages?", "options": [], "answer": answer,
+        "via": "question-tool"})
+
+
 @pytest.mark.sr("SR-309")
-def test_ex3_a_question_the_owner_already_answered_is_dropped(world: Path,
-                                                              write_record) -> None:  # noqa: F811
-    write_record(world, "---\nid: DEC-001\ntitle: Which pages\nquestion: Which pages?\n"
-                 "chosen: Every page, whatever it costs\nalternatives:\n- Public pages\n"
-                 "rationale: The owner chose it.\nmatters: true\nrecommended: Every page\n"
-                 "links:\n- kind: decides\n  to: SR-001\n---\n")
-    options = [{"label": "Public pages", "consequence": "Speeds up visitors."},
-               {"label": "Every page (recommended)", "consequence": "Speeds up all."}]
-    assert shaped_of(world, asking("SR-001", options=options)) == []
+def test_ex3_a_question_the_owner_already_answered_is_dropped(
+        world: Path, write_record) -> None:  # noqa: F811
+    owner_picked(world, "Every page, whatever it costs")
+    decision(world, write_record, "Every page, whatever it costs")
+    assert shaped_of(world, asking("SR-001", options=PAGES)) == []
+
+
+# ---- SR-335 ---------------------------------------------------------------------------------
+
+TYPED = "a typed answer counts; the judge asks again only when it truly leaves the question open"
+
+
+@pytest.mark.sr("SR-335")
+def test_ex1_the_owners_typed_answer_settles_before_the_judge_approves_it(
+        world: Path, write_record) -> None:  # noqa: F811
+    log_prompt(world, f"No. {TYPED}.", at="2026-10-18T08:30:00Z")
+    still = asking("SR-001", request={"words": TYPED, "date": ""}, options=[
+        {"label": "Yes, the answer follows", "consequence": "No new question."},
+        {"label": "No, ask again", "consequence": "Asked once more."}])
+    (said,) = shaped_of(world, still)
+    assert f'You said on 18 Oct: "{TYPED}"' in said["question"]
+    decision(world, write_record, "yes: the answer follows it through its rewordings",
+             quote=TYPED)
+    assert shaped_of(world, still) == []        # DEC-229's case: never put to the owner
+
+
+@pytest.mark.sr("SR-335")
+def test_ex2_a_decision_only_the_agent_wrote_settles_nothing(
+        world: Path, write_record) -> None:  # noqa: F811
+    decision(world, write_record, "Every page, whatever it costs")
+    (question,) = shaped_of(world, asking("SR-001", options=PAGES))
+    assert [o["label"] for o in question["options"]] == ["Public pages (Recommended)",
+                                                          "Every page"]
+
+
+@pytest.mark.sr("SR-335")
+def test_ex3_a_decision_misquoting_the_owner_settles_nothing_and_is_one_question(
+        world: Path, write_record) -> None:  # noqa: F811
+    owner_picked(world, "Public pages")
+    decision(world, write_record, "Every page, whatever it costs", quote="Every page")
+    mismatch = asking("SR-001", options=PAGES,
+                      question="You picked public pages; the decision says every page. Which?")
+    assert len(shaped_of(world, mismatch, mismatch)) == 1
 
 
 @pytest.mark.sr("SR-309")

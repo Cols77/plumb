@@ -11,7 +11,7 @@ def _ignored(config: pytest.Config, path: Path) -> bool | None:
     return config.hook.pytest_ignore_collect(collection_path=path, config=config)
 
 
-@pytest.mark.sr("SR-268")
+@pytest.mark.sr("SR-333")
 def test_browser_lane_is_left_out_unless_asked(request: pytest.FixtureRequest,
                                                monkeypatch: pytest.MonkeyPatch) -> None:
     config = request.config
@@ -22,7 +22,7 @@ def test_browser_lane_is_left_out_unless_asked(request: pytest.FixtureRequest,
     assert not _ignored(config, ROOT / "tests" / "browser")
 
 
-@pytest.mark.sr("SR-268")
+@pytest.mark.sr("SR-333")
 def test_browser_lane_is_a_package() -> None:
     # Its basenames (test_server.py, test_cli.py) exist in other lanes too; without the package
     # marker a full run fails at collection with an import file mismatch.

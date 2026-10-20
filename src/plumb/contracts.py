@@ -235,6 +235,7 @@ class StatusSnapshot:
     overlaps: int = 0
     overlap_labels: tuple[str, ...] = ()
     conflicts: int = 0
+    awaiting: int = 0                     # SR-337: the questions waiting for the owner (the band)
 
 
 @dataclass(frozen=True)
