@@ -17,7 +17,7 @@ from plumb.api import open_core
 from plumb.contracts import Target
 from plumb.hosts.claude_code import post_edit, prompt, session_start, stop
 
-pytestmark = pytest.mark.sr("SR-275")
+pytestmark = pytest.mark.sr("SR-310")
 
 BUDGET_MS = {"session-start": 900, "prompt": 600, "stop": 800, "post-edit": 300}
 
