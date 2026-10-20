@@ -151,16 +151,18 @@ def _approved(core: Any, at: str) -> list[str]:
 
 
 def _by_principle(questions: list[Mapping[str, Any]], room: int) -> list[Mapping[str, Any]]:
-    """SR-334: one question per principle (a blocking one when the principle has one), the
-    blocking principles first and all of them, the others while ``room`` lasts, the principle
-    that settles most first."""
+    """SR-334: every blocking question (even several on one principle), then one question per
+    other principle while ``room`` (the blocking ones count) lasts, the biggest first."""
+    def principle(q: Mapping[str, Any]) -> str:
+        return str(q.get("principle") or q.get("key"))
+
+    blocking = [q for q in questions if q.get("blocking")]
     groups: dict[str, list[Mapping[str, Any]]] = {}
     for q in questions:
-        groups.setdefault(str(q.get("principle") or q.get("key")), []).append(q)
-    ordered = sorted(groups.values(), key=lambda g: (not any(q.get("blocking") for q in g),
-                                                      -len(g)))
-    firsts = [next((q for q in g if q.get("blocking")), g[0]) for g in ordered]
-    return firsts[:max(room, sum(1 for q in firsts if q.get("blocking")))]
+        if not q.get("blocking") and principle(q) not in map(principle, blocking):
+            groups.setdefault(principle(q), []).append(q)
+    ordered = sorted(groups.values(), key=lambda g: -len(g))
+    return [*blocking, *(g[0] for g in ordered[:max(room - len(blocking), 0)])]
 
 
 def _options(root: Path, question: Mapping[str, Any]) -> list[Any]:

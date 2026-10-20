@@ -109,3 +109,14 @@ def test_ex4_mid_task_none_but_a_blocking_one_is_asked(world: Path) -> None:  # 
     waiting(world, *backlog("Export to CSV or JSON?"))
     mid = cmd_clarify.wait(open_core(world), SESSION, timeout=10, mid_task=True)
     assert asked(mid) == ["Export to CSV or JSON?"]
+
+
+def test_ex3_two_blocking_questions_on_one_principle_are_both_asked(
+        world: Path) -> None:  # noqa: F811
+    waiting(world, ("Export to CSV or JSON?", "export format", True, ("SR-001",)),
+            ("Export with headers?", "export format", True, ("SR-001",)),
+            *backlog())
+    first = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
+    assert asked(first)[:2] == ["Export to CSV or JSON?", "Export with headers?"]
+    mid = cmd_clarify.wait(open_core(world), SESSION, timeout=10, mid_task=True)
+    assert asked(mid) == ["Export to CSV or JSON?", "Export with headers?"]
