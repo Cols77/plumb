@@ -69,7 +69,8 @@ def _diverged(tmp_path: Path, *, text_conflict: bool = False) -> Path:
     from plumb.approvals import approve
 
     approve(open_core(other), ["SR-005"])
-    commit_all(other, "theirs\n\nSR: SR-005")
+    # no SR trailer: SR-005 is touched by its record, and delivers nothing to prove (DEC-256)
+    commit_all(other, "theirs")
     return root
 
 

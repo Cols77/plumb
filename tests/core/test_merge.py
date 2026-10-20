@@ -67,16 +67,17 @@ def _check(root: Path, sha: str, capsys: pytest.CaptureFixture[str]) -> tuple[in
     return code, capsys.readouterr().out
 
 
-def test_merge_refuses_unconfirmed_touched_requirement(base, capsys) -> None:
+def test_merge_lists_unconfirmed_touched_requirement(base, capsys) -> None:
+    """SR-260 EX-8: listed as waiting on a judge, counted, never held on."""
     root, sha = base
     path = root / ".plumb" / "requirements" / "SR-001.md"
     path.write_text(path.read_text(encoding="utf-8").replace("Both ends", "Each end"),
                     encoding="utf-8")
     _commit(root, "edit SR-001")
     code, out = _check(root, sha, capsys)
-    assert code == 4
+    assert code == 0
     assert "SR-001" in out and "INT-001" in out and "SR-002" not in out
-    assert "plumb: merge waits for 2 records to be approved" in out   # counted (SR-267)
+    assert "plumb: waiting on a judge: 2 records" in out   # counted (SR-267)
     assert "given a link" in out
 
 
@@ -84,7 +85,7 @@ def test_merge_touch_via_implemented_by_end(base, capsys) -> None:
     root, sha = base
     (root / "src" / "mod.py").write_text("x = 2\n", encoding="utf-8")  # uncommitted
     code, out = _check(root, sha, capsys)
-    assert code == 4
+    assert code == 0
     assert "touched requirements: SR-001" in out
 
 
@@ -94,7 +95,7 @@ def test_merge_touch_via_sr_trailer(base, capsys) -> None:
     (root / "docs" / "notes.md").write_text("n\n", encoding="utf-8")  # exempt from claims
     _commit(root, "notes\n\nSR: SR-002")
     code, out = _check(root, sha, capsys)
-    assert code == 4
+    assert code == 0
     assert "touched requirements: SR-002" in out
 
 
@@ -146,7 +147,7 @@ def test_merge_requires_deciding_matters_dec(base, capsys, write_record) -> None
     (root / "src" / "mod.py").write_text("x = 2\n", encoding="utf-8")
     approvals.approve(open_core(root), ["SR-001", "INT-001"])
     code, out = _check(root, sha, capsys)
-    assert code == 4 and "DEC-001" in out
+    assert code == 0 and "DEC-001" in out     # listed, not held (SR-260)
     approvals.approve(open_core(root), ["DEC-001"])
     assert _check(root, sha, capsys)[0] == 0
 
@@ -174,7 +175,7 @@ def test_validate_merge_json_is_one_document(base, capsys) -> None:
     root, sha = base
     (root / "src" / "mod.py").write_text("x = 2\n", encoding="utf-8")
     _repin(root)
-    assert cli.main(["validate", "--merge", sha, "--json", "--root", str(root)]) == 4
+    assert cli.main(["validate", "--merge", sha, "--json", "--root", str(root)]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["merge"]["awaiting"][0]["id"] == "SR-001"
     assert data["validate"]["errors"] == []
@@ -192,7 +193,7 @@ def test_merge_log_integrity_reads_merge_base_not_base_tip(base, capsys) -> None
     git(root, "checkout", "-q", "feat")
     code, out = _check(root, "trunk", capsys)
     assert "log integrity: ok" in out, out
-    assert code == 4  # SR-001 touched and unconfirmed, but no false tamper alarm
+    assert code == 0  # SR-001 touched and unconfirmed (listed), no false tamper alarm
     assert "SR-002" not in out[out.index("approvals in range"):]
 
 
@@ -215,18 +216,19 @@ def test_merge_log_integrity_still_catches_edit_of_merge_base_line(base, capsys)
 
 @pytest.mark.sr("SR-200")
 def test_merge_puts_untraced_changes_to_the_owner(base, capsys) -> None:
-    """A changed source path no requirement owns escaped the read-back: the merge waits."""
+    """A changed source path no requirement owns escaped the read-back: listed for the
+    owner, never held on (SR-260)."""
     root, sha = base
     (root / "src" / "mul.py").write_text("def mul(a, b):\n    return a * b\n", "utf-8")
     _commit(root, "add mul")
     code, out = _check(root, sha, capsys)
-    assert code == 4, out
+    assert code == 0, out
     assert "touched requirements: none" in out
     assert "untraced changes (no requirement owns them): src/mul.py" in out
     assert "confirmation: every touched requirement is confirmed" not in out
-    waits = out[out.index("merge waits for approval:"):]
+    waits = out[out.index("listed for you (none of this holds the merge):"):]
     assert "untraced src/mul.py" in waits and "trace.exempt" in waits
-    assert merge_check(open_core(root), sha, as_json=True) == 4
+    assert merge_check(open_core(root), sha, as_json=True) == 0
     assert json.loads(capsys.readouterr().out)["untraced"] == ["src/mul.py"]
 
 
@@ -263,7 +265,7 @@ def confirmed_base(base) -> tuple[Path, str]:
 
 def _untraced_waits(root: Path, sha: str, capsys) -> None:
     code, out = _check(root, sha, capsys)
-    assert code == 4, out
+    assert code == 0, out       # listed, never held (SR-260 EX-11, EX-14)
     assert "untraced changes (no requirement owns them): src/z.py" in out
 
 
@@ -278,12 +280,12 @@ def test_link_command_widening_a_confirmed_requirement_waits_for_the_owner(
     capsys.readouterr()
     assert open_core(root).status(["SR-001"])["SR-001"].confirmation == "confirmed"
     code, out = _check(root, sha, capsys)
-    assert code == 4, out
+    assert code == 0, out
     assert "untraced" not in out
     assert "SR-001 (extended)" in out
     assert "new link in this range: implemented_by src/z.py (now owned by SR-001)" in out
     assert "confirmation: every touched requirement is confirmed" not in out
-    assert merge_check(open_core(root), sha, as_json=True) == 4
+    assert merge_check(open_core(root), sha, as_json=True) == 0
     data = json.loads(capsys.readouterr().out)
     assert [{k: a[k] for k in ("id", "state", "new_ends")} for a in data["awaiting"]] == [
         {"id": "SR-001", "state": "extended", "new_ends": ["implemented_by src/z.py"]}]
@@ -303,7 +305,7 @@ def test_frontmatter_edit_adding_a_link_waits_for_the_owner(confirmed_base, caps
                     encoding="utf-8")
     assert open_core(root).status(["SR-001"])["SR-001"].confirmation == "confirmed"
     code, out = _check(root, sha, capsys)
-    assert code == 4, out
+    assert code == 0, out
     assert "new link in this range: implemented_by src/z.py (now owned by SR-001)" in out
 
 
@@ -313,15 +315,15 @@ def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
     root, sha = confirmed_base
     (root / ".plumb" / "config.yaml").write_text('trace:\n  exempt: ["src/**"]\n', "utf-8")
     code, out = _check(root, sha, capsys)
-    assert code == 4, out
+    assert code == 0, out       # listed, not honoured, never held (SR-260 EX-13)
     assert "untraced changes (no requirement owns them): src/z.py" in out
     assert "trace.exempt src/**: added in this range" in out
     assert "nothing can approve a new trace.exempt glob yet" in out           # SR-288 EX-1
-    assert "remove it to merge" in out and "plumb approve" not in out
+    assert "not honoured" in out and "plumb approve" not in out
     assert cli.main(["approve", "--exempt", "--root", str(root)]) == 3        # SR-288 EX-2
     assert "approve no longer exists" in capsys.readouterr().err
-    assert _check(root, sha, capsys)[0] == 4
-    assert merge_check(open_core(root), sha, as_json=True) == 4
+    assert _check(root, sha, capsys)[0] == 0
+    assert merge_check(open_core(root), sha, as_json=True) == 0
     assert json.loads(capsys.readouterr().out)["new_exempt"] == ["src/**"]
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
     with pytest.raises(approvals.Refused):                    # owner only
@@ -351,5 +353,5 @@ def test_merge_puts_untraced_flat_layout_and_root_files_to_the_owner(repo, capsy
     (repo / "tool.py").write_text("print('tool')\n", "utf-8")
     (repo / "NOTES.txt").write_text("notes\n", "utf-8")
     code, out = _check(repo, sha, capsys)
-    assert code == 4, out
+    assert code == 0, out
     assert "untraced changes (no requirement owns them): mypkg/extra.py, tool.py" in out

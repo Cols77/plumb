@@ -467,6 +467,27 @@ def test_pin_on_an_uncommitted_edit_keeps_its_version_for_end_texts(setup: Path)
     assert links.end_texts(setup, pinned) == ("x = 2\n", "x = 3\n")
 
 
+def test_end_texts_finds_a_pin_made_on_the_incoming_side_of_a_merge(setup: Path) -> None:
+    """A link pinned on the branch being merged in keeps its version before the merge commits."""
+    from tests.conftest import git
+
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "mod")
+    base = git(setup, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    git(setup, "checkout", "-q", "-b", "other")
+    (setup / "src" / "mod.py").write_bytes(b"x = 2\n")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "two")
+    open_core(setup).add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "link")
+    git(setup, "checkout", "-q", base)
+    git(setup, "merge", "-q", "--no-ff", "--no-commit", "other")
+    (setup / "src" / "mod.py").write_bytes(b"x = 3\n")
+    pinned = open_core(setup).index()["SR-001"].links[0]
+    assert links.end_texts(setup, pinned) == ("x = 2\n", "x = 3\n")
+
+
 def test_pin_on_a_committed_file_stores_no_blob(setup: Path) -> None:
     from tests.conftest import git
 

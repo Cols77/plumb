@@ -177,11 +177,11 @@ def test_ex10_a_full_sentence_is_passed_unchanged(world: Path) -> None:
 
 
 @pytest.mark.sr("SR-209")
-def test_ex4_an_answer_applies_to_the_version_asked_about_only(
+def test_ex4_an_answer_follows_the_record_to_its_later_wording(
         world: Path, write_record, hook_input) -> None:
-    """SR-209 EX-4: the requirement is edited after its question was put to the owner: the
-    answer names the version asked, the edited record's premise holds no answer, and the edit
-    goes back to the judge."""
+    """SR-209 EX-4: the requirement is reworded after its question was put to the owner: the
+    answer names the version asked, and the reworded record, confirmed on no version yet, goes
+    back to the judge with the answer in its premise."""
     judge_asks(world, (ASK, ["SR-001"]))
     asked_hash = open_core(world).index()["SR-001"].hash
     write_record(world, requirement_text(
@@ -192,10 +192,11 @@ def test_ex4_an_answer_applies_to_the_version_asked_about_only(
     record = core.index()["SR-001"]
     assert record.hash != asked_hash
     assert logged(world)[0]["asked"]["records"] == [{"id": "SR-001", "hash": asked_hash}]
-    assert premise.premise_of(core, record).answers == ()
+    assert [a["answer"] for a in premise.premise_of(core, record).answers] == [
+        "Public pages (Recommended)"]
     (job,) = judge_jobs(world)
     (rebuilt,) = judge.recompute(core, job)["records"]
-    assert rebuilt["hash"] == record.hash and "answers" not in rebuilt["premise"]
+    assert rebuilt["hash"] == record.hash and rebuilt["premise"]["answers"]
 
 
 @pytest.mark.sr("SR-208")

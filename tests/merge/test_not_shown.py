@@ -41,7 +41,8 @@ def test_never_shown_is_named_and_does_not_change_the_exit(base) -> None:
     assert [r["id"] for r in report.not_shown] == ["SR-001"]
     assert report.not_shown[0]["why"] == "no proof"
     text = "\n".join(render(report))
-    assert "not shown working yet (information, never holds the merge; you decide):" in text
+    assert "not shown working yet (information; a proof holds only work landing on the " \
+           "default branch that delivers it):" in text
     assert "SR-001 Links pin both ends: no proof planned (plumb show SR-001)" in text
     # the same report without the section exits the same: it never holds
     from dataclasses import replace

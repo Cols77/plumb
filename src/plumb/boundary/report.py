@@ -5,8 +5,13 @@ committed records and logs, runs the full suite at most once (``fullrun``), and 
 but one ``merge-evidence`` entry on a green report. No candidate checkouts, transactions,
 admission or coordination locks, manifests or guarded publish: it reports and exits.
 
-Exit precedence: 1 (log integrity, validation errors, claims, stale or dangling links of a
-touched requirement, links the range leaves stale or adds to untested files) before 5 (verification) before 4 (the owner's confirmation); 0 is green.
+Exit precedence: 1 (log integrity, validation errors, stale or dangling links of a touched
+requirement, links the range leaves stale or adds to untested
+files) before 5 (verification, and for work landing on the default branch a delivered
+requirement whose proof is not shown working or not confirmed by the owner) before 4 (an open
+intent conflict, a sure contradiction, a question waiting for the owner on a required record);
+0 is green. Records waiting on a judge, extensions, exemptions added in the range and
+undeclared or untraced paths are listed and never hold (SR-260, DEC-252, DEC-255 to DEC-257).
 """
 
 from __future__ import annotations
@@ -67,6 +72,13 @@ class MergeReport:
     contradictions: tuple[str, ...] = ()
     contradiction_notes: tuple[str, ...] = ()
     judge_note: str = ""
+    # SR-260 EX-30: the judge's questions waiting for the owner on a required record (exit 4)
+    questions: tuple[Mapping[str, Any], ...] = ()     # {key, question, records, titles}
+    # SR-260 EX-28, DEC-256: work landing on the default branch delivers a requirement (an SR
+    # trailer in the range) whose proof is not shown working or not confirmed (exit 5)
+    proofs: tuple[Mapping[str, Any], ...] = ()        # {id, title, why}
+    # DEC-271: tests, questions and proofs hold only a merge into the default branch
+    into_default: bool = True
 
 
 def as_dict(report: MergeReport) -> dict[str, Any]:
@@ -75,28 +87,39 @@ def as_dict(report: MergeReport) -> dict[str, Any]:
 
 
 def exit_code(report: MergeReport) -> int:
-    """1 (integrity, claims, links) before 5 (verification) before 4 (confirmation).
+    """1 (integrity, links) before 5 (verification, proofs) before 4 (conflicts, questions).
 
     Fails closed: green needs verification evidence, so a verification that could not be
     read (``available`` false or absent: the lane is missing, or reading the evidence, the
     tree identity or the test map raised) holds the merge with 5, like a pending full run.
     This is the one choke point for every entry (``merge-check``, ``validate --merge``, the
-    pre-push hook): each takes its exit from here. ``not_shown`` never counts (DEC-037)."""
+    pre-push hook): each takes its exit from here, and the quick check takes its test hold
+    from ``verification_holds`` too (SR-260 EX-10). ``not_shown`` never counts (DEC-037);
+    ``awaiting``, ``untraced``, ``new_exempt`` and the claims are listed and never count
+    (SR-260)."""
     if report.error:
         return 2
-    if report.integrity or report.claims.get("holds") or report.links or \
-            report.id_collisions or report.unmerged or report.stale_links or \
-            report.untested_links:
+    if report.integrity or report.links or report.id_collisions or report.unmerged or \
+            report.stale_links or report.untested_links:
         return 1
-    verification = report.verification
-    full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
-    unavailable = not verification.get("available")
-    if report.regressions or report.failing or report.unverified or full_held or unavailable:
+    main = report.into_default   # DEC-271: a work branch catching up holds on 1 and conflicts
+    if main and (verification_holds(report.verification) or report.regressions or
+                 report.failing or report.unverified or report.proofs):
         return 5
-    if report.awaiting or report.untraced or report.new_exempt or report.intent_conflicts or \
-            report.contradictions:
+    if report.intent_conflicts or report.contradictions or (main and report.questions):
         return 4
     return 0
+
+
+def verification_holds(verification: Mapping[str, Any]) -> bool:
+    """SR-254, SR-260 (c): ``merge._verification`` holds the merge (exit 5) on a failing or
+    regressed acceptance test, one with no passing run on the current code, a full
+    verification pending and not waived, or a verification that could not be read (fails
+    closed). The one rule of both forms of the check (EX-10)."""
+    full_held = bool(verification.get("full_pending") and not verification.get("full_waived"))
+    return not verification.get("available") or full_held or bool(
+        verification.get("failing") or verification.get("unverified")
+        or verification.get("regressions"))
 
 
 # --------------------------------------------------------------------------- gathering
@@ -233,6 +256,12 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
     from plumb.boundary.fullrun import full_run, record_merge_evidence
     from plumb.boundary.gates import claims_gate, link_rows
     from plumb.boundary.glance import glance_rows
+    from plumb.boundary.premerge import (
+        default_branch_of,
+        delivered_proofs,
+        merged_messages,
+        open_questions_on,
+    )
     from plumb.merge import (
         GitError,
         _git,
@@ -295,6 +324,13 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
     if fidelity:
         jev_scores(core, fidelity)
     repinned = repinned_unjudged(core, touched, paths)
+    # DEC-256: a proof holds only what a merge brings into the default branch (EX-29)
+    try:
+        here = _git(core, "symbolic-ref", "--short", "-q", "HEAD").strip()
+    except (GitError, OSError):
+        here = ""
+    into_default = here == default_branch_of(core.root)
+    proofs = delivered_proofs(core, merged_messages(core.root, base)) if into_default else []
 
     report = MergeReport(
         base=base, fork=fork, head=head, changed=tuple(paths), touched=tuple(touched),
@@ -308,7 +344,9 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         integrity=tuple(integrity), id_collisions=tuple(id_collisions),
         verification=verification, run_full=run_full,
         legacy_log_lines=_legacy_log_lines(core),
-        not_shown=tuple(_not_shown(core, touched)))
+        not_shown=tuple(_not_shown(core, touched)),
+        questions=tuple(open_questions_on(core, required)), proofs=tuple(proofs),
+        into_default=into_default)
     unmerged, conflicts = _merge_state(core, hook)
     report = _replace(report, unmerged=tuple(unmerged), intent_conflicts=tuple(conflicts))
     if not hook:   # the pre-push hook makes no live judge call; the pre-merge hook did these
@@ -388,23 +426,26 @@ def render(report: MergeReport) -> list[str]:
                                            else "none"))
     if report.untraced:
         out.append("untraced changes (no requirement owns them): " + _names(report.untraced))
+    from plumb.boundary.premerge import hold_lines
+
+    out.extend(hold_lines(report, "the default branch"))
     if report.awaiting or report.untraced or report.new_exempt:
-        out.append("merge waits for approval:")
+        out.append("listed for you (none of this holds the merge):")
         out.extend(_awaiting_lines(report))
         out.extend(_capped([f"  untraced {p}: no read-back or example covers this change"
                             for p in report.untraced]))
         out.extend(_capped([f"  trace.exempt {g}: added in this range; it exempts paths from "
                             "any requirement and is not honoured until it is approved"
                             for g in report.new_exempt]))
-        if report.awaiting:     # counted, no id and no command (SR-260 EX-8, SR-267)
+        if report.awaiting:     # counted, no id and no command (SR-260 EX-8, EX-31, SR-267)
             n = len(report.awaiting)
-            out.append(f"plumb: merge waits for {n} record{'s' if n > 1 else ''} to be "
-                       "approved: the judge approves them on your behalf or asks you a "
-                       "question with the question tool")
+            out.append(f"plumb: waiting on a judge: {n} record{'s' if n > 1 else ''}; the "
+                       "judge approves them on your behalf or asks you a question with the "
+                       "question tool")
         if report.new_exempt:
             # shortcut: no route approves a glob since plumb approve went, until SR-288 picks one
             out.append("plumb: nothing can approve a new trace.exempt glob yet (the judge "
-                       "approves records only); remove it to merge")
+                       "approves records only); until then it is not honoured")
         if report.untraced:
             out.append("plumb: for the untraced changes, ask the agent to read them back and "
                        "record a requirement linked implemented_by them; or, if they need no "
@@ -426,7 +467,7 @@ def render(report: MergeReport) -> list[str]:
     out.extend(collision_lines(report.id_collisions))
     claims = claims_lines(dict(report.claims))
     if claims:
-        out.append("claims hold the merge:")
+        out.append("claims (listed; they do not hold the merge):")
         out.extend(_capped([f"  {row}: {fix}" for row, fix in claims]))
     if report.links:
         out.append("links of touched requirements hold the merge:")
@@ -491,14 +532,14 @@ NOT_SHOWN_WHY = {"no proof": "no proof planned", "not run": "proof planned, not 
 
 
 def _not_shown_lines(report: MergeReport) -> list[str]:
-    """SR-127: named for the owner, who decides (DEC-037); never holds the merge."""
+    """SR-127: named for the owner, who decides (DEC-037); the hold is ``proofs`` (DEC-256)."""
     if not report.not_shown:
         return (["shown working: every touched requirement"] if report.touched else [])
     rows = [f"  {row['id']} {row.get('title', '')}: "
             f"{NOT_SHOWN_WHY.get(str(row.get('why')), str(row.get('why')))} "
             f"(plumb show {row['id']})" for row in report.not_shown]
-    return ["not shown working yet (information, never holds the merge; you decide):",
-            *_capped(rows)]
+    return ["not shown working yet (information; a proof holds only work landing on the default "
+            "branch that delivers it):", *_capped(rows)]
 
 
 def _fidelity_lines(report: MergeReport) -> list[str]:

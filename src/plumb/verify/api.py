@@ -893,7 +893,8 @@ class Verify:
         if vcfg.flaky_rerun and not outcome.discarded and not result.timed_out and not aborted:
             self._flaky_rerun(outcome, tree=tree, key=key, timeout=timeout)
         if not outcome.discarded and not result.timed_out:
-            self._collection_failures(result, targets, aborted=aborted is not None)
+            self._collection_failures(result, targets, aborted=aborted is not None
+                                      and not aborted.startswith("pytest is not installed"))
         payload = self._payload(outcome, tree=tree, key=key, full=full, budget=budget,
                                 selection=report.selection, infra=infra, files=files,
                                 identity=self.identity(compute=True), aborted=aborted,
@@ -984,7 +985,9 @@ class Verify:
         only when the selection, or the full suite, had known test nodes."""
         status = result.exit_status
         if not result.finished:
-            return f"pytest stopped before the session finished (exit status {status})"
+            said = [n for n in result.notes if n.startswith("pytest is not installed")]
+            return said[0] if said else (
+                f"pytest stopped before the session finished (exit status {status})")
         if status in (0, 1):
             return None
         if status == 5:

@@ -4,13 +4,13 @@ Over ``<base>..HEAD`` plus uncommitted changes:
 
 1. every touched requirement, the INT records it derives from, and each matters-true DEC that
    decides it must be confirmed at its current hash, and every changed source path must be
-   owned by a requirement (``plumb.trace``: an untraced change skipped the read-back), or the
-   merge waits (exit 4): one trigger-2 question lists them. Links are left out of a record's
-   hash, so a requirement that gained an ``implemented_by`` or ``verified_by`` end in the
-   range (by ``plumb link`` or a frontmatter edit) is an extension of it: it waits too until
+   owned by a requirement (``plumb.trace``: an untraced change skipped the read-back); what
+   is not is listed, and never holds the merge (SR-260, DEC-252). Links are left out of a
+   record's hash, so a requirement that gained an ``implemented_by`` or ``verified_by`` end in the
+   range (by ``plumb link`` or a frontmatter edit) is an extension of it, listed until
    an approval of it lists that end. A requirement whose ``verified_by`` end (an acceptance
    test of an example the owner confirmed) changed since the approval pinned its content
-   waits as "acceptance test changed", shown with the example and the test's diff. A
+   is listed as "acceptance test changed", shown with the example and the test's diff. A
    ``trace.exempt`` glob added in the range is not
    honoured until an approval entry lists it (no route writes one since ``plumb approve``
    went: SR-288), and a path that was

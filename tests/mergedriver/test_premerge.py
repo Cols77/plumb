@@ -51,7 +51,8 @@ def _diverged(tmp_path: Path, *, theirs_statement: str = THEIRS_STATEMENT,
         from plumb.approvals import approve
 
         approve(open_core(other), ["SR-005"])
-    commit_all(other, "theirs\n\nSR: SR-005")
+    # no SR trailer: SR-005 is touched by its record, and delivers nothing to prove (DEC-256)
+    commit_all(other, "theirs")
     return root, other
 
 
@@ -101,9 +102,10 @@ def test_commit_completes_after_choice(tmp_path: Path) -> None:
 
 
 @pytest.mark.sr("SR-260")
-def test_quick_check_holds_unconfirmed_and_undeclared(tmp_path: Path) -> None:
-    """R17: no intent conflict, but the incoming change touches an unconfirmed requirement
-    and a file no requirement declares: held, without a test run."""
+def test_quick_check_lists_unconfirmed_and_undeclared(tmp_path: Path) -> None:
+    """SR-260 EX-4, EX-8: no intent conflict; the incoming change touches an unconfirmed
+    requirement and a file no requirement declares: both listed, neither holds; the merge
+    into main is held only by the delivered requirement's proof (EX-26)."""
     root = make_repo(tmp_path / "main")
     install_hook(root, sys.executable)
     write_record(root, record(statement="s", examples=[ex(1)]))
@@ -120,20 +122,23 @@ def test_quick_check_holds_unconfirmed_and_undeclared(tmp_path: Path) -> None:
     assert merged.returncode != 0
     assert '"relay checks" waits on a judge' in output
     assert "src/relay.py changed without a requirement that declares it" in output
+    assert '"relay checks": its proof is not shown working yet' in output
+    report = check(open_core(root))
+    assert report.unconfirmed and report.undeclared and report.exit == 5
 
 
 @pytest.mark.sr("SR-260")
 def test_quick_check_runs_no_tests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-077 EX-4 (R17): the merge-time check never starts the test suite (that runs once,
-    at push)."""
+    at push); it reads the recorded evidence only (SR-260 EX-10, EX-19)."""
     import plumb.boundary.fullrun as fullrun
-    import plumb.verify as verify
+    from plumb.verify.api import Verify
 
     def boom(*_a, **_k):
         raise AssertionError("the quick merge check started a test run")
 
     monkeypatch.setattr(fullrun, "full_run", boom)
-    monkeypatch.setattr(verify, "open_verify", boom)
+    monkeypatch.setattr(Verify, "run", boom)
     root, _ = _diverged(tmp_path)
     run_git(root, "merge", "--no-edit", "--no-verify", "--no-commit", "feat-x", check=False)
     report = check(open_core(root))
@@ -243,11 +248,15 @@ def test_quick_check_never_calls_a_judgment_backend(
 
     backend = _jev_configured(monkeypatch)
     conflicted(repo)
+    (repo / "tests").mkdir(exist_ok=True)   # the link theirs adds must not dangle (SR-297)
+    (repo / "tests" / "test_relay.py").write_text("def test_x() -> None:\n    pass\n",
+                                                  encoding="utf-8")
     run_git(repo, "add", "-A")  # the merge result, as git stages it
     head = run_git(repo, "rev-parse", "HEAD").stdout.strip()
     monkeypatch.setattr(premerge, "incoming_heads", lambda root: [(head, "feat-x")])
     report = check(open_core(repo), "merge")
-    assert report.exit == 4 and report.intent_conflicts
+    # tests/test_relay.py never ran: SR-254's test hold (5) comes before the conflict's 4
+    assert report.exit == 5 and report.intent_conflicts
     assert backend.calls == 0
     assert "  Compatible? no judgment available" in report.intent_conflicts[0]["card"]
     assert [p for p in events(repo, "judgment") if p.get("subject") == "IC-001"] == []
@@ -348,7 +357,7 @@ def test_merge_check_asks_about_contradicting_requirements(
     root, other = _branch_pair(tmp_path)
     write_record(other, record("SR-006", "relay pins nothing",
                                statement="A relay pins no stated record.", examples=[ex(1)]))
-    commit_all(other, "SR-006\n\nSR: SR-006")
+    commit_all(other, "SR-006")
     report = _merge_report(root)
     assert any("SR-006 contradicts SR-005" in line for line in report.contradictions)
     assert report.exit == 4
@@ -419,7 +428,7 @@ def test_merge_check_judges_only_reworded_requirements_and_holds_on_sure_verdict
     run_git(root, "merge", "--abort", check=False)
     write_record(other, record("SR-006", "relay pins nothing",
                                statement="A relay pins no stated record.", examples=[ex(1)]))
-    commit_all(other, "SR-006\n\nSR: SR-006")
+    commit_all(other, "SR-006")
     report = _merge_report(root)
     assert report.contradictions == () and report.contradiction_notes
     assert report.exit != 1
