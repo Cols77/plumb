@@ -259,7 +259,9 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
         gate.close(root, session, digest, clarify.GATE_REASON_CHECKING)   # no hook closed it
     if not gate.is_closed(root, session):
         return _outcome_from_state(core, session, digest)
-    queued = _jobs_of(root, session, "clarify", digest)
+    sent = clarify.sent_at(core, digest)   # each sending of the same words has its own check
+    queued = [j for j in _jobs_of(root, session, "clarify", digest)
+              if j.inputs["message"].get("at", "") == sent]
     ours = queued[-1] if queued else None
     started = clock()
     reporter = Reporter(root, None, "clarify", stream=stream)
