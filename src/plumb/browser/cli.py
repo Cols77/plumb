@@ -16,6 +16,8 @@ def run(command, argv):
     parser.add_argument("--open", action="store_true", dest="open_browser")
     parser.add_argument("--demo", action="store_true", help="Use an isolated temporary demo")
     parser.add_argument("--assets", type=Path, help="Directory containing the built index.html")
+    # the band's press (plumb.browser.launch) hands the capability on stdin, never in argv
+    parser.add_argument("--token-stdin", action="store_true", help=argparse.SUPPRESS)
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -38,10 +40,12 @@ def run(command, argv):
         else:
             root = find_root(args.root or Path.cwd())
         assets = args.assets or Path(__file__).resolve().parent / "static"
-        server = make_server(BrowserService(root, demo=args.demo), port=args.port, assets=assets)
+        server = make_server(BrowserService(root, demo=args.demo), port=args.port, assets=assets,
+                             token=sys.stdin.readline().strip() or None if args.token_stdin
+                             else None)
         link = server.origin + "/#token=" + server.token
         # The launch capability is printed once to the owner's terminal; never request logs.
-        print(("DEMO — isolated temporary project\n" if args.demo else "") + "Plumb: " + link)
+        print(("DEMO — isolated temporary project\n" if args.demo else "") + "Plumb: " + link, flush=True)
         if not (assets / "index.html").is_file():
             print(
                 "Browser assets missing. Build the browser app or pass --assets PATH; "

@@ -68,6 +68,8 @@ ROUTES: dict[str, str] = {
     # SP7 MOD: the commands only plumb's panel runs (hello, draw, press; key on stdin)
     "mod": "plumb.mod.cli",
     "ui": "plumb.browser.cli",
+    # INT-090: studies the owner reads in the room, and the understanding picture
+    "study": "plumb.study.cli",
 }
 
 _HELP = """usage: plumb <command> [options]
@@ -110,6 +112,9 @@ intent capture:
   triage       proposed records grouped by faithfulness (advisory; it approves nothing)
   config       auto-approve on|off and show (owner's terminal only)
   jev          status, setup (the credential variable's name only), calibrate
+  study        propose | add | list | candidates | mark: at most one study idea per
+               intent-loop step, written once the owner accepts it, read in the browser
+               room; the understanding picture it corrects
   quotes       recover: find older records' words in past session transcripts (shown on
                the card as found, not verified; it confirms nothing)
 

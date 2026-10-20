@@ -119,6 +119,13 @@ def text_of(out: str) -> str:
     return str(data.get("systemMessage") or data.get("reason") or "")
 
 
+def agent_of(s: Session) -> str:
+    """SR-266: what the stop queued for the agent's channel (cards, judge counts), taken once."""
+    from host.fakes import agent_notes
+
+    return agent_notes(s.repo, s.session_id)
+
+
 def own_cards(s: Session) -> list[dict[str, Any]]:
     path = s.repo / ".plumb" / "session" / s.session_id / "cards.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
@@ -248,7 +255,8 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
     assert not [c for c in own_cards(s) if c["id"].startswith("change:")]
     assert len(calls(s, "read")) == 1                             # one read job for the message
     said = text_of(s.stop())
-    assert owner_text.JUDGE_APPROVED in said
+    assert owner_text.JUDGE_APPROVED not in said                  # SR-265 EX-7: the agent's
+    assert owner_text.JUDGE_APPROVED in agent_of(s)
     lines.append(said)
     lines.append(s.status_line())
     at_owner_level(*[ln for ln in lines if ln],
@@ -331,7 +339,8 @@ def test_flow_5_failures_confirm_nothing_and_retry_next_turn(repo: Path, write_r
     assert s.worker_idle(30)
     assert owner_words_approvals(repo) == {}
     assert events(repo, "approval") == []
-    couldnt = text_of(s.stop())
+    assert text_of(s.stop()) == "plumb: 1 question for you"      # SR-265: one line
+    couldnt = agent_of(s)                                        # SR-266: the card is the agent's
     assert "did not finish" in couldnt.lower()
     at_owner_level(couldnt, quoted=("INT-008 ok",))
 
@@ -340,7 +349,8 @@ def test_flow_5_failures_confirm_nothing_and_retry_next_turn(repo: Path, write_r
     s.say("what is left to do?")
     assert s.worker_idle(30)
     assert set(judge_approvals(repo)) == {"INT-008"}
-    assert owner_text.JUDGE_APPROVED in text_of(s.stop())
+    s.stop()
+    assert owner_text.JUDGE_APPROVED in agent_of(s)
 
 
 def test_flow_5_schema_failure_and_a_record_edited_after_it_was_shown(
@@ -403,13 +413,15 @@ def test_flow_5_a_job_not_finished_at_the_turns_end_is_collected_next_turn(
                                          "judge": judge_clear("INT-008")}), encoding="utf-8")
     s.start()
     s.say("INT-008 ok")
-    assert owner_text.JUDGE_APPROVED not in text_of(s.stop())       # still being read
+    s.stop()
+    assert owner_text.JUDGE_APPROVED not in agent_of(s)             # still being read
     assert events(repo, "approval") == []
     assert s.worker_idle(40)
     model(s)
     s.say("carry on")
     assert set(judge_approvals(repo)) == {"INT-008"}
-    assert owner_text.JUDGE_APPROVED in text_of(s.stop())
+    s.stop()
+    assert owner_text.JUDGE_APPROVED in agent_of(s)
 
 
 # ---- (6) what the agent writes into the session's files confirms nothing -------------------------
@@ -543,6 +555,7 @@ def test_flow_7_stale_edit_names_the_link_hold_card_and_reformat(
     assert carded.returncode == 0, carded.stderr + carded.stdout
     ended = s.stop()
     assert '"decision": "block"' not in ended
-    said = text_of(ended)
+    assert len(text_of(ended).splitlines()) <= 1                    # SR-265: one line
+    said = agent_of(s)                                              # SR-266: the card
     assert "Adds numbers" in said and "add now multiplies" in said
     at_owner_level(said.replace("SR-001", ""))

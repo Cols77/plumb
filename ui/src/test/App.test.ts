@@ -172,3 +172,19 @@ describe('Owner issue workflow', () => {
     expect(screen.getByText('Technical details').closest('details')).not.toHaveAttribute('open');
   });
 });
+describe('a study opened from the band', () => {
+  it('SR-294 EX-3: the room opened with ?study=<slug> shows that study', async () => {
+    const study = {slug:'jobs', title:"How plumb's background jobs run", step:'plan', why:'the plan adds a job', status:'new', body:'A dispatcher hands each job to a worker.'};
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      if (input === '/api/workspace') return Response.json({project:{name:'Test project',root:'/test',demo:true},sessions:[]});
+      if (input === '/api/studies/jobs/open') return Response.json({...study, status:'opened'});
+      if (input === '/api/studies') return Response.json({studies:[study], understanding:{text:'',knows:[],needs:[]}});
+      return Response.json({session:'',cards:[],followups:[]});
+    }));
+    history.replaceState({}, '', '/?study=jobs');
+    try {
+      render(App);
+      expect(await screen.findByRole('heading',{name:"How plumb's background jobs run"})).toBeInTheDocument();
+    } finally { history.replaceState({}, '', '/'); }
+  });
+});

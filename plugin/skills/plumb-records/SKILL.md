@@ -3,10 +3,8 @@ name: plumb-records
 description: Grounds work in this repository's plumb records (the owner's intent, requirements with examples, decisions, tests). Use on every owner request, before changing code or tests, when the owner states or changes intent, or when a "plumb:" hook line appears. Not for answering the owner's typed /plumb command (the command does that) or for choosing which questions to ask (plumb-clarify).
 ---
 Run plumb as `plumb`. The owner's intent lives in files; read it before acting.
-
 - After `capture`, on any message, run `plumb clarify --wait --json` and act on its answer
-  (rule 1 below, plumb-clarify): on an ordinary message it checks nothing of the request (read
-  it back in your reply) and answers `ask` with plumb's judge's questions, or `ready`. After
+  (rule 1 below, plumb-clarify): `ask` with plumb's judge's questions, or `ready`. After
   `/plumb clarify <words>`, also run it before reading code: it collects the request's check.
 - `.plumb/` holds INT (the owner's words), SR (given/when/then examples), DEC, FEAT and NC:
   `plumb brief` (intent now), `show <ID>` (examples, tests), `explain <words>` (why it is).
@@ -27,9 +25,7 @@ Run plumb as `plumb`. The owner's intent lives in files; read it before acting.
   `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo` and `go` are typed
   by the owner and done by the hook. Merges, conflict cards: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.
-
-A hook time limit the owner asks for goes in `.plumb/config.yaml` `hooks.hard_limit_s`
-(budgets: `hooks.budget_ms`); the host allows at most 119 s: above that set 119, say why.
+- A hook time limit asked for: `.plumb/config.yaml` `hooks.hard_limit_s` (at most 119 s).
 Questions and approval: plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.
 1. After `capture`, run `plumb clarify --wait --json`. On `ask`, pass each `question`,
@@ -42,3 +38,7 @@ exists, and you never decide on your own that the owner approved.
    answer, and do not rerun `ask` in a loop.
 4. Any other question to the owner also goes through the question tool, with options and
    their consequences.
+5. The stop hook's cards reach you as text, not the owner. One tagged "only the owner can
+   settle this" (an open conflict, a regression on a confirmed requirement, a drift whose
+   meaning changed): ask it at once, plain words, options, no ids (a study may lay out both
+   sides, choosing nothing). Stale links, untraced files and warnings are yours to fix.

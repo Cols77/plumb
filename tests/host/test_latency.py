@@ -97,9 +97,11 @@ def test_hooks_within_in_process_budget(busy_repo: Path, hook_input,
     timings["post-edit"] = _time_ms(lambda: run(post_edit, edit))
     stop_input = hook_input("Stop", stop_hook_active=True)
     timings["stop"] = _time_ms(lambda: run(stop, stop_input, verify=verify, unjudged=None))
-    # cards only (SR-012): the card the judged stale check filed for the edited requirement
-    assert "Requirement 3 about links" in json.loads(run(stop, stop_input, verify=verify,
-                                                          unjudged=None))["systemMessage"]
+    # SR-266: the card the judged stale check filed for the edited requirement is the agent's
+    run(stop, stop_input, verify=verify, unjudged=None)
+    from fakes import agent_notes
+
+    assert "Requirement 3 about links" in agent_notes(root, "test-session")
     for hook, took in timings.items():
         assert_within(took, BUDGET_MS[hook], f"{hook} hook (ms)")
     errors = root / ".plumb" / "session" / "errors.log"
@@ -128,8 +130,10 @@ def test_cli_drives_the_hooks(busy_repo: Path, hook_input,
     call("hook", "post-edit", payload=hook_input(
         "PostToolUse", tool_name="Edit", tool_input={"file_path": str(busy_repo / "src" /
                                                                        "mod2.py")}))
-    stop_out = json.loads(call("hook", "stop", payload=hook_input("Stop")))
-    assert "SR-002" in (stop_out.get("reason") or stop_out.get("systemMessage"))
+    stop_out = call("hook", "stop", payload=hook_input("Stop"))
+    from fakes import agent_notes
+
+    assert "SR-002" in stop_out + agent_notes(busy_repo, "test-session")
     assert call("statusline").startswith("plumb ● awaits you")
     assert call("hook", "--help").startswith("usage: plumb hook")
 

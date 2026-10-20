@@ -5,6 +5,7 @@
   import Splitter from './components/Splitter.svelte';
   import Diagram from './components/Diagram.svelte';
   import Evidence from './components/Evidence.svelte';
+  import Studies from './components/Studies.svelte';
 
   const capability = takeCapability();
   let workspace = $state<Workspace>(); let session = $state(''); let cards = $state<Card[]>([]); let followups = $state<Followup[]>([]);
@@ -12,10 +13,10 @@
   let connection = $state('Connecting'); let loadError = $state(''); let loading = $state(false); let busy = $state(false);
   let feedback = $state<Record<string, {error?: string; result?: PressResult}>>({});
   let drafts = $state<Record<string, string>>({}); let composers = $state<Record<string, number | undefined>>({});
-  let refused = $state<Record<string, boolean>>({});
+  let refused = $state<Record<string, boolean>>({}); let section = $state<'issues' | 'studies'>(new URLSearchParams(location.search).has('study') ? 'studies' : 'issues');  // SR-294 EX-3: the band's press opens the room on a study
   const pending = new Map<string, string>();
   let generation = 0; let alive = true;
-  let viewport = $state(window.innerWidth); let drawer = $state(false); let drawerButton: HTMLButtonElement; let inbox: HTMLElement; let help: HTMLDialogElement;
+  let viewport = $state(window.innerWidth); let drawer = $state(false); let drawerButton = $state<HTMLButtonElement>(); let inbox = $state<HTMLElement>(); let help: HTMLDialogElement;
   const readWidth = (key: string, fallback: number, min: number, max: number) => { try { const value = Number(localStorage.getItem(key)); return value ? Math.max(min, Math.min(max, value)) : fallback; } catch { return fallback; } };
   let leftWidth = $state(readWidth('plumb.inbox-width',260,220,380)); let rightWidth = $state(readWidth('plumb.evidence-width',320,260,460));
   function saveWidth(key: string, value: number) { try { localStorage.setItem(key,String(value)); } catch { /* Resizing still works. */ } }
@@ -104,7 +105,7 @@
     if (!drawer || !isNarrow) return;
     if (event.key === 'Escape') { event.preventDefault(); closeDrawer(); }
     if (event.key === 'Tab') {
-      const controls = Array.from(inbox.querySelectorAll<HTMLElement>('button:not(:disabled),input,select,[tabindex="0"]'));
+      const controls = Array.from(inbox?.querySelectorAll<HTMLElement>('button:not(:disabled),input,select,[tabindex="0"]') ?? []);
       const first = controls[0], last = controls.at(-1);
       if (event.shiftKey && document.activeElement === first) {event.preventDefault(); last?.focus();}
       else if (!event.shiftKey && document.activeElement === last) {event.preventDefault(); first?.focus();}
@@ -122,11 +123,12 @@
 <a class="skip-link" href="#issue-detail">Skip to selected issue</a>
 <header class="workspace-header">
   <div class="brand"><span class="plumb-mark" aria-hidden="true">◈</span><strong>plumb</strong><span class="brand-divider">/</span><span class="project-name" title={workspace?.project.root}>{workspace?.project.name ?? 'Issue workspace'}</span>{#if workspace?.project.demo}<span class="demo-label">Isolated demo</span>{/if}</div>
-  <div class="header-tools"><label class="session-control"><span>Session</span><select aria-label="Source session" value={session} onchange={event => void chooseSession(event.currentTarget.value)} disabled={!sessions.length || busy}>{#each sessions as item}<option value={item.id}>{item.id} · {item.counts.waiting || 0} waiting · {total(item)} total</option>{/each}</select></label>
+  <div class="header-tools"><div class="section-tabs" aria-label="Section"><button aria-pressed={section === 'issues'} onclick={() => section='issues'}>Questions</button><button aria-pressed={section === 'studies'} onclick={() => section='studies'}>Studies</button></div><label class="session-control"><span>Session</span><select aria-label="Source session" value={session} onchange={event => void chooseSession(event.currentTarget.value)} disabled={!sessions.length || busy}>{#each sessions as item}<option value={item.id}>{item.id} · {item.counts.waiting || 0} waiting · {total(item)} total</option>{/each}</select></label>
     <span class:offline={connection === 'Disconnected'} class="connection"><span class="connection-dot"></span>{connection}</span>
     <button title="Refresh issues and evidence" onclick={() => void refresh()} disabled={loading || busy}>Refresh</button><button onclick={() => help.showModal()}>Help</button>
   </div>
 </header>
+{#if section === 'studies'}<Studies {capability}/>{:else}
 <div class="mobile-bar"><button bind:this={drawerButton} aria-expanded={drawer} aria-controls="issue-inbox" onclick={openDrawer}>Issues <span class="count">{cards.length}</span></button><span>{active ? human(active.state) : 'Issue workspace'}</span></div>
 {#if loadError}<div class="connection-error" role="alert"><strong>Connection needs attention.</strong> {loadError} <button onclick={() => void refresh()} disabled={loading || busy}>Retry connection</button></div>{/if}
 <div class="workspace" style:--inbox-width={`${leftWidth}px`} style:--evidence-width={`${rightWidth}px`}>
@@ -185,4 +187,5 @@
   <div class="right-divider"><Splitter value={rightWidth} min={260} max={460} reset={320} reverse label="Resize evidence pane" title="Drag or use arrow keys. Double-click to reset." onresize={value => rightWidth=value} oncommit={value => saveWidth('plumb.evidence-width',value)}/></div>
   <Evidence card={active} {followups} {session}/>
 </div>
+{/if}
 <dialog bind:this={help} class="help-dialog" aria-labelledby="help-title"><h2 id="help-title">Decide with the evidence in view</h2><p>Select a source session, inspect an issue and its diagram, then answer an offered question or ask for a change. Leave open keeps the issue available.</p><p>Answers refer to the exact content you saw. If it changes, refresh and review before answering again.</p><p>Queued follow-ups are delivered at the source session's next prompt hook. Plumb does not wake an agent, and an accepted answer is not a verified repair.</p><p>Resize panes with the pointer or arrow keys; Home and End set their limits. Double-click a divider to reset it.</p><p class="muted">This workspace runs on your local loopback server. Fonts and application assets are bundled locally.</p><a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noreferrer">Third-party notices</a><form method="dialog"><button class="primary">Close help</button></form></dialog>
