@@ -467,13 +467,15 @@ def _ids_of(question: Mapping[str, Any]) -> set[str]:
 
 def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
     """The session's judge questions no question-answer entry answers yet, by its question's
-    key or the key it was matched to (``asked.key``). Reads no record (the hook calls it)."""
+    key or the key it was matched to (``asked.key``); 'Study it first' answers nothing
+    (SR-336). Reads no record (the hook calls it)."""
     asked = _logged_questions(core.root, session)
     if not asked:
         return []
     answered: set[str] = set()
     for e in core.events():
-        if e.kind == "question-answer" and e.payload.get("session") == session:
+        if e.kind == "question-answer" and e.payload.get("session") == session \
+                and not e.payload.get("study"):
             answered.add(question_key(str(e.payload.get("question") or "")))
             if isinstance(e.payload.get("asked"), Mapping):
                 answered.add(str(e.payload["asked"].get("key")))

@@ -19,6 +19,9 @@ dismissed or unanswered question logs nothing. The answer "Build anyway" to a fa
 "Study it in the room" to a judge question judges nothing again: the question becomes a card
 waiting in the room, its entry carries ``room`` (the card and the question asked), the band's
 line names it (``question.to_room``), and the agent is told to draw its diagram (SR-333).
+"Study it first" judges nothing either: its entry carries ``study`` (the study serving the
+question), the band's study line names that study and the question waits until it is read
+(``study.study_first``, SR-336).
 """
 
 from __future__ import annotations
@@ -66,7 +69,15 @@ def handle(ctx: HookContext) -> HookOutput | None:
                 key_of(o.get("label")) for o in left[0].get("options") or ()
                 if isinstance(o, dict)}:     # the one open question reworded: its option picked
             found = left[0]
-        if found is not None and entry["answer"] == owner_text.ROOM_STUDY:
+        if found is not None and entry["answer"] == owner_text.STUDY_FIRST:
+            from plumb import study
+
+            left.remove(found)       # SR-336 EX-2: no answer; the question waits for the study
+            served = study.serving(ctx.root, str(found.get("key")))
+            if served is not None:
+                study.study_first(ctx.root, ctx.session_id, served["slug"])
+                entry["study"] = served["slug"]
+        elif found is not None and entry["answer"] == owner_text.ROOM_STUDY:
             from plumb.understand import question
 
             left.remove(found)       # SR-333 EX-3: no answer yet; the question waits in the room

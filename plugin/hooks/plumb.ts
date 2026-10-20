@@ -352,9 +352,11 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
   const progress = await readJson(io, join(sessionDir(link.root, link.session), 'progress'))
   // SR-333: the question this session's owner chose to study in the room, until their press
   const room = await readJson(io, join(sessionDir(link.root, link.session), 'room_waits.json'))
+  // SR-336 EX-2: the study the owner chose to read before answering its questions
+  const first = await readJson(io, join(sessionDir(link.root, link.session), 'study_first.json'))
   const files = await studyFiles(io, link)
   const studies = files.filter(s => s.status === 'new').map(({ title, slug }) => ({ title, slug }))
-  const study = studies.at(-1) ?? { title: '', slug: '' }
+  const study = studies.find(s => s.slug === first?.study) ?? studies.at(-1) ?? { title: '', slug: '' }
   // DEC-207: ideas waiting for the owner's choice, oldest first
   const ideas = files.filter(s => s.status === 'idea').map(({ title, slug, why, recommend }) => ({ title, slug, why, recommend }))
   // SR-251: the records a judge approved, the set `plumb status` lists (judge_approved); an

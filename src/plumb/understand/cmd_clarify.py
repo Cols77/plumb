@@ -163,15 +163,22 @@ def _by_principle(questions: list[Mapping[str, Any]], room: int) -> list[Mapping
     return firsts[:max(room, sum(1 for q in firsts if q.get("blocking")))]
 
 
-def _options(question: Mapping[str, Any]) -> list[Any]:
+def _options(root: Path, question: Mapping[str, Any]) -> list[Any]:
     """SR-333 EX-1, EX-2: a question with more to see (a diagram, or a text over
     ``ROOM_TEXT_MAX``) offers to study it in the room, last and within the tool's four options
-    (the room shows every option)."""
+    (the room shows every option). SR-336 EX-1: a question a study serves offers to study it
+    first instead (one study option at most)."""
+    from plumb import study
+
     options = list(question.get("options") or ())
-    if not question.get("diagram") and len(str(question.get("question") or "")) <= ROOM_TEXT_MAX:
+    if study.serving(root, str(question.get("key"))):
+        extra = {"label": owner_text.STUDY_FIRST, "description": owner_text.STUDY_FIRST_NOTE}
+    elif question.get("diagram") or len(str(question.get("question") or "")) > ROOM_TEXT_MAX:
+        extra = {"label": owner_text.ROOM_STUDY, "description": owner_text.ROOM_STUDY_NOTE}
+    else:
         return options
-    return [*options[:3], {"label": owner_text.ROOM_STUDY,
-                           "description": owner_text.ROOM_STUDY_NOTE}]
+    return [*options[:3], extra]
+
 
 def _judged(core: Any, session: str, digest: str, at: str, limit: float,
             sleep: Callable[[float], None], clock: Callable[[], float], turn: str = "",
@@ -181,6 +188,7 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
     judge approved. The questions never close the gate (P6). SR-334: one question per
     principle, at most ``ASKED_PER_TURN`` answered since the owner's message (``turn``) but
     the blocking ones; ``mid_task``, the blocking ones only."""
+    from plumb import study
     from plumb.api import open_core
     from plumb.understand import judge, worker
 
@@ -200,16 +208,18 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
     said = [e for e in core.events() if e.kind == "question-answer"
             and e.payload.get("session") == session and e.at >= (turn or at)]
     room = 0 if mid_task else ASKED_PER_TURN - sum(1 for e in said if e.payload.get("asked"))
-    questions = _by_principle(judge.open_questions(core, session), room)
+    later = study.first_keys(root, session)       # SR-336 EX-2: they wait for the study
+    questions = _by_principle([q for q in judge.open_questions(core, session)
+                               if q.get("key") not in later], room)
     if questions:
         answers = [e.payload for e in said if e.at >= at]
         # SR-212: the agent reworded the question, or asked one of its own
         missed = bool(answers) and answers[-1].get("via") == "question-tool" \
-            and not answers[-1].get("asked") and not answers[-1].get("room")
+            and not any(answers[-1].get(k) for k in ("asked", "room", "study"))
         line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
         return Outcome("ask", digest, [line], questions=[
             {"question": q.get("question"), "header": q.get("header"),
-             "options": _options(q), "multiSelect": False} for q in questions])
+             "options": _options(root, q), "multiSelect": False} for q in questions])
     return Outcome("ready", digest, [READY, *_approved(core, at)])
 
 
