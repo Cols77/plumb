@@ -105,6 +105,7 @@ def build_snapshot(core: CoreAPI, *, verify: VerifyAPI | None = None,
         judge_approved=sum(i in index and judge_label(s) is not None for i, s in statuses.items()),
         auto_approve=auto_approve if auto_approve is not None else auto_approve_state(core),
         conflicts=open_conflict_count(core),
+        awaiting=awaiting_count(core),
         **overlap_fields(core, awareness),
     )
     from plumb.present.render import card_state
@@ -150,9 +151,26 @@ def snapshot_dict(snapshot: StatusSnapshot) -> dict[str, Any]:
     return data
 
 
+def awaiting_count(core: Any) -> int:
+    """SR-337: the questions waiting for the owner, the band's "N await you": every session's
+    judge questions not answered yet and the store's open cards, each once."""
+    from plumb.understand import cardstore, judge
+
+    waiting: set[str] = set()
+    sessions = Path(core.root) / ".plumb" / "session"
+    for path in sorted(p for p in sessions.glob("*") if p.is_dir()):
+        try:
+            waiting |= {f"q:{q.get('key')}" for q in judge.open_questions(core, path.name)}
+            waiting |= {f"c:{c.id}" for c in cardstore.load(core.root, path.name)}
+        except Exception:  # noqa: BLE001 - a count never fails the snapshot
+            continue
+    return len(waiting)
+
+
 def refresh_judge_count(core: Any) -> None:
-    """SR-251: a turn with no edit writes no snapshot, yet the judge approves in the background;
-    only the band's judge-approved count is brought up to date in ``status.json``."""
+    """SR-251, SR-337: a turn with no edit writes no snapshot, yet the judge approves and asks
+    in the background; the band's judge-approved and waiting counts are brought up to date in
+    ``status.json``."""
     from plumb.hosts.claude_code.hookio import read_json
     from plumb.present.cards import judge_label
 
@@ -161,9 +179,11 @@ def refresh_judge_count(core: Any) -> None:
     if not isinstance(data, dict):
         return
     index = core.index()
-    count = sum(i in index and judge_label(s) is not None for i, s in core.status().items())
-    if data.get("judge_approved") != count:
-        write_json_atomic(path, {**data, "judge_approved": count})
+    counts = {"judge_approved": sum(i in index and judge_label(s) is not None
+                                    for i, s in core.status().items()),
+              "awaiting": awaiting_count(core)}
+    if any(data.get(k) != v for k, v in counts.items()):
+        write_json_atomic(path, {**data, **counts})
 
 
 def write_snapshot(root: Path, snapshot: StatusSnapshot, *, present: Any = None,

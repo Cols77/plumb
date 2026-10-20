@@ -78,6 +78,16 @@ def test_ex1_the_typed_command_is_checked_and_opens_the_loop(repo: Path, engine_
     assert not list((repo / ".plumb" / "intents").glob("*.md"))   # no record until it is clear
 
 
+def test_a_later_bare_slash_command_does_not_lose_the_loop(repo: Path,
+                                                           engine_standins: Any) -> None:
+    engine_standins.dispatcher.script = {"clarify": NO_GAP}
+    digest = _say(repo, "/plumb:plumb-intent " + WORDS)
+    worker.run_once(open_core(repo), SESSION)
+    log_prompt(repo, "/reload-plugins", session=SESSION)
+    assert _run(repo, "open", "--wait", "--timeout", "5") == 0
+    assert cmd_intent.loop_path(repo, SESSION, digest).exists()
+
+
 def test_ex4_an_ordinary_message_opens_no_loop_and_runs_no_model(repo: Path,
                                                                   engine_standins: Any) -> None:
     _say(repo, "make the status line show the branch name")

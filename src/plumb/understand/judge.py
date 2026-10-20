@@ -467,13 +467,15 @@ def _ids_of(question: Mapping[str, Any]) -> set[str]:
 
 def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
     """The session's judge questions no question-answer entry answers yet, by its question's
-    key or the key it was matched to (``asked.key``). Reads no record (the hook calls it)."""
+    key or the key it was matched to (``asked.key``); 'Study it first' answers nothing
+    (SR-336). Reads no record (the hook calls it)."""
     asked = _logged_questions(core.root, session)
     if not asked:
         return []
     answered: set[str] = set()
     for e in core.events():
-        if e.kind == "question-answer" and e.payload.get("session") == session:
+        if e.kind == "question-answer" and e.payload.get("session") == session \
+                and not e.payload.get("study"):
             answered.add(question_key(str(e.payload.get("question") or "")))
             if isinstance(e.payload.get("asked"), Mapping):
                 answered.add(str(e.payload["asked"].get("key")))
@@ -493,6 +495,18 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
         for r in q.get("records") or () if isinstance(r, Mapping))]
 
 
+def rejudge(core: Any, session: str, logged: Sequence[Any]) -> None:
+    """SR-212: the records the logged answers were asked about go back to the judge, one bare
+    job (the worker rebuilds their premise from the logs, ``recompute``)."""
+    from plumb.understand import queue
+
+    ids = [str(r.get("id")) for e in logged for r in (e.payload.get("asked") or {}).get(
+        "records", ()) if isinstance(r, Mapping)]
+    if ids:
+        queue.enqueue(core, files.make_job(kind, session, SCHEMA_ID, {
+            "records": list(dict.fromkeys(ids)), "answered": [e.digest for e in logged]}))
+
+
 def _whole_words(header: str) -> str:
     """SR-309 EX-1: the header's words that fit the chip, dropped from the end, never cut."""
     words = header.split()
@@ -505,15 +519,24 @@ def _tokens(text: str) -> set[str]:
     return set(re.findall(r"[\w-]+", text.lower()))
 
 
-def _answered_by(index: Mapping[str, Any], ids: Sequence[str], labels: Sequence[str]) -> str:
+def _answered_by(core: Any, index: Mapping[str, Any], ids: Sequence[str],
+                 labels: Sequence[str]) -> str:
     """SR-309 EX-3: the decision that records the owner's answer to this question: it links
-    one of the question's records, and what it chose holds the words of one option."""
+    one of the question's records, and what it chose holds the words of one option. SR-335:
+    it is confirmed, or quotes the owner's own logged words; one only the agent wrote and
+    not yet approved settles nothing."""
+    said: list[tuple[str, str]] | None = None
     for rec in index.values():
         if rec.kind != "decision" or not ids or not any(
                 ln.target.record in ids for ln in rec.links):
             continue
         chosen = _tokens(_flat(rec.fields.get("chosen")))
-        if any(len(t) > 1 and t <= chosen for t in map(_tokens, labels)):
+        if not any(len(t) > 1 and t <= chosen for t in map(_tokens, labels)):
+            continue
+        state = core.status([rec.id])[rec.id]
+        said = premise.owner_words(core) if said is None else said
+        if state.superseded_by is None and (state.confirmation == "confirmed"
+                                            or premise.owner_quoted(rec, said)):
             return rec.id
     return ""
 
@@ -533,7 +556,8 @@ def _own_words(core: Any, ids: Sequence[str], index: Mapping[str, Any]) -> str:
 def _said_in(core: Any, ids: Sequence[str], words: str, index: Mapping[str, Any]
              ) -> tuple[bool, str, bool]:
     """SR-309 EX-4, DEC-191: ``(said, date, older)``: ``words`` are in an owner message the
-    records rest on (``date`` empty: the judge's own date stands), or in a past session
+    records rest on (``date`` empty: the judge's own date stands), or, SR-335, in an answer or
+    prompt of the owner's logged anywhere (``premise.owner_words``), or in a past session
     transcript the SR-249 search reads (``date`` is that message's day). ``older``: the
     records rest on no logged message at all, so a miss in the transcripts is worth saying."""
     from plumb.understand import recover
@@ -544,9 +568,11 @@ def _said_in(core: Any, ids: Sequence[str], words: str, index: Mapping[str, Any]
     if want and any(want in _flat(m.get("text")).lower() for m in logged):
         return True, "", False
     if want:     # shortcut: transcripts are read per question, not cached
-        for m in recover.owner_messages(core.root):
-            if recover.holds(m.text, words.rstrip(". ")):
-                day = datetime.fromisoformat(m.at.replace("Z", "+00:00")) if m.at else None
+        said = [*premise.owner_words(core), *((m.text, m.at)
+                                              for m in recover.owner_messages(core.root))]
+        for text, at in said:
+            if recover.holds(text, words.rstrip(". ")):
+                day = datetime.fromisoformat(at.replace("Z", "+00:00")) if at else None
                 return True, f"{day.day} {day:%b}" if day else "", False
     return False, "", not logged
 
@@ -584,6 +610,10 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
              for label, c in zip(rest[::2], rest[1::2], strict=True)]
     return {"key": question_key(question), "job": job.id,
             "records": [{"id": i, "hash": judged[i]} for i in ids],
+            # SR-334: one answer settles the questions sharing a principle
+            "principle": _flat(raw.get("principle")).lower(),
+            "blocking": raw.get("blocking") is True,
+            "diagram": raw.get("diagram") is True,     # SR-333: it offers the room
             "question": question, "header": _whole_words(header),
             "options": [{"label": f"{label.replace('(Recommended)', '').strip()} (Recommended)"
                          if n == 0 else label,    # the model may have marked it itself
@@ -600,7 +630,7 @@ def _questions(core: Any, job: Job, answer: Mapping[str, Any], judged: Mapping[s
     why: list[str] = []
     for raw in answer.get("questions") or ():
         made, reason = _shaped(core, raw, job, judged, index)
-        done = made and _answered_by(index, [r["id"] for r in made["records"]],
+        done = made and _answered_by(core, index, [r["id"] for r in made["records"]],
                                      [_MARKER.sub("", o["label"]) for o in made["options"]])
         if made is None or done:   # shortcut: an answered question is dropped, its records wait
             why.append(reason or f"the owner already answered it ({done})")

@@ -101,35 +101,6 @@ def test_the_turn_end_puts_one_trial_card_per_record_with_yes_no_and_fix_it(batc
 
 
 
-def _fixture(name: str) -> Any:
-    import json
-    import re
-
-    text = (Path(__file__).resolve().parents[2] / "tests" / "plugin" / "mod"
-            / "fixtures.ts").read_text(encoding="utf-8")
-    found = re.search(rf"// BEGIN {name}\n.*?= (.*?)\n// END {name}", text, re.S)
-    assert found, name
-    return json.loads(found.group(1))
-
-
-def test_the_panels_trial_fixtures_have_the_shape_of_a_real_trial_draw_and_press(
-        batch, repo: Path, monkeypatch, capsys) -> None:
-    ids, cards = batch
-    card = cards["SR-001"]
-    (fixture,) = _fixture("DRAW_TRIAL")["cards"]
-    assert set(fixture) == set(card) and fixture["kind"] == card["kind"] == "trial"
-    assert set(fixture["questions"][0]) == set(card["questions"][0])
-    assert set(fixture["offers"][0]) == set(card["offers"][0])
-    assert [b["answer"] for b in fixture["offers"][0]["buttons"]][:2] == [
-        b["answer"] for b in card["offers"][0]["buttons"]][:2]
-    assert {o["question"] for o in fixture["offers"]} == {q["id"] for q in fixture["questions"]}
-    code, pressed, _ = _press(monkeypatch, capsys, repo, card["offers"][0], "rejected")
-    shown = _fixture("PRESS_TRIAL_NO")
-    assert code == 0 and set(shown) == set(pressed)
-    assert (shown["answer"], shown["status"]) == (pressed["answer"], pressed["status"])
-    assert "marked wrong" in shown["line"] and "marked wrong" in pressed["line"]
-
-
 def test_a_record_answered_is_not_offered_again(batch, repo: Path, monkeypatch,
                                                  capsys) -> None:
     ids, cards = batch

@@ -47,6 +47,17 @@ def test_both_spellings_parse_the_same(words: str) -> None:
     assert typed.parse(f"  /plumb:plumb\t{words}\n") == plain
 
 
+@pytest.mark.parametrize("verb", ["intent", "clarify"])
+def test_the_plugin_skill_spelling_is_the_same_command(verb: str) -> None:
+    plain = typed.parse(f"/plumb {verb} add a thing")
+    assert plain is not None and plain.words == "add a thing"
+    assert typed.parse(f"/plumb:plumb-{verb} add a thing") == plain
+    pasted = f"<pasted_content id=1>/plumb:plumb-{verb}</pasted_content id=1> add a thing"
+    assert typed.parse(pasted) == plain
+    assert typed.parse(f"/plumb:plumb-{verb}") is None
+    assert typed.parse(f"/plumb:plumb-{verb}x add a thing") is None
+
+
 @pytest.mark.parametrize("words", ["approve SR-034", "confirm SR-034, DEC-017"])
 def test_a_past_typed_approval_is_read_the_same_in_both_spellings(words: str) -> None:
     assert typed.parse(f"/plumb {words}") is None          # SR-209 EX-6: no longer a command
