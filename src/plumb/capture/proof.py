@@ -19,7 +19,12 @@ prints the question-tool JSON; the question-answer hook tags the owner's answer 
 ``proof: {record, hash, evidence_at}`` (``owner_confirmed`` reads it). The agent writes that
 log entry only through the hook.
 
-``plumb proof SR-### [--plan TEXT] [--kind KIND]``
+A proof that can only be shown once its branch is in the default branch (a live session of
+the plugin reloaded from main) is agreed as post-merge when it is chosen (SR-341):
+``post_merge: true`` in the proof. The merge check does not hold on it; the landing names it
+and the next turn tells the agent to show it and ask the owner.
+
+``plumb proof SR-### [--plan TEXT] [--kind KIND] [--post-merge | --no-post-merge]``
 ``plumb proof SR-### --evidence PATH_OR_LINK --summary TEXT (--passed | --failed)``
 ``plumb proof SR-### --ask`` puts "Did you see it working?" to the owner.
 ``plumb proof SR-###`` alone prints the proof.
@@ -61,7 +66,16 @@ def proof_entry(raw: Any, name: str = "proof") -> dict[str, str]:
         raise CaptureError(f"{name} needs a plan: how the owner will see it working")
     if kind not in KINDS:
         raise CaptureError(f"{name}.kind is one of {', '.join(KINDS)}")
-    return {"plan": plan, "kind": kind}
+    entry: dict[str, Any] = {"plan": plan, "kind": kind}
+    if raw.get("post_merge") is True:  # SR-341: shown only once the branch has landed
+        entry["post_merge"] = True
+    return entry
+
+
+def post_merge(record: Record) -> bool:
+    """SR-341: whether ``record``'s proof was agreed as shown only after its branch lands."""
+    proof = proof_of(record)
+    return proof is not None and proof.get("post_merge") is True
 
 
 def proof_of(record: Record) -> Mapping[str, Any] | None:
@@ -115,7 +129,9 @@ def proof_lines(record: Record) -> list[str]:
         return []
     rid = record.id
     proof = proof_of(record)
-    lines = [f"{rid} proof ({_flat(proof.get('kind')) or 'other'}): {_flat(proof.get('plan'))}"
+    lines = [f"{rid} proof ({_flat(proof.get('kind')) or 'other'}"
+             f"{', post-merge' if proof.get('post_merge') is True else ''}): "
+             f"{_flat(proof.get('plan'))}"
              if proof else f"{rid} proof: none planned"]
     evidence = evidence_of(record)
     if evidence is None:
@@ -230,12 +246,13 @@ def owner_confirmed(core: Core, record_id: str) -> bool:
 def unconfirmed_proofs(core: Core, ids: Sequence[str]) -> list[dict[str, Any]]:
     """SR-260 (d), DEC-256: the requirements of ``ids`` (those a merge into the default
     branch delivers) whose proof is not shown working or not confirmed by the owner:
-    ``{id, title, why}``, ``why`` ``not shown working`` or ``not confirmed by you``."""
+    ``{id, title, why}``, ``why`` ``not shown working`` or ``not confirmed by you``. A
+    post-merge proof (SR-341) is none of them: it is shown after the landing."""
     index = core.index()
     rows: list[dict[str, Any]] = []
     for record_id in dict.fromkeys(ids):
         record = index.get(record_id)
-        if record is None or record.kind != "requirement":
+        if record is None or record.kind != "requirement" or post_merge(record):
             continue
         if not shown_working(record):
             rows.append({"id": record_id, "title": record.title, "why": "not shown working"})
@@ -269,7 +286,8 @@ def _requirement(core: Core, sr_id: str) -> Record:
     return record
 
 
-def set_plan(core: Core, sr_id: str, plan: str | None, kind: str | None) -> tuple[Record, bool]:
+def set_plan(core: Core, sr_id: str, plan: str | None, kind: str | None,
+             post: bool | None = None) -> tuple[Record, bool]:
     """Record the proof plan; returns the record and whether earlier evidence was dropped
     (evidence of another plan does not show this one)."""
     from plumb.capture.records import record_fields
@@ -277,7 +295,8 @@ def set_plan(core: Core, sr_id: str, plan: str | None, kind: str | None) -> tupl
     record = _requirement(core, sr_id)
     old = dict(proof_of(record) or {})
     entry = proof_entry({"plan": plan if plan is not None else old.get("plan"),
-                         "kind": kind or old.get("kind")})
+                         "kind": kind or old.get("kind"),
+                         "post_merge": old.get("post_merge") if post is None else post})
     fields = record_fields(record)
     fields["proof"] = entry
     dropped = bool(old) and old.get("plan") != entry["plan"] and "evidence" in fields
@@ -322,6 +341,10 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("--plan", default=None,
                         help="how the owner will see it working, matched to what changed")
     parser.add_argument("--kind", choices=KINDS, default=None)
+    parser.add_argument("--post-merge", action=argparse.BooleanOptionalAction, default=None,
+                        help="SR-341: the proof can only be shown once the branch has landed "
+                             "(agreed when the proof is chosen); the merge check does not "
+                             "hold on it and the next turn after the landing asks for it")
     parser.add_argument("--evidence", default=None, metavar="PATH_OR_LINK",
                         help="where the captured output is")
     parser.add_argument("--summary", default=None, help="what the evidence shows")
@@ -340,8 +363,8 @@ def run(command: str, argv: list[str]) -> int:
     lines: list[str] = []
     try:
         record = _requirement(core, args.sr)
-        if args.plan is not None or args.kind is not None:
-            record, dropped = set_plan(core, args.sr, args.plan, args.kind)
+        if args.plan is not None or args.kind is not None or args.post_merge is not None:
+            record, dropped = set_plan(core, args.sr, args.plan, args.kind, args.post_merge)
             lines.append(f"plumb: {record.id} proof recorded")
             hint = kind_hint(record)
             if hint:

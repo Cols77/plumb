@@ -39,7 +39,10 @@ Stage A, clarify and integrate, until `{plumb} intent gate clarify` passes:
   never a silent choice.
 - Ask the owner how they will see this working ("how will you see this working?"); that is
   the proof, recorded on each requirement with `{plumb} proof SR-### --plan ... --kind
-  live-session|hook|command|other`.
+  live-session|hook|command|other`. A proof that can only be shown once the branch is in main
+  (the plugin reloaded from main) is agreed with the owner as post-merge now: add
+  `--post-merge`; the merge check does not hold on it and the turn after the landing asks
+  for it.
 - Capture with `{plumb} capture --prompt <digest> --file <doc.json>` (`"mode": "escalated"`
   in the intent for a big one), naming in `supersedes` every record a new one replaces.
 - Last, the step's study (DEC-207): run `{plumb} study candidates --json` and propose at most
