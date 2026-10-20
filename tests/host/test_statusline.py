@@ -36,9 +36,9 @@ def _line(repo: Path, snap: StatusSnapshot | None) -> str:
 
 def test_renders_line_from_snapshot(repo: Path) -> None:
     """The status line is the status card (sp5 4.1, SR-061)."""
-    assert _line(repo, _snap()) == "plumb ● awaits you · SR 12/14 ok · 2 awaits you · 1 stale"
+    assert _line(repo, _snap()) == "plumb ▲ drift · SR 12/14 ok · 2 waiting on a judge · 1 stale"
     assert _line(repo, _snap(tests="regression", regressions=("t::a",), ask=1)) == (
-        "plumb ✗ regression · SR 12/14 ok · 2 awaits you · 1 stale · 1 question")
+        "plumb ✗ regression · SR 12/14 ok · 2 waiting on a judge · 1 stale · 1 question")
     assert "✗ failing" in _line(repo, _snap(tests="failing", failing=("a", "b")))
     assert "2 failing" in _line(repo, _snap(tests="failing", failing=("a", "b")))
 
@@ -46,7 +46,7 @@ def test_renders_line_from_snapshot(repo: Path) -> None:
 def test_full_pending_shown_only_when_pending(repo: Path) -> None:
     assert "full pending" not in _line(repo, _snap(full_pending=False))
     assert _line(repo, _snap(full_pending=True, full_pending_reasons=("uv.lock",))) == (
-        "plumb ● awaits you · SR 12/14 ok · 2 awaits you · 1 stale · full pending")
+        "plumb ▲ drift · SR 12/14 ok · 2 waiting on a judge · 1 stale · full pending")
 
 
 def test_missing_snapshot(repo: Path) -> None:
@@ -62,7 +62,7 @@ def test_root_from_status_line_input(repo: Path, monkeypatch: pytest.MonkeyPatch
     out = io.StringIO()
     stdin = io.StringIO(json.dumps({"workspace": {"project_dir": str(repo)}}))
     statusline.main(stdin=stdin, stdout=out)
-    assert out.getvalue().startswith("plumb ● awaits you · SR 12/14 ok")
+    assert out.getvalue().startswith("plumb ▲ drift · SR 12/14 ok")
 
 
 def test_snapshot_written_with_version(repo: Path) -> None:

@@ -134,7 +134,7 @@ def test_cli_drives_the_hooks(busy_repo: Path, hook_input,
     from fakes import agent_notes
 
     assert "SR-002" in stop_out + agent_notes(busy_repo, "test-session")
-    assert call("statusline").startswith("plumb ● awaits you")
+    assert "awaits you" not in call("statusline")   # records wait on a judge (SR-263 EX-6)
     assert call("hook", "--help").startswith("usage: plumb hook")
 
 
