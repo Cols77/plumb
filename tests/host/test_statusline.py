@@ -101,3 +101,27 @@ def test_snapshot_tests_states() -> None:
     assert tests_of(("fresh-fail", True), ("fresh-fail", False)) == "regression"
     assert snapshot.tests_state(None)[0] == "unknown"
     assert snapshot.tests_state({})[0] == "unknown"
+
+
+@pytest.mark.sr("SR-337")
+def test_awaiting_counts_open_questions_and_cards(repo: Path, write_record) -> None:
+    """SR-337: ``awaiting`` in status.json, the band's "N await you": a judge question not
+    answered on an unconfirmed record and an open card of the store, in any session."""
+    from plumb.understand import files, judge
+
+    write_record(repo, SR1)
+    core = open_core(repo)
+    asked = judge.questions_path(repo, "s1")
+    asked.parent.mkdir(parents=True)
+    asked.write_text(json.dumps([{"key": "k1", "question": "Which one?", "records": [
+        {"id": "SR-001", "hash": core.index()["SR-001"].hash}]}]), encoding="utf-8")
+    cards = files.cards_path(repo, "s2")
+    cards.parent.mkdir(parents=True)
+    cards.write_text(json.dumps({"cards": [{"id": "clarify:SR-001", "status": "open"},
+                                           {"id": "clarify:SR-002", "status": "closed"}]}),
+                     encoding="utf-8")
+    assert snapshot.build_snapshot(core).awaiting == 2
+    snapshot.write_snapshot(repo, _snap())
+    snapshot.refresh_judge_count(open_core(repo))  # a turn with no edit brings it up to date
+    data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert data["awaiting"] == 2

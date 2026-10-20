@@ -180,6 +180,18 @@ def test_sr293_ex6_a_passed_gate_tells_the_agent_to_pick_the_steps_study(
     assert "pick the build step's study" in capsys.readouterr().out
 
 
+@pytest.mark.sr("SR-336")
+def test_sr336_ex3_no_question_waits_the_step_study_as_before(
+        intent: Path, capsys: pytest.CaptureFixture) -> None:
+    """SR-336 EX-3: no question waits: nothing to study ahead of, and the step's study of
+    general interest is proposed as DEC-207 has it, one per step."""
+    assert _candidates(intent, capsys)["waiting"] == []
+    assert _propose(intent, "How plumb's background jobs run") == 0
+    [held] = study.studies(intent)
+    assert (held["step"], held["status"], "serves" in held) == ("clarify", "idea", False)
+    assert _propose(intent, "Another study", "other") != 0
+
+
 @pytest.mark.sr("SR-293")
 def test_sr293_ex6_a_proposed_study_is_only_an_idea(intent: Path) -> None:
     """SR-293 EX-6: proposing writes the idea (title, why, recommended depth), no page."""

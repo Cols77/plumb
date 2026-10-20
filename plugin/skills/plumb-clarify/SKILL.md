@@ -1,6 +1,6 @@
 ---
 name: plumb-clarify
-description: Clarifies the owner's intent before building, scaled to the request. Use on every owner request to record it as proposed and run the clarify check, and after the owner types /plumb clarify to act on what `clarify --wait` answers (ready, a card, a spec session offered, couldn't check, waiting), and to choose the depth and the questions whenever a request creates or changes intent (a new feature, a changed behaviour, an ambiguous ask). Not for choosing questions on tidy-ups or on intent the owner already confirmed; the --wait step still comes first there.
+description: Clarifies the owner's intent before building, scaled to the request. Use on every owner request to record it as proposed and run the clarify check, and after the owner types /plumb clarify to act on what `clarify --wait` answers (ready, a choice question, a spec session offered, couldn't check, waiting), and to choose the depth and the questions whenever a request creates or changes intent (a new feature, a changed behaviour, an ambiguous ask). Not for choosing questions on tidy-ups or on intent the owner already confirmed; the --wait step still comes first there.
 ---
 # plumb-clarify
 
@@ -13,7 +13,7 @@ nothing of the request itself (read it back in your own reply, see Depth): the a
 approved on the owner's behalf. When the owner types `/plumb clarify <words>`, your
 first action is `plumb clarify --wait`. Run it before you read code, plan or edit
 anything: edits are refused until it has answered, and do not build until the owner has
-answered any card or question it returns. It collects the check plumb started on the
+answered any question it returns. It collects the check plumb started on the
 owner's message and says which of these things happened:
 
 - ready (nothing blocks the request, or it was only a question or an answer): go ahead. When
@@ -21,21 +21,25 @@ owner's message and says which of these things happened:
   they flip an assumption by saying so.
 - ask (plumb's judge has questions about what the owner meant): put them to the owner as
   the rules below say, then run `plumb clarify --wait --json` again after their answers.
-- a choice card (the one question that blocks, because no answer is better supported; its
-  recommended option comes first): the question
-  is on the card the owner sees, so say in one line that it waits there and do not restate it
-  or its options. When it names a diagram file, draw it first with the
+  Questions are asked between tasks, never in the middle of one, at most three in a turn:
+  plumb groups them by principle and gives you one per principle, so ask no more than it
+  gives. An option "Study it in the room" or "Study it first" is the owner's to take: they
+  answer it by pressing the band's line that follows, and you open nothing.
+- a choice question (`card`: the one that blocks, because no answer is better supported; its
+  recommended option comes first): ask it with the question tool as `ask` does, with the
+  options as the card names them. When it names a diagram file, draw it first with the
   diagram:architecture-diagram skill (a picture of the choice, for a question about structure
-  or flow). Build nothing until they answer; plumb reads their answer from their next message.
+  or flow). Build nothing until they answer; plumb reads their answer from the tool.
   Never answer the question yourself.
-- a spec session offered (more than one question has no better-supported answer): the card
-  asks whether to hold a short spec session; say so in one line and stop; if they accept, run
-  the escalated depth below.
-- couldn't check (the check failed or took too long): show the card ("Build without the
-  check?" with Build anyway and Wait) and stop. Only the owner says to build without the
-  check: the Build anyway button, `/plumb go` typed as their whole message, or plain words
-  that plumb reads from their next message and accepts. You never release it for them. Wait
-  builds nothing until the check runs again on their next message.
+- a spec session offered (more than one question has no better-supported answer): the question
+  asks whether to hold a short spec session; ask it with the question tool and stop; if they
+  accept, run the escalated depth below.
+- couldn't check (the check failed or took too long): ask the question tool exactly "Build
+  without the check?" with two options, "Wait" and "Build anyway", and stop. Only the owner
+  says to build without the check: the answer "Build anyway" (it releases the gate),
+  `/plumb go` typed as their whole message, or plain words that plumb reads from their next
+  message and accepts. You never release it for them. "Wait" builds nothing until the check
+  runs again on their next message.
 - waiting (the check is not finished yet): build nothing and run `plumb clarify --wait`
   again, twice at most; still waiting after that, build nothing, tell the owner the check of
   their request has not finished, and stop. On an ordinary message `waiting` means plumb's
@@ -56,8 +60,8 @@ records already answer, and (with `--questions q.json`, see
 ../plumb-records/references/capture-doc.md) which of your drafted questions matter, ranked.
 
 Another branch may already have this intent in flight. When `clarify` (or `capture`) prints
-a conflict, its question reaches the owner as a card: say in one line that it waits there,
-do not restate it, and build nothing it touches; a line saying the owner was already asked
+a conflict, its question is the owner's: ask it with the question tool (rule 4 below) and
+build nothing it touches; a line saying the owner was already asked
 (or decided it) on another branch means: build on that answer, ask nothing. How their answer
 is recorded: ../plumb-records/references/conflicts.md.
 
@@ -73,7 +77,8 @@ Depth:
   line and record it as
   `plumb decide --question Q --chosen <recommended> --alt B --matters --recommend <it>`.
   Outside a spec session you never ask the owner anything: the check raises blocking
-  questions one at a time, as cards; everything you can recommend is an "I assume" line.
+  questions one at a time, with the question tool; everything you can recommend is an "I
+  assume" line.
 - escalated (`clarify` names a trigger, and the owner accepted the spec session): a short
   structured session, one question per message, grill-style, each with your recommended
   answer first. Agree purpose and what
@@ -88,10 +93,10 @@ Discipline:
 - YAGNI: drop features the owner did not ask for; list them under won't.
 - Speak in the owner's terms (behaviours, examples), never in code terms.
 - One question at a time, grill-style: the recommended answer comes first. A question you can
-  recommend on is an "I assume" line, never a card.
-- One card shape only, raised by plumb's check: a choice (one question, each option with
-  what it does, the recommended one first). Nothing else is a card; your read-back is a line
-  in your reply, never a card, and approves nothing.
+  recommend on is an "I assume" line, never a question.
+- One question shape only, raised by plumb's check: a choice (one question, each option with
+  what it does, the recommended one first). Your read-back is a line in your reply, never a
+  question, and approves nothing.
 - Once the owner says "go" or "ok", stop asking: remaining unknowns become labelled
   assumptions, which never block.
 - Outside an accepted spec session, never ask in your own words about the owner's intent;

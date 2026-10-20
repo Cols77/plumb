@@ -184,6 +184,7 @@ code { overflow-wrap:anywhere; }
 .left-divider,.right-divider { display:flex; }.left-divider>.splitter,.right-divider>.splitter { height:100%; }
 .issue-detail { overflow:auto; min-width:0; padding:30px clamp(24px,3vw,48px); outline:none; }
 .issue-topline { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:22px; }
+.stepper { display:flex; align-items:center; gap:8px; margin-left:auto; }
 .status-badge { display:inline-block; color:var(--muted); border:1px solid var(--line2); background:var(--panel); padding:3px 8px; border-radius:4px; font:10px var(--mono); text-transform:uppercase; letter-spacing:.03em; }
 .status-badge.waiting { color:var(--wait); border-color:var(--wait-ring); background:var(--wait-soft); }
 .issue-lead { color:var(--text); font-size:16px; line-height:1.6; margin-bottom:22px; }

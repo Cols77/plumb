@@ -7,8 +7,7 @@ read that one small file:
 
 - ``stop``: while the panel is active (``active``: registered, not marked off, its heartbeat not
   older than the turn's start), the owner's part of the stop hook goes to
-  ``.plumb/session/<id>/present.json`` (``{turn, confirmations, cards}``; each card with its
-  full content, SR-116) and no
+  ``.plumb/session/<id>/present.json`` (``{turn, confirmations}``) and no
   ``systemMessage`` but the one owner line is printed (``deliver``).
   A block (the instruction to the agent) is unchanged. Otherwise the hook prints as before.
 - ``session-start``: first of all, before any step its budget can cut (SR-125), writes
@@ -127,43 +126,9 @@ def _turn_start(turn: Mapping[str, Any]) -> float:
         return 0.0
 
 
-def awaiting_cards(core: Any, session: str, stamp: int) -> list[Any]:
-    """The cards that ask the owner at the end of this turn, as the text summary orders them:
-    the awaiting ones, then a "couldn't check" card per failed job."""
-    from plumb.understand import cards as card_text
-    from plumb.understand import cardstore, summary
-
-    held = cardstore.states(core, session)
-    cards = [c for c in cardstore.load(core.root, session)
-             if held.get(c.id, ("",))[0] != "processing"]
-    try:
-        cards.extend(summary._failure_cards(core, session))
-    except Exception:  # noqa: BLE001 - a card that cannot be made is left out
-        pass
-    return sorted(cards, key=card_text.kind_rank)
-
-
-def present_cards(core: Any, session: str, stamp: int) -> list[dict[str, Any]]:
-    """The cards of ``present.json``: the ones the end-of-turn text drew (``summary.read_drawn``,
-    slice 3's full cards), each as ``cards.json`` holds a card plus its full content (SR-116,
-    ``understand.fullcard``); without that record, the awaiting cards with their content."""
-    from plumb.mod.offers import content_for
-    from plumb.understand import cardstore, summary
-
-    drawn = [e for e in summary.read_drawn(core.root, session)
-             if e["card"].get("status") != "left_open"]
-    if drawn:
-        return [{**dict(e["card"]), "content": e.get("content")} for e in drawn]
-    return [{**cardstore.card_to_json(c), "content": content_for(core, session, c)}
-            for c in awaiting_cards(core, session, stamp)]
-
-
 def write_present(ctx: Any, turn: Mapping[str, Any]) -> dict[str, Any]:
     """Write ``present.json`` for this turn: the parts the stop hook kept for the owner
-    (``ctx.extra["stop_parts"]``), and the cards it drew in full."""
-    from plumb.api import open_core
-
-    core = open_core(ctx.root)
+    (``ctx.extra["stop_parts"]``)."""
     started = _turn_start(turn)
     parts = ctx.extra.get("stop_parts")
     from plumb.present.owner_text import JUDGE_APPROVED
@@ -171,7 +136,7 @@ def write_present(ctx: Any, turn: Mapping[str, Any]) -> dict[str, Any]:
     # SR-251: the band's status counts judge approvals; no line of the band for them alone
     said = [c for c in getattr(parts, "confirmations", ()) or () if not c.endswith(JUDGE_APPROVED)]
     data = {"turn": int(started), "confirmations": said,
-            "session": ctx.session_id, "cards": present_cards(core, ctx.session_id, int(started)),
+            "session": ctx.session_id,
             "turn_id": str(turn.get("turn_id") or ""),
             "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     files.write_json_atomic(present_path(ctx.root, ctx.session_id), data)

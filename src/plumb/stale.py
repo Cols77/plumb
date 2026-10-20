@@ -30,7 +30,7 @@ DERIVING = frozenset({"derives_from", "decides", "upstream"})
 MAX_NOTICES = 5
 
 NOTICE = ("plumb: {record}'s link to {path} is stale: the file changed; rerun its tests and "
-          "repin, reword {record}, or bring it to the owner as a card")
+          "repin, reword {record}, or ask the owner with the question tool")
 DERIVED = "{source} {verb} {target}, which was reworded: check that it still agrees"
 _VERBS = {"derives_from": "derives from", "decides": "decides", "upstream": "rests on"}
 
@@ -423,7 +423,7 @@ def unresolved(core: Core, session: str, state: TurnState) -> list[Row]:
 HOLD_LINE = "plumb: {record}'s link to {what} is stale and unresolved ({link})"
 HOLD_HOW = ("plumb: resolve each before ending the turn: rerun its tests and repin it "
             "(plumb repin --after-tests <link>), reword the record so it agrees and repin "
-            "it, or bring it to the owner as a card (plumb stale card <link> --topic "
+            "it, or ask the owner with the question tool (plumb stale card <link> --topic "
             "\"<requirement title>\" --issue \"<what changed, in words>\" --options \"a|b|c\" "
             "--consequences \"<what a does and leaves undone>|<b's>|<c's>\" --why \"<why the "
             "recommended one>\"). Held {n} of {max}.")

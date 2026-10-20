@@ -383,9 +383,8 @@ def frozen_context(root: Path, session: str, digest: str, transcript: Any = None
     return frozen
 
 
-def logged_at(core: Any, digest: str) -> str:
-    """When the owner last sent the words ``digest`` ('' when not logged): the same words
-    retyped are a new request, so its check gets its own job id (SR-222)."""
+def sent_at(core: Any, digest: str) -> str:
+    """When the owner last sent the message: the same words sent again are checked again."""
     from plumb.approvals import Refused, find_prompt
 
     try:
@@ -395,10 +394,10 @@ def logged_at(core: Any, digest: str) -> str:
 
 
 def _inputs(core: Any, session: str, digest: str, text: str,
-            answered: Sequence[Mapping[str, str]], frozen: Mapping[str, Any] | None = None,
-            at: str = "") -> dict[str, Any]:
-    message = {"digest": digest, "text": text, **({"at": at} if at else {})}
-    out = {"message": message, "touched": touched(core, text),
+            answered: Sequence[Mapping[str, str]], frozen: Mapping[str, Any] | None = None
+            ) -> dict[str, Any]:
+    out = {"message": {"digest": digest, "text": text, "at": sent_at(core, digest)},
+           "touched": touched(core, text),
            "answered": [dict(a) for a in answered]}
     open_cards = [{"id": c.id, "topic": c.topic, "question": c.issue}
                   for c in cardstore.own_cards(Path(core.root), session)
@@ -423,8 +422,7 @@ def build(core: Any, session: str, **context: Any) -> Job | None:
         return None
     after = context.get("after")
     frozen = frozen_context(Path(core.root), session, digest, context.get("transcript"), text)
-    job = files.make_job(kind, session, SCHEMA_ID, _inputs(core, session, digest, text, (), frozen,
-                                                  logged_at(core, digest)),
+    job = files.make_job(kind, session, SCHEMA_ID, _inputs(core, session, digest, text, (), frozen),
                          needs=str(after) if after else None, created=_now())
     queue.enqueue(core, job)
     return job
@@ -446,8 +444,7 @@ def recompute(core: Any, job: Job) -> Mapping[str, Any] | None:
     return _inputs(core, job.session, digest,
                    commanded_words(str(logged.get("text") or "")) or str(logged.get("text") or ""),
                    answered_for(Path(core.root), job.session, digest),
-                   frozen_context(Path(core.root), job.session, digest),
-                   str(logged.get("at") or ""))
+                   frozen_context(Path(core.root), job.session, digest))
 
 
 # ---------------------------------------------------------------- apply
