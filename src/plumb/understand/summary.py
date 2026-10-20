@@ -649,6 +649,8 @@ def owner_line(core: Any, session: str, before: set[str], *, touched: Sequence[s
     EX-3), the answers applied (by the card's title), and the confirmed requirements the turn
     touched with their checks (``checks``: passed, run). Never a card, an option or an id;
     a judge's approval is the status line's count only (EX-7)."""
+    from plumb.understand import judge
+
     seen_path = files.session_dir(core.root, session) / TURN_LINE
     seen = files.read_json(seen_path)
     seen = seen if isinstance(seen, Mapping) else {}
@@ -657,9 +659,11 @@ def owner_line(core: Any, session: str, before: set[str], *, touched: Sequence[s
     drawn = read_drawn(core.root, session)
     titles = {c.id: c.topic for c in cardstore.load(core.root, session, open_only=False)}
     titles.update({str(e["card"].get("id")): str(e["card"].get("topic")) for e in drawn})
-    asks = [e for e in drawn if e["card"].get("status") != "left_open"
-            and e["card"].get("kind") != "stale_link" and str(e["card"].get("id")) not in before]
-    parts = [f"{len(asks)} question{'s' if len(asks) > 1 else ''} for you"] if asks else []
+    asks = len([e for e in drawn if e["card"].get("status") != "left_open"
+                and e["card"].get("kind") != "stale_link"
+                and str(e["card"].get("id")) not in before])
+    asks += len(judge.open_questions(core, session))     # SR-334: the questions still waiting
+    parts = [f"{asks} question{'s' if asks > 1 else ''} for you"] if asks else []
     parts += [f"your answer on {titles.get(k, k)} was applied" for k, v in states.items()
               if v == "done" and seen.get(k) in ("waiting", "processing")]
     passed, run = checks

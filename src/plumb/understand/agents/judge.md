@@ -78,7 +78,10 @@ asked, quoting their dated words. Each question has:
 - `recommended_reason`: why the first option is the one you recommend;
 - `request`: the owner's words the question comes from (`words`, verbatim) and their `date`;
 - `records`: required. The ids of the records this question settles; plumb uses them, the owner
-never sees them.
+never sees them;
+- `principle`: two to four words naming the principle the answer turns on; questions that one
+  answer would settle share the same `principle`, word for word;
+- `blocking`: true only when the work under way cannot go on without the answer.
 
 Answer with the JSON the schema asks for: `{"verdicts": [{"id", "verdict", "beyond",
 "contradicts", "reason", "confidence", "clear", "answer_corrects"}], "questions": [...]}`, one

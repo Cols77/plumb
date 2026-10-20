@@ -59,6 +59,7 @@ UNMATCHED = "Ask these questions as given; the last answer matched none of them.
 JUDGING = ("plumb's judge is still reading the records; go on with the work and run clarify "
            "--wait again before the turn ends.")
 APPROVED = "approved on your behalf: {title} (judge-approved, {by}, {score})"
+ASKED_PER_TURN = 3      # SR-334
 HELD = ("plumb: edits are held ({reason}): this request changes a confirmed record and no "
         "intent loop ran for it. /plumb intent opens the loop; the owner's /plumb go releases.")
 
@@ -148,11 +149,27 @@ def _approved(core: Any, at: str) -> list[str]:
     return out
 
 
+def _by_principle(questions: list[Mapping[str, Any]], room: int) -> list[Mapping[str, Any]]:
+    """SR-334: one question per principle (a blocking one when the principle has one), the
+    blocking principles first and all of them, the others while ``room`` lasts, the principle
+    that settles most first."""
+    groups: dict[str, list[Mapping[str, Any]]] = {}
+    for q in questions:
+        groups.setdefault(str(q.get("principle") or q.get("key")), []).append(q)
+    ordered = sorted(groups.values(), key=lambda g: (not any(q.get("blocking") for q in g),
+                                                      -len(g)))
+    firsts = [next((q for q in g if q.get("blocking")), g[0]) for g in ordered]
+    return firsts[:max(room, sum(1 for q in firsts if q.get("blocking")))]
+
+
 def _judged(core: Any, session: str, digest: str, at: str, limit: float,
-            sleep: Callable[[float], None], clock: Callable[[], float]) -> Outcome:
+            sleep: Callable[[float], None], clock: Callable[[], float], turn: str = "",
+            mid_task: bool = False) -> Outcome:
     """SR-248: the judge jobs queued since the owner last spoke, collected: ``waiting`` while
     one runs past the limit, ``ask`` while its questions are open, else ``ready`` with what the
-    judge approved. The questions never close the gate (P6)."""
+    judge approved. The questions never close the gate (P6). SR-334: one question per
+    principle, at most ``ASKED_PER_TURN`` answered since the owner's message (``turn``) but
+    the blocking ones; ``mid_task``, the blocking ones only."""
     from plumb.api import open_core
     from plumb.understand import judge, worker
 
@@ -169,10 +186,12 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
             return Outcome("waiting", digest, [JUDGING])
         sleep(POLL_S)
     core = open_core(root)          # a detached worker may have written meanwhile
-    questions = judge.open_questions(core, session)
+    said = [e for e in core.events() if e.kind == "question-answer"
+            and e.payload.get("session") == session and e.at >= (turn or at)]
+    room = 0 if mid_task else ASKED_PER_TURN - sum(1 for e in said if e.payload.get("asked"))
+    questions = _by_principle(judge.open_questions(core, session), room)
     if questions:
-        answers = [e.payload for e in core.events() if e.kind == "question-answer"
-                   and e.payload.get("session") == session and e.at >= at]
+        answers = [e.payload for e in said if e.at >= at]
         # SR-212: the agent reworded the question, or asked one of its own
         missed = bool(answers) and answers[-1].get("via") == "question-tool" \
             and not answers[-1].get("asked")
@@ -232,7 +251,7 @@ def _couldnt(core: Any, session: str, digest: str, why: str) -> Outcome:
 
 def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
          stream: Any = None, sleep: Callable[[float], None] = time.sleep,
-         clock: Callable[[], float] = time.monotonic) -> Outcome:
+         clock: Callable[[], float] = time.monotonic, mid_task: bool = False) -> Outcome:
     """Collect the clarify result of the owner's latest message (see the module doc)."""
     from plumb.progress import Reporter
     from plumb.stale import SESSION_ENV, current_session
@@ -253,7 +272,7 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
         held = gate.state(root, session)
         if not gate.is_closed(root, session) or not held.message_digest:
             return _judged(core, session, digest, _since(core, session, logged), limit, sleep,
-                           clock)
+                           clock, str(logged.get("at") or ""), mid_task)
         digest = held.message_digest
     if gate.state(root, session).message_digest != digest and not gate.is_closed(root, session):
         gate.close(root, session, digest, clarify.GATE_REASON_CHECKING)   # no hook closed it
@@ -321,11 +340,14 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("--timeout", type=float, default=None,
                         help="seconds to wait (default: understand.clarify_wait_s)")
     parser.add_argument("--session", default=None)
+    parser.add_argument("--mid-task", action="store_true",
+                        help="the agent is mid-task: ask only the questions that block it")
     args = parser.parse_args(argv)
     from plumb.api import open_core
 
     core = open_core(resolve_root(args.root))
     stream = sys.stderr
-    outcome = wait(core, args.session, timeout=args.timeout, stream=stream)
+    outcome = wait(core, args.session, timeout=args.timeout, stream=stream,
+                   mid_task=args.mid_task)
     emit(outcome.as_json() if args.as_json else outcome.lines, args.as_json)
     return 0

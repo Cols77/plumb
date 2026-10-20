@@ -63,8 +63,13 @@ def handle(ctx: HookContext) -> HookOutput | None:
             found = left[0]
         if found is not None:
             left.remove(found)
+            # SR-334 EX-2: the answer to a principle reaches the records of all its questions
+            group = [found, *(q for q in left if found.get("principle")
+                              and q.get("principle") == found.get("principle"))]
             entry["asked"] = {"job": found.get("job"), "key": found.get("key"),
-                              "records": list(found.get("records") or ())}
+                              "records": list({(r.get("id"), r.get("hash")): r for q in group
+                                               for r in q.get("records") or ()
+                                               if isinstance(r, dict)}.values())}
     _tag_proofs(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
     from plumb.mergedriver.conflicts import stage_choice

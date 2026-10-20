@@ -596,6 +596,9 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
              for label, c in zip(rest[::2], rest[1::2], strict=True)]
     return {"key": question_key(question), "job": job.id,
             "records": [{"id": i, "hash": judged[i]} for i in ids],
+            # SR-334: one answer settles the questions sharing a principle
+            "principle": _flat(raw.get("principle")).lower(),
+            "blocking": raw.get("blocking") is True,
             "question": question, "header": _whole_words(header),
             "options": [{"label": f"{label.replace('(Recommended)', '').strip()} (Recommended)"
                          if n == 0 else label,    # the model may have marked it itself
