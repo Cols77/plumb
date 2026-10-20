@@ -10,7 +10,8 @@ KIND_MODULES: dict[str, str] = {"read": "plumb.understand.read",
                                 "judge": "plumb.understand.judge",
                                 "clarify": "plumb.understand.clarify",
                                 "tidy": "plumb.understand.tidy",
-                                "question": "plumb.understand.question"}
+                                "question": "plumb.understand.question",
+                                "selfdebug": "plumb.understand.selfdebug"}
 
 
 class _Kinds:

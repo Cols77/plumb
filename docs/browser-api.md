@@ -19,6 +19,10 @@ served as a document.
 | POST `/api/sessions/{id}/draw` | `{}` | `{session,cards:[Card],followups:[Followup]}` |
 | POST `/api/sessions/{id}/press` | `{offer,choice,request_id,text?}` | Existing mod press result plus `{duplicate,followup:{id,status}}` |
 | GET `/api/sessions/{id}/diagram?card=ID` | — | `{source,text,error}`; text null on unavailable/unsafe/oversized source |
+| GET `/api/studies` | — | `{studies:[Study without body],understanding:Understanding}` |
+| POST `/api/studies/{slug}/open` | `{}` | `Study` with `body`; a `new` study becomes `opened` |
+| POST `/api/studies/{slug}/mark` | `{mark:"known"\|"deeper"}` | `{study:Study,understanding:Understanding}` |
+| POST `/api/understanding` | `{text}` | `Understanding` after saving the owner's text (at most 65536 characters) |
 
 Session IDs must exactly match existing source-session directories; they are not
 normalized from arbitrary input. Requests are serialized within the browser server,
@@ -41,6 +45,18 @@ Browser additions:
 - `diagram`: `{source,available,error}`. The endpoint reads only this current card's
   source, resolves it under the project, and limits it to 131072 Unicode characters
   and 524288 bytes. The client must extract/sanitize SVG; never execute returned HTML.
+
+Studies and the understanding picture (SR-292..294; DEC-151, DEC-152, DEC-154) are a
+section beside the questions, project-wide rather than per session. `Study` is
+`{slug,title,topic,step,loop,why,status,body?}` from `.plumb/studies/<slug>.md`; `status`
+is `new`, `opened`, `known` or `deeper`, and `body` is plain words with an optional
+```` ```mermaid ```` block, shown as text. `Understanding` is `{text,knows,needs}` from
+`.plumb/understanding.md` (`- knows: ...` and `- needs: ...` lines). Reading a study opens
+it, which clears the band's study line. 'I know this' (`known`) writes a `knows` line for
+its topic and 'Go deeper' (`deeper`) a `needs: <topic> (deeper)` line; neither is an answer:
+nothing is queued, logged as a press or delivered to a session. A study about an open
+conflict lays out both sides and has no resolution button. Plumb never opens the room by
+itself when a study is written. Slugs are 1–80 letters, digits or hyphens.
 
 Offers carry their own `offer_id`, question, record, exact shown hash, buttons and draw
 timestamp. Always submit the button's stored `index`; content-option positions are not

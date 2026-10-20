@@ -26,7 +26,8 @@ CONFIG_TEMPLATE = """\
 #   flaky_rerun: true
 #   infra_globs: ["**/conftest.py", pyproject.toml, uv.lock, pytest.ini, tox.ini, setup.cfg]
 # hooks:
-#   budget_ms: {session_start: 1400, prompt: 1200, stop: 1400, post_edit: 300}
+#   hard_limit_s: 90           # the watchdog cuts a hook here; at most 119 (host timeouts 120 s)
+#   budget_ms: {session_start: 60000, prompt: 60000, stop: 60000, post_edit: 15000}
 #   brief_lines: 30
 #   prompt_lines: 20
 #   prompt_tokens: 200         # per-prompt injection budget; records once per session
@@ -290,6 +291,7 @@ DIAGNOSIS_LINES = {
     "owner": "plumb: {link} needs the owner{card}: {topic}: {explanation}",
     "reword": "plumb: {link}: reword {record} to agree with its intent: {wording}",
     "back-to-development": "plumb: {link}: send the change back to development: {explanation}",
+    "contradicts": "plumb: {link} now contradicts {other}{card}: {topic}: {explanation}",
 }
 
 
@@ -298,7 +300,7 @@ def _diagnosis_line(item: dict[str, Any], dry_run: bool) -> str:
                                                      else "")
     return DIAGNOSIS_LINES[item["outcome"]].format(
         link=item["link"], card=card, topic=item["topic"], explanation=item["explanation"],
-        record=item["record"], wording=item["proposed_wording"])
+        record=item["record"], wording=item["proposed_wording"], other=item.get("other", ""))
 
 
 STALE_USAGE = (

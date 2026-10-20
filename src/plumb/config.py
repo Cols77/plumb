@@ -27,20 +27,23 @@ class VerifyConfig:
     sample_size: int = 10
     default_test_s: float = 1.0
     workers: int = 0
+    # the interpreter that runs the tests: "" picks the repository's .venv when it has one,
+    # else the interpreter plumb runs in (the plugin's own has no pytest)
+    python: str = ""
     flaky_rerun: bool = True
     infra_globs: tuple[str, ...] = DEFAULT_INFRA_GLOBS
     # SR-110: tests chosen by the functions they execute (auto), or by imports only (off)
     coverage: str = "auto"
 
 
-# Soft budgets per hook, from process start (SR-181). Generous on purpose: on a loaded 2-core
+# Soft budgets per hook, from process start (SR-181, SR-310). Generous on purpose: on a loaded 2-core
 # machine a 4 s budget still skipped the check on most turns (pytest alone starts in 15 s
-# there). They sit under the watchdog's hard limit (hookio.HARD_LIMIT_S, 30 s, or
+# there). They sit under the watchdog's hard limit (hookio.HARD_LIMIT_S, 90 s, or
 # hooks.hard_limit_s), which is the bound; a cut keeps the intent-translation lines
-# (hookio.HookContext.keep). The host's own hook timeouts (60 s and 120 s) stay above the hard
+# (hookio.HookContext.keep). The host's own hook timeouts (120 s, SR-310) stay above the hard
 # limit plus the stop hook's grace.
 DEFAULT_HOOK_BUDGET_MS: Mapping[str, int] = {
-    "session_start": 20000, "prompt": 20000, "stop": 20000, "post_edit": 5000}
+    "session_start": 60000, "prompt": 60000, "stop": 60000, "post_edit": 15000}
 
 
 @dataclass(frozen=True)
@@ -163,7 +166,7 @@ class TraceConfig:
 
 
 CARD_RETIRED = ("plumb: the card setting (full, compact, off) is retired and has no effect; "
-                "cards are always drawn in full")
+                "cards go to the agent as text and the owner sees one plumb line at most")
 
 
 @dataclass(frozen=True)
@@ -215,6 +218,16 @@ class UnderstandConfig:
 
 
 @dataclass(frozen=True)
+class DebugConfig:
+    """SR-327: self-debug outside plumb's own repository, and issue reporting, both off."""
+
+    self_fix: bool = False
+    source: str = ""             # plumb's source checkout, where the fix lands on a branch
+    report_issues: bool = False
+    issues_repo: str = ""        # owner/name; empty: plumb's own GitHub repository
+
+
+@dataclass(frozen=True)
 class MergeConfig:
     """The merge boundary (``plumb.boundary.cli.merge_settings``)."""
 
@@ -245,6 +258,7 @@ class Config:
     awareness: AwarenessConfig = field(default_factory=AwarenessConfig)
     understand: UnderstandConfig = field(default_factory=UnderstandConfig)
     merge: MergeConfig = field(default_factory=MergeConfig)
+    debug: DebugConfig = field(default_factory=DebugConfig)
 
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
@@ -252,7 +266,8 @@ _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfi
            "triage": TriageConfig, "auto_approve": AutoApproveConfig,
            "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig,
            "present": PresentConfig, "resolve": ResolveConfig,
-           "awareness": AwarenessConfig, "understand": UnderstandConfig, "merge": MergeConfig}
+           "awareness": AwarenessConfig, "understand": UnderstandConfig, "merge": MergeConfig,
+           "debug": DebugConfig}
 
 
 def _build(cls: type, data: Mapping[str, Any]) -> Any:

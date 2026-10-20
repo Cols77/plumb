@@ -162,6 +162,7 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
     calibrations: dict[str, LogEntry] = {}
     config: Mapping[str, Any] | None = None
     approved: set[str] = set()  # records with an owner, relayed or imported approval
+    confirmed: set[tuple[str, str]] = set()   # (id, hash) of every approval accepted so far
     out: list[tuple[LogEntry, str | None]] = []
     for entry in entries:
         if entry.kind == "prompt":
@@ -185,9 +186,14 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
                 problem = recheck(entry, config, calibrations, prompts, approved, escalated,
                                   answers)
             if problem is None and by == "auto-model" and entry.kind == "approval":
-                problem = cited_answers_problem(entry.payload, answers, "auto-model")
+                problem = cited_answers_problem(entry.payload, answers, "auto-model",
+                                                confirmed)
             if problem is None and by in ("auto-jev", "auto-model"):
                 problem = _split_set(entry.payload, escalated)
+            if problem is None and entry.kind == "approval":
+                confirmed.update((str(r.get("id")), str(r.get("hash")))
+                                 for r in entry.payload.get("records") or []
+                                 if isinstance(r, Mapping))
             if problem is None and entry.kind == "approval" and by != "auto-jev":
                 approved.update(str(r.get("id")) for r in entry.payload.get("records") or []
                                 if isinstance(r, Mapping))

@@ -109,6 +109,67 @@ def test_ex4_after_the_answers_jev_at_0_95_approves_with_both_verdicts_and_the_a
     assert answer["question"] == ASK and answer["answer"] == "Public pages"
 
 
+@pytest.mark.sr("SR-209")
+def test_ex4_a_typed_answer_still_counts_once_the_record_is_reworded_to_agree(
+        world: Path, monkeypatch: pytest.MonkeyPatch, write_record: Any) -> None:
+    """SR-209 EX-4: the owner types their own answer (not an option) to the judge's question;
+    the agent rewords the requirement to agree, so its hash changes; the judge's next round
+    is shown that answer with the reworded record and approves citing it, instead of asking
+    the same question again."""
+    from plumb.understand import premise
+
+    core = configure(world)
+    fast_track_on(core, monkeypatch, 0.93)
+    before = core.index()["SR-001"].hash
+    digest = owner_answers(world, ["SR-001"], answer="Every page, the admin ones too")
+    write_record(world, requirement_text(
+        1, "Pages load in two seconds", "Every page loads within two seconds", intent=1,
+        examples=(("any page", "it is requested", "it loads within 2 seconds"),)))
+    core = open_core(world)
+    record = core.index()["SR-001"]
+    assert record.hash != before
+    assert [e.digest for e in premise.answer_entries(core, record)] == [digest]
+    assert premise.premise_of(core, record).answers[0]["answer"] == \
+        "Every page, the admin ones too"
+    _, _, applied = judged(core, ["SR-001"], StubJev(0.85), model_says(("SR-001", 0.8, True)))
+    [approval] = approvals(applied)
+    assert approval["by"] == "auto-model" and approval["answers"] == [digest]
+    write(world, applied)
+    assert state(world, "SR-001") == ("confirmed", "auto-model")
+
+
+@pytest.mark.sr("SR-248")
+def test_ex9_an_answer_the_record_was_confirmed_on_does_not_carry_a_later_edit(
+        world: Path, monkeypatch: pytest.MonkeyPatch, write_record: Any) -> None:
+    """SR-248 EX-9 beside SR-209 EX-4: once the record is confirmed on the owner's answer, an
+    edit of it is a new version the answer was never about: the judge's premise holds no
+    answer, nothing is approved on it, and a forged approval citing it is refused."""
+    from plumb.understand import premise
+
+    core = configure(world)
+    fast_track_on(core, monkeypatch, 0.93)
+    digest = owner_answers(world, ["SR-001"])
+    _, _, applied = judged(open_core(world), ["SR-001"], StubJev(0.85),
+                           model_says(("SR-001", 0.8, True)))
+    write(world, applied)
+    assert state(world, "SR-001") == ("confirmed", "auto-model")
+    write_record(world, requirement_text(
+        1, "Pages load in two seconds", "Every page loads within two seconds", intent=1,
+        examples=(("any page", "it is requested", "it loads within 2 seconds"),)))
+    core = open_core(world)
+    record = core.index()["SR-001"]
+    assert premise.answer_entries(core, record) == []
+    _, _, applied = judged(core, ["SR-001"], StubJev(0.85), model_says(("SR-001", 0.8, True)))
+    assert approvals(applied) == []
+    with as_worker(world, SESSION):
+        core.log_append("events", "approval", {
+            "records": approval_items(core, ["SR-001"]), "by": "auto-model",
+            "prompt_digest": "sha256:x", "job": "judge-2", "answers": [digest],
+            "auto": {"model": "haiku", "confidence": 0.9, "clear": True}})
+    assert any("unconfirmed earlier one" in why for why in problems(world))
+    assert state(world, "SR-001")[0] == "unconfirmed-edit"     # the forged entry changed nothing
+
+
 @pytest.mark.sr("SR-248")
 def test_ex5_jev_0_85_and_haiku_clear_at_0_8_approves_by_auto_model(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:

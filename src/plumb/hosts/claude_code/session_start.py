@@ -258,6 +258,10 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
 
         lines += emitter.add(at_session_start(core, ctx.deadline))
         ctx.keep(lines)
+    if not ctx.deadline.expired():  # SR-298: records waiting on a judge are queued in the background
+        from plumb.understand import backlog
+
+        backlog.spawn(core, ctx.session_id)
     timer.mark("awareness")
     emitter.close()
     return HookOutput(text="\n".join(lines))

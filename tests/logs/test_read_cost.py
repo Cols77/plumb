@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+from loadbound import assert_within
 from logutil import legacy_entry
 
 from logs.gitrepo import add_worktree, commit_all, make_repo, run_git
@@ -45,6 +46,7 @@ def _timed(paths: PlumbPaths) -> tuple[float, int]:
     return time.perf_counter() - start, count
 
 
+@pytest.mark.load_bound
 def test_read_cost(tmp_path: Path) -> None:
     """Cold: a worktree ``git worktree add`` has just written, beside the main worktree
     whose hooks have read the log; no pack cache there and no priming pass. Cold again: a
@@ -58,11 +60,11 @@ def test_read_cost(tmp_path: Path) -> None:
     assert not paths.log_pack("events").exists()
     cold, count = _timed(paths)
     assert count == 2000
-    assert cold < 1.0, f"cold read in a fresh worktree took {cold:.3f}s"
+    assert_within(cold, 1.0, "cold read in a fresh worktree (s)")
     clone = tmp_path / "clone"
     run_git(tmp_path, "clone", "-q", main.as_uri(), str(clone))
     cold, count = _timed(PlumbPaths(clone))
     assert count == 2000
-    assert cold < 1.0, f"cold read in a fresh clone took {cold:.3f}s"
+    assert_within(cold, 1.0, "cold read in a fresh clone (s)")
     warm = min(_timed(paths)[0] for _ in range(10))  # best of 10: other processes share the CPU
-    assert warm < 0.060, f"warm read took {warm * 1000:.1f} ms"
+    assert_within(warm, 0.060, "warm read (s)")

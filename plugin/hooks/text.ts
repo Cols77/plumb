@@ -9,8 +9,22 @@ export const GLYPHS: Record<string, string> = {
   'two versions': '⇄',
 }
 
-/** The one colour of plumb's own lines wherever the mod draws text (SR-159). */
-export const PLUMB_COLOR = 'cyan'
+/** plumb's own colours wherever the mod draws (SR-159, SR-290; the room's `--plumb` and
+ * `--brass` in ui/src/app.css hold the same values): plum for its text, the darker shade on a
+ * light theme, and brass for fills and highlights. Never Claude Code's orange, lavender, cyan or green. */
+export const PLUM = { dark: '#B05FB0', light: '#8E3B8E' }
+export const BRASS = '#C9A227'
+// brass on a light theme: about 4.9:1 on white, where #C9A227 is 2.4:1 (SR-290 EX-3)
+export const BRASS_LIGHT = '#8A6D0B'
+
+const isLight = (theme: unknown) => typeof theme === 'string' && theme.startsWith('light')
+
+/** The plum for the host's theme (`theme` in /config, as `light`, `light-daltonized`, ...);
+ * the dark shade when the surface does not say. */
+export const plumbColor = (theme: unknown): string => (isLight(theme) ? PLUM.light : PLUM.dark)
+
+/** The brass for the host's theme, by the same check as the plum. */
+export const brassColor = (theme: unknown): string => (isLight(theme) ? BRASS_LIGHT : BRASS)
 
 export const T = {
   name: 'plumb',
@@ -23,6 +37,24 @@ export const T = {
     done: 'Done this session',
   } as Record<string, string>,
   nothingAwaits: 'nothing awaits you',
+  stopped: (what: string) => `stopped, waits for ${what}`,
+  newStudy: (title: string) => `new study: ${title}`,
+  newStudies: (n: number) => (n === 1 ? 'new study' : `${n} new studies`),
+  studyIdea: (title: string) => `study idea: ${title}`,
+  studyIdeaFolded: 'study idea',
+  // DEC-207: the depths the owner chooses from; video is plumb-12's later work
+  depths: { md: 'Markdown only', diagrams: 'with diagrams', video: 'video (not available yet)' } as Record<string, string>,
+  notNow: 'not now',
+  chooseFailed: 'plumb could not record that choice; nothing changed. Try again.',
+  judged: (n: number) => `${n} judge-approved`,
+  roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',
+  loopTitle: 'plumb: the intent loop',
+  lowLeft: (n: number) => (n === 1 ? '1 low finding left' : `${n} low findings left`),
+  tasksLeft: (left: string[]) => `left: ${left.join(', ')}`,
+  records: 'Records written or changed',
+  proofs: 'Proof',
+  shown: 'shown',
+  notShown: 'not shown yet',
   hide: 'Hide',
   show: 'Show',
   showAll: 'Show all',
@@ -50,5 +82,5 @@ export const T = {
   noBox: (topic: string) =>
     ` The panel could not put "Change to '${topic}': " in the owner's message box: ask them, in ` +
     'one question in your next reply, what to change.',
-  toastAwaiting: (n: number) => `plumb: ${n === 1 ? 'a card awaits' : `${n} cards await`} you`,
+  toastAwaiting: (n: number) => `${n === 1 ? 'a card awaits' : `${n} cards await`} you`,
 }

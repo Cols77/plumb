@@ -40,11 +40,12 @@ def load(root: Path, session: str, job_id: str) -> Job | None:
 
 
 def queued(root: Path, session: str) -> list[Job]:
-    """Every job file of the session, oldest first (``created``, then id)."""
+    """Every job file of the session, oldest first (``created``, then id), the backlog pass's
+    judge jobs after the rest: the owner's answer is read before hundreds of waiting records."""
     folder = files.jobs_dir(root, session)
     found = [job for path in sorted(folder.glob("*.json"))
              if (job := load(root, session, path.stem)) is not None] if folder.is_dir() else []
-    return sorted(found, key=lambda j: (j.created, j.id))
+    return sorted(found, key=lambda j: (j.inputs.get("pass") == "backlog", j.created, j.id))
 
 
 def result(root: Path, session: str, job_id: str, *, trusted: bool = True

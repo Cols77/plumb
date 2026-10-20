@@ -4,12 +4,16 @@
 <words>`` (``cmd_clarify.wait``) and opens the loop's state file; an ordinary message opens
 none. ``plumb intent gate clarify|plan --intent INT-### --findings FILE`` records a stage's
 judge gate: it passes only when no high or medium finding remains, and ``plan`` refuses while
-``clarify`` has not passed. ``plumb intent done --intent INT-###`` refuses while the plan gate
+``clarify`` has not passed; a refused gate leaves ``stopped`` (what the loop waits for) in the
+state. ``plumb intent progress --task <words> [--done N --total M] [--left <words>]...`` sets the
+current step's task the band's bar draws (SR-291) and the tasks left its pane names (SR-305). ``plumb intent done --intent INT-###`` refuses while the plan gate
 has not passed or a requirement of the intent lacks proof evidence that passed. ``plumb intent
 status`` lists the open loops.
 
-State lives in ``.plumb/session/<id>/intent/<digest12>.json``. It carries no authority: it
-confirms nothing, and the records stay proposed until the owner confirms them.
+State lives in ``.plumb/session/<id>/intent/<digest12>.json``, with ``step`` (clarify, plan,
+build, proven) derived from its stages and ``tasks`` ``{label, done, total|null, started_at}``.
+It carries no authority: it confirms nothing, and the records stay proposed until the owner
+confirms them.
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ from typing import Any
 from plumb.cliutil import EXIT_FINDINGS, EXIT_USAGE, add_common, emit, resolve_root
 from plumb.understand import files, gate
 
-LOOP_VERBS = ("open", "gate", "done", "status")
+LOOP_VERBS = ("open", "gate", "done", "status", "progress", "adopt")
 STAGES = ("clarify", "plan", "build")
 LEVELS = ("high", "medium", "low")
 BLOCKING = ("high", "medium")
@@ -42,13 +46,42 @@ def loop_path(root: Path, session: str, digest: str) -> Path:
         digest.removeprefix("sha256:")[:12] + ".json")
 
 
+def save(path: Path, data: dict[str, Any]) -> None:
+    """Write the loop state with its ``step``: the first stage not passed, ``proven`` after all."""
+    data["step"] = next((s for s in STAGES if not _passed(data, s)), "proven")
+    files.write_json_atomic(path, data)
+
+
+def _stop(path: Path, data: dict[str, Any], what: str) -> None:
+    """SR-291 EX-6: the loop's current step waits for ``what`` until the next pass."""
+    data["stopped"] = what
+    save(path, data)
+
+
+def reset_head(root: Path, session: str) -> None:
+    """SR-291: a loop that opens or is done leaves the band's head clean: the session's
+    remembered intent, its summary in status.json and the last job's progress go (the next
+    turn's end names the intent again)."""
+    from plumb.present.cards import INTENT_FILE
+
+    for stale in (files.session_dir(root, session) / INTENT_FILE,
+                  files.progress_path(root, session)):
+        stale.unlink(missing_ok=True)
+    status_path = Path(root) / ".plumb" / "session" / "status.json"
+    status = files.read_json(status_path)
+    if isinstance(status, dict) and status.get("intent_summary"):
+        files.write_json_atomic(status_path, {**status, "intent_summary": ""})
+
+
 def open_loop(root: Path, session: str, digest: str) -> Path:
     """Open the loop state of the commanded message ``digest`` (idempotent)."""
     path = loop_path(root, session, digest)
     if not path.exists():
-        files.write_json_atomic(path, {
+        reset_head(root, session)
+        save(path, {
             "digest": digest, "intent": None, "opened_at": _now(),
-            "stages": {stage: {"state": "open"} for stage in STAGES}})
+            "stages": {stage: {"state": "open"} for stage in STAGES}, "tasks": None,
+            "stopped": None})
     return path
 
 
@@ -66,7 +99,7 @@ def loops(root: Path, session: str | None = None) -> list[tuple[Path, dict[str, 
 def _find(root: Path, session: str | None, intent: str) -> tuple[Path, dict[str, Any]]:
     """The loop of ``intent``, else this session's newest loop no intent claimed yet (it is
     claimed). With no session known nothing is claimed: another session's loop is not ours."""
-    found = loops(root, session)
+    found = [(p, d) for p, d in loops(root, session) if not d.get("handed_to")]
     for path, data in reversed(found):
         if data.get("intent") == intent:
             return path, data
@@ -147,19 +180,25 @@ def cmd_gate(core: Any, args: argparse.Namespace) -> int:
     _intent(core, args.intent)
     path, data = _find(root, _session(args, root), args.intent)
     findings = findings_from(args.findings)
+    data["files"] = sorted({*data.get("files", ()), str(Path(args.findings).resolve())})
     if args.stage == "plan" and not _passed(data, "clarify"):
+        _stop(path, data, "the clarify gate")
         print("plumb: the clarify gate has not passed; plumb intent gate clarify comes first",
               file=sys.stderr)
         return EXIT_FINDINGS
     blocking = [f for f in findings if f["level"] in BLOCKING]
     if blocking:
+        _stop(path, data, f"the {args.stage} gate: {len(blocking)} finding(s) to fix")
         print(f"plumb: the {args.stage} gate does not pass: {len(blocking)} finding(s) above low "
               "remain; fix them and judge again", file=sys.stderr)
         for finding in blocking:
             print(f"  {finding['level']}: {finding['what']}", file=sys.stderr)
         return EXIT_FINDINGS
-    data["stages"][args.stage] = {"state": "passed", "at": _now(), "findings": len(findings)}
-    files.write_json_atomic(path, data)
+    # SR-305: the pane names the low findings left
+    data["stages"][args.stage] = {"state": "passed", "at": _now(), "findings": len(findings),
+                                  "left": [f["what"] for f in findings]}
+    data.update(tasks=None, stopped=None)   # the next step starts with no task drawn
+    save(path, data)
     core.log_append("events", "intent-gate", {"intent": args.intent, "digest": data["digest"],
                                               "stage": args.stage, "findings": len(findings)})
     # SR-196: the loop opens only the hold of an intent change; a waiting card or a failed
@@ -169,7 +208,21 @@ def cmd_gate(core: Any, args: argparse.Namespace) -> int:
         gate.open(core, path.parent.parent.name, data["digest"], "intent", GATE_OPEN_REASON)
     print(f"plumb: {args.intent}: the {args.stage} gate passed "
           f"({len(findings)} low finding(s) left)")
+    _study_hint(root, path, data)
     return 0
+
+
+def _study_hint(root: Path, path: Path, data: Mapping[str, Any]) -> None:
+    """SR-293 EX-6: the step that starts picks its study on the agent's own initiative; nothing
+    once the step has its idea."""
+    from plumb import study
+
+    if any(s.get("loop") == path.stem and s.get("step") == data["step"]
+           for s in study.studies(root)):
+        return
+    print(f"plumb: pick the {data['step']} step's study: run plumb study candidates, then "
+          "plumb study propose --title --why --depth for one idea, or nothing when nothing "
+          "valuable stands out")
 
 
 def cmd_done(core: Any, args: argparse.Namespace) -> int:
@@ -185,28 +238,153 @@ def cmd_done(core: Any, args: argparse.Namespace) -> int:
     missing += [f"{row['id']} ({row['title']}): proof {row['why']}"
                 for row in proof.not_shown(core, required)]
     if missing:
+        _stop(path, data, "proof shown" if _passed(data, "plan") else "the plan gate")
         print(f"plumb: {args.intent} is not done; the intent stays open:", file=sys.stderr)
         for line in missing:
             print(f"  {line}", file=sys.stderr)
         return EXIT_FINDINGS
     data["stages"]["build"] = {"state": "passed", "at": _now()}
-    files.write_json_atomic(path, data)
+    data.update(tasks=None, stopped=None)   # step proven: the loop is closed, the band one line
+    save(path, data)
+    reset_head(root, path.parent.parent.name)
     core.log_append("events", "intent-done", {"intent": args.intent, "digest": data["digest"]})
+    _clean_up(root, path, data)
     print(f"plumb: {args.intent} done: every proof shown (the records stay as they are)")
     return 0
 
 
+def cmd_progress(core: Any, args: argparse.Namespace) -> int:
+    """The current step's task in the owner's words, and how far it is (SR-291)."""
+    root = Path(core.root)
+    session = _session(args, root)
+    found = [(p, d) for p, d in loops(root, session) if not _passed(d, "build")] if session else []
+    if not found:
+        # SR-291 EX-7: a workflow's agent may run under another session id (or none): the open
+        # loop is the owning session's, so its band moves; two sessions' loops are ambiguous
+        found = [(p, d) for p, d in loops(root) if not _passed(d, "build")]
+        if len({p.parent.parent.name for p, _ in found}) > 1:
+            raise LookupError("intent loops are open in more than one session: "
+                              "name the session with --session")
+    if not found:
+        raise LookupError("no open intent loop in this session: plumb intent open comes first")
+    if args.done is not None and args.done < 0 or args.total is not None and args.total < 1:
+        raise ValueError("--done is 0 or more and --total 1 or more")
+    path, data = found[-1]
+    held = data.get("tasks") if isinstance(data.get("tasks"), Mapping) else {}
+    data["tasks"] = {"label": args.task, "done": args.done or 0, "total": args.total,
+                     "started_at": held.get("started_at") if held.get("label") == args.task
+                     else _now(), "left": list(args.left or ())}
+    save(path, data)
+    total = f"/{args.total}" if args.total else ""
+    print(f"plumb: {data['step']}: {args.task} · {args.done or 0}{total}")
+    return 0
+
+
+def _pane(core: Any, data: Mapping[str, Any]) -> dict[str, Any]:
+    """SR-305: what the band's loop pane adds to the state: the records of the loop's intent
+    (the intent and the requirements and decisions linked to it) by title, and each
+    requirement's proof shown or not."""
+    from plumb.capture import proof
+
+    intent = data.get("intent")
+    index = core.index()
+    if not intent or intent not in index:
+        return {"records": [], "proofs": []}
+    linked = sorted(r.id for r in index.values() if any(
+        link.kind in ("derives_from", "decides") and link.target.record == intent
+        for link in r.links))
+    required = requirements_of(core, intent)
+    missing = {row["id"] for row in proof.not_shown(core, required)}
+    return {"records": [{"id": i, "kind": index[i].kind, "title": index[i].title}
+                        for i in [intent, *linked]],
+            "proofs": [{"id": i, "title": index[i].title, "shown": i not in missing}
+                       for i in required]}
+
+
+def _clean_up(root: Path, path: Path, data: Mapping[str, Any]) -> None:
+    """SR-308: remove the ended loop's own working files: the findings and plan files its gates
+    were given, its state file and, when no other loop of its session is open, the session's
+    judge results and answered or withdrawn cards. Records and log entries stay."""
+    import shutil
+
+    from plumb.understand import cardstore
+
+    session = path.parent.parent.name
+    for name in data.get("files", ()):
+        Path(name).unlink(missing_ok=True)
+    path.unlink(missing_ok=True)
+    if any(not _passed(d, "build") and not d.get("handed_to") for _, d in loops(root, session)):
+        return      # another loop of this session still needs them
+    shutil.rmtree(files.results_dir(root, session), ignore_errors=True)
+    cards = cardstore.own_cards(root, session)
+    if cards:
+        cardstore.save(root, session, [c for c in cards
+                                       if c.status not in ("answered", "withdrawn")])
+
+
 def cmd_status(core: Any, args: argparse.Namespace) -> int:
     root = Path(core.root)
-    found = [(p, d) for p, d in loops(root, _session(args, root)) if not _passed(d, "build")]
+    found = [(p, d) for p, d in loops(root, _session(args, root)) if not _passed(d, "build")
+             and not d.get("handed_to")]
     if args.as_json:
-        emit([d for _, d in found], True)
+        emit([{**d, **_pane(core, d)} for _, d in found], True)
         return 0
     for _, data in found:
         states = ", ".join(f"{s} {data['stages'].get(s, {}).get('state', 'open')}" for s in STAGES)
         print(f"{data.get('intent') or data['digest'].removeprefix('sha256:')[:12]}: {states}")
     if not found:
         print("plumb: no intent loop is open")
+    return 0
+
+
+def _checkouts(root: Path) -> list[Path]:
+    """This checkout, then the main checkout when this is a worktree (SR-302 EX-2)."""
+    from plumb.awareness import gitfiles
+
+    common = gitfiles.common_dir(root)
+    main = common.parent if common is not None and common.name == ".git" else root
+    return [root, main] if main.resolve() != root.resolve() else [root]
+
+
+def cmd_adopt(core: Any, args: argparse.Namespace) -> int:
+    """SR-302: take over an open loop of another session: copy it into this session, mark the
+    old copy handed over and open the old session's gate."""
+    from plumb.api import open_core
+
+    root = Path(core.root)
+    session = _session(args, root)
+    if session is None:
+        print("plumb: name the session that takes the loop over with --session", file=sys.stderr)
+        return EXIT_USAGE
+    found = [(r, p, d) for r in _checkouts(root) for p, d in loops(r)
+             if not d.get("handed_to") and not _passed(d, "build")
+             and (r != root or p.parent.parent.name != session)
+             and (not args.from_session or p.parent.parent.name == args.from_session)
+             and (not args.intent or d.get("intent") == args.intent)
+             and (not args.digest or str(d["digest"]).removeprefix("sha256:").startswith(
+                 args.digest.removeprefix("sha256:")))]
+    if not found:
+        print("plumb: no open loop matches; nothing taken over", file=sys.stderr)
+        return EXIT_FINDINGS
+    if len(found) > 1:  # never guess: the others may be loops other sessions still run
+        print("plumb: more than one open loop matches; name one with --from-session, --intent "
+              "or --digest; nothing taken over:", file=sys.stderr)
+        for _r, p, d in found:
+            print(f"  session {p.parent.parent.name}: {d.get('intent') or 'no intent yet'} "
+                  f"({str(d['digest']).removeprefix('sha256:')[:12]})", file=sys.stderr)
+        return EXIT_FINDINGS
+    old_root, path, data = found[0]
+    old_session = path.parent.parent.name
+    mine = loop_path(root, session, data["digest"])
+    files.write_json_atomic(mine, {**data, "adopted_from": {"root": old_root.as_posix(),
+                                                           "session": old_session}})
+    files.write_json_atomic(path, {**data, "handed_to": {"root": root.as_posix(),
+                                                         "session": session, "at": _now()}})
+    held = gate.state(old_root, old_session)
+    if held.state == "closed":
+        gate.open(open_core(old_root), old_session, held.message_digest, "handover",
+                  f"the loop was taken over by session {session}")
+    print(f"plumb: {data.get('intent') or 'the loop'} taken over from session {old_session}")
     return 0
 
 
@@ -232,7 +410,17 @@ def run(command: str, argv: list[str]) -> int:
     doner = verbs.add_parser("done")
     doner.add_argument("--intent", required=True, metavar="INT-###")
     verbs.add_parser("status")
-    for sub in (opener, gater, doner, verbs.choices["status"]):
+    progress = verbs.add_parser("progress", help="the current step's task, as the band draws it")
+    progress.add_argument("--task", required=True, metavar="WORDS")
+    progress.add_argument("--done", type=int, default=None)
+    progress.add_argument("--total", type=int, default=None)
+    progress.add_argument("--left", action="append", metavar="WORDS",
+                          help="a task still to do (repeat); the loop pane names them")
+    adopter = verbs.add_parser("adopt")
+    adopter.add_argument("--from-session", default=None)
+    adopter.add_argument("--intent", default=None, metavar="INT-###")
+    adopter.add_argument("--digest", default=None)
+    for sub in (opener, gater, doner, verbs.choices["status"], progress, adopter):
         add_common(sub)
         sub.add_argument("--session", default=None)
     try:
@@ -243,7 +431,8 @@ def run(command: str, argv: list[str]) -> int:
 
     core = open_core(resolve_root(args.root))
     try:
-        return {"open": cmd_open, "gate": cmd_gate, "done": cmd_done, "status": cmd_status}[
+        return {"open": cmd_open, "gate": cmd_gate, "done": cmd_done, "status": cmd_status,
+                "progress": cmd_progress, "adopt": cmd_adopt}[
             args.verb](core, args)
     except (LookupError, ValueError) as exc:
         print(f"plumb: {exc}", file=sys.stderr)

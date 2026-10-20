@@ -27,6 +27,8 @@ _ID = re.compile(r"^(?:(?:INT|SR|DEC|FEAT)-\d+|NC-\d+)$")
 PREFIX = r"/plumb(?::plumb)?"
 _PREFIX_HEAD = re.compile(r"^" + PREFIX + r"(?=[ \t])")
 _HEAD = re.compile(r"^" + PREFIX + r"[ \t]+([a-z][a-z-]*)(?:[ \t]+(.*))?$", re.DOTALL)
+# SR-304: a pasted command arrives wrapped as <pasted_content ...>body</pasted_content ...>
+_PASTE = re.compile(r"^<pasted_content\b[^>]*>(.*?)</pasted_content\b[^>]*>(.*)$", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -58,7 +60,14 @@ def parse(text: Any) -> Typed | None:
     ``/plumb:plumb``) first, the verb, then only what the verb takes."""
     if not isinstance(text, str):
         return None
-    match = _HEAD.match(text.strip())
+    text = text.strip()
+    pasted = _PASTE.match(text)
+    if pasted is not None:
+        # SR-304: only a pasted intent or clarify is the command; the owner's words follow it
+        text = f"{pasted.group(1).strip()} {pasted.group(2).strip()}".strip()
+        if not re.match(r"^" + PREFIX + r"[ \t]+(?:intent|clarify)\b", text):
+            return None
+    match = _HEAD.match(text)
     if match is None:
         return None
     verb, rest = match.group(1), (match.group(2) or "").strip()

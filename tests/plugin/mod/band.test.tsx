@@ -66,7 +66,7 @@ for (const surface of SURFACES) {
       w.answer = (action, argv) => action === 'draw' ? { exitCode: 0, data: changed } : world().answer(action, argv)
       await $.turn.complete(TURN_DONE)
       expect(await ui.find({ key: 'card:clarify:SR-001' })).toBeDefined()
-      expect(w.toasts).toContain('plumb: 2 cards await you')
+      expect(w.toasts).toContain('2 cards await you') // the host heads a toast with plumb's name (SR-290)
       await ui.unmount()
     })
 
@@ -93,7 +93,7 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await ui.find({ type: 'Text', text: 'plumb ● 2 await you · judging the backlog · 10/160' })).toBeDefined()
-      expect(w.statuses.at(-1)).toBe('plumb ● 2 await you · judging the backlog · 10/160')
+      expect(w.statuses.at(-1)).toBe('● 2 await you · judging the backlog · 10/160') // SR-290: the host heads it 'plumb:', never 'plumb: plumb'
       await ui.unmount()
     })
 

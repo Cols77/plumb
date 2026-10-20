@@ -183,7 +183,7 @@ def test_sr197_ex2_a_stated_proof_not_shown_keeps_the_intent_open(
     (intent / "out.txt").write_text("it worked\n", encoding="utf-8")
     proof.set_evidence(open_core(intent), "SR-040", "out.txt", "the command printed it", True)
     assert _run(intent, "done", "--intent", "INT-001") == 0
-    assert _loop(intent)["stages"]["build"]["state"] == "passed"
+    assert not cmd_intent.loop_path(intent, SESSION, DIGEST).exists()   # SR-308: ended loop
     assert len([e for e in open_core(intent).events() if e.kind == "intent-done"]) == 1
     assert _run(intent, "status") == 0
     assert "no intent loop is open" in capsys.readouterr().out

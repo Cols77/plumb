@@ -6,6 +6,7 @@ never shown: its records wait with the waiting line. JEV and the model are stubs
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import types
@@ -96,6 +97,20 @@ def test_ex3_below_the_calibrated_threshold_the_judge_models_questions_are_writt
     assert 'You said on 6 Oct: "I want pages to load faster"' in question["question"]
     assert question["key"] == judge.question_key(question["question"])
     assert notes(world) == []                          # every record is asked: nothing waits
+
+
+@pytest.mark.sr("SR-248")
+def test_a_label_the_model_already_marked_recommended_is_not_marked_twice(
+        world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    """The judge model wrote "(Recommended)" into its first label itself: the owner sees it
+    once, not "(Recommended) (Recommended)"."""
+    core = configure(world)
+    fast_track_on(core, monkeypatch, 0.93)
+    marked = asking("SR-001")
+    marked["options"][0]["label"] = "Public pages (Recommended)"
+    applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[marked]))
+    (question,) = written(world)
+    assert question["options"][0]["label"] == "Public pages (Recommended)"
 
 
 @pytest.mark.sr("SR-248")
@@ -356,3 +371,193 @@ def test_open_questions_leave_the_gate_open_a_choice_card_closes_it_and_its_answ
     clarify._choice_effect(core=open_core(world), card=answered,
                            job=types.SimpleNamespace(session=SESSION), digest=digest)
     assert not gate.is_closed(world, SESSION)
+
+
+# ---- SR-299, SR-298 ---------------------------------------------------------------------------
+
+LOGGED_ANSWER = Path(__file__).parent / "fixtures" / "judge-malformed-questions.json"
+
+
+@pytest.mark.sr("SR-299")
+def test_ex1_the_logged_answer_without_records_reaches_the_owner(
+        world: Path) -> None:  # noqa: F811
+    """SR-299 EX-1: the 2026-10-16 answer (three questions, none naming records) is replayed:
+    three questions are written for the question tool and no verdict waits."""
+    logged = json.loads(LOGGED_ANSWER.read_text(encoding="utf-8"))["answer"]
+    assert len(logged["questions"]) == 3 and not any(q.get("records") for q in logged["questions"])
+    applied = applied_on(world, ["SR-001"], {
+        "verdicts": [{"id": "SR-001", "verdict": "beyond", "confidence": 0.3, "beyond": ["x"]}],
+        "questions": logged["questions"]})
+    assert len(written(world)) == 3
+    assert all(q["records"][0]["id"] == "SR-001" for q in written(world))
+    assert notes(world) == [] and applied.notes == ()
+
+
+@pytest.mark.sr("SR-299")
+def test_ex2_the_answer_format_requires_the_records_of_each_question() -> None:
+    """SR-299 EX-2: the schema and the judge's instructions require ``records`` and two to four
+    options."""
+    item = judge._load_schema()["properties"]["questions"]["items"]
+    assert "records" in item["required"]
+    assert (item["properties"]["options"]["minItems"], item["properties"]["options"]["maxItems"]
+            ) == (2, 4)
+    assert "required" in judge.system_prompt().split("- `records`:")[1].split("\n")[0]
+
+
+@pytest.mark.sr("SR-299")
+def test_ex3_a_question_with_one_option_is_asked_again_once(
+        world: Path) -> None:  # noqa: F811
+    """SR-299 EX-3: a one-option question is retried once; when it fails again it waits and
+    the other verdicts are applied."""
+    core = configure(world)
+    bad = asking("SR-001", options=[{"label": "Only", "consequence": "Nothing else."}])
+    model = FakeDispatcher({"judge": answer(("SR-001", "supported"), questions=[bad])})
+    job = build_job(core, ["SR-001"])
+    done = verdict.cascade(core, job, system="judge", schema={}, jev=StubJev(0.1),
+                           dispatcher=model)
+    assert len(model.ran("judge")) == 2                 # asked again once, no more
+    applied = judge.apply(core, job, done.answer)
+    assert written(world) == [] and any(e["kind"] == "verdict" for e in applied.entries)
+    assert notes(world)                                  # the record waits and says why
+    (case,) = summary.open_cases(world)[0]               # and the job goes to debugging
+    assert case["kind"] == "judge-question" and "SR-001" in case["target"]
+    good = FakeDispatcher({"judge": answer(("SR-001", "supported"),
+                                           questions=[asking("SR-001")])})
+    verdict.cascade(core, job, system="judge", schema={}, jev=StubJev(0.1), dispatcher=good)
+    assert len(good.ran("judge")) == 1                   # a usable question is not retried
+
+
+@pytest.mark.sr("SR-298")
+def test_ex2_a_job_over_the_limit_is_split_not_failed(world: Path) -> None:  # noqa: F811
+    """SR-298 EX-2: records making a 62,000-character job go as two or more model jobs each
+    under the limit, and none fails as too large."""
+    core = configure(world)
+    job = build_job(core, ["SR-001"])
+    entries = [{**job.inputs["records"][0], "id": f"SR-{n:03d}", "text": "x" * 20_000}
+               for n in range(100, 103)]
+    big = dataclasses.replace(job, inputs={**job.inputs, "records": entries})
+    model = FakeDispatcher({"judge": lambda j: answer(*[(r["id"], "supported")
+                                                        for r in j.inputs["records"]])})
+    done = verdict.cascade(core, big, system="judge", schema={}, jev=StubJev(0.1),
+                           dispatcher=model)
+    assert len(model.ran("judge")) >= 2 and not done.left
+    assert all(len(c["user"]) <= verdict.INPUT_MAX for c in model.calls)
+    assert {v["id"] for v in done.answer["verdicts"]} == {e["id"] for e in entries}
+
+
+# ---- SR-309 ---------------------------------------------------------------------------------
+
+
+def shaped_of(repo: Path, *questions: dict[str, Any]) -> list[dict[str, Any]]:
+    applied_on(repo, ["SR-001"], answer(("SR-001", "supported"), questions=list(questions)))
+    return written(repo)
+
+
+@pytest.mark.sr("SR-309")
+def test_ex1_a_long_header_keeps_whole_words_within_the_chip(world: Path) -> None:  # noqa: F811
+    (question,) = shaped_of(world, asking("SR-001", header="Existing validate errors"))
+    assert question["header"] == "Existing"
+    assert judge._whole_words("Hand clean-up first") == "Hand"
+    assert judge._whole_words("Which pages") == "Which pages"
+
+
+@pytest.mark.sr("SR-309")
+def test_ex2_one_recommended_marker_whatever_the_model_wrote(world: Path) -> None:  # noqa: F811
+    options = [{"label": "Public pages (recommended)", "consequence": "Speeds up visitors."},
+               {"label": "Every page", "consequence": "Speeds up all."}]
+    (question,) = shaped_of(world, asking("SR-001", options=options))
+    labels = [o["label"] for o in question["options"]]
+    assert labels == ["Public pages (Recommended)", "Every page"]
+
+
+@pytest.mark.sr("SR-309")
+def test_ex3_a_question_the_owner_already_answered_is_dropped(world: Path,
+                                                              write_record) -> None:  # noqa: F811
+    write_record(world, "---\nid: DEC-001\ntitle: Which pages\nquestion: Which pages?\n"
+                 "chosen: Every page, whatever it costs\nalternatives:\n- Public pages\n"
+                 "rationale: The owner chose it.\nmatters: true\nrecommended: Every page\n"
+                 "links:\n- kind: decides\n  to: SR-001\n---\n")
+    options = [{"label": "Public pages", "consequence": "Speeds up visitors."},
+               {"label": "Every page (recommended)", "consequence": "Speeds up all."}]
+    assert shaped_of(world, asking("SR-001", options=options)) == []
+
+
+@pytest.mark.sr("SR-309")
+def test_ex4_the_quote_is_the_owners_words_the_question_is_about_or_none(
+        world: Path) -> None:  # noqa: F811
+    (said,) = shaped_of(world, asking("SR-001"))
+    assert 'You said on 6 Oct: "I want pages to load faster"' in said["question"]
+    off = {"words": "/plumb intent Keep plumb fit by itself.", "date": "6 Oct"}
+    (question,) = shaped_of(world, asking("SR-001", request=off))
+    assert "You said" not in question["question"]
+
+
+# ---- DEC-191, DEC-192, SR-299 #2 ---------------------------------------------------------------
+
+
+def _transcript(repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, text: str) -> None:
+    from plumb.understand import recover
+
+    folder = tmp_path / "projects" / recover.project_dir_name(repo)
+    folder.mkdir(parents=True)
+    line = {"type": "user", "timestamp": "2026-10-04T09:12:00.000Z", "sessionId": "s1",
+            "message": {"role": "user", "content": text}}
+    (folder / "s1.jsonl").write_text(json.dumps(line), encoding="utf-8")
+    monkeypatch.setenv("PLUMB_TRANSCRIPTS_DIR", str(tmp_path / "projects"))
+
+
+@pytest.mark.sr("SR-309")
+@pytest.mark.sr("SR-249")
+def test_dec191_words_found_in_a_past_transcript_are_quoted_with_their_date(
+        world: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # noqa: F811
+    _transcript(world, monkeypatch, tmp_path, "Please also cache the front page")
+    ask = asking("SR-001", request={"words": "also cache the front page", "date": "9 Oct"})
+    (question,) = shaped_of(world, ask)
+    assert 'You said on 4 Oct: "also cache the front page"' in question["question"]
+
+
+@pytest.mark.sr("SR-309")
+@pytest.mark.sr("SR-249")
+def test_dec191_an_older_record_with_words_in_no_transcript_says_none_were_found(
+        world: Path, write_record, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:  # noqa: F811
+    write_record(world, intent_text(2, "Cache the front page", "Cache the front page"))
+    monkeypatch.setenv("PLUMB_TRANSCRIPTS_DIR", str(tmp_path / "none"))
+    applied_on(world, ["INT-002"], answer(("INT-002", "supported"), questions=[
+        asking("INT-002", request={"words": "cache it", "date": "9 Oct"})]))
+    (question,) = written(world)
+    assert "You said" not in question["question"]
+    assert "found none of your words" in question["question"]
+
+
+@pytest.mark.sr("SR-249")
+def test_ex1_an_older_records_own_words_are_looked_for_when_the_judge_quotes_none(
+        world: Path, write_record, monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+        tmp_path: Path) -> None:
+    write_record(world, intent_text(2, "Cache the front page", "Cache the front page"))
+    _transcript(world, monkeypatch, tmp_path, "Cache the front page, please")
+    applied_on(world, ["INT-002"], answer(("INT-002", "supported"), questions=[
+        asking("INT-002", request={})]))
+    (question,) = written(world)
+    assert 'You said on 4 Oct: "Cache the front page"' in question["question"]
+
+
+@pytest.mark.sr("SR-299")
+def test_dec192_a_question_without_a_quote_reaches_the_owner(world: Path) -> None:  # noqa: F811
+    (question,) = shaped_of(world, asking("SR-001", request={}))
+    assert "You said" not in question["question"] and len(question["options"]) == 2
+
+
+@pytest.mark.sr("SR-299")
+def test_ex1_ex3_a_question_short_of_records_or_options_does_not_reject_the_answer(
+        world: Path) -> None:  # noqa: F811
+    from plumb.understand import schema as schema_check
+
+    bare = {k: v for k, v in asking("SR-001").items() if k != "records"}
+    one = asking("SR-001", options=[{"label": "Only", "consequence": "Nothing else."}])
+    given = answer(("SR-001", "supported"), questions=[bare, one])
+    assert schema_check.problems(given, judge.schema) == []
+    applied = applied_on(world, ["SR-001"], given)
+    (question,) = written(world)                     # the bare one is shown with the job's records
+    assert question["records"][0]["id"] == "SR-001"
+    assert any(e["kind"] == "verdict" for e in applied.entries)

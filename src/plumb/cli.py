@@ -19,6 +19,7 @@ ROUTES: dict[str, str] = {
     "link": "plumb.commands", "unlink": "plumb.commands", "relink": "plumb.commands",
     "repin": "plumb.commands", "stale": "plumb.commands",
     "validate": "plumb.commands",
+    "debug": "plumb.debug",   # SR-220, SR-300: the debug workflow, standalone
     "check": "plumb.commands",
     # approve, confirm, relay, revoke: refused as gone, listed in no help line (SR-210)
     "approve": "plumb.commands", "confirm": "plumb.commands", "relay": "plumb.commands",
@@ -67,6 +68,8 @@ ROUTES: dict[str, str] = {
     # SP7 MOD: the commands only plumb's panel runs (hello, draw, press; key on stdin)
     "mod": "plumb.mod.cli",
     "ui": "plumb.browser.cli",
+    # INT-090: studies the owner reads in the room, and the understanding picture
+    "study": "plumb.study.cli",
 }
 
 _HELP = """usage: plumb <command> [options]
@@ -85,6 +88,8 @@ records and integrity:
                pass and a model judges the meaning unchanged
   stale        card: bring a stale link to the owner as a card; cards: list them in full
                (--incomplete: those lacking something)
+  debug        the debug workflow: rerun each stale link once through tests and the
+               meaning cascade, say what it did and what is missing (--dry-run)
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
   status       counts, drift, what awaits you, judge approvals (--card: the card)
   brief        the short intent brief
@@ -107,6 +112,9 @@ intent capture:
   triage       proposed records grouped by faithfulness (advisory; it approves nothing)
   config       auto-approve on|off and show (owner's terminal only)
   jev          status, setup (the credential variable's name only), calibrate
+  study        propose | add | list | candidates | mark: at most one study idea per
+               intent-loop step, written once the owner accepts it, read in the browser
+               room; the understanding picture it corrects
   quotes       recover: find older records' words in past session transcripts (shown on
                the card as found, not verified; it confirms nothing)
 
@@ -140,8 +148,8 @@ in flight:     inflight (what other branches are changing, from refs/plumb/claim
                a request for an early intent conflict; drop; sync)
 
 Run `plumb <command> --help` for a command's options. Exit codes: 0 ok, 1 findings,
-2 usage, 3 refused by the guard, 4 merge waits for the owner's confirmation, 5 verification
-holds the merge.
+2 usage, 3 refused by the guard, 4 merge waits for the owner (a conflict or a question), 5 a
+failing test or an unconfirmed proof holds the merge.
 """
 
 

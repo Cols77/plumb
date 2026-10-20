@@ -14,7 +14,7 @@ from plumb import api, hashing
 from plumb.api import open_core
 from plumb.contracts import Target
 
-pytestmark = pytest.mark.sr("SR-275")
+pytestmark = pytest.mark.sr("SR-310")
 
 SR = ("---\nid: SR-001\ntitle: t\nstatement: s\nexamples:\n- {id: EX-1, given: g, when: w, "
       "then: t}\n---\n")

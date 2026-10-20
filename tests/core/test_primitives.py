@@ -127,6 +127,7 @@ def test_missing_module_reports_not_available(
 
 def test_every_route_names_a_module_path() -> None:
     expected = {"init", "new", "show", "link", "repin", "validate", "check", "status", "drift",
+                "debug",   # SR-220, SR-325: the debug workflow
                 # SR-148, SR-149: `plumb unlink`, `plumb relink`
                 "unlink", "relink",
                 "brief", "explain", "why", "tests", "map",
@@ -147,6 +148,8 @@ def test_every_route_names_a_module_path() -> None:
                 "understand",
                 # sp8 STALE: `plumb stale card`
                 "stale",
+                # INT-090: `plumb study add|list|candidates|mark`
+                "study",
                 # sub-project 7 PLUGIN: `plumb plugin ignore|unignore|migrate`
                 "plugin",
                 # sp7 slice 4: the panel's own commands (not advertised in --help)
