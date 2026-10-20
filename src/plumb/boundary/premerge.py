@@ -345,6 +345,7 @@ class PremergeReport:
     contradictions: tuple[str, ...] = ()  # SR-165: new requirements against live ones
     contradiction_notes: tuple[str, ...] = ()  # unsure verdicts: shown, never held on
     judge_note: str = ""                 # set when the contradiction check could not judge
+    into_default: bool = True    # DEC-271: tests, questions and proofs hold only into it
     operation: str = "merge"     # merge | fast-forward | rebase | cherry-pick | revert
     skipped: str | None = None
     exit: int = 0
@@ -569,7 +570,7 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
                             validate_errors=tuple(validate_errors),
                             contradictions=tuple(contradictions),
                             contradiction_notes=tuple(contradiction_notes),
-                            judge_note=judge_note,
+                            judge_note=judge_note, into_default=main,
                             operation=operation, exit=code)
     return _with_lines(report)
 
@@ -837,14 +838,17 @@ def hold_lines(report: Any, into: str) -> list[str]:
     """The questions, failing tests and unproven deliveries that hold a merge (SR-260 EX-28,
     EX-30), by title (a premerge or a merge-check report)."""
     out: list[str] = []
+    held = getattr(report, "into_default", True)   # DEC-271: a work branch only lists them
     questions = getattr(report, "questions", ())
     if questions:
-        out.append(owner_text.PREMERGE_QUESTIONS_HEADER)
+        out.append(owner_text.PREMERGE_QUESTIONS_HEADER.format(
+            held=f" ({owner_text.PREMERGE_HELD})" if held else ""))
         out.extend(_capped([owner_text.PREMERGE_QUESTION.format(title=title)
                             for q in questions for title in q.get("titles") or q["records"]]))
     failing = getattr(report, "failing_tests", ())
     if failing:
-        out.append(owner_text.PREMERGE_FAILING_HEADER)
+        out.append(owner_text.PREMERGE_FAILING_HEADER.format(
+            held=f"{owner_text.PREMERGE_HELD}; " if held else ""))
         out.extend(_capped([owner_text.PREMERGE_FAILING.format(**r) for r in failing]))
     out.extend(getattr(report, "verify_lines", ()))
     proofs = getattr(report, "proofs", ())

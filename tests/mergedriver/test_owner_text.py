@@ -183,3 +183,19 @@ def test_commit_hold_output(operation: str) -> None:
     _clean(render(PremergeReport(into="main", operation=operation))[-1])
     _clean(owner_text.COMMIT_HOLD_INSTALLED)
     _clean(owner_text.FOREIGN_COMMIT_HOOK)
+
+
+@pytest.mark.sr("SR-260")
+@pytest.mark.parametrize("into_default", [True, False])
+def test_hold_headers_say_held_only_into_default(into_default: bool) -> None:
+    """DEC-271: questions and failing tests hold only a merge into the default branch, so
+    only that merge's lines say they hold it; a work branch's merge lists them."""
+    from plumb.boundary.premerge import PremergeReport, render
+
+    lines = render(PremergeReport(
+        merging="feat-x", into="main" if into_default else "work", into_default=into_default,
+        questions=({"records": ["SR-005"], "titles": ["totals"]},),
+        failing_tests=({"id": "SR-005", "title": "totals", "test": "t", "state": "failing"},)))
+    text = "\n".join(lines)
+    assert ("hold the merge" in text) is into_default
+    assert "questions wait for you" in text and "the agent runs them" in text
