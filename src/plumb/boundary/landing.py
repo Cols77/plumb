@@ -392,6 +392,7 @@ def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], l
 
 def land(root: Path, head: str, before: str, session: str | None = None) -> dict[str, Any]:
     """Run the landing's steps once; the result is also the marker's content."""
+    from plumb import debug
     from plumb.api import open_core
     from plumb.understand import backlog, files, summary
 
@@ -442,6 +443,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         gone.extend(found[0])
         kept.extend(found[1])
 
+    step("fixes", lambda: debug.landed(root, head))  # before the worktrees step drops branches
     step("tidy", do_tidy)
     step("compaction", do_compact)
     step("commit", do_commit)
@@ -459,7 +461,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     line = f"plumb: landing {head[:12]}: " + "; ".join(p for p in parts if p)
     result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
               "queued": queued, "worktrees": gone, "kept": kept, "cases": len(cases)}
-    summary.write_cases(open_core(root), head, [{**c, "state": "open"} for c in cases])
+    summary.write_cases(open_core(root), head,
+                        [{**c, "state": "open"} for c in debug.from_landing(root, cases)])
     files.write_json_atomic(done, result)
     return result
 

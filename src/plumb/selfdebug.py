@@ -282,6 +282,7 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
                 return Outcome("held", branch, why, line, tried)
             if not state:
                 _commit(wt, wt_core, case)
+                debug._update(root, [case["id"]], branch=branch)   # DEC-317: ready to land
                 debug.resolve(root, [case["id"]])
                 return Outcome("fixed", branch, f"fixed on {branch}", rounds=tried)
             tried.append(f"round {n}: {why}")

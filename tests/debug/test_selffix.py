@@ -154,6 +154,7 @@ def test_ex1_a_planted_defect_ends_as_a_branch_with_its_failing_then_passing_tes
     assert [e.payload["case"] for e in open_core(plumb_repo).log_read(
         "events", ["selfdebug-review"])] == [CASE]
     assert _state(plumb_repo) == "resolved"
+    assert next(c for c in debug.all_cases(plumb_repo) if c["id"] == CASE)["branch"] == BRANCH
     assert "SR-001" in fixer.evidence["records"] and fixer.models == ["sonnet"]
 
 
