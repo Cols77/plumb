@@ -8,13 +8,15 @@ that end as a defect report on the case, for the agent. Nothing here confirms a 
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -119,14 +121,44 @@ class FixerDispatcher:
                                                    FIX_SCHEMA))
 
 
-def _runner(wt_core: Any) -> Runner:
+HEAVY_WAIT_S = 20.0
+
+
+@contextlib.contextmanager
+def heavy(cwd: Path, what: str) -> Iterator[None]:
+    """The owner's one-heavy-job-at-a-time lock, shared by every session and worktree:
+    ``<git common dir>/plumb-heavy.lock``, created exclusively, waited for every 20 s.
+    shortcut: a lock left by a crashed run is waited on forever; add an age limit if that bites."""
+    common = _git(cwd, "rev-parse", "--git-common-dir").strip()
+    lock = Path(cwd, common) / "plumb-heavy.lock"
+    while True:
+        try:
+            with open(lock, "x", encoding="utf-8") as fh:
+                fh.write(what + "\n")
+            break
+        except (FileExistsError, PermissionError):
+            time.sleep(HEAVY_WAIT_S)
+    try:
+        yield
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _runner(wt_core: Any, locked: bool = False) -> Runner:
     """Test ids run through pytest on the worktree's source; source paths through the verify
-    lane's covering tests."""
+    lane's covering tests. ``locked`` (the background job) takes the heavy lock per run; on
+    demand the agent holds it around ``plumb debug`` itself."""
     from plumb.links import default_runner
 
     covering, wt = default_runner(wt_core), Path(wt_core.root)
 
     def run(paths: list[str]) -> tuple[bool, str]:
+        if locked:
+            with heavy(wt, f"selfdebug {wt.name}: pytest"):
+                return _run(paths)
+        return _run(paths)
+
+    def _run(paths: list[str]) -> tuple[bool, str]:
         if not all(Path(p.split("::")[0]).name.startswith("test_") for p in paths):
             return covering(paths)
         done = subprocess.run(
@@ -210,7 +242,7 @@ def _commit(wt: Path, wt_core: Any, case: dict[str, Any]) -> None:
 
 
 def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
-        runner: Runner | None = None, judge: Any = None) -> Outcome:
+        runner: Runner | None = None, judge: Any = None, locked: bool = False) -> Outcome:
     from plumb import stale
     from plumb.api import open_core
     from plumb.judgment import waiting_line
@@ -222,7 +254,7 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     wt_core = open_core(wt)
     session = stale.current_session(root)
     baseline = {s.link.id for s in core.link_states() if s.state in ("stale", "dangling")}
-    runner, fixer = runner or _runner(wt_core), fixer or FixerDispatcher()
+    runner, fixer = runner or _runner(wt_core, locked), fixer or FixerDispatcher()
     evidence, tried = _evidence(core, case), []
     old = os.environ.get("PLUMB_JOB")
     os.environ["PLUMB_JOB"] = "selfdebug"      # a hook in the fixer's run opens no case

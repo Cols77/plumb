@@ -96,11 +96,14 @@ def report(root: Path | str, id: str, text: str) -> None:
 
 
 def hook_error(root: Path | None, name: str, detail: str) -> None:
-    """SR-325 EX-1: a hook that raised leaves one case, the same error once."""
+    """SR-325 EX-1: a hook that raised leaves one case, the same error once. The id ignores
+    the numbers in the traceback (a temp file's pid, line numbers), so one cause is one case
+    and one background fix, not one per process that hit it."""
     if root is None:
         return
     lines = detail.strip().splitlines()
-    open_case(root, id=f"hook-{name}-{hashlib.sha1(detail.encode()).hexdigest()[:8]}",
+    same = re.sub(r"\d+", "", detail).encode()
+    open_case(root, id=f"hook-{name}-{hashlib.sha1(same).hexdigest()[:8]}",
               kind="hook-error", target=name, detail=lines[-1] if lines else name, log=detail)
 
 

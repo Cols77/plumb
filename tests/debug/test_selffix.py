@@ -231,3 +231,35 @@ def test_the_case_is_queued_as_a_background_job_only_in_plumbs_own_repository(
     assert jobs.job_path(plumb_repo, job.session, job.id).exists()
     assert kind.recompute(core, job) == {"case": CASE}
     assert "not plumb's own" in selfdebug.applies(SimpleNamespace(root=tmp_path, config=Config()))
+
+
+def test_the_background_run_waits_for_the_heavy_lock(repo: Path, monkeypatch) -> None:
+    """One heavy job at a time across sessions: a run waits while another holds the lock,
+    takes it, and leaves none behind."""
+    import threading
+
+    monkeypatch.setattr(selfdebug, "HEAVY_WAIT_S", 0.01)
+    lock = repo / ".git" / "plumb-heavy.lock"
+    lock.write_text("another session: pytest\n", encoding="utf-8")
+    seen: list[str] = []
+
+    def job() -> None:
+        with selfdebug.heavy(repo, "selfdebug x: pytest"):
+            seen.append(lock.read_text(encoding="utf-8"))
+
+    t = threading.Thread(target=job)
+    t.start()
+    t.join(0.2)
+    assert t.is_alive() and not seen          # still waiting on the other session
+    lock.unlink()
+    t.join(5)
+    assert seen == ["selfdebug x: pytest\n"] and not lock.exists()
+
+
+def test_the_background_job_runs_the_fix_under_the_lock(plumb_repo: Path, monkeypatch) -> None:
+    got: dict = {}
+    monkeypatch.setattr(selfdebug, "fix", lambda core, case, **kw: got.update(kw)
+                        or selfdebug.Outcome("fixed", BRANCH, "ok"))
+    job = kind.build(open_core(plumb_repo), "s", case=CASE)
+    kind.cascade(open_core(plumb_repo), job)
+    assert got == {"locked": True}
