@@ -1,4 +1,4 @@
-"""SR-344, SR-348: ``plumb evaluate <task> [--model M] [--owner-model M] [--loop N]
+"""SR-344, SR-348: ``plumb evaluate <task> [--model M] [--owner-model M] [--rounds N]
 [--runs-dir D]``."""
 
 from __future__ import annotations
@@ -20,8 +20,10 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("task", choices=tasks.NAMES)
     parser.add_argument("--model", default="haiku")
     parser.add_argument("--owner-model", default="haiku")
-    parser.add_argument("--loop", type=int, default=0, metavar="N",
-                        help="evaluate, debug, merge, evaluate again, up to N rounds")
+    parser.add_argument("--rounds", type=int, default=1, metavar="N",
+                        help="fix rounds after a run: the issues become debug cases, the debug "
+                             "workflow fixes them, the fixes merge, the task runs again "
+                             "(default 1; 0 only documents the issues)")
     parser.add_argument("--runs-dir", default=None)
     parser.add_argument("--root", default=None)
     args = parser.parse_args(argv)
@@ -34,7 +36,7 @@ def run(command: str, argv: list[str]) -> int:
           "owner": owner.ScriptedOwner(args.owner_model),
           "runs_dir": Path(args.runs_dir) if args.runs_dir else None}
     task = tasks.load(args.task)
-    if args.loop:
-        return loop.run_loop(root, task, rounds=args.loop, **kw)
+    if args.rounds > 0:   # DEC-309: the loop runs by itself; each fix round ends in a rerun
+        return loop.run_loop(root, task, rounds=args.rounds + 1, **kw)
     runmod.run_task(root, task, **kw)
     return 0
