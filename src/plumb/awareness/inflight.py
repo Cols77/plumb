@@ -401,10 +401,11 @@ def update(root: Path, mutate: Callable[[dict[str, Any]], dict[str, Any] | None]
            retries: int = RETRIES, retry_s: float = RETRY_S) -> dict[str, Any]:
     """Apply ``mutate`` to the register with compare-and-swap: read the ref, write the new
     blob, move the ref only if it still names the blob read; otherwise read again and
-    retry (jittered), at most ``retries`` times or ``retry_s`` seconds (``InflightBusy``).
+    retry (jittered), at most ``retries`` times or ``retry_s`` seconds of waiting between
+    tries (``InflightBusy``).
     ``mutate`` returning None or an equal register writes nothing."""
     root = Path(root)
-    start = time.monotonic()
+    waited = 0.0  # only the backoff counts: slow git under load must not end the tries
     for attempt in range(max(int(retries), 1)):
         code, out = _git(root, "rev-parse", "-q", "--verify", REF)
         old = out.decode().strip() if code == 0 and out.strip() else None
@@ -426,9 +427,11 @@ def update(root: Path, mutate: Callable[[dict[str, Any]], dict[str, Any] | None]
         if code == 0:
             _write_json(_cache_path(root), {"oid": new, "data": changed})
             return changed
-        if time.monotonic() - start > retry_s:
+        if waited > retry_s:
             break
-        time.sleep(random.uniform(0.005, 0.03) * (1 + min(attempt, 5)))
+        pause = random.uniform(0.005, 0.03) * (1 + min(attempt, 5))
+        waited += pause
+        time.sleep(pause)
     raise InflightBusy(f"{REF} kept moving")
 
 
