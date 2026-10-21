@@ -1,0 +1,5 @@
+[
+  "Build a two-player tic-tac-toe I can play at the keyboard: `python game.py`. It prints the board after every move, prompts `X: ` then `O: ` for a cell number 1 to 9 (1 is top left), rejects a taken or invalid cell with `invalid` and asks again, and prints `X wins` or `O wins` when a line is made, then exits.",
+  "When the board fills with no winner, print `draw`, clear the board and start a new game instead of exiting.",
+  "Keep a score across games: after each game ends, print `score X <n> O <m>`. An empty line at a prompt quits."
+]
