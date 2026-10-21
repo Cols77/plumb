@@ -300,9 +300,9 @@ prints the read-back, the relevant records and the open assumptions, and names t
 (for example `plumb: check skipped (budget): tests` at session start): evidence detail is
 dropped first, never the intent lines.
 
-At a merge boundary, run `uv run plumb merge-check main`: it runs the full suite at most once
-(only when full verification is pending or touched acceptance tests lack evidence), checks
-claims, links and log integrity, lists the approvals you did not type (agent-relayed,
+At a merge boundary, run `uv run plumb merge-check main`: it is quick and runs no test (with
+`--run`, or in the pre-push hook, it runs the full suite at most once, only when full
+verification is pending or touched acceptance tests lack evidence), checks claims, links and log integrity, lists the approvals you did not type (agent-relayed,
 auto-jev, import) with their revoke commands, and exits like `plumb validate --merge`
 (which reports without running anything). `plumb merge-check --install-pre-push` makes it a
 git pre-push hook (your choice). The report-only form:
@@ -445,7 +445,7 @@ during the turn.
 
 | Command | What it does |
 |---|---|
-| `plumb merge-check [BASE] [--no-run] [--json]` | The merge boundary: at most one full run, claims, links, log integrity, the glance of approvals you did not type, advisory fidelity. Exit codes as above. |
+| `plumb merge-check [BASE] [--run] [--json]` | The merge boundary, quick (no test run); `--run` adds at most one full run, claims, links, log integrity, the glance of approvals you did not type, advisory fidelity. Exit codes as above. |
 | `plumb merge-check --install-pre-push` / `--uninstall-pre-push` | The git pre-push hook, where the one full run happens; `plumb init` and `plumb hooks install` write it by default (R17). |
 
 ### Parallel work (the agent's interface)
@@ -541,7 +541,7 @@ plumb has been dogfooded from day one: this repository is developed with plumb.
   `scripts/drive_session.py` replays a whole Claude Code session through the installed hooks
   and times each one against the 2-second limit; `--capture` replays the capture flow (on a
   scratch copy) and `--merge-check BASE` adds the merge boundary report.
-- Before a merge, run `plumb merge-check main` (one full run when needed). On plumb itself it
+- Before a merge, run `plumb merge-check main` (quick; `--run` adds one full run when needed). On plumb itself it
   exits 4: the records await the owner.
 - Review findings: only HIGH findings are fixed in the change that raised them. Medium and low
   findings go to `docs/followups.md`.

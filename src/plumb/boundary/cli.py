@@ -1,4 +1,4 @@
-"""``plumb merge-check [BASE] [--no-run] [--json] [--hook pre-push]`` and
+"""``plumb merge-check [BASE] [--run | --no-run] [--json] [--hook pre-push]`` and
 ``plumb merge-check --install-pre-push | --uninstall-pre-push`` (sp3, SR-047 to SR-052)."""
 
 from __future__ import annotations
@@ -196,6 +196,10 @@ def run(command: str, argv: list[str]) -> int:
                              "merge.default_base, main)")
     parser.add_argument("--no-run", action="store_true",
                         help="never run the full suite; report what would hold")
+    parser.add_argument("--run", action="store_true",
+                        help="run the full suite once when full verification is pending and "
+                             "record the merge evidence on green (without it the check is "
+                             "quick: it reads the recorded evidence and runs no test)")
     parser.add_argument("--hook", choices=["pre-push", "pre-merge-commit",
                                            "prepare-commit-msg", "post-merge", "post-commit"],
                         default=None,
@@ -268,4 +272,6 @@ def run(command: str, argv: list[str]) -> int:
     if args.hook == "pre-push":
         return _hook_pre_push(core, not args.no_run)
     base = args.base or str(merge_settings(core)["default_base"])
-    return int(_print_report(core, base, run_full=not args.no_run, as_json=args.as_json).exit)
+    # SR-260: by hand the check is the quick one; only the pre-push hook or --run runs tests
+    run_full = args.run and not args.no_run
+    return int(_print_report(core, base, run_full=run_full, as_json=args.as_json).exit)

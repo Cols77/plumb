@@ -145,8 +145,17 @@ def test_cli_single_base_runs_once(red, capsys) -> None:
     from plumb import cli
 
     root, sha, runner = red
-    assert cli.main(["merge-check", sha, "--root", str(root)]) == 5
+    assert cli.main(["merge-check", sha, "--run", "--root", str(root)]) == 5
     assert runner.calls == 1
+
+
+def test_cli_without_run_runs_nothing(red, capsys) -> None:
+    """A bare ``plumb merge-check`` is the quick check: it never starts the full suite."""
+    from plumb import cli
+
+    root, sha, runner = red
+    cli.main(["merge-check", sha, "--root", str(root)])
+    assert runner.calls == 0
 
 
 def test_hook_many_bases_runs_once(red, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
