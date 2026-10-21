@@ -313,16 +313,27 @@ def _commit(root: Path, removed: list[str], archived: list[str], head: str) -> N
     spec = root / ".plumb" / "cache" / f"landing-{head[:12]}.paths"
     spec.parent.mkdir(parents=True, exist_ok=True)
     message = f"plumb: tidy after the landing of {head[:12]}" + chr(10) * 2 + "SR: SR-296"
+    # a local kind's new segment is ignored by git: naming it would fail the whole commit
+    known = {".plumb/log/" + n for n in log.tracked_names(root)}
+    paths = [p for p in [*removed, *archived] if p in known or not (
+        p.startswith(".plumb/log/") and p.split("/")[2] in log.LOCAL_KINDS)]
     try:
-        log.stage(root, archived)
-        spec.write_bytes(chr(0).join([*removed, *archived]).encode("utf-8"))
-        done = subprocess.run(["git", "commit", "-q", "--no-verify", "-m", message,
-                               f"--pathspec-from-file={spec}", "--pathspec-file-nul"],
-                              cwd=root, env={**os.environ, "GIT_LITERAL_PATHSPECS": "1"},
-                              capture_output=True, text=True, encoding="utf-8",
-                              errors="replace")
-        if done.returncode:
-            raise RuntimeError(f"git commit: {done.stderr.strip()[:200]}")
+        for attempt in range(5):  # a git process just after the merge may still hold index.lock
+            try:
+                log.stage(root, archived)
+                spec.write_bytes(chr(0).join(paths).encode("utf-8"))
+                done = subprocess.run(["git", "commit", "-q", "--no-verify", "-m", message,
+                                       f"--pathspec-from-file={spec}", "--pathspec-file-nul"],
+                                      cwd=root, env={**os.environ, "GIT_LITERAL_PATHSPECS": "1"},
+                                      capture_output=True, text=True, encoding="utf-8",
+                                      errors="replace")
+                if done.returncode:
+                    raise RuntimeError(f"git commit: {done.stderr.strip()[:200]}")
+                return
+            except RuntimeError as exc:
+                if "index.lock" not in str(exc) or attempt == 4:
+                    raise
+                time.sleep(2)
     finally:
         spec.unlink(missing_ok=True)
 

@@ -75,6 +75,18 @@ def test_ex1_the_landing_tidies_compacts_and_names_both(repo: Path) -> None:
 
 
 @pytest.mark.sr("SR-296")
+def test_a_tracked_local_kind_entry_compacts_into_a_committed_deletion(repo: Path) -> None:
+    put(repo, "job-note", {"kind": "k", "job": "j", "detail": "d"})
+    run_git(repo, "add", "-f", ".plumb/log/job-note")
+    commit_all(repo, "a job-note tracked before it became local")
+    sha, before = land_branch(repo, lambda root: docs(root, "x.md"))
+    result = landing.land(repo, sha, before)
+    assert result["archived"] == 1 and not debug_cases(repo, sha)
+    assert run_git(repo, "ls-files", "--deleted", "--", ".plumb/log").stdout == ""
+    assert run_git(repo, "log", "-1", "--format=%B").stdout.rstrip().endswith("SR: SR-296")
+
+
+@pytest.mark.sr("SR-296")
 def test_ex2_every_waiting_record_is_queued_by_the_landing(repo: Path, write_record,
                                                             engine_standins) -> None:
     from plumb.understand import backlog, files
