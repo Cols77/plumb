@@ -43,6 +43,7 @@ HOOKS: tuple[tuple[str, str, str | None, bool], ...] = (
     ("edit-check", "PostToolUse", POST_EDIT_MATCHER, False),
     ("stop", "Stop", None, False),
     ("subagent-stop", "SubagentStop", None, False),
+    ("session-end", "SessionEnd", None, False),
     # SHOW S4: refuses the edit tools while the gate of the session is closed (a shell script,
     # `templates/gate.sh`, copied to `.claude/plumb/gate.sh`; `plumb hook pre-tool` is the
     # Python route of the same decision)

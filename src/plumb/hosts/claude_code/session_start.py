@@ -179,6 +179,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     except Exception:  # noqa: BLE001 - a broken panel file never costs the records brief
         pass
     timer.mark("handshake")
+    # a resumed session is live again: its folder must not go at the next landing
+    (ctx.session_dir / ctx.session_id / "ended.json").unlink(missing_ok=True)
     try:
         return _handle(ctx, verify, timer)
     finally:

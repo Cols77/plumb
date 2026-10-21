@@ -1,10 +1,10 @@
 """The landing job (SR-296): after a merge into the default branch, in the background, in
 order: the tidy of what the landed records supersede (SR-286), the log compaction (SR-287),
-the finished worktrees removed (DEC-190), the judge backlog queued (SR-298), then every count the status still shows written down as
+the finished worktrees removed (DEC-190), the folders of ended sessions removed, the judge backlog queued (SR-298), then every count the status still shows written down as
 debug cases (SR-300). Each step's failure is itself a case and the next step still runs.
 
 It writes only main's tree and log (SR-301): never another worktree (but a finished, clean one it removes), another session's loop,
-gate or cards, and it keeps a path an in-flight branch changed. A marker under
+gate or cards (but the folder of a session its SessionEnd hook marked ended), and it keeps a path an in-flight branch changed. A marker under
 ``.plumb/cache/landed/`` makes a second run for the same landing change nothing; the marker
 holds the line the next turn reads (``lines``)."""
 
@@ -401,6 +401,24 @@ def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], l
     return removed, kept
 
 
+def ended_sessions(root: Path, session: str) -> list[str]:
+    """Remove each ``.plumb/session/<id>/`` the SessionEnd hook marked (``ended.json``), never
+    ``session``'s own and never an unmarked one (owner, 2026-10-20: no age-based deletion).
+    A folder that will not go (a file still open) stays for the next landing."""
+    from plumb.understand import files
+
+    own = files.session_dir(root, session).name
+    gone: list[str] = []
+    for folder in sorted((Path(root) / ".plumb" / "session").glob("*/ended.json")):
+        folder = folder.parent
+        if folder.name == own:
+            continue
+        shutil.rmtree(folder, ignore_errors=True)
+        if not folder.exists():
+            gone.append(folder.name)
+    return gone
+
+
 def land(root: Path, head: str, before: str, session: str | None = None) -> dict[str, Any]:
     """Run the landing's steps once; the result is also the marker's content."""
     from plumb.api import open_core
@@ -419,6 +437,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     queued_line = ""
     gone: list[str] = []
     kept: list[str] = []
+    ended: list[str] = []
 
     def step(name: str, run: Any) -> None:
         try:
@@ -457,6 +476,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     step("compaction", do_compact)
     step("commit", do_commit)
     step("worktrees", do_worktrees)
+    step("sessions", lambda: ended.extend(ended_sessions(root, session)))
     step("backlog", do_queue)
     step("counts", lambda: cases.extend(status_cases(open_core(root), session, queued_line)))
     moved = sum(1 for p in archived if not p.endswith("archive.jsonl"))
@@ -465,11 +485,12 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
              f"compacted {moved} log entries" if moved else "",
              f"removed finished worktrees {', '.join(gone)}" if gone else "",
              *kept,
+             f"removed {len(ended)} ended session folders" if ended else "",
              f"queued {queued} records for the judge",
              f"{len(cases)} cases went to debugging"]
     line = f"plumb: landing {head[:12]}: " + "; ".join(p for p in parts if p)
     result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
-              "queued": queued, "worktrees": gone, "kept": kept, "cases": len(cases)}
+              "queued": queued, "worktrees": gone, "kept": kept, "sessions": ended, "cases": len(cases)}
     summary.write_cases(open_core(root), head, [{**c, "state": "open"} for c in cases])
     files.write_json_atomic(done, result)
     return result

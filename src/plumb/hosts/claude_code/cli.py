@@ -18,10 +18,11 @@ HOOK_MODULES: dict[str, str] = {
     "question-answer": "plumb.hosts.claude_code.question_answer",
     "stop": "plumb.hosts.claude_code.stop",
     "subagent-stop": "plumb.hosts.claude_code.subagent_stop",
+    "session-end": "plumb.hosts.claude_code.session_end",
     "pre-tool": "plumb.hosts.claude_code.pretool",  # SHOW's module; until then it allows
 }
 
-_HOOK_USAGE = ("usage: plumb hook {session-start|prompt|post-edit|edit-check|question-answer|stop|subagent-stop|pre-tool} [--root PATH]\n"
+_HOOK_USAGE = ("usage: plumb hook {session-start|prompt|post-edit|edit-check|question-answer|stop|subagent-stop|session-end|pre-tool} [--root PATH]\n"
                "Claude Code hook entry points: read the host's JSON on stdin, answer on "
                "stdout, always exit 0.\n")
 

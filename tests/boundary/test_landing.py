@@ -396,3 +396,25 @@ def test_a_helper_or_tsx_file_linked_as_a_test_is_no_unrun_case(repo: Path) -> N
     commit_all(repo, "linked")
     cases = landing.status_cases(open_core(repo), "", "")
     assert {c["target"] for c in cases if c["kind"] == "unrun-test"} <= {"tests/test_real.py"}
+
+
+@pytest.mark.sr("SR-338")
+def test_ex2_ended_session_folders_go_unmarked_ones_stay(repo: Path) -> None:
+    sessions = repo / ".plumb" / "session"
+    for name in ("ended", "live"):
+        (sessions / name).mkdir(parents=True)
+        (sessions / name / "gate").write_text("{}", encoding="utf-8")
+    (sessions / "ended" / "ended.json").write_text("{}", encoding="utf-8")
+    sha, before = land_branch(repo, lambda root: docs(root, "x.txt"))
+    result = landing.land(repo, sha, before)
+    assert result["sessions"] == ["ended"]
+    assert not (sessions / "ended").exists() and (sessions / "live" / "gate").exists()
+    assert "removed 1 ended session folders" in result["line"]
+
+
+@pytest.mark.sr("SR-338")
+def test_ex3_the_landings_own_session_folder_stays(repo: Path) -> None:
+    own = repo / ".plumb" / "session" / "s-own"
+    own.mkdir(parents=True)
+    (own / "ended.json").write_text("{}", encoding="utf-8")
+    assert landing.ended_sessions(repo, "s-own") == [] and own.is_dir()
