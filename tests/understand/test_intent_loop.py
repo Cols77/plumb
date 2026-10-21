@@ -14,7 +14,7 @@ from capture.capture_helpers import log_prompt
 from plumb.api import open_core
 from plumb.capture import proof
 from plumb.contracts import Target
-from plumb.understand import clarify, cmd_intent, files, gate, hooks, typed, worker
+from plumb.understand import cardstore, clarify, cmd_intent, files, gate, hooks, typed, worker
 from understand.test_read_job import int_text, record_text
 
 pytestmark = pytest.mark.sr("SR-222")
@@ -76,6 +76,34 @@ def test_ex1_the_typed_command_is_checked_and_opens_the_loop(repo: Path, engine_
         "clarify": "open", "plan": "open", "build": "open"}
     assert "intent loop open" in capsys.readouterr().out
     assert not list((repo / ".plumb" / "intents").glob("*.md"))   # no record until it is clear
+
+
+def test_the_same_words_retyped_get_a_new_check_and_a_fresh_loop(
+        repo: Path, engine_standins: Any) -> None:
+    """A retyped /plumb intent is a new request: its check runs under its own job id, so the
+    first send's "couldn't check" card closes once that check settles, and the loop starts
+    over instead of carrying the first send's stages."""
+    text = "/plumb intent " + WORDS
+    engine_standins.dispatcher.script = {"clarify": NO_GAP}
+    digest = _say(repo, text)
+    worker.run_once(open_core(repo), SESSION)
+    assert _run(repo, "open", "--wait", "--timeout", "5") == 0
+    path = cmd_intent.loop_path(repo, SESSION, digest)
+    files.write_json_atomic(path, {**files.read_json(path), "intent": "INT-001",
+                                   "stages": {s: {"state": "passed"} for s in ("clarify", "plan")}
+                                   | {"build": {"state": "open"}}})
+    clarify.write_couldnt_check(repo, SESSION, digest)
+    first = _jobs(repo)
+    log_prompt(repo, text, session=SESSION, at="2999-01-01T00:00:00Z")   # after the loop opened
+    hooks.on_prompt(SimpleNamespace(session_id=SESSION), open_core(repo),
+                    {"digest": digest, "text": text})
+    assert [j for j in _jobs(repo) if j not in first and j.startswith("clarify-")]
+    worker.run_once(open_core(repo), SESSION)
+    assert [c.status for c in cardstore.own_cards(repo, SESSION)
+            if c.id == clarify.couldnt_card_id(digest)] == ["closed"]
+    assert _run(repo, "open", "--wait", "--timeout", "5") == 0
+    loop = files.read_json(path)
+    assert loop["intent"] is None and loop["step"] == "clarify"
 
 
 def test_a_later_bare_slash_command_does_not_lose_the_loop(repo: Path,
