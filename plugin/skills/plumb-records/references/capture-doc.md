@@ -31,7 +31,9 @@ sha256 of the owner's message: `message_digest` in `plumb clarify --wait --json`
 - Give edge cases their own examples (here `a = 0`).
 - `proof` is how the owner will see it working, matched to what changed: `kind` is
   `live-session` (anything drawn on screen), `hook`, `command` or `other`. Record the evidence
-  once shown: `plumb proof SR-### --evidence <path> --summary "..." --passed`.
+  once shown: `plumb proof SR-### --evidence <path> --summary "..." --passed`. Add
+  `"post_merge": true` to a proof the owner agreed can only be shown after the branch lands
+  (SR-341): the merge check does not hold on it; the turn after the landing asks for it.
 - `supersedes: ["SR-076"]` on a requirement retires existing requirements the new one replaces
   (a `supersedes` link; capture names the old one's still-tested examples, so move them with
   `updates` first). Capture also names live requirements the new ones contradict or may change.

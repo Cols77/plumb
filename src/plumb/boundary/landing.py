@@ -6,7 +6,9 @@ debug cases (SR-300). Each step's failure is itself a case and the next step sti
 It writes only main's tree and log (SR-301): never another worktree (but a finished, clean one it removes), another session's loop,
 gate or cards (but the folder of a session its SessionEnd hook marked ended), and it keeps a path an in-flight branch changed. A marker under
 ``.plumb/cache/landed/`` makes a second run for the same landing change nothing; the marker
-holds the line the next turn reads (``lines``)."""
+holds the line the next turn reads (``lines``), and the requirements the landing delivered
+whose proof was agreed as post-merge (SR-341), which the next turn tells the agent to show
+and ask the owner about until the owner confirmed them."""
 
 from __future__ import annotations
 
@@ -37,6 +39,50 @@ def _git(root: Path, *args: str) -> str:
 
 def marker(root: Path, head: str) -> Path:
     return Path(root) / ".plumb" / "cache" / "landed" / f"{head}.json"
+
+
+# --------------------------------------------------------------------------- post-merge proofs
+
+
+def post_merge_proofs(core: Any, before: str, head: str) -> list[str]:
+    """SR-341: the requirements the commits of ``before..head`` deliver (their SR trailers)
+    whose proof was agreed as post-merge."""
+    from plumb.capture.proof import post_merge
+    from plumb.claims import claimed_ids, trailer_aliases
+
+    aliases = trailer_aliases(core)
+    index = core.index()
+    ids: dict[str, None] = {}
+    for entry in _git(Path(core.root), "log", "--format=%H%x1f%B%x00",
+                      f"{before}..{head}").split("\0"):
+        sha, _sep, message = entry.strip("\n").partition("\x1f")
+        for i in claimed_ids(aliases, sha, message) if sha else ():
+            record = index.get(i)
+            if record is not None and record.kind == "requirement" and post_merge(record):
+                ids[i] = None
+    return list(ids)
+
+
+def proof_lines(root: Path, ids: Iterable[str]) -> list[tuple[str, str]]:
+    """SR-341 EX-2: for each landed post-merge proof the owner has not yet confirmed, the
+    agent's line: show it now and ask the owner."""
+    from plumb.api import open_core
+    from plumb.capture.proof import owner_confirmed, proof_of
+
+    core = open_core(root)
+    index = core.index()
+    out: list[tuple[str, str]] = []
+    for i in ids:
+        record = index.get(i)
+        if record is None or owner_confirmed(core, i):
+            continue
+        plan = " ".join(str((proof_of(record) or {}).get("plan") or "").split())
+        out.append((f"post-merge-proof:{i}",
+                    f"plumb: {i} has landed and its proof was agreed as post-merge: show it "
+                    f"now ({plan}), record it (plumb proof {i} --evidence ... --summary ... "
+                    f"--passed) and ask the owner whether they saw it working "
+                    f"(plumb proof {i} --ask)"))
+    return out
 
 
 # --------------------------------------------------------------------------- start
@@ -438,6 +484,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     gone: list[str] = []
     kept: list[str] = []
     ended: list[str] = []
+    proofs: list[str] = []
 
     def step(name: str, run: Any) -> None:
         try:
@@ -472,6 +519,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         gone.extend(found[0])
         kept.extend(found[1])
 
+    step("proofs", lambda: proofs.extend(post_merge_proofs(open_core(root), before, head)))
     step("tidy", do_tidy)
     step("compaction", do_compact)
     step("commit", do_commit)
@@ -486,11 +534,13 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
              f"removed finished worktrees {', '.join(gone)}" if gone else "",
              *kept,
              f"removed {len(ended)} ended session folders" if ended else "",
+             f"post-merge proofs to show: {', '.join(proofs)}" if proofs else "",
              f"queued {queued} records for the judge",
              f"{len(cases)} cases went to debugging"]
     line = f"plumb: landing {head[:12]}: " + "; ".join(p for p in parts if p)
     result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
-              "queued": queued, "worktrees": gone, "kept": kept, "sessions": ended, "cases": len(cases)}
+              "queued": queued, "worktrees": gone, "kept": kept, "sessions": ended, "cases": len(cases),
+              "post_merge": proofs}
     summary.write_cases(open_core(root), head, [{**c, "state": "open"} for c in cases])
     files.write_json_atomic(done, result)
     return result
@@ -508,6 +558,7 @@ def lines(root: Path) -> list[tuple[str, str]]:
         data = json.loads(latest.read_text(encoding="utf-8"))
         if data.get("line"):
             out.append((latest.stem, str(data["line"])))
+        out.extend(proof_lines(Path(root), data.get("post_merge") or ()))
     except (OSError, ValueError, AttributeError):
         pass
     open_rows, resolved = summary.open_cases(root)
