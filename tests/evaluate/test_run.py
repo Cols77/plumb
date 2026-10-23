@@ -18,8 +18,10 @@ class Claude:
     def __init__(self, capped_at=None):
         self.calls, self.capped_at = [], capped_at
 
-    def __call__(self, binary, scratch, message, *, model, session_id, system, timeout_s, env):
+    def __call__(self, binary, scratch, message, *, model, session_id, system, timeout_s, env,
+                 max_turns=None):
         self.calls.append((model, session_id, message))
+        self.limits = (timeout_s, max_turns)
         return {"text": "ok", "session_id": "s1", "error": "",
                 "capped": self.capped_at == len(self.calls)}
 
@@ -38,9 +40,10 @@ def task(tmp_path: Path) -> Task:
     return Task("simple", "agent", "owner", ["one", "two"], tmp_path / "checks")
 
 
-def go(tmp_path, claude, owner=None, model="haiku"):
+def go(tmp_path, claude, owner=None, model="haiku", limits=None):
     return run.run_task(tmp_path / "root", task(tmp_path), model=model, owner=owner or Owner(False),
-                        runs_dir=tmp_path / "runs", claude=claude, binary="claude")
+                        runs_dir=tmp_path / "runs", claude=claude, binary="claude",
+                        limits=limits or {"exchanges": 3})
 
 
 @pytest.mark.sr("SR-344")
@@ -117,3 +120,19 @@ def test_claude_turn_lets_the_agent_run_python_and_plumb(tmp_path, monkeypatch):
     assert got["session_id"] == "s9" and not got["capped"]
     assert "Bash(python:*)" in seen["argv"] and "Bash(plumb:*)" in seen["argv"]
     assert seen["env"]["PATH"].startswith(str(Path(sys.executable).parent))
+
+
+@pytest.mark.sr("SR-345")
+def test_without_limits_the_owner_answers_until_the_agent_stops_asking(tmp_path):
+    """DEC-308: no limit by default; a named limit applies, and no turn or time cap is passed."""
+    class Tires(Owner):
+        def answer(self, brief, request, reply):
+            self.calls += 1
+            return {"asks": self.calls % 6 != 0, "answer": "ans"}
+    claude = Claude()
+    result = go(tmp_path, claude, Tires(True), limits=run.NO_LIMITS)
+    assert result.unanswered == 0 and [c[2] for c in claude.calls].count("ans") == 10
+    assert claude.limits == (None, None)
+    named = Claude()
+    go(tmp_path, named, Owner(False), limits={"turns": 7, "minutes": 2})
+    assert named.limits[1] == 7 and 0 < named.limits[0] <= 120

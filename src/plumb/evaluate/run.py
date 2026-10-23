@@ -17,9 +17,8 @@ from typing import Any
 from plumb.evaluate import issues as issues_mod
 from plumb.evaluate import score as score_mod
 
-TURN_CAP = 25            # --max-turns per request
-OWNER_CAP = 3            # exchanges per request
-RUN_CAP_S = 20 * 60      # per run
+# DEC-308: the owner chose no limits by default; each limit is set only when named (None: none)
+NO_LIMITS = {"exchanges": None, "turns": None, "minutes": None}
 # what the agent may run unasked in the scratch repository (headless: nobody answers a prompt)
 ALLOWED_TOOLS = ("Bash(python:*)", "Bash(python3:*)", "Bash(plumb:*)", "Bash(git:*)",
                  "Bash(pytest:*)", "Bash(ls:*)", "Bash(cat:*)", "Bash(echo:*)")
@@ -65,11 +64,12 @@ def scratch_repo(parent: Path) -> Path:
 
 
 def claude_turn(binary: str, scratch: Path, message: str, *, model: str, session_id: str | None,
-                system: str, timeout_s: float, env: dict[str, str] | None = None
-                ) -> dict[str, Any]:
+                system: str, timeout_s: float | None, env: dict[str, str] | None = None,
+                max_turns: int | None = None) -> dict[str, Any]:
     """One headless ``claude -p`` call in the scratch repository."""
     argv = [binary, "-p", "--model", model, "--output-format", "json",
-            "--max-turns", str(TURN_CAP), "--permission-mode", "acceptEdits",
+            *(["--max-turns", str(max_turns)] if max_turns else []),
+            "--permission-mode", "acceptEdits",
             "--setting-sources", "project", "--append-system-prompt", system,
             *(["--resume", session_id] if session_id else []),
             "--allowedTools", *ALLOWED_TOOLS]
@@ -95,15 +95,18 @@ def claude_turn(binary: str, scratch: Path, message: str, *, model: str, session
     text = str(data.get("result") or "")
     maxed = "max_turns" in str(data.get("subtype", "")) or "max turns" in text.lower()
     return {"text": text, "session_id": data.get("session_id") or session_id,
-            "capped": maxed or int(data.get("num_turns") or 0) >= TURN_CAP,
+            "capped": maxed or bool(max_turns and int(data.get("num_turns") or 0) >= max_turns),
             "error": text[:300] if data.get("is_error") and not maxed else ""}
 
 
 def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | None = None,
-             claude=claude_turn, now=time.monotonic, binary: str | None = None) -> RunResult:
+             claude=claude_turn, now=time.monotonic, binary: str | None = None,
+             limits: dict[str, int | None] | None = None) -> RunResult:
     binary = binary or shutil.which("claude")
     if binary is None:   # raised before any folder is made (SR-344 EX-3)
         raise RuntimeError("the claude command was not found on this machine")
+    limits = {**NO_LIMITS, **(limits or {})}
+    run_cap_s = limits["minutes"] * 60 if limits["minutes"] else None
     root = Path(root)
     run_dir = (runs_dir or root / ".plumb" / "eval" / "runs") / (
         f"{time.strftime('%Y%m%dT%H%M%S')}-{task.name}-{model}")
@@ -114,13 +117,14 @@ def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | 
 
     def send(n: int, message: str, source: str) -> Turn:
         transcript.append(Turn("owner", message, n, source))
-        left = RUN_CAP_S - (now() - state["start"])
-        if left <= 0:
+        left = None if run_cap_s is None else run_cap_s - (now() - state["start"])
+        if left is not None and left <= 0:
             state["out_of_time"] = True
             turn = Turn("agent", "", n, "capped")
         else:
             got = claude(binary, scratch, message, model=model, session_id=state["session"],
-                         system=task.agent_brief, timeout_s=left, env=None)
+                         system=task.agent_brief, timeout_s=left, env=None,
+                         max_turns=limits["turns"])
             state["session"] = got.get("session_id") or state["session"]
             turn = Turn("agent", got.get("text") or got.get("error") or "", n,
                         "capped" if got.get("capped") else "error" if got.get("error") else "")
@@ -135,7 +139,7 @@ def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | 
             verdict = owner.answer(task.owner_brief, request, reply.text)
             if not verdict["asks"]:
                 break
-            if sent == OWNER_CAP:
+            if limits["exchanges"] is not None and sent >= limits["exchanges"]:
                 unanswered += 1
                 break
             reply = send(n, verdict["answer"], "scripted-owner")
