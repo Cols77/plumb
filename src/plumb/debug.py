@@ -15,6 +15,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,8 @@ LINE = "plumb: debug: {n} cases, {resolved} resolved, {open} still in debugging"
 STORE = (".plumb", "cache", "debug")
 DANGLING = "its target no longer exists, so there is nothing to repin to: relink it"
 OWN_KINDS = frozenset({"landing-step", "validate"})   # DEC-316: plumb's own, at a landing
+READY_REPIN = ("plumb: the repins of {branch} ({detail}) are committed, tests passed: ready to "
+               "land; merge it like any branch, through the merge check")
 READY = ("plumb: self-fix {branch} ({kind}: {detail}) is committed and reviewed: ready to "
          "land; merge it like any branch, through the merge check")
 FIXED = "plumb: the plumb defect you hit is fixed in main ({kind}: {detail}); retry {retry}"
@@ -157,7 +160,8 @@ def lines(root: Path | str, session: str) -> list[tuple[str, str]]:
     for row in all_cases(root):
         what = {k: str(row.get(k) or "") for k in ("branch", "kind", "detail", "target")}
         if row.get("branch") and not row.get("landed"):
-            out.append((f"ready:{row['id']}", READY.format(**what)))
+            out.append((f"ready:{row['id']}",
+                        (READY_REPIN if what["kind"] == "repin" else READY).format(**what)))
         elif row.get("landed") and row.get("session") == session:
             retry = RETRY.get(what["kind"], "what failed ({target})").format(**what)
             out.append((f"fixed:{row['id']}", FIXED.format(retry=retry, **what)))
@@ -248,6 +252,76 @@ def _fix(core: Any, ids: list[str]) -> int:
     return 0 if outcomes and all(o.state == "fixed" for _, o in outcomes) else 1
 
 
+def on_branch(core: Any, work: Any, *, dry_run: bool = False) -> tuple[Any, str]:
+    """SR-351 (DEC-323): ``work(core)`` -> result, made in plumb's own repository in a worktree
+    on ``debug/repin`` (built from main's committed head, so uncommitted or untracked work in
+    main is not seen), the edits committed there with the SR trailer and announced as ready to
+    land (``lines``); the checkout is left unchanged. The branch starts over from main's head
+    each pass (the links are re-derived, so an unlanded earlier commit is replaced, and kept
+    when this pass changes nothing). Elsewhere, ``work(core)`` runs in place. ``(result,
+    error)``: error says why the commit failed (the edits are then dropped)."""
+    from plumb import selfdebug
+    from plumb.api import open_core
+
+    root = Path(core.root)
+    if dry_run or not (root / ".git").is_dir() or not selfdebug._own(root):
+        return work(core), ""
+    wt = prev = result = None
+    try:
+        wt, branch = selfdebug._worktree(root, "repin")
+        prev = selfdebug._git(wt, "rev-parse", "HEAD").strip()
+        head = selfdebug._git(root, "rev-parse", "HEAD").strip()
+        selfdebug._git(wt, "reset", "-q", "--hard", head)
+        wt_core = open_core(wt)
+        result = work(wt_core)
+        selfdebug._git(wt, "add", "-u")
+        changed = selfdebug._git(wt, "diff", "--cached", "--name-only").split()
+        if not changed:
+            selfdebug._git(wt, "reset", "-q", "--hard", prev)
+            return result, ""
+        names = sorted({Path(f).stem for f in changed})
+        linked = {link.target.record for n in names if n in wt_core.index()
+                  for link in wt_core.index()[n].links if link.target.record}
+        srs = sorted({n for n in (*names, *linked) if n.startswith("SR-")})
+        sr_line = f"SR: {', '.join(srs)}\n\n" if srs else ""
+        text = (f"Repin the stale links of {', '.join(names)}\n\n{sr_line}"
+                "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n")
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                         encoding="utf-8") as f:
+            f.write(text)
+        try:
+            selfdebug._git(wt, "commit", "-q", "-F", f.name)
+        finally:
+            Path(f.name).unlink(missing_ok=True)
+    except Exception as exc:  # noqa: BLE001 - the case is reported open with the reason
+        if wt is not None:
+            selfdebug._git(wt, "reset", "-q", "--hard", *([prev] if prev else []), check=False)
+            selfdebug._git(wt, "clean", "-fdq", check=False)
+        why = str(getattr(exc, "stderr", None) or exc).strip()
+        return result, f"the repin pass failed: {why}"
+    for row in all_cases(root):   # one announcement: an unlanded earlier pass is replaced
+        if row.get("kind") == "repin" and not row.get("landed"):
+            _case_path(root, row["id"]).unlink(missing_ok=True)
+    sha = selfdebug._git(wt, "rev-parse", "--short", "HEAD").strip()
+    path = _case_path(root, f"repin-{sha}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"id": f"repin-{sha}", "kind": "repin", "target": branch,
+                                "detail": f"repinned {', '.join(names)}", "state": "resolved",
+                                "branch": branch}, indent=1), encoding="utf-8")
+    return result, ""
+
+
+def _pass(core: Any, selectors: list[str], dry_run: bool) -> list[dict[str, str]]:
+    found, error = on_branch(core, lambda c: cases(c, selectors, dry_run=dry_run),
+                             dry_run=dry_run)
+    if error and found is None:
+        return [{"id": "repin", "state": "open", "what": error}]
+    if error:
+        found = [{**c, "state": "open", "what": error} if c["state"] == "resolved" else c
+                 for c in found]
+    return found
+
+
 def run(command: str, argv: list[str]) -> int:
     import argparse
 
@@ -277,7 +351,7 @@ def run(command: str, argv: list[str]) -> int:
         print(f"plumb: debug: case {flag(core.root, words)} opened; the fix runs in the "
               "background")
         return 0
-    found = cases(core, args.selector, dry_run=args.dry_run)
+    found = _pass(core, args.selector, args.dry_run)
     if not args.selector:
         found += _store_cases(core.root, found, args.dry_run)
         if not args.dry_run:
