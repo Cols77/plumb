@@ -132,6 +132,8 @@ def run(command: str, argv: list[str]) -> int:
     proposer.add_argument("--topic", default=None, help="what it is about (default: the title)")
     proposer.add_argument("--for", dest="serves", nargs="+", default=[], metavar="KEY",
                           help="the keys of the waiting questions it is studied ahead of")
+    proposer.add_argument("--asked", action="store_true",
+                          help="the owner asked for it: any time, outside every limit (SR-355)")
     adder = verbs.add_parser("add", help="write the study of an idea the owner accepted")
     adder.add_argument("slug")
     adder.add_argument("--file", required=True,
@@ -154,7 +156,7 @@ def run(command: str, argv: list[str]) -> int:
             from plumb.api import open_core
             from plumb.understand import cmd_intent
 
-            if args.serves:      # SR-336: ahead of waiting questions, inside a loop step or not
+            if args.serves or args.asked:   # SR-336, SR-355: inside a loop step or not
                 path, loop = Path(""), {"step": ""}
             elif _waiting(open_core(root), root, cmd_intent._session(args, root)):
                 raise ValueError("questions wait for the owner: propose a study with --for "
@@ -163,7 +165,7 @@ def run(command: str, argv: list[str]) -> int:
                 path, loop = _open_loop(root, args)
             slug = study.propose(root, title=args.title, why=args.why, depth=args.depth,
                                  loop=path.stem, step=str(loop.get("step")), topic=args.topic,
-                                 serves=args.serves)
+                                 serves=args.serves, asked=args.asked)
             emit({"slug": slug} if args.as_json else
                  f"plumb: study idea: {args.title} ({slug}); write nothing until the owner "
                  "accepts it in the band", args.as_json)
