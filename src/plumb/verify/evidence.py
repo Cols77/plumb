@@ -300,6 +300,17 @@ def aggregate(node_id: str, parts: list[NodeEvidence],
         from plumb.verify.markers import strip_param
 
         parts = [e for e in parts if strip_param(e.node_id) in live] or parts
+    # a parameter id an older run recorded but the newest run of its test no longer has was
+    # renamed or removed: the latest run wins. shortcut: assumes a run takes all of a test's
+    # parameters, not a -k subset; upgrade by storing the collected ids in the run.
+    from plumb.verify.markers import strip_param
+
+    newest: dict[str, str] = {}
+    for e in parts:
+        base = strip_param(e.node_id)
+        newest[base] = max(newest.get(base, ""), e.last_run or "")
+    parts = [e for e in parts if e.node_id == strip_param(e.node_id)
+             or (e.last_run or "") >= newest[strip_param(e.node_id)]]
     if not parts:
         return NodeEvidence(node_id=node_id, state="none")
     failed = any(e.last_failed for e in parts)
