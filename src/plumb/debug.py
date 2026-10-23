@@ -266,13 +266,14 @@ def on_branch(core: Any, work: Any, *, dry_run: bool = False) -> tuple[Any, str]
     root = Path(core.root)
     if dry_run or not (root / ".git").is_dir() or not selfdebug._own(root):
         return work(core), ""
-    wt, branch = selfdebug._worktree(root, "repin")
-    prev = selfdebug._git(wt, "rev-parse", "HEAD").strip()
-    head = selfdebug._git(root, "rev-parse", "HEAD").strip()
-    selfdebug._git(wt, "reset", "-q", "--hard", head)
-    wt_core = open_core(wt)
-    result = work(wt_core)
+    wt = prev = result = None
     try:
+        wt, branch = selfdebug._worktree(root, "repin")
+        prev = selfdebug._git(wt, "rev-parse", "HEAD").strip()
+        head = selfdebug._git(root, "rev-parse", "HEAD").strip()
+        selfdebug._git(wt, "reset", "-q", "--hard", head)
+        wt_core = open_core(wt)
+        result = work(wt_core)
         selfdebug._git(wt, "add", "-u")
         changed = selfdebug._git(wt, "diff", "--cached", "--name-only").split()
         if not changed:
@@ -292,9 +293,12 @@ def on_branch(core: Any, work: Any, *, dry_run: bool = False) -> tuple[Any, str]
             selfdebug._git(wt, "commit", "-q", "-F", f.name)
         finally:
             Path(f.name).unlink(missing_ok=True)
-    except subprocess.CalledProcessError as exc:
-        selfdebug._git(wt, "reset", "-q", "--hard", prev, check=False)
-        return result, f"the repin commit failed: {str(exc.stderr or exc).strip()}"
+    except Exception as exc:  # noqa: BLE001 - the case is reported open with the reason
+        if wt is not None:
+            selfdebug._git(wt, "reset", "-q", "--hard", *([prev] if prev else []), check=False)
+            selfdebug._git(wt, "clean", "-fdq", check=False)
+        why = str(getattr(exc, "stderr", None) or exc).strip()
+        return result, f"the repin pass failed: {why}"
     for row in all_cases(root):   # one announcement: an unlanded earlier pass is replaced
         if row.get("kind") == "repin" and not row.get("landed"):
             _case_path(root, row["id"]).unlink(missing_ok=True)
@@ -310,6 +314,8 @@ def on_branch(core: Any, work: Any, *, dry_run: bool = False) -> tuple[Any, str]
 def _pass(core: Any, selectors: list[str], dry_run: bool) -> list[dict[str, str]]:
     found, error = on_branch(core, lambda c: cases(c, selectors, dry_run=dry_run),
                              dry_run=dry_run)
+    if error and found is None:
+        return [{"id": "repin", "state": "open", "what": error}]
     if error:
         found = [{**c, "state": "open", "what": error} if c["state"] == "resolved" else c
                  for c in found]

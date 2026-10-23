@@ -99,10 +99,23 @@ def test_main_uncommitted_work_is_not_touched(stale_dec: Path) -> None:
     assert (stale_dec / "src" / "plumb" / "calc.py").read_text("utf-8") == "# edited"
 
 
-def test_the_turn_end_settle_lands_on_the_branch_too(stale_dec: Path) -> None:
+def test_a_failure_in_the_work_reports_open_and_cleans_the_worktree(
+        stale_dec: Path, capsys) -> None:
+    def work(c):
+        wt = stale_dec / ".plumb" / "wt" / "debug-repin"
+        (wt / "junk.txt").write_text("x", "utf-8")
+        raise RuntimeError("model fell over")
+
+    found, error = debug.on_branch(open_core(stale_dec), work)
+    assert "model fell over" in error
+    wt = stale_dec / ".plumb" / "wt" / "debug-repin"
+    assert not (wt / "junk.txt").exists()
+    assert _git(wt, "status", "--porcelain") == ""
+    assert debug._pass(open_core(stale_dec), [], False) is not None
+
+
+def test_the_turn_end_settle_stays_in_place(stale_dec: Path) -> None:
     from plumb import stale
 
-    core = open_core(stale_dec)
-    stale.settle_drift(core, "s1", [SimpleNamespace(record="DEC-001")])
-    assert _git(stale_dec, "status", "--porcelain", "--untracked-files=no") == ""
-    assert _git(stale_dec, "rev-list", "--count", "main..debug/repin").strip() == "1"
+    stale.settle_drift(open_core(stale_dec), "s1", [SimpleNamespace(record="DEC-001")])
+    assert _git(stale_dec, "branch", "--list", "debug/repin") == ""
