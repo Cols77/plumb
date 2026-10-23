@@ -331,7 +331,10 @@ def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog=f"plumb {command}",
         description="Run the debug cases once (stale links through tests and the meaning "
-                    "cascade) and say what each did and what it still needs. Never confirms.")
+                    "cascade) and say what each did and what it still needs. Never confirms.",
+        epilog="also: plumb debug fix [<case id>...] runs the self-debug workflow on open "
+               "cases; plumb debug done <case id>... closes cases settled by hand; plumb debug "
+               "report <words> opens a case from a description")
     add_common(parser)
     parser.add_argument("selector", nargs="*", help="record IDs or link ids; default: all")
     parser.add_argument("--dry-run", action="store_true",

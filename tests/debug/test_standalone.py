@@ -52,3 +52,12 @@ def test_ex2_the_smallest_model_gathers_evidence_the_middle_one_fixes_the_larges
     assert row["models"] == [{"stage": "evidence", "model": "haiku"},
                              {"stage": "round 1", "model": "sonnet"},
                              {"stage": "round 2", "model": "opus"}]
+
+
+def test_the_help_names_every_debug_subcommand_the_skill_tells_agents_to_run(
+        capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        debug.run("debug", ["--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    for sub in ("plumb debug fix", "plumb debug done", "plumb debug report"):
+        assert sub in text
