@@ -309,13 +309,30 @@ read_file "$plugin_root/vendor/MANIFEST.json"
 field "$f" sha256
 want=$v
 python=
+prev=
 read_file "$home/current.json"
 field "$f" wheel_sha256
 if [ -n "$want" ] && [ "$v" = "$want" ]; then
   field "$f" python
   python=$v
+else
+  # reinstalled mid-session, the new copy not ready: the previous copy keeps the checks going
+  # (SR-354 EX-1); the session start still begins the new copy's setup below
+  field "$f" python
+  prev=$v
+  if [ "$event" != session-start ] && [ -n "$prev" ] && [ -f "$prev" ]; then
+    python=$prev
+  fi
 fi
+
+error_line() {  # one line in this adopted project's .plumb/session/errors.log (SR-354 EX-2)
+  mkdir -p "$root/.plumb/session" 2>/dev/null &&
+    printf '%s\n' "plumb hook $event: $1" >> "$root/.plumb/session/errors.log" 2>/dev/null
+  return 0
+}
+
 if [ -z "$python" ] || [ ! -f "$python" ]; then
+  [ "$event" = session-start ] || error_line "plumb's private copy is not ready, so this check did not run"
   if [ -n "$own" ] && [ "$event" != session-start ]; then
     out=
     ready=
@@ -350,5 +367,5 @@ if [ -n "$own" ]; then
   exit 0
 fi
 printf '%s\n' "$input" | PLUMB_HOME=$home PLUMB_PLUGIN_ROOT=$plugin_root \
-  "$python" -m plumb hook "$event"
+  "$python" -m plumb hook "$event" || error_line "the check failed (exit $?)"
 exit 0

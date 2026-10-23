@@ -41,6 +41,25 @@ def _root_option(argv: list[str]) -> tuple[str | None, list[str]]:
     return root, rest
 
 
+def _cannot_run(root: str | None, event: str, why: str) -> None:
+    """One line naming the check and why it did not run, appended to the adopted project's
+    ``.plumb/session/errors.log`` (SR-354 EX-2); a project not adopted gets nothing (EX-3)."""
+    try:
+        from plumb.hosts.claude_code.hookio import find_hook_root
+
+        adopted = find_hook_root({}, root)
+        if adopted is None:
+            return
+        path = adopted / ".plumb" / "session" / "errors.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        line = " ".join(f"{stamp} plumb hook {event}: {why}".split())
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(line + "\n")
+    except Exception:  # noqa: BLE001 - the copy itself may be half gone; never block the turn
+        pass
+
+
 def _hook(argv: list[str]) -> int:
     start = time.monotonic()
     if any(a.split("=", 1)[0] in ("--host", "--format") for a in argv):
@@ -60,11 +79,14 @@ def _hook(argv: list[str]) -> int:
 
     try:
         module = importlib.import_module(module_name)
-    except ImportError:
+    except ImportError as exc:
         if event == "pre-tool":
             return 0  # stub: allow (no output)
-        # a hook missing from this build never blocks the turn
+        # a hook missing from this build, or a copy changed under a running session (a
+        # reinstall), never blocks the turn, but is not silent either: one line in an
+        # adopted project's errors.log, nothing in a project not adopted (SR-354 EX-2, EX-3)
         sys.stderr.write(f"plumb: hook '{event}' is not available in this build\n")
+        _cannot_run(root, event, f"its code could not be loaded ({exc})")
         return 0
     return int(module.main(root=root, watchdog=True, start=start) or 0)
 
