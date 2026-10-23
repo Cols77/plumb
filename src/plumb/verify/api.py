@@ -166,11 +166,17 @@ class Verify:
             self._index = load_index(self.core)
         return self._index
 
+    def test_python(self) -> str:
+        """The interpreter the tests run in: the environment their evidence belongs to."""
+        from plumb.verify.runner import test_interpreter
+
+        return test_interpreter(self.root, str(getattr(self.core.config.verify, "python", "") or ""))
+
     def env_key(self) -> str:
         if self._env_key is None:
             from plumb.verify.envid import env_key
 
-            self._env_key = env_key(self.root)
+            self._env_key = env_key(self.root, self.test_python())
         return self._env_key
 
     # -- the function-to-tests record (SR-110)
@@ -404,7 +410,8 @@ class Verify:
         """The content identity cached under the env key (VS3); computed only on record."""
         from plumb.verify.envid import cached_identity
 
-        return cached_identity(self.core, self.env_key(), compute=compute)
+        return cached_identity(self.core, self.env_key(), compute=compute,
+                               interpreter=self.test_python())
 
     def fingerprint(self) -> str:
         """A digest of everything the map-derived answers come from: the scanned Python
@@ -941,7 +948,7 @@ class Verify:
         failed = sorted(n for n, d in result.nodes.items() if d.get("outcome") == "failed")
         if not failed:
             return
-        if not same_tree(tree, tree_identity(self.root), key, env_key(self.root)):
+        if not same_tree(tree, tree_identity(self.root), key, env_key(self.root, self.test_python())):
             return
         again = run_selection(self.core, failed, timeout_s=timeout, tmap=self.test_map())
         if again.discarded or again.result.timed_out:
