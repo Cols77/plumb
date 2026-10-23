@@ -48,7 +48,8 @@ def _proof_confirmed(root: Path, sr: str, hook_input: Any) -> None:
     assert proof.owner_confirmed(open_core(root), sr)
 
 
-def _renumbered(tmp_path: Path, hook_input: Any, *, escalated: bool = False) -> Path:
+def _renumbered(tmp_path: Path, hook_input: Any, *, escalated: bool = False,
+                early: bool = False) -> Path:
     """The clone's owner approves its SR-001 "export csv" (with its owning end; with
     ``escalated``, as the one member of the escalated set INT-002), its proof shown working;
     origin adds its own, unapproved SR-001 "relay checks"; origin merges, ``merge-fix``
@@ -66,6 +67,8 @@ def _renumbered(tmp_path: Path, hook_input: Any, *, escalated: bool = False) -> 
     proof.set_plan(open_core(other), sr, "run the export", "command")
     proof.set_evidence(open_core(other), sr, "https://x.test/run", "it wrote the csv",
                        passed=True)
+    if early:
+        _proof_confirmed(other, sr, hook_input)
     approve = [sr]
     if escalated:
         anchor = open_core(other).write_record("intent", {
@@ -86,7 +89,8 @@ def _renumbered(tmp_path: Path, hook_input: Any, *, escalated: bool = False) -> 
     run_git(origin, "commit", "-q", "--no-edit", "--no-verify")
     # asked after the renumber: a yes given on the clone names SR-001 at its old hash and is
     # not carried to SR-002 (proof.owner_confirmed reads no renumber; open owner question)
-    _proof_confirmed(origin, "SR-002", hook_input)
+    if not early:
+        _proof_confirmed(origin, "SR-002", hook_input)
     return origin
 
 
@@ -130,3 +134,13 @@ def test_carried_approval_confirms_the_escalated_set(tmp_path: Path, hook_input:
     report = _report(origin)
     assert report.awaiting == (), report.awaiting
     assert report.exit == 0, report
+
+
+@pytest.mark.sr("SR-260")
+def test_proof_confirmed_before_the_renumber_follows_the_record(
+        tmp_path: Path, hook_input: Any) -> None:
+    origin = _renumbered(tmp_path, hook_input, early=True)
+    core = open_core(origin)
+    assert proof.owner_confirmed(core, "SR-002")
+    assert not proof.owner_confirmed(core, "SR-001")
+    assert proof.unconfirmed_proofs(core, ["SR-002"]) == []

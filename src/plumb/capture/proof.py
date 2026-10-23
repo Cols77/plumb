@@ -228,16 +228,23 @@ def confirmation(core: Core, record_id: Any, question: str,
 def owner_confirmed(core: Core, record_id: str) -> bool:
     """DEC-257: a question-answer entry, written by the question-answer hook, says the owner
     saw ``record_id`` working at its current hash and evidence (``proof.record``,
-    ``proof.hash``, ``proof.evidence_at``, answer ``YES``)."""
+    ``proof.hash``, ``proof.evidence_at``, answer ``YES``). A yes given under the old id of a
+    renumber (``ids.approval_aliases``) counts while the words are still the ones it saw."""
+    from plumb.ids import approval_aliases
+
     record = core.index().get(record_id)
     evidence = evidence_of(record) if record is not None else None
     if record is None or evidence is None:
         return False
     at = _flat(evidence.get("at"))
+    seen = {(record_id, record.hash)}
+    carried = approval_aliases(core).get((record_id, record.hash))
+    if carried:
+        seen.add(carried)
     for entry in core.events():
         proof = entry.payload.get("proof") if entry.kind == "question-answer" else None
-        if isinstance(proof, Mapping) and proof.get("record") == record_id \
-                and proof.get("hash") == record.hash and proof.get("evidence_at") == at \
+        if isinstance(proof, Mapping) and (proof.get("record"), proof.get("hash")) in seen \
+                and proof.get("evidence_at") == at \
                 and entry.payload.get("answer") == YES:
             return True
     return False
