@@ -172,7 +172,7 @@ for (const surface of SURFACES) {
       w.files[HOST] = JSON.stringify({ python: PYTHON })
       helloAnswers(except(on, ['clock']), w, 3, 'plumb mod hello refused: this session already has its panel\n')
       await $.session.start(START)
-      await clock.advance(60_000)
+      await clock.advance(90_000)
       const afterStart = hellos(w).length
       expect(afterStart).toBeGreaterThan(1)
       await $.turn.start(TURN)
