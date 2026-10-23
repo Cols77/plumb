@@ -802,23 +802,29 @@ def settle_drift(core: Core, session: str, rows: Sequence[Row],
     from plumb.judgment import waiting_line
     from plumb.links import NO_MODEL, repin_after_tests
 
-    said: list[str] = []
-    for record in sorted({r.record for r in rows}):
-        try:
-            step = repin_after_tests(core, record, session=session, auto=True)
-        except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
-            continue
-        cause = step.unreachable
-        for link, why in step.refused:  # SR-325 EX-2; no model holds instead (SR-220 EX-5)
-            if not why.startswith(NO_MODEL):
-                debug.open_case(core.root, id=link, kind="stale-refused", target=link,
-                                detail=why)
-        if cause and waiting is not None:
-            waiting.add(record)
-        line = waiting_line(core.root, "the stale check", cause) if cause else None
-        if line:
-            said.append(line)
-    return said
+    def settle(work_core: Core) -> list[str]:
+        said: list[str] = []
+        for record in sorted({r.record for r in rows}):
+            try:
+                step = repin_after_tests(work_core, record, session=session, auto=True)
+            except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+                continue
+            cause = step.unreachable
+            for link, why in step.refused:  # SR-325 EX-2; no model holds instead (SR-220 EX-5)
+                if not why.startswith(NO_MODEL):
+                    debug.open_case(core.root, id=link, kind="stale-refused", target=link,
+                                    detail=why)
+            if cause and waiting is not None:
+                waiting.add(record)
+            line = waiting_line(core.root, "the stale check", cause) if cause else None
+            if line:
+                said.append(line)
+        return said
+
+    try:   # SR-351: in plumb's own checkout the repins land on a branch, not in main
+        return debug.on_branch(core, settle)[0]
+    except Exception:  # noqa: BLE001 - never fails the stop
+        return []
 
 
 def card_lost_tests(core: Core, session: str) -> None:
