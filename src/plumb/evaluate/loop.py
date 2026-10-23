@@ -10,8 +10,13 @@ from typing import Any
 def merge_branch(root: Path, branch: str) -> str:
     """Merge through the repository's hooks (never --no-verify); "" or what holds it."""
     git = ["git", "-C", str(root)]
+    # the merge carries the requirement lines of the fix's own commits (the hook asks for one)
+    body = subprocess.run([*git, "log", "--format=%B", f"HEAD..{branch}"], capture_output=True,
+                          text=True, encoding="utf-8", errors="replace").stdout
+    srs = sorted({s.strip() for line in body.splitlines() if line.startswith("SR:")
+                  for s in line[3:].split(",") if s.strip()} or {"SR-348"})
     done = subprocess.run([*git, "merge", "--no-ff", "--no-edit", "-m",
-                           f"Merge {branch}: evaluate fix", branch],
+                           f"Merge {branch}: evaluate fix\n\nSR: {', '.join(srs)}", branch],
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
     if done.returncode == 0:
         return ""

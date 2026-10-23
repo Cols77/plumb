@@ -157,3 +157,17 @@ def test_a_case_settled_elsewhere_or_crashing_does_not_end_the_loop(tmp_path, mo
     out = capsys.readouterr().out
     assert tried[:2] == ["eval-1", "eval-a"] and "eval-c: already settled elsewhere" in out
     assert "eval-a: error: RuntimeError: nothing to commit" in out and len(calls) == 2
+
+
+@pytest.mark.sr("SR-348")
+def test_merge_branch_carries_the_fix_commits_requirement_lines(tmp_path):
+    """The merge hook asks for an SR line: the merge names the fix commits' requirements."""
+    repo = _repo(tmp_path)
+    _git(repo, "checkout", "-qb", "fix")
+    (repo / "f.txt").write_text("fix\n")
+    _git(repo, "commit", "-qam", "fix it\n\nSR: SR-202, SR-223")
+    _git(repo, "checkout", "-q", "main")
+    assert loop.merge_branch(repo, "fix") == ""
+    body = subprocess.run(["git", "-C", str(repo), "log", "-1", "--format=%B"],
+                          capture_output=True, text=True).stdout
+    assert "SR: SR-202, SR-223" in body
