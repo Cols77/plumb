@@ -213,6 +213,20 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
     later = study.first_keys(root, session)       # SR-336 EX-2: they wait for the study
     questions = _by_principle([q for q in judge.open_questions(core, session)
                                if q.get("key") not in later], room)
+    since = _judge_jobs_since(root, session, at)
+    failed = [j for j in since if (r := result_of(root, session, j.id)) is not None
+              and r.status == "error"]
+    if failed and questions and not any(q.get("job") in {j.id for j in since}
+                                        for q in questions):
+        # the judge could not read the owner's latest message: what it asked before that
+        # message may be answered by it, so it is not asked again (never ask what was said);
+        # nor is it "ready" (EX-9: no judge, the edit is held): the couldn't-check card holds
+        # the gate until the judge reads the message or the owner says to build anyway
+        last = result_of(root, session, failed[-1].id)
+        if gate.state(root, session).message_digest != digest or not gate.is_closed(root,
+                                                                                     session):
+            gate.close(root, session, digest, clarify.GATE_REASON_COULDNT)
+        return _couldnt(core, session, digest, why_failed(last) if last else WHY_DEFAULT)
     if questions:
         answers = [e.payload for e in said if e.at >= at]
         # SR-212: the agent reworded the question, or asked one of its own
