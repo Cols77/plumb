@@ -24,7 +24,7 @@ def _runs(*issue_lists):
     def run(root, task, *, model, **kw):
         calls.append(model)
         print(f"line {len(calls)}")
-        return NS(issues=issue_lists[len(calls) - 1])
+        return NS(issues=issue_lists[len(calls) - 1], score={})
     return run, calls
 
 
@@ -108,3 +108,30 @@ def test_merge_branch_conflict_returns_reason_and_leaves_tree_clean(tmp_path):
     status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"],
                             capture_output=True, text=True).stdout
     assert status == "" and (repo / "f.txt").read_text() == "main\n"
+
+
+@pytest.mark.sr("SR-348")
+def test_a_run_whose_turns_failed_stops_with_the_reason(tmp_path, capsys):
+    """A usage limit fails every agent turn: the loop says so, not 'no issue filed'."""
+    def run(root, task, *, model, **kw):
+        return NS(issues=[], score={"errors": 3, "error": "You've hit your weekly limit"})
+    assert loop.run_loop(tmp_path, None, model="m", rounds=2, run=run, fix=_fix("fixed"),
+                         merge=lambda r, b: "") == 1
+    out = capsys.readouterr().out
+    assert "3 agent turns failed: You've hit your weekly limit" in out and "no issue" not in out
+
+
+@pytest.mark.sr("SR-348")
+def test_an_issue_carried_from_an_earlier_run_is_fixed_too(tmp_path, monkeypatch, capsys):
+    """An open eval-issue case from an earlier run is fixed in the next round; a reported one
+    (three failed rounds) is not tried again."""
+    monkeypatch.setattr("plumb.debug.all_cases", lambda root: [
+        {"id": "eval-old", "kind": "eval-issue", "state": "open"},
+        {"id": "eval-gave-up", "kind": "eval-issue", "state": "open", "report": "tried"}])
+    fixed = []
+    run, _ = _runs([ISSUE], [])
+    loop.run_loop(tmp_path, None, model="m", rounds=2, run=run,
+                  fix=lambda core, case: fixed.append(case["id"]) or NS(state="fixed",
+                                                                         branch="b", detail="d"),
+                  merge=lambda r, b: "")
+    assert fixed[:2] == ["eval-1", "eval-old"] and "eval-gave-up" not in fixed

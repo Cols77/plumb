@@ -49,6 +49,7 @@ def trail(scratch: Path, transcript: list[Any], issues: list[dict[str, Any]],
     records = sum(1 for d in RECORD_DIRS if (scratch / ".plumb" / d).is_dir()
                   for f in (scratch / ".plumb" / d).iterdir() if f.is_file())
     answered = sum(1 for t in transcript if t.source == "scripted-owner")
+    failed = [t.text for t in transcript if t.role == "agent" and t.source == "error"]
     gates = proofs = stale = 0
     try:
         from plumb.api import open_core
@@ -63,11 +64,13 @@ def trail(scratch: Path, transcript: list[Any], issues: list[dict[str, Any]],
         pass
     return {"records": records, "questions_asked": answered + unanswered,
             "questions_answered": answered, "gates": gates, "proofs": proofs, "stale": stale,
-            "issues": len(issues)}
+            "issues": len(issues), "errors": len(failed),
+            "error": failed[0][:200] if failed else ""}
 
 
 def line(task: str, model: str, score: dict[str, Any]) -> str:
     return (f"{task} {model}: checks {score['checks_passed']}/{score['checks_total']}, "
             f"records {score['records']}, questions {score['questions_answered']}/"
             f"{score['questions_asked']}, gates {score['gates']}, stale {score['stale']}, "
-            f"issues {score['issues']}")
+            f"issues {score['issues']}"
+            + (f", failed turns {score['errors']}" if score.get("errors") else ""))

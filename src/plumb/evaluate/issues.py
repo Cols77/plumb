@@ -60,3 +60,20 @@ def open_cases(root: Path, issues: list[dict[str, Any]]) -> list[str]:
                         detail=detail, log=str(issue.get("context", "")))
         opened.append(cid)
     return opened
+
+
+def accumulated(root: Path) -> list[dict[str, Any]]:
+    """Every issue kept in plumb's repository so far (bad lines skipped)."""
+    try:
+        text = Path(root).joinpath(*ACCUMULATED).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    rows = []
+    for raw in text.splitlines():
+        try:
+            row = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("command"):
+            rows.append(row)
+    return rows
