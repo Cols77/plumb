@@ -75,3 +75,24 @@ def test_env_key_reuses_the_cached_platform(tmp_path: Path, monkeypatch) -> None
 
     monkeypatch.setattr(envid.platform, "machine", no_wmi)
     assert envid.env_key(tmp_path) == first
+
+
+@pytest.mark.sr("SR-255")
+def test_env_key_follows_the_test_interpreter_not_plumbs(tmp_path: Path, monkeypatch) -> None:
+    """Field: the pre-push hook reaches plumb through the plugin's interpreter, but the tests
+    run in the project's .venv. The key (and so the evidence) must be the test venv's, whatever
+    interpreter plumb itself runs in, or a hook never sees a direct run's passes."""
+    venv = tmp_path / ".venv"
+    (venv / "Scripts").mkdir(parents=True)
+    exe = venv / "Scripts" / "python.exe"
+    exe.write_text("")
+    (venv / "pyvenv.cfg").write_text(
+        "home = C:/py\nimplementation = CPython\nversion_info = 3.12.1\n", encoding="utf-8")
+    keys = set()
+    for name in ("A", "B"):
+        monkeypatch.setattr(sys, "prefix", str(tmp_path / name))
+        monkeypatch.setattr(sys, "executable", str(tmp_path / name / "python.exe"))
+        keys.add(envid.env_key(tmp_path, str(exe)))
+    assert len(keys) == 1
+    assert envid.env_parts(tmp_path, str(exe))["home"] == "C:/py"
+    assert envid.env_parts(tmp_path, str(exe))["python"] == "CPython 3.12.1"
