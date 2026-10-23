@@ -135,3 +135,25 @@ def test_an_issue_carried_from_an_earlier_run_is_fixed_too(tmp_path, monkeypatch
                                                                          branch="b", detail="d"),
                   merge=lambda r, b: "")
     assert fixed[:2] == ["eval-1", "eval-old"] and "eval-gave-up" not in fixed
+
+
+@pytest.mark.sr("SR-348")
+def test_a_case_settled_elsewhere_or_crashing_does_not_end_the_loop(tmp_path, monkeypatch, capsys):
+    """Background self-debug may settle a case first; a fix that raises is reported and the
+    loop goes on to the next case and the rerun."""
+    state = {"eval-a": "open", "eval-c": "open"}
+    monkeypatch.setattr("plumb.debug.all_cases", lambda root: [
+        {"id": i, "kind": "eval-issue", "state": s} for i, s in state.items()])
+    tried = []
+
+    def fix(core, case):
+        tried.append(case["id"])
+        state["eval-c"] = "resolved"     # background self-debug settles eval-c meanwhile
+        if case["id"] == "eval-a":
+            raise RuntimeError("nothing to commit")
+        return NS(state="fixed", branch="b", detail="d")
+    run, calls = _runs([ISSUE], [])
+    loop.run_loop(tmp_path, None, model="m", rounds=2, run=run, fix=fix, merge=lambda r, b: "")
+    out = capsys.readouterr().out
+    assert tried[:2] == ["eval-1", "eval-a"] and "eval-c: already settled elsewhere" in out
+    assert "eval-a: error: RuntimeError: nothing to commit" in out and len(calls) == 2

@@ -45,7 +45,16 @@ def run_loop(root: Path, task: Any, *, model: str, rounds: int, run: Any = None,
             return 0
         print(f"cases opened: {len(ids)}, to fix: {len(todo)}")
         for case_id in todo:
-            out = fix(open_core(Path(root)), cases.get(case_id, {"id": case_id}))
+            # plumb's background self-debug may have taken the case meanwhile (SR-343)
+            now = {c["id"]: c for c in debug.all_cases(root)}
+            if case_id in now and now[case_id].get("state") != "open":
+                print(f"  {case_id}: already settled elsewhere")
+                continue
+            try:
+                out = fix(open_core(Path(root)), cases.get(case_id, {"id": case_id}))
+            except Exception as exc:  # noqa: BLE001 - one case's crash must not end the loop
+                print(f"  {case_id}: error: {type(exc).__name__}: {exc}")
+                continue
             print(f"  {case_id}: {out.state}: {out.detail}")
             if out.state in ("owner", "held"):
                 print(f"stopped: {case_id} waits for the owner ({out.detail})")
