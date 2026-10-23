@@ -13,6 +13,7 @@ from plumb import links, stale
 from plumb.api import open_core
 from plumb.cli import main
 from plumb.contracts import Target
+from plumb.understand import cardcontent
 from plumb.understand.repin import Meaning
 
 pytestmark = pytest.mark.sr("SR-198")
@@ -197,7 +198,7 @@ def test_ex5_owner_question_becomes_card_and_turn_may_end(project: Path, capsys)
     assert [r.link for r in stale.unresolved(core, "s1", state)] == [LINK]
     code = main(["stale", "card", LINK, "--topic", "Adds numbers", "--issue",
                  "add now multiplies instead of adding", "--options",
-                 "Keep it|Reword it|Undo the change", "--recommended", "2",
+                 "Keep it|Reword it|Undo the change", "--recommended", "3",
                  "--consequences", "keeps the product|says product|sums again",
                  "--why", "the owner asked for a sum",
                  "--session", "s1", "--root", str(project)])
@@ -206,6 +207,39 @@ def test_ex5_owner_question_becomes_card_and_turn_may_end(project: Path, capsys)
     assert stale.unresolved(open_core(project), "s1", state) == []   # resolved for the hold
     (card,) = stale.read_cards(project, "s1")
     assert card["status"] == "open" and card["recommended"] == 2
+
+
+def test_recommended_flag_counts_options_from_one(project: Path, capsys) -> None:
+    code = main(["stale", "card", LINK, "--topic", "T", "--issue", "i", "--options",
+                 "Keep it|Undo it", "--recommended", "1", "--consequences", "a|b",
+                 "--why", "keep", "--session", "s1", "--root", str(project)])
+    assert code == 0, capsys.readouterr().err
+    (card,) = stale.read_cards(project, "s1")
+    assert card["recommended"] == 0          # option 1, "Keep it"
+
+
+def test_refiled_card_never_binds_recommended_to_an_unseen_order(project: Path,
+                                                                  capsys) -> None:
+    # eval-0cf3090d: the agent meant "--recommended 1" as keep the change; the kept card's
+    # options were in another order, so undo was recommended against its own reason
+    stale.add_card(project, "s1", link=LINK, record="SR-001", path="src/calc.py",
+                   topic="T", issue="i", options=["Undo the change", "Keep the change"])
+    code = main(["stale", "card", LINK, "--consequences", "keeps it|undoes it", "--why",
+                 "keep it, as asked", "--recommended", "1", "--session", "s1",
+                 "--root", str(project)])
+    err = capsys.readouterr().err
+    assert code != 0
+    assert "1. Undo the change; 2. Keep the change" in err and "--options" in err
+    (card,) = stale.read_cards(project, "s1")
+    assert "why" not in card and "consequences" not in card    # nothing misrecorded
+    code = main(["stale", "card", LINK, "--options", "Keep the change|Undo the change",
+                 "--consequences", "keeps it|undoes it", "--why", "keep it, as asked",
+                 "--recommended", "1", "--session", "s1", "--root", str(project)])
+    assert code == 0, capsys.readouterr().err
+    (card,) = stale.read_cards(project, "s1")
+    shown = cardcontent.options(card)
+    assert shown[0]["text"] == "Keep the change" and shown[0]["recommended"]
+    assert shown[0]["consequence"] == "keeps it"
 
 
 def test_stale_cards_file_format(project: Path) -> None:

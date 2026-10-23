@@ -1,0 +1,20 @@
+"""SR-344 EX-3 end to end: the evaluate command's argument check and the missing claude."""
+
+import pytest
+
+from plumb import cli
+
+
+@pytest.mark.sr("SR-344")
+def test_unknown_task_exits_2_with_usage(capsys):
+    assert cli.main(["evaluate", "nope"]) == 2
+    assert "usage: plumb evaluate" in capsys.readouterr().err
+
+
+@pytest.mark.sr("SR-344")
+def test_missing_claude_prints_one_line_and_exits_1(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr("plumb.evaluate.cli.shutil.which", lambda name: None)
+    assert cli.main(["evaluate", "simple", "--root", str(tmp_path)]) == 1
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 1 and "claude command" in out[0]
+    assert not (tmp_path / ".plumb").exists()

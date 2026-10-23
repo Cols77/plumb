@@ -484,13 +484,27 @@ def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
 
 def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
     """The judge questions still waiting for the owner: not answered yet (``unanswered``),
-    and asking about a record still unconfirmed at the version asked."""
+    asking about a record still unconfirmed and not superseded at the version asked, and not
+    answered since by a decision recording the owner's choice (the owner answered in a typed
+    message and the agent captured it): never ask what was said."""
     asked = unanswered(core, session)
     if not asked:
         return []
+    from plumb.capture.clarify import superseded_ids
+
     index, statuses = core.index(), core.status()
-    return [q for q in asked if any(
+    closed = superseded_ids(index)   # a superseded record's question is answered by its successor
+
+    def settled(q: Mapping[str, Any]) -> bool:
+        # the owner answered it by capture after it was logged: a decision records the answer
+        ids = [str(r.get("id")) for r in q.get("records") or () if isinstance(r, Mapping)]
+        labels = [_MARKER.sub("", str(o.get("label") or "")) for o in q.get("options") or ()
+                  if isinstance(o, Mapping)]
+        return bool(labels and _answered_by(core, index, ids, labels))
+
+    return [q for q in asked if not settled(q) and any(
         str(r.get("id")) in index and index[str(r.get("id"))].hash == r.get("hash")
+        and str(r.get("id")) not in closed
         and statuses[str(r.get("id"))].confirmation != "confirmed"
         for r in q.get("records") or () if isinstance(r, Mapping))]
 

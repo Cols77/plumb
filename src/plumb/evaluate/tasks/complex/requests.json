@@ -1,0 +1,7 @@
+[
+  "A command-line expense tracker, `python expenses.py add <YYYY-MM-DD> <category> <amount> [note]` and `python expenses.py list` (one line per expense: date, category, amount, note), kept in `expenses.csv` beside it. Amounts are decimal, like 12.50.",
+  "`python expenses.py report <YYYY-MM>`: the month's total per category, one line `<category> <total>`, then `total <sum>`.",
+  "`python expenses.py budget <category> <amount>` sets a monthly budget (kept in `budgets.csv`); `add` prints `over budget: <category>` when the month's total for that category goes past it.",
+  "Amounts are whole cents from now on: `add` and `budget` take an integer number of cents (1250, never 12.50), and every amount is printed as cents. Float amounts are refused with `invalid amount`. Existing rows in the CSV are converted once.",
+  "`python expenses.py import <file.csv>` reads a bank's export whose header is `Description,Amount,Date` (date as DD/MM/YYYY, amount in cents, negative for spending) and adds each spending row under category `bank`."
+]

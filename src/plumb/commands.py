@@ -312,7 +312,8 @@ STALE_USAGE = (
     "owner. Each option needs what it does and leaves undone (--consequences, one per option, "
     "in the same order) and the recommended one needs its reason (--why); a card lacking any "
     "is refused (SR-116). Re-filing a link's open card keeps its topic, issue and options "
-    "unless given again. The record's wording, the change and the owner's words are added by "
+    "unless given again; --recommended (numbered from 1) and --consequences need --options "
+    "given with them. The record's wording, the change and the owner's words are added by "
     "plumb.\n"
     "cards: lists the open stale cards with all they show the owner; --incomplete lists only "
     "those still lacking something, and what.\n")
@@ -350,7 +351,8 @@ def _stale_card(argv: list[str]) -> int:
                              "what it leaves undone")
     parser.add_argument("--why", default=None, help="why the recommended option is recommended")
     parser.add_argument("--recommended", type=int, default=None,
-                        help="which option (from 0) to suggest first")
+                        help="which option (numbered from 1, in the order of --options) to "
+                             "recommend")
     parser.add_argument("--session", default=None)
     args = parser.parse_args(argv)
     core = _core(args)
@@ -363,7 +365,18 @@ def _stale_card(argv: list[str]) -> int:
     kept = stale.open_card(core.root, session, args.link) or {}
     options = _split(args.options) if args.options is not None else \
         [str(o) for o in kept.get("options") or ()]
-    recommended = args.recommended if args.recommended is not None else \
+    if args.options is None and options and (args.recommended is not None
+                                             or args.consequences is not None):
+        # --recommended and --consequences follow the order of --options: bound to the kept
+        # card's order, which the agent does not see, they could recommend the option the
+        # reason argues against (eval-0cf3090d). Refuse and say the order to give them in.
+        kept_order = "; ".join(f"{n}. {o}" for n, o in enumerate(options, start=1))
+        print(f"plumb: --recommended and --consequences follow the order of --options; the "
+              f"open card for {args.link} has the options {kept_order}. Give --options again "
+              "with them, in the order --recommended and --consequences mean", file=sys.stderr)
+        return EXIT_USAGE
+    # --recommended counts from 1, as the card numbers its options; stored from 0
+    recommended = args.recommended - 1 if args.recommended is not None else \
         int(kept.get("recommended") or 0) if args.options is None else 0
     if len(options) < 2 or not 0 <= recommended < len(options):
         print("plumb: give at least two --options separated by |, and a --recommended that "
@@ -391,9 +404,12 @@ def _stale_card(argv: list[str]) -> int:
     turn = int(kept.get("turn") or 0) or stale.turn_number(core.root, session)
     card = stale.add_card(core.root, session, turn=turn, by=str(kept.get("by") or ""),
                           **entry)
+    # say the filed order and the recommended one back
+    filed = "; ".join(f"{n}. {o}" for n, o in enumerate(options, start=1))
     emit({"card": card, "session": session} if args.as_json else
          f"plumb: card recorded for {args.link} in session {session}; the turn may end with "
-         "it waiting for the owner", args.as_json)
+         f"it waiting for the owner. Options in the order filed: {filed}. Recommended: "
+         f"{recommended + 1} ({options[recommended]})", args.as_json)
     return 0
 
 

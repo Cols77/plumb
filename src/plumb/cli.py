@@ -70,6 +70,7 @@ ROUTES: dict[str, str] = {
     "ui": "plumb.browser.cli",
     # INT-090: studies the owner reads in the room, and the understanding picture
     "study": "plumb.study.cli",
+    "evaluate": "plumb.evaluate.cli",   # INT-105: the benchmark
 }
 
 _HELP = """usage: plumb <command> [options]
@@ -117,6 +118,10 @@ intent capture:
                room; the understanding picture it corrects
   quotes       recover: find older records' words in past session transcripts (shown on
                the card as found, not verified; it confirms nothing)
+
+development:
+  evaluate     the benchmark: a cheap model works through a task with plumb
+               (simple|complex; --model, --loop)
 
 owner views (plain words, paths or IDs; none approves anything):
   resolve      what your words mean: records, files and tests, best first
