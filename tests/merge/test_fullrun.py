@@ -185,3 +185,12 @@ def test_validate_merge_never_runs(red, capsys) -> None:
     root, sha, runner = red
     assert cli.main(["validate", "--merge", sha, "--root", str(root)]) == 5
     assert runner.calls == 0
+
+
+def test_full_run_says_it_is_running(confirmed, capsys) -> None:
+    """A push that must run the suite says so, so a long run does not look hung."""
+    root, sha = confirmed
+    runner = Counting()
+    merge_report(open_core(root), sha, runner=runner)
+    assert runner.calls == 1
+    assert "running the full suite" in capsys.readouterr().err

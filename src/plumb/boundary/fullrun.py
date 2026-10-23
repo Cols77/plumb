@@ -111,6 +111,9 @@ def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unver
     if not out["needed"] or not run_full:
         return out
     _say(core, STEP_RUN)
+    import sys
+    print(f"plumb: {STEP_RUN} (no earlier passing run matches this tree; this can take "
+          "minutes)", file=sys.stderr, flush=True)
     result = (runner or default_runner)(core)  # the ONE run: never repeated below
     out.update({"ran": True, "run_id": getattr(result, "run_id", None),
                 "verdict": verdict_of(result),
