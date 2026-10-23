@@ -80,6 +80,22 @@ def test_red_run_not_repeated_and_holds_5(repo: Path) -> None:
     assert any("full run" in line and "failed" in line for line in render(report))
 
 
+def test_red_run_on_same_tree_not_rerun_by_next_check(repo: Path) -> None:
+    """field-pre-push-reruns-full-suite: a red full run on an unchanged tree and environment
+    is not run again by the next push; the report repeats its verdict and still holds 5."""
+    project(repo, test=FAILING)
+    approvals.approve(open_core(repo), ["SR-001", "SR-002", "INT-001"])
+    sha = commit(repo, "project")
+    runner = Counting()
+    first = merge_report(open_core(repo), sha, runner=runner)
+    assert runner.calls == 1 and first.exit == 5
+    second = merge_report(open_core(repo), sha, runner=runner)
+    assert runner.calls == 1
+    assert second.exit == 5
+    assert second.full_run["reused"] and second.full_run["verdict"] == "failed"
+    assert any("failed" in line and "full run" in line for line in render(second))
+
+
 def test_identical_identity_reuses(confirmed) -> None:
     """SR-048 EX-3: a passing full run on the same tree and environment is reused."""
     root, sha = confirmed
@@ -185,3 +201,12 @@ def test_validate_merge_never_runs(red, capsys) -> None:
     root, sha, runner = red
     assert cli.main(["validate", "--merge", sha, "--root", str(root)]) == 5
     assert runner.calls == 0
+
+
+def test_full_run_says_it_is_running(confirmed, capsys) -> None:
+    """A push that must run the suite says so, so a long run does not look hung."""
+    root, sha = confirmed
+    runner = Counting()
+    merge_report(open_core(root), sha, runner=runner)
+    assert runner.calls == 1
+    assert "running the full suite" in capsys.readouterr().err

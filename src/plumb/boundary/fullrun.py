@@ -65,6 +65,16 @@ def clean_pass(payload: Mapping[str, Any]) -> bool:
                 and all(n.get("outcome") in GOOD_OUTCOMES for n in nodes))
 
 
+def completed_red(payload: Mapping[str, Any]) -> bool:
+    """A full run that collected cleanly and finished, with at least one failing test."""
+    from plumb.verify.evidence import GOOD_OUTCOMES
+
+    nodes = payload.get("nodes") or []
+    return bool(nodes and not payload.get("collection_errors") and not payload.get("aborted")
+                and not payload.get("timeout") and not payload.get("discarded")
+                and any(n.get("outcome") not in GOOD_OUTCOMES for n in nodes))
+
+
 def current_identity(core: Any, verify: Any) -> dict[str, Any]:
     from plumb.verify.evidence import tree_identity
 
@@ -105,12 +115,25 @@ def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unver
     if latest is not None and clean_pass(latest) and identical(latest, now):
         out.update({"reused": True, "run_id": latest.get("run_id"), "verdict": "passed"})
         return out
+    if latest is not None and completed_red(latest) and identical(latest, now):
+        # the same tree and environment already failed: repeating it only delays the same
+        # answer (a push must not rerun a multi-minute suite to fail again)
+        from plumb.verify.evidence import GOOD_OUTCOMES as GOOD
+
+        out.update({"reused": True, "run_id": latest.get("run_id"), "verdict": "failed",
+                    "needed": bool((pending or unverified) and not waived),
+                    "failed": [n.get("id") or n.get("nodeid") or "" for n in latest.get("nodes") or []
+                               if n.get("outcome") not in GOOD][:50]})
+        return out
     out["needed"] = bool((pending or unverified) and not waived)
     if latest is not None and not out["needed"]:
         out["run_id"] = latest.get("run_id")  # the run that satisfied full verification
     if not out["needed"] or not run_full:
         return out
     _say(core, STEP_RUN)
+    import sys
+    print(f"plumb: {STEP_RUN} (no earlier passing run matches this tree; this can take "
+          "minutes)", file=sys.stderr, flush=True)
     result = (runner or default_runner)(core)  # the ONE run: never repeated below
     out.update({"ran": True, "run_id": getattr(result, "run_id", None),
                 "verdict": verdict_of(result),

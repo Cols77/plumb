@@ -393,6 +393,9 @@ def _full_run_line(run: Mapping[str, Any], verification: Mapping[str, Any]) -> s
     reasons = ", ".join(run.get("reasons") or []) or "touched acceptance tests unverified"
     if run.get("verdict") == "unavailable":
         return "full run: unavailable"
+    if run.get("reused") and run.get("verdict") == "failed":
+        return (f"full run reused (run {run.get('run_id')}): failed on this tree and "
+                "environment; not run again (change the tree to rerun)")
     if run.get("reused"):
         return (f"full run reused (run {run.get('run_id')}): passed on this tree and "
                 "environment")
