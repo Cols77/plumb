@@ -144,7 +144,7 @@ export type Unlinked =
 
 /** Whether a later try may link where this one did not: no interpreter named yet; plumb still
  * holding the registration of the panel a resumed session ran before (the session-start hook
- * retires it a moment later); or the repository's .venv tried before host.json named the
+ * retires it a moment later, or its heartbeat goes a minute silent: a reloaded panel's takeover); or the repository's .venv tried before host.json named the
  * interpreter (a .venv without plumb fails). Any other refusal or failure stands. */
 export function mayLinkLater(u: Unlinked): boolean {
   if (u.why === 'no-python') return true

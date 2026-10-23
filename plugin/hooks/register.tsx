@@ -81,6 +81,9 @@ let polling: { cancel: () => void } | null = null
 // the session-start hook writes host.json within its first second: about ten seconds of tries
 const RETRY_MS = 500
 const RETRIES = 20
+// a live-looking old panel is taken over once its heartbeat is a minute old (SR-350): keep
+// asking, every 10 s after the first RETRIES tries, for a little over that
+const HELD_RETRIES = 160
 
 // one hello at a time: the start's retries and a turn's start never both register the session
 let helloing: Promise<Hello> | null = null
@@ -337,13 +340,15 @@ export const register: Register = on => {
           retry.cancel()
           return
         }
+        if (tries > RETRIES && tries % RETRIES !== 0) return
         const again = await helloOnce(io)
         if (again.link !== null) {
           retry.cancel()
           await linked(again.link)
         } else if (again.unlinked === null) {
           retry.cancel()
-        } else if (!plumb.mayLinkLater(again.unlinked) || tries >= RETRIES) {
+        } else if (!plumb.mayLinkLater(again.unlinked)
+            || tries >= (again.unlinked.why === 'refused' ? HELD_RETRIES : RETRIES)) {
           retry.cancel()
           await tell(again.unlinked)
         }
