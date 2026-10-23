@@ -171,3 +171,22 @@ def test_merge_branch_carries_the_fix_commits_requirement_lines(tmp_path):
     body = subprocess.run(["git", "-C", str(repo), "log", "-1", "--format=%B"],
                           capture_output=True, text=True).stdout
     assert "SR: SR-202, SR-223" in body
+
+
+@pytest.mark.sr("SR-348")
+def test_merge_branch_repins_the_links_the_fix_moved_or_stops(tmp_path, monkeypatch):
+    """A fix that moves linked code: its new stale links are repinned before the commit; a
+    refused repin aborts the merge and names the link."""
+    repo = _repo(tmp_path)
+    _branch(repo, "fix", "fix\n")
+    calls = iter([set(), {"SR-1#2"}, set(), {"SR-1#2"}])
+    monkeypatch.setattr(loop, "_stale_links", lambda root: next(calls))
+    repinned = []
+    assert loop.merge_branch(repo, "fix", repin=lambda r, link: repinned.append(link) or "") == ""
+    assert repinned == ["SR-1#2"] and (repo / "f.txt").read_text() == "fix\n"
+    _git(repo, "reset", "-q", "--hard", "HEAD~1")
+    held = loop.merge_branch(repo, "fix", repin=lambda r, link: "meaning changed")
+    assert held == "SR-1#2 could not be repinned: meaning changed"
+    status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"],
+                            capture_output=True, text=True).stdout
+    assert status == ""
