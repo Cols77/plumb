@@ -504,6 +504,17 @@ def test_ex3_a_question_the_owner_already_answered_is_dropped(
 TYPED = "a typed answer counts; the judge asks again only when it truly leaves the question open"
 
 
+@pytest.mark.sr("SR-309")
+def test_a_question_logged_before_the_owner_answered_it_by_capture_is_not_asked_again(
+        world: Path, write_record) -> None:  # noqa: F811
+    (logged,) = shaped_of(world, asking("SR-001", options=PAGES))
+    assert [q["key"] for q in judge.open_questions(open_core(world), SESSION)] \
+        == [logged["key"]]
+    owner_picked(world, "Every page, whatever it costs")
+    decision(world, write_record, "Every page, whatever it costs")
+    assert judge.open_questions(open_core(world), SESSION) == []
+
+
 @pytest.mark.sr("SR-335")
 def test_ex1_the_owners_typed_answer_settles_before_the_judge_approves_it(
         world: Path, write_record) -> None:  # noqa: F811
