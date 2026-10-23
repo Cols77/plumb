@@ -126,3 +126,11 @@ def test_ex5_the_third_failure_in_a_row_is_one_case(repo: Path) -> None:
     (row,) = debug.open_cases(repo)
     assert row["kind"] == "job-failed" and row["target"] == "read-0123"
     assert "dispatch" in row["log"]
+
+
+def test_ex1_one_cause_seen_by_two_processes_is_one_case(repo: Path) -> None:
+    """The same traceback with another temp file's pid is the same case (one fix, not two)."""
+    for pid in ("25132", "4410"):
+        debug.hook_error(repo, "stop", f'File "x.py", line 3\nPermissionError: '
+                                       f"'.status.json.{pid}.tmp' -> 'status.json'")
+    assert len(debug.open_cases(repo)) == 1

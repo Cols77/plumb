@@ -467,6 +467,7 @@ def ended_sessions(root: Path, session: str) -> list[str]:
 
 def land(root: Path, head: str, before: str, session: str | None = None) -> dict[str, Any]:
     """Run the landing's steps once; the result is also the marker's content."""
+    from plumb import debug
     from plumb.api import open_core
     from plumb.understand import backlog, files, summary
 
@@ -520,6 +521,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         kept.extend(found[1])
 
     step("proofs", lambda: proofs.extend(post_merge_proofs(open_core(root), before, head)))
+    step("fixes", lambda: debug.landed(root, head))  # before the worktrees step drops branches
     step("tidy", do_tidy)
     step("compaction", do_compact)
     step("commit", do_commit)
@@ -541,7 +543,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
               "queued": queued, "worktrees": gone, "kept": kept, "sessions": ended, "cases": len(cases),
               "post_merge": proofs}
-    summary.write_cases(open_core(root), head, [{**c, "state": "open"} for c in cases])
+    summary.write_cases(open_core(root), head,
+                        [{**c, "state": "open"} for c in debug.from_landing(root, cases)])
     files.write_json_atomic(done, result)
     return result
 

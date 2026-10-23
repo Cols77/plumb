@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -20,23 +21,37 @@ from typing import Any
 LINE = "plumb: debug: {n} cases, {resolved} resolved, {open} still in debugging"
 STORE = (".plumb", "cache", "debug")
 DANGLING = "its target no longer exists, so there is nothing to repin to: relink it"
+OWN_KINDS = frozenset({"landing-step", "validate"})   # DEC-316: plumb's own, at a landing
+READY = ("plumb: self-fix {branch} ({kind}: {detail}) is committed and reviewed: ready to "
+         "land; merge it like any branch, through the merge check")
+FIXED = "plumb: the plumb defect you hit is fixed in main ({kind}: {detail}); retry {retry}"
+RETRY = {"hook-error": "what ran the {target} hook", "landing-step": "the landing's {target} step",
+         "validate": "plumb validate", "report": "what you flagged", "job-failed": "the job"}
 
 
 def _case_path(root: Path | str, case_id: str) -> Path:
     return Path(root).joinpath(*STORE, re.sub(r"[^\w.-]", "_", case_id) + ".json")
 
 
+def _same(text: str) -> str:
+    """One cause, one id: the digest ignores the numbers (a pid, a line number)."""
+    return hashlib.sha1(re.sub(r"\d+", "", text).encode()).hexdigest()[:8]
+
+
 def open_case(root: Path | str, *, id: str, kind: str, target: str, detail: str,
-              log: str = "") -> None:
+              log: str = "", session: str | None = None) -> None:
     """SR-325: one case file per id, written the moment a failure happens (idempotent; a
-    failure to write it is swallowed, since it runs inside the failing step)."""
+    failure to write it is swallowed, since it runs inside the failing step). It keeps the
+    session that detected it (DEC-318), told there once its fix is in main (``lines``)."""
     try:
         path = _case_path(root, id)
         if path.exists():
             return
+        from plumb import stale
+
         path.parent.mkdir(parents=True, exist_ok=True)
         row = {"id": id, "kind": kind, "target": target, "detail": detail, "state": "open",
-               "log": log}
+               "log": log, "session": session or stale.current_session(root)}
         path.write_text(json.dumps(row, ensure_ascii=False, indent=1), encoding="utf-8")
         _queue_fix(root, id)
     except Exception:  # noqa: BLE001 - recording a case never fails the step that failed
@@ -96,12 +111,65 @@ def report(root: Path | str, id: str, text: str) -> None:
 
 
 def hook_error(root: Path | None, name: str, detail: str) -> None:
-    """SR-325 EX-1: a hook that raised leaves one case, the same error once."""
+    """SR-325 EX-1: a hook that raised leaves one case, the same error once. The id ignores
+    the numbers in the traceback (a temp file's pid, line numbers), so one cause is one case
+    and one background fix, not one per process that hit it."""
     if root is None:
         return
     lines = detail.strip().splitlines()
-    open_case(root, id=f"hook-{name}-{hashlib.sha1(detail.encode()).hexdigest()[:8]}",
+    open_case(root, id=f"hook-{name}-{_same(detail)}",
               kind="hook-error", target=name, detail=lines[-1] if lines else name, log=detail)
+
+
+def from_landing(root: Path | str, found: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """DEC-316: where self-debug runs, plumb's own defects a landing found (a failed step, a
+    validate error) open real cases, queued for the background fix like hook errors; the
+    cases left (stale links, judge questions, tests) stay with the agent (SR-300)."""
+    from plumb import selfdebug
+    from plumb.api import open_core
+
+    try:
+        if selfdebug.applies(open_core(Path(root))) is not None:
+            return found
+    except Exception:  # noqa: BLE001 - the landing's cases are never lost
+        return found
+    for c in found:
+        if c["kind"] in OWN_KINDS:
+            open_case(root, id=f"{c['id']}-{_same(str(c['detail']))}", kind=c["kind"],
+                      target=str(c["target"]), detail=str(c["detail"]))
+    return [c for c in found if c["kind"] not in OWN_KINDS]
+
+
+def landed(root: Path | str, head: str) -> None:
+    """DEC-318: at a landing, a fixed case whose branch is now in main is marked landed."""
+    for row in all_cases(root):
+        if row.get("branch") and not row.get("landed") and subprocess.run(
+                ["git", "merge-base", "--is-ancestor", str(row["branch"]), head], cwd=root,
+                capture_output=True).returncode == 0:
+            _update(root, [row["id"]], landed=head)
+
+
+def lines(root: Path | str, session: str) -> list[tuple[str, str]]:
+    """``(key, text)`` for the agent's next prompt: each committed, reviewed self-fix not yet
+    in main is ready to land (DEC-317: plumb never merges it); a case this session detected
+    whose fix is in main is fixed, with what to retry (DEC-318: nothing held it)."""
+    out: list[tuple[str, str]] = []
+    for row in all_cases(root):
+        what = {k: str(row.get(k) or "") for k in ("branch", "kind", "detail", "target")}
+        if row.get("branch") and not row.get("landed"):
+            out.append((f"ready:{row['id']}", READY.format(**what)))
+        elif row.get("landed") and row.get("session") == session:
+            retry = RETRY.get(what["kind"], "what failed ({target})").format(**what)
+            out.append((f"fixed:{row['id']}", FIXED.format(retry=retry, **what)))
+    return out
+
+
+def flag(root: Path | str, words: str) -> str:
+    """DEC-319: what the owner or the agent noticed (a wrong result, not a crash) is a case,
+    queued for the same background fix as a crash."""
+    case_id = f"report-{_same(words)}"
+    open_case(root, id=case_id, kind="report", target="flagged", detail=words)
+    return case_id
 
 
 def cases(core: Any, selectors: list[str], *, dry_run: bool = False,
@@ -201,6 +269,14 @@ def run(command: str, argv: list[str]) -> int:
         return 0
     if args.selector[:1] == ["fix"]:
         return _fix(core, args.selector[1:])
+    if args.selector[:1] == ["report"]:
+        words = " ".join(args.selector[1:]).strip()
+        if not words:
+            print("usage: plumb debug report <what is wrong, in words>", file=sys.stderr)
+            return 2
+        print(f"plumb: debug: case {flag(core.root, words)} opened; the fix runs in the "
+              "background")
+        return 0
     found = cases(core, args.selector, dry_run=args.dry_run)
     if not args.selector:
         found += _store_cases(core.root, found, args.dry_run)

@@ -174,11 +174,13 @@ def handle_event(event: TurnEvent, *, deadline: Deadline | None = None,
     output = to_turn_output(event, out)
     if event.kind == "prompt":  # SR-296, SR-300, DEC-194: every host shows the landing
         try:
+            from plumb import debug
             from plumb.boundary.landing import lines
             from plumb.present.delta import Line, emit
 
-            shown = emit(ctx, [Line(t, subject=f"landing:{k}", must=True)
-                               for k, t in lines(root)], "prompt")
+            # DEC-317, DEC-318: a self-fix ready to land; the defect this session hit is fixed
+            shown = emit(ctx, [Line(t, subject=f"landing:{k}", must=True) for k, t in
+                               [*lines(root), *debug.lines(root, ctx.session_id)]], "prompt")
             output = replace(output, agent_context=(*output.agent_context, *shown))
         except Exception:  # noqa: BLE001 - advisory
             pass
