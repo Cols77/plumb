@@ -20,8 +20,9 @@ def _snapshot(root: Path) -> dict[str, str]:
     out = {}
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root).as_posix()
-        # .plumb/cache/ and the gitignored derived map are caches: rebuilt, never state
-        if not path.is_file() or rel.startswith((".git/", ".plumb/cache/")) \
+        # .plumb/cache/ and the gitignored derived map are caches: rebuilt, never state;
+        # .plumb/session/ holds the band's progress line, runtime only
+        if not path.is_file() or rel.startswith((".git/", ".plumb/cache/", ".plumb/session/")) \
                 or rel == ".plumb/test_map.txt":
             continue
         if "__pycache__" in rel or ".pytest_cache" in rel:
