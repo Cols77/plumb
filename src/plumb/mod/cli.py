@@ -13,7 +13,9 @@ All of them take ``--session <id>`` and read one JSON object on stdin; none take
 - ``study``  ``--study <slug> --depth md|diagrams|none``, stdin ``{"key": "<64 hex>"}``: the
   owner's choice on a study idea in the band: accepted at that depth, or declined ('not now',
   ``none``) (SR-294 EX-7..EX-9, DEC-207). ``video`` is refused until video studies exist.
-  Answer ``{slug, status, depth}``. Never opens the room.
+  Answer ``{slug, status, depth}``. Never opens the room. ``--refresh yes|no`` in place of
+  ``--depth``: the owner's press on a study whose records changed: rewrite it at the same
+  depth, or not now (SR-360 EX-2, DEC-336). Answer ``{slug, status, depth, refresh}``.
 
 Exit codes: 0 done, 1 no such study or it did not start, 2 usage, 3 refused (the agent
 session marker, no panel registered, no key, another key): nothing written."""
@@ -44,6 +46,7 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("--study", default=None)
     parser.add_argument("--card", default=None)
     parser.add_argument("--depth", default=None)
+    parser.add_argument("--refresh", choices=("yes", "no"), default=None)
     args = parser.parse_args(argv)
     from plumb.api import open_core
     from plumb.mod import session
@@ -72,10 +75,17 @@ def run(command: str, argv: list[str]) -> int:
             from plumb import study
 
             session.check_key(root, args.session, payload, "study")
-            if not args.study or not args.depth:
-                print("plumb mod study: --study and --depth are required", file=sys.stderr)
+            if not args.study or not (args.depth or args.refresh):
+                print("plumb mod study: --study and --depth (or --refresh) are required",
+                      file=sys.stderr)
                 return EXIT_USAGE
             try:
+                if args.refresh:
+                    chosen = study.refresh(root, args.study, args.refresh == "yes")
+                    _answer({"slug": args.study, "status": chosen["status"],
+                             "depth": chosen.get("depth", ""), "refresh": chosen["refresh"]},
+                            args.as_json)
+                    return EXIT_OK
                 chosen = study.choose(root, args.study,
                                       None if args.depth == "none" else args.depth)
             except ValueError as exc:

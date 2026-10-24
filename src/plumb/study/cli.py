@@ -1,11 +1,13 @@
-"""``plumb study propose|add|list|candidates|mark`` (SR-292, SR-293, SR-294; DEC-207).
+"""``plumb study propose|gather|add|list|candidates|mark`` (SR-292..SR-294, SR-360; DEC-207).
 
 ``propose --title --why --depth md|diagrams|video [--topic]`` records an idea of a study for
 the session's open intent loop's current step (no page), refusing a second one for that step;
 the owner accepts it at a depth or declines it in the band (``plumb mod study``); with ``--for
 <question key>...`` it is studied ahead of those waiting judge questions, loop or not (SR-336),
-and while questions wait no other study is proposed. ``add <slug>
---file`` writes an accepted idea's study at the chosen depth; ``list`` prints the studies and
+and while questions wait no other study is proposed. ``gather <slug|topic>`` prints the
+records on the topic, with their examples and test states, that the study is written from
+(SR-360); ``add <slug> --file --records <IDs>`` writes an accepted idea's study at the chosen
+depth, keeping those records and their hashes; ``list`` prints the studies and
 ideas; ``candidates``
 prints what the agent picks a study from: the understanding picture, the judge questions
 waiting on a topic the owner does not know, the owner's prompts so far, the open conflicts, the
@@ -84,6 +86,36 @@ def _waiting(core: Any, root: Path, session: str | None) -> list[dict[str, Any]]
     return [q for q in out if not study.knows(root, q["topic"])]
 
 
+def gather(core: Any, root: Path, words: str) -> dict[str, Any]:
+    """SR-360 EX-1, EX-3: the records on a study's topic (a study's slug reads as its topic),
+    matched as ``plumb resolve`` does, with the decisions on them: each with its statement,
+    examples, test states and hash; ``line`` says when no record covers it."""
+    from plumb.present.cards import example_text, test_states
+    from plumb.present.resolve import resolve
+
+    try:
+        found = study.get(root, words)
+        words = found.get("topic") or found["title"]
+    except LookupError:
+        pass
+    index = core.index()
+    ids = [i.ref for i in resolve(core, words).items if i.kind == "record"]
+    ids += [r.id for r in index.values() if r.kind == "decision" and r.id not in ids
+            and any(link.kind == "decides" and link.target.record in ids for link in r.links)]
+    out = []
+    for i in ids:
+        record = index[i]
+        ends = [link.target.test or link.target.path for link in record.links
+                if link.kind == "verified_by" and (link.target.test or link.target.path)]
+        out.append({"id": i, "kind": record.kind, "title": record.title, "hash": record.hash,
+                    "statement": str(record.fields.get("statement") or record.fields.get(
+                        "chosen") or ""),
+                    "examples": [example_text(e) for e in record.examples],
+                    "tests": test_states(core, ends) if ends else {}})
+    return {"topic": words, "records": out,
+            "line": "" if out else f"no record covers {words}: the study says so"}
+
+
 def candidates(core: Any, root: Path, loop: dict[str, Any], loop_id: str,
                session: str | None = None) -> dict[str, Any]:
     from plumb.understand import cmd_intent
@@ -138,6 +170,10 @@ def run(command: str, argv: list[str]) -> int:
     adder.add_argument("slug")
     adder.add_argument("--file", required=True,
                        help="the body: plain words, mermaid only at depth diagrams")
+    adder.add_argument("--records", nargs="*", default=[], metavar="ID",
+                       help="the records it is written from (plumb study gather)")
+    gatherer = verbs.add_parser("gather", help="the records a study on a topic is written from")
+    gatherer.add_argument("topic", help="the study's slug, or the topic in plain words")
     verbs.add_parser("list")
     verbs.add_parser("candidates", help="what to pick this step's study from")
     marker = verbs.add_parser("mark")
@@ -170,10 +206,27 @@ def run(command: str, argv: list[str]) -> int:
                  f"plumb: study idea: {args.title} ({slug}); write nothing until the owner "
                  "accepts it in the band", args.as_json)
         elif args.verb == "add":
+            from plumb.api import open_core
+
             body = Path(args.file).read_text(encoding="utf-8")
-            slug = study.add(root, args.slug, body)
+            index = open_core(root).index()
+            unknown = [i for i in args.records if i not in index]
+            if unknown:
+                raise LookupError(f"no such record: {', '.join(unknown)}")
+            slug = study.add(root, args.slug, body, [
+                {"id": i, "title": index[i].title, "hash": index[i].hash}
+                for i in dict.fromkeys(args.records)])
             emit({"slug": slug} if args.as_json else
                  f"plumb: new study: {study.get(root, slug)['title']}", args.as_json)
+        elif args.verb == "gather":
+            from plumb.api import open_core
+
+            found = gather(open_core(root), root, args.topic)
+            emit(found if args.as_json else found["line"] or [
+                f"{r['id']} {r['title']}: {r['statement']}"
+                + "".join(f"\n  {e}" for e in r["examples"])
+                + "".join(f"\n  test {t}: {state}" for t, state in r["tests"].items())
+                for r in found["records"]], args.as_json)
         elif args.verb == "list":
             held = study.studies(root)
             emit([{k: v for k, v in s.items() if k != "body"} for s in held] if args.as_json
