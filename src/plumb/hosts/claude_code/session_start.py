@@ -236,6 +236,13 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
     if conflicts:
         lines += emitter.add([Line(conflicts)])
         ctx.keep(lines)
+    try:  # SR-357 EX-1: the open and lately fixed known issues, in one or two lines
+        from plumb import debug
+
+        lines += emitter.add([Line(text) for text in debug.known_lines(core.root)])
+        ctx.keep(lines)
+    except Exception:  # noqa: BLE001 - a broken register never costs the brief
+        pass
     if summary is not None and not summary.get("background"):
         # the tests known: the snapshot again, before the optional lines
         pending = FullPending(summary["pending"], tuple(summary["reasons"]))

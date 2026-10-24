@@ -8,7 +8,9 @@ plumb opens a debug case the moment one of its own steps fails (a hook error, a 
 repin, a job that failed three times). This skill and `plumb debug` are the whole workflow;
 nothing else is needed.
 
-1. Run `plumb debug`. It reruns each case once and says which are resolved and which are open.
+1. Run `plumb debug`. It reruns each case once and says which are resolved, open, or landed,
+   not proven (the fix is in main, not yet seen working where it failed). A case that came
+   back is reopened with its history; a known issue is matched by its symptom.
 2. In plumb's own repository, run `plumb debug fix [<id>]` for a case still open: plumb works
    in a worktree and a branch of its own (`debug/<case>`), never in the main checkout, and
    never merges. The evidence stage uses the smallest configured model, the cause, test and
@@ -20,7 +22,10 @@ nothing else is needed.
 4. A fix the judge reads as changing a requirement's meaning is not committed. It reaches the
    owner as one question through the question tool, with options and what each one does;
    pass their answer on and rerun `plumb debug`. Ask the owner nothing any other way.
-5. `plumb debug done <id>...` closes a case you settled by hand. You confirm no record.
+5. `plumb debug done <id>...` closes a case you settled by hand, or a landed one once you
+   retried what failed and it worked. You confirm no record. A "reload plugins" line, or
+   `done` refused with exit 1, means this session runs a plugin older than main's build:
+   tell the owner in one line to reload plugins; the case stays landed, not proven.
 
 Questions and approval: plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.
