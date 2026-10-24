@@ -96,12 +96,10 @@ def confirmed(repo: Path, write_record) -> Path:
 
 
 @pytest.mark.sr("SR-265")
-def test_sr265_ex1_a_raised_question_is_one_plumb_line_without_the_question(
-        carded, hook_input) -> None:
-    """SR-265 EX-1: one plumb line says a question waits; no question or options."""
+def test_sr265_ex1_a_raised_question_shows_no_plumb_line(carded, hook_input) -> None:
+    """SR-265 EX-1 (SR-363): no plumb line about the question, no question or options."""
     _start_turn(carded.root)
-    text = _owner(_stop(carded.root, hook_input))
-    assert text == "plumb: 1 question for you"
+    assert _owner(_stop(carded.root, hook_input)) == ""
     assert "Requirement 1" in _agent(carded.root)        # the card itself is the agent's
 
 
@@ -120,11 +118,11 @@ def test_sr265_ex2_an_applied_answer_is_named_in_the_owners_words(carded, hook_i
 
 @pytest.mark.sr("SR-265")
 def test_sr265_ex3_on_codex_the_line_is_plain_text_and_no_card_is_printed(carded) -> None:
-    """SR-265 EX-3: a host without a band prints the plumb line as plain text, no card."""
+    """SR-265 EX-3: a host without a band prints no card and no count line."""
     _start_turn(carded.root)
     out = neutral.handle_event(TurnEvent(kind="stop", root=carded.root, session_id=SESSION,
                                          host="codex"), verify=FakeVerify(), unjudged=None)
-    assert out.owner_lines == ("plumb: 1 question for you",)
+    assert out.owner_lines == ()
     assert "Requirement 1" in _agent(carded.root)
 
 
@@ -198,7 +196,7 @@ def test_sr266_ex2_stale_links_untraced_files_and_warnings_go_to_the_agent(
 
 @pytest.mark.sr("SR-266")
 def test_sr266_ex3_the_retired_card_setting_is_told_to_the_agent_once(carded) -> None:
-    """SR-266 EX-3: full/compact/off has no effect; the agent is told once it is retired."""
+    """SR-266 EX-3: full/compact/off has no effect and nothing is told about it."""
     (carded.root / ".plumb" / "config.yaml").write_text("present:\n  card: compact\n", "utf-8")
 
     def stop_cli():
@@ -208,9 +206,8 @@ def test_sr266_ex3_the_retired_card_setting_is_told_to_the_agent_once(carded) ->
                                     verify=FakeVerify(), unjudged=None)
 
     first = stop_cli()
-    assert first.owner_lines == ("plumb: 1 question for you",)       # no effect on the owner
-    assert sum(CARD_RETIRED in line for line in first.agent_context) == 1
-    assert not any(CARD_RETIRED in line for line in stop_cli().agent_context)
+    assert first.owner_lines == ()       # no effect on the owner
+    assert not any(CARD_RETIRED in line for line in first.agent_context)
 
 
 @pytest.mark.sr("SR-266")
@@ -222,7 +219,7 @@ def test_sr266_ex4_the_agent_keeps_the_conflict_id_the_owner_sees_none(
     ic = conflicted(repo)
     _start_turn(repo)
     owner = _owner(_stop(repo, hook_input))
-    assert owner == "plumb: 1 question for you" and not IDS.search(owner)
+    assert owner == ""                   # SR-363: no count, so no id either
     assert cli.main(["conflicts", "--root", str(repo)]) == 0
     assert ic in capsys.readouterr().out
 
@@ -267,11 +264,11 @@ def test_sr266_ex6_a_test_that_passed_and_fails_now_reaches_the_agent_with_its_e
 @pytest.mark.sr("SR-295")
 def test_sr295_ex1_an_open_conflict_is_handed_to_the_agent_to_ask(repo: Path,
                                                                    hook_input) -> None:
-    """SR-295 EX-1: the owner sees at most 'plumb: 1 question for you'; the agent gets the
+    """SR-295 EX-1: the owner's text carries no question count; the agent gets the
     conflict with the instruction to ask it with the question tool."""
     conflicted(repo)
     _start_turn(repo)
-    assert _owner(_stop(repo, hook_input)) == "plumb: 1 question for you"
+    assert _owner(_stop(repo, hook_input)) == ""
     agent = _agent(repo)
     assert summary.ASK_OWNER in agent and "relay checks" in agent
     assert "question tool" in summary.ASK_OWNER
@@ -314,3 +311,20 @@ def test_sr295_a_card_only_in_the_agents_channel_is_not_shown_to_the_owner(tmp_p
         "active": True, "heartbeat": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}),
         "utf-8")
     assert stated() == [("SR-001", True)]
+
+
+# --------------------------------------------------------------------------- SR-363
+
+
+@pytest.mark.sr("SR-363")
+def test_sr363_ex3_an_applied_answer_and_passing_checks_carry_no_question_count(
+        carded) -> None:
+    """SR-363 EX-3: one line says the answer was applied and the 4 checks pass."""
+    assert summary.owner_line(carded, SESSION) == ""     # SR-363 EX-2: a waiting card, no line
+    cards = cardstore.load(carded.root, SESSION, open_only=False)
+    cardstore.save(carded.root, SESSION,
+                   [dataclasses.replace(c, status="answered") for c in cards])
+    line = summary.owner_line(open_core(carded.root), SESSION, touched=["SR-001"],
+                              checks=(4, 4))
+    assert line.startswith(f"plumb: your answer on {cards[0].topic} was applied; aligned, ")
+    assert line.endswith(", 4 checks pass") and "for you" not in line

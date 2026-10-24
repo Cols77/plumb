@@ -197,6 +197,28 @@ def answers_of(core: Any, record: Any) -> tuple[dict[str, Any], ...]:
                  for e in answer_entries(core, record))
 
 
+def owner_words(core: Any) -> list[tuple[str, str]]:
+    """SR-335: ``(text, at)`` of the owner's own logged words: their question-tool answers
+    and the prompts they typed."""
+    from plumb.understand import read
+
+    said = [(str(e.payload.get("answer") or ""), e.at) for e in core.events()
+            if e.kind == "question-answer" and e.payload.get("via") == "question-tool"]
+    return said + [(str(p.get("text") or ""), str(p.get("at") or ""))
+                   for p in read._prompt_entries(core)]
+
+
+def owner_quoted(record: Any, said: Sequence[tuple[str, str]]) -> bool:
+    """SR-335 EX-1, EX-3: a decision the owner's words settle before it is approved: its
+    ``quote`` (else what it chose) is verbatim in words of theirs (``owner_words``). One only
+    the agent wrote, or one that misquotes them, is not."""
+    from plumb.understand import recover
+
+    quoted = recover.quote_parts(record) or [str(record.fields.get("chosen") or "")]
+    return record.kind == "decision" and all(
+        any(recover.holds(text, q) for text, _ in said) for q in quoted)
+
+
 def premise_of(core: Any, record: Any, *, statuses: Mapping[str, Any] | None = None,
                known: Mapping[str, Mapping[str, Any]] | None = None) -> Premise:
     """The premise of ``record`` (see the module docstring)."""

@@ -58,6 +58,28 @@ def test_concurrent_claims_are_both_kept(tmp_path: Path, monkeypatch: pytest.Mon
     assert sorted(c["id"] for c in _claims(main)) == ["feat-x:INT-009", "main:INT-001"]
 
 
+
+def test_slow_git_under_load_still_retries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+                                           ) -> None:
+    """SR-258 EX-11 under load: git calls slower than the retry budget and a racing
+    writer; the loser of the race still retries and both claims are kept."""
+    main, other = setup(tmp_path)
+    real = inflight._git
+    moved = {"done": False}
+
+    def slow_racing(root, *args, stdin=None):  # noqa: ANN001, ANN202
+        if args[0] == "update-ref" and not moved["done"]:
+            moved["done"] = True
+            inflight.record_claim(open_core(other), records={"SR-006": {"title": "card"}},
+                                  summary="other work", intent="INT-009")
+        inflight.time.sleep(0.03)                 # each git call outlasts retry_s
+        return real(root, *args, stdin=stdin)
+
+    monkeypatch.setattr(inflight, "_git", slow_racing)
+    inflight.update(main, lambda d: {**d, "claims": [*d["claims"], {"id": "main:INT-001"}]},
+                    retry_s=0.02)
+    assert sorted(c["id"] for c in _claims(main)) == ["feat-x:INT-009", "main:INT-001"]
+
 _WORKER = """
 import sys
 from pathlib import Path

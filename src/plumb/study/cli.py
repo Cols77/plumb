@@ -1,12 +1,17 @@
-"""``plumb study propose|add|list|candidates|mark`` (SR-292, SR-293, SR-294; DEC-207).
+"""``plumb study propose|gather|add|list|candidates|mark`` (SR-292..SR-294, SR-360; DEC-207).
 
 ``propose --title --why --depth md|diagrams|video [--topic]`` records an idea of a study for
 the session's open intent loop's current step (no page), refusing a second one for that step;
-the owner accepts it at a depth or declines it in the band (``plumb mod study``). ``add <slug>
---file`` writes an accepted idea's study at the chosen depth; ``list`` prints the studies and
+the owner accepts it at a depth or declines it in the band (``plumb mod study``); with ``--for
+<question key>...`` it is studied ahead of those waiting judge questions, loop or not (SR-336),
+and while questions wait no other study is proposed. ``gather <slug|topic>`` prints the
+records on the topic, with their examples and test states, that the study is written from
+(SR-360); ``add <slug> --file --records <IDs>`` writes an accepted idea's study at the chosen
+depth, keeping those records and their hashes; ``list`` prints the studies and
 ideas; ``candidates``
-prints what the agent picks a study from: the understanding picture, the owner's prompts so far,
-the open conflicts, the loop's records and the decisions that matter; ``mark <slug>
+prints what the agent picks a study from: the understanding picture, the judge questions
+waiting on a topic the owner does not know, the owner's prompts so far, the open conflicts, the
+loop's records and the decisions that matter; ``mark <slug>
 opened|known|deeper`` is the room's own action, also open to the owner's terminal.
 """
 
@@ -70,7 +75,49 @@ def _conflicts(core: Any) -> list[dict[str, Any]]:
     return out
 
 
-def candidates(core: Any, root: Path, loop: dict[str, Any], loop_id: str) -> dict[str, Any]:
+def _waiting(core: Any, root: Path, session: str | None) -> list[dict[str, Any]]:
+    """SR-336 EX-1: the session's judge questions waiting for the owner on a topic (their
+    principle, else their header) the picture does not say they know."""
+    from plumb.understand import judge
+
+    asked = judge.open_questions(core, session) if session else []
+    out = [{"key": q.get("key"), "question": q.get("question"),
+            "topic": q.get("principle") or q.get("header") or ""} for q in asked]
+    return [q for q in out if not study.knows(root, q["topic"])]
+
+
+def gather(core: Any, root: Path, words: str) -> dict[str, Any]:
+    """SR-360 EX-1, EX-3: the records on a study's topic (a study's slug reads as its topic),
+    matched as ``plumb resolve`` does, with the decisions on them: each with its statement,
+    examples, test states and hash; ``line`` says when no record covers it."""
+    from plumb.present.cards import example_text, test_states
+    from plumb.present.resolve import resolve
+
+    try:
+        found = study.get(root, words)
+        words = found.get("topic") or found["title"]
+    except LookupError:
+        pass
+    index = core.index()
+    ids = [i.ref for i in resolve(core, words).items if i.kind == "record"]
+    ids += [r.id for r in index.values() if r.kind == "decision" and r.id not in ids
+            and any(link.kind == "decides" and link.target.record in ids for link in r.links)]
+    out = []
+    for i in ids:
+        record = index[i]
+        ends = [link.target.test or link.target.path for link in record.links
+                if link.kind == "verified_by" and (link.target.test or link.target.path)]
+        out.append({"id": i, "kind": record.kind, "title": record.title, "hash": record.hash,
+                    "statement": str(record.fields.get("statement") or record.fields.get(
+                        "chosen") or ""),
+                    "examples": [example_text(e) for e in record.examples],
+                    "tests": test_states(core, ends) if ends else {}})
+    return {"topic": words, "records": out,
+            "line": "" if out else f"no record covers {words}: the study says so"}
+
+
+def candidates(core: Any, root: Path, loop: dict[str, Any], loop_id: str,
+               session: str | None = None) -> dict[str, Any]:
     from plumb.understand import cmd_intent
 
     index = core.index()
@@ -85,6 +132,8 @@ def candidates(core: Any, root: Path, loop: dict[str, Any], loop_id: str) -> dic
         "picture": picture,
         "known": picture["knows"],       # propose nothing on these (SR-292 EX-1, SR-293 EX-3)
         "deeper": picture["needs"],      # a deeper study is a candidate (EX-2)
+        # SR-336: study ahead of these first (propose --for their keys)
+        "waiting": _waiting(core, root, session),
         "prompts": _prompts(core),
         "conflicts": _conflicts(core),
         "records": [{"id": i, "title": index[i].title} for i in sorted(ids) if i in index],
@@ -113,10 +162,18 @@ def run(command: str, argv: list[str]) -> int:
     proposer.add_argument("--depth", required=True, choices=study.DEPTHS,
                           help="the depth you recommend; the owner chooses")
     proposer.add_argument("--topic", default=None, help="what it is about (default: the title)")
+    proposer.add_argument("--for", dest="serves", nargs="+", default=[], metavar="KEY",
+                          help="the keys of the waiting questions it is studied ahead of")
+    proposer.add_argument("--asked", action="store_true",
+                          help="the owner asked for it: any time, outside every limit (SR-355)")
     adder = verbs.add_parser("add", help="write the study of an idea the owner accepted")
     adder.add_argument("slug")
     adder.add_argument("--file", required=True,
                        help="the body: plain words, mermaid only at depth diagrams")
+    adder.add_argument("--records", nargs="*", default=[], metavar="ID",
+                       help="the records it is written from (plumb study gather)")
+    gatherer = verbs.add_parser("gather", help="the records a study on a topic is written from")
+    gatherer.add_argument("topic", help="the study's slug, or the topic in plain words")
     verbs.add_parser("list")
     verbs.add_parser("candidates", help="what to pick this step's study from")
     marker = verbs.add_parser("mark")
@@ -132,17 +189,49 @@ def run(command: str, argv: list[str]) -> int:
     root = resolve_root(args.root)
     try:
         if args.verb == "propose":
-            path, loop = _open_loop(root, args)
+            from plumb.api import open_core
+            from plumb.understand import cmd_intent
+
+            if args.serves or args.asked:   # SR-336, SR-355: inside a loop step or not
+                path, loop = Path(""), {"step": ""}
+            elif _waiting(open_core(root), root, cmd_intent._session(args, root)):
+                raise ValueError("questions wait for the owner: propose a study with --for "
+                                 "their keys (plumb study candidates), or nothing")
+            else:
+                path, loop = _open_loop(root, args)
             slug = study.propose(root, title=args.title, why=args.why, depth=args.depth,
-                                 loop=path.stem, step=str(loop.get("step")), topic=args.topic)
+                                 loop=path.stem, step=str(loop.get("step")), topic=args.topic,
+                                 serves=args.serves, asked=args.asked)
             emit({"slug": slug} if args.as_json else
                  f"plumb: study idea: {args.title} ({slug}); write nothing until the owner "
                  "accepts it in the band", args.as_json)
         elif args.verb == "add":
+            from plumb.api import open_core
+
             body = Path(args.file).read_text(encoding="utf-8")
-            slug = study.add(root, args.slug, body)
+            core = open_core(root)
+            index = core.index()
+            unknown = [i for i in args.records if i not in index]
+            if unknown:
+                raise LookupError(f"no such record: {', '.join(unknown)}")
+            # SR-360 EX-3: 'no record covers it' is gather's finding, never a forgotten flag
+            if not args.records and (held := gather(core, root, args.slug)["records"]):
+                raise ValueError(f"records cover this topic ({', '.join(r['id'] for r in held)}):"
+                                 " pass --records with the IDs you drew on")
+            slug = study.add(root, args.slug, body, [
+                {"id": i, "title": index[i].title, "hash": index[i].hash}
+                for i in dict.fromkeys(args.records)])
             emit({"slug": slug} if args.as_json else
                  f"plumb: new study: {study.get(root, slug)['title']}", args.as_json)
+        elif args.verb == "gather":
+            from plumb.api import open_core
+
+            found = gather(open_core(root), root, args.topic)
+            emit(found if args.as_json else found["line"] or [
+                f"{r['id']} {r['title']}: {r['statement']}"
+                + "".join(f"\n  {e}" for e in r["examples"])
+                + "".join(f"\n  test {t}: {state}" for t, state in r["tests"].items())
+                for r in found["records"]], args.as_json)
         elif args.verb == "list":
             held = study.studies(root)
             emit([{k: v for k, v in s.items() if k != "body"} for s in held] if args.as_json
@@ -151,9 +240,16 @@ def run(command: str, argv: list[str]) -> int:
                  or ["plumb: no study yet"], args.as_json)
         elif args.verb == "candidates":
             from plumb.api import open_core
+            from plumb.understand import cmd_intent
 
-            path, loop = _open_loop(root, args)
-            found = candidates(open_core(root), root, loop, path.stem)
+            session = cmd_intent._session(args, root)
+            try:
+                path, loop = _open_loop(root, args)
+            except LookupError:     # SR-336: questions may wait outside a loop
+                if not session:
+                    raise
+                path, loop = Path(""), {}
+            found = candidates(open_core(root), root, loop, path.stem, session)
             if args.as_json:
                 emit(found, True)
             else:

@@ -19,6 +19,8 @@
   }
   async function choose(slug: string) {
     selected = slug; saved = ''; open = undefined;
+    // the URL names the open study, so a reload onto a newer build (SR-342) comes back to it
+    const url = new URL(location.href); url.searchParams.set('study', slug); history.replaceState(history.state, '', url);
     if (slug === UNDERSTANDING) { draft = understanding.text; return; }
     try { open = await api<Study>(`/api/studies/${encodeURIComponent(slug)}/open`, capability, {}); await load(); }
     catch (cause) { error = cause instanceof Error ? cause.message : 'Unable to open the study.'; }
@@ -39,7 +41,7 @@
   <nav class="study-list" aria-label="Studies">
     <div class="inbox-heading"><div><span class="eyebrow">Learn the system</span><h2>Studies <span class="count">{studies.length}</span></h2></div></div>
     <button class="issue-row" class:selected={selected === UNDERSTANDING} aria-current={selected === UNDERSTANDING ? 'true' : undefined} onclick={() => void choose(UNDERSTANDING)}><span class="issue-meta"><span>your picture</span></span><strong>Understanding</strong><span class="issue-preview">{understanding.knows.length} known · {understanding.needs.length} to learn</span></button>
-    {#each studies as item (item.slug)}<button class="issue-row" class:selected={item.slug === selected} aria-current={item.slug === selected ? 'true' : undefined} onclick={() => void choose(item.slug)}><span class="issue-meta"><span>{item.step}</span>{#if item.status === 'new'}<span class="study-new">new</span>{/if}</span><strong>{item.title}</strong><span class="issue-preview">{item.why}</span></button>
+    {#each studies as item (item.slug)}<button class="issue-row" class:selected={item.slug === selected} aria-current={item.slug === selected ? 'true' : undefined} onclick={() => void choose(item.slug)}><span class="issue-meta"><span>{item.step}</span>{#if item.status === 'new'}<span class="study-new">new</span>{/if}{#if item.changed}<span class="study-new">out of date</span>{/if}</span><strong>{item.title}</strong><span class="issue-preview">{item.why}</span></button>
     {:else}<div class="inbox-empty">No study yet. During an intent loop the agent may write one per step.</div>{/each}
   </nav>
   <main class="issue-detail" aria-live="polite">
@@ -53,6 +55,8 @@
     {:else if open}
       <span class="eyebrow">Study · {open.step} step</span><h1>{open.title}</h1>
       <p class="issue-lead">{open.why}</p>
+      <!-- SR-360 EX-2: a record it was written from changed; the band offers the rewrite -->
+      {#if open.changed}<p class="receipt" role="status">out of date: {open.changed} changed</p>{/if}
       <div class="study-body" bind:this={bodyEl}>{@html html}</div>
       <div class="answer-buttons"><button class="primary" disabled={busy} onclick={() => void mark('known')}>I know this</button><button disabled={busy} onclick={() => void mark('deeper')}>Go deeper</button></div>
       <p class="muted">These correct your understanding only; they answer nothing in a session.</p>

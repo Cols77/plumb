@@ -154,3 +154,28 @@ def test_full_pending_cleared_by_full_run_evidence(project: Path) -> None:
     write(project, "src/pkg/orphan.py", "X = 1\n")
     pending = open_verify(open_core(project)).full_pending()
     assert "src/pkg/orphan.py has no covering test" in pending.reasons
+
+
+class _Map:
+    """The slice of the test map ``node_evidence`` reads."""
+    files = {"t.py": {"nodes": {"t.py::test_p": 1}}}
+
+    def closure_hash(self, f): return "C"
+    def node_hash(self, n): return "T"
+    def nodes_of(self, f): return ["t.py::test_p"]
+
+
+@pytest.mark.sr("SR-352")
+def test_a_parameter_dropped_from_a_later_run_does_not_keep_the_test_failing() -> None:
+    from plumb.verify.evidence import node_evidence
+
+    index = {"v": 0, "nodes": {}}
+    for run, outcomes in (("1", {"t.py::test_p[a]": "passed", "t.py::test_p[old]": "passed"}),
+                          ("2", {"t.py::test_p[a]": "failed", "t.py::test_p[old]": "failed"}),
+                          ("3", {"t.py::test_p[a]": "passed"})):  # [old] is gone from the file
+        apply_entry(index, {"run_id": run, "env": {"env_key": "E", "identity": "I"},
+                            "nodes": [{"id": n, "outcome": o, "closure": "C", "test_hash": "T"}
+                                      for n, o in outcomes.items()]})
+    for ref in ("t.py", "t.py::test_p"):
+        ev = node_evidence(index, _Map(), ref, "E", "I")
+        assert (ev.state, ev.last_failed, ev.regression) == ("fresh-pass", False, False), ref

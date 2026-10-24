@@ -21,6 +21,7 @@ from awareness.scenario import change, setup
 from plumb import cli
 from plumb.api import open_core
 from plumb.hosts.claude_code import stop
+from plumb.understand.summary import ASK_OWNER
 
 pytestmark = pytest.mark.sr("SR-259")
 THEIRS = "A relay pins the stated group, named by its title."
@@ -58,10 +59,22 @@ def _stop(root: Path, hook_input: Any, *, active: bool = False) -> str:
     return str(data.get("systemMessage") or data.get("reason") or "")
 
 
-def _turn(root: Path, hook_input: Any) -> tuple[str, str]:
-    """The stop hook's two passes: the block that tells the agent, the reply the owner
-    reads."""
-    return _stop(root, hook_input), _stop(root, hook_input, active=True)
+def agent_channel(root: Path, session: str = "s1") -> str:
+    """SR-266, SR-295: what the stop queued for the agent (the cards in full, each the owner
+    must settle tagged for the agent to ask), taken once."""
+    path = root / ".plumb" / "session" / session / "agent_notes.json"
+    notes = json.loads(path.read_text("utf-8")) if path.exists() else []
+    path.unlink(missing_ok=True)
+    return "\n\n".join(str(n) for n in notes)
+
+
+def _turn(root: Path, hook_input: Any) -> tuple[list[str], str]:
+    """The stop hook's two passes: the owner's plumb lines (SR-265, SR-363: never the card
+    nor a count of it) and the agent's channel of the last pass (the card in full)."""
+    lines = [_stop(root, hook_input)]
+    agent_channel(root)
+    lines.append(_stop(root, hook_input, active=True))
+    return [line for line in lines if line], agent_channel(root)
 
 
 def _decisions(root: Path) -> list[Any]:
@@ -81,9 +94,12 @@ def early_heads(reply: str, title: str) -> list[str]:
             if line == title and lines[n + 1].startswith(("feat-x says", "main says"))]
 
 
-def _assert_asked_and_answered(root: Path, asked: str, reply: str, record: str) -> None:
-    assert "ask the owner now" not in asked, asked      # the card asks, never the agent
-    assert early_heads(reply, open_core(root).index()[record].title), reply
+def _assert_asked_and_answered(root: Path, lines: list[str], cards: str, record: str) -> None:
+    # the stop never blocks for it: the owner's text counts no question (SR-363), and the card
+    # reaches the agent tagged for the owner to settle (SR-265, SR-295)
+    assert lines == [], lines
+    assert ASK_OWNER in cards, cards
+    assert early_heads(cards, open_core(root).index()[record].title), cards
     [dec] = _decisions(root)
     assert dec.fields.get("matters") is True
     assert _answer(root, record) == 0
@@ -98,8 +114,8 @@ def test_direct_edit_then_stop_hook(tmp_path: Path, hook_input: Any) -> None:
     _other, mine = _lanes(tmp_path)
     _start_turn(mine)
     requirement(mine, "SR-005", "relay checks", OURS, feature="FEAT-002")
-    asked, reply = _turn(mine, hook_input)
-    _assert_asked_and_answered(mine, asked, reply, "SR-005")
+    lines, cards = _turn(mine, hook_input)
+    _assert_asked_and_answered(mine, lines, cards, "SR-005")
 
 
 def test_plumb_new_then_stop_hook(tmp_path: Path, hook_input: Any,
@@ -126,8 +142,8 @@ def test_plumb_new_then_stop_hook(tmp_path: Path, hook_input: Any,
                          "title.", "--root", str(mine)]) == 0
     [new] = [r.id for r in open_core(mine).index().values()
              if r.kind == "requirement" and r.title == "relay names"]
-    asked, reply = _turn(mine, hook_input)
-    _assert_asked_and_answered(mine, asked, reply, new)
+    lines, cards = _turn(mine, hook_input)
+    _assert_asked_and_answered(mine, lines, cards, new)
 
 
 def test_capture(tmp_path: Path, hook_input: Any) -> None:
@@ -135,12 +151,12 @@ def test_capture(tmp_path: Path, hook_input: Any) -> None:
     _start_turn(mine)
     result = change(mine, OURS)
     assert any('"relay checks" waits as a card' in line for line in result.lines)
-    asked, reply = _turn(mine, hook_input)
-    assert early_heads(reply, "relay checks"), reply
+    lines, cards = _turn(mine, hook_input)
+    assert early_heads(cards, "relay checks"), cards
     [dec] = _decisions(mine)
     assert _answer(mine, dec.id) == 0
     assert open_core(mine).index()[dec.id].fields["chosen"] == "feat-x's version"
-    assert asked
+    assert lines == [], lines                     # SR-363: no question count
 
 
 def _clarify(root: Path) -> str:
@@ -158,10 +174,10 @@ def test_clarify_then_edit(tmp_path: Path, hook_input: Any) -> None:
     _start_turn(mine)
     assert 'over "relay checks" waits as a card' in _clarify(mine)
     requirement(mine, "SR-005", "relay checks", OURS, feature="FEAT-002")
-    asked, reply = _turn(mine, hook_input)
+    lines, cards = _turn(mine, hook_input)
     # the read-back's card is drawn once (its decision has its own card since SR-012)
-    assert len(early_heads(reply, "relay checks")) == 1
-    _assert_asked_and_answered(mine, asked, reply, "SR-005")
+    assert len(early_heads(cards, "relay checks")) == 1
+    _assert_asked_and_answered(mine, lines, cards, "SR-005")
 
 
 def test_clarify_card_answered_before_any_edit(tmp_path: Path, hook_input: Any) -> None:
@@ -170,8 +186,10 @@ def test_clarify_card_answered_before_any_edit(tmp_path: Path, hook_input: Any) 
     _other, mine = _lanes(tmp_path)
     _start_turn(mine)
     _clarify(mine)
-    reply = _stop(mine, hook_input)               # a turn that changed no file
-    assert early_heads(reply, "relay checks"), reply
+    line = _stop(mine, hook_input)                # a turn that changed no file
+    assert line == "", line                       # SR-363: no question count
+    cards = agent_channel(mine)
+    assert early_heads(cards, "relay checks"), cards
     assert _decisions(mine) == []
     assert _answer(mine, "SR-005") == 0
     [dec] = _decisions(mine)

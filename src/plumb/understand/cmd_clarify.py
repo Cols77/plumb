@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -52,12 +53,15 @@ SHOW_COULDNT = ("The check could not be made and the owner has a card offering t
                 "wait. Say so in one line; nothing was built, and nothing is built until they "
                 "say to build anyway.")
 WAITING = "The check of your request is not finished. Do not build yet."
-ASK_QUESTIONS = ("Ask these {n} questions with the question tool, one at a time, as given: each "
-                 "question, header and option label and description verbatim.")
+ASK_QUESTIONS = ("Ask these {n} questions with the question tool, all at once, now: put each in "
+                 "the owner's terms with `plumb question reword`, merging those on one principle; "
+                 "push an obvious or answered one back with `plumb question pushback`; never "
+                 "drop, answer or default one.")
 UNMATCHED = "Ask these questions as given; the last answer matched none of them."
 JUDGING = ("plumb's judge is still reading the records; go on with the work and run clarify "
            "--wait again before the turn ends.")
 APPROVED = "approved on your behalf: {title} (judge-approved, {by}, {score})"
+ROOM_TEXT_MAX = 600     # SR-333: a question longer than this has more to see than the tool holds
 HELD = ("plumb: edits are held ({reason}): this request changes a confirmed record and no "
         "intent loop ran for it. /plumb intent opens the loop; the owner's /plumb go releases.")
 
@@ -76,8 +80,13 @@ class Outcome:
                 "lines": self.lines, **shown}
 
 
+_BARE_COMMAND = re.compile(r"/\S+")
+
+
 def latest_prompt(core: Any, session: str | None) -> Mapping[str, Any] | None:
-    """The newest owner message of the session (any session when none is named)."""
+    """The newest owner message of the session (any session when none is named). A bare slash
+    command (``/reload-plugins``) is no message of the owner's request: it never hides the
+    typed ``/plumb intent`` before it from ``intent open`` and ``--wait``."""
     from plumb.approvals import is_owner_entry
 
     newest: Mapping[str, Any] | None = None
@@ -90,7 +99,8 @@ def latest_prompt(core: Any, session: str | None) -> Mapping[str, Any] | None:
             continue
         if isinstance(entry, Mapping) and entry.get("digest") and is_owner_entry(entry) \
                 and (session is None or entry.get("session") == session) \
-                and not clarify.is_typed_go(str(entry.get("text") or "")):
+                and not clarify.is_typed_go(str(entry.get("text") or "")) \
+                and not _BARE_COMMAND.fullmatch(str(entry.get("text") or "").strip()):
             newest = entry
     return newest
 
@@ -117,10 +127,13 @@ def _since(core: Any, session: str, logged: Mapping[str, Any]) -> str:
 
 
 def _judge_jobs_since(root: Path, session: str, at: str) -> list[Job]:
-    """The session's judge jobs queued since ``at``, whatever their records."""
+    """The session's judge jobs queued since ``at``, whatever their records, and the judge's
+    readings of a question the agent sent back (SR-362): no question is asked before its
+    ruling."""
     from plumb.understand import jobs
 
-    return [j for j in jobs.queued(root, session) if j.kind == "judge" and j.created >= at]
+    return [j for j in jobs.queued(root, session) if j.kind in ("judge", "pushback")
+            and j.created >= at]
 
 
 def _approved(core: Any, at: str) -> list[str]:
@@ -141,11 +154,45 @@ def _approved(core: Any, at: str) -> list[str]:
     return out
 
 
+def _by_principle(questions: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """SR-361: every blocking question (even several on one principle), then one question per
+    other principle, every principle, the biggest first: no limit per turn."""
+    def principle(q: Mapping[str, Any]) -> str:
+        return str(q.get("principle") or q.get("key"))
+
+    blocking = [q for q in questions if q.get("blocking")]
+    groups: dict[str, list[Mapping[str, Any]]] = {}
+    for q in questions:
+        if not q.get("blocking") and principle(q) not in map(principle, blocking):
+            groups.setdefault(principle(q), []).append(q)
+    ordered = sorted(groups.values(), key=lambda g: -len(g))
+    return [*blocking, *(g[0] for g in ordered)]
+
+
+def _options(root: Path, question: Mapping[str, Any]) -> list[Any]:
+    """SR-333 EX-1, EX-2: a question with more to see (a diagram, or a text over
+    ``ROOM_TEXT_MAX``) offers to study it in the room, last and within the tool's four options
+    (the room shows every option). SR-336 EX-1: a question a study serves offers to study it
+    first instead (one study option at most)."""
+    from plumb import study
+
+    options = list(question.get("options") or ())
+    if study.serving(root, str(question.get("key"))):
+        extra = {"label": owner_text.STUDY_FIRST, "description": owner_text.STUDY_FIRST_NOTE}
+    elif question.get("diagram") or len(str(question.get("question") or "")) > ROOM_TEXT_MAX:
+        extra = {"label": owner_text.ROOM_STUDY, "description": owner_text.ROOM_STUDY_NOTE}
+    else:
+        return options
+    return [*options[:3], extra]
+
+
 def _judged(core: Any, session: str, digest: str, at: str, limit: float,
-            sleep: Callable[[float], None], clock: Callable[[], float]) -> Outcome:
+            sleep: Callable[[float], None], clock: Callable[[], float], turn: str = "") -> Outcome:
     """SR-248: the judge jobs queued since the owner last spoke, collected: ``waiting`` while
     one runs past the limit, ``ask`` while its questions are open, else ``ready`` with what the
-    judge approved. The questions never close the gate (P6)."""
+    judge approved. The questions never close the gate (P6). SR-361: every open question
+    is asked at once, even mid-task, one per principle."""
+    from plumb import study
     from plumb.api import open_core
     from plumb.understand import judge, worker
 
@@ -162,17 +209,37 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
             return Outcome("waiting", digest, [JUDGING])
         sleep(POLL_S)
     core = open_core(root)          # a detached worker may have written meanwhile
-    questions = judge.open_questions(core, session)
+    said = [e for e in core.events() if e.kind == "question-answer"
+            and e.payload.get("session") == session and e.at >= (turn or at)]
+    later = study.first_keys(root, session)       # SR-336 EX-2: they wait for the study
+    questions = _by_principle([q for q in judge.open_questions(core, session)
+                               if q.get("key") not in later])
+    since = _judge_jobs_since(root, session, at)
+    failed = [j for j in since if j.kind == "judge"    # a failed push-back keeps the question
+              and (r := result_of(root, session, j.id)) is not None and r.status == "error"]
+    if failed and questions and not any(q.get("job") in {j.id for j in since}
+                                        for q in questions):
+        # the judge could not read the owner's latest message: what it asked before that
+        # message may be answered by it, so it is not asked again (never ask what was said);
+        # nor is it "ready" (EX-9: no judge, the edit is held): the couldn't-check card holds
+        # the gate until the judge reads the message or the owner says to build anyway
+        last = result_of(root, session, failed[-1].id)
+        if gate.state(root, session).message_digest != digest or not gate.is_closed(root,
+                                                                                     session):
+            gate.close(root, session, digest, clarify.GATE_REASON_COULDNT)
+        return _couldnt(core, session, digest, why_failed(last) if last else WHY_DEFAULT)
     if questions:
-        answers = [e.payload for e in core.events() if e.kind == "question-answer"
-                   and e.payload.get("session") == session and e.at >= at]
-        # SR-212: the agent reworded the question, or asked one of its own
+        answers = [e.payload for e in said if e.at >= at]
+        # SR-212: the agent reworded the question, or asked one of its own; SR-362: a wording
+        # it registered (``plumb question reword``) is matched
+        worded = {w.get("key") for w in judge.reworded(root, session)}
         missed = bool(answers) and answers[-1].get("via") == "question-tool" \
-            and not answers[-1].get("asked")
+            and not any(answers[-1].get(k) for k in ("asked", "room", "study")) \
+            and judge.question_key(str(answers[-1].get("question") or "")) not in worded
         line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
         return Outcome("ask", digest, [line], questions=[
             {"question": q.get("question"), "header": q.get("header"),
-             "options": q.get("options"), "multiSelect": False} for q in questions])
+             "options": _options(root, q), "multiSelect": False} for q in questions])
     return Outcome("ready", digest, [READY, *_approved(core, at)])
 
 
@@ -246,13 +313,15 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
         held = gate.state(root, session)
         if not gate.is_closed(root, session) or not held.message_digest:
             return _judged(core, session, digest, _since(core, session, logged), limit, sleep,
-                           clock)
+                           clock, str(logged.get("at") or ""))
         digest = held.message_digest
     if gate.state(root, session).message_digest != digest and not gate.is_closed(root, session):
         gate.close(root, session, digest, clarify.GATE_REASON_CHECKING)   # no hook closed it
     if not gate.is_closed(root, session):
         return _outcome_from_state(core, session, digest)
-    queued = _jobs_of(root, session, "clarify", digest)
+    sent = clarify.sent_at(core, digest)   # each sending of the same words has its own check
+    queued = [j for j in _jobs_of(root, session, "clarify", digest)
+              if j.inputs["message"].get("at", "") == sent]
     ours = queued[-1] if queued else None
     started = clock()
     reporter = Reporter(root, None, "clarify", stream=stream)

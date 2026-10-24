@@ -36,21 +36,27 @@ def _stop(repo: Path, hook_input, session: str = "s1") -> str:
 
 
 def test_stop_shows_a_new_conflict_once_and_states_it(repo: Path, hook_input) -> None:
+    from host.fakes import agent_notes
+
     conflicted(repo)
     _start_turn(repo)
     head = ["relay checks", "main and feat-x changed it in different ways"]
-    first = _stop(repo, hook_input)
-    assert first.splitlines()[:2] == head
+    # SR-265, SR-363: the owner's text counts no conflict; the card in full is the agent's
+    assert _stop(repo, hook_input) == ""
+    first = agent_notes(repo)
+    assert first.splitlines()[:2] == head, first
     assert ("main says: What it says: A relay pins only the records the owner's "
             "words affirm. / feat-x says: What it says: A relay pins the stated group, named by "
             "its title.") in first.splitlines()
     # SR-012 with DEC-034 replaced "once per version": a card that still asks the owner is
     # drawn at the end of every turn while the conflict is open, and stays stated
     _start_turn(repo)
-    assert _stop(repo, hook_input).splitlines()[:2] == head
+    assert _stop(repo, hook_input) == ""
+    assert agent_notes(repo).splitlines()[:2] == head
     _start_turn(repo)
     assert cli.main(["conflicts", "--root", str(repo)]) == 0  # /plumb conflicts asks again
-    assert _stop(repo, hook_input).splitlines()[:2] == head
+    assert _stop(repo, hook_input) == ""
+    assert agent_notes(repo).splitlines()[:2] == head
 
 
 def test_owner_words_after_the_card_choose_a_side(repo: Path, hook_input) -> None:

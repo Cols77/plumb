@@ -188,3 +188,24 @@ describe('a study opened from the band', () => {
     } finally { history.replaceState({}, '', '/'); }
   });
 });
+describe('the study room, one question at a time', () => {
+  it('SR-333 EX-4: three questions wait, the second with a diagram: Next shows it, its diagram above, and 2 of 3', async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><text x="2" y="10">Flow</text></svg>';
+    vi.stubGlobal('URL', Object.assign(URL, {createObjectURL: () => 'blob:two', revokeObjectURL: () => {}}));
+    const drawn = {...card('two','Saved filters'), diagram: {source: 'two.svg', available: true}};
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      if (input === '/api/workspace') return Response.json({project:{name:'Test project',root:'/test',demo:true},sessions:[{id:'source-session',counts:{waiting:3}}]});
+      if (input.includes('/diagram?')) return Response.json({text: svg});
+      return Response.json({session:'source-session',cards:[card(), drawn, card('three','Plain names')],followups:[]});
+    }));
+    render(App); const user = userEvent.setup();
+    await screen.findByRole('heading',{name:'Export format'});
+    expect(screen.getByText('1 of 3')).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'Back'})).toBeDisabled();
+    await user.click(screen.getByRole('button',{name:'Next'}));
+    expect(screen.getByRole('heading',{name:'Saved filters'})).toBeInTheDocument();
+    expect(screen.getByText('2 of 3')).toBeInTheDocument();
+    const picture = await screen.findByRole('img');
+    expect(picture.compareDocumentPosition(screen.getByRole('region',{name:'Owner decisions'})) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});

@@ -8,7 +8,10 @@
   linked `implemented_by` the code it changes. Ask the owner to read nothing back; it never
   blocks the work.
   Then run `{plumb} clarify --wait --json` and ask plumb's judge's questions it returns with
-  the question tool, verbatim; it checks the request itself only after `/plumb clarify <words>`.
+  the question tool, all at once as soon as raised, each in the owner's terms (`{plumb}
+  question reword`, merging those on one principle); push an obvious or answered one back
+  (`{plumb} question pushback`); never drop, answer or default one. It checks the request
+  itself only after `/plumb clarify <words>`.
 - `{plumb} brief` prints the current intent; `{plumb} status` shows what awaits the owner;
   `{plumb} show <ID>` prints a record's examples and tests; `{plumb} explain <words>` says why
   something exists.

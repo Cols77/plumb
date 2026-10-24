@@ -1,7 +1,7 @@
 ---
 description: plumb in plain words - status, explain anything, review, what is stuck and what plumb is fixing (debug), what a change would reach, the Obsidian view, adopt this repository (init), build without a failed check (go), undo a confirmed record, typed auto-approve on or off, conflicts, merges, other branches' work, the JEV judge (setup, status, calibration), installing what plumb needs
-argument-hint: "status | intent <words> | clarify <words> | debug | explain <anything> | review [<anything>] | impact <anything> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
-allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} impact:*), Bash({plumb} debug:*), Bash({plumb} view:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} init:*), Bash({plumb} plugin migrate:*), Bash({plumb} clarify --wait:*), Bash({plumb} intent:*), Bash({plumb} validate:*), Bash({plumb} conflicts:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*), Bash({plumb} inflight:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*), Bash({plumb} jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
+argument-hint: "status | intent <words> | clarify <words> | debug | explain <anything> | review [<anything>] | impact <anything> | study <topic> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
+allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} impact:*), Bash({plumb} debug:*), Bash({plumb} view:*), Bash({plumb} study propose:*), Bash({plumb} study gather:*), Bash({plumb} study add:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} init:*), Bash({plumb} plugin migrate:*), Bash({plumb} clarify --wait:*), Bash({plumb} question:*), Bash({plumb} intent:*), Bash({plumb} validate:*), Bash({plumb} conflicts:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*), Bash({plumb} inflight:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*), Bash({plumb} jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -63,6 +63,12 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
   their terms.
 - `impact <anything>`: run `{plumb} impact <their words>` and say in plain terms what a
   change would reach.
+- `study <topic>` (also their plain words, "make me a study on how merges are held"):
+  run `{plumb} study propose --asked --title <it> --topic <their topic> --why <one line>
+  --depth md|diagrams|video` with the depth you recommend, any time, loop or not. The band
+  offers it and they pick the depth there; write nothing before they do. Once picked, run
+  `{plumb} study gather <slug> --json`, write from those records only (none: say no record
+  covers it), then `{plumb} study add <slug> --records <their IDs> --file <body.md>`.
 - `view`: run `{plumb} view --open` and tell them the Obsidian vault is open (generated;
   editing a note approves nothing).
 - `inflight` ("what are the other branches working on?"): run `{plumb} inflight` and answer
@@ -104,9 +110,12 @@ refuses it from your session; `approve` and `revoke` no longer exist. Change not
 
 Questions and approval: plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.
-1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each `question`,
-   `header` and option `label` and `description` to AskUserQuestion verbatim, one call per
-   question, in order. Never restate a question in prose.
+1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each
+   `question`, `header` and option `label` and `description` to the question tool,
+   every question at once, as soon as it is raised; never restate one in prose. Put
+   each in the owner's terms with `{plumb} question reword`, merging those that
+   hinge on one principle; push an obvious or already-answered one back with
+   `{plumb} question pushback`; never drop, answer or default one.
 2. Never answer, infer or default a question for the owner, never pick the recommended option
    for them, and never write or read `judge_questions.json` or any approval.
 3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a

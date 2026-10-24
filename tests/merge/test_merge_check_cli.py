@@ -20,8 +20,9 @@ def _snapshot(root: Path) -> dict[str, str]:
     out = {}
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root).as_posix()
-        # .plumb/cache/ and the gitignored derived map are caches: rebuilt, never state
-        if not path.is_file() or rel.startswith((".git/", ".plumb/cache/")) \
+        # .plumb/cache/ and the gitignored derived map are caches: rebuilt, never state;
+        # .plumb/session/ holds the band's progress line, runtime only
+        if not path.is_file() or rel.startswith((".git/", ".plumb/cache/", ".plumb/session/")) \
                 or rel == ".plumb/test_map.txt":
             continue
         if "__pycache__" in rel or ".pytest_cache" in rel:
@@ -66,7 +67,7 @@ def test_default_base_and_green_exit(repo: Path, capsys) -> None:
     approvals.approve(open_core(repo), ["SR-001", "SR-002", "INT-001"])
     commit(repo, "project")
     git(repo, "checkout", "-q", "-b", "feat")
-    code = cli.main(["merge-check", "--root", str(repo)])  # BASE defaults to main
+    code = cli.main(["merge-check", "--run", "--root", str(repo)])  # BASE defaults to main
     out = capsys.readouterr().out
     assert code == 0, out
     assert out.startswith("plumb merge-check: main..HEAD")

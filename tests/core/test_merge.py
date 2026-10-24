@@ -232,6 +232,21 @@ def test_merge_puts_untraced_changes_to_the_owner(base, capsys) -> None:
     assert json.loads(capsys.readouterr().out)["untraced"] == ["src/mul.py"]
 
 
+@pytest.mark.sr("SR-353")
+def test_merge_exact_copy_of_an_owned_file_is_not_untraced(base, capsys) -> None:
+    """SR-353 EX-1, EX-2: an exact copy counts as owned; a drifting copy is listed, no hold."""
+    root, sha = base
+    (root / "plugin").mkdir()
+    (root / "plugin" / "mod.py").write_text("x = 1\n", "utf-8")
+    (root / "plugin" / "drift.py").write_text("x = 2\n", "utf-8")
+    (root / "src" / "mod_copy.py").write_text("x = 1\n", "utf-8")
+    _commit(root, "copies")
+    code, out = _check(root, sha, capsys)
+    assert code == 0, out
+    assert merge_check(open_core(root), sha, as_json=True) == 0
+    assert json.loads(capsys.readouterr().out)["untraced"] == ["plugin/drift.py"]
+
+
 @pytest.mark.sr("SR-200")
 def test_merge_untraced_change_cleared_by_a_link_or_an_exemption(base, capsys) -> None:
     root, sha = base

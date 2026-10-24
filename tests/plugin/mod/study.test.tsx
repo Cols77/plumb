@@ -163,6 +163,19 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
+    test("SR-336 EX-2: 'Study it first' chosen: the band's study line names that study; its press opens the room on it", async ($, on) => {
+      const { w, ui } = await band($, on, surface)
+      w.files[STUDY] = study('new')
+      w.files[OTHER] = other('new') // the newest, named when nothing is chosen
+      w.files[`${ROOT}/.plumb/session/${SESSION}/study_first.json`] = JSON.stringify({ study: SLUG })
+      await $.turn.complete(TURN_DONE)
+      expect((await ui.find({ type: 'Text', text: /^new study/ }))?.text).toBe(LINE)
+      expect(rooms(w)).toEqual([])
+      await ui.press({ key: 'study' })
+      expect(rooms(w)[0]?.argv.slice(-2)).toEqual(['--study', SLUG])
+      await ui.unmount()
+    })
+
     test("SR-294 EX-7: the band's study idea line; its press shows the why and the depths, the recommended one marked", async ($, on) => {
       const { w, ui } = await ideaBand($, on, surface)
       const line = await ui.find({ type: 'Text', text: `study idea: ${IDEA_TITLE}` })

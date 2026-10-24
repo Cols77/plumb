@@ -393,7 +393,22 @@ def write_json_atomic(path: Path, data: Any) -> None:
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1, default=str) + "\n",
                    encoding="utf-8", newline="\n")
-    os.replace(tmp, path)
+    # Windows refuses the replace while a reader holds the target open: retry briefly
+    for attempt in range(_REPLACE_TRIES):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_TRIES - 1:
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
+_REPLACE_TRIES = 8
 
 
 def read_json(path: Path) -> Any:

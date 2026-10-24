@@ -266,7 +266,6 @@ def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
         note_skipped(ctx.root, skipped)
     fresh, early = owner_cards(ctx, core, turn)
     shown: dict[str, str] = {}
-    before = _drawn_before(core, ctx.session_id)
     text = understand_parts(ctx, core, turn, fresh=fresh, shown=shown)
     write_stated(ctx, turn, {}, [], early=early, conflicts=conflict_entries(core))
     from plumb.hosts.claude_code.snapshot import refresh_judge_count
@@ -275,7 +274,7 @@ def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
         refresh_judge_count(core)
     except Exception:  # noqa: BLE001 - the band's count is advisory; the turn end goes on
         pass
-    return owner_output(ctx, core, text, before)
+    return owner_output(ctx, core, text)
 
 
 class Verified(NamedTuple):
@@ -521,38 +520,25 @@ def _cards(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], v: 
     regression = regression_cards(index, v.regressing, v.masked, stamp)
     fresh, early = owner_cards(ctx, core, turn)
     shown: dict[str, str] = {}
-    before = _drawn_before(core, ctx.session_id)
     text = understand_parts(ctx, core, turn, extra=[*regression, *test_cards], fresh=fresh,
                             passing=passing, shown=shown)
     write_stated(ctx, turn, index, stated_ids, shown, early=early,
                  conflicts=conflict_entries(core))
-    return owner_output(ctx, core, text, before, touched=confirmed,
+    return owner_output(ctx, core, text, touched=confirmed,
                         checks=(len(passing), len(v.evidence or {})))
 
 
-def _drawn_before(core: Any, session: str) -> set[str]:
-    try:
-        from plumb.understand.summary import drawn_ids
-
-        return drawn_ids(core.root, session)
-    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
-        return set()
-
-
-def owner_output(ctx: HookContext, core: Any, text: Sequence[str], before: set[str], *,
+def owner_output(ctx: HookContext, core: Any, text: Sequence[str], *,
                  touched: Sequence[str] = (), checks: tuple[int, int] = (0, 0)
                  ) -> HookOutput | None:
     """SR-266: everything for the agent goes to its channel as text, queued for the next
-    prompt (the retired card setting named there, once per session); SR-265: the owner gets
+    prompt; SR-265: the owner gets
     at most one plumb line, or nothing."""
-    from plumb.config import CARD_RETIRED
-
-    retired = [CARD_RETIRED] if getattr(getattr(core.config, "present", None), "card", "") else []
-    queue_notes(ctx, [*retired, *text])
+    queue_notes(ctx, text)
     try:
         from plumb.understand.summary import owner_line
 
-        line = owner_line(core, ctx.session_id, before, touched=touched, checks=checks)
+        line = owner_line(core, ctx.session_id, touched=touched, checks=checks)
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         line = ""
     return HookOutput(system_message=line) if line else None

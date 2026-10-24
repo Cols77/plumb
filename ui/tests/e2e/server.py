@@ -61,8 +61,16 @@ for name, ic in (("e2e-conflict-other", "IC-002"), ("e2e-proposed", "IC-003"), (
 from plumb import study  # noqa: E402
 
 FENCE = "`" * 3
-study.add(root, title="How plumb's background jobs run", why="the plan adds a job", loop="e2e",
-          step="plan", body=f"""## The dispatcher
+
+
+def accepted(title, why, step):
+    """An idea the owner accepted with diagrams: only such a study is written (SR-293 EX-7)."""
+    slug = study.propose(root, title=title, why=why, depth="diagrams", loop="e2e", step=step)
+    study.choose(root, slug, "diagrams")
+    return slug
+
+
+study.add(root, accepted("How plumb's background jobs run", "the plan adds a job", "plan"), body=f"""## The dispatcher
 
 A **dispatcher** hands each job to a worker.
 
@@ -75,8 +83,7 @@ flowchart LR
   D[dispatcher] --> W[worker]
 {FENCE}
 """)
-study.add(root, title="A broken diagram", why="a typo in the diagram", loop="e2e", step="build",
-          body=f"""Some words.
+study.add(root, accepted("A broken diagram", "a typo in the diagram", "build"), body=f"""Some words.
 
 {FENCE}mermaid
 flowchart LR
@@ -88,6 +95,12 @@ static = Path(__file__).resolve().parents[3] / "src/plumb/browser/static"
 bare = Path(tempfile.mkdtemp(prefix="plumb-e2e-bare-")) / "bare"
 init_repo(bare)
 threading.Thread(target=make_server(BrowserService(bare, demo=True), port=8766, assets=static,
+                                    token="e2e-token").serve_forever, daemon=True).start()
+# SR-342: a room on its own copy of the bundle, which a test rebuilds under an open tab.
+swap = Path(os.environ["PLUMB_E2E_SWAP"])
+shutil.rmtree(swap, ignore_errors=True)
+shutil.copytree(static, swap)
+threading.Thread(target=make_server(BrowserService(root, demo=True), port=8767, assets=swap,
                                     token="e2e-token").serve_forever, daemon=True).start()
 make_server(BrowserService(root, demo=True), port=8765, assets=static,
             token="e2e-token").serve_forever()

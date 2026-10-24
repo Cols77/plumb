@@ -16,7 +16,7 @@ keeps the agents.
 
 Open: `{plumb} intent open --wait` on the owner's words. It drafts the candidates (what will
 be done, what won't, assumptions labelled) and says which check it ran; act on that answer
-as plumb-clarify does (ready, ask, a card, couldn't check, waiting).
+as plumb-clarify does (ready, ask, a choice question, couldn't check, waiting).
 
 The owner's band shows the loop's step and the current task: as you go, run
 `{plumb} intent progress --task <words> --done N --total M` in the owner's words
@@ -39,7 +39,10 @@ Stage A, clarify and integrate, until `{plumb} intent gate clarify` passes:
   never a silent choice.
 - Ask the owner how they will see this working ("how will you see this working?"); that is
   the proof, recorded on each requirement with `{plumb} proof SR-### --plan ... --kind
-  live-session|hook|command|other`.
+  live-session|hook|command|other`. A proof that can only be shown once the branch is in main
+  (the plugin reloaded from main) is agreed with the owner as post-merge now: add
+  `--post-merge`; the merge check does not hold on it and the turn after the landing asks
+  for it.
 - Capture with `{plumb} capture --prompt <digest> --file <doc.json>` (`"mode": "escalated"`
   in the intent for a big one), naming in `supersedes` every record a new one replaces.
 - Last, the step's study (DEC-207): run `{plumb} study candidates --json` and propose at most
@@ -73,12 +76,15 @@ Stage C, build and prove: build the plan, show the proof the owner stated, recor
 (`{plumb} study candidates --json`, then `{plumb} study propose` one idea or none), then
 `{plumb} intent done`. It refuses while a proof is missing; `{plumb} intent status` says
 which gate is open. When the edit hook reports a link stale, before the turn ends: repin it
-after its tests pass, relink it when the code moved, or card it when the meaning changed.
+after its tests pass, relink it when the code moved, or ask it with the question tool when
+the meaning changed.
 
 Studies: write none before the owner accepts its idea. When plumb tells you an idea was
-accepted (the prompt's line, or `accepted` in the candidates), write it at that depth in plain
-words with the records' examples, a mermaid diagram only at depth `diagrams` and none at
-`md`, then `{plumb} study add <slug> --file <body.md>`; the band announces it and the owner
+accepted or a rewrite asked (the prompt's line, or `accepted` in the candidates), first run
+`{plumb} study gather <slug> --json`: the records on its topic, their examples and test states.
+Write from that set only, at that depth, in plain words, a mermaid diagram only at depth
+`diagrams` and none at `md`; a topic no record covers: say so. Then `{plumb} study add <slug>
+--records <the IDs you drew on> --file <body.md>`; the band announces it and the owner
 reads it in the room when they choose. Never open the room, and never take 'I know this' or
 'Go deeper' as an answer: they correct the picture only.
 
@@ -86,9 +92,12 @@ The loop's gates approve nothing. Speak in the owner's terms; paste nothing capt
 
 Questions and approval: plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.
-1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each `question`,
-   `header` and option `label` and `description` to AskUserQuestion verbatim, one call per
-   question, in order. Never restate a question in prose.
+1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each
+   `question`, `header` and option `label` and `description` to the question tool,
+   every question at once, as soon as it is raised; never restate one in prose. Put
+   each in the owner's terms with `{plumb} question reword`, merging those that
+   hinge on one principle; push an obvious or already-answered one back with
+   `{plumb} question pushback`; never drop, answer or default one.
 2. Never answer, infer or default a question for the owner, never pick the recommended option
    for them, and never write or read `judge_questions.json` or any approval.
 3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a

@@ -135,19 +135,28 @@ def _ask_jev(core: Any, entries: list[Mapping[str, Any]], backend: Any
     """``({id: JEV's scores}, why JEV stopped)``: JEV is asked whenever a backend exists; a
     missing or other-form calibration only means the 0.9 floor (DEC-143)."""
     from plumb.capture.calibrate import latest_calibration
-    from plumb.judgment import JudgmentUnavailable
+    from plumb.judgment import JudgmentUnavailable, get_backend, judge_down, judge_up
 
     if backend is None:
-        return {}, "JEV is not set up"
+        cause, code, detail = "JEV is not set up", "not-configured", ""
+        try:            # SR-359: the exact cause, not only that JEV is missing
+            get_backend(core, hook=False)
+        except JudgmentUnavailable as exc:
+            cause, code, detail = str(exc), exc.code, exc.detail
+        judge_down(core.root, "JEV", cause, code=code, detail=detail)
+        return {}, cause
     calibration = latest_calibration(core)
     scored: dict[str, dict[str, Any]] = {}
     for entry in entries:
         try:
             found = jev_verdict(core, entry, backend, calibration)
         except JudgmentUnavailable as exc:
+            judge_down(core.root, "JEV", str(exc), code=exc.code, detail=exc.detail)
             return scored, str(exc)
         if found is not None:
             scored[str(entry["id"])] = found
+    if scored:          # SR-359 EX-3: only an answer from JEV clears its red line
+        judge_up(core.root, "JEV")
     return scored, ""
 
 
@@ -258,6 +267,7 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             gap = str(exc)
         label = f"{getattr(dispatcher, 'name', 'model')}:{model}"
         questions: list[Any] = []
+        unreachable = bool(gap)         # SR-359: a record too large is not the judge's fault
         parts = _split(job, rest)       # SR-298: split before sending
         for n, part in enumerate(parts):
             sub = dataclasses.replace(job, inputs={**job.inputs, "records": part})
@@ -270,6 +280,7 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
                 answer = _ask(core, dispatcher, sub, part, system, schema, on_step, user)
             except DispatchError as exc:     # SR-185: these records wait; the others go on
                 left, why = [e for p in parts[n:] for e in p], exc.message
+                unreachable = unreachable or not gap
                 break
             for raw in answer.get("verdicts") or ():
                 if isinstance(raw, Mapping):
@@ -280,8 +291,13 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             extra = {k: v for k, v in answer.items() if k not in ("verdicts", "questions")}
         if questions:
             extra["questions"] = questions
+        from plumb.judgment import judge_down, judge_up
+
         if len(left) < len(rest):
             names.append(str(getattr(dispatcher, "name", "model")))
+            judge_up(core.root, "model")
+        if unreachable:     # SR-359: the band's red line names this judge and the cause
+            judge_down(core.root, label, why.removeprefix(f"{jev_cause}; "), slot="model")
     line = held
     if left:
         from plumb.judgment import waiting_line

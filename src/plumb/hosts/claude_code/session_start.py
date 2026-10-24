@@ -179,6 +179,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY) -> HookOutput:
     except Exception:  # noqa: BLE001 - a broken panel file never costs the records brief
         pass
     timer.mark("handshake")
+    # a resumed session is live again: its folder must not go at the next landing
+    (ctx.session_dir / ctx.session_id / "ended.json").unlink(missing_ok=True)
     try:
         return _handle(ctx, verify, timer)
     finally:
@@ -230,15 +232,17 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
     lines = emitter.add([Line(evidence_line(summary) if line == NOT_CHECKED else line)
                          for line in records_brief])
     ctx.keep(lines)
-    if getattr(getattr(core.config, "present", None), "card", ""):  # SR-173: retired setting
-        from plumb.config import CARD_RETIRED
-
-        lines += emitter.add([Line(CARD_RETIRED)])
-        ctx.keep(lines)
     conflicts = conflicts_line(core)  # sp6 8.3: a merge left intent awaiting the owner
     if conflicts:
         lines += emitter.add([Line(conflicts)])
         ctx.keep(lines)
+    try:  # SR-357 EX-1: the open and lately fixed known issues, in one or two lines
+        from plumb import debug
+
+        lines += emitter.add([Line(text) for text in debug.known_lines(core.root)])
+        ctx.keep(lines)
+    except Exception:  # noqa: BLE001 - a broken register never costs the brief
+        pass
     if summary is not None and not summary.get("background"):
         # the tests known: the snapshot again, before the optional lines
         pending = FullPending(summary["pending"], tuple(summary["reasons"]))

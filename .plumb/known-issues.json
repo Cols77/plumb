@@ -1,0 +1,64 @@
+{
+ "about": "Known issues (SR-357), matched by symptom (a case-insensitive regular expression over what was seen), not by name. state: open or fixed; fixed: the date its fix reached main.",
+ "issues": [
+  {
+   "id": "KI-1",
+   "title": "judge line, no key or no judge configured",
+   "symptom": "(no judge can be reached|judging unavailable).*(no key|not configured|api key)",
+   "cause": "no judge configured or no key found; each step said so on its own",
+   "fix": "072d8568c",
+   "state": "fixed",
+   "fixed": "2026-10-15"
+  },
+  {
+   "id": "KI-2",
+   "title": "judge line, timeout or HTTP error",
+   "symptom": "(no judge can be reached|judging unavailable).*(time ?out|timed out|http)",
+   "cause": "a judge answering with an HTTP error or a timeout held the turn",
+   "fix": "bcf095748",
+   "state": "fixed",
+   "fixed": "2026-10-15"
+  },
+  {
+   "id": "KI-3",
+   "title": "judge line, answer out of schema or diff too large",
+   "symptom": "out[- ]of[- ]schema|diff (is )?too large",
+   "cause": "one unusable judge answer left the whole job waiting",
+   "fix": "abad5a9a1",
+   "state": "fixed",
+   "fixed": "2026-10-15"
+  },
+  {
+   "id": "KI-4",
+   "title": "judge line shown while the judge answered and set its questions aside",
+   "symptom": "(judge|it) answered.*(unreachable|no judge can be reached)|(unreachable|no judge can be reached).*(judge|it) answered|questions? (were |are )?set aside",
+   "cause": "questions the judge set aside are reported with the no-judge line (SR-359 fixes it)",
+   "state": "open"
+  },
+  {
+   "id": "KI-5",
+   "title": "the judge asks again questions already answered",
+   "symptom": "re-?asks? (the )?(answered|same) questions?|answered questions? (are |were )?asked again",
+   "cause": "an old-way settings.json without the AskUserQuestion answer hook",
+   "fix": "3a1d16d2f",
+   "state": "fixed",
+   "fixed": "2026-10-17"
+  },
+  {
+   "id": "KI-6",
+   "title": "answers or edits not recorded after a mid-session plugin upgrade",
+   "symptom": "(answers?|edits?) (are |were )?(not recorded|dropped|lost)|after (a |the )?(mid-session )?plugin (upgrade|update|reinstall)",
+   "cause": "the new version's private copy was not ready when the hooks ran",
+   "fix": "a15e6bbcd",
+   "state": "fixed",
+   "fixed": "2026-10-24"
+  },
+  {
+   "id": "KI-7",
+   "title": "behaviour fixed in main still shows (the cached plugin is never refreshed)",
+   "symptom": "fixed in main.*(still|shows)|(stuck|still) (at|on) 0\\.1\\.0|cached plugin",
+   "cause": "the cached plugin is never refreshed, its version stays 0.1.0 (SR-358 shows it)",
+   "state": "open"
+  }
+ ]
+}

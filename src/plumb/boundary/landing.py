@@ -1,12 +1,14 @@
 """The landing job (SR-296): after a merge into the default branch, in the background, in
 order: the tidy of what the landed records supersede (SR-286), the log compaction (SR-287),
-the finished worktrees removed (DEC-190), the judge backlog queued (SR-298), then every count the status still shows written down as
+the finished worktrees removed (DEC-190), the folders of ended sessions removed, the judge backlog queued (SR-298), then every count the status still shows written down as
 debug cases (SR-300). Each step's failure is itself a case and the next step still runs.
 
 It writes only main's tree and log (SR-301): never another worktree (but a finished, clean one it removes), another session's loop,
-gate or cards, and it keeps a path an in-flight branch changed. A marker under
+gate or cards (but the folder of a session its SessionEnd hook marked ended), and it keeps a path an in-flight branch changed. A marker under
 ``.plumb/cache/landed/`` makes a second run for the same landing change nothing; the marker
-holds the line the next turn reads (``lines``)."""
+holds the line the next turn reads (``lines``), and the requirements the landing delivered
+whose proof was agreed as post-merge (SR-341), which the next turn tells the agent to show
+and ask the owner about until the owner confirmed them."""
 
 from __future__ import annotations
 
@@ -37,6 +39,50 @@ def _git(root: Path, *args: str) -> str:
 
 def marker(root: Path, head: str) -> Path:
     return Path(root) / ".plumb" / "cache" / "landed" / f"{head}.json"
+
+
+# --------------------------------------------------------------------------- post-merge proofs
+
+
+def post_merge_proofs(core: Any, before: str, head: str) -> list[str]:
+    """SR-341: the requirements the commits of ``before..head`` deliver (their SR trailers)
+    whose proof was agreed as post-merge."""
+    from plumb.capture.proof import post_merge
+    from plumb.claims import claimed_ids, trailer_aliases
+
+    aliases = trailer_aliases(core)
+    index = core.index()
+    ids: dict[str, None] = {}
+    for entry in _git(Path(core.root), "log", "--format=%H%x1f%B%x00",
+                      f"{before}..{head}").split("\0"):
+        sha, _sep, message = entry.strip("\n").partition("\x1f")
+        for i in claimed_ids(aliases, sha, message) if sha else ():
+            record = index.get(i)
+            if record is not None and record.kind == "requirement" and post_merge(record):
+                ids[i] = None
+    return list(ids)
+
+
+def proof_lines(root: Path, ids: Iterable[str]) -> list[tuple[str, str]]:
+    """SR-341 EX-2: for each landed post-merge proof the owner has not yet confirmed, the
+    agent's line: show it now and ask the owner."""
+    from plumb.api import open_core
+    from plumb.capture.proof import owner_confirmed, proof_of
+
+    core = open_core(root)
+    index = core.index()
+    out: list[tuple[str, str]] = []
+    for i in ids:
+        record = index.get(i)
+        if record is None or owner_confirmed(core, i):
+            continue
+        plan = " ".join(str((proof_of(record) or {}).get("plan") or "").split())
+        out.append((f"post-merge-proof:{i}",
+                    f"plumb: {i} has landed and its proof was agreed as post-merge: show it "
+                    f"now ({plan}), record it (plumb proof {i} --evidence ... --summary ... "
+                    f"--passed) and ask the owner whether they saw it working "
+                    f"(plumb proof {i} --ask)"))
+    return out
 
 
 # --------------------------------------------------------------------------- start
@@ -313,16 +359,27 @@ def _commit(root: Path, removed: list[str], archived: list[str], head: str) -> N
     spec = root / ".plumb" / "cache" / f"landing-{head[:12]}.paths"
     spec.parent.mkdir(parents=True, exist_ok=True)
     message = f"plumb: tidy after the landing of {head[:12]}" + chr(10) * 2 + "SR: SR-296"
+    # a local kind's new segment is ignored by git: naming it would fail the whole commit
+    known = {".plumb/log/" + n for n in log.tracked_names(root)}
+    paths = [p for p in [*removed, *archived] if p in known or not (
+        p.startswith(".plumb/log/") and p.split("/")[2] in log.LOCAL_KINDS)]
     try:
-        log.stage(root, archived)
-        spec.write_bytes(chr(0).join([*removed, *archived]).encode("utf-8"))
-        done = subprocess.run(["git", "commit", "-q", "--no-verify", "-m", message,
-                               f"--pathspec-from-file={spec}", "--pathspec-file-nul"],
-                              cwd=root, env={**os.environ, "GIT_LITERAL_PATHSPECS": "1"},
-                              capture_output=True, text=True, encoding="utf-8",
-                              errors="replace")
-        if done.returncode:
-            raise RuntimeError(f"git commit: {done.stderr.strip()[:200]}")
+        for attempt in range(5):  # a git process just after the merge may still hold index.lock
+            try:
+                log.stage(root, archived)
+                spec.write_bytes(chr(0).join(paths).encode("utf-8"))
+                done = subprocess.run(["git", "commit", "-q", "--no-verify", "-m", message,
+                                       f"--pathspec-from-file={spec}", "--pathspec-file-nul"],
+                                      cwd=root, env={**os.environ, "GIT_LITERAL_PATHSPECS": "1"},
+                                      capture_output=True, text=True, encoding="utf-8",
+                                      errors="replace")
+                if done.returncode:
+                    raise RuntimeError(f"git commit: {done.stderr.strip()[:200]}")
+                return
+            except RuntimeError as exc:
+                if "index.lock" not in str(exc) or attempt == 4:
+                    raise
+                time.sleep(2)
     finally:
         spec.unlink(missing_ok=True)
 
@@ -390,8 +447,27 @@ def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], l
     return removed, kept
 
 
+def ended_sessions(root: Path, session: str) -> list[str]:
+    """Remove each ``.plumb/session/<id>/`` the SessionEnd hook marked (``ended.json``), never
+    ``session``'s own and never an unmarked one (owner, 2026-10-20: no age-based deletion).
+    A folder that will not go (a file still open) stays for the next landing."""
+    from plumb.understand import files
+
+    own = files.session_dir(root, session).name
+    gone: list[str] = []
+    for folder in sorted((Path(root) / ".plumb" / "session").glob("*/ended.json")):
+        folder = folder.parent
+        if folder.name == own:
+            continue
+        shutil.rmtree(folder, ignore_errors=True)
+        if not folder.exists():
+            gone.append(folder.name)
+    return gone
+
+
 def land(root: Path, head: str, before: str, session: str | None = None) -> dict[str, Any]:
     """Run the landing's steps once; the result is also the marker's content."""
+    from plumb import debug
     from plumb.api import open_core
     from plumb.understand import backlog, files, summary
 
@@ -408,6 +484,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     queued_line = ""
     gone: list[str] = []
     kept: list[str] = []
+    ended: list[str] = []
+    proofs: list[str] = []
 
     def step(name: str, run: Any) -> None:
         try:
@@ -442,10 +520,13 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         gone.extend(found[0])
         kept.extend(found[1])
 
+    step("proofs", lambda: proofs.extend(post_merge_proofs(open_core(root), before, head)))
+    step("fixes", lambda: debug.landed(root, head))  # before the worktrees step drops branches
     step("tidy", do_tidy)
     step("compaction", do_compact)
     step("commit", do_commit)
     step("worktrees", do_worktrees)
+    step("sessions", lambda: ended.extend(ended_sessions(root, session)))
     step("backlog", do_queue)
     step("counts", lambda: cases.extend(status_cases(open_core(root), session, queued_line)))
     moved = sum(1 for p in archived if not p.endswith("archive.jsonl"))
@@ -454,12 +535,16 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
              f"compacted {moved} log entries" if moved else "",
              f"removed finished worktrees {', '.join(gone)}" if gone else "",
              *kept,
+             f"removed {len(ended)} ended session folders" if ended else "",
+             f"post-merge proofs to show: {', '.join(proofs)}" if proofs else "",
              f"queued {queued} records for the judge",
              f"{len(cases)} cases went to debugging"]
     line = f"plumb: landing {head[:12]}: " + "; ".join(p for p in parts if p)
     result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
-              "queued": queued, "worktrees": gone, "kept": kept, "cases": len(cases)}
-    summary.write_cases(open_core(root), head, [{**c, "state": "open"} for c in cases])
+              "queued": queued, "worktrees": gone, "kept": kept, "sessions": ended, "cases": len(cases),
+              "post_merge": proofs}
+    summary.write_cases(open_core(root), head,
+                        [{**c, "state": "open"} for c in debug.from_landing(root, cases)])
     files.write_json_atomic(done, result)
     return result
 
@@ -476,6 +561,7 @@ def lines(root: Path) -> list[tuple[str, str]]:
         data = json.loads(latest.read_text(encoding="utf-8"))
         if data.get("line"):
             out.append((latest.stem, str(data["line"])))
+        out.extend(proof_lines(Path(root), data.get("post_merge") or ()))
     except (OSError, ValueError, AttributeError):
         pass
     open_rows, resolved = summary.open_cases(root)

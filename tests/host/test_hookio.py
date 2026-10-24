@@ -212,3 +212,23 @@ def test_watchdog_grace_waits_for_the_first_kept_line(repo: Path, tmp_path: Path
     result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
                             timeout=30, check=False)
     assert result.stdout.splitlines() == expected
+
+
+def test_write_json_atomic_retries_transient_permission_error(tmp_path, monkeypatch):
+    import os
+
+    from plumb.hosts.claude_code import hookio
+    real = os.replace
+    calls = []
+
+    def flaky(src, dst):
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError(5, "denied")
+        return real(src, dst)
+
+    monkeypatch.setattr(hookio.os, "replace", flaky)
+    monkeypatch.setattr(hookio.time, "sleep", lambda s: None)
+    target = tmp_path / "status.json"
+    hookio.write_json_atomic(target, {"a": 1})
+    assert target.exists() and len(calls) == 3

@@ -73,10 +73,12 @@ def reset_head(root: Path, session: str) -> None:
         files.write_json_atomic(status_path, {**status, "intent_summary": ""})
 
 
-def open_loop(root: Path, session: str, digest: str) -> Path:
-    """Open the loop state of the commanded message ``digest`` (idempotent)."""
+def open_loop(root: Path, session: str, digest: str, at: str = "") -> Path:
+    """Open the loop state of the commanded message ``digest`` sent at ``at`` (idempotent); the
+    same words retyped after the loop opened open a fresh loop (SR-222)."""
     path = loop_path(root, session, digest)
-    if not path.exists():
+    held = files.read_json(path)
+    if not isinstance(held, Mapping) or at > str(held.get("opened_at") or ""):
         reset_head(root, session)
         save(path, {
             "digest": digest, "intent": None, "opened_at": _now(),
@@ -168,7 +170,7 @@ def cmd_open(core: Any, args: argparse.Namespace) -> int:
     if logged is not None and logged.get("digest") == outcome.digest and outcome.digest \
             and clarify.commanded_words(str(logged.get("text") or "")) is not None:
         opened = open_loop(root, str(logged.get("session") or session or "default"),
-                           outcome.digest)
+                           outcome.digest, str(logged.get("at") or ""))
     lines = [*outcome.lines, *(["plumb: intent loop open: " + opened.as_posix()] if opened else [])]
     emit({**outcome.as_json(), "loop": opened.as_posix() if opened else None, "lines": lines}
          if args.as_json else lines, args.as_json)

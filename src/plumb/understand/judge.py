@@ -50,6 +50,7 @@ RELATED_MAX = 12
 TEXT_WIDTH = 1200
 VERDICTS = ("supported", "beyond", "contradicts", "waiting")
 QUESTIONS_FILE = "judge_questions.json"
+REWORDED_FILE = "reworded.json"     # SR-362: the agent's wording of the judge's questions
 HEADER_MAX = 12          # the question tool's chip
 _MARKER = re.compile(r"\s*\(recommended\)", re.IGNORECASE)
 _PLUMB_WORDS = re.compile(r"\b(?:proposed|settled|trial|records?|judge[sd]?)\b",
@@ -467,30 +468,64 @@ def _ids_of(question: Mapping[str, Any]) -> set[str]:
 
 def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
     """The session's judge questions no question-answer entry answers yet, by its question's
-    key or the key it was matched to (``asked.key``). Reads no record (the hook calls it)."""
+    key or the keys it was matched to (``asked.key``, ``asked.keys``: SR-362, the agent's
+    wording covering several); 'Study it first' answers nothing (SR-336); one the judge
+    withdrew on the agent's push-back (``question-ruling``) is gone. Reads no record (the hook
+    calls it)."""
     asked = _logged_questions(core.root, session)
     if not asked:
         return []
     answered: set[str] = set()
     for e in core.events():
-        if e.kind == "question-answer" and e.payload.get("session") == session:
+        if e.payload.get("session") != session:
+            continue
+        if e.kind == "question-answer" and not e.payload.get("study"):
             answered.add(question_key(str(e.payload.get("question") or "")))
             if isinstance(e.payload.get("asked"), Mapping):
                 answered.add(str(e.payload["asked"].get("key")))
+                answered.update(map(str, e.payload["asked"].get("keys") or ()))
+        elif e.kind == "question-ruling" and e.payload.get("ruling") == "withdrawn":
+            answered.add(str(e.payload.get("key")))
     return [q for q in asked if q.get("key") not in answered]
 
 
 def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
     """The judge questions still waiting for the owner: not answered yet (``unanswered``),
-    and asking about a record still unconfirmed at the version asked."""
+    asking about a record still unconfirmed and not superseded at the version asked, and not
+    answered since by a decision recording the owner's choice (the owner answered in a typed
+    message and the agent captured it): never ask what was said."""
     asked = unanswered(core, session)
     if not asked:
         return []
+    from plumb.capture.clarify import superseded_ids
+
     index, statuses = core.index(), core.status()
-    return [q for q in asked if any(
+    closed = superseded_ids(index)   # a superseded record's question is answered by its successor
+
+    def settled(q: Mapping[str, Any]) -> bool:
+        # the owner answered it by capture after it was logged: a decision records the answer
+        ids = [str(r.get("id")) for r in q.get("records") or () if isinstance(r, Mapping)]
+        labels = [_MARKER.sub("", str(o.get("label") or "")) for o in q.get("options") or ()
+                  if isinstance(o, Mapping)]
+        return bool(labels and _answered_by(core, index, ids, labels))
+
+    return [q for q in asked if not settled(q) and any(
         str(r.get("id")) in index and index[str(r.get("id"))].hash == r.get("hash")
+        and str(r.get("id")) not in closed
         and statuses[str(r.get("id"))].confirmation != "confirmed"
         for r in q.get("records") or () if isinstance(r, Mapping))]
+
+
+def rejudge(core: Any, session: str, logged: Sequence[Any]) -> None:
+    """SR-212: the records the logged answers were asked about go back to the judge, one bare
+    job (the worker rebuilds their premise from the logs, ``recompute``)."""
+    from plumb.understand import queue
+
+    ids = [str(r.get("id")) for e in logged for r in (e.payload.get("asked") or {}).get(
+        "records", ()) if isinstance(r, Mapping)]
+    if ids:
+        queue.enqueue(core, files.make_job(kind, session, SCHEMA_ID, {
+            "records": list(dict.fromkeys(ids)), "answered": [e.digest for e in logged]}))
 
 
 def _whole_words(header: str) -> str:
@@ -505,15 +540,24 @@ def _tokens(text: str) -> set[str]:
     return set(re.findall(r"[\w-]+", text.lower()))
 
 
-def _answered_by(index: Mapping[str, Any], ids: Sequence[str], labels: Sequence[str]) -> str:
+def _answered_by(core: Any, index: Mapping[str, Any], ids: Sequence[str],
+                 labels: Sequence[str]) -> str:
     """SR-309 EX-3: the decision that records the owner's answer to this question: it links
-    one of the question's records, and what it chose holds the words of one option."""
+    one of the question's records, and what it chose holds the words of one option. SR-335:
+    it is confirmed, or quotes the owner's own logged words; one only the agent wrote and
+    not yet approved settles nothing."""
+    said: list[tuple[str, str]] | None = None
     for rec in index.values():
         if rec.kind != "decision" or not ids or not any(
                 ln.target.record in ids for ln in rec.links):
             continue
         chosen = _tokens(_flat(rec.fields.get("chosen")))
-        if any(len(t) > 1 and t <= chosen for t in map(_tokens, labels)):
+        if not any(len(t) > 1 and t <= chosen for t in map(_tokens, labels)):
+            continue
+        state = core.status([rec.id])[rec.id]
+        said = premise.owner_words(core) if said is None else said
+        if state.superseded_by is None and (state.confirmation == "confirmed"
+                                            or premise.owner_quoted(rec, said)):
             return rec.id
     return ""
 
@@ -533,7 +577,8 @@ def _own_words(core: Any, ids: Sequence[str], index: Mapping[str, Any]) -> str:
 def _said_in(core: Any, ids: Sequence[str], words: str, index: Mapping[str, Any]
              ) -> tuple[bool, str, bool]:
     """SR-309 EX-4, DEC-191: ``(said, date, older)``: ``words`` are in an owner message the
-    records rest on (``date`` empty: the judge's own date stands), or in a past session
+    records rest on (``date`` empty: the judge's own date stands), or, SR-335, in an answer or
+    prompt of the owner's logged anywhere (``premise.owner_words``), or in a past session
     transcript the SR-249 search reads (``date`` is that message's day). ``older``: the
     records rest on no logged message at all, so a miss in the transcripts is worth saying."""
     from plumb.understand import recover
@@ -544,9 +589,11 @@ def _said_in(core: Any, ids: Sequence[str], words: str, index: Mapping[str, Any]
     if want and any(want in _flat(m.get("text")).lower() for m in logged):
         return True, "", False
     if want:     # shortcut: transcripts are read per question, not cached
-        for m in recover.owner_messages(core.root):
-            if recover.holds(m.text, words.rstrip(". ")):
-                day = datetime.fromisoformat(m.at.replace("Z", "+00:00")) if m.at else None
+        said = [*premise.owner_words(core), *((m.text, m.at)
+                                              for m in recover.owner_messages(core.root))]
+        for text, at in said:
+            if recover.holds(text, words.rstrip(". ")):
+                day = datetime.fromisoformat(at.replace("Z", "+00:00")) if at else None
                 return True, f"{day.day} {day:%b}" if day else "", False
     return False, "", not logged
 
@@ -584,6 +631,10 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
              for label, c in zip(rest[::2], rest[1::2], strict=True)]
     return {"key": question_key(question), "job": job.id,
             "records": [{"id": i, "hash": judged[i]} for i in ids],
+            # SR-361 EX-3: one answer settles the questions sharing a principle
+            "principle": _flat(raw.get("principle")).lower(),
+            "blocking": raw.get("blocking") is True,
+            "diagram": raw.get("diagram") is True,     # SR-333: it offers the room
             "question": question, "header": _whole_words(header),
             "options": [{"label": f"{label.replace('(Recommended)', '').strip()} (Recommended)"
                          if n == 0 else label,    # the model may have marked it itself
@@ -594,16 +645,18 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
 
 def _questions(core: Any, job: Job, answer: Mapping[str, Any], judged: Mapping[str, str],
                index: Mapping[str, Any]
-               ) -> tuple[list[dict[str, Any]], list[str]]:
-    """The judge's questions shaped for the owner, and why the others wait."""
+               ) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
+    """The judge's questions shaped for the owner, and the others set aside: (the question,
+    why) each (SR-359 EX-2)."""
     shaped: list[dict[str, Any]] = []
-    why: list[str] = []
+    why: list[tuple[str, str]] = []
     for raw in answer.get("questions") or ():
         made, reason = _shaped(core, raw, job, judged, index)
-        done = made and _answered_by(index, [r["id"] for r in made["records"]],
+        done = made and _answered_by(core, index, [r["id"] for r in made["records"]],
                                      [_MARKER.sub("", o["label"]) for o in made["options"]])
         if made is None or done:   # shortcut: an answered question is dropped, its records wait
-            why.append(reason or f"the owner already answered it ({done})")
+            asked = _flat(raw.get("question")) if isinstance(raw, Mapping) else ""
+            why.append((asked, reason or f"the owner already answered it ({done})"))
         elif made["key"] not in {q["key"] for q in shaped}:
             shaped.append(made)
     return shaped, why
@@ -633,6 +686,26 @@ def add_question(core: Any, session: str, question: Mapping[str, Any]) -> None:
     files.write_json_atomic(questions_path(core.root, session), [*kept, dict(question)])
 
 
+def reworded(root: Any, session: str) -> list[Mapping[str, Any]]:
+    """SR-362: the agent's wordings of the session's judge questions (``REWORDED_FILE``), each
+    ``{key, question, header, options, covers}``: ``covers`` the judge question keys it asks."""
+    raw = files.read_json(files.session_dir(Path(root), session) / REWORDED_FILE)
+    return [w for w in raw if isinstance(w, Mapping)] if isinstance(raw, list) else []
+
+
+def reword(core: Any, session: str, covers: Sequence[str], question: str, header: str,
+           options: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """SR-362 EX-1: record the agent's wording of the judge questions ``covers`` (merged when
+    they hinge on one principle); the question-answer hook answers each of them with the
+    owner's answer to it. The same wording registered again replaces the earlier one."""
+    worded = {"key": question_key(question), "question": question, "header": header,
+              "options": [dict(o) for o in options], "covers": list(covers)}
+    kept = [w for w in reworded(core.root, session) if w.get("key") != worded["key"]]
+    files.write_json_atomic(files.session_dir(Path(core.root), session) / REWORDED_FILE,
+                            [*kept, worded])
+    return worded
+
+
 def drop_settled_questions(root: Any, still_stale: Collection[str]) -> None:
     """Withdraw, in every session folder, the debug workflow's questions (``job`` is
     ``debug:<link id>``) about links no longer stale: their link was repinned, relinked or
@@ -649,11 +722,15 @@ def drop_settled_questions(root: Any, still_stale: Collection[str]) -> None:
 
 
 def _say_waiting(core: Any, session: str, waits: Mapping[str, str]) -> str:
-    """SR-245: the records nobody can settle wait, and the once-per-window line says so."""
-    from plumb.judgment import waiting_line
+    """SR-245: the records the judge answered but did not settle wait, and the once-per-window
+    line says so; never "no judge can be reached": the judge answered (SR-359 EX-2)."""
+    from plumb.judgment import notice_once
 
     why = "; ".join(f"{i}: {w}" for i, w in waits.items())
-    line = waiting_line(core.root, verdict_cascade.STEP, why) or ""
+    line = notice_once(core.root, f"unsettled:{verdict_cascade.STEP}",
+                       f"plumb: {verdict_cascade.STEP} is waiting: the judge answered without "
+                       f"settling it ({why}); it runs again when the record or an answer "
+                       "changes") or ""
     if line:
         from plumb.understand import worker
 
@@ -769,9 +846,12 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         i: h for i, h in judged.items()
         if i not in approved | set(waits) | set(held) | set(sent)}, index)
     _write_questions(core, job, set(judged), shaped)
+    from plumb.judgment import set_aside
+
+    set_aside(core.root, refused)
     covered = {i for q in [*shaped, *open_questions(core, job.session)] for i in _ids_of(q)}
     covered |= set(held) | set(sent)
-    why = "; ".join(refused) or "the judge asked no question about it"
+    why = "; ".join(w for _, w in refused) or "the judge asked no question about it"
     waits.update({i: why for i in judged if i not in approved | covered | set(waits)})
     if waits:
         notes.append(_say_waiting(core, job.session, waits))

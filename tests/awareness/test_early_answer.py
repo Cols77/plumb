@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 
 from awareness.scenario import change, setup
-from awareness.test_claim_check import early_heads
+from awareness.test_claim_check import agent_channel, early_heads
 from plumb import cli
 from plumb.api import open_core
 from plumb.awareness import early, inflight
@@ -128,9 +128,11 @@ def test_stop_hook_question_card_answer_both(tmp_path: Path, hook_input: Any) ->
     _start_turn(main)
     change(main, "A relay pins only the records the owner's words affirm.")
     dec = _decision(main)
-    asked = _stop(main, hook_input)
-    assert "keep this one" in asked.lower()
-    shown = _stop(main, hook_input, active=True)
+    # SR-265, SR-363: the owner's text counts no card; the card in full is the agent's to ask
+    assert _stop(main, hook_input) == ""
+    assert "keep this one" in agent_channel(main).lower()
+    assert _stop(main, hook_input, active=True) == ""
+    shown = agent_channel(main)
     # SR-012: the early conflict card offers the card's words as its options, never "ok"
     lines = shown.splitlines()
     for option in ("  1. Keep this one - ", "  2. Keep the other - ",
@@ -155,8 +157,9 @@ def test_clarify_card_answer_before_capture(tmp_path: Path, hook_input: Any) -> 
         assert cli.main(["clarify", "make SR-005 pin only the affirmed records",
                          "--root", str(main)]) == 0
     assert 'over "relay checks" waits as a card' in out.getvalue()
-    reply = _stop(main, hook_input)
-    assert early_heads(reply, "relay checks"), reply
+    assert _stop(main, hook_input) == ""                       # SR-363: no question count
+    cards = agent_channel(main)
+    assert early_heads(cards, "relay checks"), cards
     assert _stated(main)["early"] == [{"record": "SR-005", "branch": "feat-x"}]
     change(main, "A relay pins only the records the owner's words affirm.")
     dec = _decision(main)
@@ -181,7 +184,8 @@ def test_plumb_conflicts_lists_the_early_card(tmp_path: Path, hook_input: Any) -
     assert '▸ Conflict  SR-005 "relay checks"' in text
     assert "feat-x      A relay pins the stated group, named by its title." in text
     _start_turn(main)
-    assert early_heads(_stop(main, hook_input, active=True), "relay checks")
+    assert _stop(main, hook_input, active=True) == ""          # SR-363: no question count
+    assert early_heads(agent_channel(main), "relay checks")
     assert _choose(main, "relay checks", "feat-x") == 0
     assert _state(main, dec.id) == "confirmed"
 

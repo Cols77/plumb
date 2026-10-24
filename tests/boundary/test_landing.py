@@ -75,6 +75,18 @@ def test_ex1_the_landing_tidies_compacts_and_names_both(repo: Path) -> None:
 
 
 @pytest.mark.sr("SR-296")
+def test_a_tracked_local_kind_entry_compacts_into_a_committed_deletion(repo: Path) -> None:
+    put(repo, "job-note", {"kind": "k", "job": "j", "detail": "d"})
+    run_git(repo, "add", "-f", ".plumb/log/job-note")
+    commit_all(repo, "a job-note tracked before it became local")
+    sha, before = land_branch(repo, lambda root: docs(root, "x.md"))
+    result = landing.land(repo, sha, before)
+    assert result["archived"] == 1 and not debug_cases(repo, sha)
+    assert run_git(repo, "ls-files", "--deleted", "--", ".plumb/log").stdout == ""
+    assert run_git(repo, "log", "-1", "--format=%B").stdout.rstrip().endswith("SR: SR-296")
+
+
+@pytest.mark.sr("SR-296")
 def test_ex2_every_waiting_record_is_queued_by_the_landing(repo: Path, write_record,
                                                             engine_standins) -> None:
     from plumb.understand import backlog, files
@@ -384,3 +396,25 @@ def test_a_helper_or_tsx_file_linked_as_a_test_is_no_unrun_case(repo: Path) -> N
     commit_all(repo, "linked")
     cases = landing.status_cases(open_core(repo), "", "")
     assert {c["target"] for c in cases if c["kind"] == "unrun-test"} <= {"tests/test_real.py"}
+
+
+@pytest.mark.sr("SR-338")
+def test_ex2_ended_session_folders_go_unmarked_ones_stay(repo: Path) -> None:
+    sessions = repo / ".plumb" / "session"
+    for name in ("ended", "live"):
+        (sessions / name).mkdir(parents=True)
+        (sessions / name / "gate").write_text("{}", encoding="utf-8")
+    (sessions / "ended" / "ended.json").write_text("{}", encoding="utf-8")
+    sha, before = land_branch(repo, lambda root: docs(root, "x.txt"))
+    result = landing.land(repo, sha, before)
+    assert result["sessions"] == ["ended"]
+    assert not (sessions / "ended").exists() and (sessions / "live" / "gate").exists()
+    assert "removed 1 ended session folders" in result["line"]
+
+
+@pytest.mark.sr("SR-338")
+def test_ex3_the_landings_own_session_folder_stays(repo: Path) -> None:
+    own = repo / ".plumb" / "session" / "s-own"
+    own.mkdir(parents=True)
+    (own / "ended.json").write_text("{}", encoding="utf-8")
+    assert landing.ended_sessions(repo, "s-own") == [] and own.is_dir()

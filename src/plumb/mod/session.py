@@ -14,6 +14,7 @@ folder does not exist."""
 
 from __future__ import annotations
 
+import calendar
 import hashlib
 import hmac
 import json
@@ -27,6 +28,7 @@ from typing import Any
 from plumb.understand import files
 
 HELLO_KIND = "mod-hello"
+SILENT_S = 60  # a registration with no heartbeat for this long may be taken over
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -101,7 +103,8 @@ def accepted_digests(held: Mapping[str, Any] | None) -> tuple[str, ...]:
 def hello(core: Any, session: str, digest: Any) -> Mapping[str, Any]:
     """Register ``digest`` for ``session``: writes ``mod.json`` ``{active, since, key_digest,
     heartbeat}`` and logs ``mod-hello``. A second registration of the session is refused, unless
-    the session's start retired the first one (a resumed session, ``retire``)."""
+    the session's start retired the first one (a resumed session, ``retire``) or its heartbeat
+    is older than ``SILENT_S`` (a panel restarted by a plugin reload)."""
     refuse_under_marker("hello")
     if not session.strip():
         raise Refused("plumb mod hello refused: no session")
@@ -115,7 +118,7 @@ def hello(core: Any, session: str, digest: Any) -> Mapping[str, Any]:
         handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError as exc:
         held = registration(core.root, session)
-        if held is None or not held.get("retired"):
+        if held is None or not (held.get("retired") or _silent(held)):
             raise Refused("plumb mod hello refused: this session already has its panel") from exc
         return _replace(core, session, digest, held)
     with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as out:
@@ -125,9 +128,17 @@ def hello(core: Any, session: str, digest: Any) -> Mapping[str, Any]:
     return data
 
 
+def _silent(held: Mapping[str, Any]) -> bool:
+    try:
+        beat = calendar.timegm(time.strptime(str(held.get("heartbeat")), "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return True
+    return time.time() - beat > SILENT_S
+
+
 def _replace(core: Any, session: str, digest: str, held: Mapping[str, Any]
              ) -> Mapping[str, Any]:
-    """The hello of a resumed session's new panel: its digest replaces the retired one."""
+    """The hello of a resumed or reloaded session's new panel: its digest replaces the old one."""
     stamp = now()
     earlier = [d for d in accepted_digests(held) if d != digest]
     data = {"active": True, "since": stamp, "key_digest": digest, "heartbeat": stamp,

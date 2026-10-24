@@ -16,6 +16,21 @@ from typing import Any
 from plumb.normalize import canonical_json, sha256_bytes, sha256_text
 
 
+def test_interpreter(root: Path | str, configured: str = "") -> str:
+    """The interpreter that runs the repository's tests: ``verify.python`` when set, else the
+    repository's ``.venv`` when it exists, else the one plumb runs in. Under the plugin that
+    last one is plumb's private environment, which has no pytest and none of the project's
+    test dependencies, so a project with a ``.venv`` is run there."""
+    if configured:
+        local = Path(root) / configured
+        return str(local) if not Path(configured).is_absolute() and local.exists() else configured
+    for rel in ("Scripts/python.exe", "bin/python"):
+        venv = Path(root) / ".venv" / rel
+        if venv.exists():
+            return str(venv)
+    return sys.executable
+
+
 def python_version() -> str:
     return f"{platform.python_implementation()} {platform.python_version()}"
 
@@ -57,18 +72,53 @@ def venv_home(prefix: str | None = None) -> str:
     return "none"
 
 
-def env_parts(root: Path) -> dict[str, Any]:
+def env_prefix(interpreter: str | None) -> str | None:
+    """The venv directory of the TEST interpreter when it is not the one plumb runs in, else
+    None. The tests run in that interpreter, so their evidence belongs to its environment: a
+    hook that reaches plumb through another interpreter (the plugin launcher) must see the
+    evidence a direct run recorded, and the reverse."""
+    if not interpreter:
+        return None
+    try:
+        exe = Path(interpreter).resolve()
+        if exe == Path(sys.executable).resolve():
+            return None
+        prefix = exe.parent.parent
+        return str(prefix) if (prefix / "pyvenv.cfg").is_file() else None
+    except OSError:
+        return None
+
+
+def _cfg_value(prefix: str, *names: str) -> str | None:
+    try:
+        for line in (Path(prefix) / "pyvenv.cfg").read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key.strip().lower() in names and value.strip():
+                return value.strip()
+    except OSError:
+        pass
+    return None
+
+
+def env_parts(root: Path, interpreter: str | None = None) -> dict[str, Any]:
     lock = Path(root) / "uv.lock"
     try:
         lock_hash = sha256_text(lock.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError):
         lock_hash = "no-lock"
-    return {"lock": lock_hash, "python": python_version(), "platform": platform_name(root),
-            "home": venv_home()}
+    prefix = env_prefix(interpreter)
+    version = _cfg_value(prefix, "version_info", "version") if prefix else None
+    if prefix and version:
+        implementation = _cfg_value(prefix, "implementation") or platform.python_implementation()
+        python = f"{implementation} {version}"
+    else:
+        python = python_version()
+    return {"lock": lock_hash, "python": python, "platform": platform_name(root),
+            "home": venv_home(prefix)}
 
 
-def env_key(root: Path) -> str:
-    return sha256_bytes(canonical_json(env_parts(root)))
+def env_key(root: Path, interpreter: str | None = None) -> str:
+    return sha256_bytes(canonical_json(env_parts(root, interpreter)))
 
 
 # -- the content identity (VS3) ----------------------------------------------------------
@@ -154,11 +204,11 @@ def content_identity(root: Path, prefix: str | None = None) -> str | None:
                                         "distributions": dists}))
 
 
-def _cache_key(key: str) -> str:
+def _cache_key(key: str, prefix: str | None = None) -> str:
     """The env key plus the site-packages directory mtimes, so an install that leaves the
     lock untouched still invalidates the cached identity."""
     stamps = []
-    for site in _site_packages(Path(sys.prefix)):
+    for site in _site_packages(Path(prefix or sys.prefix)):
         try:
             stamps.append(str(site.stat().st_mtime_ns))
         except OSError:
@@ -166,13 +216,15 @@ def _cache_key(key: str) -> str:
     return key + "|" + ",".join(stamps)
 
 
-def cached_identity(core: Any, key: str, *, compute: bool = False) -> str | None:
+def cached_identity(core: Any, key: str, *, compute: bool = False,
+                    interpreter: str | None = None) -> str | None:
     """The identity cached under ``key`` in ``.plumb/cache/env_identity.json``; computed
     (about a second) only when ``compute`` is set, which happens when evidence is recorded."""
     import json
 
     path = core.paths.env_identity
-    ckey = _cache_key(key)
+    prefix = env_prefix(interpreter)
+    ckey = _cache_key(key, prefix)
     try:
         cache = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(cache, dict):
@@ -183,7 +235,8 @@ def cached_identity(core: Any, key: str, *, compute: bool = False) -> str | None
         return cache[ckey]
     if not compute:
         return None
-    value = content_identity(Path(core.root))
+    value = (content_identity(Path(core.root), prefix) if prefix
+             else content_identity(Path(core.root)))
     cache = {ckey: value}  # one environment at a time; older keys are dropped
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

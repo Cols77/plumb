@@ -5,10 +5,15 @@ recommend, depth, status``, then the body in plain words with an optional mermai
 starts as an idea (DEC-207): a title, one line of why and the depth the agent recommends, with
 no body (``idea``). The owner's press in the band accepts it at a depth (``accepted``) or
 declines it (``declined``, never proposed again); only an accepted idea is written (``new``),
-at the chosen depth, then read (``opened``, ``known``, ``deeper``).
+at the chosen depth, then read (``opened``, ``known``, ``deeper``). A study proposed ahead of
+the owner's waiting questions (SR-336) holds their keys in ``serves`` and belongs to no loop step.
+A written study keeps the records it was written from (SR-360, DEC-335) in ``records``, each
+with its content hash; when one changes, ``changed`` names it and the band offers a rewrite at
+the same depth (DEC-336): ``refresh`` is ``asked`` on the owner's yes, ``no`` on 'not now'.
 
-``.plumb/understanding.md`` is the picture of what the owner understands of the system: plain lines ``- knows: <topic>`` and ``- needs: <topic>``, which the owner edits in
-the browser room. 'I know this' and 'Go deeper' change a study's status and the picture only:
+``.plumb/understanding.md`` is the picture of what the owner understands of the system:
+plain lines ``- knows: <topic>`` and ``- needs: <topic>``, which the owner edits in the
+browser room. 'I know this' and 'Go deeper' change a study's status and the picture only:
 they are never an answer delivered to a session (DEC-152), and a study about an open conflict
 chooses nothing (DEC-154).
 """
@@ -24,11 +29,13 @@ from typing import Any
 IDEAS = ("idea", "accepted", "declined")
 WRITTEN = ("new", "opened", "known", "deeper")
 STATUSES = (*IDEAS, *WRITTEN)
+UNREAD = ("idea", "accepted", "new")    # proposed, accepted or written, not read yet
 DEPTHS = ("md", "diagrams", "video")
 # shortcut: video studies are plumb-12's later work; add "video" here once they can be written
 OFFERED = ("md", "diagrams")
 MARKS = {"opened": "opened", "known": "known", "deeper": "deeper"}
 PICTURE_LIMIT = 65536
+FIRST = "study_first.json"     # the session's 'Study it first' choice (SR-336)
 _LINE = re.compile(r"^\s*-\s*(knows|needs)\s*:\s*(.+?)\s*$", re.IGNORECASE)
 _SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,79}")
 
@@ -109,7 +116,8 @@ def _parse(path: Path) -> dict[str, Any] | None:
         return None
     if not isinstance(fields, dict) or fields.get("status") not in STATUSES:
         return None
-    return {**{k: str(v) if v is not None else "" for k, v in fields.items()},
+    return {**{k: v if isinstance(v, list) else str(v) if v is not None else ""
+               for k, v in fields.items()},
             "slug": path.stem, "body": body}
 
 
@@ -145,28 +153,71 @@ def _same(a: dict[str, Any], topic: str, title: str) -> bool:
 
 
 def propose(root: Path, *, title: str, why: str, depth: str, loop: str, step: str,
-            topic: str | None = None) -> str:
+            topic: str | None = None, serves: list[str] | None = None,
+            asked: bool = False) -> str:
     """An idea of a study for ``loop``'s ``step`` (SR-293 EX-6): no page is written. At most
     one per step, ideas counted (EX-5); none on a topic the owner knows (SR-292 EX-1, SR-293
-    EX-3) or on an idea the owner declined (EX-9)."""
+    EX-3) or on an idea the owner declined (EX-9). ``serves``: the keys of the waiting
+    questions it is studied ahead of (SR-336), whatever the step, one idea waiting at a time.
+    ``asked``: the owner asked for it (SR-355): none of those limits, which hold plumb's own
+    proposals; the owner still picks the depth."""
     topic = (topic or title).strip()
     if not title.strip() or not why.strip():
         raise ValueError("a study idea needs a title and one line of why")
     if depth not in DEPTHS:
         raise ValueError(f"the recommended depth is one of {', '.join(DEPTHS)}")
-    held = next((s for s in studies(root) if s.get("loop") == loop and s.get("step") == step),
-                None)
-    if held:
+    if serves and not asked:
+        held = next((s for s in studies(root) if s["status"] == "idea"), None)
+        if held:
+            raise ValueError(f"the owner has still to choose on the study idea {held['title']}")
+    elif not asked and (held := next((s for s in studies(root)
+                       if s.get("loop") == loop and s.get("step") == step), None)):
         raise ValueError(f"the {step} step already has its study: {held['title']}")
-    if knows(root, topic):
+    if not asked and knows(root, topic):
         raise ValueError(f"the owner knows {topic} (the understanding picture): no study")
-    if any(s["status"] == "declined" and _same(s, topic, title) for s in studies(root)):
+    if not asked and any(s["status"] == "declined" and _same(s, topic, title)
+                         for s in studies(root)):
         raise ValueError(f"the owner declined a study of {topic}: it is not proposed again")
     slug = slug_of(root, title)
     _write(folder(root) / f"{slug}.md", _front({
         "title": title.strip(), "topic": topic, "step": step, "loop": loop,
-        "why": " ".join(why.split()), "recommend": depth, "depth": "", "status": "idea"}))
+        "why": " ".join(why.split()), "recommend": depth, "depth": "", "status": "idea",
+        **({"serves": list(serves)} if serves else {})}))
     return slug
+
+
+def serving(root: Path, key: str) -> dict[str, Any] | None:
+    """SR-336 EX-1: the study not read yet (proposed, accepted or written) that serves the
+    waiting question ``key``, the newest."""
+    return next((s for s in reversed(studies(root)) if s["status"] in UNREAD
+                 and key in (s.get("serves") or ())), None)
+
+
+def first_path(root: Path, session: str) -> Path:
+    from plumb.understand import files
+
+    return files.session_dir(Path(root), session) / FIRST
+
+
+def study_first(root: Path, session: str, slug: str) -> None:
+    """SR-336 EX-2: the owner chose 'Study it first': the band's new-study line names this study
+    (its press opens the room on it, SR-294) and its questions wait until it is read."""
+    from plumb.understand import files
+
+    files.write_json_atomic(first_path(root, session), {"study": slug})
+
+
+def first_keys(root: Path, session: str) -> set[str]:
+    """The questions held back for the study the owner chose to read first, until it is read."""
+    from plumb.understand import files
+
+    raw = files.read_json(first_path(root, session))
+    slug = raw.get("study") if isinstance(raw, dict) else None
+    try:
+        found = get(root, slug)
+    except LookupError:
+        return set()
+    return set(found.get("serves") or ()) if found["status"] in UNREAD else set()
 
 
 def _fields(found: dict[str, Any]) -> dict[str, Any]:
@@ -193,27 +244,79 @@ def accepted(root: Path) -> list[dict[str, Any]]:
     return [s for s in studies(root) if s["status"] == "accepted"]
 
 
+def _write_it(s: dict[str, Any]) -> str:
+    return (f"write it now: plumb study gather {s['slug']}, then plumb study add {s['slug']} "
+            "--records <the IDs you drew on> --file <body.md>")
+
+
 def accepted_lines(root: Path) -> list[str]:
-    """What the agent is told at its next turn (SR-294 EX-8): each accepted idea at its depth."""
+    """What the agent is told at its next turn (SR-294 EX-8): each accepted idea at its depth,
+    and each study the owner asked to rewrite, at the same depth (SR-360 EX-2)."""
     return [f"plumb: the owner accepted the study idea '{s['title']}' at depth {s['depth']}"
-            f"{' (no diagram)' if s['depth'] == 'md' else ''}: write it now with "
-            f"plumb study add {s['slug']} --file <body.md>" for s in accepted(root)]
+            f"{' (no diagram)' if s['depth'] == 'md' else ''}: {_write_it(s)}"
+            for s in accepted(root)] + [
+        f"plumb: the owner asked to rewrite the study '{s['title']}' at depth {s['depth']}: "
+        f"{s['changed']} changed; {_write_it(s)}"
+        for s in studies(root) if s["status"] in WRITTEN and s.get("refresh") == "asked"]
 
 
-def add(root: Path, slug: str, body: str) -> str:
+NO_RECORD = "No record in plumb covers this topic."
+
+
+def add(root: Path, slug: str, body: str, records: list[dict[str, str]] | None = None) -> str:
     """Write the study of an idea the owner accepted, at the depth they chose (SR-293 EX-7,
-    EX-8): never before acceptance, and 'Markdown only' has no diagram."""
+    EX-8): never before acceptance, and 'Markdown only' has no diagram. ``records``: the
+    records it is written from, ``{id, title, hash}`` (SR-360 EX-1), listed at its end; with
+    none it says no record covers the topic (EX-3). A study the owner asked to rewrite is
+    written again at its depth."""
     found = get(root, slug)
-    if found["status"] != "accepted":
+    if found["status"] != "accepted" and found.get("refresh") != "asked":
         raise ValueError(f"the study {found['title']} is not accepted by the owner"
                          + (" yet: propose it and wait" if found["status"] == "idea" else ""))
     if not body.strip():
         raise ValueError("a study needs a body")
     if found.get("depth") == "md" and "```mermaid" in body:
         raise ValueError("the owner chose Markdown only: the study has no diagram")
+    records = list(records or [])
+    head = "" if records or NO_RECORD in body else NO_RECORD + "\n\n"
+    tail = ("\n\nWritten from: " + ", ".join(f"{r['id']} {r['title']}" for r in records)
+            if records else "")
     _write(folder(root) / f"{slug}.md",
-           _front({**_fields(found), "status": "new"}) + "\n" + body.strip() + "\n")
+           _front({**_fields(found), "records": records, "changed": "", "refresh": "",
+                   "status": "new"}) + "\n" + head + body.strip() + tail + "\n")
     return slug
+
+
+def out_of_date(root: Path, index: Any) -> list[str]:
+    """SR-360 EX-2: the written studies one of whose records changed or went, by slug; their
+    ``changed`` names those records' titles for the room and the band. A new change asks the
+    owner again (``refresh`` cleared); nothing is rewritten here (DEC-336)."""
+    out = []
+    for s in studies(root):
+        held = [r for r in s.get("records") or () if isinstance(r, dict)]
+        if s["status"] not in WRITTEN or not held:
+            continue
+        changed = ", ".join(str(r.get("title") or r.get("id")) for r in held
+                            if r.get("id") not in index or index[r["id"]].hash != r.get("hash"))
+        if changed:
+            out.append(s["slug"])
+        if changed != s.get("changed", ""):
+            _write(folder(root) / f"{s['slug']}.md", _front({
+                **_fields(s), "changed": changed, "refresh": "", "status": s["status"]})
+                + s["body"])
+    return out
+
+
+def refresh(root: Path, slug: str, yes: bool) -> dict[str, Any]:
+    """The owner's press on an out-of-date study (DEC-336): yes asks the agent to rewrite it
+    at the same depth; 'not now' leaves it marked. Only the band's key-checked press."""
+    found = get(root, slug)
+    if not found.get("changed"):
+        raise ValueError(f"the study {found['title']} is not out of date")
+    _write(folder(root) / f"{slug}.md", _front({
+        **_fields(found), "refresh": "asked" if yes else "no", "status": found["status"]})
+        + found["body"])
+    return get(root, slug)
 
 
 def mark(root: Path, slug: str, how: str) -> dict[str, Any]:

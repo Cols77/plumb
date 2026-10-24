@@ -23,6 +23,7 @@ from .helpers import (
     adopted_repo,
     env_with,
     git,
+    git_repo,
     hook_data,
     manifest,
     needs_sh,
@@ -217,3 +218,59 @@ def test_outside_the_plugin_hooks_keep_the_interpreter(tmp_path: Path) -> None:
 
     assert prepush.hook_text(sys.executable).endswith(
         f'exec "{slashes(sys.executable)}" -m plumb merge-check --hook pre-push\n')
+
+
+def _stale_home(home: Path, python: Path) -> None:
+    ready_home(home, python)
+    current = home / "current.json"
+    data = json.loads(current.read_text(encoding="utf-8"))
+    data["wheel_sha256"] = "0" * 64  # the plugin moved on to another wheel
+    current.write_text(json.dumps(data), encoding="utf-8")
+
+
+@pytest.mark.sr("SR-354")
+def test_reinstalled_plugin_keeps_checks_on_previous_copy(tmp_path: Path) -> None:
+    """EX-1: current.json names another wheel, its python still exists: the check runs on it."""
+    log = tmp_path / "old.log"
+    root = adopted_repo(tmp_path / "repo")
+    home = tmp_path / "home"
+    _stale_home(home, recording_python(tmp_path / "env" / "python", log))
+    env = env_with(PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    result = run_hook("post-edit", root, hook_data("post-edit"), env)
+    assert result.returncode == 0, result.stderr
+    assert "argv:-m plumb hook post-edit" in log.read_text(encoding="utf-8").splitlines()
+
+
+@pytest.mark.sr("SR-354")
+def test_check_that_cannot_run_writes_one_line_in_adopted_project_only(tmp_path: Path) -> None:
+    """EX-2 and EX-3."""
+    root = adopted_repo(tmp_path / "repo")
+    env = env_with(PLUMB_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(root))
+    assert run_hook("prompt", root, hook_data("prompt"), env).returncode == 0
+    lines = (root / ".plumb" / "session" / "errors.log").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1 and "prompt" in lines[0]
+    bare = git_repo(tmp_path / "bare")
+    env = env_with(PLUMB_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(bare))
+    run_hook("prompt", bare, hook_data("prompt"), env)
+    assert not (bare / ".plumb").exists()
+
+
+@pytest.mark.sr("SR-354")
+def test_hook_whose_code_cannot_load_writes_one_line_in_adopted_project_only(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """EX-2 and EX-3 on the Python side: the question-answer check's module is gone from the
+    copy (a reinstall changed it under the session); the owner's answer is not dropped
+    silently: one line names the check in the adopted project, nothing in one not adopted."""
+    from plumb.hosts.claude_code import cli
+
+    monkeypatch.setitem(cli.HOOK_MODULES, "question-answer", "plumb.hosts.claude_code.gone_qa")
+    monkeypatch.chdir(tmp_path)
+    root = adopted_repo(tmp_path / "repo")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(root))
+    assert cli.run("hook", ["question-answer"]) == 0
+    lines = (root / ".plumb" / "session" / "errors.log").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1 and "question-answer" in lines[0]
+    bare = git_repo(tmp_path / "bare")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(bare))
+    assert cli.run("hook", ["question-answer"]) == 0
+    assert not (bare / ".plumb").exists()

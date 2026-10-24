@@ -36,9 +36,9 @@ def _line(repo: Path, snap: StatusSnapshot | None) -> str:
 
 def test_renders_line_from_snapshot(repo: Path) -> None:
     """The status line is the status card (sp5 4.1, SR-061)."""
-    assert _line(repo, _snap()) == "plumb ● awaits you · SR 12/14 ok · 2 awaits you · 1 stale"
+    assert _line(repo, _snap()) == "plumb ▲ drift · SR 12/14 ok · 2 waiting on a judge · 1 stale"
     assert _line(repo, _snap(tests="regression", regressions=("t::a",), ask=1)) == (
-        "plumb ✗ regression · SR 12/14 ok · 2 awaits you · 1 stale · 1 question")
+        "plumb ✗ regression · SR 12/14 ok · 2 waiting on a judge · 1 stale · 1 question")
     assert "✗ failing" in _line(repo, _snap(tests="failing", failing=("a", "b")))
     assert "2 failing" in _line(repo, _snap(tests="failing", failing=("a", "b")))
 
@@ -46,7 +46,7 @@ def test_renders_line_from_snapshot(repo: Path) -> None:
 def test_full_pending_shown_only_when_pending(repo: Path) -> None:
     assert "full pending" not in _line(repo, _snap(full_pending=False))
     assert _line(repo, _snap(full_pending=True, full_pending_reasons=("uv.lock",))) == (
-        "plumb ● awaits you · SR 12/14 ok · 2 awaits you · 1 stale · full pending")
+        "plumb ▲ drift · SR 12/14 ok · 2 waiting on a judge · 1 stale · full pending")
 
 
 def test_missing_snapshot(repo: Path) -> None:
@@ -62,7 +62,7 @@ def test_root_from_status_line_input(repo: Path, monkeypatch: pytest.MonkeyPatch
     out = io.StringIO()
     stdin = io.StringIO(json.dumps({"workspace": {"project_dir": str(repo)}}))
     statusline.main(stdin=stdin, stdout=out)
-    assert out.getvalue().startswith("plumb ● awaits you · SR 12/14 ok")
+    assert out.getvalue().startswith("plumb ▲ drift · SR 12/14 ok")
 
 
 def test_snapshot_written_with_version(repo: Path) -> None:
@@ -101,3 +101,27 @@ def test_snapshot_tests_states() -> None:
     assert tests_of(("fresh-fail", True), ("fresh-fail", False)) == "regression"
     assert snapshot.tests_state(None)[0] == "unknown"
     assert snapshot.tests_state({})[0] == "unknown"
+
+
+@pytest.mark.sr("SR-337")
+def test_awaiting_counts_open_questions_and_cards(repo: Path, write_record) -> None:
+    """SR-337: ``awaiting`` in status.json, the band's "N await you": a judge question not
+    answered on an unconfirmed record and an open card of the store, in any session."""
+    from plumb.understand import files, judge
+
+    write_record(repo, SR1)
+    core = open_core(repo)
+    asked = judge.questions_path(repo, "s1")
+    asked.parent.mkdir(parents=True)
+    asked.write_text(json.dumps([{"key": "k1", "question": "Which one?", "records": [
+        {"id": "SR-001", "hash": core.index()["SR-001"].hash}]}]), encoding="utf-8")
+    cards = files.cards_path(repo, "s2")
+    cards.parent.mkdir(parents=True)
+    cards.write_text(json.dumps({"cards": [{"id": "clarify:SR-001", "status": "open"},
+                                           {"id": "clarify:SR-002", "status": "closed"}]}),
+                     encoding="utf-8")
+    assert snapshot.build_snapshot(core).awaiting == 2
+    snapshot.write_snapshot(repo, _snap())
+    snapshot.refresh_judge_count(open_core(repo))  # a turn with no edit brings it up to date
+    data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert data["awaiting"] == 2

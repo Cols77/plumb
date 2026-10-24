@@ -46,9 +46,9 @@ def prompt_digest(text: str) -> str:
 # The host marks a message from another Claude session with this wrapper; plumb reads the
 # mark (a structured format), never the words.
 _PEER_WRAPPER = re.compile(r"\s*<cross-session-message\b([^>]*)>")
-# Host-marked non-owner text: a cross-session delivery notice, and the caveat or command tags
-# of a slash command the owner typed (a command, not a request).
-_NOTICE = re.compile(r"\s*\[Cross-session delivery notice\]")
+# Host-marked non-owner text: a cross-session delivery or idle notice, an agent's message, and
+# the caveat or command tags of a slash command the owner typed (a command, not a request).
+_NOTICE = re.compile(r"\s*(?:\[Cross-session (?:delivery|idle) notice\]|<agent-message\b)")
 _COMMAND = re.compile(r"\s*<(?:local-command-caveat|command-name)>")
 _FROM_NAME = re.compile(r'from-name=(?:"([^"]*)"|(\S+))')
 

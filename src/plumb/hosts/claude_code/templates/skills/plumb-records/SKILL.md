@@ -11,13 +11,13 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
 - Before editing a file, grep `.plumb/test_map.txt` for it (no map: run `{plumb} tests map`);
   the tests listed cover it. Never rewrite a confirmed example's acceptance test to make it
   pass. When the stop hook asks, run the command it names (`{plumb} tests run --changed`).
-  A workflow agent's stop is held on each stale link its work made: repin, reword or card it.
-- Read back each request in the owner's terms and record it in one call: `{plumb} capture
-  --prompt <digest> --file <doc.json>` (references/capture-doc.md). Proposed; never blocking.
-  Two readings: `{plumb} decide --question Q --chosen A --alt B`. `<digest>` (sha256 of the
-  message) is `message_digest` of `{plumb} clarify --wait --json`. A requirement is one
-  durable, observable behaviour with examples and a proof, naming what it supersedes; a fix
-  of what one states is a commit claiming it (or an NC), never a new requirement; an intent
+  A workflow agent's stop is held on each stale link its work made: repin, reword or ask it.
+- Formalize each request that changes the system as proposed records linked to its code, for
+  the judge: `{plumb} capture --prompt <digest> --file <doc.json>` (references/capture-doc.md).
+  No read-back. Two readings: `{plumb} decide --question Q --chosen A --alt B`. `<digest>`
+  (sha256 of the message) is `message_digest` of `{plumb} clarify --wait --json`. A requirement
+  is one durable, observable behaviour with examples and a proof, naming what it supersedes; a
+  fix of what one states is a commit claiming it (or an NC), never a new requirement; an intent
   is one per principle. The proof, how the owner sees it working, is shown before done:
   `{plumb} proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
 - Never run `{plumb} approve` or `revoke` (both gone), `tests waive`, `ui`,
@@ -25,12 +25,15 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
   `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo` and `go` are typed
   by the owner and done by the hook. Merges, conflict cards: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.
-- A hook time limit asked for: `.plumb/config.yaml` `hooks.hard_limit_s` (at most 119 s).
+- Asked: hook limit `hooks.hard_limit_s` (<=119 s); a study `/plumb study` (owner picks depth).
 Questions and approval: plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.
-1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each `question`,
-   `header` and option `label` and `description` to AskUserQuestion verbatim, one call per
-   question, in order. Never restate a question in prose.
+1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each
+   `question`, `header` and option `label` and `description` to the question tool,
+   every question at once, as soon as it is raised; never restate one in prose. Put
+   each in the owner's terms with `{plumb} question reword`, merging those that
+   hinge on one principle; push an obvious or already-answered one back with
+   `{plumb} question pushback`; never drop, answer or default one.
 2. Never answer, infer or default a question for the owner, never pick the recommended option
    for them, and never write or read `judge_questions.json` or any approval.
 3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
@@ -40,5 +43,5 @@ exists, and you never decide on your own that the owner approved.
    their consequences.
 5. The stop hook's cards reach you as text, not the owner. One tagged "only the owner can
    settle this" (an open conflict, a regression on a confirmed requirement, a drift whose
-   meaning changed): ask it at once, plain words, options, no ids (a study may lay out both
-   sides, choosing nothing). Stale links, untraced files and warnings are yours to fix.
+   meaning changed): ask it at once with the question tool, plain words, options, no ids
+   (or offer a study of both sides). Stale links, untraced files and warnings are yours to fix.

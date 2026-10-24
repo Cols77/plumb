@@ -121,11 +121,12 @@ PREMERGE_WAITING_HEADER = ("{n} requirement{s} this merge touches wait{v} on a j
 PREMERGE_UNDECLARED_HEADER = ("files changed without a requirement that declares them (listed; "
                               "this does not hold the merge):")
 # SR-260 (DEC-252, DEC-256, DEC-257): what holds a merge besides conflicts and integrity
-PREMERGE_QUESTIONS_HEADER = "questions wait for you (they hold the merge):"
+PREMERGE_QUESTIONS_HEADER = "questions wait for you{held}:"
+PREMERGE_HELD = "they hold the merge"   # DEC-271: only a merge into the default branch
 PREMERGE_QUESTION = ("  a question waits for you on \"{title}\"; the agent asks it with the "
                      "question tool")
 PREMERGE_FAILING_HEADER = ("acceptance tests this merge can affect have no passing run on the "
-                           "current code (they hold the merge; the agent runs them):")
+                           "current code ({held}the agent runs them):")
 PREMERGE_VERIFY_UNAVAILABLE = ("  the test evidence could not be read ({error}); it holds the "
                                "merge: green needs test evidence")
 PREMERGE_FULL_PENDING = ("  the full test suite is pending ({reasons}); it holds the merge until "
@@ -286,6 +287,13 @@ STEP_JUDGING = "judging {n} records"
 STEP_JUDGING_BACKLOG = "judging the backlog"
 GATE_BUILD_ANYWAY = "Build anyway"
 GATE_WAIT = "Wait"
+# SR-333, DEC-294: a judge question with more to see than the question tool holds
+ROOM_STUDY = "Study it in the room"
+ROOM_STUDY_NOTE = "The room opens when you press the band's line; the question waits there."
+# SR-336: a question a study proposed ahead of it serves
+STUDY_FIRST = "Study it first"
+STUDY_FIRST_NOTE = ("The band's study line opens the study in the room; the question waits "
+                    "until you have read it.")
 GATE_BUILD_NOTE = ("Builds now without the check; what the check would have caught is not "
                    "looked at")
 GATE_WAIT_NOTE = "Builds nothing until the check runs again on your next message"
@@ -421,6 +429,7 @@ WITHDRAWN_SUPERSEDED = "{ids} is superseded"
 WITHDRAWN_CONFIRMED = "you confirmed what it asked about"
 # SR-162: the tidy job's reasons, its step and the line when it could not run
 STEP_TIDYING = "checking your open questions"
+STEP_PUSHBACK = "checking a question the agent sent back"   # SR-362
 STEP_QUESTIONS = "reading the agent's questions to you"   # SR-167
 TIDY_ANSWERED = 'you confirmed {record}: "{quote}"'
 TIDY_DUPLICATE = 'it asks what "{other}" asks'

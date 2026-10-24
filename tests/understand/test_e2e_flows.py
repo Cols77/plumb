@@ -339,7 +339,7 @@ def test_flow_5_failures_confirm_nothing_and_retry_next_turn(repo: Path, write_r
     assert s.worker_idle(30)
     assert owner_words_approvals(repo) == {}
     assert events(repo, "approval") == []
-    assert text_of(s.stop()) == "plumb: 1 question for you"      # SR-265: one line
+    assert text_of(s.stop()) == ""                    # SR-265, SR-363: no question count
     couldnt = agent_of(s)                                        # SR-266: the card is the agent's
     assert "did not finish" in couldnt.lower()
     at_owner_level(couldnt, quoted=("INT-008 ok",))
@@ -551,7 +551,7 @@ def test_flow_7_stale_edit_names_the_link_hold_card_and_reformat(
                    "add now multiplies", "--options", "keep the multiplying|go back",
                    "--consequences", "add multiplies from now on; adding is gone|add adds "
                    "again; the multiplying is undone", "--why", "it is what you asked last",
-                   "--recommended", "0", "--session", SID)      # complete, as SR-116 asks
+                   "--recommended", "1", "--session", SID)      # complete, as SR-116 asks
     assert carded.returncode == 0, carded.stderr + carded.stdout
     ended = s.stop()
     assert '"decision": "block"' not in ended

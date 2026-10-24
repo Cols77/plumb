@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields
+from pathlib import Path
 from typing import Any
 
 from plumb.boundary.fullrun import Runner
@@ -159,6 +160,28 @@ def _set_confirmed(core: Any, members: Sequence[str]) -> bool:
     return confirmed
 
 
+def _not_copies_of_owned(core: Any, untraced: Sequence[str]) -> list[str]:
+    """SR-353: drop paths whose bytes equal those of a file a requirement links to."""
+    if not untraced:
+        return list(untraced)
+    from plumb.trace import owned_paths
+
+    root = Path(core.root)
+
+    def read(rel: str) -> bytes | None:
+        try:
+            return (root / rel).read_bytes()
+        except OSError:
+            return None
+
+    owned: set[bytes] = set()
+    for rel in owned_paths(core):
+        data = read(rel)
+        if data is not None:
+            owned.add(data)
+    return [p for p in untraced if read(p) not in owned]
+
+
 def _awaiting(core: Any, fork: str, paths: Sequence[str],
               required: Sequence[str]) -> list[dict[str, Any]]:
     from plumb.merge import CHANGED_TEST, _describe, changed_test_lines, extended_requirements
@@ -294,6 +317,7 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
     new_exempt = [g for g in current_globs if g not in seen]
     honoured = [g for g in current_globs if g in seen]
     untraced = untraced_paths(core, paths, configs=[core.config, before], exempt=honoured)
+    untraced = _not_copies_of_owned(core, untraced)
 
     problems, base_digests = log_integrity(core, base)
     integrity = list(problems) + _validation_errors(core)
@@ -393,6 +417,9 @@ def _full_run_line(run: Mapping[str, Any], verification: Mapping[str, Any]) -> s
     reasons = ", ".join(run.get("reasons") or []) or "touched acceptance tests unverified"
     if run.get("verdict") == "unavailable":
         return "full run: unavailable"
+    if run.get("reused") and run.get("verdict") == "failed":
+        return (f"full run reused (run {run.get('run_id')}): failed on this tree and "
+                "environment; not run again (change the tree to rerun)")
     if run.get("reused"):
         return (f"full run reused (run {run.get('run_id')}): passed on this tree and "
                 "environment")

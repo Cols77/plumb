@@ -150,7 +150,7 @@ for (const surface of SURFACES) {
       on('process.run', (_$, e) => {
         w.runs.push({ argv: [...e.argv], stdin: e.init?.stdin ?? '', env: { ...(e.init?.env ?? {}) } })
         const ok = retired || e.argv[4] !== 'hello'
-        const data = e.argv[4] === 'hello' ? { active: true, since: '2026-10-11T12:00:00Z', session: SESSION } : { session: SESSION, cards: [] }
+        const data = { active: true, since: '2026-10-11T12:00:00Z', session: SESSION }
         return { value: { exitCode: ok ? 0 : 3, stdout: ok ? JSON.stringify(data) : '', stderr: ok ? '' : 'plumb mod hello refused: this session already has its panel\n', isStdoutTruncated: false, isStderrTruncated: false } }
       })
       install(except(on, ['process.run', 'clock']), w)
@@ -172,7 +172,7 @@ for (const surface of SURFACES) {
       w.files[HOST] = JSON.stringify({ python: PYTHON })
       helloAnswers(except(on, ['clock']), w, 3, 'plumb mod hello refused: this session already has its panel\n')
       await $.session.start(START)
-      await clock.advance(60_000)
+      await clock.advance(90_000)
       const afterStart = hellos(w).length
       expect(afterStart).toBeGreaterThan(1)
       await $.turn.start(TURN)
@@ -187,7 +187,7 @@ for (const surface of SURFACES) {
       on('process.run', (_$, e) => {
         w.runs.push({ argv: [...e.argv], stdin: e.init?.stdin ?? '', env: { ...(e.init?.env ?? {}) } })
         const ok = e.argv[0] === PYTHON
-        const data = e.argv[4] === 'hello' ? { active: true, since: '2026-10-11T12:00:00Z', session: SESSION } : { session: SESSION, cards: [] }
+        const data = { active: true, since: '2026-10-11T12:00:00Z', session: SESSION }
         return { value: { exitCode: ok ? 0 : 1, stdout: ok ? JSON.stringify(data) : '', stderr: ok ? '' : "ModuleNotFoundError: No module named 'plumb'\n", isStdoutTruncated: false, isStderrTruncated: false } }
       })
       install(except(on, ['process.run']), w)
@@ -201,17 +201,20 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
-    test('SR-160: linked with an older interpreter, then host.json names the plugin environment: the panel draws with the new one', async ($, on) => {
+    test('SR-160: linked with an older interpreter, then host.json names the plugin environment: the panel runs plumb with the new one', async ($, on) => {
       const w = unnamed()
       w.files[VENV_PYTHON] = ''
       install(on, w)
       await $.session.start(START)
       expect(hellos(w).map(a => a[0])).toEqual([VENV_PYTHON])
       w.files[HOST] = JSON.stringify({ python: PYTHON })
+      w.files[`${SESSION_DIR}/intent/a.json`] = JSON.stringify({ step: 'build', opened_at: '2026-10-11T11:00:00Z' })
       await $.turn.start(TURN)
       await $.turn.complete(TURN_DONE)
-      const draws = w.runs.filter(r => r.argv[4] === 'draw').map(r => r.argv[0])
-      expect(draws[draws.length - 1]).toBe(PYTHON)
+      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await ui.press({ key: 'loop' }) // the loop pane asks `plumb intent status`
+      expect(w.runs.at(-1)?.argv.slice(0, 5)).toEqual([PYTHON, '-m', 'plumb', 'intent', 'status'])
+      await ui.unmount()
     })
 
     test('SR-126: plumb mod hello fails: one line gives its error', async ($, on) => {

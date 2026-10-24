@@ -521,7 +521,7 @@ def _drawn_entry(core: Any, session: str, card: CardState, status: str, *,
 def read_drawn(root: Any, session: str) -> list[dict[str, Any]]:
     """Every card drawn at the last turn end (``{card, content, turn_built}``): the cards the
     owner reads, each with its full content (SR-116), and the stop hook's cards the owner left
-    open (status ``left_open``). What ``present.json`` and ``plumb mod draw`` carry."""
+    open (status ``left_open``). What the room draws."""
     raw = files.read_json(files.session_dir(root, session) / DRAWN)
     return [dict(e) for e in raw if isinstance(e, Mapping) and isinstance(e.get("card"), Mapping)
             ] if isinstance(raw, list) else []
@@ -626,11 +626,6 @@ def waiting_line(root: Any, session: str, core: Any = None) -> str | None:
     return owner_text.CARDS_WAITING_AGENT.format(n=len(topics), topics=named)
 
 
-def drawn_ids(root: Any, session: str) -> set[str]:
-    """The ids of the cards drawn at the last turn end (read before this one redraws them)."""
-    return {str(e["card"].get("id")) for e in read_drawn(root, session)}
-
-
 def _named(core: Any, ids: Sequence[str]) -> str:
     """The touched requirements in the owner's words: their features' titles, else theirs."""
     index = core.index()
@@ -642,13 +637,13 @@ def _named(core: Any, ids: Sequence[str]) -> str:
     return ", ".join(names[:2]) + (f" and {len(names) - 2} more" if len(names) > 2 else "")
 
 
-def owner_line(core: Any, session: str, before: set[str], *, touched: Sequence[str] = (),
+def owner_line(core: Any, session: str, *, touched: Sequence[str] = (),
                checks: tuple[int, int] = (0, 0)) -> str:
     """SR-265: the owner's one plumb line at a turn end, or "" when nothing changed for them:
-    the new questions waiting (every card but a stale link, which the agent fixes, SR-295
-    EX-3), the answers applied (by the card's title), and the confirmed requirements the turn
+    the answers applied (by the card's title), and the confirmed requirements the turn
     touched with their checks (``checks``: passed, run). Never a card, an option or an id;
-    a judge's approval is the status line's count only (EX-7)."""
+    a judge's approval is the status line's count only (EX-7). SR-363: no count of the
+    questions waiting; the agent asks them as they are raised (SR-361), the band counts them."""
     seen_path = files.session_dir(core.root, session) / TURN_LINE
     seen = files.read_json(seen_path)
     seen = seen if isinstance(seen, Mapping) else {}
@@ -657,11 +652,8 @@ def owner_line(core: Any, session: str, before: set[str], *, touched: Sequence[s
     drawn = read_drawn(core.root, session)
     titles = {c.id: c.topic for c in cardstore.load(core.root, session, open_only=False)}
     titles.update({str(e["card"].get("id")): str(e["card"].get("topic")) for e in drawn})
-    asks = [e for e in drawn if e["card"].get("status") != "left_open"
-            and e["card"].get("kind") != "stale_link" and str(e["card"].get("id")) not in before]
-    parts = [f"{len(asks)} question{'s' if len(asks) > 1 else ''} for you"] if asks else []
-    parts += [f"your answer on {titles.get(k, k)} was applied" for k, v in states.items()
-              if v == "done" and seen.get(k) in ("waiting", "processing")]
+    parts = [f"your answer on {titles.get(k, k)} was applied" for k, v in states.items()
+             if v == "done" and seen.get(k) in ("waiting", "processing")]
     passed, run = checks
     if touched and run:
         pass_ = "check passes" if run == 1 else "checks pass"

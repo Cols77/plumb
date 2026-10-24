@@ -46,6 +46,7 @@ ROUTES: dict[str, str] = {
     "escalate": "plumb.capture.cli", "spec": "plumb.capture.cli",
     "triage": "plumb.capture.cli", "config": "plumb.capture.cli", "jev": "plumb.capture.cli",
     "clarify": "plumb.understand.cli",
+    "question": "plumb.understand.cli",   # SR-362: reword | pushback a judge question
     "proof": "plumb.capture.proof",  # SR-127: a requirement's proof plan and evidence
     # SP8 UNDERSTAND: the model-backed layer (a thin router; listed only when importable)
     "understand": "plumb.understand.cli",
@@ -70,6 +71,7 @@ ROUTES: dict[str, str] = {
     "ui": "plumb.browser.cli",
     # INT-090: studies the owner reads in the room, and the understanding picture
     "study": "plumb.study.cli",
+    "evaluate": "plumb.evaluate.cli",   # INT-105: the benchmark
 }
 
 _HELP = """usage: plumb <command> [options]
@@ -107,6 +109,8 @@ intent capture:
   example      append a given/when/then example to a requirement
   decide       a decision: "I assumed A; B also fits" (--supersede for a confirmed one)
   clarify      the clarification depth and the questions that matter for a request
+  question     reword: your wording of the judge's questions (merged by principle);
+               pushback KEY --reason: send one back; the judge withdraws or keeps it
   escalate     escalation suggestions; decline (the owner said no)
   spec         an escalated spec: show (every member in full, the set hash), state
   triage       proposed records grouped by faithfulness (advisory; it approves nothing)
@@ -117,6 +121,10 @@ intent capture:
                room; the understanding picture it corrects
   quotes       recover: find older records' words in past session transcripts (shown on
                the card as found, not verified; it confirms nothing)
+
+development:
+  evaluate     the benchmark: a cheap model works through a task with plumb
+               (simple|complex; --model, --loop)
 
 owner views (plain words, paths or IDs; none approves anything):
   resolve      what your words mean: records, files and tests, best first

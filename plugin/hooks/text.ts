@@ -1,5 +1,5 @@
 // What plumb's panel says to the owner (SP7 6.3: titles and plain words, never IDs, paths of
-// plumb's own files, hashes or commands). The card texts themselves come from plumb.
+// plumb's own files, hashes or commands).
 
 export const GLYPHS: Record<string, string> = {
   aligned: '✓',
@@ -14,6 +14,8 @@ export const GLYPHS: Record<string, string> = {
  * light theme, and brass for fills and highlights. Never Claude Code's orange, lavender, cyan or green. */
 export const PLUM = { dark: '#B05FB0', light: '#8E3B8E' }
 export const BRASS = '#C9A227'
+// SR-358, SR-359: what is broken and needs the owner (an old build, a judge that cannot settle)
+export const RED = '#D9443A'
 // brass on a light theme: about 4.9:1 on white, where #C9A227 is 2.4:1 (SR-290 EX-3)
 export const BRASS_LIGHT = '#8A6D0B'
 
@@ -29,13 +31,6 @@ export const brassColor = (theme: unknown): string => (isLight(theme) ? BRASS_LI
 export const T = {
   name: 'plumb',
   awaiting: (n: number) => (n === 1 ? '1 awaits you' : `${n} await you`),
-  leftOpen: (n: number) => `${n} left open`,
-  groups: {
-    waiting: 'Waiting for you',
-    processing: 'Being processed',
-    blocked: 'Blocked',
-    done: 'Done this session',
-  } as Record<string, string>,
   nothingAwaits: 'nothing awaits you',
   stopped: (what: string) => `stopped, waits for ${what}`,
   newStudy: (title: string) => `new study: ${title}`,
@@ -45,9 +40,17 @@ export const T = {
   // DEC-207: the depths the owner chooses from; video is plumb-12's later work
   depths: { md: 'Markdown only', diagrams: 'with diagrams', video: 'video (not available yet)' } as Record<string, string>,
   notNow: 'not now',
+  // SR-360 EX-2: a study whose records changed, and the offer to rewrite it at the same depth
+  outOfDate: (title: string, changed: string) => `study out of date: ${title} (${changed} changed)`,
+  rewrite: 'Rewrite it',
+  refreshFailed: 'plumb could not record that; the study stays as it is. Try again.',
   chooseFailed: 'plumb could not record that choice; nothing changed. Try again.',
   judged: (n: number) => `${n} judge-approved`,
+  older: (built: string) => `plumb is older than main (built ${built}): reload plugins`,
+  setAside: (question: string, why: string) => `the judge's question was set aside: "${question}" (${why})`,
   roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',
+  roomWaits: 'a question waits in the room',
+  roomQuestionFailed: 'plumb could not open the question in the browser room; nothing changed. Try again.',
   loopTitle: 'plumb: the intent loop',
   lowLeft: (n: number) => (n === 1 ? '1 low finding left' : `${n} low findings left`),
   tasksLeft: (left: string[]) => `left: ${left.join(', ')}`,
@@ -57,19 +60,7 @@ export const T = {
   notShown: 'not shown yet',
   hide: 'Hide',
   show: 'Show',
-  showAll: 'Show all',
-  showFewer: 'Show fewer',
-  openPane: 'Open in a pane',
-  back: 'Back',
-  next: 'Next',
-  nOfM: (n: number, m: number) => `${n} of ${m}`,
-  paneDocks: 'In fullscreen layout from 110 columns, this pane docks on the right beside the conversation.',
-  paneTitle: 'plumb: what awaits you',
   recommended: ' (recommended)',
-  assumed: 'Assumed: ',
-  wont: 'Not doing: ',
-  diagramLine: (path: string) => `Diagram: ${path} (open it to see it)`,
-  pressFailed: "plumb could not record that press; nothing changed. Try again, or answer in words.",
   degraded: "plumb's panel is off for this session; plumb keeps working in the background.",
   // SR-126: why the panel could not reach plumb, said once per session
   noPython: (looked: string[]) =>
@@ -79,8 +70,4 @@ export const T = {
     `plumb's panel is off: plumb could not start it (${error}); plumb keeps working in the background.`,
   helloRefused: (reason: string) =>
     `plumb's panel is off: plumb refused it (${reason}); plumb keeps working in the background.`,
-  noBox: (topic: string) =>
-    ` The panel could not put "Change to '${topic}': " in the owner's message box: ask them, in ` +
-    'one question in your next reply, what to change.',
-  toastAwaiting: (n: number) => `${n === 1 ? 'a card awaits' : `${n} cards await`} you`,
 }
