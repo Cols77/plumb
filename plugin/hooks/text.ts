@@ -14,6 +14,8 @@ export const GLYPHS: Record<string, string> = {
  * light theme, and brass for fills and highlights. Never Claude Code's orange, lavender, cyan or green. */
 export const PLUM = { dark: '#B05FB0', light: '#8E3B8E' }
 export const BRASS = '#C9A227'
+// SR-358, SR-359: what is broken and needs the owner (an old build, a judge that cannot settle)
+export const RED = '#D9443A'
 // brass on a light theme: about 4.9:1 on white, where #C9A227 is 2.4:1 (SR-290 EX-3)
 export const BRASS_LIGHT = '#8A6D0B'
 
@@ -40,6 +42,8 @@ export const T = {
   notNow: 'not now',
   chooseFailed: 'plumb could not record that choice; nothing changed. Try again.',
   judged: (n: number) => `${n} judge-approved`,
+  older: (built: string) => `plumb is older than main (built ${built}): reload plugins`,
+  setAside: (question: string, why: string) => `the judge's question was set aside: "${question}" (${why})`,
   roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',
   roomWaits: 'a question waits in the room',
   roomQuestionFailed: 'plumb could not open the question in the browser room; nothing changed. Try again.',

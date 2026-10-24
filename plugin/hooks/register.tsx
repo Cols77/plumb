@@ -20,7 +20,7 @@ import type { Register } from 'claude-code'
 import type { PlumbBand, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbTold, PlumbView } from '../types'
 import * as plumb from './plumb'
 import type { Hello, Io, Unlinked } from './plumb'
-import { brassColor, GLYPHS, plumbColor, T } from './text'
+import { brassColor, GLYPHS, plumbColor, RED, T } from './text'
 
 /** The surface's element table, as `$.ui.resolve(e)` answers it. */
 type Ui = { Box: any; Text: any; Button: any }
@@ -224,6 +224,8 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
           </Button>
         ) : null}
       </Box>
+      {(view.status?.red ?? []).map((r, n) => <Text key={`red:${n}`} color={RED}>{r}</Text>)}
+      {(view.status?.setAside ?? []).map((a, n) => <Text key={`aside:${n}`} dimColor>{a}</Text>)}
       {view.status?.roomCard ? (
         // SR-333 EX-3, DEC-294: the question the owner chose to study; a press opens the room on it
         <Button key="roomq" plain onPress={() => {}}>

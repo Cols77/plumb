@@ -638,16 +638,18 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
 
 def _questions(core: Any, job: Job, answer: Mapping[str, Any], judged: Mapping[str, str],
                index: Mapping[str, Any]
-               ) -> tuple[list[dict[str, Any]], list[str]]:
-    """The judge's questions shaped for the owner, and why the others wait."""
+               ) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
+    """The judge's questions shaped for the owner, and the others set aside: (the question,
+    why) each (SR-359 EX-2)."""
     shaped: list[dict[str, Any]] = []
-    why: list[str] = []
+    why: list[tuple[str, str]] = []
     for raw in answer.get("questions") or ():
         made, reason = _shaped(core, raw, job, judged, index)
         done = made and _answered_by(core, index, [r["id"] for r in made["records"]],
                                      [_MARKER.sub("", o["label"]) for o in made["options"]])
         if made is None or done:   # shortcut: an answered question is dropped, its records wait
-            why.append(reason or f"the owner already answered it ({done})")
+            asked = _flat(raw.get("question")) if isinstance(raw, Mapping) else ""
+            why.append((asked, reason or f"the owner already answered it ({done})"))
         elif made["key"] not in {q["key"] for q in shaped}:
             shaped.append(made)
     return shaped, why
@@ -693,11 +695,15 @@ def drop_settled_questions(root: Any, still_stale: Collection[str]) -> None:
 
 
 def _say_waiting(core: Any, session: str, waits: Mapping[str, str]) -> str:
-    """SR-245: the records nobody can settle wait, and the once-per-window line says so."""
-    from plumb.judgment import waiting_line
+    """SR-245: the records the judge answered but did not settle wait, and the once-per-window
+    line says so; never "no judge can be reached": the judge answered (SR-359 EX-2)."""
+    from plumb.judgment import notice_once
 
     why = "; ".join(f"{i}: {w}" for i, w in waits.items())
-    line = waiting_line(core.root, verdict_cascade.STEP, why) or ""
+    line = notice_once(core.root, f"unsettled:{verdict_cascade.STEP}",
+                       f"plumb: {verdict_cascade.STEP} is waiting: the judge answered without "
+                       f"settling it ({why}); it runs again when the record or an answer "
+                       "changes") or ""
     if line:
         from plumb.understand import worker
 
@@ -813,9 +819,12 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         i: h for i, h in judged.items()
         if i not in approved | set(waits) | set(held) | set(sent)}, index)
     _write_questions(core, job, set(judged), shaped)
+    from plumb.judgment import set_aside
+
+    set_aside(core.root, refused)
     covered = {i for q in [*shaped, *open_questions(core, job.session)] for i in _ids_of(q)}
     covered |= set(held) | set(sent)
-    why = "; ".join(refused) or "the judge asked no question about it"
+    why = "; ".join(w for _, w in refused) or "the judge asked no question about it"
     waits.update({i: why for i in judged if i not in approved | covered | set(waits)})
     if waits:
         notes.append(_say_waiting(core, job.session, waits))

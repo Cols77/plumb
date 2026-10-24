@@ -499,7 +499,8 @@ def open_jev(core: Any, config: Any, *, hook: bool, thresholds: Thresholds) -> A
     key = resolve_key(root, name=name)
     if key is None:
         raise JudgmentUnavailable("JEV", f"no JEV key ({name} is not in the environment, "
-                                  "nor in the env file ~/.config/plumb/jev.json names)")
+                                  "nor in the env file ~/.config/plumb/jev.json names)",
+                                  code="no-key", detail=f"{name} not found")
     jev = dict(config.judgment.jev or {})
     timeout = (max(0.05, float(config.judgment.hook_timeout_ms) / 1000.0) if hook
                else CLI_TIMEOUT_S)

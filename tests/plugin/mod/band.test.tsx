@@ -3,10 +3,12 @@
 // case runs on the terminal and the desktop.
 import { describe, expect, test } from 'claude-code/testing'
 
+import { RED } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
 import { BAND, install, START, SURFACES, TURN_DONE, world } from './harness'
 
 const STATUS = `${ROOT}/.plumb/session/status.json`
+const JUDGES = `${ROOT}/.plumb/session/judges.json`
 
 for (const surface of SURFACES) {
   describe(`band on the ${surface}`, () => {
@@ -71,6 +73,69 @@ for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await ui.find({ type: 'Text', text: 'plumb ● 2 await you · judging the backlog · 10/160' })).toBeDefined()
       expect(w.statuses).toEqual([]) // the band alone shows the status: nothing pinned under the prompt
+      await ui.unmount()
+    })
+
+    test('SR-358 EX-1: main was rebuilt after the cache: a red line says plumb is older and to reload', async ($, on) => {
+      const w = world()
+      w.files[`${ROOT}/.plumb/session/${SESSION}/build.json`] = JSON.stringify({ outdated: true, built: '2026-10-24' })
+      install(on, w)
+      await $.session.start(START)
+      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const red = await ui.find({ type: 'Text', text: 'plumb is older than main (built 2026-10-24): reload plugins' })
+      expect(red?.props.color).toBe(RED)
+      expect(w.runs.map(r => r.argv[4])).toEqual(['hello']) // nothing reinstalled
+      await ui.unmount()
+    })
+
+    test("SR-358 EX-2: the session runs main's build after a reload: the red line is gone", async ($, on) => {
+      const w = world()
+      const build = `${ROOT}/.plumb/session/${SESSION}/build.json`
+      w.files[build] = JSON.stringify({ outdated: true, built: '2026-10-24' })
+      install(on, w)
+      await $.session.start(START)
+      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeDefined()
+      w.files[build] = JSON.stringify({ outdated: false, built: '' })
+      await $.turn.complete(TURN_DONE)
+      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeUndefined()
+      await ui.unmount()
+    })
+
+    test('SR-359 EX-1: no JEV key: a red line names the judge and the cause', async ($, on) => {
+      const w = world()
+      w.files[JUDGES] = JSON.stringify({ down: { JEV: { code: 'no-key', line: 'JEV judge, no key (OPENROUTER_API_KEY not found)' } } })
+      install(on, w)
+      await $.session.start(START)
+      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const red = await ui.find({ type: 'Text', text: 'JEV judge, no key (OPENROUTER_API_KEY not found)' })
+      expect(red?.props.color).toBe(RED)
+      await ui.unmount()
+    })
+
+    test('SR-359 EX-2: a question set aside is shown apart, named with why, never red', async ($, on) => {
+      const w = world()
+      w.files[JUDGES] = JSON.stringify({ down: {}, set_aside: [{ question: 'Was this settled?', why: "a question names plumb's own words" }] })
+      install(on, w)
+      await $.session.start(START)
+      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const aside = await ui.find({ type: 'Text', text: `the judge's question was set aside: "Was this settled?" (a question names plumb's own words)` })
+      expect(aside?.props.color).not.toBe(RED)
+      expect(await ui.findAll({ type: 'Text' })).toHaveLength(3) // the head, its summary, the question set aside
+      expect(await ui.find({ type: 'Text', text: /no judge can be reached/ })).toBeUndefined()
+      await ui.unmount()
+    })
+
+    test('SR-359 EX-3: the judge answers again: the red line is gone', async ($, on) => {
+      const w = world()
+      w.files[JUDGES] = JSON.stringify({ down: { JEV: { code: 'timeout', line: 'JEV judge, timed out (timeout)' } } })
+      install(on, w)
+      await $.session.start(START)
+      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeDefined()
+      w.files[JUDGES] = JSON.stringify({ down: {} })
+      await $.turn.complete(TURN_DONE)
+      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeUndefined()
       await ui.unmount()
     })
 
