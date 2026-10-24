@@ -44,6 +44,7 @@ def loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """The plugin Claude Code cached, as the hooks' PLUMB_PLUGIN_ROOT names it."""
     cached = tmp_path / "cache"
     _manifest(cached, "old")
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)     # the session's own plugin
     monkeypatch.setenv("PLUMB_PLUGIN_ROOT", str(cached / "plugin"))
     monkeypatch.setattr(prompt, "understand_lines", lambda ctx, core, digest, text: [])
     return cached
