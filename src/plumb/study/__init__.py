@@ -31,8 +31,7 @@ WRITTEN = ("new", "opened", "known", "deeper")
 STATUSES = (*IDEAS, *WRITTEN)
 UNREAD = ("idea", "accepted", "new")    # proposed, accepted or written, not read yet
 DEPTHS = ("md", "diagrams", "video")
-# shortcut: video studies are plumb-12's later work; add "video" here once they can be written
-OFFERED = ("md", "diagrams")
+OFFERED = DEPTHS
 MARKS = {"opened": "opened", "known": "known", "deeper": "deeper"}
 PICTURE_LIMIT = 65536
 FIRST = "study_first.json"     # the session's 'Study it first' choice (SR-336)
@@ -231,8 +230,7 @@ def choose(root: Path, slug: str, depth: str | None) -> dict[str, Any]:
     if found["status"] != "idea":
         raise ValueError(f"the study {found['title']} is no longer an idea")
     if depth is not None and depth not in OFFERED:
-        raise ValueError(f"the depth is one of {', '.join(OFFERED)}"
-                         + (" (video studies are not available yet)" if depth == "video" else ""))
+        raise ValueError(f"the depth is one of {', '.join(OFFERED)}")
     _write(folder(root) / f"{slug}.md", _front({
         **_fields(found), "depth": depth or "",
         "status": "accepted" if depth else "declined"}) + found["body"])
@@ -257,7 +255,11 @@ def accepted_lines(root: Path) -> list[str]:
             for s in accepted(root)] + [
         f"plumb: the owner asked to rewrite the study '{s['title']}' at depth {s['depth']}: "
         f"{s['changed']} changed; {_write_it(s)}"
-        for s in studies(root) if s["status"] in WRITTEN and s.get("refresh") == "asked"]
+        for s in studies(root) if s["status"] in WRITTEN and s.get("refresh") == "asked"] + [
+        f"plumb: the video of '{s['title']}' rendered: have an independent reviewer agent check "
+        f"it: plumb study frames {s['slug']}, then plumb study check {s['slug']} "
+        "--pass|--fail --reason ... --reviewer <agent>"
+        for s in studies(root) if s.get("video") == "checking"]
 
 
 NO_RECORD = "No record in plumb covers this topic."

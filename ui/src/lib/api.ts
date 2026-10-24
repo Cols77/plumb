@@ -8,6 +8,11 @@ export function takeCapability(): string {
   if (token) return token;
   try { return sessionStorage.getItem('plumb.capability') ?? ''; } catch { return ''; }
 }
+export async function apiBlob(path: string, capability: string): Promise<Blob> {
+  const response = await fetch(path, {headers: {Authorization: `Bearer ${capability}`}});
+  if (!response.ok) throw new ApiError(`Request failed (${response.status})`, response.status);
+  return response.blob();
+}
 export async function api<T>(path: string, capability: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {method: body === undefined ? 'GET' : 'POST', headers: {
     Authorization: `Bearer ${capability}`, ...(body === undefined ? {} : {'Content-Type':'application/json'}),

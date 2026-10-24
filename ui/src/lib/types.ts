@@ -12,6 +12,6 @@ export type Workspace = { project: {name: string; root: string; demo: boolean}; 
 export type Followup = { id: string; card: string; status: string; created: string; delivered?: string };
 export type Draw = {session: string; cards: Card[]; followups: Followup[]};
 export type PressResult = {line?: string; duplicate?: boolean; followup?: {id: string; status: string}; [key: string]: unknown};
-export type Study = { slug: string; title: string; topic: string; step: string; loop: string; why: string; status: 'new' | 'opened' | 'known' | 'deeper'; body?: string; changed?: string };
+export type Study = { slug: string; title: string; topic: string; step: string; loop: string; why: string; status: 'new' | 'opened' | 'known' | 'deeper'; body?: string; changed?: string; video?: '' | 'rendering' | 'checking' | 'ready' | 'failed'; video_reason?: string };
 export type Understanding = { text: string; knows: string[]; needs: string[] };
 export type StudyList = { studies: Study[]; understanding: Understanding };

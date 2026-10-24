@@ -276,7 +276,7 @@ def test_sr294_ex8_the_next_turn_tells_the_agent_the_accepted_depth(
 def test_sr294_ex7_only_the_owners_press_chooses_and_video_waits(
         intent: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture,
         how: str) -> None:
-    """SR-294 EX-7: the choice is the panel's key-checked press; video is not offered yet."""
+    """SR-294 EX-7: the choice is the panel's key-checked press; video is offered too."""
     assert _propose(intent, "How plumb's background jobs run") == 0
     slug = _idea(intent)
     assert run_mod(monkeypatch, capsys, intent, "hello", stdin={"key_digest": DIGEST})[0] == 0
@@ -287,8 +287,9 @@ def test_sr294_ex7_only_the_owners_press_chooses_and_video_waits(
     code = run_mod(monkeypatch, capsys, intent, "study", "--study", slug, "--depth",
                    "video" if how == "video" else "md",
                    stdin={} if how == "no key" else {"key": KEY})[0]
-    assert code == (3 if how in ("no key", "the agent's marker") else 2)
-    assert study.get(intent, slug)["status"] == ("declined" if how == "twice" else "idea")
+    assert code == (3 if how in ("no key", "the agent's marker") else 0 if how == "video" else 2)
+    assert study.get(intent, slug)["status"] == (
+        "declined" if how == "twice" else "accepted" if how == "video" else "idea")
 
 
 @pytest.mark.sr("SR-294")
