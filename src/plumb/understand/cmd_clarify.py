@@ -53,8 +53,10 @@ SHOW_COULDNT = ("The check could not be made and the owner has a card offering t
                 "wait. Say so in one line; nothing was built, and nothing is built until they "
                 "say to build anyway.")
 WAITING = "The check of your request is not finished. Do not build yet."
-ASK_QUESTIONS = ("Ask these {n} questions with the question tool, one at a time, as given: each "
-                 "question, header and option label and description verbatim.")
+ASK_QUESTIONS = ("Ask these {n} questions with the question tool, all at once, now: put each in "
+                 "the owner's terms with `plumb question reword`, merging those on one principle; "
+                 "push an obvious or answered one back with `plumb question pushback`; never "
+                 "drop, answer or default one.")
 UNMATCHED = "Ask these questions as given; the last answer matched none of them."
 JUDGING = ("plumb's judge is still reading the records; go on with the work and run clarify "
            "--wait again before the turn ends.")
