@@ -125,10 +125,13 @@ def _since(core: Any, session: str, logged: Mapping[str, Any]) -> str:
 
 
 def _judge_jobs_since(root: Path, session: str, at: str) -> list[Job]:
-    """The session's judge jobs queued since ``at``, whatever their records."""
+    """The session's judge jobs queued since ``at``, whatever their records, and the judge's
+    readings of a question the agent sent back (SR-362): no question is asked before its
+    ruling."""
     from plumb.understand import jobs
 
-    return [j for j in jobs.queued(root, session) if j.kind == "judge" and j.created >= at]
+    return [j for j in jobs.queued(root, session) if j.kind in ("judge", "pushback")
+            and j.created >= at]
 
 
 def _approved(core: Any, at: str) -> list[str]:
@@ -210,8 +213,8 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
     questions = _by_principle([q for q in judge.open_questions(core, session)
                                if q.get("key") not in later])
     since = _judge_jobs_since(root, session, at)
-    failed = [j for j in since if (r := result_of(root, session, j.id)) is not None
-              and r.status == "error"]
+    failed = [j for j in since if j.kind == "judge"    # a failed push-back keeps the question
+              and (r := result_of(root, session, j.id)) is not None and r.status == "error"]
     if failed and questions and not any(q.get("job") in {j.id for j in since}
                                         for q in questions):
         # the judge could not read the owner's latest message: what it asked before that
@@ -225,9 +228,12 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
         return _couldnt(core, session, digest, why_failed(last) if last else WHY_DEFAULT)
     if questions:
         answers = [e.payload for e in said if e.at >= at]
-        # SR-212: the agent reworded the question, or asked one of its own
+        # SR-212: the agent reworded the question, or asked one of its own; SR-362: a wording
+        # it registered (``plumb question reword``) is matched
+        worded = {w.get("key") for w in judge.reworded(root, session)}
         missed = bool(answers) and answers[-1].get("via") == "question-tool" \
-            and not any(answers[-1].get(k) for k in ("asked", "room", "study"))
+            and not any(answers[-1].get(k) for k in ("asked", "room", "study")) \
+            and judge.question_key(str(answers[-1].get("question") or "")) not in worded
         line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
         return Outcome("ask", digest, [line], questions=[
             {"question": q.get("question"), "header": q.get("header"),

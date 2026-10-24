@@ -50,6 +50,7 @@ RELATED_MAX = 12
 TEXT_WIDTH = 1200
 VERDICTS = ("supported", "beyond", "contradicts", "waiting")
 QUESTIONS_FILE = "judge_questions.json"
+REWORDED_FILE = "reworded.json"     # SR-362: the agent's wording of the judge's questions
 HEADER_MAX = 12          # the question tool's chip
 _MARKER = re.compile(r"\s*\(recommended\)", re.IGNORECASE)
 _PLUMB_WORDS = re.compile(r"\b(?:proposed|settled|trial|records?|judge[sd]?)\b",
@@ -467,18 +468,24 @@ def _ids_of(question: Mapping[str, Any]) -> set[str]:
 
 def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
     """The session's judge questions no question-answer entry answers yet, by its question's
-    key or the key it was matched to (``asked.key``); 'Study it first' answers nothing
-    (SR-336). Reads no record (the hook calls it)."""
+    key or the keys it was matched to (``asked.key``, ``asked.keys``: SR-362, the agent's
+    wording covering several); 'Study it first' answers nothing (SR-336); one the judge
+    withdrew on the agent's push-back (``question-ruling``) is gone. Reads no record (the hook
+    calls it)."""
     asked = _logged_questions(core.root, session)
     if not asked:
         return []
     answered: set[str] = set()
     for e in core.events():
-        if e.kind == "question-answer" and e.payload.get("session") == session \
-                and not e.payload.get("study"):
+        if e.payload.get("session") != session:
+            continue
+        if e.kind == "question-answer" and not e.payload.get("study"):
             answered.add(question_key(str(e.payload.get("question") or "")))
             if isinstance(e.payload.get("asked"), Mapping):
                 answered.add(str(e.payload["asked"].get("key")))
+                answered.update(map(str, e.payload["asked"].get("keys") or ()))
+        elif e.kind == "question-ruling" and e.payload.get("ruling") == "withdrawn":
+            answered.add(str(e.payload.get("key")))
     return [q for q in asked if q.get("key") not in answered]
 
 
@@ -675,6 +682,26 @@ def add_question(core: Any, session: str, question: Mapping[str, Any]) -> None:
     kept = [q for q in _logged_questions(core.root, session)
             if q.get("job") != question.get("job")]
     files.write_json_atomic(questions_path(core.root, session), [*kept, dict(question)])
+
+
+def reworded(root: Any, session: str) -> list[Mapping[str, Any]]:
+    """SR-362: the agent's wordings of the session's judge questions (``REWORDED_FILE``), each
+    ``{key, question, header, options, covers}``: ``covers`` the judge question keys it asks."""
+    raw = files.read_json(files.session_dir(Path(root), session) / REWORDED_FILE)
+    return [w for w in raw if isinstance(w, Mapping)] if isinstance(raw, list) else []
+
+
+def reword(core: Any, session: str, covers: Sequence[str], question: str, header: str,
+           options: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """SR-362 EX-1: record the agent's wording of the judge questions ``covers`` (merged when
+    they hinge on one principle); the question-answer hook answers each of them with the
+    owner's answer to it. The same wording registered again replaces the earlier one."""
+    worded = {"key": question_key(question), "question": question, "header": header,
+              "options": [dict(o) for o in options], "covers": list(covers)}
+    kept = [w for w in reworded(core.root, session) if w.get("key") != worded["key"]]
+    files.write_json_atomic(files.session_dir(Path(core.root), session) / REWORDED_FILE,
+                            [*kept, worded])
+    return worded
 
 
 def drop_settled_questions(root: Any, still_stale: Collection[str]) -> None:

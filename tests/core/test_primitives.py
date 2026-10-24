@@ -157,7 +157,9 @@ def test_every_route_names_a_module_path() -> None:
                 # SR-118: `plumb quotes recover`
                 "quotes",
                 # SR-176: the browser issue workspace, `plumb ui`
-                "ui"}
+                "ui",
+                # SR-362: `plumb question reword|pushback`
+                "question"}
     assert set(cli.ROUTES) == expected
     for module in cli.ROUTES.values():
         assert re.fullmatch(r"plumb(\.[a-z_]+)+", module)
