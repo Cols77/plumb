@@ -264,7 +264,8 @@ def test_sr294_ex8_the_next_turn_tells_the_agent_the_accepted_depth(
     assert code == 0 and answer == {"slug": slug, "status": "accepted", "depth": "diagrams"}
     lines = on_prompt(SimpleNamespace(root=intent, session_id=SESSION), None, {})
     assert lines[0] == ("plumb: the owner accepted the study idea 'How plumb's background jobs "
-                        f"run' at depth diagrams: write it now with plumb study add {slug} "
+                        f"run' at depth diagrams: write it now: plumb study gather {slug}, "
+                        f"then plumb study add {slug} --records <the IDs you drew on> "
                         "--file <body.md>")
     assert _candidates(intent, capsys)["accepted"] == [
         {"slug": slug, "title": "How plumb's background jobs run", "depth": "diagrams"}]

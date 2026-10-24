@@ -80,9 +80,11 @@ after its tests pass, relink it when the code moved, or ask it with the question
 the meaning changed.
 
 Studies: write none before the owner accepts its idea. When plumb tells you an idea was
-accepted (the prompt's line, or `accepted` in the candidates), write it at that depth in plain
-words with the records' examples, a mermaid diagram only at depth `diagrams` and none at
-`md`, then `plumb study add <slug> --file <body.md>`; the band announces it and the owner
+accepted or a rewrite asked (the prompt's line, or `accepted` in the candidates), first run
+`plumb study gather <slug> --json`: the records on its topic, their examples and test states.
+Write from that set only, at that depth, in plain words, a mermaid diagram only at depth
+`diagrams` and none at `md`; a topic no record covers: say so. Then `plumb study add <slug>
+--records <the IDs you drew on> --file <body.md>`; the band announces it and the owner
 reads it in the room when they choose. Never open the room, and never take 'I know this' or
 'Go deeper' as an answer: they correct the picture only.
 

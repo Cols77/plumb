@@ -40,6 +40,10 @@ export const T = {
   // DEC-207: the depths the owner chooses from; video is plumb-12's later work
   depths: { md: 'Markdown only', diagrams: 'with diagrams', video: 'video (not available yet)' } as Record<string, string>,
   notNow: 'not now',
+  // SR-360 EX-2: a study whose records changed, and the offer to rewrite it at the same depth
+  outOfDate: (title: string, changed: string) => `study out of date: ${title} (${changed} changed)`,
+  rewrite: 'Rewrite it',
+  refreshFailed: 'plumb could not record that; the study stays as it is. Try again.',
   chooseFailed: 'plumb could not record that choice; nothing changed. Try again.',
   judged: (n: number) => `${n} judge-approved`,
   older: (built: string) => `plumb is older than main (built ${built}): reload plugins`,

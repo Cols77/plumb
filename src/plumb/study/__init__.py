@@ -7,9 +7,13 @@ no body (``idea``). The owner's press in the band accepts it at a depth (``accep
 declines it (``declined``, never proposed again); only an accepted idea is written (``new``),
 at the chosen depth, then read (``opened``, ``known``, ``deeper``). A study proposed ahead of
 the owner's waiting questions (SR-336) holds their keys in ``serves`` and belongs to no loop step.
+A written study keeps the records it was written from (SR-360, DEC-335) in ``records``, each
+with its content hash; when one changes, ``changed`` names it and the band offers a rewrite at
+the same depth (DEC-336): ``refresh`` is ``asked`` on the owner's yes, ``no`` on 'not now'.
 
-``.plumb/understanding.md`` is the picture of what the owner understands of the system: plain lines ``- knows: <topic>`` and ``- needs: <topic>``, which the owner edits in
-the browser room. 'I know this' and 'Go deeper' change a study's status and the picture only:
+``.plumb/understanding.md`` is the picture of what the owner understands of the system:
+plain lines ``- knows: <topic>`` and ``- needs: <topic>``, which the owner edits in the
+browser room. 'I know this' and 'Go deeper' change a study's status and the picture only:
 they are never an answer delivered to a session (DEC-152), and a study about an open conflict
 chooses nothing (DEC-154).
 """
@@ -240,27 +244,79 @@ def accepted(root: Path) -> list[dict[str, Any]]:
     return [s for s in studies(root) if s["status"] == "accepted"]
 
 
+def _write_it(s: dict[str, Any]) -> str:
+    return (f"write it now: plumb study gather {s['slug']}, then plumb study add {s['slug']} "
+            "--records <the IDs you drew on> --file <body.md>")
+
+
 def accepted_lines(root: Path) -> list[str]:
-    """What the agent is told at its next turn (SR-294 EX-8): each accepted idea at its depth."""
+    """What the agent is told at its next turn (SR-294 EX-8): each accepted idea at its depth,
+    and each study the owner asked to rewrite, at the same depth (SR-360 EX-2)."""
     return [f"plumb: the owner accepted the study idea '{s['title']}' at depth {s['depth']}"
-            f"{' (no diagram)' if s['depth'] == 'md' else ''}: write it now with "
-            f"plumb study add {s['slug']} --file <body.md>" for s in accepted(root)]
+            f"{' (no diagram)' if s['depth'] == 'md' else ''}: {_write_it(s)}"
+            for s in accepted(root)] + [
+        f"plumb: the owner asked to rewrite the study '{s['title']}' at depth {s['depth']}: "
+        f"{s['changed']} changed; {_write_it(s)}"
+        for s in studies(root) if s["status"] in WRITTEN and s.get("refresh") == "asked"]
 
 
-def add(root: Path, slug: str, body: str) -> str:
+NO_RECORD = "No record in plumb covers this topic."
+
+
+def add(root: Path, slug: str, body: str, records: list[dict[str, str]] | None = None) -> str:
     """Write the study of an idea the owner accepted, at the depth they chose (SR-293 EX-7,
-    EX-8): never before acceptance, and 'Markdown only' has no diagram."""
+    EX-8): never before acceptance, and 'Markdown only' has no diagram. ``records``: the
+    records it is written from, ``{id, title, hash}`` (SR-360 EX-1), listed at its end; with
+    none it says no record covers the topic (EX-3). A study the owner asked to rewrite is
+    written again at its depth."""
     found = get(root, slug)
-    if found["status"] != "accepted":
+    if found["status"] != "accepted" and found.get("refresh") != "asked":
         raise ValueError(f"the study {found['title']} is not accepted by the owner"
                          + (" yet: propose it and wait" if found["status"] == "idea" else ""))
     if not body.strip():
         raise ValueError("a study needs a body")
     if found.get("depth") == "md" and "```mermaid" in body:
         raise ValueError("the owner chose Markdown only: the study has no diagram")
+    records = list(records or [])
+    head = "" if records or NO_RECORD in body else NO_RECORD + "\n\n"
+    tail = ("\n\nWritten from: " + ", ".join(f"{r['id']} {r['title']}" for r in records)
+            if records else "")
     _write(folder(root) / f"{slug}.md",
-           _front({**_fields(found), "status": "new"}) + "\n" + body.strip() + "\n")
+           _front({**_fields(found), "records": records, "changed": "", "refresh": "",
+                   "status": "new"}) + "\n" + head + body.strip() + tail + "\n")
     return slug
+
+
+def out_of_date(root: Path, index: Any) -> list[str]:
+    """SR-360 EX-2: the written studies one of whose records changed or went, by slug; their
+    ``changed`` names those records' titles for the room and the band. A new change asks the
+    owner again (``refresh`` cleared); nothing is rewritten here (DEC-336)."""
+    out = []
+    for s in studies(root):
+        held = [r for r in s.get("records") or () if isinstance(r, dict)]
+        if s["status"] not in WRITTEN or not held:
+            continue
+        changed = ", ".join(str(r.get("title") or r.get("id")) for r in held
+                            if r.get("id") not in index or index[r["id"]].hash != r.get("hash"))
+        if changed:
+            out.append(s["slug"])
+        if changed != s.get("changed", ""):
+            _write(folder(root) / f"{s['slug']}.md", _front({
+                **_fields(s), "changed": changed, "refresh": "", "status": s["status"]})
+                + s["body"])
+    return out
+
+
+def refresh(root: Path, slug: str, yes: bool) -> dict[str, Any]:
+    """The owner's press on an out-of-date study (DEC-336): yes asks the agent to rewrite it
+    at the same depth; 'not now' leaves it marked. Only the band's key-checked press."""
+    found = get(root, slug)
+    if not found.get("changed"):
+        raise ValueError(f"the study {found['title']} is not out of date")
+    _write(folder(root) / f"{slug}.md", _front({
+        **_fields(found), "refresh": "asked" if yes else "no", "status": found["status"]})
+        + found["body"])
+    return get(root, slug)
 
 
 def mark(root: Path, slug: str, how: str) -> dict[str, Any]:

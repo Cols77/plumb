@@ -205,6 +205,7 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
   const loop = view.status?.loop
   const studies = view.status?.studies ?? []
   const idea = (view.status?.ideas ?? []).at(-1) // DEC-207: the newest idea waiting for a choice
+  const outdated = (view.status?.outdated ?? []).at(-1)
   return (
     <Box flexDirection="column" width={columns}>
       <Box flexDirection="row" gap={1}>
@@ -231,6 +232,14 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
         <Button key="roomq" plain onPress={() => {}}>
           <Text key="line:roomq" color={brass}>{T.roomWaits}</Text>
         </Button>
+      ) : null}
+      {outdated ? (
+        // SR-360 EX-2, DEC-336: a study whose records changed; nothing is rewritten without the yes
+        <Box key="outdated" flexDirection="row" gap={1}>
+          <Text key="line:outdated" color={brass}>{T.outOfDate(outdated.title, outdated.changed)}</Text>
+          <Button key="refresh:yes" label={T.rewrite} onPress={() => {}} />
+          <Button key="refresh:no" label={T.notNow} onPress={() => {}} />
+        </Box>
       ) : null}
       {loop ? loopLines(ui, loop, color, brass) : null}
       {loop && idea && band.idea ? ideaChoices(ui, idea, true, brass, true) : loop && (view.status?.study || idea) ? (
@@ -588,6 +597,12 @@ export const register: Register = on => {
       if (!idea) return pressed
       const ran = await plumb.chooseStudy(io, link, idea.slug, key.slice('idea:'.length))
       line = ran.ok ? '' : T.chooseFailed
+    } else if (key === 'refresh:yes' || key === 'refresh:no') {
+      // SR-360 EX-2: the owner's yes asks the agent to rewrite the study; 'not now' leaves it marked
+      const outdated = (view.status?.outdated ?? []).at(-1)
+      if (!outdated) return pressed
+      const ran = await plumb.refreshStudy(io, link, outdated.slug, key === 'refresh:yes')
+      line = ran.ok ? '' : T.refreshFailed
     } else {
       return pressed
     }
@@ -599,7 +614,7 @@ export const register: Register = on => {
     }
     const drawn = await plumb.snapshot(io, link, { ...view, line }, false)
     await update($, viewAtom, () => drawn)
-    if (key.startsWith('idea:') || key.startsWith('study:')) {
+    if (key.startsWith('idea:') || key.startsWith('study:') || key.startsWith('refresh:')) {
       // a choice takes its lines away: the band keeps its head line, the ring back on Hide
       await $.ui.focus({ requestId: e.requestId, key: 'hide' }).catch(() => undefined)
       await $.ui.scroll({ in: e.requestId, to: 'start' }).catch(() => undefined)

@@ -308,7 +308,7 @@ function front(text: string, key: string): string {
   }
 }
 
-type StudyFile = { title: string; slug: string; status: string; why: string; recommend: string }
+type StudyFile = { title: string; slug: string; status: string; why: string; recommend: string; changed: string; refresh: string }
 
 /** Every study file in `.plumb/studies`, oldest first by file name. */
 async function studyFiles(io: Io, link: PlumbLink): Promise<StudyFile[]> {
@@ -326,7 +326,7 @@ async function studyFiles(io: Io, link: PlumbLink): Promise<StudyFile[]> {
       const title = front(text, 'title')
       if (title) {
         found.push({ title, slug: name.slice(0, -3), status: front(text, 'status'), why: front(text, 'why'),
-          recommend: front(text, 'recommend') })
+          recommend: front(text, 'recommend'), changed: front(text, 'changed'), refresh: front(text, 'refresh') })
       }
     } catch {
       // a study being written: the next read names it
@@ -345,6 +345,12 @@ export async function readStudies(io: Io, link: PlumbLink): Promise<{ title: str
  * accepted at `depth` (`md`, `diagrams`) or declined (`none`); the room does not open. */
 export function chooseStudy(io: Io, link: PlumbLink, slug: string, depth: string): Promise<Ran> {
   return plumbMod(io, link, 'study', { key: link.key }, ['--study', slug, '--depth', depth])
+}
+
+/** The owner pressed 'Rewrite it' or 'not now' on a study whose records changed (SR-360 EX-2,
+ * DEC-336): plumb asks the agent to rewrite it at the same depth, or leaves it marked. */
+export function refreshStudy(io: Io, link: PlumbLink, slug: string, yes: boolean): Promise<Ran> {
+  return plumbMod(io, link, 'study', { key: link.key }, ['--study', slug, '--refresh', yes ? 'yes' : 'no'])
 }
 
 /** The band's first line: plumb's status card (status.json) and SP8's progress, if running. */
@@ -388,6 +394,8 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     roomCard: String(room?.card ?? ''),
     studies,
     ideas,
+    // SR-360 EX-2: out of date, the owner not asked yet
+    outdated: files.filter(s => s.changed && !s.refresh).map(({ title, slug, changed }) => ({ title, slug, changed })),
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
     red,
     setAside,

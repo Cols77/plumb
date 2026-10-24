@@ -57,6 +57,9 @@ export type PlumbStatus = {
   /** study ideas the agent proposed, waiting for the owner's choice, oldest first: the band's
    * brass idea line, whose press shows the why and the depths (SR-294 EX-7, DEC-207) */
   ideas?: { title: string; slug: string; why: string; recommend: string }[]
+  /** written studies one of whose records changed, the owner not asked yet: the band's brass
+   * line offering a rewrite at the same depth (SR-360 EX-2, DEC-336) */
+  outdated?: { title: string; slug: string; changed: string }[]
   /** the requirements a judge approved (auto-jev, auto-model), counted in the head (SR-251) */
   judged?: number
   /** red lines: plumb older than main's build (SR-358), a judge that cannot settle and why
