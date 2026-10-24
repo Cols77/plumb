@@ -7,6 +7,7 @@ from __future__ import annotations
 import io
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,8 @@ def plugin(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     (vendor / "plumb.whl").write_bytes(b"wheel")
     (vendor / "MANIFEST.json").write_text(json.dumps({"wheel": "plumb.whl",
                                                        "source_digest": "main"}), "utf-8")
+    for args in (("add", "-A"), ("commit", "-q", "-m", "main's build")):  # main's committed build
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
     monkeypatch.setenv("PLUMB_SESSION_ID", "s2")
     for name in ("CLAUDE_PLUGIN_ROOT", "PLUMB_PLUGIN_ROOT"):
         monkeypatch.delenv(name, raising=False)
