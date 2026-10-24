@@ -314,7 +314,8 @@ def test_wait_after_a_capture_with_no_clarify_job_answers_ask(
     assert [set(q) for q in shown] == [{"question", "header", "options", "multiSelect"}]
     assert shown[0]["options"][0]["label"].endswith("(Recommended)")
     assert not gate.is_closed(world, SESSION)
-    assert owner_level("\n".join(outcome.lines)) == []
+    # SR-362: the line tells the agent the commands that reword and push back; nothing else
+    assert set(owner_level("\n".join(outcome.lines))) == {"plumb question"}
 
 
 @pytest.mark.sr("SR-248")

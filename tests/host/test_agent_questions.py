@@ -17,6 +17,7 @@ from host.test_answer_rejudge import (  # noqa: F401
     logged,
     world,
 )
+from understand.fakes import engine_standins  # noqa: F401 - the fixture
 from understand.test_judge_job import SESSION
 
 from plumb.api import open_core

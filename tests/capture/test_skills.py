@@ -51,7 +51,9 @@ def test_plumb_records_skill_names_capture_helpers(installed: Path) -> None:
                   "plumb-clarify"):
         assert words in skill, words
     body = skill.split("---", 2)[2].strip().splitlines()
-    assert len(body) <= 40  # about 25 lines of context, not procedure, and the question rules
+    # about 25 lines of context, not procedure, and the question rules (SR-362's reword and
+    # push-back added three)
+    assert len(body) <= 43
     for owner_only in ("plumb approve", "triage --approve", "spec approve",
                        "config auto-approve"):
         assert owner_only in skill

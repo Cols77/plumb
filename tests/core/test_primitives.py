@@ -158,6 +158,8 @@ def test_every_route_names_a_module_path() -> None:
                 "quotes",
                 # SR-176: the browser issue workspace, `plumb ui`
                 "ui",
+                # INT-105: `plumb evaluate`, the benchmark
+                "evaluate",
                 # SR-362: `plumb question reword|pushback`
                 "question"}
     assert set(cli.ROUTES) == expected
