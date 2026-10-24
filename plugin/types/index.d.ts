@@ -59,6 +59,11 @@ export type PlumbStatus = {
   ideas?: { title: string; slug: string; why: string; recommend: string }[]
   /** the requirements a judge approved (auto-jev, auto-model), counted in the head (SR-251) */
   judged?: number
+  /** red lines: plumb older than main's build (SR-358), a judge that cannot settle and why
+   * (SR-359); each until it is fixed */
+  red?: string[]
+  /** the judge's questions plumb set aside, and why: shown apart, never as unreachable (SR-359 EX-2) */
+  setAside?: string[]
 }
 
 /** What the loop pane shows (SR-305), as `plumb intent status --json` gives the open loop:

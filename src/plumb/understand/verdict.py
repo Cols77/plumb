@@ -135,19 +135,27 @@ def _ask_jev(core: Any, entries: list[Mapping[str, Any]], backend: Any
     """``({id: JEV's scores}, why JEV stopped)``: JEV is asked whenever a backend exists; a
     missing or other-form calibration only means the 0.9 floor (DEC-143)."""
     from plumb.capture.calibrate import latest_calibration
-    from plumb.judgment import JudgmentUnavailable
+    from plumb.judgment import JudgmentUnavailable, get_backend, judge_down, judge_up
 
     if backend is None:
-        return {}, "JEV is not set up"
+        try:            # SR-359: the exact cause, not only that JEV is missing
+            get_backend(core, hook=False)
+            cause = "JEV is not set up"
+        except JudgmentUnavailable as exc:
+            cause = str(exc)
+        judge_down(core.root, "JEV", cause)
+        return {}, cause
     calibration = latest_calibration(core)
     scored: dict[str, dict[str, Any]] = {}
     for entry in entries:
         try:
             found = jev_verdict(core, entry, backend, calibration)
         except JudgmentUnavailable as exc:
+            judge_down(core.root, "JEV", str(exc))
             return scored, str(exc)
         if found is not None:
             scored[str(entry["id"])] = found
+    judge_up(core.root, "JEV")
     return scored, ""
 
 
@@ -280,8 +288,13 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             extra = {k: v for k, v in answer.items() if k not in ("verdicts", "questions")}
         if questions:
             extra["questions"] = questions
+        from plumb.judgment import judge_down, judge_up
+
         if len(left) < len(rest):
             names.append(str(getattr(dispatcher, "name", "model")))
+            judge_up(core.root, label)
+        if left:            # SR-359: the band's red line names this judge and the cause
+            judge_down(core.root, label, why.removeprefix(f"{jev_cause}; "))
     line = held
     if left:
         from plumb.judgment import waiting_line

@@ -1,0 +1,77 @@
+"""SR-359: a judge that cannot settle a record is noted for the band's red line, naming the
+judge and the exact cause (from a cause code), until it answers again; a judge that answered but
+whose question plumb set aside is noted apart and never called unreachable. JEV and the model
+are stubs."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from plumb.judgment import cause_code
+from understand.fakes import FakeDispatcher
+from understand.test_judge_cascade import StubJev, configure, world  # noqa: F401
+from understand.test_judge_job import build_job
+from understand.test_judge_questions import answer, applied_on, asking, notes
+
+pytestmark = pytest.mark.sr("SR-359")
+
+
+def judges(repo: Path) -> dict[str, Any]:
+    path = repo / ".plumb" / "session" / "judges.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def cascade(core: Any, **kw: Any) -> Any:
+    from plumb.understand import verdict
+
+    try:
+        return verdict.cascade(core, build_job(core, ["INT-001"]), system="judge", schema={},
+                               dispatcher=FakeDispatcher(reason="no model here"), **kw)
+    except verdict.Waiting:          # the model is down too: only JEV's line is looked at
+        return None
+
+
+def test_ex1_no_jev_key_the_band_names_the_judge_and_the_key(
+        world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    core = configure(world, "  jev:\n    credential_env: OPENROUTER_API_KEY\n")
+    cascade(core)
+    down = judges(world)["down"]
+    assert down["JEV"]["code"] == "no-key"
+    assert down["JEV"]["line"] == "JEV judge, no key (OPENROUTER_API_KEY not found)"
+
+
+def test_ex1_each_cause_has_its_code() -> None:
+    assert [cause_code(c) for c in (
+        "judgment.backend is not set in .plumb/config.yaml", "no JEV key (X is not in the env",
+        "timeout", "no answer within 120 seconds", "OpenRouter could not be reached (x)",
+        "HTTP 500", "HTTP 429", "the answer was not JSON")] == [
+        "not-configured", "no-key", "timeout", "timeout", "network", "provider-error", "quota",
+        "unusable-answer"]
+
+
+def test_ex2_a_question_set_aside_is_shown_apart_and_never_unreachable(
+        world: Path) -> None:  # noqa: F811
+    applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[asking(
+        "SR-001", question="Was this settled by your earlier answer?")]))
+    state = judges(world)
+    assert state.get("down", {}) == {}
+    (aside,) = state["set_aside"]
+    assert aside["question"] == "Was this settled by your earlier answer?"
+    assert aside["why"] == "a question names plumb's own words"
+    (line,) = notes(world)
+    assert "no judge can be reached" not in line and "plumb's own words" in line
+
+
+def test_ex3_the_judge_answers_again_the_red_line_is_gone(
+        world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    core = configure(world, "  jev:\n    credential_env: OPENROUTER_API_KEY\n")
+    cascade(core)
+    assert "JEV" in judges(world)["down"]
+    cascade(core, jev=StubJev(0.95))
+    assert "JEV" not in judges(world)["down"]

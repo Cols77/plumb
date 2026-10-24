@@ -206,6 +206,79 @@ def waiting_line(root: Path, step: str, cause: object) -> str | None:
                        "again when one is back")
 
 
+# SR-359: a cause code from the cause's text, first match wins, and its plain words
+CAUSES: tuple[tuple[str, str, str], ...] = (
+    ("no-key", r"\bkey\b|API_KEY", "no key"),
+    ("not-configured", r"not set|not a judge|not available|not configured|not installed|"
+                       r"could not be started", "not configured"),
+    ("timeout", r"time ?out|timed out|no answer within", "timed out"),
+    ("quota", r"HTTP (402|429)|quota|rate.?limit|credit", "a quota"),
+    ("network", r"could not be reached|URLError|Connection|network|getaddrinfo|OSError",
+     "network down"),
+    ("unusable-answer", r"malformed|not JSON|no structured answer|no answer in it|schema|"
+                        r"invalid", "an unusable answer"),
+    ("provider-error", r"", "the provider's error"),
+)
+
+
+def cause_code(cause: str) -> str:
+    """SR-359: the cause code of a judge's failure."""
+    import re
+
+    return next(code for code, pattern, _ in CAUSES if re.search(pattern, cause, re.I))
+
+
+def _judges(root: Path) -> tuple[Path, dict[str, Any]]:
+    path = Path(root) / ".plumb" / "session" / "judges.json"
+    try:
+        held = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        held = {}
+    return path, held if isinstance(held, dict) else {}
+
+
+def _keep(path: Path, held: Mapping[str, Any]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(held, sort_keys=True), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def judge_down(root: Path, judge: str, cause: str) -> None:
+    """SR-359 EX-1: note in ``.plumb/session/judges.json`` that ``judge`` cannot settle a
+    record and why, for the band's red line, until ``judge_up``."""
+    import re
+
+    code = cause_code(cause)
+    detail = cause.removeprefix(f"{judge}: ")
+    key = re.search(r"\((\w+) is not in the environment", detail)
+    detail = f"{key.group(1)} not found" if key else detail
+    plain = next(words for c, _, words in CAUSES if c == code)
+    path, held = _judges(root)
+    down = held.get("down") if isinstance(held.get("down"), dict) else {}
+    if (down.get(judge) or {}).get("cause") != cause:
+        _keep(path, {**held, "down": {**down, judge: {
+            "code": code, "cause": cause, "line": f"{judge} judge, {plain} ({detail})"}}})
+
+
+def judge_up(root: Path, judge: str) -> None:
+    """SR-359 EX-3: ``judge`` answered: its red line goes."""
+    path, held = _judges(root)
+    down = held.get("down") if isinstance(held.get("down"), dict) else {}
+    if judge in down:
+        _keep(path, {**held, "down": {k: v for k, v in down.items() if k != judge}})
+
+
+def set_aside(root: Path, questions: Sequence[tuple[str, str]]) -> None:
+    """SR-359 EX-2: the judge's questions plumb set aside (the question, why), shown apart
+    from a judge that cannot be reached; the last judge job's list replaces the earlier one."""
+    path, held = _judges(root)
+    aside = [{"question": q, "why": w} for q, w in questions]
+    if held.get("set_aside", []) != aside:
+        _keep(path, {**held, "set_aside": aside})
+
+
 def report_unavailable(root: Path, exc: BaseException) -> str | None:
     """The one-line report of ``exc`` the first time it is seen in this session window, else
     None. Hooks print it without blocking the prompt."""
