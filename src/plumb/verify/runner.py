@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from plumb.verify.envid import test_interpreter  # noqa: F401 - lives in envid, so session start skips this module
+
 PLUGIN = "plumb.verify.pytest_plugin"
 COV_PLUGIN = "plumb.verify.cov_plugin"  # SR-110: coverage contexts, one per test node
 STREAM_SUFFIX = ".stream"  # the plugin's phase stream, next to its report
@@ -96,21 +98,6 @@ XDIST_MISSING = ("pytest-xdist is not installed: the tests run on one process "
 PYTEST_MISSING = ("pytest is not installed for {python}: install it there, or name the "
                   "interpreter that has it in verify.python")
 _PROBED: dict[str, tuple[str | None, bool]] = {}
-
-
-def test_interpreter(root: Path | str, configured: str = "") -> str:
-    """The interpreter that runs the repository's tests: ``verify.python`` when set, else the
-    repository's ``.venv`` when it exists, else the one plumb runs in. Under the plugin that
-    last one is plumb's private environment, which has no pytest and none of the project's
-    test dependencies, so a project with a ``.venv`` is run there."""
-    if configured:
-        local = Path(root) / configured
-        return str(local) if not Path(configured).is_absolute() and local.exists() else configured
-    for rel in ("Scripts/python.exe", "bin/python"):
-        venv = Path(root) / ".venv" / rel
-        if venv.exists():
-            return str(venv)
-    return sys.executable
 
 
 def _probe(interpreter: str) -> tuple[str | None, bool]:

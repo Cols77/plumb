@@ -168,7 +168,7 @@ class Verify:
 
     def test_python(self) -> str:
         """The interpreter the tests run in: the environment their evidence belongs to."""
-        from plumb.verify.runner import test_interpreter
+        from plumb.verify.envid import test_interpreter
 
         return test_interpreter(self.root, str(getattr(self.core.config.verify, "python", "") or ""))
 

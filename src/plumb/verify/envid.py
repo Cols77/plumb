@@ -16,6 +16,21 @@ from typing import Any
 from plumb.normalize import canonical_json, sha256_bytes, sha256_text
 
 
+def test_interpreter(root: Path | str, configured: str = "") -> str:
+    """The interpreter that runs the repository's tests: ``verify.python`` when set, else the
+    repository's ``.venv`` when it exists, else the one plumb runs in. Under the plugin that
+    last one is plumb's private environment, which has no pytest and none of the project's
+    test dependencies, so a project with a ``.venv`` is run there."""
+    if configured:
+        local = Path(root) / configured
+        return str(local) if not Path(configured).is_absolute() and local.exists() else configured
+    for rel in ("Scripts/python.exe", "bin/python"):
+        venv = Path(root) / ".venv" / rel
+        if venv.exists():
+            return str(venv)
+    return sys.executable
+
+
 def python_version() -> str:
     return f"{platform.python_implementation()} {platform.python_version()}"
 
