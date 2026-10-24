@@ -631,7 +631,7 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
              for label, c in zip(rest[::2], rest[1::2], strict=True)]
     return {"key": question_key(question), "job": job.id,
             "records": [{"id": i, "hash": judged[i]} for i in ids],
-            # SR-334: one answer settles the questions sharing a principle
+            # SR-361 EX-3: one answer settles the questions sharing a principle
             "principle": _flat(raw.get("principle")).lower(),
             "blocking": raw.get("blocking") is True,
             "diagram": raw.get("diagram") is True,     # SR-333: it offers the room

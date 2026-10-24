@@ -95,7 +95,7 @@ def handle(ctx: HookContext) -> HookOutput | None:
             merged = [found, *(q for q in left if q is not found and q.get("key") in covers)]
             for q in merged:
                 left.remove(q)
-            # SR-334 EX-2: the answer to a principle reaches the records of all its questions
+            # SR-361 EX-3: the answer to a principle reaches the records of all its questions
             group = [*merged, *(q for q in left if found.get("principle")
                                 and q.get("principle") == found.get("principle"))]
             entry["asked"] = {"job": found.get("job"), "key": found.get("key"),
