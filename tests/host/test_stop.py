@@ -195,7 +195,7 @@ def test_regression_blocks_with_owner_instruction(project: Path, hook_input) -> 
                                           "turn.json").read_text("utf-8"))["asked"])
     out = run_stop(project, hook_input, verify=verify)
     assert _block(out) is None
-    assert _summary(out) == "plumb: 1 question for you"      # SR-265: one line
+    assert _summary(out) == ""      # SR-265, SR-363: no question count
     summary = agent_notes(project)
     # the agent gets the regression card to ask (no requirement verifies it: the test names it)
     assert summary.startswith(f"{NODE}\na test that passed before now fails: {NODE}")

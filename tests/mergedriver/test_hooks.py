@@ -41,8 +41,8 @@ def test_stop_shows_a_new_conflict_once_and_states_it(repo: Path, hook_input) ->
     conflicted(repo)
     _start_turn(repo)
     head = ["relay checks", "main and feat-x changed it in different ways"]
-    # SR-265: the owner's line counts the new conflict once; the card in full is the agent's
-    assert _stop(repo, hook_input) == "plumb: 1 question for you"
+    # SR-265, SR-363: the owner's text counts no conflict; the card in full is the agent's
+    assert _stop(repo, hook_input) == ""
     first = agent_notes(repo)
     assert first.splitlines()[:2] == head, first
     assert ("main says: What it says: A relay pins only the records the owner's "

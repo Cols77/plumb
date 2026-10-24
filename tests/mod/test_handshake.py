@@ -77,8 +77,8 @@ def test_stop_writes_present_json_and_no_system_message_while_the_panel_is_activ
     started = _start_turn(core.root)
     _register(monkeypatch, capsys, core.root, heartbeat=started + 0.2)
     out = _stop(core.root, hook_input)
-    # one plumb line instead of silence (SR-159 EX-1), the same as without a panel (SR-265)
-    assert json.loads(out) == {"systemMessage": "plumb: 1 question for you"}
+    # the same as without a panel (SR-265): a waiting card is no plumb line (SR-363)
+    assert out == ""
     present = _present(core.root)
     assert present is not None
     assert {"turn", "confirmations"} <= set(present) and "cards" not in present
@@ -93,7 +93,7 @@ def test_stop_prints_as_before_when_the_heartbeat_is_older_than_the_turn(
     _register(monkeypatch, capsys, core.root,
               heartbeat=started - handshake.HEARTBEAT_SLACK_S - 60)
     out = _stop(core.root, hook_input)
-    assert json.loads(out)["systemMessage"] == "plumb: 1 question for you"
+    assert out == ""                                     # SR-363: no question count
     notes = core.root / ".plumb" / "session" / SESSION / "agent_notes.json"
     assert "Requirement 1" in notes.read_text("utf-8")   # the card, as text, is the agent's
     assert _present(core.root) is None
@@ -102,7 +102,7 @@ def test_stop_prints_as_before_when_the_heartbeat_is_older_than_the_turn(
 def test_stop_prints_as_before_without_a_panel_or_with_the_panel_off(
         core, monkeypatch, capsys, hook_input) -> None:
     started = _start_turn(core.root)
-    assert json.loads(_stop(core.root, hook_input))["systemMessage"]
+    assert _stop(core.root, hook_input) == ""            # SR-363: no question count
     assert _present(core.root) is None
     _register(monkeypatch, capsys, core.root, heartbeat=started + 0.2, active=False)
     _stop(core.root, hook_input)
@@ -118,7 +118,7 @@ def test_a_block_is_unchanged_while_the_panel_is_active(core, monkeypatch, capsy
     block = HookOutput(block_reason="plumb: run the covering tests")
     assert handshake.deliver(ctx, block) is block
     assert _present(core.root) is None
-    line = HookOutput(system_message="plumb: 1 question for you")
+    line = HookOutput(system_message="plumb: your answer on deadline reminders was applied")
     assert handshake.deliver(ctx, line) is line      # the stop's own line (SR-265)
     assert _present(core.root) is not None
 

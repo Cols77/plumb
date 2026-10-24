@@ -69,8 +69,8 @@ def agent_channel(root: Path, session: str = "s1") -> str:
 
 
 def _turn(root: Path, hook_input: Any) -> tuple[list[str], str]:
-    """The stop hook's two passes: the owner's plumb lines (SR-265: one line counting the
-    card, never the card) and the agent's channel of the last pass (the card in full)."""
+    """The stop hook's two passes: the owner's plumb lines (SR-265, SR-363: never the card
+    nor a count of it) and the agent's channel of the last pass (the card in full)."""
     lines = [_stop(root, hook_input)]
     agent_channel(root)
     lines.append(_stop(root, hook_input, active=True))
@@ -95,9 +95,9 @@ def early_heads(reply: str, title: str) -> list[str]:
 
 
 def _assert_asked_and_answered(root: Path, lines: list[str], cards: str, record: str) -> None:
-    # the stop never blocks for it: the owner's one line counts the card once, and the card
+    # the stop never blocks for it: the owner's text counts no question (SR-363), and the card
     # reaches the agent tagged for the owner to settle (SR-265, SR-295)
-    assert lines == ["plumb: 1 question for you"], lines
+    assert lines == [], lines
     assert ASK_OWNER in cards, cards
     assert early_heads(cards, open_core(root).index()[record].title), cards
     [dec] = _decisions(root)
@@ -156,7 +156,7 @@ def test_capture(tmp_path: Path, hook_input: Any) -> None:
     [dec] = _decisions(mine)
     assert _answer(mine, dec.id) == 0
     assert open_core(mine).index()[dec.id].fields["chosen"] == "feat-x's version"
-    assert lines == ["plumb: 1 question for you"], lines
+    assert lines == [], lines                     # SR-363: no question count
 
 
 def _clarify(root: Path) -> str:
@@ -187,7 +187,7 @@ def test_clarify_card_answered_before_any_edit(tmp_path: Path, hook_input: Any) 
     _start_turn(mine)
     _clarify(mine)
     line = _stop(mine, hook_input)                # a turn that changed no file
-    assert line == "plumb: 1 question for you", line
+    assert line == "", line                       # SR-363: no question count
     cards = agent_channel(mine)
     assert early_heads(cards, "relay checks"), cards
     assert _decisions(mine) == []

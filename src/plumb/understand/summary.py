@@ -288,7 +288,6 @@ TURN_LEFT = "turn_left.json"     # the stop hook's cards the owner left open, wi
 WAITING = "cards_waiting.json"   # what the next prompt tells the agent (SR-116 EX-4)
 DRAW_MIN_S = 0.08                # a card's full content needs about this much of the budget
 TURN_LINE = "turnline.json"      # each card's state seen at the last turn end (SR-265)
-WAITING_KEY = "_waiting"      # judge questions waiting at the last turn end, same file (SR-334)
 ASK_OWNER = ("plumb: only the owner can settle this; ask the owner now with the question tool, "
              "in plain words with options and no id, or offer a study laying out both sides "
              "when there is more to read; choose nothing yourself:")
@@ -627,11 +626,6 @@ def waiting_line(root: Any, session: str, core: Any = None) -> str | None:
     return owner_text.CARDS_WAITING_AGENT.format(n=len(topics), topics=named)
 
 
-def drawn_ids(root: Any, session: str) -> set[str]:
-    """The ids of the cards drawn at the last turn end (read before this one redraws them)."""
-    return {str(e["card"].get("id")) for e in read_drawn(root, session)}
-
-
 def _named(core: Any, ids: Sequence[str]) -> str:
     """The touched requirements in the owner's words: their features' titles, else theirs."""
     index = core.index()
@@ -643,33 +637,23 @@ def _named(core: Any, ids: Sequence[str]) -> str:
     return ", ".join(names[:2]) + (f" and {len(names) - 2} more" if len(names) > 2 else "")
 
 
-def owner_line(core: Any, session: str, before: set[str], *, touched: Sequence[str] = (),
+def owner_line(core: Any, session: str, *, touched: Sequence[str] = (),
                checks: tuple[int, int] = (0, 0)) -> str:
     """SR-265: the owner's one plumb line at a turn end, or "" when nothing changed for them:
-    the new questions waiting (every card but a stale link, which the agent fixes, SR-295
-    EX-3), the answers applied (by the card's title), and the confirmed requirements the turn
+    the answers applied (by the card's title), and the confirmed requirements the turn
     touched with their checks (``checks``: passed, run). Never a card, an option or an id;
-    a judge's approval is the status line's count only (EX-7). The judge questions still waiting
-    count only when some were added or answered this turn (SR-334, DEC-297)."""
-    from plumb.understand import judge
-
+    a judge's approval is the status line's count only (EX-7). SR-363: no count of the
+    questions waiting; the agent asks them as they are raised (SR-361), the band counts them."""
     seen_path = files.session_dir(core.root, session) / TURN_LINE
     seen = files.read_json(seen_path)
     seen = seen if isinstance(seen, Mapping) else {}
     states = {k: v[0] for k, v in cardstore.states(core, session).items()}
-    waiting = sorted(str(q.get("key")) for q in judge.open_questions(core, session))
-    files.write_json_atomic(seen_path, {**states, WAITING_KEY: waiting})
+    files.write_json_atomic(seen_path, states)
     drawn = read_drawn(core.root, session)
     titles = {c.id: c.topic for c in cardstore.load(core.root, session, open_only=False)}
     titles.update({str(e["card"].get("id")): str(e["card"].get("topic")) for e in drawn})
-    asks = len([e for e in drawn if e["card"].get("status") != "left_open"
-                and e["card"].get("kind") != "stale_link"
-                and str(e["card"].get("id")) not in before])
-    # SR-334 (DEC-297): the waiting judge questions are told only when the count changed this turn
-    asks += len(waiting) if waiting != seen.get(WAITING_KEY, []) else 0
-    parts = [f"{asks} question{'s' if asks > 1 else ''} for you"] if asks else []
-    parts += [f"your answer on {titles.get(k, k)} was applied" for k, v in states.items()
-              if v == "done" and seen.get(k) in ("waiting", "processing")]
+    parts = [f"your answer on {titles.get(k, k)} was applied" for k, v in states.items()
+             if v == "done" and seen.get(k) in ("waiting", "processing")]
     passed, run = checks
     if touched and run:
         pass_ = "check passes" if run == 1 else "checks pass"
