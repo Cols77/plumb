@@ -25,12 +25,13 @@ def judges(repo: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
-def cascade(core: Any, **kw: Any) -> Any:
+def cascade(core: Any, dispatcher: Any = None, **kw: Any) -> Any:
     from plumb.understand import verdict
 
     try:
         return verdict.cascade(core, build_job(core, ["INT-001"]), system="judge", schema={},
-                               dispatcher=FakeDispatcher(reason="no model here"), **kw)
+                               dispatcher=dispatcher or FakeDispatcher(reason="no model here"),
+                               **kw)
     except verdict.Waiting:          # the model is down too: only JEV's line is looked at
         return None
 
@@ -49,9 +50,27 @@ def test_ex1_each_cause_has_its_code() -> None:
     assert [cause_code(c) for c in (
         "judgment.backend is not set in .plumb/config.yaml", "no JEV key (X is not in the env",
         "timeout", "no answer within 120 seconds", "OpenRouter could not be reached (x)",
-        "HTTP 500", "HTTP 429", "the answer was not JSON")] == [
+        "HTTP 500", "HTTP 429", "the answer was not JSON", "HTTP 429: key limit exceeded",
+        "a monkey answered")] == [
         "not-configured", "no-key", "timeout", "timeout", "network", "provider-error", "quota",
-        "unusable-answer"]
+        "unusable-answer", "quota", "provider-error"]
+
+
+def test_ex1_the_model_judge_cannot_be_reached_its_line_names_it_and_why(
+        world: Path) -> None:  # noqa: F811
+    cascade(configure(world), FakeDispatcher().failing(), jev=None)
+    line = judges(world)["down"]["model"]["line"]
+    assert line.startswith("fake:") and line.endswith(
+        " judge, network down (the model could not be reached)")
+
+
+def test_ex1_records_too_large_are_not_an_unreachable_judge(
+        world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    from plumb.understand import verdict
+
+    monkeypatch.setattr(verdict, "INPUT_MAX", 10)
+    cascade(configure(world), FakeDispatcher(), jev=None)
+    assert "model" not in judges(world).get("down", {})
 
 
 def test_ex2_a_question_set_aside_is_shown_apart_and_never_unreachable(
@@ -75,3 +94,12 @@ def test_ex3_the_judge_answers_again_the_red_line_is_gone(
     assert "JEV" in judges(world)["down"]
     cascade(core, jev=StubJev(0.95))
     assert "JEV" not in judges(world)["down"]
+
+
+def test_ex3_the_model_judge_answers_again_its_line_is_gone(
+        world: Path) -> None:  # noqa: F811
+    core = configure(world)
+    cascade(core, FakeDispatcher().failing(), jev=None)
+    assert "model" in judges(world)["down"]
+    cascade(core, FakeDispatcher(script=lambda job: {"verdicts": []}), jev=None)
+    assert "model" not in judges(world)["down"]

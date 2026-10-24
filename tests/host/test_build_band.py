@@ -1,11 +1,12 @@
 """SR-358: when the plumb build Claude Code runs (the loaded plugin's vendored source digest)
-differs from main's, the prompt hook notes it for the band's red line; once the session runs
+differs from main's (the manifest committed on main), the prompt hook notes it for the band's red line; once the session runs
 main's build the note clears. Nothing is reinstalled."""
 
 from __future__ import annotations
 
 import io
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,13 @@ def _manifest(folder: Path, digest: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"source_digest": digest}), encoding="utf-8")
     return path
+
+
+def _commit(repo: Path, digest: str) -> None:
+    """Main's build: the manifest committed on main, as a merge of a rebuilt plugin leaves it."""
+    _manifest(repo, digest)
+    for args in (("add", "-A"), ("commit", "-q", "-m", f"build {digest}")):
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
 
 
 def _turn(repo: Path, hook_input) -> dict:
@@ -43,16 +51,17 @@ def loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def test_ex1_main_rebuilt_after_the_cache_the_band_gets_the_red_line(
         repo: Path, loaded: Path, hook_input) -> None:
-    _manifest(repo, "new")
+    _commit(repo, "new")
+    _manifest(repo, "old")                     # a worktree's own manifest is not main's build
     old, built = build.outdated(repo)
-    assert old and len(built) == 10 and built[4] == "-"          # main's build date
+    assert old and len(built) == 10 and built[4] == "-"          # main's commit date
     note = _turn(repo, hook_input)
     assert note == {"outdated": True, "built": built}
 
 
 def test_ex2_the_session_runs_mains_build_the_line_is_gone(
         repo: Path, loaded: Path, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
-    _manifest(repo, "new")
+    _commit(repo, "new")
     assert _turn(repo, hook_input)["outdated"] is True
     _manifest(loaded, "new")                                     # the owner reloaded plugins
     assert build.outdated(repo) == (False, "")

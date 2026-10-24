@@ -31,11 +31,15 @@ class JudgmentUnavailable(RuntimeError):
     """The configured judge cannot answer: not configured, no key, timed out or failed.
 
     ``judge`` names the judge (``JEV``, or ``no judge`` when none is configured) and ``cause``
-    says why; the message is one line. No rule-based judge answers in its place (INT-029)."""
+    says why; the message is one line. ``code`` is the cause code when the raiser knows it and
+    ``detail`` the band's short words for it (SR-359). No rule-based judge answers in its place
+    (INT-029)."""
 
-    def __init__(self, judge: str, cause: str) -> None:
+    def __init__(self, judge: str, cause: str, *, code: str = "", detail: str = "") -> None:
         self.judge = judge
         self.cause = cause
+        self.code = code
+        self.detail = detail
         super().__init__(f"{judge}: {cause}")
 
 
@@ -206,13 +210,15 @@ def waiting_line(root: Path, step: str, cause: object) -> str | None:
                        "again when one is back")
 
 
-# SR-359: a cause code from the cause's text, first match wins, and its plain words
+# SR-359: a cause code from a provider's or dispatcher's text, first match wins, and its plain
+# words; plumb's own causes carry their code on ``JudgmentUnavailable`` instead
 CAUSES: tuple[tuple[str, str, str], ...] = (
-    ("no-key", r"\bkey\b|API_KEY", "no key"),
+    ("quota", r"HTTP (402|429)|quota|rate.?limit|credit", "a quota"),
+    ("no-key", r"\bno (\w+ )?key\b|not in the environment|API_KEY (is )?(not set|missing)",
+     "no key"),
     ("not-configured", r"not set|not a judge|not available|not configured|not installed|"
                        r"could not be started", "not configured"),
     ("timeout", r"time ?out|timed out|no answer within", "timed out"),
-    ("quota", r"HTTP (402|429)|quota|rate.?limit|credit", "a quota"),
     ("network", r"could not be reached|URLError|Connection|network|getaddrinfo|OSError",
      "network down"),
     ("unusable-answer", r"malformed|not JSON|no structured answer|no answer in it|schema|"
@@ -222,7 +228,7 @@ CAUSES: tuple[tuple[str, str, str], ...] = (
 
 
 def cause_code(cause: str) -> str:
-    """SR-359: the cause code of a judge's failure."""
+    """SR-359: the cause code of a judge's failure told only as text."""
     import re
 
     return next(code for code, pattern, _ in CAUSES if re.search(pattern, cause, re.I))
@@ -238,36 +244,40 @@ def _judges(root: Path) -> tuple[Path, dict[str, Any]]:
 
 
 def _keep(path: Path, held: Mapping[str, Any]) -> None:
+    """Atomic, so the band never reads a torn file. shortcut: two judge jobs writing at once
+    can lose one's change until its next run; take a lock if the band ever shows it."""
+    from plumb.understand.files import write_json_atomic
+
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(held, sort_keys=True), encoding="utf-8")
+        write_json_atomic(path, dict(held))
     except OSError:
         pass
 
 
-def judge_down(root: Path, judge: str, cause: str) -> None:
+def judge_down(root: Path, judge: str, cause: str, *, code: str = "", detail: str = "",
+               slot: str = "") -> None:
     """SR-359 EX-1: note in ``.plumb/session/judges.json`` that ``judge`` cannot settle a
-    record and why, for the band's red line, until ``judge_up``."""
-    import re
-
-    code = cause_code(cause)
-    detail = cause.removeprefix(f"{judge}: ")
-    key = re.search(r"\((\w+) is not in the environment", detail)
-    detail = f"{key.group(1)} not found" if key else detail
+    record and why, for the band's red line, until ``judge_up``. ``slot`` (the judge by
+    default) is where it is kept: the model judge keeps one slot whatever its label, so a
+    changed model replaces its line."""
+    code = code or cause_code(cause)
+    detail = detail or cause.removeprefix(f"{judge}: ")
     plain = next(words for c, _, words in CAUSES if c == code)
+    slot = slot or judge
     path, held = _judges(root)
     down = held.get("down") if isinstance(held.get("down"), dict) else {}
-    if (down.get(judge) or {}).get("cause") != cause:
-        _keep(path, {**held, "down": {**down, judge: {
-            "code": code, "cause": cause, "line": f"{judge} judge, {plain} ({detail})"}}})
+    line = f"{judge} judge, {plain} ({detail})"
+    if (down.get(slot) or {}).get("line") != line:
+        _keep(path, {**held, "down": {**down, slot: {"code": code, "cause": cause,
+                                                     "line": line}}})
 
 
-def judge_up(root: Path, judge: str) -> None:
-    """SR-359 EX-3: ``judge`` answered: its red line goes."""
+def judge_up(root: Path, slot: str) -> None:
+    """SR-359 EX-3: the judge in ``slot`` answered: its red line goes."""
     path, held = _judges(root)
     down = held.get("down") if isinstance(held.get("down"), dict) else {}
-    if judge in down:
-        _keep(path, {**held, "down": {k: v for k, v in down.items() if k != judge}})
+    if slot in down:
+        _keep(path, {**held, "down": {k: v for k, v in down.items() if k != slot}})
 
 
 def set_aside(root: Path, questions: Sequence[tuple[str, str]]) -> None:
@@ -305,10 +315,10 @@ def get_backend(core: Any, *, hook: bool) -> Any:
             from plumb.judgment.jev import open_jev
         except ImportError:
             raise JudgmentUnavailable("JEV", "the jev backend is not available in this "
-                                      "build") from None
+                                      "build", code="not-configured") from None
         return open_jev(core, config, hook=hook, thresholds=thresholds)
     if not name:
         raise JudgmentUnavailable("no judge", "judgment.backend is not set in "
-                                  ".plumb/config.yaml; set it to jev")
+                                  ".plumb/config.yaml; set it to jev", code="not-configured")
     raise JudgmentUnavailable("no judge", f"judgment.backend is {name!r}, which is not a "
-                              "judge; set judgment.backend to jev")
+                              "judge; set judgment.backend to jev", code="not-configured")
