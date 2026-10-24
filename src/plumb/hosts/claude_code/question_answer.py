@@ -6,8 +6,9 @@ host's record of the tool call (SR-208 EX-5). An answer to one of the judge's qu
 (``judge_questions.json``, matched by its key, or the session's one open question when the
 answer is one of its option labels) names the records asked about at their version (``asked``),
 and one bare judge job is queued for them: the worker rebuilds the premise with the answer and
-judges again (SR-212). An answer to a pending proof question (``proof_questions.json``,
-filed by ``plumb proof SR-### --ask``, matched by its key) carries ``proof: {record, hash,
+judges again (SR-212). An answer to the agent's own wording (``plumb question reword``,
+``judge.reworded``) answers every judge question it covers, ``asked.keys`` naming each
+(SR-362). An answer to a pending proof question (``proof_questions.json``, filed by ``plumb proof SR-### --ask``, matched by its key) carries ``proof: {record, hash,
 evidence_at}`` and the pending question is removed: the owner's yes is the only confirmation
 of a proof (DEC-257, ``proof.owner_confirmed``). The proof is tagged only when the question
 shown is the one that record's current passing evidence asks, with YES among its options
@@ -61,10 +62,13 @@ def handle(ctx: HookContext) -> HookOutput | None:
     core = open_core(ctx.root)
     left = list(judge.unanswered(core, ctx.session_id))
     key_of = judge.question_key
+    worded = {w.get("key"): w for w in judge.reworded(core.root, ctx.session_id)}
     drawn = []
     for entry in entries:
         key = key_of(entry["question"])
-        found = next((q for q in left if q.get("key") == key), None)
+        covers = (worded.get(key) or {}).get("covers") or ()
+        found = next((q for q in left if q.get("key") == key), None) or next(
+            (q for q in left if q.get("key") in covers), None)  # SR-362: the agent's wording
         if found is None and len(left) == 1 and key_of(entry["answer"]) in {
                 key_of(o.get("label")) for o in left[0].get("options") or ()
                 if isinstance(o, dict)}:     # the one open question reworded: its option picked
@@ -87,14 +91,19 @@ def handle(ctx: HookContext) -> HookOutput | None:
                     "job", "key", "records", "question", "options")}}
                 drawn += [made] if made.diagram else []
         elif found is not None:
-            left.remove(found)
-            # SR-334 EX-2: the answer to a principle reaches the records of all its questions
-            group = [found, *(q for q in left if found.get("principle")
-                              and q.get("principle") == found.get("principle"))]
+            # SR-362 EX-1: an answer to the agent's wording answers every question it covers
+            merged = [found, *(q for q in left if q is not found and q.get("key") in covers)]
+            for q in merged:
+                left.remove(q)
+            # SR-361 EX-3: the answer to a principle reaches the records of all its questions
+            group = [*merged, *(q for q in left if found.get("principle")
+                                and q.get("principle") == found.get("principle"))]
             entry["asked"] = {"job": found.get("job"), "key": found.get("key"),
                               "records": list({(r.get("id"), r.get("hash")): r for q in group
                                                for r in q.get("records") or ()
                                                if isinstance(r, dict)}.values())}
+            if covers:
+                entry["asked"]["keys"] = [q.get("key") for q in merged]
     _tag_proofs(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
     from plumb.mergedriver.conflicts import stage_choice

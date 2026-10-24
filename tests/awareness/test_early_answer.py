@@ -128,8 +128,8 @@ def test_stop_hook_question_card_answer_both(tmp_path: Path, hook_input: Any) ->
     _start_turn(main)
     change(main, "A relay pins only the records the owner's words affirm.")
     dec = _decision(main)
-    # SR-265: the owner's line counts the card once; the card in full is the agent's to ask
-    assert _stop(main, hook_input) == "plumb: 1 question for you"
+    # SR-265, SR-363: the owner's text counts no card; the card in full is the agent's to ask
+    assert _stop(main, hook_input) == ""
     assert "keep this one" in agent_channel(main).lower()
     assert _stop(main, hook_input, active=True) == ""
     shown = agent_channel(main)
@@ -157,7 +157,7 @@ def test_clarify_card_answer_before_capture(tmp_path: Path, hook_input: Any) -> 
         assert cli.main(["clarify", "make SR-005 pin only the affirmed records",
                          "--root", str(main)]) == 0
     assert 'over "relay checks" waits as a card' in out.getvalue()
-    assert _stop(main, hook_input) == "plumb: 1 question for you"
+    assert _stop(main, hook_input) == ""                       # SR-363: no question count
     cards = agent_channel(main)
     assert early_heads(cards, "relay checks"), cards
     assert _stated(main)["early"] == [{"record": "SR-005", "branch": "feat-x"}]
@@ -184,7 +184,7 @@ def test_plumb_conflicts_lists_the_early_card(tmp_path: Path, hook_input: Any) -
     assert '▸ Conflict  SR-005 "relay checks"' in text
     assert "feat-x      A relay pins the stated group, named by its title." in text
     _start_turn(main)
-    assert _stop(main, hook_input, active=True) == "plumb: 1 question for you"
+    assert _stop(main, hook_input, active=True) == ""          # SR-363: no question count
     assert early_heads(agent_channel(main), "relay checks")
     assert _choose(main, "relay checks", "feat-x") == 0
     assert _state(main, dec.id) == "confirmed"

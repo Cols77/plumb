@@ -46,6 +46,7 @@ ROUTES: dict[str, str] = {
     "escalate": "plumb.capture.cli", "spec": "plumb.capture.cli",
     "triage": "plumb.capture.cli", "config": "plumb.capture.cli", "jev": "plumb.capture.cli",
     "clarify": "plumb.understand.cli",
+    "question": "plumb.understand.cli",   # SR-362: reword | pushback a judge question
     "proof": "plumb.capture.proof",  # SR-127: a requirement's proof plan and evidence
     # SP8 UNDERSTAND: the model-backed layer (a thin router; listed only when importable)
     "understand": "plumb.understand.cli",
@@ -108,6 +109,8 @@ intent capture:
   example      append a given/when/then example to a requirement
   decide       a decision: "I assumed A; B also fits" (--supersede for a confirmed one)
   clarify      the clarification depth and the questions that matter for a request
+  question     reword: your wording of the judge's questions (merged by principle);
+               pushback KEY --reason: send one back; the judge withdraws or keeps it
   escalate     escalation suggestions; decline (the owner said no)
   spec         an escalated spec: show (every member in full, the set hash), state
   triage       proposed records grouped by faithfulness (advisory; it approves nothing)

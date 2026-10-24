@@ -40,7 +40,7 @@ def _turn_end(root: Path) -> tuple[tuple[str, ...], str]:
 
     told = Told(root, SESSION, "2000-01-01T00:00:00Z")
     lines = _confirmations(open_core(root), None, told)
-    return lines, owner_line(open_core(root), SESSION, set())
+    return lines, owner_line(open_core(root), SESSION)
 
 
 def _session_start(root: Path, hook_input) -> str:
