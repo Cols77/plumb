@@ -11,8 +11,9 @@ A written study keeps the records it was written from (SR-360, DEC-335) in ``rec
 with its content hash; when one changes, ``changed`` names it and the band offers a rewrite at
 the same depth (DEC-336): ``refresh`` is ``asked`` on the owner's yes, ``no`` on 'not now'.
 
-``.plumb/understanding.md`` is the picture of what the owner understands of the system: plain lines ``- knows: <topic>`` and ``- needs: <topic>``, which the owner edits in
-the browser room. 'I know this' and 'Go deeper' change a study's status and the picture only:
+``.plumb/understanding.md`` is the picture of what the owner understands of the system:
+plain lines ``- knows: <topic>`` and ``- needs: <topic>``, which the owner edits in the
+browser room. 'I know this' and 'Go deeper' change a study's status and the picture only:
 they are never an answer delivered to a session (DEC-152), and a study about an open conflict
 chooses nothing (DEC-154).
 """

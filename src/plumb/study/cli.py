@@ -209,10 +209,15 @@ def run(command: str, argv: list[str]) -> int:
             from plumb.api import open_core
 
             body = Path(args.file).read_text(encoding="utf-8")
-            index = open_core(root).index()
+            core = open_core(root)
+            index = core.index()
             unknown = [i for i in args.records if i not in index]
             if unknown:
                 raise LookupError(f"no such record: {', '.join(unknown)}")
+            # SR-360 EX-3: 'no record covers it' is gather's finding, never a forgotten flag
+            if not args.records and (held := gather(core, root, args.slug)["records"]):
+                raise ValueError(f"records cover this topic ({', '.join(r['id'] for r in held)}):"
+                                 " pass --records with the IDs you drew on")
             slug = study.add(root, args.slug, body, [
                 {"id": i, "title": index[i].title, "hash": index[i].hash}
                 for i in dict.fromkeys(args.records)])

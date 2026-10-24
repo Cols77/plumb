@@ -146,3 +146,32 @@ def test_ex3_a_topic_no_record_covers_says_so(repo: Path, tmp_path: Path,
     slug = _written(repo, tmp_path, "How the coffee machine descales", [])
     held = study.get(repo, slug)
     assert held["records"] == [] and "No record in plumb covers this topic" in held["body"]
+
+
+def test_ex3_a_covered_topic_without_records_is_refused(
+        merges: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    """EX-3 is gather's finding: a forgotten --records on a covered topic writes no false
+    'no record covers it'."""
+    with pytest.raises(AssertionError):
+        _written(merges, tmp_path, "How merges are held", [])
+    assert "pass --records" in capsys.readouterr().err
+    [held] = study.studies(merges)
+    assert held["status"] == "accepted" and "No record in plumb" not in held["body"]
+
+
+def test_ex2_a_failing_out_of_date_check_keeps_the_accepted_lines(
+        repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The out-of-date check failing never drops what the agent is told (SR-294 EX-8)."""
+    from types import SimpleNamespace
+
+    from plumb.understand.hooks import on_prompt
+
+    study.choose(repo, study.propose(repo, title="How merges are held", why="asked",
+                                     depth="md", loop="", step="", asked=True), "md")
+
+    def broken(*_: Any) -> list[str]:
+        raise OSError("the study file is not writable")
+
+    monkeypatch.setattr(study, "out_of_date", broken)
+    lines = on_prompt(SimpleNamespace(root=repo, session_id=SESSION), open_core(repo), {})
+    assert any("accepted the study idea 'How merges are held'" in line for line in lines)

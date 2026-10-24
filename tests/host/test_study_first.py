@@ -14,6 +14,7 @@ import pytest
 from host.test_answer_rejudge import judge_jobs, world  # noqa: F401
 from host.test_question_room import no_browser  # noqa: F401
 from mod.helpers import DIGEST, KEY, run_mod
+from study.helpers import drawn
 from understand.test_judge_job import SESSION
 
 from plumb import study
@@ -113,7 +114,7 @@ def test_ex2_chosen_the_band_line_opens_the_study_and_the_questions_wait(
     study.choose(world, slug, "md")
     body = tmp_path / "body.md"
     body.write_text("A merge ends where main's own files end.\n", encoding="utf-8")
-    assert _study(world, "add", slug, "--file", str(body)) == 0
+    assert _study(world, "add", slug, "--file", str(body), "--records", *drawn(world, slug)) == 0
     assert run_mod(monkeypatch, capsys, world, "hello", stdin={"key_digest": DIGEST})[0] == 0
     code, opened, _ = run_mod(monkeypatch, capsys, world, "room", "--study", slug,
                               stdin={"key": KEY})
