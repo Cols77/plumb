@@ -17,10 +17,24 @@ def _manifest(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _plugin(root: Path | str) -> str:
+    """The loaded plugin's folder: the hook's or the plugin ``plumb``'s environment, else the
+    one this session's start hook recorded in ``host.json`` (a plain Bash or a background job
+    has neither variable)."""
+    for name in ("CLAUDE_PLUGIN_ROOT", "PLUMB_PLUGIN_ROOT"):
+        if os.environ.get(name):
+            return os.environ[name]
+    from plumb import stale
+
+    host = Path(root) / ".plumb" / "session" / stale.current_session(root) / "host.json"
+    return str(_manifest(host).get("plugin") or "")
+
+
 def outdated(root: Path | str) -> tuple[bool, str]:
     """``(True, <built date of main's wheel>)`` when the running plugin's build differs from
-    main's; ``(False, "")`` when they match, either is unknown, or no plugin runs this."""
-    plugin = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    main's; ``(False, "")`` when they match, either is unknown, or no plugin runs this
+    session."""
+    plugin = _plugin(root)
     if not plugin:
         return False, ""
     running = _manifest(Path(plugin) / "vendor" / "MANIFEST.json").get("source_digest")

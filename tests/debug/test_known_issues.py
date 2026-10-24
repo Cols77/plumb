@@ -28,6 +28,8 @@ def plugin(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     (vendor / "MANIFEST.json").write_text(json.dumps({"wheel": "plumb.whl",
                                                        "source_digest": "main"}), "utf-8")
     monkeypatch.setenv("PLUMB_SESSION_ID", "s2")
+    for name in ("CLAUDE_PLUGIN_ROOT", "PLUMB_PLUGIN_ROOT"):
+        monkeypatch.delenv(name, raising=False)
 
     def run(same: bool) -> None:
         loaded = tmp_path / "cache" / "plumb" / "vendor"
@@ -78,6 +80,22 @@ def test_ex1_a_landed_fix_on_the_old_cached_plugin_reads_landed_not_proven(
     plugin(True)   # reloaded: checked live in a session running main's build
     assert debug.run("debug", ["--root", str(repo), "done", CASE]) == 0
     assert debug.state(debug.all_cases(repo)[0]) == "resolved"
+
+
+@pytest.mark.sr("SR-356")
+def test_ex1_done_from_a_plain_bash_reads_the_plugin_the_session_started_with(
+        repo: Path, plugin, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """The agent's Bash has no plugin variable: the session's host.json names the plugin."""
+    plugin(False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT")
+    host = repo / ".plumb" / "session" / "s2" / "host.json"
+    host.parent.mkdir(parents=True, exist_ok=True)
+    host.write_text(json.dumps({"plugin": str(tmp_path / "cache" / "plumb")}), "utf-8")
+    debug.open_case(repo, id=CASE, kind="report", target="flagged",
+                    detail="answers dropped after the upgrade", session="s2")
+    debug._update(repo, [CASE], branch="debug/x", state="resolved", landed="a15e6bbcd")
+    assert debug.run("debug", ["--root", str(repo), "done", CASE]) == 1
+    assert "stays landed, not proven" in capsys.readouterr().out
 
 
 @pytest.mark.sr("SR-356")

@@ -80,10 +80,13 @@ def background_owned(root: Path, session: str) -> bool:
 
 def write_host(root: Path, session: str) -> None:
     """``host.json``: the interpreter running plumb, which the panel runs ``plumb mod`` with
-    (it cannot read the plugin's data folder from its own environment)."""
+    (it cannot read the plugin's data folder from its own environment), and the plugin folder
+    this session loaded (SR-356: which build ``plumb debug done`` runs beside)."""
     try:
         files.write_json_atomic(_session_file(root, session, "host.json"), {
             "python": sys.executable, "plumb_home": os.environ.get("PLUMB_HOME", ""),
+            "plugin": os.environ.get("CLAUDE_PLUGIN_ROOT")
+            or os.environ.get("PLUMB_PLUGIN_ROOT", ""),
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
     except OSError:
         pass
