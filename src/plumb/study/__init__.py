@@ -149,26 +149,30 @@ def _same(a: dict[str, Any], topic: str, title: str) -> bool:
 
 
 def propose(root: Path, *, title: str, why: str, depth: str, loop: str, step: str,
-            topic: str | None = None, serves: list[str] | None = None) -> str:
+            topic: str | None = None, serves: list[str] | None = None,
+            asked: bool = False) -> str:
     """An idea of a study for ``loop``'s ``step`` (SR-293 EX-6): no page is written. At most
     one per step, ideas counted (EX-5); none on a topic the owner knows (SR-292 EX-1, SR-293
     EX-3) or on an idea the owner declined (EX-9). ``serves``: the keys of the waiting
-    questions it is studied ahead of (SR-336), whatever the step, one idea waiting at a time."""
+    questions it is studied ahead of (SR-336), whatever the step, one idea waiting at a time.
+    ``asked``: the owner asked for it (SR-355): none of those limits, which hold plumb's own
+    proposals; the owner still picks the depth."""
     topic = (topic or title).strip()
     if not title.strip() or not why.strip():
         raise ValueError("a study idea needs a title and one line of why")
     if depth not in DEPTHS:
         raise ValueError(f"the recommended depth is one of {', '.join(DEPTHS)}")
-    if serves:
+    if serves and not asked:
         held = next((s for s in studies(root) if s["status"] == "idea"), None)
         if held:
             raise ValueError(f"the owner has still to choose on the study idea {held['title']}")
-    elif held := next((s for s in studies(root)
-                       if s.get("loop") == loop and s.get("step") == step), None):
+    elif not asked and (held := next((s for s in studies(root)
+                       if s.get("loop") == loop and s.get("step") == step), None)):
         raise ValueError(f"the {step} step already has its study: {held['title']}")
-    if knows(root, topic):
+    if not asked and knows(root, topic):
         raise ValueError(f"the owner knows {topic} (the understanding picture): no study")
-    if any(s["status"] == "declined" and _same(s, topic, title) for s in studies(root)):
+    if not asked and any(s["status"] == "declined" and _same(s, topic, title)
+                         for s in studies(root)):
         raise ValueError(f"the owner declined a study of {topic}: it is not proposed again")
     slug = slug_of(root, title)
     _write(folder(root) / f"{slug}.md", _front({
