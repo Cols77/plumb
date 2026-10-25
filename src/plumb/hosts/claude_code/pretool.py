@@ -37,13 +37,21 @@ def _deny(reason: str) -> dict[str, Any]:
 
 
 def decide(root: Path | str, session: str, tool: str,
-           tool_input: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The hook answer for ``tool`` in ``session``: a ``deny`` when the guard refuses the call
+           tool_input: dict[str, Any] | None = None,
+           data: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The hook answer for ``tool`` in ``session``: a ``deny`` when the guard refuses the call,
+    while judge questions wait unasked (the ask gate, SR-361 EX-6, ``data`` the hook's input)
     or, for an edit tool, while the gate is closed; else an empty mapping (allow)."""
     if tool_input is not None:
         from plumb.guard import denied
 
         reason = denied(tool, tool_input)
+        if reason:
+            return _deny(reason)
+    if data is not None:
+        from plumb.hosts.claude_code import ask_gate
+
+        reason = ask_gate.decide(root, session, tool, tool_input or {}, data)
         if reason:
             return _deny(reason)
     if tool not in EDIT_TOOLS or not session:
@@ -78,7 +86,7 @@ def main(*, root: Path | str | None = None, watchdog: bool = True, start: float 
             base = find_hook_root(data) or Path(".")
         tool_input = data.get("tool_input")
         answer = decide(base, str(data.get("session_id") or ""), str(data.get("tool_name") or ""),
-                        tool_input if isinstance(tool_input, dict) else {})
+                        tool_input if isinstance(tool_input, dict) else {}, data)
         if answer:
             stdout.write(json.dumps(answer, ensure_ascii=False) + "\n")
     except Exception:  # noqa: BLE001 - the guard never blocks on its own failure

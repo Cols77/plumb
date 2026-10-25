@@ -516,6 +516,31 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
         for r in q.get("records") or () if isinstance(r, Mapping))]
 
 
+def to_ask(core: Any, session: str) -> list[Mapping[str, Any]]:
+    """The open questions the agent is to ask now: those a study the owner reads first holds
+    back wait (SR-336 EX-2). One list for clarify, the stop hook and the ask gate (SR-361)."""
+    from plumb import study
+
+    later = study.first_keys(Path(core.root), session)
+    return [q for q in open_questions(core, session) if q.get("key") not in later]
+
+
+ASKED_FILE = "asked_keys.json"     # SR-361 EX-6: the open question keys at the last question tool
+
+
+def note_asked(core: Any, session: str) -> None:
+    """The agent called the question tool: every question open now counts as asked, answered
+    or dismissed (rule 3: a dismissed question is not asked again in a loop)."""
+    keys = sorted({str(q.get("key")) for q in to_ask(core, session)} | set(asked_keys(core.root,
+                                                                                     session)))
+    files.write_json_atomic(files.session_dir(Path(core.root), session) / ASKED_FILE, keys)
+
+
+def asked_keys(root: Any, session: str) -> list[str]:
+    raw = files.read_json(files.session_dir(Path(root), session) / ASKED_FILE)
+    return [str(k) for k in raw] if isinstance(raw, list) else []
+
+
 def rejudge(core: Any, session: str, logged: Sequence[Any]) -> None:
     """SR-212: the records the logged answers were asked about go back to the judge, one bare
     job (the worker rebuilds their premise from the logs, ``recompute``)."""

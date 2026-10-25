@@ -543,7 +543,7 @@ def _questions_line(core: Any, session: str) -> list[Any]:
         from plumb.present.delta import Line
         from plumb.understand import judge
 
-        keys = sorted(str(q.get("key")) for q in judge.open_questions(core, session))
+        keys = sorted(str(q.get("key")) for q in judge.to_ask(core, session))
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return []
     if not keys:

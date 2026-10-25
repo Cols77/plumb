@@ -194,7 +194,6 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
     one runs past the limit, ``ask`` while its questions are open, else ``ready`` with what the
     judge approved. The questions never close the gate (P6). SR-361: every open question
     is asked at once, even mid-task, one per principle."""
-    from plumb import study
     from plumb.api import open_core
     from plumb.understand import judge, worker
 
@@ -213,9 +212,7 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
     core = open_core(root)          # a detached worker may have written meanwhile
     said = [e for e in core.events() if e.kind == "question-answer"
             and e.payload.get("session") == session and e.at >= (turn or at)]
-    later = study.first_keys(root, session)       # SR-336 EX-2: they wait for the study
-    questions = _by_principle([q for q in judge.open_questions(core, session)
-                               if q.get("key") not in later])
+    questions = _by_principle(judge.to_ask(core, session))   # SR-336 EX-2: less study-held
     since = _judge_jobs_since(root, session, at)
     failed = [j for j in since if j.kind == "judge"    # a failed push-back keeps the question
               and (r := result_of(root, session, j.id)) is not None and r.status == "error"]
