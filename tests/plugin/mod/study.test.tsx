@@ -181,7 +181,7 @@ for (const surface of SURFACES) {
       const line = await ui.find({ type: 'Text', text: `study idea: ${IDEA_TITLE}` })
       expect(line?.props.color).toBe(BRASS)
       expect(await ui.find({ key: 'idea:md' })).toBeUndefined() // closed until pressed
-      await ui.press({ key: `idea@${IDEA_SLUG}` })
+      await ui.press({ key: 'idea' })
       // the choices take the third line's place, so the why names the idea (SR-291, DEC-146)
       expect(await ui.find({ type: 'Text', text: `  ${IDEA_TITLE}: the plan adds a dispatcher you will tune later` })).toBeDefined()
       expect(await ui.find({ key: 'loop:third' })).toBeUndefined()
@@ -197,7 +197,7 @@ for (const surface of SURFACES) {
 
     test("SR-294 EX-8: choosing 'with diagrams' records it accepted at that depth, the key on stdin; the room stays closed", async ($, on) => {
       const { w, ui } = await ideaBand($, on, surface)
-      await ui.press({ key: `idea@${IDEA_SLUG}` })
+      await ui.press({ key: 'idea' })
       await ui.press({ key: 'idea:diagrams' })
       const [run] = chosen(w)
       expect(run?.argv.slice(3)).toEqual(['mod', 'study', '--session', SESSION, '--root', ROOT, '--json',
@@ -214,7 +214,7 @@ for (const surface of SURFACES) {
 
     test("SR-294 EX-9: choosing 'not now': the idea's line is gone and nothing was written", async ($, on) => {
       const { w, ui } = await ideaBand($, on, surface)
-      await ui.press({ key: `idea@${IDEA_SLUG}` })
+      await ui.press({ key: 'idea' })
       await ui.press({ key: 'idea:none' })
       expect(chosen(w)[0]?.argv.slice(-2)).toEqual(['--depth', 'none'])
       expect(await ui.find({ type: 'Text', text: /^study idea/ })).toBeUndefined()
@@ -241,7 +241,7 @@ for (const surface of SURFACES) {
       const { w, ui } = await ideaBand($, on, surface, false)
       const press = await ui.find({ type: 'Text', text: `study idea: ${IDEA_TITLE}` })
       expect(press?.props.color).toBe(BRASS)
-      await ui.press({ key: `idea@${IDEA_SLUG}` })
+      await ui.press({ key: 'idea' })
       expect(await ui.find({ type: 'Text', text: `  ${IDEA_TITLE}: the plan adds a dispatcher you will tune later` })).toBeDefined()
       await ui.press({ key: 'idea:md' })
       expect(chosen(w)[0]?.argv.slice(-2)).toEqual(['--depth', 'md'])
@@ -250,15 +250,23 @@ for (const surface of SURFACES) {
     })
 
     for (const loop of [true, false]) {
-      test(`SR-369: two ideas waiting are two Buttons Tab walks; a choice acts on the one pressed (loop ${loop})`, async ($, on) => {
+      test(`SR-369: two ideas waiting: the front one's title and the count; Tab wraps; a choice acts on the front one (loop ${loop})`, async ($, on) => {
         const { w, ui } = await ideaBand($, on, surface, loop)
         const second = `${ROOT}/.plumb/studies/how-merges-are-held.md`
         w.files[second] = idea('idea').replace(JSON.stringify(IDEA_TITLE), '"How merges are held"')
         await $.turn.complete(TURN_DONE)
-        const lines = await ui.findAll({ type: 'Text', text: /^study idea: / })
-        // oldest first by file name, as the band reads them
-        expect(lines.map(l => l.text)).toEqual(['study idea: How merges are held', `study idea: ${IDEA_TITLE}`])
-        await ui.press({ key: 'idea@how-merges-are-held' })
+        const titles = async () => (await ui.findAll({ type: 'Text', text: /^study idea: / })).map(l => l.text)
+        expect(await titles()).toEqual([`study idea: ${IDEA_TITLE}`]) // the newest in front
+        expect(await ui.find({ type: 'Text', text: '+1 more (Tab)' })).toBeDefined()
+        // Tab onto the count: the next idea comes to the front, wrapping from the last to the first
+        const tab = () => $.ui.focus({ component: 'AbovePrompt', requestId: 'band', plugin: 'plumb',
+          element: 'idea:next', origin: { kind: 'person' } } as any)
+        await tab()
+        expect(await titles()).toEqual(['study idea: How merges are held'])
+        await tab()
+        expect(await titles()).toEqual([`study idea: ${IDEA_TITLE}`])
+        await tab()
+        await ui.press({ key: 'idea' })
         expect(await ui.find({ type: 'Text', text: /^ {2}How merges are held: / })).toBeDefined()
         await ui.press({ key: 'idea:diagrams' })
         expect(chosen(w)[0]?.argv.slice(-4)).toEqual(['--study', 'how-merges-are-held', '--depth', 'diagrams'])
