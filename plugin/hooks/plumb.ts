@@ -347,7 +347,18 @@ function front(text: string, key: string): string {
   }
 }
 
-type StudyFile = { title: string; slug: string; status: string; why: string; recommend: string; changed: string; refresh: string }
+/** The `progress` of an accepted study being written (a JSON object in the frontmatter). */
+function progressOf(text: string): StudyFile['progress'] {
+  const raw = /^progress: (.*)$/m.exec(text.split('\n---\n')[0] ?? '')?.[1]
+  try {
+    const p = raw ? JSON.parse(raw) : null
+    return p && typeof p === 'object' ? { step: String(p.step ?? ''), done: Number(p.done) || 0, total: Number(p.total) || 0 } : null
+  } catch {
+    return null
+  }
+}
+
+type StudyFile = { title: string; slug: string; status: string; why: string; recommend: string; changed: string; refresh: string; progress: { step: string; done: number; total: number } | null }
 
 /** Every study file in `.plumb/studies`, oldest first by file name. */
 async function studyFiles(io: Io, link: PlumbLink): Promise<StudyFile[]> {
@@ -365,7 +376,7 @@ async function studyFiles(io: Io, link: PlumbLink): Promise<StudyFile[]> {
       const title = front(text, 'title')
       if (title) {
         found.push({ title, slug: name.slice(0, -3), status: front(text, 'status'), why: front(text, 'why'),
-          recommend: front(text, 'recommend'), changed: front(text, 'changed'), refresh: front(text, 'refresh') })
+          recommend: front(text, 'recommend'), changed: front(text, 'changed'), refresh: front(text, 'refresh'), progress: progressOf(text) })
       }
     } catch {
       // a study being written: the next read names it
@@ -433,6 +444,8 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     roomCard: String(room?.card ?? ''),
     studies,
     ideas,
+    // an accepted idea the agent is writing now: the band's progress line
+    writing: files.filter(s => s.status === 'accepted').map(({ title, progress }) => ({ title, ...(progress ?? {}) })).at(-1),
     // SR-360 EX-2: out of date, the owner not asked yet
     outdated: files.filter(s => s.changed && !s.refresh).map(({ title, slug, changed }) => ({ title, slug, changed })),
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),

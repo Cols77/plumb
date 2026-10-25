@@ -220,7 +220,21 @@ def first_keys(root: Path, session: str) -> set[str]:
 
 
 def _fields(found: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in found.items() if k not in ("slug", "body", "status")}
+    # progress belongs to the writing: every rewrite of the file ends it (the study is added)
+    return {k: v for k, v in found.items() if k not in ("slug", "body", "status", "progress")}
+
+
+def progress(root: Path, slug: str, step: str, done: int, total: int) -> None:
+    """The band's bar while an accepted study is written: ``step``, ``done`` of ``total``. It
+    goes when ``add`` writes the study."""
+    found = get(root, slug)
+    if found["status"] != "accepted":
+        raise ValueError(f"the study {found['title']} is not being written (not accepted)")
+    if not (0 <= done <= total and total > 0):
+        raise ValueError("progress needs 0 <= done <= total and a total above 0")
+    _write(folder(root) / f"{slug}.md", _front({
+        **_fields(found), "progress": {"step": step, "done": done, "total": total},
+        "status": "accepted"}) + found["body"])
 
 
 def choose(root: Path, slug: str, depth: str | None) -> dict[str, Any]:

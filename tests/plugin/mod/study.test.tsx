@@ -284,3 +284,31 @@ for (const surface of SURFACES) {
     }
   })
 }
+
+// SR-371: a study being written shows its progress; the line goes when `plumb study add` writes it
+const writing = (progress = '') => idea('accepted', 'video').replace(/status: "accepted"\n/, `status: "accepted"\n${progress}`)
+
+for (const surface of SURFACES) {
+  describe(`a study being written on the ${surface}`, () => {
+    test('SR-371 EX-1: accepted, no step reported yet: "writing study" starting, no bar', async ($, on) => {
+      const { w, ui } = await band($, on, surface)
+      w.files[IDEA] = writing()
+      await $.tool.call({ tool: 'Bash', command: 'plumb study progress x' } as any)
+      expect((await ui.find({ type: 'Text', text: /^writing study/ }))?.text).toBe(`writing study: ${IDEA_TITLE} · starting`)
+      expect(await ui.find({ type: 'Text', text: /▱/ })).toBeUndefined()
+      await ui.unmount()
+    })
+
+    test('SR-371 EX-2, EX-3: a reported step fills the bar; the added study replaces the line', async ($, on) => {
+      const { w, ui } = await band($, on, surface)
+      w.files[IDEA] = writing('progress: {"step": "scene 1", "done": 3, "total": 5}\n')
+      await $.tool.call({ tool: 'Bash', command: 'plumb study progress x' } as any)
+      expect((await ui.find({ type: 'Text', text: /^writing study/ }))?.text).toBe(`writing study: ${IDEA_TITLE} · scene 1`)
+      expect((await ui.find({ type: 'Text', text: /60%/ }))?.text).toBe('▰▰▰▱▱ 60%')
+      w.files[IDEA] = idea('new', 'video')
+      await $.tool.call({ tool: 'Bash', command: 'plumb study add x' } as any)
+      expect(await ui.find({ type: 'Text', text: /^writing study/ })).toBeUndefined()
+      await ui.unmount()
+    })
+  })
+}

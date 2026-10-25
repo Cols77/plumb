@@ -1,4 +1,4 @@
-"""``plumb study propose|gather|add|list|candidates|mark`` (SR-292..SR-294, SR-360; DEC-207).
+"""``plumb study propose|gather|progress|add|list|candidates|mark`` (SR-292..SR-294, SR-360; DEC-207).
 
 ``propose --title --why --depth md|diagrams|video [--topic]`` records an idea of a study for
 the session's open intent loop's current step (no page), refusing a second one for that step;
@@ -173,6 +173,11 @@ def run(command: str, argv: list[str]) -> int:
                        help="the body: plain words; mermaid from depth diagrams, ```video clips at video")
     adder.add_argument("--records", nargs="*", default=[], metavar="ID",
                        help="the records it is written from (plumb study gather)")
+    progresser = verbs.add_parser("progress", help="the band's bar while an accepted study is written")
+    progresser.add_argument("slug")
+    progresser.add_argument("--step", required=True, help="what you are doing, in a few words")
+    progresser.add_argument("--done", required=True, type=int)
+    progresser.add_argument("--total", required=True, type=int)
     gatherer = verbs.add_parser("gather", help="the records a study on a topic is written from")
     gatherer.add_argument("topic", help="the study's slug, or the topic in plain words")
     boarder = verbs.add_parser("storyboard", help="keep a video study's storyboard (SR-364)")
@@ -244,6 +249,9 @@ def run(command: str, argv: list[str]) -> int:
                 for i in dict.fromkeys(args.records)])
             emit({"slug": slug} if args.as_json else
                  f"plumb: new study: {study.get(root, slug)['title']}", args.as_json)
+        elif args.verb == "progress":
+            study.progress(root, args.slug, args.step, args.done, args.total)
+            print(f"plumb: study {args.slug}: {args.step} {args.done}/{args.total}")
         elif args.verb == "gather":
             from plumb.api import open_core
 

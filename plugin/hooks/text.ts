@@ -35,6 +35,7 @@ export const T = {
   stopped: (what: string) => `stopped, waits for ${what}`,
   newStudy: (title: string) => `new study: ${title}`,
   newStudies: (n: number) => (n === 1 ? 'new study' : `${n} new studies`),
+  writing: (title: string, step?: string) => `writing study: ${title} · ${step || 'starting'}`,
   studyIdea: (title: string) => `study idea: ${title}`,
   moreIdeas: (n: number) => `+${n} more (Tab)`,
   studyIdeaFolded: 'study idea',

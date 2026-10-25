@@ -305,3 +305,26 @@ def test_sr294_ex9_not_now_writes_nothing_and_the_room_lists_no_idea(intent: Pat
     study.choose(intent, slug, None)
     assert BrowserService(intent).studies()["studies"] == []
     assert study.get(intent, slug)["body"] == ""
+
+
+@pytest.mark.sr("SR-371")
+def test_sr371_ex2_ex3_progress_shows_while_written_and_goes_with_the_study(
+        intent: Path, tmp_path: Path) -> None:
+    """SR-371 EX-2, EX-3: `study progress` is kept on the accepted study and `add` clears it."""
+    assert _propose(intent, "How plumb's background jobs run") == 0
+    slug = _idea(intent)
+    study.choose(intent, slug, "diagrams")
+    assert _study(intent, "progress", slug, "--step", "scene 1", "--done", "3", "--total", "5") == 0
+    assert study.get(intent, slug)["progress"] == {"step": "scene 1", "done": 3, "total": 5}
+    assert _study(intent, "add", slug, "--file", str(_body(tmp_path))) == 0
+    held = study.get(intent, slug)
+    assert held["status"] == "new" and "progress" not in held
+
+
+@pytest.mark.sr("SR-371")
+def test_sr371_ex4_progress_on_a_study_not_accepted_is_refused(intent: Path) -> None:
+    """SR-371 EX-4: an idea the owner has not accepted takes no progress."""
+    assert _propose(intent, "How plumb's background jobs run") == 0
+    slug = _idea(intent)
+    assert _study(intent, "progress", slug, "--step", "x", "--done", "1", "--total", "2") != 0
+    assert "progress" not in study.get(intent, slug)

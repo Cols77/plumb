@@ -234,6 +234,13 @@ function nextIdea(ideas: Idea[], band: PlumbBand): string | undefined {
   return front && ideas[(ideas.indexOf(front) + 1) % ideas.length]?.slug
 }
 
+/** SR-291's bar for a study being written: five cells and the percent. */
+function writingBar(done: number, total: number): string {
+  const f = Math.min(done, total) / total
+  const n = Math.round(5 * f)
+  return `${'▰'.repeat(n)}${'▱'.repeat(5 - n)} ${Math.round(100 * f)}%`
+}
+
 /** The band: one line of status, then the loop's and the studies' lines; no card (SR-337). The
  * known problems are one line when any is open, never one per problem (SR-367). */
 function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, columns: number, color: string,
@@ -301,6 +308,15 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, colum
           <Text key="line:outdated" color={brass}>{T.outOfDate(outdated.title, outdated.changed)}</Text>
           <Button key="refresh:yes" label={T.rewrite} onPress={() => {}} />
           <Button key="refresh:no" label={T.notNow} onPress={() => {}} />
+        </Box>
+      ) : null}
+      {view.status?.writing ? (
+        // the accepted study is being written: its step, a bar and a percent as the agent reports
+        <Box key="writing" flexDirection="row" gap={1}>
+          <Text key="line:writing" color={brass}>{T.writing(view.status.writing.title, view.status.writing.step)}</Text>
+          {view.status.writing.total ? (
+            <Text key="writing:bar" color={brass}>{writingBar(view.status.writing.done ?? 0, view.status.writing.total)}</Text>
+          ) : null}
         </Box>
       ) : null}
       {loop ? loopLines(ui, loop, color, brass) : null}
