@@ -59,6 +59,7 @@ SHARED_KINDS = frozenset({
     "conflict-resolution", "waiver",
     "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
     "question-pushback", "question-ruling",   # SR-362: the agent sends back, the judge rules
+    "answer-bound",       # SR-362: an answer given before its rewording, pointed at its keys
 })
 LOCAL_KINDS = frozenset({
     "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",

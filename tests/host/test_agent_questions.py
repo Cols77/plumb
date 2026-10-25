@@ -69,6 +69,28 @@ def test_ex1_an_answer_to_the_agents_wording_answers_the_question_it_covers(
     assert job.inputs["records"] == ["SR-001"]
 
 
+def test_an_answer_given_before_the_rewording_answers_the_question_it_covers(
+        world: Path, hook_input) -> None:  # noqa: F811
+    """The agent asked in its own words and registered the wording afterwards: the owner's
+    earlier answer is pointed at the judge's question (``answer-bound``, their words not
+    copied), so it is not asked twice and the judge reads it again."""
+    from plumb.understand import premise
+
+    judge_asks(world, (ASK, ["SR-001"]))
+    answer(world, hook_input, WORDED, "Only public pages", options=SHOWN)
+    assert open_keys(world) == [judge.question_key(ASK)]
+    assert reword(world, ASK) == 0
+    (said,) = [e for e in open_core(world).events() if e.kind == "question-answer"]
+    (bound,) = events(world, "answer-bound")
+    assert bound["answer"] == said.digest and bound["asked"]["keys"] == [judge.question_key(ASK)]
+    assert open_keys(world) == []
+    core = open_core(world)
+    assert [e.digest for e in premise.answer_entries(core, core.index()["SR-001"])] == [said.digest]
+    assert [j.inputs["answered"] for j in judge_jobs(world)] == [[said.digest]]
+    assert reword(world, ASK) == 1                       # answered: nothing left to word
+    assert len(events(world, "answer-bound")) == 1
+
+
 def test_one_wording_merges_two_questions_and_one_answer_settles_both(
         world: Path, hook_input) -> None:  # noqa: F811
     """Two judge questions hinging on one principle, merged in one wording (named by the start

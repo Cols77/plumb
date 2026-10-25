@@ -486,6 +486,8 @@ def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
                 answered.update(map(str, e.payload["asked"].get("keys") or ()))
         elif e.kind == "question-ruling" and e.payload.get("ruling") == "withdrawn":
             answered.add(str(e.payload.get("key")))
+        elif e.kind == "answer-bound" and isinstance(e.payload.get("asked"), Mapping):
+            answered.update(map(str, e.payload["asked"].get("keys") or ()))
     return [q for q in asked if q.get("key") not in answered]
 
 
@@ -534,6 +536,20 @@ def note_asked(core: Any, session: str) -> None:
     keys = sorted({str(q.get("key")) for q in to_ask(core, session)} | set(asked_keys(core.root,
                                                                                      session)))
     files.write_json_atomic(files.session_dir(Path(core.root), session) / ASKED_FILE, keys)
+
+
+def awaiting_ruling(core: Any, session: str) -> set[str]:
+    """The keys the agent sent back (``question-pushback``) that the judge has not ruled on
+    since: handled for now; a kept one is to be asked once its ruling comes."""
+    waiting: set[str] = set()
+    for e in core.events():
+        if e.payload.get("session") != session:
+            continue
+        if e.kind == "question-pushback":
+            waiting.add(str(e.payload.get("key")))
+        elif e.kind == "question-ruling":
+            waiting.discard(str(e.payload.get("key")))
+    return waiting
 
 
 def asked_keys(root: Any, session: str) -> list[str]:
@@ -729,7 +745,31 @@ def reword(core: Any, session: str, covers: Sequence[str], question: str, header
     kept = [w for w in reworded(core.root, session) if w.get("key") != worded["key"]]
     files.write_json_atomic(files.session_dir(Path(core.root), session) / REWORDED_FILE,
                             [*kept, worded])
+    _bind_earlier_answer(core, session, worded)
     return worded
+
+
+def _bind_earlier_answer(core: Any, session: str, worded: Mapping[str, Any]) -> None:
+    """The owner already answered this very wording, asked before it was registered: an
+    ``answer-bound`` entry points that answer at the judge questions it covers (its ``asked``,
+    the owner's words not copied), and their records go back to the judge."""
+    left = [q for q in unanswered(core, session) if q.get("key") in worded["covers"]]
+    said = next((e for e in reversed(core.events()) if e.kind == "question-answer"
+                 and e.payload.get("session") == session and not e.payload.get("asked")
+                 and question_key(str(e.payload.get("question") or "")) == worded["key"]), None)
+    if not left or said is None:
+        return
+    asked = {"job": left[0].get("job"), "key": left[0].get("key"),
+             "keys": [q.get("key") for q in left],
+             "records": list({(r.get("id"), r.get("hash")): r for q in left
+                              for r in q.get("records") or () if isinstance(r, Mapping)}.values())}
+    core.log_append_many("events", [("answer-bound", {"session": session, "answer": said.digest,
+                                                      "asked": asked})])
+    from plumb.understand import queue
+
+    queue.enqueue(core, files.make_job(kind, session, SCHEMA_ID, {
+        "records": list(dict.fromkeys(str(r.get("id")) for r in asked["records"])),
+        "answered": [said.digest]}))
 
 
 def drop_settled_questions(root: Any, still_stale: Collection[str]) -> None:

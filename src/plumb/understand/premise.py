@@ -168,9 +168,11 @@ def answer_entries(core: Any, record: Any) -> list[Any]:
     confirmed = {str(r.get("hash")) for e in events if e.kind == "approval"   # the record's
                  for r in e.payload.get("records") or ()               # approved hashes
                  if isinstance(r, Mapping) and r.get("id") == record.id}
+    bound = {str(e.payload.get("answer")): e.payload.get("asked") for e in events
+             if e.kind == "answer-bound"}   # SR-362: an answer asked before its rewording
     for entry in events:
         p = entry.payload
-        asked = p.get("asked")
+        asked = p.get("asked") or bound.get(entry.digest)
         if entry.kind not in ANSWER_VIA or ANSWER_VIA[entry.kind] != p.get("via") \
                 or not isinstance(asked, Mapping):
             continue
