@@ -9,8 +9,10 @@ or a session nobody attends (``CLAUDE_CODE_SESSION_ATTENDED`` not ``1``: headles
 
 from __future__ import annotations
 
+import json
 import os
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +24,9 @@ REASON = ("plumb: {n} judge question{s} wait for the owner and {verb} not been a
 READ_COMMANDS = frozenset({
     "cat", "head", "tail", "less", "ls", "dir", "pwd", "echo", "printf", "grep", "rg", "egrep",
     "wc", "sort", "uniq", "cut", "tr", "diff", "file", "stat", "which", "type", "true", "date",
-    "basename", "dirname", "realpath", "tree", "jq", "env", "test", "[", "sleep"})
+    "basename", "dirname", "realpath", "tree", "jq", "env", "test", "[", "sleep", "cd", "pushd",
+    "popd"})
+TRANSCRIPT_TAIL = 4 << 20      # bytes of the transcript read back for the last question tool
 GIT_READ = frozenset({"status", "log", "diff", "show", "rev-parse", "ls-files", "blame", "grep",
                       "branch", "describe", "shortlog", "cat-file", "ls-tree", "merge-base",
                       "remote", "config", "worktree"})
@@ -77,8 +81,41 @@ def reads_only(command: str) -> bool:
 
     if "`" in command or "$(" in command or _REDIRECT.search(command):
         return False
+    command = re.sub(r"\\(?=[\w.])", "/", command)   # .venv\Scripts\python.exe: shlex eats "\"
     command = re.sub(r"[0-9]?>&[0-9]|[0-9]>/dev/null", " ", command)   # stderr, harmless
     return all(_reads(words) for words in commands(command))
+
+
+def _outside(root: Path | str, path: str) -> bool:
+    if not path:
+        return False
+    try:
+        (Path(root) / path).resolve().relative_to(Path(root).resolve())  # absolute path wins
+    except ValueError:
+        return True
+    return False
+
+
+def _asked_in_transcript(data: dict[str, Any], store: Path) -> bool:
+    """The question tool was called after the judge's last question arrived, as the session's
+    transcript shows: a session started before the plugin update has no pre-tool hook on the
+    question tool, so ``note_asked`` never ran there (hooks.json is read at session start)."""
+    path = data.get("transcript_path")
+    if not path:
+        return False
+    since = datetime.fromtimestamp(store.stat().st_mtime, UTC)
+    with open(path, "rb") as f:
+        f.seek(max(0, os.fstat(f.fileno()).st_size - TRANSCRIPT_TAIL))
+        lines = f.read().splitlines()
+    for line in reversed(lines):
+        if b'"AskUserQuestion"' not in line or b'"tool_use"' not in line:
+            continue
+        try:
+            at = str(json.loads(line).get("timestamp") or "")
+            return datetime.fromisoformat(at.replace("Z", "+00:00")) > since
+        except ValueError:
+            continue
+    return False
 
 
 def decide(root: Path | str, session: str, tool: str, tool_input: dict[str, Any],
@@ -101,7 +138,12 @@ def decide(root: Path | str, session: str, tool: str, tool_input: dict[str, Any]
             return ""
         if tool == "Bash" and reads_only(str(tool_input.get("command") or "")):
             return ""
-        asked = set(judge.asked_keys(root, session))
+        if tool in WRITE_TOOLS and _outside(root, str(tool_input.get("file_path")
+                                                      or tool_input.get("notebook_path") or "")):
+            return ""                  # a scratch file outside the project (to reword, say)
+        if _asked_in_transcript(data, judge.questions_path(root, session)):
+            judge.note_asked(core, session)
+        asked = set(judge.asked_keys(root, session)) | judge.awaiting_ruling(core, session)
         left = [q for q in judge.to_ask(core, session) if str(q.get("key")) not in asked]
     except Exception:  # noqa: BLE001 - the gate never blocks on its own failure
         return ""

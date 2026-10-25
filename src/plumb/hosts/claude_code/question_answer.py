@@ -42,6 +42,7 @@ def handle(ctx: HookContext) -> HookOutput | None:
     questions = asked.get("questions")
     if not isinstance(answers, dict) or not isinstance(questions, list):
         return None
+    _note_asked(ctx)
     entries = []
     for item in questions:
         if not isinstance(item, dict):
@@ -121,6 +122,21 @@ def handle(ctx: HookContext) -> HookOutput | None:
 
     return HookOutput(additional_context="\n".join(cmd_clarify.DRAW.format(
         path=c.diagram, question=c.issue, options="; ".join(c.resolutions)) for c in drawn))
+
+
+def _note_asked(ctx: HookContext) -> None:
+    """SR-361 EX-6: the question tool ran, so the ask gate opens even in a session whose
+    pre-tool hook predates the question tool's matcher (hooks.json is read at session start)."""
+    from plumb.understand import judge
+
+    if not judge.questions_path(ctx.root, ctx.session_id).exists():
+        return
+    try:
+        from plumb.api import open_core
+
+        judge.note_asked(open_core(ctx.root), ctx.session_id)
+    except Exception:  # noqa: BLE001 - logging the owner's answers comes first
+        pass
 
 
 def _tag_proofs(core, session: str, entries: list[dict], key_of) -> None:

@@ -4,6 +4,7 @@ rewording stay open; it opens once asked, and never closes where the question to
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from host.test_answer_rejudge import ASK, judge_asks, world  # noqa: F401
 from understand.test_judge_job import SESSION
 
 from plumb.hosts.claude_code import ask_gate, pretool
+from plumb.understand import judge
 
 pytestmark = pytest.mark.sr("SR-361")
 
@@ -71,6 +73,60 @@ def test_it_never_closes_without_the_question_tool(
     assert call(world, "Edit", {**MAIN, "agent_id": "a1"}, **edit) == ""      # a subagent
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ATTENDED")                        # headless
     assert call(world, "Edit", **edit) == ""
+
+
+def test_the_clarify_it_names_stays_open_in_every_spelling(world: Path) -> None:  # noqa: F811
+    judge_asks(world, (ASK, ["SR-001"]))
+    for command in (".venv/Scripts/python.exe -m plumb clarify --wait --json",
+                    ".venv\\Scripts\\python.exe -m plumb clarify --wait --json | head -40",
+                    "cd C:/coding/plumb && .venv/Scripts/python.exe -m plumb clarify --wait",
+                    "uv run plumb clarify --wait --json 2>&1 | tail -5"):
+        assert call(world, "Bash", command=command) == "", command
+    assert call(world, "Bash", command="cd src && rm a.py")
+
+
+def test_scratch_files_outside_the_project_stay_writable(
+        world: Path, tmp_path_factory: pytest.TempPathFactory) -> None:  # noqa: F811
+    judge_asks(world, (ASK, ["SR-001"]))
+    scratch = tmp_path_factory.mktemp("scratch") / "options.json"
+    assert call(world, "Write", file_path=str(scratch), content="[]") == ""
+    assert call(world, "Write", file_path=str(world / "src" / "b.py"), content="x")
+
+
+def test_a_session_older_than_the_matcher_opens_it_by_asking(
+        world: Path, hook_input, tmp_path: Path) -> None:  # noqa: F811
+    """hooks.json is read at session start: a session begun before the pre-tool hook covered
+    the question tool still opens the gate, by the answer hook or the transcript."""
+    from host.test_answer_rejudge import answer
+
+    judge_asks(world, (ASK, ["SR-001"]))
+    edit = {"file_path": "src/a.py", "old_string": "a", "new_string": "b"}
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text(json.dumps({"timestamp": "2020-01-01T00:00:00Z", "message": {
+        "content": [{"type": "tool_use", "name": "AskUserQuestion"}]}}) + "\n", "utf-8")
+    seen = {**MAIN, "transcript_path": str(transcript)}
+    assert call(world, "Edit", seen, **edit)                  # asked before the question came
+    with transcript.open("a", encoding="utf-8") as f:         # dismissed: no answer hook
+        f.write(json.dumps({"timestamp": "2099-01-01T00:00:00Z", "message": {
+            "content": [{"type": "tool_use", "name": "AskUserQuestion"}]}}) + "\n")
+    assert call(world, "Edit", seen, **edit) == ""
+    judge_asks(world, (ASK, ["SR-001"]), (OTHER, ["INT-001"]))
+    answer(world, hook_input, "Something else entirely?", "Every page")   # answered: the hook
+    assert call(world, "Edit", **edit) == ""
+
+
+def test_a_question_sent_back_holds_nothing_until_the_judge_keeps_it(
+        world: Path) -> None:  # noqa: F811
+    from plumb.api import open_core
+
+    judge_asks(world, (ASK, ["SR-001"]))
+    edit = {"file_path": "src/a.py", "old_string": "a", "new_string": "b"}
+    core, key = open_core(world), judge.question_key(ASK)
+    core.log_append("events", "question-pushback", {"session": SESSION, "key": key})
+    assert call(world, "Edit", **edit) == ""                   # the judge is still ruling
+    core.log_append("events", "question-ruling", {"session": SESSION, "key": key,
+                                                  "ruling": "kept"})
+    assert call(world, "Edit", **edit)                          # kept: ask it now
 
 
 def test_no_questions_no_gate(world: Path) -> None:  # noqa: F811
