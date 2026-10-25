@@ -75,8 +75,9 @@ def test_scan_capped_by_branch_max(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     main = _repo(tmp_path)
     for n in range(1, 5):
         _branch(main, f"b{n}", f"SR-00{n}", f"b{n}'s version")
-    (main / ".plumb" / "config.yaml").write_text("awareness: {branch_max: 2}\n",
+    (main / ".plumb" / "config.yaml").write_text("awareness: {branch_max: 2, branch_scan_ms: 600000}\n",
                                                  encoding="utf-8")
+    monkeypatch.setattr(scan, "COLD_SCAN_S", 600.0)  # the count under test, not the time cap, ends the scan
     calls = _counting(monkeypatch)
     scan.refresh_branches(open_core(main))
     assert len([c for c in calls if c[:2] == ["git", "diff"]]) == 2
