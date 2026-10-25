@@ -170,7 +170,7 @@ function loopPane(ui: Ui, loop: PlumbLoopPane, color: string, brass: string) {
 }
 
 /** A study idea's why and the depths the owner chooses from (SR-294 EX-7, DEC-207): Markdown
- * only, with diagrams, video (drawn, not offered, until video studies exist), and 'not now';
+ * only, with diagrams, video (SR-316), and 'not now';
  * the agent's recommended depth marked. */
 function ideaChoices(ui: Ui, idea: { title: string; why: string; recommend: string }, titled: boolean, brass: string,
                      inline = false) {
@@ -183,7 +183,7 @@ function ideaChoices(ui: Ui, idea: { title: string; why: string; recommend: stri
       <Box key="idea:depths" flexDirection="row" gap={1}>
         <Button key="idea:md" label={label('md')} onPress={() => {}} />
         <Button key="idea:diagrams" label={label('diagrams')} onPress={() => {}} />
-        <Text key="idea:video" dimColor>{label('video')}</Text>
+        <Button key="idea:video" label={label('video')} onPress={() => {}} />
         <Button key="idea:none" label={T.notNow} onPress={() => {}} />
       </Box>
     </Box>

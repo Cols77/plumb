@@ -7,6 +7,7 @@ frames go to ``.plumb/cache/studies/<slug>/`` (not committed)."""
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -128,7 +129,9 @@ def run_manim(scene: Path, media: Path) -> Path:
     """Render the scene with Manim Community (no LaTeX, no OpenGL); the mp4 it made."""
     done = subprocess.run([sys.executable, "-m", "manim", "-ql", "--disable_caching",
                            "--media_dir", str(media), str(scene)],
-                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          # Manim imports the scene from .plumb/studies/: no __pycache__ there
+                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     mp4 = [p for p in media.rglob("*.mp4") if "partial_movie_files" not in p.parts]
     if done.returncode or not mp4:
         lines = [x.strip() for x in (done.stderr + done.stdout).splitlines() if x.strip()]

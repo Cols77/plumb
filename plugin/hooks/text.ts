@@ -37,8 +37,8 @@ export const T = {
   newStudies: (n: number) => (n === 1 ? 'new study' : `${n} new studies`),
   studyIdea: (title: string) => `study idea: ${title}`,
   studyIdeaFolded: 'study idea',
-  // DEC-207: the depths the owner chooses from; video is plumb-12's later work
-  depths: { md: 'Markdown only', diagrams: 'with diagrams', video: 'video (not available yet)' } as Record<string, string>,
+  // DEC-207: the depths the owner chooses from; video since INT-093 (SR-316)
+  depths: { md: 'Markdown only', diagrams: 'with diagrams', video: 'video' } as Record<string, string>,
   notNow: 'not now',
   // SR-360 EX-2: a study whose records changed, and the offer to rewrite it at the same depth
   outOfDate: (title: string, changed: string) => `study out of date: ${title} (${changed} changed)`,
