@@ -339,20 +339,39 @@ def test_sr366_ex3_the_reviewer_gets_storyboard_cues_and_frames(
     assert _study(accepted, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", " ") != 0     # a named reviewer
 
 
+def _fail(repo: Path, *finding: str) -> int:
+    args = [x for f in finding for x in ("--finding", f)]
+    return _study(repo, "check", SLUG, "--clip", CLIP, "--fail", "--reviewer", "a2", *args)
+
+
 @pytest.mark.sr("SR-366")
-def test_sr366_ex4_a_failed_revision_is_final(
+def test_sr366_ex4_blocking_findings_allow_revisions_until_the_valve(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None,
         capsys: pytest.CaptureFixture) -> None:
     _rendered(accepted, tmp_path)
-    _study(accepted, "check", SLUG, "--clip", CLIP, "--fail", "--reason", "beat 1 is blank", "--reviewer", "a2")
-    assert _render(accepted, tmp_path) == 0          # the one revision
-    assert _state(accepted, "revisions") == 1
-    video.job(accepted, SLUG, CLIP)
-    _study(accepted, "check", SLUG, "--clip", CLIP, "--fail", "--reason", "still blank", "--reviewer", "a3")
+    for n in range(1, video.MAX_REVISIONS + 1):
+        assert _fail(accepted, "low: a nit", "high: beat 1 is blank") == 0
+        assert _state(accepted) == "failed"
+        assert _render(accepted, tmp_path) == 0
+        assert _state(accepted, "revisions") == n
+        video.job(accepted, SLUG, CLIP)
+    assert _fail(accepted, "critical: still blank") == 0
     capsys.readouterr()
     assert _study(accepted, "render", SLUG, "--clip", CLIP, "--scene", _file(tmp_path, "f.py", SCENE)) != 0
-    assert "no further render" in capsys.readouterr().err
-    assert len(popen) == 2 and _state(accepted) == "failed"
+    assert "stands failed" in capsys.readouterr().err
+    assert len(popen) == video.MAX_REVISIONS + 1 and _state(accepted) == "failed"
+
+
+@pytest.mark.sr("SR-366")
+def test_sr366_ex5_low_findings_alone_accept_the_clip_with_notes(
+        accepted: Path, tmp_path: Path, popen: list[Any], fake: None,
+        capsys: pytest.CaptureFixture) -> None:
+    _rendered(accepted, tmp_path)
+    assert _fail(accepted, "bogus: x") != 0
+    assert _fail(accepted, "low: label is tight", "low: slow fade") == 0
+    assert _state(accepted) == "ready"
+    assert "label is tight" in _state(accepted, "reason") and "slow fade" in _state(accepted, "reason")
+    assert "progress" not in study.get(accepted, SLUG)
 
 
 @pytest.mark.sr("SR-317")
@@ -416,7 +435,8 @@ def test_sr370_ex5_a_failed_clip_leaves_the_others(
         video.check(accepted, SLUG, clip, ok, "" if ok else "beat 2 is blank", "agent-2")
     clips = study.get(accepted, SLUG)["clips"]
     assert clips[CLIP]["state"] == "ready"
-    assert clips["second"] == {"state": "failed", "reason": "beat 2 is blank", "revisions": 0}
+    assert clips["second"] == {"state": "failed", "reason": "medium: beat 2 is blank",
+                         "revisions": 0}
 
 
 @pytest.mark.sr("SR-371")

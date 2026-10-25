@@ -196,7 +196,9 @@ def run(command: str, argv: list[str]) -> int:
     verdict = checker.add_mutually_exclusive_group(required=True)
     verdict.add_argument("--pass", dest="ok", action="store_true")
     verdict.add_argument("--fail", dest="ok", action="store_false")
-    checker.add_argument("--reason", default="")
+    checker.add_argument("--reason", default="", help="one medium finding (kept for compatibility)")
+    checker.add_argument("--finding", action="append", default=[], metavar="SEVERITY: TEXT",
+                         help="critical|high|medium|low: what is wrong; repeatable")
     checker.add_argument("--reviewer", required=True)
     verbs.add_parser("list")
     verbs.add_parser("candidates", help="what to pick this step's study from")
@@ -276,7 +278,8 @@ def run(command: str, argv: list[str]) -> int:
         elif args.verb == "frames":
             emit(video.frames(root, args.slug, args.clip), True)
         elif args.verb == "check":
-            video.check(root, args.slug, args.clip, args.ok, args.reason, args.reviewer)
+            video.check(root, args.slug, args.clip, args.ok, args.reason, args.reviewer,
+                        args.finding)
             print(f"plumb: clip {args.clip} of {args.slug}: {'ready' if args.ok else 'failed'}")
         elif args.verb == "list":
             held = study.studies(root)
