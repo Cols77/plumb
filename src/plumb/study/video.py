@@ -67,6 +67,10 @@ def problems(sb: Any) -> list[str]:
     return out
 
 
+SEVERITIES = ("critical", "high", "medium", "low")
+MAX_REVISIONS = 6     # the safety valve: a still-failing clip stands failed after this many
+
+
 def _clip(found: dict[str, Any], clip: str) -> dict[str, Any]:
     """The clip's state; a clip the body does not place is refused (SR-370)."""
     if clip not in clips_in(found["body"]):
@@ -125,10 +129,10 @@ def render(root: Path, slug: str, clip: str, scene: Path) -> None:
     if state == "rendering":
         raise ValueError(f"a render of the clip {clip} is already running")
     if state == "failed":
-        if revisions:
-            raise ValueError(f"the clip {clip} failed after its one revision: no further render "
-                             f"({held['reason']})")
-        revisions = 1
+        if revisions >= MAX_REVISIONS:
+            raise ValueError(f"the clip {clip} still fails after {MAX_REVISIONS} revisions: it "
+                             f"stands failed, no further render ({held['reason']})")
+        revisions += 1
     study._write(path(root, slug, clip, ".py"), source)
     path(root, slug, clip, ".check.json").unlink(missing_ok=True)
     _set(root, slug, clip, "rendering", "", revisions)
@@ -224,20 +228,36 @@ def frames(root: Path, slug: str, clip: str) -> dict[str, Any]:
     return {"storyboard": sb, "cues": cues(sb), "frames": [str(p) for p in shots]}
 
 
-def check(root: Path, slug: str, clip: str, ok: bool, reason: str, reviewer: str) -> None:
-    """The reviewer's verdict, kept beside the study (SR-366 EX-1, EX-2, EX-4)."""
+def check(root: Path, slug: str, clip: str, ok: bool, reason: str, reviewer: str,
+          findings: tuple[str, ...] | list[str] = ()) -> None:
+    """The reviewer's verdict, kept beside the study (SR-366 EX-1, EX-2, EX-4). A fail carries
+    findings "<severity>: <text>" (--reason is one medium finding); a clip whose findings are
+    all low is accepted as ready with them kept as notes."""
     found = study.get(root, slug)
     if _clip(found, clip)["state"] != "checking":
         raise ValueError(f"the clip {clip} of {found['title']} is not waiting for a check")
-    if not reviewer.strip() or (not ok and not reason.strip()):
-        raise ValueError("a check names its reviewer, and a fail gives the reason (the beat "
-                         "that failed and why)")
+    items = [f.strip() for f in findings if f.strip()] + (
+        [f"medium: {reason.strip()}"] if reason.strip() else [])
+    if not reviewer.strip() or (not ok and not items):
+        raise ValueError("a check names its reviewer, and a fail gives its findings (the beat "
+                         "that failed and why), each '<severity>: <text>'")
+    parsed = []
+    for f in [] if ok else items:
+        sev, _, text = f.partition(":")
+        if sev.strip().lower() not in SEVERITIES or not text.strip():
+            raise ValueError(f"finding {f!r} must read '<severity>: <text>' with severity one "
+                             f"of {', '.join(SEVERITIES)}")
+        parsed.append((sev.strip().lower(), text.strip()))
+    ok = ok or all(sev == "low" for sev, _ in parsed)     # only low findings: ready, with notes
+    text = "; ".join(f"{sev}: {t}" for sev, t in parsed)
     study._write(path(root, slug, clip, ".check.json"), json.dumps(
-        {"verdict": "pass" if ok else "fail", "reason": reason.strip(),
-         "reviewer": reviewer.strip()}, indent=2, ensure_ascii=False) + "\n")
-    _set(root, slug, clip, "ready" if ok else "failed", "" if ok else reason.strip())
+        {"verdict": "pass" if ok else "fail", "reason": text, "reviewer": reviewer.strip(),
+         "findings": [{"severity": s, "text": t} for s, t in parsed]},
+        indent=2, ensure_ascii=False) + "\n")
+    _set(root, slug, clip, "ready" if ok else "failed", text)
     after = study.get(root, slug)
     if ok and "progress" in after and not any(
             (c := _clip(after, name))["state"] not in ("ready", "failed")
-            or (c["state"] == "failed" and not c["revisions"]) for name in clips_in(after["body"])):
+            or (c["state"] == "failed" and c["revisions"] < MAX_REVISIONS)
+            for name in clips_in(after["body"])):
         study.progress(root, slug, finish=True)    # the last clip is settled: the bar goes

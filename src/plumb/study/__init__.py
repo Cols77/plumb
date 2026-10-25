@@ -290,7 +290,7 @@ def accepted_lines(root: Path) -> list[str]:
         for s in studies(root) if s["status"] in WRITTEN and s.get("refresh") == "asked"] + [
         f"plumb: the clip {c} of '{s['title']}' rendered: have an independent reviewer agent "
         f"check it: plumb study frames {s['slug']} --clip {c}, then plumb study check "
-        f"{s['slug']} --clip {c} --pass|--fail --reason ... --reviewer <agent>"
+        f"{s['slug']} --clip {c} --pass|--fail --finding '<severity>: ...' --reviewer <agent>"
         for s in studies(root) for c, held in (s.get("clips") or {}).items()
         if isinstance(held, dict) and held.get("state") == "checking"]
 

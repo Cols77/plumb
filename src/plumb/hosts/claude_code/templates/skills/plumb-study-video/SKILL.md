@@ -49,19 +49,22 @@ part that does not teach is worse than none.
      on screen matches the subtitle, and no label overlaps or runs off the frame.
    - Never put the owner's private material in a committed study.
    - Before `study render`, dry-render it yourself (`python -m manim -ql` in the scratchpad)
-     and look at each beat's midpoint frame; fix the layout there, not with the one revision.
+     and look at each beat's midpoint frame; fix the layout there first.
 5. `{plumb} study render <slug> --clip <name> --scene <scene.py>` returns at once; the clip
    renders in the background. Do not wait.
 6. When plumb says a clip rendered: run an INDEPENDENT reviewer with the Agent tool, a fresh
    agent that did not write the scene. Give it `{plumb} study frames <slug> --clip <name>
    --json` (storyboard, cues, frame PNG paths; it opens the PNGs) and the study's body, and
    ask: does each frame show its beat, does the clip meet its goals and answer its question,
-   and does it add something the text and diagrams around it do not? Pass or fail, with
-   reasons.
-7. Record it: `{plumb} study check <slug> --clip <name> --pass|--fail --reason "<its reasons>"
-   --reviewer <agent>`.
-8. On a fail, revise that clip once on the reviewer's reasons (steps 3 to 7). A second fail
-   stands: its place says why, and the rest of the study stays.
+   and does it add something the text and diagrams around it do not? It returns findings,
+   each tagged `critical`, `high`, `medium` or `low`, or none.
+7. Record it: `{plumb} study check <slug> --clip <name> --pass --reviewer <agent>`, or
+   `--fail --finding "<severity>: <text>"` once per finding (repeatable).
+8. While the latest check has any critical, high or medium finding, revise that clip on the
+   findings and check it again (steps 3 to 7), as many times as it takes. When only low
+   findings remain, plumb accepts the clip and shows them as notes at its place: no render.
+   Safety valve: after 6 revisions a still-failing clip stands failed (its place says why) and
+   the rest of the study stays.
 
 ## Progress (the owner sees it in the band)
 
