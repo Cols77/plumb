@@ -64,11 +64,9 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
 - `impact <anything>`: run `{plumb} impact <their words>` and say in plain terms what a
   change would reach.
 - `study <topic>` (also their plain words, "make me a study on how merges are held"):
-  plumb's prompt hook has offered it already and its `plumb:` line says so: propose nothing
-  and do not look into how studies are made. Only with no such line, run
-  `{plumb} study propose --asked --title <it> --topic <their topic> --why <one line>
-  --depth diagrams`. The band offers it and they pick the depth there; write nothing before
-  they do. Once picked, run
+  run `{plumb} study propose --asked --title <it> --topic <their topic> --why <one line>
+  --depth md|diagrams|video` with the depth you recommend, any time, loop or not. The band
+  offers it and they pick the depth there; write nothing before they do. Once picked, run
   `{plumb} study gather <slug> --json`, write from those records only (none: say no record
   covers it), then `{plumb} study add <slug> --records <their IDs> --file <body.md>`.
 - `view`: run `{plumb} view --open` and tell them the Obsidian vault is open (generated;

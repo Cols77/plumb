@@ -402,53 +402,6 @@ def queued_for_agent(ctx: HookContext) -> list[str]:
     return out
 
 
-# SR-368: a study asked for in plain words ("a study of X", "study room on X", "/plumb study
-# X"); "study the failing test" (study as a verb) and "the study on X" (one that exists) are not
-_STUDY_ASKED = re.compile(
-    r"^\s*/plumb\s+study\s+(?P<cmd>\S.*)"
-    r"|\b(?:an?\s+study(?:\s+room)?|study\s+room)\s+(?:of|on|about|into)\s+"
-    r"(?P<words>\S.*)",
-    re.IGNORECASE | re.DOTALL)
-
-
-def study_offer_lines(ctx: HookContext, text: str) -> list[str]:
-    """SR-368: the study the owner asked for in plain words, proposed as asked (SR-355) so
-    the band offers it at once; the agent is told it is offered and to write nothing yet."""
-    found = _STUDY_ASKED.search(text)
-    if not found:
-        return []
-    from plumb import study
-    from plumb.understand import cmd_intent
-
-    words = re.split(r"[.?!](?:\s|$)|\n", found["cmd"] or found["words"])[0]
-    topic = _clip(words.strip(" .?!\"'"), 80)
-    if not topic:
-        return []
-    known = study.studies(ctx.root)
-    same = next((s for s in known if s["status"] != "declined"
-                 and s["title"].casefold() == topic.casefold()), None)
-    if same:
-        return [f"plumb: the owner mentioned the study '{same['title']}', which is already "
-                f"{same['status']}: nothing new is offered"]
-    held = next((s for s in known if s["status"] == "idea"), None)
-    if held:
-        return [f"plumb: the owner asked for a study of '{topic}', but the study idea "
-                f"'{held['title']}' already waits on the band for their choice: say so; "
-                "write nothing until they choose"]
-    # no session known: another session's loop is not ours
-    loops = [(p, d) for p, d in cmd_intent.loops(ctx.root, ctx.session_id)
-             if d.get("step") != "proven" and not d.get("handed_to")] if ctx.session_id else []
-    loop, step = (loops[-1][0].stem, str(loops[-1][1].get("step") or "")) if loops else ("", "")
-    try:
-        study.propose(ctx.root, title=topic, topic=topic, why="you asked for it",
-                      depth="diagrams", loop=loop, step=step, asked=True)
-    except ValueError as exc:
-        return [f"plumb: the owner asked for a study of '{topic}'; it could not be offered: "
-                f"{exc}. Say so in plain words."]
-    return [f"plumb: the study idea '{topic}' is on the band; write nothing until the owner "
-            "accepts it at a depth (plumb then gives you the command)"]
-
-
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
     """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
@@ -488,8 +441,6 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     old, built = outdated(ctx.root, default_branch(core))   # SR-358: red until a reload
     write_json_atomic(ctx.session_dir / ctx.session_id / "build.json",
                       {"outdated": old, "built": built})
-    offer = study_offer_lines(ctx, text)
-    ctx.keep(offer)
     hooks = core.config.hooks
     stale_turn_start(ctx, core)
     understood = understand_lines(ctx, core, digest, text)
@@ -500,7 +451,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     tail += agent_notes(ctx)
     # oneshot: escalation_lines advanced the queue offset past them already
     queued = [*browser_lines, *(Line(line, oneshot=True) for line in escalations)]
-    ctx.keep([*offer, *emitter.add([*queued, *tail], commit=False)])
+    ctx.keep(emitter.add([*queued, *tail], commit=False))
     # no soft-budget check before the intent lines: only the watchdog bounds them
     ids, strong = _relevant_ids(core, text) if text.strip() else ([], [])
     index = core.index()
@@ -508,7 +459,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     records = emitter.add([record_line(i, index, statuses) for i in ids],
                           headers={"records": RECORDS_HEADER})
     injected = [i for i in ids if f"record:{i}" in emitter.emitted]
-    ctx.keep([*offer, *records, *emitter.add([*queued, *tail], commit=False)])
+    ctx.keep([*records, *emitter.add([*queued, *tail], commit=False)])
     intent, flagged = intent_lines(ctx, core, index, statuses, ids, text, digest, backend,
                                    injected)
     if flagged:  # the stop hook shows the owner an intent-change card only when the agent
@@ -520,7 +471,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     hint = escalation_hint(core, index, strong, list(flagged)) if strong else None
     rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []),
                         *awareness_lines(core, ids), *tail])
-    out = [*offer, *records, *rest, *understood]
+    out = [*records, *rest, *understood]
     ctx.keep(out)
     emitter.close()
     return HookOutput(text="\n".join(out))
