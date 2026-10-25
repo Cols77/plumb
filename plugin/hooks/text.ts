@@ -36,7 +36,6 @@ export const T = {
   newStudy: (title: string) => `new study: ${title}`,
   newStudies: (n: number) => (n === 1 ? 'new study' : `${n} new studies`),
   studyIdea: (title: string) => `study idea: ${title}`,
-  studyIdeaFolded: 'study idea',
   // DEC-207: the depths the owner chooses from; video is plumb-12's later work
   depths: { md: 'Markdown only', diagrams: 'with diagrams', video: 'video (not available yet)' } as Record<string, string>,
   notNow: 'not now',
