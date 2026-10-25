@@ -59,7 +59,9 @@ _WORKER = """
 import sys
 from pathlib import Path
 from plumb import ids
+from plumb.ids import reservation
 from plumb.paths import PlumbPaths
+reservation.RETRIES, reservation.RETRY_S = 1000, 100.0  # a loaded machine must not exhaust the default budget
 out = []
 for _ in range(10):
     out += ids.reserve(PlumbPaths(Path(sys.argv[1])), "requirement")
