@@ -212,6 +212,15 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
+    test("SR-316: choosing 'video' records the idea accepted at that depth", async ($, on) => {
+      const { w, ui } = await ideaBand($, on, surface)
+      await ui.press({ key: 'idea' })
+      await ui.press({ key: 'idea:video' })
+      expect(chosen(w)[0]?.argv.slice(-2)).toEqual(['--depth', 'video'])
+      expect(w.files[IDEA]).toContain('status: "accepted"')
+      await ui.unmount()
+    })
+
     test("SR-294 EX-9: choosing 'not now': the idea's line is gone and nothing was written", async ($, on) => {
       const { w, ui } = await ideaBand($, on, surface)
       await ui.press({ key: 'idea' })

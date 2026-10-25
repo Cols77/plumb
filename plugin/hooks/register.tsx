@@ -667,7 +667,7 @@ export const register: Register = on => {
       if (!slug) return pressed
       const ran = await plumb.room(io, link, slug)
       line = ran.ok ? '' : T.roomFailed
-    } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:none') {
+    } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:video' || key === 'idea:none') {
       // SR-294 EX-8, EX-9: the owner's choice on the idea is recorded; the room stays closed
       const idea = frontIdea(view.status?.ideas ?? [], await read($, bandAtom))
       await update($, bandAtom, b => ({ ...b, idea: false }))
