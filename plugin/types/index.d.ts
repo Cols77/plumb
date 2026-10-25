@@ -94,8 +94,10 @@ export type PlumbBand = {
   isHidden: boolean
   /** the band's 'new study' menu is open (SR-294 EX-6) */
   studies?: boolean
-  /** the newest study idea's choices are shown (SR-294 EX-7) */
+  /** the front study idea's choices are shown (SR-294 EX-7) */
   idea?: boolean
+  /** the slug of the study idea Tab brought to the front; absent, the newest (SR-369) */
+  front?: string
 }
 
 declare module 'claude-code' {
