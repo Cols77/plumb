@@ -24,8 +24,8 @@ nothing else is needed.
    pass their answer on and rerun `plumb debug`. Ask the owner nothing any other way.
 5. `plumb debug done <id>...` closes a case you settled by hand, or a landed one once you
    retried what failed and it worked. You confirm no record. A "reload plugins" line, or
-   `done` refused with exit 1, means this session runs a plugin older than main's build:
-   tell the owner in one line to reload plugins; the case stays landed, not proven.
+   `done` refused with exit 1, means this session runs another build than main's: tell
+   the owner in one line the fix that line names; the case stays landed, not proven.
 
 Questions and approval: plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.

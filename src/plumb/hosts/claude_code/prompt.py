@@ -437,11 +437,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     except OSError:
         pass
     core = open_core(ctx.root)
-    found = check(ctx.root)    # SR-358: red until the plugin is updated; unchecked is not red
+    found = check(ctx.root)    # SR-358: each misalignment red, every prompt; unchecked is not
     write_json_atomic(ctx.session_dir / ctx.session_id / "build.json",
-                      {"outdated": found["state"] == "outdated", "unchecked":
-                       found["state"] == "unchecked", "running": found["running"],
-                       "latest": found["latest"]})
+                      {"lines": found["lines"], "unchecked": found["unchecked"]})
     hooks = core.config.hooks
     stale_turn_start(ctx, core)
     understood = understand_lines(ctx, core, digest, text)

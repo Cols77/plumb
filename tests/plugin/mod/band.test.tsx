@@ -76,13 +76,13 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
-    test("SR-358 EX-1: plumb's repository was rebuilt after the cache: a red line shows both versions", async ($, on) => {
+    test("SR-358 EX-3: local main was rebuilt after the load: a red line shows both versions and to reload", async ($, on) => {
       const w = world()
-      w.files[`${ROOT}/.plumb/session/${SESSION}/build.json`] = JSON.stringify({ outdated: true, running: '5ca4e4c', latest: '92d6d27' })
+      w.files[`${ROOT}/.plumb/session/${SESSION}/build.json`] = JSON.stringify({ lines: ["plumb 5ca4e4c is behind local main's 92d6d27: reload plugins"], unchecked: false })
       install(on, w)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      const red = await ui.find({ type: 'Text', text: "plumb 5ca4e4c differs from its repository's 92d6d27: update the plugin, then reload plugins" })
+      const red = await ui.find({ type: 'Text', text: "plumb 5ca4e4c is behind local main's 92d6d27: reload plugins" })
       expect(red?.props.color).toBe(RED)
       expect(w.runs.map(r => r.argv[4])).toEqual(['hello']) // nothing reinstalled
       await ui.unmount()
@@ -90,27 +90,27 @@ for (const surface of SURFACES) {
 
     test("SR-358: plumb's repository cannot be read: a plain line says so, nothing red", async ($, on) => {
       const w = world()
-      w.files[`${ROOT}/.plumb/session/${SESSION}/build.json`] = JSON.stringify({ outdated: false, unchecked: true, running: '5ca4e4c', latest: '' })
+      w.files[`${ROOT}/.plumb/session/${SESSION}/build.json`] = JSON.stringify({ lines: [], unchecked: true })
       install(on, w)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       const note = await ui.find({ type: 'Text', text: 'plumb could not check its repository for a newer version' })
       expect(note?.props.color).not.toBe(RED)
-      expect(await ui.find({ type: 'Text', text: /differs from its repository/ })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /reload plugins|push main|update the plugin/ })).toBeUndefined()
       await ui.unmount()
     })
 
     test("SR-358 EX-2: the plugin updated to the repository's build: the red line is gone", async ($, on) => {
       const w = world()
       const build = `${ROOT}/.plumb/session/${SESSION}/build.json`
-      w.files[build] = JSON.stringify({ outdated: true, running: '5ca4e4c', latest: '92d6d27' })
+      w.files[build] = JSON.stringify({ lines: ["plumb 5ca4e4c is behind local main's 92d6d27: reload plugins"], unchecked: false })
       install(on, w)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /differs from its repository|JEV judge/ })).toBeDefined()
-      w.files[build] = JSON.stringify({ outdated: false, running: '92d6d27', latest: '92d6d27' })
+      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeDefined()
+      w.files[build] = JSON.stringify({ lines: [], unchecked: false })
       await $.turn.complete(TURN_DONE)
-      expect(await ui.find({ type: 'Text', text: /differs from its repository|JEV judge/ })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeUndefined()
       await ui.unmount()
     })
 
@@ -144,10 +144,10 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /differs from its repository|JEV judge/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeDefined()
       w.files[JUDGES] = JSON.stringify({ down: {} })
       await $.turn.complete(TURN_DONE)
-      expect(await ui.find({ type: 'Text', text: /differs from its repository|JEV judge/ })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeUndefined()
       await ui.unmount()
     })
 

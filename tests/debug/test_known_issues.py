@@ -23,7 +23,7 @@ CASE = "field-answers-dropped-after-upgrade"
 def plugin(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """``plugin(same)``: Claude Code runs a plugin whose build is plumb's repository's (or an
     older one)."""
-    monkeypatch.setattr(build, "_latest", lambda url: "main")    # the repository's main
+    monkeypatch.setattr(build, "_latest", lambda url: ("main", ""))  # its main
     monkeypatch.setenv("PLUMB_SESSION_ID", "s2")
     for name in ("CLAUDE_PLUGIN_ROOT", "PLUMB_PLUGIN_ROOT"):
         monkeypatch.delenv(name, raising=False)
@@ -58,7 +58,8 @@ def test_the_build_is_outdated_only_when_the_loaded_plugin_differs_from_main(
     plugin(True)
     assert build.outdated(repo) == (False, "")
     plugin(False)
-    assert build.outdated(repo) == (True, "running old, repository main")
+    assert build.outdated(repo) == (True, "plumb old differs from its repository's "
+                                         "main: update the plugin, then reload plugins")
 
 
 @pytest.mark.sr("SR-356")

@@ -46,8 +46,6 @@ export const T = {
   refreshFailed: 'plumb could not record that; the study stays as it is. Try again.',
   chooseFailed: 'plumb could not record that choice; nothing changed. Try again.',
   judged: (n: number) => `${n} judge-approved`,
-  older: (running: string, latest: string) =>
-    `plumb ${running} differs from its repository's ${latest}: update the plugin, then reload plugins`,
   unchecked: "plumb could not check its repository for a newer version",
   setAside: (question: string, why: string) => `the judge's question was set aside: "${question}" (${why})`,
   roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',

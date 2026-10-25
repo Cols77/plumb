@@ -62,7 +62,7 @@ export type PlumbStatus = {
   outdated?: { title: string; slug: string; changed: string }[]
   /** the requirements a judge approved (auto-jev, auto-model), counted in the head (SR-251) */
   judged?: number
-  /** red lines: plumb older than main's build (SR-358), a judge that cannot settle and why
+  /** red lines: each misalignment of the running plumb, its local main and its repository (SR-358), a judge that cannot settle and why
    * (SR-359); each until it is fixed */
   red?: string[]
   /** SR-358: plumb's repository could not be read, so the build is not checked (never red) */
