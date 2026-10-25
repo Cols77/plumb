@@ -2,11 +2,11 @@
 // toast; the line is a Button whose press runs `plumb mod room` (the key on stdin, the agent
 // marker emptied), which opens the browser room on the study and marks it opened, so the line
 // goes. Nothing opens the room without the press. Each case runs on the terminal and the desktop.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { BRASS } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, START, SURFACES, TURN_DONE, world } from './harness'
+import { BAND, install, START, SURFACES, TURN_DONE, test, world } from './harness'
 
 const LOOP = `${ROOT}/.plumb/session/${SESSION}/intent/aaaaaaaaaaaa.json`
 const SLUG = 'how-plumb-s-background-jobs-run'

@@ -3,11 +3,11 @@
 // question waits in the room', whose press runs `plumb mod room --card` (the key on stdin) and
 // the room opens on that question; the line goes. Nothing opens the room without the press.
 // Each case runs on the terminal and the desktop.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { BRASS } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, START, SURFACES, TURN_DONE, world } from './harness'
+import { BAND, install, START, SURFACES, TURN_DONE, test, world } from './harness'
 
 const MARK = `${ROOT}/.plumb/session/${SESSION}/room_waits.json`
 const CARD = 'choice:0123456789ab'

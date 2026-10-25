@@ -1,11 +1,11 @@
 // A study whose records changed (SR-360 EX-2, DEC-336): the band's brass line names the study and
 // what changed, with 'Rewrite it' and 'not now'; a press runs `plumb mod study --refresh`, the key
 // on stdin only; nothing is rewritten without the owner's yes. Each case runs on both surfaces.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { BRASS } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, START, SURFACES, TURN_DONE, world } from './harness'
+import { BAND, install, START, SURFACES, TURN_DONE, test, world } from './harness'
 
 const SLUG = 'how-merges-are-held'
 const STUDY = `${ROOT}/.plumb/studies/${SLUG}.md`

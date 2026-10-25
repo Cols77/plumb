@@ -1,11 +1,11 @@
 // The band above the prompt (SP7 5.2 as re-aligned: plumb's status with the count of questions
 // waiting, SP8's progress; SR-085 EX-2, DEC-034, SR-337: no card, Hide holds until Show). Each
 // case runs on the terminal and the desktop.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { RED } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, START, SURFACES, TURN_DONE, world } from './harness'
+import { BAND, install, START, SURFACES, TURN_DONE, test, world } from './harness'
 
 const STATUS = `${ROOT}/.plumb/session/status.json`
 const JUDGES = `${ROOT}/.plumb/session/judges.json`

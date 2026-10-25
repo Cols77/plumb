@@ -3,10 +3,21 @@
 // lines, panes). Every process call is
 // recorded with its argv and stdin, so a test can say the key never reaches argv.
 import type { On } from 'claude-code'
-import { mock } from 'claude-code/testing'
-import type { MockClock } from 'claude-code/testing'
+import { mock, test as kitTest } from 'claude-code/testing'
+import type { MockClock, TestBody, TestOptions } from 'claude-code/testing'
 
 import { PRESENT, PYTHON, ROOT, SESSION } from './fixtures'
+
+/** A case's wall-clock budget. The kit's 5 s is real time while the panel runs on the mocked
+ * clock: a case taking 1-2 s alone took 5-23 s with the machine loaded (pytest -n 2 beside
+ * other runs) and timed out, and a timed-out case runs on into the next one. */
+export const TEST_MS = 60_000
+
+/** The kit's `test`, with TEST_MS unless the case names its own budget. */
+export function test(name: string, ...rest: readonly [TestBody] | readonly [TestOptions, TestBody]): void {
+  const [options, body] = rest.length === 1 ? [{}, rest[0]] : rest
+  kitTest(name, { timeoutMs: TEST_MS, ...options }, body)
+}
 
 export const SURFACES = ['terminal', 'desktop'] as const
 export const NOW = Date.parse('2026-10-11T12:00:05Z')

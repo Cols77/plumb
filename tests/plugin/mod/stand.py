@@ -49,13 +49,17 @@ def assemble(root: Path) -> Path:
     return root
 
 
-def run(claude: str = "claude", keep: bool = False) -> int:
+def run(claude: str = "claude", keep: bool = False) -> subprocess.CompletedProcess[str]:
+    """Run the mod's tests in a fresh stand; the run's output is captured (stdout and stderr in
+    one), so a caller can say which cases failed and why."""
     tmp = Path(tempfile.mkdtemp(prefix="plumb-mod-stand-"))
     try:
         stand = assemble(tmp / "plumb")
         if keep:
             print(f"stand: {stand}")
-        return subprocess.run([claude, "plugin", "test", str(stand)], check=False).returncode
+        return subprocess.run([claude, "plugin", "test", str(stand)], check=False, text=True,
+                              encoding="utf-8", errors="replace", stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT)
     finally:
         if not keep:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -66,7 +70,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--keep", action="store_true", help="leave the stand and say where")
     parser.add_argument("--claude", default="claude", help="the claude binary to run")
     args = parser.parse_args(argv)
-    return run(args.claude, args.keep)
+    done = run(args.claude, args.keep)
+    print(done.stdout, end="")
+    return done.returncode
 
 
 if __name__ == "__main__":

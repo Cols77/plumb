@@ -2,11 +2,11 @@
 // step's task with a brass fill (or the elapsed time with no fill), a refused gate's stop, and
 // the one line again once the loop is proven or when none is open. Each case runs on the
 // terminal and the desktop.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { BRASS, PLUM } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, START, SURFACES, TURN_DONE, world } from './harness'
+import { BAND, install, START, SURFACES, TURN_DONE, test, world } from './harness'
 
 // the strip, the task's words and the brass fill, as the band draws them
 const STRIP = /^clarify /

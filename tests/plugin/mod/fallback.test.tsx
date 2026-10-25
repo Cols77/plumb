@@ -1,10 +1,10 @@
 // The fallback (SP7 5.8; SR-087 EX-4): without plumb's interpreter the panel registers nothing
 // and draws nothing (the command hooks print everything as before); a hook that fails hands
 // the event on unchanged, says so once, and stops the heartbeat, so the stop hook prints again.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, NOW, START, SURFACES, TURN_DONE, world } from './harness'
+import { BAND, install, NOW, START, SURFACES, TURN_DONE, test, world } from './harness'
 
 const MOD = `${ROOT}/.plumb/session/${SESSION}/mod.json`
 const TURN = { text: 'add late fees', turnId: 't-2' }

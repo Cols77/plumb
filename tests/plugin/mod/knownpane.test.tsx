@@ -3,10 +3,10 @@
 // `plumb mod known --json` (the agent marker emptied) and opens plumb's docked pane, as the loop
 // pane opens, listing each problem with its symptom, cause, fix, state and history, open ones
 // first. The open pane follows the register. Each case runs on the terminal and the desktop.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, START, SURFACES, world } from './harness'
+import { BAND, install, START, SURFACES, test, world } from './harness'
 
 const REGISTER = `${ROOT}/.plumb/known-issues.json`
 const CASE = `${ROOT}/.plumb/cache/debug/KI-3.json`
@@ -17,16 +17,18 @@ const issue = (n: number, state: string, history: string[] = []) => ({
 })
 
 // two open (KI-3 fixed once, its case reopened), five fixed lately: as `plumb mod known --json` answers
-let KNOWN = {
+const KNOWN = {
   open: 2,
   issues: [issue(1, 'open'), issue(3, 'open', ['fixed, fix abc3', 'open again: symptom 3 again']),
     ...[2, 4, 5, 6, 7].map(n => issue(n, 'fixed'))],
 }
 
-function knownWorld(open = 2) {
+// `known` is read at each run: a case changes its own answer, never the shared KNOWN (a case
+// that ran past its time would change the next case's)
+function knownWorld(open = 2, known = () => KNOWN) {
   const w = world()
   const answer = w.answer
-  w.answer = (action, argv) => action === 'known' ? { exitCode: 0, data: { ...KNOWN, open } } : answer(action, argv)
+  w.answer = (action, argv) => action === 'known' ? { exitCode: 0, data: { ...known(), open } } : answer(action, argv)
   w.files[REGISTER] = JSON.stringify({ issues: KNOWN.issues.map(({ history, ...r }) => r) })
   return w
 }
@@ -83,7 +85,8 @@ for (const surface of SURFACES) {
     })
 
     test('SR-367: the open pane follows the register; an unchanged register runs no plumb', async ($, on) => {
-      const w = knownWorld()
+      let known = KNOWN
+      const w = knownWorld(2, () => known)
       const clock = install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
@@ -92,12 +95,10 @@ for (const surface of SURFACES) {
       const runs = w.runs.filter(r => r.argv[4] === 'known').length
       await clock.advance(2000) // the band's period (POLL_MS in register.tsx): nothing moved
       expect(w.runs.filter(r => r.argv[4] === 'known').length).toBe(runs)
-      const before = KNOWN
-      KNOWN = { ...KNOWN, issues: KNOWN.issues.map(i => i.id === 'KI-1' ? { ...i, state: 'fixed', fixed: '2026-10-25', fix: 'def1' } : i) }
+      known = { ...KNOWN, issues: KNOWN.issues.map(i => i.id === 'KI-1' ? { ...i, state: 'fixed', fixed: '2026-10-25', fix: 'def1' } : i) }
       w.files[CASE] = JSON.stringify({ id: 'KI-3', state: 'resolved' }) // a case moved
       await clock.advance(2000)
       expect(await view.find({ type: 'Text', text: 'problem 1 · fixed 2026-10-25' })).toBeDefined()
-      KNOWN = before
       await view.unmount()
       await band.unmount()
     })
