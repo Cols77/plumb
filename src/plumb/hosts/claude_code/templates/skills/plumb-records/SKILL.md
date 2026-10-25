@@ -25,7 +25,7 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
   `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo` and `go` are typed
   by the owner and done by the hook. Merges, conflict cards: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.
-- Asked: hook limit `hooks.hard_limit_s` (<=119 s); a study `/plumb study` (owner picks depth).
+- Asked: hook limit `hooks.hard_limit_s` (<=119 s); a study: plumb offers it; await the depth.
 Questions and approval: plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.
 1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each
