@@ -42,7 +42,7 @@ def _suite(root: Path, files: int = 3, per_file: int = 4, nap: float = 0.12) -> 
 
 
 def test_full_run_reports_done_of_total_and_current_file(repo: Path, loud: None) -> None:
-    _suite(repo)
+    _suite(repo, nap=0.3)    # a longer run: a starved poller still sees it move before the end
     out = Pipe()
     reporter = progress.Reporter(repo, None, "full-run", stream=out, lazy=True)
     result = runner.run_pytest(repo, [], progress=reporter, step=runner.STEP_FULL)
