@@ -132,9 +132,6 @@ def known_lines(root: Path | str, today: datetime.date | None = None) -> list[st
     cases = {r["id"]: r for r in all_cases(root)} if issues else {}
     since = (today or datetime.date.today()) - datetime.timedelta(days=RECENT_DAYS)
 
-    def is_open(row: dict[str, Any]) -> bool:
-        return row.get("state") != "fixed" or cases.get(row["id"], {}).get("state") == "open"
-
     def recent(row: dict[str, Any]) -> bool:
         try:
             return datetime.date.fromisoformat(str(row.get("fixed"))[:10]) >= since
@@ -144,14 +141,40 @@ def known_lines(root: Path | str, today: datetime.date | None = None) -> list[st
     def named(rows: list[dict[str, Any]]) -> str:
         return "; ".join(f"{r['id']} {r.get('title') or r['symptom']}" for r in rows)
 
-    out, opened = [], [r for r in issues if is_open(r)]
-    fixed = [r for r in issues if not is_open(r) and recent(r)]
+    out, opened = [], [r for r in issues if _is_open(r, cases)]
+    fixed = [r for r in issues if not _is_open(r, cases) and recent(r)]
     if opened:
         out.append(f"plumb: known issues open: {named(opened)}")
     if fixed:
         out.append(f"plumb: known issues fixed lately: {named(fixed)}; seen again: "
                    "plumb debug report <what you saw>")
     return out
+
+
+def _is_open(row: dict[str, Any], cases: dict[str, dict[str, Any]]) -> bool:
+    """A known issue is open unless fixed; a fixed one whose case reopened is open again."""
+    return row.get("state") != "fixed" or cases.get(row["id"], {}).get("state") == "open"
+
+
+def known_pane(root: Path | str) -> dict[str, Any]:
+    """SR-367: what the band's known problems line counts and its pane lists (``plumb mod
+    known``): each issue's symptom, cause, fix, state and its case's history, open ones first."""
+    issues = known_issues(root)
+    cases = {r["id"]: r for r in all_cases(root)} if issues else {}
+    rows = []
+    for row in issues:
+        case = cases.get(row["id"], {})
+        history = [", ".join(filter(None, (h.get("state"), h.get("landed") and f"fix {h['landed']}",
+                                           h.get("proven") and f"proven {h['proven']}",
+                                           h.get("detail"))))
+                   for h in case.get("history", []) if isinstance(h, dict)]
+        if case.get("state") == "open" and case.get("history"):
+            history.append(f"open again: {case.get('detail', '')}")
+        rows.append({**{k: str(row.get(k) or "") for k in
+                        ("id", "title", "symptom", "cause", "fix", "fixed")},
+                     "state": "open" if _is_open(row, cases) else "fixed", "history": history})
+    rows.sort(key=lambda r: r["state"] != "open")   # stable: the register's order within each
+    return {"open": sum(r["state"] == "open" for r in rows), "issues": rows}
 
 
 def _queue_fix(root: Path | str, case_id: str) -> None:

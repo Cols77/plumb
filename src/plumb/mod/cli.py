@@ -1,4 +1,4 @@
-"""``plumb mod hello|room|study``: the commands only plumb's panel (the Claude Code mod)
+"""``plumb mod hello|room|study|known``: the commands only plumb's panel (the Claude Code mod)
 runs.
 
 All of them take ``--session <id>`` and read one JSON object on stdin; none takes a key in argv.
@@ -16,6 +16,8 @@ All of them take ``--session <id>`` and read one JSON object on stdin; none take
   Answer ``{slug, status, depth}``. Never opens the room. ``--refresh yes|no`` in place of
   ``--depth``: the owner's press on a study whose records changed: rewrite it at the same
   depth, or not now (SR-360 EX-2, DEC-336). Answer ``{slug, status, depth, refresh}``.
+- ``known``  stdin ``{}``: the known problems the band counts and its pane lists (SR-367), read
+  only. Answer ``{open, issues: [{id, title, symptom, cause, fix, fixed, state, history}]}``.
 
 Exit codes: 0 done, 1 no such study or it did not start, 2 usage, 3 refused (the agent
 session marker, no panel registered, no key, another key): nothing written."""
@@ -40,7 +42,7 @@ def _answer(data: Any, as_json: bool) -> None:
 
 def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="plumb mod")
-    parser.add_argument("action", choices=("hello", "room", "study"))
+    parser.add_argument("action", choices=("hello", "room", "study", "known"))
     add_common(parser)
     parser.add_argument("--session", required=True)
     parser.add_argument("--study", default=None)
@@ -59,6 +61,11 @@ def run(command: str, argv: list[str]) -> int:
             data = session.hello(core, args.session, payload.get("key_digest"))
             _answer({"active": bool(data["active"]), "since": data["since"],
                      "session": args.session}, args.as_json)
+            return EXIT_OK
+        if args.action == "known":
+            from plumb import debug
+
+            _answer(debug.known_pane(root), args.as_json)
             return EXIT_OK
         if args.action == "room":
             from plumb.browser import launch

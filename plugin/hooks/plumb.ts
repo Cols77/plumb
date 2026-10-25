@@ -8,7 +8,7 @@
 import type { ProcessRunInit, ProcessRunResult } from 'claude-code'
 
 import { T } from './text'
-import type { PlumbLink, PlumbLoop, PlumbLoopPane, PlumbPresent, PlumbStatus, PlumbView } from '../types'
+import type { PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbPresent, PlumbStatus, PlumbView } from '../types'
 
 export type Io = {
   exists: (path: string) => Promise<boolean>
@@ -237,6 +237,45 @@ export async function loopPane(io: Io, link: PlumbLink): Promise<PlumbLoopPane |
       : null,
     records: (Array.isArray(loop.records) ? loop.records : []).map((r: any) => String(r?.title ?? '')).filter(Boolean),
     proofs: (Array.isArray(loop.proofs) ? loop.proofs : []).map((p: any) => ({ title: String(p?.title ?? ''), shown: p?.shown === true })),
+  }
+}
+
+export const NO_KNOWN: PlumbKnown = { seen: '', open: 0, issues: [] }
+
+/** The known problems register and its issues' case files as they are now (files only, no
+ * process): what moved since `seen` sends the band back to plumb (SR-367). */
+export async function knownSeen(io: Io, link: PlumbLink): Promise<string> {
+  const path = join(link.root, '.plumb', 'known-issues.json')
+  let text = ''
+  let ids: string[] = []
+  try {
+    if (!(await io.exists(path))) return ''
+    text = await io.read(path)
+    ids = strings(JSON.parse(text)?.issues?.map((r: any) => r?.id).filter(Boolean))
+  } catch {
+    return text
+  }
+  const cases = await Promise.all(ids.map(async id => {
+    // the case file's name, as debug._case_path makes it
+    const file = join(link.root, '.plumb', 'cache', 'debug', `${id.replace(/[^\w.-]/g, '_')}.json`)
+    return (await io.exists(file)) ? io.read(file).catch(() => '') : ''
+  }))
+  return [text, ...cases].join('\n')
+}
+
+/** The known problems as plumb counts and lists them (SR-367), from `plumb mod known --json`;
+ * null when plumb did not answer. */
+export async function known(io: Io, link: PlumbLink, seen: string): Promise<PlumbKnown | null> {
+  const ran = await plumbMod(io, link, 'known', {})
+  if (!ran.ok || !Array.isArray(ran.data?.issues)) return null
+  return {
+    seen,
+    open: Number(ran.data.open ?? 0),
+    issues: ran.data.issues.map((r: any) => ({
+      id: String(r?.id ?? ''), title: String(r?.title ?? ''), symptom: String(r?.symptom ?? ''),
+      cause: String(r?.cause ?? ''), fix: String(r?.fix ?? ''), fixed: String(r?.fixed ?? ''),
+      state: String(r?.state ?? ''), history: strings(r?.history),
+    })),
   }
 }
 
