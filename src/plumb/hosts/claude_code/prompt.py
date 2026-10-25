@@ -403,10 +403,10 @@ def queued_for_agent(ctx: HookContext) -> list[str]:
 
 
 # SR-368: a study asked for in plain words ("a study of X", "study room on X", "/plumb study
-# X"); "study the failing test" (study as a verb) is not one
+# X"); "study the failing test" (study as a verb) and "the study on X" (one that exists) are not
 _STUDY_ASKED = re.compile(
     r"^\s*/plumb\s+study\s+(?P<cmd>\S.*)"
-    r"|\b(?:(?:an?|the)\s+study(?:\s+room)?|study\s+room)\s+(?:of|on|about|into)\s+"
+    r"|\b(?:an?\s+study(?:\s+room)?|study\s+room)\s+(?:of|on|about|into)\s+"
     r"(?P<words>\S.*)",
     re.IGNORECASE | re.DOTALL)
 
@@ -424,13 +424,20 @@ def study_offer_lines(ctx: HookContext, text: str) -> list[str]:
     topic = _clip(words.strip(" .?!\"'"), 80)
     if not topic:
         return []
-    held = next((s for s in study.studies(ctx.root) if s["status"] == "idea"), None)
+    known = study.studies(ctx.root)
+    same = next((s for s in known if s["status"] != "declined"
+                 and s["title"].casefold() == topic.casefold()), None)
+    if same:
+        return [f"plumb: the owner mentioned the study '{same['title']}', which is already "
+                f"{same['status']}: nothing new is offered"]
+    held = next((s for s in known if s["status"] == "idea"), None)
     if held:
         return [f"plumb: the owner asked for a study of '{topic}', but the study idea "
                 f"'{held['title']}' already waits on the band for their choice: say so; "
                 "write nothing until they choose"]
+    # no session known: another session's loop is not ours
     loops = [(p, d) for p, d in cmd_intent.loops(ctx.root, ctx.session_id)
-             if d.get("step") != "proven"]
+             if d.get("step") != "proven" and not d.get("handed_to")] if ctx.session_id else []
     loop, step = (loops[-1][0].stem, str(loops[-1][1].get("step") or "")) if loops else ("", "")
     try:
         study.propose(ctx.root, title=topic, topic=topic, why="you asked for it",
