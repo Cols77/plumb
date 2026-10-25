@@ -106,6 +106,22 @@ def test_the_missed_check_counts_a_registered_wording_as_matched(
     assert outcome.lines == [cmd_clarify.ASK_QUESTIONS.format(n=1)]
 
 
+def test_ex5_each_question_carries_its_key_and_plumbs_words_are_marked_to_reword(
+        world: Path) -> None:  # noqa: F811
+    """EX-5: the agent gets the key ``reword`` and ``pushback`` take; a question in plumb's own
+    words is marked to be put in the owner's terms first."""
+    judge_asks(world, (ASK, ["SR-001"]), (OTHER, ["INT-001"]))
+    path = judge.questions_path(world, SESSION)
+    raw = json.loads(path.read_text("utf-8"))
+    raw[1]["reword"] = True
+    path.write_text(json.dumps(raw), "utf-8")
+    outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
+    assert {q["key"] for q in outcome.questions} == set(open_keys(world))
+    assert [q["reword"] for q in outcome.questions if q["key"] == judge.question_key(OTHER)] \
+        == [True]
+    assert outcome.lines[1] == cmd_clarify.REWORD_FIRST.format(n=1)
+
+
 # ---- pushback --------------------------------------------------------------------------------
 
 

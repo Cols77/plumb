@@ -64,7 +64,8 @@ DIAGRAM_MARKETPLACE = "diagram-mod"   # where the diagram mod plumb's cards draw
 HOOKS: tuple[tuple[str, str | None, str, bool, int], ...] = (
     ("SessionStart", "startup|resume|clear|compact", "session-start", False, 120),
     ("UserPromptSubmit", None, "prompt", False, 120),
-    ("PreToolUse", "Bash|Edit|Write|MultiEdit|NotebookEdit", "pre-tool", False, 120),
+    ("PreToolUse", "Bash|Edit|Write|MultiEdit|NotebookEdit|AskUserQuestion", "pre-tool", False,
+     120),
     ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "post-edit", True, 120),
     ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "edit-check", False, 120),
     ("PostToolUse", "AskUserQuestion", "question-answer", True, 120),

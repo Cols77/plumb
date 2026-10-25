@@ -182,11 +182,11 @@ def test_ex5_the_session_start_brief_offers_no_ok_and_no_read_back(
 
 
 @pytest.mark.sr("SR-267")
-def test_ex4_ids_and_digests_are_stripped_and_plumb_words_make_the_question_wait(
+def test_ex4_ids_and_digests_are_stripped_and_plumb_words_go_to_the_agent_to_reword(
         world: Path) -> None:  # noqa: F811
     """SR-267 EX-4: a record id is put in the owner's terms and a digest dropped from every
-    field shown; a question still saying "settled" or "trial" is not shown and its record
-    waits with the waiting line."""
+    field shown; SR-362 EX-5: a question still saying "settled" or "trial" is kept, marked for
+    the agent to reword in the owner's terms, never set aside."""
     digest = "sha256:" + "ab" * 32
     applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[asking(
         "SR-001", question=f"Is SR-001 right for every page ({digest})?",
@@ -197,13 +197,14 @@ def test_ex4_ids_and_digests_are_stripped_and_plumb_words_make_the_question_wait
     assert '"Pages load in two seconds"' in question["question"]
     assert "SR-001" not in text and "sha256" not in text and "abab" not in text
     assert owner_level(text.replace('"Pages load in two seconds"', "")) == []
+    assert question["reword"] is False
     for word in ("settled", "trial"):
         judge.questions_path(world, SESSION).unlink(missing_ok=True)
         applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[asking(
             "SR-001", question=f"Was this {word} by your earlier answer?")]))
-        assert written(world) == []
-    (line,) = notes(world)                               # said once in the window
-    assert "SR-001" in line and "plumb's own words" in line
+        (kept,) = written(world)
+        assert kept["reword"] is True and word in kept["question"]
+    assert not any("plumb's own words" in line for line in notes(world))
 
 
 @pytest.mark.sr("SR-267")
@@ -311,7 +312,9 @@ def test_wait_after_a_capture_with_no_clarify_job_answers_ask(
     assert outcome.state == "ask"
     assert outcome.lines == [cmd_clarify.ASK_QUESTIONS.format(n=1)]
     shown = outcome.as_json()["questions"]
-    assert [set(q) for q in shown] == [{"question", "header", "options", "multiSelect"}]
+    # SR-362 EX-5: the key reword and pushback take, and whether it is in plumb's words
+    assert [set(q) for q in shown] == [{"key", "reword", "question", "header", "options",
+                                        "multiSelect"}]
     assert shown[0]["options"][0]["label"].endswith("(Recommended)")
     assert not gate.is_closed(world, SESSION)
     # SR-362: the line tells the agent the commands that reword and push back; nothing else
