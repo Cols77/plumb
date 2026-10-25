@@ -3,10 +3,10 @@
 // (the repository's own Python); when it cannot reach plumb it says why in one dim line, once
 // per session, and stays silent in a repository plumb has not adopted.
 import type { On } from 'claude-code'
-import { describe, expect, mock, test } from 'claude-code/testing'
+import { describe, expect, mock } from 'claude-code/testing'
 
 import { PYTHON, ROOT, SESSION } from './fixtures'
-import { BAND, install, NOW, START, SURFACES, TURN_DONE, world } from './harness'
+import { BAND, install, NOW, START, SURFACES, TURN_DONE, test, world } from './harness'
 import type { World } from './harness'
 
 const SESSION_DIR = `${ROOT}/.plumb/session/${SESSION}`

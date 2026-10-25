@@ -1,11 +1,11 @@
 // plumb's own colours in the band (SR-290): plum for its name and state, the darker shade on a
 // light theme, and never a colour of Claude Code's own (its orange, lavender, cyan or green, or
 // a theme key that paints the host's prompts). Each case runs on the terminal and the desktop.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { BRASS, BRASS_LIGHT, brassColor, PLUM, plumbColor } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, START, SURFACES, world } from './harness'
+import { BAND, install, START, SURFACES, test, world } from './harness'
 
 // Claude Code's own: its orange and lavender, the named colours it draws in, the theme keys
 const HOST = ['#d77757', '#b1b9f9', 'cyan', 'cyanbright', 'green', 'greenbright', 'claude',

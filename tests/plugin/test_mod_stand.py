@@ -42,4 +42,8 @@ def test_the_stand_holds_the_mod_and_its_tests(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(shutil.which("claude") is None, reason="no claude binary on this machine")
 def test_the_mod_tests_pass() -> None:
-    assert _stand().run(shutil.which("claude") or "claude") == 0
+    done = _stand().run(shutil.which("claude") or "claude")
+    # a failure names its cases and keeps the run's whole output: each failed case's error with it
+    failed = [line for line in done.stdout.splitlines() if line.startswith("(fail)")]
+    assert done.returncode == 0, ("failed cases:\n" + "\n".join(failed or ["(none named)"]) +
+                                  "\n\nclaude plugin test said:\n" + done.stdout)

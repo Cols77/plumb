@@ -4,11 +4,11 @@
 // the records of the loop's intent and each requirement's proof, by title; no agents or tokens;
 // Esc closes it and the band stays. The judge-approval count in the band's head (SR-251) is here
 // too. Each case runs on the terminal and the desktop.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect } from 'claude-code/testing'
 
 import { BRASS, PLUM } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, START, SURFACES, world } from './harness'
+import { BAND, install, START, SURFACES, test, world } from './harness'
 
 const LOOP = `${ROOT}/.plumb/session/${SESSION}/intent/aaaaaaaaaaaa.json`
 const OPENED = '2026-10-11T11:00:00Z'

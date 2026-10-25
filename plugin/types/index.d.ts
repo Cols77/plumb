@@ -83,6 +83,17 @@ export type PlumbLoopPane = {
   proofs: { title: string; shown: boolean }[]
 }
 
+/** The known problems (SR-367), as `plumb mod known --json` answers them: how many are open
+ * (the band's one line), and each with its symptom, cause, fix, state and case history, open
+ * ones first (the pane). `seen`: the register's files as last read, so plumb runs only when they
+ * moved. */
+export type PlumbKnown = {
+  seen: string
+  open: number
+  issues: { id: string; title: string; symptom: string; cause: string; fix: string; fixed: string;
+    state: string; history: string[] }[]
+}
+
 /** What the panel draws, as plumb last answered it. */
 export type PlumbView = {
   present: PlumbPresent | null
@@ -110,8 +121,9 @@ declare module 'claude-code' {
       told: PlumbTold | null
       view: PlumbView
       band: PlumbBand
-      /** the loop the pane shows (SR-305) */
-      pane: { loop: PlumbLoopPane | null }
+      /** the loop the pane shows (SR-305); `known`: the known problems pane was opened (SR-367) */
+      pane: { loop: PlumbLoopPane | null; known?: boolean }
+      known: PlumbKnown
     }
   }
 }

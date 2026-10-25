@@ -34,6 +34,12 @@ RELOAD = ("plumb: the plumb defect you hit ({kind}: {detail}) is fixed in main, 
           "this session runs another build ({built}); then retry {retry}")
 CAME_BACK = ("plumb: the plumb defect {id} came back ({kind}: {detail}): the old case is "
              "reopened with its history ({n} earlier) and its fix runs again; plumb debug lists it")
+# SR-367 (DEC-372): a known problem that changes warns the session that owns its case
+PROVEN = ("plumb: the plumb defect you hit is proven fixed ({kind}: {detail}): nothing is left "
+          "to retry for it")
+BACK_ELSEWHERE = ("plumb: the plumb defect you hit came back in another session ({kind}: "
+                  "{detail}): the case is reopened there with its history ({n} earlier); "
+                  "plumb debug lists it")
 LANDED = "landed, not proven"
 REGISTER = (".plumb", "known-issues.json")
 RECENT_DAYS = 14
@@ -132,9 +138,6 @@ def known_lines(root: Path | str, today: datetime.date | None = None) -> list[st
     cases = {r["id"]: r for r in all_cases(root)} if issues else {}
     since = (today or datetime.date.today()) - datetime.timedelta(days=RECENT_DAYS)
 
-    def is_open(row: dict[str, Any]) -> bool:
-        return row.get("state") != "fixed" or cases.get(row["id"], {}).get("state") == "open"
-
     def recent(row: dict[str, Any]) -> bool:
         try:
             return datetime.date.fromisoformat(str(row.get("fixed"))[:10]) >= since
@@ -144,14 +147,40 @@ def known_lines(root: Path | str, today: datetime.date | None = None) -> list[st
     def named(rows: list[dict[str, Any]]) -> str:
         return "; ".join(f"{r['id']} {r.get('title') or r['symptom']}" for r in rows)
 
-    out, opened = [], [r for r in issues if is_open(r)]
-    fixed = [r for r in issues if not is_open(r) and recent(r)]
+    out, opened = [], [r for r in issues if _is_open(r, cases)]
+    fixed = [r for r in issues if not _is_open(r, cases) and recent(r)]
     if opened:
         out.append(f"plumb: known issues open: {named(opened)}")
     if fixed:
         out.append(f"plumb: known issues fixed lately: {named(fixed)}; seen again: "
                    "plumb debug report <what you saw>")
     return out
+
+
+def _is_open(row: dict[str, Any], cases: dict[str, dict[str, Any]]) -> bool:
+    """A known issue is open unless fixed; a fixed one whose case reopened is open again."""
+    return row.get("state") != "fixed" or cases.get(row["id"], {}).get("state") == "open"
+
+
+def known_pane(root: Path | str) -> dict[str, Any]:
+    """SR-367: what the band's known problems line counts and its pane lists (``plumb mod
+    known``): each issue's symptom, cause, fix, state and its case's history, open ones first."""
+    issues = known_issues(root)
+    cases = {r["id"]: r for r in all_cases(root)} if issues else {}
+    rows = []
+    for row in issues:
+        case = cases.get(row["id"], {})
+        history = [", ".join(filter(None, (h.get("state"), h.get("landed") and f"fix {h['landed']}",
+                                           h.get("proven") and f"proven {h['proven']}",
+                                           h.get("detail"))))
+                   for h in case.get("history", []) if isinstance(h, dict)]
+        if case.get("state") == "open" and case.get("history"):
+            history.append(f"open again: {case.get('detail', '')}")
+        rows.append({**{k: str(row.get(k) or "") for k in
+                        ("id", "title", "symptom", "cause", "fix", "fixed")},
+                     "state": "open" if _is_open(row, cases) else "fixed", "history": history})
+    rows.sort(key=lambda r: r["state"] != "open")   # stable: the register's order within each
+    return {"open": sum(r["state"] == "open" for r in rows), "issues": rows}
 
 
 def _queue_fix(root: Path | str, case_id: str) -> None:
@@ -258,16 +287,21 @@ def lines(root: Path | str, session: str) -> list[tuple[str, str]]:
     in main is ready to land (DEC-317: plumb never merges it); a case this session detected
     whose fix is in main is fixed, with what to retry (DEC-318: nothing held it). SR-356: it
     reads landed, not proven, or says to reload plugins when this session runs an older build;
-    a case that came back in this session says so, with its history."""
+    a case that came back in this session says so, with its history. SR-367: the session that
+    owns a case is told when it is proven, or when it came back in another session."""
     from plumb import build
 
     out: list[tuple[str, str]] = []
     late: tuple[bool, str] | None = None
     for row in all_cases(root):
         what = {k: str(row.get(k) or "") for k in ("id", "branch", "kind", "detail", "target")}
+        n = len(row.get("history") or [])
+        before = (row.get("history") or [{}])[-1]
         if row.get("state") == "open" and row.get("came_back") == session:
-            n = len(row.get("history") or [])
             out.append((f"back:{row['id']}:{n}", CAME_BACK.format(n=n, **what)))
+        elif row.get("state") == "open" and row.get("came_back") and isinstance(
+                before, dict) and before.get("session") == session:
+            out.append((f"back:{row['id']}:{n}", BACK_ELSEWHERE.format(n=n, **what)))
         elif row.get("branch") and not row.get("landed"):
             out.append((f"ready:{row['id']}",
                         (READY_REPIN if what["kind"] == "repin" else READY).format(**what)))
@@ -276,6 +310,8 @@ def lines(root: Path | str, session: str) -> list[tuple[str, str]]:
             late = late or build.outdated(root)
             out.append((f"reload:{row['id']}", RELOAD.format(retry=retry, built=late[1], **what))
                        if late[0] else (f"fixed:{row['id']}", FIXED.format(retry=retry, **what)))
+        elif row.get("proven") and row.get("session") == session:
+            out.append((f"proven:{row['id']}", PROVEN.format(**what)))
     return out
 
 

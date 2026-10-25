@@ -146,3 +146,32 @@ def test_ex3_on_mains_build_a_fixed_issue_seen_again_reopens_it(register: Path, 
                                                        "landed": "3a1d16d2f"}]
     assert "KI-5 came back" in out
     assert "KI-5" in debug.known_lines(register)[0]   # open again at the next session start
+
+
+@pytest.mark.sr("SR-367")
+def test_ex4_the_session_owning_a_case_is_told_when_it_is_proven(repo: Path, plugin) -> None:
+    plugin(True)
+    debug.open_case(repo, id=CASE, kind="report", target="flagged",
+                    detail="answers dropped after the upgrade", session="s1")
+    debug._update(repo, [CASE], branch="debug/x", state="resolved", landed="abc",
+                  proven="2026-10-25")
+    ((key, text),) = debug.lines(repo, "s1")
+    assert key == f"proven:{CASE}" and "proven fixed" in text
+    assert debug.lines(repo, "s3") == []
+
+
+@pytest.mark.sr("SR-367")
+def test_ex4_the_owning_session_is_told_its_problem_came_back_elsewhere(
+        repo: Path, plugin, monkeypatch: pytest.MonkeyPatch) -> None:
+    plugin(True)
+    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    debug.hook_error(repo, "stop", 'File "a.py", in answer\nKeyError: \'answer\'')
+    (first,) = debug.open_cases(repo)
+    debug._update(repo, [first["id"]], state="resolved", branch="debug/x", landed="abc",
+                  proven="2026-10-20")
+    assert first["session"] == "s1"
+    monkeypatch.setenv("PLUMB_SESSION_ID", "s2")
+    debug.hook_error(repo, "stop", 'File "b.py", in record\nKeyError: \'answer\'')
+    ((key, text),) = debug.lines(repo, "s1")
+    assert key.startswith("back:") and "came back in another session" in text
+    assert debug.lines(repo, "s3") == []
