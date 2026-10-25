@@ -226,6 +226,7 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, columns: number, col
         ) : null}
       </Box>
       {(view.status?.red ?? []).map((r, n) => <Text key={`red:${n}`} color={RED}>{r}</Text>)}
+      {view.status?.unchecked ? <Text key="unchecked" dimColor>{view.status.unchecked}</Text> : null}
       {(view.status?.setAside ?? []).map((a, n) => <Text key={`aside:${n}`} dimColor>{a}</Text>)}
       {view.status?.roomCard ? (
         // SR-333 EX-3, DEC-294: the question the owner chose to study; a press opens the room on it

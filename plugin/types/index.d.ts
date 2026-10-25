@@ -65,6 +65,8 @@ export type PlumbStatus = {
   /** red lines: plumb older than main's build (SR-358), a judge that cannot settle and why
    * (SR-359); each until it is fixed */
   red?: string[]
+  /** SR-358: plumb's repository could not be read, so the build is not checked (never red) */
+  unchecked?: string
   /** the judge's questions plumb set aside, and why: shown apart, never as unreachable (SR-359 EX-2) */
   setAside?: string[]
 }

@@ -7,7 +7,6 @@ from __future__ import annotations
 import io
 import json
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -22,14 +21,9 @@ CASE = "field-answers-dropped-after-upgrade"
 
 @pytest.fixture
 def plugin(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """``plugin(same)``: Claude Code runs a plugin whose build is main's (or an older one)."""
-    vendor = repo / "plugin" / "vendor"
-    vendor.mkdir(parents=True)
-    (vendor / "plumb.whl").write_bytes(b"wheel")
-    (vendor / "MANIFEST.json").write_text(json.dumps({"wheel": "plumb.whl",
-                                                       "source_digest": "main"}), "utf-8")
-    for args in (("add", "-A"), ("commit", "-q", "-m", "main's build")):  # main's committed build
-        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    """``plugin(same)``: Claude Code runs a plugin whose build is plumb's repository's (or an
+    older one)."""
+    monkeypatch.setattr(build, "_latest", lambda url: "main")    # the repository's main
     monkeypatch.setenv("PLUMB_SESSION_ID", "s2")
     for name in ("CLAUDE_PLUGIN_ROOT", "PLUMB_PLUGIN_ROOT"):
         monkeypatch.delenv(name, raising=False)
@@ -39,6 +33,9 @@ def plugin(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         loaded.mkdir(parents=True, exist_ok=True)
         (loaded / "MANIFEST.json").write_text(json.dumps(
             {"source_digest": "main" if same else "old"}), "utf-8")
+        (loaded.parent / ".claude-plugin").mkdir(exist_ok=True)
+        (loaded.parent / ".claude-plugin" / "plugin.json").write_text(json.dumps(
+            {"repository": "https://github.com/Cols77/plumb"}), "utf-8")
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(loaded.parent))
     return run
 
@@ -61,8 +58,7 @@ def test_the_build_is_outdated_only_when_the_loaded_plugin_differs_from_main(
     plugin(True)
     assert build.outdated(repo) == (False, "")
     plugin(False)
-    late, built = build.outdated(repo)
-    assert late and built[:4].isdigit()
+    assert build.outdated(repo) == (True, "running old, repository main")
 
 
 @pytest.mark.sr("SR-356")

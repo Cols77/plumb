@@ -429,8 +429,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     if prompt_origin(text)[0] != "owner":   # SR-168: logged with its origin, nothing else
         return HookOutput(text="")
     from plumb.api import open_core
-    from plumb.awareness.publish import default_branch
-    from plumb.build import outdated
+    from plumb.build import check
 
     escalations: list[str] = []
     try:
@@ -438,9 +437,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     except OSError:
         pass
     core = open_core(ctx.root)
-    old, built = outdated(ctx.root, default_branch(core))   # SR-358: red until a reload
+    found = check(ctx.root)    # SR-358: red until the plugin is updated; unchecked is not red
     write_json_atomic(ctx.session_dir / ctx.session_id / "build.json",
-                      {"outdated": old, "built": built})
+                      {"outdated": found["state"] == "outdated", "unchecked":
+                       found["state"] == "unchecked", "running": found["running"],
+                       "latest": found["latest"]})
     hooks = core.config.hooks
     stale_turn_start(ctx, core)
     understood = understand_lines(ctx, core, digest, text)

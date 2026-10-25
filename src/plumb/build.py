@@ -1,31 +1,29 @@
-"""Which plumb build Claude Code runs, against main's (SR-357, SR-358): the loaded plugin's
-vendored source digest beside the ``plugin/vendor/MANIFEST.json`` committed on main, so a
-worktree or a checkout compares with main's build, not its own. Nothing is reinstalled."""
+"""Which plumb build Claude Code runs, against the one in plumb's own repository (SR-357,
+SR-358): the loaded plugin's vendored source digest beside the ``MANIFEST.json`` on the
+repository's main, whatever the install route and the session's repository. The repository is
+the ``repository`` the plugin's ``plugin.json`` names; the answer is kept a while so a hook
+reaches the network at most once per ``KEEP_S``. Nothing is reinstalled."""
 
 from __future__ import annotations
 
 import json
 import os
-import subprocess
+import re
+import time
 from pathlib import Path
 
 MANIFEST = "plugin/vendor/MANIFEST.json"
+KEEP_S = 900
+TIMEOUT_S = 3.0
+_GITHUB = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
 
 
-def _digest(text: str | None) -> str:
+def _read(path: Path) -> dict:
     try:
-        return str(json.loads(text or "").get("source_digest") or "")
-    except (ValueError, AttributeError):
-        return ""
-
-
-def _git(root: Path | str, *args: str) -> str | None:
-    try:
-        done = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=2.0)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return done.stdout if done.returncode == 0 else None
+        data = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _plugin(root: Path | str) -> str:
@@ -38,29 +36,59 @@ def _plugin(root: Path | str) -> str:
     from plumb import stale
 
     host = Path(root) / ".plumb" / "session" / stale.current_session(root) / "host.json"
-    try:
-        data = json.loads(host.read_text("utf-8"))
-    except (OSError, ValueError):
+    return str(_read(host).get("plugin") or "")
+
+
+def _fetch(url: str) -> str:
+    """The source digest of ``MANIFEST`` on ``url``'s main; "" when it cannot be read."""
+    import urllib.request
+
+    found = _GITHUB.match(url)
+    if not found:    # shortcut: GitHub only; read other hosts' raw files once plumb lives there
         return ""
-    return str(data.get("plugin") or "") if isinstance(data, dict) else ""
-
-
-def outdated(root: Path | str, branch: str = "main") -> tuple[bool, str]:
-    """``(True, "<main's build date>")`` when the loaded plugin was built from another source
-    than the manifest committed on ``branch``; ``(False, "")`` otherwise, or when no plugin runs
-    this session or either manifest is missing (a repository other than plumb's own has no
-    build of plumb)."""
-    loaded = _plugin(root)
+    raw = f"https://raw.githubusercontent.com/{found[1]}/{found[2]}/main/{MANIFEST}"
     try:
-        ours = _digest((Path(loaded) / "vendor" / "MANIFEST.json").read_text("utf-8")
-                       if loaded else "")
+        with urllib.request.urlopen(raw, timeout=TIMEOUT_S) as answer:   # noqa: S310 - https
+            return str(json.loads(answer.read().decode("utf-8")).get("source_digest") or "")
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
+def _latest(url: str) -> str:
+    """The repository's digest, kept ``KEEP_S`` in plumb's home (a failure too)."""
+    from plumb.launcher import plumb_home
+
+    path = plumb_home() / "latest.json"
+    kept = _read(path)
+    if kept.get("url") == url and time.time() - float(kept.get("at") or 0) < KEEP_S:
+        return str(kept.get("digest") or "")
+    digest = _fetch(url)
+    try:
+        from plumb.understand.files import write_json_atomic
+
+        write_json_atomic(path, {"url": url, "at": time.time(), "digest": digest})
     except OSError:
-        ours = ""
-    if not ours:
+        pass
+    return digest
+
+
+def check(root: Path | str) -> dict[str, str]:
+    """``{"state": "current" | "outdated" | "unchecked" | "", "running", "latest"}``: "" when
+    no plugin runs this session; ``unchecked`` when the repository cannot be read (never red)."""
+    loaded = _plugin(root)
+    if not loaded:
+        return {"state": "", "running": "", "latest": ""}
+    running = str(_read(Path(loaded) / "vendor" / "MANIFEST.json").get("source_digest") or "")
+    url = str(_read(Path(loaded) / ".claude-plugin" / "plugin.json").get("repository") or "")
+    latest = _latest(url) if running and url else ""
+    state = "unchecked" if not latest else "current" if latest == running else "outdated"
+    return {"state": state, "running": running[:7], "latest": latest[:7]}
+
+
+def outdated(root: Path | str) -> tuple[bool, str]:
+    """``(True, "running <digest>, repository <digest>")`` when the loaded plugin differs from
+    plumb's repository; ``(False, "")`` otherwise, unchecked included."""
+    found = check(root)
+    if found["state"] != "outdated":
         return False, ""
-    theirs = _digest(_git(root, "show", f"{branch}:{MANIFEST}"))
-    if not theirs or ours == theirs:
-        return False, ""
-    # the build date is the commit date of main's manifest: a checkout resets mtimes
-    built = (_git(root, "log", "-1", "--format=%cs", branch, "--", MANIFEST) or "").strip()
-    return True, built
+    return True, f"running {found['running']}, repository {found['latest']}"

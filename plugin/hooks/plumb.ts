@@ -365,7 +365,8 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
   const build = await readJson(io, join(sessionDir(link.root, link.session), 'build.json'))
   const judges = await readJson(io, join(link.root, '.plumb', 'session', 'judges.json'))
   const down = judges?.down && typeof judges.down === 'object' ? Object.values(judges.down) as any[] : []
-  const red = [...(build?.outdated === true ? [T.older(String(build.built ?? ''))] : []),
+  const red = [...(build?.outdated === true
+    ? [T.older(String(build.running ?? ''), String(build.latest ?? ''))] : []),
     ...down.map(d => String(d?.line ?? '')).filter(Boolean)]
   const setAside = (Array.isArray(judges?.set_aside) ? judges.set_aside : [])
     .map((q: any) => T.setAside(String(q?.question ?? ''), String(q?.why ?? '')))
@@ -398,6 +399,7 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     outdated: files.filter(s => s.changed && !s.refresh).map(({ title, slug, changed }) => ({ title, slug, changed })),
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
     red,
+    ...(build?.unchecked === true ? { unchecked: T.unchecked } : {}),
     setAside,
   }
 }

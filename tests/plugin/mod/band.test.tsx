@@ -76,29 +76,41 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
-    test('SR-358 EX-1: main was rebuilt after the cache: a red line says plumb is older and to reload', async ($, on) => {
+    test("SR-358 EX-1: plumb's repository was rebuilt after the cache: a red line shows both versions", async ($, on) => {
       const w = world()
-      w.files[`${ROOT}/.plumb/session/${SESSION}/build.json`] = JSON.stringify({ outdated: true, built: '2026-10-24' })
+      w.files[`${ROOT}/.plumb/session/${SESSION}/build.json`] = JSON.stringify({ outdated: true, running: '5ca4e4c', latest: '92d6d27' })
       install(on, w)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      const red = await ui.find({ type: 'Text', text: 'plumb is older than main (built 2026-10-24): reload plugins' })
+      const red = await ui.find({ type: 'Text', text: "plumb 5ca4e4c differs from its repository's 92d6d27: update the plugin, then reload plugins" })
       expect(red?.props.color).toBe(RED)
       expect(w.runs.map(r => r.argv[4])).toEqual(['hello']) // nothing reinstalled
       await ui.unmount()
     })
 
-    test("SR-358 EX-2: the session runs main's build after a reload: the red line is gone", async ($, on) => {
+    test("SR-358: plumb's repository cannot be read: a plain line says so, nothing red", async ($, on) => {
       const w = world()
-      const build = `${ROOT}/.plumb/session/${SESSION}/build.json`
-      w.files[build] = JSON.stringify({ outdated: true, built: '2026-10-24' })
+      w.files[`${ROOT}/.plumb/session/${SESSION}/build.json`] = JSON.stringify({ outdated: false, unchecked: true, running: '5ca4e4c', latest: '' })
       install(on, w)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeDefined()
-      w.files[build] = JSON.stringify({ outdated: false, built: '' })
+      const note = await ui.find({ type: 'Text', text: 'plumb could not check its repository for a newer version' })
+      expect(note?.props.color).not.toBe(RED)
+      expect(await ui.find({ type: 'Text', text: /differs from its repository/ })).toBeUndefined()
+      await ui.unmount()
+    })
+
+    test("SR-358 EX-2: the plugin updated to the repository's build: the red line is gone", async ($, on) => {
+      const w = world()
+      const build = `${ROOT}/.plumb/session/${SESSION}/build.json`
+      w.files[build] = JSON.stringify({ outdated: true, running: '5ca4e4c', latest: '92d6d27' })
+      install(on, w)
+      await $.session.start(START)
+      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: /differs from its repository|JEV judge/ })).toBeDefined()
+      w.files[build] = JSON.stringify({ outdated: false, running: '92d6d27', latest: '92d6d27' })
       await $.turn.complete(TURN_DONE)
-      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /differs from its repository|JEV judge/ })).toBeUndefined()
       await ui.unmount()
     })
 
@@ -132,10 +144,10 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /differs from its repository|JEV judge/ })).toBeDefined()
       w.files[JUDGES] = JSON.stringify({ down: {} })
       await $.turn.complete(TURN_DONE)
-      expect(await ui.find({ type: 'Text', text: /reload plugins|JEV judge/ })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /differs from its repository|JEV judge/ })).toBeUndefined()
       await ui.unmount()
     })
 
