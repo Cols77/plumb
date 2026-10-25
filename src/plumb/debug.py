@@ -34,6 +34,12 @@ RELOAD = ("plumb: the plumb defect you hit ({kind}: {detail}) is fixed in main, 
           "this session runs a plugin older than main's build of {built}; then retry {retry}")
 CAME_BACK = ("plumb: the plumb defect {id} came back ({kind}: {detail}): the old case is "
              "reopened with its history ({n} earlier) and its fix runs again; plumb debug lists it")
+# SR-367 (DEC-372): a known problem that changes warns the session that owns its case
+PROVEN = ("plumb: the plumb defect you hit is proven fixed ({kind}: {detail}): nothing is left "
+          "to retry for it")
+BACK_ELSEWHERE = ("plumb: the plumb defect you hit came back in another session ({kind}: "
+                  "{detail}): the case is reopened there with its history ({n} earlier); "
+                  "plumb debug lists it")
 LANDED = "landed, not proven"
 REGISTER = (".plumb", "known-issues.json")
 RECENT_DAYS = 14
@@ -281,16 +287,21 @@ def lines(root: Path | str, session: str) -> list[tuple[str, str]]:
     in main is ready to land (DEC-317: plumb never merges it); a case this session detected
     whose fix is in main is fixed, with what to retry (DEC-318: nothing held it). SR-356: it
     reads landed, not proven, or says to reload plugins when this session runs an older build;
-    a case that came back in this session says so, with its history."""
+    a case that came back in this session says so, with its history. SR-367: the session that
+    owns a case is told when it is proven, or when it came back in another session."""
     from plumb import build
 
     out: list[tuple[str, str]] = []
     late: tuple[bool, str] | None = None
     for row in all_cases(root):
         what = {k: str(row.get(k) or "") for k in ("id", "branch", "kind", "detail", "target")}
+        n = len(row.get("history") or [])
+        before = (row.get("history") or [{}])[-1]
         if row.get("state") == "open" and row.get("came_back") == session:
-            n = len(row.get("history") or [])
             out.append((f"back:{row['id']}:{n}", CAME_BACK.format(n=n, **what)))
+        elif row.get("state") == "open" and row.get("came_back") and isinstance(
+                before, dict) and before.get("session") == session:
+            out.append((f"back:{row['id']}:{n}", BACK_ELSEWHERE.format(n=n, **what)))
         elif row.get("branch") and not row.get("landed"):
             out.append((f"ready:{row['id']}",
                         (READY_REPIN if what["kind"] == "repin" else READY).format(**what)))
@@ -299,6 +310,8 @@ def lines(root: Path | str, session: str) -> list[tuple[str, str]]:
             late = late or build.outdated(root)
             out.append((f"reload:{row['id']}", RELOAD.format(retry=retry, built=late[1], **what))
                        if late[0] else (f"fixed:{row['id']}", FIXED.format(retry=retry, **what)))
+        elif row.get("proven") and row.get("session") == session:
+            out.append((f"proven:{row['id']}", PROVEN.format(**what)))
     return out
 
 
