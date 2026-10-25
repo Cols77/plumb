@@ -236,3 +236,8 @@ def check(root: Path, slug: str, clip: str, ok: bool, reason: str, reviewer: str
         {"verdict": "pass" if ok else "fail", "reason": reason.strip(),
          "reviewer": reviewer.strip()}, indent=2, ensure_ascii=False) + "\n")
     _set(root, slug, clip, "ready" if ok else "failed", "" if ok else reason.strip())
+    after = study.get(root, slug)
+    if ok and "progress" in after and not any(
+            (c := _clip(after, name))["state"] not in ("ready", "failed")
+            or (c["state"] == "failed" and not c["revisions"]) for name in clips_in(after["body"])):
+        study.progress(root, slug, finish=True)    # the last clip is settled: the bar goes

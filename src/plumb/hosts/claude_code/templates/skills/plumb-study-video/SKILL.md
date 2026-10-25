@@ -62,3 +62,13 @@ part that does not teach is worse than none.
    --reviewer <agent>`.
 8. On a fail, revise that clip once on the reviewer's reasons (steps 3 to 7). A second fail
    stands: its place says why, and the rest of the study stays.
+
+## Progress (the owner sees it in the band)
+
+Report each step so the band shows a bar for the minutes a video takes: `{plumb} study
+progress <slug> --step "<what you are doing>" --done N --total M`. Count the steps you will
+take (plan the mix, write the body and add it, then per clip its storyboard, scene, render,
+reviewer check) and call it at the start of each, the first with `--done 0`. `study add` keeps
+the bar when the study has clips. It ends by itself when the last clip passes its check; end it
+yourself with `{plumb} study progress <slug> --finish` when you stop for any other reason (a
+clip that failed for good, no clip to render).

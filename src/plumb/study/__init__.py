@@ -223,6 +223,24 @@ def _fields(found: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in found.items() if k not in ("slug", "body", "status")}
 
 
+def progress(root: Path, slug: str, step: str = "", done: int = 0, total: int = 0, *,
+             finish: bool = False) -> None:
+    """The band's bar while a study is written, clips rendered and checked included: ``step``,
+    ``done`` of ``total``. It goes with ``finish``, when the last clip passes its check, or at
+    once when ``add`` writes a study with no clip."""
+    found = get(root, slug)
+    if found["status"] not in ("accepted", "new") or (
+            found["status"] == "new" and not finish and "progress" not in found):
+        raise ValueError(f"the study {found['title']} is not being written")
+    fields = {k: v for k, v in _fields(found).items() if k != "progress"}
+    if not finish:
+        if not (0 <= done <= total and total > 0):
+            raise ValueError("progress needs 0 <= done <= total and a total above 0")
+        fields["progress"] = {"step": step, "done": done, "total": total}
+    _write(folder(root) / f"{slug}.md", _front({**fields, "status": found["status"]})
+           + found["body"])
+
+
 def choose(root: Path, slug: str, depth: str | None) -> dict[str, Any]:
     """The owner's choice on an idea (SR-294 EX-7..EX-9): accepted at ``depth``, or declined
     when ``depth`` is None ('not now'). Only the panel's key-checked press calls this."""
@@ -295,9 +313,11 @@ def add(root: Path, slug: str, body: str, records: list[dict[str, str]] | None =
     head = "" if records or NO_RECORD in body else NO_RECORD + "\n\n"
     tail = ("\n\nWritten from: " + ", ".join(f"{r['id']} {r['title']}" for r in records)
             if records else "")
+    fields = {**_fields(found), "records": records, "changed": "", "refresh": ""}
+    if not clips:      # with clips the bar goes when the last passes its check (video.check)
+        fields.pop("progress", None)
     _write(folder(root) / f"{slug}.md",
-           _front({**_fields(found), "records": records, "changed": "", "refresh": "",
-                   "status": "new"}) + "\n" + head + body.strip() + tail + "\n")
+           _front({**fields, "status": "new"}) + "\n" + head + body.strip() + tail + "\n")
     return slug
 
 

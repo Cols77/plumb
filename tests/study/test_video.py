@@ -417,3 +417,32 @@ def test_sr370_ex5_a_failed_clip_leaves_the_others(
     clips = study.get(accepted, SLUG)["clips"]
     assert clips[CLIP]["state"] == "ready"
     assert clips["second"] == {"state": "failed", "reason": "beat 2 is blank", "revisions": 0}
+
+
+@pytest.mark.sr("SR-371")
+def test_sr371_ex3_progress_lasts_through_renders_and_ends_with_the_last_passed_check(
+        repo: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
+    """SR-371 EX-3: `add` keeps the progress of a study with a clip; the last clip's pass ends it."""
+    assert _study(repo, "propose", "--title", TITLE, "--why", "the owner asked",
+                  "--depth", "video", "--asked") == 0
+    study.choose(repo, SLUG, "video")
+    assert _study(repo, "progress", SLUG, "--step", "body", "--done", "1", "--total", "4") == 0
+    study.add(repo, SLUG, BODY)
+    assert study.get(repo, SLUG)["progress"]["step"] == "body"
+    assert _study(repo, "progress", SLUG, "--step", "render", "--done", "2", "--total", "4") == 0
+    _rendered(repo, tmp_path)
+    assert "progress" in study.get(repo, SLUG)
+    assert _study(repo, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", "agent-2") == 0
+    assert "progress" not in study.get(repo, SLUG)
+
+
+@pytest.mark.sr("SR-371")
+def test_sr371_ex3_finish_ends_the_progress(repo: Path) -> None:
+    """SR-371 EX-3: `study progress --finish` ends the bar of a written study."""
+    assert _study(repo, "propose", "--title", TITLE, "--why", "the owner asked",
+                  "--depth", "video", "--asked") == 0
+    study.choose(repo, SLUG, "video")
+    assert _study(repo, "progress", SLUG, "--step", "body", "--done", "1", "--total", "4") == 0
+    study.add(repo, SLUG, BODY)
+    assert _study(repo, "progress", SLUG, "--finish") == 0
+    assert "progress" not in study.get(repo, SLUG)
