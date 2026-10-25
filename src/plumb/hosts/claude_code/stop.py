@@ -39,6 +39,7 @@ bounds them, and it prints whatever was kept.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -363,7 +364,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     changed = changed_paths(ctx.root, session_dir / "touched.txt", turn_start, git_timeout,
                             skipped, job)
     if not changed:
-        return _unchanged(ctx, core, turn, skipped)
+        return (None if active else _ask_block(ctx, core)) or _unchanged(ctx, core, turn,
+                                                                         skipped)
     # no soft-budget check before the read-back (R1): only the watchdog bounds it
     index = core.index()
     by_path = core.records_for_paths(changed)
@@ -479,6 +481,7 @@ def _block_reasons(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, A
             wanted.append(Line(_masked_line(index, m), subject=f"masked:{m['node']}",
                                state=str(m.get("masked_by") or "?"), must=True))
             asked[f"masked:{m['node']}"] = str(m.get("masked_by") or "?")
+        wanted += _questions_line(core, ctx.session_id)
         reasons = emitter.add(wanted)
         if stale_reasons:  # SR-111: a link this turn made stale is still unresolved
             reasons = [*stale_reasons, *reasons]
@@ -526,6 +529,41 @@ def _cards(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], v: 
                  conflicts=conflict_entries(core))
     return owner_output(ctx, core, text, touched=confirmed,
                         checks=(len(passing), len(v.evidence or {})))
+
+
+ASK_WAITING = ("plumb: {n} judge question{s} wait for the owner: run `plumb clarify --wait --json` "
+               "and ask them now with the question tool, before the turn ends (reword, merge, "
+               "push back; never drop one).")
+
+
+def _questions_line(core: Any, session: str) -> list[Any]:
+    """SR-361 EX-5: judge questions raised since the agent last asked reach it before it stops,
+    once per set of questions; the band alone reaches nobody. Never fails the stop."""
+    try:
+        from plumb.present.delta import Line
+        from plumb.understand import judge
+
+        keys = sorted(str(q.get("key")) for q in judge.open_questions(core, session))
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        return []
+    if not keys:
+        return []
+    state = hashlib.sha256("\n".join(keys).encode("utf-8")).hexdigest()[:16]
+    return [Line(ASK_WAITING.format(n=len(keys), s="s" if len(keys) > 1 else ""),
+                 subject="judge-questions", state=state, must=True)]
+
+
+def _ask_block(ctx: HookContext, core: Any) -> HookOutput | None:
+    """A turn with no edit still stops on judge questions nobody asked (SR-361 EX-5)."""
+    lines = _questions_line(core, ctx.session_id)
+    if not lines:
+        return None
+    from plumb.present.delta import open_emitter
+
+    emitter = open_emitter(ctx, "stop", config=core.config)
+    reasons = emitter.add(lines)
+    emitter.close()
+    return HookOutput(block_reason="\n".join(reasons)) if reasons else None
 
 
 def owner_output(ctx: HookContext, core: Any, text: Sequence[str], *,

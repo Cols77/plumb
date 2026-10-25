@@ -616,8 +616,8 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
     if not ids or not 2 <= len(options) <= 4 or not all(shown):
         return None, ("a question lacks two to four options, their consequences or the "
                       "reason for the recommended one")
-    if any(_PLUMB_WORDS.search(t) or _LEFT_IN.search(t) for t in shown):
-        return None, "a question names plumb's own words"
+    # SR-362 EX-5: plumb's own words no longer set a question aside; the agent rewords it
+    plumbish = any(_PLUMB_WORDS.search(t) or _LEFT_IN.search(t) for t in shown)
     text, header, reason, *rest = shown
     words = words or _own_words(core, ids, index)
     heard, found_on, older = _said_in(core, ids, words, index)
@@ -635,6 +635,7 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
             "principle": _flat(raw.get("principle")).lower(),
             "blocking": raw.get("blocking") is True,
             "diagram": raw.get("diagram") is True,     # SR-333: it offers the room
+            "reword": plumbish,
             "question": question, "header": _whole_words(header),
             "options": [{"label": f"{label.replace('(Recommended)', '').strip()} (Recommended)"
                          if n == 0 else label,    # the model may have marked it itself

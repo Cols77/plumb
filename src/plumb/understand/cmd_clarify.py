@@ -56,7 +56,9 @@ WAITING = "The check of your request is not finished. Do not build yet."
 ASK_QUESTIONS = ("Ask these {n} questions with the question tool, all at once, now: put each in "
                  "the owner's terms with `plumb question reword`, merging those on one principle; "
                  "push an obvious or answered one back with `plumb question pushback`; never "
-                 "drop, answer or default one.")
+                 "drop, answer or default one. Each question's `key` is what both take.")
+REWORD_FIRST = ("{n} of them use plumb's own words (`reword: true`): reword those before asking, "
+                "with no record id or plumb term.")
 UNMATCHED = "Ask these questions as given; the last answer matched none of them."
 JUDGING = ("plumb's judge is still reading the records; go on with the work and run clarify "
            "--wait again before the turn ends.")
@@ -237,8 +239,11 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
             and not any(answers[-1].get(k) for k in ("asked", "room", "study")) \
             and judge.question_key(str(answers[-1].get("question") or "")) not in worded
         line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
-        return Outcome("ask", digest, [line], questions=[
-            {"question": q.get("question"), "header": q.get("header"),
+        plumbish = sum(1 for q in questions if q.get("reword"))
+        return Outcome("ask", digest, [line, *([REWORD_FIRST.format(n=plumbish)] if plumbish
+                                               else [])], questions=[
+            {"key": q.get("key"), "reword": bool(q.get("reword")),
+             "question": q.get("question"), "header": q.get("header"),
              "options": _options(root, q), "multiSelect": False} for q in questions])
     return Outcome("ready", digest, [READY, *_approved(core, at)])
 
