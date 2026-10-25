@@ -445,7 +445,7 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     studies,
     ideas,
     // an accepted idea the agent is writing now: the band's progress line
-    writing: files.filter(s => s.status === 'accepted').map(({ title, progress }) => ({ title, ...(progress ?? {}) })).at(-1),
+    writing: files.filter(s => s.status === 'accepted' || s.progress).map(({ title, progress }) => ({ title, ...(progress ?? {}) })).at(-1),
     // SR-360 EX-2: out of date, the owner not asked yet
     outdated: files.filter(s => s.changed && !s.refresh).map(({ title, slug, changed }) => ({ title, slug, changed })),
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),

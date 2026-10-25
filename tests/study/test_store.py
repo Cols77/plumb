@@ -310,7 +310,8 @@ def test_sr294_ex9_not_now_writes_nothing_and_the_room_lists_no_idea(intent: Pat
 @pytest.mark.sr("SR-371")
 def test_sr371_ex2_ex3_progress_shows_while_written_and_goes_with_the_study(
         intent: Path, tmp_path: Path) -> None:
-    """SR-371 EX-2, EX-3: `study progress` is kept on the accepted study and `add` clears it."""
+    """SR-371 EX-2, EX-3: `study progress` is kept on the accepted study; `add` of a study with no clip
+    clears it at once."""
     assert _propose(intent, "How plumb's background jobs run") == 0
     slug = _idea(intent)
     study.choose(intent, slug, "diagrams")

@@ -305,8 +305,13 @@ for (const surface of SURFACES) {
       await $.tool.call({ tool: 'Bash', command: 'plumb study progress x' } as any)
       expect((await ui.find({ type: 'Text', text: /^writing study/ }))?.text).toBe(`writing study: ${IDEA_TITLE} · scene 1`)
       expect((await ui.find({ type: 'Text', text: /60%/ }))?.text).toBe('▰▰▰▱▱ 60%')
-      w.files[IDEA] = idea('new', 'video')
+      // added with clips still to render: the study is new and the line stays with its progress
+      w.files[IDEA] = idea('new', 'video').replace(/status: "new"\n/, 'status: "new"\nprogress: {"step": "clip 1 renders", "done": 4, "total": 5}\n')
       await $.tool.call({ tool: 'Bash', command: 'plumb study add x' } as any)
+      expect((await ui.find({ type: 'Text', text: /^writing study/ }))?.text).toBe(`writing study: ${IDEA_TITLE} · clip 1 renders`)
+      // the last clip passed its check (or --finish): the progress is gone, the line with it
+      w.files[IDEA] = idea('new', 'video')
+      await $.tool.call({ tool: 'Bash', command: 'plumb study check x' } as any)
       expect(await ui.find({ type: 'Text', text: /^writing study/ })).toBeUndefined()
       await ui.unmount()
     })
