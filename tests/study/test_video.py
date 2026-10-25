@@ -446,3 +446,29 @@ def test_sr371_ex3_finish_ends_the_progress(repo: Path) -> None:
     study.add(repo, SLUG, BODY)
     assert _study(repo, "progress", SLUG, "--finish") == 0
     assert "progress" not in study.get(repo, SLUG)
+
+
+@pytest.mark.sr("SR-371")
+def test_sr371_a_dict_field_written_as_a_python_repr_is_read_back_and_every_command_keeps_dicts(
+        repo: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
+    """A stale process once rewrote `clips` and `progress` as quoted Python reprs; the study
+    still checks, progresses and renders, and every write puts the dicts back."""
+    assert _study(repo, "propose", "--title", TITLE, "--why", "the owner asked",
+                  "--depth", "video", "--asked") == 0
+    study.choose(repo, SLUG, "video")
+    assert _study(repo, "progress", SLUG, "--step", "x", "--done", "8", "--total", "10") == 0
+    study.add(repo, SLUG, BODY)
+    _rendered(repo, tmp_path)
+    file = study.folder(repo) / f"{SLUG}.md"
+    text = file.read_text(encoding="utf-8")
+    for key in ("clips", "progress"):       # what the stale writer left
+        held = study.get(repo, SLUG)[key]
+        text = "\n".join(f"{key}: {json.dumps(str(held))}" if ln.startswith(f"{key}: ") else ln
+                         for ln in text.split("\n"))
+    file.write_text(text, encoding="utf-8")
+    assert _state(repo) == "checking" and study.get(repo, SLUG)["progress"]["done"] == 8
+    assert _study(repo, "progress", SLUG, "--step", "y", "--done", "9", "--total", "10") == 0
+    assert _study(repo, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", "agent-2") == 0
+    got = study.get(repo, SLUG)
+    assert isinstance(got["clips"], dict) and "progress" not in got
+    assert 'clips: {"' in file.read_text(encoding="utf-8")
