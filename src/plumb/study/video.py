@@ -1,8 +1,10 @@
-"""Video studies (SR-316, SR-318, SR-364, SR-365, SR-366; INT-093, INT-111): the storyboard that
-comes first, the Manim render in the background, the subtitle track from the beats, the frames
-for an independent reviewer and the reviewer's verdict. The files of study ``<slug>`` sit in
-``.plumb/studies/``: ``.storyboard.json``, ``.py``, ``.mp4``, ``.vtt``, ``.check.json``; the
-frames go to ``.plumb/cache/studies/<slug>/`` (not committed)."""
+"""Video clips of a study (SR-316, SR-318, SR-364, SR-365, SR-366, SR-370; INT-093, INT-111):
+the storyboard that comes first, the Manim render in the background, the subtitle track from the
+beats, the frames for an independent reviewer and the reviewer's verdict. A clip is a fenced
+```video block in the study's body naming it; its state sits in the study's ``clips`` field and
+its files in ``.plumb/studies/``: ``<slug>.<clip>.storyboard.json``, ``.py``, ``.mp4``,
+``.vtt``, ``.check.json``; the frames go to ``.plumb/cache/studies/<slug>/<clip>/`` (not
+committed)."""
 
 from __future__ import annotations
 
@@ -18,16 +20,21 @@ from typing import Any
 
 from plumb import study
 
-MAX_SECONDS = 90
-BEATS = (3, 6)
+CLIP = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
+_FENCE = re.compile(r"^```video[ \t]*\n(.*?)\n```", re.M | re.S)
 
 
-def path(root: Path, slug: str, suffix: str) -> Path:
-    return study.folder(root) / f"{slug}{suffix}"
+def clips_in(body: str) -> list[str]:
+    """The clip names a study's body places, in order (SR-370)."""
+    return [m.group(1).strip() for m in _FENCE.finditer(body)]
 
 
-def frames_dir(root: Path, slug: str) -> Path:
-    return Path(root) / ".plumb" / "cache" / "studies" / slug
+def path(root: Path, slug: str, clip: str, suffix: str) -> Path:
+    return study.folder(root) / f"{slug}.{clip}{suffix}"
+
+
+def frames_dir(root: Path, slug: str, clip: str) -> Path:
+    return Path(root) / ".plumb" / "cache" / "studies" / slug / clip
 
 
 def _words(text: Any) -> int:
@@ -41,9 +48,9 @@ def problems(sb: Any) -> list[str]:
     out = [f"the storyboard has no {k}" for k in ("question", "goals", "context")
            if not sb.get(k)]
     beats = [b for b in sb.get("beats") or () if isinstance(b, dict)]
-    if not BEATS[0] <= len(beats) <= BEATS[1] or len(beats) != len(sb.get("beats") or ()):
-        out.append(f"the video must fit in {BEATS[0]} to {BEATS[1]} beats and {MAX_SECONDS} "
-                   f"seconds (the storyboard has {len(sb.get('beats') or ())} beats)")
+    # the agent decides how many beats and how long (DEC-366); each beat is an object
+    if not beats or len(beats) != len(sb.get("beats") or ()):
+        out.append("the storyboard needs its beats, each an object")
     for n, b in enumerate(beats, 1):
         if not str(b.get("subtitle") or "").strip():
             out.append(f"beat {n} has no subtitle")
@@ -55,32 +62,35 @@ def problems(sb: Any) -> list[str]:
                 out.append(f"beat {n} needs at least {need:g} seconds for its subtitle")
         except (TypeError, ValueError):
             out.append(f"beat {n} has no seconds")
-    try:
-        if sum(float(b.get("seconds")) for b in beats) > MAX_SECONDS:
-            out.append(f"the video must fit in {BEATS[0]} to {BEATS[1]} beats and "
-                       f"{MAX_SECONDS} seconds (the beats add up to more)")
-    except (TypeError, ValueError):
-        pass
     if beats and beats[-1].get("recap") is not True:
         out.append("the last beat must recap the goals (recap: true) and point to the text")
     return out
 
 
-def storyboard(root: Path, slug: str, raw: str) -> None:
+def _clip(found: dict[str, Any], clip: str) -> dict[str, Any]:
+    """The clip's state; a clip the body does not place is refused (SR-370)."""
+    if clip not in clips_in(found["body"]):
+        raise ValueError(f"the study {found['title']} places no clip {clip!r}: write it in the "
+                         "body as a ```video block first")
+    held = (found.get("clips") or {}).get(clip) or {}
+    return {"state": "", "reason": "", "revisions": 0, **held}
+
+
+def storyboard(root: Path, slug: str, clip: str, raw: str) -> None:
     """Keep a valid storyboard beside the study (SR-364 EX-1); a refusal names what is missing."""
-    study.get(root, slug)
+    _clip(study.get(root, slug), clip)
     try:
         sb = json.loads(raw)
     except ValueError as exc:
         raise ValueError(f"the storyboard is not JSON: {exc}") from exc
     if found := problems(sb):
         raise ValueError("; ".join(found))
-    study._write(path(root, slug, ".storyboard.json"),
+    study._write(path(root, slug, clip, ".storyboard.json"),
                  json.dumps(sb, indent=2, ensure_ascii=False) + "\n")
 
 
-def _load(root: Path, slug: str) -> dict[str, Any]:
-    file = path(root, slug, ".storyboard.json")
+def _load(root: Path, slug: str, clip: str) -> dict[str, Any]:
+    file = path(root, slug, clip, ".storyboard.json")
     if not file.is_file():
         raise ValueError("no storyboard yet: plumb study storyboard first (SR-364)")
     sb = json.loads(file.read_text(encoding="utf-8"))
@@ -89,40 +99,43 @@ def _load(root: Path, slug: str) -> dict[str, Any]:
     return sb
 
 
-def _set(root: Path, slug: str, video: str, reason: str = "", revisions: int | None = None) -> None:
+def _set(root: Path, slug: str, clip: str, state: str, reason: str = "",
+         revisions: int | None = None) -> None:
     found = study.get(root, slug)
-    fields = {**study._fields(found), "video": video, "video_reason": reason,
-              "revisions": found.get("revisions") or 0 if revisions is None else revisions,
-              "status": found["status"]}
-    fields["revisions"] = int(fields["revisions"])
-    study._write(study.folder(root) / f"{slug}.md", study._front(fields) + found["body"])
+    held = _clip(found, clip)
+    clips = {**(found.get("clips") or {}), clip: {
+        "state": state, "reason": reason,
+        "revisions": int(held["revisions"] if revisions is None else revisions)}}
+    study._write(study.folder(root) / f"{slug}.md", study._front(
+        {**study._fields(found), "clips": clips, "status": found["status"]}) + found["body"])
 
 
-def render(root: Path, slug: str, scene: Path) -> None:
-    """Start the background render (SR-316 EX-1) and return at once."""
+def render(root: Path, slug: str, clip: str, scene: Path) -> None:
+    """Start the clip's background render (SR-316 EX-1) and return at once."""
     found = study.get(root, slug)
     if found.get("depth") != "video":
         raise ValueError(f"the study {found['title']} was not chosen at depth video: no render")
-    _load(root, slug)
+    held = _clip(found, clip)
+    _load(root, slug, clip)
     source = Path(scene).read_text(encoding="utf-8")
     if re.search(r"^\s*(from|import)\s+manimlib\b", source, re.M):
         raise ValueError("the scene imports manimlib: use Manim Community Edition "
                          "(from manim import *)")
-    state, revisions = found.get("video", ""), int(found.get("revisions") or 0)
+    state, revisions = held["state"], int(held["revisions"])
     if state == "rendering":
-        raise ValueError("a render of this study is already running")
+        raise ValueError(f"a render of the clip {clip} is already running")
     if state == "failed":
         if revisions:
-            raise ValueError("the video failed after its one revision: no further render "
-                             f"({found.get('video_reason', '')})")
+            raise ValueError(f"the clip {clip} failed after its one revision: no further render "
+                             f"({held['reason']})")
         revisions = 1
-    study._write(path(root, slug, ".py"), source)
-    path(root, slug, ".check.json").unlink(missing_ok=True)
-    _set(root, slug, "rendering", "", revisions)
+    study._write(path(root, slug, clip, ".py"), source)
+    path(root, slug, clip, ".check.json").unlink(missing_ok=True)
+    _set(root, slug, clip, "rendering", "", revisions)
     from plumb.background import popen_options
 
     subprocess.Popen([sys.executable, "-m", "plumb", "study", "render-job", slug,
-                      "--root", str(root)], **popen_options(root))
+                      "--clip", clip, "--root", str(root)], **popen_options(root))
 
 
 def run_manim(scene: Path, media: Path) -> Path:
@@ -186,40 +199,40 @@ def extract_frames(mp4: Path, sb: dict[str, Any], out: Path) -> list[Path]:
     return saved
 
 
-def job(root: Path, slug: str) -> None:
-    """The background render: ``checking`` when it made the video, ``failed`` with the scene's
+def job(root: Path, slug: str, clip: str) -> None:
+    """The background render: ``checking`` when it made the clip, ``failed`` with the scene's
     last error line when it did not; nothing retries (SR-316 EX-3)."""
     try:
-        sb = _load(root, slug)
+        sb = _load(root, slug, clip)
         with tempfile.TemporaryDirectory() as tmp:
-            mp4 = run_manim(path(root, slug, ".py"), Path(tmp))
-            shutil.move(mp4, path(root, slug, ".mp4"))    # replaces an older one (SR-318 EX-3)
-        study._write(path(root, slug, ".vtt"), vtt(sb))
-        extract_frames(path(root, slug, ".mp4"), sb, frames_dir(root, slug))
-    except Exception as exc:    # the study keeps its text and says why
-        _set(root, slug, "failed", f"the video could not be rendered: {exc}")
+            mp4 = run_manim(path(root, slug, clip, ".py"), Path(tmp))
+            shutil.move(mp4, path(root, slug, clip, ".mp4"))   # replaces an older one (SR-318 EX-3)
+        study._write(path(root, slug, clip, ".vtt"), vtt(sb))
+        extract_frames(path(root, slug, clip, ".mp4"), sb, frames_dir(root, slug, clip))
+    except Exception as exc:    # the rest of the study stays and the clip's place says why
+        _set(root, slug, clip, "failed", f"the video could not be rendered: {exc}")
         return
-    _set(root, slug, "checking")
+    _set(root, slug, clip, "checking")
 
 
-def frames(root: Path, slug: str) -> dict[str, Any]:
+def frames(root: Path, slug: str, clip: str) -> dict[str, Any]:
     """What the independent reviewer sees (SR-366 EX-3): storyboard, subtitle cues, frames."""
-    sb = _load(root, slug)
-    shots = sorted(frames_dir(root, slug).glob("*.png"))
+    sb = _load(root, slug, clip)
+    shots = sorted(frames_dir(root, slug, clip).glob("*.png"))
     if not shots:
-        raise LookupError(f"no frames for {slug}: the render has not ended")
+        raise LookupError(f"no frames for {slug} {clip}: the render has not ended")
     return {"storyboard": sb, "cues": cues(sb), "frames": [str(p) for p in shots]}
 
 
-def check(root: Path, slug: str, ok: bool, reason: str, reviewer: str) -> None:
+def check(root: Path, slug: str, clip: str, ok: bool, reason: str, reviewer: str) -> None:
     """The reviewer's verdict, kept beside the study (SR-366 EX-1, EX-2, EX-4)."""
     found = study.get(root, slug)
-    if found.get("video") != "checking":
-        raise ValueError(f"the video of {found['title']} is not waiting for a check")
+    if _clip(found, clip)["state"] != "checking":
+        raise ValueError(f"the clip {clip} of {found['title']} is not waiting for a check")
     if not reviewer.strip() or (not ok and not reason.strip()):
         raise ValueError("a check names its reviewer, and a fail gives the reason (the beat "
                          "that failed and why)")
-    study._write(path(root, slug, ".check.json"), json.dumps(
+    study._write(path(root, slug, clip, ".check.json"), json.dumps(
         {"verdict": "pass" if ok else "fail", "reason": reason.strip(),
          "reviewer": reviewer.strip()}, indent=2, ensure_ascii=False) + "\n")
-    _set(root, slug, "ready" if ok else "failed", "" if ok else reason.strip())
+    _set(root, slug, clip, "ready" if ok else "failed", "" if ok else reason.strip())

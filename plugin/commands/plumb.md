@@ -69,8 +69,10 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
   offers it and they pick the depth there; write nothing before they do. Once picked, run
   `plumb study gather <slug> --json`, write from those records only (none: say no record
   covers it), then `plumb study add <slug> --records <their IDs> --file <body.md>`.
-  At depth video, follow ${CLAUDE_PLUGIN_ROOT}/skills/plumb-study-video/SKILL.md: plan what
-  the viewer must understand, and subtitle every beat so the video explains, not just shows.
+  At depth video, follow ${CLAUDE_PLUGIN_ROOT}/skills/plumb-study-video/SKILL.md before
+  writing: compose text, diagrams and clips, each where it teaches, and subtitle every beat
+  of a clip so it explains, not just shows. Each clip goes through `plumb study storyboard`,
+  `plumb study render`, `plumb study frames` and `plumb study check` with `--clip`.
 - `view`: run `plumb view --open` and tell them the Obsidian vault is open (generated;
   editing a note approves nothing).
 - `inflight` ("what are the other branches working on?"): run `plumb inflight` and answer

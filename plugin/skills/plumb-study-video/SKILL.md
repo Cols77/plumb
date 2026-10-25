@@ -1,27 +1,42 @@
 ---
 name: plumb-study-video
-description: Writes a study as a short explainer video with Manim (storyboard, scene, render, independent frame check). Use when the owner accepted a study idea at depth video. Not for text or diagram studies.
+description: Composes a study at depth video as a mix of text, mermaid diagrams and short Manim clips placed where each helps (storyboard, scene, render, independent frame check per clip). Use when the owner accepted a study idea at depth video. Not for text or diagram studies.
 ---
 # plumb-study-video
 
-The owner picked depth `video` for an accepted study. A video that does not teach is worse
-than none: decide what the owner must understand, then show only that.
+The owner picked depth `video` for an accepted study: the ceiling of the mix, not an order to
+make a film. You compose the study from three parts and place each where it teaches best. A
+part that does not teach is worse than none.
 
-1. Text first, as for any study: `plumb study gather <slug> --json`, write from those
-   records only, `plumb study add <slug> --records <IDs> --file <body.md>`.
-2. Storyboard (JSON file), then `plumb study storyboard <slug> --file <storyboard.json>`:
-   - `question`: the one question the video answers.
+1. Plan the mix first, from `plumb study gather <slug> --json` (write from those records
+   only). Text is the spine: the why, the trade-offs, the examples. Use a part only where it
+   beats text:
+   - a ```mermaid diagram for structure that holds still (what sits where, what calls what);
+   - a clip for what moves: a sequence, a record going through stages, a state that changes,
+     where seeing it run is what makes it click. Never a clip that only restates a diagram.
+   The number and length of clips are yours (DEC-366); none at all is a valid mix.
+2. Write the body once, with each clip as a fenced block naming it at its place:
+   ````
+   ```video
+   one-record
+   ```
+   ````
+   Names: lower-case letters, digits, dashes, each once. The text around a clip says what to
+   watch for, so the clip is never floating. `plumb study add <slug> --records <IDs>
+   --file <body.md>`. The room shows 'video rendering…' at each clip's place until it passes.
+3. For each clip, its storyboard (JSON file), then
+   `plumb study storyboard <slug> --clip <name> --file <storyboard.json>`:
+   - `question`: the one question the clip answers.
    - `goals`: 2 to 3 things the viewer understands afterwards.
-   - `context`: where this sits in plumb and which records it comes from, so it is not floating.
-   - `beats`: 3 to 6, each `{shows, subtitle, seconds}`. `shows` is what is on screen;
-     `subtitle` explains it in plain words; the last beat has `recap: true` and restates the goals.
-   - At most 90 s in all; each beat at least max(1.5, words in its subtitle / 3) s.
-   - Each beat must add understanding. Cut a beat that only decorates.
+   - `context`: where this sits in plumb and which records it comes from.
+   - `beats`: each `{shows, subtitle, seconds}`. `shows` is what is on screen; `subtitle`
+     explains it in plain words; the last beat has `recap: true` and restates the goals.
+   - Each beat at least max(1.5, words in its subtitle / 3) s. Cut a beat that only decorates.
    - Check every claim against the code and the records before writing it: scope words
      ("every", "only", "never") hold for all cases or are narrowed. Each subtitle says why
      the step exists, not only what the picture shows.
-3. Scene (a `.py` file), by the rules in `vendor/manimce-best-practices/SKILL.md` (and
-   `vendor/manim-composer/SKILL.md` for planning; skip its questions to the user and its
+4. Scene (a `.py` file per clip), by the rules in `vendor/manimce-best-practices/SKILL.md`
+   (and `vendor/manim-composer/SKILL.md` for planning; skip its questions to the user and its
    scenes.md: the accepted idea and the storyboard take their place):
    - `from manim import *`. Never `manimlib`, never `from manimlib import *`: it is the
      other library and plumb refuses it.
@@ -35,13 +50,15 @@ than none: decide what the owner must understand, then show only that.
    - Never put the owner's private material in a committed study.
    - Before `study render`, dry-render it yourself (`python -m manim -ql` in the scratchpad)
      and look at each beat's midpoint frame; fix the layout there, not with the one revision.
-4. `plumb study render <slug> --scene <scene.py>` returns at once; the video renders in the
-   background. Do not wait.
-5. When plumb says the video rendered: run an INDEPENDENT reviewer with the Agent tool, a
-   fresh agent that did not write the scene. Give it `plumb study frames <slug> --json`
-   (storyboard, cues, frame PNG paths; it opens the PNGs) and ask: does each frame show its
-   beat, and does the video meet its goals and answer its question? It answers pass or fail
-   with reasons.
-6. Record it: `plumb study check <slug> --pass|--fail --reason "<its reasons>" --reviewer <agent>`.
-7. On a fail, revise the scene once on the reviewer's reasons (step 3, then 4 to 6). A second
-   fail stands: the study keeps its text and the reason.
+5. `plumb study render <slug> --clip <name> --scene <scene.py>` returns at once; the clip
+   renders in the background. Do not wait.
+6. When plumb says a clip rendered: run an INDEPENDENT reviewer with the Agent tool, a fresh
+   agent that did not write the scene. Give it `plumb study frames <slug> --clip <name>
+   --json` (storyboard, cues, frame PNG paths; it opens the PNGs) and the study's body, and
+   ask: does each frame show its beat, does the clip meet its goals and answer its question,
+   and does it add something the text and diagrams around it do not? Pass or fail, with
+   reasons.
+7. Record it: `plumb study check <slug> --clip <name> --pass|--fail --reason "<its reasons>"
+   --reviewer <agent>`.
+8. On a fail, revise that clip once on the reviewer's reasons (steps 3 to 7). A second fail
+   stands: its place says why, and the rest of the study stays.

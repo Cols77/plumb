@@ -3,6 +3,7 @@
   // answer to a session (DEC-152). A study about a conflict lays out both sides; no choice here.
   import { onMount, tick } from 'svelte';
   import { api, apiBlob } from '../lib/api';
+  import { placeClips } from '../lib/clips';
   import { drawDiagrams, studyHtml } from '../lib/markdown';
   import type { Study, StudyList, Understanding } from '../lib/types';
   let { capability }: { capability: string } = $props();
@@ -13,25 +14,22 @@
   const html = $derived(studyHtml(open?.body ?? ''));
   // SR-293: the diagrams are drawn once the study's HTML is in place
   $effect(() => { void html; const el = bodyEl; if (el) void tick().then(() => drawDiagrams(el)); });
-  // SR-319, SR-365: a ready video and its subtitle track are fetched with the capability into
-  // object URLs (a <video> cannot send the header), revoked when the study changes
-  let videoUrl = $state(''); let trackUrl = $state(''); let videoNote = $state('');
-  const ready = $derived(open?.video === 'ready' ? open.slug : '');
+  // SR-319, SR-365, SR-370: each clip plays at its place in the body; its object URLs are
+  // revoked when the study or a clip's state changes
+  const clipsKey = $derived(JSON.stringify(open?.clips ?? {}));
   $effect(() => {
-    const slug = ready; videoUrl = trackUrl = videoNote = '';
-    if (!slug) return;
+    void html; const key = clipsKey; const el = bodyEl; const slug = open?.slug;
+    if (!el || !slug) return;
     let gone = false; const made: string[] = [];
-    const fetchUrl = async (kind: string) => { const url = URL.createObjectURL(await apiBlob(`/api/studies/${encodeURIComponent(slug)}/media/${kind}`, capability)); if (gone) URL.revokeObjectURL(url); else made.push(url); return url; };
-    void (async () => {
-      const [video, track] = await Promise.allSettled([fetchUrl('video'), fetchUrl('subtitles')]);
-      if (gone) return;
-      if (video.status === 'fulfilled') { videoUrl = video.value; if (track.status === 'fulfilled') trackUrl = track.value; else videoNote = 'Subtitles are unavailable.'; }
-      else videoNote = 'The video is unavailable.';
-    })();
+    const fetchUrl = async (clip: string, kind: string) => { const url = URL.createObjectURL(await apiBlob(`/api/studies/${encodeURIComponent(slug)}/media/${encodeURIComponent(clip)}/${kind}`, capability)); if (gone) URL.revokeObjectURL(url); else made.push(url); return url; };
+    void tick().then(() => gone ? undefined : placeClips(el, JSON.parse(key), fetchUrl, () => gone));
     return () => { gone = true; made.forEach((url) => URL.revokeObjectURL(url)); };
   });
   async function load() {
-    try { const data = await api<StudyList>('/api/studies', capability); studies = data.studies; understanding = data.understanding; if (selected === UNDERSTANDING && !busy) draft = understanding.text; error = ''; }
+    try { const data = await api<StudyList>('/api/studies', capability); studies = data.studies; understanding = data.understanding; if (selected === UNDERSTANDING && !busy) draft = understanding.text; error = '';
+      // a clip that finished rendering shows without reopening the study (SR-316 EX-2)
+      const fresh = studies.find((s) => s.slug === open?.slug);
+      if (open && fresh && JSON.stringify(fresh.clips ?? {}) !== JSON.stringify(open.clips ?? {})) open = {...open, clips: fresh.clips}; }
     catch (cause) { error = cause instanceof Error ? cause.message : 'Unable to load the studies.'; }
   }
   async function choose(slug: string) {
@@ -74,12 +72,6 @@
       <p class="issue-lead">{open.why}</p>
       <!-- SR-360 EX-2: a record it was written from changed; the band offers the rewrite -->
       {#if open.changed}<p class="receipt" role="status">out of date: {open.changed} changed</p>{/if}
-      {#if open.video === 'ready'}
-        <!-- svelte-ignore a11y_media_has_caption -->
-        {#if videoUrl}<video class="study-video" controls src={videoUrl}>{#if trackUrl}<track kind="subtitles" srclang="en" label="Explanations" src={trackUrl} default />{/if}</video>{/if}
-        {#if videoNote}<p class="muted" role="status">{videoNote}</p>{/if}
-      {:else if open.video === 'rendering' || open.video === 'checking'}<p class="muted" role="status">video rendering…</p>
-      {:else if open.video === 'failed'}<p class="muted" role="status">The video could not be shown: {open.video_reason}</p>{/if}
       <div class="study-body" bind:this={bodyEl}>{@html html}</div>
       <div class="answer-buttons"><button class="primary" disabled={busy} onclick={() => void mark('known')}>I know this</button><button disabled={busy} onclick={() => void mark('deeper')}>Go deeper</button></div>
       <p class="muted">These correct your understanding only; they answer nothing in a session.</p>

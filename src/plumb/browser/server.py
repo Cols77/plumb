@@ -127,7 +127,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, service.save_understanding(payload))
                 return
             match = re.fullmatch(
-                r"/api/studies/([A-Za-z0-9][A-Za-z0-9-]{0,79})/media/(video|subtitles)", path)
+                r"/api/studies/([A-Za-z0-9][A-Za-z0-9-]{0,79})/media/([a-z0-9][a-z0-9-]{0,39})/"
+                r"(video|subtitles)", path)
             if match and self.command == "GET":
                 self._send(200, *service.study_media(*match.groups()))
                 return

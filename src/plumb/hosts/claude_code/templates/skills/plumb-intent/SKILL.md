@@ -82,8 +82,9 @@ the meaning changed.
 Studies: write none before the owner accepts its idea. When plumb tells you an idea was
 accepted or a rewrite asked (the prompt's line, or `accepted` in the candidates), first run
 `{plumb} study gather <slug> --json`: the records on its topic, their examples and test states.
-Write from that set only, at that depth, in plain words, a mermaid diagram only at depth
-`diagrams` and none at `md`; a topic no record covers: say so. Then `{plumb} study add <slug>
+Write from that set only, at that depth, in plain words: the depth caps the mix (SR-370), no
+diagram at `md`, diagrams where they help at `diagrams`, and at `video` diagrams and clips by
+the plumb-study-video skill; a topic no record covers: say so. Then `{plumb} study add <slug>
 --records <the IDs you drew on> --file <body.md>`; the band announces it and the owner
 reads it in the room when they choose. Never open the room, and never take 'I know this' or
 'Go deeper' as an answer: they correct the picture only.

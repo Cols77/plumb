@@ -115,7 +115,7 @@ def _parse(path: Path) -> dict[str, Any] | None:
         return None
     if not isinstance(fields, dict) or fields.get("status") not in STATUSES:
         return None
-    return {**{k: v if isinstance(v, list) else str(v) if v is not None else ""
+    return {**{k: v if isinstance(v, (list, dict)) else str(v) if v is not None else ""
                for k, v in fields.items()},
             "slug": path.stem, "body": body}
 
@@ -256,10 +256,11 @@ def accepted_lines(root: Path) -> list[str]:
         f"plumb: the owner asked to rewrite the study '{s['title']}' at depth {s['depth']}: "
         f"{s['changed']} changed; {_write_it(s)}"
         for s in studies(root) if s["status"] in WRITTEN and s.get("refresh") == "asked"] + [
-        f"plumb: the video of '{s['title']}' rendered: have an independent reviewer agent check "
-        f"it: plumb study frames {s['slug']}, then plumb study check {s['slug']} "
-        "--pass|--fail --reason ... --reviewer <agent>"
-        for s in studies(root) if s.get("video") == "checking"]
+        f"plumb: the clip {c} of '{s['title']}' rendered: have an independent reviewer agent "
+        f"check it: plumb study frames {s['slug']} --clip {c}, then plumb study check "
+        f"{s['slug']} --clip {c} --pass|--fail --reason ... --reviewer <agent>"
+        for s in studies(root) for c, held in (s.get("clips") or {}).items()
+        if isinstance(held, dict) and held.get("state") == "checking"]
 
 
 NO_RECORD = "No record in plumb covers this topic."
@@ -277,8 +278,19 @@ def add(root: Path, slug: str, body: str, records: list[dict[str, str]] | None =
                          + (" yet: propose it and wait" if found["status"] == "idea" else ""))
     if not body.strip():
         raise ValueError("a study needs a body")
+    from plumb.study import video
+
+    # SR-370: the depth is a ceiling on the mix the agent composes (DEC-362)
     if found.get("depth") == "md" and "```mermaid" in body:
         raise ValueError("the owner chose Markdown only: the study has no diagram")
+    clips = video.clips_in(body)
+    if clips and found.get("depth") != "video":
+        raise ValueError(f"the owner chose {found.get('depth')}: the study has no video block "
+                         f"(```video {clips[0]})")
+    for c in clips:
+        if not video.CLIP.fullmatch(c) or clips.count(c) > 1:
+            raise ValueError("each video block names one clip once, in lower-case letters, "
+                             f"digits and dashes: {c!r}")
     records = list(records or [])
     head = "" if records or NO_RECORD in body else NO_RECORD + "\n\n"
     tail = ("\n\nWritten from: " + ", ".join(f"{r['id']} {r['title']}" for r in records)

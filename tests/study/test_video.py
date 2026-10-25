@@ -1,5 +1,6 @@
-"""Video studies that teach (SR-316, SR-318, SR-364, SR-365, SR-366; INT-093, INT-111): the
-storyboard first, the background render, the subtitle track, the reviewer's frame check."""
+"""Video clips that teach (SR-316, SR-318, SR-364, SR-365, SR-366, SR-370; INT-093, INT-111):
+the mix the body composes, the storyboard first, the background render, the subtitle track, the
+reviewer's frame check."""
 
 from __future__ import annotations
 
@@ -17,6 +18,8 @@ from plumb.study import cli, video
 
 TITLE = "How the judge cascade runs"
 SLUG = "how-the-judge-cascade-runs"
+CLIP = "cascade"
+BODY = "The cascade asks the judges in turn.\n\n```video\ncascade\n```\n\nThen it builds.\n"
 SCENE = "from manim import *\n\nclass S(Scene):\n    def construct(self):\n        self.wait(1)\n"
 
 
@@ -55,12 +58,21 @@ def _fake_mp4(path: Path, seconds: int = 4) -> Path:
     return path
 
 
-@pytest.fixture
-def accepted(repo: Path) -> Path:
+def _accept(repo: Path, body: str = BODY) -> Path:
     assert _study(repo, "propose", "--title", TITLE, "--why", "the owner asked",
                   "--depth", "video", "--asked") == 0
     study.choose(repo, SLUG, "video")
+    study.add(repo, SLUG, body)
     return repo
+
+
+@pytest.fixture
+def accepted(repo: Path) -> Path:
+    return _accept(repo)
+
+
+def _state(repo: Path, key: str = "state") -> Any:
+    return ((study.get(repo, SLUG).get("clips") or {}).get(CLIP) or {}).get(key, "")
 
 
 @pytest.fixture
@@ -84,14 +96,14 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _render(repo: Path, tmp_path: Path, board: dict[str, Any] | None = None) -> int:
-    assert _study(repo, "storyboard", SLUG, "--file",
+    assert _study(repo, "storyboard", SLUG, "--clip", CLIP, "--file",
                   _file(tmp_path, "sb.json", json.dumps(board or _board()))) == 0
-    return _study(repo, "render", SLUG, "--scene", _file(tmp_path, "f.py", SCENE))
+    return _study(repo, "render", SLUG, "--clip", CLIP, "--scene", _file(tmp_path, "f.py", SCENE))
 
 
 def _rendered(repo: Path, tmp_path: Path) -> None:
     assert _render(repo, tmp_path) == 0
-    video.job(repo, SLUG)
+    video.job(repo, SLUG, CLIP)
 
 
 # ------------------------------------------------------------------------ SR-316
@@ -101,20 +113,19 @@ def _rendered(repo: Path, tmp_path: Path) -> None:
 def test_sr316_ex1_render_starts_in_the_background_and_the_turn_does_not_wait(
         accepted: Path, tmp_path: Path, popen: list[Any]) -> None:
     assert _render(accepted, tmp_path) == 0
-    held = study.get(accepted, SLUG)
-    assert held["video"] == "rendering" and held["depth"] == "video"
+    assert _state(accepted) == "rendering" and study.get(accepted, SLUG)["depth"] == "video"
     [cmd] = popen
     assert cmd[:3] == [sys.executable, "-m", "plumb"] and "render-job" in cmd
-    assert video.path(accepted, SLUG, ".py").read_text(encoding="utf-8") == SCENE
+    assert video.path(accepted, SLUG, CLIP, ".py").read_text(encoding="utf-8") == SCENE
 
 
 @pytest.mark.sr("SR-316")
 def test_sr316_ex2_a_passed_check_shows_the_video(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
     _rendered(accepted, tmp_path)
-    assert study.get(accepted, SLUG)["video"] == "checking"
-    assert _study(accepted, "check", SLUG, "--pass", "--reviewer", "agent-2") == 0
-    assert study.get(accepted, SLUG)["video"] == "ready"
+    assert _state(accepted) == "checking"
+    assert _study(accepted, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", "agent-2") == 0
+    assert _state(accepted) == "ready"
 
 
 @pytest.mark.sr("SR-316")
@@ -125,9 +136,8 @@ def test_sr316_ex3_a_scene_error_keeps_the_text_says_why_and_retries_nothing(
 
     monkeypatch.setattr(video, "run_manim", broken)
     assert _render(accepted, tmp_path) == 0
-    video.job(accepted, SLUG)
-    held = study.get(accepted, SLUG)
-    assert held["video"] == "failed" and "NameError" in held["video_reason"]
+    video.job(accepted, SLUG, CLIP)
+    assert _state(accepted) == "failed" and "NameError" in _state(accepted, "reason")
     assert len(popen) == 1
 
 
@@ -138,9 +148,9 @@ def test_sr316_ex4_other_depths_start_no_render(
         slug = study.propose(repo, title=f"A {depth} study", why="w", depth=depth, loop="l",
                              step="s", asked=True)
         assert study.choose(repo, slug, depth)["status"] == "accepted"
-        assert study.get(repo, slug).get("video", "") == ""
+        study.add(repo, slug, "Text.")
         with pytest.raises(ValueError, match="depth video"):
-            video.render(repo, slug, Path(_file(tmp_path, "x.py", SCENE)))
+            video.render(repo, slug, CLIP, Path(_file(tmp_path, "x.py", SCENE)))
     assert popen == []
 
 
@@ -155,15 +165,14 @@ def test_sr316_ex5_a_real_render_of_plain_text_without_latex(
         {"shows": "one", "subtitle": "First.", "seconds": 1.5},
         {"shows": "two", "subtitle": "Second.", "seconds": 1.5},
         {"shows": "the recap", "subtitle": "Recap.", "seconds": 1.5, "recap": True}])
-    assert _study(accepted, "storyboard", SLUG, "--file",
+    assert _study(accepted, "storyboard", SLUG, "--clip", CLIP, "--file",
                   _file(tmp_path, "sb.json", json.dumps(board))) == 0
-    assert _study(accepted, "render", SLUG, "--scene", _file(tmp_path, "f.py", scene)) == 0
-    video.job(accepted, SLUG)       # the real Manim
-    held = study.get(accepted, SLUG)
-    assert held["video"] == "checking", held.get("video_reason")
-    assert video.path(accepted, SLUG, ".mp4").stat().st_size > 0
-    assert video.path(accepted, SLUG, ".vtt").read_text(encoding="utf-8").startswith("WEBVTT")
-    assert len(list(video.frames_dir(accepted, SLUG).glob("*.png"))) == 4
+    assert _study(accepted, "render", SLUG, "--clip", CLIP, "--scene", _file(tmp_path, "f.py", scene)) == 0
+    video.job(accepted, SLUG, CLIP)       # the real Manim
+    assert _state(accepted) == "checking", _state(accepted, "reason")
+    assert video.path(accepted, SLUG, CLIP, ".mp4").stat().st_size > 0
+    assert video.path(accepted, SLUG, CLIP, ".vtt").read_text(encoding="utf-8").startswith("WEBVTT")
+    assert len(list(video.frames_dir(accepted, SLUG, CLIP).glob("*.png"))) == 4
 
 
 # ------------------------------------------------------------------------ SR-318
@@ -173,19 +182,20 @@ def test_sr316_ex5_a_real_render_of_plain_text_without_latex(
 def test_sr318_ex1_scene_and_mp4_sit_beside_the_study(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
     _rendered(accepted, tmp_path)
-    for suffix in (".md", ".py", ".mp4", ".storyboard.json", ".vtt"):
-        assert video.path(accepted, SLUG, suffix).is_file()
-    assert study.folder(accepted) not in video.frames_dir(accepted, SLUG).parents   # not committed
+    assert (study.folder(accepted) / f"{SLUG}.md").is_file()
+    for suffix in (".py", ".mp4", ".storyboard.json", ".vtt"):
+        assert video.path(accepted, SLUG, CLIP, suffix).is_file()
+    assert study.folder(accepted) not in video.frames_dir(accepted, SLUG, CLIP).parents   # not committed
 
 
 @pytest.mark.sr("SR-318")
 def test_sr318_ex2_a_clone_needs_no_render(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
     _rendered(accepted, tmp_path)
-    _study(accepted, "check", SLUG, "--pass", "--reviewer", "agent-2")
+    _study(accepted, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", "agent-2")
     shutil.rmtree(accepted / ".plumb" / "cache")     # a clone has the committed files only
-    assert study.get(accepted, SLUG)["video"] == "ready"
-    assert video.path(accepted, SLUG, ".mp4").is_file() and len(popen) == 1
+    assert _state(accepted) == "ready"
+    assert video.path(accepted, SLUG, CLIP, ".mp4").is_file() and len(popen) == 1
 
 
 @pytest.mark.sr("SR-318")
@@ -193,12 +203,12 @@ def test_sr318_ex3_a_changed_scene_replaces_the_mp4(
         accepted: Path, tmp_path: Path, popen: list[Any], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(video, "run_manim", lambda s, m: _fake_mp4(m / "a.mp4", 4))
     _rendered(accepted, tmp_path)
-    first = video.path(accepted, SLUG, ".mp4").read_bytes()
-    _study(accepted, "check", SLUG, "--pass", "--reviewer", "agent-2")
+    first = video.path(accepted, SLUG, CLIP, ".mp4").read_bytes()
+    _study(accepted, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", "agent-2")
     monkeypatch.setattr(video, "run_manim", lambda s, m: _fake_mp4(m / "b.mp4", 6))
-    assert _study(accepted, "render", SLUG, "--scene", _file(tmp_path, "g.py", SCENE + "#\n")) == 0
-    video.job(accepted, SLUG)
-    assert video.path(accepted, SLUG, ".mp4").read_bytes() != first
+    assert _study(accepted, "render", SLUG, "--clip", CLIP, "--scene", _file(tmp_path, "g.py", SCENE + "#\n")) == 0
+    video.job(accepted, SLUG, CLIP)
+    assert video.path(accepted, SLUG, CLIP, ".mp4").read_bytes() != first
 
 
 # ------------------------------------------------------------------------ SR-364
@@ -206,28 +216,28 @@ def test_sr318_ex3_a_changed_scene_replaces_the_mp4(
 
 @pytest.mark.sr("SR-364")
 def test_sr364_ex1_the_storyboard_is_kept_before_any_scene(accepted: Path, tmp_path: Path) -> None:
-    assert _study(accepted, "storyboard", SLUG, "--file",
+    assert _study(accepted, "storyboard", SLUG, "--clip", CLIP, "--file",
                   _file(tmp_path, "sb.json", json.dumps(_board()))) == 0
-    kept = json.loads(video.path(accepted, SLUG, ".storyboard.json").read_text(encoding="utf-8"))
+    kept = json.loads(video.path(accepted, SLUG, CLIP, ".storyboard.json").read_text(encoding="utf-8"))
     assert {"question", "goals", "context", "beats"} <= set(kept)
-    assert not video.path(accepted, SLUG, ".py").exists()
+    assert not video.path(accepted, SLUG, CLIP, ".py").exists()
 
 
 @pytest.mark.sr("SR-364")
 def test_sr364_ex2_a_missing_part_starts_no_render_and_is_named(
         accepted: Path, tmp_path: Path, popen: list[Any], capsys: pytest.CaptureFixture) -> None:
     scene = _file(tmp_path, "f.py", SCENE)
-    store = video.path(accepted, SLUG, ".storyboard.json")
-    assert _study(accepted, "render", SLUG, "--scene", scene) != 0      # no storyboard at all
+    store = video.path(accepted, SLUG, CLIP, ".storyboard.json")
+    assert _study(accepted, "render", SLUG, "--clip", CLIP, "--scene", scene) != 0      # no storyboard at all
     bad = _board()
     bad["beats"][1]["subtitle"] = ""
     for part, board in (("no goals", _board(goals=[])), ("no context", _board(context="")),
                         ("beat 2 has no subtitle", bad)):
         capsys.readouterr()
         store.write_text(json.dumps(board), encoding="utf-8")
-        assert _study(accepted, "render", SLUG, "--scene", scene) != 0
+        assert _study(accepted, "render", SLUG, "--clip", CLIP, "--scene", scene) != 0
         assert part in capsys.readouterr().err
-    assert popen == [] and study.get(accepted, SLUG).get("video", "") == ""
+    assert popen == [] and _state(accepted) == ""
 
 
 @pytest.mark.sr("SR-364")
@@ -235,24 +245,28 @@ def test_sr364_ex3_the_last_beat_recaps_the_goals(
         accepted: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     board = _board()
     del board["beats"][-1]["recap"]
-    assert _study(accepted, "storyboard", SLUG, "--file",
+    assert _study(accepted, "storyboard", SLUG, "--clip", CLIP, "--file",
                   _file(tmp_path, "sb.json", json.dumps(board))) != 0
     assert "recap" in capsys.readouterr().err
-    assert not video.path(accepted, SLUG, ".storyboard.json").exists()
+    assert not video.path(accepted, SLUG, CLIP, ".storyboard.json").exists()
 
 
 @pytest.mark.sr("SR-364")
-def test_sr364_ex4_eight_beats_or_over_ninety_seconds_start_no_render(
+def test_sr364_ex4_eight_beats_over_two_minutes_are_kept(accepted: Path, tmp_path: Path) -> None:
+    eight = _board(beats=[{"shows": "x", "subtitle": "Word.", "seconds": 15}] * 7
+                   + [{"shows": "x", "subtitle": "Word.", "seconds": 15, "recap": True}])
+    assert _study(accepted, "storyboard", SLUG, "--clip", CLIP, "--file",
+                  _file(tmp_path, "sb.json", json.dumps(eight))) == 0
+
+
+@pytest.mark.sr("SR-364")
+def test_sr364_ex5_a_subtitle_without_time_to_read_starts_no_render(
         accepted: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-    eight = _board(beats=[{"shows": "x", "subtitle": "Word.", "seconds": 2}] * 7
-                   + [{"shows": "x", "subtitle": "Word.", "seconds": 2, "recap": True}])
-    long = _board()
-    long["beats"][0]["seconds"] = 95
-    for board in (eight, long):
-        capsys.readouterr()
-        assert _study(accepted, "storyboard", SLUG, "--file",
-                      _file(tmp_path, "sb.json", json.dumps(board))) != 0
-        assert "3 to 6 beats and 90 seconds" in capsys.readouterr().err
+    board = _board()
+    board["beats"][0].update(subtitle=" ".join(["word"] * 30), seconds=4)
+    assert _study(accepted, "storyboard", SLUG, "--clip", CLIP, "--file",
+                  _file(tmp_path, "sb.json", json.dumps(board))) != 0
+    assert "beat 1 needs at least 10 seconds" in capsys.readouterr().err
 
 
 # ------------------------------------------------------------------------ SR-365
@@ -262,7 +276,7 @@ def test_sr364_ex4_eight_beats_or_over_ninety_seconds_start_no_render(
 def test_sr365_ex1_one_cue_per_beat_starting_with_its_beat(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
     _rendered(accepted, tmp_path)
-    text = video.path(accepted, SLUG, ".vtt").read_text(encoding="utf-8")
+    text = video.path(accepted, SLUG, CLIP, ".vtt").read_text(encoding="utf-8")
     assert text.startswith("WEBVTT\n") and text.count(" --> ") == 3
     for span in ("00:00:00.000 --> 00:00:04.000", "00:00:04.000 --> 00:00:07.000",
                  "00:00:07.000 --> 00:00:11.000"):
@@ -275,11 +289,11 @@ def test_sr365_ex3_twelve_words_stay_at_least_four_seconds(
     board = _board()
     board["beats"][0]["subtitle"] = "one two three four five six seven eight nine ten eleven twelve"
     board["beats"][0]["seconds"] = 3
-    assert _study(accepted, "storyboard", SLUG, "--file",
+    assert _study(accepted, "storyboard", SLUG, "--clip", CLIP, "--file",
                   _file(tmp_path, "sb.json", json.dumps(board))) != 0
     assert "at least 4 seconds" in capsys.readouterr().err
     board["beats"][0]["seconds"] = 4
-    assert _study(accepted, "storyboard", SLUG, "--file",
+    assert _study(accepted, "storyboard", SLUG, "--clip", CLIP, "--file",
                   _file(tmp_path, "sb.json", json.dumps(board))) == 0
     cue = video.cues(board)[0]
     assert cue["end"] - cue["start"] >= 4
@@ -293,9 +307,9 @@ def test_sr366_ex1_a_pass_keeps_the_verdict_and_the_video_is_announced(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
     _rendered(accepted, tmp_path)
     [line] = [x for x in study.accepted_lines(accepted) if "rendered" in x]
-    assert "independent reviewer agent" in line and f"plumb study check {SLUG}" in line
-    assert _study(accepted, "check", SLUG, "--pass", "--reviewer", "agent-2") == 0
-    kept = json.loads(video.path(accepted, SLUG, ".check.json").read_text(encoding="utf-8"))
+    assert "independent reviewer agent" in line and f"plumb study check {SLUG} --clip {CLIP}" in line
+    assert _study(accepted, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", "agent-2") == 0
+    kept = json.loads(video.path(accepted, SLUG, CLIP, ".check.json").read_text(encoding="utf-8"))
     assert kept["verdict"] == "pass" and kept["reviewer"] == "agent-2"
     assert not [x for x in study.accepted_lines(accepted) if "rendered" in x]
 
@@ -304,11 +318,10 @@ def test_sr366_ex1_a_pass_keeps_the_verdict_and_the_video_is_announced(
 def test_sr366_ex2_a_fail_shows_nothing_and_names_the_beat(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
     _rendered(accepted, tmp_path)
-    assert _study(accepted, "check", SLUG, "--fail", "--reviewer", "agent-2") != 0   # no reason
-    assert _study(accepted, "check", SLUG, "--fail", "--reviewer", "agent-2",
+    assert _study(accepted, "check", SLUG, "--clip", CLIP, "--fail", "--reviewer", "agent-2") != 0   # no reason
+    assert _study(accepted, "check", SLUG, "--clip", CLIP, "--fail", "--reviewer", "agent-2",
                   "--reason", "beat 2 shows no judges") == 0
-    held = study.get(accepted, SLUG)
-    assert held["video"] == "failed" and "beat 2" in held["video_reason"]
+    assert _state(accepted) == "failed" and "beat 2" in _state(accepted, "reason")
 
 
 @pytest.mark.sr("SR-366")
@@ -317,13 +330,13 @@ def test_sr366_ex3_the_reviewer_gets_storyboard_cues_and_frames(
         capsys: pytest.CaptureFixture) -> None:
     _rendered(accepted, tmp_path)
     capsys.readouterr()
-    assert _study(accepted, "frames", SLUG, "--json") == 0
+    assert _study(accepted, "frames", SLUG, "--clip", CLIP, "--json") == 0
     seen = json.loads(capsys.readouterr().out)
     assert seen["storyboard"]["goals"] and len(seen["cues"]) == 3
     assert [Path(p).name for p in seen["frames"]] == ["beat-1.png", "beat-2.png", "beat-3.png",
                                                       "last.png"]
     assert all(Path(p).is_file() for p in seen["frames"])
-    assert _study(accepted, "check", SLUG, "--pass", "--reviewer", " ") != 0     # a named reviewer
+    assert _study(accepted, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", " ") != 0     # a named reviewer
 
 
 @pytest.mark.sr("SR-366")
@@ -331,24 +344,76 @@ def test_sr366_ex4_a_failed_revision_is_final(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None,
         capsys: pytest.CaptureFixture) -> None:
     _rendered(accepted, tmp_path)
-    _study(accepted, "check", SLUG, "--fail", "--reason", "beat 1 is blank", "--reviewer", "a2")
+    _study(accepted, "check", SLUG, "--clip", CLIP, "--fail", "--reason", "beat 1 is blank", "--reviewer", "a2")
     assert _render(accepted, tmp_path) == 0          # the one revision
-    assert study.get(accepted, SLUG)["revisions"] == "1"
-    video.job(accepted, SLUG)
-    _study(accepted, "check", SLUG, "--fail", "--reason", "still blank", "--reviewer", "a3")
+    assert _state(accepted, "revisions") == 1
+    video.job(accepted, SLUG, CLIP)
+    _study(accepted, "check", SLUG, "--clip", CLIP, "--fail", "--reason", "still blank", "--reviewer", "a3")
     capsys.readouterr()
-    assert _study(accepted, "render", SLUG, "--scene", _file(tmp_path, "f.py", SCENE)) != 0
+    assert _study(accepted, "render", SLUG, "--clip", CLIP, "--scene", _file(tmp_path, "f.py", SCENE)) != 0
     assert "no further render" in capsys.readouterr().err
-    assert len(popen) == 2 and study.get(accepted, SLUG)["video"] == "failed"
+    assert len(popen) == 2 and _state(accepted) == "failed"
 
 
 @pytest.mark.sr("SR-317")
 def test_sr317_ex3_manimlib_scenes_are_refused(
         accepted: Path, tmp_path: Path, popen: list[Any], capsys: pytest.CaptureFixture) -> None:
-    _study(accepted, "storyboard", SLUG, "--file",
+    _study(accepted, "storyboard", SLUG, "--clip", CLIP, "--file",
            _file(tmp_path, "sb.json", json.dumps(_board())))
     capsys.readouterr()
-    assert _study(accepted, "render", SLUG, "--scene",
+    assert _study(accepted, "render", SLUG, "--clip", CLIP, "--scene",
                   _file(tmp_path, "m.py", "from manimlib import *\n")) != 0
     assert "manimlib" in capsys.readouterr().err
     assert popen == []
+
+
+# ------------------------------------------------------------------------ SR-370
+
+
+@pytest.mark.sr("SR-370")
+def test_sr370_ex1_the_body_places_its_clips_in_order(repo: Path) -> None:
+    body = ("Para one.\n\n```mermaid\nflowchart LR\n  a --> b\n```\n\n```video\none-record\n```"
+            "\n\nPara two.\n")
+    assert video.clips_in(study.get(_accept(repo, body), SLUG)["body"]) == ["one-record"]
+
+
+@pytest.mark.sr("SR-370")
+def test_sr370_ex2_two_clips_and_no_diagram_are_kept(repo: Path) -> None:
+    _accept(repo, "A.\n\n```video\nfirst\n```\n\nB.\n\n```video\nsecond\n```\n")
+    assert video.clips_in(study.get(repo, SLUG)["body"]) == ["first", "second"]
+
+
+@pytest.mark.sr("SR-370")
+def test_sr370_ex3_a_video_block_below_depth_video_is_refused(repo: Path) -> None:
+    for depth in ("md", "diagrams"):
+        slug = study.propose(repo, title=f"A {depth} mix", why="w", depth=depth, loop="l",
+                             step="s", asked=True)
+        study.choose(repo, slug, depth)
+        with pytest.raises(ValueError, match="```video cascade"):
+            study.add(repo, slug, "Text.\n\n```video\ncascade\n```\n")
+        if depth == "md":
+            with pytest.raises(ValueError, match="no diagram"):
+                study.add(repo, slug, "```mermaid\nflowchart LR\n  a --> b\n```\n")
+
+
+@pytest.mark.sr("SR-370")
+def test_sr370_ex4_a_rendering_clip_and_an_unplaced_clip(
+        accepted: Path, tmp_path: Path, popen: list[Any]) -> None:
+    assert _render(accepted, tmp_path) == 0
+    assert _state(accepted) == "rendering"
+    with pytest.raises(ValueError, match="places no clip"):
+        video.storyboard(accepted, SLUG, "elsewhere", json.dumps(_board()))
+
+
+@pytest.mark.sr("SR-370")
+def test_sr370_ex5_a_failed_clip_leaves_the_others(
+        repo: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
+    accepted = _accept(repo, BODY + "\n```video\nsecond\n```\n")
+    for clip, ok in ((CLIP, True), ("second", False)):
+        video.storyboard(accepted, SLUG, clip, json.dumps(_board()))
+        video.render(accepted, SLUG, clip, Path(_file(tmp_path, "f.py", SCENE)))
+        video.job(accepted, SLUG, clip)
+        video.check(accepted, SLUG, clip, ok, "" if ok else "beat 2 is blank", "agent-2")
+    clips = study.get(accepted, SLUG)["clips"]
+    assert clips[CLIP]["state"] == "ready"
+    assert clips["second"] == {"state": "failed", "reason": "beat 2 is blank", "revisions": 0}

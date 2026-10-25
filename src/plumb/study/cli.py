@@ -170,7 +170,7 @@ def run(command: str, argv: list[str]) -> int:
     adder = verbs.add_parser("add", help="write the study of an idea the owner accepted")
     adder.add_argument("slug")
     adder.add_argument("--file", required=True,
-                       help="the body: plain words, mermaid only at depth diagrams")
+                       help="the body: plain words; mermaid from depth diagrams, ```video clips at video")
     adder.add_argument("--records", nargs="*", default=[], metavar="ID",
                        help="the records it is written from (plumb study gather)")
     gatherer = verbs.add_parser("gather", help="the records a study on a topic is written from")
@@ -197,6 +197,9 @@ def run(command: str, argv: list[str]) -> int:
     marker = verbs.add_parser("mark")
     marker.add_argument("slug")
     marker.add_argument("how", choices=tuple(study.MARKS))
+    for sub in (boarder, renderer, job, framer, checker):
+        sub.add_argument("--clip", required=True,
+                         help="the clip's name, as its ```video block in the body names it")
     for sub in verbs.choices.values():
         add_common(sub)
         sub.add_argument("--session", default=None)
@@ -251,18 +254,20 @@ def run(command: str, argv: list[str]) -> int:
                 + "".join(f"\n  test {t}: {state}" for t, state in r["tests"].items())
                 for r in found["records"]], args.as_json)
         elif args.verb == "storyboard":
-            video.storyboard(root, args.slug, Path(args.file).read_text(encoding="utf-8"))
-            print(f"plumb: storyboard kept for {args.slug}")
+            video.storyboard(root, args.slug, args.clip,
+                             Path(args.file).read_text(encoding="utf-8"))
+            print(f"plumb: storyboard kept for {args.slug} {args.clip}")
         elif args.verb == "render":
-            video.render(root, args.slug, Path(args.scene))
-            print(f"plumb: video rendering for {args.slug}; the check follows when it ends")
+            video.render(root, args.slug, args.clip, Path(args.scene))
+            print(f"plumb: clip {args.clip} of {args.slug} rendering; the check follows when "
+                  "it ends")
         elif args.verb == "render-job":
-            video.job(root, args.slug)
+            video.job(root, args.slug, args.clip)
         elif args.verb == "frames":
-            emit(video.frames(root, args.slug), True)
+            emit(video.frames(root, args.slug, args.clip), True)
         elif args.verb == "check":
-            video.check(root, args.slug, args.ok, args.reason, args.reviewer)
-            print(f"plumb: video of {args.slug}: {'ready' if args.ok else 'failed'}")
+            video.check(root, args.slug, args.clip, args.ok, args.reason, args.reviewer)
+            print(f"plumb: clip {args.clip} of {args.slug}: {'ready' if args.ok else 'failed'}")
         elif args.verb == "list":
             held = study.studies(root)
             emit([{k: v for k, v in s.items() if k != "body"} for s in held] if args.as_json

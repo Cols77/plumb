@@ -149,17 +149,19 @@ class BrowserService:
 
     @staticmethod
     def _video(s):
-        """Every study carries its video state (SR-319): "" when it has none."""
-        return {**s, "video": s.get("video", ""), "video_reason": s.get("video_reason", "")}
+        """Every study carries its clips' states (SR-319, SR-370): {} when it has none."""
+        clips = s.get("clips")
+        return {**s, "clips": clips if isinstance(clips, dict) else {}}
 
-    def study_media(self, slug, kind):
-        """The bytes and type of a ready study's mp4 or vtt (SR-319, SR-365); the path is built
-        from the validated slug alone, never from a field of the study."""
+    def study_media(self, slug, clip, kind):
+        """The bytes and type of a ready clip's mp4 or vtt (SR-319, SR-365); the path is built
+        from the validated slug and clip name alone, never from a field of the study."""
         with self.lock:
-            if study.get(self.root, slug).get("video") != "ready":
+            held = self._video(study.get(self.root, slug))["clips"].get(clip)
+            if not isinstance(held, dict) or held.get("state") != "ready":
                 raise LookupError("No video for this study")
-            name, mime = (f"{slug}.mp4", "video/mp4") if kind == "video" else (
-                f"{slug}.vtt", "text/vtt; charset=utf-8")
+            name, mime = (f"{slug}.{clip}.mp4", "video/mp4") if kind == "video" else (
+                f"{slug}.{clip}.vtt", "text/vtt; charset=utf-8")
             path = study.folder(self.root) / name
             if not path.is_file():
                 raise LookupError("No video for this study")
