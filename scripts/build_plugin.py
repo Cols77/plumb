@@ -49,6 +49,7 @@ VENDOR = PLUGIN / "vendor"
 DESCRIPTION = ("Keep a coding agent's work aligned with what you asked for: your intent, the "
                "requirements and examples it becomes, and the checks that hold the code to them.")
 AUTHOR = {"name": "Colin AUBE"}
+REPOSITORY = "https://github.com/Cols77/plumb"
 DIAGRAM_MARKETPLACE = "diagram-mod"   # where the diagram mod plumb's cards draw with is published
 
 # (Claude Code event, matcher, plumb hook, async, timeout in seconds): SP7 4.3, with SR-111's
@@ -180,6 +181,8 @@ def guard_ts() -> str:
 def plugin_json() -> str:
     return _json({"name": "plumb", "version": version(), "description": DESCRIPTION,
                   "author": AUTHOR, "license": "MIT",
+                  # SR-358: the repository every install compares its build with
+                  "repository": REPOSITORY,
                   "keywords": ["intent", "requirements", "alignment", "tests"],
                   # the mod's $.state contract (SP7 5.6), which `claude plugin validate` checks
                   "types": "./types/index.d.ts",

@@ -31,7 +31,7 @@ READY = ("plumb: self-fix {branch} ({kind}: {detail}) is committed and reviewed:
 FIXED = ("plumb: the plumb defect you hit is fixed in main ({kind}: {detail}); retry {retry}: "
          "until that works the case reads landed, not proven (then plumb debug done {id})")
 RELOAD = ("plumb: the plumb defect you hit ({kind}: {detail}) is fixed in main, reload plugins: "
-          "this session runs a plugin older than main's build of {built}; then retry {retry}")
+          "this session runs another build ({built}); then retry {retry}")
 CAME_BACK = ("plumb: the plumb defect {id} came back ({kind}: {detail}): the old case is "
              "reopened with its history ({n} earlier) and its fix runs again; plumb debug lists it")
 LANDED = "landed, not proven"
@@ -357,9 +357,8 @@ def _done(root: Path | str, ids: list[str]) -> int:
     held = [r["id"] for r in all_cases(root)
             if late and r["id"] in ids and state(r) == LANDED]
     for case_id in held:
-        print(f"plumb: debug: {case_id} stays {LANDED}: this session runs a plugin older than "
-              f"main's build of {built}; reload plugins, check it again, then plumb debug done "
-              f"{case_id}")
+        print(f"plumb: debug: {case_id} stays {LANDED}: this session runs another build "
+              f"({built}); check it again once it runs the fix, then plumb debug done {case_id}")
     done = _update(root, [i for i in ids if i not in held], state="resolved",
                    proven=datetime.date.today().isoformat())
     print(f"plumb: debug: {done} cases marked resolved")

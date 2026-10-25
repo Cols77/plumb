@@ -361,11 +361,11 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
   const room = await readJson(io, join(sessionDir(link.root, link.session), 'room_waits.json'))
   // SR-336 EX-2: the study the owner chose to read before answering its questions
   const first = await readJson(io, join(sessionDir(link.root, link.session), 'study_first.json'))
-  // SR-358: this session's build against main's; SR-359: the judges that cannot settle
+  // SR-358: this session's plugin against plumb's local and repository main; SR-359: the judges that cannot settle
   const build = await readJson(io, join(sessionDir(link.root, link.session), 'build.json'))
   const judges = await readJson(io, join(link.root, '.plumb', 'session', 'judges.json'))
   const down = judges?.down && typeof judges.down === 'object' ? Object.values(judges.down) as any[] : []
-  const red = [...(build?.outdated === true ? [T.older(String(build.built ?? ''))] : []),
+  const red = [...(Array.isArray(build?.lines) ? build.lines.map(String) : []),
     ...down.map(d => String(d?.line ?? '')).filter(Boolean)]
   const setAside = (Array.isArray(judges?.set_aside) ? judges.set_aside : [])
     .map((q: any) => T.setAside(String(q?.question ?? ''), String(q?.why ?? '')))
@@ -398,6 +398,7 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     outdated: files.filter(s => s.changed && !s.refresh).map(({ title, slug, changed }) => ({ title, slug, changed })),
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
     red,
+    ...(build?.unchecked === true ? { unchecked: T.unchecked } : {}),
     setAside,
   }
 }
