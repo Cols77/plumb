@@ -17,7 +17,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { PlumbBand, PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbTold, PlumbView } from '../types'
+import type { PlumbBand, PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbStatus, PlumbTold, PlumbView } from '../types'
 import * as plumb from './plumb'
 import type { Hello, Io, Unlinked } from './plumb'
 import { brassColor, GLYPHS, plumbColor, RED, T } from './text'
@@ -221,6 +221,19 @@ function ideaChoices(ui: Ui, idea: { title: string; why: string; recommend: stri
   )
 }
 
+type Idea = NonNullable<PlumbStatus['ideas']>[number]
+
+/** The idea in front: the one Tab last brought there, else the newest (SR-369). */
+function frontIdea(ideas: Idea[], band: PlumbBand): Idea | undefined {
+  return ideas.find(i => i.slug === band.front) ?? ideas.at(-1)
+}
+
+/** The slug after the front one, wrapping from the last to the first (SR-369). */
+function nextIdea(ideas: Idea[], band: PlumbBand): string | undefined {
+  const front = frontIdea(ideas, band)
+  return front && ideas[(ideas.indexOf(front) + 1) % ideas.length]?.slug
+}
+
 /** The band: one line of status, then the loop's and the studies' lines; no card (SR-337). The
  * known problems are one line when any is open, never one per problem (SR-367). */
 function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, columns: number, color: string,
@@ -237,7 +250,20 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, colum
   }
   const loop = view.status?.loop
   const studies = view.status?.studies ?? []
-  const idea = (view.status?.ideas ?? []).at(-1) // DEC-207: the newest idea waiting for a choice
+  // DEC-207: the ideas waiting for a choice; one in front, the newest until Tab moves it (SR-369)
+  const ideas = view.status?.ideas ?? []
+  const idea = frontIdea(ideas, band)
+  const ideaLine = (tag: string) => idea ? [
+    <Button key="idea" plain onPress={() => {}}>
+      <Text key={`${tag}:idea`} color={brass}>{T.studyIdea(idea.title)}</Text>
+    </Button>,
+    ideas.length > 1 ? (
+      // Tab onto the count brings the next idea to the front (the ui.focus hook)
+      <Button key="idea:next" plain onPress={() => {}}>
+        <Text key={`${tag}:idea:next`} dimColor>{T.moreIdeas(ideas.length - 1)}</Text>
+      </Button>
+    ) : null,
+  ] : null
   const outdated = (view.status?.outdated ?? []).at(-1)
   return (
     <Box flexDirection="column" width={columns}>
@@ -251,12 +277,8 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, colum
             <Text key="head:studies" color={brass}>{T.newStudies(studies.length)}</Text>
           </Button>
         ) : null}
-        {!loop && idea ? (
-          // DEC-183 style: no loop open, the idea folds into the one line too
-          <Button key="idea" plain onPress={() => {}}>
-            <Text key="head:idea" color={brass}>{T.studyIdeaFolded}</Text>
-          </Button>
-        ) : null}
+        {/* DEC-183 style: no loop open, the ideas fold into the one line too, each by its title */}
+        {!loop ? ideaLine('head') : null}
       </Box>
       {known > 0 ? (
         // SR-367 EX-1, EX-3: one collapsed line; a press opens the known problems pane
@@ -290,12 +312,8 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, colum
               <Text key="loop:study" color={brass}>{T.newStudy(view.status.study)}</Text>
             </Button>
           ) : null}
-          {idea ? (
-            // SR-294: the agent's study idea; a press shows its choices
-            <Button key="idea" plain onPress={() => {}}>
-              <Text key="loop:idea" color={brass}>{T.studyIdea(idea.title)}</Text>
-            </Button>
-          ) : null}
+          {/* SR-294: the agent's study idea; a press shows its choices */}
+          {ideaLine('loop')}
         </Box>
       ) : null}
       {!loop && idea && band.idea ? ideaChoices(ui, idea, true, brass) : null}
@@ -594,6 +612,12 @@ export const register: Register = on => {
       await update($, bandAtom, b => ({ ...b, idea: !b.idea })) // shows or hides the choices
       return pressed
     }
+    if (key === 'idea:next') {
+      // SR-369: the next waiting idea comes to the front
+      const ideas = view.status?.ideas ?? []
+      await update($, bandAtom, b => ({ ...b, front: nextIdea(ideas, b) }))
+      return pressed
+    }
     const link = await read($, linkAtom)
     if (link === null || (await read($, degradedAtom))) return pressed
     const io: Io = {
@@ -644,7 +668,7 @@ export const register: Register = on => {
       line = ran.ok ? '' : T.roomFailed
     } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:none') {
       // SR-294 EX-8, EX-9: the owner's choice on the idea is recorded; the room stays closed
-      const idea = (view.status?.ideas ?? []).at(-1)
+      const idea = frontIdea(view.status?.ideas ?? [], await read($, bandAtom))
       await update($, bandAtom, b => ({ ...b, idea: false }))
       if (!idea) return pressed
       const ran = await plumb.chooseStudy(io, link, idea.slug, key.slice('idea:'.length))
@@ -672,6 +696,15 @@ export const register: Register = on => {
       await $.ui.scroll({ in: e.requestId, to: 'start' }).catch(() => undefined)
     }
     return pressed
+  })
+
+  // SR-369: Tab onto the band's idea count brings the next idea to the front, wrapping from the
+  // last to the first; the ring stays on the idea, so each Tab moves one idea on
+  on('ui.focus', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.plugin !== 'plumb' || e.element !== 'idea:next') return next(e)
+    const ideas = (await read($, viewAtom)).status?.ideas ?? []
+    await update($, bandAtom, b => ({ ...b, front: nextIdea(ideas, b) }))
+    return {}
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

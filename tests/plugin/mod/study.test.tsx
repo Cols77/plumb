@@ -237,10 +237,9 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
-    test("SR-294 EX-7, DEC-183: an idea waiting after the loop folds into the one line as a brass 'study idea'", async ($, on) => {
+    test("SR-294 EX-7, DEC-183, SR-369: an idea waiting after the loop folds into the one line, named", async ($, on) => {
       const { w, ui } = await ideaBand($, on, surface, false)
-      expect(await ui.find({ type: 'Text', text: /^study idea:/ })).toBeUndefined() // no second line
-      const press = await ui.find({ type: 'Text', text: 'study idea' })
+      const press = await ui.find({ type: 'Text', text: `study idea: ${IDEA_TITLE}` })
       expect(press?.props.color).toBe(BRASS)
       await ui.press({ key: 'idea' })
       expect(await ui.find({ type: 'Text', text: `  ${IDEA_TITLE}: the plan adds a dispatcher you will tune later` })).toBeDefined()
@@ -249,5 +248,30 @@ for (const surface of SURFACES) {
       expect(rooms(w)).toEqual([])
       await ui.unmount()
     })
+
+    for (const loop of [true, false]) {
+      test(`SR-369: two ideas waiting: the front one's title and the count; Tab wraps; a choice acts on the front one (loop ${loop})`, async ($, on) => {
+        const { w, ui } = await ideaBand($, on, surface, loop)
+        const second = `${ROOT}/.plumb/studies/how-merges-are-held.md`
+        w.files[second] = idea('idea').replace(JSON.stringify(IDEA_TITLE), '"How merges are held"')
+        await $.turn.complete(TURN_DONE)
+        const titles = async () => (await ui.findAll({ type: 'Text', text: /^study idea: / })).map(l => l.text)
+        expect(await titles()).toEqual([`study idea: ${IDEA_TITLE}`]) // the newest in front
+        expect(await ui.find({ type: 'Text', text: '+1 more (Tab)' })).toBeDefined()
+        // Tab onto the count: the next idea comes to the front, wrapping from the last to the first
+        const tab = () => $.ui.focus({ component: 'AbovePrompt', requestId: 'band', plugin: 'plumb',
+          element: 'idea:next', origin: { kind: 'person' } } as any)
+        await tab()
+        expect(await titles()).toEqual(['study idea: How merges are held'])
+        await tab()
+        expect(await titles()).toEqual([`study idea: ${IDEA_TITLE}`])
+        await tab()
+        await ui.press({ key: 'idea' })
+        expect(await ui.find({ type: 'Text', text: /^ {2}How merges are held: / })).toBeDefined()
+        await ui.press({ key: 'idea:diagrams' })
+        expect(chosen(w)[0]?.argv.slice(-4)).toEqual(['--study', 'how-merges-are-held', '--depth', 'diagrams'])
+        await ui.unmount()
+      })
+    }
   })
 }

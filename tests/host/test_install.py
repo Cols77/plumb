@@ -129,7 +129,7 @@ def test_skill_about_20_lines_names_test_map(repo: Path, no_claims) -> None:
         encoding="utf-8")
     assert skill.startswith("---\nname: plumb-records\n")  # SR-120: /plumb is the command
     body = skill.split("---", 2)[2].strip().splitlines()
-    assert 12 <= len(body) <= 40  # the context and the four question rules (SR-248)
+    assert 12 <= len(body) <= 43  # the context and the question rules (SR-248; SR-362 added three)
     assert ".plumb/test_map.txt" in skill
     assert "uv run --no-sync plumb tests run --changed" in skill
     assert "never" in skill.lower() and "plumb approve" in skill
