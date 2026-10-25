@@ -2,7 +2,8 @@
   // Studies and the Understanding page (SR-292..294; DEC-151): beside the questions, never an
   // answer to a session (DEC-152). A study about a conflict lays out both sides; no choice here.
   import { onMount, tick } from 'svelte';
-  import { api } from '../lib/api';
+  import { api, apiBlob } from '../lib/api';
+  import { placeClips } from '../lib/clips';
   import { drawDiagrams, studyHtml } from '../lib/markdown';
   import type { Study, StudyList, Understanding } from '../lib/types';
   let { capability }: { capability: string } = $props();
@@ -13,8 +14,22 @@
   const html = $derived(studyHtml(open?.body ?? ''));
   // SR-293: the diagrams are drawn once the study's HTML is in place
   $effect(() => { void html; const el = bodyEl; if (el) void tick().then(() => drawDiagrams(el)); });
+  // SR-319, SR-365, SR-370: each clip plays at its place in the body; its object URLs are
+  // revoked when the study or a clip's state changes
+  const clipsKey = $derived(JSON.stringify(open?.clips ?? {}));
+  $effect(() => {
+    void html; const key = clipsKey; const el = bodyEl; const slug = open?.slug;
+    if (!el || !slug) return;
+    let gone = false; const made: string[] = [];
+    const fetchUrl = async (clip: string, kind: string) => { const url = URL.createObjectURL(await apiBlob(`/api/studies/${encodeURIComponent(slug)}/media/${encodeURIComponent(clip)}/${kind}`, capability)); if (gone) URL.revokeObjectURL(url); else made.push(url); return url; };
+    void tick().then(() => gone ? undefined : placeClips(el, JSON.parse(key), fetchUrl, () => gone));
+    return () => { gone = true; made.forEach((url) => URL.revokeObjectURL(url)); };
+  });
   async function load() {
-    try { const data = await api<StudyList>('/api/studies', capability); studies = data.studies; understanding = data.understanding; if (selected === UNDERSTANDING && !busy) draft = understanding.text; error = ''; }
+    try { const data = await api<StudyList>('/api/studies', capability); studies = data.studies; understanding = data.understanding; if (selected === UNDERSTANDING && !busy) draft = understanding.text; error = '';
+      // a clip that finished rendering shows without reopening the study (SR-316 EX-2)
+      const fresh = studies.find((s) => s.slug === open?.slug);
+      if (open && fresh && JSON.stringify(fresh.clips ?? {}) !== JSON.stringify(open.clips ?? {})) open = {...open, clips: fresh.clips}; }
     catch (cause) { error = cause instanceof Error ? cause.message : 'Unable to load the studies.'; }
   }
   async function choose(slug: string) {

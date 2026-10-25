@@ -132,7 +132,8 @@ class BrowserService:
         with self.lock:
             return {
                 "studies": [
-                    {k: v for k, v in s.items() if k != "body"} for s in study.studies(self.root)
+                    self._video({k: v for k, v in s.items() if k != "body"})
+                    for s in study.studies(self.root)
                     if s["status"] in study.WRITTEN    # an idea has no page (DEC-207)
                 ],
                 "understanding": self._understanding(),
@@ -144,7 +145,27 @@ class BrowserService:
     def open_study(self, slug):
         """The owner reads a study: it is opened, and the band's study line goes (SR-294)."""
         with self.lock:
-            return study.mark(self.root, slug, "opened")
+            return self._video(study.mark(self.root, slug, "opened"))
+
+    @staticmethod
+    def _video(s):
+        """Every study carries its clips' states (SR-319, SR-370): {} when it has none."""
+        clips = s.get("clips")
+        return {**s, "clips": clips if isinstance(clips, dict) else {}}
+
+    def study_media(self, slug, clip, kind):
+        """The bytes and type of a ready clip's mp4 or vtt (SR-319, SR-365); the path is built
+        from the validated slug and clip name alone, never from a field of the study."""
+        with self.lock:
+            held = self._video(study.get(self.root, slug))["clips"].get(clip)
+            if not isinstance(held, dict) or held.get("state") != "ready":
+                raise LookupError("No video for this study")
+            name, mime = (f"{slug}.{clip}.mp4", "video/mp4") if kind == "video" else (
+                f"{slug}.{clip}.vtt", "text/vtt; charset=utf-8")
+            path = study.folder(self.root) / name
+            if not path.is_file():
+                raise LookupError("No video for this study")
+            return path.read_bytes(), mime
 
     def mark_study(self, slug, payload):
         how = payload.get("mark")
@@ -152,7 +173,7 @@ class BrowserService:
             raise ValueError("mark must be known or deeper")
         with self.lock:
             marked = study.mark(self.root, slug, how)
-            return {"study": marked, "understanding": self._understanding()}
+            return {"study": self._video(marked), "understanding": self._understanding()}
 
     def save_understanding(self, payload):
         with self.lock:

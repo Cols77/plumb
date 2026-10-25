@@ -42,7 +42,7 @@ def test_grounding_skill_is_plumb_records_with_its_references(repo: Path) -> Non
     plumb-intent; none is named plumb."""
     claude = _installed(repo)
     assert install.skill_names() == ["plumb-clarify", "plumb-debug", "plumb-intent",
-                                     "plumb-records"]
+                                     "plumb-records", "plumb-study-video"]
     assert not (claude / "skills" / "plumb").exists()
     for name in ("SKILL.md", "references/merge.md", "references/conflicts.md",
                  "references/capture-doc.md"):
@@ -192,7 +192,9 @@ def test_references_give_the_conflict_forms_and_a_capture_document_that_parses()
 
 
 def test_skill_files_wrap_at_95_columns() -> None:
-    for path in [*TEMPLATES.joinpath("skills").rglob("*.md"), TEMPLATES / "plumb-command.md"]:
+    # vendor/ holds third-party skills kept as published (VENDORED.md)
+    skills = [p for p in TEMPLATES.joinpath("skills").rglob("*.md") if "vendor" not in p.parts]
+    for path in [*skills, TEMPLATES / "plumb-command.md"]:
         body = path.read_text(encoding="utf-8")
         if body.startswith("---"):
             body = body.split("---", 2)[2]

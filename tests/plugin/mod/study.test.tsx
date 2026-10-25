@@ -188,8 +188,8 @@ for (const surface of SURFACES) {
       expect((await ui.find({ key: 'idea:md' }))?.props.label).toBe('Markdown only')
       expect((await ui.find({ key: 'idea:diagrams' }))?.props.label).toBe('with diagrams (recommended)')
       expect((await ui.find({ key: 'idea:none' }))?.props.label).toBe('not now')
-      // video is drawn dim, not offered: no Button to press until video studies exist
-      expect((await ui.find({ type: 'Text', text: 'video (not available yet)' }))?.props.dimColor).toBe(true)
+      // SR-316: video is offered beside the other depths
+      expect((await ui.find({ key: 'idea:video' }))?.props.label).toBe('video')
       expect(rooms(w)).toEqual([])
       expect(w.toasts.filter(t => /study/.test(t))).toEqual([])
       await ui.unmount()

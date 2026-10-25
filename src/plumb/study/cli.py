@@ -24,6 +24,7 @@ from typing import Any
 
 from plumb import study
 from plumb.cliutil import EXIT_FINDINGS, EXIT_USAGE, add_common, emit, resolve_root
+from plumb.study import video
 
 PROMPTS = 20
 
@@ -169,16 +170,36 @@ def run(command: str, argv: list[str]) -> int:
     adder = verbs.add_parser("add", help="write the study of an idea the owner accepted")
     adder.add_argument("slug")
     adder.add_argument("--file", required=True,
-                       help="the body: plain words, mermaid only at depth diagrams")
+                       help="the body: plain words; mermaid from depth diagrams, ```video clips at video")
     adder.add_argument("--records", nargs="*", default=[], metavar="ID",
                        help="the records it is written from (plumb study gather)")
     gatherer = verbs.add_parser("gather", help="the records a study on a topic is written from")
     gatherer.add_argument("topic", help="the study's slug, or the topic in plain words")
+    boarder = verbs.add_parser("storyboard", help="keep a video study's storyboard (SR-364)")
+    boarder.add_argument("slug")
+    boarder.add_argument("--file", required=True, help="JSON: question, goals, context, beats")
+    renderer = verbs.add_parser("render", help="start the background render of a scene")
+    renderer.add_argument("slug")
+    renderer.add_argument("--scene", required=True, help="the Manim Community scene file")
+    job = verbs.add_parser("render-job")     # the background process of render
+    job.add_argument("slug")
+    framer = verbs.add_parser("frames", help="what the reviewer checks: storyboard, cues, PNGs")
+    framer.add_argument("slug")
+    checker = verbs.add_parser("check", help="the independent reviewer's verdict (SR-366)")
+    checker.add_argument("slug")
+    verdict = checker.add_mutually_exclusive_group(required=True)
+    verdict.add_argument("--pass", dest="ok", action="store_true")
+    verdict.add_argument("--fail", dest="ok", action="store_false")
+    checker.add_argument("--reason", default="")
+    checker.add_argument("--reviewer", required=True)
     verbs.add_parser("list")
     verbs.add_parser("candidates", help="what to pick this step's study from")
     marker = verbs.add_parser("mark")
     marker.add_argument("slug")
     marker.add_argument("how", choices=tuple(study.MARKS))
+    for sub in (boarder, renderer, job, framer, checker):
+        sub.add_argument("--clip", required=True,
+                         help="the clip's name, as its ```video block in the body names it")
     for sub in verbs.choices.values():
         add_common(sub)
         sub.add_argument("--session", default=None)
@@ -232,6 +253,21 @@ def run(command: str, argv: list[str]) -> int:
                 + "".join(f"\n  {e}" for e in r["examples"])
                 + "".join(f"\n  test {t}: {state}" for t, state in r["tests"].items())
                 for r in found["records"]], args.as_json)
+        elif args.verb == "storyboard":
+            video.storyboard(root, args.slug, args.clip,
+                             Path(args.file).read_text(encoding="utf-8"))
+            print(f"plumb: storyboard kept for {args.slug} {args.clip}")
+        elif args.verb == "render":
+            video.render(root, args.slug, args.clip, Path(args.scene))
+            print(f"plumb: clip {args.clip} of {args.slug} rendering; the check follows when "
+                  "it ends")
+        elif args.verb == "render-job":
+            video.job(root, args.slug, args.clip)
+        elif args.verb == "frames":
+            emit(video.frames(root, args.slug, args.clip), True)
+        elif args.verb == "check":
+            video.check(root, args.slug, args.clip, args.ok, args.reason, args.reviewer)
+            print(f"plumb: clip {args.clip} of {args.slug}: {'ready' if args.ok else 'failed'}")
         elif args.verb == "list":
             held = study.studies(root)
             emit([{k: v for k, v in s.items() if k != "body"} for s in held] if args.as_json

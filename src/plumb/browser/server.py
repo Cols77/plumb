@@ -47,7 +47,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header(
             "Content-Security-Policy",
             "default-src 'none'; script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+            "media-src blob:; font-src 'self'; "
             "connect-src 'self'; frame-src 'self'; base-uri 'none'; "
             "form-action 'none'; frame-ancestors 'none'",
         )
@@ -124,6 +125,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/understanding" and self.command == "POST":
                 self._send(200, service.save_understanding(payload))
+                return
+            match = re.fullmatch(
+                r"/api/studies/([A-Za-z0-9][A-Za-z0-9-]{0,79})/media/([a-z0-9][a-z0-9-]{0,39})/"
+                r"(video|subtitles)", path)
+            if match and self.command == "GET":
+                self._send(200, *service.study_media(*match.groups()))
                 return
             match = re.fullmatch(r"/api/studies/([A-Za-z0-9][A-Za-z0-9-]{0,79})/(open|mark)", path)
             if match and self.command == "POST":
