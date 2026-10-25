@@ -20,6 +20,7 @@ chooses nothing (DEC-154).
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -115,9 +116,22 @@ def _parse(path: Path) -> dict[str, Any] | None:
         return None
     if not isinstance(fields, dict) or fields.get("status") not in STATUSES:
         return None
-    return {**{k: v if isinstance(v, (list, dict)) else str(v) if v is not None else ""
+    return {**{k: v if isinstance(v, (list, dict)) else _repr_dict(k, v)
                for k, v in fields.items()},
             "slug": path.stem, "body": body}
+
+
+def _repr_dict(key: str, v: Any) -> Any:
+    """A process still running code from before dicts were kept (its ``_parse`` made them
+    ``str``) rewrote ``clips`` and ``progress`` as a quoted Python repr; read it back as the
+    dict it was, and the next write puts JSON again. Any other value is text."""
+    if key in ("clips", "progress") and isinstance(v, str):
+        try:
+            if isinstance(held := ast.literal_eval(v), dict):
+                return held
+        except (ValueError, SyntaxError):
+            pass
+    return str(v) if v is not None else ""
 
 
 def studies(root: Path) -> list[dict[str, Any]]:
