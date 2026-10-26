@@ -23,7 +23,8 @@ def superseded_ids(index: Mapping[str, Record]) -> set[str]:
 
 def retired_ids(index: Mapping[str, Record]) -> set[str]:
     """Superseded records whose links stop being tracked (SR-164): not those an older record
-    supersedes (SR-076 over SR-150), which the owner has yet to settle."""
+    supersedes (SR-076 over SR-150), which the owner has yet to settle. A record marked
+    ``frozen: true`` (SR-380) counts nowhere either."""
     def num(rid: str) -> tuple[str, int]:
         prefix, _, n = rid.partition("-")
         return prefix, int(n) if n.isdigit() else 0
@@ -31,7 +32,8 @@ def retired_ids(index: Mapping[str, Record]) -> set[str]:
     return {link.target.record for record in index.values() for link in record.links
             if link.kind == "supersedes" and link.target.record
             and not (num(link.target.record)[0] == num(record.id)[0]
-                     and num(link.target.record)[1] > num(record.id)[1])}
+                     and num(link.target.record)[1] > num(record.id)[1])
+            } | {record.id for record in index.values() if record.fields.get("frozen")}
 
 
 def record_text(record: Record) -> str:

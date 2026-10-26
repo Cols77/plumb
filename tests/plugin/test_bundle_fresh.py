@@ -272,3 +272,32 @@ def test_check_names_disagreeing_places(tmp_path: Path, monkeypatch: pytest.Monk
     assert module.main(["--check"]) == 1
     out = capsys.readouterr().out
     assert "plugin.json: differs" in out and "__init__.py: version differs" in out
+
+
+@pytest.mark.sr("SR-380")
+@pytest.mark.parametrize("argv", [["view"], ["import", "pi-agent-factory", "x"], ["mcp", "serve"],
+                                  ["triage"], ["spec", "approve", "INT-001"]])
+def test_removed_verbs_are_unknown(argv: list[str], capsys) -> None:
+    """SR-380 EX-1: the removed commands do not exist."""
+    from plumb import cli
+
+    try:
+        code = cli.main(argv)
+    except SystemExit as exc:
+        code = exc.code
+    err = capsys.readouterr().err
+    assert code == 2 and ("unknown command" in err or "invalid choice" in err)
+
+
+@pytest.mark.sr("SR-380")
+def test_wheel_requires_pyyaml_only() -> None:
+    """SR-380 EX-4: installing plumb pulls PyYAML only; Manim is the extra plumb[video]."""
+    import zipfile
+
+    [wheel] = (PLUGIN / "vendor").glob("plumb-*.whl")
+    with zipfile.ZipFile(wheel) as z:
+        meta = z.read(next(n for n in z.namelist() if n.endswith("METADATA"))).decode("utf-8")
+    required = [line.split(": ", 1)[1] for line in meta.splitlines()
+                if line.startswith("Requires-Dist: ")]
+    assert [r for r in required if "extra ==" not in r] == ["pyyaml>=6"]
+    assert any(r.startswith("manim") and "extra == 'video'" in r for r in required)

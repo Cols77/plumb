@@ -237,6 +237,8 @@ class Config:
     # file anywhere outside tests, docs and dot directories as source (a flat layout)
     source_dirs_set: bool = False
     test_dirs: tuple[str, ...] = ("tests",)
+    # SR-380: parts that take no part in drift, the brief or the merge hold (plumb.frozen)
+    freeze: tuple[str, ...] = ()
     verify: VerifyConfig = field(default_factory=VerifyConfig)
     hooks: HooksConfig = field(default_factory=HooksConfig)
     approve: ApproveConfig = field(default_factory=ApproveConfig)

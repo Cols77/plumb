@@ -210,6 +210,11 @@ def current_hash(root: Path | str, rel: str, end: End) -> str | None:
 
 def stale_after_edit(root: Path | str, rel: str) -> list[StaleLink]:
     """The links whose end inside ``rel`` no longer matches its pin."""
+    from plumb.config import load_config
+    from plumb.frozen import is_frozen
+
+    if is_frozen(load_config(Path(root)), rel):      # SR-380: a frozen part says nothing
+        return []
     out = []
     for end in links_touching(root, rel):
         now = current_hash(root, rel, end)
