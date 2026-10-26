@@ -213,6 +213,25 @@ def test_a_newer_decision_pinned_to_the_reworded_record_is_read_by_the_judge(
     assert judge.open_questions(open_core(project), "s1") == []
 
 
+@pytest.mark.sr("SR-362")
+@pytest.mark.parametrize(("said", "state"), [("It still holds", "current"),
+                                             ("Undo the new wording", "stale")])
+def test_ex2_a_rerun_after_the_owner_answered_asks_nothing_again(
+        project: Path, write_record, said: str, state: str) -> None:
+    """The owner answered the question; a rerun reads the change in new words: it is not asked
+    again, and 'It still holds' repins."""
+    _reword(project, write_record, ", rounded to two decimals")
+    _resolve(project, Judge(False, "the sum is now rounded"))
+    (question,) = judge.open_questions(open_core(project), "s1")
+    open_core(project).log_append("events", "question-answer", {
+        "session": "s1", "question": question["question"], "answer": said,
+        "via": "question-tool", "asked": {k: question[k] for k in ("job", "key", "records")}})
+    result = _resolve(project, Judge(False, "add rounds its result"))   # new words
+    assert judge.open_questions(open_core(project), "s1") == []
+    assert _state(project) == state
+    assert [link for link, _ in result.refused] == ([] if state == "current" else [LINK])
+
+
 def test_a_rerun_replaces_the_question_and_a_repin_withdraws_it(
         project: Path, write_record) -> None:
     from plumb import links
