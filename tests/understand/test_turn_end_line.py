@@ -266,10 +266,11 @@ def test_sr266_ex6_a_test_that_passed_and_fails_now_reaches_the_agent_with_its_e
 def test_sr295_ex1_an_open_conflict_is_handed_to_the_agent_to_ask(repo: Path,
                                                                    hook_input) -> None:
     """SR-295 EX-1: the owner's text carries no question count; the agent gets the
-    conflict with the instruction to ask it with the question tool."""
+    conflict with the instruction to ask it with the question tool. The owner may see
+    SR-373's one line that a merge waits, never a count of questions."""
     conflicted(repo)
     _start_turn(repo)
-    assert _owner(_stop(repo, hook_input)) == ""
+    assert "question" not in _owner(_stop(repo, hook_input))
     agent = _agent(repo)
     assert summary.ASK_OWNER in agent and "relay checks" in agent
     assert "question tool" in summary.ASK_OWNER

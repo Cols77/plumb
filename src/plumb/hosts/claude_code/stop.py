@@ -510,6 +510,12 @@ def owner_output(ctx: HookContext, core: Any) -> HookOutput | None:
         from plumb.understand.summary import owner_line
 
         line = owner_line(core, ctx.session_id)
+        if line:   # SR-295 EX-1: the merge that waits reaches the agent, to be asked
+            from plumb.mergedriver.conflicts import open_conflicts
+            from plumb.understand.summary import ASK_OWNER
+
+            titles = "; ".join(f'"{c.title}"' for c in open_conflicts(core))
+            queue_notes(ctx, [f"{ASK_OWNER} {titles}"] if titles else [])
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         line = ""
     return HookOutput(system_message=line) if line else None
