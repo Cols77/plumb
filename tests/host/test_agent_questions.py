@@ -1,9 +1,10 @@
 """SR-362: the agent puts the judge's questions in the owner's terms (``plumb question reword``,
-merging those on one principle) and sends an obvious one back to the judge (``plumb question
-pushback``), which withdraws it quoting what answers it, or keeps it. The model is scripted."""
+merging those on one principle) and asks every one; a point the owner already answered is the
+judge's not to raise again (``judge._answered_before``). The model is scripted."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -19,10 +20,11 @@ from host.test_answer_rejudge import (  # noqa: F401
 )
 from understand.fakes import engine_standins  # noqa: F401 - the fixture
 from understand.test_judge_job import SESSION
+from understand.test_judge_questions import answer as judged
+from understand.test_judge_questions import asking, written
 
 from plumb.api import open_core
-from plumb.contracts import DispatchError
-from plumb.understand import cmd_clarify, cmd_question, judge, worker
+from plumb.understand import cmd_clarify, cmd_question, judge
 
 pytestmark = pytest.mark.sr("SR-362")
 
@@ -130,7 +132,7 @@ def test_the_missed_check_counts_a_registered_wording_as_matched(
 
 def test_ex5_each_question_carries_its_key_and_plumbs_words_are_marked_to_reword(
         world: Path) -> None:  # noqa: F811
-    """EX-5: the agent gets the key ``reword`` and ``pushback`` take; a question in plumb's own
+    """EX-5: the agent gets the key ``reword`` takes; a question in plumb's own
     words is marked to be put in the owner's terms first."""
     judge_asks(world, (ASK, ["SR-001"]), (OTHER, ["INT-001"]))
     path = judge.questions_path(world, SESSION)
@@ -144,74 +146,65 @@ def test_ex5_each_question_carries_its_key_and_plumbs_words_are_marked_to_reword
     assert outcome.lines[1] == cmd_clarify.REWORD_FIRST.format(n=1)
 
 
-# ---- pushback --------------------------------------------------------------------------------
+# ---- the judge does not raise an answered point again ---------------------------------------
 
 
-def _owner_said_earlier(repo: Path, hook_input) -> None:
-    answer(repo, hook_input, "Which pages matter most?", SAID,
-           options=[{"label": SAID, "description": ""}, {"label": "all", "description": ""}])
+def _judge_raises(repo: Path, text: str, principle: str, reading: str = "") -> None:
+    """The judge raises ``text`` on ``principle``; ``reading``: the round reads that answer."""
+    from plumb.understand import judge as judging
+
+    core = open_core(repo)
+    job = judging.build(core, SESSION, records=["SR-001"])
+    if reading:
+        job = dataclasses.replace(job, inputs={**job.inputs, "answered": [reading]})
+    judging.apply(core, job, judged(("SR-001", "supported"), questions=[
+        asking("SR-001", question=text, principle=principle)]))
 
 
-def _push_back(repo: Path, engine_standins: Any, ruling: Any,
-               reason: str = f'You said: "{SAID}"') -> Any:
-    engine_standins.dispatcher.script = {"pushback": ruling}
-    assert question(repo, "pushback", "should every page", "--reason", reason) == 0
-    return cmd_clarify.wait(open_core(repo), SESSION, timeout=10)   # runs the judge's reading
+def test_ex2_the_same_point_in_new_words_is_not_asked_again(
+        world: Path, hook_input) -> None:  # noqa: F811
+    """EX-2: the owner picked an option; the judge raises the same principle about the same
+    record in new words, in any later round: it is set aside as answered, not asked."""
+    _judge_raises(world, "Should every page load faster, or only the public ones?", "pages")
+    (first,) = written(world)
+    answer(world, hook_input, first["question"], "Every page", options=first["options"])
+    assert logged(world)[0]["asked"]["principle"] == "pages"
+    _judge_raises(world, "Which pages should get faster?", "Pages")
+    assert [q["question"] for q in written(world)] == []
 
 
-def test_ex2_a_question_the_owner_already_answered_is_withdrawn_quoting_the_answer(
-        world: Path, hook_input, engine_standins: Any) -> None:  # noqa: F811
-    """EX-2: sent back quoting the owner's earlier answer: the judge withdraws it, quoting it,
-    and the owner is not asked."""
-    _owner_said_earlier(world, hook_input)
-    judge_asks(world, (ASK, ["SR-001"]))
-    outcome = _push_back(world, engine_standins, {"verdict": "withdraw",
-                                                  "quote": "only the public pages"})
-    assert outcome.state == "ready"
-    assert open_keys(world) == []
-    (ruling,) = events(world, "question-ruling")
-    assert ruling["ruling"] == "withdrawn" and ruling["quote"] == "only the public pages"
-    assert ruling["by"] == "owner" and ruling["reason"] == f'You said: "{SAID}"'
+def test_ex7_an_open_answer_is_not_asked_right_back_but_may_come_back_later(
+        world: Path, hook_input) -> None:  # noqa: F811
+    """EX-7: 'I don't know' leaves the point open: the round reading it does not ask it again;
+    a later round may."""
+    _judge_raises(world, "Should every page load faster, or only the public ones?", "pages")
+    (first,) = written(world)
+    answer(world, hook_input, first["question"], "I don't know, ask the others",
+           options=first["options"])
+    (said,) = [e for e in open_core(world).events() if e.kind == "question-answer"]
+    _judge_raises(world, "Which pages should get faster?", "pages", reading=said.digest)
+    assert written(world) == []
+    _judge_raises(world, "Which pages should get faster?", "pages")
+    assert [q["question"].splitlines()[0] for q in written(world)] == [
+        "Which pages should get faster?"]
 
 
-def test_ex3_a_question_the_judge_keeps_is_asked_unchanged(
-        world: Path, hook_input, engine_standins: Any) -> None:  # noqa: F811
-    """EX-3: the judge disagrees: the question is kept and asked, its words unchanged."""
-    _owner_said_earlier(world, hook_input)
-    judge_asks(world, (ASK, ["SR-001"]))
-    outcome = _push_back(world, engine_standins, {"verdict": "keep"}, reason="obvious")
-    assert outcome.state == "ask"
-    assert [q["question"] for q in outcome.questions] == [ASK]
-    (ruling,) = events(world, "question-ruling")
-    assert ruling["ruling"] == "kept" and ruling["reason"] == "obvious"
+def test_ex4_a_question_on_another_principle_is_still_asked(
+        world: Path, hook_input) -> None:  # noqa: F811
+    """EX-4: an answer settles its own principle only."""
+    _judge_raises(world, "Should every page load faster, or only the public ones?", "pages")
+    (first,) = written(world)
+    answer(world, hook_input, first["question"], "Every page", options=first["options"])
+    _judge_raises(world, "Should the faster pages also work offline?", "offline")
+    assert [q["principle"] for q in written(world)] == ["offline"]
 
 
-def test_a_withdrawal_quoting_words_the_owner_never_said_keeps_the_question(
-        world: Path, hook_input, engine_standins: Any) -> None:  # noqa: F811
-    """EX-3: only the owner's words or an approved record answer it; the agent's reason does
-    not."""
-    _owner_said_earlier(world, hook_input)
-    judge_asks(world, (ASK, ["SR-001"]))
-    _push_back(world, engine_standins, {"verdict": "withdraw", "quote": "every page matters"},
-               reason="every page matters")
-    assert open_keys(world) == [judge.question_key(ASK)]
-    assert events(world, "question-ruling")[0]["ruling"] == "kept"
-
-
-@pytest.mark.parametrize("ruling", [{"verdict": "keep"},
-                                    DispatchError("run", "the model could not be reached")])
-def test_ex4_the_agent_cannot_drop_a_question_and_the_log_shows_push_back_and_ruling(
-        world: Path, engine_standins: Any, ruling: Any) -> None:  # noqa: F811
-    """EX-4: an irrelevant question: rewording drops nothing, and a push-back the judge keeps,
-    or cannot read, leaves it open; the log shows the push-back and any ruling."""
+def test_ex3_the_agent_cannot_drop_or_send_back_a_question(
+        world: Path) -> None:  # noqa: F811
+    """EX-3: one the agent finds obvious is asked all the same: rewording drops nothing, and
+    there is no command to send it back."""
     judge_asks(world, (ASK, ["SR-001"]))
     assert reword(world, ASK) == 0
+    with pytest.raises(SystemExit):
+        question(world, "pushback", "should every page", "--reason", "obvious")
     assert open_keys(world) == [judge.question_key(ASK)]
-    _push_back(world, engine_standins, ruling, reason="irrelevant to this change")
-    worker.run_once(open_core(world), SESSION)
-    assert open_keys(world) == [judge.question_key(ASK)]
-    (pushed,) = events(world, "question-pushback")
-    assert pushed["reason"] == "irrelevant to this change"
-    assert pushed["key"] == judge.question_key(ASK)
-    rulings = events(world, "question-ruling")
-    assert [r["ruling"] for r in rulings] == ([] if isinstance(ruling, Exception) else ["kept"])

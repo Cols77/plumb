@@ -160,7 +160,7 @@ def test_every_route_names_a_module_path() -> None:
                 "ui",
                 # INT-105: `plumb evaluate`, the benchmark
                 "evaluate",
-                # SR-362: `plumb question reword|pushback`
+                # SR-362: `plumb question reword`
                 "question"}
     assert set(cli.ROUTES) == expected
     for module in cli.ROUTES.values():

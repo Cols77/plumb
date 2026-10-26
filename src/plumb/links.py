@@ -704,6 +704,21 @@ def _record_texts(root: Path, target: Record | None, link: Link) -> tuple[str, s
     return None if old is None else (old, record_text(target))
 
 
+def _owner_answer(core: Core, link: Link, target: Record, record: Record | None) -> str | None:
+    """The owner's latest answer to this link's question asked at the versions now on file:
+    a rerun reads the change in new words, and asking again would ask the same thing twice."""
+    if record is None:
+        return None
+    now = {(target.id, target.hash), (record.id, record.hash)}
+    for e in reversed(core.events()):
+        asked = e.payload.get("asked") if e.kind == "question-answer" else None
+        if isinstance(asked, Mapping) and asked.get("job") == f"debug:{link.id}" and {
+                (r.get("id"), r.get("hash")) for r in asked.get("records") or ()
+                if isinstance(r, Mapping)} == now:
+            return str(e.payload.get("answer") or "")
+    return None
+
+
 def _ask_owner(core: Core, result: AfterTests, record: Record | None, target: Record,
                link: Link, shown: Mapping[str, str], reason: str, session: str | None,
                dry_run: bool) -> None:
@@ -714,6 +729,14 @@ def _ask_owner(core: Core, result: AfterTests, record: Record | None, target: Re
     from plumb.understand import judge
 
     refusal = CHANGED.format(reason=reason)
+    said_before = _owner_answer(core, link, target, record)
+    if said_before is not None:     # SR-362 EX-2: the owner answered at these versions
+        if said_before.startswith("It still holds"):
+            _repinned(core, result, link.id, "owner", f'the owner answered "{said_before}"',
+                      dry_run)
+        else:
+            result.refused.append((link.id, f'{refusal}; the owner answered "{said_before}"'))
+        return
     if record is None or dry_run:
         result.refused.append((link.id, f"{refusal} (dry run: no question asked)" if dry_run
                                else refusal))

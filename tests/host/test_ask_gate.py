@@ -12,7 +12,6 @@ from host.test_answer_rejudge import ASK, judge_asks, world  # noqa: F401
 from understand.test_judge_job import SESSION
 
 from plumb.hosts.claude_code import ask_gate, pretool
-from plumb.understand import judge
 
 pytestmark = pytest.mark.sr("SR-361")
 
@@ -50,11 +49,10 @@ def test_reads_stay_open(world: Path) -> None:  # noqa: F811
         assert call(world, "Bash", command=command) == "", command
 
 
-def test_rewording_and_pushing_back_stay_open(world: Path) -> None:  # noqa: F811
+def test_rewording_stays_open(world: Path) -> None:  # noqa: F811
     judge_asks(world, (ASK, ["SR-001"]))
     assert call(world, "Bash", command="plumb question reword --covers k --question 'Q?' "
                                         "--header H --options '[]'") == ""
-    assert call(world, "Bash", command="plumb question pushback k --reason 'you said so'") == ""
 
 
 def test_asking_opens_it_until_a_new_question_comes(world: Path) -> None:  # noqa: F811
@@ -113,20 +111,6 @@ def test_a_session_older_than_the_matcher_opens_it_by_asking(
     judge_asks(world, (ASK, ["SR-001"]), (OTHER, ["INT-001"]))
     answer(world, hook_input, "Something else entirely?", "Every page")   # answered: the hook
     assert call(world, "Edit", **edit) == ""
-
-
-def test_a_question_sent_back_holds_nothing_until_the_judge_keeps_it(
-        world: Path) -> None:  # noqa: F811
-    from plumb.api import open_core
-
-    judge_asks(world, (ASK, ["SR-001"]))
-    edit = {"file_path": "src/a.py", "old_string": "a", "new_string": "b"}
-    core, key = open_core(world), judge.question_key(ASK)
-    core.log_append("events", "question-pushback", {"session": SESSION, "key": key})
-    assert call(world, "Edit", **edit) == ""                   # the judge is still ruling
-    core.log_append("events", "question-ruling", {"session": SESSION, "key": key,
-                                                  "ruling": "kept"})
-    assert call(world, "Edit", **edit)                          # kept: ask it now
 
 
 def test_no_questions_no_gate(world: Path) -> None:  # noqa: F811

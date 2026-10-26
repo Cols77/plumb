@@ -14,9 +14,8 @@ RULES = (
     ("After `capture`, run `plumb clarify --wait --json`. On `ask`, pass each `question`, "
      "`header` and option `label` and `description` to the question tool, every question at "
      "once, as soon as it is raised; never restate one in prose. Put each in the owner's terms "
-     "with `plumb question reword`, merging those that hinge on one principle; push an obvious "
-     "or already-answered one back with `plumb question pushback`; never drop, answer or "
-     "default one."),
+     "with `plumb question reword`, merging those that hinge on one principle; never drop, "
+     "answer or default one."),
     ("Never answer, infer or default a question for the owner, never pick the recommended "
      "option for them, and never write or read `judge_questions.json` or any approval."),
     ("If the question tool is unavailable (a subagent or headless run) or the owner dismisses "
@@ -51,8 +50,8 @@ def test_plumb_records_skill_names_capture_helpers(installed: Path) -> None:
                   "plumb-clarify"):
         assert words in skill, words
     body = skill.split("---", 2)[2].strip().splitlines()
-    # about 25 lines of context, not procedure, and the question rules (SR-362's reword and
-    # push-back added three)
+    # about 25 lines of context, not procedure, and the question rules (SR-362's reword added
+    # two)
     assert len(body) <= 43
     for owner_only in ("plumb approve", "triage --approve", "spec approve",
                        "config auto-approve"):

@@ -55,8 +55,7 @@ SHOW_COULDNT = ("The check could not be made and the owner has a card offering t
 WAITING = "The check of your request is not finished. Do not build yet."
 ASK_QUESTIONS = ("Ask these {n} questions with the question tool, all at once, now: put each in "
                  "the owner's terms with `plumb question reword`, merging those on one principle; "
-                 "push an obvious or answered one back with `plumb question pushback`; never "
-                 "drop, answer or default one. Each question's `key` is what both take.")
+                 "never drop, answer or default one. Each question's `key` is what it takes.")
 REWORD_FIRST = ("{n} of them use plumb's own words (`reword: true`): reword those before asking, "
                 "with no record id or plumb term.")
 UNMATCHED = "Ask these questions as given; the last answer matched none of them."
@@ -129,12 +128,10 @@ def _since(core: Any, session: str, logged: Mapping[str, Any]) -> str:
 
 
 def _judge_jobs_since(root: Path, session: str, at: str) -> list[Job]:
-    """The session's judge jobs queued since ``at``, whatever their records, and the judge's
-    readings of a question the agent sent back (SR-362): no question is asked before its
-    ruling."""
+    """The session's judge jobs queued since ``at``, whatever their records."""
     from plumb.understand import jobs
 
-    return [j for j in jobs.queued(root, session) if j.kind in ("judge", "pushback")
+    return [j for j in jobs.queued(root, session) if j.kind == "judge"
             and j.created >= at]
 
 

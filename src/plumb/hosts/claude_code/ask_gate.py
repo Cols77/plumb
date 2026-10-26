@@ -1,6 +1,6 @@
 """SR-361 EX-6: the ask gate. While judge questions are open and the agent has not asked them,
 edits and writing shell commands are refused until it asks them through the question tool;
-reads, the question tool and ``plumb question reword|pushback`` / ``plumb clarify`` stay open,
+reads, the question tool and ``plumb question reword`` / ``plumb clarify`` stay open,
 so the agent can still read and put the questions in the owner's words.
 
 It never stalls a turn: it opens once the agent called the question tool (answered or
@@ -18,8 +18,8 @@ from typing import Any
 
 WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 REASON = ("plumb: {n} judge question{s} wait for the owner and {verb} not been asked: run "
-          "`plumb clarify --wait --json` and ask them now with the question tool (reword, merge, "
-          "push back; never drop one). Reading stays open; edits and writing commands wait.")
+          "`plumb clarify --wait --json` and ask them now with the question tool (reword, merge; "
+          "never drop one). Reading stays open; edits and writing commands wait.")
 
 READ_COMMANDS = frozenset({
     "cat", "head", "tail", "less", "ls", "dir", "pwd", "echo", "printf", "grep", "rg", "egrep",
@@ -70,12 +70,12 @@ def _reads(words: list[str]) -> bool:
         return False
     sub = next((a for a in args if not a.startswith("-")), "")
     if sub == "question":
-        return any(a in ("reword", "pushback") for a in args)
+        return "reword" in args
     return sub in PLUMB_READ
 
 
 def reads_only(command: str) -> bool:
-    """A shell command that only reads (or rewords and pushes back questions): no redirection
+    """A shell command that only reads (or rewords questions): no redirection
     into a file, no command substitution, every piece a known reading command."""
     from plumb.guard import commands
 
@@ -143,7 +143,7 @@ def decide(root: Path | str, session: str, tool: str, tool_input: dict[str, Any]
             return ""                  # a scratch file outside the project (to reword, say)
         if _asked_in_transcript(data, judge.questions_path(root, session)):
             judge.note_asked(core, session)
-        asked = set(judge.asked_keys(root, session)) | judge.awaiting_ruling(core, session)
+        asked = set(judge.asked_keys(root, session))
         left = [q for q in judge.to_ask(core, session) if str(q.get("key")) not in asked]
     except Exception:  # noqa: BLE001 - the gate never blocks on its own failure
         return ""
