@@ -44,10 +44,10 @@ class Versioned(StubJev):
         super().__init__(default)
         self.default, self.scores, self.version = default, scores or {}, version
 
-    def entailment(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str) -> Any:
+    def approval(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str) -> Any:
         self.probability = self.scores.get(subject, self.default)
-        judgment = super().entailment(premise, hypothesis, subject=subject,
-                                      claim_kind=claim_kind)
+        judgment = super().approval(premise, hypothesis, subject=subject,
+                                    claim_kind=claim_kind)
         from dataclasses import replace
 
         return replace(judgment, backend=f"jev:{self.version}")

@@ -68,7 +68,7 @@ def test_ex1_a_transcript_match_is_quoted_with_its_date_and_approves_nothing(
     and the older record stays unconfirmed with no approval logged."""
     write_record(world, intent_text(2, "Cache the front page", "Cache the front page"))
     _transcript(world, monkeypatch, tmp_path, "Cache the front page, please")
-    applied_on(world, ["INT-002"], answer(("INT-002", "supported"), questions=[
+    applied_on(world, ["INT-002"], answer(("INT-002", "beyond"), questions=[
         asking("INT-002", request={})]))
     (question,) = written(world)
     assert 'You said on 4 Oct: "Cache the front page"' in question["question"]

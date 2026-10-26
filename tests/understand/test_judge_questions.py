@@ -2,7 +2,9 @@
 judge-approval plan). A record the fast track does not take is asked about through the question
 tool: the judge job writes ``judge_questions.json`` (only the worker writes it) and
 ``clarify --wait`` answers ``ask`` with them. A question in plumb's words, or out of shape, is
-never shown: its records wait with the waiting line. JEV and the model are stubs."""
+never shown: its records wait with the waiting line. Only a record the model finds
+contradicting or going beyond the owner's words is asked about (SR-372), so the questions here
+come with `beyond` verdicts. JEV and the model are stubs."""
 
 from __future__ import annotations
 
@@ -81,7 +83,7 @@ def test_ex3_below_the_calibrated_threshold_the_judge_models_questions_are_writt
     written for the question tool, the recommended option first."""
     core = configure(world)
     fast_track_on(core, monkeypatch, 0.93)
-    model = FakeDispatcher({"judge": answer(("SR-001", "supported"),
+    model = FakeDispatcher({"judge": answer(("SR-001", "beyond"),
                                             questions=[asking("SR-001")])})
     job = build_job(core, ["SR-001"])
     done = verdict.cascade(core, job, system="judge", schema={}, jev=StubJev(0.92),
@@ -108,7 +110,7 @@ def test_a_label_the_model_already_marked_recommended_is_not_marked_twice(
     fast_track_on(core, monkeypatch, 0.93)
     marked = asking("SR-001")
     marked["options"][0]["label"] = "Public pages (Recommended)"
-    applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[marked]))
+    applied_on(world, ["SR-001"], answer(("SR-001", "beyond"), questions=[marked]))
     (question,) = written(world)
     assert question["options"][0]["label"] == "Public pages (Recommended)"
 
@@ -143,7 +145,7 @@ def test_ex6_supported_records_without_calibration_raise_no_trial_or_read_back_c
         2, "Pages load in one second", "Home loads within one second", intent=1,
         examples=(("the home page", "it is requested", "it loads within 1 second"),)))
     ids = ["INT-001", "SR-001", "SR-002"]
-    applied = applied_on(world, ids, answer(*((i, "supported") for i in ids),
+    applied = applied_on(world, ids, answer(*((i, "beyond") for i in ids),
                                             questions=[asking(*ids)]))
     assert applied.cards == ()
     assert summary._upkeep(open_core(world), SESSION, recalibrate=False) == []
@@ -169,7 +171,7 @@ def test_ex5_the_session_start_brief_offers_no_ok_and_no_read_back(
     from plumb.understand import cardstore, clarify
 
     applied_on(world, ["INT-001", "SR-001"], answer(
-        ("INT-001", "supported"), ("SR-001", "supported"),
+        ("INT-001", "beyond"), ("SR-001", "beyond"),
         questions=[asking("INT-001", "SR-001")]))
     lines = session_start.brief(open_core(world), "tests: none")
     text = "\n".join(lines)
@@ -188,7 +190,7 @@ def test_ex4_ids_and_digests_are_stripped_and_plumb_words_go_to_the_agent_to_rew
     field shown; SR-362 EX-5: a question still saying "settled" or "trial" is kept, marked for
     the agent to reword in the owner's terms, never set aside."""
     digest = "sha256:" + "ab" * 32
-    applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[asking(
+    applied_on(world, ["SR-001"], answer(("SR-001", "beyond"), questions=[asking(
         "SR-001", question=f"Is SR-001 right for every page ({digest})?",
         options=[{"label": "Keep SR-001", "consequence": "It stays as written."},
                  {"label": "Narrow it", "consequence": f"Only public pages {digest}."}])]))
@@ -200,7 +202,7 @@ def test_ex4_ids_and_digests_are_stripped_and_plumb_words_go_to_the_agent_to_rew
     assert question["reword"] is False
     for word in ("settled", "trial"):
         judge.questions_path(world, SESSION).unlink(missing_ok=True)
-        applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[asking(
+        applied_on(world, ["SR-001"], answer(("SR-001", "beyond"), questions=[asking(
             "SR-001", question=f"Was this {word} by your earlier answer?")]))
         (kept,) = written(world)
         assert kept["reword"] is True and word in kept["question"]
@@ -232,7 +234,7 @@ def test_ex7_a_question_out_of_schema_waits_with_the_waiting_line(
     nothing is shown, the record waits with the waiting line, no error."""
     bare = asking("SR-001", options=[{"label": "Public pages"}, {"label": "Every page"}],
                   recommended_reason="")
-    applied = applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[bare]))
+    applied = applied_on(world, ["SR-001"], answer(("SR-001", "beyond"), questions=[bare]))
     assert written(world) == []
     (line,) = notes(world)
     assert line.startswith("plumb: the verdict is waiting") and "consequences" in line
@@ -263,7 +265,7 @@ def test_ex9_every_record_answered_nothing_waits_and_no_line(
         world: Path) -> None:  # noqa: F811
     """SR-245 EX-9: each record is asked about: nothing waits, no line is printed."""
     applied = applied_on(world, ["INT-001", "SR-001"], answer(
-        ("INT-001", "supported"), ("SR-001", "beyond"),
+        ("INT-001", "beyond"), ("SR-001", "beyond"),
         questions=[asking("INT-001"), asking("SR-001", question="Did you ask for a limit?")]))
     assert len(written(world)) == 2
     assert notes(world) == [] and not any(n.startswith("waiting") for n in applied.notes)
@@ -281,7 +283,7 @@ def test_three_records_sharing_one_gap_give_one_question_with_no_record_title(
         2, "Pages load in one second", "Home loads within one second", intent=1,
         examples=(("the home page", "it is requested", "it loads within 1 second"),)))
     ids = ["INT-001", "SR-001", "SR-002"]
-    applied_on(world, ids, answer(*((i, "supported") for i in ids),
+    applied_on(world, ids, answer(*((i, "beyond") for i in ids),
                                   questions=[asking(*ids), asking(*ids)]))
     (question,) = written(world)
     assert [r["id"] for r in question["records"]] == ids
@@ -305,7 +307,7 @@ def test_wait_after_a_capture_with_no_clarify_job_answers_ask(
     runs it and answers ``ask`` with the questions ready for the question tool; the gate stays
     open."""
     engine_standins.dispatcher.script = {"judge": answer(
-        ("INT-001", "supported"), ("SR-001", "supported"),
+        ("INT-001", "beyond"), ("SR-001", "beyond"),
         questions=[asking("INT-001", "SR-001")])}
     _queue(world, ["INT-001", "SR-001"])
     outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
@@ -327,7 +329,7 @@ def test_wait_after_an_answer_collects_the_judge_job_queued_since(
     """The owner answers in the question tool; the judge job queued after the answer is run by
     the next ``--wait`` (no new message); the answered question is no longer asked."""
     engine_standins.dispatcher.script = {"judge": answer(
-        ("INT-001", "supported"), ("SR-001", "supported"),
+        ("INT-001", "beyond"), ("SR-001", "beyond"),
         questions=[asking("INT-001", "SR-001")])}
     _queue(world, ["INT-001", "SR-001"])
     first = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
@@ -353,7 +355,7 @@ def test_open_questions_leave_the_gate_open_a_choice_card_closes_it_and_its_answ
     from plumb.understand import cardstore, clarify, worker
 
     engine_standins.dispatcher.script = {"judge": answer(
-        ("SR-001", "supported"), questions=[asking("SR-001")])}
+        ("SR-001", "beyond"), questions=[asking("SR-001")])}
     _queue(world, ["SR-001"])
     assert cmd_clarify.wait(open_core(world), SESSION, timeout=10).state == "ask"
     assert not gate.is_closed(world, SESSION)
@@ -415,7 +417,7 @@ def test_ex3_a_question_with_one_option_is_asked_again_once(
     the other verdicts are applied."""
     core = configure(world)
     bad = asking("SR-001", options=[{"label": "Only", "consequence": "Nothing else."}])
-    model = FakeDispatcher({"judge": answer(("SR-001", "supported"), questions=[bad])})
+    model = FakeDispatcher({"judge": answer(("SR-001", "beyond"), questions=[bad])})
     job = build_job(core, ["SR-001"])
     done = verdict.cascade(core, job, system="judge", schema={}, jev=StubJev(0.1),
                            dispatcher=model)
@@ -425,7 +427,7 @@ def test_ex3_a_question_with_one_option_is_asked_again_once(
     assert notes(world)                                  # the record waits and says why
     (case,) = summary.open_cases(world)[0]               # and the job goes to debugging
     assert case["kind"] == "judge-question" and "SR-001" in case["target"]
-    good = FakeDispatcher({"judge": answer(("SR-001", "supported"),
+    good = FakeDispatcher({"judge": answer(("SR-001", "beyond"),
                                            questions=[asking("SR-001")])})
     verdict.cascade(core, job, system="judge", schema={}, jev=StubJev(0.1), dispatcher=good)
     assert len(good.ran("judge")) == 1                   # a usable question is not retried
@@ -453,7 +455,7 @@ def test_ex2_a_job_over_the_limit_is_split_not_failed(world: Path) -> None:  # n
 
 
 def shaped_of(repo: Path, *questions: dict[str, Any]) -> list[dict[str, Any]]:
-    applied_on(repo, ["SR-001"], answer(("SR-001", "supported"), questions=list(questions)))
+    applied_on(repo, ["SR-001"], answer(("SR-001", "beyond"), questions=list(questions)))
     return written(repo)
 
 
@@ -593,7 +595,7 @@ def test_dec191_an_older_record_with_words_in_no_transcript_says_none_were_found
         tmp_path: Path) -> None:  # noqa: F811
     write_record(world, intent_text(2, "Cache the front page", "Cache the front page"))
     monkeypatch.setenv("PLUMB_TRANSCRIPTS_DIR", str(tmp_path / "none"))
-    applied_on(world, ["INT-002"], answer(("INT-002", "supported"), questions=[
+    applied_on(world, ["INT-002"], answer(("INT-002", "beyond"), questions=[
         asking("INT-002", request={"words": "cache it", "date": "9 Oct"})]))
     (question,) = written(world)
     assert "You said" not in question["question"]
@@ -606,7 +608,7 @@ def test_ex1_an_older_records_own_words_are_looked_for_when_the_judge_quotes_non
         tmp_path: Path) -> None:
     write_record(world, intent_text(2, "Cache the front page", "Cache the front page"))
     _transcript(world, monkeypatch, tmp_path, "Cache the front page, please")
-    applied_on(world, ["INT-002"], answer(("INT-002", "supported"), questions=[
+    applied_on(world, ["INT-002"], answer(("INT-002", "beyond"), questions=[
         asking("INT-002", request={})]))
     (question,) = written(world)
     assert 'You said on 4 Oct: "Cache the front page"' in question["question"]
@@ -625,7 +627,7 @@ def test_ex1_ex3_a_question_short_of_records_or_options_does_not_reject_the_answ
 
     bare = {k: v for k, v in asking("SR-001").items() if k != "records"}
     one = asking("SR-001", options=[{"label": "Only", "consequence": "Nothing else."}])
-    given = answer(("SR-001", "supported"), questions=[bare, one])
+    given = answer(("SR-001", "beyond"), questions=[bare, one])
     assert schema_check.problems(given, judge.schema) == []
     applied = applied_on(world, ["SR-001"], given)
     (question,) = written(world)                     # the bare one is shown with the job's records

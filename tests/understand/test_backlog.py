@@ -62,12 +62,12 @@ def question(*ids: str, words: str = MESSAGE) -> dict[str, Any]:
 
 
 def answering(score: float = 0.95, verdicts: dict[str, str] | None = None):
-    """A fake judge: every record in the job is supported at ``score`` unless named, and one
-    question settles them all."""
+    """A fake judge: every record in the job goes beyond the owner's words at ``score`` unless
+    named (SR-372: only that or a contradiction asks), and one question settles them all."""
     def answer(job: Job) -> dict[str, Any]:
         said = verdicts or {}
         return {"questions": [question(*(r["id"] for r in job.inputs["records"]))],
-                "verdicts": [{"id": r["id"], "verdict": said.get(r["id"], "supported"),
+                "verdicts": [{"id": r["id"], "verdict": said.get(r["id"], "beyond"),
                               "confidence": score,
                               "beyond": ["more than you said"] if said.get(r["id"]) == "beyond"
                               else [],
@@ -314,7 +314,7 @@ def test_a_record_below_the_threshold_is_asked_like_the_others(repo: Path, write
 
     def graded(job: Job):
         return {"questions": [question(*(r["id"] for r in job.inputs["records"]))],
-                "verdicts": [{"id": r["id"], "verdict": "supported",
+                "verdicts": [{"id": r["id"], "verdict": "beyond",
                               "confidence": 0.5 if r["id"] == ids[3] else 0.95,
                               "beyond": [], "contradicts": []}
                              for r in job.inputs["records"]]}

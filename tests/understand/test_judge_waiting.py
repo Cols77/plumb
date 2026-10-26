@@ -31,9 +31,9 @@ class ClearsIntent(StubJev):
     def __init__(self) -> None:
         super().__init__(0.95)
 
-    def entailment(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str) -> Any:
+    def approval(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str) -> Any:
         self.probability = 0.95 if subject.startswith("INT") else 0.1
-        return super().entailment(premise, hypothesis, subject=subject, claim_kind=claim_kind)
+        return super().approval(premise, hypothesis, subject=subject, claim_kind=claim_kind)
 
 
 def cascade(core: Any, model: FakeDispatcher, jev: Any = None) -> Any:

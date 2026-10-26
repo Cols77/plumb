@@ -49,7 +49,7 @@ def test_the_judge_names_the_principle_and_whether_it_blocks(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
     core = configure(world)
     fast_track_on(core, monkeypatch, 0.93)
-    applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[
+    applied_on(world, ["SR-001"], answer(("SR-001", "beyond"), questions=[
         asking("SR-001", principle=" Public  Pages ", blocking=True)]))
     (question,) = written(world)
     assert (question["principle"], question["blocking"]) == ("public pages", True)

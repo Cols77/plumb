@@ -18,7 +18,7 @@ from understand.test_judge_questions import answer, asking
 def test_a_question_older_than_the_owners_message_is_not_repeated_when_the_judge_is_down(
         world: Path, engine_standins: Any) -> None:  # noqa: F811
     engine_standins.dispatcher.script = {"judge": answer(
-        ("SR-001", "supported"), questions=[asking("SR-001")])}
+        ("SR-001", "beyond"), questions=[asking("SR-001")])}
     core = open_core(world)
     first = build_job(core, ["SR-001"])
     queue.enqueue(core, first)

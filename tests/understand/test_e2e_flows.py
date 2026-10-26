@@ -295,7 +295,7 @@ def test_flow_3_capture_asks_through_the_question_tool_and_draws_no_trial(repo: 
                          {"label": "Decimals too", "consequence": "Wider; more to build."}],
              "recommended_reason": "you said whole numbers",
              "request": {"words": "takes roots of whole numbers", "date": "16 Oct"}}
-    model(s, judge={"verdicts": [{"id": rid, "verdict": "supported", "confidence": 0.9}
+    model(s, judge={"verdicts": [{"id": rid, "verdict": "beyond", "confidence": 0.9}
                                  for rid in ids], "questions": [asked]})
     (repo / "capture.json").write_text(json.dumps(_capture_doc()), encoding="utf-8")
     done = plumb(s, "capture", "--file", str(repo / "capture.json"), "--prompt",

@@ -109,6 +109,12 @@ class JevStub:
                 for name, q in body["questions"].items():
                     if q["type"] == "noul":
                         answers[name] = {"type": "noul", "noul": stub.noul(body["state"])}
+                    elif "benign" in q["criteria"]:     # SR-372: the approval question
+                        p = stub.noul(body["state"])
+                        label = "benign" if p >= 0.5 else "contradicts"
+                        answers[name] = {"type": "choice", "choice": label,
+                                         "probabilities": {"benign": p, "contradicts": 1 - p},
+                                         "confidence": 0.9}
                     else:
                         label = next(iter(q["criteria"]))
                         answers[name] = {"type": "choice", "choice": label,

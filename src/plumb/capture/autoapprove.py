@@ -13,8 +13,10 @@ form only raises the floor to its threshold; any other is ignored and nothing is
 
 The judge job asks JEV for every record (one cascade, SR-242); ``fast_track`` says whether a
 record JEV clears is approved there without a question (SR-248): a proposed INT or requirement
-whose every quote is verbatim in a prompt the prompt hook logged, when JEV scores its wording
-AND every one of its examples strictly above max(0.9, the calibrated threshold). Never: a
+whose every quote is verbatim in a prompt the prompt hook logged, when JEV finds its wording AND
+every one of its examples ``benign`` (SR-372: it neither contradicts the owner's words nor adds
+intent they did not give) with the probability of ``benign`` strictly above max(0.9, the
+calibrated threshold). Never: a
 record that ever had an approval, an edit of a confirmed record, a member of an escalated set,
 a prompt the prompt hook did not log (a message the agent recorded itself, R13 Q4), or when
 JEV is unavailable. Each approval is ``by: auto-jev``, written by the worker only, with its
@@ -147,9 +149,11 @@ JEV_FLOOR = 0.9   # SR-248: JEV's floor; no threshold or owner setting lowers it
 def _jev_auto(record: Any, jev: Mapping[str, Any], state: AutoApproveState
               ) -> dict[str, Any] | None:
     """The ``auto`` payload of JEV's scores ``jev`` on ``record``, or None unless JEV clears
-    it: every part strictly above max(0.9, the owner's minimum, the threshold), and the
-    owner's minimum confidence label."""
-    if not jev.get("clears") or jev.get("threshold") is None:
+    it: every part ``benign`` (SR-372: a restatement or a benign extension, no part
+    ``contradicts`` or ``extends``) with its probability strictly above max(0.9, the owner's
+    minimum, the threshold), and the owner's minimum confidence label. The payload names the
+    verdict."""
+    if not jev.get("clears") or jev.get("threshold") is None or jev.get("verdict") != "benign":
         return None
     if CLAIM_KIND.get(record.kind) != jev.get("claim_kind"):
         return None
@@ -159,7 +163,7 @@ def _jev_auto(record: Any, jev: Mapping[str, Any], state: AutoApproveState
     if CONFIDENCE_RANK.get(str(jev.get("confidence_label")), -1) < CONFIDENCE_RANK.get(
             state.min_confidence, 2):
         return None
-    return {"score": jev["score"], "confidence": jev.get("confidence"),
+    return {"score": jev["score"], "verdict": "benign", "confidence": jev.get("confidence"),
             "confidence_label": jev.get("confidence_label"), "backend": jev.get("judge"),
             "model_version": jev.get("model_version"), "calibration": jev.get("calibration"),
             "claim_kind": jev["claim_kind"], "judge": "jev", "threshold": jev["threshold"],
@@ -224,6 +228,8 @@ def recheck(entry: LogEntry, config: Mapping[str, Any] | None,
         return "auto-jev approval without the owner's config auto-approve on before it"
     if auto.get("judge", "jev") != "jev":
         return "auto-jev approval rests on a judge model's verdict, which never approves"
+    if auto.get("verdict", "benign") != "benign":   # SR-372: an older approval names none
+        return f"auto-jev approval of a {auto.get('verdict')} verdict; only benign is approved"
     kind = str(auto.get("claim_kind"))
     threshold = JEV_FLOOR                  # DEC-143: no calibration cited, the floor alone
     if auto.get("calibration"):

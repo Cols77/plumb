@@ -61,10 +61,10 @@ owner picked one option among several, the record must match the option picked.
 
 ## Questions for the owner
 
-First resolve each record yourself, from the recorded intent and the owner's logged words. A
-record whose premise holds no answered question needs one question round before it can be
-approved, but one question covers every record that turns on the same point: ask the fewest
-questions that settle every record you did not mark `waiting`.
+First resolve each record yourself, from the recorded intent and the owner's logged words. Ask
+only about a record you judged `contradicts` or `beyond` (it adds intent the owner did not give);
+a `supported` record needs no question. One question covers every record that turns on the same
+point: ask the fewest questions that settle those records.
 
 Ask only about what the owner meant, or about two things the owner said that contradict each
 other. Never name a record, never quote a record's text, never use plumb's words (record,
