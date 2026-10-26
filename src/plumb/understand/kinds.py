@@ -11,7 +11,6 @@ KIND_MODULES: dict[str, str] = {"read": "plumb.understand.read",
                                 "clarify": "plumb.understand.clarify",
                                 "tidy": "plumb.understand.tidy",
                                 "question": "plumb.understand.question",
-                                "pushback": "plumb.understand.pushback",
                                 "selfdebug": "plumb.understand.selfdebug"}
 
 

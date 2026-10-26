@@ -1,12 +1,12 @@
-"""``plumb question reword | pushback`` (SR-362, DEC-340): what the coding agent may do with
-the judge's questions before the owner sees them.
+"""``plumb question reword`` (SR-362, DEC-340): what the coding agent may do with the judge's
+questions before the owner sees them.
 
 ``reword --covers KEY[,KEY...] --question Q --header H --options JSON`` records the agent's
 wording of the judge questions it covers, in the owner's terms and merged on one principle
-(``judge.reword``): the owner's answer to it answers each of them. ``pushback KEY --reason R``
-sends one back to the judge as obvious or already answered (``pushback`` job kind); the judge
-withdraws it or keeps it. A KEY is a judge question's text as ``clarify --wait`` gives it, or
-a start of it naming one open question. Nothing here drops, answers or defaults a question."""
+(``judge.reword``): the owner's answer to it answers each of them. A KEY is a judge question's
+text as ``clarify --wait`` gives it, or a start of it naming one open question. Nothing here
+drops, answers or defaults a question: one the owner already answered is the judge's to not
+raise (``judge._questions``)."""
 
 from __future__ import annotations
 
@@ -17,8 +17,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 NO_MATCH = "plumb: {key!r} names no open question of the judge; nothing recorded."
-SENT_BACK = ("plumb: sent back to the judge; `plumb clarify --wait` asks it again unless the "
-             "judge withdraws it.")
 REWORDED = "plumb: your wording covers {n} question(s); the owner's answer to it answers each."
 
 
@@ -74,44 +72,25 @@ def run(command: str, argv: list[str]) -> int:
     reword.add_argument("--question", required=True)
     reword.add_argument("--header", required=True)
     reword.add_argument("--options", required=True, help="JSON: [{label, description}, ...]")
-    back = sub.add_parser("pushback", help="send a question back to the judge, with why")
-    back.add_argument("key")
-    back.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     root = resolve_root(args.root)
     core = open_core(root)
     session = args.session or current_session(root)
     keys = [str(q.get("key")) for q in judge.open_questions(core, session)]
-    if args.verb == "reword":
-        covers = _covered(keys, args.covers)
-        options = _options(args.options)
-        if isinstance(covers, str):
-            print(NO_MATCH.format(key=covers), file=sys.stderr)
-            return 1
-        if options is None:
-            print("plumb: --options is a JSON list of two to four {label, description}.",
-                  file=sys.stderr)
-            return 2
-        if judge._LEFT_IN.search(" ".join([args.question, args.header,
-                                           *(o["label"] for o in options)])):
-            print("plumb: put the question in the owner's terms, with no record id.",
-                  file=sys.stderr)        # SR-362 EX-1
-            return 2
-        judge.reword(core, session, covers, args.question, args.header, options)
-        print(REWORDED.format(n=len(covers)))
-        return 0
-    key = _resolve(keys, args.key)
-    if key is None:
-        print(NO_MATCH.format(key=args.key), file=sys.stderr)
+    covers = _covered(keys, args.covers)
+    options = _options(args.options)
+    if isinstance(covers, str):
+        print(NO_MATCH.format(key=covers), file=sys.stderr)
         return 1
-    from plumb.understand import pushback, queue
-
-    question = next(q for q in judge.open_questions(core, session) if q.get("key") == key)
-    core.log_append("events", "question-pushback", {
-        "session": session, "key": key, "question": question.get("question"),
-        "reason": args.reason})       # SR-362 EX-4: the push-back is logged before any ruling
-    job = pushback.build(core, session, key=key, reason=args.reason)
-    if job is not None:
-        queue.enqueue(core, job)
-    print(SENT_BACK)
+    if options is None:
+        print("plumb: --options is a JSON list of two to four {label, description}.",
+              file=sys.stderr)
+        return 2
+    if judge._LEFT_IN.search(" ".join([args.question, args.header,
+                                       *(o["label"] for o in options)])):
+        print("plumb: put the question in the owner's terms, with no record id.",
+              file=sys.stderr)        # SR-362 EX-1
+        return 2
+    judge.reword(core, session, covers, args.question, args.header, options)
+    print(REWORDED.format(n=len(covers)))
     return 0
