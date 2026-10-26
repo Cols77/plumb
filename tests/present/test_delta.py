@@ -206,8 +206,9 @@ def test_prompt_queued_escalations_survive_the_budget(records: Path, hook_input)
 
 def test_blocked_stop_untraced_instruction_survives_the_budget(records: Path,
                                                                hook_input) -> None:
-    """Entry point 3: the blocked stop removes untraced.json and tells the agent itself;
-    the instruction is in the block whatever ``hooks.stop_tokens`` allows."""
+    """Entry point 3: the covering tests' instruction is in the block whatever
+    ``hooks.stop_tokens`` allows; the untraced note is not that one next action (SR-373),
+    so untraced.json waits for the next prompt."""
     from present_helpers import FakeVerify, run_stop, touch
 
     _tight(records, stop_tokens=5)
@@ -217,7 +218,7 @@ def test_blocked_stop_untraced_instruction_survives_the_budget(records: Path,
     out = run_stop(records, hook_input, verify=FakeVerify(nodes=("tests/test_x.py::t",)))
     assert "plumb tests run" in out["reason"]
     assert "src/app/mul.py" in out["reason"]
-    assert not note.exists()
+    assert note.exists()
 
 
 # --- a per-turn line reaches the agent once in every turn, whatever its words (SR-063 EX-5) ---
