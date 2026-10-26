@@ -27,14 +27,12 @@ class _Index:
     """What the re-check reads from a log, built once per events list."""
 
     def __init__(self, events: list[LogEntry]) -> None:
-        from plumb.mod.offers import OFFER_KIND
         from plumb.mod.session import HELLO_KIND
 
         self.position: dict[str, int] = {}
         # every registration of a session (a resumed one registers again, with a new key) and
         # every drawing of an offer (drawn again under that new key)
         self.hello: dict[tuple[str, str], list[tuple[int, str]]] = {}
-        self.offers: dict[tuple[str, str, str], list[tuple[int, Mapping[str, Any]]]] = {}
         for n, entry in enumerate(events):
             self.position.setdefault(entry.digest, n)
             if entry.marker != "none":
@@ -46,10 +44,6 @@ class _Index:
                     entry.kind == "browser-hello" and surface == "browser"):
                 key = str(payload.get("key_digest") or "")
                 self.hello.setdefault((session, surface), []).append((n, key))
-            elif entry.kind == OFFER_KIND:
-                key = (session, surface, str(payload.get("offer") or ""))
-                drawn = self.offers.setdefault(key, [])
-                drawn.append((n, payload))
 
 
 def _index_of(events: list[LogEntry]) -> _Index:
@@ -115,21 +109,5 @@ def problem(entry: LogEntry, core: Any) -> str | None:
     held = registration(core.root, session)
     if held is not None and digest not in accepted_digests(held):
         return "button approval: the key is not the one the session's panel holds"
-    drawn = [(n, p) for n, p in index.offers.get((session, surface, offer), ()) if n < at]
-    if not drawn:
-        return "button approval: its offer was not drawn in that session before it"
-    # the drawing under the approval's key (a resumed session draws its offers again)
-    same_key = [p for _, p in drawn if p.get("key_digest") == digest]
-    shown = same_key[-1] if same_key else drawn[0][1]
-    if shown.get("key_digest") != digest or shown.get("card") != payload.get("card") \
-            or str(shown.get("question") or "") != str(payload.get("question") or ""):
-        return "button approval: its offer was drawn for another card or key"
-    # the record the offer asked about, or (a read-back) the request's records it named
-    named = {(shown.get("record"), shown.get("hash")),
-             *((r.get("id"), r.get("hash")) for r in shown.get("records") or ()
-               if isinstance(r, Mapping))}
-    for item in records:
-        if (item.get("id"), item.get("hash")) not in named:
-            return (f"button approval: the offer did not show {item.get('id')} at that "
-                    "version")
-    return None
+    # SR-376: a card being drawn is no longer logged, so no offer can be shown to have been drawn
+    return "button approval: its offer was not drawn in that session before it"

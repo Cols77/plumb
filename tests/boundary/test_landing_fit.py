@@ -68,20 +68,20 @@ def _entries(repo: Path) -> set[str]:
 @pytest.mark.sr("SR-329")
 def test_ex1_ex2_the_tidy_commit_takes_every_shared_entry_and_no_local_one(repo: Path) -> None:
     sha, before = land_branch(repo, lambda root: docs(root, "x.txt"))
-    for n, kind in enumerate(["judgment", "approval", "prompt"] * 3):
+    for n, kind in enumerate(["waiver", "approval", "prompt"] * 3):
         put(repo, kind, {"n": n})
     put(repo, "verdict", {"n": 1})
     landing.land(repo, sha, before)
     assert {p for p in _entries(repo) if "/verdict/" not in p} == set()
     shown = run_git(repo, "show", "--name-only", "--format=", "HEAD").stdout.split()
-    assert sum(p.startswith(".plumb/log/judgment/") for p in shown) == 3
+    assert sum(p.startswith(".plumb/log/waiver/") for p in shown) == 3
     assert not any("/verdict/" in p for p in shown)
     assert list((repo / ".plumb" / "log" / "verdict").glob("*.json"))
 
 
 @pytest.mark.sr("SR-329")
 def test_ex3_main_s_own_uncommitted_shared_entries_do_not_hold_a_merge(repo: Path) -> None:
-    put(repo, "judgment", {"n": 1})
+    put(repo, "waiver", {"n": 1})
     assert unstaged_plumb(repo) == []
     (repo / ".plumb" / "requirements").mkdir(exist_ok=True)
     (repo / ".plumb" / "requirements" / "SR-900.md").write_text("x\n", encoding="utf-8")
@@ -91,7 +91,7 @@ def test_ex3_main_s_own_uncommitted_shared_entries_do_not_hold_a_merge(repo: Pat
 @pytest.mark.sr("SR-329")
 def test_ex4_an_entry_written_after_one_tidy_commit_is_taken_by_the_next(repo: Path) -> None:
     sha, before = land_branch(repo, lambda root: docs(root, "x.txt"))
-    put(repo, "judgment", {"n": 1})
+    put(repo, "waiver", {"n": 1})
     landing.land(repo, sha, before)
     assert _entries(repo) == set()
     run_git(repo, "checkout", "-q", "-b", "feat2")
@@ -99,7 +99,7 @@ def test_ex4_an_entry_written_after_one_tidy_commit_is_taken_by_the_next(repo: P
     commit_all(repo, "feat2")
     run_git(repo, "checkout", "-q", "main")
     run_git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "m2", "feat2")
-    put(repo, "judgment", {"n": 2})
+    put(repo, "waiver", {"n": 2})
     assert len(_entries(repo)) == 1
     landing.land(repo, head(repo), sha)
     assert _entries(repo) == set()

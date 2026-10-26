@@ -3,3 +3,4 @@ session/
 test_map.txt
 view/
 eval/runs/
+log/judgment/*.json

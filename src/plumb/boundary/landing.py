@@ -255,6 +255,8 @@ def compaction(core: Any, since_at: str, tracked: set[str],
     of a ``BY_AGE`` kind naming no record, older than ``since_at``. An entry a staying entry
     cites (its digest, or its payload's ``digest``) stays, and so on down the chain. A record
     of ``pending`` (an in-flight branch's, SR-301) is not retired for being absent here."""
+    from plumb import log
+
     index = core.index()
     statuses = core.status()
 
@@ -269,10 +271,13 @@ def compaction(core: Any, since_at: str, tracked: set[str],
     live = [e for e in [*core.events(), *evidence] if ":" not in e.name]
     moving: dict[str, Any] = {}
     for entry in live:
-        if entry.name not in tracked or entry.kind in NEVER:
+        telemetry = entry.kind in log.TELEMETRY_KINDS   # local files: tracked or not
+        if (entry.name not in tracked and not telemetry) or entry.kind in NEVER:
             continue
         named = named_records(entry.payload)
-        if entry.kind == "test-run":
+        if telemetry:
+            move = entry.at < since_at
+        elif entry.kind == "test-run":
             move = entry.digest not in kept_runs
         elif named:
             move = all(gone(i) for i in named)
@@ -361,8 +366,8 @@ def _commit(root: Path, removed: list[str], archived: list[str], head: str) -> N
     message = f"plumb: tidy after the landing of {head[:12]}" + chr(10) * 2 + "SR: SR-296"
     # a local kind's new segment is ignored by git: naming it would fail the whole commit
     known = {".plumb/log/" + n for n in log.tracked_names(root)}
-    paths = [p for p in [*removed, *archived] if p in known or not (
-        p.startswith(".plumb/log/") and p.split("/")[2] in log.LOCAL_KINDS)]
+    paths = log.untracked_telemetry_out(root, [p for p in [*removed, *archived] if p in known or not (
+        p.startswith(".plumb/log/") and p.split("/")[2] in log.LOCAL_KINDS)])
     try:
         for attempt in range(5):  # a git process just after the merge may still hold index.lock
             try:

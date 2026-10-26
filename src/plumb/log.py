@@ -54,13 +54,16 @@ STREAM_OF_KIND: dict[str, LogStream] = {"test-run": "evidence", "merge-evidence"
 # test (tests/logs/test_kinds.py).
 SHARED_KINDS = frozenset({
     "approval", "prompt", "config", "calibration", "pre-intent", "question-answer", "premise",
-    "judgment", "test-run", "mod-hello", "offer",
+    "judgment", "test-run", "mod-hello",
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
     "conflict-resolution", "waiver",
     "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
     "question-pushback", "question-ruling",   # SR-362: the agent sends back, the judge rules
     "answer-bound",       # SR-362: an answer given before its rewording, pointed at its keys
 })
+# SR-376: telemetry. The live entry files are ignored by git (.plumb/.gitignore); the landing
+# moves every one older than the landing into the kind's tracked segment, liveness not consulted.
+TELEMETRY_KINDS = frozenset({"judgment"})
 LOCAL_KINDS = frozenset({
     "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",
     "job-note", "triage", "merge-evidence", "repin", "relink", "unlink", "eval-run", "jev-setup",
@@ -1048,12 +1051,29 @@ def shared_uncommitted(root: Path) -> list[str]:
                   and p.split("/")[2] in SHARED_KINDS)
 
 
+def untracked_telemetry_out(root: Path, paths: Iterable[str]) -> list[str]:
+    """``paths`` without the telemetry entry files git does not track (ignored: naming them
+    would fail ``git add`` and ``git commit``)."""
+    paths = list(paths)
+
+    def loose(p: str) -> bool:
+        parts = p.split("/")
+        return (len(parts) == 4 and p.startswith(".plumb/log/") and parts[2] in TELEMETRY_KINDS
+                and parts[3] != SEGMENT)
+
+    if not any(loose(p) for p in paths):
+        return paths
+    known = {".plumb/log/" + n for n in tracked_names(root)}
+    return [p for p in paths if p in known or not loose(p)]
+
+
 def stage(root: Path, changed: Iterable[str]) -> None:
     """``git add -A`` of the paths ``archive`` returned (segments written, files removed).
     Nothing else is staged."""
-    # a local kind's entry is never staged (SR-321, SR-287 EX-16)
+    # a local kind's entry is never staged (SR-321, SR-287 EX-16), nor an ignored telemetry file
     changed = [c for c in changed if not (c.startswith(".plumb/log/")
                                           and c.split("/")[2] in LOCAL_KINDS)]
+    changed = untracked_telemetry_out(root, changed)
     if not changed:
         return
     import subprocess

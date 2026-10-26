@@ -22,7 +22,6 @@ from plumb.contracts import CardState, Choice, ClarifyQuestion
 from plumb.present import owner_text
 from plumb.understand import cardstore, files
 
-OFFER_KIND = "offer"
 # what the mod draws: the awaiting cards, and the ones left open (listed, not repeated)
 DRAWN = (*cardstore.AWAITING, "left_open")
 
@@ -98,14 +97,6 @@ def _record_offer(core: Any, session: str, data: Mapping[str, Any]) -> None:
     # never drawn, or drawn under the key of the panel a resumed session replaced: recorded
     # again under this key, so a press with it re-checks
     files.write_json_atomic(path, dict(data))
-    core.log_append("events", OFFER_KIND, {
-        "session": session, "offer": data["offer_id"], "card": data["card"],
-        **({"surface": "browser", "presentation": data["presentation"]}
-           if surface == "browser" else {}),
-        "question": data["question"], "record": data["record"], "hash": data["hash"],
-        "records": data["records"],
-        "key_digest": data["key_digest"], "drawn_at": data["drawn_at"],
-        "buttons": [{"label": b["label"], "answer": b["answer"]} for b in data["buttons"]]})
 
 
 def content_for(core: Any, session: str, card: CardState) -> dict[str, Any] | None:

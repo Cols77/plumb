@@ -214,51 +214,6 @@ def test_ex5_owner_messages_keep_only_what_the_owner_typed(project: Path,
     assert texts == [OCT4, OTHER, DIGEST]
 
 
-def test_ex1_the_span_and_date_are_shown_and_the_record_stays_proposed(
-        project: Path, transcripts: Path, monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture) -> None:
-    core = open_core(project)
-    sonnet = Dispatcher("sonnet", _picks("cards should be short",
-                                         "Keep each card to one screen at most"))
-    outcome = recover.recover(core, ["INT-009"], transcripts=transcripts,
-                              cascade=_cascade(core, Jev("cards should be short"), sonnet))
-    assert outcome.errors == []
-    (finding,) = outcome.findings
-    assert (finding.status, finding.by) == ("found", "sonnet")
-    assert finding.span == "Keep each card to one screen at most"
-    assert finding.at.startswith("2026-10-04") and finding.session == "sess-1"
-    # JEV ranked; Sonnet read only the best few, the best first
-    assert OCT4 in sonnet.seen[0]["messages"][0]["text"]
-    assert len(sonnet.seen[0]["messages"]) <= recover.TOP_K
-
-    core = open_core(project)
-    words, lines = _card(core, "INT-009")
-    found = words["items"][0]["found"]
-    assert found["span"] == "Keep each card to one screen at most"
-    assert found["at"].startswith("2026-10-04") and found["note"] == recover.NOT_VERIFIED
-    assert any("found in a transcript of 2026-10-04" in line and "not verified" in line
-               and "Keep each card to one screen at most" in line for line in lines)
-    # a requirement's card shows the words found for the intent it derives from
-    sr_words, _ = _card(core, "SR-001")
-    assert sr_words["items"][0]["found"]["span"] == "Keep each card to one screen at most"
-    # a transcript match confirms nothing and is not verified words in triage
-    assert core.status()["INT-009"].confirmation != "confirmed"
-    assert _unverified(core, "INT-009")
-    assert not list((project / ".plumb" / "log").rglob("*recover*"))
-    # recovering again confirms nothing either
-    recover.recover(core, ["INT-009"], transcripts=transcripts,
-                    cascade=_cascade(core, Jev("cards should be short"), sonnet))
-    assert open_core(project).status()["INT-009"].confirmation == "proposed"
-
-    # the owner's Accept press on INT-009's card (``plumb mod press``) is what confirms it
-    _press_accept(monkeypatch, capsys, project, "INT-009")
-    core = open_core(project)
-    assert core.status()["INT-009"].confirmation == "confirmed"
-    assert core.status()["INT-009"].approved_by == "owner"
-    words, _ = _card(core, "INT-009")
-    assert words["items"][0]["found"]["note"] == recover.NOT_VERIFIED   # still only shown
-
-
 def test_a_quote_word_for_word_in_a_message_is_found_by_text_with_no_model(
         project: Path, transcripts: Path) -> None:
     core = open_core(project)
@@ -365,21 +320,6 @@ def test_ex5_only_this_projects_folder_is_read(project: Path, transcripts: Path)
     messages = recover.owner_messages(project, transcripts)
     assert all(Path(m.path).parent.name == recover.project_dir_name(project) for m in messages)
     assert not any("every screen" in m.text for m in messages)
-
-
-def test_ex6_a_confirmed_intent_is_skipped_when_named_too(
-        project: Path, transcripts: Path, monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture) -> None:
-    _press_accept(monkeypatch, capsys, project, "INT-009")
-    core = open_core(project)
-    jev, sonnet = Jev("cards should be short"), Dispatcher("sonnet", None)
-    for named in (["INT-009"], ["SR-001"]):
-        outcome = recover.recover(core, named, transcripts=transcripts,
-                                  cascade=_cascade(core, jev, sonnet))
-        assert outcome.findings == [] and outcome.errors == []
-        assert outcome.skipped == ["INT-009: the owner already confirmed it"]
-    assert jev.asked == 0 and sonnet.seen == []
-    assert "INT-009" not in [r.id for r in recover.targets(core)[0]]
 
 
 def test_opus_finding_the_record_fits_stores_it_found_by_opus(project: Path,

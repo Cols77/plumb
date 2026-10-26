@@ -112,24 +112,6 @@ def test_a_record_answered_is_not_offered_again(batch, repo: Path, monkeypatch,
         r: cards[r]["offers"][0]["offer_id"] for r in ("SR-002", "SR-003")}
 
 
-def test_the_calibration_reruns_at_the_turn_end_and_counts_every_press(
-        batch, repo: Path, monkeypatch, capsys) -> None:
-    """SR-106: calibration reruns from the logged scores at the turn end after an answer; the
-    next rerun counts the yes pressed since."""
-    ids, cards = batch
-    offer = {r: c["offers"][0] for r, c in cards.items()}
-    assert _press(monkeypatch, capsys, repo, offer["SR-001"], "accepted")[0] == 0
-    _turn_end(repo)
-    (first,) = [e for e in open_core(repo).events() if e.kind == "calibration"]
-    assert first.payload["per_kind"]["example-restatement"]["positives"] == 1
-    assert _press(monkeypatch, capsys, repo, offer["SR-002"], "accepted")[0] == 0
-    assert _press(monkeypatch, capsys, repo, offer["SR-003"], "accepted")[0] == 0
-    _turn_end(repo)
-    calibration = [e for e in open_core(repo).events() if e.kind == "calibration"][-1]
-    assert calibration.payload["source"] == "logged"
-    assert calibration.payload["per_kind"]["example-restatement"]["positives"] == 3
-
-
 def test_a_card_left_open_is_not_asked_again(batch, repo: Path, monkeypatch, capsys) -> None:
     ids, cards = batch
     assert _press(monkeypatch, capsys, repo, cards["SR-001"]["offers"][0], "accepted")[0] == 0

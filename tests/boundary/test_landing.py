@@ -205,10 +205,10 @@ def test_ex2_a_document_an_inflight_branch_changed_stays(repo: Path) -> None:
 @pytest.mark.sr("SR-301")
 def test_ex3_an_inflight_branch_merges_the_compacted_main_cleanly(repo: Path) -> None:
     write_record(repo, record("SR-001", "old rule", statement="s", examples=[ex(1)]))
-    first = put(repo, "judgment", {"subject": "SR-001"})
+    first = put(repo, "waiver", {"subject": "SR-001"})
     commit_all(repo, "records")
     run_git(repo, "checkout", "-q", "-b", "inflight")
-    put(repo, "judgment", {"subject": "SR-001", "n": 2}, at="2026-10-02T10:00:00Z",
+    put(repo, "waiver", {"subject": "SR-001", "n": 2}, at="2026-10-02T10:00:00Z",
         prev=first["digest"])
     commit_all(repo, "inflight work")
     run_git(repo, "checkout", "-q", "main")

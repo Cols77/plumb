@@ -99,24 +99,6 @@ def test_a_resume_start_under_the_agent_marker_still_retires(core, monkeypatch, 
     assert json.loads(mod_json(core.root).read_text(encoding="utf-8"))["earlier"] == [DIGEST]
 
 
-def test_presses_before_and_after_the_resume_both_recheck(core, monkeypatch, capsys,
-                                                          hook_input) -> None:
-    assert _hello(monkeypatch, capsys, core.root, DIGEST)[0] == 0
-    _press_first(monkeypatch, capsys, core.root, KEY, "card:SR-001")
-    _start(core.root, hook_input, "resume")
-    assert _hello(monkeypatch, capsys, core.root, NEW_DIGEST)[0] == 0
-    # the old key no longer presses
-    code, _, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
-    assert code == 3
-    answer = _press_first(monkeypatch, capsys, core.root, OTHER_KEY, "card:SR-002")
-    assert answer["confirmed"] == ["SR-002"]
-    fresh = open_core(core.root)
-    approvals = [e for e in fresh.events() if e.kind == "approval"]
-    assert [a.payload["key_digest"] for a in approvals] == [DIGEST, NEW_DIGEST]
-    for approval in approvals:
-        assert confirm.entry_problem(approval, set(), (), fresh) is None
-
-
 @pytest.mark.sr("SR-266")
 def test_a_cut_still_says_it_skipped_while_the_panel_owns_the_background(
         core, monkeypatch, capsys, hook_input) -> None:

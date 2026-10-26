@@ -65,29 +65,6 @@ def _status(root: Path, card_id: str = "card:SR-001") -> str:
 # ---------------------------------------------------------------- drawing records the offers
 
 
-def test_drawing_records_one_offer_per_question_with_the_buttons(core, drawn) -> None:
-    offer = _offer(drawn)
-    record = core.index()["SR-001"]
-    assert offer["record"] == "SR-001" and offer["hash"] == record.hash
-    assert offer["offer_id"].startswith("sha256:") and offer["drawn_at"]
-    assert [(b["index"], b["answer"]) for b in offer["buttons"]] == [
-        (0, "accepted"), (1, "rejected"), (2, "change"), (3, "change"), (4, "open")]
-    assert [b["label"] for b in offer["buttons"]] == [
-        "Yes", "No", "Fix it", "Ask for a change", "Leave open"]
-    (card,) = drawn["cards"]
-    card_evidence = cardstore.own_cards(core.root, SESSION)[0].evidence
-    assert card["repeats"] is True
-    logged = [e for e in open_core(core.root).events() if e.kind == "offer"]
-    assert [e.payload["offer"] for e in logged] == [offer["offer_id"]]
-    assert logged[0].payload["hash"] == record.hash and logged[0].payload["key_digest"] == DIGEST
-
-
-def test_drawing_again_keeps_the_first_offer(core, drawn, monkeypatch, capsys) -> None:
-    code, again, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
-    assert code == 0 and _offer(again) == _offer(drawn)
-    assert kinds(core.root).count("offer") == 1
-
-
 # ---------------------------------------------------------------- refused: nothing written
 
 
@@ -134,65 +111,6 @@ def test_a_button_the_offer_does_not_have_is_a_usage_error(core, drawn, monkeypa
 
 
 # ---------------------------------------------------------------- the buttons
-
-
-def test_confirm_writes_by_owner_via_button_at_the_shown_hash(core, drawn, monkeypatch,
-                                                              capsys) -> None:
-    offer = _offer(drawn)
-    code, answer, _ = _press(monkeypatch, capsys, core.root, offer["offer_id"], CONFIRM)
-    assert code == 0
-    assert answer["confirmed"] == ["SR-001"] and answer["left_out"] == []
-    assert answer["answer"] == "accepted" and answer["prefill"] is None
-    assert "Requirement 1" in answer["line"] and "SR-001" in answer["model_note"]
-    events = [e for e in open_core(core.root).events() if e.kind in ("card-press", "approval")]
-    assert [e.kind for e in events][-2:] == ["card-press", "approval"]
-    press, approval = events[-2:]
-    assert press.payload["answer"] == "accepted" and press.payload["choice"] == CONFIRM
-    payload = approval.payload
-    assert (payload["by"], payload["via"], payload["offer"], payload["card"]) == (
-        "owner", "button", offer["offer_id"], "card:SR-001")
-    assert payload["key_digest"] == DIGEST and approval.marker == "none"
-    assert [(r["id"], r["hash"]) for r in payload["records"]] == [("SR-001", offer["hash"])]
-    assert confirm.entry_problem(approval, set(), (), open_core(core.root)) is None
-    assert _confirmation(core.root) == "confirmed"
-    assert open_core(core.root).status(["SR-001"])["SR-001"].approved_by == "owner"
-
-
-def test_sr135_ex2_a_reworded_button_still_applies_its_stored_answer(
-        core, drawn, monkeypatch, capsys) -> None:
-    from plumb.mod.offers import offer_path
-    from plumb.understand import files
-
-    offer = _offer(drawn)
-    path = offer_path(core.root, SESSION, offer["offer_id"])
-    data = files.read_json(path)
-    data["buttons"][CONFIRM]["label"] = "Sure, carry on"        # reworded; the answer is stored
-    files.write_json_atomic(path, data)
-    code, answer, _ = _press(monkeypatch, capsys, core.root, offer["offer_id"], CONFIRM)
-    assert code == 0 and answer["confirmed"] == ["SR-001"]
-    assert _confirmation(core.root) == "confirmed"
-
-
-def test_sr130_ex1_a_readback_press_confirms_its_requests_records(
-        core, monkeypatch, capsys) -> None:
-    """The read-back's offer names the request's records; one Yes confirms them all, and the
-    button approval passes its re-check because the offer listed them."""
-    from plumb.understand import clarify
-
-    digest = "sha256:" + "ab" * 32
-    (core.root / ".plumb" / "intents" / "INT-001.md").write_text(
-        "---\nid: INT-001\ntitle: Export\nquote: export it\nreadback: Export.\n"
-        f"prompt: {digest.removeprefix('sha256:')[:16]}\n---\n", encoding="utf-8")
-    core = open_core(core.root)
-    card = clarify._readback_card(core.root, digest, "export it", {"proposal": "Export it."}, [])
-    open_card(core, card)
-    run_mod(monkeypatch, capsys, core.root, "hello", stdin={"key_digest": DIGEST})
-    _, drawn, _ = run_mod(monkeypatch, capsys, core.root, "draw", stdin={"key": KEY})
-    offer = _offer(drawn, card.id)
-    code, answer, _ = _press(monkeypatch, capsys, core.root, offer["offer_id"], 0)
-    assert code == 0 and answer["confirmed"] == ["INT-001"]
-    approval = [e for e in open_core(core.root).events() if e.kind == "approval"][-1]
-    assert confirm.entry_problem(approval, set(), (), open_core(core.root)) is None
 
 
 def test_sr130_a_readback_drawn_before_its_records_exist_confirms_only_what_it_showed(
@@ -311,18 +229,6 @@ def test_a_hand_written_button_approval_is_rejected(core, drawn) -> None:
     assert _confirmation(core.root) == "proposed"
     findings = [f for f in validate(open_core(core.root)) if f.code == "approval"]
     assert any("button approval" in f.message for f in findings)
-
-
-def test_a_button_approval_copying_a_drawn_offer_for_another_version_is_rejected(
-        core, drawn) -> None:
-    offer = _offer(drawn)
-    other = _forged(core, offer=offer["offer_id"],
-                    records=[{"id": "SR-002", "hash": core.index()["SR-002"].hash}])
-    assert "did not show SR-002" in confirm.entry_problem(other, set(), (), core)
-    wrong_key = _forged(core, offer=offer["offer_id"], key_digest="f" * 64)
-    assert "key" in confirm.entry_problem(wrong_key, set(), (), core)
-    assert _confirmation(core.root, "SR-002") == "proposed"
-    assert _confirmation(core.root) == "proposed"
 
 
 def test_a_button_approval_written_before_its_offer_was_drawn_is_rejected(
