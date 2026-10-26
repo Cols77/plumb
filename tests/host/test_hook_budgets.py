@@ -4,7 +4,6 @@ defect with a debug case; the owner's "hooks may take longer" changes the hard l
 from __future__ import annotations
 
 import json
-import math
 import re
 import subprocess
 import sys
@@ -44,16 +43,14 @@ def test_ex1_a_profiled_stop_records_the_time_of_each_step(
         assert step in steps, step
 
 
-@pytest.mark.xfail(strict=True, reason="the profile's limits exceed today's 60 s / 90 s and "
-                   "the host's 120 s; which limits to set waits for the owner")
-def test_ex1_the_default_limits_follow_the_profile() -> None:
-    """The defaults are the measured p95 times 2 (rounded up to 100 ms), the hard limit the
-    largest p95 times 4, at least 10 s (DEC-394)."""
-    profiled = _profiled()
-    assert set(profiled) == set(DEFAULT_HOOK_BUDGET_MS)
-    for key, p95 in profiled.items():
-        assert DEFAULT_HOOK_BUDGET_MS[key] == math.ceil(p95 * 2 / 100) * 100, key
-    assert hookio.HARD_LIMIT_S == max(10.0, math.ceil(max(profiled.values()) * 4 / 1000))
+def test_ex1_the_profile_is_measured_and_the_limits_stay_at_60_90_until_reprofiled() -> None:
+    """The profile table covers every budget key; the limits stay at 60 s / 90 s until the logs
+    are compacted at INT-114's landing and the hooks are profiled again (DEC-397)."""
+    assert set(_profiled()) == set(DEFAULT_HOOK_BUDGET_MS)
+    assert "DEC-397" in PROFILE.read_text("utf-8")
+    assert dict(DEFAULT_HOOK_BUDGET_MS) == {
+        "session_start": 60000, "prompt": 60000, "stop": 60000, "post_edit": 15000}
+    assert hookio.HARD_LIMIT_S == 90.0
 
 
 _SLOW = """import io, sys, time

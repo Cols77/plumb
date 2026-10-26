@@ -64,4 +64,5 @@ DEFAULT_HOOK_BUDGET_MS = {"session_start": 186400, "prompt": 100800, "post_edit"
 
 That is above today's 60 s budgets and 90 s hard limit, and above the host's 120 s timeouts,
 because session-start and prompt (not changed in this phase) and the cold caches dominate.
-The configured limits stay at 60 s / 90 s until the owner decides (see the phase's report).
+The limits stay at 60 s / 90 s until the logs are compacted at INT-114's landing and the hooks
+are profiled again, then they are set from that second profile (DEC-397, owner 2026-10-26).
