@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0",
-  "wheel": "plumb-0.1.0-py3-none-any.whl",
-  "sha256": "a04ecf35637c7cb7273486287d5a94e078891f8107514fd3554d23a8d7076c00",
-  "source_digest": "d4521cbb768d46f2add7d140ffa28ec34b3ac701ee8525d72179191ebf6a6d8e"
+  "version": "0.1.1006",
+  "wheel": "plumb-0.1.1006-py3-none-any.whl",
+  "sha256": "05af7b960e2649cabad19e6cdd2634e430bbefa7dd6db5563f34ea968b331ff8",
+  "source_digest": "da1dd392601ccd76172a82245715399cf588d1f2b290000a7cf88e42860df485"
 }

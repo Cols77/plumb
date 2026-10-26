@@ -204,3 +204,71 @@ def test_every_test_file_spelling_fails_the_check(isolated, name: str) -> None:
     mod.mkdir()
     (mod / name).write_text("//\n", encoding="utf-8")
     assert [p.name for p in isolated.test_only_files()] == [name]
+
+
+# SR-377: the version is the git commit count, written to the five places
+
+def _scratch_repo(tmp_path: Path, commits: int) -> Path:
+    import subprocess
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                       cwd=tmp_path, check=True, capture_output=True)
+
+    (tmp_path / "src" / "plumb").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.1.0"\n', encoding="utf-8")
+    (tmp_path / "src" / "plumb" / "__init__.py").write_text('__version__ = "0.1.0"\n',
+                                                            encoding="utf-8")
+    git("init", "-q")
+    for n in range(commits):
+        git("commit", "-q", "--allow-empty", "-m", f"c{n}")
+    return tmp_path
+
+
+@pytest.mark.sr("SR-377")
+def test_version_is_commit_count(tmp_path: Path) -> None:
+    """SR-377 EX-1: a repository with N commits builds 0.1.N."""
+    assert _build_plugin().derived_version(_scratch_repo(tmp_path, 3)) == "0.1.3"
+
+
+@pytest.mark.sr("SR-377")
+def test_new_commit_raises_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-377 EX-1: one more commit, and the five places read 0.1.N+1."""
+    import subprocess
+
+    module = _build_plugin()
+    repo = _scratch_repo(tmp_path, 2)
+    monkeypatch.setattr(module, "REPO", repo)
+    monkeypatch.setattr(module, "SRC", repo / "src" / "plumb")
+    module.set_version(module.derived_version())
+    assert module.version() == "0.1.2"
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                    "--allow-empty", "-m", "more"], cwd=repo, check=True, capture_output=True)
+    module.set_version(module.derived_version())
+    assert module.version() == "0.1.3"
+    assert '__version__ = "0.1.3"' in (repo / "src" / "plumb" / "__init__.py").read_text()
+    assert json.loads(module.plugin_json())["version"] == "0.1.3"
+    assert json.loads(module.marketplace_json())["plugins"][0]["version"] == "0.1.3"
+    assert module.wheel_name() == "plumb-0.1.3-py3-none-any.whl"   # the manifest names it
+
+
+@pytest.mark.sr("SR-377")
+def test_check_names_disagreeing_places(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                        capsys) -> None:
+    """SR-377 EX-3: a place that says another version fails --check, named."""
+    module = _build_plugin()
+    repo = _scratch_repo(tmp_path, 1)
+    (repo / "src" / "plumb" / "__init__.py").write_text('__version__ = "0.9.9"\n', encoding="utf-8")
+    monkeypatch.setattr(module, "REPO", repo)
+    monkeypatch.setattr(module, "SRC", repo / "src" / "plumb")
+    plugin = repo / "plugin"
+    (plugin / ".claude-plugin").mkdir(parents=True)
+    (plugin / ".claude-plugin" / "plugin.json").write_text('{"version": "0.5.5"}\n',
+                                                           encoding="utf-8")
+    monkeypatch.setattr(module, "PLUGIN", plugin)
+    monkeypatch.setattr(module, "VENDOR", plugin / "vendor")
+    monkeypatch.setattr(module, "text_files", lambda: {
+        plugin / ".claude-plugin" / "plugin.json": module.plugin_json()})
+    assert module.main(["--check"]) == 1
+    out = capsys.readouterr().out
+    assert "plugin.json: differs" in out and "__init__.py: version differs" in out

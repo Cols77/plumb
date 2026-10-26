@@ -16,7 +16,8 @@ GENERATED from the one source of each (so the legacy installer and the plugin ne
 - ``plugin/hooks/guard.gen.ts``: the guard table of ``plumb.guard`` for the mod (SP7 5.9);
 - ``plugin/hooks/hooks.json``: the command hooks and the mod module;
 - ``plugin/.claude-plugin/plugin.json`` and ``.claude-plugin/marketplace.json``: the version
-  is ``pyproject.toml``'s;
+  is ``pyproject.toml``'s, which the build sets to ``0.1.<git commit count>`` (SR-377) together
+  with ``src/plumb/__init__.py``, so every build of main installs as a new plugin version;
 - ``plugin/LICENSE``: the repository's ``LICENSE`` as it is (SR-123), so the two never drift;
 - ``plugin/vendor/plumb-<version>-py3-none-any.whl`` and ``plugin/vendor/MANIFEST.json``
   ``{version, wheel, sha256, source_digest}``; ``source_digest`` is the digest of
@@ -81,11 +82,28 @@ ENGINE_TYPES = PLUGIN / ".claude-plugin" / "types"
 
 
 def version() -> str:
+    """The version ``pyproject.toml`` says; the build sets it first (``set_version``)."""
     text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
     match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
     if not match:
         raise SystemExit("build_plugin: no version in pyproject.toml")
     return match.group(1)
+
+
+def derived_version(repo: Path | None = None) -> str:
+    """``0.1.<commit count>``: every commit makes the next build a new plugin version (SR-377)."""
+    count = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=repo or REPO, check=True,
+                           capture_output=True, text=True).stdout.strip()
+    return f"0.1.{count}"
+
+
+def set_version(new: str) -> None:
+    """Write ``new`` to ``pyproject.toml`` and the package, the two places the build owns."""
+    for path, pattern in ((REPO / "pyproject.toml", r'^(version\s*=\s*")[^"]+(")'),
+                          (SRC / "__init__.py", r'^(__version__\s*=\s*")[^"]+(")')):
+        text = path.read_text(encoding="utf-8")
+        path.write_text(re.sub(pattern, rf"\g<1>{new}\g<2>", text, count=1, flags=re.MULTILINE),
+                        encoding="utf-8", newline="\n")
 
 
 def _lf(data: bytes) -> bytes:
@@ -275,6 +293,10 @@ def stale() -> list[str]:
         out.append(f"{_rel(path)}: no template makes it (remove it)")
     for path in test_only_files():
         out.append(f"{_rel(path)}: a test-only file in the plugin (it belongs in tests/plugin/mod)")
+    package = re.search(r'^__version__\s*=\s*"([^"]+)"',
+                        (SRC / "__init__.py").read_text(encoding="utf-8"), re.MULTILINE)
+    if not package or package.group(1) != version():
+        out.append(f"{_rel(SRC / '__init__.py')}: version differs from pyproject.toml ({version()})")
     found = manifest()
     wheel = VENDOR / wheel_name()
     if found.get("version") != version() or found.get("wheel") != wheel_name():
@@ -312,6 +334,7 @@ def main(argv: list[str] | None = None) -> int:
         for line in found:
             print(line)
         return 1 if found else 0
+    set_version(derived_version())
     expected = text_files()
     for path, content in expected.items():
         path.parent.mkdir(parents=True, exist_ok=True)
