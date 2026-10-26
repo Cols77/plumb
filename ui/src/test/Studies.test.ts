@@ -9,13 +9,13 @@ const BODY = 'The cascade asks the judge first.\n\n```video\ncascade\n```\n\nThe
 const clip = (state: string, reason = '') => ({clips: {cascade: {state, reason, revisions: 0}}});
 const study = (extra: object) => ({slug:'judge-cascade', title:'How the judge cascade runs', step:'plan', why:'the plan adds it', status:'opened', body:BODY, clips:{}, ...extra});
 
-function room(s: any, missing: string[] = []) {
+function room(s: any, missing: string[] = [], hold?: Promise<void>) {
   const revoked: string[] = []; const headers: (string | null)[] = []; const urls: string[] = [];
   let n = 0;
   vi.stubGlobal('URL', Object.assign(URL, {createObjectURL: () => `blob:${++n}`, revokeObjectURL: (u: string) => { revoked.push(u); }}));
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: any) => {
-    if (input.includes('/media/')) { urls.push(input); headers.push(init?.headers?.Authorization ?? null); return missing.some((m) => input.endsWith(m)) ? Response.json({error:'No video'},{status:404}) : new Response('bytes'); }
-    if (input.endsWith('/open')) return Response.json(s);
+    if (input.includes('/media/')) { await hold; urls.push(input); headers.push(init?.headers?.Authorization ?? null); return missing.some((m) => input.endsWith(m)) ? Response.json({error:'No video'},{status:404}) : new Response('bytes'); }
+    if (input.endsWith('/open')) { await hold; return Response.json(s); }
     return Response.json({studies:[s], understanding:{text:'',knows:[],needs:[]}});
   }));
   history.replaceState({}, '', `/?study=${s.slug}`);
@@ -63,5 +63,26 @@ describe('a study mixing text and clips in the room', () => {
     room(study(clip('failed', 'beat 2 shows no cascade')));
     expect(await screen.findByText('The video could not be shown: beat 2 shows no cascade')).toBeInTheDocument();
     expect(screen.getByText('The cascade asks the judge first.')).toBeInTheDocument();
+  });
+  it('SR-370: while the study is being opened a status line shows, then the study replaces it', async () => {
+    let release!: () => void; room(study(clip('ready')), [], new Promise((r) => { release = r; }));
+    expect(await screen.findByText('Opening the study…')).toHaveAttribute('role', 'status');
+    expect(screen.queryByText('Open a study, or your understanding.')).toBeNull();
+    release();
+    expect(await screen.findByText('The cascade asks the judge first.')).toBeInTheDocument();
+    expect(screen.queryByText('Opening the study…')).toBeNull();
+  });
+  it('SR-370: a ready clip says "loading video…" at its place while fetched, then the player replaces it', async () => {
+    let release!: () => void; const hold = new Promise<void>((r) => { release = r; });
+    room(study(clip('ready')), [], undefined);
+    // the study opens at once; only the media is held
+    vi.mocked(fetch).mockImplementation(async (input: any) => {
+      if (String(input).includes('/media/')) { await hold; return new Response('bytes'); }
+      return String(input).endsWith('/open') ? Response.json(study(clip('ready'))) : Response.json({studies:[study(clip('ready'))], understanding:{text:'',knows:[],needs:[]}});
+    });
+    expect(await screen.findByText('loading video…')).toHaveAttribute('role', 'status');
+    release();
+    await waitFor(() => expect(document.querySelector('video')).toBeTruthy());
+    expect(screen.queryByText('loading video…')).toBeNull();
   });
 });
