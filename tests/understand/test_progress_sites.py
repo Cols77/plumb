@@ -84,7 +84,9 @@ def test_merge_check_step_names(repo: Path, loud: None, monkeypatch: pytest.Monk
     def fake_report(core_: Any, base: str, *, run_full: bool, hook: bool) -> Any:
         fullrun.full_run(core_, Verify(), pending=True, reasons=["r"], unverified=False,
                          waived=False, run_full=True, runner=lambda c: object())
-        return type("R", (), {"exit": 0})()
+        from plumb.boundary.report import MergeReport
+
+        return MergeReport(base=base)   # SR-374: the merge insight reads the report's fields
 
     import plumb.boundary as boundary
 
