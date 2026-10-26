@@ -57,7 +57,8 @@ DIAGRAM_MARKETPLACE = "diagram-mod"   # where the diagram mod plumb's cards draw
 # synchronous edit check and SP8's gate on PreToolUse (the guard covers Bash too). The timeout
 # bounds the whole command (sh, the launcher, Python's start); plumb's own watchdog cuts each
 # hook at 90 s (``hookio.HARD_LIMIT_S`` or ``hooks.hard_limit_s``; the stop hook's read-back
-# gets 1 s more), so these only keep a hung process from holding the session (SR-123, SR-181, SR-310).
+# gets 1 s more), so these only keep a hung process from holding the session (SR-123, SR-181,
+# SR-310); the pre-tool and edit-check hooks sit in the agent's way on every tool call: 10 s (SR-379).
 # post-edit and edit-check share a
 # matcher in two groups because only post-edit is async; they write different files under
 # ``.plumb/session/<id>/`` (``touched.txt``, ``stale_told.json``). MultiEdit stays: the legacy
@@ -66,9 +67,9 @@ HOOKS: tuple[tuple[str, str | None, str, bool, int], ...] = (
     ("SessionStart", "startup|resume|clear|compact", "session-start", False, 120),
     ("UserPromptSubmit", None, "prompt", False, 120),
     ("PreToolUse", "Bash|Edit|Write|MultiEdit|NotebookEdit|AskUserQuestion", "pre-tool", False,
-     120),
+     10),
     ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "post-edit", True, 120),
-    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "edit-check", False, 120),
+    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "edit-check", False, 10),
     ("PostToolUse", "AskUserQuestion", "question-answer", True, 120),
     ("Stop", None, "stop", False, 120),
     ("SubagentStop", None, "subagent-stop", False, 120),

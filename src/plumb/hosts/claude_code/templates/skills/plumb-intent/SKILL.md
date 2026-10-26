@@ -6,10 +6,11 @@ description: Runs the intent loop the owner opened with /plumb intent <words>, s
 
 Make the owner's idea an intent that is coherent on its own and with what is confirmed, then
 build it and show it working. Three stages, each closed by a gate the next refuses to skip.
-Run the stages as phases of a Workflow script; each phase ends on its stage's gate command
-(`{plumb} intent gate clarify`, `{plumb} intent gate plan`, `{plumb} intent done`) and the next
-phase starts only when that command exits 0.
-Each phase's gate agent ends by reporting its gate to the owner's band:
+Stage A runs in this session: a blocking question is asked here, with the question tool,
+never from a workflow agent. Once stage A has passed and the owner opts in to a workflow,
+stages B and C run as its phases; each phase ends on its gate command
+(`{plumb} intent gate plan`, `{plumb} intent done`) and the next starts only when it exits 0.
+A phase's gate agent ends by reporting its gate to the owner's band:
 `{plumb} intent progress --task "<phase> gate passed|failed" --done <k> --total <n>` (k
 the phase's place among the script's n phases); the band draws only that, the workflow view
 keeps the agents.
@@ -27,8 +28,8 @@ the owner's loop pane names. A refused gate shows on the band by itself.
 
 Stage A, clarify and integrate, until `{plumb} intent gate clarify` passes:
 
-- Every blocking question goes through Claude Code's question tool (AskUserQuestion), one at
-  a time, invariants first: the principle that settles several gaps is asked once and the
+- Every blocking question goes through Claude Code's question tool (AskUserQuestion),
+  invariants first: the principle that settles several gaps is asked once and the
   gaps are derived from it. A question with a recommendable answer is not asked: it is an
   assumption, recorded with
   `{plumb} decide --question Q --chosen <it> --alt B --recommend <it>`.
@@ -45,7 +46,7 @@ Stage A, clarify and integrate, until `{plumb} intent gate clarify` passes:
   for it.
 - Capture with `{plumb} capture --prompt <digest> --file <doc.json>` (`"mode": "escalated"`
   in the intent for a big one), naming in `supersedes` every record a new one replaces.
-- Last, the step's study (DEC-207): run `{plumb} study candidates --json` and propose at most
+- Last, the step's study: run `{plumb} study candidates --json` and propose at most
   one study idea, none when nothing valuable stands out, none on a topic in `known` and never
   one in `declined`. Pick from: a key architectural choice being made or built, a gap in the
   owner's understanding (`picture`, `prompts`; a `deeper` line asks for more depth), what they
@@ -82,7 +83,7 @@ the meaning changed.
 Studies: write none before the owner accepts its idea. When plumb tells you an idea was
 accepted or a rewrite asked (the prompt's line, or `accepted` in the candidates), first run
 `{plumb} study gather <slug> --json`: the records on its topic, their examples and test states.
-Write from that set only, at that depth, in plain words: the depth caps the mix (SR-370), no
+Write from that set only, at that depth, in plain words: the depth caps the mix: no
 diagram at `md`, diagrams where they help at `diagrams`, and at `video` diagrams and clips by
 the plumb-study-video skill; a topic no record covers: say so. Then `{plumb} study add <slug>
 --records <the IDs you drew on> --file <body.md>`; the band announces it and the owner
@@ -91,18 +92,4 @@ reads it in the room when they choose. Never open the room, and never take 'I kn
 
 The loop's gates approve nothing. Speak in the owner's terms; paste nothing capture prints.
 
-Questions and approval: plumb's judge approves on the owner's behalf; no approval command
-exists, and you never decide on your own that the owner approved.
-1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each
-   `question`, `header` and option `label` and `description` to the question tool,
-   every question at once, as soon as it is raised; never restate one in prose. Put
-   each in the owner's terms with `{plumb} question reword`, merging those that
-   hinge on one principle; push an obvious or already-answered one back with
-   `{plumb} question pushback`; never drop, answer or default one.
-2. Never answer, infer or default a question for the owner, never pick the recommended option
-   for them, and never write or read `judge_questions.json` or any approval.
-3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
-   question, stop asking, tell the owner in one plain line that the work waits for their
-   answer, and do not rerun `ask` in a loop.
-4. Any other question to the owner also goes through the question tool, with options and
-   their consequences.
+Questions to the owner: follow plumb-records.

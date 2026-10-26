@@ -125,17 +125,18 @@ def test_no_test_files_ship_in_the_plugin() -> None:
 @pytest.mark.sr("SR-279")
 def test_every_hook_has_a_timeout() -> None:
     """Each hook is bounded; plumb's own watchdog (90 s, the stop read-back 1 s more) sits
-    inside each bound (SR-310: 120 s for every hook)."""
+    inside each bound (SR-310: 120 s), except pre-tool and edit-check, 10 s (SR-379)."""
     from plumb.hosts.claude_code.hookio import HARD_LIMIT_S
     from plumb.hosts.claude_code.stop import STOP_GRACE_S
 
     hooks = json.loads(_build_plugin().hooks_json())["hooks"]
     timeouts = {h["command"].rsplit(" ", 1)[1]: h["timeout"]
                 for groups in hooks.values() for g in groups for h in g["hooks"]}
-    assert timeouts == {"session-start": 120, "prompt": 120, "pre-tool": 120, "edit-check": 120,
+    assert timeouts == {"session-start": 120, "prompt": 120, "pre-tool": 10, "edit-check": 10,
                         "post-edit": 120, "question-answer": 120, "stop": 120,
                         "subagent-stop": 120, "session-end": 120}
-    assert all(t > HARD_LIMIT_S + STOP_GRACE_S for t in timeouts.values())
+    assert all(t > HARD_LIMIT_S + STOP_GRACE_S for n, t in timeouts.items()
+               if n not in ("pre-tool", "edit-check"))
     post = hooks["PostToolUse"]
     assert [g["hooks"][0].get("async", False) for g in post] == [True, False, True]
 

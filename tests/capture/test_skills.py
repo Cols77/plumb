@@ -9,14 +9,13 @@ import pytest
 
 from plumb.hosts.claude_code.install import deny_rules, install, skill_names, uninstall
 
-# the four rules every skill and the /plumb command give the agent (plan task 9)
+# the question rules the agent follows; written once, in plumb-records (SR-379)
 RULES = (
     ("After `capture`, run `plumb clarify --wait --json`. On `ask`, pass each `question`, "
      "`header` and option `label` and `description` to the question tool, every question at "
      "once, as soon as it is raised; never restate one in prose. Put each in the owner's terms "
-     "with `plumb question reword`, merging those that hinge on one principle; push an obvious "
-     "or already-answered one back with `plumb question pushback`; never drop, answer or "
-     "default one."),
+     "with `plumb question reword`, merging those that hinge on one principle; never drop, "
+     "answer or default one."),
     ("Never answer, infer or default a question for the owner, never pick the recommended "
      "option for them, and never write or read `judge_questions.json` or any approval."),
     ("If the question tool is unavailable (a subagent or headless run) or the owner dismisses "
@@ -25,6 +24,7 @@ RULES = (
     ("Any other question to the owner also goes through the question tool, with options and "
      "their consequences."),
 )
+POINTER = "Questions to the owner: follow plumb-records"
 NAMES = ("plumb-clarify", "plumb-debug", "plumb-intent", "plumb-records")
 
 
@@ -51,9 +51,8 @@ def test_plumb_records_skill_names_capture_helpers(installed: Path) -> None:
                   "plumb-clarify"):
         assert words in skill, words
     body = skill.split("---", 2)[2].strip().splitlines()
-    # about 25 lines of context, not procedure, and the question rules (SR-362's reword and
-    # push-back added three)
-    assert len(body) <= 43
+    # context, not procedure, and the question rules written once (SR-379)
+    assert len(body) <= 55
     for owner_only in ("plumb approve",
                        "config auto-approve"):
         assert owner_only in skill
@@ -78,10 +77,8 @@ def test_clarify_skill_states_depths_and_discipline(installed: Path) -> None:
 @pytest.mark.sr("SR-223")
 def test_skills_ask_with_the_question_tool(installed: Path) -> None:
     skills = _texts(installed)
-    for name in ("plumb-clarify", "plumb-records"):
-        assert ("Any other question to the owner also goes through the question tool, with "
-                "options and their consequences") in skills[name], name
-    assert "Claude Code's question tool (rule 4 below)" in skills["plumb-clarify"]
+    assert ("Any other question to the owner also goes through the question tool, with "
+            "options and their consequences") in skills["plumb-records"]
     # intent questions still go through clarify
     assert "never ask in your own words about the owner's intent" in skills["plumb-clarify"]
 
@@ -100,12 +97,13 @@ def test_skills_uninstalled_and_owner_commands_denied(installed: Path) -> None:
 
 @pytest.mark.sr("SR-208")
 def test_skills_say_the_agent_never_decides_the_owner_approved(installed: Path) -> None:
-    """EX-10: the installed skills say the agent may never decide on its own that the owner
-    approved, and name no relay."""
+    """EX-10: the installed rulebook says the agent may never decide on its own that the owner
+    approved, and no skill or reference names a relay."""
     refs = installed / ".claude" / "skills" / "plumb-records" / "references"
-    for name, text in _texts(installed).items():
-        assert "you never decide on your own that the owner approved" in text, name
-        assert "no approval command exists" in text, name
+    texts = _texts(installed)
+    assert "you never decide on your own that the owner approved" in texts["plumb-records"]
+    assert "no approval command exists" in texts["plumb-records"]
+    for name, text in texts.items():
         assert "relay" not in text.lower(), name
         assert "/plumb approve" not in text and "approve <IDs>" not in text, name
     for path in refs.glob("*.md"):
@@ -114,27 +112,91 @@ def test_skills_say_the_agent_never_decides_the_owner_approved(installed: Path) 
 
 @pytest.mark.sr("SR-267")
 def test_skills_ask_waiting_questions_through_the_tool_never_in_prose(installed: Path) -> None:
-    """EX-8: with questions waiting, the agent asks them through the question tool, one at a
-    time, verbatim, and never restates them as a list to answer in prose."""
-    for name, text in _texts(installed).items():
-        assert RULES[0] in text, name
-    clarify = _texts(installed)["plumb-clarify"]
-    assert "- ask (plumb's judge has questions about what the owner meant)" in clarify
+    """EX-8: with questions waiting, the agent asks them through the question tool, verbatim,
+    and never restates them as a list to answer in prose."""
+    assert RULES[0] in _texts(installed)["plumb-records"]
+    states = (installed / ".claude" / "skills" / "plumb-clarify" / "references"
+              / "clarify-states.md")
+    assert "- ask (plumb's judge has questions about what the owner meant)" in " ".join(
+        states.read_text(encoding="utf-8").split())
 
 
-@pytest.mark.sr("SR-248")
-def test_the_four_question_rules_are_in_each_skill(installed: Path) -> None:
-    """EX-3 (the agent side): the judge model's questions reach the owner through the
-    question tool; each skill and the /plumb command carry the four rules, in order."""
-    for name, text in _texts(installed).items():
-        at = [text.find(rule) for rule in RULES]
-        assert -1 not in at and at == sorted(at), name
-        for gone in ("the read-back's ok confirms", "the owner confirms on the cards",
-                     "owner's ok confirms",
-                     # rule 1 runs on every message: no text may say it never asks there
-                     "only gives the message digest", "answers ready at once",
-                     "Only after the owner types"):
+@pytest.mark.sr("SR-379")
+def test_question_rules_live_in_plumb_records_and_others_point_to_it(installed: Path) -> None:
+    """EX-1: the question rules (and the pacing sentence) appear in plumb-records only; the
+    other skills and the /plumb command say where they are."""
+    texts = _texts(installed)
+    at = [texts["plumb-records"].find(rule) for rule in RULES]
+    assert -1 not in at and at == sorted(at)
+    assert texts["plumb-records"].count("at most three in a turn") == 1
+    for name, text in texts.items():
+        if name == "plumb-records":
+            continue
+        assert POINTER in text, name
+        assert "at most three in a turn" not in text, name
+        for rule in RULES:
+            assert rule not in text, name
+        for gone in ("question pushback", "Never answer, infer or default"):
             assert gone not in text, (name, gone)
+
+
+@pytest.mark.sr("SR-379")
+def test_clarify_triggers_on_intent_change_only(installed: Path) -> None:
+    """EX-2: plumb-clarify's description names intent changes and the spec session, not every
+    request, so an ordinary tidy-up does not match it."""
+    skill = (installed / ".claude" / "skills" / "plumb-clarify" / "SKILL.md").read_text(
+        encoding="utf-8")
+    description = " ".join(skill.split("---", 2)[1].split())
+    assert "creates or changes intent" in description and "spec session" in description
+    assert "Not for tidy-ups" in description
+    assert "every owner request" not in description
+
+
+@pytest.mark.sr("SR-379")
+def test_glossary_defines_every_plumb_term_used(installed: Path) -> None:
+    """EX-3: each term the skills use is defined by one line of the glossary (ten lines at
+    most)."""
+    skills = installed / ".claude" / "skills"
+    glossary = (skills / "plumb-records" / "references" / "glossary.md").read_text(
+        encoding="utf-8").splitlines()
+    terms = ("band", "room", "loop pane", "stale link", "repin", "relink", "reword",
+             "intent conflict")
+    defined = [line[2:].split(":")[0] for line in glossary if line.startswith("- ")]
+    assert defined == list(terms) and len(glossary) <= 12
+    used = " ".join(p.read_text(encoding="utf-8") for p in skills.glob("plumb-*/**/*.md"))
+    assert "repin" in used and "stale link" in used
+    assert "glossary.md" in _texts(installed)["plumb-records"]
+
+
+@pytest.mark.sr("SR-379")
+def test_no_record_ids_in_skills(installed: Path) -> None:
+    import re
+
+    ids = re.compile(r"\b(?:INT|SR|DEC|FEAT|NC)-\d")
+    for path in (installed / ".claude" / "skills").glob("plumb-*/**/*.md"):
+        assert not ids.search(path.read_text(encoding="utf-8")), path.name
+    for name, text in _texts(installed).items():
+        assert not ids.search(text), name
+
+
+@pytest.mark.sr("SR-379")
+def test_command_grants_no_destructive_git(installed: Path) -> None:
+    """EX-4: git rm, git commit, git merge and git checkout --ours/--theirs are not
+    pre-approved by the /plumb command."""
+    text = (installed / ".claude" / "commands" / "plumb.md").read_text(encoding="utf-8")
+    allowed = next(line for line in text.splitlines() if line.startswith("allowed-tools:"))
+    for git in ("git rm", "git commit", "git merge", "git checkout"):
+        assert git not in allowed, git
+    assert len(text.split("---", 2)[1].strip().splitlines()) == 3   # one-line description
+
+
+@pytest.mark.sr("SR-379")
+def test_stage_a_runs_in_the_main_session(installed: Path) -> None:
+    """EX-5: a blocking question of stage A is asked from the main session with the question
+    tool, never from a workflow agent; stages B and C may be workflow phases."""
+    text = _texts(installed)["plumb-intent"]
+    assert "Stage A runs in this session" in text and "never from a workflow agent" in text
+    assert "stages B and C run as its phases" in text
 
 
 @pytest.mark.sr("SR-293")
