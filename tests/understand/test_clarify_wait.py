@@ -178,11 +178,12 @@ def test_skill_first_action_is_clarify_wait(repo: Path) -> None:
     from plumb.hosts.claude_code.install import install
 
     install(repo, launcher="path", commit_hook=False)
-    text = (repo / ".claude" / "skills" / "plumb-clarify" / "SKILL.md").read_text(
-        encoding="utf-8")
-    body = text.split("---", 2)[2]
-    opening = body.split("# plumb-clarify", 1)[1].strip().split("\n\n")
-    first = " ".join(opening[0:2])
+    folder = repo / ".claude" / "skills" / "plumb-clarify"
+    skill = (folder / "SKILL.md").read_text(encoding="utf-8")
+    # SR-379: the skill points to its state table, which opens with the first action
+    assert "references/clarify-states.md" in skill
+    text = (folder / "references" / "clarify-states.md").read_text(encoding="utf-8")
+    first = text.split("\n\n")[1]
     assert "first action" in first and "plumb clarify --wait" in first
     assert "do not build" in first.lower() and "answered" in first
     assert "{plumb}" not in text

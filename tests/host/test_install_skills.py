@@ -104,14 +104,17 @@ def test_clarify_skill_covers_every_answer_of_clarify_wait(repo: Path) -> None:
         encoding="utf-8")).group(1).split(" | ")
     assert set(states) == {"ready", "ask", "card", "escalation", "couldnt_check", "waiting",
                            "held"}
-    skill = (_installed(repo) / "skills" / "plumb-clarify" / "SKILL.md").read_text(
-        encoding="utf-8")
+    folder = _installed(repo) / "skills" / "plumb-clarify"
+    # SR-379: the state table lives in the skill's references; the skill points to it
+    skill = (folder / "SKILL.md").read_text(encoding="utf-8")
+    assert "references/clarify-states.md" in skill
+    states_doc = (folder / "references" / "clarify-states.md").read_text(encoding="utf-8")
     for state in states:
-        assert f"`{state}`" in skill, state
-    waiting = skill[skill.index("- waiting"):].split("\n\n", 1)[0]
+        assert f"`{state}`" in states_doc, state
+    waiting = states_doc[states_doc.index("- waiting"):].split("\n\n", 1)[0]
     assert "build nothing" in waiting and "plumb clarify --wait" in waiting
     head = skill.split("---", 2)[1]
-    assert "clarify --wait" in head and "creates or changes intent" in head
+    assert "creates or changes intent" in head  # SR-379 EX-2: not on every message
 
 
 @pytest.mark.sr("SR-202")
@@ -121,7 +124,7 @@ def test_records_skill_runs_clarify_wait_first_and_names_the_guarded_commands(
         encoding="utf-8")
     first = _body(skill).strip().split("\n- ")[1]
     assert first.startswith(
-        "After `capture`, on any message, run `plumb clarify --wait --json` and act on its "
+        "Every message, after `capture`: run `plumb clarify --wait --json` and act on its "
         "answer")
     assert "message_digest" in skill and "sha256" in skill
     assert "plumb tests map" in skill  # what to run when the test map is missing
@@ -163,7 +166,8 @@ def test_command_allows_exactly_what_it_runs_and_no_owner_command() -> None:
     for rule in plumb_rules:
         first = rule.split()[0]
         assert re.search(rf"\{{plumb\}} {re.escape(rule)}\b", runs) or (
-            first in {"brief", "why", "show", "align"}), rule
+            # SR-379: question reword runs as plumb-records says, which the command points to
+            first in {"brief", "why", "show", "align", "question"}), rule
     for row in TABLE:
         if row.unless is None:
             assert not any(r.startswith(f"{{plumb}} {' '.join(row.words)}") for r in allowed)
