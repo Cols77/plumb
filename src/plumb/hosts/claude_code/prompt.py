@@ -473,8 +473,11 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
         if hold and clarify.commanded_words(text) is None:
             gate.close(ctx.root, ctx.session_id, digest, hold)
     hint = escalation_hint(core, index, strong, list(flagged)) if strong else None
+    from plumb.present import insights  # SR-374: the intent when not named, a known issue
+
+    table = insights.lines("prompt", core, {"session": ctx.session_id, "text": text})
     rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []),
-                        *awareness_lines(core, ids), *tail])
+                        *awareness_lines(core, ids), *table, *tail])
     out = [*records, *rest, *understood]
     ctx.keep(out)
     emitter.close()

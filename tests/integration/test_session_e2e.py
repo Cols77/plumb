@@ -141,10 +141,10 @@ def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.Monk
     print("\n" + json.dumps(timings, indent=2))  # visible with -s
     assert all(s.code == 0 for s in steps), [(s.name, s.code, s.stderr) for s in steps]
 
-    # SessionStart: the compact brief (R9), with the counts, the tests line and a pointer
+    # SessionStart: the compact brief (R9, SR-374 EX-9): what changed and what blocks, no
+    # counts; a first session start has seen nothing before and nothing blocks here
     brief = by_name["SessionStart"].stdout
-    assert brief.startswith("plumb brief: 1 feature(s), 2 SR (2 confirmed), 1 INT (1 confirmed)")
-    assert "tests:" in brief and "plumb show <ID>" in brief
+    assert "plumb brief:" not in brief and "tests:" not in brief
     assert len(brief.splitlines()) <= 6
 
     # no judge is configured here (INT-029): the hook says so in one line, flags nothing by

@@ -301,8 +301,25 @@ def _cut_output(kept: Kept, notice: str, json_output: bool) -> str:
     hook owed nothing (``Kept.quiet``)."""
     if kept.quiet:
         return ""
-    lines = kept.snapshot()
-    return _notice("\n".join([*lines, notice]), json_output)
+    lines = [*kept.snapshot(), *([notice] if notice else [])]
+    return _notice("\n".join(lines), json_output) if lines else ""
+
+
+def _once(ctx: HookContext | None, step: str = "") -> str:
+    """SR-374 EX-7: the skipped step, named once per session (the insight table's ``cut``);
+    "" when this session was told already."""
+    if ctx is None:
+        return skip_line(step)
+    try:
+        from plumb.present import insights
+        from plumb.present.delta import Emitter, seen_path
+
+        emitter = Emitter(seen_path(ctx.session_dir, ctx.session_id), "cut", None)
+        out = emitter.add(insights.lines("cut", None, {"hook": ctx.name, "step": step}))
+        emitter.close()
+        return out[0] if out else ""
+    except Exception:  # noqa: BLE001 - the notice is said rather than lost
+        return skip_line(step)
 
 
 class _Writer:
@@ -375,7 +392,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
                     timer.daemon = True
                     timer.start()
                     return
-                if writer.write(_cut_output(kept, SKIP_BUDGET, json_output)):
+                if writer.write(_cut_output(kept, _once(ctx), json_output)):
                     detail = f"watchdog: hard limit {limit}s reached"
                     log_error(found, name, detail)
                     write_profile(found, name, ctx, began, cut="watchdog")
@@ -400,8 +417,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     except BudgetExceeded as exc:
         log_error(found, name, f"budget exceeded at step: {exc}")
         step = str(exc)
-        writer.write(_cut_output(kept, skip_line(step) if kept.lines else SKIP_BUDGET,
-                                 json_output))
+        writer.write(_cut_output(kept, _once(ctx, step if kept.lines else ""), json_output))
     except Exception:  # noqa: BLE001 - plumb never blocks work on its own failure
         detail = _format_exc()
         log_error(found, name, detail)

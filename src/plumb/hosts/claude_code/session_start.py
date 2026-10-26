@@ -124,15 +124,14 @@ def evidence_line(summary: Mapping[str, Any] | None) -> str:
     return "tests: " + " | ".join(parts)
 
 
-def brief(core: Any, tests_line: str) -> list[str]:
-    """The compact brief by default (R9: a few lines plus a pointer); ``hooks.session_brief:
-    full`` keeps the long brief of about 30 lines."""
+def brief(core: Any, tests_line: str, session: str = "") -> list[Any]:
+    """SR-374 by default: the insight table's session lines (``delta.Line``): the intent being
+    worked on, what changed since the agent last looked and what blocks now, no counts;
+    ``hooks.session_brief: full`` keeps the long brief of about 30 lines (strings)."""
     if str(core.config.hooks.session_brief) != "full":
-        from plumb.query import compact_brief_lines
+        from plumb.present import insights
 
-        lines = compact_brief_lines(core)
-        lines.insert(len(lines) - 1, tests_line)
-        return lines[:HARD_CAP]
+        return insights.lines("session", core, {"session": session})[:HARD_CAP]
     cap = min(int(core.config.hooks.brief_lines), HARD_CAP)
     lines = list(core.brief_lines(max(cap - 1, 1)))[: cap - 1]
     at = len(lines) - 1 if lines and lines[-1].startswith("open NCs") else len(lines)
@@ -214,8 +213,10 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
         core.index()
         timer.mark("index")
     # no soft-budget check before the records brief: only the watchdog bounds it
-    records_brief = brief(core, NOT_CHECKED)
-    ctx.keep(emitter.add([Line(line) for line in records_brief], commit=False))
+    records_brief = [x if isinstance(x, Line) else Line(x)
+                     for x in brief(core, NOT_CHECKED, ctx.session_id)]
+    compact = str(core.config.hooks.session_brief) != "full"
+    ctx.keep(emitter.add(records_brief, commit=False))
     timer.mark("brief")
     # the status line's snapshot as soon as the records are read, tests unknown: the tests
     # check can outlast the hook's watchdog, which must not leave the line on an older session
@@ -229,18 +230,25 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
         ctx.deadline.check("tests")
         summary = cached_summary(core, verify)
     timer.mark("tests_summary")
-    lines = emitter.add([Line(evidence_line(summary) if line == NOT_CHECKED else line)
-                         for line in records_brief])
+    if compact:  # SR-374 EX-9: the tests only when they block now
+        from plumb.present.insights import blocks_line
+
+        blocks = blocks_line(summary)
+        lines = emitter.add([*records_brief, *([Line(blocks)] if blocks else [])])
+    else:
+        lines = emitter.add([Line(evidence_line(summary)) if line.text == NOT_CHECKED
+                             else line for line in records_brief])
     ctx.keep(lines)
     conflicts = conflicts_line(core)  # sp6 8.3: a merge left intent awaiting the owner
     if conflicts:
         lines += emitter.add([Line(conflicts)])
         ctx.keep(lines)
-    try:  # SR-357 EX-1: the open and lately fixed known issues, in one or two lines
+    try:  # SR-357 EX-1: the known issues (the compact brief's table has them already)
         from plumb import debug
 
-        lines += emitter.add([Line(text) for text in debug.known_lines(core.root)])
-        ctx.keep(lines)
+        if not compact:
+            lines += emitter.add([Line(text) for text in debug.known_lines(core.root)])
+            ctx.keep(lines)
     except Exception:  # noqa: BLE001 - a broken register never costs the brief
         pass
     if summary is not None and not summary.get("background"):

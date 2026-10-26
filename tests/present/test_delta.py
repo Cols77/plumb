@@ -135,6 +135,8 @@ def test_session_start_and_stop_route_through_the_emitter(records: Path, hook_in
         return real(self, lines, **kwargs)
 
     monkeypatch.setattr(delta.Emitter, "add", spy)
+    (records / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
+    (records / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
     out = io.StringIO()
     payload = hook_input("SessionStart", session_id="s9", source="startup")
     session_start.main(stdin=io.StringIO(payload), stdout=out, root=records,

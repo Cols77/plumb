@@ -1,4 +1,5 @@
-"""PostToolUse on Edit, Write, MultiEdit and NotebookEdit: the stale-link notice (SR-111).
+"""PostToolUse on Edit, Write, MultiEdit and NotebookEdit: the stale-link notice (SR-111) and
+the requirements the file serves (SR-374 EX-3, from ``plumb.present.insights``).
 
 The synchronous companion of ``post-edit`` (which stays asynchronous and only tracks the
 edit): right after an edit it names, one line each and at most five, the links the edit made
@@ -116,14 +117,35 @@ def handle(ctx: HookContext) -> HookOutput | None:
                 continue
             said.append((f"derived:{link}", state, stale.derived_line(source, target, kind)))
     _note_stale(ctx, root, made)
-    if not said:
+    serves = _serves(ctx, root, rel, core)
+    if not said and not serves:
         return None
     shown = said[:stale.MAX_NOTICES]
-    lines = [line for _key, _state, line in shown]
+    lines = [*serves, *(line for _key, _state, line in shown)]
     if len(said) > len(shown):
         lines.append(f"plumb: +{len(said) - len(shown)} more")
     stale.mark_told(root, ctx.session_id, {key: state for key, state, _line in shown})
     return HookOutput(additional_context="\n".join(lines))
+
+
+def _serves(ctx: HookContext, root: Path, rel: str, core: object) -> list[str]:
+    """SR-374 EX-3: the requirements the edited file serves, their examples and covering
+    tests, from the insight table, once per session per record state."""
+    from plumb import stale
+
+    if root != ctx.root or not stale.links_touching(root, rel) or ctx.deadline.expired():
+        return []
+    from plumb.present import insights
+    from plumb.present.delta import open_emitter
+
+    if core is None:
+        from plumb.api import open_core
+
+        core = open_core(root)
+    emitter = open_emitter(ctx, "edit", config=core.config)  # type: ignore[attr-defined]
+    out = emitter.add(insights.lines("edit", core, {"path": rel}))
+    emitter.close()
+    return out
 
 
 def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,

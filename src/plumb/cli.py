@@ -28,7 +28,7 @@ ROUTES: dict[str, str] = {
     "status": "plumb.present.cli", "brief": "plumb.present.cli", "drift": "plumb.present.cli",
     "show": "plumb.present.cli", "explain": "plumb.present.cli", "why": "plumb.present.cli",
     "impact": "plumb.present.cli", "resolve": "plumb.present.cli",
-    "review": "plumb.present.cli",
+    "review": "plumb.present.cli", "context": "plumb.present.cli",
     "align": "plumb.present.cli",
     # VERIFY
     "tests": "plumb.verify.cli", "map": "plumb.verify.cli", "verify": "plumb.verify.cli",
@@ -131,6 +131,8 @@ owner views (plain words, paths or IDs; none approves anything):
                alignment, the merge state
   align        judge each edge from intent to evidence, weakest first; name the gaps
   impact       what a change would reach
+  context      the full picture of one condition (session, prompt, edit, test, symptom,
+               merge), unfiltered: what the hooks say in part
 
 verification:  tests (map | select | run), map, verify
 host:          hook, hooks, install, statusline

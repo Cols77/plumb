@@ -34,6 +34,9 @@ def core(repo: Path, write_record):
 
 
 def _start(root: Path, hook_input, source: str) -> str:
+    # every record new since the last brief, so the brief has a line to say (SR-374 EX-9)
+    (root / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
+    (root / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")
     out = io.StringIO()
     payload = hook_input("SessionStart", session_id=SESSION, source=source)
     assert session_start.main(stdin=io.StringIO(payload), stdout=out, root=root,

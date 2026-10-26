@@ -213,7 +213,41 @@ def cmd_align(command: str, argv: list[str]) -> int:
     return 0
 
 
+def cmd_context(command: str, argv: list[str]) -> int:
+    """SR-374 EX-8: the full picture of one condition of the insight table, unfiltered."""
+    from plumb.present import insights
+
+    parser = _parser(command, "The full picture plumb has for one condition: session, "
+                     "prompt <words>, edit <path>, test <node>, symptom <words>, "
+                     "merge [<base>].")
+    parser.add_argument("condition", choices=sorted(set(insights.TABLE) - {"cut"}))
+    parser.add_argument("arg", nargs="*", metavar="PATH_OR_ID")
+    args = parser.parse_args(argv)
+    core = _core(args)
+    arg = " ".join(args.arg)
+    ctx: dict[str, Any] = {"full": True, "text": arg, "path": arg, "node": arg}
+    if args.condition == "edit":
+        from plumb import stale
+
+        stale.ensure_linkmap(core)
+    if args.condition == "test":
+        from plumb.verify import open_verify
+
+        ctx["regression"] = bool(open_verify(core).evidence([arg])[arg].regression)
+    if args.condition == "merge":
+        from plumb.boundary import merge_report
+        from plumb.boundary.cli import merge_settings
+
+        ctx["report"] = merge_report(core, arg or str(merge_settings(core)["default_base"]),
+                                     run_full=False)
+    lines = [line.text for line in insights.lines(args.condition, core, ctx)]
+    emit({"lines": lines} if args.as_json else lines or ["plumb: nothing applies"],
+         args.as_json)
+    return 0
+
+
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
+    "context": cmd_context,
     "status": cmd_status, "brief": cmd_brief, "drift": _delegate, "show": cmd_show,
     "explain": cmd_explain, "why": cmd_explain, "impact": cmd_impact,
     "resolve": cmd_resolve, "review": cmd_review,

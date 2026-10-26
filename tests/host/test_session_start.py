@@ -43,15 +43,13 @@ def _many_records(repo: Path, write_record, count: int = 60) -> None:
 @pytest.mark.sr("SR-277")
 def test_brief_is_a_few_lines_and_a_pointer_by_default(repo: Path, write_record,
                                                        hook_input) -> None:
-    """R9: the session brief is a few lines plus a pointer, never every proposed record."""
+    """R9, SR-374 EX-9: the session brief is a few lines, never every proposed record and no
+    counts (they are in plumb status)."""
     _many_records(repo, write_record)
     lines = _run(repo, hook_input, verify=FakeVerify()).splitlines()
-    assert lines[0] == "plumb brief: 0 feature(s), 0 SR (0 confirmed), 60 INT (0 confirmed)"
     assert len(lines) <= 6
-    assert "open NCs: 5 (plumb brief --all)" in lines
-    assert any(line.startswith("tests: ") for line in lines)
-    assert lines[-1].startswith("plumb: records reach you once per session")
-    assert not any("Intent number 7" in line for line in lines)
+    assert not any("Intent number 7" in line or "60" in line or "open NCs" in line
+                   for line in lines)
 
 
 def test_brief_about_30_lines_with_cap(repo: Path, write_record, hook_input) -> None:
@@ -86,10 +84,9 @@ def test_brief_lists_awaiting_confirmation_and_drift(repo: Path, write_record,
                             "tests/test_a.py::test_x", "fresh-fail")},
                         pending=FullPending(True, ("uv.lock",)))
     out = _run(repo, hook_input, verify=verify)
-    assert "waiting on a judge: 1 record" in out
-    assert "drift: stale 1" in out
-    assert ("tests: 1 failing (tests/test_a.py::test_x) | full verification pending (uv.lock)"
-            in out)
+    # SR-374 EX-9: what blocks now, not the counts of what waits or drifts
+    assert "waiting on a judge" not in out and "drift" not in out
+    assert "plumb: tests block now: not yet passing: tests/test_a.py::test_x" in out
 
 
 def test_writes_status_snapshot(repo: Path, write_record, hook_input) -> None:
@@ -144,11 +141,11 @@ def test_brief_survives_a_budget_cut(repo: Path, write_record, hook_input,
             return getattr(self._core, name)
 
     monkeypatch.setattr(plumb.api, "open_core", lambda root: SlowCore(real_open(root)))
+    (repo / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
+    (repo / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
     verify = FakeVerify()
     out = _run(repo, hook_input, verify=verify).splitlines()
-    assert out[0].startswith("plumb brief")
-    assert "waiting on a judge: 1 record" in out
-    assert "tests: not checked (budget)" in out
+    assert out[0].startswith("plumb: changed since you last looked: SR-001")
     assert out[-1] == "plumb: check skipped (budget): tests"
 
 
@@ -170,7 +167,7 @@ def test_warm_brief_skips_the_test_map(repo: Path, write_record, hook_input,
     monkeypatch.setattr(testmap, "build_map", no_build)
     warm = _run(repo, hook_input)
     assert warm == cold
-    assert "tests: 0/1 mapped tests with fresh passing evidence" in warm
+    assert "fresh passing evidence" not in warm   # SR-374 EX-9: no counts
 
 
 def test_status_snapshot_survives_a_budget_cut_of_the_tests_line(
@@ -198,6 +195,8 @@ def test_status_snapshot_survives_a_budget_cut_of_the_tests_line(
             return getattr(self._core, name)
 
     monkeypatch.setattr(plumb.api, "open_core", lambda root: SlowCore(real_open(root)))
+    (repo / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
+    (repo / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
     out = _run(repo, hook_input, verify=FakeVerify()).splitlines()
     assert out[-1] == "plumb: check skipped (budget): tests"
     data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
@@ -279,7 +278,7 @@ def test_no_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> None
     (repo / "README.md").write_text("edited\n", "utf-8")
     monkeypatch.setattr(hygiene.subprocess, "run", missing)
     out = _run(repo, hook_input, verify=FakeVerify())
-    assert _notice(out) == [] and out.startswith("plumb brief")
+    assert _notice(out) == [] and "check skipped" not in out
     assert not (repo / ".plumb" / "session" / "errors.log").exists()
 
 
@@ -294,7 +293,7 @@ def test_a_slow_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> 
     (repo / "README.md").write_text("edited\n", "utf-8")
     monkeypatch.setattr(hygiene.subprocess, "run", slow)
     out = _run(repo, hook_input, verify=FakeVerify())
-    assert _notice(out) == [] and out.startswith("plumb brief")
+    assert _notice(out) == [] and "check skipped" not in out
 
 
 @pytest.mark.sr("SR-210")
@@ -310,7 +309,7 @@ def test_ex4_low_risk_records_give_no_offer_line(repo: Path, write_record, hook_
     write_record(repo, record_text("INT-011", "multiply number 11", quote=said, readback=said,
                                    will=["multiply number 11"], prompt=_digest(said)))
     out = _run(repo, hook_input)
-    assert "waiting on a judge: 1 record" in out and "rated faithful" not in out
+    assert "rated faithful" not in out
     assert "approve the" not in out
 
 

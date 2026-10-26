@@ -174,7 +174,7 @@ def test_ex5_the_session_start_brief_offers_no_ok_and_no_read_back(
         ("INT-001", "beyond"), ("SR-001", "beyond"),
         questions=[asking("INT-001", "SR-001")]))
     lines = session_start.brief(open_core(world), "tests: none")
-    text = "\n".join(lines)
+    text = "\n".join(getattr(line, "text", line) for line in lines)
     assert not re.search(r"\b(?:say|type|reply) ok\b|\bok to\b", text, re.IGNORECASE)
     assert clarify.READBACK_QUESTION not in text
     assert cardstore.own_cards(world, SESSION) == []

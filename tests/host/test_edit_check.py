@@ -17,6 +17,13 @@ from plumb.hosts.claude_code import edit_check, install
 
 pytestmark = pytest.mark.sr("SR-198")
 
+
+@pytest.fixture(autouse=True)
+def _stale_notices_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests are about the stale notices; the requirement lines an edit adds (SR-374
+    EX-3) are tested in tests/present/test_insights.py."""
+    monkeypatch.setattr(edit_check, "_serves", lambda *args: [])
+
 SR5 = """---
 id: SR-005
 title: Relay checks the quote

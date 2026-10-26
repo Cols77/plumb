@@ -116,8 +116,8 @@ def test_cli_drives_the_hooks(busy_repo: Path, hook_input,
         assert result.returncode == 0, result.stderr
         return result.stdout
 
-    assert call("hook", "session-start",
-                payload=hook_input("SessionStart")).startswith("plumb brief")
+    assert "check skipped" not in call("hook", "session-start",
+                                       payload=hook_input("SessionStart"))
     out = call("hook", "prompt", payload=hook_input("UserPromptSubmit",
                                                     prompt="SR-002 needs work"))
     assert "SR-002 [proposed]" in out
@@ -175,8 +175,7 @@ def test_intent_lines_survive_cpu_contention(busy_repo: Path, hook_input) -> Non
 
 def _contended_turn(busy_repo: Path, hook_input, call) -> None:
     brief, _ = call("hook", "session-start", payload=hook_input("SessionStart"))
-    assert brief.startswith("plumb brief")
-    assert "waiting on a judge: 53 records" in brief
+    assert "check skipped" not in brief and "53" not in brief   # SR-374 EX-9: no counts
     index = open_core(busy_repo).index()
     stated = busy_repo / ".plumb" / "session" / "stated.json"
     stated.write_text(json.dumps({"records": [
