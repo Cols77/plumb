@@ -39,15 +39,6 @@ def test_a_retired_requirement_counts_nowhere(repo: Path, write_record) -> None:
     assert data["awaiting"] == ["SR-002"] and "SR-001" not in data["failing"]
 
 
-def test_triage_rates_no_retired_record(repo: Path, write_record) -> None:
-    from plumb.capture.triage import triage
-
-    write_record(repo, OLD)
-    write_record(repo, NEW)
-    view = triage(open_core(repo), backend=None)
-    assert [i.id for i in view.individual] == ["SR-002"]
-
-
 @pytest.mark.sr("SR-289")
 def test_ex1_a_supersedes_link_to_a_deleted_record_is_not_dangling(repo: Path,
                                                                    write_record) -> None:

@@ -27,7 +27,7 @@ from plumb.cli import main
 
 pytestmark = pytest.mark.sr("SR-282")
 
-ENTRY_POINTS = ("claude-code", "cli", "codex", "pi", "hermes")
+ENTRY_POINTS = ("claude-code", "cli", "codex", "hermes")
 
 INT1 = """---
 id: INT-001

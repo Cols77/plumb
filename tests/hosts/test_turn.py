@@ -78,7 +78,7 @@ def test_turn_outside_plumb_repo_is_silent(tmp_path: Path, monkeypatch, capsys) 
 def test_hook_with_host_and_json_format(project: Path, monkeypatch, capsys) -> None:
     event = {"session_id": "h1", "text": "about SR-001", "cwd": str(project)}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
-    assert main(["hook", "prompt", "--host", "pi", "--format", "json"]) == 0
+    assert main(["hook", "prompt", "--host", "codex", "--format", "json"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert any("SR-001" in line for line in data["agent_context"])
     assert set(data) == {"agent_context", "owner_lines", "block", "status_line"}

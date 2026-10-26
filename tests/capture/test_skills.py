@@ -47,14 +47,14 @@ def _texts(repo: Path) -> dict[str, str]:
 def test_plumb_records_skill_names_capture_helpers(installed: Path) -> None:
     skill = (installed / ".claude" / "skills" / "plumb-records" / "SKILL.md").read_text(
         encoding="utf-8")
-    for words in ("plumb capture", "plumb decide", "plumb clarify", "plumb triage",
+    for words in ("plumb capture", "plumb decide", "plumb clarify",
                   "plumb-clarify"):
         assert words in skill, words
     body = skill.split("---", 2)[2].strip().splitlines()
     # about 25 lines of context, not procedure, and the question rules (SR-362's reword and
     # push-back added three)
     assert len(body) <= 43
-    for owner_only in ("plumb approve", "triage --approve", "spec approve",
+    for owner_only in ("plumb approve",
                        "config auto-approve"):
         assert owner_only in skill
 
@@ -91,7 +91,7 @@ def test_skills_uninstalled_and_owner_commands_denied(installed: Path) -> None:
     from plumb.hosts.claude_code.install import Launcher
 
     rules = " ".join(deny_rules(Launcher("plumb", "plumb", "plumb")))
-    for command in ("triage --approve", "spec approve", "config auto-approve", "config show"):
+    for command in ("config auto-approve", "config show"):
         assert f"Bash(plumb {command}:*)" in rules
     uninstall(installed)
     assert not (installed / ".claude" / "skills" / "plumb-clarify").exists()

@@ -10,7 +10,7 @@ from capture_helpers import run
 
 from plumb.api import open_core
 from plumb.capture.records import is_short_answer
-from plumb.capture.triage import claim
+from plumb.understand.claim import claim
 
 pytestmark = pytest.mark.sr("SR-212")
 

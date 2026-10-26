@@ -213,40 +213,11 @@ def cmd_align(command: str, argv: list[str]) -> int:
     return 0
 
 
-def cmd_view(command: str, argv: list[str]) -> int:
-    parser = _parser(command, "Write the Obsidian vault and the Canvas intent map of the "
-                     "records (generated, never read back: editing a note approves nothing).")
-    parser.add_argument("--out", default=None, help="vault folder (default .plumb/view)")
-    parser.add_argument("--scope", nargs="*", default=None, help="plain words, IDs or paths")
-    parser.add_argument("--open", action="store_true", dest="open_vault",
-                        help="open the vault with Obsidian or the platform's opener")
-    args = parser.parse_args(argv)
-    from pathlib import Path
-
-    from plumb.view import open_vault, write_vault
-
-    core = _core(args)
-    scope: list[str] | None = None
-    if args.scope:
-        scope, _, answered = _resolve_or_ask(core, args.scope, args.as_json)
-        if answered:
-            return 0
-    out = Path(args.out) if args.out else Path(core.root) / ".plumb" / "view"
-    report = write_vault(core, out, scope=scope)
-    if args.open_vault:
-        open_vault(out)
-    emit(report if args.as_json else
-         [f"plumb view: {report['notes']} notes, {report['removed']} removed, in {out}",
-          f"open {out / 'index.md'} in Obsidian (intent map: intent-map.canvas)"],
-         args.as_json)
-    return 0
-
-
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "status": cmd_status, "brief": cmd_brief, "drift": _delegate, "show": cmd_show,
     "explain": cmd_explain, "why": cmd_explain, "impact": cmd_impact,
     "resolve": cmd_resolve, "review": cmd_review,
-    "align": cmd_align, "view": cmd_view,
+    "align": cmd_align,
 }
 
 

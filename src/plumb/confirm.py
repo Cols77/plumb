@@ -73,9 +73,7 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
 
         return problem(entry, core)
     if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)
-        from plumb.importer.recheck import import_problem
-
-        return import_problem(entry)  # self-contained: needs no log context
+        return "import approvals no longer exist: the importer is removed; it confirms nothing"
     if by == "study-room" or payload.get("via") == "study-room":
         # no study room puts questions in this version (plan section 3), so no such entry
         # names a question at that version (SR-210 EX-3)

@@ -185,7 +185,7 @@ def fast_track(core: Core, record: Any, jev: Mapping[str, Any]) -> dict[str, Any
     if auto is None:
         return None
     from plumb.capture.spec import escalated_ids
-    from plumb.capture.triage import _Prompts, approved_before, premise_problem
+    from plumb.understand.claim import _Prompts, approved_before, premise_problem
 
     if premise_problem(_Prompts(core), core.index(), record) is not None:
         return None   # quote-only: the verdict is logged so, the judge model asks

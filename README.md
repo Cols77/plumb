@@ -77,11 +77,9 @@ does.
   shown when you ask for it.
 
 plumb is a host-neutral CLI and Python library with thin host adapters. Claude Code is
-supported first; Codex, Pi and Hermes have thin adapters, any other agent can use the
-CLI-only fallback (`plumb turn start|end`), and a read-only MCP server exposes the same views.
-plumb keeps pi-agent-factory's IDs and `SR:` commit trailers, and it imports that project's
-register (requirements, features, bundles, nonconformances, upstream consent) idempotently,
-with a dry-run diff.
+supported first; Codex and Hermes have thin adapters (frozen while Claude Code is the agent
+working on plumb: `freeze:` in `.plumb/config.yaml`), and any other agent can use the CLI-only
+fallback (`plumb turn start|end`). plumb keeps pi-agent-factory's IDs and `SR:` commit trailers.
 
 ## As a Claude Code plugin
 
@@ -170,17 +168,6 @@ any host.
 
 You can also mark a test directly with `@pytest.mark.sr("SR-001")`. Register the marker in your
 pytest configuration (`markers = ["sr(id): links a test to a plumb requirement"]`).
-
-**Import one.** To import from a pi-agent-factory checkout (it reads `requirements/SR-*.md`,
-`docs/features/FEAT-*.md`, `bundles/*.json` and `docs/nonconformances/NC-*.md`):
-
-```bash
-uv run plumb import pi-agent-factory /path/to/pi-agent-factory --dry-run
-uv run plumb import pi-agent-factory /path/to/pi-agent-factory --only SR,FEAT
-```
-
-The source is read only. Imported records arrive as `proposed`. A link whose target file does
-not exist in your repository is reported and not added.
 
 ### 4. Connect Claude Code
 
@@ -391,8 +378,7 @@ exact change).
 | `plumb intent`, `plumb example SR --given --when --then`, `plumb decide --question --chosen --alt [--matters] [--supersede DEC]` | An INT read-back, an example, a decision ("I assumed A; B also fits"). |
 | `plumb clarify "<request>" [--questions FILE]` | The clarification depth (trivial, incremental, escalated) and only the questions that change what gets built, ranked. |
 | `plumb escalate check\|decline` | Escalation suggestions for large, risky or cross-cutting work; `decline` is yours. |
-| `plumb spec show\|approve\|state INT` | An escalated up-front spec; `approve` (your terminal) pins the set hash. |
-| `plumb triage [--approve low-risk]` | Proposed records grouped by faithfulness to your words; `--approve low-risk` confirms exactly the listed hashes in one step (your terminal). |
+| `plumb spec show\|state INT` | An escalated up-front spec: every member in full, and whether the judge approved the set whole. |
 | `plumb config auto-approve on\|off`, `config show`, `config card full\|compact\|off` | The opt-in auto-approval (off by default; needs JEV and its credential, no calibration: DEC-143) and the card verbosity. Your terminal only. |
 | `plumb jev status [--probe]\|setup [--provider typesafe\|openrouter] [--env-var NAME] [--env-file PATH]\|calibrate` | The optional JEV backend (the agent runs it when you say `/plumb jev status`, `/plumb jev setup openrouter` or `/plumb jev calibrate`): provider, endpoint, where the key comes from (a label, never the key), reachability and the normalized resolved version; setup records the provider, model and the credential variable's NAME; calibration on your own decisions. |
 
@@ -404,7 +390,6 @@ exact change).
 | `plumb status --card` | The status card, what awaits you and drift. |
 | `plumb review [WORDS...]` | The deep review: what awaits you, approvals you did not type, drift, alignment, the merge state. |
 | `plumb align [SCOPE]` | Judges each edge from intent to code, weakest first, and names the gaps; never adds or removes an edge. |
-| `plumb view [--open]` | Writes a generated Obsidian vault (one note per record, wikilinks, index notes, a Canvas intent map) under `.plumb/view/`. Editing a note approves nothing. |
 
 In Claude Code these are `/plumb status`, `/plumb explain <anything>`, `/plumb review`,
 `/plumb impact <anything>` and `/plumb view`.
@@ -433,13 +418,12 @@ during the turn.
 | `plumb hook {session-start\|prompt\|post-edit\|stop}` | Hook entry points. Each one reads the host's JSON on stdin, answers on stdout and always exits 0. |
 | `plumb statusline` | Print the one-line status from `.plumb/session/status.json`. It recomputes nothing. |
 
-### Other hosts and MCP
+### Other hosts
 
 | Command | What it does |
 |---|---|
-| `plumb hosts install\|uninstall\|status codex\|pi\|hermes [--dry-run]` | Thin adapters over the same host-neutral turn API (see `docs/hosts.md` for each host's events). |
+| `plumb hosts install\|uninstall\|status codex\|hermes [--dry-run]` | Thin adapters over the same host-neutral turn API (see `docs/hosts.md` for each host's events). |
 | `plumb turn start\|end [--session ID]` | The CLI-only fallback for a host without hooks; confirmations resting on a message the agent recorded itself are labelled "self-recorded message". On a host whose prompt hook runs (Claude Code, or Codex once its hooks are trusted), such a message never grounds a confirmation. |
-| `plumb mcp serve` / `plumb mcp install\|uninstall claude-code\|codex\|hermes` | A read-only MCP server on stdio (brief, relevant records, show, explain, impact, drift); it has no write tool. |
 
 ### Merge boundary
 
@@ -469,7 +453,6 @@ during the turn.
 | `plumb fidelity SR` | Build the advisory fidelity packet (the statement, examples, linked code, tests and evidence) for the host agent to judge. |
 | `plumb judge SR --verdict fits\|drifts\|unsure [--note]` | Record the host agent's advisory verdict. |
 | `plumb judgment [status]` | Show the judgment backend in use: `heuristic` by default, `jev` optional, or `disabled`. |
-| `plumb import pi-agent-factory SOURCE [--dry-run] [--diff] [--only SR,FEAT,NC,CLAIMS]` | Import pi-agent-factory's register, read only: records arrive proposed, with symbol and test-node link ends; a requirement whose upstream human consent pins its current content is confirmed `by: import` only after you say yes in your own terminal. Re-running changes nothing unless the source changed; `--dry-run` prints the diff. |
 
 ## Configuration
 
@@ -522,7 +505,7 @@ plumb has been dogfooded from day one: this repository is developed with plumb.
 
 - Its own intent is in `.plumb/`. The `INT` records quote the owner's intent brief verbatim.
   `SR-001` to `SR-081` (features `FEAT-001` to `FEAT-006`: the grounding loop, intent
-  capture, the merge boundary, the importer and other hosts, presentation, parallel work)
+  capture, the merge boundary, other hosts, presentation, parallel work)
   carry
   given/when/then examples, and `DEC` records hold the design choices. Every record written
   by an agent stays proposed until the owner confirms it. Each requirement is linked, with hash pins, to the

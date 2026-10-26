@@ -63,10 +63,10 @@ def test_no_adapter_imports_another_adapter() -> None:
     import plumb.hosts as hosts
 
     base = Path(hosts.__file__).parent
-    for adapter in ("codex", "pi", "hermes"):
+    for adapter in ("codex", "hermes"):
         for path in (base / adapter).rglob("*.py"):
             text = path.read_text("utf-8")
-            others = {"codex", "pi", "hermes", "claude_code"} - {adapter}
+            others = {"codex", "hermes", "claude_code"} - {adapter}
             for other in others:
                 assert not re.search(rf"plumb\.hosts\.{other}\b", text), (path, other)
 

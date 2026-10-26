@@ -281,7 +281,7 @@ def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> N
     advertised = {part.split()[0] for part in hint.split('"')[1].split("|")}
     # sp5 6.1: the six owner verbs, plain words accepted (SR-064 EX-3), plus the JEV judge
     # (setup, status, calibrate: SR-039, R14); SR-122: every typed verb the command answers
-    assert advertised == {"status", "intent", "clarify", "explain", "review", "impact", "view",
+    assert advertised == {"status", "intent", "clarify", "explain", "review", "impact",
                           "jev", "debug",   # SR-328, DEC-254: the owner asks for debug
                           "init", "go", "undo", "conflicts",   # approve: gone (SR-208)
                           "merge-check", "inflight",

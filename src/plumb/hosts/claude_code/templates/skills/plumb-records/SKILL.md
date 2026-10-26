@@ -21,7 +21,7 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
   is one per principle. The proof, how the owner sees it working, is shown before done:
   `{plumb} proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
 - Never run `{plumb} approve` or `revoke` (both gone), `tests waive`, `ui`,
-  `{plumb} triage --approve`, `spec approve`, `config auto-approve`, `config show`,
+  `config auto-approve`, `config show`,
   `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo` and `go` are typed
   by the owner and done by the hook. Merges, conflict cards: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.

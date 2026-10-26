@@ -220,12 +220,6 @@ def validate(core: Core) -> list[Finding]:
         for problem in ids.renumber_problems(core):
             subject, _, message = problem.partition(": ")
             add("error", "renumber", subject, message)
-    # by: import approvals across entries (next-plan 9.3; the importer's own re-check)
-    from plumb.importer.recheck import recheck_import_approvals
-
-    for problem in recheck_import_approvals(core):
-        subject, _, message = problem.partition(": ")
-        add("error", "approval", subject, message)
     return findings
 
 

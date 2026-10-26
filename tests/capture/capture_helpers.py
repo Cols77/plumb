@@ -192,3 +192,13 @@ def use_coverage_judge(monkeypatch) -> CoverageJudge:
 
     monkeypatch.setattr(judgment, "get_backend", pick)
     return double
+
+
+def approve_set(core, anchor: str) -> None:
+    """A set approval as the judge worker writes it (the owner-terminal command is gone)."""
+    from plumb.capture.spec import set_payload
+
+    records, digest = set_payload(core, anchor)
+    core.log_append("events", "approval", {
+        "records": records, "set": digest, "by": "owner", "prompt_digest": None, "quote": None,
+        "quote_digest": None, "affirmation": None, "stated_set": None, "note": ""})

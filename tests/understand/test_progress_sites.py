@@ -128,10 +128,8 @@ def test_coverage_collection_reports_done_of_total_tests(repo: Path, loud: None,
     assert report.ran
 
 
-def test_import_and_align_report(repo: Path, loud: None, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_align_report(repo: Path, loud: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb import align
-    from plumb.importer import cli as import_cli
-    from plumb.importer import pi_factory
 
     seen: list[tuple[str, int, int]] = []
     original = progress.Reporter.update
@@ -142,19 +140,13 @@ def test_import_and_align_report(repo: Path, loud: None, monkeypatch: pytest.Mon
 
     monkeypatch.setattr(progress.Reporter, "update", spy)
     monkeypatch.setattr(sys, "stderr", Pipe())
-    report = {"source": "x", "head": "h", "actions": {"create": 0, "update": 0, "unchanged": 0,
-                                                      "skip": 0}, "findings": [],
-              "finding_counts": {}, "approved": []}
-    monkeypatch.setattr(pi_factory, "import_pi_factory", lambda *a, **k: report)
-    assert import_cli.run("import", ["pi-agent-factory", str(repo), "--root", str(repo)]) == 0
-    assert (import_cli.STEP_IMPORT, 0, 0) in seen
     core = open_core(repo)
     nodes = {"SR-1": "requirement", "FEAT-1": "feature", "SR-2": "requirement"}
     edges = [("SR-1", "FEAT-1"), ("SR-2", "FEAT-1")]
     seen.clear()
     align.judge(core, nodes, edges, None)
     assert seen == [(align.STEP_ALIGN, 0, 2), (align.STEP_ALIGN, 1, 2)]
-    assert owner_level(align.STEP_ALIGN) == [] and owner_level(import_cli.STEP_IMPORT) == []
+    assert owner_level(align.STEP_ALIGN) == []
 
 
 def test_no_behaviour_change_exit_codes_and_evidence(repo: Path,

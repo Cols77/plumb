@@ -181,7 +181,7 @@ def _card(core, record_id: str) -> tuple[dict, list[str]]:
 
 
 def _unverified(core, record_id: str) -> bool:
-    from plumb.capture.triage import UNVERIFIED, _Prompts, premise_problem
+    from plumb.understand.claim import UNVERIFIED, _Prompts, premise_problem
 
     problem = premise_problem(_Prompts(core), core.index(), core.index()[record_id])
     return bool(problem and problem.startswith(UNVERIFIED))

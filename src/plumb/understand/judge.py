@@ -90,7 +90,7 @@ def _flat(value: Any) -> str:
 
 
 def _items(raw: Any) -> list[str]:
-    from plumb.capture.triage import _items
+    from plumb.understand.claim import _items
 
     return _items(raw)
 
@@ -851,7 +851,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         partial = bool(given.get("messages")) and all(
             m.get("partial") for m in given["messages"])
         if partial and record is not None:    # SR-190: judged on the quote alone
-            from plumb.capture.triage import _Prompts, premise_problem
+            from plumb.understand.claim import _Prompts, premise_problem
 
             payload.update(premise="quote-only", premise_reason=premise_problem(
                 _Prompts(core), index, record) or "")
@@ -862,7 +862,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             payload.update(jev_score=jev.get("score"), jev_clears=bool(jev.get("clears")),
                            jev_verdict=jev.get("verdict"), jev_version=jev.get("model_version"))
             if record is not None and not partial:
-                from plumb.capture.triage import _Prompts, premise_problem
+                from plumb.understand.claim import _Prompts, premise_problem
 
                 reason = premise_problem(_Prompts(core), index, record)
                 if reason:              # SR-248 EX-6: not the owner's verified words

@@ -81,7 +81,7 @@ def _hypotheses(index: Mapping[str, Any], record: Any,
     owner's whole logged prompt when ``prompts`` has it). An INT's read-back is one claim; a
     requirement's wording and each of its examples are separate parts, all of which must be
     supported."""
-    from plumb.capture.triage import claim
+    from plumb.understand.claim import claim
 
     _, premise, hypothesis = claim(index, record, prompts)
     if record.kind != "requirement":
@@ -94,7 +94,7 @@ def _hypotheses(index: Mapping[str, Any], record: Any,
 def _prompts(core: Core | None) -> Any:
     if core is None:
         return None
-    from plumb.capture.triage import _Prompts
+    from plumb.understand.claim import _Prompts
 
     return _Prompts(core)
 
@@ -134,7 +134,7 @@ def variations(item: Item) -> list[Item]:
 
 
 def labelled_set(core: Core) -> list[Item]:
-    from plumb.capture.triage import premise_problem
+    from plumb.understand.claim import premise_problem
     from plumb.confirm import checked, remaining
 
     index = core.index()

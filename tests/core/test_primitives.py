@@ -134,11 +134,11 @@ def test_every_route_names_a_module_path() -> None:
                 # SR-210: refused as gone, still routed so they say so
                 "approve", "confirm", "relay", "revoke",
                 "verify", "impact", "hook", "hooks", "install", "statusline", "trailers",
-                "claims", "import", "fidelity", "judge", "judgment",
+                "claims", "fidelity", "judge", "judgment",
                 # sub-projects 2 to 5 (next-plan 3.2 item 4)
-                "capture", "intent", "example", "decide", "escalate", "spec", "triage",
-                "config", "jev", "clarify", "merge-check", "hosts", "turn", "mcp", "resolve",
-                "review", "align", "view",
+                "capture", "intent", "example", "decide", "escalate", "spec",
+                "config", "jev", "clarify", "merge-check", "hosts", "turn", "resolve",
+                "review", "align",
                 # sub-project 6 (sp6 plan 3.2 item 5)
                 "log", "merge-fix", "ids", "merge-driver", "conflict", "conflicts",
                 "inflight",

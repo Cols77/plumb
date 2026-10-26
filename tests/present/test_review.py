@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from logutil import legacy_relay
@@ -44,8 +43,6 @@ def test_review_has_the_five_sections(records: Path, capsys) -> None:
     for heading in ("1. awaits you:", "2. approvals you did not type", "3. drift:",
                     "4. alignment:", "5. merge state"):
         assert heading in out
-    # with no judge configured, CAPTURE's triage rates nothing and says why (INT-029)
-    assert "judging unavailable: no judge: judgment.backend is not set" in out
     assert 'question "Rounding mode": assumed half-up' in out
     assert "gap: SR-002 has no code" in out
     assert "it approves nothing" in out
@@ -69,14 +66,10 @@ def test_drift_and_scope_by_plain_words(records: Path, capsys) -> None:
     assert "Rounding mode" not in out  # out of scope
 
 
-def test_triage_groups_from_capture(records: Path, capsys, monkeypatch) -> None:
-    item = SimpleNamespace(id="SR-002", title="divide returns the quotient", score=0.4,
-                           rating="riskier", excluded=None)
-    view = SimpleNamespace(available=True, low_risk=(), individual=(item,))
-    fake_capture(monkeypatch, triage=lambda core, ids: view,
+def test_drift_hints_from_capture(records: Path, capsys, monkeypatch) -> None:
+    fake_capture(monkeypatch,
                  drift_hints=lambda core, changed: ["plumb: hint: SR-002 may depend on "
                                                     "INT-001"],
                  ownership_proposals=lambda core, paths: {})
     out = _review(records, capsys)
-    assert '  "divide returns the quotient" (riskier 0.40)' in out
     assert "hint: SR-002 may depend on INT-001" in out

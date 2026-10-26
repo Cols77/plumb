@@ -125,11 +125,6 @@ class EscalationConfig:
 
 
 @dataclass(frozen=True)
-class TriageConfig:
-    low_risk_min: float = 0.8
-
-
-@dataclass(frozen=True)
 class AutoApproveConfig:
     """The ``config.yaml`` mirror only: the effective state is the owner's ``config``
     event (sp2 C4)."""
@@ -248,7 +243,6 @@ class Config:
     judgment: JudgmentConfig = field(default_factory=JudgmentConfig)
     escalation: EscalationConfig = field(default_factory=EscalationConfig)
     trace: TraceConfig = field(default_factory=TraceConfig)
-    triage: TriageConfig = field(default_factory=TriageConfig)
     auto_approve: AutoApproveConfig = field(default_factory=AutoApproveConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     clarify: ClarifyConfig = field(default_factory=ClarifyConfig)
@@ -263,7 +257,7 @@ class Config:
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
            "judgment": JudgmentConfig, "escalation": EscalationConfig, "trace": TraceConfig,
-           "triage": TriageConfig, "auto_approve": AutoApproveConfig,
+           "auto_approve": AutoApproveConfig,
            "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig,
            "present": PresentConfig, "resolve": ResolveConfig,
            "awareness": AwarenessConfig, "understand": UnderstandConfig, "merge": MergeConfig,

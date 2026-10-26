@@ -1,6 +1,6 @@
 [project]
 name = "plumb"
-version = "0.1.1006"
+version = "0.1.1017"
 description = "Keep a coding agent's work aligned with the owner's intent, grounded in the project's own records."
 readme = "README.md"
 authors = [
@@ -9,8 +9,10 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "pyyaml>=6",
-    "manim>=0.19",
 ]
+
+[project.optional-dependencies]
+video = ["manim>=0.19"]   # video studies only (SR-380)
 
 [project.scripts]
 plumb = "plumb.cli:main"

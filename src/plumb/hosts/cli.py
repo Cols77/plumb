@@ -12,7 +12,7 @@
   (Codex's ``notify`` program), never blocks and never rewrites the stated set (a status
   refresh: the owner does not see its output). ``--unseen`` says the host could not show
   the owner this stop's ``owner_lines``, so no stated record is marked shown. Always exits 0.
-- ``plumb hosts install|uninstall|status <host>``: the thin adapters for ``codex``, ``pi``
+- ``plumb hosts install|uninstall|status <host>``: the thin adapters for ``codex``
   and ``hermes``.
 
 Imports stay light: hooks call this every turn.
@@ -33,7 +33,7 @@ EVENTS = {"session-start": "session-start", "prompt": "prompt", "post-edit": "ed
           "edit": "edit", "stop": "stop"}
 CLAUDE_EVENT = {"session-start": "SessionStart", "prompt": "UserPromptSubmit",
                 "edit": "PostToolUse", "stop": "Stop"}
-ADAPTERS = {"codex": "plumb.hosts.codex.install", "pi": "plumb.hosts.pi.install",
+ADAPTERS = {"codex": "plumb.hosts.codex.install",
             "hermes": "plumb.hosts.hermes.install"}
 
 _HOOK_USAGE = ("usage: plumb hook {session-start|prompt|post-edit|stop} --host HOST "
@@ -44,7 +44,7 @@ _TURN_USAGE = ("usage: plumb turn {start|end} [--session ID] [--prompt-file F] "
                "--prompt-file) logs the prompt digest and prints the relevant records; `turn "
                "end` prints the summary and, when the work must go on, one instruction. Both "
                "exit 0.\n")
-_HOSTS_USAGE = ("usage: plumb hosts {install|uninstall|status} [codex|pi|hermes] "
+_HOSTS_USAGE = ("usage: plumb hosts {install|uninstall|status} [codex|hermes] "
                 "[--dry-run] [--launcher auto|path|venv|uv] [--root PATH]\n")
 
 
@@ -242,7 +242,7 @@ def hosts_main(argv: list[str]) -> int:
     from plumb.hosts.common import InstallError
 
     parser = argparse.ArgumentParser(prog="plumb hosts", description=(
-        "Thin adapters for Codex, Pi and Hermes over the host-neutral turn API, each with "
+        "Thin adapters for Codex and Hermes over the host-neutral turn API, each with "
         "the CLI-only fallback (plumb turn start/end)."))
     parser.add_argument("action", choices=("install", "uninstall", "status"))
     parser.add_argument("host", nargs="?", choices=tuple(ADAPTERS))
@@ -257,7 +257,7 @@ def hosts_main(argv: list[str]) -> int:
         print("plumb: no .plumb/ here; run plumb init first", file=sys.stderr)
         return 2
     if args.action != "status" and args.host is None:
-        parser.error(f"{args.action} needs a host: codex, pi or hermes")
+        parser.error(f"{args.action} needs a host: codex or hermes")
     hosts = [args.host] if args.host else list(ADAPTERS)
     try:
         for host in hosts:
