@@ -228,21 +228,40 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
             gate.close(root, session, digest, clarify.GATE_REASON_COULDNT)
         return _couldnt(core, session, digest, why_failed(last) if last else WHY_DEFAULT)
     if questions:
-        answers = [e.payload for e in said if e.at >= at]
-        # SR-212: the agent reworded the question, or asked one of its own; SR-362: a wording
-        # it registered (``plumb question reword``) is matched
-        worded = {w.get("key") for w in judge.reworded(root, session)}
-        missed = bool(answers) and answers[-1].get("via") == "question-tool" \
-            and not any(answers[-1].get(k) for k in ("asked", "room", "study")) \
-            and judge.question_key(str(answers[-1].get("question") or "")) not in worded
-        line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
-        plumbish = sum(1 for q in questions if q.get("reword"))
-        return Outcome("ask", digest, [line, *([REWORD_FIRST.format(n=plumbish)] if plumbish
-                                               else [])], questions=[
-            {"key": q.get("key"), "reword": bool(q.get("reword")),
-             "question": q.get("question"), "header": q.get("header"),
-             "options": _options(root, q), "multiSelect": False} for q in questions])
+        return _ask(core, session, digest, questions, [e.payload for e in said if e.at >= at])
     return Outcome("ready", digest, [READY, *_approved(core, at)])
+
+
+def _ask(core: Any, session: str, digest: str, questions: list[Mapping[str, Any]],
+         answers: list[Mapping[str, Any]]) -> Outcome:
+    from plumb.understand import judge
+
+    root = Path(core.root)
+    # SR-212: the agent reworded the question, or asked one of its own; SR-362: a wording
+    # it registered (``plumb question reword``) is matched
+    worded = {w.get("key") for w in judge.reworded(root, session)}
+    missed = bool(answers) and answers[-1].get("via") == "question-tool" \
+        and not any(answers[-1].get(k) for k in ("asked", "room", "study")) \
+        and judge.question_key(str(answers[-1].get("question") or "")) not in worded
+    line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
+    plumbish = sum(1 for q in questions if q.get("reword"))
+    return Outcome("ask", digest, [line, *([REWORD_FIRST.format(n=plumbish)] if plumbish
+                                           else [])], questions=[
+        {"key": q.get("key"), "reword": bool(q.get("reword")),
+         "question": q.get("question"), "header": q.get("header"),
+         "options": _options(root, q), "multiSelect": False} for q in questions])
+
+
+def _with_asks(core: Any, session: str, outcome: Outcome) -> Outcome:
+    """A commanded check that comes out ``ready`` still hands over the judge's open questions:
+    the ask gate (SR-361 EX-6) holds edits until the agent has asked them."""
+    from plumb.api import open_core
+    from plumb.understand import judge
+
+    if outcome.state != "ready":
+        return outcome
+    questions = _by_principle(judge.to_ask(open_core(Path(core.root)), session))
+    return _ask(core, session, outcome.digest, questions, []) if questions else outcome
 
 
 def result_of(root: Path, session: str, job_id: str) -> JobResult | None:
@@ -320,7 +339,7 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
     if gate.state(root, session).message_digest != digest and not gate.is_closed(root, session):
         gate.close(root, session, digest, clarify.GATE_REASON_CHECKING)   # no hook closed it
     if not gate.is_closed(root, session):
-        return _outcome_from_state(core, session, digest)
+        return _with_asks(core, session, _outcome_from_state(core, session, digest))
     sent = clarify.sent_at(core, digest)   # each sending of the same words has its own check
     queued = [j for j in _jobs_of(root, session, "clarify", digest)
               if j.inputs["message"].get("at", "") == sent]
@@ -333,7 +352,7 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
             "digest": digest, "text": str(logged.get("text") or "")},
             after=read[-1].id if read else None)
         if ours is None:
-            return Outcome("ready", digest, [READY])
+            return _with_asks(core, session, Outcome("ready", digest, [READY]))
         reporter.update(owner_text.STEP_CHECKING)
         if result_of(root, session, ours.id) is None:
             worker.run_once(core, session, ours.id)
@@ -347,7 +366,7 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
                 outcome = _outcome_from_state(core, session, digest)
                 if outcome.state != "waiting":
                     reporter.done()
-                    return outcome
+                    return _with_asks(core, session, outcome)
                 # the result is in but not applied yet (the worker applies it next): poll on,
                 # and once the limit passes say so instead of "waiting", which a re-run would
                 # answer again for ever (the skill runs --wait again on waiting)

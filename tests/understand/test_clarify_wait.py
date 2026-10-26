@@ -254,3 +254,29 @@ def test_sr131_ex4_answering_the_held_card_opens_the_later_messages_gate(repo: P
     clarify._choice_effect(core=core, card=card, job=SimpleNamespace(session=SESSION),
                            digest=first)
     assert not gate.is_closed(repo, SESSION)
+
+
+def test_a_commanded_check_with_no_gap_still_hands_over_the_open_judge_questions(
+        repo: Path, write_record, engine_standins: Any) -> None:
+    """The ask gate counts the judge's open questions; ``--wait`` must say ``ask`` with them,
+    not ``ready`` with none, or the agent never learns what to ask."""
+    from understand.test_judge_job import intent_text
+
+    from plumb.understand import judge
+
+    write_record(repo, intent_text(1, "Pages should load faster.", "Make pages load faster"))
+    engine_standins.dispatcher.script = {"clarify": NO_GAP}
+    core, _ = _say(repo)
+    worker.run_once(core, SESSION)
+    index = open_core(repo).index()
+    text = "Should every page load faster?"
+    files.write_json_atomic(judge.questions_path(repo, SESSION), [
+        {"key": judge.question_key(text), "job": "judge-0000000000000000",
+         "records": [{"id": "INT-001", "hash": index["INT-001"].hash}], "question": text,
+         "header": "Pages",
+         "options": [{"label": "Yes (Recommended)", "description": "All."},
+                     {"label": "No", "description": "None."}]}])
+    assert not gate.is_closed(repo, SESSION)    # the check found nothing unclear
+    outcome = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
+    assert outcome.state == "ask"
+    assert [q["question"] for q in outcome.questions] == [text]
