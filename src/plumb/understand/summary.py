@@ -227,19 +227,30 @@ def queue_after_stop(root: Any, session: str, turn: Mapping[str, Any],
 def after_stop(core: Any, session: str) -> None:
     """In the worker: the work a turn end left (``queue_after_stop``); its lines reach the
     agent at the next prompt (``worker.say``)."""
+    import os
+
     path = files.session_dir(Path(core.root), session) / AFTER_STOP
-    data = files.read_json(path)
-    if not isinstance(data, Mapping):
+    # claimed by an atomic rename, so one worker does it and an ``after_stop.json*`` file
+    # means its lines are not all said yet
+    claimed = path.with_name(f"{AFTER_STOP}.{os.getpid()}")
+    try:
+        os.replace(path, claimed)
+    except OSError:
         return
-    path.unlink(missing_ok=True)
-    turn = data.get("turn") if isinstance(data.get("turn"), Mapping) else {}
-    from plumb.understand import worker
+    try:
+        data = files.read_json(claimed)
+        if not isinstance(data, Mapping):
+            return
+        turn = data.get("turn") if isinstance(data.get("turn"), Mapping) else {}
+        from plumb.understand import worker
 
-    for line in _turn_upkeep(core, session, turn, data.get("transcript")):
-        worker.say(core.root, session, line)
-    from plumb.hosts.claude_code.snapshot import refresh_counts
+        for line in _turn_upkeep(core, session, turn, data.get("transcript")):
+            worker.say(core.root, session, line)
+        from plumb.hosts.claude_code.snapshot import refresh_counts
 
-    refresh_counts(core)   # the status line's record-wide counts the stop hook left as they were
+        refresh_counts(core)   # the status line's record-wide counts the stop hook left as is
+    finally:
+        claimed.unlink(missing_ok=True)
 
 
 # --------------------------------------------------------------------------- the cards

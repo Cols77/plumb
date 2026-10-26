@@ -120,9 +120,14 @@ def text_of(out: str) -> str:
 
 
 def agent_of(s: Session) -> str:
-    """SR-266: what the stop queued for the agent's channel (cards, judge counts), taken once."""
+    """SR-266: what the stop queued for the agent's channel, taken once, with what the
+    background worker said for that turn end (SR-375: it claims ``after_stop.json``)."""
     from host.fakes import agent_notes
 
+    session = s.repo / ".plumb" / "session" / s.session_id
+    until = time.monotonic() + 30
+    while time.monotonic() < until and any(session.glob("after_stop.json*")):
+        time.sleep(0.1)
     return agent_notes(s.repo, s.session_id)
 
 
@@ -340,9 +345,8 @@ def test_flow_5_failures_confirm_nothing_and_retry_next_turn(repo: Path, write_r
     assert owner_words_approvals(repo) == {}
     assert events(repo, "approval") == []
     assert text_of(s.stop()) == ""                    # SR-265, SR-363: no question count
-    couldnt = agent_of(s)                                        # SR-266: the card is the agent's
-    assert "did not finish" in couldnt.lower()
-    at_owner_level(couldnt, quoted=("INT-008 ok",))
+    # DEC-384: no couldn't-check card for the agent; the status line counts the failures
+    agent_of(s)
 
     # the model is back: the next turn retries the failed job and the judge approves
     model(s, read=_accept_int8(index), judge=judge_clear("INT-008"))
@@ -414,7 +418,10 @@ def test_flow_5_a_job_not_finished_at_the_turns_end_is_collected_next_turn(
     s.start()
     s.say("INT-008 ok")
     s.stop()
-    assert owner_text.JUDGE_APPROVED not in agent_of(s)             # still being read
+    from host.fakes import agent_notes
+
+    # still being read: what the stop queued at once (agent_of would wait for the worker)
+    assert owner_text.JUDGE_APPROVED not in agent_notes(s.repo, s.session_id)
     assert events(repo, "approval") == []
     assert s.worker_idle(40)
     model(s)
@@ -556,6 +563,4 @@ def test_flow_7_stale_edit_names_the_link_hold_card_and_reformat(
     ended = s.stop()
     assert '"decision": "block"' not in ended
     assert len(text_of(ended).splitlines()) <= 1                    # SR-265: one line
-    said = agent_of(s)                                              # SR-266: the card
-    assert "Adds numbers" in said and "add now multiplies" in said
-    at_owner_level(said.replace("SR-001", ""))
+    # DEC-384: no card text is drawn for the agent any more

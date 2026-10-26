@@ -147,7 +147,10 @@ def test_hook_commands_run_in_the_platform_shell(project: Path) -> None:
         result = subprocess.run(shell, cwd=project, input="{}", capture_output=True,
                                 text=True, encoding="utf-8", env=env, timeout=120)
         assert result.returncode == 0, (shell, result.stdout, result.stderr)
-        assert "hookSpecificOutput" in result.stdout, (shell, result.stdout, result.stderr)
+        # SR-374: an empty project has nothing to say at session start (no counts)
+        assert not result.stdout.strip() or "hookSpecificOutput" in result.stdout, (
+            shell, result.stdout, result.stderr)
+        assert not (project / ".plumb" / "session" / "errors.log").exists()
 
 
 def test_windows_hook_command_refuses_what_cmd_and_powershell_cannot_both_run() -> None:
