@@ -14,9 +14,7 @@ from pathlib import Path
 import pytest
 from understand.test_read_job import make_core, open_card, record_text
 
-from mod.helpers import DIGEST, KEY, OTHER_KEY, SESSION, kinds, mod_json, run_mod, sample_card
-from plumb import confirm
-from plumb.api import open_core
+from mod.helpers import DIGEST, OTHER_KEY, SESSION, kinds, mod_json, run_mod, sample_card
 from plumb.hosts.claude_code import hookio, session_start
 from plumb.mod import handshake
 from plumb.mod import session as mod_session
@@ -46,17 +44,6 @@ def _start(root: Path, hook_input, source: str) -> str:
 def _hello(monkeypatch, capsys, root: Path, digest: str) -> tuple[int, str]:
     code, _, err = run_mod(monkeypatch, capsys, root, "hello", stdin={"key_digest": digest})
     return code, err
-
-
-def _press_first(monkeypatch, capsys, root: Path, key: str, card: str) -> dict:
-    code, answer, _ = run_mod(monkeypatch, capsys, root, "draw", stdin={"key": key})
-    assert code == 0
-    (drawn,) = [c for c in answer["cards"] if c["id"] == card]
-    offer = drawn["offers"][0]["offer_id"]
-    code, answer, err = run_mod(monkeypatch, capsys, root, "press", "--offer", offer,
-                                "--choice", str(CONFIRM), stdin={"key": key})
-    assert code == 0, err
-    return answer
 
 
 def test_resume_retires_the_old_panel_and_the_new_one_registers(core, monkeypatch, capsys,

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from plumb.contracts import Choice, ClarifyQuestion
+from plumb.contracts import ClarifyQuestion
 from plumb.present import owner_text as words
 from plumb.understand import cards, cardstore
 
@@ -96,16 +96,6 @@ def test_clarify_read_back_of_a_change_yes_or_not_quite() -> None:
         .questions
     assert answers(question) == [(words.READBACK_YES, "accepted", None),
                                  (words.READBACK_NOT_QUITE, "change", None)]
-
-
-def test_stale_link_options_are_picks_carrying_their_wording() -> None:
-    from plumb.contracts import CardState
-    from plumb.mod import offers
-
-    options = ("Update the test to the new wording", "Keep the old wording")
-    drawn = offers.buttons(CardState(id="stale:L1", kind="stale_link", resolutions=options), None)
-    assert drawn[:2] == tuple(Choice(o, "change", o) for o in options)
-    assert [b.label for b in drawn[2:]] == [words.BUTTON_ASK_CHANGE, words.BUTTON_LEAVE_OPEN]
 
 
 def test_choices_survive_the_card_store(tmp_path: Path) -> None:

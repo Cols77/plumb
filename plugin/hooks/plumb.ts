@@ -198,12 +198,6 @@ export function room(io: Io, link: PlumbLink, slug: string): Promise<Ran> {
   return plumbMod(io, link, 'room', { key: link.key }, ['--study', slug])
 }
 
-/** The owner pressed the band's 'a question waits in the room' (SR-333 EX-3, DEC-294): plumb
- * opens the room on that question, as on a study, and the line goes. */
-export function roomQuestion(io: Io, link: PlumbLink, card: string): Promise<Ran> {
-  return plumbMod(io, link, 'room', { key: link.key }, ['--card', card])
-}
-
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 
 /** The session's open loop as the pane shows it (SR-305), from `plumb intent status --json`;
@@ -407,8 +401,6 @@ export function refreshStudy(io: Io, link: PlumbLink, slug: string, yes: boolean
 export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> {
   const status = await readJson(io, join(link.root, '.plumb', 'session', 'status.json'))
   const progress = await readJson(io, join(sessionDir(link.root, link.session), 'progress'))
-  // SR-333: the question this session's owner chose to study in the room, until their press
-  const room = await readJson(io, join(sessionDir(link.root, link.session), 'room_waits.json'))
   // SR-336 EX-2: the study the owner chose to read before answering its questions
   const first = await readJson(io, join(sessionDir(link.root, link.session), 'study_first.json'))
   // SR-358: this session's plugin against plumb's local and repository main; SR-359: the judges that cannot settle
@@ -441,7 +433,6 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     loop: await readLoop(io, link),
     study: study.title,
     studySlug: study.slug,
-    roomCard: String(room?.card ?? ''),
     studies,
     ideas,
     // an accepted idea the agent is writing now: the band's progress line

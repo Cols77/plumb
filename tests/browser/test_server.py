@@ -62,14 +62,14 @@ def test_workspace_requires_capability_and_host(server):
 def test_posts_require_exact_origin_and_json_object(server):
     headers = auth(server)
     del headers["Origin"]
-    assert request(server, "POST", "/api/sessions/s1/draw", {}, **headers)[0] == 403
-    assert request(server, "POST", "/api/sessions/s1/draw", "{broken", **auth(server))[0] == 400
-    assert request(server, "POST", "/api/sessions/s1/draw", [], **auth(server))[0] == 400
+    assert request(server, "POST", "/api/understanding", {}, **headers)[0] == 403
+    assert request(server, "POST", "/api/understanding", "{broken", **auth(server))[0] == 400
+    assert request(server, "POST", "/api/understanding", [], **auth(server))[0] == 400
     assert (
         request(
             server,
             "POST",
-            "/api/sessions/s1/draw",
+            "/api/understanding",
             {},
             **{**auth(server), "Content-Type": "text/plain"},
         )[0]
@@ -78,7 +78,7 @@ def test_posts_require_exact_origin_and_json_object(server):
 
 
 def test_bounded_body_and_safe_routes(server):
-    assert request(server, "POST", "/api/sessions/s1/draw", "x" * 70000, **auth(server))[0] == 413
+    assert request(server, "POST", "/api/understanding", "x" * 70000, **auth(server))[0] == 413
     assert request(server, "GET", "/../private.html")[0] == 404
     assert request(server, "GET", "/%2e%2e/private.html")[0] == 404
     assert request(server, "GET", "/private.html")[0] == 404

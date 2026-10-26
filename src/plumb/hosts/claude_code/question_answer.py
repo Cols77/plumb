@@ -17,9 +17,6 @@ The hook approves nothing. During a merge, rebase, cherry-pick or revert the ent
 (``conflicts.stage_choice``) so the commit that finishes it carries them (SR-260 EX-28). A
 dismissed or unanswered question logs nothing. The answer "Build anyway" to a failed check's
 "Build without the check?" releases the gate (``gate.release`` ... ``button``). The answer
-"Study it in the room" to a judge question judges nothing again: the question becomes a card
-waiting in the room, its entry carries ``room`` (the card and the question asked), the band's
-line names it (``question.to_room``), and the agent is told to draw its diagram (SR-333).
 "Study it first" judges nothing either: its entry carries ``study`` (the study serving the
 question), the band's study line names that study and the question waits until it is read
 (``study.study_first``, SR-336).
@@ -64,7 +61,6 @@ def handle(ctx: HookContext) -> HookOutput | None:
     left = list(judge.unanswered(core, ctx.session_id))
     key_of = judge.question_key
     worded = {w.get("key"): w for w in judge.reworded(core.root, ctx.session_id)}
-    drawn = []
     for entry in entries:
         key = key_of(entry["question"])
         covers = (worded.get(key) or {}).get("covers") or ()
@@ -82,15 +78,6 @@ def handle(ctx: HookContext) -> HookOutput | None:
             if served is not None:
                 study.study_first(ctx.root, ctx.session_id, served["slug"])
                 entry["study"] = served["slug"]
-        elif found is not None and entry["answer"] == owner_text.ROOM_STUDY:
-            from plumb.understand import question
-
-            left.remove(found)       # SR-333 EX-3: no answer yet; the question waits in the room
-            made = question.to_room(core, ctx.session_id, found)
-            if made is not None:
-                entry["room"] = {"card": made.id, **{k: found.get(k) for k in (
-                    "job", "key", "records", "question", "options")}}
-                drawn += [made] if made.diagram else []
         elif found is not None:
             # SR-362 EX-1: an answer to the agent's wording answers every question it covers
             merged = [found, *(q for q in left if q is not found and q.get("key") in covers)]
@@ -116,12 +103,7 @@ def handle(ctx: HookContext) -> HookOutput | None:
            for e in entries):      # the owner's own button on a failed check (gate.release)
         gate.release(core, ctx.session_id, "button")
     judge.rejudge(core, ctx.session_id, logged)
-    if not drawn:
-        return None
-    from plumb.understand import cmd_clarify
-
-    return HookOutput(additional_context="\n".join(cmd_clarify.DRAW.format(
-        path=c.diagram, question=c.issue, options="; ".join(c.resolutions)) for c in drawn))
+    return None
 
 
 def _note_asked(ctx: HookContext) -> None:

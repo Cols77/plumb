@@ -446,11 +446,8 @@ def _moot(core: Any, card: CardState, statuses: Mapping[str, Any],
 def _repeats_at_turn_end(card: CardState) -> bool:
     """Whether a card is drawn at this turn end (DEC-034): every card that still asks the owner
     (``cardstore.AWAITING``: open, or waiting for the owner's words after Ask for a change)
-    shows at the end of every turn. A card the owner pressed Leave open on (``left_open``,
-    written by ``plumb mod press``) does not repeat here until a record it asks about changes
-    (``mod.offers.reopen_changed`` reopens it first); it stays listed under what awaits the
-    owner in the band and the pane (``mod.offers.DRAWN``). That press is the only thing that
-    makes this False; nothing here resolves, expires or hides a card."""
+    shows at the end of every turn. A card left open (``left_open``) does not repeat; nothing
+    here resolves, expires or hides a card."""
     return card.status in cardstore.AWAITING
 
 
@@ -482,10 +479,7 @@ def _cards(core: Any, session: str, upkeep: Sequence[CardState], stamp: int,
         add = [c for c in upkeep if c.id not in have]
         if add:
             cardstore.save(core.root, session, [*own, *add])
-    from plumb.mod.offers import reopen_changed
-
     _withdraw_settled(core, session)
-    reopen_changed(core, session)       # DEC-034: a card left open returns once it changed
     held = cardstore.states(core, session)
     waiting = cardstore.grouped(core.root, session)   # SR-172: the principle card asks for these
     open_cards = [c for c in cardstore.load(core.root, session, open_only=False)

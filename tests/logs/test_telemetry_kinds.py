@@ -65,18 +65,6 @@ def test_no_offer_kind() -> None:
     assert "offer" not in log.SHARED_KINDS | log.LOCAL_KINDS
 
 
-def test_drawing_a_card_logs_nothing(tmp_path: Path) -> None:
-    from plumb.mod import offers
-
-    root = make_repo(tmp_path / "r")
-    core = open_core(root)
-    data = {"surface": "mod", "offer_id": "sha256:" + "a" * 64, "key_digest": "k", "card": "c",
-            "question": "q", "record": "SR-001", "hash": "h", "records": [], "drawn_at": OLD,
-            "buttons": [], "session": "s"}
-    offers._record_offer(core, "s", data)
-    assert list(core.events()) == []
-
-
 def test_validate_chains_through_segments(tmp_path: Path) -> None:
     """EX-5: a chain broken across live files and the segment checks clean."""
     root = make_repo(tmp_path / "r")

@@ -287,9 +287,6 @@ STEP_JUDGING = "judging {n} records"
 STEP_JUDGING_BACKLOG = "judging the backlog"
 GATE_BUILD_ANYWAY = "Build anyway"
 GATE_WAIT = "Wait"
-# SR-333, DEC-294: a judge question with more to see than the question tool holds
-ROOM_STUDY = "Study it in the room"
-ROOM_STUDY_NOTE = "The room opens when you press the band's line; the question waits there."
 # SR-336: a question a study proposed ahead of it serves
 STUDY_FIRST = "Study it first"
 STUDY_FIRST_NOTE = ("The band's study line opens the study in the room; the question waits "

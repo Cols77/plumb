@@ -413,7 +413,6 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     tests are not injected: the agent pulls them with ``plumb show``. ``verify`` is accepted
     for the hook interface and unused."""
     del verify
-    from plumb.browser.followup import preserve
     from plumb.present.delta import Line, open_emitter
 
     text = ctx.data.get("prompt")
@@ -424,7 +423,6 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
             log_prompt(ctx, text, "notification")
             return HookOutput(text="")
         text = owned
-    browser_lines = preserve(ctx)
     digest = log_prompt(ctx, text)
     if prompt_origin(text)[0] != "owner":   # SR-168: logged with its origin, nothing else
         return HookOutput(text="")
@@ -449,7 +447,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     tail = [line for line in (trace, cards_waiting_line(ctx), stale_before_line(ctx)) if line]
     tail += agent_notes(ctx)
     # oneshot: escalation_lines advanced the queue offset past them already
-    queued = [*browser_lines, *(Line(line, oneshot=True) for line in escalations)]
+    queued = [Line(line, oneshot=True) for line in escalations]
     ctx.keep(emitter.add([*queued, *tail], commit=False))
     # no soft-budget check before the intent lines: only the watchdog bounds them
     ids, strong = _relevant_ids(core, text) if text.strip() else ([], [])

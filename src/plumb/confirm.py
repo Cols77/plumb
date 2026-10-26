@@ -84,10 +84,7 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
             return (f"owner {entry.kind} written under the agent session marker "
                     f"({entry.marker})")
         if entry.kind == "approval" and payload.get("via") == "button":
-            # SP7 re-aligned C6: a pressed Confirm is re-checked against its drawn offer
-            from plumb.understand.recheck_button import problem as button_problem
-
-            return button_problem(entry, core)
+            return "button approvals no longer exist (SR-380): the card-press surface is removed"
         if entry.kind == "approval" and payload.get("quote"):
             return ("owner approval quoting the owner's words, written by hand: only the judge "
                     "worker's entries and plumb's reading of the owner's own answers approve")

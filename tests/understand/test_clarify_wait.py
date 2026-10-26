@@ -207,19 +207,6 @@ def test_a_request_with_no_blocking_choice_is_ready_and_draws_no_read_back(
     assert cardstore.own_cards(repo, SESSION) == []      # SR-252 EX-6: no read-back card
 
 
-def test_a_structure_question_tells_the_agent_to_draw_first(repo: Path,
-                                                            engine_standins: Any) -> None:
-    gap = {**CARD["gaps"][0], "diagram": True}
-    engine_standins.dispatcher.script = {"clarify": {**CARD, "gaps": [gap]}}
-    core, digest = _say(repo)
-    worker.run_once(core, SESSION)
-    outcome = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
-    path = f".plumb/session/{SESSION}/diagrams/{clarify.short(digest)}.html"
-    assert path in outcome.lines[0] and outcome.lines[0].startswith("Draw the answer space")
-    assert CARD["gaps"][0]["question"] in outcome.lines[0]      # what to draw is in the line
-    assert outcome.lines[1] == cmd_clarify.ASK
-
-
 def test_sr131_ex4_an_earlier_blocking_card_is_the_answer_not_a_failed_check(
         repo: Path) -> None:
     """A later message while an earlier choice card holds the gate: --wait names that card

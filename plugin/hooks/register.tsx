@@ -296,12 +296,6 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, colum
       {(view.status?.red ?? []).map((r, n) => <Text key={`red:${n}`} color={RED}>{r}</Text>)}
       {view.status?.unchecked ? <Text key="unchecked" dimColor>{view.status.unchecked}</Text> : null}
       {(view.status?.setAside ?? []).map((a, n) => <Text key={`aside:${n}`} dimColor>{a}</Text>)}
-      {view.status?.roomCard ? (
-        // SR-333 EX-3, DEC-294: the question the owner chose to study; a press opens the room on it
-        <Button key="roomq" plain onPress={() => {}}>
-          <Text key="line:roomq" color={brass}>{T.roomWaits}</Text>
-        </Button>
-      ) : null}
       {outdated ? (
         // SR-360 EX-2, DEC-336: a study whose records changed; nothing is rewritten without the yes
         <Box key="outdated" flexDirection="row" gap={1}>
@@ -669,13 +663,7 @@ export const register: Register = on => {
       return pressed
     }
     let line = ''
-    if (key === 'roomq') {
-      // SR-333 EX-3: the room opens on the question, which leaves the band
-      const card = view.status?.roomCard
-      if (!card) return pressed
-      const ran = await plumb.roomQuestion(io, link, card)
-      line = ran.ok ? '' : T.roomQuestionFailed
-    } else if (key === 'study' || key.startsWith('study:')) {
+    if (key === 'study' || key.startsWith('study:')) {
       // SR-294 EX-3, EX-4, EX-6: the room opens on the study, which is marked opened, so it leaves
       // the band; a choice from the menu closes the menu
       const slug = key === 'study' ? view.status?.studySlug : key.slice('study:'.length)

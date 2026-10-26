@@ -662,9 +662,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             id=choice_id(digest), kind="choice", topic=topic, issue=question.text,
             evidence=EVIDENCE_CHANGES.format(text=changes) if changes else "",
             resolutions=question.resolutions, questions=(question,), status="open", turn=0,
-            branch=branch,
-            diagram=(f".plumb/session/{session}/diagrams/{short(digest)}.html"
-                     if gap.get("diagram") else "")))
+            branch=branch))
     mine = {c.id for c in cards}
     moot = [i for i in _clean(answer.get("replaces")) if i not in mine
             and any(c.id == i and c.status in cardstore.AWAITING for c in own)]
@@ -759,51 +757,19 @@ def _clarify_pending(root: Path, session: str, digest: str) -> bool:
     return False
 
 
-def _shown_records(core: Any, session: str, card: str, source: Any
-                   ) -> dict[tuple[str, str], str] | None:
-    """The ``(id, hash)`` pairs the read-back was drawn with, each with the proposal shown: those
-    of the offer pressed, or of the card's latest drawing; None when typed words answer a card
-    never drawn in the panel."""
-    from plumb.mod.offers import load_offer, offers_dir
-
-    offer = getattr(source, "offer_id", "")
-    if offer:
-        held = [load_offer(core.root, session, offer,
-                           surface=getattr(source, "surface", "mod"))]
-    else:
-        held = [files.read_json(p) for p in offers_dir(Path(core.root), session).glob("*.json")]
-        held = sorted((h for h in held if isinstance(h, Mapping) and h.get("card") == card),
-                      key=lambda h: str(h.get("drawn_at")))[-1:]
-    if not any(held):
-        return None if not offer else {}
-    return {(str(r.get("id")), str(r.get("hash"))): str(r.get("proposal") or "")
-            for h in held if h for r in h.get("records") or () if isinstance(r, Mapping)}
-
-
 def _clarify_effect(*, core: Any, card: CardState, accepted: bool = False,
                     confirm: Any = None, entry: Mapping[str, Any] | None = None,
                     session: str = "", source: Any = None, **_: Any) -> Applied | None:
-    """The read-back answered yes: that one answer confirms the records it was drawn with, at
-    the versions drawn (SR-130); a record changed or added since is left unconfirmed and
-    asked again on a choice showing what was answered next to how it reads now."""
-    from plumb.understand import cards, trial
-
+    """The read-back answered yes: that one answer confirms the records it was drawn with
+    (SR-130)."""
     digest = card.id.removeprefix("clarify:")
     if not (accepted and confirm is not None and card.id != digest and digest):
         return None
     said = entry or {}
-    shown = _shown_records(core, session, card.id, source)
-    again: list[CardState] = []
     for record in request_records(core, digest):
-        if shown is None or (record.id, record.hash) in shown:
-            confirm(record.id, record.hash, str(said.get("evidence") or ""),
-                    float(said.get("confidence") or 1.0))
-        else:
-            old = next((p for (i, _h), p in shown.items() if i == record.id), "")
-            again.append(cards.which_version(record, old or record.title,
-                                             trial._proposal(record), card.branch,
-                                             card.topic))
-    return Applied(job="", cards=tuple(again)) if again else None
+        confirm(record.id, record.hash, str(said.get("evidence") or ""),
+                float(said.get("confidence") or 1.0))
+    return None
 
 
 def _choice_effect(*, core: Any, card: CardState, job: Any = None, digest: str = "",

@@ -166,16 +166,6 @@ def test_sr131_ex1_a_resolved_reference_is_an_assumption_and_the_work_starts(
     assert _by_kind(repo, "choice") == [] and not gate.is_closed(repo, SESSION)
 
 
-def test_sr146_ex1_a_structure_question_names_a_diagram_file(
-        repo: Path, engine_standins: Any) -> None:
-    answer = {"intent": "yes", "topic": "host file", "gaps": [
-        _gap("writer", "Which of the three hooks should write host.json?", blocking=True,
-             diagram=True)]}
-    _, digest = _asked("write host.json somewhere", answer, repo, engine_standins)
-    (choice,) = _by_kind(repo, "choice")
-    assert choice.diagram == f".plumb/session/{SESSION}/diagrams/{clarify.short(digest)}.html"
-
-
 def test_sr146_ex2_a_wording_question_gets_no_diagram(repo: Path,
                                                       engine_standins: Any) -> None:
     answer = {"intent": "yes", "topic": "findings", "gaps": [

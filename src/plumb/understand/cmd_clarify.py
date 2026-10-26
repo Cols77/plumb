@@ -45,9 +45,6 @@ READY = "Nothing in your request needs asking. You can start building."
 ASK = ("The owner has this one question on a card. Say in one line that it waits there; do "
        "not restate it or its options; build nothing until they answer; plumb reads their "
        "answer from their next message.")
-DRAW = ("Draw the answer space with the diagram:architecture-diagram skill into {path}. "
-        "The question: {question} The options: {options}. (For the drawing only; do not "
-        "repeat them in your reply.)")
 BUILD_ON = "Build on this; tell the owner in one line what you assumed:"
 SHOW_COULDNT = ("The check could not be made and the owner has a card offering to build anyway or "
                 "wait. Say so in one line; nothing was built, and nothing is built until they "
@@ -63,7 +60,6 @@ UNMATCHED = "Ask these questions as given; the last answer matched none of them.
 JUDGING = ("plumb's judge is still reading the records; go on with the work and run clarify "
            "--wait again before the turn ends.")
 APPROVED = "approved on your behalf: {title} (judge-approved, {by}, {score})"
-ROOM_TEXT_MAX = 600     # SR-333: a question longer than this has more to see than the tool holds
 HELD = ("plumb: edits are held ({reason}): this request changes a confirmed record and no "
         "intent loop ran for it. /plumb intent opens the loop; the owner's /plumb go releases.")
 
@@ -172,17 +168,13 @@ def _by_principle(questions: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]
 
 
 def _options(root: Path, question: Mapping[str, Any]) -> list[Any]:
-    """SR-333 EX-1, EX-2: a question with more to see (a diagram, or a text over
-    ``ROOM_TEXT_MAX``) offers to study it in the room, last and within the tool's four options
-    (the room shows every option). SR-336 EX-1: a question a study serves offers to study it
-    first instead (one study option at most)."""
+    """SR-336 EX-1: a question a study serves offers to study it first, last and within the
+    tool's four options (one study option at most)."""
     from plumb import study
 
     options = list(question.get("options") or ())
     if study.serving(root, str(question.get("key"))):
         extra = {"label": owner_text.STUDY_FIRST, "description": owner_text.STUDY_FIRST_NOTE}
-    elif question.get("diagram") or len(str(question.get("question") or "")) > ROOM_TEXT_MAX:
-        extra = {"label": owner_text.ROOM_STUDY, "description": owner_text.ROOM_STUDY_NOTE}
     else:
         return options
     return [*options[:3], extra]
@@ -233,7 +225,7 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
         # it registered (``plumb question reword``) is matched
         worded = {w.get("key") for w in judge.reworded(root, session)}
         missed = bool(answers) and answers[-1].get("via") == "question-tool" \
-            and not any(answers[-1].get(k) for k in ("asked", "room", "study")) \
+            and not any(answers[-1].get(k) for k in ("asked", "study")) \
             and judge.question_key(str(answers[-1].get("question") or "")) not in worded
         line = UNMATCHED if missed else ASK_QUESTIONS.format(n=len(questions))
         plumbish = sum(1 for q in questions if q.get("reword"))
@@ -275,10 +267,8 @@ def _outcome_from_state(core: Any, session: str, digest: str) -> Outcome:
                        and c.status in clarify.HOLDING), None)
     if choice is None:
         return Outcome("waiting", digest, [WAITING])
-    drawn = [DRAW.format(path=choice.diagram, question=choice.issue,
-                         options="; ".join(choice.resolutions))] if choice.diagram else []
     return Outcome("escalation" if clarify.is_escalation(choice) else "card", digest,
-                   [*drawn, ASK], choice.id)
+                   [ASK], choice.id)
 
 
 def _couldnt(core: Any, session: str, digest: str, why: str) -> Outcome:
