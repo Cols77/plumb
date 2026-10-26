@@ -13,7 +13,7 @@ from host.test_answer_rejudge import answer as owner_answers
 
 from plumb.api import open_core
 from plumb.hosts.claude_code.snapshot import awaiting_count
-from plumb.understand import cmd_clarify, files, judge, premise, summary
+from plumb.understand import cmd_clarify, files, judge, premise, summary, worker
 from understand.test_judge_cascade import configure, fast_track_on, world  # noqa: F401
 from understand.test_judge_job import SESSION
 from understand.test_judge_questions import answer, applied_on, asking, written
@@ -102,6 +102,7 @@ def test_ex3_an_answer_to_a_principle_reaches_every_record_of_its_questions(
     core = open_core(world)
     index = core.index()
     assert all(premise.answers_of(core, index[i]) for i in ("INT-001", "SR-001"))
+    worker.run_once(open_core(world), SESSION)      # the background worker (SR-378)
     again = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
     (job,) = engine_standins.dispatcher.ran("judge")
     assert {r["id"] for r in job.inputs["records"]} == {"INT-001", "SR-001"}

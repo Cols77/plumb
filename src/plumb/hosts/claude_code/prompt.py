@@ -465,6 +465,13 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
         turn = read_json(turn_path)
         if isinstance(turn, dict):
             write_json_atomic(turn_path, {**turn, "flagged": list(flagged), "flags": flagged})
+        from plumb.understand import clarify, gate
+
+        # SR-378 EX-3, SR-225: an ordinary request that changes a confirmed record holds edits
+        # until the owner answers or types /plumb go; a commanded one is held by its check
+        hold = clarify.intent_change_hold(core, ctx.session_id, digest)
+        if hold and clarify.commanded_words(text) is None:
+            gate.close(ctx.root, ctx.session_id, digest, hold)
     hint = escalation_hint(core, index, strong, list(flagged)) if strong else None
     rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []),
                         *awareness_lines(core, ids), *tail])

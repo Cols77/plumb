@@ -156,7 +156,8 @@ def _push_back(repo: Path, engine_standins: Any, ruling: Any,
                reason: str = f'You said: "{SAID}"') -> Any:
     engine_standins.dispatcher.script = {"pushback": ruling}
     assert question(repo, "pushback", "should every page", "--reason", reason) == 0
-    return cmd_clarify.wait(open_core(repo), SESSION, timeout=10)   # runs the judge's reading
+    worker.run_once(open_core(repo), SESSION)       # the background worker: the judge's reading
+    return cmd_clarify.wait(open_core(repo), SESSION, timeout=10)
 
 
 def test_ex2_a_question_the_owner_already_answered_is_withdrawn_quoting_the_answer(

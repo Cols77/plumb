@@ -1,6 +1,6 @@
 """A judge question the owner has since spoken past is not repeated when the judge cannot read
-the new message (no judgment backend): the old question is held back, and the edit is held
-too (EX-9): the couldn't-check card closes the gate instead of a "ready"."""
+the new message (no judgment backend): the old question is held back, and nothing is held
+(SR-378 EX-4): the answer is "ready" and the gate stays open."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 from plumb.api import open_core
 from plumb.contracts import JobError, JobResult
-from plumb.understand import cmd_clarify, files, gate, jobs, ledger, queue
+from plumb.understand import cmd_clarify, files, gate, jobs, ledger, queue, worker
 from understand.test_judge_cascade import world  # noqa: F401
 from understand.test_judge_job import SESSION, build_job, log_prompt
 from understand.test_judge_questions import answer, asking
@@ -22,6 +22,7 @@ def test_a_question_older_than_the_owners_message_is_not_repeated_when_the_judge
     core = open_core(world)
     first = build_job(core, ["SR-001"])
     queue.enqueue(core, first)
+    worker.run_once(open_core(world), SESSION)          # the background worker (SR-378)
     assert cmd_clarify.wait(open_core(world), SESSION, timeout=10).state == "ask"
 
     digest = log_prompt(world, "On a full board print draw, the score, then a new game.",
@@ -38,8 +39,7 @@ def test_a_question_older_than_the_owners_message_is_not_repeated_when_the_judge
         error=JobError("dispatch", "judgment.backend is not set in .plumb/config.yaml")))
 
     outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
-    # not repeated, and not "ready" either (EX-9): the edit is held on the couldn't-check card
-    assert outcome.state == "couldnt_check"
+    # not repeated, and nothing held (SR-378 EX-4)
+    assert outcome.state == "ready"
     assert not outcome.questions
-    assert "full board" not in " ".join(outcome.lines)
-    assert gate.is_closed(world, SESSION)
+    assert not gate.is_closed(world, SESSION)

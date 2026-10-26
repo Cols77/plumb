@@ -7,10 +7,11 @@ after a timeout is collected by the next ``--wait``; a timeout or a failed check
 "couldn't check" card in the card store and keeps the gate closed. Nothing here opens the
 gate: only the check's own result, the owner's answers, or the owner's release do.
 
-An ordinary message is not checked: ``--wait`` collects the judge jobs queued since the owner
-last spoke and answers ``ask`` with the judge's open questions for the question tool (SR-248),
-or ``ready`` with what the judge approved on the owner's behalf. The questions never close the
-gate.
+An ordinary message is not checked and waits for nothing (SR-378): ``--wait`` hands the judge
+jobs queued since the owner last spoke to the detached worker and answers at once, ``ask`` with
+the judge's open questions already in the store (SR-248), or ``ready`` with what the judge
+approved on the owner's behalf. The questions never close the gate; a request the prompt hook
+held on a confirmed record answers ``held``.
 
 Without ``--wait`` the command is today's clarification-depth helper, unchanged."""
 
@@ -57,8 +58,8 @@ ASK_QUESTIONS = ("Ask these {n} questions with the question tool, all at once, n
 REWORD_FIRST = ("{n} of them use plumb's own words (`reword: true`): reword those before asking, "
                 "with no record id or plumb term.")
 UNMATCHED = "Ask these questions as given; the last answer matched none of them."
-JUDGING = ("plumb's judge is still reading the records; go on with the work and run clarify "
-           "--wait again before the turn ends.")
+JUDGING = ("plumb's judge is still reading the records in the background; go on with the "
+           "work: its questions reach you as text.")
 APPROVED = "approved on your behalf: {title} (judge-approved, {by}, {score})"
 HELD = ("plumb: edits are held ({reason}): this request changes a confirmed record and no "
         "intent loop ran for it. /plumb intent opens the loop; the owner's /plumb go releases.")
@@ -180,48 +181,31 @@ def _options(root: Path, question: Mapping[str, Any]) -> list[Any]:
     return [*options[:3], extra]
 
 
-def _judged(core: Any, session: str, digest: str, at: str, limit: float,
-            sleep: Callable[[float], None], clock: Callable[[], float], turn: str = "") -> Outcome:
-    """SR-248: the judge jobs queued since the owner last spoke, collected: ``waiting`` while
-    one runs past the limit, ``ask`` while its questions are open, else ``ready`` with what the
-    judge approved. The questions never close the gate (P6). SR-361: every open question
-    is asked at once, even mid-task, one per principle."""
-    from plumb.api import open_core
+def _judged(core: Any, session: str, digest: str, at: str, turn: str = "") -> Outcome:
+    """SR-378: answers at once and runs no job: the judge jobs queued since the owner last
+    spoke go to the detached worker; ``ask`` with the questions already in the store, else
+    ``ready`` with what the judge approved (and a line while jobs still run). The questions
+    never close the gate (P6). SR-361: every open question is asked, one per principle."""
     from plumb.understand import judge, worker
 
     root = Path(core.root)
-    started, ran = clock(), False
-    while pending := [j for j in _judge_jobs_since(root, session, at)
-                      if result_of(root, session, j.id) is None]:
-        if not ran:
-            for job in pending:
-                worker.run_once(core, session, job.id)
-            ran = True
-            continue
-        if clock() - started >= limit:
-            return Outcome("waiting", digest, [JUDGING])
-        sleep(POLL_S)
-    core = open_core(root)          # a detached worker may have written meanwhile
+    since = _judge_jobs_since(root, session, at)
+    pending = [j for j in since if result_of(root, session, j.id) is None]
+    if pending:
+        worker.start_detached(root, session)
     said = [e for e in core.events() if e.kind == "question-answer"
             and e.payload.get("session") == session and e.at >= (turn or at)]
     questions = _by_principle(judge.to_ask(core, session))   # SR-336 EX-2: less study-held
-    since = _judge_jobs_since(root, session, at)
     failed = [j for j in since if j.kind == "judge"    # a failed push-back keeps the question
               and (r := result_of(root, session, j.id)) is not None and r.status == "error"]
-    if failed and questions and not any(q.get("job") in {j.id for j in since}
-                                        for q in questions):
-        # the judge could not read the owner's latest message: what it asked before that
-        # message may be answered by it, so it is not asked again (never ask what was said);
-        # nor is it "ready" (EX-9: no judge, the edit is held): the couldn't-check card holds
-        # the gate until the judge reads the message or the owner says to build anyway
-        last = result_of(root, session, failed[-1].id)
-        if gate.state(root, session).message_digest != digest or not gate.is_closed(root,
-                                                                                     session):
-            gate.close(root, session, digest, clarify.GATE_REASON_COULDNT)
-        return _couldnt(core, session, digest, why_failed(last) if last else WHY_DEFAULT)
+    if failed and not any(q.get("job") in {j.id for j in since} for q in questions):
+        # the judge could not read the owner's latest message: what it asked before may be
+        # answered by it, so it is not asked again; nothing is held (SR-378 EX-4)
+        questions = []
     if questions:
         return _ask(core, session, digest, questions, [e.payload for e in said if e.at >= at])
-    return Outcome("ready", digest, [READY, *_approved(core, at)])
+    return Outcome("ready", digest, [READY, *([JUDGING] if pending else []),
+                                     *_approved(core, at)])
 
 
 def _ask(core: Any, session: str, digest: str, questions: list[Mapping[str, Any]],
@@ -323,9 +307,11 @@ def wait(core: Any, session: str | None = None, *, timeout: float | None = None,
         # SR-171: no commanded check of this message; one still holding the gate keeps its digest
         held = gate.state(root, session)
         if not gate.is_closed(root, session) or not held.message_digest:
-            return _judged(core, session, digest, _since(core, session, logged), limit, sleep,
-                           clock, str(logged.get("at") or ""))
+            return _judged(core, session, digest, _since(core, session, logged),
+                           str(logged.get("at") or ""))
         digest = held.message_digest
+        if held.reason.startswith(gate.INTENT_CHANGE):   # SR-378 EX-3: the prompt hook held it;
+            return _outcome_from_state(core, session, digest)   # no check runs for it
     if gate.state(root, session).message_digest != digest and not gate.is_closed(root, session):
         gate.close(root, session, digest, clarify.GATE_REASON_CHECKING)   # no hook closed it
     if not gate.is_closed(root, session):

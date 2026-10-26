@@ -102,6 +102,12 @@ def handle(ctx: HookContext) -> HookOutput | None:
     if any(e["question"] == clarify.COULDNT_QUESTION and e["answer"] == owner_text.GATE_BUILD_ANYWAY
            for e in entries):      # the owner's own button on a failed check (gate.release)
         gate.release(core, ctx.session_id, "button")
+    held = gate.state(Path(ctx.root), ctx.session_id)
+    if held.reason.startswith(gate.INTENT_CHANGE) and not any(e.get("asked") for e in entries):
+        # SR-225 EX-5, SR-378 EX-3: the owner answered the change put to them (not a judge
+        # question): the hold on the confirmed record opens, no check is rerun
+        gate.open(core, ctx.session_id, held.message_digest, "answer",
+                  "the owner answered the question it raised")
     judge.rejudge(core, ctx.session_id, logged)
     return None
 

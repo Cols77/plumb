@@ -296,16 +296,20 @@ def test_three_records_sharing_one_gap_give_one_question_with_no_record_title(
 
 
 def _queue(repo: Path, ids: list[str]) -> None:
+    """A judge job queued and run by the background worker (SR-378: never by ``--wait``)."""
+    from plumb.understand import worker
+
     core = open_core(repo)
     queue.enqueue(core, build_job(core, ids))
+    worker.run_once(open_core(repo), SESSION)
 
 
 @pytest.mark.sr("SR-248")
 def test_wait_after_a_capture_with_no_clarify_job_answers_ask(
         world: Path, engine_standins: Any) -> None:  # noqa: F811
-    """An ordinary message (no clarify job), a capture's judge job queued: ``clarify --wait``
-    runs it and answers ``ask`` with the questions ready for the question tool; the gate stays
-    open."""
+    """An ordinary message (no clarify job), a capture's judge job run by the worker:
+    ``clarify --wait`` answers ``ask`` with the questions ready for the question tool; the
+    gate stays open."""
     engine_standins.dispatcher.script = {"judge": answer(
         ("INT-001", "beyond"), ("SR-001", "beyond"),
         questions=[asking("INT-001", "SR-001")])}
