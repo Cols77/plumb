@@ -166,6 +166,7 @@ def test_sr265_ex7_a_judge_approval_gets_no_line_and_no_question(
     _start_turn(repo)
     _edit(repo, ".plumb/requirements/SR-009.md", record_text(9))
     assert _stop(repo, hook_input) == {}
+    summary.after_stop(open_core(repo), SESSION)   # SR-375: the worker tells the agent
     assert JUDGE_APPROVED in _agent(repo)
 
 
