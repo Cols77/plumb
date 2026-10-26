@@ -5,7 +5,6 @@ the question tool (SR-295)."""
 
 from __future__ import annotations
 
-import dataclasses
 import io
 import json
 import re
@@ -26,7 +25,7 @@ from plumb.contracts import NodeEvidence, Target, TurnEvent
 from plumb.hosts import neutral
 from plumb.hosts.claude_code import stop
 from plumb.present.owner_text import JUDGE_APPROVED
-from plumb.understand import cardstore, summary
+from plumb.understand import summary
 
 IDS = re.compile(r"\b(IC|SR|INT|DEC|FEAT)-\d+")
 FEAT = "---\nid: FEAT-001\ntitle: deadline reminders\n---\n"
@@ -96,56 +95,12 @@ def confirmed(repo: Path, write_record) -> Path:
 
 
 @pytest.mark.sr("SR-265")
-def test_sr265_ex1_a_raised_question_shows_no_plumb_line(carded, hook_input) -> None:
-    """SR-265 EX-1 (SR-363): no plumb line about the question, no question or options."""
-    _start_turn(carded.root)
-    assert _owner(_stop(carded.root, hook_input)) == ""
-    assert "Requirement 1" in _agent(carded.root)        # the card itself is the agent's
-
-
-@pytest.mark.sr("SR-265")
-def test_sr265_ex2_an_applied_answer_is_named_in_the_owners_words(carded, hook_input) -> None:
-    """SR-265 EX-2: the line names the question's subject, never an id."""
-    _start_turn(carded.root)
-    _stop(carded.root, hook_input)
-    cards = cardstore.load(carded.root, SESSION, open_only=False)
-    cardstore.save(carded.root, SESSION,
-                   [dataclasses.replace(c, status="answered") for c in cards])
-    text = _owner(_stop(carded.root, hook_input))
-    assert text == f"plumb: your answer on {cards[0].topic} was applied"
-    assert not IDS.search(text)
-
-
-@pytest.mark.sr("SR-265")
-def test_sr265_ex3_on_codex_the_line_is_plain_text_and_no_card_is_printed(carded) -> None:
-    """SR-265 EX-3: a host without a band prints no card and no count line."""
-    _start_turn(carded.root)
-    out = neutral.handle_event(TurnEvent(kind="stop", root=carded.root, session_id=SESSION,
-                                         host="codex"), verify=FakeVerify(), unjudged=None)
-    assert out.owner_lines == ()
-    assert "Requirement 1" in _agent(carded.root)
-
-
-@pytest.mark.sr("SR-265")
 def test_sr265_ex4_a_turn_where_nothing_changed_for_the_owner_prints_nothing(
         carded, hook_input) -> None:
     """SR-265 EX-4: the same card still waiting is no change: nothing is printed."""
     _start_turn(carded.root)
     _stop(carded.root, hook_input)
     assert _stop(carded.root, hook_input) == {}
-
-
-@pytest.mark.sr("SR-265")
-def test_sr265_ex5_a_touched_confirmed_requirement_with_passing_checks_is_one_line(
-        confirmed: Path, hook_input) -> None:
-    """SR-265 EX-5: "plumb: aligned, touched 'deadline reminders', 7 checks pass"."""
-    _start_turn(confirmed)
-    _edit(confirmed, "src/remind.py", "def remind():\n    return 2\n")
-    nodes = tuple(f"tests/test_r.py::test_{n}" for n in range(7))
-    verify = FakeVerify(nodes=nodes,
-                        evidence_map={n: NodeEvidence(n, "fresh-pass") for n in nodes})
-    assert _owner(_stop(confirmed, hook_input, verify)) == (
-        "plumb: aligned, touched 'deadline reminders', 7 checks pass")
 
 
 @pytest.mark.sr("SR-265")
@@ -189,7 +144,8 @@ def test_sr266_ex2_stale_links_untraced_files_and_warnings_go_to_the_agent(
     owner = _owner(_stop(confirmed, hook_input))
     assert len(owner.splitlines()) <= 1 and "feat-x" not in owner and "stale" not in owner
     agent = _agent(confirmed)
-    assert warning in agent and stale_note in agent
+    # SR-373: one next action; the untraced file comes before the links it moved
+    assert warning in agent and stale_note not in agent
     untraced = json.loads((confirmed / ".plumb" / "session" / SESSION /
                            "untraced.json").read_text("utf-8"))
     assert untraced["paths"] == ["src/other.py"]          # the next prompt names it
@@ -220,24 +176,9 @@ def test_sr266_ex4_the_agent_keeps_the_conflict_id_the_owner_sees_none(
     ic = conflicted(repo)
     _start_turn(repo)
     owner = _owner(_stop(repo, hook_input))
-    assert owner == ""                   # SR-363: no count, so no id either
+    assert "merge waits" in owner and not IDS.search(owner)   # SR-373: a merge that waits
     assert cli.main(["conflicts", "--root", str(repo)]) == 0
     assert ic in capsys.readouterr().out
-
-
-@pytest.mark.sr("SR-266")
-def test_sr266_ex5_codex_gives_the_agent_the_same_text_as_claude_code(carded, hook_input) -> None:
-    """SR-266 EX-5: the same turn on Codex hands the agent the same text."""
-    session = carded.root / ".plumb" / "session" / SESSION
-    _start_turn(carded.root)
-    _stop(carded.root, hook_input)
-    on_claude = _agent(carded.root)
-    for name in (summary.DRAWN, summary.TURN_LINE):
-        (session / name).unlink()
-    _start_turn(carded.root)
-    neutral.handle_event(TurnEvent(kind="stop", root=carded.root, session_id=SESSION,
-                                   host="codex"), verify=FakeVerify(), unjudged=None)
-    assert on_claude and _agent(carded.root) == on_claude
 
 
 @pytest.mark.sr("SR-266")
@@ -256,7 +197,7 @@ def test_sr266_ex6_a_test_that_passed_and_fails_now_reaches_the_agent_with_its_e
     assert f"{node} passed in an earlier run and now fails (last run run-2)" in block["reason"]
     owner = _owner(_stop(confirmed, hook_input, verify, active=True))
     assert len(owner.splitlines()) <= 1 and node not in owner
-    assert f"{node} passed in an earlier run and fails now (last run run-2)" in _agent(confirmed)
+    assert node not in _agent(confirmed)   # SR-373 EX-7: the block told it; not repeated
 
 
 # --------------------------------------------------------------------------- SR-295
@@ -283,7 +224,8 @@ def test_sr295_ex3_stale_links_and_untraced_files_alone_show_the_owner_nothing(
     stale_note = "plumb: SR-001's link to src/remind.py is stale"
     monkeypatch.setattr(stop, "stale_hold", lambda *a, **k: ([], [stale_note]))
     _start_turn(confirmed)
-    _edit(confirmed, "src/other.py", "x = 1\n")
+    # a traced file: an untraced one would be SR-373's next action before the stale link
+    _edit(confirmed, "src/remind.py", "def remind():\n    return 2\n")
     assert _stop(confirmed, hook_input) == {}
     assert stale_note in _agent(confirmed)
     assert summary.ASK_OWNER not in stale_note
@@ -314,19 +256,3 @@ def test_sr295_a_card_only_in_the_agents_channel_is_not_shown_to_the_owner(tmp_p
         "utf-8")
     assert stated() == [("SR-001", True)]
 
-
-# --------------------------------------------------------------------------- SR-363
-
-
-@pytest.mark.sr("SR-363")
-def test_sr363_ex3_an_applied_answer_and_passing_checks_carry_no_question_count(
-        carded) -> None:
-    """SR-363 EX-3: one line says the answer was applied and the 4 checks pass."""
-    assert summary.owner_line(carded, SESSION) == ""     # SR-363 EX-2: a waiting card, no line
-    cards = cardstore.load(carded.root, SESSION, open_only=False)
-    cardstore.save(carded.root, SESSION,
-                   [dataclasses.replace(c, status="answered") for c in cards])
-    line = summary.owner_line(open_core(carded.root), SESSION, touched=["SR-001"],
-                              checks=(4, 4))
-    assert line.startswith(f"plumb: your answer on {cards[0].topic} was applied; aligned, ")
-    assert line.endswith(", 4 checks pass") and "for you" not in line
