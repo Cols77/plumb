@@ -415,7 +415,6 @@ def _stale_card(argv: list[str]) -> int:
 
 def _stale_cards(argv: list[str]) -> int:
     from plumb import stale
-    from plumb.understand import fullcard
 
     parser = _parser("stale cards", "List the open stale cards with all they show the owner.")
     parser.add_argument("--incomplete", action="store_true",
@@ -423,27 +422,36 @@ def _stale_cards(argv: list[str]) -> int:
     parser.add_argument("--session", default=None, help="one session (default: every one)")
     args = parser.parse_args(argv)
     core = _core(args)
-    contents = [fullcard.stale_content(core, entry, session=session)
-                for session in ([args.session] if args.session else stale.sessions(core.root))
-                for entry in stale.read_cards(core.root, session)
-                if entry.get("status", "open") == "open"
-                and not (args.incomplete and stale.card_complete(entry))]
+    found = [(session, entry)
+             for session in ([args.session] if args.session else stale.sessions(core.root))
+             for entry in stale.read_cards(core.root, session)
+             if entry.get("status", "open") == "open"
+             and not (args.incomplete and stale.card_complete(entry))]
     if args.as_json:
-        emit({"cards": contents}, True)
+        emit({"cards": [{**entry, "session": session, "missing": stale.card_missing(entry)}
+                        for session, entry in found]}, True)
         return 0
-    if not contents:
+    if not found:
         print("plumb: no open stale cards" + (" lacking anything" if args.incomplete else ""))
         return 0
-    for content in contents:
-        head = f"plumb: {content['link']} (session {content['session']})"
-        if content["missing"]:
-            head += " lacks: " + "; ".join(content["missing"])
+    for session, entry in found:
+        head = f"plumb: {entry.get('link')} (session {session})"
+        if missing := stale.card_missing(entry):
+            head += " lacks: " + "; ".join(missing)
         print(head)
         if args.incomplete:
-            print(f"  complete it: plumb stale card {content['link']} --session "
-                  f"{content['session']} --consequences \"...\" --why \"...\"")
+            print(f"  complete it: plumb stale card {entry.get('link')} --session "
+                  f"{session} --consequences \"...\" --why \"...\"")
             continue
-        print(fullcard.render(content))
+        print(entry.get("topic") or "")
+        if entry.get("why"):
+            print(entry["why"])
+        first = int(entry.get("recommended") or 0)
+        said = list(entry.get("consequences") or ())
+        for n, i in enumerate(sorted(range(len(entry.get("options") or ())),
+                                     key=lambda i: i != first), start=1):
+            print(f"  {n}. {entry['options'][i]}" + (" (recommended)" if i == first else "")
+                  + (f" - {said[i]}" if i < len(said) and said[i] else ""))
     return 0
 
 

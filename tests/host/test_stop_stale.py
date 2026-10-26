@@ -234,10 +234,8 @@ def test_stale_card_text_passes_both_owner_text_scanners(project: Path) -> None:
                     ("a", "c"))
     card = stale.default_card(row, "Adds numbers")
     stale.add_card(project, "s1", turn=1, **card)
-    from plumb.understand import fullcard
-
     (entry,) = stale.read_cards(project, "s1")
-    text = "\n".join([fullcard.render(fullcard.stale_content(open_core(project), entry)),
+    text = "\n".join([entry["topic"], entry["issue"], *entry["options"],
                       owner_text.STALE_HOLD_ENDED.format(n=3, title="Adds numbers")])
     assert bare_cli_verbs(text) == []
     assert _BARE_ID.findall(text) == [] and _INTERNAL.findall(text) == []

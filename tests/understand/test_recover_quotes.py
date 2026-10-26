@@ -16,7 +16,7 @@ import pytest
 from plumb.api import open_core
 from plumb.cli import main
 from plumb.contracts import DispatchError
-from plumb.understand import cardcontent, recover
+from plumb.understand import recover, trial
 from plumb.understand.recover import Cascade, ModelExaminer, ModelPicker
 
 pytestmark = pytest.mark.sr("SR-249")
@@ -175,7 +175,7 @@ def _cascade(core, jev, sonnet, opus=None) -> Cascade:
 
 
 def _card(core, record_id: str) -> tuple[dict, list[str]]:
-    words = cardcontent.owner_words(core, core.index()[record_id])
+    words = trial.owner_words(core, core.index()[record_id])
     lines = [line for item in words["items"] for line in item["found_lines"]]
     return words, [*lines, *([words["note"]] if words["note"] else [])]
 

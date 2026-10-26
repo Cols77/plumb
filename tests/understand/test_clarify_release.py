@@ -15,7 +15,7 @@ from understand.fakes import owner_level
 from plumb.api import open_core
 from plumb.hosts.claude_code import question_answer
 from plumb.present import owner_text
-from plumb.understand import cardstore, clarify, cmd_clarify, effects, files, fullcard, gate, hooks, worker
+from plumb.understand import cardstore, clarify, cmd_clarify, effects, files, gate, hooks, worker
 
 pytestmark = pytest.mark.sr("SR-223")
 
@@ -54,7 +54,6 @@ def test_ex7_dispatcher_failure_couldnt_check_card_nothing_built(
     assert question.resolutions == (owner_text.GATE_WAIT, owner_text.GATE_BUILD_ANYWAY)
     assert "Nothing was built" in card.issue
     assert gate.is_closed(repo, SESSION) and not _entries(repo)         # nothing opened it
-    assert owner_level(fullcard.render(fullcard.content(open_core(repo), card))) == []
     assert engine_standins.dispatcher.ran("clarify")
 
 
@@ -140,7 +139,6 @@ def test_no_other_route_opens_a_failed_check(repo: Path, engine_standins: Any) -
 
 def test_ex10_no_wait_keeps_gate_closed_next_turn_retries(
         repo: Path, engine_standins: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import queue
 
     core, digest = _failed_check(repo, engine_standins)
     (card,) = [c for c in cardstore.own_cards(repo, SESSION) if c.kind == "couldnt_check"]

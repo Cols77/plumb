@@ -11,7 +11,6 @@ import yaml
 
 from plumb.api import open_core
 from plumb.contracts import DispatchError, Job
-from plumb.hosts.claude_code.hookio import Deadline, HookContext
 from plumb.present import owner_text
 from understand.fakes import FakeDispatcher, owner_level
 from understand.test_judge_job import SESSION, intent_text, log_prompt, requirement_text
@@ -333,11 +332,11 @@ def test_the_turns_end_continues_a_started_pass_and_only_a_started_one(
     from plumb.understand import backlog, files, summary
 
     bulk(repo, write_record, {"alpha": 2, "beta": 2})
-    ctx = HookContext("stop", {}, repo, SESSION, Deadline(1400))
-    summary.stop_parts(ctx, open_core(repo), {"turn_start": time.time() - 60})
+    turn = {"turn_start": time.time() - 60}
+    summary._turn_upkeep(open_core(repo), SESSION, turn, None)
     assert list(files.jobs_dir(repo, SESSION).glob("*.json")) == []   # never started: not queued
     backlog.start(open_core(repo), SESSION)
     queued = sorted(files.jobs_dir(repo, SESSION).glob("*.json"))
     queued[0].unlink()                                                # a queue file was lost
-    summary.stop_parts(ctx, open_core(repo), {"turn_start": time.time() - 60})
+    summary._turn_upkeep(open_core(repo), SESSION, turn, None)
     assert sorted(files.jobs_dir(repo, SESSION).glob("*.json")) == queued

@@ -527,7 +527,7 @@ def set_hold_count(root: Path | str, session: str, turn_id: str | None, holds: i
 
 # --------------------------------------------------------------------------- stale cards
 # ``.plumb/session/<id>/stale_cards.json``: a JSON list, written here alone (atomically).
-# ``cardstore`` reads the open entries as ``stale_link`` cards; ``understand.fullcard`` draws them.
+# ``cardstore`` reads the open entries as ``stale_link`` cards; ``plumb stale cards`` lists them.
 
 
 def cards_path(root: Path | str, session: str) -> Path:
@@ -581,7 +581,7 @@ def add_card(root: Path | str, session: str, *, link: str, record: str, path: st
     (the reason for the recommended option) are written when given; a card without them is
     kept but incomplete (``card_missing``). ``by`` names who filed it (``diagnosis`` for
     Opus). The record's wording, the diff and the owner's words are derived when the card is
-    shown (``plumb.understand.fullcard``), never stored here."""
+    shown (``plumb stale cards``), never stored here."""
     entry: dict[str, Any] = {"link": link, "record": record, "path": path, "topic": topic,
                              "issue": issue, "options": [str(o) for o in options],
                              "recommended": int(recommended), "turn": int(turn),

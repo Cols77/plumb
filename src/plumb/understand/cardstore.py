@@ -207,9 +207,8 @@ def states(core: Any, session: str) -> dict[str, tuple[str, str]]:
     ``waiting`` (awaiting the owner), ``processing`` (every question answered by a logged
     press, not applied yet), ``blocked`` (a press that found the record changed since it was
     shown: the reason, decided at press time), ``done`` (answered or closed), ``left_open``;
-    withdrawn cards are left out. Cards the stop hook built are read from what it drew."""
+    withdrawn cards are left out."""
     from plumb.present import owner_text
-    from plumb.understand import summary
 
     presses = answer_presses(core, session)
     index = core.index()
@@ -230,10 +229,4 @@ def states(core: Any, session: str) -> dict[str, tuple[str, str]]:
                 gone["record"] if gone else "")
             out[card.id] = (("blocked", owner_text.PRESS_CHANGED_SINCE.format(title=title))
                             if gone else ("done", ""))
-    left = summary.turn_left(core.root, session)
-    for entry in summary.read_drawn(core.root, session):
-        cid = str(entry["card"].get("id"))
-        if entry.get("turn_built") and cid not in out:
-            out[cid] = (("done" if any(p.get("card") == cid for p in presses) else
-                         "left_open" if cid in left else "waiting"), "")
     return out

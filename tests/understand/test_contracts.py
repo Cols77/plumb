@@ -215,7 +215,6 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
         premise,
         queue,
         read,
-        summary,
         worker,
     )
 
@@ -235,9 +234,6 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
     assert worker.start_detached(tmp_path, "s1") is None
     assert _params(gate.is_closed) == ["root", "session"]
     assert gate.is_closed(tmp_path, "s1") is False
-    # slice 3: the cards the stop hook builds come in by keyword (sp7-realign-sp8 C1, C7)
-    assert _params(summary.stop_parts) == ["ctx", "core", "turn", "extra", "fresh",
-                                           "passing", "shown"]
     # the landed summary needs a real core; the stub's empty answer is gone (SHOW/JUDGE landed)
     assert StopParts() == StopParts()
     assert _params(hooks.on_prompt) == ["ctx", "core", "entry"]
@@ -424,7 +420,7 @@ def test_owner_text_constants_exist() -> None:
     from plumb.present import owner_text as t
 
     for name in ("STEP_READING", "STEP_CHECKING", "STEP_JUDGING", "STEP_JUDGING_BACKLOG",
-                 "GATE_BUILD_ANYWAY", "GATE_WAIT", "FULL_OPTION", "FULL_DIAGRAM"):
+                 "GATE_BUILD_ANYWAY", "GATE_WAIT"):
         assert isinstance(getattr(t, name), str) and getattr(t, name)
 
 

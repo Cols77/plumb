@@ -405,19 +405,6 @@ EARLY_TYPED_CHOOSE = ('To answer, type: /plumb conflict choose "{title}" --take 
                       "<{branch} | {ours} | both>")
 EARLY_ISSUE = '{branch} says "{theirs}"; {label} says "{ours}"'
 
-DRIFT_REQUEST = 'the request behind the change: "{text}" ({at})'
-DRIFT_NO_REQUEST = "the request behind the change is not on file"
-
-
-# the parts of every card (SR-129): each option, the recommended one marked, what it does
-FULL_OPTION = "  {n}. {text}{mark}"
-FULL_RECOMMENDED = " (recommended)"
-FULL_CONSEQUENCE = " - {text}"
-FULL_DIAGRAM = "Diagram: {path} (open it to see it)"
-FULL_NOT_DRAWN = ("{n} more cards wait for you; there was no time left to draw them in full "
-                  "this turn: {topics}")
-FULL_INCOMPLETE = ("{n} cards wait until the agent writes what each option does and why one is "
-                   "recommended; they stay open and are shown once complete.")
 # SR-161: the one line at a turn end naming the cards plumb withdrew, and why
 CARDS_WITHDRAWN = "Withdrawn: {items}"
 WITHDRAWN_LINK_CURRENT = "its link is current again"

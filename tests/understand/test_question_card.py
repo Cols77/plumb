@@ -11,7 +11,6 @@ from typing import Any
 import pytest
 
 from plumb.api import open_core
-from plumb.hosts.claude_code.hookio import Deadline, HookContext
 from plumb.understand import cardstore, summary, worker
 from understand.test_answer_once import _reply
 from understand.test_clarify_context import _agent, _owner, _transcript
@@ -35,8 +34,8 @@ def _turn_end(repo: Path, tmp_path: Path, reply: str, found: list[dict[str, Any]
               ) -> Any:
     transcript = _transcript(tmp_path / "t.jsonl", [_owner("go on"), _agent(reply)])
     world.dispatcher.script = {"question": {"questions": found}, "tidy": {"verdicts": []}}
-    ctx = HookContext("stop", {"transcript_path": str(transcript)}, repo, SESSION, Deadline(3000))
-    summary.stop_parts(ctx, open_core(repo), {"turn_start": time.time() - 60})
+    summary._turn_upkeep(open_core(repo), SESSION, {"turn_start": time.time() - 60},
+                         str(transcript))
     worker.run_once(open_core(repo), SESSION)
     return open_core(repo)
 

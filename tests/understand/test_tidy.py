@@ -3,7 +3,6 @@ withdraws the ones a confirmed record answers or that repeat another; the model 
 
 from __future__ import annotations
 
-import time
 import types
 from pathlib import Path
 from typing import Any
@@ -13,9 +12,7 @@ import pytest
 from plumb import stale
 from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyQuestion, DispatchError
-from plumb.hosts.claude_code.hookio import Deadline, HookContext
-from plumb.present import owner_text
-from plumb.understand import cardstore, summary, tidy, worker
+from plumb.understand import cardstore, tidy, worker
 from understand.test_judge_job import SESSION, requirement_text
 
 pytestmark = pytest.mark.sr("SR-217")
@@ -50,18 +47,11 @@ def _status(repo: Path) -> str:
     return cardstore.own_cards(repo, SESSION)[0].status
 
 
-def _turn_end(repo: Path) -> str:
-    ctx = HookContext("stop", {}, repo, SESSION, Deadline(300))
-    return "\n".join(summary.stop_parts(ctx, open_core(repo), {"turn_start": time.time() - 60}).cards)
-
-
 def test_ex1_a_confirmed_record_that_answers_the_card_withdraws_it_quoting_it(
         repo: Path, world) -> None:
     _answer(world, verdict="withdraw_answered", record="SR-001", quote="through the agent in chat")
     _run(repo)
     assert _status(repo) == "withdrawn"
-    assert ('Withdrawn: Answer a conflict in chat, you confirmed SR-001: "through the agent in '
-            'chat"') in _turn_end(repo)
 
 
 def test_ex2_a_record_that_is_only_proposed_leaves_the_card(repo: Path, world) -> None:
@@ -87,7 +77,6 @@ def test_ex3_two_stale_cards_asking_the_same_lose_one(repo: Path, write_record,
         {"card": "stale:SR-062#0", "verdict": "withdraw_duplicate", "other": "stale:SR-062#1"}]}}
     _run(repo)
     assert [c.id for c in cardstore.stale_cards(repo, SESSION)] == ["stale:SR-062#0"]
-    assert owner_text.TIDY_DUPLICATE.format(other="Calc SR-062#0") in _turn_end(repo)
 
 
 def test_ex4_a_judge_that_cannot_be_reached_withdraws_nothing_and_says_so(
@@ -96,9 +85,6 @@ def test_ex4_a_judge_that_cannot_be_reached_withdraws_nothing_and_says_so(
     world.dispatcher.script = {"tidy": DispatchError("run", "the model could not be reached")}
     _run(repo)
     assert _status(repo) == "open"
-    line = _turn_end(repo)
-    assert owner_text.TIDY_COULD_NOT_RUN in line and "couldn't" not in line.lower()
-    assert owner_text.TIDY_COULD_NOT_RUN not in _turn_end(repo)
 
 
 def test_unsure_keeps_the_card(repo: Path, world) -> None:

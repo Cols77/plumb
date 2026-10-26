@@ -69,23 +69,3 @@ def test_ex7_a_failing_approval_of_a_gone_record_is_not_reported(repo: Path,
     core.log_append("events", "approval", {"by": "owner", "via": "button", "records": [
         {"id": "SR-001", "hash": "sha256:0"}]})
     assert not [f for f in validate(open_core(repo)) if f.code == "approval"]
-
-
-@pytest.mark.sr("SR-289")
-def test_ex5_a_card_about_a_gone_record_is_moot(repo: Path, write_record) -> None:
-    """SR-289 EX-5: a decision card whose record left the tree is neither shown nor counted."""
-    from plumb.contracts import CardState, ClarifyQuestion
-    from plumb.understand import summary
-
-    write_record(repo, NEW)
-    core = open_core(repo)
-    card = CardState(id="c1", kind="decision", topic="old", questions=(
-        ClarifyQuestion(id="q1", text="keep it?", record="DEC-001"),))
-    assert summary._moot(core, card, core.status(), set()) is None
-    # an intent conflict card on a record the clean-up deleted (IC-002 on SR-103)
-    conflict = CardState(id="conflict:IC-002", kind="conflict", topic="old", questions=(
-        ClarifyQuestion(id="q1", text="which version?", record="SR-001"),))
-    assert summary._moot(core, conflict, core.status(), set()) is None
-    kept = CardState(id="conflict:IC-003", kind="conflict", topic="live", questions=(
-        ClarifyQuestion(id="q1", text="which version?", record="SR-002"),))
-    assert summary._moot(core, kept, core.status(), set()) is kept

@@ -1,7 +1,7 @@
 """Cards (JUDGE): the builders of the issue cards plumb raises. Each card names the topic in the
 owner's terms, the issue, the evidence (the owner's words and what conflicts with them) and its
-choices, the recommended one first; each choice stores its answer and what it does. Rendering
-is ``fullcard``. Record numbers, digests and plumb's own words never stand in what the owner
+choices, the recommended one first; each choice stores its answer and what it does.
+Record numbers, digests and plumb's own words never stand in what the owner
 reads: ``plain`` puts a title where a sentence names a record."""
 
 from __future__ import annotations
