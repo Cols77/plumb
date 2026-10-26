@@ -139,3 +139,37 @@ def test_the_repository_is_read_at_most_once_a_while(
     build.check(repo)
     build.check(repo)
     assert repository["reads"] == 1
+
+
+def _raw_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.request
+
+    def refuse(*args, **kwargs):
+        raise OSError("HTTP Error 404: Not Found")
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+
+
+def test_a_private_repository_is_read_through_the_github_cli(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    _raw_404(monkeypatch)
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        gh = cmd[0] == "gh"
+        out = json.dumps({"source_digest": "new-0000"}) if gh else "abc123\trefs/heads/main\n"
+        return subprocess.CompletedProcess(cmd, 0, out, "")
+    monkeypatch.setattr(subprocess, "run", run)
+    assert build._fetch(URL) == ("new-0000", "abc123")
+    assert any(c[0] == "gh" and f"repos/Cols77/plumb/contents/{build.MANIFEST}?ref=main" in c
+               for c in calls)
+
+
+def test_when_the_github_cli_fails_too_the_repository_stays_unchecked(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    _raw_404(monkeypatch)
+
+    def run(cmd, **kwargs):
+        raise FileNotFoundError("gh")
+    monkeypatch.setattr(subprocess, "run", run)
+    assert build._fetch(URL) == ("", "")

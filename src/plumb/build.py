@@ -69,8 +69,18 @@ def _fetch(url: str) -> tuple[str, str]:
     try:
         with urllib.request.urlopen(raw, timeout=TIMEOUT_S) as answer:   # noqa: S310 - https
             digest = _digest(answer.read().decode("utf-8"))
-    except (OSError, ValueError):
-        return "", ""
+    except (OSError, ValueError):    # a private repository answers 404: ask the GitHub CLI
+        try:
+            done = subprocess.run(
+                ["gh", "api", "-H", "Accept: application/vnd.github.raw",
+                 f"repos/{found[1]}/{found[2]}/contents/{MANIFEST}?ref=main"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=TIMEOUT_S)
+        except (OSError, subprocess.SubprocessError):
+            return "", ""
+        digest = _digest(done.stdout) if done.returncode == 0 else ""
+        if not digest:
+            return "", ""
     head = (_git(".", "ls-remote", url, "refs/heads/main", timeout=TIMEOUT_S) or "").split()
     return digest, head[0] if head else ""
 
