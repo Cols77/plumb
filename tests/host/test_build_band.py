@@ -1,13 +1,15 @@
-"""SR-358: at every prompt plumb compares the plugin the session runs, plumb's local main and the
-main of plumb's repository (by vendored source digest) and notes one line per misalignment, with
-both versions and the fix, for the band's red lines; git history says which side is ahead. A
-repository that cannot be read is noted as unchecked, never red. Nothing is reinstalled."""
+"""SR-358: at every prompt plumb compares the plugin the session runs with plumb's local main (by
+vendored source digest) and the plugin Claude Code installed with the main of plumb's repository
+(by commit, as the local clone's history orders them) and notes one line per misalignment, with
+both versions and the fix, for the band's red lines. A repository that is not known yet is noted
+as unchecked, never red, and the hook never waits for it. Nothing is reinstalled."""
 
 from __future__ import annotations
 
 import io
 import json
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,7 @@ from plumb.hosts.claude_code import prompt
 
 pytestmark = pytest.mark.sr("SR-358")
 URL = "https://github.com/Cols77/plumb"
+REAL_LATEST = build._latest      # the `repository` fixture replaces it
 
 
 def _manifest(folder: Path, digest: str) -> None:
@@ -48,57 +51,100 @@ def _turn(repo: Path, hook_input) -> dict:
 
 @pytest.fixture
 def repository(monkeypatch: pytest.MonkeyPatch) -> dict:
-    """plumb's repository main: ``digest`` and ``commit``; "" when it cannot be read."""
-    held = {"digest": "new-0000", "commit": "", "reads": 0}
+    """plumb's repository main: its ``commit``; "" when it is not known."""
+    held = {"commit": ""}
 
-    def fetch(url: str) -> tuple[str, str]:
+    def latest(url: str) -> str:
         assert url == URL
-        held["reads"] += 1
-        return held["digest"], held["commit"]
-    monkeypatch.setattr(build, "_fetch", fetch)
+        return held["commit"]
+    monkeypatch.setattr(build, "_latest", latest)
     return held
 
 
 @pytest.fixture
 def loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository):
-    """``loaded(digest)``: the plugin Claude Code runs, as the hooks' PLUMB_PLUGIN_ROOT names
-    it."""
+    """``loaded(digest, installed=None)``: the plugin Claude Code runs, as the hooks'
+    PLUMB_PLUGIN_ROOT names it; ``installed`` is the commit Claude Code recorded for it."""
     cached = tmp_path / "cache"
     (cached / "plugin" / ".claude-plugin").mkdir(parents=True)
     (cached / "plugin" / ".claude-plugin" / "plugin.json").write_text(
         json.dumps({"repository": URL}), encoding="utf-8")
     monkeypatch.setenv("PLUMB_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)     # the session's own plugin
     monkeypatch.setenv("PLUMB_PLUGIN_ROOT", str(cached / "plugin"))
-    monkeypatch.setattr(build, "KEEP_S", 0)                      # read the repository each time
     monkeypatch.setattr(prompt, "understand_lines", lambda ctx, core, digest, text: [])
-    return lambda digest: _manifest(cached, digest)
+
+    def load(digest: str, installed: str | None = None) -> None:
+        _manifest(cached, digest)
+        if installed:
+            file = tmp_path / "claude" / "plugins" / "installed_plugins.json"
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text(json.dumps({"version": 2, "plugins": {"plumb@plumb": [
+                {"scope": "project", "projectPath": "elsewhere", "gitCommitSha": "other",
+                 "installPath": str(cached / "plugin")},
+                {"scope": "user", "gitCommitSha": installed,
+                 "installPath": str(cached / "plugin")}]}}), encoding="utf-8")
+    return load
 
 
-def test_ex1_the_repository_rebuilt_after_the_cache_the_band_gets_both_versions(
-        repo: Path, loaded, hook_input) -> None:
-    loaded("old-0000")                           # another repository: no local clone of plumb
-    line = ("plumb old-000 differs from its repository's new-000: update the plugin, then "
-            "reload plugins")
+def test_ex1_installed_plugin_behind_its_repository_the_band_gets_both_commits(
+        repo: Path, loaded, repository, hook_input) -> None:
+    first = _build(repo, "aaa-0000")
+    repository["commit"] = _build(repo, "bbb-0000")
+    loaded("bbb-0000", installed=first)
+    line = (f"installed plugin {first[:7]} is behind its repository's "
+            f"{repository['commit'][:7]}: update the plugin, then reload plugins")
     assert build.outdated(repo) == (True, line)
     assert _turn(repo, hook_input) == {"lines": [line], "unchecked": False}
 
 
-def test_ex2_the_plugin_updated_the_line_is_gone(
-        repo: Path, loaded, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
-    loaded("old-0000")
-    assert _turn(repo, hook_input)["lines"]
-    loaded("new-0000")                                           # the owner updated plumb
+def test_installed_plugin_ahead_of_its_repository_says_push(
+        repo: Path, loaded, repository) -> None:
+    repository["commit"] = _build(repo, "aaa-0000")
+    second = _build(repo, "bbb-0000")
+    loaded("bbb-0000", installed=second)
+    assert build.check(repo)["lines"] == [
+        f"installed plugin {second[:7]} is ahead of its repository's "
+        f"{repository['commit'][:7]}: push main"]
+
+
+def test_installed_plugin_without_a_local_clone_differs(
+        repo: Path, loaded, repository) -> None:
+    repository["commit"] = "f60c3556" + "0" * 32
+    loaded("old-0000", installed="fead6e89" + "0" * 32)       # another repository
+    assert build.check(repo)["lines"] == [
+        "installed plugin fead6e8 differs from its repository's f60c355: update the plugin, "
+        "then reload plugins"]
+
+
+def test_ex2_installed_plugin_equal_to_its_repository_the_line_is_gone(
+        repo: Path, loaded, repository, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
+    repository["commit"] = _build(repo, "aaa-0000")
+    loaded("aaa-0000", installed=repository["commit"])
     assert build.outdated(repo) == (False, "")
     assert _turn(repo, hook_input) == {"lines": [], "unchecked": False}
     monkeypatch.delenv("PLUMB_PLUGIN_ROOT")                      # not run from a plugin
     assert build.check(repo)["lines"] == []
 
 
+def test_a_loaded_folder_that_is_not_installed_is_compared_as_local_main(
+        repo: Path, loaded, repository) -> None:
+    repository["commit"] = _build(repo, "aaa-0000")
+    loaded("aaa-0000")                                           # a dev folder, no record
+    assert build.check(repo)["lines"] == []
+    second = _build(repo, "bbb-0000")
+    loaded("bbb-0000")
+    assert build.check(repo)["lines"] == [
+        f"local main {second[:7]} is ahead of its repository's "
+        f"{repository['commit'][:7]}: push main"]
+    assert build.outdated(repo) == (False, "")    # the plugin runs local main's build
+
+
 def test_ex3_local_main_rebuilt_after_the_load_says_reload(
         repo: Path, loaded, repository, hook_input) -> None:
     _build(repo, "aaa-0000")
-    repository.update(digest="bbb-0000", commit=_build(repo, "bbb-0000"))
+    repository["commit"] = _build(repo, "bbb-0000")
     loaded("aaa-0000")
     assert _turn(repo, hook_input)["lines"] == [
         "plumb aaa-000 is behind local main's bbb-000: reload plugins"]
@@ -106,7 +152,7 @@ def test_ex3_local_main_rebuilt_after_the_load_says_reload(
 
 def test_the_plugin_built_from_a_branch_is_ahead_of_local_main(
         repo: Path, loaded, repository) -> None:
-    repository.update(digest="aaa-0000", commit=_build(repo, "aaa-0000"))
+    repository["commit"] = _build(repo, "aaa-0000")
     _git(repo, "checkout", "-q", "-b", "feat")
     _build(repo, "ccc-0000")
     _git(repo, "checkout", "-q", "main")
@@ -115,61 +161,72 @@ def test_the_plugin_built_from_a_branch_is_ahead_of_local_main(
         "plumb ccc-000 is ahead of local main's aaa-000 (built from another branch)"]
 
 
-def test_ex4_local_main_ahead_of_the_repository_says_push(
-        repo: Path, loaded, repository) -> None:
-    repository.update(digest="aaa-0000", commit=_build(repo, "aaa-0000"))
-    _build(repo, "bbb-0000")
-    loaded("bbb-0000")
-    assert build.check(repo)["lines"] == [
-        "local main bbb-000 is ahead of its repository's aaa-000: push main"]
-    assert build.outdated(repo) == (False, "")    # the plugin runs local main's build
-
-
-def test_ex5_an_unreadable_repository_is_unchecked_not_red(
-        repo: Path, loaded, repository, hook_input) -> None:
-    repository.update(digest="")
-    loaded("old-0000")
+def test_ex5_an_unknown_repository_is_unchecked_not_red(
+        repo: Path, loaded, hook_input) -> None:
+    loaded("old-0000", installed="fead6e89" + "0" * 32)
     assert _turn(repo, hook_input) == {"lines": [], "unchecked": True}
 
 
-def test_the_repository_is_read_at_most_once_a_while(
-        repo: Path, loaded, repository, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(build, "KEEP_S", 900)
+@pytest.fixture
+def spawned(monkeypatch: pytest.MonkeyPatch) -> list:
+    urls: list = []
+    monkeypatch.setattr(build, "_spawn", urls.append)
+    monkeypatch.setattr(build, "_fetch", lambda url: pytest.fail("the hook waited"))
+    return urls
+
+
+def _kept(commit: str, age: float) -> None:
+    from plumb.launcher import plumb_home
+
+    plumb_home().mkdir(parents=True, exist_ok=True)
+    (plumb_home() / "latest.json").write_text(json.dumps(
+        {"url": URL, "commit": commit, "at": time.time() - age}), encoding="utf-8")
+
+
+def test_a_stale_cache_answers_at_once_and_refreshes_in_the_background(
+        loaded, spawned) -> None:
     loaded("old-0000")
-    build.check(repo)
-    build.check(repo)
-    assert repository["reads"] == 1
+    _kept("stale-commit", build.KEEP_S + 1)
+    assert REAL_LATEST(URL) == "stale-commit"
+    assert spawned == [URL]
+    assert REAL_LATEST(URL) == "stale-commit" and spawned == [URL]   # not once per prompt
 
 
-def _raw_404(monkeypatch: pytest.MonkeyPatch) -> None:
-    import urllib.request
+def test_a_fresh_cache_spawns_nothing_and_a_missing_one_is_unknown(
+        loaded, spawned) -> None:
+    loaded("old-0000")
+    assert REAL_LATEST(URL) == "" and spawned == [URL]
+    spawned.clear()
+    _kept("fresh-commit", 1)
+    assert REAL_LATEST(URL) == "fresh-commit" and spawned == []
 
-    def refuse(*args, **kwargs):
-        raise OSError("HTTP Error 404: Not Found")
-    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+
+def test_the_refresh_keeps_the_commit_and_a_failure_only_for_a_short_while(
+        loaded, spawned, monkeypatch: pytest.MonkeyPatch) -> None:
+    loaded("old-0000")
+    monkeypatch.setattr(build, "_fetch", lambda url: "abc123")
+    build._refresh(URL)
+    assert REAL_LATEST(URL) == "abc123" and spawned == []
+    monkeypatch.setattr(build, "_fetch", lambda url: "")
+    build._refresh(URL)
+    assert REAL_LATEST(URL) == "" and spawned == []             # failed: not retried yet
+    _kept("", build.KEEP_S + 1)
+    REAL_LATEST(URL)
+    assert spawned == [URL]
 
 
-def test_a_private_repository_is_read_through_the_github_cli(
+def test_the_remote_commit_is_read_with_ls_remote_only(
         monkeypatch: pytest.MonkeyPatch) -> None:
-    _raw_404(monkeypatch)
     calls = []
 
     def run(cmd, **kwargs):
         calls.append(cmd)
-        gh = cmd[0] == "gh"
-        out = json.dumps({"source_digest": "new-0000"}) if gh else "abc123\trefs/heads/main\n"
-        return subprocess.CompletedProcess(cmd, 0, out, "")
+        return subprocess.CompletedProcess(cmd, 0, "abc123\trefs/heads/main\n", "")
     monkeypatch.setattr(subprocess, "run", run)
-    assert build._fetch(URL) == ("new-0000", "abc123")
-    assert any(c[0] == "gh" and f"repos/Cols77/plumb/contents/{build.MANIFEST}?ref=main" in c
-               for c in calls)
+    assert build._fetch(URL) == "abc123"
+    assert calls == [["git", "ls-remote", URL, "refs/heads/main"]]
 
-
-def test_when_the_github_cli_fails_too_the_repository_stays_unchecked(
-        monkeypatch: pytest.MonkeyPatch) -> None:
-    _raw_404(monkeypatch)
-
-    def run(cmd, **kwargs):
-        raise FileNotFoundError("gh")
-    monkeypatch.setattr(subprocess, "run", run)
-    assert build._fetch(URL) == ("", "")
+    def timeout(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, 30)
+    monkeypatch.setattr(subprocess, "run", timeout)
+    assert build._fetch(URL) == ""

@@ -23,7 +23,7 @@ CASE = "field-answers-dropped-after-upgrade"
 def plugin(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """``plugin(same)``: Claude Code runs a plugin whose build is plumb's repository's (or an
     older one)."""
-    monkeypatch.setattr(build, "_latest", lambda url: ("main", ""))  # its main
+    monkeypatch.setattr(build, "_latest", lambda url: "main")  # its main
     monkeypatch.setenv("PLUMB_SESSION_ID", "s2")
     for name in ("CLAUDE_PLUGIN_ROOT", "PLUMB_PLUGIN_ROOT"):
         monkeypatch.delenv(name, raising=False)
@@ -37,6 +37,11 @@ def plugin(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         (loaded.parent / ".claude-plugin" / "plugin.json").write_text(json.dumps(
             {"repository": "https://github.com/Cols77/plumb"}), "utf-8")
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(loaded.parent))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+        (tmp_path / "claude" / "plugins").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "claude" / "plugins" / "installed_plugins.json").write_text(json.dumps(
+            {"plugins": {"plumb@plumb": [{"scope": "user", "installPath": str(loaded.parent),
+                                          "gitCommitSha": "main" if same else "old"}]}}), "utf-8")
     return run
 
 
@@ -58,8 +63,9 @@ def test_the_build_is_outdated_only_when_the_loaded_plugin_differs_from_main(
     plugin(True)
     assert build.outdated(repo) == (False, "")
     plugin(False)
-    assert build.outdated(repo) == (True, "plumb old differs from its repository's "
-                                         "main: update the plugin, then reload plugins")
+    assert build.outdated(repo) == (True, "installed plugin old differs from its "
+                                         "repository's main: update the plugin, then reload "
+                                         "plugins")
 
 
 @pytest.mark.sr("SR-356")

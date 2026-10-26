@@ -1,24 +1,26 @@
 """Which plumb build Claude Code runs, against plumb's local main and plumb's repository
-(SR-357, SR-358). Three builds, each known by its vendored source digest: the loaded plugin's,
-the one on the main of plumb's local clone (the session's repository when it is plumb's own), and
-the one on the main of the repository the plugin's ``plugin.json`` names. Each misalignment is a
-line with both versions and the fix; git history says which side is ahead. The repository is read
-at most once per ``KEEP_S``, and when it cannot be read nothing is said against it but that.
+(SR-357, SR-358). The running plugin is known by its vendored source digest and compared with
+the one on the main of plumb's local clone (the session's repository when it is plumb's own). The
+installed plugin is known by the commit Claude Code recorded, compared with the commit of the
+main of the repository the plugin's ``plugin.json`` names (``git ls-remote``; a folder that is no
+installed copy is compared as local main). Each misalignment is a line with both versions and the
+fix; git history says which side is ahead. The remote is read by a detached process, never by
+the hook, kept ``KEEP_S``; when it is unknown nothing is said against it but that.
 Nothing is reinstalled or pushed."""
 
 from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 MANIFEST = "plugin/vendor/MANIFEST.json"
 KEEP_S = 900
-TIMEOUT_S = 3.0
-_GITHUB = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+REFRESH_S = 30.0      # the detached refresh may wait for the network; the hook never does
+FAILED_S = 60.0       # a failed or running refresh is not started again for this long
 
 
 def _read(path: Path) -> dict:
@@ -58,50 +60,74 @@ def _plugin(root: Path | str) -> str:
     return str(_read(host).get("plugin") or "")
 
 
-def _fetch(url: str) -> tuple[str, str]:
-    """``(digest, commit)`` of the repository's main; "" for what cannot be read."""
-    import urllib.request
+def _installed(root: Path | str, loaded: str) -> str:
+    """The commit Claude Code recorded when it installed the loaded plugin ("" for a folder
+    that is no installed cache copy): the entry of this root's, else the user-wide one."""
+    home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    entries = _read(home / "plugins" / "installed_plugins.json").get("plugins", {}).get(
+        "plumb@plumb") or []
 
-    found = _GITHUB.match(url)
-    if not found:    # shortcut: GitHub only; read other hosts' raw files once plumb lives there
-        return "", ""
-    raw = f"https://raw.githubusercontent.com/{found[1]}/{found[2]}/main/{MANIFEST}"
+    def norm(path: object) -> str:
+        return os.path.normcase(os.path.normpath(str(path)))
+    here = [e for e in entries if isinstance(e, dict) and e.get("installPath")
+            and norm(loaded).startswith(norm(e["installPath"]))] if loaded else []
+    mine = [e for e in here if e.get("projectPath") and norm(e["projectPath"]) == norm(root)]
+    anyone = [e for e in here if not e.get("projectPath")]
+    return str(next(iter(mine or anyone), {}).get("gitCommitSha") or "")
+
+
+def _fetch(url: str) -> str:
+    """The commit of the repository's main; "" when it cannot be read."""
     try:
-        with urllib.request.urlopen(raw, timeout=TIMEOUT_S) as answer:   # noqa: S310 - https
-            digest = _digest(answer.read().decode("utf-8"))
-    except (OSError, ValueError):    # a private repository answers 404: ask the GitHub CLI
-        try:
-            done = subprocess.run(
-                ["gh", "api", "-H", "Accept: application/vnd.github.raw",
-                 f"repos/{found[1]}/{found[2]}/contents/{MANIFEST}?ref=main"],
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=TIMEOUT_S)
-        except (OSError, subprocess.SubprocessError):
-            return "", ""
-        digest = _digest(done.stdout) if done.returncode == 0 else ""
-        if not digest:
-            return "", ""
-    head = (_git(".", "ls-remote", url, "refs/heads/main", timeout=TIMEOUT_S) or "").split()
-    return digest, head[0] if head else ""
+        done = subprocess.run(["git", "ls-remote", url, "refs/heads/main"], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", timeout=REFRESH_S,
+                              env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    head = done.stdout.split() if done.returncode == 0 else []
+    return head[0] if head else ""
 
 
-def _latest(url: str) -> tuple[str, str]:
-    """The repository's ``(digest, commit)``, kept ``KEEP_S`` in plumb's home (a failure too)."""
+def _keep(url: str, commit: str, fresh_for: float) -> None:
     from plumb.launcher import plumb_home
+    from plumb.understand.files import write_json_atomic
 
-    path = plumb_home() / "latest.json"
-    kept = _read(path)
-    if kept.get("url") == url and time.time() - float(kept.get("at") or 0) < KEEP_S:
-        return str(kept.get("digest") or ""), str(kept.get("commit") or "")
-    digest, commit = _fetch(url)
     try:
-        from plumb.understand.files import write_json_atomic
-
-        write_json_atomic(path, {"url": url, "at": time.time(), "digest": digest,
-                                 "commit": commit})
+        write_json_atomic(plumb_home() / "latest.json", {
+            "url": url, "commit": commit, "at": time.time() - KEEP_S + fresh_for})
     except OSError:
         pass
-    return digest, commit
+
+
+def _refresh(url: str) -> None:
+    """Runs detached (``python -m plumb.build URL``): reads the remote, keeps the answer
+    ``KEEP_S``, or a failure ``FAILED_S``."""
+    commit = _fetch(url)
+    _keep(url, commit, KEEP_S if commit else FAILED_S)
+
+
+def _spawn(url: str) -> None:
+    flags = ({"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+             if os.name == "nt" else {"start_new_session": True})
+    try:
+        subprocess.Popen([sys.executable, "-m", "plumb.build", url], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **flags)
+    except OSError:
+        pass
+
+
+def _latest(url: str) -> str:
+    """The repository main's commit as last kept in plumb's home; never waits for the network:
+    a stale or missing answer is returned as it is ("" when none) and a detached process
+    refreshes it, once per ``FAILED_S`` at most."""
+    from plumb.launcher import plumb_home
+
+    kept = _read(plumb_home() / "latest.json")
+    same = kept.get("url") == url
+    if not same or time.time() - float(kept.get("at") or 0) >= KEEP_S:
+        _keep(url, str(kept.get("commit") or "") if same else "", FAILED_S)   # the lease
+        _spawn(url)
+    return str(kept.get("commit") or "") if same else ""
 
 
 def _built_at(clone: str, digest: str) -> str:
@@ -142,23 +168,29 @@ def check(root: Path | str) -> dict:
             "differs": f"plumb {running[:7]} differs from local main's {local[:7]}: reload "
                        "plugins"}[way])
     url = str(_read(Path(loaded) / ".claude-plugin" / "plugin.json").get("repository") or "")
-    latest, commit = _latest(url) if url else ("", "")
-    name, ours = ("local main", local) if local else ("plumb", running)
-    if latest and latest != ours:
+    commit = _latest(url) if url else ""
+    installed = _installed(root, loaded)
+    head = (_git(clone, "rev-parse", "main") or "").strip() if local else ""
+    name, ours = ("installed plugin", installed) if installed else ("local main", head)
+    if commit and ours and ours != commit:
         # shortcut: without a local clone there is no history to order them; say "differs"
-        way = _way(clone, (_git(clone, "rev-parse", "main") or "").strip(), commit) \
-            if local else "differs"
+        way = _way(clone, ours, commit) if clone else "differs"
         how = {"behind": "is behind", "ahead": "is ahead of", "differs": "differs from"}[way]
-        fix = {"behind": "pull main", "ahead": "push main",
-               "differs": "pull or push main" if local else
-               "update the plugin, then reload plugins"}[way]
-        lines.append(f"{name} {ours[:7]} {how} its repository's {latest[:7]}: {fix}")
-    return {"lines": lines, "unchecked": not latest, "loaded": True}
+        fix = {"behind": "update the plugin, then reload plugins" if installed else "pull main",
+               "ahead": "push main",
+               "differs": "update the plugin, then reload plugins" if installed else
+               "pull or push main"}[way]
+        lines.append(f"{name} {ours[:7]} {how} its repository's {commit[:7]}: {fix}")
+    return {"lines": lines, "unchecked": not commit, "loaded": True}
 
 
 def outdated(root: Path | str) -> tuple[bool, str]:
     """``(True, "<the first misalignment>")`` when the running plugin is not the build it should
     be (local main's, else the repository's); ``(False, "")`` otherwise."""
     lines = check(root)["lines"]
-    first = next((line for line in lines if line.startswith("plumb ")), "")
+    first = next((line for line in lines if line.startswith(("plumb ", "installed plugin "))), "")
     return (True, first) if first else (False, "")
+
+
+if __name__ == "__main__":
+    _refresh(sys.argv[1])
