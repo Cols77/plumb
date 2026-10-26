@@ -85,9 +85,7 @@ def test_host_timeouts_sit_above_the_hard_limit_and_grace() -> None:
     import build_plugin
     from plumb.hosts.claude_code.stop import STOP_GRACE_S
 
-    hooks = json.loads(build_plugin.hooks_json())["hooks"]
-    timeouts = [h["timeout"] for groups in hooks.values() for g in groups for h in g["hooks"]]
-    assert min(timeouts) > hookio.HARD_LIMIT_S + STOP_GRACE_S
+    assert min(_watched_timeouts(build_plugin)) > hookio.HARD_LIMIT_S + STOP_GRACE_S
     budgets = HooksConfig().budget_ms
     assert all(v < hookio.HARD_LIMIT_S * 1000 for v in budgets.values())
 
@@ -98,9 +96,20 @@ def _host_limit() -> float:
     import build_plugin
     from plumb.hosts.claude_code.stop import STOP_GRACE_S
 
+    return min(_watched_timeouts(build_plugin)) - STOP_GRACE_S
+
+
+# SR-379: pre-tool and edit-check sit in the agent's way on every tool call, so they time out at
+# 10 s and are not bounded by the watchdog's hard limit
+_QUICK_HOOKS = ("pre-tool", "edit-check")
+
+
+def _watched_timeouts(build_plugin) -> list[int]:
     hooks = json.loads(build_plugin.hooks_json())["hooks"]
-    return min(h["timeout"] for groups in hooks.values() for g in groups
-               for h in g["hooks"]) - STOP_GRACE_S
+    timeouts = {h["command"].rsplit(" ", 1)[-1]: h["timeout"]
+                for groups in hooks.values() for g in groups for h in g["hooks"]}
+    assert all(timeouts[name] == 10 for name in _QUICK_HOOKS)
+    return [t for name, t in timeouts.items() if name not in _QUICK_HOOKS]
 
 
 def test_a_requested_limit_within_host_timeouts_applies(repo: Path) -> None:

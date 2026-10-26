@@ -161,7 +161,9 @@ def test_every_route_names_a_module_path() -> None:
                 # INT-105: `plumb evaluate`, the benchmark
                 "evaluate",
                 # SR-362: `plumb question reword|pushback`
-                "question"}
+                "question",
+                # SR-374: `plumb context <condition>`, the full picture of one condition
+                "context"}
     assert set(cli.ROUTES) == expected
     for module in cli.ROUTES.values():
         assert re.fullmatch(r"plumb(\.[a-z_]+)+", module)
