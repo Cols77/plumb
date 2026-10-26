@@ -15,8 +15,9 @@ owner's message and says which of these things happened:
   they flip an assumption by saying so.
 - ask (plumb's judge has questions about what the owner meant): put them to the owner as
   plumb-records says, then run `plumb clarify --wait --json` again after their answers.
-  Ask no more than it gives. An option "Study it in the room" or "Study it first" is the owner's to take: they
-  answer it by pressing the band's line that follows, and you open nothing.
+  Ask no more than it gives. An option "Study it in the room" or "Study it first" is the
+  owner's to take: they answer it by pressing the band's line that follows, and you open
+  nothing.
 - a choice question (`card`: the one that blocks, because no answer is better supported; its
   recommended option comes first): ask it with the question tool as `ask` does, with the
   options as the card names them. When it names a diagram file, draw it first with the

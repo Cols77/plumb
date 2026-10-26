@@ -58,9 +58,9 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
   routine fixes plumb made quietly stay out unless they ask for them. Never a record number,
   a link or a command: those are yours, in the plumb-debug skill. A behaviour that changed
   under one of their decisions reaches them as one question through the question tool, which
-  you pass on as the plumb-records skill says. You decide nothing for them. plumb reruns its own step
-  once; a case it could not put right ends as a defect report, which you read to them in
-  their terms.
+  you pass on as the plumb-records skill says. You decide nothing for them. plumb reruns its
+  own step once; a case it could not put right ends as a defect report, which you read to
+  them in their terms.
 - `impact <anything>`: run `plumb impact <their words>` and say in plain terms what a
   change would reach.
 - `study <topic>` (also their plain words, "make me a study on how merges are held"):
