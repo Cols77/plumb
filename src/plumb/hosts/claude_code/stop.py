@@ -382,7 +382,9 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     ctx.mark("next action")
     queue_notes(ctx, [*stale_notes, *(line.text for line in aware),
                       *([skip_notice(skipped)] if skipped else [])])
-    return out if out is not None else owner_output(ctx, core)
+    out = out if out is not None else owner_output(ctx, core)
+    ctx.mark("owner line")
+    return out
 
 
 def _behaviour(core: Any, index: Mapping[str, Any], nodes: Iterable[str],
@@ -673,7 +675,11 @@ def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,
     from plumb.mod.handshake import deliver
 
     # with plumb's panel active, the owner's part goes to present.json, not a systemMessage
-    return run_hook("stop", lambda ctx: deliver(ctx, handle(ctx, verify=verify,
-                                                            unjudged=unjudged)),
+    def answer(ctx: HookContext) -> HookOutput | None:
+        out = deliver(ctx, handle(ctx, verify=verify, unjudged=unjudged))
+        ctx.mark("panel")
+        return out
+
+    return run_hook("stop", answer,
                     stdin=stdin, stdout=stdout, root=root, budget_ms=hook_budget("stop"),
                     json_output=True, watchdog=watchdog, start=start, grace_s=STOP_GRACE_S)
