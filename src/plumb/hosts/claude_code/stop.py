@@ -1,41 +1,24 @@
-"""Stop: covering tests within the budget, the three triggers, then the cards (spec 6.4;
-sp7-realign-sp8 C7, slice 3).
+"""Stop: the one next action of a turn (SR-373), within what its reader needs (SR-375).
 
-1. This turn's changed paths: the session's ``touched.txt`` plus every path of one
-   ``git status`` call whose mtime is at or after the turn start.
-2. Their records (``CoreAPI.records_for_paths``), the link states of those records only, the
-   covering selection (``VerifyAPI.select``) and its evidence.
-3. The read-back comes first (R1): the cards drawn from the record states alone (a changed
-   acceptance test) are kept (``HookContext.keep``) before any evidence step, so a budget cut,
-   an error or the watchdog still shows them. Then the covering tests and fidelity. Write
-   ``status.json`` (the status line: the status card lives there, never in the owner's text)
-   and the stated set (``stated.json``): a stated record is ``shown`` only when a card drew it
-   in full on plumb's panel (without it the cards reach the agent only, SR-295).
-4. At most one block per turn, never when the host says ``stop_hook_active``: covering tests
-   without fresh evidence (the agent runs ``plumb tests run --paths <this turn's paths>`` in
-   its turn; the hook never runs pytest) and a regression (trigger 3, R3: a node that passed
-   with recorded evidence and now fails; once per failing run). A new test that starts red is
-   "not yet passing" and never asks. The block's lines go through the one emitter
-   (``plumb.present.delta``): each once per session per state, within
-   ``hooks.stop_tokens``; the covering-tests instruction and the skipped-check notice are
-   about this turn (``per_turn``), so every turn whose covering tests lack fresh evidence
-   blocks once, whatever the prompt's words. The block is for the agent; the owner sees none
-   of it.
-5. Otherwise ``StopParts`` (what the owner's words confirmed, then the cards) go to the
-   agent as text, queued for the next prompt (SR-266). The stop hook builds the cards of its
-   own facts (``plumb.understand.cards``): a regression, a changed acceptance test, a merge
-   conflict, an early conflict; the summary of the understanding layer draws them with its own
-   and the stale-link and drift cards, each in full, those only the owner can settle tagged
-   for the agent to ask with the question tool (SR-295). The owner's text is at most one plumb
-   line (``summary.owner_line``, SR-265); a turn with nothing for the owner shows nothing. A
-   decision is never asked here, as a card or in the agent's words (INT-037).
+Inline, in this order: queue the rest for the background worker (the owner-words
+confirmations, the upkeep, the jobs: ``summary.queue_after_stop``, delivered through the
+agent's notes at the next prompt); this turn's changed paths (the session's ``touched.txt``
+plus every path of one ``git status`` call whose mtime is at or after the turn start); their
+records and the stated set (nothing is drawn, so a bare "ok" confirms nothing); the status
+line (``status.json``); the covering selection (``VerifyAPI.select``) and its evidence; the
+regression check; then the one next action, as a block for the agent, chosen in this order:
+a regression > covering tests lacking a fresh run (the agent runs ``plumb tests run --paths``;
+the hook never runs pytest) > a file no requirement owns > the links this turn moved (the stale
+hold, SR-111) > the judge's questions that block its next task. Each goes through the one
+emitter (``plumb.present.delta``), once per session per state; one already said gives way to
+the next. Never when the host says ``stop_hook_active``, except the stale hold.
+
+The owner gets one plain line only when something needs them (``summary.owner_line``): a
+regression on confirmed behaviour, a merge that waits; nothing inside an intent loop. Each
+step is marked for the profile (``HookContext.mark``, ``PLUMB_HOOK_PROFILE=1``).
 
 The deadline is checked before a step starts, never after it ends (spec 10): a step that
-would start past the soft budget is skipped and named in the status line, and results already
-computed are always used (the stated set, the snapshot, the block and the cards). The record
-states and the read-back are never skipped by the soft budget: only the watchdog's hard limit
-bounds them, and it prints whatever was kept.
-"""
+would start past the soft budget is skipped and named in the status line."""
 
 from __future__ import annotations
 
@@ -56,7 +39,7 @@ from plumb.hosts.claude_code.hookio import (
     run_hook,
     write_json_atomic,
 )
-from plumb.hosts.claude_code.providers import LAZY, unjudged_fn, verify_api
+from plumb.hosts.claude_code.providers import LAZY, verify_api
 from plumb.trace import is_code_path
 
 IGNORED_PREFIXES = (".plumb/session/", ".plumb/cache/", ".plumb/log/", ".plumb/view/",
@@ -261,21 +244,12 @@ def _panel_shows(ctx: HookContext, turn: Mapping[str, Any]) -> bool:
 
 def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
                skipped: Sequence[str]) -> HookOutput | None:
-    """A turn with no edit: the cards plumb conflicts, capture or the clarify read-back asked
-    for and what the owner's words confirmed need none (R17: asked at once)."""
+    """A turn with no edit (SR-373 EX-4): nothing for the agent, the owner's line only when
+    something needs them."""
     if skipped:  # a timed-out git status is no evidence of a turn without changes
         note_skipped(ctx.root, skipped)
-    fresh, early = owner_cards(ctx, core, turn)
-    shown: dict[str, str] = {}
-    text = understand_parts(ctx, core, turn, fresh=fresh, shown=shown)
-    write_stated(ctx, turn, {}, [], early=early, conflicts=conflict_entries(core))
-    from plumb.hosts.claude_code.snapshot import refresh_judge_count
-
-    try:
-        refresh_judge_count(core)
-    except Exception:  # noqa: BLE001 - the band's count is advisory; the turn end goes on
-        pass
-    return owner_output(ctx, core, text)
+    write_stated(ctx, turn, {}, [], conflicts=conflict_entries(core))
+    return owner_output(ctx, core)   # the band's counts: the worker's refresh_counts
 
 
 class Verified(NamedTuple):
@@ -327,22 +301,11 @@ def _verification(ctx: HookContext, core: Any, verify: Any, index: Any, all_stat
                     open_masked, not_run, unselected)
 
 
-def _unjudged(ctx: HookContext, core: Any, unjudged: Any, touched_ids: Sequence[str],
-              index: Any, skipped: list[str]) -> tuple[Any, ...]:
-    """The touched requirements whose fidelity is not judged yet (advisory only)."""
-    requirement_ids = [i for i in touched_ids if index[i].kind == "requirement"]
-    if unjudged is None or not requirement_ids:
-        return ()
-    if ctx.deadline.expired():
-        skipped.append("fidelity")
-        return ()
-    try:
-        return tuple(unjudged(core, requirement_ids))
-    except Exception:  # noqa: BLE001 - advisory only
-        return ()
-
-
 def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> HookOutput | None:
+    """SR-375, SR-373: the inline work is what the next step needs (this turn's paths, their
+    records, the covering selection, the regression check, the one next action, the status
+    line); the rest goes to the background worker. ``unjudged`` is accepted for the callers
+    and unused: fidelity is no longer checked at a turn's end."""
     active = bool(ctx.data.get("stop_hook_active"))
     session_dir = ctx.session_dir / ctx.session_id
     turn_path = session_dir / "turn.json"
@@ -357,178 +320,151 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     git_timeout = min(GIT_TIMEOUT_S, max(ctx.deadline.remaining_s(), 0.05))
     job = GitStatusJob(ctx.root, git_timeout) if turn_start > 0 else None
     from plumb.api import open_core
-    from plumb.hosts.claude_code.snapshot import build_snapshot, write_snapshot
+    from plumb.hosts.claude_code.snapshot import tests_state, write_turn_fields
+    from plumb.understand.summary import queue_after_stop
 
+    # first, so no cut loses it: the confirmations, the upkeep and the jobs (SR-375)
+    queue_after_stop(ctx.root, ctx.session_id, turn, ctx.data.get("transcript_path"))
+    ctx.mark("queue background")
     core = open_core(ctx.root)
     core.index()  # read while git status runs; both turn paths need it
+    ctx.mark("record index")
     changed = changed_paths(ctx.root, session_dir / "touched.txt", turn_start, git_timeout,
                             skipped, job)
+    ctx.mark("changed paths")
     if not changed:
         return (None if active else _ask_block(ctx, core)) or _unchanged(ctx, core, turn,
                                                                          skipped)
-    # no soft-budget check before the read-back (R1): only the watchdog bounds it
     index = core.index()
     by_path = core.records_for_paths(changed)
     touched_ids = sorted({i for ids in by_path.values() for i in ids if i in index})
     changed_set = set(changed)
     edited_ids = [i for i in touched_ids if index[i].path in changed_set]
-    all_statuses = core.status()
+    statuses = core.status(touched_ids)   # SR-375: no link state of an untouched record
+    stated_ids = [i for i in edited_ids if statuses[i].confirmation != "confirmed"]
+    write_stated(ctx, turn, index, stated_ids)   # nothing drawn: a bare "ok" confirms nothing
+    from plumb.present.cards import session_intent
     from plumb.trace import untraced_paths
 
-    # work no requirement owns escaped the translation chain: the agent is told to read it
-    # back and record a proposed SR (non-blocking, R1)
-    untraced = untraced_paths(core, changed)
-    told_raw = turn.get("untraced_told")
-    told = {str(p) for p in told_raw} if isinstance(told_raw, list) else set()
-
-    stated_ids = [i for i in edited_ids if all_statuses[i].confirmation != "confirmed"]
-    from plumb.present.cards import session_intent
-
     intent_summary = session_intent(core, index, touched_ids, session_dir)
-    # R1 first: the cards from the record states alone are kept before any evidence step, so
-    # a cut (budget, error, watchdog) still shows them; kept before the stated set says
-    # "shown", never after
-    early_snapshot = build_snapshot(core, statuses=all_statuses, auto_approve="off",
-                                    tests_summary=("unknown", (), ()),
-                                    intent_summary=intent_summary)
-    stamp = int(turn_start)
-    test_cards = _early_state(ctx, core, index, turn, touched_ids, all_statuses, stated_ids,
-                              early_snapshot, stamp)
-    note_path = session_dir / "untraced.json"
-    queued = [p for p in untraced if p not in told]
-    if queued:  # delivered by the next prompt hook, so a cut after this still tells the agent
-        write_json_atomic(note_path, {"paths": queued,
-                                      "prompt_digest": turn.get("prompt_digest")})
-
+    present = getattr(core.config, "present", None)
+    # the status line first: a later cut must not leave it on an older turn
+    write_turn_fields(ctx.root, present=present, tests="unknown", failing=(), regressions=(),
+                      skipped=None, intent_summary=intent_summary)
+    ctx.mark("records")
+    # work no requirement owns escaped the translation chain (R1): the next prompt hook
+    # delivers the note
+    queued = untraced_paths(core, changed)   # the emitter tells each path once (sp5 3)
+    if queued:
+        write_json_atomic(session_dir / "untraced.json",
+                          {"paths": queued, "prompt_digest": turn.get("prompt_digest")})
+    ctx.mark("untraced")
     verify = verify_api(core, verify)
-    v = _verification(ctx, core, verify, index, all_statuses, touched_ids, changed,
+    v = _verification(ctx, core, verify, index, statuses, touched_ids, changed,
                       turn_start, asked, skipped)
-
-    fidelity = _unjudged(ctx, core, unjudged_fn(unjudged), touched_ids, index, skipped)
-    snapshot = build_snapshot(
-        core, evidence=v.evidence, full_pending=v.pending, statuses=all_statuses,
-        deferred=len(v.selection.deferred) if v.selection else 0, fidelity_unjudged=fidelity,
-        ask=len(v.regressing) + len(v.masked), skipped=", ".join(skipped) or None,
-        intent_summary=intent_summary)
-    write_snapshot(ctx.root, snapshot, present=getattr(core.config, "present", None))
+    ctx.mark("covering tests")
+    tests, failing, regressions = tests_state(v.evidence)
+    write_turn_fields(ctx.root, present=present, tests=tests, failing=failing,
+                      regressions=regressions,
+                      deferred=len(v.selection.deferred) if v.selection else 0,
+                      full_pending=bool(v.pending and v.pending.pending),
+                      full_pending_reasons=tuple(v.pending.reasons) if v.pending else (),
+                      ask=len(v.regressing) + len(v.masked),
+                      skipped=", ".join(skipped) or None, intent_summary=intent_summary)
     # sp6 9.2, 9.4, R17: publish this worktree's changes, keep its intent in flight in step,
     # and the overlap lines of the records this turn touched (each once per other version)
     from plumb.awareness.turn import at_stop
 
     aware = at_stop(core, changed, touched_ids, ctx.deadline)
-    stale_reasons, stale_notes = stale_hold(ctx, core, index, turn, turn_start)
-
-    blocked = _block_reasons(ctx, core, index, turn, turn_path, active, v, changed, asked,
-                             stated_ids, told, queued, note_path, skipped, aware,
-                             stale_reasons)
-    if blocked:
-        return blocked
+    ctx.mark("awareness")
+    out, stale_notes = _next_action(ctx, core, index, turn, turn_path, active,
+                                    v, changed, asked, queued, turn_start)
+    ctx.mark("next action")
     queue_notes(ctx, [*stale_notes, *(line.text for line in aware),
                       *([skip_notice(skipped)] if skipped else [])])
-
-    confirmed = [i for i in touched_ids if index[i].kind == "requirement"
-                 and all_statuses[i].confirmation == "confirmed"]
-    return _cards(ctx, core, index, turn, v, test_cards, stated_ids, stamp, confirmed)
+    return out if out is not None else owner_output(ctx, core)
 
 
-def _early_state(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any],
-                 touched_ids: Sequence[str], all_statuses: Any, stated_ids: Sequence[str],
-                 early_snapshot: Any, stamp: int) -> list[Any]:
-    """Keep the test-changed cards, the stated set and the status line before any evidence step."""
-    from plumb.hosts.claude_code.snapshot import write_snapshot
-    from plumb.understand import cards as card_text
-
-    # SR-030: a confirmed requirement whose acceptance test changed since the owner confirmed
-    # it waits for the owner on its own card (never only in plumb status); it stays out of the
-    # stated set, so a bare "ok" never confirms the new test (the card recommends putting the
-    # test back)
-    test_changed = [i for i in touched_ids if index[i].kind == "requirement"
-                    and getattr(all_statuses.get(i), "changed_tests", ())]
-    test_cards = [card_text.test_changed_card(index[i], all_statuses[i].changed_tests,
-                                              turn=stamp) for i in test_changed]
-    kept: dict[str, str] = {}
-    ctx.keep(drawn_now(core, test_cards, kept))
-    write_stated(ctx, turn, index, stated_ids, kept)
-    # then the status line: a later cut (budget, watchdog) must not leave it on an older turn
-    write_snapshot(ctx.root, early_snapshot, present=getattr(core.config, "present", None))
-    return test_cards
+def _behaviour(core: Any, index: Mapping[str, Any], nodes: Iterable[str],
+               masked: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The confirmed requirements the regressing tests verify, by title (SR-373 EX-5)."""
+    nodes = set(nodes)
+    test_files = {n.split("::", 1)[0] for n in nodes}
+    verifying = [r.id for r in index.values() if r.kind == "requirement" and {
+        link.target.test or link.target.path or "" for link in r.links
+        if link.kind == "verified_by"} & (nodes | test_files)]
+    titles: dict[str, None] = {}
+    for record_id, status in core.status(verifying).items():
+        if status.confirmation == "confirmed":
+            titles.setdefault(index[record_id].title, None)
+    for item in masked:
+        for record_id in item.get("requirements") or {}:
+            if record_id in index:
+                titles.setdefault(index[record_id].title, None)
+    return list(titles)
 
 
-def _block_reasons(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any],
-                   turn_path: Path, active: bool, v: Any, changed: Sequence[str],
-                   asked: dict[str, Any], stated_ids: Sequence[str], told: set[str],
-                   queued: Sequence[str], note_path: Path, skipped: Sequence[str],
-                   aware: Sequence[str], stale_reasons: Sequence[str]) -> HookOutput | None:
-    """The block that tells the agent what to do before it stops, or None to go on to cards."""
-    from plumb.trace import trace_instruction
+def _next_action(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], turn_path: Path, active: bool, v: Verified,
+                 changed: Sequence[str], asked: dict[str, Any],
+                 queued: Sequence[str], turn_start: float
+                 ) -> tuple[HookOutput | None, list[str]]:
+    """SR-373: ``(the block naming the one next action, or None; the stale notes to queue)``.
 
-    if not active:
-        from plumb.present.delta import Line, open_emitter
+    The action is the first of: a regression > the covering tests lacking a fresh run > a
+    file no requirement owns (never a block: its note waits for the next prompt, R1) > the
+    links this turn moved > the judge's questions. Each is said
+    once per session per state (``plumb.present.delta``); one already said gives way to the
+    next. A stop that already followed a block repeats only the stale hold (SR-111)."""
+    if active:
+        stale_reasons, notes = stale_hold(ctx, core, index, turn, turn_start)
+        return (HookOutput(block_reason="\n".join(stale_reasons)) if stale_reasons
+                else None), notes
+    from plumb.present.delta import Line, open_emitter
 
-        # the agent's instructions go through the one emitter (sp5 3): each once per
-        # session per state; the triggers and the tests instruction are never cut
-        emitter = open_emitter(ctx, "stop", config=core.config)
-        wanted: list[Line] = []
-        if v.not_run or v.unselected:
-            wanted.append(Line(tests_instruction(changed,
-                                                 float(core.config.verify.turn_budget_s)),
-                               subject="tests", must=True, per_turn=True))
+    emitter = open_emitter(ctx, "stop", config=core.config)
+    regressions = [Line(_regression_line(n, v.regressing[n]), subject=f"regression:{n}",
+                        state=v.regressing[n].last_run or "?", must=True)
+                   for n in v.open_regressions]
+    regressions += [Line(_masked_line(index, m), subject=f"masked:{m['node']}",
+                         state=str(m.get("masked_by") or "?"), must=True)
+                    for m in v.open_masked]
+    reasons = emitter.add(regressions)
+    owner = ""
+    if reasons:
         for n in v.open_regressions:
-            wanted.append(Line(_regression_line(n, v.regressing[n]), subject=f"regression:{n}",
-                               state=v.regressing[n].last_run or "?", must=True))
             asked[f"regression:{n}"] = v.regressing[n].last_run or "?"
         for m in v.open_masked:
-            wanted.append(Line(_masked_line(index, m), subject=f"masked:{m['node']}",
-                               state=str(m.get("masked_by") or "?"), must=True))
             asked[f"masked:{m['node']}"] = str(m.get("masked_by") or "?")
-        wanted += _questions_line(core, ctx.session_id)
-        reasons = emitter.add(wanted)
-        if stale_reasons:  # SR-111: a link this turn made stale is still unresolved
-            reasons = [*stale_reasons, *reasons]
-        if reasons:
-            if queued:  # the block tells the agent now; the next prompt need not repeat it
-                new = [p for p in queued if emitter.is_new(f"untraced:{p}")]
-                # oneshot: the note is removed below, so the budget must never cut it
-                reasons += emitter.add([Line(trace_instruction(new, core=core),
-                                             subject="untraced:" + "|".join(sorted(new)),
-                                             marks=tuple(f"untraced:{p}" for p in new),
-                                             oneshot=True)]
-                                       if new else [])
-                try:
-                    note_path.unlink()
-                except OSError:
-                    pass
-            if skipped:
-                reasons += emitter.add([Line(skip_notice(skipped), per_turn=True)])
-            reasons += emitter.add(aware)
-            emitter.close()
-            # a blocked stop shows the owner nothing: a bare "ok" confirms no record
-            write_stated(ctx, turn, index, stated_ids)
-            write_json_atomic(turn_path, {**turn, "asked": asked,
-                                          "untraced_told": sorted(told | set(queued))})
-            return HookOutput(block_reason="\n".join(reasons))
-    elif stale_reasons:
-        # the host says this stop already followed a block: only the stale hold repeats, up to
-        # hooks.stale_holds_max times (stale.hold_count), so a turn is never held forever
-        write_stated(ctx, turn, index, stated_ids)
-        return HookOutput(block_reason="\n".join(stale_reasons))
-    return None
+        titles = _behaviour(core, index, v.open_regressions, v.open_masked)
+        if titles:
+            owner = ("plumb: regression: " + "; ".join(f"'{t}'" for t in titles[:2])
+                     + (f" and {len(titles) - 2} more" if len(titles) > 2 else "")
+                     + " worked before and now fails")
+    if not reasons and (v.not_run or v.unselected):
+        reasons = emitter.add([Line(tests_instruction(changed,
+                                                      float(core.config.verify.turn_budget_s)),
+                                    subject="tests", must=True, per_turn=True)])
+    if not reasons and queued:
+        emitter.close()
+        return None, []   # R1: never a block; the note waits for the next prompt hook
+    notes: list[str] = []
+    if not reasons:
+        reasons, notes = stale_hold(ctx, core, index, turn, turn_start)
+    if not reasons:
+        reasons = emitter.add(_questions_line(core, ctx.session_id))
+    emitter.close()
+    if not reasons:
+        return None, notes
+    write_json_atomic(turn_path, {**turn, "asked": asked})
+    line = ""
+    if owner:
+        try:
+            from plumb.understand.summary import owner_line
 
-
-def _cards(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], v: Any,
-           test_cards: Sequence[Any], stated_ids: Sequence[str], stamp: int,
-           confirmed: Sequence[str] = ()) -> HookOutput | None:
-    """The cards, in full, to the agent; the owner's one line; the stated set."""
-    passing = [n for n, e in (v.evidence or {}).items() if e.state in ("fresh-pass", "flaky-pass")]
-    regression = regression_cards(index, v.regressing, v.masked, stamp)
-    fresh, early = owner_cards(ctx, core, turn)
-    shown: dict[str, str] = {}
-    text = understand_parts(ctx, core, turn, extra=[*regression, *test_cards], fresh=fresh,
-                            passing=passing, shown=shown)
-    write_stated(ctx, turn, index, stated_ids, shown, early=early,
-                 conflicts=conflict_entries(core))
-    return owner_output(ctx, core, text, touched=confirmed,
-                        checks=(len(passing), len(v.evidence or {})))
+            line = owner_line(core, ctx.session_id, regression=owner)
+        except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+            line = ""
+    return HookOutput(block_reason="\n".join(reasons), system_message=line), notes
 
 
 ASK_WAITING = ("plumb: {n} judge question{s} wait for the owner: run `plumb clarify --wait --json` "
@@ -566,17 +502,12 @@ def _ask_block(ctx: HookContext, core: Any) -> HookOutput | None:
     return HookOutput(block_reason="\n".join(reasons)) if reasons else None
 
 
-def owner_output(ctx: HookContext, core: Any, text: Sequence[str], *,
-                 touched: Sequence[str] = (), checks: tuple[int, int] = (0, 0)
-                 ) -> HookOutput | None:
-    """SR-266: everything for the agent goes to its channel as text, queued for the next
-    prompt; SR-265: the owner gets
-    at most one plumb line, or nothing."""
-    queue_notes(ctx, text)
+def owner_output(ctx: HookContext, core: Any) -> HookOutput | None:
+    """SR-373: the owner's one plain line when something needs them, else nothing."""
     try:
         from plumb.understand.summary import owner_line
 
-        line = owner_line(core, ctx.session_id, touched=touched, checks=checks)
+        line = owner_line(core, ctx.session_id)
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         line = ""
     return HookOutput(system_message=line) if line else None
@@ -606,43 +537,6 @@ def note_skipped(root: Path, skipped: Sequence[str]) -> None:
         write_json_atomic(path, data)
     except OSError:
         pass
-
-
-def drawn_now(core: Any, cards: Sequence[Any], shown: dict[str, str]) -> list[str]:
-    """The cards built from the record states alone, drawn in full for the read-back the hook
-    keeps before any evidence step (R1)."""
-    from plumb.understand import fullcard
-
-    out: list[str] = []
-    try:
-        for card in cards:
-            out += fullcard.lines(fullcard.content(core, card))
-            for question in card.questions:
-                if question.record:
-                    shown.setdefault(question.record, question.hash)
-    except Exception:  # noqa: BLE001 - the full summary still draws them
-        return out
-    return out
-
-
-def regression_cards(index: Mapping[str, Any], regressing: Mapping[str, Any],
-                     masked: Sequence[Mapping[str, Any]], stamp: int) -> list[Any]:
-    """SR-012 EX-2: a card per regression (and per regression a test change hid)."""
-    from plumb.understand import cards as card_text
-
-    out: list[Any] = []
-    try:
-        for node in sorted(regressing):
-            found = regressing[node]
-            out.append(card_text.regression_card(
-                index, node, last_run=str(found.last_run or ""),
-                test_changed=bool(getattr(found, "test_changed_since_pass", False)), turn=stamp))
-        for item in masked:
-            out.append(card_text.regression_card(index, str(item["node"]), hidden=True,
-                                                 turn=stamp))
-    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
-        return out
-    return out
 
 
 def card_released(root: Path, session: str, rows: Sequence[Any], index: Mapping[str, Any],
@@ -717,27 +611,6 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         return [], []
 
 
-def understand_parts(ctx: HookContext, core: Any, turn: Mapping[str, Any], *,
-                     extra: Sequence[Any] = (), fresh: Sequence[Any] = (),
-                     passing: Sequence[str] = (),
-                     shown: dict[str, str] | None = None) -> list[str]:
-    """SR-266: the agent's text at the end of a turn: what the owner confirmed by
-    their words, then the cards (``understand.summary.stop_parts``, which
-    draws every card in full and keeps ``extra`` open across turns while it holds). Never
-    fails the stop."""
-    try:
-        from plumb.understand.summary import stop_parts
-
-        parts = stop_parts(ctx, core, turn, extra=extra, fresh=fresh, passing=passing,
-                           shown=shown)
-        bag = getattr(ctx, "extra", None)
-        if isinstance(bag, dict):
-            bag["stop_parts"] = parts       # what present.json carries while the panel is on
-        return [*parts.confirmations, *parts.cards]
-    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
-        return []
-
-
 def conflict_entries(core: Any) -> list[dict[str, Any]]:
     """The stated entries of the open intent conflicts, whose cards every turn end draws
     (the owner's relayed words may choose among them, DEC-051). Never fails the stop."""
@@ -747,41 +620,6 @@ def conflict_entries(core: Any) -> list[dict[str, Any]]:
         return stated_entries(core, [c.ic for c in open_conflicts(core)])
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return []
-
-
-def owner_cards(ctx: HookContext, core: Any, turn: Mapping[str, Any]
-                ) -> tuple[list[Any], list[dict[str, Any]]]:
-    """``(cards, early stated entries)``: a card per intent conflict a merge left (sp6 8.3),
-    drawn at every turn end while it is open, and per early conflict ``capture`` or
-    ``plumb clarify`` asked for this turn (R17); the early stated entries let the owner's
-    next answer name the card. Never fails the stop."""
-    from plumb.understand import cards as card_text
-
-    index = core.index()
-    stamp = int(float(turn.get("turn_start") or 0))
-    out: list[Any] = []
-    early: list[dict[str, Any]] = []
-    found: list[Any] = []
-    try:
-        from plumb.mergedriver.conflicts import open_conflicts
-
-        found = open_conflicts(core)
-        out += [card_text.conflict_card(index, c, turn=stamp) for c in found]
-    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
-        pass
-    start = _iso(float(turn.get("turn_start") or 0)) if turn.get("turn_start") else ""
-    try:
-        from plumb.awareness.early import stated_entry, turn_conflicts
-
-        merged = {c.record for c in found}   # the merge card asks for that record (EX-10)
-        for conflict in turn_conflicts(ctx.session_dir, start):
-            if conflict.record in merged:
-                continue
-            out.append(card_text.early_conflict_card(index, conflict, turn=stamp))
-            early.append(stated_entry(conflict))
-    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
-        pass
-    return out, early
 
 
 def test_exists(root: Path | str, node: str) -> bool:

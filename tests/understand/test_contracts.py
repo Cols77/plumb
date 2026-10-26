@@ -400,19 +400,6 @@ def test_prompt_hook_calls_the_understand_layer_in_order(
     assert "skipped" not in out.getvalue()
 
 
-def test_stop_places_confirmations_then_cards(
-        repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.hosts.claude_code import stop
-    from plumb.understand import summary
-
-    monkeypatch.setattr(summary, "stop_parts", lambda ctx, core, turn, **cards: StopParts(
-        confirmations=("C",), cards=("K",)))
-    assert stop.understand_parts(None, None, {}) == ["C", "K"]
-    monkeypatch.setattr(summary, "stop_parts",
-                        lambda *a, **k: (_ for _ in ()).throw(OSError()))
-    assert stop.understand_parts(None, None, {}) == []
-
-
 def test_capture_calls_judge_and_premise_after_writing(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb.capture import capture as cap

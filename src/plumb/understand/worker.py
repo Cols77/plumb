@@ -536,6 +536,12 @@ def run_loop(core: Any, session: str) -> None:
     if core is None:
         return None
     root = Path(core.root)
+    from plumb.understand.summary import after_stop
+
+    try:
+        after_stop(core, session)   # SR-375: what the last turn end left for the background
+    except Exception:  # noqa: BLE001 - the jobs still run
+        pass
     idle_looks = 0
     while True:
         token = acquire(root, session)

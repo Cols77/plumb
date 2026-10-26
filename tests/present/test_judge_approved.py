@@ -182,11 +182,11 @@ def test_ex1_a_turn_without_an_edit_brings_the_band_count_up_to_date(
         world: Path) -> None:  # noqa: F811
     """SR-251 EX-1: the judge approves between turns; a turn that edits nothing still updates
     the band's count (round 4: the band showed none while status listed 2)."""
-    from plumb.hosts.claude_code.snapshot import (build_snapshot, refresh_judge_count,
+    from plumb.hosts.claude_code.snapshot import (build_snapshot, refresh_counts,
                                                   write_snapshot)
 
     write_snapshot(world, build_snapshot(open_core(world)))
     judged(world, ("SR-001", "supported", 0.8), ("INT-001", "supported", 0.8))
-    refresh_judge_count(open_core(world))
+    refresh_counts(open_core(world))   # the worker, after the turn (SR-375)
     data = json.loads((world / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert data["judge_approved"] == 2

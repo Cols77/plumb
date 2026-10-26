@@ -47,7 +47,6 @@ def _own(root: Path, session: str, *ids: str) -> list:
 
 def test_the_stop_summary_and_read_back_show_the_records_words(
         project: Path, transcripts: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.hosts.claude_code import stop
     from plumb.hosts.claude_code.hookio import Deadline, HookContext
     from plumb.understand import summary
 
@@ -55,12 +54,11 @@ def test_the_stop_summary_and_read_back_show_the_records_words(
     session = "sess-stop"
     core = open_core(project)
     _found_short(core, transcripts)
-    cards = _own(project, session, "INT-009")
+    _own(project, session, "INT-009")
 
     ctx = HookContext("stop", {}, project, session, Deadline(30_000))
     parts = summary.stop_parts(ctx, open_core(project), {"turn_start": time.time() - 3600})
     assert '"Keep each card to one screen at most" (4 Oct)' in "\n".join(parts.cards)
-    assert '"Keep each card to one screen at most" (4 Oct)' in "\n".join(stop.drawn_now(open_core(project), cards, {}))
 
 
 def test_ex1_a_transcript_match_is_quoted_with_its_date_and_approves_nothing(

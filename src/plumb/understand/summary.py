@@ -252,25 +252,10 @@ def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (
     started = float(turn.get("turn_start") or 0) or time.time()
     deadline = getattr(ctx, "deadline", None)
     roomy = deadline is None or deadline.remaining_s() > UNDER_BUDGET_S
-    told = Told(core.root, session, _iso(started))
-    confirmations = _confirmations(core, turn, told)
-    told.save()
     upkeep: list[CardState] = []
-    if roomy:
-        try:
-            upkeep = _upkeep(core, session,
-                             deadline is None or deadline.remaining_s() > CALIBRATE_S)
-        except Exception:  # noqa: BLE001 - the upkeep never costs the owner their summary
-            pass
-        try:
-            from plumb.understand import backlog, question, tidy
-
-            backlog.resume(core, session)    # a pass a failure interrupted goes on (spec 8)
-            tidy.enqueue(core, session)      # SR-162: the model reads the cards after this turn
-            question.enqueue(core, session,   # SR-167: and the agent's reply for a question to raise
-                             (getattr(ctx, "data", None) or {}).get("transcript_path"))
-        except Exception:  # noqa: BLE001 - queueing never costs the owner their summary
-            pass
+    confirmations = _turn_upkeep(
+        core, session, turn, (getattr(ctx, "data", None) or {}).get("transcript_path"),
+        roomy=roomy, calibrate=deadline is None or deadline.remaining_s() > CALIBRATE_S)
     rendered: tuple[str, ...] = ()
     try:
         rendered = tuple(_cards(core, session, upkeep, int(started), deadline,
@@ -280,6 +265,65 @@ def stop_parts(ctx: Any, core: Any, turn: Any, *, extra: Sequence[CardState] = (
     return StopParts(confirmations=confirmations, cards=rendered)
 
 
+def _turn_upkeep(core: Any, session: str, turn: Mapping[str, Any], transcript: Any, *,
+                 roomy: bool = True, calibrate: bool = True) -> tuple[str, ...]:
+    """What the owner's words confirmed (told once), then the upkeep and the queued jobs."""
+    started = float(turn.get("turn_start") or 0) or time.time()
+    told = Told(core.root, session, _iso(started))
+    confirmations = _confirmations(core, turn, told)
+    told.save()
+    if roomy:
+        try:
+            _upkeep(core, session, calibrate)
+        except Exception:  # noqa: BLE001 - the upkeep never costs the owner their summary
+            pass
+        try:
+            from plumb.understand import backlog, question, tidy
+
+            backlog.resume(core, session)    # a pass a failure interrupted goes on (spec 8)
+            tidy.enqueue(core, session)      # SR-162: the model reads the cards after this turn
+            question.enqueue(core, session, transcript)   # SR-167: a question to raise
+        except Exception:  # noqa: BLE001 - queueing never costs the owner their summary
+            pass
+    return confirmations
+
+
+AFTER_STOP = "after_stop.json"   # the turn whose end left work for the worker (SR-375)
+
+
+def queue_after_stop(root: Any, session: str, turn: Mapping[str, Any],
+                     transcript: Any = None) -> None:
+    """SR-375: the stop hook's work its reader does not need before the next step (the
+    owner-words confirmations, the upkeep, the jobs to queue) is left to the background
+    worker, started now. Never raises (a hook calls this)."""
+    try:
+        files.write_json_atomic(files.session_dir(Path(root), session) / AFTER_STOP,
+                                {"turn": dict(turn), "transcript": transcript})
+        from plumb.understand import worker
+
+        worker.start_detached(Path(root), session)
+    except Exception:  # noqa: BLE001 - the next turn end queues it again
+        pass
+
+
+def after_stop(core: Any, session: str) -> None:
+    """In the worker: the work a turn end left (``queue_after_stop``); its lines reach the
+    agent at the next prompt (``worker.say``)."""
+    path = files.session_dir(Path(core.root), session) / AFTER_STOP
+    data = files.read_json(path)
+    if not isinstance(data, Mapping):
+        return
+    path.unlink(missing_ok=True)
+    turn = data.get("turn") if isinstance(data.get("turn"), Mapping) else {}
+    from plumb.understand import worker
+
+    for line in _turn_upkeep(core, session, turn, data.get("transcript")):
+        worker.say(core.root, session, line)
+    from plumb.hosts.claude_code.snapshot import refresh_counts
+
+    refresh_counts(core)   # the status line's record-wide counts the stop hook left as they were
+
+
 # --------------------------------------------------------------------------- the cards
 
 TURN_CARDS = "turn_cards.json"   # the cards the stop hook built, kept while they hold
@@ -287,7 +331,6 @@ DRAWN = "drawn.json"             # every card drawn at the last turn end, with i
 TURN_LEFT = "turn_left.json"     # the stop hook's cards the owner left open, with what they showed
 WAITING = "cards_waiting.json"   # what the next prompt tells the agent (SR-116 EX-4)
 DRAW_MIN_S = 0.08                # a card's full content needs about this much of the budget
-TURN_LINE = "turnline.json"      # each card's state seen at the last turn end (SR-265)
 ASK_OWNER = ("plumb: only the owner can settle this; ask the owner now with the question tool, "
              "in plain words with options and no id, or offer a study laying out both sides "
              "when there is more to read; choose nothing yourself:")
@@ -626,38 +669,31 @@ def waiting_line(root: Any, session: str, core: Any = None) -> str | None:
     return owner_text.CARDS_WAITING_AGENT.format(n=len(topics), topics=named)
 
 
-def _named(core: Any, ids: Sequence[str]) -> str:
-    """The touched requirements in the owner's words: their features' titles, else theirs."""
-    index = core.index()
-    titles: dict[str, None] = {}
-    for i in ids:
-        feature = index[i].fields.get("feature")
-        titles.setdefault(index[feature].title if feature in index else index[i].title, None)
-    names = [f"'{t}'" for t in titles]
-    return ", ".join(names[:2]) + (f" and {len(names) - 2} more" if len(names) > 2 else "")
+def owner_line(core: Any, session: str, *, regression: str = "") -> str:
+    """SR-373: the owner's one plain line at a turn end, only when something needs them: a
+    regression on confirmed behaviour (worded by the stop hook), else a merge that waits for
+    their decision. Nothing inside an open intent loop (the band shows its step) and nothing
+    already said in the session; the judge's questions reach the owner through the agent's
+    question tool (SR-361), never here."""
+    from plumb.understand.cmd_intent import loops
 
+    if any(d.get("step") != "proven" and not d.get("handed_to")
+           for _, d in loops(core.root, session)):
+        return ""
+    line = regression
+    if not line:
+        try:
+            from plumb.mergedriver.conflicts import open_conflicts
 
-def owner_line(core: Any, session: str, *, touched: Sequence[str] = (),
-               checks: tuple[int, int] = (0, 0)) -> str:
-    """SR-265: the owner's one plumb line at a turn end, or "" when nothing changed for them:
-    the answers applied (by the card's title), and the confirmed requirements the turn
-    touched with their checks (``checks``: passed, run). Never a card, an option or an id;
-    a judge's approval is the status line's count only (EX-7). SR-363: no count of the
-    questions waiting; the agent asks them as they are raised (SR-361), the band counts them."""
-    seen_path = files.session_dir(core.root, session) / TURN_LINE
-    seen = files.read_json(seen_path)
-    seen = seen if isinstance(seen, Mapping) else {}
-    states = {k: v[0] for k, v in cardstore.states(core, session).items()}
-    files.write_json_atomic(seen_path, states)
-    drawn = read_drawn(core.root, session)
-    titles = {c.id: c.topic for c in cardstore.load(core.root, session, open_only=False)}
-    titles.update({str(e["card"].get("id")): str(e["card"].get("topic")) for e in drawn})
-    parts = [f"your answer on {titles.get(k, k)} was applied" for k, v in states.items()
-             if v == "done" and seen.get(k) in ("waiting", "processing")]
-    passed, run = checks
-    if touched and run:
-        pass_ = "check passes" if run == 1 else "checks pass"
-        parts.append(f"aligned, touched {_named(core, touched)}, {run} {pass_}"
-                     if passed == run else
-                     f"touched {_named(core, touched)}, {passed} of {run} {pass_}")
-    return "plumb: " + "; ".join(parts) if parts else ""
+            n = len(open_conflicts(core))
+        except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+            n = 0
+        line = (f"plumb: a merge waits for your decision on {n} conflicting "
+                f"record{'s' if n > 1 else ''}") if n else ""
+    told = Told(core.root, session, _iso(time.time()))
+    if not line or line in told.notices:
+        return ""
+    told.notices.add(line)
+    told.dirty = True
+    told.save()
+    return line

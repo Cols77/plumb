@@ -86,8 +86,10 @@ class HookOutput:
 
     def render(self) -> str:
         if self.block_reason:
-            return json.dumps({"decision": "block", "reason": self.block_reason},
-                              ensure_ascii=False)
+            block = {"decision": "block", "reason": self.block_reason}
+            if self.system_message:  # SR-373 EX-5: the owner's line beside the agent's block
+                block["systemMessage"] = self.system_message
+            return json.dumps(block, ensure_ascii=False)
         if self.additional_context:
             return json.dumps({"hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
@@ -125,6 +127,14 @@ class HookContext:
         self.deadline = deadline
         self.extra = {} if extra is None else extra
         self.kept = Kept() if kept is None else kept
+        self.steps: list[tuple[str, float]] = []   # SR-375: (step, ms) when profiling
+        self._mark = deadline.start
+
+    def mark(self, step: str) -> None:
+        """End the named step: its duration goes to the profile (``PLUMB_HOOK_PROFILE=1``)."""
+        now = time.monotonic()
+        self.steps.append((step, round((now - self._mark) * 1000, 1)))
+        self._mark = now
 
     def keep(self, lines: list[str]) -> None:
         """Replace the output printed if a later step is cut (budget, error, watchdog)."""
@@ -219,6 +229,38 @@ def log_error(root: Path | None, name: str, detail: str) -> None:
         pass
 
 
+PROFILE_ENV = "PLUMB_HOOK_PROFILE"
+PROFILE_FILE = "hook-timing.jsonl"
+
+
+def write_profile(root: Path | None, name: str, ctx: HookContext | None, start: float,
+                  cut: str = "") -> None:
+    """SR-375 EX-1: one line per hook run in ``.plumb/session/hook-timing.jsonl`` (its total
+    and each step marked so far), only while ``PLUMB_HOOK_PROFILE=1``."""
+    if root is None or os.environ.get(PROFILE_ENV) != "1":
+        return
+    entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "hook": name,
+             "total_ms": round((time.monotonic() - start) * 1000, 1),
+             "steps": list(ctx.steps) if ctx is not None else [], "cut": cut}
+    try:
+        path = root / ".plumb" / "session" / PROFILE_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
+
+
+def _open_case(root: Path | None, name: str, detail: str) -> None:
+    """SR-325, SR-375: a hook that raised or was cut leaves one debug case."""
+    try:
+        from plumb import debug
+
+        debug.hook_error(root, name, detail)
+    except Exception:  # noqa: BLE001 - recording the case must not break the notice
+        pass
+
+
 def _notice(text: str, json_output: bool) -> str:
     return json.dumps({"systemMessage": text}, ensure_ascii=False) if json_output else text
 
@@ -306,6 +348,8 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     writer = _Writer(stdout)
     kept = Kept()
     found: Path | None = None
+    ctx: HookContext | None = None
+    began = time.monotonic() if start is None else start
     timer: threading.Timer | None = None
     lane = _verify_lane()
     was_hook = getattr(lane, "HOOK_PROCESS", False)
@@ -332,7 +376,10 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
                     timer.start()
                     return
                 if writer.write(_cut_output(kept, SKIP_BUDGET, json_output)):
-                    log_error(found, name, f"watchdog: hard limit {limit}s reached")
+                    detail = f"watchdog: hard limit {limit}s reached"
+                    log_error(found, name, detail)
+                    write_profile(found, name, ctx, began, cut="watchdog")
+                    _open_case(found, name, detail)  # SR-375 EX-2: a cut is a defect
                     flush = getattr(sys.modules.get("plumb.hashing"), "flush_stat_cache", None)
                     if flush is not None:
                         flush()  # the hash cache learned so far warms the next hook
@@ -358,12 +405,7 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     except Exception:  # noqa: BLE001 - plumb never blocks work on its own failure
         detail = _format_exc()
         log_error(found, name, detail)
-        try:
-            from plumb import debug
-
-            debug.hook_error(found, name, detail)  # SR-325: one debug case, turn not held
-        except Exception:  # noqa: BLE001 - recording the case must not break the notice
-            pass
+        _open_case(found, name, detail)  # SR-325: one debug case, turn not held
         try:
             writer.write(_cut_output(kept, SKIP_ERROR, json_output))
         except Exception:  # noqa: BLE001 - nothing more can be said on a broken stdout
@@ -371,6 +413,8 @@ def run_hook(name: str, handler: Callable[[HookContext], HookOutput | None], *,
     finally:
         if timer is not None:
             timer.cancel()
+        if found is not None:
+            write_profile(found, name, ctx, began)
         _close_hash_cache()
         if lane is not None:
             lane.HOOK_PROCESS = was_hook
