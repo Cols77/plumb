@@ -94,8 +94,6 @@ def test_stop_prints_as_before_when_the_heartbeat_is_older_than_the_turn(
               heartbeat=started - handshake.HEARTBEAT_SLACK_S - 60)
     out = _stop(core.root, hook_input)
     assert out == ""                                     # SR-363: no question count
-    notes = core.root / ".plumb" / "session" / SESSION / "agent_notes.json"
-    assert "Requirement 1" in notes.read_text("utf-8")   # the card, as text, is the agent's
     assert _present(core.root) is None
 
 

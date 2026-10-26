@@ -101,7 +101,9 @@ class UnrunVerify:
         return {r: () for r in refs}
 
 
-def test_stop_hook_block_names_the_proposed_owner(calc: Path, hook_input) -> None:
+def test_stop_hook_queues_the_untraced_note_for_the_next_prompt(calc: Path, hook_input) -> None:
+    """R1: an untraced file never blocks the stop; its note waits for the next prompt hook
+    (the next test), which names the proposed owner."""
     from plumb.hosts.claude_code import stop
 
     _start_turn(calc)
@@ -111,9 +113,9 @@ def test_stop_hook_block_names_the_proposed_owner(calc: Path, hook_input) -> Non
     assert stop.main(stdin=io.StringIO(payload), stdout=out, root=calc,
                      verify=UnrunVerify(),
                      unjudged=None) == 0
-    reason = json.loads(out.getvalue())["reason"]
-    [line] = [x for x in reason.splitlines() if x.startswith("plumb: untraced change:")]
-    assert PROPOSED in line
+    assert "untraced change" not in out.getvalue()
+    note = json.loads((calc / ".plumb" / "session" / "s1" / "untraced.json").read_text("utf-8"))
+    assert note["paths"] == ["src/app/mod.py"]
 
 
 def test_prompt_hook_queued_instruction_names_the_proposed_owner(calc: Path,
