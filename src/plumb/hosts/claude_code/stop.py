@@ -248,7 +248,12 @@ def _unchanged(ctx: HookContext, core: Any, turn: Mapping[str, Any],
     something needs them."""
     if skipped:  # a timed-out git status is no evidence of a turn without changes
         note_skipped(ctx.root, skipped)
-    write_stated(ctx, turn, {}, [], conflicts=conflict_entries(core))
+    from plumb.awareness.early import stated_entry
+
+    # R17: an early conflict asked before any record was written: the owner's answer to it
+    # raises its decision (``answer.raise_shown``)
+    write_stated(ctx, turn, {}, [], conflicts=conflict_entries(core),
+                 early=[stated_entry(c) for c in early_conflicts(ctx, core, turn)])
     return owner_output(ctx, core)   # the band's counts: the worker's refresh_counts
 
 
@@ -333,6 +338,8 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                             skipped, job)
     ctx.mark("changed paths")
     if not changed:
+        if not active:
+            queue_notes(ctx, early_asks(ctx, core, turn))
         return (None if active else _ask_block(ctx, core)) or _unchanged(ctx, core, turn,
                                                                          skipped)
     index = core.index()
@@ -381,6 +388,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
                                     v, changed, asked, queued, turn_start)
     ctx.mark("next action")
     queue_notes(ctx, [*stale_notes, *(line.text for line in aware),
+                      *([] if active else early_asks(ctx, core, turn)),
                       *([skip_notice(skipped)] if skipped else [])])
     out = out if out is not None else owner_output(ctx, core)
     ctx.mark("owner line")
@@ -519,6 +527,32 @@ def owner_output(ctx: HookContext, core: Any) -> HookOutput | None:
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         line = ""
     return HookOutput(system_message=line) if line else None
+
+
+def early_conflicts(ctx: HookContext, core: Any, turn: Mapping[str, Any]) -> list[Any]:
+    """The early intent conflicts ``capture``, ``clarify`` or this stop's claim asked for this
+    turn, less the records an open merge conflict already asks about. Never fails the stop."""
+    if not turn.get("turn_start"):
+        return []
+    try:
+        from plumb.awareness.early import turn_conflicts
+        from plumb.mergedriver.conflicts import open_conflicts
+
+        merged = {c.record for c in open_conflicts(core)}
+        start = _iso(float(turn["turn_start"]))
+        return [c for c in turn_conflicts(ctx.session_dir, start) if c.record not in merged]
+    except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
+        return []
+
+
+def early_asks(ctx: HookContext, core: Any, turn: Mapping[str, Any]) -> list[str]:
+    """SR-259, SR-295: each early conflict of this turn reaches the agent, both versions by
+    branch, with the instruction to ask the owner (the card that showed it is gone,
+    DEC-384)."""
+    from plumb.awareness.early import question
+    from plumb.understand.summary import ASK_OWNER
+
+    return [f"{ASK_OWNER} {question(c)}" for c in early_conflicts(ctx, core, turn)]
 
 
 def queue_notes(ctx: HookContext, notes: Sequence[str]) -> None:

@@ -59,14 +59,13 @@ def _note(lines: str) -> None:
 
 
 def _stop_card(lines: list[str], cards: str) -> None:
-    """The stop hook's early conflict card (SR-012: a card in full, titles not IDs): main's
-    version and this work's, in the owner's words, on the agent's channel; the owner's text
-    does not count it (SR-265, SR-363)."""
-    from awareness.test_claim_check import early_heads
+    """The early conflict the stop hook hands the agent to ask (DEC-384: no card): main's
+    version and this work's, on the agent's channel; the owner's text does not count it
+    (SR-265, SR-363)."""
+    from awareness.test_claim_check import early_asks
 
     assert lines == [], lines
-    heads = early_heads(cards, "relay checks")
-    assert heads and any(MAIN in h for h in heads), cards
+    assert early_asks(cards, MAIN), cards
 
 
 # -- capture

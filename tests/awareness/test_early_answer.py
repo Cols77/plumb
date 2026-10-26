@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 
 from awareness.scenario import change, setup
-from awareness.test_claim_check import agent_channel, early_heads
+from awareness.test_claim_check import agent_channel, early_asks
 from plumb import cli
 from plumb.api import open_core
 from plumb.awareness import early, inflight
@@ -51,10 +51,6 @@ def _stop(root: Path, hook_input: Any, *, active: bool = False, session: str = "
         return ""
     data = json.loads(text)
     return str(data.get("systemMessage") or data.get("reason") or "")
-
-
-def _stated(root: Path) -> dict:
-    return json.loads((root / ".plumb" / "session" / "stated.json").read_text("utf-8"))
 
 
 def _decision(root: Path) -> Any:
@@ -97,7 +93,6 @@ def test_capture_card_answer_keep_theirs(tmp_path: Path, hook_input: Any) -> Non
     """The owner says exactly "keep feat-x's" after the capture card: recorded, confirmed,
     and the other lane hears it as feat-x's version."""
     main, other = _captured_with_card(tmp_path, hook_input)
-    assert {"record": "SR-005", "branch": "feat-x"} in _stated(main)["early"]
     dec = _decision(main)
     assert dec.fields["chosen"] == "main's version"          # the preset side
     assert _choose(main, dec.id, "feat-x") == 0
@@ -130,15 +125,11 @@ def test_stop_hook_question_card_answer_both(tmp_path: Path, hook_input: Any) ->
     dec = _decision(main)
     # SR-265, SR-363: the owner's text counts no card; the card in full is the agent's to ask
     assert _stop(main, hook_input) == ""
-    assert "keep this one" in agent_channel(main).lower()
-    assert _stop(main, hook_input, active=True) == ""
     shown = agent_channel(main)
-    # SR-012: the early conflict card offers the card's words as its options, never "ok"
-    lines = shown.splitlines()
-    for option in ("  1. Keep this one - ", "  2. Keep the other - ",
-                   "  3. Both - "):
-        assert any(line.startswith(option) for line in lines), option
-    assert 'say "ok" to confirm' not in shown
+    # DEC-384: no card; the agent asks both versions by branch, "or both", never "ok"
+    [asked] = early_asks(shown, "A relay pins the stated group")
+    assert "or both?" in asked and 'say "ok" to confirm' not in shown
+    assert _stop(main, hook_input, active=True) == ""
     assert _choose(main, dec.id, "both") == 0
     assert _decision(main).fields["chosen"] == "both, combined"
     assert _state(main, dec.id) == "confirmed"
@@ -159,8 +150,7 @@ def test_clarify_card_answer_before_capture(tmp_path: Path, hook_input: Any) -> 
     assert 'over "relay checks" waits as a card' in out.getvalue()
     assert _stop(main, hook_input) == ""                       # SR-363: no question count
     cards = agent_channel(main)
-    assert early_heads(cards, "relay checks"), cards
-    assert _stated(main)["early"] == [{"record": "SR-005", "branch": "feat-x"}]
+    assert early_asks(cards, "A relay pins the stated group"), cards
     change(main, "A relay pins only the records the owner's words affirm.")
     dec = _decision(main)
     assert _choose(main, "SR-005", "feat-x") == 0
@@ -184,8 +174,8 @@ def test_plumb_conflicts_lists_the_early_card(tmp_path: Path, hook_input: Any) -
     assert '▸ Conflict  SR-005 "relay checks"' in text
     assert "feat-x      A relay pins the stated group, named by its title." in text
     _start_turn(main)
-    assert _stop(main, hook_input, active=True) == ""          # SR-363: no question count
-    assert early_heads(agent_channel(main), "relay checks")
+    assert _stop(main, hook_input) == ""                       # SR-363: no question count
+    assert early_asks(agent_channel(main), "A relay pins the stated group")
     assert _choose(main, "relay checks", "feat-x") == 0
     assert _state(main, dec.id) == "confirmed"
 

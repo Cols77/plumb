@@ -72,9 +72,10 @@ def _turn(root: Path, hook_input: Any) -> tuple[list[str], str]:
     """The stop hook's two passes: the owner's plumb lines (SR-265, SR-363: never the card
     nor a count of it) and the agent's channel of the last pass (the card in full)."""
     lines = [_stop(root, hook_input)]
-    agent_channel(root)
+    first = agent_channel(root)
     lines.append(_stop(root, hook_input, active=True))
-    return [line for line in lines if line], agent_channel(root)
+    return [line for line in lines if line], "\n\n".join(
+        c for c in (first, agent_channel(root)) if c)
 
 
 def _decisions(root: Path) -> list[Any]:
@@ -86,12 +87,11 @@ def _answer(root: Path, ref: str, take: str = "feat-x") -> int:
     return cli.main(["conflict", "choose", ref, "--take", take, "--root", str(root)])
 
 
-def early_heads(reply: str, title: str) -> list[str]:
-    """The early conflict cards (SR-012: the owner sees cards, titles not IDs) about the
-    record titled ``title``."""
-    lines = reply.splitlines()
-    return [f"{line} {lines[n + 1]}" for n, line in enumerate(lines[:-1])
-            if line == title and lines[n + 1].startswith(("feat-x says", "main says"))]
+def early_asks(reply: str, theirs: str = "") -> list[str]:
+    """The early conflicts the stop hook hands the agent to ask the owner, both versions by
+    branch (SR-259, SR-295; DEC-384: no card draws them), naming ``theirs`` when given."""
+    return [line for line in reply.splitlines()
+            if line.startswith(ASK_OWNER) and "Branch " in line and theirs in line]
 
 
 def _assert_asked_and_answered(root: Path, lines: list[str], cards: str, record: str) -> None:
@@ -99,7 +99,7 @@ def _assert_asked_and_answered(root: Path, lines: list[str], cards: str, record:
     # reaches the agent tagged for the owner to settle (SR-265, SR-295)
     assert lines == [], lines
     assert ASK_OWNER in cards, cards
-    assert early_heads(cards, open_core(root).index()[record].title), cards
+    assert early_asks(cards), cards
     [dec] = _decisions(root)
     assert dec.fields.get("matters") is True
     assert _answer(root, record) == 0
@@ -152,7 +152,7 @@ def test_capture(tmp_path: Path, hook_input: Any) -> None:
     result = change(mine, OURS)
     assert any('"relay checks" waits as a card' in line for line in result.lines)
     lines, cards = _turn(mine, hook_input)
-    assert early_heads(cards, "relay checks"), cards
+    assert early_asks(cards, THEIRS), cards
     [dec] = _decisions(mine)
     assert _answer(mine, dec.id) == 0
     assert open_core(mine).index()[dec.id].fields["chosen"] == "feat-x's version"
@@ -175,8 +175,8 @@ def test_clarify_then_edit(tmp_path: Path, hook_input: Any) -> None:
     assert 'over "relay checks" waits as a card' in _clarify(mine)
     requirement(mine, "SR-005", "relay checks", OURS, feature="FEAT-002")
     lines, cards = _turn(mine, hook_input)
-    # the read-back's card is drawn once (its decision has its own card since SR-012)
-    assert len(early_heads(cards, "relay checks")) == 1
+    # the read-back's conflict and the stop's claim of it are handed over once
+    assert len(early_asks(cards, THEIRS)) == 1
     _assert_asked_and_answered(mine, lines, cards, "SR-005")
 
 
@@ -189,7 +189,7 @@ def test_clarify_card_answered_before_any_edit(tmp_path: Path, hook_input: Any) 
     line = _stop(mine, hook_input)                # a turn that changed no file
     assert line == "", line                       # SR-363: no question count
     cards = agent_channel(mine)
-    assert early_heads(cards, "relay checks"), cards
+    assert early_asks(cards, THEIRS), cards
     assert _decisions(mine) == []
     assert _answer(mine, "SR-005") == 0
     [dec] = _decisions(mine)
