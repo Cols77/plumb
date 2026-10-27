@@ -418,3 +418,16 @@ def test_ex3_the_landings_own_session_folder_stays(repo: Path) -> None:
     own.mkdir(parents=True)
     (own / "ended.json").write_text("{}", encoding="utf-8")
     assert landing.ended_sessions(repo, "s-own") == [] and own.is_dir()
+
+
+@pytest.mark.sr("SR-340")
+def test_ex3_an_ended_session_folder_holding_a_waiting_question_stays(repo: Path) -> None:
+    sessions = repo / ".plumb" / "session"
+    for name in ("asked", "done"):
+        (sessions / name).mkdir(parents=True)
+        (sessions / name / "ended.json").write_text("{}", encoding="utf-8")
+    (sessions / "asked" / "cards.json").write_text(json.dumps({"cards": [
+        {"id": "choice:abc", "kind": "choice", "topic": "t", "issue": "which?",
+         "status": "open"}]}), encoding="utf-8")
+    assert landing.ended_sessions(repo, "s-own") == ["done"]
+    assert (sessions / "asked" / "cards.json").exists() and not (sessions / "done").exists()
