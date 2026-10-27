@@ -760,16 +760,28 @@ def _clarify_pending(root: Path, session: str, digest: str) -> bool:
 def _clarify_effect(*, core: Any, card: CardState, accepted: bool = False,
                     confirm: Any = None, entry: Mapping[str, Any] | None = None,
                     session: str = "", source: Any = None, **_: Any) -> Applied | None:
-    """The read-back answered yes: that one answer confirms the records it was drawn with
-    (SR-130)."""
+    """The read-back answered yes: that one answer confirms the records as the reply showed
+    them (SR-130, SR-214: the read job's ``shown``); a record changed or added since is left
+    unconfirmed and asked again on a choice. No read job behind the answer: all of them."""
+    from plumb.understand import cards, trial
+
     digest = card.id.removeprefix("clarify:")
     if not (accepted and confirm is not None and card.id != digest and digest):
         return None
     said = entry or {}
+    inputs = getattr(getattr(source, "job", None), "inputs", None)
+    shown = ({str(i.get("id")): str(i.get("hash") or "") for i in inputs["shown"] or ()
+              if isinstance(i, Mapping)}
+             if isinstance(inputs, Mapping) and "shown" in inputs else None)
+    again: list[CardState] = []
     for record in request_records(core, digest):
-        confirm(record.id, record.hash, str(said.get("evidence") or ""),
-                float(said.get("confidence") or 1.0))
-    return None
+        if shown is None or shown.get(record.id) == record.hash:
+            confirm(record.id, record.hash, str(said.get("evidence") or ""),
+                    float(said.get("confidence") or 1.0))
+        else:
+            again.append(cards.which_version(record, record.title, trial._proposal(record),
+                                             card.branch, card.topic))
+    return Applied(job="", cards=tuple(again)) if again else None
 
 
 def _choice_effect(*, core: Any, card: CardState, job: Any = None, digest: str = "",

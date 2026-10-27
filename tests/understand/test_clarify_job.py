@@ -286,6 +286,35 @@ def test_sr130_ex1_an_ok_on_the_read_back_confirms_the_whole_request(
     assert confirmed == ["DEC-001", "INT-001", "SR-001", "SR-002"]
 
 
+@pytest.mark.sr("SR-212")
+def test_sr130_ex2_a_yes_confirms_only_the_records_as_shown(
+        repo: Path, write_record: Any, engine_standins: Any) -> None:
+    """SR-212 EX-4, SR-214: a record changed after the reply showed it is asked again, not
+    confirmed by the yes."""
+    from plumb.contracts import Job
+    from plumb.understand.answer import OwnerWords
+
+    core, digest = _asked("let users export", {"intent": "yes", "topic": "export"}, repo,
+                          engine_standins)
+    _request(repo, write_record, digest)
+    index = open_core(repo).index()
+    shown = [{"id": i, "hash": index[i].hash} for i in ("DEC-001", "INT-001", "SR-001", "SR-002")]
+    path = repo / ".plumb" / "requirements" / "SR-002.md"
+    path.write_text(path.read_text(encoding="utf-8").replace("export 2", "export two"),
+                    encoding="utf-8")                           # changed since it was shown
+    core = open_core(repo)
+    card = clarify._readback_card(repo, digest, "let users export", {"proposal": "Export"}, [])
+    answered = CardState(**{**card.__dict__, "status": "answered", "answers": (
+        ClarifyAnswer(clarify.READBACK_ID, "accepted", digest),)})
+    confirmed: list[str] = []
+    source = OwnerWords(job=Job(id="read-1", inputs={"shown": shown}), digest=digest)
+    result = effects.handler_for("clarify")(
+        core=core, card=answered, digest=digest, accepted=True, source=source,
+        confirm=lambda *a, **k: confirmed.append(a[0]))
+    assert confirmed == ["DEC-001", "INT-001", "SR-001"]
+    assert [c.questions[0].record for c in result.cards] == ["SR-002"]
+
+
 def test_ex8_a_choice_answer_confirms_nothing_and_opens_the_gate(
         repo: Path, engine_standins: Any) -> None:
     answer = {"intent": "yes", "topic": "export", "gaps": [
