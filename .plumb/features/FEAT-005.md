@@ -24,7 +24,7 @@ links:
   to: INT-086
   pin:
     from: sha256:f53c80ba5d0173ae3da5613f32231d1d1dd345d3a9eeb832276754f41ac6c335
-    to: sha256:170e624c6dc99fb046b46d96bbedb3bc4f2f84229f524a21518fd9161453f5c5
+    to: sha256:6a8564a510156519bef3e04e802765ab9a522057af471259ad38e1147868fd43
 - kind: derives_from
   to: INT-082
   pin:

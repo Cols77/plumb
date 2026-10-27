@@ -18,5 +18,5 @@ links:
   to: INT-079
   pin:
     from: sha256:c17aeb109fc2c5b1d7b4565d6a0ec70c4d5ac3c8a16add5799e1c7798abc4d67
-    to: sha256:ea3783dff83ce84a97d93aeff4fa4f14358e21adfb144c486b81c2ad75c93cdd
+    to: sha256:839916bc78f6c1ea838fc3d6d03bf761dc1abd04a4fdad30673319b791b40886
 ---
