@@ -10,6 +10,8 @@ dist/
 htmlcov/
 # the API declarations Claude Code lays beside a mod it loads from a folder (SP7 5)
 plugin/.claude-plugin/types/
+# SR-321, SR-376: judgment live files are telemetry, ignored by .plumb/.gitignore
+# (log/judgment/*.json, written by plumb init); each landing archives them
 # SR-321: log kinds only the machine that wrote them needs
 .plumb/log/card-press/
 .plumb/log/card-settled/

@@ -517,6 +517,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     def do_commit() -> None:
         from plumb import log
 
+        # SR-329: main's uncommitted shared entries ride the tidy commit; judgment entries are
+        # not among them (ignored by git), the compaction archives them instead (SR-376)
         shared = log.shared_uncommitted(root)
         if removed or archived or shared:
             _commit(root, removed, [*archived, *shared], head)
