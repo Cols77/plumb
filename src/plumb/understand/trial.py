@@ -18,6 +18,7 @@ from plumb.contracts import Applied, CardState, Choice, ClarifyQuestion
 from plumb.understand import cards
 
 WORDS_PER_ITEM = 140
+HELD = ("open", "change_requested", "left_open")   # not answered yet: a merge withdraws these
 NOT_FOUND = "Your words for this were not found."
 NO_WORDS = 'The words of yours "{title}" came from are not on file.'
 ASK = "Is this what you meant?"
