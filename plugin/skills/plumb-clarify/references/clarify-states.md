@@ -27,12 +27,9 @@ owner's message and says which of these things happened:
 - a spec session offered (more than one question has no better-supported answer): the question
   asks whether to hold a short spec session; ask it with the question tool and stop; if they
   accept, run the escalated depth below.
-- couldn't check (the check failed or took too long): ask the question tool exactly "Build
-  without the check?" with two options, "Wait" and "Build anyway", and stop. Only the owner
-  says to build without the check: the answer "Build anyway" (it releases the gate),
-  `/plumb go` typed as their whole message, or plain words that plumb reads from their next
-  message and accepts. You never release it for them. "Wait" builds nothing until the check
-  runs again on their next message.
+- couldn't check: when the check failed (no judge reachable), say so once in one line and
+  work on; nothing is held and nothing is decided by rule. When it is still running, build
+  nothing yet and treat it as waiting.
 - waiting (the check is not finished yet): build nothing and run `plumb clarify --wait`
   again, twice at most; still waiting after that, build nothing, tell the owner the check of
   their request has not finished, and stop. On an ordinary message `waiting` means plumb's
