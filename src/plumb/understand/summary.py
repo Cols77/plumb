@@ -257,8 +257,7 @@ def after_stop(core: Any, session: str) -> None:
 
 WAITING = "cards_waiting.json"   # what the next prompt tells the agent (SR-116 EX-4)
 ASK_OWNER = ("plumb: only the owner can settle this; ask the owner now with the question tool, "
-             "in plain words with options and no id, or offer a study laying out both sides "
-             "when there is more to read; choose nothing yourself:")
+             "in plain words with options and no id; choose nothing yourself:")
 
 
 def tell_agent(core: Any, session: str, card: CardState) -> None:

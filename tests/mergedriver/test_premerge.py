@@ -65,7 +65,7 @@ def test_merge_check_exits_4_with_card(repo: Path, argv: list[str]) -> None:
     out = plumb(repo, *argv)
     assert out.returncode == 4, out.stdout + out.stderr
     assert "intent conflicts wait for your choice (/plumb conflicts):" in out.stdout
-    assert "Conflict  IC-001 on SR-005" in out.stdout
+    assert "Conflict IC-001 on \"relay checks\"" in out.stdout
     data = json.loads(plumb(repo, *argv, "--json").stdout)
     data = data.get("merge", data)  # check --merge --json: {validate, merge}
     assert data["intent_conflicts"][0]["ic"] == "IC-001"
@@ -279,7 +279,7 @@ def test_pre_push_hook_never_calls_a_judgment_backend(
         f"refs/heads/main {head} refs/heads/main {'0' * 40}\n"))
     assert _hook_pre_push(open_core(repo), False) != 0
     out = capsys.readouterr().out
-    assert "Conflict  IC-001 on SR-005" in out and "Compatible? no judgment available" in out
+    assert "Conflict IC-001 on \"relay checks\"" in out and "Compatible? no judgment available" in out
     assert backend.calls == 0
     assert [p for p in events(repo, "judgment") if p.get("subject") == "IC-001"] == []
     merge_report(open_core(repo), head, run_full=False)  # interactive: live

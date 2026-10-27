@@ -214,7 +214,7 @@ def test_sr295_ex1_an_open_conflict_is_handed_to_the_agent_to_ask(repo: Path,
     assert "question" not in _owner(_stop(repo, hook_input))
     agent = _agent(repo)
     assert summary.ASK_OWNER in agent and "relay checks" in agent
-    assert "question tool" in summary.ASK_OWNER
+    assert "question tool" in summary.ASK_OWNER and "study" not in summary.ASK_OWNER
 
 
 @pytest.mark.sr("SR-295")

@@ -171,7 +171,7 @@ def test_plumb_conflicts_lists_the_early_card(tmp_path: Path, hook_input: Any) -
     with contextlib.redirect_stdout(out):
         assert cli.main(["conflicts", "--root", str(main)]) == 0
     text = out.getvalue()
-    assert '▸ Conflict  SR-005 "relay checks"' in text
+    assert '▸ Conflict on "relay checks"' in text
     assert "feat-x      A relay pins the stated group, named by its title." in text
     _start_turn(main)
     assert _stop(main, hook_input) == ""                       # SR-363: no question count

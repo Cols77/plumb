@@ -66,10 +66,10 @@ def _state(root: Path, record_id: str) -> str:
 def test_conflicts_on_default_branch_labels_both_sides_by_branch(tmp_path: Path) -> None:
     main, _dec = _on_main_after_b(tmp_path)
     text = _conflicts(main)
-    assert '▸ Conflict  SR-005 "deadline reminder"' in text
+    assert '▸ Conflict on "deadline reminder"' in text and "SR-005" not in text
     assert f"feat-b      {B}" in text and f"feat-a      {A}" in text
     assert "this work" not in text and "keep this one" not in text
-    assert "Waits on its card for the owner (feat-b's, feat-a's, or both)" in text
+    assert "Ask the owner with the question tool (feat-b's, feat-a's, or both)" in text
 
 
 def test_stop_hook_conflict_on_default_branch_labels_both_sides(tmp_path: Path) -> None:
@@ -103,7 +103,7 @@ def test_conflicts_shows_one_card_per_record(tmp_path: Path) -> None:
     """/plumb conflicts and the stop hook's card: only the merge card asks."""
     main, _dec = _held_merge_of_b(tmp_path)
     text = _conflicts(main)
-    assert text.count("▸ Conflict") == 1 and "Conflict  IC-" in text
+    assert text.count("▸ Conflict") == 1 and "Conflict IC-" in text
     assert early.turn_conflicts(open_core(main).paths.session) == []
 
 

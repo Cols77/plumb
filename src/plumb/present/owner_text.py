@@ -72,16 +72,18 @@ MODIFY_DELETE = ("  {record} \"{title}\" was changed on {changed} and removed on
                  "say \"keep the changed one\" or \"keep it removed\"")
 
 # -- the conflict card (8.3), wherever it appears
-CARD_HEAD = "▸ Conflict  {ic} on {record} \"{title}\"   (awaits your choice)"
+# SR-267: the agent's view keeps the IC- handle (SR-151); no record id, and the owner gets one
+# question through the tool, without ids
+CARD_HEAD = "▸ Conflict {ic} on \"{title}\"   (awaits the owner's choice)"
 CARD_FIELD = "  {name}:"
 CARD_MERGED = "  Merged on their own: {what}"
 CARD_JUDGED = "  Compatible? JEV: {verdict} ({probability:.2f}){reason}"
 CARD_NO_JUDGMENT = "  Compatible? no judgment available"
 CARD_UNAVAILABLE = "  Compatible? judging unavailable: {cause}"
-CARD_SAY = ("  Waits on its card for the owner ({ours}'s, {theirs}'s, or combined); "
-            "do not ask in words")
-CARD_SAY_COMBINED = ("  Waits on its card for the owner ({ours}'s, {theirs}'s, or the "
-                     "combined one); do not ask in words")
+CARD_SAY = ("  Ask the owner with the question tool ({ours}'s, {theirs}'s, or combined); "
+            "never in prose")
+CARD_SAY_COMBINED = ("  Ask the owner with the question tool ({ours}'s, {theirs}'s, or the "
+                     "combined one); never in prose")
 CONFLICTS_HEADER = "intent conflicts wait for your choice (/plumb conflicts):"
 NO_CONFLICTS = "plumb: no intent conflict waits for you"
 CONFLICTS_BRIEF = "plumb: {n} intent conflict(s) await your choice (/plumb conflicts)"
@@ -227,16 +229,16 @@ STATUS_OVERLAPS_HEADER = "also being changed elsewhere (ask \"is anyone else cha
 STATUS_NO_OVERLAPS = "also being changed elsewhere: nothing"
 
 # -- intent in flight (ruling R17, SR-080, SR-081): the early intent-conflict card
-EARLY_CARD_HEAD = '▸ Conflict  {id} "{title}"   (awaits your choice, before any work)'
+EARLY_CARD_HEAD = "▸ Conflict on \"{title}\"   (awaits the owner's choice, before any work)"
 EARLY_CARD_SIDE = "  {label:<10}  {text}"
 EARLY_CARD_JUDGED = "  Compatible? {judgment}"
 EARLY_CARD_SAME = "the same requirement is being changed on both branches"
-EARLY_CARD_SAY = ("  Waits on its card for the owner ({branch}'s, this one, or both); "
-                  "do not ask in words")
+EARLY_CARD_SAY = ("  Ask the owner with the question tool ({branch}'s, this one, or both); "
+                  "never in prose")
 # the same card shown on a branch that is neither side (the default branch after one side
 # merged): both versions are labelled by branch, and only a branch's name answers it
-EARLY_CARD_SAY_NAMED = ("  Waits on its card for the owner ({a}'s, {b}'s, or both); "
-                        "do not ask in words")
+EARLY_CARD_SAY_NAMED = ("  Ask the owner with the question tool ({a}'s, {b}'s, or both); "
+                        "never in prose")
 EARLY_QUESTION = 'Branch {branch} says "{theirs}"; this request says "{ours}": which one, or both?'
 EARLY_THEIRS = "{branch}'s version"          # every option names its branch: the answer
 # words that name "this side" only from the raising branch's point of view: shown on another
@@ -399,12 +401,9 @@ EARLY_TYPED_CHOOSE = ('To answer, type: /plumb conflict choose "{title}" --take 
                       "<{branch} | {ours} | both>")
 EARLY_ISSUE = '{branch} says "{theirs}"; {label} says "{ours}"'
 
-# SR-161: the one line at a turn end naming the cards plumb withdrew, and why
-CARDS_WITHDRAWN = "Withdrawn: {items}"
+# SR-216: why plumb withdrew a stale-link question; logged only, never an owner line (SR-373)
 WITHDRAWN_LINK_CURRENT = "its link is current again"
 WITHDRAWN_LINK_GONE = "its link no longer exists"
-WITHDRAWN_SUPERSEDED = "{ids} is superseded"
-WITHDRAWN_CONFIRMED = "you confirmed what it asked about"
 # SR-162: the tidy job's reasons, its step and the line when it could not run
 STEP_TIDYING = "checking your open questions"
 STEP_PUSHBACK = "checking a question the agent sent back"   # SR-362
@@ -425,11 +424,10 @@ def settled_counts(counts: Mapping[str, int]) -> str:
     if counts.get("stays"):
         said.append(f"{counts['stays']} could not be settled and stay open")
     return ", ".join(said)
-TIDY_COULD_NOT_RUN = "I could not check whether your open questions are already answered; they all stay."
-# SR-116 EX-4: what the agent is told at the next prompt when cards were shown at turn end
-CARDS_WAITING_AGENT = ("plumb: {n} cards from the end of the last turn await the owner's "
-                       "answer ({topics}). Ask the ones only the owner can settle with the "
-                       "question tool, if not asked yet; do not restate them in prose.")
+# SR-116 EX-4, SR-267: what the agent is told at the next prompt when questions wait
+CARDS_WAITING_AGENT = ("plumb: {n} questions await the owner's answer ({topics}). Ask the "
+                       "ones only the owner can settle with the question tool, if not asked "
+                       "yet; do not restate them in prose.")
 
 # --------------------------------------------------------------------------- SP7 PRESS
 # What a button press on a card answers (sp7-realign-sp8 C3, C6; DEC-032, DEC-034). Titles,

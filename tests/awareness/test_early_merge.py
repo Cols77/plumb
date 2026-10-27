@@ -97,7 +97,7 @@ def test_merge_hook_applies_the_earlier_answer(tmp_path: Path) -> None:
     assert merged.returncode != 0, output
     assert "as you answered before work began" in output
     assert 'say "finish the merge"' in output
-    assert "Conflict  IC-" not in output and "Say:" not in output
+    assert "Conflict IC-" not in output and "Say:" not in output
     resolutions = [e.payload for e in open_core(main).log_read("events",
                                                                ["conflict-resolution"])]
     assert [(r["by"], r["decision"]) for r in resolutions] == [("owner-decision", dec)]
