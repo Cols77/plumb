@@ -404,14 +404,14 @@ def test_ex1_the_logged_answer_without_records_reaches_the_owner(
 
 
 @pytest.mark.sr("SR-299")
-def test_ex2_the_answer_format_requires_the_records_of_each_question() -> None:
-    """SR-299 EX-2: the schema and the judge's instructions require ``records`` and two to four
-    options."""
+def test_ex2_the_instructions_require_the_records_the_format_stays_lenient() -> None:
+    """SR-299 EX-2, DEC-208: the judge's instructions require ``records`` and two to four
+    options; the format needs only a question's text."""
     item = judge._load_schema()["properties"]["questions"]["items"]
-    assert "records" in item["required"]
-    assert (item["properties"]["options"]["minItems"], item["properties"]["options"]["maxItems"]
-            ) == (2, 4)
-    assert "required" in judge.system_prompt().split("- `records`:")[1].split("\n")[0]
+    assert item["required"] == ["question"]
+    prompt = judge.system_prompt()
+    assert "required" in prompt.split("- `records`:")[1].split("\n")[0]
+    assert "two to four" in prompt.split("- `options`:")[1].split("\n")[0]
 
 
 @pytest.mark.sr("SR-299")

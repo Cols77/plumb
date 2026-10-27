@@ -67,19 +67,11 @@ def _load_schema() -> Mapping[str, Any]:
     return {"id": SCHEMA_ID, **data}
 
 
-def _lenient(full: Mapping[str, Any]) -> Mapping[str, Any]:
-    """SR-299 EX-1, EX-3: the schema dispatchers and the worker check an answer against. The
-    model is asked for records and 2-4 options (schemas/judge.json, the judge's instructions);
-    a question short of them must not reject the whole answer: ``apply`` fills the records,
-    and the cascade retries the question once, then writes a debug case."""
-    out = json.loads(json.dumps(full))
-    item = out.get("properties", {}).get("questions", {}).get("items", {})
-    item["required"] = ["question"]
-    item.get("properties", {}).get("options", {}).pop("minItems", None)
-    return out
-
-
-schema: Mapping[str, Any] = _lenient(_load_schema())
+# SR-299 EX-2, DEC-208: one lenient format, given to the model and checked by the worker: a
+# question needs only its text. The judge's instructions ask for its records and 2-4 options;
+# a question short of them never rejects the whole answer: ``apply`` fills the records, and the
+# cascade retries the question once, then writes a debug case.
+schema: Mapping[str, Any] = _load_schema()
 
 
 # --------------------------------------------------------------------------- record texts

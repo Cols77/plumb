@@ -367,6 +367,22 @@ def test_the_schema_is_a_checkable_answer_shape() -> None:
     assert FakeDispatcher().available() is None
 
 
+@pytest.mark.sr("SR-299")
+def test_ex2_the_format_given_to_the_model_is_lenient() -> None:
+    """DEC-208: the schema file itself (what the model is given) asks only a question's text;
+    the instructions and the retry enforce the records and two to four options."""
+    import json
+
+    from plumb.understand import judge
+
+    given = json.loads((judge.HERE / "schemas" / "judge.json").read_text(encoding="utf-8"))
+    item = given["properties"]["questions"]["items"]
+    assert item["required"] == ["question"]
+    assert "minItems" not in item["properties"]["options"]
+    assert "maxItems" not in item["properties"]["options"]
+    assert judge.schema == {"id": judge.SCHEMA_ID, **given}
+
+
 # ---- J3: one job per capture ----------------------------------------------------------------
 
 SIX = {"intent": {"quote": "add multiply next to add", "readback": "Add multiply beside add",
