@@ -192,24 +192,15 @@ def resume(core: Any, session: str) -> Started:
     return start(core, session)
 
 
-def holding(core: Any, session: str) -> set[str]:
-    """The records a started pass that is not finished keeps back from the trial: their
-    cards come when the pass ends."""
-    if not marker_path(core.root, session).exists():
-        return set()
-    records = proposed(core)
-    if len(judged_ids(core, records)) >= len(records):
-        return set()
-    return {r.id for r in records}
-
-
 # --------------------------------------------------------------------------- cards
 
 
 def after_job(core: Any, job: Any, *, verdicts: Sequence[Mapping[str, Any]]) -> After:
     """Called by ``judge.apply`` for a job of the pass: report the progress; when this job
-    finishes the pass, write the end line. The records take the question route as any judged
-    record does (no trial card); ``verdicts`` are this job's, not in the log yet."""
+    finishes the pass, write the end line. The verdicts are applied as any judge job's
+    (``judge.apply``, SR-372): a supported record is not put to the owner and waits for JEV,
+    only one beyond or contradicting the owner's words takes the question route; no trial
+    card is drawn. ``verdicts`` are this job's, not in the log yet."""
     from plumb.progress import Reporter
     from plumb.understand import judge
 

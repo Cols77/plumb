@@ -278,17 +278,6 @@ def test_a_pass_that_is_not_started_is_not_resumed(repo: Path, write_record) -> 
     assert resumed.jobs == started.jobs != []                     # the same jobs: none twice
 
 
-def test_the_pass_holds_its_records_back_from_the_trial_until_it_ends(
-        repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog, trial
-
-    bulk(repo, write_record, {"alpha": 4, "beta": 4})
-    backlog.start(open_core(repo), SESSION)
-    engine_standins.dispatcher.script = {"judge": answering()}
-    run_pass(repo, engine_standins, jobs=1)                       # half done
-    assert trial.top_up(open_core(repo), SESSION) == []           # no trial batch mid-pass
-
-
 def test_a_decision_in_the_backlog_takes_the_question_route(repo: Path, write_record,
                                                           engine_standins) -> None:
     from plumb.understand import backlog, judge

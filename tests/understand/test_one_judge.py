@@ -23,7 +23,6 @@ from plumb.understand import cardstore, files, hooks, judge, trial  # noqa: E402
 from understand.fakes import as_worker  # noqa: E402
 from understand.test_judge_job import (  # noqa: E402
     SESSION,
-    approve,
     decision_text,
     intent_text,
     log_prompt,
@@ -195,23 +194,6 @@ def test_ex2_words_not_found_say_so_and_show_the_proposal_alone(
     assert card.issue == "Totals are shown on the invoice"
 
 
-@pytest.mark.sr("SR-252")
-def test_ex3_three_cards_are_open_and_answering_one_opens_the_next(
-        repo: Path, write_record) -> None:
-    ids = make_world(repo, write_record, 5)
-    write_applied(repo, judged(repo, ids, [0.99, 0.95, 0.9, 0.85, 0.8]))
-    drawn = trial.top_up(open_core(repo), SESSION)      # trial cards opened before (SR-252 EX-6)
-    assert len(drawn) == trial.MAX_OPEN == 3
-    cardstore.save(repo, SESSION, drawn)
-    assert trial.top_up(open_core(repo), SESSION) == []
-    first, *rest = drawn
-    approve(open_core(repo), first.questions[0].record)          # the owner said yes
-    cardstore.save(repo, SESSION, [dataclasses.replace(first, status="answered"), *rest])
-    (fourth,) = trial.top_up(open_core(repo), SESSION)
-    shown = {c.id for c in drawn}
-    assert fourth.id not in shown and fourth.kind == "trial"
-
-
 # ---- SR-132 ------------------------------------------------------------------------------
 
 
@@ -230,7 +212,8 @@ def test_ex4_a_withdrawn_card_confirms_nothing_and_its_record_stays_proposed(
         repo: Path, write_record) -> None:
     ids = make_world(repo, write_record, 1)
     write_applied(repo, judged(repo, ids, [0.9]))
-    drawn = trial.top_up(open_core(repo), SESSION)      # a trial card opened before
+    drawn = [trial.card(open_core(repo), trial.Candidate(open_core(repo).index()["SR-001"], 0.9,
+                                                         {}))]    # a trial card opened before
     cardstore.save(repo, SESSION, drawn)
     cardstore.withdraw(repo, SESSION, [drawn[0].id])
     assert cardstore.load(repo, SESSION) == []
