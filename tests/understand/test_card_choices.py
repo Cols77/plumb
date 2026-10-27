@@ -71,13 +71,6 @@ def test_sr130_ex3_a_merge_conflict_is_keep_this_keep_the_other_or_both() -> Non
         ("Both", "accepted"), ("Keep this one", "change"), ("Keep the other", "change")]
 
 
-def test_couldnt_check_build_anyway_is_accepted_and_wait_is_rejected() -> None:
-    from plumb.understand import clarify
-
-    (question,) = clarify.couldnt_check_card("sha256:" + "a" * 64).questions
-    assert answers(question) == [(words.GATE_WAIT, "rejected", None),
-                                 (words.GATE_BUILD_ANYWAY, "accepted", None)]
-    assert all(c.consequence for c in question.choices)
 
 
 def test_clarify_gap_suggestions_are_picks_in_the_recommended_order() -> None:

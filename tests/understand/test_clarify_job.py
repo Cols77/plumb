@@ -375,9 +375,9 @@ def test_a_late_result_for_an_older_message_never_opens_a_newer_gate(
     assert gate.is_closed(repo, SESSION)
 
 
-def test_clarify_registers_clarify_and_couldnt_check() -> None:
+def test_clarify_registers_clarify_and_no_couldnt_check_card() -> None:
     assert effects.handler_for("clarify") is not None
-    assert effects.handler_for("couldnt_check") is not None
+    assert effects.handler_for("couldnt_check") is None
 
 
 def test_same_message_same_job_id(repo: Path, engine_standins: Any) -> None:

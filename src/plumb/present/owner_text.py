@@ -285,15 +285,10 @@ STEP_READING = "reading your answer"
 STEP_CHECKING = "checking your request"
 STEP_JUDGING = "judging {n} records"
 STEP_JUDGING_BACKLOG = "judging the backlog"
-GATE_BUILD_ANYWAY = "Build anyway"
-GATE_WAIT = "Wait"
 # SR-336: a question a study proposed ahead of it serves
 STUDY_FIRST = "Study it first"
 STUDY_FIRST_NOTE = ("The band's study line opens the study in the room; the question waits "
                     "until you have read it.")
-GATE_BUILD_NOTE = ("Builds now without the check; what the check would have caught is not "
-                   "looked at")
-GATE_WAIT_NOTE = "Builds nothing until the check runs again on your next message"
 GATE_CLOSED = "Waiting for your answer before building: {reason}"
 NOT_AVAILABLE = "not available in this build"
 CONFIRM_YOU_SAID = "you said: {evidence}"

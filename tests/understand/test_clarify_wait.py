@@ -82,16 +82,14 @@ def test_ex6_late_result_collected_by_next_wait_no_build_started(
     runner.start()
     assert engine_standins.dispatcher.blocked.wait(10)
     first = cmd_clarify.wait(core, SESSION, timeout=0.3)    # the check is still running
-    assert first.state == "couldnt_check"
-    (shown,) = [c for c in cardstore.own_cards(repo, SESSION) if c.kind == "couldnt_check"]
-    assert shown.status == "open" and gate.is_closed(repo, SESSION)    # no build started
+    assert first.state == "couldnt_check" and first.lines == [cmd_clarify.SHOW_STILL_CHECKING]
+    assert gate.is_closed(repo, SESSION)                    # no build started
     release.set()
     runner.join(10)
     assert gate.is_closed(repo, SESSION)                    # the late result is a card
     second = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
     assert second.state == "card" and second.digest == digest
     cards = {c.kind: c for c in cardstore.own_cards(repo, SESSION)}
-    assert cards["couldnt_check"].status == "closed"        # the late result replaced it
     assert cards["choice"].status == "open" and "clarify" not in cards   # no read-back card
     assert len(engine_standins.dispatcher.ran("clarify")) == 1
 
@@ -133,7 +131,7 @@ def test_the_same_words_sent_again_get_their_own_check(repo: Path, engine_standi
     assert cmd_clarify.wait(open_core(repo), SESSION, timeout=5).state == "card"
     assert len(list(files.jobs_dir(repo, SESSION).glob("clarify-*.json"))) == 2
     cards = {c.kind: c for c in cardstore.own_cards(repo, SESSION)}
-    assert cards["couldnt_check"].status == "closed" and cards["choice"].status == "open"
+    assert cards["choice"].status == "open"
 
 
 def test_a_result_with_no_ledger_entry_counts_for_nothing(repo: Path,
@@ -188,7 +186,7 @@ def test_skill_first_action_is_clarify_wait(repo: Path) -> None:
     assert "do not build" in first.lower() and "answered" in first
     assert "{plumb}" not in text
     # what the command returns, and what to do with each outcome
-    for words in ("couldn't check", "Build anyway", "spec session", "ready"):
+    for words in ("couldn't check", "work on", "spec session", "ready"):
         assert words.lower() in text.lower(), words
     assert "plumb go" not in text.replace("`/plumb go`", "")      # the agent never types it
 

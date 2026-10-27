@@ -47,9 +47,10 @@ ASK = ("The owner has this one question on a card. Say in one line that it waits
        "not restate it or its options; build nothing until they answer; plumb reads their "
        "answer from their next message.")
 BUILD_ON = "Build on this; tell the owner in one line what you assumed:"
-SHOW_COULDNT = ("The check could not be made and the owner has a card offering to build anyway or "
-                "wait. Say so in one line; nothing was built, and nothing is built until they "
-                "say to build anyway.")
+SHOW_COULDNT = ("The check of the request could not be made ({why}). Say so once in one line and "
+                "work on; nothing is held.")
+SHOW_STILL_CHECKING = ("The check of the request is still running. Build nothing yet and run "
+                       "clarify --wait again.")
 WAITING = "The check of your request is not finished. Do not build yet."
 ASK_QUESTIONS = ("Ask these {n} questions with the question tool, all at once, now: put each in "
                  "the owner's terms with `plumb question reword`, merging those on one principle; "
@@ -275,14 +276,10 @@ def _outcome_from_state(core: Any, session: str, digest: str) -> Outcome:
 
 
 def _couldnt(core: Any, session: str, digest: str, why: str) -> Outcome:
-    from plumb.approvals import Refused, find_prompt
-
-    try:
-        text = str(find_prompt(core, digest).get("text") or "")
-    except Refused:
-        text = ""
-    card = clarify.write_couldnt_check(Path(core.root), session, digest, why, text)
-    return Outcome("couldnt_check", digest, [SHOW_COULDNT], card.id)
+    if why == clarify.COULDNT_TIMEOUT:   # the check still runs: its result may yet hold
+        return Outcome("couldnt_check", digest, [SHOW_STILL_CHECKING])
+    clarify.write_couldnt_check(core, session, digest)   # SR-225 EX-9: a failure holds nothing
+    return Outcome("couldnt_check", digest, [SHOW_COULDNT.format(why=why)])
 
 
 def wait(core: Any, session: str | None = None, *, timeout: float | None = None,

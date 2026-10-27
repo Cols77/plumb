@@ -419,8 +419,7 @@ def test_capture_calls_judge_and_premise_after_writing(
 def test_owner_text_constants_exist() -> None:
     from plumb.present import owner_text as t
 
-    for name in ("STEP_READING", "STEP_CHECKING", "STEP_JUDGING", "STEP_JUDGING_BACKLOG",
-                 "GATE_BUILD_ANYWAY", "GATE_WAIT"):
+    for name in ("STEP_READING", "STEP_CHECKING", "STEP_JUDGING", "STEP_JUDGING_BACKLOG"):
         assert isinstance(getattr(t, name), str) and getattr(t, name)
 
 

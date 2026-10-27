@@ -43,9 +43,7 @@ CHOICE_TOPIC = 'One question about your request of {date}: "{text}"'
 SPEC_QUESTION = "Shall we go through them in a short spec session first?"
 SPEC_YES = "Yes, a short spec session"
 SPEC_NO = "No, build with my best guesses"
-COULDNT_ISSUE = "I could not check whether your request is clear: {why}. Nothing was built."
 COULDNT_TIMEOUT = "the check was still running"
-COULDNT_QUESTION = "Build without the check?"
 EVIDENCE_WONT = "Not doing: {text}"
 EVIDENCE_ASSUMED = "Assumed: {text}"
 EVIDENCE_CHANGES = "What changes: {text}"
@@ -688,33 +686,10 @@ def describe(job: Job) -> str:
 # ---------------------------------------------------------------- the failed check
 
 
-def couldnt_check_card(digest: str, why: str = "", topic: str = "") -> CardState:
-    """The card shown when the check could not be made: it says nothing was built and asks
-    "Build without the check?" with Build anyway and Wait."""
-    resolutions = (owner_text.GATE_WAIT, owner_text.GATE_BUILD_ANYWAY)   # waiting is the safe one
-    return CardState(
-        id=couldnt_card_id(digest), kind="couldnt_check", topic=topic or TOPIC_FALLBACK,
-        issue=COULDNT_ISSUE.format(why=why or COULDNT_TIMEOUT), resolutions=resolutions,
-        questions=(ClarifyQuestion(id="release", text=COULDNT_QUESTION,
-                                   resolutions=resolutions,
-                                   choices=(
-                                       Choice(owner_text.GATE_WAIT, "rejected",
-                                              consequence=owner_text.GATE_WAIT_NOTE),
-                                       Choice(owner_text.GATE_BUILD_ANYWAY, "accepted",
-                                              consequence=owner_text.GATE_BUILD_NOTE))),),
-        status="open")
-
-
-def write_couldnt_check(root: Path, session: str, digest: str, why: str = "",
-                        text: str = "") -> CardState:
-    """Put the "couldn't check" card of the message in the card store (once) and keep the
-    gate closed for it."""
-    card = couldnt_check_card(digest, why, TOPIC.format(date=_now()[:10], text=_clipped(text))
-                              if text.strip() else "")
-    cards = [c for c in cardstore.own_cards(root, session) if c.id != card.id]
-    cardstore.save(root, session, [*cards, card])
-    gate.refresh(root, session, digest, GATE_REASON_COULDNT)
-    return card
+def write_couldnt_check(core: Any, session: str, digest: str) -> None:
+    """The check of the message could not be made: the gate it closed opens, and the agent
+    works on (SR-225 EX-9, SR-378 EX-4); no card is filed."""
+    gate.open(core, session, digest, "couldnt-check", GATE_REASON_COULDNT)
 
 
 # ---------------------------------------------------------------- the card effects
@@ -813,22 +788,11 @@ def _choice_effect(*, core: Any, card: CardState, job: Any = None, digest: str =
         for c in cardstore.own_cards(Path(core.root), session) if c.id == want))
 
 
-def _couldnt_check_effect(*, core: Any, card: CardState, job: Any = None, digest: str = "",
-                          accepted: bool = False, **_: Any) -> Applied | None:
-    """The "Build without the check?" card: only an accepted answer at or above the reader's
-    threshold (``accepted``) opens the gate; "wait" keeps it closed."""
-    session = str(getattr(job, "session", "") or "")
-    if accepted and session:
-        gate.release(core, session, "owner-words", digest=digest)
-    return None
-
-
 def _register() -> None:
     from plumb.understand import effects
 
     effects.register("clarify", _clarify_effect)
     effects.register("choice", _choice_effect)
-    effects.register("couldnt_check", _couldnt_check_effect)
 
 
 _register()
