@@ -320,7 +320,6 @@ BACKLOG_STARTED = ("Judging the backlog: {records} records are queued in {jobs} 
                    "line shows how far it is.")
 BACKLOG_NOTHING = "Nothing in the backlog is left to judge."
 EXAMPLE_N = "example {n}"
-COULDNT_CHECK_ISSUE = "the check did not finish; I will try again on your next message"
 READBACK_YES = "Yes, that is it"
 READBACK_NOT_QUITE = "Not quite"
 

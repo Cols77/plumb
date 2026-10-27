@@ -80,7 +80,7 @@ def _captured_with_card(tmp_path: Path, hook_input: Any) -> tuple[Path, Path]:
     change(other, "A relay pins the stated group, named by its title.")
     _start_turn(main)
     result = change(main, "A relay pins only the records the owner's words affirm.")
-    assert any('"relay checks" waits as a card' in line for line in result.lines)
+    assert any('"relay checks" comes back at the end of this turn' in line for line in result.lines)
     _stop(main, hook_input)                 # trigger 2 blocks: the agent asks
     _stop(main, hook_input, active=True)    # the reply the owner reads
     return main, other
@@ -147,7 +147,7 @@ def test_clarify_card_answer_before_capture(tmp_path: Path, hook_input: Any) -> 
     with contextlib.redirect_stdout(out):
         assert cli.main(["clarify", "make SR-005 pin only the affirmed records",
                          "--root", str(main)]) == 0
-    assert 'over "relay checks" waits as a card' in out.getvalue()
+    assert 'over "relay checks" comes back at the end of this turn' in out.getvalue()
     assert _stop(main, hook_input) == ""                       # SR-363: no question count
     cards = agent_channel(main)
     assert early_asks(cards, "A relay pins the stated group"), cards

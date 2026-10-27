@@ -105,13 +105,9 @@ def _sync(argv: list[str]) -> int:
     core = _core(args)
     claimed = claim_changes(core, publish(core, []))
     synced = inflight.sync_decisions(core)
-    from plumb.awareness.early import turn_cards
-
-    cards = turn_cards(core.paths.session)[0] if claimed else []
-    emit({"claimed": claimed, "synced": synced, "cards": cards}
+    emit({"claimed": claimed, "synced": synced}
          if args.as_json else
-         [*cards,
-          f"plumb: intent in flight {'updated' if claimed or synced else 'already current'}"],
+         [f"plumb: intent in flight {'updated' if claimed or synced else 'already current'}"],
          args.as_json)
     return 0
 

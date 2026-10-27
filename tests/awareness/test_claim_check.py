@@ -150,7 +150,7 @@ def test_capture(tmp_path: Path, hook_input: Any) -> None:
     _other, mine = _lanes(tmp_path)
     _start_turn(mine)
     result = change(mine, OURS)
-    assert any('"relay checks" waits as a card' in line for line in result.lines)
+    assert any('"relay checks" comes back at the end of this turn' in line for line in result.lines)
     lines, cards = _turn(mine, hook_input)
     assert early_asks(cards, THEIRS), cards
     [dec] = _decisions(mine)
@@ -172,7 +172,7 @@ def test_clarify_then_edit(tmp_path: Path, hook_input: Any) -> None:
     the decision once, and the owner's "keep feat-x's" records it."""
     _other, mine = _lanes(tmp_path)
     _start_turn(mine)
-    assert 'over "relay checks" waits as a card' in _clarify(mine)
+    assert 'over "relay checks" comes back at the end of this turn' in _clarify(mine)
     requirement(mine, "SR-005", "relay checks", OURS, feature="FEAT-002")
     lines, cards = _turn(mine, hook_input)
     # the read-back's conflict and the stop's claim of it are handed over once

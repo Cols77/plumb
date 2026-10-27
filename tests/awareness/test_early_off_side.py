@@ -72,15 +72,13 @@ def test_conflicts_on_default_branch_labels_both_sides_by_branch(tmp_path: Path)
     assert "Waits on its card for the owner (feat-b's, feat-a's, or both)" in text
 
 
-def test_stop_hook_card_on_default_branch_labels_both_sides(tmp_path: Path) -> None:
-    """The card /plumb conflicts asks the stop hook to show reads the same."""
+def test_stop_hook_conflict_on_default_branch_labels_both_sides(tmp_path: Path) -> None:
+    """The conflict /plumb conflicts asks the stop hook to hand back is stated by branch."""
     main, _dec = _on_main_after_b(tmp_path)
     _conflicts(main)
-    lines, entries = early.turn_cards(open_core(main).paths.session)
-    text = "\n".join(lines)
-    assert f"feat-b      {B}" in text and f"feat-a      {A}" in text
-    assert "this work" not in text
-    assert entries == [{"record": "SR-005", "branch": "feat-b", "ours_label": "feat-a"}]
+    found = early.turn_conflicts(open_core(main).paths.session)
+    assert [early.stated_entry(c) for c in found] == [
+        {"record": "SR-005", "branch": "feat-b", "ours_label": "feat-a"}]
 
 
 def test_choose_on_default_branch_takes_a_branch_name(tmp_path: Path) -> None:
@@ -106,8 +104,7 @@ def test_conflicts_shows_one_card_per_record(tmp_path: Path) -> None:
     main, _dec = _held_merge_of_b(tmp_path)
     text = _conflicts(main)
     assert text.count("▸ Conflict") == 1 and "Conflict  IC-" in text
-    lines, _entries = early.turn_cards(open_core(main).paths.session)
-    assert lines == []
+    assert early.turn_conflicts(open_core(main).paths.session) == []
 
 
 def test_choose_of_the_decision_answers_through_the_merge_card(tmp_path: Path) -> None:
