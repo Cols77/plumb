@@ -197,13 +197,12 @@ def trace_instruction(paths: list[str], limit: int = 4, *, core: Any = None) -> 
 
     The one builder of the untraced-change instruction (the Claude Code stop and prompt
     hooks, and through them ``plumb turn end`` and every adapter): given ``core``, it carries
-    the ownership proposal of each shown path (``ownership_lines``) for the read-back."""
+    the ownership proposal of each shown path (``ownership_lines``)."""
     shown = ", ".join(paths[:limit]) + (f" +{len(paths) - limit} more" if len(paths) > limit
                                          else "")
-    text = (f"plumb: untraced change: {shown} changed with no requirement owning it. Read the "
-            "change back to the owner in their terms (what will and won't be done, "
-            "assumptions labelled), record it as a proposed SR with given/when/then examples "
-            "(edge cases too) deriving from an INT, and link it implemented_by those paths.")
+    text = (f"plumb: untraced change: {shown} changed with no requirement owning it. Record it "
+            "as a proposed SR with given/when/then examples (edge cases too) deriving from an "
+            "INT, and link it implemented_by those paths; the owner reads nothing back.")
     if core is not None:
         try:
             proposals = ownership_lines(core, paths, limit=limit)

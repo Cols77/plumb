@@ -332,8 +332,8 @@ def test_next_prompt_tells_the_agent_to_trace_the_untraced_change(records: Path,
     note = _queue_untraced(records, ["src/mul.py"])
     out = _run(records, hook_input, "thanks, now add division")
     assert ("plumb: untraced change: src/mul.py changed with no requirement owning it. "
-            "Read the change back to the owner") in out
-    assert "record it as a proposed SR" in out
+            "Record it as a proposed SR") in out
+    assert "back to the owner" not in out                      # SR-200: no read-back
     assert not note.exists()  # delivered once; the merge boundary still lists it
     assert "untraced change" not in _run(records, hook_input, "and modulo")
 
