@@ -176,6 +176,14 @@ def test_help_lists_commands(capsys: pytest.CaptureFixture[str]) -> None:
     assert "validate" in out
 
 
+@pytest.mark.sr("SR-202")
+def test_help_lists_context_as_the_agents_command_not_an_owner_view() -> None:
+    """SR-374: `plumb context` is the agent's, never shown to the owner as an owner view."""
+    owner = cli._HELP.split("owner views")[1].split("\n\n")[0]
+    assert "context" not in owner
+    assert "  context " in cli._HELP.split("agent views")[1]
+
+
 def test_entry_point_imports_stay_light() -> None:
     import subprocess
 
