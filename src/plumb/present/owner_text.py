@@ -365,8 +365,9 @@ STALE_CONSEQUENCE_UNDO = ("Puts the code back as it was when you confirmed the r
                           "keeps the wording and drops whatever the change was for")
 STALE_WHY_KEEP = ("I could not tell whether the change matters to what you asked; keeping both "
                   "as they are changes nothing while you read the change shown with this card")
-STALE_HOLD_ENDED = ('I held the turn open {n} times for "{title}" and then let it go; it waits '
-                    "for your answer below.")
+# to the agent (SR-198 EX-11): the link's question waits in the internal store (DEC-384)
+STALE_HOLD_ENDED = ('plumb held the turn open {n} times for "{title}" and then let it go; its '
+                    "question is filed: ask the owner with the question tool.")
 
 
 # --------------------------------------------------------------------------- SP7 slice 3

@@ -307,9 +307,10 @@ STALE_USAGE = (
     "usage: plumb stale card <link> --topic TITLE --issue WORDS --options a|b|c "
     "--consequences a|b|c --why REASON [--recommended N] [--session ID]\n"
     "       plumb stale cards [--incomplete] [--session ID] [--json]\n"
-    "card: records a stale card for an owner-intent question: the link then counts as "
-    "resolved for the end-of-turn hold, and the end-of-turn summary shows the card to the "
-    "owner. Each option needs what it does and leaves undone (--consequences, one per option, "
+    "card: files a stale link's owner-intent question in plumb's internal store (the agent "
+    "asks it with the question tool; nothing is shown to the owner as a card): the link then "
+    "counts as resolved for the end-of-turn hold. Each option needs what it does and leaves "
+    "undone (--consequences, one per option, "
     "in the same order) and the recommended one needs its reason (--why); a card lacking any "
     "is refused (SR-116). Re-filing a link's open card keeps its topic, issue and options "
     "unless given again; --recommended (numbered from 1) and --consequences need --options "
@@ -407,8 +408,8 @@ def _stale_card(argv: list[str]) -> int:
     # say the filed order and the recommended one back
     filed = "; ".join(f"{n}. {o}" for n, o in enumerate(options, start=1))
     emit({"card": card, "session": session} if args.as_json else
-         f"plumb: card recorded for {args.link} in session {session}; the turn may end with "
-         f"it waiting for the owner. Options in the order filed: {filed}. Recommended: "
+         f"plumb: question filed for {args.link} in session {session}; ask the owner with the "
+         f"question tool. Options in the order filed: {filed}. Recommended: "
          f"{recommended + 1} ({options[recommended]})", args.as_json)
     return 0
 

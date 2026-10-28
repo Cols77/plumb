@@ -853,7 +853,8 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
                            turn=stale.turn_number(core.root, where), **filed)
             item["card"], item["session"] = True, where
         item["card_missing"] = missing
-        action = f"brought to the owner as a card: {found.explanation}"
+        action = ("filed as a question for the owner, to ask with the question tool: "
+                  f"{found.explanation}")
         if missing:   # SR-116: kept open, but not offered until the agent completes it
             action += ("; the card is not offered until it is complete, it lacks: "
                        + "; ".join(missing) + f" (plumb stale card {link.id} --consequences "
