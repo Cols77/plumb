@@ -353,7 +353,8 @@ def notes(conflicts: Sequence[EarlyConflict]) -> list[str]:
 
 
 def card(conflict: EarlyConflict) -> list[str]:
-    """The early intent-conflict card, in the owner's terms (R9 card format, sp5 4.2). On a
+    """The early intent conflict as the agent reads it in ``plumb conflict`` (the agent's
+    input, SR-267: the owner is asked through the question tool, never shown this). On a
     branch that is neither side (``ours_label`` names the second branch) both versions are
     labelled by branch and the answer names a branch, never "this one"."""
     say = (text.EARLY_CARD_SAY_NAMED.format(a=conflict.branch, b=conflict.ours_label)
@@ -370,10 +371,11 @@ REQUESTED_FILE = "early-requested.json"
 
 
 def request_cards(core: Any, conflicts: Sequence[EarlyConflict]) -> None:
-    """Ask the stop hook to show these cards to the owner at the end of the turn and to put
-    them in the stated set (``turn_conflicts``), so the owner's answer ("keep feat-x's") is
-    relayed against a card the owner saw, even when nothing is written yet (the clarify
-    read-back)."""
+    """Hand these conflicts to the stop hook, which gives each to the agent to ask the owner
+    through the question tool (``stop.early_asks``; nothing is shown to the owner as a card,
+    DEC-384), and put them in the stated set (``turn_conflicts``), so the owner's answer
+    ("keep feat-x's") is relayed against the question asked, even when nothing is written yet
+    (the clarify read-back)."""
     if not conflicts:
         return
     import json
