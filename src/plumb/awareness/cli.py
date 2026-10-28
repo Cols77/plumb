@@ -6,10 +6,13 @@ on?", "is anyone else changing the relay checks?") or ``/plumb status``.
 - ``plumb inflight [--json]``: every active claim of ``refs/plumb/claims`` (branch, summary,
   records) and the conflicts raised on them;
 - ``plumb inflight check <request words> [--json]``: the read-back check of plumb-clarify
-  (the early conflict cards and warnings); it writes nothing;
+  (the early conflicts and warnings); it writes nothing;
 - ``plumb inflight drop <branch or claim>``: the owner dropped that work, so its claim goes;
 - ``plumb inflight sync``: carry this branch's changed records and the owner's answers to
-  raised conflicts into the register (the stop hook does this on its own).
+  raised conflicts into the register (the stop hook does this on its own). It shows no
+  conflict: the early conflicts a claim raises reach the agent from the stop hook, both
+  versions by branch, to ask the owner (``stop.early_asks``; a direct edit's conflict is
+  checked by tests/awareness/test_claim_check.py::test_direct_edit_then_stop_hook).
 
 Exit codes: 0, 1 when ``check`` found a conflict, 2 usage.
 """
