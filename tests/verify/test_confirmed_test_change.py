@@ -197,6 +197,9 @@ def test_stop_asks_when_a_test_was_rewritten_to_hide_a_regression(confirmed,
     assert "plumb: regression hidden: tests/test_mod.py::test_add" in reason
     assert ("SR-001 EX-1 \"given two numbers, when added, then the sum is returned\""
             in reason)
+    # SR-373, SR-207 EX-2: the owner gets one plain line naming the behaviour, with the block
+    owner = data.get("systemMessage", "")
+    assert "worked before and now fails" in owner and "SR-001" not in owner, data
     # DEC-384: no card follows; the block named it, and the stop after it adds no owner text
     assert "systemMessage" not in _stop(root, hook_input, active=True)
 
