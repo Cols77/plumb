@@ -425,10 +425,12 @@ def test_flow_5_a_job_not_finished_at_the_turns_end_is_collected_next_turn(
     assert events(repo, "approval") == []
     assert s.worker_idle(40)
     model(s)
-    s.say("carry on")
+    # the first stop's background upkeep may run before or after the judge approves: its line
+    # then reaches the agent at this prompt or after the next stop, once either way
+    prompted = s.say("carry on")
     assert set(judge_approvals(repo)) == {"INT-008"}
     s.stop()
-    assert owner_text.JUDGE_APPROVED in agent_of(s)
+    assert (prompted + agent_of(s)).count(owner_text.JUDGE_APPROVED) == 1
 
 
 # ---- (6) what the agent writes into the session's files confirms nothing -------------------------
