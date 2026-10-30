@@ -73,8 +73,10 @@ def claude_turn(binary: str, scratch: Path, message: str, *, model: str, session
             "--setting-sources", "project", "--append-system-prompt", system,
             *(["--resume", session_id] if session_id else []),
             "--allowedTools", *ALLOWED_TOOLS]
+    # eval-52810e26: ``claude -p`` has no question tool; the launching session's
+    # CLAUDE_CODE_SESSION_ATTENDED would make plumb's hooks send the agent after it
     env = {k: v for k, v in (os.environ if env is None else env).items()
-           if k not in ("PLUMB_JOB", "PLUMB_WORKER")}
+           if k not in ("PLUMB_JOB", "PLUMB_WORKER", "CLAUDE_CODE_SESSION_ATTENDED")}
     # the agent's shell finds the plumb command of the interpreter running the benchmark
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     out = {"text": "", "session_id": session_id, "capped": False, "error": ""}
@@ -99,6 +101,19 @@ def claude_turn(binary: str, scratch: Path, message: str, *, model: str, session
             "error": text[:300] if data.get("is_error") and not maxed else ""}
 
 
+def _new_run_dir(parent: Path, name: str) -> Path:
+    """A fresh run folder: two runs of one task and model in the same second get -2, -3, ..."""
+    parent.mkdir(parents=True, exist_ok=True)
+    for n in range(1, 10_000):
+        run_dir = parent / (name if n == 1 else f"{name}-{n}")
+        try:
+            run_dir.mkdir()
+            return run_dir
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"no free run folder for {name} in {parent}")
+
+
 def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | None = None,
              claude=claude_turn, now=time.monotonic, binary: str | None = None,
              limits: dict[str, int | None] | None = None) -> RunResult:
@@ -108,9 +123,8 @@ def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | 
     limits = {**NO_LIMITS, **(limits or {})}
     run_cap_s = limits["minutes"] * 60 if limits["minutes"] else None
     root = Path(root)
-    run_dir = (runs_dir or root / ".plumb" / "eval" / "runs") / (
-        f"{time.strftime('%Y%m%dT%H%M%S')}-{task.name}-{model}")
-    run_dir.mkdir(parents=True)
+    run_dir = _new_run_dir(runs_dir or root / ".plumb" / "eval" / "runs",
+                           f"{time.strftime('%Y%m%dT%H%M%S')}-{task.name}-{model}")
     scratch = scratch_repo(Path(tempfile.mkdtemp(prefix="plumb-eval-")))
     transcript: list[Turn] = []
     state: dict[str, Any] = {"session": None, "start": now(), "out_of_time": False}

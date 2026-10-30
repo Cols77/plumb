@@ -481,7 +481,7 @@ def _block_reasons(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, A
             wanted.append(Line(_masked_line(index, m), subject=f"masked:{m['node']}",
                                state=str(m.get("masked_by") or "?"), must=True))
             asked[f"masked:{m['node']}"] = str(m.get("masked_by") or "?")
-        wanted += _questions_line(core, ctx.session_id)
+        wanted += _questions_line(core, ctx.session_id, ctx.data)
         reasons = emitter.add(wanted)
         if stale_reasons:  # SR-111: a link this turn made stale is still unresolved
             reasons = [*stale_reasons, *reasons]
@@ -534,13 +534,25 @@ def _cards(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, Any], v: 
 ASK_WAITING = ("plumb: {n} judge question{s} wait for the owner: run `plumb clarify --wait --json` "
                "and ask them now with the question tool, before the turn ends (reword, merge, "
                "push back; never drop one).")
+# no question tool here (a headless run): the questions are still asked, in the reply's words
+ASK_IN_TEXT = ("plumb: {n} judge question{s} wait for the owner and this session has no question "
+               "tool: run `plumb clarify --wait --json` and ask them in plain words at the end of "
+               "your reply, each with its options and your recommendation (reword, merge; never "
+               "drop one). The owner's typed answer settles them.")
 
 
-def _questions_line(core: Any, session: str) -> list[Any]:
+def _questions_line(core: Any, session: str, data: Mapping[str, Any]) -> list[Any]:
     """SR-361 EX-5: judge questions raised since the agent last asked reach it before it stops,
-    once per set of questions; the band alone reaches nobody. Never fails the stop."""
+    once per set of questions; the band alone reaches nobody. Never fails the stop.
+    A session with no question tool (a headless run) is told to ask them in its reply; a
+    subagent is told nothing, its main agent asks."""
     try:
+        from plumb.hosts.claude_code import ask_gate
         from plumb.present.delta import Line
+
+        if data.get("agent_id"):
+            return []
+        template = ASK_WAITING if ask_gate.applies(dict(data)) else ASK_IN_TEXT
         from plumb.understand import judge
 
         keys = sorted(str(q.get("key")) for q in judge.to_ask(core, session))
@@ -549,13 +561,13 @@ def _questions_line(core: Any, session: str) -> list[Any]:
     if not keys:
         return []
     state = hashlib.sha256("\n".join(keys).encode("utf-8")).hexdigest()[:16]
-    return [Line(ASK_WAITING.format(n=len(keys), s="s" if len(keys) > 1 else ""),
+    return [Line(template.format(n=len(keys), s="s" if len(keys) > 1 else ""),
                  subject="judge-questions", state=state, must=True)]
 
 
 def _ask_block(ctx: HookContext, core: Any) -> HookOutput | None:
     """A turn with no edit still stops on judge questions nobody asked (SR-361 EX-5)."""
-    lines = _questions_line(core, ctx.session_id)
+    lines = _questions_line(core, ctx.session_id, ctx.data)
     if not lines:
         return None
     from plumb.present.delta import open_emitter

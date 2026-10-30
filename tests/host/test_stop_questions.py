@@ -18,6 +18,25 @@ pytestmark = pytest.mark.sr("SR-361")
 OTHER = "Should the faster pages also work offline?"
 
 
+@pytest.fixture(autouse=True)
+def attended(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The question tool is there: an attended main session."""
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", "1")
+
+
+def test_without_the_question_tool_the_questions_are_asked_in_words(  # noqa: F811
+        world: Path, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
+    """eval-52810e26: a headless run has no question tool; the stop still has the questions
+    asked, in the reply's plain words, once per set: a question is never left unasked."""
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ATTENDED")
+    judge_asks(world, (ASK, ["SR-001"]), (OTHER, ["INT-001"]))
+    start_turn(world, SESSION)
+    reason = _block(run_stop(world, hook_input, session=SESSION))
+    assert reason and "no question tool" in reason and "plain words" in reason
+    start_turn(world, SESSION)
+    assert _block(run_stop(world, hook_input, session=SESSION)) is None
+
+
 def test_ex5_open_questions_block_the_stop_once_per_set(world: Path, hook_input) -> None:  # noqa: F811
     judge_asks(world, (ASK, ["SR-001"]))
     start_turn(world, SESSION)
@@ -37,3 +56,4 @@ def test_no_block_without_questions_or_after_a_block(world: Path, hook_input) ->
     judge_asks(world, (ASK, ["SR-001"]))
     start_turn(world, SESSION)
     assert _block(run_stop(world, hook_input, session=SESSION, active=True)) is None
+

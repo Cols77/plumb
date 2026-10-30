@@ -122,6 +122,43 @@ def test_claude_turn_lets_the_agent_run_python_and_plumb(tmp_path, monkeypatch):
     assert seen["env"]["PATH"].startswith(str(Path(sys.executable).parent))
 
 
+@pytest.mark.sr("SR-344")
+def test_claude_turn_is_never_an_attended_session(tmp_path, monkeypatch):
+    """eval-52810e26: ``claude -p`` has no question tool, so the headless agent's hooks must not
+    take it for the attended session that launched the benchmark: that session's
+    CLAUDE_CODE_SESSION_ATTENDED=1 would make the stop and ask gate send the agent after a
+    question tool it cannot find, turn after turn."""
+    import subprocess
+
+    seen = {}
+
+    def fake_run(argv, **kw):
+        seen.update(env=kw["env"])
+        return subprocess.CompletedProcess(argv, 0, json.dumps(
+            {"result": "ok", "session_id": "s9", "num_turns": 1}), "")
+
+    monkeypatch.setattr(run.subprocess, "run", fake_run)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", "1")
+    run.claude_turn("claude", tmp_path, "hi", model="haiku", session_id=None, system="brief",
+                    timeout_s=5)
+    assert seen["env"].get("CLAUDE_CODE_SESSION_ATTENDED") != "1"
+    run.claude_turn("claude", tmp_path, "hi", model="haiku", session_id=None, system="brief",
+                    timeout_s=5, env={"PATH": "", "CLAUDE_CODE_SESSION_ATTENDED": "1"})
+    assert seen["env"].get("CLAUDE_CODE_SESSION_ATTENDED") != "1"
+
+
+@pytest.mark.sr("SR-344")
+def test_two_runs_in_one_second_get_their_own_run_folders(tmp_path, monkeypatch):
+    """Two runs of one task and model started in the same second never collide on the folder
+    (the run folder name is stamped to the second)."""
+    real = run.time.strftime
+    monkeypatch.setattr(run.time, "strftime", lambda fmt, *a: "20261031T120000"
+                        if fmt == "%Y%m%dT%H%M%S" else real(fmt, *a))
+    first, second = go(tmp_path, Claude()), go(tmp_path, Claude())
+    assert first.run_dir != second.run_dir
+    assert (first.run_dir / "score.json").is_file() and (second.run_dir / "score.json").is_file()
+
+
 @pytest.mark.sr("SR-345")
 def test_without_limits_the_owner_answers_until_the_agent_stops_asking(tmp_path):
     """DEC-308: no limit by default; a named limit applies, and no turn or time cap is passed."""
