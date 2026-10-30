@@ -11,7 +11,7 @@ from host.test_answer_rejudge import ASK, judge_asks, world  # noqa: F401
 from host.test_stop import _block, run_stop, start_turn
 from understand.test_judge_job import SESSION
 
-from plumb.hosts.claude_code import stop
+from plumb.hosts.claude_code import ask_gate, stop
 
 pytestmark = pytest.mark.sr("SR-361")
 
@@ -24,15 +24,26 @@ def attended(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", "1")
 
 
-def test_without_the_question_tool_the_questions_are_asked_in_words(  # noqa: F811
+def test_a_session_without_a_question_tool_is_told_nothing(  # noqa: F811
         world: Path, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
-    """eval-52810e26: a headless run has no question tool; the stop still has the questions
-    asked, in the reply's plain words, once per set: a question is never left unasked."""
+    """SR-267 EX-8, DEC-407: with no question tool, nothing tells the agent to ask in words;
+    a subagent is told nothing either, its main agent asks."""
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ATTENDED")
     judge_asks(world, (ASK, ["SR-001"]), (OTHER, ["INT-001"]))
     start_turn(world, SESSION)
-    reason = _block(run_stop(world, hook_input, session=SESSION))
-    assert reason and "no question tool" in reason and "plain words" in reason
+    assert _block(run_stop(world, hook_input, session=SESSION)) is None
+
+
+def test_the_stand_in_question_tool_counts_as_the_question_tool(  # noqa: F811
+        world: Path, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
+    """DEC-407: a headless run with the stand-in tool (the flag set, nobody attending) is told
+    to ask, once per set, exactly as an attended session is."""
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ATTENDED")
+    monkeypatch.setenv(ask_gate.STAND_IN_ENV, "1")
+    judge_asks(world, (ASK, ["SR-001"]))
+    start_turn(world, SESSION)
+    assert _block(run_stop(world, hook_input, session=SESSION)) == \
+        stop.ASK_WAITING.format(n=1, s="")
     start_turn(world, SESSION)
     assert _block(run_stop(world, hook_input, session=SESSION)) is None
 

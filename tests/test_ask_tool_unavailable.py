@@ -1,7 +1,12 @@
-"""eval-52810e26: without the question tool the judge's questions are asked in plain words."""
+"""DEC-407: a session with no question tool is never told to ask the judge's questions in plain
+words (SR-267 EX-8: questions go only through a question tool); the headless benchmark agent is
+given a stand-in tool instead (tests/evaluate/test_ask_server.py)."""
+import pytest
+
 from plumb.hosts.claude_code import stop
 
 
-def test_ask_instructions_cover_missing_question_tool():
+@pytest.mark.sr("SR-267")
+def test_the_only_ask_instruction_names_the_question_tool():
     assert "question tool" in stop.ASK_WAITING
-    assert "no question" in stop.ASK_IN_TEXT and "plain words" in stop.ASK_IN_TEXT
+    assert not hasattr(stop, "ASK_IN_TEXT")

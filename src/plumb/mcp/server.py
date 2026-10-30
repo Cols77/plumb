@@ -265,15 +265,16 @@ def _error(request_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
-def serve(root: Path, stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
-    """Answer requests until stdin closes."""
+def serve(root: Path, stdin: TextIO | None = None, stdout: TextIO | None = None,
+          server: Server | None = None) -> int:
+    """Answer requests until stdin closes (``server``: another MCP session than plumb's)."""
     if stdin is None or stdout is None:
         from plumb.hosts.claude_code.hookio import use_utf8_stdio
 
         use_utf8_stdio()
     stdin = sys.stdin if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
-    server = Server(root)
+    server = server or Server(root)
     for line in stdin:
         if not line.strip():
             continue
