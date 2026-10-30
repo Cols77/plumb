@@ -1,0 +1,5 @@
+{
+  "verdict": "pass",
+  "reason": "Frames show each beat in order; goals covered; adds the animated order over the static diagram; no overlap or off-frame text.",
+  "reviewer": "reviewer-sonnet-3"
+}
