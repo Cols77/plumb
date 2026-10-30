@@ -235,8 +235,12 @@ if [ -f "$root/src/plumb/__main__.py" ] && [ -f "$root/plugin/.claude-plugin/plu
         main=${s%%/.git/worktrees/*} ;;
     esac
   fi
+  # the platform's own layout first: a .venv carried over from the other OS cannot run
+  if [ "$OS" = Windows_NT ]; then layouts="Scripts/python.exe bin/python"
+  else layouts="bin/python Scripts/python.exe"; fi
   for venv in "$root/.venv" "$main/.venv"; do
-    for candidate in "$venv/Scripts/python.exe" "$venv/bin/python"; do
+    for layout in $layouts; do
+      candidate=$venv/$layout
       if [ -f "$candidate" ]; then
         # captured: a run that fails (the checkout cannot import) shows nothing of itself
         if out=$(printf '%s\n' "$input" | PYTHONPATH="$root/src" PLUMB_HOME=$home \

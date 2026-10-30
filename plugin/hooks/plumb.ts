@@ -91,7 +91,10 @@ export async function findPython(io: Io, root: string, session: string):
     looked.push(current)
     candidates.push((await readJson(io, current))?.python)
   }
-  for (const venv of [join(root, '.venv', 'Scripts', 'python.exe'), join(root, '.venv', 'bin', 'python')]) {
+  // the platform's own layout first: a .venv carried over from the other OS cannot run
+  const layouts = [join(root, '.venv', 'Scripts', 'python.exe'), join(root, '.venv', 'bin', 'python')]
+  if (env.OS !== 'Windows_NT') layouts.reverse()
+  for (const venv of layouts) {
     looked.push(venv)
     candidates.push(venv)
   }
