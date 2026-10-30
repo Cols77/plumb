@@ -278,8 +278,10 @@ def check_live_rows(core: Any, ids: Sequence[str], *, exclude: Sequence[str] = (
                     out.append((f"{new_id} contradicts {old_id} ({why}): supersede {old_id} "
                                 f"(supersedes: [{old_id}]) or reword it (updates), or bring "
                                 "it to the owner", sure))
-                elif (rank == 0 and not (verdict == "benign" and sure)) or why.startswith(
-                        ("judging unavailable", "no judgment")):
+                elif why.startswith(("judging unavailable", "no judgment")):
+                    # the judge could not run: say so, never claim a change it did not find
+                    out.append((f"plumb: {why}: {new_id} not checked against {old_id}", False))
+                elif rank == 0 and not (verdict == "benign" and sure):
                     out.append((f"{new_id} may change what {old_id} says ({why}): supersede, "
                                 "reword, or leave it", False))
         return out

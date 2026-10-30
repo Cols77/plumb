@@ -1048,6 +1048,20 @@ def shared_uncommitted(root: Path) -> list[str]:
                   and p.split("/")[2] in SHARED_KINDS)
 
 
+def committable(root: Path, paths: Iterable[str]) -> list[str]:
+    """``paths`` without a local kind's new entry or segment: git ignores those, so naming one
+    fails the whole commit (SR-287 EX-16). A tracked local file (its removal) and every path
+    outside the log are kept. Only the log code knows where the log lives (DEC-195, EX-15)."""
+    prefix = ".plumb/log/"
+    paths = list(paths)
+    local = [p for p in paths if p.startswith(prefix) and p.count("/") >= 3
+             and p.split("/")[2] in LOCAL_KINDS]
+    if not local:
+        return paths
+    known = {prefix + n for n in tracked_names(root)}
+    return [p for p in paths if p not in local or p in known]
+
+
 def stage(root: Path, changed: Iterable[str]) -> None:
     """``git add -A`` of the paths ``archive`` returned (segments written, files removed).
     Nothing else is staged."""
