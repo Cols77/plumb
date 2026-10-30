@@ -445,7 +445,9 @@ def on_branch(core: Any, work: Any, *, dry_run: bool = False) -> tuple[Any, str]
         names = sorted({Path(f).stem for f in changed})
         linked = {link.target.record for n in names if n in wt_core.index()
                   for link in wt_core.index()[n].links if link.target.record}
-        srs = sorted({n for n in (*names, *linked) if n.startswith("SR-")})
+        # only live requirements: a link may name one that left the tree (supersedes)
+        srs = sorted({n for n in (*names, *linked)
+                      if n.startswith("SR-") and n in wt_core.index()})
         sr_line = f"SR: {', '.join(srs)}\n\n" if srs else ""
         text = (f"Repin the stale links of {', '.join(names)}\n\n{sr_line}"
                 "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n")

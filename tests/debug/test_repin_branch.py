@@ -41,6 +41,26 @@ def test_ex1_a_repin_is_a_commit_on_a_debug_branch_announced_and_main_is_unchang
     assert "reviewed" not in text
 
 
+def test_the_trailer_names_only_requirements_still_in_the_tree(
+        plumb_repo: Path, write_record, monkeypatch) -> None:  # noqa: F811
+    """A link to a requirement that left the tree is not named: the commit check would refuse
+    the whole repin."""
+    from plumb.contracts import Target
+
+    write_record(plumb_repo, SR1.replace("SR-001", "SR-002"))
+    open_core(plumb_repo).add_link("DEC-001", "decides", Target(record="SR-002"))
+    (plumb_repo / ".plumb" / "requirements" / "SR-002.md").unlink()
+    write_record(plumb_repo, SR1.format(suffix=" of two numbers"))
+    _git(plumb_repo, "add", "-A")
+    _git(plumb_repo, "commit", "-qm", "reword; SR-002 leaves the tree")
+    monkeypatch.setattr("plumb.links.repin_after_tests", lambda core, record, **kw: (
+        AfterTests(changes=[{"link": c["link"], "tier": "tests pass"}
+                            for c in repin(core, record, all_stale=True)])))
+    debug.run("debug", ["--root", str(plumb_repo)])
+    body = _git(plumb_repo, "log", "-1", "--format=%B", "debug/repin")
+    assert "SR: SR-001\n" in body and "SR-002" not in body
+
+
 @pytest.fixture
 def stale_dec(plumb_repo: Path, write_record, monkeypatch) -> Path:
     write_record(plumb_repo, SR1.format(suffix=" of two numbers"))
