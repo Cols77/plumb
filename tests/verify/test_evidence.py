@@ -179,3 +179,21 @@ def test_a_parameter_dropped_from_a_later_run_does_not_keep_the_test_failing() -
     for ref in ("t.py", "t.py::test_p"):
         ev = node_evidence(index, _Map(), ref, "E", "I")
         assert (ev.state, ev.last_failed, ev.regression) == ("fresh-pass", False, False), ref
+
+
+@pytest.mark.sr("SR-352")
+def test_a_test_parametrized_since_its_failure_does_not_keep_the_test_failing() -> None:
+    """The bare id a test had before it was parametrized: the newest run of its family wins,
+    whether the file, the family or the bare id is asked for."""
+    from plumb.verify.evidence import node_evidence
+
+    index = {"v": 0, "nodes": {}}
+    for run, outcomes in (("1", {"t.py::test_p": "failed"}),   # before parametrize
+                          ("2", {"t.py::test_p[a]": "passed", "t.py::test_p[b]": "passed"})):
+        apply_entry(index, {"run_id": run, "env": {"env_key": "E", "identity": "I"},
+                            "nodes": [{"id": n, "outcome": o, "closure": "C", "test_hash": "T"}
+                                      for n, o in outcomes.items()]})
+    for ref in ("t.py", "t.py::test_p"):
+        ev = node_evidence(index, _Map(), ref, "E", "I")
+        assert (ev.state, ev.last_failed) == ("fresh-pass", False), ref
+    assert node_evidence(index, _Map(), "t.py::test_p[a]", "E", "I").state == "fresh-pass"

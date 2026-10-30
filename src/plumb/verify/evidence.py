@@ -309,8 +309,9 @@ def aggregate(node_id: str, parts: list[NodeEvidence],
     for e in parts:
         base = strip_param(e.node_id)
         newest[base] = max(newest.get(base, ""), e.last_run or "")
-    parts = [e for e in parts if e.node_id == strip_param(e.node_id)
-             or (e.last_run or "") >= newest[strip_param(e.node_id)]]
+    # the bare id too: a test parametrized since keeps its old unparametrized entry, which
+    # would otherwise hold the file failing or stale for good
+    parts = [e for e in parts if (e.last_run or "") >= newest[strip_param(e.node_id)]]
     if not parts:
         return NodeEvidence(node_id=node_id, state="none")
     failed = any(e.last_failed for e in parts)
@@ -334,11 +335,11 @@ def node_evidence(index: Mapping[str, Any], tmap: Any, node_id: str,
     closure = tmap.closure_hash(test_file)
     recorded = index.get("nodes", {})
     if "::" in node_id:
-        if node_id in recorded:
+        family = [n for n in recorded if strip_param(n) == node_id]
+        if family == [node_id] or (node_id in recorded and node_id != strip_param(node_id)):
             return single_evidence(index, node_id, closure=closure,
                                    test_hash=tmap.node_hash(node_id), env_key=env_key,
                                    identity=identity)
-        family = [n for n in recorded if strip_param(n) == node_id]
         if not family:
             return NodeEvidence(node_id=node_id, state="none")
         return aggregate(node_id, [single_evidence(index, n, closure=closure,
