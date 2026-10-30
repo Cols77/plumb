@@ -121,6 +121,17 @@ def _answered_by(core: Core, question: Mapping[str, Any],
     return best
 
 
+def _answered_by_request(request: str, question: Mapping[str, Any]) -> bool:
+    """The owner's request itself states one of the question's options (at least two terms
+    of it, all covered) and no other option: the question is already answered."""
+    from plumb.judgment.textjudge import stems
+
+    text = stems(request)
+    options = [stems(_option_label(o)) for o in question.get("options") or []]
+    covered = [o for o in options if len(o) >= 2 and o <= text]
+    return len(covered) == 1
+
+
 def _distinct_builds(question: Mapping[str, Any]) -> int:
     builds = [_option_build(o) for o in question.get("options") or []]
     known = [b for b in builds if b is not None]
@@ -197,6 +208,11 @@ def clarify(core: Core, request: str, questions: Sequence[Mapping[str, Any]] = (
         if hit is not None:
             question["dropped_because"] = (f"answered by {hit[0]} (confirmed): "
                                            f"{index[hit[0]].title}")
+            dropped.append(question)
+            continue
+        if _answered_by_request(request, question):
+            question["dropped_because"] = "answered by the request: the owner's words name " \
+                                          "exactly one option"
             dropped.append(question)
             continue
         if _distinct_builds(question) == 1:

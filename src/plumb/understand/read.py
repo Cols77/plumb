@@ -151,7 +151,31 @@ def card_items(core: Any, session: str, prompt_at: str = "") -> list[dict[str, A
                 "resolutions": list(resolutions),
                 "choices": [files.choice_to_json(c) for c in choices],
                 "record": record, "hash": getattr(question, "hash", "") or ""})
-    return items
+    return [*items, *judge_items(core, session)]
+
+
+JUDGE_ITEM = "judge-question:"
+
+
+def judge_items(core: Any, session: str) -> list[dict[str, Any]]:
+    """SR-214: the judge's open questions as read inputs, for an owner who answers one in a
+    typed message (a session with no question tool). An item names no ``record``: a typed
+    answer answers the question only, never a record the last reply did not show (EX-7)."""
+    from plumb.normalize import sha256_text
+    from plumb.understand import judge
+
+    return [{"id": JUDGE_ITEM + sha256_text(str(q.get("key")))[-12:], "card": "",
+             "question": str(q.get("key")), "kind": "judge",
+             "text": str(q.get("question") or ""),
+             "resolutions": [_label(o) for o in q.get("options") or () if isinstance(o, Mapping)],
+             "choices": [files.choice_to_json(Choice(_label(o), "change", _label(o)))
+                         for o in q.get("options") or () if isinstance(o, Mapping)],
+             "record": "", "hash": ""}
+            for q in judge.open_questions(core, session)]
+
+
+def _label(option: Mapping[str, Any]) -> str:
+    return str(option.get("label") or "").replace("(Recommended)", "").strip()
 
 
 def shown_items(core: Any, prompt_at: str = "") -> list[dict[str, Any]]:
@@ -340,6 +364,10 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             continue
         passes = confidence >= threshold
         item = by_id.get(raw_id) or by_id.get(name) or by_record.get(name)
+        if item is not None and item.get("kind") == "judge":
+            if passes:      # an answer to the judge's question, never to its records
+                _answer_judge_question(work, job, item, raw)
+            continue
         if item is not None:      # a record on a card is confirmed only by the card's answer
             answer_mod.apply_answer(
                 work, card=str(item.get("card")), question=str(item.get("question") or ""),
@@ -386,6 +414,38 @@ def _to_judge(work: Any, job: Job, inputs: Mapping[str, Any], covered: Mapping[s
                   "records": [{"id": i, "hash": h} for i, h in covered.items()]}}})
     queue.enqueue(work.core, files.make_job(judge.kind, job.session, judge.SCHEMA_ID,
                                             {"records": list(covered)}, needs=job.id))
+
+
+def _answer_judge_question(work: Any, job: Job, item: Mapping[str, Any],
+                           raw: Mapping[str, Any]) -> None:
+    """SR-214: the owner answered an open judge question in a typed message. Their message is
+    kept once as a ``pre-intent`` (``via: read``) naming that question (``asked.key``) and the
+    records it asked about at the version asked, as a question-tool answer names them: the
+    question is answered, so never asked again as it was, and one bare judge job reads the
+    records with the owner's words, dropping the point or asking it anew from them. Nothing
+    is approved or rejected here; no record is taken as answered (EX-7)."""
+    from plumb.understand import judge, queue
+
+    asked = next((q for q in judge.open_questions(work.core, job.session)
+                  if str(q.get("key")) == str(item.get("question"))), None)
+    if asked is None:
+        return
+    records = [{"id": str(r.get("id")), "hash": str(r.get("hash"))}
+               for r in asked.get("records") or () if isinstance(r, Mapping)]
+    work.entries.append({"kind": "pre-intent", "payload": {
+        "source": work.digest, "session": job.session, "text": work.message,
+        "question": str(asked.get("question") or ""),
+        "options": [dict(o) for o in asked.get("options") or () if isinstance(o, Mapping)],
+        "option": raw.get("option") if raw.get("option") in item.get("resolutions", ()) else None,
+        "context": judge.context_of(work.core, work.digest), "via": "read",
+        "asked": {"job": asked.get("job"), "key": asked.get("key"),
+                  "principle": asked.get("principle") or "", "records": records}}})
+    if records:
+        queue.enqueue(work.core, files.make_job(
+            judge.kind, job.session, judge.SCHEMA_ID,
+            {"records": list(dict.fromkeys(r["id"] for r in records)),
+             # the round reads this message's answer: it does not ask the point right back
+             "answered": [work.digest]}, needs=job.id))
 
 
 # --------------------------------------------------------------------------- card kinds
