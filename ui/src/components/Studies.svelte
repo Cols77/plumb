@@ -75,6 +75,7 @@
       <div class="study-body" bind:this={bodyEl}>{@html html}</div>
       <div class="answer-buttons"><button class="primary" disabled={busy} onclick={() => void mark('known')}>I know this</button><button disabled={busy} onclick={() => void mark('deeper')}>Go deeper</button></div>
       <p class="muted">These correct your understanding only; they answer nothing in a session.</p>
+    {:else if selected && !error}<p class="muted" role="status">Opening the study…</p>
     {:else}<div class="main-empty"><span class="plumb-mark" aria-hidden="true">◈</span><h1>Studies</h1><p>Open a study, or your understanding.</p></div>{/if}
     {#if saved}<div class="receipt" role="status"><strong>{saved}</strong></div>{/if}
   </main>

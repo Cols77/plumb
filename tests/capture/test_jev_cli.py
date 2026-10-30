@@ -56,6 +56,22 @@ def test_status_never_prints_the_secret(repo: Path, monkeypatch, capsys) -> None
         stub.close()
 
 
+@pytest.mark.sr("SR-359")
+def test_answered_probe_clears_the_red_line(repo: Path, monkeypatch, capsys) -> None:
+    """SR-359 EX-3: a no-key line left from before setup goes once the probe is answered."""
+    from plumb.judgment import _judges, judge_down
+
+    stub = JevStub()
+    try:
+        use_jev(repo, stub, monkeypatch)
+        judge_down(repo, "JEV", "JEV: no key (TYPESAFE_API_KEY not found)", code="no-key")
+        assert "JEV" in _judges(repo)[1]["down"]
+        assert run(repo, "jev", "status", "--probe") == 0
+        assert "JEV" not in _judges(repo)[1].get("down", {})
+    finally:
+        stub.close()
+
+
 def test_status_without_jev(repo: Path, capsys) -> None:
     assert run(repo, "jev", "status", "--json") == 0
     import json

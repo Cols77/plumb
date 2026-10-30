@@ -12,7 +12,19 @@ from pathlib import Path
 
 
 PINNED = "b20cc5f787ea816ea8645603b7b2ac8234dcb8b4"
-SOURCE_ROOT = Path("C:/Users/33630/AppData/Local/hermes/hermes-agent")
+def _source_root() -> Path:
+    """The Hermes source checkout at PINNED: $HERMES_AGENT_SRC, else where Hermes installs on
+    this OS (the account's real home: the test suite points HOME at a scratch folder)."""
+    if os.environ.get("HERMES_AGENT_SRC"):
+        return Path(os.environ["HERMES_AGENT_SRC"])
+    if os.name == "nt":
+        return Path(os.environ.get("LOCALAPPDATA", "")) / "hermes" / "hermes-agent"
+    import pwd
+
+    return Path(pwd.getpwuid(os.getuid()).pw_dir) / ".local" / "share" / "hermes" / "hermes-agent"
+
+
+SOURCE_ROOT = _source_root()
 PRODUCERS = {
     "on_session_start": ("agent/conversation_loop.py", "1107-1117"),
     "pre_llm_call": ("agent/turn_context.py", "1389-1405"),

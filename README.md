@@ -12,7 +12,7 @@ It works in the background, and you can inspect everything it does.
 In Claude Code, add this repository as a plugin marketplace and install plumb from it:
 
 ```
-/plugin marketplace add <owner>/<repo>
+/plugin marketplace add Cols77/plumb
 /plugin install plumb@plumb
 ```
 

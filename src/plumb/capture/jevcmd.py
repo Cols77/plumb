@@ -27,7 +27,7 @@ class ConfigRefused(ValueError):
 
 def _probe(core: Core) -> tuple[bool, str | None, str]:
     """One cheap JEV call with a 2 s limit: ``(reachable, resolved version, note)``."""
-    from plumb.judgment import JudgmentUnavailable, get_backend
+    from plumb.judgment import JudgmentUnavailable, get_backend, judge_up
 
     try:
         backend = get_backend(core, hook=False)
@@ -43,6 +43,7 @@ def _probe(core: Core) -> tuple[bool, str | None, str]:
     except JudgmentUnavailable as exc:
         return False, None, str(exc)
     if judgment.backend.startswith("jev:"):
+        judge_up(core.root, "JEV")  # SR-359 EX-3: the judge answered; its red line goes
         return True, judgment.backend.split(":", 1)[1], "ok"
     return False, None, getattr(client, "last_error", None) or "no answer"
 

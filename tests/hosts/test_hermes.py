@@ -208,8 +208,10 @@ def test_pinned_hermes_skill_view_resolves_only_qualified_names(project: Path,
     hermes.install(project, launcher="path")
     env = os.environ.copy()
     env["HERMES_HOME"] = str(tmp_path / "hermes-home")
-    env["PYTHONPATH"] = ("C:/coding/plumb-wt/hermes-compat/src;"
-                          "C:/Users/33630/AppData/Local/hermes/hermes-agent")
+    from hosts.hermes_probe.hook_contract import SOURCE_ROOT
+
+    env["PYTHONPATH"] = os.pathsep.join([str(Path(__file__).resolve().parents[2] / "src"),
+                                         str(SOURCE_ROOT)])
     probe = Path(__file__).parent / "hermes_probe" / "skill_resolution.py"
     result = subprocess.run([sys.executable, str(probe), str(project / hermes.PLUGIN_DIR)],
                             capture_output=True, text=True, env=env)

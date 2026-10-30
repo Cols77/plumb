@@ -18,7 +18,7 @@ def run(command: str, argv: list[str]) -> int:
 
         return int(cmd_clarify.run(command, argv) or 0)
     if command == "question":
-        from plumb.understand import cmd_question   # SR-362: reword | pushback
+        from plumb.understand import cmd_question   # SR-362: reword
 
         return int(cmd_question.run(command, argv) or 0)
     if command == "intent":

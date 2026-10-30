@@ -318,12 +318,12 @@ def test_wait_after_a_capture_with_no_clarify_job_answers_ask(
     assert outcome.state == "ask"
     assert outcome.lines == [cmd_clarify.ASK_QUESTIONS.format(n=1)]
     shown = outcome.as_json()["questions"]
-    # SR-362 EX-5: the key reword and pushback take, and whether it is in plumb's words
+    # SR-362 EX-5: the key reword takes, and whether it is in plumb's words
     assert [set(q) for q in shown] == [{"key", "reword", "question", "header", "options",
                                         "multiSelect"}]
     assert shown[0]["options"][0]["label"].endswith("(Recommended)")
     assert not gate.is_closed(world, SESSION)
-    # SR-362: the line tells the agent the commands that reword and push back; nothing else
+    # SR-362: the line tells the agent the command that rewords; nothing else
     assert set(owner_level("\n".join(outcome.lines))) == {"plumb question"}
 
 

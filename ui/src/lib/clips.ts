@@ -19,6 +19,8 @@ export async function placeClips(root: HTMLElement, clips: Record<string, Clip>,
     if (held?.state === 'failed') line(`The video could not be shown: ${held.reason}`);
     else if (held?.state !== 'ready') line('video rendering…');
     else {
+      const wait = document.createElement('p'); wait.className = 'muted'; wait.setAttribute('role', 'status'); wait.textContent = 'loading video…';
+      box.replaceChildren(wait);
       const [video, track] = await Promise.allSettled([fetchUrl(name, 'video'), fetchUrl(name, 'subtitles')]);
       if (video.status !== 'fulfilled') line('The video is unavailable.');
       else {

@@ -69,9 +69,12 @@ ready() {
   [ -n "$python" ] && [ -f "$python" ]
 }
 
-venv_python() {
-  if [ -f "$1/Scripts/python.exe" ]; then printf '%s' "$1/Scripts/python.exe"
-  else printf '%s' "$1/bin/python"; fi
+venv_python() {  # the platform's own layout first: a venv from the other OS cannot run
+  if [ "$OS" = Windows_NT ]; then
+    if [ -f "$1/Scripts/python.exe" ]; then printf '%s' "$1/Scripts/python.exe"
+    else printf '%s' "$1/bin/python"; fi
+  elif [ -f "$1/bin/python" ] || [ ! -f "$1/Scripts/python.exe" ]; then printf '%s' "$1/bin/python"
+  else printf '%s' "$1/Scripts/python.exe"; fi
 }
 
 unlock() {

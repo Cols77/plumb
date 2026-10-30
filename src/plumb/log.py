@@ -58,7 +58,7 @@ SHARED_KINDS = frozenset({
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
     "conflict-resolution", "waiver",
     "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
-    "question-pushback", "question-ruling",   # SR-362: the agent sends back, the judge rules
+    "question-pushback", "question-ruling",   # SR-362: past send-backs (the step is gone)
     "answer-bound",       # SR-362: an answer given before its rewording, pointed at its keys
 })
 # SR-376: telemetry. The live entry files are ignored by git (.plumb/.gitignore); the landing

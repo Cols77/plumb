@@ -31,3 +31,6 @@ plugin/.claude-plugin/types/
 .plumb/log/trial/
 .plumb/log/unlink/
 .plumb/log/verdict/
+
+# plumb's picture of what the owner understands: local to each machine
+/.plumb/understanding.md

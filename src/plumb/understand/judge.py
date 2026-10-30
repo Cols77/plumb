@@ -461,8 +461,7 @@ def _ids_of(question: Mapping[str, Any]) -> set[str]:
 def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
     """The session's judge questions no question-answer entry answers yet, by its question's
     key or the keys it was matched to (``asked.key``, ``asked.keys``: SR-362, the agent's
-    wording covering several); 'Study it first' answers nothing (SR-336); one the judge
-    withdrew on the agent's push-back (``question-ruling``) is gone. Reads no record (the hook
+    wording covering several); 'Study it first' answers nothing (SR-336). Reads no record (the hook
     calls it)."""
     asked = _logged_questions(core.root, session)
     if not asked:
@@ -476,8 +475,6 @@ def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
             if isinstance(e.payload.get("asked"), Mapping):
                 answered.add(str(e.payload["asked"].get("key")))
                 answered.update(map(str, e.payload["asked"].get("keys") or ()))
-        elif e.kind == "question-ruling" and e.payload.get("ruling") == "withdrawn":
-            answered.add(str(e.payload.get("key")))
         elif e.kind == "answer-bound" and isinstance(e.payload.get("asked"), Mapping):
             answered.update(map(str, e.payload["asked"].get("keys") or ()))
     return [q for q in asked if q.get("key") not in answered]
@@ -530,20 +527,6 @@ def note_asked(core: Any, session: str) -> None:
     files.write_json_atomic(files.session_dir(Path(core.root), session) / ASKED_FILE, keys)
 
 
-def awaiting_ruling(core: Any, session: str) -> set[str]:
-    """The keys the agent sent back (``question-pushback``) that the judge has not ruled on
-    since: handled for now; a kept one is to be asked once its ruling comes."""
-    waiting: set[str] = set()
-    for e in core.events():
-        if e.payload.get("session") != session:
-            continue
-        if e.kind == "question-pushback":
-            waiting.add(str(e.payload.get("key")))
-        elif e.kind == "question-ruling":
-            waiting.discard(str(e.payload.get("key")))
-    return waiting
-
-
 def asked_keys(root: Any, session: str) -> list[str]:
     raw = files.read_json(files.session_dir(Path(root), session) / ASKED_FILE)
     return [str(k) for k in raw] if isinstance(raw, list) else []
@@ -592,6 +575,27 @@ def _answered_by(core: Any, index: Mapping[str, Any], ids: Sequence[str],
         if state.superseded_by is None and (state.confirmation == "confirmed"
                                             or premise.owner_quoted(rec, said)):
             return rec.id
+    return ""
+
+
+def _answered_before(core: Any, index: Mapping[str, Any], made: Mapping[str, Any],
+                     job: Job) -> str:
+    """SR-362 EX-2: the owner's answer to an earlier question on the same principle about one of
+    these records, at a version that answer still counts for: the same point in new words is
+    not asked again. An answer in their own words that picks no option ('I don't know') leaves
+    it open (EX-7): only the round reading it does not ask it right back."""
+    principle = made.get("principle")
+    reading = set(map(str, job.inputs.get("answered") or ()))
+    for r in made.get("records") or ():
+        rec = index.get(r["id"]) if principle else None
+        for e in premise.answer_entries(core, rec) if rec is not None else ():
+            p = e.payload
+            if (p.get("asked") or {}).get("principle") != principle:
+                continue
+            labels = {_MARKER.sub("", str(o.get("label") or "")).strip()
+                      for o in p.get("options") or () if isinstance(o, Mapping)}
+            if _MARKER.sub("", _flat(p.get("answer"))).strip() in labels or e.digest in reading:
+                return f'"{_flat(p.get("answer"))}"'
     return ""
 
 
@@ -686,8 +690,9 @@ def _questions(core: Any, job: Job, answer: Mapping[str, Any], judged: Mapping[s
     why: list[tuple[str, str]] = []
     for raw in answer.get("questions") or ():
         made, reason = _shaped(core, raw, job, judged, index)
-        done = made and _answered_by(core, index, [r["id"] for r in made["records"]],
-                                     [_MARKER.sub("", o["label"]) for o in made["options"]])
+        done = made and (_answered_by(core, index, [r["id"] for r in made["records"]],
+                                      [_MARKER.sub("", o["label"]) for o in made["options"]])
+                         or _answered_before(core, index, made, job))
         if made is None or done:   # shortcut: an answered question is dropped, its records wait
             asked = _flat(raw.get("question")) if isinstance(raw, Mapping) else ""
             why.append((asked, reason or f"the owner already answered it ({done})"))

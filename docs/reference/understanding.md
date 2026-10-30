@@ -1,0 +1,1 @@
+- needs: the path of a question from the judge or the agent, through the question store, to the question tool or the study room, and how pacing and your own answers settle it on the way (deeper)

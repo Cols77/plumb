@@ -86,6 +86,7 @@ def handle(ctx: HookContext) -> HookOutput | None:
             group = [*merged, *(q for q in left if found.get("principle")
                                 and q.get("principle") == found.get("principle"))]
             entry["asked"] = {"job": found.get("job"), "key": found.get("key"),
+                              "principle": found.get("principle") or "",
                               "records": list({(r.get("id"), r.get("hash")): r for q in group
                                                for r in q.get("records") or ()
                                                if isinstance(r, dict)}.values())}
