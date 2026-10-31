@@ -135,6 +135,15 @@ def _judge_jobs_since(root: Path, session: str, at: str) -> list[Job]:
             and j.created >= at]
 
 
+def _read_jobs_of(root: Path, session: str, digest: str) -> list[Job]:
+    """The read jobs of the owner's message ``digest`` (queued by the prompt hook)."""
+    from plumb.understand import jobs
+
+    return [j for j in jobs.queued(root, session) if j.kind == "read"
+            and isinstance(j.inputs.get("message"), Mapping)
+            and j.inputs["message"].get("digest") == digest]
+
+
 def _approved(core: Any, at: str) -> list[str]:
     """One line per record the judge approved on the owner's behalf since ``at``, by title."""
     index = core.index()
@@ -195,13 +204,17 @@ def _judged(core: Any, session: str, digest: str, at: str, limit: float,
     from plumb.understand import judge, worker
 
     root = Path(core.root)
-    started, ran = clock(), False
-    while pending := [j for j in _judge_jobs_since(root, session, at)
+    started, ran = clock(), set()
+    # SR-214: the read job of the owner's latest message goes first: it marks the judge's open
+    # question their typed words answered, and queues the judge job that reads them; asked
+    # before it ran, the question comes back with the recommendation the owner contradicted
+    while pending := [j for j in [*_read_jobs_of(root, session, digest),
+                                  *_judge_jobs_since(root, session, at)]
                       if result_of(root, session, j.id) is None]:
-        if not ran:
-            for job in pending:
+        if fresh := [j for j in pending if j.id not in ran]:
+            for job in fresh:
+                ran.add(job.id)
                 worker.run_once(core, session, job.id)
-            ran = True
             continue
         if clock() - started >= limit:
             return Outcome("waiting", digest, [JUDGING])

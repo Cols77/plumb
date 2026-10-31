@@ -81,3 +81,16 @@ def test_next_question_is_the_earliest_open_decision(project: Path, write_record
     core = open_core(project)
     assert next_question(core, ["SR-004"]) == "DEC-009"
     assert next_question(core, ["SR-999"]) is None
+
+
+def test_question_the_request_already_answers_is_dropped(project: Path) -> None:
+    """eval-c48f4019: the owner's latest words name one option of a drafted question, so the
+    question is dropped as answered, not asked with a recommendation that contradicts them."""
+    request = "when the board is full print a draw, clear the board and start a new game"
+    draft = {"question": "What happens when the board is full?",
+             "options": ["end the program",
+                         "print a draw, clear the board and start a new game"],
+             "recommended": "end the program"}
+    view = clarify(open_core(project), request, [draft], backend=FakeBackend())
+    assert view.questions == ()
+    assert "answered by the request" in view.dropped[0]["dropped_because"]
