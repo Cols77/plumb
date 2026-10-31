@@ -87,3 +87,26 @@ def test_ex3_the_host_working_on_plumb_wakes_its_part(
         "src/hosts/codex/adapter.py"]
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "hermes")      # another host's marker: still asleep
     assert _drift(repo, capsys)["stale"] == []
+
+
+@pytest.mark.sr("SR-254")
+def test_dec_404_a_failing_frozen_test_makes_no_full_run_red(repo: Path) -> None:
+    """DEC-404, SR-380: a test in a frozen part counts in no merge hold, so a full run whose
+    only failure is in a sleeping part is a pass, and the failure is not listed."""
+    from types import SimpleNamespace
+
+    from plumb.boundary import fullrun
+
+    write(repo, ".plumb/config.yaml", "freeze:\n  - tests/hosts/test_codex.py\n")
+    core = open_core(repo)
+    frozen_id, live_id = "tests/hosts/test_codex.py::test_brief", "tests/test_mod.py::test_add"
+    nodes = [{"id": frozen_id, "outcome": "failed"}, {"id": live_id, "outcome": "passed"}]
+    payload = {"nodes": nodes, "exit_status": 1, "full": True}
+    assert fullrun.clean_pass(payload, core) and not fullrun.completed_red(payload, core)
+    nodes[1]["outcome"] = "failed"          # a live failure still makes it red
+    assert fullrun.completed_red(payload, core) and not fullrun.clean_pass(payload, core)
+    result = SimpleNamespace(failed=[frozen_id], run_id="r1")
+    assert fullrun.verdict_of(result, core) == "passed"
+    result.failed.append(live_id)
+    assert fullrun.verdict_of(result, core) == "failed"
+    assert fullrun.live_failures([frozen_id, live_id], core) == [live_id]
