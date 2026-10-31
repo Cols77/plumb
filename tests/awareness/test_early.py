@@ -350,7 +350,7 @@ class _Unavailable:
     def contradiction(self, prompt: str, record: Any) -> Judgment:
         from plumb.judgment import JudgmentUnavailable
 
-        raise JudgmentUnavailable("no model")
+        raise JudgmentUnavailable("no judge", "judgment.backend is not set")
 
 
 @pytest.mark.sr("SR-237")
@@ -368,9 +368,24 @@ def test_check_live_contradicts_benign_and_unavailable(tmp_path: Path) -> None:
     assert not any("SR-005" in line for line in check_live(core, [new], exclude=["SR-005"],
                                                            backend=Judge("contradicts")))
     unsure = check_live(core, [new], backend=_Unavailable())
-    assert any(f"{new} may change what SR-005 says (" in line
-               for line in unsure)
+    assert any("judging unavailable: no judge: judgment.backend is not set" in line
+               and f"{new} not checked against SR-005" in line for line in unsure)
+    assert not any("may change what" in line for line in unsure)
     assert check_live(core, [new], backend=Judge("benign")) == []
+
+
+@pytest.mark.sr("SR-237")
+def test_check_live_with_no_configured_judge_says_not_checked(tmp_path: Path) -> None:
+    """eval-e135b2b0: with judgment.backend unset, the live check says it could not judge;
+    it never claims "may change" with the unavailability as its reason."""
+    from plumb.awareness.early import check_live
+
+    main, _ = setup(tmp_path)
+    result = new_requirement(main, "relay checks pin nothing",
+                             "A relay pins no stated record at all.", backend=Judge("benign"))
+    new = result.written[0]
+    lines = check_live(open_core(main), [new])
+    assert not any("may change what" in line for line in lines), lines
 
 
 @pytest.mark.sr("SR-237")
