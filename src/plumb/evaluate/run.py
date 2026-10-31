@@ -108,9 +108,16 @@ def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | 
     limits = {**NO_LIMITS, **(limits or {})}
     run_cap_s = limits["minutes"] * 60 if limits["minutes"] else None
     root = Path(root)
-    run_dir = (runs_dir or root / ".plumb" / "eval" / "runs") / (
+    base = (runs_dir or root / ".plumb" / "eval" / "runs") / (
         f"{time.strftime('%Y%m%dT%H%M%S')}-{task.name}-{model}")
-    run_dir.mkdir(parents=True)
+    run_dir, n = base, 1
+    while True:     # two runs in one second each keep their own folder
+        try:
+            run_dir.mkdir(parents=True)
+            break
+        except FileExistsError:
+            n += 1
+            run_dir = base.with_name(f"{base.name}-{n}")
     scratch = scratch_repo(Path(tempfile.mkdtemp(prefix="plumb-eval-")))
     transcript: list[Turn] = []
     state: dict[str, Any] = {"session": None, "start": now(), "out_of_time": False}
