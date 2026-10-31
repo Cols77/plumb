@@ -274,7 +274,6 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
     (only with ``run_full``) and records the merge evidence on green (only with
     ``run_full``). ``hook`` (the pre-push hook): intent-conflict cards use logged judgments
     only, never a live backend call."""
-    from plumb.approvals import approved_exempt
     from plumb.boundary.fidelity import fidelity_rows, jev_scores, repinned_unjudged
     from plumb.boundary.fullrun import full_run, record_merge_evidence
     from plumb.boundary.gates import claims_gate, link_rows
@@ -309,13 +308,12 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
     touched = touched_requirements(core, paths, messages)
     required = required_records(core, touched)
     awaiting = _awaiting(core, fork, paths, required)
-    # the owner's exemptions: those at the merge base and those the owner confirmed; a glob
-    # added in the range waits for the owner, and the base config's layout still counts
+    # a glob added in the range is accepted by the judge like any record unless it contradicts
+    # the owner (SR-288, SR-372): it is honoured and listed; the base config's layout still counts
     before = base_config(core, fork)
-    seen = set(before.trace.exempt) | approved_exempt(core)
     current_globs = [str(g) for g in core.config.trace.exempt]
-    new_exempt = [g for g in current_globs if g not in seen]
-    honoured = [g for g in current_globs if g in seen]
+    new_exempt = [g for g in current_globs if g not in set(before.trace.exempt)]
+    honoured = current_globs
     untraced = untraced_paths(core, paths, configs=[core.config, before], exempt=honoured)
     untraced = _not_copies_of_owned(core, untraced)
 
@@ -456,29 +454,25 @@ def render(report: MergeReport) -> list[str]:
     from plumb.boundary.premerge import hold_lines
 
     out.extend(hold_lines(report, "the default branch"))
-    if report.awaiting or report.untraced or report.new_exempt:
+    if report.awaiting or report.untraced:
         out.append("listed for you (none of this holds the merge):")
         out.extend(_awaiting_lines(report))
         out.extend(_capped([f"  untraced {p}: no read-back or example covers this change"
                             for p in report.untraced]))
-        out.extend(_capped([f"  trace.exempt {g}: added in this range; it exempts paths from "
-                            "any requirement and is not honoured until it is approved"
-                            for g in report.new_exempt]))
         if report.awaiting:     # counted, no id and no command (SR-260 EX-8, EX-31, SR-267)
             n = len(report.awaiting)
             out.append(f"plumb: waiting on a judge: {n} record{'s' if n > 1 else ''}; the "
                        "judge approves them on your behalf or asks you a question with the "
                        "question tool")
-        if report.new_exempt:
-            # shortcut: no route approves a glob since plumb approve went, until SR-288 picks one
-            out.append("plumb: nothing can approve a new trace.exempt glob yet (the judge "
-                       "approves records only); until then it is not honoured")
         if report.untraced:
             out.append("plumb: for the untraced changes, ask the agent to read them back and "
                        "record a requirement linked implemented_by them; or, if they need no "
                        "requirement, list them under trace.exempt in .plumb/config.yaml")
     else:
         out.append("confirmation: every touched requirement is confirmed")
+    out.extend(_capped([f"trace.exempt {g}: added in this range; it exempts paths from any "
+                        "requirement and the judge accepts it unless it contradicts you"
+                        for g in report.new_exempt]))
     if report.glance:
         out.append("approvals in range (for a glance; to undo one you did not mean, say so "
                    "in conversation):")

@@ -258,11 +258,11 @@ def test_merge_untraced_change_cleared_by_a_link_or_an_exemption(base, capsys) -
     (root / "src" / "gen.py").write_text("x = 1\n", "utf-8")
     (root / ".plumb" / "config.yaml").write_text("trace:\n  exempt: [src/gen.py]\n", "utf-8")
     open_core(root).add_link("SR-002", "implemented_by", Target(path="src/mul.py"))
-    approvals.approve(open_core(root), ["SR-002", "INT-001"], exempt=True)
+    approvals.approve(open_core(root), ["SR-002", "INT-001"])
     code, out = _check(root, sha, capsys)
     assert code == 0, out
     assert "untraced" not in out
-    assert "trace.exempt src/gen.py" in out[out.index("approvals in range"):]
+    assert "trace.exempt src/gen.py: added in this range" in out
 
 
 
@@ -328,31 +328,24 @@ def test_frontmatter_edit_adding_a_link_waits_for_the_owner(confirmed_base, caps
     assert "new link in this range: implemented_by src/z.py (now owned by SR-001)" in out
 
 
-@pytest.mark.sr("SR-260", "SR-288")
-def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
-                                                         monkeypatch) -> None:
+@pytest.mark.sr("SR-260", "SR-288", "SR-372")
+def test_trace_exempt_added_in_range_is_accepted_by_the_judge(confirmed_base, capsys) -> None:
+    """SR-288 EX-1..EX-3: the judge accepts a new glob like any record (SR-372); the merge is
+    not held for the owner and the glob is listed as added in the range."""
     root, sha = confirmed_base
     (root / ".plumb" / "config.yaml").write_text('trace:\n  exempt: ["src/**"]\n', "utf-8")
     code, out = _check(root, sha, capsys)
-    assert code == 0, out       # listed, not honoured, never held (SR-260 EX-13)
-    assert "untraced changes (no requirement owns them): src/z.py" in out
+    assert code == 0, out
+    assert "untraced" not in out                                                 # SR-288 EX-1
     assert "trace.exempt src/**: added in this range" in out
-    assert "nothing can approve a new trace.exempt glob yet" in out           # SR-288 EX-1
-    assert "not honoured" in out and "plumb approve" not in out
+    assert "the judge accepts it unless it contradicts you" in out
+    assert "not honoured" not in out and "nothing can approve" not in out
     assert cli.main(["approve", "--exempt", "--root", str(root)]) == 3        # SR-288 EX-2
     assert "approve no longer exists" in capsys.readouterr().err
     assert _check(root, sha, capsys)[0] == 0
     assert full_report(open_core(root), sha, as_json=True) == 0
-    assert json.loads(capsys.readouterr().out)["new_exempt"] == ["src/**"]
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
-    with pytest.raises(approvals.Refused):                    # owner only
-        approvals.approve(open_core(root), [], exempt=True)
-    monkeypatch.delenv("PLUMB_AGENT_SESSION")
-    approvals.approve(open_core(root), [], exempt=True)
-    capsys.readouterr()
-    code, out = _check(root, sha, capsys)
-    assert code == 0, out
-    assert "owner trace.exempt src/**" in out
+    data = json.loads(capsys.readouterr().out)
+    assert data["new_exempt"] == ["src/**"] and data["untraced"] == []          # SR-288 EX-3
 
 
 @pytest.mark.sr("SR-260")

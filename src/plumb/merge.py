@@ -11,9 +11,9 @@ Over ``<base>..HEAD`` plus uncommitted changes:
    an approval of it lists that end. A requirement whose ``verified_by`` end (an acceptance
    test of an example the owner confirmed) changed since the approval pinned its content
    is listed as "acceptance test changed", shown with the example and the test's diff. A
-   ``trace.exempt`` glob added in the range is not
-   honoured until an approval entry lists it (no route writes one since ``plumb approve``
-   went: SR-288), and a path that was
+   ``trace.exempt`` glob added in the range is
+   honoured and listed: the judge accepts it unless it contradicts the owner (SR-288,
+   SR-372), and a path that was
    source under the merge base's config stays source, so a config edit hides nothing;
 2. the approvals and revocations added in the range are listed, agent-relayed ones marked with
    the prompt digest they cite;
