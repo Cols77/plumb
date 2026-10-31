@@ -1,4 +1,4 @@
-"""SP8 lane JUDGE, J2: the premise in the committed log (SR-102 EX-7, EX-8)."""
+"""The premise: the owner's words come from the session log, never the tracked log (DEC-116)."""
 
 from __future__ import annotations
 
@@ -33,55 +33,57 @@ def _premises(repo: Path) -> list:
     return [e for e in open_core(repo).events() if e.kind == "premise"]
 
 
-def test_ex7_capture_commits_message_text_and_digest(repo: Path) -> None:
+def test_ex7_capture_copies_no_message_text_into_the_tracked_log(repo: Path) -> None:
+    """DEC-116: the owner's messages stay out of git."""
     digest = log_prompt(repo, PROMPT)
-    result = _capture(repo, digest)
-    (entry,) = _premises(repo)
-    assert entry.payload["text"] == PROMPT
-    assert entry.payload["digest"] == digest
-    assert entry.payload["digest"] == "sha256:" + hashlib.sha256(PROMPT.encode()).hexdigest()
-    assert entry.payload["session"] == "s1"
-    assert entry.payload["used_by"] == list(result.written)
+    _capture(repo, digest)
+    assert _premises(repo) == []
+    tracked = "".join(p.read_text(encoding="utf-8", errors="ignore")
+                      for p in (repo / ".plumb" / "log").rglob("*.json"))
+    assert PROMPT not in tracked
 
 
-def test_a_second_capture_of_the_same_words_adds_only_what_is_new(repo: Path) -> None:
+def test_ex8_a_checkout_without_the_session_log_judges_by_the_intent_records(
+        repo: Path) -> None:
+    from plumb.understand import judge, premise
+
+    digest = log_prompt(repo, PROMPT)
+    _capture(repo, digest)
+    (repo / ".plumb" / "session" / "prompts.jsonl").unlink()      # a clone: no session log
+    core = open_core(repo)
+    got = premise.premise_of(core, core.index()["SR-001"])
+    assert got.messages == () and not got.on_file and got.missing
+    job = judge.build(core, "s1", records=["INT-001", "SR-001"])
+    assert job is not None                       # never a hold on the agent (SR-378)
+    given = job.inputs["records"][0]["premise"]
+    assert "intent records only" in given["unavailable"]
+
+
+def test_the_session_log_gives_the_text_of_the_message(repo: Path) -> None:
     from plumb.understand import premise
 
     digest = log_prompt(repo, PROMPT)
     _capture(repo, digest)
     core = open_core(repo)
-    premise.commit(core, DOC, type("R", (), {"written": ("INT-001",), "updated": ()})(),
-                   prompt_digest=digest)
-    assert len(_premises(repo)) == 1                   # INT-001 was already named
-    premise.commit(core, DOC, type("R", (), {"written": (), "updated": ("SR-009",)})(),
-                   prompt_digest=digest)
-    assert [e.payload["used_by"] for e in _premises(repo)] == [["INT-001", "SR-001"],
-                                                               ["SR-009"]]
-
-
-def test_nothing_is_committed_without_a_message(repo: Path) -> None:
-    from plumb.capture.capture import capture
-
-    capture(open_core(repo), DOC)
-    assert _premises(repo) == []
-
-
-def test_ex8_fresh_clone_judges_from_committed_log(repo: Path) -> None:
-    from plumb.understand import judge, premise
-
-    digest = log_prompt(repo, PROMPT)
-    _capture(repo, digest)
-    (repo / ".plumb" / "session" / "prompts.jsonl").unlink()      # a fresh clone: no session log
-    core = open_core(repo)
     got = premise.premise_of(core, core.index()["SR-001"])
     assert [m["text"] for m in got.messages] == [PROMPT]
-    assert got.on_file
-    job = judge.build(core, "s1", records=["INT-001", "SR-001"])
-    assert job is not None
-    assert all(r["premise"]["messages"][0]["text"] == PROMPT for r in job.inputs["records"])
+    assert got.on_file and not got.missing
 
 
-def test_the_committed_log_is_read_before_the_session_log(repo: Path, write_record) -> None:
+def test_an_old_committed_premise_entry_still_serves_a_clone(repo: Path, write_record) -> None:
+    from plumb.understand import premise
+
+    digest = log_prompt(repo, "A")
+    write_record(repo, intent_text(1, "A", "Keep one log", prompt=digest))
+    (repo / ".plumb" / "session" / "prompts.jsonl").unlink()
+    core = open_core(repo)
+    core.log_append("events", "premise", {"digest": digest, "text": "A", "session": "s1",
+                                          "used_by": ["INT-001"]})
+    got = premise.premise_of(open_core(repo), open_core(repo).index()["INT-001"])
+    assert got.messages[0]["text"] == "A"
+
+
+def test_the_session_log_is_read_before_an_old_committed_entry(repo: Path, write_record) -> None:
     from plumb.understand import premise
 
     digest = log_prompt(repo, "A")
@@ -90,7 +92,7 @@ def test_the_committed_log_is_read_before_the_session_log(repo: Path, write_reco
     core.log_append("events", "premise", {"digest": digest, "text": "A (committed copy)",
                                           "session": "s1", "used_by": ["INT-001"]})
     got = premise.premise_of(open_core(repo), open_core(repo).index()["INT-001"])
-    assert got.messages[0]["text"] == "A (committed copy)"
+    assert got.messages[0]["text"] == "A"
 
 
 def test_a_fragment_premise_says_the_words_are_not_on_file(repo: Path, write_record) -> None:
@@ -129,8 +131,9 @@ def test_validate_flags_a_premise_whose_digest_differs(repo: Path) -> None:
     from plumb.understand import premise
     from plumb.validate import validate
 
-    digest = log_prompt(repo, PROMPT)
-    _capture(repo, digest)
+    core = open_core(repo)
+    core.log_append("events", "premise", {"digest": "sha256:" + hashlib.sha256(
+        PROMPT.encode()).hexdigest(), "text": PROMPT, "session": "s1", "used_by": ["INT-001"]})
     assert premise.problems(open_core(repo)) == []
     core = open_core(repo)
     core.log_append("events", "premise", {"digest": "sha256:" + "0" * 64,

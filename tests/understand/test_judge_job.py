@@ -416,10 +416,8 @@ def test_ex9_capture_of_one_intent_and_six_requirements_queues_one_job_for_seven
     assert job.kind == "judge" and job.session == SESSION
     assert [r["id"] for r in job.inputs["records"]] == list(result.written)
     assert len(job.inputs["records"]) == 7
-    premises = [e for e in open_core(repo).events() if e.kind == "premise"]
-    assert [p.payload["text"] for p in premises] == [SAID]
-    assert premises[0].payload["digest"] == job.inputs["records"][0]["premise"]["messages"][0][
-        "digest"]
+    assert [e for e in open_core(repo).events() if e.kind == "premise"] == []   # DEC-116
+    assert [m["text"] for m in job.inputs["records"][0]["premise"]["messages"]] == [SAID]
 
 
 def test_the_same_capture_twice_queues_no_second_job(repo: Path, engine_standins) -> None:

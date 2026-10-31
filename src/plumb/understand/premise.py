@@ -3,9 +3,11 @@
 ``premise_of(core, record)`` gives what the judge is shown: the owner's whole logged message
 or messages the record derives from, the stored question when the answer was short, and the
 parent intent, and the owner's question-tool answers about the record, at whichever version
-they were asked (``answers``, SR-212). It reads the committed log first (``premise`` entries: text and digest,
-written by ``commit`` when a record first takes a message as its premise), then the session's
-prompt log, so a record keeps its premise after the session log is gone. A record whose
+they were asked (``answers``, SR-212). It reads the session prompt log first (the main
+checkout's too, through git's common directory); the owner's messages are not copied into the
+tracked log (DEC-116), so a checkout without that log judges against the intent records only
+(``missing``, never a hold on the agent, SR-378). ``premise`` entries committed before that
+still serve as a fallback. A record whose
 premise is only a fragment of the owner's words (older records) says so: ``fragment`` holds the
 fragment and ``messages`` is empty.
 
@@ -35,6 +37,7 @@ class Premise:
     parent: str | None = None
     fragment: str = ""
     answers: tuple[Mapping[str, Any], ...] = ()
+    missing: bool = False     # the record names a message this checkout's session log lacks
 
     @property
     def on_file(self) -> bool:
@@ -53,7 +56,13 @@ class Premise:
         given = {"messages": messages, "question": self.question, "parent": self.parent}
         if self.answers:                # absent when none: older inputs keep their digest
             given["answers"] = [dict(a) for a in self.answers]
+        if self.missing:                # DEC-116: the owner's messages are not in git
+            given["unavailable"] = UNAVAILABLE
         return given
+
+
+UNAVAILABLE = ("the owner's message is not in this checkout's session log (their messages stay "
+               "out of git, DEC-116): judge against the intent records only and say so")
 
 
 def _sha(text: str) -> str:
@@ -111,22 +120,24 @@ def committed(core: Any) -> dict[str, dict[str, Any]]:
 
 def message_for(core: Any, prefix: Any, known: Mapping[str, Mapping[str, Any]] | None = None
                 ) -> Mapping[str, str] | None:
-    """The whole message a digest (or a prefix of it, 12+ hex digits) names: the committed
-    log first, then the session's prompt log. None when neither has it."""
+    """The whole message a digest (or a prefix of it, 12+ hex digits) names: the
+    session's prompt log first, then the ``premise`` entries committed before DEC-116. None when
+    neither has it."""
     wanted = _prefix(prefix)
     if len(wanted) < PREFIX_MIN:
         return None
-    held = committed(core) if known is None else known
-    for digest, item in held.items():
-        if _prefix(digest).startswith(wanted):
-            return {"digest": digest, "text": str(item["text"])}
     from plumb.approvals import Refused, find_prompt
 
     try:
         found = find_prompt(core, wanted)
+        return {"digest": str(found["digest"]), "text": str(found["text"])}
     except Refused:
-        return None
-    return {"digest": str(found["digest"]), "text": str(found["text"])}
+        pass
+    held = committed(core) if known is None else known
+    for digest, item in held.items():
+        if _prefix(digest).startswith(wanted):
+            return {"digest": digest, "text": str(item["text"])}
+    return None
 
 
 def _prompt_prefixes(record: Any) -> list[str]:
@@ -233,9 +244,12 @@ def premise_of(core: Any, record: Any, *, statuses: Mapping[str, Any] | None = N
         prefixes += _prompt_prefixes(record)
     held = committed(core) if known is None else known
     messages: list[Mapping[str, str]] = []
+    missing = False
     for prefix in prefixes:
         message = message_for(core, prefix, held)
-        if message is not None and all(message["digest"] != m["digest"] for m in messages):
+        if message is None:
+            missing = True
+        elif all(message["digest"] != m["digest"] for m in messages):
             messages.append(message)
     question = " ".join(" ".join(str(s.fields.get("question") or "").split())
                         for s in sources).strip()
@@ -252,37 +266,8 @@ def premise_of(core: Any, record: Any, *, statuses: Mapping[str, Any] | None = N
     if not messages:
         fragment = " ".join(q for q in (_quote(s) for s in sources) if q)
     return Premise(messages=tuple(messages), question=question, parent=parent,
-                   fragment=fragment, answers=answers_of(core, record))
-
-
-# --------------------------------------------------------------------------- committing
-
-
-def commit(core: Any, doc: Any, result: Any, *, prompt_digest: str | None = None) -> None:
-    """Write the message ``prompt_digest`` names to the committed log (text and digest) when
-    the records ``result`` wrote or changed first take it as their premise; one entry per
-    capture, naming them in ``used_by``. Nothing is written when there is no message, or when
-    the committed log already holds it for all of them."""
-    if core is None or result is None or not prompt_digest:
-        return None
-    ids = [str(i) for i in (*getattr(result, "written", ()), *getattr(result, "updated", ()))]
-    if not ids:
-        return None
-    from plumb.approvals import Refused, find_prompt
-
-    try:
-        found = find_prompt(core, prompt_digest)
-    except Refused:
-        return None
-    digest, text = str(found["digest"]), str(found["text"])
-    held = committed(core).get(digest)
-    fresh = [i for i in ids if held is None or i not in held["used_by"]]
-    if not fresh:
-        return None
-    core.log_append("events", "premise", {"digest": digest, "text": text,
-                                          "session": found.get("session"),
-                                          "used_by": fresh})
-    return None
+                   fragment=fragment, answers=answers_of(core, record),
+                   missing=missing and not messages)
 
 
 def _digest_matches(digest: str, text: str) -> bool:
@@ -292,8 +277,8 @@ def _digest_matches(digest: str, text: str) -> bool:
 
 
 def problems(core: Any) -> list[str]:
-    """What ``plumb validate`` reports about premises: a digest that is not the digest of its
-    text."""
+    """What ``plumb validate`` reports about the ``premise`` entries committed before DEC-116:
+    a digest that is not the digest of its text. None are written any more."""
     if core is None:
         return []
     out: list[str] = []

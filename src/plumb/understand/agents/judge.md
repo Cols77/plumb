@@ -19,7 +19,9 @@ The input is JSON: `records`, a list of entries. Each entry has:
   "yes", `question` holds the question that answer was given to: the answer means what it meant in
   reply to that question, so judge the record against the question and the answer together.
   `parent` names an intent the owner already confirmed that this record derives from. A message
-  marked `partial` is only a fragment of what the owner said; judge only what the fragment shows.
+  marked `partial` is only a fragment of what the owner said; judge only what the fragment shows. When `unavailable` is present the owner's message is not on
+  this machine: judge the record against the intent records and `parent` only, and say in your
+  reasoning that the owner's words were not available.
 - `related`: records the owner already confirmed (or that were settled from their words) that this
   record relates to. A record that conflicts with one of them contradicts it.
 

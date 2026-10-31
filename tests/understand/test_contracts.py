@@ -224,8 +224,7 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
     assert clarify.on_prompt(None, None, {}, after="read-0") == []
     assert _params(judge.queue_for_capture) == ["core", "result", "prompt_digest"]
     assert judge.queue_for_capture(None, None) is None
-    assert _params(premise.commit) == ["core", "doc", "result", "prompt_digest"]
-    assert premise.commit(None, {}, None) is None
+    assert not hasattr(premise, "commit")      # DEC-116: no message text enters the tracked log
     assert premise.problems(None) == [] and gate.problems(None) == []
     assert _params(queue.enqueue) == ["core", "job"]
     assert queue.enqueue(None, Job()) is None
@@ -396,18 +395,16 @@ def test_prompt_hook_calls_the_understand_layer_in_order(
     assert "skipped" not in out.getvalue()
 
 
-def test_capture_calls_judge_and_premise_after_writing(
+def test_capture_calls_judge_after_writing(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb.capture import capture as cap
-    from plumb.understand import judge, premise
+    from plumb.understand import judge
 
     calls: list[str] = []
     monkeypatch.setattr(judge, "queue_for_capture",
                         lambda core, result, *, prompt_digest=None: calls.append("judge"))
-    monkeypatch.setattr(premise, "commit",
-                        lambda core, doc, result, *, prompt_digest=None: calls.append("premise"))
     cap._understand_after(None, {}, contracts.CaptureResult(), "d")
-    assert calls == ["judge", "premise"]
+    assert calls == ["judge"]
 
     def boom(*a, **k):
         raise RuntimeError("judge broke")
