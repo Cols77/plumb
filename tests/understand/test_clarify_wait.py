@@ -55,11 +55,11 @@ def test_ex5_wait_blocks_until_card_ready(repo: Path, engine_standins: Any) -> N
     thread.join(10)
     releaser.join(10)
     assert took >= 0.7                                      # it really waited for the job
-    assert outcome.state == "card" and outcome.digest == digest
-    assert outcome.lines == [cmd_clarify.ASK]             # the question is on the card only
-    assert outcome.card == clarify.choice_id(digest)
-    assert owner_level("\n".join(outcome.lines)) == []
-    assert gate.is_closed(repo, SESSION)                    # the card is not answered yet
+    # SR-223 EX-15: the question goes to the question tool, never a card; no edit is denied
+    assert outcome.state == "ask" and outcome.digest == digest and outcome.card == ""
+    assert [q["question"] for q in outcome.questions] == ["Which format?"]
+    assert owner_level(outcome.questions[0]["question"]) == []
+    assert not gate.is_closed(repo, SESSION)
     assert len(engine_standins.dispatcher.ran("clarify")) == 1
 
 
@@ -86,11 +86,9 @@ def test_ex6_late_result_collected_by_next_wait_no_build_started(
     assert gate.is_closed(repo, SESSION)                    # no build started
     release.set()
     runner.join(10)
-    assert gate.is_closed(repo, SESSION)                    # the late result is a card
     second = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
-    assert second.state == "card" and second.digest == digest
-    cards = {c.kind: c for c in cardstore.own_cards(repo, SESSION)}
-    assert cards["choice"].status == "open" and "clarify" not in cards   # no read-back card
+    assert second.state == "ask" and second.digest == digest   # the late result is asked
+    assert cardstore.own_cards(repo, SESSION) == []              # on no card
     assert len(engine_standins.dispatcher.ran("clarify")) == 1
 
 
@@ -100,9 +98,9 @@ def test_runs_the_job_itself_when_none_queued(repo: Path, engine_standins: Any) 
     digest = log_prompt(repo, "/plumb clarify let users export their data", session=SESSION)
     assert not list(files.jobs_dir(repo, SESSION).glob("*.json"))
     outcome = cmd_clarify.wait(core, SESSION, timeout=5)
-    assert outcome.state == "card" and outcome.digest == digest
+    assert outcome.state == "ask" and outcome.digest == digest
     assert len(engine_standins.dispatcher.ran("clarify")) == 1
-    assert gate.is_closed(repo, SESSION)                    # closed for it, though no hook ran
+    assert not gate.is_closed(repo, SESSION)   # SR-223: no question denies a tool call
 
 
 def test_same_job_never_runs_twice(repo: Path, engine_standins: Any) -> None:
@@ -111,7 +109,7 @@ def test_same_job_never_runs_twice(repo: Path, engine_standins: Any) -> None:
     worker.run_once(core, SESSION)
     for _ in range(3):
         outcome = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
-        assert outcome.state == "card"
+        assert outcome.state == "ask"
     assert len(engine_standins.dispatcher.ran("clarify")) == 1
     assert len(list(files.jobs_dir(repo, SESSION).glob("clarify-*.json"))) == 1
 
@@ -128,10 +126,9 @@ def test_the_same_words_sent_again_get_their_own_check(repo: Path, engine_standi
     assert log_prompt(repo, text, session=SESSION, at="2026-10-06T10:05:00Z") == digest
     hooks.on_prompt(ctx, open_core(repo), {"digest": digest, "text": text})
     worker.run_once(open_core(repo), SESSION)
-    assert cmd_clarify.wait(open_core(repo), SESSION, timeout=5).state == "card"
+    assert cmd_clarify.wait(open_core(repo), SESSION, timeout=5).state == "ask"
     assert len(list(files.jobs_dir(repo, SESSION).glob("clarify-*.json"))) == 2
-    cards = {c.kind: c for c in cardstore.own_cards(repo, SESSION)}
-    assert cards["choice"].status == "open"
+    assert cardstore.own_cards(repo, SESSION) == []
 
 
 def test_a_result_with_no_ledger_entry_counts_for_nothing(repo: Path,
@@ -152,7 +149,8 @@ def test_the_command_prints_the_result_as_json(repo: Path, engine_standins: Any,
     assert cmd_clarify.run("clarify", ["--wait", "--json", "--root", str(repo),
                                        "--timeout", "5"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["state"] == "card" and data["card"].startswith("choice:")
+    assert data["state"] == "ask" and data["card"] == ""
+    assert [q["question"] for q in data["questions"]] == ["Which format?"]
 
 
 def test_without_wait_the_command_is_todays_helper(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -186,7 +184,7 @@ def test_skill_first_action_is_clarify_wait(repo: Path) -> None:
     assert "do not build" in first.lower() and "answered" in first
     assert "{plumb}" not in text
     # what the command returns, and what to do with each outcome
-    for words in ("couldn't check", "work on", "spec session", "ready"):
+    for words in ("couldn't check", "work on", "ready"):
         assert words.lower() in text.lower(), words
     assert "plumb go" not in text.replace("`/plumb go`", "")      # the agent never types it
 

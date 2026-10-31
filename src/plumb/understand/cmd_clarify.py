@@ -67,7 +67,7 @@ HELD = ("plumb: edits are held ({reason}): this request changes a confirmed reco
 
 @dataclasses.dataclass
 class Outcome:
-    state: str           # ready | ask | card | escalation | couldnt_check | waiting | held
+    state: str           # ready | ask | card | couldnt_check | waiting | held
     digest: str = ""
     lines: list[str] = dataclasses.field(default_factory=list)
     card: str = ""
@@ -166,6 +166,17 @@ def _by_principle(questions: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]
     return [*blocking, *(g[0] for g in ordered)]
 
 
+def _open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
+    """SR-223 EX-15: the clarifier's blocking gaps, every one, then the judge's questions
+    (one per principle, SR-361): all asked at once with the question tool, never on a card."""
+    from plumb.understand import judge
+
+    gaps = clarify.gap_questions(core, session)
+    keys = {g["key"] for g in gaps}
+    return [*gaps, *(q for q in _by_principle(judge.to_ask(core, session))
+                     if q.get("key") not in keys)]
+
+
 def _options(root: Path, question: Mapping[str, Any]) -> list[Any]:
     """SR-336 EX-1: a question a study serves offers to study it first, last and within the
     tool's four options (one study option at most)."""
@@ -193,7 +204,7 @@ def _judged(core: Any, session: str, digest: str, at: str, turn: str = "") -> Ou
         worker.start_detached(root, session)
     said = [e for e in core.events() if e.kind == "question-answer"
             and e.payload.get("session") == session and e.at >= (turn or at)]
-    questions = _by_principle(judge.to_ask(core, session))   # SR-336 EX-2: less study-held
+    questions = _open_questions(core, session)   # SR-336 EX-2: less study-held
     failed = [j for j in since if j.kind == "judge"    # a failed push-back keeps the question
               and (r := result_of(root, session, j.id)) is not None and r.status == "error"]
     if failed and not any(q.get("job") in {j.id for j in since} for q in questions):
@@ -234,7 +245,7 @@ def _with_asks(core: Any, session: str, outcome: Outcome) -> Outcome:
 
     if outcome.state != "ready":
         return outcome
-    questions = _by_principle(judge.to_ask(open_core(Path(core.root)), session))
+    questions = _open_questions(open_core(Path(core.root)), session)
     return _ask(core, session, outcome.digest, questions, []) if questions else outcome
 
 
@@ -268,8 +279,7 @@ def _outcome_from_state(core: Any, session: str, digest: str) -> Outcome:
                        and c.status in clarify.HOLDING), None)
     if choice is None:
         return Outcome("waiting", digest, [WAITING])
-    return Outcome("escalation" if clarify.is_escalation(choice) else "card", digest,
-                   [ASK], choice.id)
+    return Outcome("card", digest, [ASK], choice.id)
 
 
 def _couldnt(core: Any, session: str, digest: str, why: str) -> Outcome:

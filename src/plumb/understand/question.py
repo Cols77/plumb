@@ -100,7 +100,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     branch = clarify.repository(Path(core.root))["branch"]
     own = {c.id for c in cardstore.own_cards(Path(core.root), job.session)}
     raised = [c for q in answer.get("questions") or () if isinstance(q, Mapping)
-              if (c := card(core, q, branch)) is not None and c.id not in own][:1]
+              if (c := card(core, q, branch)) is not None and c.id not in own]
     for c in raised:
         summary.tell_agent(core, job.session, c)    # the next prompt names it (SR-116 EX-4)
     return Applied(job=job.id, cards=tuple(raised))

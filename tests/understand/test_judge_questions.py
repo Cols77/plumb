@@ -353,8 +353,7 @@ def test_wait_after_an_answer_collects_the_judge_job_queued_since(
 @pytest.mark.sr("SR-248")
 def test_open_questions_leave_the_gate_open_a_choice_card_closes_it_and_its_answer_opens(
         world: Path, engine_standins: Any) -> None:  # noqa: F811
-    """P6: a judge question never closes the gate; a blocking-gap choice card does, and
-    answering it opens it again."""
+    """P6: neither a judge question nor a blocking gap closes the gate (SR-223 EX-15)."""
     from plumb.contracts import ClarifyAnswer
     from plumb.understand import cardstore, clarify, worker
 
@@ -373,14 +372,10 @@ def test_open_questions_leave_the_gate_open_a_choice_card_closes_it_and_its_answ
             "consequences": ["more work", "less work"]}]}}
     assert clarify.build(open_core(world), SESSION, message={"digest": digest, "text": text})
     worker.run_once(open_core(world), SESSION)
-    assert gate.is_closed(world, SESSION)
-    (card,) = [c for c in cardstore.own_cards(world, SESSION) if c.kind == "choice"]
-    answered = card.__class__(**{**card.__dict__, "status": "answered", "answers": (
-        ClarifyAnswer("which", "accepted", digest),)})
-    cardstore.save(world, SESSION, [answered])
-    clarify._choice_effect(core=open_core(world), card=answered,
-                           job=types.SimpleNamespace(session=SESSION), digest=digest)
-    assert not gate.is_closed(world, SESSION)
+    assert not gate.is_closed(world, SESSION)    # SR-223 EX-15: no question holds the gate
+    assert [c for c in cardstore.own_cards(world, SESSION) if c.kind == "choice"] == []
+    assert [q["question"] for q in clarify.gap_questions(open_core(world), SESSION)] == [
+        "Which admin pages?"]
 
 
 # ---- SR-299, SR-298 ---------------------------------------------------------------------------

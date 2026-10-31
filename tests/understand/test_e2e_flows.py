@@ -166,42 +166,22 @@ def at_owner_level(*texts: str, quoted: tuple[str, ...] = ()) -> None:
 # ---- (1) a request with gaps ----------------------------------------------------------------
 
 
-def test_flow_1_request_with_gaps_one_card_one_answer(repo: Path) -> None:
+def test_flow_1_request_with_gaps_is_asked_through_the_question_tool(repo: Path) -> None:
+    """SR-223 EX-15: the gaps come back as questions for the question tool, never a card, and
+    outside the intent loop no edit is denied for them."""
     s = Session(repo)
     model(s, clarify=GAPS)
     s.start()
-    said = s.say("/plumb clarify let users export their data")
-    assert "Waiting for your answer before building" in said     # the gate closed at once
-    assert deny(s)                                                # an edit is refused
+    s.say("/plumb clarify let users export their data")
     assert s.worker_idle(30)
 
     done = plumb(s, "clarify", "--wait", "--json", "--root", str(repo), "--timeout", "30")
-    card = json.loads(done.stdout)
-    assert card["state"] == "card" and card["card"]
-    at_owner_level(*card["lines"])
-    assert deny(s)                                                # still closed: unanswered
-    (open_card,) = [c for c in own_cards(s) if c["status"] == "open" and c["kind"] == "choice"]
-    question = f'{open_card["id"]}/{open_card["questions"][0]["id"]}'
-
-    # the owner answers in one message; the read job applies before the clarify job runs
-    model(s, clarify=NOTHING, read={"entries": [{
-        "id": question, "hash": "", "answer": "accepted", "change": "csv",
-        "evidence": "csv please", "confidence": 0.95}]})
-    s.say("csv please, for everything")
-    assert s.worker_idle(30)
-    jobs = [files.job_from_json(json.loads(p.read_text(encoding="utf-8")))
-            for p in (repo / ".plumb" / "session" / SID / "jobs").glob("*.json")]
-    (read_job,) = [j for j in jobs if j.kind == "read"]
-    assert [j for j in jobs if j.kind == "clarify" and j.needs] == []   # SR-171: no second check
-
-    assert not deny(s)                                            # the gate opened
-    cards = [c for c in own_cards(s) if c["kind"] == "choice"]
-    assert [c["status"] for c in cards] == ["answered"]           # no second choice card
-    assert cards[0]["answers"][0]["answer"] == "accepted"
-    again = json.loads(plumb(s, "clarify", "--wait", "--json", "--root", str(repo),
-                             "--timeout", "30").stdout)
-    assert again["state"] == "ready"
-    at_owner_level(*again["lines"])
+    asked = json.loads(done.stdout)
+    assert asked["state"] == "ask" and asked["card"] == ""
+    assert [q["question"] for q in asked["questions"]] == ["Which format?"]
+    at_owner_level(asked["questions"][0]["question"])
+    assert not deny(s)                                            # no question denies an edit
+    assert [c for c in own_cards(s) if c["kind"] == "choice"] == []
     assert len(calls(s, "clarify")) == 1                          # only the command runs a check
 
 
@@ -483,7 +463,7 @@ def test_flow_6_a_result_file_and_a_job_file_written_by_the_agent_confirm_nothin
     # the worker's own check is what the owner gets in the end
     final = json.loads(plumb(s, "clarify", "--wait", "--json", "--root", str(repo),
                              "--timeout", "30").stdout)
-    assert final["state"] == "card" and deny(s)
+    assert final["state"] == "ask" and not deny(s)
 
 
 # ---- (7) STALE: an edit names the link, an unresolved link holds the turn, a reformat repins ----

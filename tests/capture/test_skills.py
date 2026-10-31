@@ -66,7 +66,7 @@ def test_clarify_skill_states_depths_and_discipline(installed: Path) -> None:
     skill = path.read_text(encoding="utf-8")
     assert skill.startswith("---\nname: plumb-clarify\n")
     assert "creates or changes intent" in skill.split("---", 2)[1]
-    for words in ("trivial", "incremental", "escalated", "one at a time",
+    for words in ("trivial", "incremental", "escalated", "all at once",
                   "I assume", "recommended", "--matters", "YAGNI",
                   "owner's terms", "\"go\" or \"ok\"", "labelled", "2-3 approaches",
                   "purpose", "plumb clarify", "spec show", "read-back"):
