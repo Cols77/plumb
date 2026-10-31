@@ -138,9 +138,9 @@ def test_what_the_owner_reads_names_no_approve_hint_and_no_id(
 @pytest.mark.sr("SR-267")
 def test_review_and_merge_check_name_no_approve_hint_and_no_id(
         world: Path, capsys) -> None:  # noqa: F811
-    """The review's awaits-you, glance and merge-state sections and the quick
-    merge check list what waits on a judge by title and count, with no approve or confirm
-    hint and no record id."""
+    """The review's awaits-you, glance and merge-state sections list what waits on a judge by
+    title and count, with no approve or confirm hint and no record id; the quick merge check
+    prints only what holds the merge, so it names none of them (SR-374 EX-6)."""
     from plumb.boundary.premerge import PremergeReport, render
 
     judged(world, ("SR-001", "supported", 0.8))
@@ -149,7 +149,7 @@ def test_review_and_merge_check_name_no_approve_hint_and_no_id(
     sections = review.split("3. drift:")[0] + review[review.index("5. merge state"):]
     merge = render(PremergeReport(merging="feat", into="main", exit=4, unconfirmed=(
         {"id": "SR-002", "title": "Pages are cached", "state": "proposed"},)))
-    assert '  "Pages are cached" waits on a judge' in merge
+    assert "waits on a judge" not in "\n".join(merge) and "Pages are cached" not in "\n".join(merge)
     for text in (sections, *merge):
         assert not HINT.search(text), text
         assert not ID.search(text.replace(LABEL, "")), text
