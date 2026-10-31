@@ -53,12 +53,19 @@ STREAM_OF_KIND: dict[str, LogStream] = {"test-run": "evidence", "merge-evidence"
 # but ignored by git (.gitignore lists exactly LOCAL_KINDS). A kind in neither set is a failing
 # test (tests/logs/test_kinds.py).
 SHARED_KINDS = frozenset({
-    "approval", "prompt", "config", "calibration", "pre-intent", "question-answer", "premise",
+    "approval", "prompt", "config", "calibration", "premise",
     "judgment", "test-run", "mod-hello",
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
     "conflict-resolution", "waiver",
     "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
     "question-pushback", "question-ruling",   # SR-362: past send-backs (the step is gone)
+})
+# DEC-116 (owner, 2026-11-01): nothing the owner writes goes into the tracked log. Their words
+# stay on the machine that heard them: the entries are LOCAL kinds, and a reader finds the ones
+# another checkout of the repository logged through git's common directory (``other_checkouts``).
+OWNER_WORDS_KINDS = frozenset({
+    "pre-intent",         # plumb's first reading of a message, kept verbatim
+    "question-answer",    # the owner's answer to a question of plumb's
     "answer-bound",       # SR-362: an answer given before its rewording, pointed at its keys
 })
 # SR-376: telemetry. The live entry files are ignored by git (.plumb/.gitignore); the landing
@@ -68,7 +75,7 @@ LOCAL_KINDS = frozenset({
     "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",
     "job-note", "triage", "merge-evidence", "repin", "relink", "unlink", "eval-run", "jev-setup",
     "intent-gate", "intent-done", "card-unsettled",
-})
+}) | OWNER_WORDS_KINDS
 
 _KIND_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _NAME_RE = re.compile(r"^(\d{8}T\d{6})\.(\d{6})Z-([0-9a-f]{8})\.json$")
@@ -465,6 +472,33 @@ def _worktree_roots(paths: PlumbPaths) -> list[Path]:
     rel = root.relative_to(top)
     own = os.path.normcase(str(top))
     return [t / rel for t in tops if os.path.normcase(str(t)) != own][:SIBLING_MAX]
+
+
+def other_checkouts(paths: PlumbPaths) -> list[LogEntry]:
+    """The owner's-words entries (``OWNER_WORDS_KINDS``) the repository's other checkouts
+    logged: read-only, from their entry files, found through git's own files (DEC-116). They
+    are local, so a worktree does not have the main checkout's; an entry a checkout has itself
+    is not repeated (by digest)."""
+    out: list[LogEntry] = []
+    seen: set[str] = set()
+    for other in _worktree_roots(paths):
+        for kind in sorted(OWNER_WORDS_KINDS):
+            try:
+                names = sorted(n for n in os.listdir(PlumbPaths(other).log_kind_dir(kind))
+                               if n.endswith(".json"))
+            except OSError:
+                continue
+            for name in names:
+                try:
+                    raw = _parse_entry(_read_file(str(PlumbPaths(other).log_kind_dir(kind) / name)))
+                except OSError:
+                    continue
+                digest = str(raw.get("digest", "")) if raw else ""
+                if raw is None or digest in seen or digest != entry_digest(raw):
+                    continue
+                seen.add(digest)
+                out.append(_to_entry("events", raw, -1, f"{kind}/{name}"))
+    return out
 
 
 def _read_from_siblings(paths: PlumbPaths, stream: LogStream,

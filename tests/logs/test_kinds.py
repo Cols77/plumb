@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from unittest.mock import patch
 
 from plumb import log
 from plumb.api import open_core
@@ -67,3 +68,43 @@ def test_stage_never_stages_a_local_kind(tmp_path: Path) -> None:
     staged = run_git(root, "diff", "--cached", "--name-only").stdout
     assert ".plumb/log/approval/x.json" in staged
     assert "verdict" not in staged
+
+
+OWNER_WORDS = ("pre-intent", "question-answer", "answer-bound")
+
+
+def _append(core, kind: str, payload: dict) -> None:
+    """``pre-intent`` is a worker-only kind: write it with the worker's token."""
+    from plumb import log as _log
+
+    with patch.object(_log, "worker_token_problem", return_value=None):
+        core.log_append("events", kind, payload)
+
+
+def test_the_owners_words_kinds_are_local_never_committed(tmp_path: Path) -> None:
+    """DEC-116 (2026-11-01): nothing the owner writes goes into the tracked log."""
+    assert set(OWNER_WORDS) == set(log.OWNER_WORDS_KINDS)
+    assert set(OWNER_WORDS) <= log.LOCAL_KINDS
+    root = _scratch(tmp_path)
+    core = open_core(root)
+    for kind in OWNER_WORDS:
+        _append(core, kind, {"text": "my words"})
+    status = run_git(root, "status", "--porcelain", "-uall").stdout
+    assert all(f".plumb/log/{kind}/" not in status for kind in OWNER_WORDS)
+
+
+def test_a_worktree_reads_the_owners_words_the_main_checkout_logged(tmp_path: Path) -> None:
+    """DEC-116: the readers find the entries through git's common directory."""
+    root = _scratch(tmp_path)
+    _append(open_core(root), "question-answer", {"answer": "yes", "session": "s"})
+    wt = tmp_path / "wt"
+    run_git(root, "worktree", "add", "-b", "side", str(wt))
+    mine = open_core(wt)
+    _append(mine, "question-answer", {"answer": "no", "session": "t"})
+    got = sorted(e.payload["answer"] for e in mine.events() if e.kind == "question-answer")
+    assert got == ["no", "yes"]
+    again = sorted(e.payload["answer"] for e in open_core(wt).events()
+                   if e.kind == "question-answer")
+    assert again == ["no", "yes"]            # once, not twice
+    assert sorted(e.payload["answer"] for e in open_core(root).events()
+                  if e.kind == "question-answer") == ["no", "yes"]   # either way round

@@ -13,6 +13,7 @@ plugin/.claude-plugin/types/
 # SR-321, SR-376: judgment live files are telemetry, ignored by .plumb/.gitignore
 # (log/judgment/*.json, written by plumb init); each landing archives them
 # SR-321: log kinds only the machine that wrote them needs
+.plumb/log/answer-bound/
 .plumb/log/card-press/
 .plumb/log/card-settled/
 .plumb/log/card-unsettled/
@@ -24,6 +25,8 @@ plugin/.claude-plugin/types/
 .plumb/log/jev-setup/
 .plumb/log/job-note/
 .plumb/log/merge-evidence/
+.plumb/log/pre-intent/
+.plumb/log/question-answer/
 .plumb/log/read-entry/
 .plumb/log/relink/
 .plumb/log/repin/

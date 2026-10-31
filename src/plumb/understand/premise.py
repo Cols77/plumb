@@ -5,9 +5,10 @@ or messages the record derives from, the stored question when the answer was sho
 parent intent, and the owner's question-tool answers about the record, at whichever version
 they were asked (``answers``, SR-212). It reads the session prompt log first (the main
 checkout's too, through git's common directory); the owner's messages are not copied into the
-tracked log (DEC-116), so a checkout without that log judges against the intent records only
-(``missing``, never a hold on the agent, SR-378). ``premise`` entries committed before that
-still serve as a fallback. A record whose
+tracked log (DEC-116). A record is judged once, where the words are (the machine that captured
+it); another checkout without that log never judges it again for want of them (SR-239 EX-10),
+and nothing marks the words as missing. ``premise`` entries committed before DEC-116 still
+serve as a fallback. A record whose
 premise is only a fragment of the owner's words (older records) says so: ``fragment`` holds the
 fragment and ``messages`` is empty.
 
@@ -37,7 +38,6 @@ class Premise:
     parent: str | None = None
     fragment: str = ""
     answers: tuple[Mapping[str, Any], ...] = ()
-    missing: bool = False     # the record names a message this checkout's session log lacks
 
     @property
     def on_file(self) -> bool:
@@ -56,13 +56,7 @@ class Premise:
         given = {"messages": messages, "question": self.question, "parent": self.parent}
         if self.answers:                # absent when none: older inputs keep their digest
             given["answers"] = [dict(a) for a in self.answers]
-        if self.missing:                # DEC-116: the owner's messages are not in git
-            given["unavailable"] = UNAVAILABLE
         return given
-
-
-UNAVAILABLE = ("the owner's message is not in this checkout's session log (their messages stay "
-               "out of git, DEC-116): judge against the intent records only and say so")
 
 
 def _sha(text: str) -> str:
@@ -244,12 +238,9 @@ def premise_of(core: Any, record: Any, *, statuses: Mapping[str, Any] | None = N
         prefixes += _prompt_prefixes(record)
     held = committed(core) if known is None else known
     messages: list[Mapping[str, str]] = []
-    missing = False
     for prefix in prefixes:
         message = message_for(core, prefix, held)
-        if message is None:
-            missing = True
-        elif all(message["digest"] != m["digest"] for m in messages):
+        if message is not None and all(message["digest"] != m["digest"] for m in messages):
             messages.append(message)
     question = " ".join(" ".join(str(s.fields.get("question") or "").split())
                         for s in sources).strip()
@@ -266,8 +257,7 @@ def premise_of(core: Any, record: Any, *, statuses: Mapping[str, Any] | None = N
     if not messages:
         fragment = " ".join(q for q in (_quote(s) for s in sources) if q)
     return Premise(messages=tuple(messages), question=question, parent=parent,
-                   fragment=fragment, answers=answers_of(core, record),
-                   missing=missing and not messages)
+                   fragment=fragment, answers=answers_of(core, record))
 
 
 def _digest_matches(digest: str, text: str) -> bool:
