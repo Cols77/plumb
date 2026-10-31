@@ -34,8 +34,6 @@ from plumb.hashing import clean_rel_path, target_path
 OWNING_KINDS = ("implemented_by", "verified_by")
 _DOC_SUFFIXES = (".md", ".rst", ".txt")
 _NEVER = (".plumb/", ".git/", ".claude/")
-# SR-374 EX-10: vendored example files shipped inside templates are never untraced
-DEFAULT_EXEMPT = ("**/templates/**/vendor/**",)
 _GENERATED_PARTS = frozenset({"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
                               "node_modules", ".venv", "venv", "build", "dist"})
 _GENERATED_SUFFIXES = (".pyc", ".pyo")
@@ -135,7 +133,7 @@ def is_source_path(config: Any, rel: str, *, exempt: Sequence[str] | None = None
     exemptions the owner has seen)."""
     if not is_code_path(config, rel):
         return False
-    if _matches(rel, config.verify.infra_globs) or _matches(rel, DEFAULT_EXEMPT):
+    if _matches(rel, config.verify.infra_globs):
         return False
     return not _matches(rel, config.trace.exempt if exempt is None else exempt)
 

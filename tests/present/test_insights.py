@@ -205,10 +205,10 @@ def test_ex9_the_brief_says_what_changed_and_what_blocks_and_no_counts(
     assert "plumb: changed since you last looked: SR-007 Rule seven, reworded" in second
 
 
-def test_ex10_vendored_example_files_are_never_untraced(repo: Path) -> None:
+def test_ex10_vendored_example_files_are_traced_like_any_copied_file(repo: Path) -> None:
     vendored = "src/plumb/hosts/claude_code/templates/skills/x/vendor/scene.py"
     beside = vendored.replace("/vendor/", "/own/")
     core = open_core(repo)
-    assert trace.is_source_path(core.config, beside)          # the vendor folder is the reason
-    assert not trace.is_source_path(core.config, vendored)
-    assert trace.untraced_paths(core, [vendored, beside]) == [beside]
+    assert trace.is_source_path(core.config, beside)
+    assert trace.is_source_path(core.config, vendored)         # DEC-386: SR-353 holds for vendored files
+    assert trace.untraced_paths(core, [vendored, beside]) == [vendored, beside]

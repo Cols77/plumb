@@ -34,8 +34,8 @@ exists, and you never decide on your own that the owner approved.
    `question`, `header` and option `label` and `description` to the question tool,
    every question at once, as soon as it is raised; never restate one in prose. Put
    each in the owner's terms with `{plumb} question reword`, merging those that
-   hinge on one principle; never drop, answer or default one. Ask between tasks, never in the
-   middle of one, at most three in a turn: plumb gives one per principle.
+   hinge on one principle; never drop, answer or default one. Ask them all at once: every judge question is asked at the next chance,
+   even in the middle of a task, merged by principle (plumb gives one per principle).
 2. Never answer, infer or default a question for the owner, never pick the recommended option
    for them, and never write or read `judge_questions.json` or any approval.
 3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a

@@ -128,12 +128,12 @@ def test_question_rules_live_in_plumb_records_and_others_point_to_it(installed: 
     texts = _texts(installed)
     at = [texts["plumb-records"].find(rule) for rule in RULES]
     assert -1 not in at and at == sorted(at)
-    assert texts["plumb-records"].count("at most three in a turn") == 1
+    assert texts["plumb-records"].count("every judge question is asked at the next chance") == 1
     for name, text in texts.items():
         if name == "plumb-records":
             continue
         assert POINTER in text, name
-        assert "at most three in a turn" not in text, name
+        assert "every judge question is asked at the next chance" not in text, name
         for rule in RULES:
             assert rule not in text, name
         for gone in ("question pushback", "Never answer, infer or default"):
