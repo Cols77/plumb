@@ -363,6 +363,24 @@ def changed_test_lines(core: Core, fork: str, record_id: str,
     return lines
 
 
+def live_verification(core: Core, found: Mapping[str, Any]) -> dict[str, Any]:
+    """``found`` (``failing``, ``unverified``, ``regressions``) without any test of a frozen
+    part (SR-380, DEC-404): such a test counts in no merge hold, whatever the verify lane hands
+    over."""
+    from plumb.frozen import is_frozen
+
+    def awake(ref: Any) -> bool:
+        return not is_frozen(core.config, str(ref))
+
+    def by_record(rows: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[str, Any]:
+        kept = {rid: [i for i in items if awake(i.get("test"))] for rid, items in rows.items()}
+        return {rid: items for rid, items in kept.items() if items}
+
+    return {"failing": by_record(found.get("failing") or {}),
+            "unverified": by_record(found.get("unverified") or {}),
+            "regressions": [t for t in found.get("regressions") or () if awake(t)]}
+
+
 def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
                   fork: str) -> dict[str, Any]:
     """The verification part of the boundary. Its guarantee: the merge is never green unless
@@ -397,9 +415,10 @@ def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
                     "full_pending_reasons": list(pending.reasons),
                     "full_waived": waiver,
                     "affected": affected,
-                    "failing": verify.requirement_failures(scope),
-                    "unverified": verify.unverified_acceptance(scope),
-                    "regressions": verify.unresolved_regressions()})
+                    **live_verification(core, {
+                        "failing": verify.requirement_failures(scope),
+                        "unverified": verify.unverified_acceptance(scope),
+                        "regressions": verify.unresolved_regressions()})})
     except Exception as exc:  # a lane failure degrades, never blocks the boundary
         out.update({"available": False, "error": str(exc)})
     return out

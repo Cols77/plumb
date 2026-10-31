@@ -110,3 +110,20 @@ def test_dec_404_a_failing_frozen_test_makes_no_full_run_red(repo: Path) -> None
     result.failed.append(live_id)
     assert fullrun.verdict_of(result, core) == "failed"
     assert fullrun.live_failures([frozen_id, live_id], core) == [live_id]
+
+
+@pytest.mark.sr("SR-254")
+def test_dec_404_the_merge_verification_names_no_test_of_a_frozen_part(repo: Path) -> None:
+    """DEC-404, SR-380: whatever the verify lane hands the merge boundary, a failing, unverified
+    or regressed test in a frozen part is left out before any hold reads it."""
+    from plumb.merge import live_verification
+
+    write(repo, ".plumb/config.yaml", "freeze:\n  - tests/hosts/test_codex.py\n")
+    core = open_core(repo)
+    frozen = {"test": "tests/hosts/test_codex.py::test_brief", "examples": ["EX-1"]}
+    live = {"test": "tests/test_mod.py::test_add", "examples": ["EX-1"]}
+    out = live_verification(core, {"failing": {"SR-001": [frozen, live], "SR-002": [frozen]},
+                                   "unverified": {"SR-001": [frozen]},
+                                   "regressions": [frozen["test"], live["test"]]})
+    assert out == {"failing": {"SR-001": [live]}, "unverified": {},
+                   "regressions": [live["test"]]}
