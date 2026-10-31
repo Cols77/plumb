@@ -24,6 +24,8 @@ def test_ex1_three_cases_are_told_with_the_workflow_on_sonnet(repo: Path) -> Non
     assert set(rows[0]) == {"id", "kind", "target", "detail", "state"}
     text = summary.cases_text(rows)
     assert "3 debug cases" in text and "Workflow on Sonnet" in text and "?" not in text
+    # INT-114 (DEC-384): a changed meaning is one question through the question tool, no card
+    assert "card" not in text.lower() and "question tool" in text
 
 
 def test_ex4_no_cases_write_nothing(repo: Path) -> None:

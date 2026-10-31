@@ -36,8 +36,9 @@ def cases_text(cases: Sequence[Mapping[str, Any]], resolved: int = 0) -> str:
     """The text block that tells the agent its open cases (SR-300 EX-1)."""
     lines = [f"- {c['id']} ({c['kind']}) {c['target']}: {c['detail']}" for c in cases]
     return (f"plumb: {len(lines)} debug cases open, {resolved} resolved:\n" + "\n".join(lines)
-            + "\nRun them as a Workflow on Sonnet: repin after tests, relink, rerun, card only "
-            "a changed meaning; `plumb understand debug done <case id>` marks one resolved.")
+            + "\nRun them as a Workflow on Sonnet: repin after tests, relink, rerun; a changed "
+            "meaning is one question to the owner through the question tool; "
+            "`plumb understand debug done <case id>` marks one resolved.")
 
 
 def open_cases(root: Path) -> tuple[list[dict[str, Any]], int]:
