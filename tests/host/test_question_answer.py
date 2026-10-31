@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 
 import pytest
@@ -53,3 +54,22 @@ def test_a_dismissed_question_logs_nothing(repo: Path, hook_input,
                                            response: object) -> None:  # EX-3
     assert _run(repo, hook_input, response) == ""
     assert _answers(repo) == []
+
+
+def test_a_stand_in_call_is_logged_like_an_askuserquestion_call(repo: Path, hook_input) -> None:
+    """DEC-407: the stand-in's MCP result (structuredContent, or JSON in a text block) is read
+    as AskUserQuestion's response."""
+    from plumb.hosts.claude_code import ask_gate
+
+    data = {"questions": ASKED["questions"],
+            "answers": {"Run the slow tests now or later?": "now"}}
+    for response in ({"structuredContent": data, "content": []},
+                     [{"type": "text", "text": "User has answered your questions"},
+                      {"type": "text", "text": json.dumps(data)}]):
+        payload = hook_input("PostToolUse", tool_name=ask_gate.STAND_IN_TOOL, tool_input=ASKED,
+                             tool_response=response)
+        assert question_answer.main(stdin=io.StringIO(payload), stdout=io.StringIO(),
+                                    root=repo) == 0
+    first, second = _answers(repo)
+    assert first.payload == second.payload
+    assert first.payload["answer"] == "now" and first.payload["via"] == "question-tool"

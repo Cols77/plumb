@@ -5,7 +5,10 @@ so the agent can still read and put the questions in the owner's words.
 
 It never stalls a turn: it opens once the agent called the question tool (answered or
 dismissed), and it never closes where the tool is missing: a subagent's call (``agent_id``),
-or a session nobody attends (``CLAUDE_CODE_SESSION_ATTENDED`` not ``1``: headless)."""
+or a session with no question tool at all: nobody attends it (``CLAUDE_CODE_SESSION_ATTENDED``
+not ``1``: headless) and it has no stand-in either. The benchmark's headless agent has one
+(DEC-407): ``STAND_IN_TOOL``, answered by the scripted owner and flagged by ``STAND_IN_ENV``;
+every hook treats a call to it as a call of ``AskUserQuestion``."""
 
 from __future__ import annotations
 
@@ -16,6 +19,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+# DEC-407: the question tool of a headless benchmark run (``plumb.evaluate.ask_server``)
+STAND_IN_SERVER = "plumb_ask"
+STAND_IN_NAME = "ask_owner"
+STAND_IN_TOOL = f"mcp__{STAND_IN_SERVER}__{STAND_IN_NAME}"
+STAND_IN_ENV = "PLUMB_STAND_IN_ASK"
+QUESTION_TOOLS = ("AskUserQuestion", STAND_IN_TOOL)
 WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 REASON = ("plumb: {n} judge question{s} wait for the owner and {verb} not been asked: run "
           "`plumb clarify --wait --json` and ask them now with the question tool (reword, merge; "
@@ -38,8 +47,10 @@ _REDIRECT = re.compile(r"(?<![0-9&])>(?!&)|[0-9]>(?!&|/dev/null)")
 
 
 def applies(data: dict[str, Any]) -> bool:
-    """The question tool is there: the main agent of a session someone attends."""
-    return not data.get("agent_id") and os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "1"
+    """The question tool is there: the main agent of a session someone attends, or of a
+    headless run given the stand-in (DEC-407)."""
+    return not data.get("agent_id") and (os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "1"
+                                         or os.environ.get(STAND_IN_ENV) == "1")
 
 
 def _reads(words: list[str]) -> bool:
@@ -108,7 +119,7 @@ def _asked_in_transcript(data: dict[str, Any], store: Path) -> bool:
         f.seek(max(0, os.fstat(f.fileno()).st_size - TRANSCRIPT_TAIL))
         lines = f.read().splitlines()
     for line in reversed(lines):
-        if b'"AskUserQuestion"' not in line or b'"tool_use"' not in line:
+        if b'"tool_use"' not in line or not any(f'"{t}"'.encode() in line for t in QUESTION_TOOLS):
             continue
         try:
             at = str(json.loads(line).get("timestamp") or "")
@@ -123,7 +134,7 @@ def decide(root: Path | str, session: str, tool: str, tool_input: dict[str, Any]
     """The deny reason while the gate holds this call, else "". Never raises."""
     if not session or not applies(data):
         return ""
-    if tool not in (*WRITE_TOOLS, "Bash", "AskUserQuestion"):
+    if tool not in (*WRITE_TOOLS, "Bash", *QUESTION_TOOLS):
         return ""
     from plumb.understand import judge
 
@@ -133,7 +144,7 @@ def decide(root: Path | str, session: str, tool: str, tool_input: dict[str, Any]
         from plumb.api import open_core
 
         core = open_core(Path(root))
-        if tool == "AskUserQuestion":
+        if tool in QUESTION_TOOLS:
             judge.note_asked(core, session)
             return ""
         if tool == "Bash" and reads_only(str(tool_input.get("command") or "")):

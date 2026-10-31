@@ -115,3 +115,18 @@ def test_a_session_older_than_the_matcher_opens_it_by_asking(
 
 def test_no_questions_no_gate(world: Path) -> None:  # noqa: F811
     assert call(world, "Edit", file_path="src/a.py", old_string="a", new_string="b") == ""
+
+
+def test_the_stand_in_question_tool_is_a_question_tool(
+        world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    """DEC-407: a headless run with the stand-in (no attended flag, the stand-in flag) is
+    gated like an attended session; calling the stand-in is never refused and opens the gate."""
+    judge_asks(world, (ASK, ["SR-001"]))
+    edit = {"file_path": "src/a.py", "old_string": "a", "new_string": "b"}
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ATTENDED")
+    assert call(world, "Edit", **edit) == ""                                   # no tool at all
+    monkeypatch.setenv(ask_gate.STAND_IN_ENV, "1")
+    assert ask_gate.applies(MAIN) and not ask_gate.applies({**MAIN, "agent_id": "a1"})
+    assert call(world, "Edit", **edit)
+    assert call(world, ask_gate.STAND_IN_TOOL, questions="[]") == ""
+    assert call(world, "Edit", **edit) == ""
