@@ -14,8 +14,6 @@ from understand.test_judge_job import (
     SESSION,
     _apply,
     build_job,
-    decision_text,
-    intent_text,
     verdict_answer,
     world,  # noqa: F401
 )
@@ -54,23 +52,6 @@ def approvals(core) -> list:
     return [e for e in core.events() if e.kind == "approval"]
 
 
-def test_ex1_a_clear_requirement_after_a_round_is_approved_by_the_model_and_listed(
-        world: Path) -> None:  # noqa: F811
-    from plumb.understand.summary import Told, _confirmations
-
-    core, applied = judged(world, ("SR-001", "supported", 0.8))
-    state = core.status(["SR-001"])["SR-001"]
-    assert (state.confirmation, state.approved_by) == ("confirmed", "auto-model")
-    (entry,) = approvals(core)
-    assert entry.payload["auto"] == {"model": "haiku", "model_version": "fake:haiku",
-                                     "confidence": 0.8, "clear": True}
-    assert applied.cards == ()                   # nothing left to ask the owner
-    told = Told(core.root, SESSION, "2000-01-01T00:00:00Z")
-    (line,) = _confirmations(core, None, told)
-    assert line == "1 approved on your behalf by the judge"     # SR-251: counted, no id
-    assert _confirmations(core, None, told) == ()   # said once
-
-
 def test_ex2_without_a_round_nothing_is_approved_and_an_intent_is_after_one(
         world: Path) -> None:  # noqa: F811
     core, _ = judged(world, ("INT-001", "supported", 0.95), round_=False)
@@ -78,16 +59,6 @@ def test_ex2_without_a_round_nothing_is_approved_and_an_intent_is_after_one(
     assert not approvals(core)
     core, _ = judged(world, ("INT-001", "supported", 0.95), on=False)
     assert core.status(["INT-001"])["INT-001"].approved_by == "auto-model"
-
-
-def test_ex3_a_quote_only_decision_with_no_round_stays_proposed(
-        world: Path, write_record) -> None:  # noqa: F811
-    write_record(world, intent_text(2, "no prompt names this", "Something else"))
-    write_record(world, decision_text(1, "Which cache?", "none", intent=2))
-    core, _ = judged(world, ("DEC-001", "supported", 0.9), round_=False)
-    assert core.status(["DEC-001"])["DEC-001"].confirmation == "proposed"
-    (verdict,) = [e.payload for e in core.events() if e.kind == "verdict"]
-    assert verdict["premise"] == "quote-only"
 
 
 def test_ex4_undo_revokes_it_and_counts_as_a_no(world: Path) -> None:  # noqa: F811

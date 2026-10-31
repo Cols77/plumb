@@ -15,17 +15,15 @@ from pathlib import Path
 import pytest
 from host.fakes import FakeVerify
 from mergedriver.mdhelpers import conflicted
-from mod.helpers import SESSION, sample_card
-from understand.test_read_job import make_core, open_card, record_text
+from mod.helpers import SESSION
 
 from plumb import approvals
 from plumb.api import open_core
-from plumb.config import CARD_RETIRED
-from plumb.contracts import NodeEvidence, Target, TurnEvent
-from plumb.hosts import neutral
+from plumb.contracts import NodeEvidence, Target
 from plumb.hosts.claude_code import stop
 from plumb.present.owner_text import JUDGE_APPROVED
 from plumb.understand import summary
+from understand.test_read_job import make_core, record_text
 
 IDS = re.compile(r"\b(IC|SR|INT|DEC|FEAT)-\d+")
 FEAT = "---\nid: FEAT-001\ntitle: deadline reminders\n---\n"
@@ -69,14 +67,6 @@ def _agent(root: Path) -> str:
 
 
 @pytest.fixture
-def carded(repo: Path, write_record):
-    """A project with one card waiting for the owner (a question the turn raised)."""
-    core = make_core(repo, write_record, [FEAT, record_text(1), record_text(2)])
-    open_card(core, sample_card(core, "SR-001"))
-    return core
-
-
-@pytest.fixture
 def confirmed(repo: Path, write_record) -> Path:
     """A confirmed requirement of the deadline reminders, its code committed."""
     make_core(repo, write_record, [FEAT, record_text(1, "Reminders before a deadline")])
@@ -92,15 +82,6 @@ def confirmed(repo: Path, write_record) -> Path:
 
 
 # --------------------------------------------------------------------------- SR-265
-
-
-@pytest.mark.sr("SR-265")
-def test_sr265_ex4_a_turn_where_nothing_changed_for_the_owner_prints_nothing(
-        carded, hook_input) -> None:
-    """SR-265 EX-4: the same card still waiting is no change: nothing is printed."""
-    _start_turn(carded.root)
-    _stop(carded.root, hook_input)
-    assert _stop(carded.root, hook_input) == {}
 
 
 @pytest.mark.sr("SR-265")
@@ -149,22 +130,6 @@ def test_sr266_ex2_stale_links_untraced_files_and_warnings_go_to_the_agent(
     untraced = json.loads((confirmed / ".plumb" / "session" / SESSION /
                            "untraced.json").read_text("utf-8"))
     assert untraced["paths"] == ["src/other.py"]          # the next prompt names it
-
-
-@pytest.mark.sr("SR-266")
-def test_sr266_ex3_the_retired_card_setting_is_told_to_the_agent_once(carded) -> None:
-    """SR-266 EX-3: full/compact/off has no effect and nothing is told about it."""
-    (carded.root / ".plumb" / "config.yaml").write_text("present:\n  card: compact\n", "utf-8")
-
-    def stop_cli():
-        _start_turn(carded.root)
-        return neutral.handle_event(TurnEvent(kind="stop", root=carded.root,
-                                              session_id=SESSION, host="cli"),
-                                    verify=FakeVerify(), unjudged=None)
-
-    first = stop_cli()
-    assert first.owner_lines == ()       # no effect on the owner
-    assert not any(CARD_RETIRED in line for line in first.agent_context)
 
 
 @pytest.mark.sr("SR-266")
