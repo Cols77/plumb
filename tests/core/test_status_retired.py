@@ -1,5 +1,5 @@
-"""SR-233: a record a newer record supersedes is retired: it counts in no status and is
-rated by no triage."""
+"""SR-233: a record a newer record supersedes is retired: it counts in no status and waits
+on no judge (the triage is gone, SR-380)."""
 
 from __future__ import annotations
 
