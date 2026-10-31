@@ -481,7 +481,7 @@ def _block_reasons(ctx: HookContext, core: Any, index: Any, turn: Mapping[str, A
             wanted.append(Line(_masked_line(index, m), subject=f"masked:{m['node']}",
                                state=str(m.get("masked_by") or "?"), must=True))
             asked[f"masked:{m['node']}"] = str(m.get("masked_by") or "?")
-        wanted += _questions_line(core, ctx.session_id, ctx.data)
+        wanted += _questions_line(core, ctx.session_id)
         reasons = emitter.add(wanted)
         if stale_reasons:  # SR-111: a link this turn made stale is still unresolved
             reasons = [*stale_reasons, *reasons]
@@ -536,17 +536,11 @@ ASK_WAITING = ("plumb: {n} judge question{s} wait for the owner: run `plumb clar
                "push back; never drop one).")
 
 
-def _questions_line(core: Any, session: str, data: Mapping[str, Any]) -> list[Any]:
+def _questions_line(core: Any, session: str) -> list[Any]:
     """SR-361 EX-5: judge questions raised since the agent last asked reach it before it stops,
-    once per set of questions; the band alone reaches nobody. Never fails the stop.
-    A subagent is told nothing, its main agent asks; nor is a session with no question tool
-    (``ask_gate.applies``: attended, or a headless run with the stand-in, DEC-407)."""
+    once per set of questions; the band alone reaches nobody. Never fails the stop."""
     try:
-        from plumb.hosts.claude_code import ask_gate
         from plumb.present.delta import Line
-
-        if not ask_gate.applies(dict(data)):
-            return []
         from plumb.understand import judge
 
         keys = sorted(str(q.get("key")) for q in judge.to_ask(core, session))
@@ -561,7 +555,7 @@ def _questions_line(core: Any, session: str, data: Mapping[str, Any]) -> list[An
 
 def _ask_block(ctx: HookContext, core: Any) -> HookOutput | None:
     """A turn with no edit still stops on judge questions nobody asked (SR-361 EX-5)."""
-    lines = _questions_line(core, ctx.session_id, ctx.data)
+    lines = _questions_line(core, ctx.session_id)
     if not lines:
         return None
     from plumb.present.delta import open_emitter

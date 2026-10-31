@@ -24,16 +24,6 @@ def attended(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", "1")
 
 
-def test_a_session_without_a_question_tool_is_told_nothing(  # noqa: F811
-        world: Path, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
-    """SR-267 EX-8, DEC-407: with no question tool, nothing tells the agent to ask in words;
-    a subagent is told nothing either, its main agent asks."""
-    monkeypatch.delenv("CLAUDE_CODE_SESSION_ATTENDED")
-    judge_asks(world, (ASK, ["SR-001"]), (OTHER, ["INT-001"]))
-    start_turn(world, SESSION)
-    assert _block(run_stop(world, hook_input, session=SESSION)) is None
-
-
 def test_the_stand_in_question_tool_counts_as_the_question_tool(  # noqa: F811
         world: Path, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
     """DEC-407: a headless run with the stand-in tool (the flag set, nobody attending) is told
