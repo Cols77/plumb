@@ -1,4 +1,8 @@
-"""K6: the merge boundary, ``plumb validate --merge <base>`` (spec 5.11, R1, R2)."""
+"""K6: the merge boundary's full report, ``plumb validate --merge <base>`` (spec 5.11, R1, R2).
+
+This is the report-only form that lists everything, held or not (SR-260 EX-2, EX-4, EX-8); the
+merge check at git's merge step and ``plumb merge-check`` print only what holds (SR-374 EX-6,
+tests/merge/test_merge_check_cli.py)."""
 
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ from logutil import legacy_relay, tamper
 from plumb import approvals, cli
 from plumb.api import open_core
 from plumb.contracts import Target
-from plumb.merge import merge_check
+from plumb.merge import merge_check as full_report
 
 pytestmark = pytest.mark.sr("SR-260")
 
@@ -63,7 +67,7 @@ def _repin(root: Path) -> None:
 
 def _check(root: Path, sha: str, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
     _repin(root)
-    code = merge_check(open_core(root), sha, as_json=False)
+    code = full_report(open_core(root), sha, as_json=False)
     return code, capsys.readouterr().out
 
 
@@ -133,7 +137,7 @@ def test_merge_lists_approvals_in_range_with_relayed_marked(base, capsys) -> Non
     assert "owner" in section and "INT-001" in section
     assert "AGENT-RELAYED" in section and digest[:19] in section
     assert "SR-001 looks good, approved" in section
-    data_code = merge_check(open_core(root), sha, as_json=True)
+    data_code = full_report(open_core(root), sha, as_json=True)
     data = json.loads(capsys.readouterr().out)
     assert data_code == 0
     assert [a["by"] for a in data["glance"]] == ["agent-relayed", "owner"]
@@ -228,7 +232,7 @@ def test_merge_puts_untraced_changes_to_the_owner(base, capsys) -> None:
     assert "confirmation: every touched requirement is confirmed" not in out
     waits = out[out.index("listed for you (none of this holds the merge):"):]
     assert "untraced src/mul.py" in waits and "trace.exempt" in waits
-    assert merge_check(open_core(root), sha, as_json=True) == 0
+    assert full_report(open_core(root), sha, as_json=True) == 0
     assert json.loads(capsys.readouterr().out)["untraced"] == ["src/mul.py"]
 
 
@@ -243,7 +247,7 @@ def test_merge_exact_copy_of_an_owned_file_is_not_untraced(base, capsys) -> None
     _commit(root, "copies")
     code, out = _check(root, sha, capsys)
     assert code == 0, out
-    assert merge_check(open_core(root), sha, as_json=True) == 0
+    assert full_report(open_core(root), sha, as_json=True) == 0
     assert json.loads(capsys.readouterr().out)["untraced"] == ["plugin/drift.py"]
 
 
@@ -300,7 +304,7 @@ def test_link_command_widening_a_confirmed_requirement_waits_for_the_owner(
     assert "SR-001 (extended)" in out
     assert "new link in this range: implemented_by src/z.py (now owned by SR-001)" in out
     assert "confirmation: every touched requirement is confirmed" not in out
-    assert merge_check(open_core(root), sha, as_json=True) == 0
+    assert full_report(open_core(root), sha, as_json=True) == 0
     data = json.loads(capsys.readouterr().out)
     assert [{k: a[k] for k in ("id", "state", "new_ends")} for a in data["awaiting"]] == [
         {"id": "SR-001", "state": "extended", "new_ends": ["implemented_by src/z.py"]}]
@@ -338,7 +342,7 @@ def test_trace_exempt_added_in_range_waits_for_the_owner(confirmed_base, capsys,
     assert cli.main(["approve", "--exempt", "--root", str(root)]) == 3        # SR-288 EX-2
     assert "approve no longer exists" in capsys.readouterr().err
     assert _check(root, sha, capsys)[0] == 0
-    assert merge_check(open_core(root), sha, as_json=True) == 0
+    assert full_report(open_core(root), sha, as_json=True) == 0
     assert json.loads(capsys.readouterr().out)["new_exempt"] == ["src/**"]
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
     with pytest.raises(approvals.Refused):                    # owner only
