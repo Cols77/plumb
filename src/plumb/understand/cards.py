@@ -56,15 +56,6 @@ def card_id(kind: str, *parts: str) -> str:
     return f"{kind}:" + hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:12]
 
 
-def words_of(premise: Mapping[str, Any]) -> str:
-    """The owner's words a premise holds, for a card's evidence."""
-    messages = [str(m.get("text") or "") for m in premise.get("messages") or ()]
-    text = " / ".join(m for m in messages if m.strip())
-    question = str(premise.get("question") or "").strip()
-    return clip(f'You were asked "{question}" and said: {text}' if question and text
-                else text or question)
-
-
 def _question(cid: str, text: str, choices: Sequence[Choice], record: Any = None,
               n: int = 1) -> ClarifyQuestion:
     return ClarifyQuestion(
@@ -93,47 +84,6 @@ def issue_card(kind: str, record: Any, issue: str, evidence: str,
 
 
 KEEP_THIS, KEEP_OTHER, BOTH = "Keep this one", "Keep the other", "Both"
-
-
-def _stated(says: str, premise: Mapping[str, Any], mine: str = "Written down as",
-            yours: str = "You said") -> str:
-    """What is written down, then the owner's words, each line named: the two a cold reader
-    compares."""
-    words = words_of(premise)
-    if not words.startswith("You were asked"):
-        words = f"{yours}: {words}"
-    return (f"{mine}: {says}\n" if says else "") + words
-
-
-def beyond_card(index: Mapping[str, Any], record: Any, beyond: Sequence[str],
-                premise: Mapping[str, Any], says: str = "") -> CardState:
-    issue = "; ".join(plain(b, index) for b in beyond if str(b).strip()) \
-        or "what is written down says more than your words"
-    return issue_card("beyond", record, issue, _stated(says, premise), (
-        Choice(owner_text.BEYOND_KEEP, "accepted", consequence=(
-            "Confirms it, including the part beyond your words; nothing is removed")),
-        Choice(owner_text.BEYOND_DROP, "rejected", consequence=(
-            "Removes it; the work built on it is undone, and nothing beyond your words is "
-            "kept")),
-        Choice(owner_text.BEYOND_REWORD, "change", consequence=(
-            "Rewrites it to what you say; nothing is confirmed until you see the new "
-            "wording"))))
-
-
-def contradicts_card(index: Mapping[str, Any], record: Any, contradicts: Sequence[str],
-                     premise: Mapping[str, Any], says: str = "") -> CardState:
-    issue = "; ".join(plain(c, index) for c in contradicts if str(c).strip()) \
-        or "what is written down conflicts with something you said"
-    return issue_card("contradicts", record, issue, _stated(
-        says, premise, "This one is written down as", "The other is what you said"), (
-        Choice(KEEP_THIS, "change", "Keep the record as it reads", (
-            "What is written down stays as it reads; what you said that conflicts with it is not "
-            "followed")),
-        Choice(KEEP_OTHER, "change", "Keep what you said instead of the record", (
-            "What you said replaces what is written down; the old wording no longer holds")),
-        Choice(BOTH, "change", consequence=(
-            "Writes one version from both as you say; neither holds as it reads until you "
-            "see it"))))
 
 
 WHICH_VERSION = "Which version do you mean?"

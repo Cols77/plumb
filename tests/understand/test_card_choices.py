@@ -23,6 +23,12 @@ def record(n: int = 1, title: str = "Export as CSV") -> SimpleNamespace:
                            fields={"statement": title, "quote": "export it as csv"})
 
 
+def a_conflict() -> SimpleNamespace:
+    return SimpleNamespace(
+        labels=("main", "feat-x"), fields={"statement": {"ours": "CSV", "theirs": "JSON"}},
+        proposed=False, record="SR-001", ic="IC-1", title="Export")
+
+
 def answers(question: ClarifyQuestion) -> list[tuple[str, str, str | None]]:
     assert [c.label for c in question.choices] == list(question.resolutions)
     return [(c.label, c.answer, c.change) for c in question.choices]
@@ -34,24 +40,6 @@ def test_trial_yes_is_accepted_no_is_rejected_fix_it_is_a_change() -> None:
     assert [(c.label, c.answer, c.change) for c in trial.CHOICES] == [
         ("Yes", "accepted", None), ("No", "rejected", None), ("Fix it", "change", None)]
     assert all(c.consequence for c in trial.CHOICES)
-
-
-def test_beyond_keep_drop_reword() -> None:
-    card = cards.beyond_card({}, record(), ["adds a header row"], {"messages": []})
-    (question,) = card.questions
-    assert answers(question) == [(words.BEYOND_KEEP, "accepted", None),
-                                 (words.BEYOND_DROP, "rejected", None),
-                                 (words.BEYOND_REWORD, "change", None)]
-
-
-def test_contradicts_a_version_is_a_change_carrying_it_and_combine_is_a_change() -> None:
-    card = cards.contradicts_card({}, record(), ["you said JSON before"], {"messages": []})
-    (question,) = card.questions
-    assert answers(question) == [
-        ("Keep this one", "change", "Keep the record as it reads"),
-        ("Keep the other", "change", "Keep what you said instead of the record"),
-        ("Both", "change", None)]
-    assert all(c.consequence for c in question.choices)       # SR-130 EX-3: what each means
 
 
 def test_sr130_ex3_a_merge_conflict_is_keep_this_keep_the_other_or_both() -> None:
@@ -92,7 +80,7 @@ def test_clarify_read_back_of_a_change_yes_or_not_quite() -> None:
 
 
 def test_choices_survive_the_card_store(tmp_path: Path) -> None:
-    card = cards.beyond_card({}, record(), ["adds a header row"], {"messages": []})
+    card = cards.conflict_card({}, a_conflict())
     cardstore.save(tmp_path, SESSION, [card])
     (back,) = cardstore.own_cards(tmp_path, SESSION)
     assert back.questions[0].choices == card.questions[0].choices
@@ -103,15 +91,15 @@ def test_the_reader_inputs_list_each_question_s_choices(repo: Path, write_record
     from plumb.understand import files, read
 
     core = open_core(repo)
-    beyond = cards.beyond_card({}, record(), ["adds a header row"], {"messages": []})
-    cardstore.save(core.root, SESSION, [beyond])
+    conflict = cards.conflict_card({}, a_conflict())
+    cardstore.save(core.root, SESSION, [conflict])
     files.write_json_atomic(files.stale_cards_path(core.root, SESSION), [{
         "link": "L1", "record": "SR-001", "path": "tests/test_x.py", "topic": "Export",
         "issue": "the test moved", "options": ["Repin it", "Leave it"], "recommended": 1}])
     items = {i["card"]: i for i in read.card_items(core, SESSION)}
-    assert items[beyond.id]["choices"] == [
-        files.choice_to_json(c) for c in beyond.questions[0].choices]
-    assert [c["answer"] for c in items[beyond.id]["choices"]] == ["accepted", "rejected", "change"]
+    assert items[conflict.id]["choices"] == [
+        files.choice_to_json(c) for c in conflict.questions[0].choices]
+    assert [c["answer"] for c in items[conflict.id]["choices"]] == ["change", "change", "change"]
     assert items["stale:L1"]["choices"] == [
         {"label": "Leave it", "answer": "change", "change": "Leave it", "consequence": ""},
         {"label": "Repin it", "answer": "change", "change": "Repin it", "consequence": ""}]
