@@ -1,8 +1,9 @@
 ---
 id: FEAT-004
-title: Other hosts, the read-only MCP server and the pi-agent-factory import
-description: One host-neutral core with thin adapters for Codex, Pi and Hermes, a read-only MCP server,
-  and the read-only import of pi-agent-factory.
+title: Other hosts, frozen while Claude Code is the agent
+description: One host-neutral core with thin adapters for Codex and Hermes, frozen while Claude Code is
+  the agent working on plumb; the Pi adapter, the read-only MCP server and the pi-agent-factory import
+  are removed (SR-380).
 requirements:
 - SR-238
 - SR-282
