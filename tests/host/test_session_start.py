@@ -52,23 +52,19 @@ def test_brief_is_a_few_lines_and_a_pointer_by_default(repo: Path, write_record,
                    for line in lines)
 
 
-def test_brief_about_30_lines_with_cap(repo: Path, write_record, hook_input) -> None:
+@pytest.mark.sr("SR-277")
+def test_a_session_brief_setting_no_longer_picks_a_long_brief(repo: Path, write_record,
+                                                              hook_input) -> None:
+    """SR-374, SR-277 (INT-114): the session start gives the table's session lines only; an old
+    ``session_brief: full`` in the config changes nothing, and no long brief is built."""
+    from plumb.config import HooksConfig
+
+    assert not hasattr(HooksConfig(), "session_brief")
     _many_records(repo, write_record)
     (repo / ".plumb" / "config.yaml").write_text("hooks:\n  session_brief: full\n", "utf-8")
     out = _run(repo, hook_input, verify=FakeVerify())
-    lines = out.splitlines()
-    assert lines[0].startswith("plumb brief")
-    assert 25 <= len(lines) <= 40
-    assert any("more (plumb brief --all)" in line for line in lines)
-
-
-def test_brief_never_passes_hard_cap(repo: Path, write_record, hook_input) -> None:
-    _many_records(repo, write_record)
-    config = repo / ".plumb" / "config.yaml"
-    config.write_text("hooks:\n  brief_lines: 200\n  session_brief: full\n", encoding="utf-8")
-    lines = _run(repo, hook_input, verify=None).splitlines()
-    assert len(lines) <= 40
-    assert any(line.startswith("tests: verification unavailable") for line in lines)
+    assert len(out.splitlines()) <= 6 and "plumb brief" not in out.splitlines()[0]
+    assert "more (plumb brief --all)" not in out
 
 
 def test_brief_lists_awaiting_confirmation_and_drift(repo: Path, write_record,

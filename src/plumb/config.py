@@ -56,8 +56,6 @@ class HooksConfig:
     # R9 context economy: the most a prompt hook injects (records are one line each, and only
     # when new or changed this session); estimated at 4 characters per token
     prompt_tokens: int = 200
-    # the session-start brief: a few lines plus a pointer (compact), or the long brief (full)
-    session_brief: str = "compact"
     summary_proposed_cap: int = 3
     # sp5 3: the most the stop hook's agent instructions inject (4 characters per token)
     stop_tokens: int = 150

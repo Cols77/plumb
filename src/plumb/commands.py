@@ -31,7 +31,6 @@ CONFIG_TEMPLATE = """\
 #   brief_lines: 30
 #   prompt_lines: 20
 #   prompt_tokens: 200         # per-prompt injection budget; records once per session
-#   session_brief: compact     # compact (a few lines) | full (the long brief)
 #   summary_proposed_cap: 3    # records shown in full per summary
 # approve:
 #   affirmations: [ok, okay, yes, approve, approved, confirm, confirmed, agreed, lgtm,

@@ -102,10 +102,11 @@ def test_commit_completes_after_choice(tmp_path: Path) -> None:
 
 
 @pytest.mark.sr("SR-260")
-def test_quick_check_lists_unconfirmed_and_undeclared(tmp_path: Path) -> None:
+def test_quick_check_prints_only_what_holds_not_unconfirmed_or_undeclared(tmp_path: Path) -> None:
     """SR-260 EX-4, EX-8: no intent conflict; the incoming change touches an unconfirmed
-    requirement and a file no requirement declares: both listed, neither holds; the merge
-    into main is held only by the delivered requirement's proof (EX-26)."""
+    requirement and a file no requirement declares: neither holds and the quick check's output
+    names neither (SR-374 EX-6; the full report lists them); the merge into main is held only
+    by the delivered requirement's proof (EX-26)."""
     root = make_repo(tmp_path / "main")
     install_hook(root, sys.executable)
     write_record(root, record(statement="s", examples=[ex(1)]))
@@ -120,8 +121,8 @@ def test_quick_check_lists_unconfirmed_and_undeclared(tmp_path: Path) -> None:
     merged = run_git(root, "merge", "--no-edit", "feat-x", check=False)
     output = merged.stdout + merged.stderr
     assert merged.returncode != 0
-    assert '"relay checks" waits on a judge' in output
-    assert "src/relay.py changed without a requirement that declares it" in output
+    assert "waits on a judge" not in output and "waiting on a judge" not in output
+    assert "changed without a requirement that declares it" not in output
     assert '"relay checks": its proof is not shown working yet' in output
     report = check(open_core(root))
     assert report.unconfirmed and report.undeclared and report.exit == 5

@@ -895,21 +895,9 @@ def render(report: PremergeReport) -> list[str]:
         for conflict in report.intent_conflicts:
             out.extend(str(line) for line in conflict.get("card") or [])
     out.extend(hold_lines(report, report.into))
-    if report.unconfirmed:      # counted, listed, never held (SR-260 EX-8, EX-31)
-        n = len(report.unconfirmed)
-        out.append(owner_text.PREMERGE_WAITING_HEADER.format(
-            n=n, s="s" if n > 1 else "", v="" if n > 1 else "s"))
-        out.extend(_capped([owner_text.PREMERGE_UNCONFIRMED.format(title=r["title"])
-                            for r in report.unconfirmed]))
     out.extend(drift_lines(report))
-    if report.undeclared:       # listed, never held (SR-260 EX-4)
-        out.append(owner_text.PREMERGE_UNDECLARED_HEADER)
-        out.extend(_capped([owner_text.PREMERGE_UNDECLARED.format(
-            path=r.get("path") or f"a commit without a requirement ({r['commit'][:12]})")
-            for r in report.undeclared]))
-    if report.claims_errors:    # listed, never held (gates.claims_gate)
-        out.append(owner_text.PREMERGE_CLAIMS_UNREADABLE_HEADER)
-        out.extend(_capped(list(report.claims_errors)))
+    # SR-374 EX-6: only what holds the merge is printed; records waiting on a judge, undeclared
+    # paths and unreadable claims never hold it and stay in the full report (plumb context merge)
     if report.collisions:
         out.append("two different records hold one ID:")
         out.extend(_capped([owner_text.PREMERGE_COLLISION.format(record=r["id"])

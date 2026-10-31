@@ -1,26 +1,24 @@
-"""SessionStart: the intent brief, a few lines plus a pointer (spec 6.1, ruling R9); the long
-brief (about 30 lines, hard cap 40) with ``hooks.session_brief: full``.
+"""SessionStart: the session lines of the one table of insights (SR-374): the intent being
+worked on, what changed since the agent last looked and what blocks now, a few lines and no
+separate brief (INT-114).
 
 Every line goes through the one emitter (``plumb.present.delta``, sp5 3): a resumed
-session that already has a line gets nothing new. Context, never procedure: the brief
-from ``CoreAPI.brief_lines`` plus one line of test evidence from ``VerifyAPI``. Also
-writes ``.plumb/session/status.json`` so the status line has data from the first turn.
+session that already has a line gets nothing new. Context, never procedure. Also writes
+``.plumb/session/status.json`` so the status line has data from the first turn.
 
-The records brief is computed first and kept (``HookContext.keep``): when the budget runs
-out, the owner's records are still briefed and only the tests line reads ``not checked``.
-The tests line is cached under the verify fingerprint, so a warm start builds no test map.
+The records lines are computed first and kept (``HookContext.keep``): when the budget runs
+out, they are still given and only the tests check is left out. The tests summary is cached
+under the verify fingerprint, so a warm start builds no test map.
 """
 
 from __future__ import annotations
 
 import os
 import time
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TextIO
 
 from plumb.hosts.claude_code.hookio import (
-    BudgetExceeded,
     HookContext,
     HookOutput,
     hook_budget,
@@ -104,39 +102,13 @@ def cached_summary(core: Any, verify: Any) -> dict[str, Any]:
     return derived("brief_tests", lambda: tests_summary(core, verify))
 
 
-def evidence_line(summary: Mapping[str, Any] | None) -> str:
-    if summary is None:
-        return "tests: verification unavailable"
-    if summary.get("background"):
-        return BACKGROUND
-    parts: list[str] = []
-    regressions, failing = list(summary["regressions"]), list(summary["not_yet"])
-    if regressions:
-        parts.append(f"{len(regressions)} regression ({_clip_list(regressions)})")
-    if failing:
-        parts.append(f"{len(failing)} failing ({_clip_list(failing)})")
-    if not parts:
-        nodes = int(summary["nodes"])
-        parts.append(f"{summary['fresh']}/{nodes} mapped tests with fresh passing evidence"
-                     if nodes else "no mapped tests yet (plumb tests map)")
-    if summary["pending"]:
-        parts.append("full verification pending (" + ", ".join(summary["reasons"]) + ")")
-    return "tests: " + " | ".join(parts)
+def brief(core: Any, session: str = "") -> list[Any]:
+    """SR-374: the insight table's session lines (``delta.Line``): the intent being worked on,
+    what changed since the agent last looked and what blocks now, no counts. There is no
+    separate session brief (INT-114)."""
+    from plumb.present import insights
 
-
-def brief(core: Any, tests_line: str, session: str = "") -> list[Any]:
-    """SR-374 by default: the insight table's session lines (``delta.Line``): the intent being
-    worked on, what changed since the agent last looked and what blocks now, no counts;
-    ``hooks.session_brief: full`` keeps the long brief of about 30 lines (strings)."""
-    if str(core.config.hooks.session_brief) != "full":
-        from plumb.present import insights
-
-        return insights.lines("session", core, {"session": session})[:HARD_CAP]
-    cap = min(int(core.config.hooks.brief_lines), HARD_CAP)
-    lines = list(core.brief_lines(max(cap - 1, 1)))[: cap - 1]
-    at = len(lines) - 1 if lines and lines[-1].startswith("open NCs") else len(lines)
-    lines.insert(at, tests_line)
-    return lines[:HARD_CAP]
+    return insights.lines("session", core, {"session": session})[:HARD_CAP]
 
 
 def auto_approve_off(core: Any) -> str | None:
@@ -214,8 +186,7 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
         timer.mark("index")
     # no soft-budget check before the records brief: only the watchdog bounds it
     records_brief = [x if isinstance(x, Line) else Line(x)
-                     for x in brief(core, NOT_CHECKED, ctx.session_id)]
-    compact = str(core.config.hooks.session_brief) != "full"
+                     for x in brief(core, ctx.session_id)]
     ctx.keep(emitter.add(records_brief, commit=False))
     timer.mark("brief")
     # the status line's snapshot as soon as the records are read, tests unknown: the tests
@@ -230,27 +201,15 @@ def _handle(ctx: HookContext, verify: Any, timer: StepTimer) -> HookOutput:
         ctx.deadline.check("tests")
         summary = cached_summary(core, verify)
     timer.mark("tests_summary")
-    if compact:  # SR-374 EX-9: the tests only when they block now
-        from plumb.present.insights import blocks_line
+    from plumb.present.insights import blocks_line  # SR-374 EX-9: the tests only when they block
 
-        blocks = blocks_line(summary)
-        lines = emitter.add([*records_brief, *([Line(blocks)] if blocks else [])])
-    else:
-        lines = emitter.add([Line(evidence_line(summary)) if line.text == NOT_CHECKED
-                             else line for line in records_brief])
+    blocks = blocks_line(summary)
+    lines = emitter.add([*records_brief, *([Line(blocks)] if blocks else [])])
     ctx.keep(lines)
     conflicts = conflicts_line(core)  # sp6 8.3: a merge left intent awaiting the owner
     if conflicts:
         lines += emitter.add([Line(conflicts)])
         ctx.keep(lines)
-    try:  # SR-357 EX-1: the known issues (the compact brief's table has them already)
-        from plumb import debug
-
-        if not compact:
-            lines += emitter.add([Line(text) for text in debug.known_lines(core.root)])
-            ctx.keep(lines)
-    except Exception:  # noqa: BLE001 - a broken register never costs the brief
-        pass
     if summary is not None and not summary.get("background"):
         # the tests known: the snapshot again, before the optional lines
         pending = FullPending(summary["pending"], tuple(summary["reasons"]))
