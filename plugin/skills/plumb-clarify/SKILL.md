@@ -32,8 +32,8 @@ Depth:
   line and record it as
   `plumb decide --question Q --chosen <recommended> --alt B --matters --recommend <it>`.
   Outside a spec session you never ask the owner anything: the check raises blocking
-  questions one at a time, with the question tool; everything you can recommend is an "I
-  assume" line.
+  questions, every one at once in the same turn, with the question tool, grouped by
+  principle; everything you can recommend is an "I assume" line.
 - escalated (`clarify` names a trigger, and the owner accepted the spec session): a short
   structured session, one question per message, grill-style, each with your recommended
   answer first. Agree purpose and what
@@ -47,7 +47,8 @@ Discipline:
 - Never ask what the repository, the records or a sensible default already answers.
 - YAGNI: drop features the owner did not ask for; list them under won't.
 - Speak in the owner's terms (behaviours, examples), never in code terms.
-- One question at a time, grill-style: the recommended answer comes first. A question you can
+- Questions go all at once, never one per turn: the recommended answer comes first in
+  each. A question you can
   recommend on is an "I assume" line, never a question.
 - One question shape only, raised by plumb's check: a choice (one question, each option with
   what it does, the recommended one first). Your read-back is a line in your reply, never a

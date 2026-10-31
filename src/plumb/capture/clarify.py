@@ -51,7 +51,7 @@ def open_decisions(index: Mapping[str, Any], statuses: Mapping[str, Any],
     clarify queue and the escalation trigger, R1/R11): DECs with ``matters: true`` that are
     neither confirmed nor superseded, and are touched or decide (or derive from) a touched
     record; earliest-recorded first. A superseded DEC is closed: the owner answered it by the
-    decision that replaced it, so it never blocks the queue (one question per message)."""
+    decision that replaced it, so it never blocks the queue."""
     touched_set = set(touched)
     closed = superseded_ids(index)
     out = []

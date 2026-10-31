@@ -24,9 +24,6 @@ owner's message and says which of these things happened:
   diagram:architecture-diagram skill (a picture of the choice, for a question about structure
   or flow). Build nothing until they answer; plumb reads their answer from the tool.
   Never answer the question yourself.
-- a spec session offered (more than one question has no better-supported answer): the question
-  asks whether to hold a short spec session; ask it with the question tool and stop; if they
-  accept, run the escalated depth below.
 - couldn't check: when the check failed (no judge reachable), say so once in one line and
   work on; nothing is held and nothing is decided by rule. When it is still running, build
   nothing yet and treat it as waiting.
@@ -41,7 +38,7 @@ owner's message and says which of these things happened:
   owner types `/plumb go`.
 
 With `--json` the answer is `{state, message_digest, card, lines}` (and `questions` on
-`ask`); `state` is `ready`, `ask`, `card`, `escalation`, `couldnt_check`, `waiting` or
+`ask`); `state` is `ready`, `ask`, `card`, `couldnt_check`, `waiting` or
 `held`. `message_digest` is the sha256 of the owner's message: the `<digest>` that `--prompt`
 takes (12 or more hex digits are enough).
 
