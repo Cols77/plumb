@@ -117,7 +117,7 @@ def test_migrate_leaves_a_warm_pack(tmp_path: Path, direct_reads: list[str]) -> 
     prev = None
     raws = []
     for i in range(N):
-        raw = legacy_entry("repin", {"i": i}, prev, at=f"2026-10-05T12:00:{i:02d}Z")
+        raw = legacy_entry("mod-hello", {"i": i}, prev, at=f"2026-10-05T12:00:{i:02d}Z")
         raws.append(raw)
         prev = raw["digest"]
     write_legacy(main, "events", raws)
@@ -132,12 +132,12 @@ def test_untracked_and_edited_entry_files_read_from_disk(
     main = _committed(tmp_path)
     paths = PlumbPaths(main)
     populate(paths, 20, start=5000)  # new entries nobody committed yet
-    edited = sorted(paths.log_dir.glob("repin/*.json"))[0]
+    edited = sorted(paths.log_dir.glob("mod-hello/*.json"))[0]
     edited.write_bytes(edited.read_bytes().replace(b'"quote":"ok, confirm it"',
                                                    b'"quote":"edited in place!"'))
     entries = list(log.read(paths, "events"))
     assert len(entries) == N + 20
     assert len(direct_reads) == 21
-    assert next(e for e in entries if e.name == f"repin/{edited.name}").payload["quote"] \
+    assert next(e for e in entries if e.name == f"mod-hello/{edited.name}").payload["quote"] \
         == "edited in place!"
     assert any("modified entry" in p for p in log.verify_chain(paths, "events"))

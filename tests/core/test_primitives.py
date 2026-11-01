@@ -134,11 +134,11 @@ def test_every_route_names_a_module_path() -> None:
                 # SR-210: refused as gone, still routed so they say so
                 "approve", "confirm", "relay", "revoke",
                 "verify", "impact", "hook", "hooks", "install", "statusline", "trailers",
-                "claims", "import", "fidelity", "judge", "judgment",
+                "claims", "fidelity", "judge", "judgment",
                 # sub-projects 2 to 5 (next-plan 3.2 item 4)
-                "capture", "intent", "example", "decide", "escalate", "spec", "triage",
-                "config", "jev", "clarify", "merge-check", "hosts", "turn", "mcp", "resolve",
-                "review", "align", "view",
+                "capture", "intent", "example", "decide", "escalate", "spec",
+                "config", "jev", "clarify", "merge-check", "hosts", "turn", "resolve",
+                "review", "align",
                 # sub-project 6 (sp6 plan 3.2 item 5)
                 "log", "merge-fix", "ids", "merge-driver", "conflict", "conflicts",
                 "inflight",
@@ -161,7 +161,9 @@ def test_every_route_names_a_module_path() -> None:
                 # INT-105: `plumb evaluate`, the benchmark
                 "evaluate",
                 # SR-362: `plumb question reword`
-                "question"}
+                "question",
+                # SR-374: `plumb context <condition>`, the full picture of one condition
+                "context"}
     assert set(cli.ROUTES) == expected
     for module in cli.ROUTES.values():
         assert re.fullmatch(r"plumb(\.[a-z_]+)+", module)
@@ -172,6 +174,14 @@ def test_help_lists_commands(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "usage: plumb" in out
     assert "validate" in out
+
+
+@pytest.mark.sr("SR-202")
+def test_help_lists_context_as_the_agents_command_not_an_owner_view() -> None:
+    """SR-374: `plumb context` is the agent's, never shown to the owner as an owner view."""
+    owner = cli._HELP.split("owner views")[1].split("\n\n")[0]
+    assert "context" not in owner
+    assert "  context " in cli._HELP.split("agent views")[1]
 
 
 def test_entry_point_imports_stay_light() -> None:

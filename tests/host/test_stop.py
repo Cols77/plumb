@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 from fakes import FakeVerify, agent_notes
 
-from plumb import approvals
 from plumb.api import open_core
 from plumb.config import DEFAULT_HOOK_BUDGET_MS
 from plumb.contracts import FullPending, NodeEvidence
@@ -165,6 +164,9 @@ def test_a_stale_link_is_counted_in_the_status_line(project: Path, hook_input) -
     edit(project, "src/calc.py", "def add(a, b):\n    return a - b\n")
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
     assert "stale:" not in summary and "plumb: touched" not in summary
+    from plumb.understand.summary import after_stop
+
+    after_stop(open_core(project), "s1")   # SR-375: the worker refreshes the record-wide counts
     assert _status(project)["stale_links"] == 1
 
 
@@ -195,13 +197,7 @@ def test_regression_blocks_with_owner_instruction(project: Path, hook_input) -> 
                                           "turn.json").read_text("utf-8"))["asked"])
     out = run_stop(project, hook_input, verify=verify)
     assert _block(out) is None
-    assert _summary(out) == ""      # SR-265, SR-363: no question count
-    summary = agent_notes(project)
-    # the agent gets the regression card to ask (no requirement verifies it: the test names it)
-    assert summary.startswith(f"{NODE}\na test that passed before now fails: {NODE}")
-    assert f"{NODE} passed in an earlier run and fails now (last run run-2)" in summary
-    assert "  1. Fix the code so it passes again (recommended)" in summary
-    assert "questions:" not in summary and "▸" not in summary
+    assert _summary(out) == ""      # SR-373: no confirmed behaviour regressed, no owner line
 
 
 @pytest.mark.sr("SR-254")
@@ -285,16 +281,6 @@ def test_verify_unavailable_degrades(project: Path, hook_input) -> None:
     assert _status(project)["tests"] == "unknown"
 
 
-def test_unjudged_fidelity_goes_to_the_status_line(project: Path, hook_input) -> None:
-    start_turn(project)
-    approvals.approve(open_core(project), ["SR-001"])
-    edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
-    out = run_stop(project, hook_input, verify=FakeVerify(),
-                   unjudged=lambda core, ids: tuple(i for i in ids or () if i == "SR-001"))
-    assert _summary(out) == ""                       # no summary line: cards only
-    assert _status(project)["fidelity_unjudged"] == ["SR-001"]
-
-
 def test_writes_status_snapshot(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
@@ -353,8 +339,8 @@ def test_results_finished_past_the_budget_are_used(project: Path, hook_input,
     verify.clock = clock
     reason = _block(run_stop(project, hook_input, verify=verify))
     assert reason is not None
-    assert "plumb: run 'plumb tests run --paths " in reason
-    assert f"plumb: regression: {NODE2}" in reason
+    assert f"plumb: regression: {NODE2}" in reason   # SR-373: the one next action
+    assert "plumb tests run" not in reason
     stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
     assert "SR-001" in {r["id"] for r in stated["records"]}
     status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
@@ -390,8 +376,8 @@ def test_a_step_starting_past_the_budget_is_skipped_and_reported(
     out = run_stop(project, hook_input, verify=verify)
     assert verify.select_calls == []  # the covering-tests step would start past the deadline
     reason = _block(out)
-    assert reason is not None
-    assert "plumb: check skipped (budget): covering tests" in reason
+    assert reason is not None and "plumb tests run --paths src/calc.py" in reason
+    assert "plumb: check skipped (budget): covering tests" in agent_notes(project)
     status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert status["skipped"] == "covering tests"
     # the next turn: the cut selection still asks the agent for the
@@ -471,15 +457,15 @@ def test_untraced_change_is_queued_for_the_agent(project: Path, hook_input) -> N
 
 
 @pytest.mark.sr("SR-200")
-def test_untraced_change_rides_along_an_existing_block(project: Path, hook_input) -> None:
+def test_untraced_change_waits_behind_the_covering_tests(project: Path, hook_input) -> None:
+    """SR-373: one next action: the covering tests now, the untraced note at the next prompt."""
     start_turn(project)
     edit(project, "src/mul.py", "def mul(a, b):\n    return a * b\n")
     reason = _block(run_stop(project, hook_input, verify=FakeVerify(nodes=(NODE,))))
-    lines = reason.splitlines()
-    assert lines[0].startswith("plumb: run 'plumb tests run --paths src/mul.py'")
-    assert any(line.startswith("plumb: untraced change: src/mul.py changed with no "
-                               "requirement owning it. Read the change back") for line in lines)
-    assert _note(project) is None  # already told in this turn
+    assert reason.splitlines() == [
+        "plumb: run 'plumb tests run --paths src/mul.py' (covering tests of this turn, "
+        "budget 60 s), then finish your reply."]
+    assert _note(project)["paths"] == ["src/mul.py"]
 
 
 @pytest.mark.sr("SR-200")

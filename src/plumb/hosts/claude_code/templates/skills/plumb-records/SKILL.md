@@ -1,11 +1,12 @@
 ---
 name: plumb-records
-description: Grounds work in this repository's plumb records (the owner's intent, requirements with examples, decisions, tests). Use on every owner request, before changing code or tests, when the owner states or changes intent, or when a "plumb:" hook line appears. Not for answering the owner's typed /plumb command (the command does that) or for choosing which questions to ask (plumb-clarify).
+description: Grounds work in this repository's plumb records (the owner's intent, requirements with examples, decisions, tests). Use on every owner request, before changing code or tests, when the owner states or changes intent, or when a "plumb:" hook line appears. Not for answering the owner's typed /plumb command (the command does that) or for choosing the depth and questions of a request that changes intent (plumb-clarify).
 ---
 Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting.
-- After `capture`, on any message, run `{plumb} clarify --wait --json` and act on its answer
-  (rule 1 below, plumb-clarify): `ask` with plumb's judge's questions, or `ready`. After
-  `/plumb clarify <words>`, also run it before reading code: it collects the request's check.
+- Every message, after `capture`: run `{plumb} clarify --wait --json` and act on its answer
+  (`ask` with plumb's judge's questions, or `ready`; every state:
+  ../plumb-clarify/references/clarify-states.md). After `/plumb clarify <words>`, also run it
+  before reading code: it collects the request's check. Terms: references/glossary.md.
 - `.plumb/` holds INT (the owner's words), SR (given/when/then examples), DEC, FEAT and NC:
   `{plumb} brief` (intent now), `show <ID>` (examples, tests), `explain <words>` (why it is).
 - Before editing a file, grep `.plumb/test_map.txt` for it (no map: run `{plumb} tests map`);
@@ -21,18 +22,21 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
   is one per principle. The proof, how the owner sees it working, is shown before done:
   `{plumb} proof SR-### --plan ... --kind live-session|hook|command|other`, then `--evidence`.
 - Never run `{plumb} approve` or `revoke` (both gone), `tests waive`, `ui`,
-  `{plumb} triage --approve`, `spec approve`, `config auto-approve`, `config show`,
+  `config auto-approve`, `config show`,
   `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo` and `go` are typed
   by the owner and done by the hook. Merges, conflict cards: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.
 - Asked: hook limit `hooks.hard_limit_s` (<=119 s); a study, any words: references/study.md.
-Questions and approval: plumb's judge approves on the owner's behalf; no approval command
+Questions to the owner (the only place these rules are written; every other skill and the
+/plumb command point here): plumb's judge approves on the owner's behalf; no approval command
 exists, and you never decide on your own that the owner approved.
 1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each
    `question`, `header` and option `label` and `description` to the question tool,
    every question at once, as soon as it is raised; never restate one in prose. Put
    each in the owner's terms with `{plumb} question reword`, merging those that
-   hinge on one principle; never drop, answer or default one.
+   hinge on one principle; never drop, answer or default one. Ask them all at once:
+   every judge question is asked at the next chance, even in the middle of a task, merged
+   by principle (plumb gives one per principle).
 2. Never answer, infer or default a question for the owner, never pick the recommended option
    for them, and never write or read `judge_questions.json` or any approval.
 3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a

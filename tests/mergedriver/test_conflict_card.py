@@ -29,11 +29,13 @@ def test_card_shows_both_versions_and_what_merged(repo: Path) -> None:
     core = open_core(repo)
     (conflict,) = open_conflicts(core)
     card = conflict_card(core, conflict)
-    assert card[0] == '▸ Conflict  IC-001 on SR-005 "relay checks"   (awaits your choice)'
+    assert card[0] == "▸ Conflict IC-001 on \"relay checks\"   (awaits the owner's choice)"
+    assert "SR-" not in " ".join(card)   # SR-267 EX-1: no record id
     assert card[1].split(None, 1) == ["main", OURS_STATEMENT]
     assert card[2].split(None, 1) == ["feat-x", THEIRS_STATEMENT]
     assert card[3] == "  Merged on their own: links +1 from feat-x"
-    assert card[-1] == "  Waits on its card for the owner (main's, feat-x's, or combined); do not ask in words"
+    assert card[-1] == ("  Ask the owner with the question tool (main's, feat-x's, or combined); "
+                        "never in prose")
 
 
 def test_card_in_owner_terms_example_as_given_when_then(repo: Path) -> None:
@@ -97,9 +99,9 @@ def test_show_ic_and_show_record(repo: Path) -> None:
     for ref in ("IC-001", "SR-005"):
         out = plumb(repo, "show", ref)
         assert out.returncode == 0, out.stderr
-        assert "Conflict  IC-001 on SR-005" in out.stdout
+        assert "Conflict IC-001 on \"relay checks\"" in out.stdout
     listed = plumb(repo, "conflicts")
-    assert listed.returncode == 0 and "Conflict  IC-001" in listed.stdout
+    assert listed.returncode == 0 and "Conflict IC-001" in listed.stdout
 
 
 def test_review_shows_the_card(repo: Path) -> None:
@@ -107,4 +109,4 @@ def test_review_shows_the_card(repo: Path) -> None:
     conflicted(repo)
     out = plumb(repo, "review")
     assert "intent conflicts wait for your choice (/plumb conflicts):" in out.stdout
-    assert "Conflict  IC-001 on SR-005" in out.stdout
+    assert "Conflict IC-001 on \"relay checks\"" in out.stdout

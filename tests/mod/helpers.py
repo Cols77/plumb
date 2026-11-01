@@ -24,36 +24,12 @@ def run_mod(monkeypatch: Any, capsys: Any, root: Path, *args: str,
     capsys.readouterr()
     text = "" if stdin is None else json.dumps(stdin)
     monkeypatch.setattr("sys.stdin", io.StringIO(text))
-    if args[0] in ("draw", "press"):
-        return _card_step(root, args, stdin or {})
     argv = ["mod", *args, "--root", str(root), "--json"]
     if "--session" not in args:
         argv += ["--session", SESSION]
     code = cli.main(argv)
     out, err = capsys.readouterr()
     return code, json.loads(out) if out.strip() else None, err
-
-
-def _card_step(root: Path, args: tuple[str, ...], payload: Any) -> tuple[int, Any, str]:
-    """``plumb mod draw|press`` left the command line with the mod's cards (INT-099); the
-    room still runs on the same modules, so the tests run them directly: (code, answer, stderr)
-    as the command answered."""
-    from plumb.api import open_core
-    from plumb.mod import offers, press, session
-
-    core = open_core(root)
-    try:
-        if args[0] == "draw":
-            digest = session.check_key(root, SESSION, payload, "draw")
-            return 0, {"session": SESSION, "cards": offers.drawn_cards(core, SESSION, digest),
-                       "settled": offers.settled_cards(core, SESSION)}, ""
-        done = press.press(core, SESSION, args[args.index("--offer") + 1],
-                           int(args[args.index("--choice") + 1]), payload)
-        return 0, json.loads(json.dumps(done)), ""
-    except session.Refused as exc:
-        return 3, None, str(exc)
-    except press.Unknown as exc:
-        return exc.exit_code, None, str(exc)
 
 
 def kinds(root: Path) -> list[str]:

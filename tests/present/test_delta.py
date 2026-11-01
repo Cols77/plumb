@@ -135,6 +135,8 @@ def test_session_start_and_stop_route_through_the_emitter(records: Path, hook_in
         return real(self, lines, **kwargs)
 
     monkeypatch.setattr(delta.Emitter, "add", spy)
+    (records / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
+    (records / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
     out = io.StringIO()
     payload = hook_input("SessionStart", session_id="s9", source="startup")
     session_start.main(stdin=io.StringIO(payload), stdout=out, root=records,
@@ -204,8 +206,9 @@ def test_prompt_queued_escalations_survive_the_budget(records: Path, hook_input)
 
 def test_blocked_stop_untraced_instruction_survives_the_budget(records: Path,
                                                                hook_input) -> None:
-    """Entry point 3: the blocked stop removes untraced.json and tells the agent itself;
-    the instruction is in the block whatever ``hooks.stop_tokens`` allows."""
+    """Entry point 3: the covering tests' instruction is in the block whatever
+    ``hooks.stop_tokens`` allows; the untraced note is not that one next action (SR-373),
+    so untraced.json waits for the next prompt."""
     from present_helpers import FakeVerify, run_stop, touch
 
     _tight(records, stop_tokens=5)
@@ -215,7 +218,7 @@ def test_blocked_stop_untraced_instruction_survives_the_budget(records: Path,
     out = run_stop(records, hook_input, verify=FakeVerify(nodes=("tests/test_x.py::t",)))
     assert "plumb tests run" in out["reason"]
     assert "src/app/mul.py" in out["reason"]
-    assert not note.exists()
+    assert note.exists()
 
 
 # --- a per-turn line reaches the agent once in every turn, whatever its words (SR-063 EX-5) ---

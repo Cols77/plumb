@@ -600,6 +600,8 @@ class Verify:
         test passing on the current identity. ``masked``: the test passes only after it was
         changed since it regressed, and the owner has not confirmed the change; it counts
         as a failing regression (``masked_regressions``)."""
+        from plumb.frozen import is_frozen
+
         index = self.core.index()
         wanted = list(ids) if ids is not None else sorted(
             i for i, r in index.items() if r.kind == "requirement")
@@ -632,6 +634,8 @@ class Verify:
         for record_id, tests in per_record.items():
             items = []
             for ref, examples in tests.items():
+                if is_frozen(self.core.config, ref):    # SR-380: a frozen part has no evidence due
+                    continue
                 ev = evidence[ref]
                 hidden = record_id in masked.get(ref.split("::", 1)[0], ())
                 failing = ev.state == "fresh-fail" or ev.last_failed or ev.regression or hidden
@@ -648,6 +652,7 @@ class Verify:
     def unresolved_regressions(self) -> list[str]:
         """Test nodes that passed with recorded evidence, failed in their last run, and still
         exist (R3): no later run has passed them."""
+        from plumb.frozen import is_frozen
         from plumb.verify.markers import strip_param
         from plumb.verify.policy import is_regression
 
@@ -658,6 +663,8 @@ class Verify:
             if "::" not in node_id or not is_regression(index, node_id):
                 continue
             test_file = node_id.split("::", 1)[0]
+            if is_frozen(self.core.config, test_file):
+                continue
             info = tmap.files.get(test_file)
             if info is None or strip_param(node_id) not in info.get("nodes", {}):
                 continue

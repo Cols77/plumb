@@ -12,13 +12,13 @@ from typing import Any
 
 import pytest
 from host.test_answer_rejudge import judge_jobs, world  # noqa: F401
-from host.test_question_room import no_browser  # noqa: F401
 from mod.helpers import DIGEST, KEY, run_mod
 from study.helpers import drawn
 from understand.test_judge_job import SESSION
 
 from plumb import study
 from plumb.api import open_core
+from plumb.browser import launch
 from plumb.hosts.claude_code import question_answer, snapshot
 from plumb.present import owner_text
 from plumb.study import cli
@@ -30,6 +30,16 @@ FIRST = {"label": owner_text.STUDY_FIRST, "description": owner_text.STUDY_FIRST_
 ASKS = ("Does a merge of main into a branch count as the branch's own work?",
         "Should a held merge go to a side branch?",
         "May the merge check refuse a fast-forward?")
+
+
+@pytest.fixture
+def no_browser(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    opened: list[str] = []
+    monkeypatch.setattr(launch, "_start", lambda root, token: "http://127.0.0.1:50123")
+    monkeypatch.setattr(launch, "_alive", lambda origin, token: False)
+    monkeypatch.setattr(launch.webbrowser, "open", opened.append)
+    return opened
+
 
 
 def _study(repo: Path, *argv: str) -> int:
@@ -79,7 +89,6 @@ def test_ex1_one_study_ahead_of_three_questions_each_offers_it(
     outcome = shown(world)
     assert outcome.state == "ask" and len(outcome.questions) == 3
     assert all(q["options"][-1] == FIRST and len(q["options"]) <= 4 for q in outcome.questions)
-    assert all(owner_text.ROOM_STUDY not in str(q["options"]) for q in outcome.questions)
 
 
 def test_ex1_never_on_a_topic_the_owner_knows(world: Path) -> None:  # noqa: F811

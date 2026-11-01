@@ -25,17 +25,17 @@ def problem(entry: LogEntry, core: Any) -> str | None:
     payload: Mapping[str, Any] = entry.payload
     if not any(payload.get(k) for k in ("job", "prompt_digest", "evidence", "message")):
         return NOT_AVAILABLE   # not shaped by the worker at all: never accepted
-    if entry.kind != "approval":
-        return f"owner-words {entry.kind}: only approvals rest on the owner's words"
+    if entry.kind not in ("approval", "revocation"):   # SR-372 EX-6: a reversal in words
+        return f"owner-words {entry.kind}: only approvals and revocations rest on their words"
     records = payload.get("records")
     if not isinstance(records, list) or not all(
             isinstance(r, Mapping) and isinstance(r.get("id"), str) and r.get("hash")
             for r in records):
-        return "owner-words approval names no record at a version"
+        return f"owner-words {entry.kind} names no record at a version"
     digest, message, evidence = (payload.get("prompt_digest"), payload.get("message"),
                                  payload.get("evidence"))
     if not isinstance(digest, str) or not digest:
-        return "owner-words approval cites no prompt"
+        return f"owner-words {entry.kind} cites no prompt"
     if not isinstance(message, str) or digest not in (prompt_digest(message),
                                                       sha256_text(message)):
         return "owner-words approval carries a message that is not the prompt it cites"

@@ -48,9 +48,8 @@ function rebuild(dir: string) {
 
 test('a study opened after a rebuild under the open tab still draws its diagram', async ({ page }, info) => {
   await page.goto('http://127.0.0.1:8767/#token=e2e-token');
-  await expect(page.locator('main')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.getByRole('navigation', { name: 'Studies' })).toBeVisible();
   rebuild(process.env.PLUMB_E2E_SWAP!);
-  await page.getByRole('button', { name: 'Studies' }).click();
   await page.getByText("How plumb's background jobs run").first().click();
   const svg = page.locator('figure.study-diagram svg');
   await expect(svg).toBeVisible();

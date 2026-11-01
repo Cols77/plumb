@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from capture.capture_helpers import log_prompt
-from understand.test_clarify_job import SESSION, _asked, _by_kind, _cards, _gap
+from understand.test_clarify_job import plant_card, SESSION, _asked, _by_kind, _cards, _gap
 from understand.test_read_cards import pinned, trial_card
 from understand.test_read_job import make_core, open_card, record_text, state
 
@@ -49,6 +49,7 @@ def _status(repo: Path) -> dict[str, str]:
 def test_ex1_an_option_number_answers_the_card_shown_in_text(
         repo: Path, engine_standins: Any, intent: str) -> None:
     _asked("let users export their data", FORMAT, repo, engine_standins)
+    plant_card(repo)
     (card,) = _by_kind(repo, "choice")
     core = _reply(repo, engine_standins, "2",
                   [{"id": f"{card.id}/format", "hash": "", "answer": "change",
@@ -88,6 +89,7 @@ def test_ex2_words_that_are_not_in_the_message_record_nothing(
 def test_ex3_a_partial_answer_leaves_the_card_open_and_records_nothing(
         repo: Path, engine_standins: Any) -> None:
     _asked("let users export their data", FORMAT, repo, engine_standins)
+    plant_card(repo)
     (card,) = _by_kind(repo, "choice")
     before = _status(repo)
     text = "maybe 2, but I am not sure about the skills"

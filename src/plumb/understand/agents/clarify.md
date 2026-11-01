@@ -44,10 +44,10 @@ Decide:
   question: put one line in `assumptions`, the question, a colon, then the answer you recommend, and
   leave the gap out.
 - Set a gap's `blocking` to true only when no suggestion is better supported by the
-  conversation, the records and the code AND a wrong pick is costly to undo. At most one gap
-  per message is blocking: it is asked, and any other gap is assumed with its recommended
-  suggestion. The one exception: when two or more gaps would each pass that test, mark all of
-  them blocking and the owner is offered a short spec session instead of the questions.
+  conversation, the records and the code AND a wrong pick is costly to undo. Mark every gap
+  that passes that test blocking, however many there are: all of them are asked at once, with
+  the question tool, in one turn. A gap that fails the test is assumed with its recommended
+  suggestion. The count alone never turns the questions into a spec session.
 - Write every question as the one decision, with the recommended suggestion first and a
   one-line consequence for each suggestion.
 - Set a gap's `diagram` to true only when the question is about which parts talk to which, an

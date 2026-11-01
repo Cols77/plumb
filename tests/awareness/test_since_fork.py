@@ -51,22 +51,21 @@ def _decisions(root: Path) -> list[Any]:
 
 
 def _card(lines: str) -> None:
-    assert '"relay checks" waits as a card' in lines, lines
+    assert '"relay checks" comes back at the end of this turn' in lines, lines
 
 
 def _note(lines: str) -> None:
-    assert 'over "relay checks" waits as a card' in lines, lines
+    assert 'over "relay checks" comes back at the end of this turn' in lines, lines
 
 
 def _stop_card(lines: list[str], cards: str) -> None:
-    """The stop hook's early conflict card (SR-012: a card in full, titles not IDs): main's
-    version and this work's, in the owner's words, on the agent's channel; the owner's text
-    does not count it (SR-265, SR-363)."""
-    from awareness.test_claim_check import early_heads
+    """The early conflict the stop hook hands the agent to ask (DEC-384: no card): main's
+    version and this work's, on the agent's channel; the owner's text does not count it
+    (SR-265, SR-363)."""
+    from awareness.test_claim_check import early_asks
 
     assert lines == [], lines
-    heads = early_heads(cards, "relay checks")
-    assert heads and any(MAIN in h for h in heads), cards
+    assert early_asks(cards, MAIN), cards
 
 
 # -- capture
@@ -84,7 +83,7 @@ def test_capture_raises_the_card_and_one_decision(tmp_path: Path) -> None:
             if c["branch"] == "feat-x"]
     assert mine[0]["conflicts"][0]["branch"] == "main"
     again = change(other, FEAT_X + " Reworded.")                   # asked once
-    assert not any("waits as a card" in line for line in again.lines)
+    assert not any("comes back at the end of this turn" in line for line in again.lines)
     assert len(_decisions(other)) == 1
 
 
@@ -109,10 +108,10 @@ def test_capture_after_taking_main_or_of_another_record_raises_nothing(tmp_path:
                                                                          ) -> None:
     _main, other = _main_landed(tmp_path)
     result = change(other, "The status card shows the state in two lines.", record="SR-006")
-    assert not any("waits as a card" in line for line in result.lines)
+    assert not any("comes back at the end of this turn" in line for line in result.lines)
     run_git(other, "merge", "-q", "--no-edit", "main")            # feat-x takes main
     result = change(other, FEAT_X)
-    assert not any("waits as a card" in line for line in result.lines)
+    assert not any("comes back at the end of this turn" in line for line in result.lines)
     assert _decisions(other) == []
 
 

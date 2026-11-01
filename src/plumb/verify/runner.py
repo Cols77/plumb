@@ -344,6 +344,7 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
             skip_file = cov.data_base + ".skip"
             Path(skip_file).write_text(chr(10).join(sorted(cov.skip)), encoding="utf-8")
             env["PLUMB_COV_SKIP"] = skip_file
+    env["PYTHONDONTWRITEBYTECODE"] = "1"   # a file edited within the second of a run is read afresh
     cmd = build_command(args, workers=workers, cov=cov is not None, interpreter=interpreter)
     start = time.monotonic()
     if progress is None and _PROGRESS.get() is not None:

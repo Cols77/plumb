@@ -7,7 +7,7 @@ why: "the turn-end and insight redesign being decided in this loop is a flow wit
 recommend: "diagrams"
 depth: "diagrams"
 records: [{"id": "INT-114", "title": "Resolve the critical and high findings of the 2026-10-26 design...", "hash": "sha256:78d3b9e8f09c79eb60df5a5a6fed7f7fc720f981bd04a22bcfe1317063058886"}, {"id": "SR-373", "title": "A turn ends with one next action for the agent and at most one...", "hash": "sha256:89d47fbfe22605486072e29ad4c70339a1f9f0b7f0188573013ccc911c79198e"}, {"id": "SR-374", "title": "plumb tells the agent one table of insights by condition", "hash": "sha256:968021a239c88265c841255b6f58fa3a9e587dbaf483812524e427b887975951"}, {"id": "SR-378", "title": "An ordinary message never blocks the agent on the judge", "hash": "sha256:2d4b0ecb8cdd6fe9a8f004b4818e1c314ac09a0bec35d7cc452317d83b050fe0"}, {"id": "DEC-376", "title": "What does the session brief show?", "hash": "sha256:d98d25f4a16064c8d7f7d43fe94392c0558cd661d35899638b445dd65ffd59ee"}, {"id": "DEC-377", "title": "When is test evidence fresh?", "hash": "sha256:0b5e794a4b45824d933367a37271783b01d6c13b748284cd22b18a6809b4447c"}, {"id": "DEC-383", "title": "What is the agent's on-demand command for a condition's full picture?", "hash": "sha256:0fb1b885c9efdab8091e81d3e3be50c91917f2291b03618642097bd46861db82"}, {"id": "DEC-384", "title": "What does the agent get instead of the owner's card text at turn end?", "hash": "sha256:e28f7b4fed8de80de1e9362b18d11b68489ea5027b15259aa129111bb7f34090"}]
-changed: ""
+changed: "Resolve the critical and high findings of the 2026-10-26 design..., plumb tells the agent one table of insights by condition, An ordinary message never blocks the agent on the judge"
 refresh: ""
 status: "opened"
 ---

@@ -7,7 +7,7 @@ import re
 import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import unquote, urlsplit
 
 MAX_BODY = 65536
 
@@ -140,24 +140,7 @@ class Handler(BaseHTTPRequestHandler):
                     else service.mark_study(slug, payload)
                 )
                 return
-            match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]+)/(draw|press|diagram)", path)
-            if not match:
-                self._error(404, "Unknown route")
-                return
-            session, action = match.groups()
-            if self.command == "POST" and action == "draw":
-                result = self.server.service.draw(session)
-            elif self.command == "POST" and action == "press":
-                result = self.server.service.press(session, payload)
-            elif self.command == "GET" and action == "diagram":
-                values = parse_qs(url.query).get("card", [])
-                if len(values) != 1:
-                    raise ValueError("Expected one card id")
-                result = self.server.service.diagram(session, values[0])
-            else:
-                self._error(405, "Method not allowed")
-                return
-            self._send(200, result)
+            self._error(404, "Unknown route")
         except PermissionError as exc:
             self._error(409, str(exc))
         except LookupError as exc:

@@ -58,6 +58,23 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
                                      "prev": entry.prev}):
         return f"{entry.kind} entry does not match its digest (modified)"
     by = payload.get("by")
+    if by in ("owner-words", "undone", "agent-relayed"):
+        # DEC-116: the owner's text is local; a machine without it takes the outcome as it
+        # stands (the entry was validated once, where the words were) and re-checks nothing
+        from dataclasses import replace
+
+        from plumb import words
+
+        if words.unavailable(core, entry):
+            records = payload.get("records")
+            if not isinstance(records, list) or not all(
+                    isinstance(r, Mapping) and isinstance(r.get("id"), str) and r.get("hash")
+                    for r in records) or not isinstance(payload.get("prompt_digest"), str):
+                return f"{by} {entry.kind} names no record at a version or no prompt"
+            return None
+        if core is not None:
+            entry = replace(entry, payload=words.joined(core, entry))
+            payload = entry.payload
     if by in ("owner-words", "undone"):  # SP8: re-checked by the understand layer
         from plumb.understand.recheck import problem
 
@@ -73,9 +90,7 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
 
         return problem(entry, core)
     if by == "import":  # upstream human consent pinning the imported content (next-plan 9.3)
-        from plumb.importer.recheck import import_problem
-
-        return import_problem(entry)  # self-contained: needs no log context
+        return "import approvals no longer exist: the importer is removed; it confirms nothing"
     if by == "study-room" or payload.get("via") == "study-room":
         # no study room puts questions in this version (plan section 3), so no such entry
         # names a question at that version (SR-210 EX-3)
@@ -86,11 +101,8 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
             return (f"owner {entry.kind} written under the agent session marker "
                     f"({entry.marker})")
         if entry.kind == "approval" and payload.get("via") == "button":
-            # SP7 re-aligned C6: a pressed Confirm is re-checked against its drawn offer
-            from plumb.understand.recheck_button import problem as button_problem
-
-            return button_problem(entry, core)
-        if entry.kind == "approval" and payload.get("quote"):
+            return "button approvals no longer exist (SR-380): the card-press surface is removed"
+        if entry.kind == "approval" and (payload.get("quote") or payload.get("quote_digest")):
             return ("owner approval quoting the owner's words, written by hand: only the judge "
                     "worker's entries and plumb's reading of the owner's own answers approve")
         return None
@@ -159,6 +171,7 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
 
     answers: dict[str, Mapping[str, Any]] = {}   # the owner's question-tool answers so far
     prompts: set[str] = set()
+    said: dict[str, str] = {}   # DEC-116: the owner's text split out of shared entries
     calibrations: dict[str, LogEntry] = {}
     config: Mapping[str, Any] | None = None
     approved: set[str] = set()  # records with an owner, relayed or imported approval
@@ -169,10 +182,13 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
             digest = entry.payload.get("digest")
             if isinstance(digest, str):
                 prompts.add(digest)
+        elif entry.kind == "owner-words":
+            if isinstance(entry.payload.get("text"), str):
+                said[str(entry.payload.get("digest"))] = entry.payload["text"]
         elif entry.kind == "config":
             from plumb.capture.ownerconfig import is_owner_config
 
-            if is_owner_config(entry, prompts):
+            if is_owner_config(entry, prompts, said):
                 config = entry.payload["auto_approve"]
         elif entry.kind == "calibration":
             calibrations[entry.digest] = entry

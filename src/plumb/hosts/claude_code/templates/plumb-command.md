@@ -1,7 +1,7 @@
 ---
-description: plumb in plain words - status, explain anything, review, what is stuck and what plumb is fixing (debug), what a change would reach, the Obsidian view, adopt this repository (init), build without a failed check (go), undo a confirmed record, typed auto-approve on or off, conflicts, merges, other branches' work, the JEV judge (setup, status, calibration), installing what plumb needs
-argument-hint: "status | intent <words> | clarify <words> | debug | explain <anything> | review [<anything>] | impact <anything> | study <topic> | view | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
-allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} impact:*), Bash({plumb} debug:*), Bash({plumb} view:*), Bash({plumb} study propose:*), Bash({plumb} study gather:*), Bash({plumb} study add:*), Bash({plumb} study storyboard:*), Bash({plumb} study render:*), Bash({plumb} study frames:*), Bash({plumb} study check:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} init:*), Bash({plumb} plugin migrate:*), Bash({plumb} clarify --wait:*), Bash({plumb} question:*), Bash({plumb} intent:*), Bash({plumb} validate:*), Bash({plumb} conflicts:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*), Bash({plumb} inflight:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*), Bash({plumb} jev calibrate:*), Bash(git add .plumb:*), Bash(git merge --no-ff:*), Bash(git commit -m:*), Bash(git reset --keep ORIG_HEAD), Bash(git checkout --ours:*), Bash(git checkout --theirs:*), Bash(git rm:*), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
+description: plumb in plain words - status, intent, explain, review, debug, impact, study, go, undo, conflicts, merges, the JEV judge
+argument-hint: "status | intent <words> | clarify <words> | debug | explain <anything> | review [<anything>] | impact <anything> | study <topic> | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
+allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} impact:*), Bash({plumb} debug:*), Bash({plumb} study propose:*), Bash({plumb} study gather:*), Bash({plumb} study add:*), Bash({plumb} study storyboard:*), Bash({plumb} study render:*), Bash({plumb} study frames:*), Bash({plumb} study check:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} init:*), Bash({plumb} plugin migrate:*), Bash({plumb} clarify --wait:*), Bash({plumb} question:*), Bash({plumb} intent:*), Bash({plumb} validate:*), Bash({plumb} conflicts:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*), Bash({plumb} inflight:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*), Bash({plumb} jev calibrate:*), Bash(git add .plumb:*), Bash(git reset --keep ORIG_HEAD), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -58,9 +58,9 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
   routine fixes plumb made quietly stay out unless they ask for them. Never a record number,
   a link or a command: those are yours, in the plumb-debug skill. A behaviour that changed
   under one of their decisions reaches them as one question through the question tool, which
-  you pass on as in point 1 below. You decide nothing for them. plumb reruns its own step
-  once; a case it could not put right ends as a defect report, which you read to them in
-  their terms.
+  you pass on as the plumb-records skill says. You decide nothing for them. plumb reruns its
+  own step once; a case it could not put right ends as a defect report, which you read to
+  them in their terms.
 - `impact <anything>`: run `{plumb} impact <their words>` and say in plain terms what a
   change would reach.
 - `study <topic>` (also their plain words, "make me a study on how merges are held"):
@@ -73,8 +73,6 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
   writing: compose text, diagrams and clips, each where it teaches, and subtitle every beat
   of a clip so it explains, not just shows. Each clip goes through `{plumb} study storyboard`,
   `{plumb} study render`, `{plumb} study frames` and `{plumb} study check` with `--clip`.
-- `view`: run `{plumb} view --open` and tell them the Obsidian vault is open (generated;
-  editing a note approves nothing).
 - `inflight` ("what are the other branches working on?"): run `{plumb} inflight` and answer
   with the branches, their one-line intent and the records by title. "drop that work" (the
   owner abandoned a branch's intent): they name the branch; repeat it back ("drop the work
@@ -112,17 +110,4 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
 Never run a command that is the owner's own (`config auto-approve`, `conflict choose`): plumb
 refuses it from your session; `approve` and `revoke` no longer exist. Change nothing else.
 
-Questions and approval: plumb's judge approves on the owner's behalf; no approval command
-exists, and you never decide on your own that the owner approved.
-1. After `capture`, run `{plumb} clarify --wait --json`. On `ask`, pass each
-   `question`, `header` and option `label` and `description` to the question tool,
-   every question at once, as soon as it is raised; never restate one in prose. Put
-   each in the owner's terms with `{plumb} question reword`, merging those that
-   hinge on one principle; never drop, answer or default one.
-2. Never answer, infer or default a question for the owner, never pick the recommended option
-   for them, and never write or read `judge_questions.json` or any approval.
-3. If the question tool is unavailable (a subagent or headless run) or the owner dismisses a
-   question, stop asking, tell the owner in one plain line that the work waits for their
-   answer, and do not rerun `ask` in a loop.
-4. Any other question to the owner also goes through the question tool, with options and
-   their consequences.
+Questions to the owner: follow plumb-records.

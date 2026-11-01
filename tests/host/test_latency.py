@@ -97,11 +97,6 @@ def test_hooks_within_in_process_budget(busy_repo: Path, hook_input,
     timings["post-edit"] = _time_ms(lambda: run(post_edit, edit))
     stop_input = hook_input("Stop", stop_hook_active=True)
     timings["stop"] = _time_ms(lambda: run(stop, stop_input, verify=verify, unjudged=None))
-    # SR-266: the card the judged stale check filed for the edited requirement is the agent's
-    run(stop, stop_input, verify=verify, unjudged=None)
-    from fakes import agent_notes
-
-    assert "Requirement 3 about links" in agent_notes(root, "test-session")
     for hook, took in timings.items():
         assert_within(took, BUDGET_MS[hook], f"{hook} hook (ms)")
     errors = root / ".plumb" / "session" / "errors.log"
@@ -121,8 +116,8 @@ def test_cli_drives_the_hooks(busy_repo: Path, hook_input,
         assert result.returncode == 0, result.stderr
         return result.stdout
 
-    assert call("hook", "session-start",
-                payload=hook_input("SessionStart")).startswith("plumb brief")
+    assert "check skipped" not in call("hook", "session-start",
+                                       payload=hook_input("SessionStart"))
     out = call("hook", "prompt", payload=hook_input("UserPromptSubmit",
                                                     prompt="SR-002 needs work"))
     assert "SR-002 [proposed]" in out
@@ -131,9 +126,9 @@ def test_cli_drives_the_hooks(busy_repo: Path, hook_input,
         "PostToolUse", tool_name="Edit", tool_input={"file_path": str(busy_repo / "src" /
                                                                        "mod2.py")}))
     stop_out = call("hook", "stop", payload=hook_input("Stop"))
-    from fakes import agent_notes
-
-    assert "SR-002" in stop_out + agent_notes(busy_repo, "test-session")
+    # SR-373: one next action at most, never a failure (the stop's work for the owner is done)
+    assert "check skipped" not in stop_out
+    assert not (busy_repo / ".plumb" / "session" / "errors.log").exists()
     assert "awaits you" not in call("statusline")   # records wait on a judge (SR-263 EX-6)
     assert call("hook", "--help").startswith("usage: plumb hook")
 
@@ -180,8 +175,7 @@ def test_intent_lines_survive_cpu_contention(busy_repo: Path, hook_input) -> Non
 
 def _contended_turn(busy_repo: Path, hook_input, call) -> None:
     brief, _ = call("hook", "session-start", payload=hook_input("SessionStart"))
-    assert brief.startswith("plumb brief")
-    assert "waiting on a judge: 53 records" in brief
+    assert "check skipped" not in brief and "53" not in brief   # SR-374 EX-9: no counts
     index = open_core(busy_repo).index()
     stated = busy_repo / ".plumb" / "session" / "stated.json"
     stated.write_text(json.dumps({"records": [

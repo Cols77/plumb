@@ -8,6 +8,7 @@ committed)."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -144,6 +145,8 @@ def render(root: Path, slug: str, clip: str, scene: Path) -> None:
 
 def run_manim(scene: Path, media: Path) -> Path:
     """Render the scene with Manim Community (no LaTeX, no OpenGL); the mp4 it made."""
+    if importlib.util.find_spec("manim") is None:    # SR-380: Manim is the optional extra
+        raise RuntimeError("video studies need Manim: install plumb[video]")
     done = subprocess.run([sys.executable, "-m", "manim", "-ql", "--disable_caching",
                            "--media_dir", str(media), str(scene)],
                           capture_output=True, text=True, encoding="utf-8", errors="replace",

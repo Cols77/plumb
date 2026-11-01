@@ -170,9 +170,12 @@ def test_getting_ready_line(tmp_path: Path) -> None:
 def test_missing_prerequisites_line(tmp_path: Path) -> None:
     root = adopted_repo(tmp_path / "repo")
     env = env_with([], PLUMB_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(root))
-    if any((Path(p) / name).exists() for p in env["PATH"].split(os.pathsep)
-           for name in ("uv", "uv.exe", "python3.12", "python3.12.exe")):
-        pytest.skip("this machine has uv or python3.12 beside sh")
+    # the plugin's own probe (uv, or a Python 3.12 or later under any name): SR-119 EX-3
+    probe = subprocess.run([SH, slashes(PLUGIN / "bin" / "plumb"), "--plumb-probe"],
+                           env={**env, "PLUMB_HOME": str(tmp_path / "home")}, capture_output=True,
+                           stdin=subprocess.DEVNULL, timeout=60)
+    if probe.returncode == 0:
+        pytest.skip("this machine has uv or a Python 3.12 or later beside sh")
     result = run_hook("session-start", root, hook_data("session-start"), env)
     assert json.loads(result.stdout) == {"systemMessage": owner_text.NEEDS_PYTHON}
 

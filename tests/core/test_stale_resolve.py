@@ -13,7 +13,6 @@ from plumb import links, stale
 from plumb.api import open_core
 from plumb.cli import main
 from plumb.contracts import Target
-from plumb.understand import cardcontent
 from plumb.understand.repin import Meaning
 
 pytestmark = pytest.mark.sr("SR-198")
@@ -237,9 +236,8 @@ def test_refiled_card_never_binds_recommended_to_an_unseen_order(project: Path,
                  "--recommended", "1", "--session", "s1", "--root", str(project)])
     assert code == 0, capsys.readouterr().err
     (card,) = stale.read_cards(project, "s1")
-    shown = cardcontent.options(card)
-    assert shown[0]["text"] == "Keep the change" and shown[0]["recommended"]
-    assert shown[0]["consequence"] == "keeps it"
+    assert card["options"][card["recommended"]] == "Keep the change"
+    assert card["consequences"][card["recommended"]] == "keeps it"
 
 
 def test_stale_cards_file_format(project: Path) -> None:
@@ -329,3 +327,13 @@ def test_a_run_stopped_at_the_time_limit_says_so(project: Path, monkeypatch) -> 
     monkeypatch.setattr("plumb.verify.open_verify", lambda core: Lane())
     ok, detail = links.default_runner(open_core(project))(["src/a.py"])
     assert not ok and detail == "stopped at the time limit"
+
+
+def test_stale_cards_lists_the_recommended_option_first_with_what_it_does(project: Path,
+                                                                           capsys) -> None:
+    stale.add_card(project, "s1", link=LINK, record="SR-001", path="src/calc.py", topic="T",
+                   issue="i", options=["Undo it", "Keep it"], recommended=1,
+                   consequences=["goes back", "stays"], why="it was asked for")
+    assert main(["stale", "cards", "--session", "s1", "--root", str(project)]) == 0
+    out = capsys.readouterr().out
+    assert "1. Keep it (recommended) - stays" in out and "2. Undo it - goes back" in out

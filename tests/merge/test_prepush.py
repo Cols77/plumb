@@ -84,7 +84,7 @@ def test_hook_blocks_push_on_nonzero(repo: Path, tmp_path: Path) -> None:
     pushed = subprocess.run(["git", "push", "origin", "main"], cwd=repo, capture_output=True,
                             text=True, encoding="utf-8", errors="replace")
     assert pushed.returncode != 0, pushed.stdout + pushed.stderr
-    assert "SR-001" in pushed.stdout + pushed.stderr
+    assert 'on "New"' in pushed.stdout + pushed.stderr   # named by its title, no id (SR-374)
     probe = subprocess.run(["git", "ls-remote", str(remote), "refs/heads/main"],
                            capture_output=True, text=True)
     assert probe.stdout.split()[0] == before

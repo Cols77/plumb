@@ -136,29 +136,21 @@ def test_what_the_owner_reads_names_no_approve_hint_and_no_id(
 
 
 @pytest.mark.sr("SR-267")
-def test_triage_review_and_merge_check_name_no_approve_hint_and_no_id(
+def test_review_and_merge_check_name_no_approve_hint_and_no_id(
         world: Path, capsys) -> None:  # noqa: F811
-    """plumb triage, the review's awaits-you, glance and merge-state sections and the quick
-    merge check list what waits on a judge by title and count, with no approve or confirm
-    hint and no record id."""
+    """The review's awaits-you, glance and merge-state sections list what waits on a judge by
+    title and count, with no approve or confirm hint and no record id; the quick merge check
+    prints only what holds the merge, so it names none of them (SR-374 EX-6)."""
     from plumb.boundary.premerge import PremergeReport, render
-    from plumb.capture.triage import view_lines
-    from plumb.contracts import TriageItem, TriageView
 
     judged(world, ("SR-001", "supported", 0.8))
     root = ["--root", str(world)]
-    item = TriageItem(id="SR-002", hash="sha256:" + "0" * 64, title="Pages are cached",
-                      rating="faithful", outcome="faithful")
-    triage = view_lines(TriageView(backend="stub", available=True, low_risk=(item,),
-                                   individual=(item,)))
-    assert "  Pages are cached" in triage
     review = _cli(capsys, "review", *root)
     sections = review.split("3. drift:")[0] + review[review.index("5. merge state"):]
     merge = render(PremergeReport(merging="feat", into="main", exit=4, unconfirmed=(
         {"id": "SR-002", "title": "Pages are cached", "state": "proposed"},)))
-    assert '  "Pages are cached" waits on a judge' in merge
-    listed = _cli(capsys, "triage", *root).splitlines()[1:]    # under its own header
-    for text in ("\n".join(triage[1:]), "\n".join(listed), sections, "\n".join(merge)):
+    assert "waits on a judge" not in "\n".join(merge) and "Pages are cached" not in "\n".join(merge)
+    for text in (sections, *merge):
         assert not HINT.search(text), text
         assert not ID.search(text.replace(LABEL, "")), text
 
@@ -182,11 +174,11 @@ def test_ex1_a_turn_without_an_edit_brings_the_band_count_up_to_date(
         world: Path) -> None:  # noqa: F811
     """SR-251 EX-1: the judge approves between turns; a turn that edits nothing still updates
     the band's count (round 4: the band showed none while status listed 2)."""
-    from plumb.hosts.claude_code.snapshot import (build_snapshot, refresh_judge_count,
+    from plumb.hosts.claude_code.snapshot import (build_snapshot, refresh_counts,
                                                   write_snapshot)
 
     write_snapshot(world, build_snapshot(open_core(world)))
     judged(world, ("SR-001", "supported", 0.8), ("INT-001", "supported", 0.8))
-    refresh_judge_count(open_core(world))
+    refresh_counts(open_core(world))   # the worker, after the turn (SR-375)
     data = json.loads((world / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert data["judge_approved"] == 2

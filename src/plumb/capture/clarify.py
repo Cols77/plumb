@@ -51,7 +51,7 @@ def open_decisions(index: Mapping[str, Any], statuses: Mapping[str, Any],
     clarify queue and the escalation trigger, R1/R11): DECs with ``matters: true`` that are
     neither confirmed nor superseded, and are touched or decide (or derive from) a touched
     record; earliest-recorded first. A superseded DEC is closed: the owner answered it by the
-    decision that replaced it, so it never blocks the queue (one question per message)."""
+    decision that replaced it, so it never blocks the queue."""
     touched_set = set(touched)
     closed = superseded_ids(index)
     out = []
@@ -228,8 +228,8 @@ def clarify(core: Core, request: str, questions: Sequence[Mapping[str, Any]] = (
                        backend=name, inflight=tuple(inflight))
 
 
-INFLIGHT_NOTE = ('a conflict with {branch} over "{title}" waits as a card for the owner at the '
-                 "end of this turn; do not restate it")
+INFLIGHT_NOTE = ('a conflict with {branch} over "{title}" comes back at the end of this turn '
+                 "for you to ask the owner")
 
 
 def _inflight(core: Core, request: str, backend: Any) -> tuple[list[str], bool]:
@@ -242,7 +242,7 @@ def _inflight(core: Core, request: str, backend: Any) -> tuple[list[str], bool]:
         request_cards(core, result.conflicts)  # the owner sees them at the end of the turn
     except Exception:  # noqa: BLE001 - intent in flight never fails the read-back
         return [], False
-    # the turn-end card asks the owner (SR-151); the agent only learns that one waits
+    # the stop hook hands it back to the agent to ask (SR-151, DEC-384: no card)
     lines = [INFLIGHT_NOTE.format(title=c.title or c.record, branch=c.branch)
              for c in result.conflicts]
     return lines + list(result.lines), bool(result.conflicts)

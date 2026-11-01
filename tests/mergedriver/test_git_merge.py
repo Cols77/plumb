@@ -80,7 +80,7 @@ def test_content_conflict_becomes_ic(tmp_path: Path) -> None:
     core = open_core(root)
     assert core.status(["SR-005"])["SR-005"].confirmation != "confirmed"
     shown = plumb(root, "show", "IC-001")
-    assert shown.returncode == 0 and "Conflict  IC-001 on SR-005" in shown.stdout
+    assert shown.returncode == 0 and "Conflict IC-001 on \"relay checks\"" in shown.stdout
 
 
 @pytest.mark.sr("SR-256")

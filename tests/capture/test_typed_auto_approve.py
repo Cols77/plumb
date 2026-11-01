@@ -45,7 +45,12 @@ def test_ex1_typed_on_logs_the_owners_config_event_and_turns_it_on(jev, capsys) 
     (entry,) = configs(repo)
     payload = entry.payload
     assert payload["by"] == "owner" and payload["via"] == "typed"
-    assert payload["prompt_digest"] == digest and payload["quote"] == "/plumb auto-approve on"
+    assert payload["prompt_digest"] == digest and "quote" not in payload   # DEC-116
+    from plumb import words
+    from plumb.normalize import sha256_text
+
+    assert payload["quote_digest"] == sha256_text("/plumb auto-approve on")
+    assert words.joined(open_core(repo), entry)["quote"] == "/plumb auto-approve on"
     assert payload["auto_approve"]["enabled"] is True
     assert entry.marker == "session-1"           # the hook's own process: the quote is the proof
     state = auto_approve_state(open_core(repo))
@@ -64,6 +69,65 @@ def test_ex1_typed_on_logs_the_owners_config_event_and_turns_it_on(jev, capsys) 
     assert run(repo, "brief", "--all") == 0
     assert "auto-approve: on (set by your typed /plumb auto-approve on)" \
         in capsys.readouterr().out
+
+
+def _without_the_words(repo: Path) -> None:
+    """A checkout that never had the owner's words: no owner-words and no prompt entries."""
+    for kind in ("owner-words", "prompt", "pre-intent"):
+        for path in (repo / ".plumb" / "log" / kind).glob("*.json"):
+            path.unlink()
+
+
+def test_an_on_without_the_words_is_refused(jev) -> None:
+    """Owner, 2026-11-01: "On" needs my words. A digest anyone can compute proves nothing."""
+    repo = jev
+    hook_reads(repo, "/plumb auto-approve on")
+    _without_the_words(repo)
+    assert not auto_approve_state(open_core(repo)).configured
+
+
+def test_a_forged_on_with_no_words_is_refused(jev) -> None:
+    from plumb.normalize import sha256_text
+
+    repo = jev
+    on = {"enabled": True, "backend": "jev", "min_probability": 0.9, "min_confidence": "high"}
+    open_core(repo).log_append("events", "config", {
+        "auto_approve": on, "by": "owner", "via": "typed", "prompt_digest": "sha256:p",
+        "quote_digest": sha256_text("/plumb auto-approve on")})   # a digest the agent can compute
+    assert not auto_approve_state(open_core(repo)).configured
+
+
+def test_an_on_with_the_words_is_accepted(jev) -> None:
+    repo = jev
+    hook_reads(repo, "/plumb auto-approve on")
+    state = auto_approve_state(open_core(repo))
+    assert state.configured and state.source == "your typed /plumb auto-approve on"
+
+
+def test_an_off_without_the_words_is_accepted_from_the_record(jev) -> None:
+    """Owner, 2026-11-01: turning it off counts from the committed record alone."""
+    repo = jev
+    hook_reads(repo, "/plumb auto-approve on")
+    hook_reads(repo, "/plumb auto-approve off")
+    _without_the_words(repo)
+    state = auto_approve_state(open_core(repo))
+    assert not state.configured and state.source == "your typed /plumb auto-approve off"
+
+
+def test_a_checkout_without_the_words_still_needs_the_structure(jev) -> None:
+    from plumb.normalize import sha256_text
+
+    repo = jev
+    on = {"enabled": True, "backend": "jev", "min_probability": 0.9, "min_confidence": "high"}
+    core = open_core(repo)
+    core.log_append("events", "config", {
+        "auto_approve": on, "by": "owner", "via": "typed", "prompt_digest": "sha256:p",
+        "quote_digest": sha256_text("anything the owner never typed as a command")})
+    assert not auto_approve_state(open_core(repo)).configured
+    core.log_append("events", "config", {
+        "auto_approve": on, "by": "owner", "via": "typed", "prompt_digest": "sha256:p",
+        "quote_digest": sha256_text("/plumb auto-approve off")})   # says the other state
+    assert not auto_approve_state(open_core(repo)).configured
 
 
 def test_ex1_typed_off_turns_it_off(jev) -> None:

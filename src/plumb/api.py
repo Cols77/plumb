@@ -80,7 +80,10 @@ class Core:
     def events(self) -> list[LogEntry]:
         """Every entry of the events stream (both formats), cached for this instance."""
         if self._events is None:
-            self._events = list(_log.read(self.paths, "events"))
+            own = list(_log.read(self.paths, "events"))
+            held = {e.digest for e in own}      # DEC-116: the owner's words other checkouts hold
+            more = [e for e in _log.other_checkouts(self.paths) if e.digest not in held]
+            self._events = sorted(own + more, key=lambda e: e.at) if more else own
         return self._events
 
     # -- CoreAPI

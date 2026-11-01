@@ -80,6 +80,17 @@ def _rejection(core: Any, job: Job, digest: str, record: Any, evidence: str, con
         "confidence": confidence}}
 
 
+def _reversal(job: Job, digest: str, message: str, record: Any, evidence: str,
+              confidence: float) -> dict[str, Any]:
+    """SR-372 EX-6: the owner said in conversation that a record plumb approved from their
+    words or a judge's verdict is wrong; it is proposed again, their words the reason."""
+    return {"kind": "revocation", "payload": {
+        "by": "owner-words", "session": job.session, "job": job.id,
+        "records": [{"id": record.id, "hash": record.hash}], "prompt_digest": digest,
+        "message": message, "evidence": evidence, "confidence": confidence,
+        "reason": evidence}}
+
+
 def _pressed(session: str, button: Button, card: str, question: str) -> dict[str, Any]:
     """What a button entry carries in place of the owner's words (C6)."""
     return {"by": "owner", "via": "button", "session": session, "offer": button.offer_id,
@@ -137,7 +148,12 @@ class Answering:
 
     def reject(self, record: Any, evidence: str, confidence: float, rejection: Any, *,
                pressed: Mapping[str, Any] | None = None) -> None:
-        if self.statuses[record.id].confirmation == "confirmed":
+        state = self.statuses[record.id]
+        if state.confirmation == "confirmed":
+            if pressed is None and self.job is not None and state.approved_by in (
+                    "auto-jev", "auto-model", "owner-words"):   # SR-372 EX-6: said wrong
+                self.entries.append(_reversal(self.job, self.digest, self.message, record,
+                                              evidence, confidence))
             return
         if pressed is None:
             assert self.job is not None

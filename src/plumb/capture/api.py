@@ -9,7 +9,7 @@ because of it. None of them confirms anything; ``capture`` writes proposed recor
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from plumb.contracts import (
@@ -20,7 +20,6 @@ from plumb.contracts import (
     EscalationSuggestion,
     IntentFlag,
     Proposal,
-    TriageView,
 )
 
 if TYPE_CHECKING:
@@ -61,12 +60,6 @@ def next_question(core: Core, touched: Sequence[str]) -> str | None:
     from plumb.capture.clarify import next_question as _next
 
     return _safe(None, lambda: _next(core, touched))
-
-
-def triage(core: Core, ids: Iterable[str] | None = None) -> TriageView:
-    from plumb.capture.triage import triage as _triage
-
-    return _safe(TriageView(), lambda: _triage(core, ids, hook=True))
 
 
 def confirmation_counts(core: Core) -> Mapping[str, int]:

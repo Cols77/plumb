@@ -31,7 +31,6 @@ CONFIG_TEMPLATE = """\
 #   brief_lines: 30
 #   prompt_lines: 20
 #   prompt_tokens: 200         # per-prompt injection budget; records once per session
-#   session_brief: compact     # compact (a few lines) | full (the long brief)
 #   summary_proposed_cap: 3    # records shown in full per summary
 # approve:
 #   affirmations: [ok, okay, yes, approve, approved, confirm, confirmed, agreed, lgtm,
@@ -42,8 +41,8 @@ CONFIG_TEMPLATE = """\
 # escalation: {max_requirements: 3, max_features: 1, diff_lines: 400, diff_files: 10}
 # trace:
 #   exempt: []                 # source globs that need no requirement (untraced changes);
-#                              # a glob added on a branch is not honoured at the merge;
-#                              # nothing approves one yet (SR-288)
+#                              # a glob added on a branch is honoured at the merge and
+#                              # listed; the judge accepts it unless it contradicts you (SR-288)
 """
 
 CLAIMS_TEMPLATE = """\
@@ -56,7 +55,15 @@ exempt: []
 baseline: []
 """
 
-GITIGNORE_LINES = ("cache/", "session/", "test_map.txt", "view/")
+def _gitignore_lines() -> tuple[str, ...]:
+    """SR-376, SR-321: the local kinds (DEC-116's owner words among them), then telemetry."""
+    from plumb.log import LOCAL_KINDS
+
+    return ("cache/", "session/", "test_map.txt", "view/",
+            *(f"log/{kind}/" for kind in sorted(LOCAL_KINDS)), "log/judgment/*.json")
+
+
+GITIGNORE_LINES = _gitignore_lines()
 GITATTRIBUTES_LINES = ("log/*.jsonl merge=union",)
 RECORD_DIRS = ("intents", "requirements", "decisions", "features", "ncs")
 
@@ -307,9 +314,10 @@ STALE_USAGE = (
     "usage: plumb stale card <link> --topic TITLE --issue WORDS --options a|b|c "
     "--consequences a|b|c --why REASON [--recommended N] [--session ID]\n"
     "       plumb stale cards [--incomplete] [--session ID] [--json]\n"
-    "card: records a stale card for an owner-intent question: the link then counts as "
-    "resolved for the end-of-turn hold, and the end-of-turn summary shows the card to the "
-    "owner. Each option needs what it does and leaves undone (--consequences, one per option, "
+    "card: files a stale link's owner-intent question in plumb's internal store (the agent "
+    "asks it with the question tool; nothing is shown to the owner as a card): the link then "
+    "counts as resolved for the end-of-turn hold. Each option needs what it does and leaves "
+    "undone (--consequences, one per option, "
     "in the same order) and the recommended one needs its reason (--why); a card lacking any "
     "is refused (SR-116). Re-filing a link's open card keeps its topic, issue and options "
     "unless given again; --recommended (numbered from 1) and --consequences need --options "
@@ -407,15 +415,14 @@ def _stale_card(argv: list[str]) -> int:
     # say the filed order and the recommended one back
     filed = "; ".join(f"{n}. {o}" for n, o in enumerate(options, start=1))
     emit({"card": card, "session": session} if args.as_json else
-         f"plumb: card recorded for {args.link} in session {session}; the turn may end with "
-         f"it waiting for the owner. Options in the order filed: {filed}. Recommended: "
+         f"plumb: question filed for {args.link} in session {session}; ask the owner with the "
+         f"question tool. Options in the order filed: {filed}. Recommended: "
          f"{recommended + 1} ({options[recommended]})", args.as_json)
     return 0
 
 
 def _stale_cards(argv: list[str]) -> int:
     from plumb import stale
-    from plumb.understand import fullcard
 
     parser = _parser("stale cards", "List the open stale cards with all they show the owner.")
     parser.add_argument("--incomplete", action="store_true",
@@ -423,27 +430,36 @@ def _stale_cards(argv: list[str]) -> int:
     parser.add_argument("--session", default=None, help="one session (default: every one)")
     args = parser.parse_args(argv)
     core = _core(args)
-    contents = [fullcard.stale_content(core, entry, session=session)
-                for session in ([args.session] if args.session else stale.sessions(core.root))
-                for entry in stale.read_cards(core.root, session)
-                if entry.get("status", "open") == "open"
-                and not (args.incomplete and stale.card_complete(entry))]
+    found = [(session, entry)
+             for session in ([args.session] if args.session else stale.sessions(core.root))
+             for entry in stale.read_cards(core.root, session)
+             if entry.get("status", "open") == "open"
+             and not (args.incomplete and stale.card_complete(entry))]
     if args.as_json:
-        emit({"cards": contents}, True)
+        emit({"cards": [{**entry, "session": session, "missing": stale.card_missing(entry)}
+                        for session, entry in found]}, True)
         return 0
-    if not contents:
+    if not found:
         print("plumb: no open stale cards" + (" lacking anything" if args.incomplete else ""))
         return 0
-    for content in contents:
-        head = f"plumb: {content['link']} (session {content['session']})"
-        if content["missing"]:
-            head += " lacks: " + "; ".join(content["missing"])
+    for session, entry in found:
+        head = f"plumb: {entry.get('link')} (session {session})"
+        if missing := stale.card_missing(entry):
+            head += " lacks: " + "; ".join(missing)
         print(head)
         if args.incomplete:
-            print(f"  complete it: plumb stale card {content['link']} --session "
-                  f"{content['session']} --consequences \"...\" --why \"...\"")
+            print(f"  complete it: plumb stale card {entry.get('link')} --session "
+                  f"{session} --consequences \"...\" --why \"...\"")
             continue
-        print(fullcard.render(content))
+        print(entry.get("topic") or "")
+        if entry.get("why"):
+            print(entry["why"])
+        first = int(entry.get("recommended") or 0)
+        said = list(entry.get("consequences") or ())
+        for n, i in enumerate(sorted(range(len(entry.get("options") or ())),
+                                     key=lambda i: i != first), start=1):
+            print(f"  {n}. {entry['options'][i]}" + (" (recommended)" if i == first else "")
+                  + (f" - {said[i]}" if i < len(said) and said[i] else ""))
     return 0
 
 

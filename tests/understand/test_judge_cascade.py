@@ -39,12 +39,12 @@ class StubJev:
         self.probability = probability
         self.calls: list[tuple[str, str]] = []
 
-    def entailment(self, premise: str, hypothesis: str, *, subject: str,
-                   claim_kind: str) -> Judgment:
+    def approval(self, premise: str, hypothesis: str, *, subject: str,
+                 claim_kind: str) -> Judgment:
         self.calls.append((subject, claim_kind))
-        p = self.probability
+        p = self.probability      # SR-372: the probability of benign
         return Judgment(action="faithfulness", subject=subject,
-                        verdict="entailed" if p >= 0.5 else "not-entailed",
+                        verdict="benign" if p >= 0.5 else "contradicts",
                         confidence=p, tier="accept", backend="jev:jev-1", fingerprint="f",
                         reasons=(), probability=p, confidence_label="high")
 
@@ -63,7 +63,7 @@ def world(repo: Path, write_record):
 def calibrate_to(core: Any, threshold: float = THRESHOLD) -> None:
     kind = {"threshold": threshold, "passing": True}
     core.log_append("events", "calibration", {
-        "backend": "jev", "model_version": "jev-1",
+        "backend": "jev", "model_version": "jev-1", "form": "contradiction",
         "per_kind": {"intent-readback": dict(kind), "example-restatement": dict(kind)}})
 
 
@@ -200,7 +200,7 @@ def test_a_jev_that_cannot_answer_sends_the_record_to_the_model(world: Path) -> 
     from plumb.judgment import JudgmentUnavailable
 
     class Down(StubJev):
-        def entailment(self, *a: Any, **k: Any) -> Judgment:
+        def approval(self, *a: Any, **k: Any) -> Judgment:
             raise JudgmentUnavailable("JEV", "timeout")
 
     core = configure(world)

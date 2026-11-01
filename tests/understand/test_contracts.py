@@ -215,7 +215,6 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
         premise,
         queue,
         read,
-        summary,
         worker,
     )
 
@@ -225,8 +224,7 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
     assert clarify.on_prompt(None, None, {}, after="read-0") == []
     assert _params(judge.queue_for_capture) == ["core", "result", "prompt_digest"]
     assert judge.queue_for_capture(None, None) is None
-    assert _params(premise.commit) == ["core", "doc", "result", "prompt_digest"]
-    assert premise.commit(None, {}, None) is None
+    assert not hasattr(premise, "commit")      # DEC-116: no message text enters the tracked log
     assert premise.problems(None) == [] and gate.problems(None) == []
     assert _params(queue.enqueue) == ["core", "job"]
     assert queue.enqueue(None, Job()) is None
@@ -235,9 +233,6 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
     assert worker.start_detached(tmp_path, "s1") is None
     assert _params(gate.is_closed) == ["root", "session"]
     assert gate.is_closed(tmp_path, "s1") is False
-    # slice 3: the cards the stop hook builds come in by keyword (sp7-realign-sp8 C1, C7)
-    assert _params(summary.stop_parts) == ["ctx", "core", "turn", "extra", "fresh",
-                                           "passing", "shown"]
     # the landed summary needs a real core; the stub's empty answer is gone (SHOW/JUDGE landed)
     assert StopParts() == StopParts()
     assert _params(hooks.on_prompt) == ["ctx", "core", "entry"]
@@ -400,31 +395,16 @@ def test_prompt_hook_calls_the_understand_layer_in_order(
     assert "skipped" not in out.getvalue()
 
 
-def test_stop_places_confirmations_then_cards(
-        repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.hosts.claude_code import stop
-    from plumb.understand import summary
-
-    monkeypatch.setattr(summary, "stop_parts", lambda ctx, core, turn, **cards: StopParts(
-        confirmations=("C",), cards=("K",)))
-    assert stop.understand_parts(None, None, {}) == ["C", "K"]
-    monkeypatch.setattr(summary, "stop_parts",
-                        lambda *a, **k: (_ for _ in ()).throw(OSError()))
-    assert stop.understand_parts(None, None, {}) == []
-
-
-def test_capture_calls_judge_and_premise_after_writing(
+def test_capture_calls_judge_after_writing(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from plumb.capture import capture as cap
-    from plumb.understand import judge, premise
+    from plumb.understand import judge
 
     calls: list[str] = []
     monkeypatch.setattr(judge, "queue_for_capture",
                         lambda core, result, *, prompt_digest=None: calls.append("judge"))
-    monkeypatch.setattr(premise, "commit",
-                        lambda core, doc, result, *, prompt_digest=None: calls.append("premise"))
     cap._understand_after(None, {}, contracts.CaptureResult(), "d")
-    assert calls == ["judge", "premise"]
+    assert calls == ["judge"]
 
     def boom(*a, **k):
         raise RuntimeError("judge broke")
@@ -436,8 +416,7 @@ def test_capture_calls_judge_and_premise_after_writing(
 def test_owner_text_constants_exist() -> None:
     from plumb.present import owner_text as t
 
-    for name in ("STEP_READING", "STEP_CHECKING", "STEP_JUDGING", "STEP_JUDGING_BACKLOG",
-                 "GATE_BUILD_ANYWAY", "GATE_WAIT", "FULL_OPTION", "FULL_DIAGRAM"):
+    for name in ("STEP_READING", "STEP_CHECKING", "STEP_JUDGING", "STEP_JUDGING_BACKLOG"):
         assert isinstance(getattr(t, name), str) and getattr(t, name)
 
 

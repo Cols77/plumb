@@ -148,8 +148,6 @@ def test_a_model_answer_that_fails_the_schema_fails_its_case() -> None:
 def test_a_late_confirmation_is_told_once_at_the_next_turn(repo: Path, write_record) -> None:
     """A read that finished after its turn ended is told with the next turn's summary, once
     (spec 9.1: collected at the next turn)."""
-    from types import SimpleNamespace
-
     from plumb.approvals import approval_items
     from plumb.understand import summary
     from understand.fakes import as_worker
@@ -157,10 +155,9 @@ def test_a_late_confirmation_is_told_once_at_the_next_turn(repo: Path, write_rec
 
     write_record(repo, int_text(8, "Internal features"))
     core = open_core(repo)
-    ctx = SimpleNamespace(session_id=SESSION, root=repo, deadline=None)
-    first = summary.stop_parts(ctx, core, {"prompt_digest": "sha256:turn1",
-                                           "turn_start": 1.0})
-    assert first.confirmations == ()
+    first = summary._turn_upkeep(core, SESSION, {"prompt_digest": "sha256:turn1",
+                                                 "turn_start": 1.0}, None)
+    assert first == ()
     message = "INT-008 ok"
     core.log_append("events", "prompt", {"digest": "sha256:turn1", "session": SESSION,
                                          "at": "2999-01-01T00:00:00Z"})
@@ -170,12 +167,12 @@ def test_a_late_confirmation_is_told_once_at_the_next_turn(repo: Path, write_rec
             "prompt_digest": "sha256:turn1", "evidence": message, "message": message,
             "job": "read-1", "confidence": 0.9})
     fresh = open_core(repo)
-    second = summary.stop_parts(ctx, fresh, {"prompt_digest": "sha256:turn2",
-                                             "turn_start": 2.0})
-    assert [line.endswith(message) for line in second.confirmations] == [True]
-    third = summary.stop_parts(ctx, fresh, {"prompt_digest": "sha256:turn3",
-                                            "turn_start": 3.0})
-    assert third.confirmations == ()
+    second = summary._turn_upkeep(fresh, SESSION, {"prompt_digest": "sha256:turn2",
+                                                   "turn_start": 2.0}, None)
+    assert [line.endswith(message) for line in second] == [True]
+    third = summary._turn_upkeep(fresh, SESSION, {"prompt_digest": "sha256:turn3",
+                                                  "turn_start": 3.0}, None)
+    assert third == ()
 
 
 def test_the_claude_command_is_given_a_schema_without_our_label() -> None:

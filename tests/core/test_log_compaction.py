@@ -73,15 +73,19 @@ def test_ex1_judgments_of_superseded_records_go_to_the_segment(repo: Path, write
     for n in range(5):
         put(repo, "judgment", {"subject": "SR-002", "n": n})
     compact(repo)
-    assert len(segment(repo, "judgment")) == 30
-    assert len(live(repo, "judgment")) == 5
+    # SR-376, INT-114 (newer than SR-287's old words, DEC-400): judgment is telemetry, so every
+    # entry older than the landing moves, current records or not; EX-11 holds for the other kinds
+    # SR-376: judgment is telemetry, every entry older than the landing moves
+    assert len(segment(repo, "judgment")) == 35
+    assert len(live(repo, "judgment")) == 0
     assert errors(repo) == []
 
 
 def test_ex2_a_prev_resolves_in_the_segment(repo: Path, write_record) -> None:
     superseding(repo, write_record)
     first = put(repo, "judgment", {"subject": "SR-001"})
-    put(repo, "judgment", {"subject": "SR-002"}, prev=first["digest"])
+    put(repo, "judgment", {"subject": "SR-002"}, prev=first["digest"],
+        at="2026-10-25T10:00:00Z")      # newer than the landing: stays live (SR-376)
     compact(repo)
     assert len(segment(repo, "judgment")) == 1
     assert log.verify_chain(open_core(repo).paths, "events") == []
@@ -107,7 +111,7 @@ def test_ex4_a_hook_reads_live_entry_files_only(repo: Path, write_record,
 
     superseding(repo, write_record)
     put(repo, "judgment", {"subject": "SR-001"})
-    put(repo, "judgment", {"subject": "SR-002"})
+    put(repo, "judgment", {"subject": "SR-002"}, at="2026-10-25T10:00:00Z")
     compact(repo)
     opened: list[str] = []
     real = log.segment_lines
@@ -148,11 +152,11 @@ def test_ex5_evidence_that_keeps_a_test_fresh_stays_live(repo: Path) -> None:
 def test_ex6_a_branch_chained_onto_archived_entries_merges_cleanly(repo: Path,
                                                                     write_record) -> None:
     superseding(repo, write_record)
-    first = put(repo, "judgment", {"subject": "SR-001"})
+    first = put(repo, "waiver", {"subject": "SR-001"})
     run_git(repo, "add", "-A")
     run_git(repo, "commit", "-q", "--no-verify", "-m", "records")
     run_git(repo, "checkout", "-q", "-b", "inflight")
-    put(repo, "judgment", {"subject": "SR-002"}, at="2026-10-02T10:00:00Z",
+    put(repo, "waiver", {"subject": "SR-002"}, at="2026-10-02T10:00:00Z",
         prev=first["digest"])
     run_git(repo, "add", "-A")
     run_git(repo, "commit", "-q", "--no-verify", "-m", "branch work")
@@ -178,7 +182,7 @@ def test_ex7_a_retired_records_entries_are_read_through_the_segment(repo: Path) 
 def test_ex8_compacting_again_changes_nothing(repo: Path, write_record) -> None:
     superseding(repo, write_record)
     put(repo, "judgment", {"subject": "SR-001"})
-    put(repo, "judgment", {"subject": "SR-002"})
+    put(repo, "judgment", {"subject": "SR-002"}, at="2026-10-25T10:00:00Z")
     assert compact(repo)
     before = (repo / ".plumb" / "log" / "judgment" / log.SEGMENT).read_bytes()
     assert compact(repo) == []

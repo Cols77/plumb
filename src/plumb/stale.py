@@ -210,6 +210,11 @@ def current_hash(root: Path | str, rel: str, end: End) -> str | None:
 
 def stale_after_edit(root: Path | str, rel: str) -> list[StaleLink]:
     """The links whose end inside ``rel`` no longer matches its pin."""
+    from plumb.config import load_config
+    from plumb.frozen import is_frozen
+
+    if is_frozen(load_config(Path(root)), rel):      # SR-380: a frozen part says nothing
+        return []
     out = []
     for end in links_touching(root, rel):
         now = current_hash(root, rel, end)
@@ -522,7 +527,7 @@ def set_hold_count(root: Path | str, session: str, turn_id: str | None, holds: i
 
 # --------------------------------------------------------------------------- stale cards
 # ``.plumb/session/<id>/stale_cards.json``: a JSON list, written here alone (atomically).
-# ``cardstore`` reads the open entries as ``stale_link`` cards; ``understand.fullcard`` draws them.
+# ``cardstore`` reads the open entries as ``stale_link`` cards; ``plumb stale cards`` lists them.
 
 
 def cards_path(root: Path | str, session: str) -> Path:
@@ -576,7 +581,7 @@ def add_card(root: Path | str, session: str, *, link: str, record: str, path: st
     (the reason for the recommended option) are written when given; a card without them is
     kept but incomplete (``card_missing``). ``by`` names who filed it (``diagnosis`` for
     Opus). The record's wording, the diff and the owner's words are derived when the card is
-    shown (``plumb.understand.fullcard``), never stored here."""
+    shown (``plumb stale cards``), never stored here."""
     entry: dict[str, Any] = {"link": link, "record": record, "path": path, "topic": topic,
                              "issue": issue, "options": [str(o) for o in options],
                              "recommended": int(recommended), "turn": int(turn),

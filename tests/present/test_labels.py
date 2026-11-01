@@ -70,15 +70,3 @@ def test_explain_says_who_confirmed(records: Path, capsys, monkeypatch, by, extr
     out = capsys.readouterr().out
     assert f'SR-002 "divide returns the quotient" ({label})' in out
     assert f'INT-001 "add multiply next to add" ({label})' in out
-
-
-@pytest.mark.sr("SR-205")
-@pytest.mark.parametrize(("by", "extra", "label"), CASES, ids=IDS)
-def test_vault_note_says_who_confirmed(records: Path, capsys, monkeypatch, by, extra,
-                                       label) -> None:
-    _confirmed(monkeypatch, by, extra)
-    assert cli.main(["view", "--root", str(records)]) == 0
-    capsys.readouterr()
-    note = next(p for p in (records / ".plumb" / "view").rglob("SR-002*.md")
-                if "EX-" not in p.name).read_text("utf-8")
-    assert f"State: **confirmed**, {label}" in note

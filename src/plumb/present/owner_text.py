@@ -72,16 +72,18 @@ MODIFY_DELETE = ("  {record} \"{title}\" was changed on {changed} and removed on
                  "say \"keep the changed one\" or \"keep it removed\"")
 
 # -- the conflict card (8.3), wherever it appears
-CARD_HEAD = "▸ Conflict  {ic} on {record} \"{title}\"   (awaits your choice)"
+# SR-267: the agent's view keeps the IC- handle (SR-151); no record id, and the owner gets one
+# question through the tool, without ids
+CARD_HEAD = "▸ Conflict {ic} on \"{title}\"   (awaits the owner's choice)"
 CARD_FIELD = "  {name}:"
 CARD_MERGED = "  Merged on their own: {what}"
 CARD_JUDGED = "  Compatible? JEV: {verdict} ({probability:.2f}){reason}"
 CARD_NO_JUDGMENT = "  Compatible? no judgment available"
 CARD_UNAVAILABLE = "  Compatible? judging unavailable: {cause}"
-CARD_SAY = ("  Waits on its card for the owner ({ours}'s, {theirs}'s, or combined); "
-            "do not ask in words")
-CARD_SAY_COMBINED = ("  Waits on its card for the owner ({ours}'s, {theirs}'s, or the "
-                     "combined one); do not ask in words")
+CARD_SAY = ("  Ask the owner with the question tool ({ours}'s, {theirs}'s, or combined); "
+            "never in prose")
+CARD_SAY_COMBINED = ("  Ask the owner with the question tool ({ours}'s, {theirs}'s, or the "
+                     "combined one); never in prose")
 CONFLICTS_HEADER = "intent conflicts wait for your choice (/plumb conflicts):"
 NO_CONFLICTS = "plumb: no intent conflict waits for you"
 CONFLICTS_BRIEF = "plumb: {n} intent conflict(s) await your choice (/plumb conflicts)"
@@ -227,16 +229,16 @@ STATUS_OVERLAPS_HEADER = "also being changed elsewhere (ask \"is anyone else cha
 STATUS_NO_OVERLAPS = "also being changed elsewhere: nothing"
 
 # -- intent in flight (ruling R17, SR-080, SR-081): the early intent-conflict card
-EARLY_CARD_HEAD = '▸ Conflict  {id} "{title}"   (awaits your choice, before any work)'
+EARLY_CARD_HEAD = "▸ Conflict on \"{title}\"   (awaits the owner's choice, before any work)"
 EARLY_CARD_SIDE = "  {label:<10}  {text}"
 EARLY_CARD_JUDGED = "  Compatible? {judgment}"
 EARLY_CARD_SAME = "the same requirement is being changed on both branches"
-EARLY_CARD_SAY = ("  Waits on its card for the owner ({branch}'s, this one, or both); "
-                  "do not ask in words")
+EARLY_CARD_SAY = ("  Ask the owner with the question tool ({branch}'s, this one, or both); "
+                  "never in prose")
 # the same card shown on a branch that is neither side (the default branch after one side
 # merged): both versions are labelled by branch, and only a branch's name answers it
-EARLY_CARD_SAY_NAMED = ("  Waits on its card for the owner ({a}'s, {b}'s, or both); "
-                        "do not ask in words")
+EARLY_CARD_SAY_NAMED = ("  Ask the owner with the question tool ({a}'s, {b}'s, or both); "
+                        "never in prose")
 EARLY_QUESTION = 'Branch {branch} says "{theirs}"; this request says "{ours}": which one, or both?'
 EARLY_THEIRS = "{branch}'s version"          # every option names its branch: the answer
 # words that name "this side" only from the raising branch's point of view: shown on another
@@ -285,18 +287,10 @@ STEP_READING = "reading your answer"
 STEP_CHECKING = "checking your request"
 STEP_JUDGING = "judging {n} records"
 STEP_JUDGING_BACKLOG = "judging the backlog"
-GATE_BUILD_ANYWAY = "Build anyway"
-GATE_WAIT = "Wait"
-# SR-333, DEC-294: a judge question with more to see than the question tool holds
-ROOM_STUDY = "Study it in the room"
-ROOM_STUDY_NOTE = "The room opens when you press the band's line; the question waits there."
 # SR-336: a question a study proposed ahead of it serves
 STUDY_FIRST = "Study it first"
 STUDY_FIRST_NOTE = ("The band's study line opens the study in the room; the question waits "
                     "until you have read it.")
-GATE_BUILD_NOTE = ("Builds now without the check; what the check would have caught is not "
-                   "looked at")
-GATE_WAIT_NOTE = "Builds nothing until the check runs again on your next message"
 GATE_CLOSED = "Waiting for your answer before building: {reason}"
 NOT_AVAILABLE = "not available in this build"
 CONFIRM_YOU_SAID = "you said: {evidence}"
@@ -323,7 +317,6 @@ BACKLOG_STARTED = ("Judging the backlog: {records} records are queued in {jobs} 
                    "line shows how far it is.")
 BACKLOG_NOTHING = "Nothing in the backlog is left to judge."
 EXAMPLE_N = "example {n}"
-COULDNT_CHECK_ISSUE = "the check did not finish; I will try again on your next message"
 READBACK_YES = "Yes, that is it"
 READBACK_NOT_QUITE = "Not quite"
 
@@ -372,8 +365,9 @@ STALE_CONSEQUENCE_UNDO = ("Puts the code back as it was when you confirmed the r
                           "keeps the wording and drops whatever the change was for")
 STALE_WHY_KEEP = ("I could not tell whether the change matters to what you asked; keeping both "
                   "as they are changes nothing while you read the change shown with this card")
-STALE_HOLD_ENDED = ('I held the turn open {n} times for "{title}" and then let it go; it waits '
-                    "for your answer below.")
+# to the agent (SR-198 EX-11): the link's question waits in the internal store (DEC-384)
+STALE_HOLD_ENDED = ('plumb held the turn open {n} times for "{title}" and then let it go; its '
+                    "question is filed: ask the owner with the question tool.")
 
 
 # --------------------------------------------------------------------------- SP7 slice 3
@@ -408,25 +402,9 @@ EARLY_TYPED_CHOOSE = ('To answer, type: /plumb conflict choose "{title}" --take 
                       "<{branch} | {ours} | both>")
 EARLY_ISSUE = '{branch} says "{theirs}"; {label} says "{ours}"'
 
-DRIFT_REQUEST = 'the request behind the change: "{text}" ({at})'
-DRIFT_NO_REQUEST = "the request behind the change is not on file"
-
-
-# the parts of every card (SR-129): each option, the recommended one marked, what it does
-FULL_OPTION = "  {n}. {text}{mark}"
-FULL_RECOMMENDED = " (recommended)"
-FULL_CONSEQUENCE = " - {text}"
-FULL_DIAGRAM = "Diagram: {path} (open it to see it)"
-FULL_NOT_DRAWN = ("{n} more cards wait for you; there was no time left to draw them in full "
-                  "this turn: {topics}")
-FULL_INCOMPLETE = ("{n} cards wait until the agent writes what each option does and why one is "
-                   "recommended; they stay open and are shown once complete.")
-# SR-161: the one line at a turn end naming the cards plumb withdrew, and why
-CARDS_WITHDRAWN = "Withdrawn: {items}"
+# SR-216: why plumb withdrew a stale-link question; logged only, never an owner line (SR-373)
 WITHDRAWN_LINK_CURRENT = "its link is current again"
 WITHDRAWN_LINK_GONE = "its link no longer exists"
-WITHDRAWN_SUPERSEDED = "{ids} is superseded"
-WITHDRAWN_CONFIRMED = "you confirmed what it asked about"
 # SR-162: the tidy job's reasons, its step and the line when it could not run
 STEP_TIDYING = "checking your open questions"
 STEP_PUSHBACK = "checking a question the agent sent back"   # SR-362
@@ -447,11 +425,10 @@ def settled_counts(counts: Mapping[str, int]) -> str:
     if counts.get("stays"):
         said.append(f"{counts['stays']} could not be settled and stay open")
     return ", ".join(said)
-TIDY_COULD_NOT_RUN = "I could not check whether your open questions are already answered; they all stay."
-# SR-116 EX-4: what the agent is told at the next prompt when cards were shown at turn end
-CARDS_WAITING_AGENT = ("plumb: {n} cards from the end of the last turn await the owner's "
-                       "answer ({topics}). Ask the ones only the owner can settle with the "
-                       "question tool, if not asked yet; do not restate them in prose.")
+# SR-116 EX-4, SR-267: what the agent is told at the next prompt when questions wait
+CARDS_WAITING_AGENT = ("plumb: {n} questions await the owner's answer ({topics}). Ask the "
+                       "ones only the owner can settle with the question tool, if not asked "
+                       "yet; do not restate them in prose.")
 
 # --------------------------------------------------------------------------- SP7 PRESS
 # What a button press on a card answers (sp7-realign-sp8 C3, C6; DEC-032, DEC-034). Titles,

@@ -11,7 +11,6 @@ import yaml
 
 from plumb.api import open_core
 from plumb.contracts import DispatchError, Job
-from plumb.hosts.claude_code.hookio import Deadline, HookContext
 from plumb.present import owner_text
 from understand.fakes import FakeDispatcher, owner_level
 from understand.test_judge_job import SESSION, intent_text, log_prompt, requirement_text
@@ -62,12 +61,12 @@ def question(*ids: str, words: str = MESSAGE) -> dict[str, Any]:
 
 
 def answering(score: float = 0.95, verdicts: dict[str, str] | None = None):
-    """A fake judge: every record in the job is supported at ``score`` unless named, and one
-    question settles them all."""
+    """A fake judge: every record in the job goes beyond the owner's words at ``score`` unless
+    named (SR-372: only that or a contradiction asks), and one question settles them all."""
     def answer(job: Job) -> dict[str, Any]:
         said = verdicts or {}
         return {"questions": [question(*(r["id"] for r in job.inputs["records"]))],
-                "verdicts": [{"id": r["id"], "verdict": said.get(r["id"], "supported"),
+                "verdicts": [{"id": r["id"], "verdict": said.get(r["id"], "beyond"),
                               "confidence": score,
                               "beyond": ["more than you said"] if said.get(r["id"]) == "beyond"
                               else [],
@@ -279,17 +278,6 @@ def test_a_pass_that_is_not_started_is_not_resumed(repo: Path, write_record) -> 
     assert resumed.jobs == started.jobs != []                     # the same jobs: none twice
 
 
-def test_the_pass_holds_its_records_back_from_the_trial_until_it_ends(
-        repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog, trial
-
-    bulk(repo, write_record, {"alpha": 4, "beta": 4})
-    backlog.start(open_core(repo), SESSION)
-    engine_standins.dispatcher.script = {"judge": answering()}
-    run_pass(repo, engine_standins, jobs=1)                       # half done
-    assert trial.top_up(open_core(repo), SESSION) == []           # no trial batch mid-pass
-
-
 def test_a_decision_in_the_backlog_takes_the_question_route(repo: Path, write_record,
                                                           engine_standins) -> None:
     from plumb.understand import backlog, judge
@@ -314,7 +302,7 @@ def test_a_record_below_the_threshold_is_asked_like_the_others(repo: Path, write
 
     def graded(job: Job):
         return {"questions": [question(*(r["id"] for r in job.inputs["records"]))],
-                "verdicts": [{"id": r["id"], "verdict": "supported",
+                "verdicts": [{"id": r["id"], "verdict": "beyond",
                               "confidence": 0.5 if r["id"] == ids[3] else 0.95,
                               "beyond": [], "contradicts": []}
                              for r in job.inputs["records"]]}
@@ -333,11 +321,11 @@ def test_the_turns_end_continues_a_started_pass_and_only_a_started_one(
     from plumb.understand import backlog, files, summary
 
     bulk(repo, write_record, {"alpha": 2, "beta": 2})
-    ctx = HookContext("stop", {}, repo, SESSION, Deadline(1400))
-    summary.stop_parts(ctx, open_core(repo), {"turn_start": time.time() - 60})
+    turn = {"turn_start": time.time() - 60}
+    summary._turn_upkeep(open_core(repo), SESSION, turn, None)
     assert list(files.jobs_dir(repo, SESSION).glob("*.json")) == []   # never started: not queued
     backlog.start(open_core(repo), SESSION)
     queued = sorted(files.jobs_dir(repo, SESSION).glob("*.json"))
     queued[0].unlink()                                                # a queue file was lost
-    summary.stop_parts(ctx, open_core(repo), {"turn_start": time.time() - 60})
+    summary._turn_upkeep(open_core(repo), SESSION, turn, None)
     assert sorted(files.jobs_dir(repo, SESSION).glob("*.json")) == queued

@@ -55,6 +55,21 @@ JEV_CHOICES = {
 }
 
 
+# SR-372: the record-approval question. Not "do the owner's words entail the record" (a formal
+# record always says more than approximate words) but "does it contradict them or add intent
+# they did not give"; ``benign`` (a restatement or a benign extension) is approved.
+APPROVAL_FORM = "contradiction"
+APPROVAL_QUESTION = ("Compare the record with the owner's words and answers. Does it "
+                     "contradict them, add intent they did not give, or neither?")
+APPROVAL_CHOICES = {
+    "benign": "it restates the owner's words, or extends them with wording, detail, examples "
+              "or edge cases the owner would not object to",
+    "extends": "it adds intent the owner did not give: a behaviour, scope or feature they "
+               "never asked for",
+    "contradicts": "it reverses, negates or conflicts with the owner's words or answers",
+}
+
+
 def output_form(config: Any) -> str:
     """``yes_no`` (the default) or ``choice``: the form JEV's entailment question takes."""
     jev = getattr(getattr(config, "judgment", None), "jev", None) or {}
@@ -431,6 +446,21 @@ class JevBackend:
         verdict = "entailed" if p >= 0.5 else "not-entailed"
         return self._judgment(record, "entailment", "faithfulness", subject, verdict,
                               claim_kind=claim_kind, form=YES_NO, **mark)
+
+    def approval(self, premise: str, hypothesis: str, *, subject: str,
+                 claim_kind: str) -> Judgment:
+        """SR-372: does the claim contradict the owner's words, add intent they did not give,
+        or neither? The verdict is the label (``benign``, ``extends``, ``contradicts``); the
+        probability is that of ``benign`` whatever the label, so a floor reads it directly."""
+        prefix = (f"Owner's words:\n{premise}\n\nClaim ({claim_kind}, {subject}):\n"
+                  f"{hypothesis}\n")
+        record = self._ask([("approval", JudgmentQuestion.choice(
+            APPROVAL_QUESTION, APPROVAL_CHOICES))], prefix)
+        answer = record.answers["approval"]
+        label = str(answer.value)
+        benign = float(answer.probabilities.get("benign", 1.0 if label == "benign" else 0.0))
+        return self._judgment(record, "approval", "faithfulness", subject, label,
+                              probability=benign, claim_kind=claim_kind, form=APPROVAL_FORM)
 
     def yes_probability(self, instructions: str, context: str, *, true: str = "yes",
                         false: str = "no") -> float | None:

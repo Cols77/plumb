@@ -135,11 +135,9 @@ def require_owner(command: str, question: str) -> None:
         raise Declined(f"plumb {command}: nothing written")
 
 
-def _names(items: Sequence[Mapping[str, Any]], extra: Mapping[str, Any]) -> str:
+def _names(items: Sequence[Mapping[str, Any]]) -> str:
     names = [str(item["id"]) for item in items]
     shown = ", ".join(names[:6]) + (f" and {len(names) - 6} more" if len(names) > 6 else "")
-    if extra.get("exempt"):
-        shown = (shown + "; " if shown else "") + "trace.exempt " + " ".join(extra["exempt"])
     return shown
 
 
@@ -198,44 +196,15 @@ def pending(core: Core) -> list[tuple[str, str, str]]:
     return out
 
 
-def current_exempt(core: Core) -> list[str]:
-    """The ``trace.exempt`` globs of the current config, sorted."""
-    return sorted({str(g) for g in core.config.trace.exempt})
-
-
-def approved_exempt(core: Core) -> set[str]:
-    """Every ``trace.exempt`` glob a valid approval entry confirmed (spec 7.5)."""
-    from plumb.confirm import checked
-
-    out: set[str] = set()
-    for entry, problem in checked(core):
-        if problem is None and entry.kind == "approval":
-            out.update(str(g) for g in entry.payload.get("exempt") or [])
-    return out
-
-
-def _exempt_payload(core: Core, exempt: bool) -> dict[str, Any]:
-    if not exempt:
-        return {}
-    globs = current_exempt(core)
-    if not globs:
-        raise ApprovalError("trace.exempt in .plumb/config.yaml lists no globs to confirm")
-    return {"exempt": globs}
-
-
-def approve(core: Core, ids: Iterable[str], *, note: str = "",
-            exempt: bool = False) -> LogEntry:
-    """Owner approval of records at their current hashes; with ``exempt``, also of the
-    current ``trace.exempt`` globs (paths the owner says need no requirement)."""
+def approve(core: Core, ids: Iterable[str], *, note: str = "") -> LogEntry:
+    """Owner approval of records at their current hashes."""
     refuse_under_marker("approve")
     ids = list(ids)
-    extra = _exempt_payload(core, exempt)
-    records = _records(core, ids) if ids or not extra else []
-    require_owner("approve", f"approve {_names(records, extra)} at their current content, "
+    records = _records(core, ids)
+    require_owner("approve", f"approve {_names(records)} at their current content, "
                   "as yourself (by: owner)?")
     payload = {"records": records, "by": "owner", "prompt_digest": None, "quote": None,
-               "quote_digest": None, "affirmation": None, "stated_set": None, "note": note,
-               **extra}
+               "quote_digest": None, "affirmation": None, "stated_set": None, "note": note}
     return core.log_append("events", "approval", payload)
 
 
@@ -259,7 +228,7 @@ def _revoked_records(core: Core, ids: Iterable[str]) -> list[dict[str, Any]]:
 def revoke(core: Core, ids: Iterable[str], *, note: str = "") -> LogEntry:
     refuse_under_marker("revoke")
     records = _revoked_records(core, ids)
-    require_owner("revoke", f"revoke your approval of {_names(records, {})} (by: owner)?")
+    require_owner("revoke", f"revoke your approval of {_names(records)} (by: owner)?")
     payload = {"records": records, "by": "owner", "prompt_digest": None,
                "quote": None, "quote_digest": None, "note": note}
     return core.log_append("events", "revocation", payload)

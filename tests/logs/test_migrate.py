@@ -19,7 +19,7 @@ SR = ("---\nid: SR-001\ntitle: Requirement\nstatement: s\nexamples:\n"
       "  - {id: EX-1, given: g, when: w, then: t}\n---\n")
 
 
-def _chain(n: int, kind: str = "repin", start: int = 0) -> list[dict]:
+def _chain(n: int, kind: str = "mod-hello", start: int = 0) -> list[dict]:
     out: list[dict] = []
     prev = None
     for i in range(start, start + n):
@@ -87,10 +87,10 @@ def test_independent_migrations_merge_clean(root: Path, tmp_path: Path) -> None:
     commit_all(root, "legacy log")
     other = add_worktree(root, tmp_path / "other", "feat-x")
     assert log.migrate(PlumbPaths(root), dry_run=False).refused == ()
-    open_core(root).log_append("events", "repin", {"side": "main"})
+    open_core(root).log_append("events", "mod-hello", {"side": "main"})
     commit_all(root, "migrate on main")
     assert log.migrate(PlumbPaths(other), dry_run=False).refused == ()
-    open_core(other).log_append("events", "repin", {"side": "feat"})
+    open_core(other).log_append("events", "mod-hello", {"side": "feat"})
     commit_all(other, "migrate on feat")
     merged = run_git(root, "merge", "--no-edit", "feat-x", check=False)
     assert merged.returncode == 0, merged.stdout + merged.stderr
@@ -109,8 +109,8 @@ def test_pre_migration_branch_merges_then_migrates(root: Path, tmp_path: Path) -
     commit_all(root, "legacy log")
     old = add_worktree(root, tmp_path / "old", "old-branch")
     late = _chain(2, start=10)
-    late[0] = legacy_entry("repin", {"i": 10}, chain[-1]["digest"], at="2026-10-05T12:00:10Z")
-    late[1] = legacy_entry("repin", {"i": 11}, late[0]["digest"], at="2026-10-05T12:00:11Z")
+    late[0] = legacy_entry("mod-hello", {"i": 10}, chain[-1]["digest"], at="2026-10-05T12:00:10Z")
+    late[1] = legacy_entry("mod-hello", {"i": 11}, late[0]["digest"], at="2026-10-05T12:00:11Z")
     write_legacy(old, "events", late)  # the old code still appends to the JSONL
     commit_all(old, "old branch appends")
     log.migrate(PlumbPaths(root), dry_run=False)

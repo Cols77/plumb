@@ -20,6 +20,7 @@ from mergedriver.mdhelpers import (
 )
 from plumb import cli
 from plumb.api import open_core
+from plumb.normalize import sha256_text
 from plumb.understand import read
 
 pytestmark = pytest.mark.sr("SR-211")
@@ -51,8 +52,10 @@ def test_ex1_a_clear_pick_in_chat_is_applied_by_plumb(repo: Path) -> None:
     _reply(repo, "keep feat-x's version", "change", "Keep feat-x's version", "Keep the other")
     assert _statement(repo) == THEIRS_STATEMENT
     (entry,) = events(repo, "conflict-resolution")
-    assert (entry["take"], entry["by"], entry["quote"]) == (
-        "theirs", "owner-words", "keep feat-x's version")
+    # DEC-116: the committed entry keeps the digest of the owner's words, not the words
+    assert (entry["take"], entry["by"], entry["quote_digest"]) == (
+        "theirs", "owner-words", sha256_text("keep feat-x's version"))
+    assert "quote" not in entry
     assert entry["prompt"].startswith("sha256:")
 
 
@@ -125,7 +128,7 @@ def test_sr187_ex1_a_side_in_plain_words_picks_the_option_the_model_names(repo: 
         read.apply(core, job, {"entries": [entry]})
     assert _statement(repo) == OURS_STATEMENT
     (taken,) = events(repo, "conflict-resolution")
-    assert (taken["take"], taken["quote"]) == ("ours", words)
+    assert (taken["take"], taken["quote_digest"]) == ("ours", sha256_text(words))
 
 
 @pytest.mark.sr("SR-214")

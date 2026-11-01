@@ -131,6 +131,7 @@ def link_states(core: Core, ids: Iterable[str] | None = None,
     ids, so a hook hashes no other end."""
     index = core.index()
     selected = index.keys() if ids is None else [i for i in ids if i in index]
+    from plumb.frozen import is_frozen
     from plumb.query import retired_ids
 
     retired = retired_ids(index)
@@ -145,6 +146,9 @@ def link_states(core: Core, ids: Iterable[str] | None = None,
                 continue
             if link.kind == "supersedes" and link.target.record not in index:
                 out.append(LinkState(link=link, state="retired"))  # DEC-145: it went, per P15
+                continue
+            if is_frozen(core.config, link.target.path or link.target.test):
+                out.append(LinkState(link=link, state="retired"))    # SR-380: a frozen part
                 continue
             out.append(_state_of(link, record.hash, core.hash_target(link.target)))
     return out
@@ -872,7 +876,8 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
                            turn=stale.turn_number(core.root, where), **filed)
             item["card"], item["session"] = True, where
         item["card_missing"] = missing
-        action = f"brought to the owner as a card: {found.explanation}"
+        action = ("filed as a question for the owner, to ask with the question tool: "
+                  f"{found.explanation}")
         if missing:   # SR-116: kept open, but not offered until the agent completes it
             action += ("; the card is not offered until it is complete, it lacks: "
                        + "; ".join(missing) + f" (plumb stale card {link.id} --consequences "

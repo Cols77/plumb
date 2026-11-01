@@ -1,5 +1,5 @@
-"""SR-233: a record a newer record supersedes is retired: it counts in no status and is
-rated by no triage."""
+"""SR-233: a record a newer record supersedes is retired: it counts in no status and waits
+on no judge (the triage is gone, SR-380)."""
 
 from __future__ import annotations
 
@@ -39,15 +39,6 @@ def test_a_retired_requirement_counts_nowhere(repo: Path, write_record) -> None:
     assert data["awaiting"] == ["SR-002"] and "SR-001" not in data["failing"]
 
 
-def test_triage_rates_no_retired_record(repo: Path, write_record) -> None:
-    from plumb.capture.triage import triage
-
-    write_record(repo, OLD)
-    write_record(repo, NEW)
-    view = triage(open_core(repo), backend=None)
-    assert [i.id for i in view.individual] == ["SR-002"]
-
-
 @pytest.mark.sr("SR-289")
 def test_ex1_a_supersedes_link_to_a_deleted_record_is_not_dangling(repo: Path,
                                                                    write_record) -> None:
@@ -78,23 +69,3 @@ def test_ex7_a_failing_approval_of_a_gone_record_is_not_reported(repo: Path,
     core.log_append("events", "approval", {"by": "owner", "via": "button", "records": [
         {"id": "SR-001", "hash": "sha256:0"}]})
     assert not [f for f in validate(open_core(repo)) if f.code == "approval"]
-
-
-@pytest.mark.sr("SR-289")
-def test_ex5_a_card_about_a_gone_record_is_moot(repo: Path, write_record) -> None:
-    """SR-289 EX-5: a decision card whose record left the tree is neither shown nor counted."""
-    from plumb.contracts import CardState, ClarifyQuestion
-    from plumb.understand import summary
-
-    write_record(repo, NEW)
-    core = open_core(repo)
-    card = CardState(id="c1", kind="decision", topic="old", questions=(
-        ClarifyQuestion(id="q1", text="keep it?", record="DEC-001"),))
-    assert summary._moot(core, card, core.status(), set()) is None
-    # an intent conflict card on a record the clean-up deleted (IC-002 on SR-103)
-    conflict = CardState(id="conflict:IC-002", kind="conflict", topic="old", questions=(
-        ClarifyQuestion(id="q1", text="which version?", record="SR-001"),))
-    assert summary._moot(core, conflict, core.status(), set()) is None
-    kept = CardState(id="conflict:IC-003", kind="conflict", topic="live", questions=(
-        ClarifyQuestion(id="q1", text="which version?", record="SR-002"),))
-    assert summary._moot(core, kept, core.status(), set()) is kept

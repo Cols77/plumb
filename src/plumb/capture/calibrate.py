@@ -81,7 +81,7 @@ def _hypotheses(index: Mapping[str, Any], record: Any,
     owner's whole logged prompt when ``prompts`` has it). An INT's read-back is one claim; a
     requirement's wording and each of its examples are separate parts, all of which must be
     supported."""
-    from plumb.capture.triage import claim
+    from plumb.understand.claim import claim
 
     _, premise, hypothesis = claim(index, record, prompts)
     if record.kind != "requirement":
@@ -94,7 +94,7 @@ def _hypotheses(index: Mapping[str, Any], record: Any,
 def _prompts(core: Core | None) -> Any:
     if core is None:
         return None
-    from plumb.capture.triage import _Prompts
+    from plumb.understand.claim import _Prompts
 
     return _Prompts(core)
 
@@ -134,7 +134,7 @@ def variations(item: Item) -> list[Item]:
 
 
 def labelled_set(core: Core) -> list[Item]:
-    from plumb.capture.triage import premise_problem
+    from plumb.understand.claim import premise_problem
     from plumb.confirm import checked, remaining
 
     index = core.index()
@@ -148,7 +148,7 @@ def labelled_set(core: Core) -> list[Item]:
         ids = {str(r.get("id")) for r in entry.payload.get("records") or []
                if isinstance(r, Mapping)}
         if entry.kind == "revocation" and entry.payload.get("by") in (
-                "owner", "agent-relayed", "undone"):   # an undone confirmation is a real "no"
+                "owner", "agent-relayed", "undone", "owner-words"):   # a reversal: a real "no"
             revoked |= ids
         if entry.kind == "approval" and entry.payload.get("by") == "auto-jev":
             auto |= ids
@@ -213,19 +213,16 @@ def _number(raw: Any) -> float | None:
 
 
 def score(backend: Any, item: Item) -> tuple[float, str]:
-    """The probability that the owner's words support the whole item (the lowest over its
-    parts), and the backend that answered."""
+    """The probability that the whole item is ``benign`` against the owner's words (SR-372:
+    the lowest over its parts of JEV's probability of ``benign``), and the backend that
+    answered."""
     lowest = 1.0
     used = ""
     for part in item.hypotheses:
-        judgment = backend.entailment(item.premise, part, subject=item.record,
-                                      claim_kind=item.kind)
+        judgment = backend.approval(item.premise, part, subject=item.record,
+                                    claim_kind=item.kind)
         used = judgment.backend
-        p = judgment.probability if judgment.probability is not None else 0.0
-        p_true = p if judgment.verdict == "entailed" else 1.0 - p
-        if judgment.verdict == "unsure":
-            p_true = min(p, 1.0 - p)
-        lowest = min(lowest, p_true)
+        lowest = min(lowest, judgment.probability if judgment.probability is not None else 0.0)
     return round(lowest, 6), used
 
 
@@ -271,8 +268,9 @@ def measure(core: Core, items: Sequence[Item], scores: Sequence[float]) -> dict[
 
 def logged_scores(core: Core) -> tuple[dict[tuple[str, str], float], str]:
     """``{(record, hash): score}`` of JEV's logged verdicts (the latest of each) and the JEV
-    version that gave the most recent one. The score is JEV's probability for a supported
-    verdict and 0 otherwise, logged at judgment time (SR-106), so calibration needs no call.
+    version that gave the most recent one. The score is JEV's probability of ``benign`` on the
+    approval question (SR-372; an older verdict logged its probability of entailment), logged
+    at judgment time (SR-106), so calibration needs no call.
     Only JEV's own score counts (SR-182): a verdict marked as JEV's, or the ``jev_score`` a
     judge model's verdict logged beside its own (SR-252); a judge model's confidence never
     sets JEV's threshold, and an old verdict with no marker is not taken as JEV's."""
@@ -349,9 +347,9 @@ def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindRe
     results = measure(core, items, scores)
     digest = sha256_bytes(canonical_json([[i.record, i.kind, i.label, i.source,
                                            list(i.hypotheses)] for i in items]))
-    from plumb.judgment.jev import output_form
+    from plumb.judgment.jev import APPROVAL_FORM
 
-    payload = {"backend": name, "model_version": version, "form": output_form(core.config),
+    payload = {"backend": name, "model_version": version, "form": APPROVAL_FORM,
                "per_kind": {k: {key: getattr(r, key) for key in (
                    "items", "answers", "positives", "real_negatives", "generated_negatives",
                    "generated_counted", "quote_only", "negatives", "threshold", "false_accept",
@@ -383,11 +381,11 @@ def calibration_form(calibration: Any) -> str:
 
 
 def form_gap(core: Core, calibration: Any) -> str | None:
-    """SR-183: why ``calibration`` may not serve JEV as configured now (it measured the other
-    question form), else None."""
-    from plumb.judgment.jev import output_form
+    """SR-183: why ``calibration`` may not serve JEV's approval question (SR-372: it measured
+    another question form, such as the entailment forms), else None."""
+    from plumb.judgment.jev import APPROVAL_FORM
 
-    want = output_form(core.config)
+    want = APPROVAL_FORM
     if calibration is None or calibration_form(calibration) == want:
         return None
     return (f"a calibration for the {want} form is needed (the last one measured "

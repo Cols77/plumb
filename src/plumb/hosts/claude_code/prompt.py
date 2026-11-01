@@ -342,9 +342,9 @@ def stale_turn_start(ctx: HookContext, core: Any) -> None:
 
 
 def cards_waiting_line(ctx: HookContext) -> Any:
-    """SR-116 EX-4: the cards the owner was shown at the end of the last turn are named to the
-    agent in one line, so its reply says cards are waiting without restating them or asking
-    for prose answers (once per session per set of cards). None when no card waits."""
+    """SR-116 EX-4: the questions waiting for the owner are named to the agent in one line, to
+    ask through the question tool without restating them in prose (once per session per
+    set). None when none waits."""
     from plumb.present.delta import Line
 
     try:
@@ -354,7 +354,7 @@ def cards_waiting_line(ctx: HookContext) -> Any:
         text = waiting_line(ctx.root, ctx.session_id, open_core(ctx.root))
     except Exception:  # noqa: BLE001 - an advisory line never fails the prompt hook
         return None
-    return Line(text, subject="cards-waiting", state=text) if text else None
+    return Line(text, subject="questions-waiting", state=text) if text else None
 
 
 def stale_before_line(ctx: HookContext) -> Any:
@@ -413,7 +413,6 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     tests are not injected: the agent pulls them with ``plumb show``. ``verify`` is accepted
     for the hook interface and unused."""
     del verify
-    from plumb.browser.followup import preserve
     from plumb.present.delta import Line, open_emitter
 
     text = ctx.data.get("prompt")
@@ -424,7 +423,6 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
             log_prompt(ctx, text, "notification")
             return HookOutput(text="")
         text = owned
-    browser_lines = preserve(ctx)
     digest = log_prompt(ctx, text)
     if prompt_origin(text)[0] != "owner":   # SR-168: logged with its origin, nothing else
         return HookOutput(text="")
@@ -449,7 +447,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     tail = [line for line in (trace, cards_waiting_line(ctx), stale_before_line(ctx)) if line]
     tail += agent_notes(ctx)
     # oneshot: escalation_lines advanced the queue offset past them already
-    queued = [*browser_lines, *(Line(line, oneshot=True) for line in escalations)]
+    queued = [Line(line, oneshot=True) for line in escalations]
     ctx.keep(emitter.add([*queued, *tail], commit=False))
     # no soft-budget check before the intent lines: only the watchdog bounds them
     ids, strong = _relevant_ids(core, text) if text.strip() else ([], [])
@@ -467,9 +465,19 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
         turn = read_json(turn_path)
         if isinstance(turn, dict):
             write_json_atomic(turn_path, {**turn, "flagged": list(flagged), "flags": flagged})
+        from plumb.understand import clarify, gate
+
+        # SR-378 EX-3, SR-225: an ordinary request that changes a confirmed record holds edits
+        # until the owner answers or types /plumb go; a commanded one is held by its check
+        hold = clarify.intent_change_hold(core, ctx.session_id, digest)
+        if hold and clarify.commanded_words(text) is None:
+            gate.close(ctx.root, ctx.session_id, digest, hold)
     hint = escalation_hint(core, index, strong, list(flagged)) if strong else None
+    from plumb.present import insights  # SR-374: the intent when not named, a known issue
+
+    table = insights.lines("prompt", core, {"session": ctx.session_id, "text": text})
     rest = emitter.add([*queued, *intent, *([Line(hint)] if hint else []),
-                        *awareness_lines(core, ids), *tail])
+                        *awareness_lines(core, ids), *table, *tail])
     out = [*records, *rest, *understood]
     ctx.keep(out)
     emitter.close()

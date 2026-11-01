@@ -77,7 +77,7 @@ def test_ex2_a_question_set_aside_is_shown_apart_and_never_unreachable(
         world: Path) -> None:  # noqa: F811
     one = asking("SR-001", question="Should only the public pages get faster?")
     one["options"] = one["options"][:1]      # out of schema: one option
-    applied_on(world, ["SR-001"], answer(("SR-001", "supported"), questions=[one]))
+    applied_on(world, ["SR-001"], answer(("SR-001", "beyond"), questions=[one]))
     state = judges(world)
     assert state.get("down", {}) == {}
     (aside,) = state["set_aside"]

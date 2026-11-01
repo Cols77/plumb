@@ -95,25 +95,6 @@ def test_plumb_capture_dry_run_reserves_nothing(root: Path, tmp_path: Path) -> N
     assert not (root / ".plumb" / "requirements" / "SR-005.md").exists()
 
 
-def test_importer_observes_kept_ids(tmp_path: Path) -> None:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "importer"))
-    try:
-        from importer_helpers import make_source
-    finally:
-        sys.path.pop(0)
-    from plumb.api import open_core
-    from plumb.importer.pi_factory import import_pi_factory
-
-    root = make_repo(tmp_path / "r")
-    source = make_source(tmp_path)
-    report = import_pi_factory(open_core(root), source)
-    created = [i for i in open_core(root).index() if i.startswith("SR-")]
-    assert report["actions"]["create"] >= 1 and created
-    top = max(int(i.split("-")[1]) for i in created)
-    assert ids.state(PlumbPaths(root)).high["SR"] >= top
-    assert ids.reserve(PlumbPaths(root), "requirement") == [f"SR-{top + 1:03d}"]
-
-
 def test_intent_conflict_ids_reserve(root: Path) -> None:
     assert ids.reserve(PlumbPaths(root), "conflict") == ["IC-001"]
     assert recent(root)[-1] == "IC-001"

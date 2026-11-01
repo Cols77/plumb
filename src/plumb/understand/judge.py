@@ -67,19 +67,11 @@ def _load_schema() -> Mapping[str, Any]:
     return {"id": SCHEMA_ID, **data}
 
 
-def _lenient(full: Mapping[str, Any]) -> Mapping[str, Any]:
-    """SR-299 EX-1, EX-3: the schema dispatchers and the worker check an answer against. The
-    model is asked for records and 2-4 options (schemas/judge.json, the judge's instructions);
-    a question short of them must not reject the whole answer: ``apply`` fills the records,
-    and the cascade retries the question once, then writes a debug case."""
-    out = json.loads(json.dumps(full))
-    item = out.get("properties", {}).get("questions", {}).get("items", {})
-    item["required"] = ["question"]
-    item.get("properties", {}).get("options", {}).pop("minItems", None)
-    return out
-
-
-schema: Mapping[str, Any] = _lenient(_load_schema())
+# SR-299 EX-2, DEC-208: one lenient format, given to the model and checked by the worker: a
+# question needs only its text. The judge's instructions ask for its records and 2-4 options;
+# a question short of them never rejects the whole answer: ``apply`` fills the records, and the
+# cascade retries the question once, then writes a debug case.
+schema: Mapping[str, Any] = _load_schema()
 
 
 # --------------------------------------------------------------------------- record texts
@@ -90,7 +82,7 @@ def _flat(value: Any) -> str:
 
 
 def _items(raw: Any) -> list[str]:
-    from plumb.capture.triage import _items
+    from plumb.understand.claim import _items
 
     return _items(raw)
 
@@ -829,6 +821,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     waits: dict[str, str] = {}              # record id -> why it waits
     rounds: dict[str, tuple[Any, ...]] = {}  # clear set records: (by, auto, answers)
     sent: dict[str, str] = {}               # contradicted by the owner's answer: reworded
+    quiet: set[str] = set()                 # nothing contradicted, nothing new: never asked
     from plumb.capture.spec import escalated_ids
 
     in_sets = escalated_ids(core)
@@ -855,7 +848,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         partial = bool(given.get("messages")) and all(
             m.get("partial") for m in given["messages"])
         if partial and record is not None:    # SR-190: judged on the quote alone
-            from plumb.capture.triage import _Prompts, premise_problem
+            from plumb.understand.claim import _Prompts, premise_problem
 
             payload.update(premise="quote-only", premise_reason=premise_problem(
                 _Prompts(core), index, record) or "")
@@ -864,9 +857,9 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         jev = raw.get("jev") if isinstance(raw.get("jev"), Mapping) else None
         if jev is not None:             # JEV's score, logged even when it does not clear
             payload.update(jev_score=jev.get("score"), jev_clears=bool(jev.get("clears")),
-                           jev_version=jev.get("model_version"))
+                           jev_verdict=jev.get("verdict"), jev_version=jev.get("model_version"))
             if record is not None and not partial:
-                from plumb.capture.triage import _Prompts, premise_problem
+                from plumb.understand.claim import _Prompts, premise_problem
 
                 reason = premise_problem(_Prompts(core), index, record)
                 if reason:              # SR-248 EX-6: not the owner's verified words
@@ -887,6 +880,8 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                          "again")
             continue
         judged[record.id] = record.hash
+        if not cited and verdict == "supported":    # SR-372: only a contradiction or new
+            quiet.add(record.id)                    # intent asks the owner
         if cited and payload.get("answer_corrects"):   # SR-252 EX-4: a real 'no' label
             corrections.append(_correction(job, item, record, index, jev, cited))
         if verdict == "waiting":            # SR-267 EX-9: the agent's own doubt asks nothing
@@ -913,15 +908,17 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
         notes += [f"{i} is clear and waits for its set ({a})" for i, a in held.items()]
     approved = {str(i.get("id")) for e in confirmed if e["kind"] == "approval"
                 for i in e["payload"]["records"]}
-    shaped, refused = _questions(core, job, answer, {
-        i: h for i, h in judged.items()
-        if i not in approved | set(waits) | set(held) | set(sent)}, index)
+    askable = {i: h for i, h in judged.items()
+               if i not in approved | quiet | set(waits) | set(held) | set(sent)}
+    shaped, refused = _questions(core, job, answer, askable, index) if askable else ([], [])
     _write_questions(core, job, set(judged), shaped)
     from plumb.judgment import set_aside
 
     set_aside(core.root, refused)
     covered = {i for q in [*shaped, *open_questions(core, job.session)] for i in _ids_of(q)}
     covered |= set(held) | set(sent)
+    waits.update({i: "it contradicts nothing the owner said; no question is asked"
+                  for i in quiet if i not in approved | covered | set(waits)})
     why = "; ".join(w for _, w in refused) or "the judge asked no question about it"
     waits.update({i: why for i in judged if i not in approved | covered | set(waits)})
     if waits:

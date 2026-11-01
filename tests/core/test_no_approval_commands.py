@@ -19,7 +19,7 @@ from plumb.understand import files, hooks
 DEC = ("---\nid: DEC-017\ntitle: Pick a store\nquestion: which store?\noptions:\n- id: A\n"
        "  text: sqlite\nchosen: A\nstatus: proposed\n---\nbody\n")
 STEPS = (("approve", "SR-040"), ("confirm", "SR-040"), ("revoke", "SR-040"),
-         ("relay", "SR-040"), ("triage", "--approve", "low-risk"), ("spec", "approve", "INT-001"))
+         ("relay", "SR-040"))
 
 
 @pytest.fixture
