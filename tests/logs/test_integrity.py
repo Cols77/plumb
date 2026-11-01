@@ -54,6 +54,35 @@ def test_deleted_entry_file_since_fork_reported(root: Path) -> None:
     assert len(digests["events"]) == 1  # the surviving entry present at the fork
 
 
+def _untracked(root: Path, kind: str) -> str:
+    """Track one entry of ``kind`` (forced past the ignore), fork, then drop it from git only."""
+    core = open_core(root)
+    core.log_append("events", kind, {"i": 1})
+    run_git(root, "add", "-f", "-A")
+    run_git(root, "commit", "-q", "--no-verify", "-m", "tracked")
+    run_git(root, "branch", "trunk")
+    run_git(root, "checkout", "-q", "-b", "feat")
+    run_git(root, "rm", "-q", "-r", "--cached", f".plumb/log/{kind}")
+    run_git(root, "commit", "-q", "--no-verify", "-m", "stop tracking")
+    return "trunk"
+
+
+@pytest.mark.sr("SR-323")
+def test_owner_words_entries_untracked_since_fork_are_not_a_loss(root: Path) -> None:
+    """DEC-116, DEC-412, SR-323 EX-3: the owner asked to stop tracking their words; the files
+    stay on disk, so their removal from version control is intended."""
+    base = _untracked(root, "question-answer")
+    problems, _ = log_integrity(open_core(root), base)
+    assert problems == []
+
+
+@pytest.mark.sr("SR-323")
+def test_shared_kind_untracked_since_fork_still_fails(root: Path) -> None:
+    base = _untracked(root, "approval")
+    problems, _ = log_integrity(open_core(root), base)
+    assert len(problems) == 1 and "entry deleted since merge-base" in problems[0]
+
+
 @pytest.mark.sr("SR-232")
 def test_legacy_lines_at_fork_satisfied_by_migrated_entries(root: Path) -> None:
     first = legacy_entry("mod-hello", {"i": 0}, None)

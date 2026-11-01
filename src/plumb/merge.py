@@ -276,6 +276,11 @@ def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]
             problems.append(f"{path}: entry modified since merge-base {fork[:12]}")
             gone.add(name)
         elif status[:1] == "D":
+            if name.split("/", 1)[0] in log.OWNER_WORDS_KINDS:
+                # DEC-116, DEC-412, SR-323 EX-3: the owner asked to stop tracking their words;
+                # their removal from version control is intended, not a loss.
+                gone.add(name)
+                continue
             problems.append(f"{path}: entry deleted since merge-base {fork[:12]}")
             gone.add(name)
     listed = _git(core, "ls-tree", "-r", "--name-only", "-z", fork, "--", _LOG_PREFIX,
