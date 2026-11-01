@@ -83,7 +83,10 @@ def _glance(core: Any, scope: set[str] | None) -> list[str]:
                 how = str(judge_label(SimpleNamespace(approved_by=by,
                                                       auto=judge_auto(entry.payload))))
             else:
-                how = f"relayed from your words \"{entry.payload.get('quote') or ''}\""
+                from plumb import words
+
+                quote = words.joined(core, entry).get("quote") or ""   # DEC-116: local words
+                how = f"relayed from your words \"{quote}\""
                 if entry.payload.get("prompt_objects") is True:
                     how += " (the same message also objected or asked for a change)"
             lines.append(f"  \"{index[record_id].title}\" {how}, {entry.at}")
