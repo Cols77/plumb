@@ -171,6 +171,7 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
 
     answers: dict[str, Mapping[str, Any]] = {}   # the owner's question-tool answers so far
     prompts: set[str] = set()
+    said: dict[str, str] = {}   # DEC-116: the owner's text split out of shared entries
     calibrations: dict[str, LogEntry] = {}
     config: Mapping[str, Any] | None = None
     approved: set[str] = set()  # records with an owner, relayed or imported approval
@@ -181,10 +182,13 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
             digest = entry.payload.get("digest")
             if isinstance(digest, str):
                 prompts.add(digest)
+        elif entry.kind == "owner-words":
+            if isinstance(entry.payload.get("text"), str):
+                said[str(entry.payload.get("digest"))] = entry.payload["text"]
         elif entry.kind == "config":
             from plumb.capture.ownerconfig import is_owner_config
 
-            if is_owner_config(entry, prompts):
+            if is_owner_config(entry, prompts, said):
                 config = entry.payload["auto_approve"]
         elif entry.kind == "calibration":
             calibrations[entry.digest] = entry

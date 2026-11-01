@@ -29,16 +29,40 @@ SOURCE_TERMINAL = "your terminal"
 SOURCE_TYPED = "your typed /plumb auto-approve {state}"
 
 
-def typed_proof(entry: LogEntry) -> bool:
-    """Whether ``entry`` carries the owner's typed command saying the state it records."""
+def _typed_digests(enabled: bool) -> set[str]:
+    """The digests of the typed commands that say the state ``enabled``."""
+    from plumb.normalize import sha256_text
+
+    word = "on" if enabled else "off"
+    return {sha256_text(f"{head} auto-approve {word}") for head in ("/plumb", "/plumb:plumb")}
+
+
+def words_absent(entry: LogEntry, said: Mapping[str, str] | None = None) -> bool:
+    """Whether ``entry`` was split from a quote this machine does not hold (DEC-116)."""
+    payload = entry.payload
+    digest = payload.get("quote_digest")
+    return "quote" not in payload and isinstance(digest, str) \
+        and digest not in (said or {})
+
+
+def typed_proof(entry: LogEntry, said: Mapping[str, str] | None = None) -> bool:
+    """Whether ``entry`` carries the owner's typed command saying the state it records.
+    ``said`` is the local owner-words (digest -> text). A checkout without them accepts the
+    recorded outcome on the structural check only (DEC-116): the digest must be that of a
+    typed command saying the state recorded, validated once where the words were."""
     from plumb.approvals import prompt_digest
     from plumb.normalize import sha256_text
 
     payload = entry.payload
     quote, digest = payload.get("quote"), payload.get("prompt_digest")
     settings = payload.get("auto_approve")
-    if not isinstance(quote, str) or not isinstance(digest, str) \
-            or not isinstance(settings, Mapping):
+    if not isinstance(digest, str) or not isinstance(settings, Mapping):
+        return False
+    if quote is None and isinstance(payload.get("quote_digest"), str):
+        quote = (said or {}).get(payload["quote_digest"])
+        if quote is None:
+            return payload["quote_digest"] in _typed_digests(bool(settings.get("enabled")))
+    if not isinstance(quote, str):
         return False
     if digest not in (prompt_digest(quote), sha256_text(quote)):
         return False
@@ -49,25 +73,33 @@ def typed_proof(entry: LogEntry) -> bool:
 def owner_entries(entries: Sequence[LogEntry]) -> list[LogEntry]:
     """The owner's auto-approve ``config`` events in log order."""
     prompts: set[str] = set()
+    said: dict[str, str] = {}
     out: list[LogEntry] = []
     for entry in entries:
         if entry.kind == "prompt":
             digest = entry.payload.get("digest")
             if isinstance(digest, str):
                 prompts.add(digest)
-        elif is_owner_config(entry, prompts):
+        elif entry.kind == "owner-words":
+            if isinstance(entry.payload.get("text"), str):
+                said[str(entry.payload.get("digest"))] = entry.payload["text"]
+        elif is_owner_config(entry, prompts, said):
             out.append(entry)
     return out
 
 
-def is_owner_config(entry: LogEntry, prompts: set[str]) -> bool:
-    """``owner_entries`` for one entry, given the prompt digests logged before it."""
+def is_owner_config(entry: LogEntry, prompts: set[str],
+                    said: Mapping[str, str] | None = None) -> bool:
+    """``owner_entries`` for one entry, given the prompt digests and the owner-words logged
+    before it."""
     payload = entry.payload
     if entry.kind != "config" or payload.get("by") != "owner" \
             or not isinstance(payload.get("auto_approve"), Mapping):
         return False
     if payload.get("via") == TYPED_VIA:
-        return payload.get("prompt_digest") in prompts and typed_proof(entry)
+        if words_absent(entry, said):   # DEC-116: not re-checked against words not here
+            return typed_proof(entry, said)
+        return payload.get("prompt_digest") in prompts and typed_proof(entry, said)
     return entry.marker == "none"
 
 

@@ -26,6 +26,12 @@ CASES = [
     ("conflict-resolution", {"ic": "IC-1", "take": "ours", "by": "agent-relayed",
                              "quote": "keep mine", "prompt": "sha256:p"},
      ("quote",)),
+    ("escalation-declined", {"intent": "INT-021", "by": "agent-relayed",
+                             "prompt_digest": "sha256:p", "quote": "no up-front spec for this"},
+     ("quote",)),
+    ("config", {"auto_approve": {"enabled": True}, "by": "owner", "via": "typed",
+                "prompt_digest": "sha256:p", "quote": "/plumb auto-approve on"},
+     ("quote",)),
 ]
 
 

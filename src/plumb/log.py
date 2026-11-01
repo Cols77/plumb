@@ -80,6 +80,8 @@ OWNER_TEXT_FIELDS: dict[str, tuple[str, ...]] = {
     "revocation": ("quote", "message", "evidence", "note", "reason"),
     "conflict-resolution": ("quote",),   # its ``prompt`` is a digest, not words
     "waiver": ("reason",),
+    "escalation-declined": ("quote",),   # the relayed decline; the owner's own has none
+    "config": ("quote",),                # the typed /plumb auto-approve command
 }
 # SR-376: telemetry. The live entry files are ignored by git (.plumb/.gitignore); the landing
 # moves every one older than the landing into the kind's tracked segment, liveness not consulted.
