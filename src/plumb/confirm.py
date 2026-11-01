@@ -58,6 +58,23 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
                                      "prev": entry.prev}):
         return f"{entry.kind} entry does not match its digest (modified)"
     by = payload.get("by")
+    if by in ("owner-words", "undone", "agent-relayed"):
+        # DEC-116: the owner's text is local; a machine without it takes the outcome as it
+        # stands (the entry was validated once, where the words were) and re-checks nothing
+        from dataclasses import replace
+
+        from plumb import words
+
+        if words.unavailable(core, entry):
+            records = payload.get("records")
+            if not isinstance(records, list) or not all(
+                    isinstance(r, Mapping) and isinstance(r.get("id"), str) and r.get("hash")
+                    for r in records) or not isinstance(payload.get("prompt_digest"), str):
+                return f"{by} {entry.kind} names no record at a version or no prompt"
+            return None
+        if core is not None:
+            entry = replace(entry, payload=words.joined(core, entry))
+            payload = entry.payload
     if by in ("owner-words", "undone"):  # SP8: re-checked by the understand layer
         from plumb.understand.recheck import problem
 
@@ -85,7 +102,7 @@ def entry_problem(entry: LogEntry, prompt_digests: set[str],
                     f"({entry.marker})")
         if entry.kind == "approval" and payload.get("via") == "button":
             return "button approvals no longer exist (SR-380): the card-press surface is removed"
-        if entry.kind == "approval" and payload.get("quote"):
+        if entry.kind == "approval" and (payload.get("quote") or payload.get("quote_digest")):
             return ("owner approval quoting the owner's words, written by hand: only the judge "
                     "worker's entries and plumb's reading of the owner's own answers approve")
         return None

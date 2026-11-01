@@ -147,7 +147,10 @@ def test_ex3_a_typed_undo_is_done_by_the_hook(
     (entry,) = [e for e in core.events()
                  if e.kind == "revocation" and e.payload.get("by") == "undone"]
     assert entry.payload["by"] == "undone" and entry.payload["via"] == "typed"
-    assert entry.payload["prompt_digest"] and entry.payload["quote"].startswith("/plumb")
+    from plumb import words
+
+    assert entry.payload["prompt_digest"] and entry.payload["quote_digest"]
+    assert words.joined(core, entry)["quote"].startswith("/plumb")   # DEC-116: the words are local
     assert run(repo, "undo", sr) == 2                    # no such command any more
 
 

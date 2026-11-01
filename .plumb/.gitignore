@@ -16,7 +16,9 @@ log/intent-gate/
 log/jev-setup/
 log/job-note/
 log/merge-evidence/
+log/owner-words/
 log/pre-intent/
+log/premise/
 log/prompt/
 log/question-answer/
 log/read-entry/

@@ -53,10 +53,11 @@ STREAM_OF_KIND: dict[str, LogStream] = {"test-run": "evidence", "merge-evidence"
 # but ignored by git (.gitignore lists exactly LOCAL_KINDS). A kind in neither set is a failing
 # test (tests/logs/test_kinds.py).
 SHARED_KINDS = frozenset({
-    "approval", "config", "calibration", "premise",
+    "approval", "config", "calibration",
     "judgment", "test-run", "mod-hello",
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
     "conflict-resolution", "waiver",
+    "proof-confirmed",    # DEC-116: the owner's yes to a proof (the outcome, not their words)
     "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
     "question-pushback", "question-ruling",   # SR-362: past send-backs (the step is gone)
 })
@@ -68,7 +69,18 @@ OWNER_WORDS_KINDS = frozenset({
     "pre-intent",         # plumb's first reading of a message, kept verbatim
     "question-answer",    # the owner's answer to a question of plumb's
     "answer-bound",       # SR-362: an answer given before its rewording, pointed at its keys
+    "premise",            # the messages a record's judgment read (committed before DEC-116)
+    "owner-words",        # DEC-116: the text split out of a shared entry, joined by digest
 })
+# DEC-116, DEC-232: these kinds stay shared (another clone needs the outcome), but the text the
+# owner typed in them is not committed: the entry keeps ``<field>_digest`` and a local
+# ``owner-words`` entry holds the text; readers join them (``plumb.words.joined``).
+OWNER_TEXT_FIELDS: dict[str, tuple[str, ...]] = {
+    "approval": ("quote", "message", "evidence", "note", "reason"),
+    "revocation": ("quote", "message", "evidence", "note", "reason"),
+    "conflict-resolution": ("quote",),   # its ``prompt`` is a digest, not words
+    "waiver": ("reason",),
+}
 # SR-376: telemetry. The live entry files are ignored by git (.plumb/.gitignore); the landing
 # moves every one older than the landing into the kind's tracked segment, liveness not consulted.
 TELEMETRY_KINDS = frozenset({"judgment"})
@@ -743,6 +755,35 @@ def _validate_append(paths: PlumbPaths, stream: LogStream, kind: str,
             raise LogError(problem)
 
 
+def words_digest(value: Any) -> str:
+    """The digest an entry keeps in place of a text the owner typed (``quote_digest`` for a
+    quote keeps its meaning: the digest of the normalized text)."""
+    from plumb.normalize import sha256_text
+
+    return sha256_text(value) if isinstance(value, str) else entry_digest(
+        {"words": value})
+
+
+def split_owner_words(kind: str, payload: Mapping[str, Any]
+                      ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """The payload without the owner's text (DEC-116) and the ``owner-words`` payloads that
+    hold it, one per distinct text."""
+    fields = OWNER_TEXT_FIELDS.get(kind)
+    if payload.get("by") in ("auto-jev", "auto-model"):   # the judge's own words stay
+        fields = None
+    kept = dict(payload)
+    held: dict[str, dict[str, Any]] = {}
+    for field in fields or ():
+        value = kept.get(field)
+        if value is None or value == "" or value == {}:
+            continue
+        digest = words_digest(value)
+        kept.pop(field)
+        kept[f"{field}_digest"] = digest
+        held.setdefault(digest, {"digest": digest, "field": field, "text": value})
+    return kept, list(held.values())
+
+
 def append_many(paths: PlumbPaths, stream: LogStream,
                 entries: Sequence[tuple[str, Mapping[str, Any]]]) -> list[LogEntry]:
     """Append separate entries, with one lock and head publication per bounded chunk.
@@ -753,7 +794,13 @@ def append_many(paths: PlumbPaths, stream: LogStream,
     """
     if stream not in STREAMS:
         raise ValueError(f"unknown log stream: {stream}")
-    pending = [(kind, dict(payload)) for kind, payload in entries]
+    pending: list[tuple[str, dict[str, Any]]] = []
+    asked: set[int] = set()   # positions in ``pending`` of the entries the caller asked for
+    for kind, payload in entries:
+        kept, held = split_owner_words(kind, payload)
+        pending.extend(("owner-words", words) for words in held)   # the words first
+        asked.add(len(pending))
+        pending.append((kind, kept))
     for kind, payload in pending:
         _validate_append(paths, stream, kind, payload)
         canonical_json(payload)  # serialization errors must also precede persistence
@@ -772,7 +819,8 @@ def append_many(paths: PlumbPaths, stream: LogStream,
                 prev = _head(paths, stream, data)
             # An inability to invalidate must abort before persisting any entry.
             paths.log_head.unlink(missing_ok=True)
-            for kind, payload in pending[offset:offset + APPEND_BATCH_SIZE]:
+            for position in range(offset, min(offset + APPEND_BATCH_SIZE, len(pending))):
+                kind, payload = pending[position]
                 now = time.time()
                 entry: dict[str, Any] = {
                     "v": SCHEMA, "kind": kind,
@@ -785,7 +833,8 @@ def append_many(paths: PlumbPaths, stream: LogStream,
                 name = f"{kind}/{file_name}"
                 prev = entry["digest"]
                 data[stream] = {"digest": prev, "name": name}
-                result.append(_to_entry(stream, entry, -1, name))
+                if position in asked:
+                    result.append(_to_entry(stream, entry, -1, name))
             _write_json_atomic(paths.log_head, data)
     return result
 

@@ -129,6 +129,9 @@ def _confirmations(core: Any, turn: Any, told: Told | None = None) -> tuple[str,
     digest = turn.get("prompt_digest") if isinstance(turn, Mapping) else turn
     index = core.index()
     judged: set[str] = set()
+    from plumb import words
+
+    said_by = words.held(core)
     for entry in core.events():
         payload = entry.payload
         if (entry.kind != "approval" or payload.get("by") not in ("owner-words", "auto-model",
@@ -144,6 +147,7 @@ def _confirmations(core: Any, turn: Any, told: Told | None = None) -> tuple[str,
             continue
         if payload.get("prompt_digest") == digest or entry.at < told.since:
             continue                      # this turn's own (above), or older than the session
+        payload = words.joined(core, entry, said_by)   # DEC-116: the words are local
         said = owner_text.CONFIRM_YOU_SAID.format(evidence=payload.get("evidence", ""))
         for record in payload.get("records") or ():
             item = index.get(str(record.get("id")))

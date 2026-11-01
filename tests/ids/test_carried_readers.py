@@ -134,3 +134,19 @@ def test_carried_approval_confirms_the_escalated_set(tmp_path: Path, hook_input:
     report = _report(origin)
     assert report.awaiting == (), report.awaiting
     assert report.exit == 0, report
+
+
+@pytest.mark.sr("SR-260")
+def test_proof_confirmed_before_the_renumber_follows_the_record(
+        tmp_path: Path, hook_input: Any) -> None:
+    # DEC-116 (owner, 2026-11-01): the words of a record are validated once, before the merge,
+    # and never re-checked; the yes (the outcome) is committed and follows the record through
+    # a renumber, only the owner's words stay on the machine that heard them
+    origin = _renumbered(tmp_path, hook_input, early=True)
+    core = open_core(origin)
+    assert proof.owner_confirmed(core, "SR-002")
+    assert not proof.owner_confirmed(core, "SR-001")
+    assert proof.unconfirmed_proofs(core, ["SR-002"]) == []
+    (shared,) = [e for e in core.events() if e.kind == "proof-confirmed"]
+    assert shared.payload["record"] == "SR-001" and shared.payload["answer"] == proof.YES
+

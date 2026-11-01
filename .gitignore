@@ -25,7 +25,9 @@ plugin/.claude-plugin/types/
 .plumb/log/jev-setup/
 .plumb/log/job-note/
 .plumb/log/merge-evidence/
+.plumb/log/owner-words/
 .plumb/log/pre-intent/
+.plumb/log/premise/
 .plumb/log/prompt/
 .plumb/log/question-answer/
 .plumb/log/read-entry/

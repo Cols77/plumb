@@ -94,6 +94,7 @@ def handle(ctx: HookContext) -> HookOutput | None:
                 entry["asked"]["keys"] = [q.get("key") for q in merged]
     _tag_proofs(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
+    _share_proofs(core, entries)
     from plumb.mergedriver.conflicts import stage_choice
 
     stage_choice(core)
@@ -122,6 +123,19 @@ def _note_asked(ctx: HookContext) -> None:
         judge.note_asked(open_core(ctx.root), ctx.session_id)
     except Exception:  # noqa: BLE001 - logging the owner's answers comes first
         pass
+
+
+def _share_proofs(core, entries: list[dict]) -> None:
+    """DEC-116, DEC-257: the owner's yes to a proof is an outcome, committed so it follows the
+    record through a merge and a renumber; the answer entry itself (their words) stays local."""
+    from plumb.capture import proof
+
+    for entry in entries:
+        tag = entry.get("proof")
+        if isinstance(tag, dict) and entry.get("answer") == proof.YES:
+            core.log_append("events", "proof-confirmed", {
+                "record": tag.get("record"), "hash": tag.get("hash"),
+                "evidence_at": tag.get("evidence_at"), "answer": proof.YES})
 
 
 def _tag_proofs(core, session: str, entries: list[dict], key_of) -> None:

@@ -164,5 +164,8 @@ def test_ex6_the_owner_saying_an_approved_record_is_wrong_reverses_it(
     write(world, applied)
     core = open_core(world)
     assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"
-    [reversal] = [e.payload for e in core.events() if e.kind == "revocation"]
-    assert reversal["by"] == "owner-words" and reversal["reason"] == evidence
+    from plumb import words
+
+    [entry] = [e for e in core.events() if e.kind == "revocation"]
+    assert entry.payload["by"] == "owner-words"
+    assert words.joined(core, entry)["reason"] == evidence   # DEC-116: the words are local

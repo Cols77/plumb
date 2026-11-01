@@ -70,7 +70,8 @@ def test_stage_never_stages_a_local_kind(tmp_path: Path) -> None:
     assert "verdict" not in staged
 
 
-OWNER_WORDS = ("pre-intent", "question-answer", "answer-bound", "prompt")
+OWNER_WORDS = ("pre-intent", "question-answer", "answer-bound", "prompt", "premise",
+               "owner-words")
 
 
 def _append(core, kind: str, payload: dict) -> None:
