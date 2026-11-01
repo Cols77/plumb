@@ -47,9 +47,9 @@ def words_absent(entry: LogEntry, said: Mapping[str, str] | None = None) -> bool
 
 def typed_proof(entry: LogEntry, said: Mapping[str, str] | None = None) -> bool:
     """Whether ``entry`` carries the owner's typed command saying the state it records.
-    ``said`` is the local owner-words (digest -> text). A checkout without them accepts the
-    recorded outcome on the structural check only (DEC-116): the digest must be that of a
-    typed command saying the state recorded, validated once where the words were."""
+    ``said`` is the local owner-words (digest -> text). A checkout without them accepts a
+    recorded "off" on the structural check only (DEC-116): the digest must be that of a typed
+    command saying off. A recorded "on" without the words is refused: auto-approve stays off."""
     from plumb.approvals import prompt_digest
     from plumb.normalize import sha256_text
 
@@ -61,7 +61,9 @@ def typed_proof(entry: LogEntry, said: Mapping[str, str] | None = None) -> bool:
     if quote is None and isinstance(payload.get("quote_digest"), str):
         quote = (said or {}).get(payload["quote_digest"])
         if quote is None:
-            return payload["quote_digest"] in _typed_digests(bool(settings.get("enabled")))
+            # owner, 2026-11-01: "on" needs the owner's words (a digest anyone can compute proves
+            # nothing); "off" counts from the committed record alone
+            return not settings.get("enabled") and payload["quote_digest"] in _typed_digests(False)
     if not isinstance(quote, str):
         return False
     if digest not in (prompt_digest(quote), sha256_text(quote)):

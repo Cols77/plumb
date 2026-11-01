@@ -78,13 +78,40 @@ def _without_the_words(repo: Path) -> None:
             path.unlink()
 
 
-def test_a_checkout_without_the_words_accepts_the_recorded_switch(jev) -> None:
-    """DEC-116 (owner, 2026-11-01): validated once where the words were, never re-checked."""
+def test_an_on_without_the_words_is_refused(jev) -> None:
+    """Owner, 2026-11-01: "On" needs my words. A digest anyone can compute proves nothing."""
     repo = jev
     hook_reads(repo, "/plumb auto-approve on")
     _without_the_words(repo)
+    assert not auto_approve_state(open_core(repo)).configured
+
+
+def test_a_forged_on_with_no_words_is_refused(jev) -> None:
+    from plumb.normalize import sha256_text
+
+    repo = jev
+    on = {"enabled": True, "backend": "jev", "min_probability": 0.9, "min_confidence": "high"}
+    open_core(repo).log_append("events", "config", {
+        "auto_approve": on, "by": "owner", "via": "typed", "prompt_digest": "sha256:p",
+        "quote_digest": sha256_text("/plumb auto-approve on")})   # a digest the agent can compute
+    assert not auto_approve_state(open_core(repo)).configured
+
+
+def test_an_on_with_the_words_is_accepted(jev) -> None:
+    repo = jev
+    hook_reads(repo, "/plumb auto-approve on")
     state = auto_approve_state(open_core(repo))
     assert state.configured and state.source == "your typed /plumb auto-approve on"
+
+
+def test_an_off_without_the_words_is_accepted_from_the_record(jev) -> None:
+    """Owner, 2026-11-01: turning it off counts from the committed record alone."""
+    repo = jev
+    hook_reads(repo, "/plumb auto-approve on")
+    hook_reads(repo, "/plumb auto-approve off")
+    _without_the_words(repo)
+    state = auto_approve_state(open_core(repo))
+    assert not state.configured and state.source == "your typed /plumb auto-approve off"
 
 
 def test_a_checkout_without_the_words_still_needs_the_structure(jev) -> None:

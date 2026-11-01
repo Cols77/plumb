@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from plumb.normalize import sha256_text
+
 from pathlib import Path
 
 import pytest
@@ -128,7 +130,8 @@ def test_namespaced_auto_approve_switches_and_counts_as_the_owners(core,
     assert read.on_prompt(ctx_for(core), core, {"digest": digest, "text": text}) is None
     after = open_core(core.root)
     (entry,) = [e for e in after.events() if e.kind == "config"]
-    assert entry.payload["via"] == "typed" and ownerconfig.typed_proof(entry)
+    assert entry.payload["via"] == "typed" \
+        and ownerconfig.typed_proof(entry, {sha256_text(text): text})   # "on" needs the words
     assert ownerconfig.latest(list(after.events())) == entry
     assert auto_approve_state(after).configured
 
