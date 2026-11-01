@@ -474,10 +474,25 @@ def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
     asked = _logged_questions(core.root, session)
     if not asked:
         return []
+    answered = _answered_keys(core)
+    return [q for q in asked if q.get("key") not in answered]
+
+
+def unanswered_anywhere(core: Any) -> list[Mapping[str, Any]]:
+    """Every session folder's unanswered judge questions, once per key: an answer given in a
+    live session settles a question an ended session or the CLI ("cli") filed."""
+    answered, out = _answered_keys(core), {}
+    for path in sorted((Path(core.root) / ".plumb" / "session").glob(f"*/{QUESTIONS_FILE}")):
+        for q in _logged_questions(core.root, path.parent.name):
+            if q.get("key") not in answered:
+                out.setdefault(q.get("key"), q)
+    return list(out.values())
+
+
+def _answered_keys(core: Any) -> set[str]:
     answered: set[str] = set()
     for e in core.events():
-        if e.payload.get("session") != session:
-            continue
+        # whichever session asked or answered: the owner's answer closes the question
         if e.kind == "question-answer" and not e.payload.get("study"):
             answered.add(question_key(str(e.payload.get("question") or "")))
             if isinstance(e.payload.get("asked"), Mapping):
@@ -485,7 +500,7 @@ def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
                 answered.update(map(str, e.payload["asked"].get("keys") or ()))
         elif e.kind == "answer-bound" and isinstance(e.payload.get("asked"), Mapping):
             answered.update(map(str, e.payload["asked"].get("keys") or ()))
-    return [q for q in asked if q.get("key") not in answered]
+    return answered
 
 
 def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
@@ -506,7 +521,8 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
         ids = [str(r.get("id")) for r in q.get("records") or () if isinstance(r, Mapping)]
         labels = [_MARKER.sub("", str(o.get("label") or "")) for o in q.get("options") or ()
                   if isinstance(o, Mapping)]
-        return bool(labels and _answered_by(core, index, ids, labels))
+        return bool((labels or q.get("key")) and _answered_by(
+            core, index, ids, labels, str(q.get("key") or "")))
 
     return [q for q in asked if not settled(q) and any(
         str(r.get("id")) in index and index[str(r.get("id"))].hash == r.get("hash")
@@ -564,19 +580,46 @@ def _tokens(text: str) -> set[str]:
     return set(re.findall(r"[\w-]+", text.lower()))
 
 
+_RECORD_ID = re.compile(r"(?<![\w-])(?:INT|SR|DEC|FEAT|NC|IC)-\d+")
+_HEAD = re.compile(r"[:;,(—–]|\s-\s")   # where a chosen answer's opening word ends
+
+
+def _about(rec: Any, ids: Sequence[str]) -> bool:
+    """The decision is about one of ``ids``: it links it, or its question names it (a decision
+    recorded without links, 'Does ... (SR-343)?')."""
+    if any(ln.target.record in ids for ln in rec.links):
+        return True
+    return bool(set(_RECORD_ID.findall(_flat(rec.fields.get("question")))) & set(ids))
+
+
+def _picks(rec: Any, labels: Sequence[str]) -> bool:
+    """What the decision chose, or the owner's words it quotes, is one of the options: every
+    word of a label of two words or more is in it, or its opening ('yes: ...', 'no; ...')
+    is exactly a label's words ('Yes')."""
+    quote = rec.fields.get("quote")
+    quoted = " ; ".join(map(str, quote)) if isinstance(quote, list) else str(quote or "")
+    texts = [t for t in (_flat(rec.fields.get("chosen")), _flat(_MARKER.sub("", quoted)))
+             if t]
+    words = set().union(*map(_tokens, texts)) if texts else set()
+    heads = [_tokens(_HEAD.split(t, 1)[0]) for t in texts]
+    for label in map(_tokens, labels):
+        if label and ((len(label) > 1 and label <= words) or label in heads):
+            return True
+    return False
+
+
 def _answered_by(core: Any, index: Mapping[str, Any], ids: Sequence[str],
-                 labels: Sequence[str]) -> str:
-    """SR-309 EX-3: the decision that records the owner's answer to this question: it links
-    one of the question's records, and what it chose holds the words of one option. SR-335:
-    it is confirmed, or quotes the owner's own logged words; one only the agent wrote and
-    not yet approved settles nothing."""
+                 labels: Sequence[str], key: str = "") -> str:
+    """SR-309 EX-3: the decision that records the owner's answer to this question: it is about
+    one of the question's records (``_about``), and asks the same question or picks one of its
+    options (``_picks``). SR-335: it is confirmed, or quotes the owner's own logged words; one
+    only the agent wrote and not yet approved settles nothing."""
     said: list[tuple[str, str]] | None = None
     for rec in index.values():
-        if rec.kind != "decision" or not ids or not any(
-                ln.target.record in ids for ln in rec.links):
+        if rec.kind != "decision" or not ids or not _about(rec, ids):
             continue
-        chosen = _tokens(_flat(rec.fields.get("chosen")))
-        if not any(len(t) > 1 and t <= chosen for t in map(_tokens, labels)):
+        same_question = bool(key) and question_key(_flat(rec.fields.get("question"))) == key
+        if not same_question and not _picks(rec, labels):
             continue
         state = core.status([rec.id])[rec.id]
         said = premise.owner_words(core) if said is None else said
@@ -758,7 +801,7 @@ def _bind_earlier_answer(core: Any, session: str, worded: Mapping[str, Any]) -> 
     """The owner already answered this very wording, asked before it was registered: an
     ``answer-bound`` entry points that answer at the judge questions it covers (its ``asked``,
     the owner's words not copied), and their records go back to the judge."""
-    left = [q for q in unanswered(core, session) if q.get("key") in worded["covers"]]
+    left = [q for q in unanswered_anywhere(core) if q.get("key") in worded["covers"]]
     said = next((e for e in reversed(core.events()) if e.kind == "question-answer"
                  and e.payload.get("session") == session and not e.payload.get("asked")
                  and question_key(str(e.payload.get("question") or "")) == worded["key"]), None)

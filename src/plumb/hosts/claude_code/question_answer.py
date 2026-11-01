@@ -61,7 +61,11 @@ def handle(ctx: HookContext) -> HookOutput | None:
     from plumb.understand import judge
 
     core = open_core(ctx.root)
-    left = list(judge.unanswered(core, ctx.session_id))
+    own = list(judge.unanswered(core, ctx.session_id))
+    # then any other session's: the owner's answer here settles a question the CLI or an
+    # ended session filed (a merge held on it otherwise never clears)
+    left = own + [q for q in judge.unanswered_anywhere(core)
+                  if q.get("key") not in {o.get("key") for o in own}]
     key_of = judge.question_key
     worded = {w.get("key"): w for w in judge.reworded(core.root, ctx.session_id)}
     drawn = []
@@ -70,10 +74,11 @@ def handle(ctx: HookContext) -> HookOutput | None:
         covers = (worded.get(key) or {}).get("covers") or ()
         found = next((q for q in left if q.get("key") == key), None) or next(
             (q for q in left if q.get("key") in covers), None)  # SR-362: the agent's wording
-        if found is None and len(left) == 1 and key_of(entry["answer"]) in {
-                key_of(o.get("label")) for o in left[0].get("options") or ()
+        mine = [q for q in left if q in own]
+        if found is None and len(mine) == 1 and key_of(entry["answer"]) in {
+                key_of(o.get("label")) for o in mine[0].get("options") or ()
                 if isinstance(o, dict)}:     # the one open question reworded: its option picked
-            found = left[0]
+            found = mine[0]
         if found is not None and entry["answer"] == owner_text.STUDY_FIRST:
             from plumb import study
 
