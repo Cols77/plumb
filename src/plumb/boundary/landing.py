@@ -44,6 +44,29 @@ def marker(root: Path, head: str) -> Path:
 # --------------------------------------------------------------------------- post-merge proofs
 
 
+def restore_owner_words(root: Path, before: str, head: str) -> list[str]:
+    """DEC-116: the owner's-words entries (``log.OWNER_WORDS_KINDS``) that main tracked at
+    ``before`` and the merged branch stopped tracking: git removed their files from main's
+    working tree with the merge. They are the owner's own words and live nowhere else, so each
+    is written back from ``before`` as the untracked file it now is. Returns their paths."""
+    from plumb.log import OWNER_WORDS_KINDS
+
+    folders = [f".plumb/log/{kind}/" for kind in sorted(OWNER_WORDS_KINDS)]
+    gone = _git(root, "diff", "--name-only", "--diff-filter=D", "-z", before, head,
+                "--", *folders).split("\0")
+    restored: list[str] = []
+    for name in (n for n in gone if n.endswith(".json")):
+        target = Path(root) / name
+        if target.exists():
+            continue
+        text = subprocess.run(["git", "show", f"{before}:{name}"], cwd=root,
+                              capture_output=True, check=True).stdout
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(text)
+        restored.append(name)
+    return restored
+
+
 def post_merge_proofs(core: Any, before: str, head: str) -> list[str]:
     """SR-341: the requirements the commits of ``before..head`` deliver (their SR trailers)
     whose proof was agreed as post-merge."""
@@ -492,6 +515,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     kept: list[str] = []
     ended: list[str] = []
     proofs: list[str] = []
+    words_back: list[str] = []
 
     def step(name: str, run: Any) -> None:
         try:
@@ -528,6 +552,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         gone.extend(found[0])
         kept.extend(found[1])
 
+    step("owner-words", lambda: words_back.extend(restore_owner_words(root, before, head)))
     step("proofs", lambda: proofs.extend(post_merge_proofs(open_core(root), before, head)))
     step("fixes", lambda: debug.landed(root, head))  # before the worktrees step drops branches
     step("tidy", do_tidy)
@@ -550,7 +575,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     line = f"plumb: landing {head[:12]}: " + "; ".join(p for p in parts if p)
     result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
               "queued": queued, "worktrees": gone, "kept": kept, "sessions": ended, "cases": len(cases),
-              "post_merge": proofs}
+              "post_merge": proofs, "owner_words": len(words_back)}
     summary.write_cases(open_core(root), head,
                         [{**c, "state": "open"} for c in debug.from_landing(root, cases)])
     files.write_json_atomic(done, result)
