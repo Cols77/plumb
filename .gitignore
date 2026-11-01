@@ -26,6 +26,7 @@ plugin/.claude-plugin/types/
 .plumb/log/job-note/
 .plumb/log/merge-evidence/
 .plumb/log/pre-intent/
+.plumb/log/prompt/
 .plumb/log/question-answer/
 .plumb/log/read-entry/
 .plumb/log/relink/

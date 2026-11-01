@@ -70,7 +70,7 @@ def test_stage_never_stages_a_local_kind(tmp_path: Path) -> None:
     assert "verdict" not in staged
 
 
-OWNER_WORDS = ("pre-intent", "question-answer", "answer-bound")
+OWNER_WORDS = ("pre-intent", "question-answer", "answer-bound", "prompt")
 
 
 def _append(core, kind: str, payload: dict) -> None:
@@ -91,6 +91,19 @@ def test_the_owners_words_kinds_are_local_never_committed(tmp_path: Path) -> Non
         _append(core, kind, {"text": "my words"})
     status = run_git(root, "status", "--porcelain", "-uall").stdout
     assert all(f".plumb/log/{kind}/" not in status for kind in OWNER_WORDS)
+
+
+def test_init_ignore_list_is_exactly_the_local_kinds_and_judgment(tmp_path: Path) -> None:
+    """SR-376#12, DEC-116: the .plumb/.gitignore init writes lists every local kind."""
+    from plumb.commands import init_repo
+
+    root = tmp_path / "fresh"
+    root.mkdir()
+    init_repo(root)
+    lines = (root / ".plumb" / ".gitignore").read_text(encoding="utf-8").split()
+    kinds = {m for line in lines for m in re.findall(r"^log/([a-z0-9-]+)/$", line)}
+    assert kinds == log.LOCAL_KINDS
+    assert "log/judgment/*.json" in lines
 
 
 def test_a_worktree_reads_the_owners_words_the_main_checkout_logged(tmp_path: Path) -> None:

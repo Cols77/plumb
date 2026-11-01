@@ -255,8 +255,8 @@ def test_ex1_entries_about_an_inflight_branchs_record_stay_live(repo: Path,
                                                                  tmp_path: Path) -> None:
     """SR-301 EX-1: a card entry on main names SR-050, a record only an in-flight worktree
     has: the compaction does not take it for retired; one naming no record anywhere moves."""
-    put(repo, "card-settled", {"record": "SR-050", "reason": "asked"})
-    put(repo, "card-settled", {"record": "SR-060", "reason": "retired: replaced"})
+    put(repo, "escalation-declined", {"record": "SR-050", "reason": "asked"})
+    put(repo, "escalation-declined", {"record": "SR-060", "reason": "retired: replaced"})
     commit_all(repo, "cards")
     other = tmp_path / "other"
     run_git(repo, "worktree", "add", "-q", "-b", "other", str(other))
@@ -264,7 +264,7 @@ def test_ex1_entries_about_an_inflight_branchs_record_stay_live(repo: Path,
     sha, before = land_branch(repo, lambda root: docs(root, "docs/x.md"))
     landing.land(repo, sha, before)
     live = [json.loads(p.read_text(encoding="utf-8"))["payload"]["record"]
-            for p in (repo / ".plumb" / "log" / "card-settled").glob("*.json")]
+            for p in (repo / ".plumb" / "log" / "escalation-declined").glob("*.json")]
     assert live == ["SR-050"]
 
 

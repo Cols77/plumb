@@ -23,7 +23,7 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _forked(root: Path) -> str:
     core = open_core(root)
-    core.log_append("events", "repin", {"i": 0})
+    core.log_append("events", "mod-hello", {"i": 0})
     core.log_append("events", "approval", {"records": [{"id": "SR-001", "hash": "h"}]})
     commit_all(root, "base entries")
     run_git(root, "branch", "trunk")
@@ -38,7 +38,7 @@ def test_modified_entry_file_since_fork_reported(root: Path) -> None:
     problems, digests = log_integrity(open_core(root), base)
     assert any(p.startswith(f".plumb/log/{name}: entry modified since merge-base")
                for p in problems), problems
-    open_core(root).log_append("events", "repin", {"new": True})  # an addition is fine
+    open_core(root).log_append("events", "mod-hello", {"new": True})  # an addition is fine
     commit_all(root, "tamper committed")
     problems, _ = log_integrity(open_core(root), base)
     assert len(problems) == 1 and name in problems[0]
@@ -56,7 +56,7 @@ def test_deleted_entry_file_since_fork_reported(root: Path) -> None:
 
 @pytest.mark.sr("SR-232")
 def test_legacy_lines_at_fork_satisfied_by_migrated_entries(root: Path) -> None:
-    first = legacy_entry("repin", {"i": 0}, None)
+    first = legacy_entry("mod-hello", {"i": 0}, None)
     second = legacy_entry("approval", {"records": []}, first["digest"])
     write_legacy(root, "events", [first, second])
     commit_all(root, "legacy log")

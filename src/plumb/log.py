@@ -53,7 +53,7 @@ STREAM_OF_KIND: dict[str, LogStream] = {"test-run": "evidence", "merge-evidence"
 # but ignored by git (.gitignore lists exactly LOCAL_KINDS). A kind in neither set is a failing
 # test (tests/logs/test_kinds.py).
 SHARED_KINDS = frozenset({
-    "approval", "prompt", "config", "calibration", "premise",
+    "approval", "config", "calibration", "premise",
     "judgment", "test-run", "mod-hello",
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
     "conflict-resolution", "waiver",
@@ -64,6 +64,7 @@ SHARED_KINDS = frozenset({
 # stay on the machine that heard them: the entries are LOCAL kinds, and a reader finds the ones
 # another checkout of the repository logged through git's common directory (``other_checkouts``).
 OWNER_WORDS_KINDS = frozenset({
+    "prompt",             # the owner's messages themselves (their digests the records quote)
     "pre-intent",         # plumb's first reading of a message, kept verbatim
     "question-answer",    # the owner's answer to a question of plumb's
     "answer-bound",       # SR-362: an answer given before its rewording, pointed at its keys
