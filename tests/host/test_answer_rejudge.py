@@ -228,6 +228,51 @@ def test_a_question_with_other_spacing_and_case_matches_by_key(world: Path, hook
 
 
 @pytest.mark.sr("SR-212")
+def test_an_answer_given_in_another_session_closes_the_question(
+        world: Path, hook_input) -> None:
+    """report-c4cdbf4b: the owner answers the exact question through the question tool in
+    another Claude session: the question is answered whichever session asked it."""
+    judge_asks(world, (ASK, ["SR-001"]))
+    shown = [{"label": "Every page", "description": ""}, {"label": "Public", "description": ""}]
+    payload = hook_input(
+        "PostToolUse", tool_name="AskUserQuestion", session_id="other-session",
+        tool_input={"questions": [{"question": ASK, "header": "Pages", "multiSelect": False,
+                                   "options": shown}]},
+        tool_response={"answers": {ASK: "Every page"}})
+    assert question_answer.main(stdin=io.StringIO(payload), stdout=io.StringIO(),
+                                root=world) == 0
+    assert judge.unanswered(open_core(world), SESSION) == []
+
+
+@pytest.mark.sr("SR-212")
+def test_a_cli_question_reworded_and_answered_in_a_live_session_is_settled(
+        world: Path, hook_input) -> None:
+    """report-c06d5563: the judge filed the question under "cli"; a live session asks it in
+    its own words, before or after registering the wording: the owner's answer settles it."""
+    judge_asks(world, (ASK, ["SR-001"]))
+    cli = files.session_dir(world, "cli")
+    cli.mkdir(parents=True, exist_ok=True)
+    judge.questions_path(world, SESSION).rename(judge.questions_path(world, "cli"))
+    worded = "Speed up every page or only the public ones?"
+    options = [{"label": "Every page", "description": ""}, {"label": "Public", "description": ""}]
+    answer(world, hook_input, worded, "Every page")      # asked before the wording is registered
+    assert [q["question"] for q in judge.unanswered(open_core(world), "cli")] == [ASK]
+    judge.reword(open_core(world), SESSION, [judge.question_key(ASK)], worded, "Pages", options)
+    assert judge.unanswered(open_core(world), "cli") == []
+    assert judge.unanswered_anywhere(open_core(world)) == []
+
+
+@pytest.mark.sr("SR-212")
+def test_a_cli_question_is_matched_by_a_live_sessions_answer(world: Path, hook_input) -> None:
+    judge_asks(world, (ASK, ["SR-001"]))
+    files.session_dir(world, "cli").mkdir(parents=True, exist_ok=True)
+    judge.questions_path(world, SESSION).rename(judge.questions_path(world, "cli"))
+    answer(world, hook_input, ASK, "Every page")
+    assert [r["id"] for r in logged(world)[0]["asked"]["records"]] == ["SR-001"]
+    assert judge.unanswered(open_core(world), "cli") == []
+
+
+@pytest.mark.sr("SR-212")
 def test_a_reworded_question_falls_back_to_the_one_open_question(
         world: Path, hook_input) -> None:
     """One open question; the agent reworded it: the answer still names its records."""
