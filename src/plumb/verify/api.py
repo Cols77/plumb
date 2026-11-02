@@ -653,6 +653,11 @@ class Verify:
 
         tmap = self.test_map()
         index = self.index()
+        last_run = {n: str((e.get("last") or {}).get("run_id") or "")
+                    for n, e in index.get("nodes", {}).items()}
+        newest: dict[str, str] = {}
+        for n, run in last_run.items():
+            newest[strip_param(n)] = max(newest.get(strip_param(n), ""), run)
         out = []
         for node_id in sorted(index.get("nodes", {})):
             if "::" not in node_id or not is_regression(index, node_id):
@@ -661,6 +666,8 @@ class Verify:
             info = tmap.files.get(test_file)
             if info is None or strip_param(node_id) not in info.get("nodes", {}):
                 continue
+            if node_id != strip_param(node_id) and last_run[node_id] < newest[strip_param(node_id)]:
+                continue  # a parameter a later run of its test no longer has (report-0e66c6ff)
             out.append(node_id)
         return out
 
