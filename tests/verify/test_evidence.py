@@ -182,6 +182,23 @@ def test_a_parameter_dropped_from_a_later_run_does_not_keep_the_test_failing() -
 
 
 @pytest.mark.sr("SR-352")
+def test_a_parameter_a_later_run_no_longer_has_is_not_a_merge_regression(project: Path) -> None:
+    """report-0e66c6ff: an old parameter of a test that still exists passed, then failed;
+    a later run of the test no longer has it: it holds no merge."""
+    core = open_core(project)
+    node = "tests/test_mod.py::test_add"
+    for run_id, nodes in (("20261001T000000Z-a", {f"{node}[old]": "passed"}),
+                          ("20261002T000000Z-b", {f"{node}[old]": "failed"})):
+        core.log_append("evidence", "test-run", {
+            "run_id": run_id, "env": {"env_key": "E"},
+            "nodes": [{"id": n, "outcome": o, "closure": "C", "test_hash": "T"}
+                      for n, o in nodes.items()]})
+    assert open_verify(open_core(project)).unresolved_regressions() == [f"{node}[old]"]
+    open_verify(open_core(project)).run(nodes=["tests/test_mod.py"])
+    assert open_verify(open_core(project)).unresolved_regressions() == []
+
+
+@pytest.mark.sr("SR-352")
 def test_a_test_parametrized_since_its_failure_does_not_keep_the_test_failing() -> None:
     """The bare id a test had before it was parametrized: the newest run of its family wins,
     whether the file, the family or the bare id is asked for."""

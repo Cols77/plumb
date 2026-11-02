@@ -76,7 +76,10 @@ def run(command: str, argv: list[str]) -> int:
     root = resolve_root(args.root)
     core = open_core(root)
     session = args.session or current_session(root)
+    # any session's question: one filed by the CLI or an ended session is answerable here
     keys = [str(q.get("key")) for q in judge.open_questions(core, session)]
+    keys += [k for k in (str(q.get("key")) for q in judge.unanswered_anywhere(core))
+             if k not in keys]
     covers = _covered(keys, args.covers)
     options = _options(args.options)
     if isinstance(covers, str):
