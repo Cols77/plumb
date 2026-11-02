@@ -82,10 +82,10 @@ class RecordingJev:
     def __init__(self) -> None:
         self.premises: list[str] = []
 
-    def entailment(self, premise: str, hypothesis: str, *, subject: str,
-                   claim_kind: str) -> Judgment:
+    def approval(self, premise: str, hypothesis: str, *, subject: str,
+                 claim_kind: str) -> Judgment:
         self.premises.append(premise)
-        return Judgment(action="faithfulness", subject=subject, verdict="entailed",
+        return Judgment(action="faithfulness", subject=subject, verdict="benign",
                         confidence=0.9, tier="accept", backend="jev:jev-1", fingerprint="f",
                         reasons=(), probability=0.9, confidence_label="high")
 

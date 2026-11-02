@@ -345,15 +345,16 @@ def check_text(core: Any, request: str, *, backend: Any = None) -> EarlyCheck:
 
 
 def notes(conflicts: Sequence[EarlyConflict]) -> list[str]:
-    """What the agent is told of conflicts: one waits as a card for the owner, who answers it
-    there (SR-151); the agent does not restate it."""
+    """What the agent is told of conflicts: each comes back at the end of the turn, for the
+    agent to ask the owner (SR-151, DEC-384)."""
     from plumb.capture.clarify import INFLIGHT_NOTE
 
     return [INFLIGHT_NOTE.format(title=c.title or c.record, branch=c.branch) for c in conflicts]
 
 
 def card(conflict: EarlyConflict) -> list[str]:
-    """The early intent-conflict card, in the owner's terms (R9 card format, sp5 4.2). On a
+    """The early intent conflict as the agent reads it in ``plumb conflict`` (the agent's
+    input, SR-267: the owner is asked through the question tool, never shown this). On a
     branch that is neither side (``ours_label`` names the second branch) both versions are
     labelled by branch and the answer names a branch, never "this one"."""
     say = (text.EARLY_CARD_SAY_NAMED.format(a=conflict.branch, b=conflict.ours_label)
@@ -370,10 +371,11 @@ REQUESTED_FILE = "early-requested.json"
 
 
 def request_cards(core: Any, conflicts: Sequence[EarlyConflict]) -> None:
-    """Ask the stop hook to show these cards to the owner at the end of the turn and to put
-    them in the stated set (``turn_cards``), so the owner's answer ("keep feat-x's") is
-    relayed against a card the owner saw, even when nothing is written yet (the clarify
-    read-back)."""
+    """Hand these conflicts to the stop hook, which gives each to the agent to ask the owner
+    through the question tool (``stop.early_asks``; nothing is shown to the owner as a card,
+    DEC-384), and put them in the stated set (``turn_conflicts``), so the owner's answer
+    ("keep feat-x's") is relayed against the question asked, even when nothing is written yet
+    (the clarify read-back)."""
     if not conflicts:
         return
     import json
@@ -399,17 +401,6 @@ def request_cards(core: Any, conflicts: Sequence[EarlyConflict]) -> None:
         os.replace(tmp, path)
     except OSError:
         pass
-
-
-def turn_cards(session_dir: Any, turn_start: str = "") -> tuple[list[str], list[dict[str, Any]]]:
-    """``(lines, stated entries)``: the early cards ``capture`` or ``clarify`` asked for this
-    turn, for the stop hook's reply. Reads one small session file; never fails."""
-    lines: list[str] = []
-    entries: list[dict[str, Any]] = []
-    for conflict in turn_conflicts(session_dir, turn_start):
-        lines += card(conflict)
-        entries.append(stated_entry(conflict))
-    return lines, entries
 
 
 def turn_conflicts(session_dir: Any, turn_start: str = "") -> list[EarlyConflict]:

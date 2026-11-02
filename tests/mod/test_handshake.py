@@ -94,8 +94,6 @@ def test_stop_prints_as_before_when_the_heartbeat_is_older_than_the_turn(
               heartbeat=started - handshake.HEARTBEAT_SLACK_S - 60)
     out = _stop(core.root, hook_input)
     assert out == ""                                     # SR-363: no question count
-    notes = core.root / ".plumb" / "session" / SESSION / "agent_notes.json"
-    assert "Requirement 1" in notes.read_text("utf-8")   # the card, as text, is the agent's
     assert _present(core.root) is None
 
 
@@ -127,6 +125,9 @@ def test_a_block_is_unchanged_while_the_panel_is_active(core, monkeypatch, capsy
 
 
 def _session_start(root: Path, hook_input) -> str:
+    # every record new since the last brief, so the brief has a line to say (SR-374 EX-9)
+    (root / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
+    (root / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")
     out = io.StringIO()
     payload = hook_input("SessionStart", session_id=SESSION, source="startup")
     assert session_start.main(stdin=io.StringIO(payload), stdout=out, root=root,
@@ -155,7 +156,7 @@ def test_session_start_still_gives_the_agent_the_brief_when_the_panel_gives_the_
     """SR-173 EX-1: the panel is the owner's surface; the agent's channel keeps the brief."""
     _register(monkeypatch, capsys, core.root, background=True)
     out = _session_start(core.root, hook_input)
-    assert out.strip().startswith("plumb brief")
+    assert out.strip().startswith("plumb: changed since you last looked")
     assert _brief(core.root) == {"injected": True}
 
 

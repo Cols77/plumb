@@ -129,7 +129,8 @@ def test_skill_about_20_lines_names_test_map(repo: Path, no_claims) -> None:
         encoding="utf-8")
     assert skill.startswith("---\nname: plumb-records\n")  # SR-120: /plumb is the command
     body = skill.split("---", 2)[2].strip().splitlines()
-    assert 12 <= len(body) <= 43  # the context and the question rules (SR-248; SR-362 added three)
+    # the context and the question rules (SR-248; SR-362 added three; SR-379 made it their home)
+    assert 12 <= len(body) <= 46
     assert ".plumb/test_map.txt" in skill
     assert "uv run --no-sync plumb tests run --changed" in skill
     assert "never" in skill.lower() and "plumb approve" in skill
@@ -281,7 +282,7 @@ def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> N
     advertised = {part.split()[0] for part in hint.split('"')[1].split("|")}
     # sp5 6.1: the six owner verbs, plain words accepted (SR-064 EX-3), plus the JEV judge
     # (setup, status, calibrate: SR-039, R14); SR-122: every typed verb the command answers
-    assert advertised == {"status", "intent", "clarify", "explain", "review", "impact", "view",
+    assert advertised == {"status", "intent", "clarify", "explain", "review", "impact",
                           "jev", "debug",   # SR-328, DEC-254: the owner asks for debug
                           "init", "go", "undo", "conflicts",   # approve: gone (SR-208)
                           "merge-check", "inflight",

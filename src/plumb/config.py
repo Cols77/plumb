@@ -56,8 +56,6 @@ class HooksConfig:
     # R9 context economy: the most a prompt hook injects (records are one line each, and only
     # when new or changed this session); estimated at 4 characters per token
     prompt_tokens: int = 200
-    # the session-start brief: a few lines plus a pointer (compact), or the long brief (full)
-    session_brief: str = "compact"
     summary_proposed_cap: int = 3
     # sp5 3: the most the stop hook's agent instructions inject (4 characters per token)
     stop_tokens: int = 150
@@ -122,11 +120,6 @@ class EscalationConfig:
     shared_globs: tuple[str, ...] = DEFAULT_SHARED_GLOBS
     # sp2 6.1 trigger 4: hard-to-undo effects (words in the request, or path globs with "/")
     irreversible: tuple[str, ...] = DEFAULT_IRREVERSIBLE
-
-
-@dataclass(frozen=True)
-class TriageConfig:
-    low_risk_min: float = 0.8
 
 
 @dataclass(frozen=True)
@@ -242,13 +235,14 @@ class Config:
     # file anywhere outside tests, docs and dot directories as source (a flat layout)
     source_dirs_set: bool = False
     test_dirs: tuple[str, ...] = ("tests",)
+    # SR-380: parts that take no part in drift, the brief or the merge hold (plumb.frozen)
+    freeze: tuple[str, ...] = ()
     verify: VerifyConfig = field(default_factory=VerifyConfig)
     hooks: HooksConfig = field(default_factory=HooksConfig)
     approve: ApproveConfig = field(default_factory=ApproveConfig)
     judgment: JudgmentConfig = field(default_factory=JudgmentConfig)
     escalation: EscalationConfig = field(default_factory=EscalationConfig)
     trace: TraceConfig = field(default_factory=TraceConfig)
-    triage: TriageConfig = field(default_factory=TriageConfig)
     auto_approve: AutoApproveConfig = field(default_factory=AutoApproveConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     clarify: ClarifyConfig = field(default_factory=ClarifyConfig)
@@ -263,7 +257,7 @@ class Config:
 
 _NESTED = {"verify": VerifyConfig, "hooks": HooksConfig, "approve": ApproveConfig,
            "judgment": JudgmentConfig, "escalation": EscalationConfig, "trace": TraceConfig,
-           "triage": TriageConfig, "auto_approve": AutoApproveConfig,
+           "auto_approve": AutoApproveConfig,
            "calibration": CalibrationConfig, "clarify": ClarifyConfig, "hints": HintsConfig,
            "present": PresentConfig, "resolve": ResolveConfig,
            "awareness": AwarenessConfig, "understand": UnderstandConfig, "merge": MergeConfig,

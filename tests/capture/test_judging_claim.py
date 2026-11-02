@@ -1,6 +1,5 @@
 """CAPTURE SR-040 / SR-042 / SR-097: faithfulness is judged on what the read-back claims as
-the owner's, against the owner's whole words, and triage tells apart faithful, contradicts
-and goes beyond."""
+the owner's, against the owner's whole words."""
 
 from __future__ import annotations
 
@@ -8,10 +7,10 @@ import hashlib
 from pathlib import Path
 
 import pytest
-from capture_helpers import JevStub, log_prompt, record_text, run, use_jev
+from capture_helpers import log_prompt, record_text
 
 from plumb.api import open_core
-from plumb.capture.triage import _Prompts, claim, triage, view_lines
+from plumb.understand.claim import _Prompts, claim
 
 LONG = ("I want multiply next to add. Keep it small, and do not touch the old exporter "
         "while you are there.")
@@ -88,39 +87,3 @@ def test_calibration_judges_the_same_claim(repo: Path, write_record) -> None:
     [item] = [i for i in labelled_set(open_core(repo)) if i.label == "yes"]
     _, premise, hypothesis = _claim(repo, "INT-001")
     assert item.premise == premise == LONG and item.hypotheses == (hypothesis,)
-
-
-@pytest.fixture
-def stub():
-    instance = JevStub(lambda state: 0.03 if "BEYOND" in state else 0.95)
-    yield instance
-    instance.close()
-
-
-def test_the_judge_is_sent_the_claim_and_the_whole_words(repo: Path, write_record,
-                                                         monkeypatch, stub) -> None:
-    use_jev(repo, stub, monkeypatch)
-    intent(write_record, repo)
-    triage(open_core(repo))
-    state = stub.requests[0]["state"]
-    assert LONG in state and "will: multiply" in state and "integers only" not in state
-
-
-def test_three_outcomes_are_told_apart(repo: Path, write_record, monkeypatch, stub,
-                                       capsys) -> None:
-    use_jev(repo, stub, monkeypatch)
-    intent(write_record, repo, "INT-001")                                   # faithful
-    intent(write_record, repo, "INT-002", readback="BEYOND add multiply")   # beyond
-    intent(write_record, repo, "INT-003", will=["touch the old exporter"],
-           wont=[])                                                          # contradicts
-    view = triage(open_core(repo))
-    assert [i.id for i in view.low_risk] == ["INT-001"]
-    outcome = {i.id: i.outcome for i in view.individual}
-    assert outcome == {"INT-002": "beyond", "INT-003": "contradicts"}
-    assert view.low_risk[0].outcome == "faithful"
-    text = "\n".join(view_lines(view))
-    assert "goes beyond your words" in text and "contradicts your words" in text
-    assert "riskier" not in text
-    assert run(repo, "triage") == 0
-    out = capsys.readouterr().out
-    assert "riskier 0." not in out and "goes beyond your words" in out

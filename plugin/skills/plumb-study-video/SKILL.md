@@ -14,7 +14,7 @@ part that does not teach is worse than none.
    - a ```mermaid diagram for structure that holds still (what sits where, what calls what);
    - a clip for what moves: a sequence, a record going through stages, a state that changes,
      where seeing it run is what makes it click. Never a clip that only restates a diagram.
-   The number and length of clips are yours (DEC-366); none at all is a valid mix.
+   The number and length of clips are yours; none at all is a valid mix.
 2. Write the body once, with each clip as a fenced block naming it at its place:
    ````
    ```video

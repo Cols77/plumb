@@ -36,7 +36,10 @@ def test_waiver_event_pinned_to_diff_digest(repo: Path,
     events = _waivers(repo)
     assert len(events) == 1
     assert events[0].payload["diff_digest"] == DIGEST
-    assert events[0].payload["reason"] == "known"
+    from plumb import words
+
+    assert "reason" not in events[0].payload     # DEC-116: the owner's words stay local
+    assert words.joined(open_core(repo), events[0])["reason"] == "known"
     assert events[0].marker == "none"
     assert cli.main(["tests", "waive", "--diff-digest", "nope", "--reason", "x", *root]) == 2
     (repo / "README.md").write_text("changed\n", encoding="utf-8")

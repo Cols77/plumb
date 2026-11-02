@@ -43,7 +43,7 @@ def test_every_advertised_verb_is_routed_and_its_help_exits_zero(capsys) -> None
     """EX-1: each verb of the installed /plumb command and of plumb --help is routed, and
     plumb <verb> --help exits 0."""
     advertised = _command_file_verbs() | _help_verbs()
-    assert {"status", "explain", "why", "review", "impact", "view", "resolve",
+    assert {"status", "explain", "why", "review", "impact", "resolve",
             "align"} <= advertised
     for verb in sorted(advertised):
         assert verb in cli.ROUTES, verb

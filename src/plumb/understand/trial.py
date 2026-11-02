@@ -1,28 +1,26 @@
 """The trial (JUDGE, SR-106, SR-133, DEC-038).
 
-Calibrating the judge takes the owner's answers on records it found ``supported``. Each such
-record is asked as one card, the read-back of that record alone: the owner's source words with
-their date (or a line saying they were not found), the record's proposal in the owner's terms,
-and Yes, No, Fix it. At most ``MAX_OPEN`` are open at a time; while none open is below the
-threshold, one record below it is drawn (the threshold is learned on what the owner answers, so
-a range cut off at it would teach nothing). The owner's yes confirms the record, labelled yes,
-and a no rejects it as a misreading: READ applies both when it applies the answer; ``effect``
-logs the answer. Recalibration reads the logged scores (``capture.calibrate``) and calls no
-model."""
+No trial card is drawn any more (SR-252 EX-6): a record the judge model finds supported is
+not put to the owner and waits for JEV (SR-372). What stays: the calibrated threshold, the
+owner's words a record came from, and the reading of a trial card an older session still holds
+(``card`` rebuilds its shape, ``effect`` logs its answer). Recalibration reads the logged
+scores (``capture.calibrate``) and calls no model."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from plumb.contracts import Applied, CardState, Choice, ClarifyQuestion
-from plumb.understand import backlog, cards
+from plumb.understand import cards
 
-MAX_OPEN = 3
 WORDS_PER_ITEM = 140
+HELD = ("open", "change_requested", "left_open")   # not answered yet: a merge withdraws these
 NOT_FOUND = "Your words for this were not found."
+NO_WORDS = 'The words of yours "{title}" came from are not on file.'
 ASK = "Is this what you meant?"
 CHOICES = (
     Choice("Yes", "accepted", consequence="It is confirmed as yours."),
@@ -67,48 +65,6 @@ def threshold(core: Any, record_kind: str) -> float:
     return start
 
 
-# --------------------------------------------------------------------------- the pool
-
-
-HELD = ("open", "change_requested", "left_open")   # a card the owner has not answered yet
-
-
-def _open_records(core: Any, session: str) -> set[str]:
-    """The records a trial card the owner has not answered still asks about: an open card, one
-    waiting for their words, and one they left open (DEC-034: it comes back when its record
-    changes, it is not asked again)."""
-    from plumb.understand import cardstore
-
-    return {str(q.record) for card in cardstore.own_cards(core.root, session)
-            if card.status in HELD and card.kind == "trial"
-            for q in card.questions if q.record}
-
-
-def _rejected(core: Any) -> set[tuple[str, str]]:
-    out: set[tuple[str, str]] = set()
-    for entry in core.events():
-        if entry.kind == "rejection" or (
-                entry.kind == "revocation" and entry.payload.get("by") == "undone"):
-            for item in entry.payload.get("records") or ():
-                if isinstance(item, Mapping):
-                    out.add((str(item.get("id")), str(item.get("hash"))))
-    return out
-
-
-def from_log(core: Any, skip: set[str]) -> list[Candidate]:
-    """The supported records of the logged verdicts that still wait: judged at their current
-    version, neither confirmed nor rejected (nor taken back), not in ``skip``."""
-    latest = backlog.latest_verdicts(core)
-    index = core.index()
-    wanted = [i for i, v in latest.items() if v.get("verdict") == "supported" and i in index
-              and index[i].hash == v.get("hash") and i not in skip]
-    if not wanted:
-        return []
-    statuses, rejected = core.status(wanted), _rejected(core)
-    return [Candidate(index[i], float(latest[i].get("score") or 0), {}) for i in wanted
-            if statuses[i].confirmation != "confirmed" and (i, index[i].hash) not in rejected]
-
-
 # --------------------------------------------------------------------------- the card
 
 
@@ -124,11 +80,87 @@ def _said(words: str, at: str) -> str:
     return f'"{cards.clip(words, WORDS_PER_ITEM)}"' + (f" ({_date(at)})" if _date(at) else "")
 
 
+def _prompts(core: Any) -> list[dict[str, Any]]:
+    out = []
+    for line in core.paths.prompt_lines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict):
+            out.append(entry)
+    return out
+
+
+def _prompt_for(prompts: list[dict[str, Any]], digest: str) -> dict[str, Any] | None:
+    want = digest.removeprefix("sha256:").strip()
+    if not want:
+        return None
+    for entry in prompts:
+        if str(entry.get("digest") or "").removeprefix("sha256:").startswith(want):
+            from plumb.hosts.claude_code.prompt import owner_text
+
+            return {"text": owner_text(str(entry.get("text") or "")),
+                    "at": str(entry.get("at") or "")}
+    return None
+
+
+def recovered(core: Any, source: Any) -> dict[str, Any] | None:
+    """What ``plumb quotes recover`` found for ``source`` in past transcripts (SR-118), or
+    None: ``{status, span, at, session, reason, proposed_wording, note}``. Shown, never
+    trusted: ``note`` says it was found in a transcript and is not verified."""
+    from plumb.understand.recover import finding_for
+
+    try:
+        finding = finding_for(core, source)
+    except Exception:  # noqa: BLE001 - an unreadable cache shows nothing, it never breaks a card
+        return None
+    if finding is None:
+        return None
+    keys = ("status", "span", "at", "session", "reason", "proposed_wording", "note", "by")
+    return {key: finding.get(key) for key in keys}
+
+
+def found_lines(found: Mapping[str, Any] | None) -> list[str]:
+    """What a transcript search found (``recovered``) in plain words, or [] when nothing."""
+    if not found:
+        return []
+    from plumb.understand.recover import finding_lines
+
+    return finding_lines(found)
+
+
+def owner_words(core: Any, record: Any) -> dict[str, Any]:
+    """The owner's words ``record`` traces to: for itself when it is an intent, and for each
+    intent it derives from, the quote and the logged prompt it came from (where on file).
+    ``{"items": [{id, title, quote, prompt, at, found, found_lines}], "note": ""}``; ``note``
+    says plainly when none is on file. ``found`` is what a transcript search found
+    (``recovered``): shown as found, not verified, it never stands for the owner's logged
+    words."""
+    index = core.index()
+    sources = [record] if record.kind == "intent" else []
+    sources += [index[link.target.record] for link in record.links
+                if link.kind == "derives_from" and link.target.record in index]
+    prompts = _prompts(core) if sources else []
+    items = []
+    for source in sources:
+        raw = source.fields.get("quote") or ""
+        parts = raw if isinstance(raw, (list, tuple)) else [raw]   # some intents quote twice
+        quote = " / ".join(" ".join(str(p).split()) for p in parts if str(p).strip())
+        prompt = _prompt_for(prompts, str(source.fields.get("prompt") or ""))
+        found = recovered(core, source)
+        if not quote and prompt is None and found is None:
+            continue
+        items.append({"id": source.id, "title": source.title, "quote": quote or None,
+                      "prompt": prompt["text"] if prompt else None,
+                      "at": prompt["at"] if prompt else None, "found": found,
+                      "found_lines": found_lines(found)})
+    return {"items": items, "note": "" if items else NO_WORDS.format(title=record.title)}
+
+
 def _evidence(core: Any, record: Any) -> str:
     """The owner's words this record came from, with their date, or that they were not found."""
-    from plumb.understand import cardcontent
-
-    for item in cardcontent.owner_words(core, record)["items"]:
+    for item in owner_words(core, record)["items"]:
         found = item.get("found") or {}
         if found.get("status") == "found" and found.get("span"):    # found by meaning
             return _said(found["span"], found.get("at") or "")
@@ -178,55 +210,6 @@ def card(core: Any, item: Candidate) -> CardState:
         evidence=_evidence(core, record), resolutions=labels,
         questions=(ClarifyQuestion(id=f"{cid}#1", text=ASK, resolutions=labels,
                                    record=record.id, hash=record.hash, choices=CHOICES),))
-
-
-def cards_for(core: Any, session: str, candidates: Sequence[Candidate], *,
-              pass_done: bool = False) -> list[CardState]:
-    """The trial cards to open now: this job's supported records ``candidates`` and every one
-    the log still holds back, up to ``MAX_OPEN`` open in all. The surest first, but one below
-    the threshold when none open is (calibration needs both sides). While a backlog pass runs,
-    the log's records wait for its end (``pass_done``: this call is its end)."""
-    from plumb.understand import cardstore
-
-    open_ids = [str(q.record) for c in cardstore.own_cards(core.root, session)
-                if c.kind == "trial" and c.status in cardstore.AWAITING for q in c.questions]
-    room = MAX_OPEN - len(open_ids)
-    if room <= 0:
-        return []
-    held = _open_records(core, session)
-    waiting = core.status([c.record.id for c in candidates])      # the judge may have confirmed it
-    now = [c for c in candidates if c.record.id not in held
-           and waiting[c.record.id].confirmation != "confirmed"]
-    skip = held | {c.record.id for c in now} | (
-        set() if pass_done else backlog.holding(core, session))
-    pool = sorted([*now, *from_log(core, skip)],
-                  key=lambda c: (-c.score, c.record.id))
-    index, scores = core.index(), backlog.latest_verdicts(core)
-
-    def below(score: float, kind: str) -> bool:
-        return score < threshold(core, kind)
-
-    picked: list[Candidate] = []
-    if not any(i in index and below(float(scores.get(i, {}).get("score") or 0), index[i].kind)
-               for i in open_ids):
-        picked = [c for c in pool if below(c.score, c.record.kind)][:1]
-    picked += [c for c in pool if c not in picked][:room - len(picked)]
-    return [card(core, c) for c in picked]
-
-
-def top_up(core: Any, session: str) -> list[CardState]:
-    """New trial cards for the records still waiting, when fewer than ``MAX_OPEN`` are open
-    (called when the turn ends, after a card was answered). A card whose records are all
-    confirmed by now (a read-back's yes confirmed them) is withdrawn first, so its slot frees."""
-    from plumb.understand import cardstore
-
-    mine = [c for c in cardstore.own_cards(core.root, session) if c.status in cardstore.AWAITING]
-    ids = {c.id: [str(q.record) for q in c.questions if q.record] for c in mine}
-    status = core.status([r for rs in ids.values() for r in rs])
-    done = [i for i, rs in ids.items() if rs and all(status[r].confirmation == "confirmed" for r in rs)]
-    if done:
-        cardstore.withdraw(core.root, session, done)
-    return cards_for(core, session, [])
 
 
 # --------------------------------------------------------------------------- the answer

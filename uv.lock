@@ -700,11 +700,15 @@ wheels = [
 
 [[package]]
 name = "plumb"
-version = "0.1.0"
+version = "0.1.1017"
 source = { editable = "." }
 dependencies = [
-    { name = "manim" },
     { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+video = [
+    { name = "manim" },
 ]
 
 [package.dev-dependencies]
@@ -717,9 +721,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "manim", specifier = ">=0.19" },
+    { name = "manim", marker = "extra == 'video'", specifier = ">=0.19" },
     { name = "pyyaml", specifier = ">=6" },
 ]
+provides-extras = ["video"]
 
 [package.metadata.requires-dev]
 dev = [

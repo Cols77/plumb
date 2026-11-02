@@ -15,11 +15,7 @@ shown is the one that record's current passing evidence asks, with YES among its
 (``proof.confirmation``): ``.plumb/session`` is not guarded, so the pending entry only points.
 The hook approves nothing. During a merge, rebase, cherry-pick or revert the entries are staged
 (``conflicts.stage_choice``) so the commit that finishes it carries them (SR-260 EX-28). A
-dismissed or unanswered question logs nothing. The answer "Build anyway" to a failed check's
-"Build without the check?" releases the gate (``gate.release`` ... ``button``). The answer
-"Study it in the room" to a judge question judges nothing again: the question becomes a card
-waiting in the room, its entry carries ``room`` (the card and the question asked), the band's
-line names it (``question.to_room``), and the agent is told to draw its diagram (SR-333).
+dismissed or unanswered question logs nothing. The answer
 "Study it first" judges nothing either: its entry carries ``study`` (the study serving the
 question), the band's study line names that study and the question waits until it is read
 (``study.study_first``, SR-336).
@@ -68,7 +64,6 @@ def handle(ctx: HookContext) -> HookOutput | None:
                   if q.get("key") not in {o.get("key") for o in own}]
     key_of = judge.question_key
     worded = {w.get("key"): w for w in judge.reworded(core.root, ctx.session_id)}
-    drawn = []
     for entry in entries:
         key = key_of(entry["question"])
         covers = (worded.get(key) or {}).get("covers") or ()
@@ -87,15 +82,6 @@ def handle(ctx: HookContext) -> HookOutput | None:
             if served is not None:
                 study.study_first(ctx.root, ctx.session_id, served["slug"])
                 entry["study"] = served["slug"]
-        elif found is not None and entry["answer"] == owner_text.ROOM_STUDY:
-            from plumb.understand import question
-
-            left.remove(found)       # SR-333 EX-3: no answer yet; the question waits in the room
-            made = question.to_room(core, ctx.session_id, found)
-            if made is not None:
-                entry["room"] = {"card": made.id, **{k: found.get(k) for k in (
-                    "job", "key", "records", "question", "options")}}
-                drawn += [made] if made.diagram else []
         elif found is not None:
             # SR-362 EX-1: an answer to the agent's wording answers every question it covers
             merged = [found, *(q for q in left if q is not found and q.get("key") in covers)]
@@ -113,21 +99,20 @@ def handle(ctx: HookContext) -> HookOutput | None:
                 entry["asked"]["keys"] = [q.get("key") for q in merged]
     _tag_proofs(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
+    _share_proofs(core, entries)
     from plumb.mergedriver.conflicts import stage_choice
 
     stage_choice(core)
-    from plumb.understand import clarify, gate
+    from plumb.understand import gate
 
-    if any(e["question"] == clarify.COULDNT_QUESTION and e["answer"] == owner_text.GATE_BUILD_ANYWAY
-           for e in entries):      # the owner's own button on a failed check (gate.release)
-        gate.release(core, ctx.session_id, "button")
+    held = gate.state(Path(ctx.root), ctx.session_id)
+    if held.reason.startswith(gate.INTENT_CHANGE) and not any(e.get("asked") for e in entries):
+        # SR-225 EX-5, SR-378 EX-3: the owner answered the change put to them (not a judge
+        # question): the hold on the confirmed record opens, no check is rerun
+        gate.open(core, ctx.session_id, held.message_digest, "answer",
+                  "the owner answered the question it raised")
     judge.rejudge(core, ctx.session_id, logged)
-    if not drawn:
-        return None
-    from plumb.understand import cmd_clarify
-
-    return HookOutput(additional_context="\n".join(cmd_clarify.DRAW.format(
-        path=c.diagram, question=c.issue, options="; ".join(c.resolutions)) for c in drawn))
+    return None
 
 
 def _note_asked(ctx: HookContext) -> None:
@@ -143,6 +128,19 @@ def _note_asked(ctx: HookContext) -> None:
         judge.note_asked(open_core(ctx.root), ctx.session_id)
     except Exception:  # noqa: BLE001 - logging the owner's answers comes first
         pass
+
+
+def _share_proofs(core, entries: list[dict]) -> None:
+    """DEC-116, DEC-257: the owner's yes to a proof is an outcome, committed so it follows the
+    record through a merge and a renumber; the answer entry itself (their words) stays local."""
+    from plumb.capture import proof
+
+    for entry in entries:
+        tag = entry.get("proof")
+        if isinstance(tag, dict) and entry.get("answer") == proof.YES:
+            core.log_append("events", "proof-confirmed", {
+                "record": tag.get("record"), "hash": tag.get("hash"),
+                "evidence_at": tag.get("evidence_at"), "answer": proof.YES})
 
 
 def _tag_proofs(core, session: str, entries: list[dict], key_of) -> None:

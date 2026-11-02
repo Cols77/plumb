@@ -25,11 +25,11 @@ pytestmark = pytest.mark.sr("SR-258")
 
 def _stop_hook(root: Path, changed: list[str] | None = None) -> list[str]:
     """The stop hook's awareness step (publish, then the claim kept in step)."""
-    from plumb.awareness.early import turn_cards
+    from plumb.awareness.early import question, turn_conflicts
     from plumb.awareness.turn import claim_changes
 
     claim_changes(open_core(root), pub.publish(open_core(root), changed or []))
-    return turn_cards(open_core(root).paths.session)[0]
+    return [question(c) for c in turn_conflicts(open_core(root).paths.session)]
 
 
 def _merged_then_continued(tmp_path: Path, *, hooks: bool = True,
@@ -73,7 +73,7 @@ def _feat_x(root: Path, *, allow_git: bool = True) -> list[dict]:
 def test_capture_on_main_asks_nothing(tmp_path: Path) -> None:
     main, _other = _merged_then_continued(tmp_path)
     result = change(main, "A relay pins only the records the owner's words affirm.")
-    assert not any("waits as a card" in line for line in result.lines), result.lines
+    assert not any("comes back at the end of this turn" in line for line in result.lines), result.lines
     assert _decisions(main) == []
 
 
@@ -165,4 +165,4 @@ def test_unmerged_change_still_conflicts(tmp_path: Path) -> None:
     commit_all(other, "feat-x goes on")
     _stop_hook(other)
     result = change(main, "A relay pins only the records the owner's words affirm.")
-    assert any("waits as a card" in line for line in result.lines)
+    assert any("comes back at the end of this turn" in line for line in result.lines)

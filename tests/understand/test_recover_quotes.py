@@ -16,8 +16,9 @@ import pytest
 from plumb.api import open_core
 from plumb.cli import main
 from plumb.contracts import DispatchError
-from plumb.understand import cardcontent, recover
+from plumb.understand import recover, trial
 from plumb.understand.recover import Cascade, ModelExaminer, ModelPicker
+from understand.test_judge_job import approve
 
 pytestmark = pytest.mark.sr("SR-249")
 
@@ -175,37 +176,16 @@ def _cascade(core, jev, sonnet, opus=None) -> Cascade:
 
 
 def _card(core, record_id: str) -> tuple[dict, list[str]]:
-    words = cardcontent.owner_words(core, core.index()[record_id])
+    words = trial.owner_words(core, core.index()[record_id])
     lines = [line for item in words["items"] for line in item["found_lines"]]
     return words, [*lines, *([words["note"]] if words["note"] else [])]
 
 
 def _unverified(core, record_id: str) -> bool:
-    from plumb.capture.triage import UNVERIFIED, _Prompts, premise_problem
+    from plumb.understand.claim import UNVERIFIED, _Prompts, premise_problem
 
     problem = premise_problem(_Prompts(core), core.index(), core.index()[record_id])
     return bool(problem and problem.startswith(UNVERIFIED))
-
-
-def _press_accept(monkeypatch, capsys, root: Path, record_id: str) -> None:
-    """The owner presses the Accept button on ``record_id``'s card through the mod: the panel
-    registers, the card is drawn, ``plumb mod press`` answers its first (accepted) button."""
-    from mod.helpers import DIGEST as KEY_DIGEST
-    from mod.helpers import KEY, SESSION, run_mod
-
-    from plumb.understand import cardstore, trial
-
-    core = open_core(root)
-    card = trial.card(core, trial.Candidate(core.index()[record_id], 0.9, {}))
-    cardstore.save(root, SESSION, [*cardstore.own_cards(root, SESSION), card])
-    assert run_mod(monkeypatch, capsys, root, "hello", stdin={"key_digest": KEY_DIGEST})[0] == 0
-    code, drawn, _ = run_mod(monkeypatch, capsys, root, "draw", stdin={"key": KEY})
-    assert code == 0
-    (offer,) = [c for c in drawn["cards"] if c["id"] == card.id][0]["offers"]
-    (accept,) = [b for b in offer["buttons"] if b["answer"] == "accepted"]
-    code, answer, _ = run_mod(monkeypatch, capsys, root, "press", "--offer", offer["offer_id"],
-                              "--choice", str(accept["index"]), stdin={"key": KEY})
-    assert code == 0 and answer["confirmed"] == [record_id]
 
 
 def test_ex5_owner_messages_keep_only_what_the_owner_typed(project: Path,
@@ -215,8 +195,7 @@ def test_ex5_owner_messages_keep_only_what_the_owner_typed(project: Path,
 
 
 def test_ex1_the_span_and_date_are_shown_and_the_record_stays_proposed(
-        project: Path, transcripts: Path, monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture) -> None:
+        project: Path, transcripts: Path) -> None:
     core = open_core(project)
     sonnet = Dispatcher("sonnet", _picks("cards should be short",
                                          "Keep each card to one screen at most"))
@@ -250,13 +229,26 @@ def test_ex1_the_span_and_date_are_shown_and_the_record_stays_proposed(
                     cascade=_cascade(core, Jev("cards should be short"), sonnet))
     assert open_core(project).status()["INT-009"].confirmation == "proposed"
 
-    # the owner's Accept press on INT-009's card (``plumb mod press``) is what confirms it
-    _press_accept(monkeypatch, capsys, project, "INT-009")
+    # the owner's own approval is what confirms it; the finding stays only shown
+    approve(core, "INT-009")
     core = open_core(project)
     assert core.status()["INT-009"].confirmation == "confirmed"
-    assert core.status()["INT-009"].approved_by == "owner"
     words, _ = _card(core, "INT-009")
-    assert words["items"][0]["found"]["note"] == recover.NOT_VERIFIED   # still only shown
+    assert words["items"][0]["found"]["note"] == recover.NOT_VERIFIED
+
+
+def test_ex4_an_approved_intent_is_skipped_and_no_model_is_asked(
+        project: Path, transcripts: Path) -> None:
+    approve(open_core(project), "INT-009")
+    core = open_core(project)
+    jev, sonnet = Jev("cards should be short"), Dispatcher("sonnet", None)
+    for named in (["INT-009"], ["SR-001"]):
+        outcome = recover.recover(core, named, transcripts=transcripts,
+                                  cascade=_cascade(core, jev, sonnet))
+        assert outcome.findings == [] and outcome.errors == []
+        assert outcome.skipped == ["INT-009: the owner already confirmed it"]
+    assert jev.asked == 0 and sonnet.seen == []
+    assert "INT-009" not in [r.id for r in recover.targets(core)[0]]
 
 
 def test_a_quote_word_for_word_in_a_message_is_found_by_text_with_no_model(
@@ -365,21 +357,6 @@ def test_ex5_only_this_projects_folder_is_read(project: Path, transcripts: Path)
     messages = recover.owner_messages(project, transcripts)
     assert all(Path(m.path).parent.name == recover.project_dir_name(project) for m in messages)
     assert not any("every screen" in m.text for m in messages)
-
-
-def test_ex6_a_confirmed_intent_is_skipped_when_named_too(
-        project: Path, transcripts: Path, monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture) -> None:
-    _press_accept(monkeypatch, capsys, project, "INT-009")
-    core = open_core(project)
-    jev, sonnet = Jev("cards should be short"), Dispatcher("sonnet", None)
-    for named in (["INT-009"], ["SR-001"]):
-        outcome = recover.recover(core, named, transcripts=transcripts,
-                                  cascade=_cascade(core, jev, sonnet))
-        assert outcome.findings == [] and outcome.errors == []
-        assert outcome.skipped == ["INT-009: the owner already confirmed it"]
-    assert jev.asked == 0 and sonnet.seen == []
-    assert "INT-009" not in [r.id for r in recover.targets(core)[0]]
 
 
 def test_opus_finding_the_record_fits_stores_it_found_by_opus(project: Path,

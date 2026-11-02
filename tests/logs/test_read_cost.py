@@ -21,7 +21,7 @@ from plumb.paths import PlumbPaths
 
 pytestmark = pytest.mark.sr("SR-232")
 
-KINDS = ("approval", "prompt", "repin", "judgment", "revocation")
+KINDS = ("approval", "calibration", "mod-hello", "waiver", "revocation")   # shared kinds only: init now ignores the local ones
 
 
 def populate(paths: PlumbPaths, n: int, start: int = 0) -> None:

@@ -28,8 +28,8 @@ ROUTES: dict[str, str] = {
     "status": "plumb.present.cli", "brief": "plumb.present.cli", "drift": "plumb.present.cli",
     "show": "plumb.present.cli", "explain": "plumb.present.cli", "why": "plumb.present.cli",
     "impact": "plumb.present.cli", "resolve": "plumb.present.cli",
-    "review": "plumb.present.cli",
-    "align": "plumb.present.cli", "view": "plumb.present.cli",
+    "review": "plumb.present.cli", "context": "plumb.present.cli",
+    "align": "plumb.present.cli",
     # VERIFY
     "tests": "plumb.verify.cli", "map": "plumb.verify.cli", "verify": "plumb.verify.cli",
     # HOST
@@ -37,14 +37,14 @@ ROUTES: dict[str, str] = {
     "install": "plumb.hosts.claude_code.cli", "statusline": "plumb.hosts.claude_code.cli",
     # BRIDGE (trailers and claims, judgment, importer)
     "trailers": "plumb.claims", "claims": "plumb.claims",
-    "import": "plumb.importer.cli", "fidelity": "plumb.judgment.cli",
+    "fidelity": "plumb.judgment.cli",
     "judge": "plumb.judgment.cli", "judgment": "plumb.judgment.cli",
     # CAPTURE (sub-project 2)
     "capture": "plumb.capture.cli", "new": "plumb.capture.cli",
     "intent": "plumb.understand.cli",   # open|gate|done|status: the loop; else the INT capture
     "example": "plumb.capture.cli", "decide": "plumb.capture.cli",
     "escalate": "plumb.capture.cli", "spec": "plumb.capture.cli",
-    "triage": "plumb.capture.cli", "config": "plumb.capture.cli", "jev": "plumb.capture.cli",
+    "config": "plumb.capture.cli", "jev": "plumb.capture.cli",
     "clarify": "plumb.understand.cli",
     "question": "plumb.understand.cli",   # SR-362: reword judge questions
     "proof": "plumb.capture.proof",  # SR-127: a requirement's proof plan and evidence
@@ -63,7 +63,7 @@ ROUTES: dict[str, str] = {
     # AWARENESS (sub-project 6, R17): intent other branches have in flight
     "inflight": "plumb.awareness.cli",
     # HOSTS (sub-project 4)
-    "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli", "mcp": "plumb.mcp.cli",
+    "hosts": "plumb.hosts.cli", "turn": "plumb.hosts.cli",
     # PLUGIN (sub-project 7): the owner's "not here" list and the move from the old install
     "plugin": "plumb.plugin.cli",
     # SP7 MOD: the commands only plumb's panel runs (hello, draw, press; key on stdin)
@@ -112,7 +112,6 @@ intent capture:
   question     reword: your wording of the judge's questions (merged by principle)
   escalate     escalation suggestions; decline (the owner said no)
   spec         an escalated spec: show (every member in full, the set hash), state
-  triage       proposed records grouped by faithfulness (advisory; it approves nothing)
   config       auto-approve on|off and show (owner's terminal only)
   jev          status, setup (the credential variable's name only), calibrate
   study        propose | add | list | candidates | mark: at most one study idea per
@@ -130,15 +129,18 @@ owner views (plain words, paths or IDs; none approves anything):
   review       the deep review: what awaits you, approvals you did not type, drift,
                alignment, the merge state
   align        judge each edge from intent to evidence, weakest first; name the gaps
-  view         write the Obsidian vault and the Canvas intent map (--open)
   impact       what a change would reach
+
+agent views (the agent's, never shown to the owner):
+  context      the full picture of one condition (session, prompt, edit, test, symptom,
+               merge), unfiltered: what the hooks say in part
 
 verification:  tests (map | select | run), map, verify
 host:          hook, hooks, install, statusline
 plugin:        plugin ignore | unignore | migrate (the Claude Code plugin)
-hosts:         hosts (install|uninstall|status codex|pi|hermes), turn (start|end: the
-               CLI-only fallback), mcp (serve: the read-only MCP server on stdio)
-bridge:        trailers, claims, fidelity, judge, judgment, import
+hosts:         hosts (install|uninstall|status codex|hermes), turn (start|end: the
+               CLI-only fallback)
+bridge:        trailers, claims, fidelity, judge, judgment
 merge:         merge-check (the merge boundary: one full run, claims, links, the glance;
                --install-pre-push: the git hook init installs)
 

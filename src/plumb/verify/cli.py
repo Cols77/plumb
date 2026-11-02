@@ -120,7 +120,8 @@ def _plural(n: int, word: str) -> str:
     return f"{n} {word}" + ("" if n == 1 else "s")
 
 
-def report_lines(report: Any) -> list[str]:
+def report_lines(report: Any, core: Any = None) -> list[str]:
+    from plumb.present import insights
     from plumb.verify.policy import regression_instruction
 
     sel = report.selection
@@ -169,8 +170,9 @@ def report_lines(report: Any) -> list[str]:
     for reg in report.regressions:
         lines.append(regression_instruction(reg["node"], reg["passed_in"],
                                             reg["test_changed_since_pass"]))
-    for node in report.not_yet_passing:
-        lines.append(f"plumb: not yet passing: {node}")
+    for node in report.not_yet_passing:  # SR-374 EX-4: never a regression; the example named
+        lines += ([line.text for line in insights.lines("test", core, {"node": node})]
+                  if core is not None else [f"plumb: not yet passing: {node}"])
     for node in failed:
         lines.append(f"plumb: failed: {node}")
     for node in report.flaky:
@@ -205,7 +207,7 @@ def cmd_run(prog: str, argv: list[str]) -> int:
     if args.as_json:
         emit(report.as_dict(), True)
     else:
-        emit(report_lines(report), False)
+        emit(report_lines(report, verify.core), False)
     if report.run_id is None:
         return EXIT_OK
     return EXIT_OK if report.ok else EXIT_FINDINGS

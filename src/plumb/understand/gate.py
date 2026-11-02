@@ -7,7 +7,6 @@ about. The prompt hook closes it (``close``); only plumb opens it (``open``), ea
 
 from __future__ import annotations
 
-import dataclasses
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -111,42 +110,25 @@ def problems(core: Any) -> list[str]:
 # a confirmed record while no intent loop ran for it; the owner's /plumb go releases it too
 INTENT_CHANGE = "intent change:"
 
-RELEASE_WORDS = {"typed": "the owner typed the release", "button": "the owner pressed Build anyway",
-                 "owner-words": "the owner's words, read at the reader's threshold"}
+RELEASE_WORDS = {"typed": "the owner typed the release"}
 
 
 def failed_check_open(root: Path, session: str) -> bool:
-    """The gate is closed for a message whose check failed (its "couldn't check" card is
-    still in the card store) or on an intent change (SR-196): the closures the owner may
-    release."""
-    from plumb.understand import cardstore
-
+    """The gate is closed on an intent change (SR-196): the closure the owner may release
+    (a failed check holds nothing, SR-225 EX-9)."""
     current = state(Path(root), session)
     if current.state != "closed":
         return False
-    if current.reason.startswith(INTENT_CHANGE):
-        return True
-    wanted = "couldnt_check:" + current.message_digest.removeprefix("sha256:")[:12]
-    return any(c.id == wanted and c.status == "open"
-               for c in cardstore.own_cards(Path(root), session))
+    return current.reason.startswith(INTENT_CHANGE)
 
 
 def release(core: Any, session: str, via: str, *, digest: str = "") -> bool:
-    """Open the gate of a failed check because the owner said so: ``via`` is ``typed`` (the
-    caller checked the logged prompt is exactly ``/plumb go``), ``button`` or ``owner-words``
-    (the caller checked the reader's answer is accepted at or above its threshold). No other
-    route exists, and a gate closed by a card's questions is not released this way."""
+    """Open the gate held on an intent change because the owner typed ``/plumb go`` (``via``
+    is ``typed``; the caller checked the logged prompt). No other route exists, and a gate
+    closed by a card's questions is not released this way."""
     if via not in RELEASE_WORDS or not failed_check_open(Path(core.root), session):
         return False
     held = state(Path(core.root), session).message_digest
     note = RELEASE_WORDS[via] + (f" ({digest.removeprefix('sha256:')[:12]})" if digest else "")
-    if not open(core, session, held, f"release:{via}", note,
-                {"prompt_digest": digest} if digest else None):
-        return False
-    from plumb.understand import cardstore
-
-    wanted = "couldnt_check:" + held.removeprefix("sha256:")[:12]
-    cards = cardstore.own_cards(Path(core.root), session)
-    cardstore.save(Path(core.root), session, [
-        dataclasses.replace(c, status="closed") if c.id == wanted else c for c in cards])
-    return True
+    return open(core, session, held, f"release:{via}", note,
+                {"prompt_digest": digest} if digest else None)

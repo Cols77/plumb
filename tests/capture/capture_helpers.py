@@ -109,6 +109,12 @@ class JevStub:
                 for name, q in body["questions"].items():
                     if q["type"] == "noul":
                         answers[name] = {"type": "noul", "noul": stub.noul(body["state"])}
+                    elif "benign" in q["criteria"]:     # SR-372: the approval question
+                        p = stub.noul(body["state"])
+                        label = "benign" if p >= 0.5 else "contradicts"
+                        answers[name] = {"type": "choice", "choice": label,
+                                         "probabilities": {"benign": p, "contradicts": 1 - p},
+                                         "confidence": 0.9}
                     else:
                         label = next(iter(q["criteria"]))
                         answers[name] = {"type": "choice", "choice": label,
@@ -186,3 +192,13 @@ def use_coverage_judge(monkeypatch) -> CoverageJudge:
 
     monkeypatch.setattr(judgment, "get_backend", pick)
     return double
+
+
+def approve_set(core, anchor: str) -> None:
+    """A set approval as the judge worker writes it (the owner-terminal command is gone)."""
+    from plumb.capture.spec import set_payload
+
+    records, digest = set_payload(core, anchor)
+    core.log_append("events", "approval", {
+        "records": records, "set": digest, "by": "owner", "prompt_digest": None, "quote": None,
+        "quote_digest": None, "affirmation": None, "stated_set": None, "note": ""})

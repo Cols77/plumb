@@ -20,7 +20,7 @@ SR = ("---\nid: SR-00{n}\ntitle: Requirement {n}\nstatement: s{n}\nexamples:\n"
 
 def _activity(root: Path, side: str, record: str) -> None:
     core = open_core(root)
-    core.log_append("events", "prompt", {"digest": f"sha256:{side}", "side": side})
+    core.log_append("events", "calibration", {"digest": f"sha256:{side}", "side": side})
     approvals.approve(open_core(root), [record])
     core.log_append("evidence", "test-run", {
         "run_id": f"run-{side}", "env": {"env_key": "E"},
@@ -53,7 +53,7 @@ def test_appends_in_two_worktrees_merge_without_conflict(
         assert log.verify_chain(core.paths, stream) == []
     errors = [f for f in validate(core) if f.severity == "error"]
     assert errors == [], errors
-    prompts = {e["payload"]["side"] for e in entries(main, "events") if e["kind"] == "prompt"}
+    prompts = {e["payload"]["side"] for e in entries(main, "events") if e["kind"] == "calibration"}
     assert prompts == {"main", "feat"}
     runs = {e["payload"]["run_id"] for e in entries(main, "evidence")}
     assert runs == {"run-main", "run-feat"}

@@ -51,8 +51,6 @@ export const T = {
   unchecked: "plumb could not check its repository for a newer version",
   setAside: (question: string, why: string) => `the judge's question was set aside: "${question}" (${why})`,
   roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',
-  roomWaits: 'a question waits in the room',
-  roomQuestionFailed: 'plumb could not open the question in the browser room; nothing changed. Try again.',
   loopTitle: 'plumb: the intent loop',
   // SR-367: the known problems, one band line and a pane
   knownOpen: (n: number) => (n === 1 ? '1 known problem open' : `${n} known problems open`),

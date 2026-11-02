@@ -167,23 +167,44 @@ def awaiting_count(core: Any) -> int:
     return len(waiting)
 
 
-def refresh_judge_count(core: Any) -> None:
-    """SR-251, SR-337: a turn with no edit writes no snapshot, yet the judge approves and asks
-    in the background; the band's judge-approved and waiting counts are brought up to date in
-    ``status.json``."""
+# the stop hook's own fields of status.json; the rest are record-wide counts (refresh_counts)
+TURN_FIELDS = ("tests", "failing", "regressions", "deferred", "full_pending",
+               "full_pending_reasons", "ask", "skipped", "intent_summary")
+
+
+def write_turn_fields(root: Path, *, present: Any = None, **fields: Any) -> None:
+    """SR-375: this turn's fields of ``status.json`` (its tests, the skipped steps, the
+    intent), with the record-wide counts as the worker last wrote them (``refresh_counts``):
+    the stop hook computes no link state of a record the turn did not touch."""
     from plumb.hosts.claude_code.hookio import read_json
-    from plumb.present.cards import judge_label
+    from plumb.present.render import card_state
+
+    path = Path(root) / ".plumb" / "session" / "status.json"
+    data = read_json(path)
+    data = data if isinstance(data, dict) else {}
+    data.update({k: list(v) if isinstance(v, tuple) else v for k, v in fields.items()},
+                at=utc_now(), v=SNAPSHOT_VERSION)
+    if present is not None:
+        data["present"] = {"ascii": bool(getattr(present, "ascii", False))}
+    data["state"] = card_state(data)
+    write_json_atomic(path, data)
+
+
+def refresh_counts(core: Any) -> None:
+    """In the background worker (SR-375), and for a turn with no edit (SR-251, SR-337): the
+    record-wide counts of ``status.json`` (records, links, the judge's approvals, the
+    questions waiting, overlaps) brought up to date, this turn's fields kept."""
+    from plumb.hosts.claude_code.hookio import read_json
+    from plumb.present.render import card_state
 
     path = Path(core.root) / ".plumb" / "session" / "status.json"
     data = read_json(path)
-    if not isinstance(data, dict):
-        return
-    index = core.index()
-    counts = {"judge_approved": sum(i in index and judge_label(s) is not None
-                                    for i, s in core.status().items()),
-              "awaiting": awaiting_count(core)}
-    if any(data.get(k) != v for k, v in counts.items()):
-        write_json_atomic(path, {**data, **counts})
+    data = data if isinstance(data, dict) else {}
+    fresh = snapshot_dict(build_snapshot(core, tests_summary=("unknown", (), ())))
+    fresh.update({k: data[k] for k in (*TURN_FIELDS, "present", "understand_failures")
+                  if k in data})
+    fresh["state"] = card_state(fresh)
+    write_json_atomic(path, fresh)
 
 
 def write_snapshot(root: Path, snapshot: StatusSnapshot, *, present: Any = None,

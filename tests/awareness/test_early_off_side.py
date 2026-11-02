@@ -66,21 +66,19 @@ def _state(root: Path, record_id: str) -> str:
 def test_conflicts_on_default_branch_labels_both_sides_by_branch(tmp_path: Path) -> None:
     main, _dec = _on_main_after_b(tmp_path)
     text = _conflicts(main)
-    assert '▸ Conflict  SR-005 "deadline reminder"' in text
+    assert '▸ Conflict on "deadline reminder"' in text and "SR-005" not in text
     assert f"feat-b      {B}" in text and f"feat-a      {A}" in text
     assert "this work" not in text and "keep this one" not in text
-    assert "Waits on its card for the owner (feat-b's, feat-a's, or both)" in text
+    assert "Ask the owner with the question tool (feat-b's, feat-a's, or both)" in text
 
 
-def test_stop_hook_card_on_default_branch_labels_both_sides(tmp_path: Path) -> None:
-    """The card /plumb conflicts asks the stop hook to show reads the same."""
+def test_stop_hook_conflict_on_default_branch_labels_both_sides(tmp_path: Path) -> None:
+    """The conflict /plumb conflicts asks the stop hook to hand back is stated by branch."""
     main, _dec = _on_main_after_b(tmp_path)
     _conflicts(main)
-    lines, entries = early.turn_cards(open_core(main).paths.session)
-    text = "\n".join(lines)
-    assert f"feat-b      {B}" in text and f"feat-a      {A}" in text
-    assert "this work" not in text
-    assert entries == [{"record": "SR-005", "branch": "feat-b", "ours_label": "feat-a"}]
+    found = early.turn_conflicts(open_core(main).paths.session)
+    assert [early.stated_entry(c) for c in found] == [
+        {"record": "SR-005", "branch": "feat-b", "ours_label": "feat-a"}]
 
 
 def test_choose_on_default_branch_takes_a_branch_name(tmp_path: Path) -> None:
@@ -105,9 +103,8 @@ def test_conflicts_shows_one_card_per_record(tmp_path: Path) -> None:
     """/plumb conflicts and the stop hook's card: only the merge card asks."""
     main, _dec = _held_merge_of_b(tmp_path)
     text = _conflicts(main)
-    assert text.count("▸ Conflict") == 1 and "Conflict  IC-" in text
-    lines, _entries = early.turn_cards(open_core(main).paths.session)
-    assert lines == []
+    assert text.count("▸ Conflict") == 1 and "Conflict IC-" in text
+    assert early.turn_conflicts(open_core(main).paths.session) == []
 
 
 def test_choose_of_the_decision_answers_through_the_merge_card(tmp_path: Path) -> None:
@@ -120,38 +117,3 @@ def test_choose_of_the_decision_answers_through_the_merge_card(tmp_path: Path) -
     assert record.fields["statement"] == B and "conflict" not in record.fields
     assert core.index()[dec].fields["chosen"] == "feat-b's version"
     assert _state(main, dec) == "confirmed"
-
-
-def _stop_cards(root: Path) -> list:
-    from types import SimpleNamespace
-
-    from plumb.hosts.claude_code.stop import owner_cards
-
-    core = open_core(root)
-    cards, _early = owner_cards(SimpleNamespace(session_dir=core.paths.session),
-                                            core, {})
-    return cards
-
-
-def test_end_of_turn_card_on_default_branch_labels_both_sides(tmp_path: Path) -> None:
-    """The end-of-turn early card names both branches in its issue and each option's
-    consequence, never "this work"."""
-    main, _dec = _on_main_after_b(tmp_path)
-    _conflicts(main)
-    [card] = _stop_cards(main)
-    assert card.kind == "early_conflict"
-    assert card.issue == f'feat-b says "{B}"; feat-a says "{A}"'
-    assert "this work" not in card.issue     # main's labels stay "Keep this one"/"the other"
-    from plumb.understand import fullcard
-
-    shown = fullcard.render(fullcard.content(open_core(main), card))
-    assert "this work" not in shown.lower() and "feat-a" in shown and "feat-b" in shown
-
-
-def test_end_of_turn_shows_only_the_merge_card_for_its_record(tmp_path: Path) -> None:
-    """An early card asked for a record a merge left an intent conflict on is not drawn."""
-    main, _dec = _held_merge_of_b(tmp_path)
-    early.request_cards(open_core(main), [early.EarlyConflict(
-        record="SR-005", title="deadline reminder", branch="feat-b", claim="CL-1",
-        theirs=B, ours=A, ours_label="feat-a")])
-    assert [card.kind for card in _stop_cards(main)] == ["conflict"]

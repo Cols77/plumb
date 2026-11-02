@@ -1,10 +1,9 @@
 """Commands of sub-project 2 (sp2 5 to 9): ``capture``, ``new``, ``intent``, ``example``,
-``decide``, ``escalate``, ``spec``, ``triage``, ``config``, ``jev`` and ``clarify``.
+``decide``, ``escalate``, ``spec``, ``config``, ``jev`` and ``clarify``.
 
 Owner-only writes (``config auto-approve``, the owner's ``escalate decline``) go through
 ``approvals.require_owner`` only: refused under the session marker and outside an interactive
-terminal (exit 3), on every host. ``spec approve`` and ``triage --approve`` no longer exist:
-refused with exit 3, writing nothing (SR-210).
+terminal (exit 3), on every host. ``spec approve`` and ``triage`` no longer exist (SR-210, SR-380).
 """
 
 from __future__ import annotations
@@ -287,17 +286,9 @@ def cmd_escalate(command: str, argv: list[str]) -> int:
     return _guarded(act)
 
 
-def _gone(verb: str) -> int:
-    """An approval command that no longer exists (SR-210): refused, nothing recorded."""
-    print(f"plumb: {verb} no longer exists; nothing was recorded", file=sys.stderr)
-    return EXIT_REFUSED
-
-
 def cmd_spec(command: str, argv: list[str]) -> int:
     from plumb.capture.spec import SpecError, set_state, show_lines
 
-    if argv[:1] == ["approve"]:
-        return _gone("spec approve")
     parser = _parser(command, "An escalated spec (an INT with mode escalated and members): "
                      "show prints every member in full with the set hash; state says whether "
                      "the judge approved the set whole.")
@@ -318,34 +309,6 @@ def cmd_spec(command: str, argv: list[str]) -> int:
         except SpecError as exc:
             print(f"plumb: {exc}", file=sys.stderr)
             return EXIT_FINDINGS
-        return 0
-
-    return _guarded(act)
-
-
-# --------------------------------------------------------------------------- triage
-
-
-def cmd_triage(command: str, argv: list[str]) -> int:
-    from plumb.capture.triage import log_triage, triage, view_lines
-
-    if any(a == "--approve" or a.startswith("--approve=") for a in argv):
-        return _gone("triage --approve")
-    parser = _parser(command, "Proposed records grouped by faithfulness to your words (the "
-                     "low-risk group first, riskier records individually). Advisory: it "
-                     "approves nothing.")
-    args = parser.parse_args(argv)
-    core = _core(args)
-
-    def act() -> int:
-        view = triage(core)
-        log_triage(core, view)
-        if args.as_json:
-            import dataclasses
-
-            emit(dataclasses.asdict(view), True)
-        else:
-            emit(view_lines(view), False)
         return 0
 
     return _guarded(act)
@@ -481,7 +444,6 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "jev": cmd_jev,
     "config": cmd_config,
     "clarify": cmd_clarify,
-    "triage": cmd_triage,
     "escalate": cmd_escalate,
     "spec": cmd_spec,
     "capture": cmd_capture,

@@ -204,7 +204,7 @@ def targets(core: Any, ids: Sequence[str] | None = None) -> tuple[list[Any], lis
     IDs: every intent not confirmed whose quote is in no prompt the hook logged. A named
     requirement or decision stands for the intents it derives from. A confirmed intent is
     skipped either way: the owner already confirmed it."""
-    from plumb.capture.triage import _Prompts, _verified_intent
+    from plumb.understand.claim import _Prompts, _verified_intent
 
     index = core.index()
     statuses = core.status()

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// The real Python server on isolated demo data; see tests/e2e/server.py.
+// The real Python server on isolated data; see tests/e2e/server.py.
 const python = process.env.PLUMB_PYTHON ?? 'python';
 // The bundle copy a test rebuilds under an open tab (tests/e2e/studies.spec.ts); workers inherit it.
 process.env.PLUMB_E2E_SWAP ??= join(tmpdir(), 'plumb-e2e-swap');

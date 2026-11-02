@@ -5,8 +5,7 @@ The set is anchored on an ``INT`` with ``mode: escalated`` and a ``members`` lis
 ``approval`` event confirms the anchor and every member at their hashes and carries
 ``set: {anchor, hash}``, where the hash is ``sha256(canonical_json(sorted [id, hash]
 pairs))`` over the anchor and its members. An edit of any member afterwards makes that member
-an unconfirmed edit and the set ``unconfirmed``. No command writes it any more (SR-210):
-``approve_set`` stays as a library function for history and fixtures.
+an unconfirmed edit and the set ``unconfirmed``. No command writes it: the judge worker does (SR-210, SR-380).
 """
 
 from __future__ import annotations
@@ -170,22 +169,6 @@ def show_lines(core: Core, anchor: str) -> list[str]:
     lines.append(f"set hash: {current_set_hash(core, anchor)}")
     lines.append("the judge approves the set whole on your behalf, or asks you about it")
     return lines
-
-
-def approve_set(core: Core, anchor: str, *, note: str = "") -> LogEntry:
-    """The owner's one set-hash approval, from the owner's own terminal only
-    (``approvals.require_owner``): a library function; no command calls it (SR-210)."""
-    from plumb.approvals import refuse_under_marker, require_owner
-
-    refuse_under_marker("spec approve")
-    records, digest = set_payload(core, anchor)
-    require_owner("spec approve", f"approve the escalated spec {anchor} and its "
-                  f"{len(records) - 1} members at their current content (set "
-                  f"{digest['hash'][:19]}), as yourself (by: owner)?")
-    payload = {"records": records, "set": digest, "by": "owner", "prompt_digest": None,
-               "quote": None, "quote_digest": None, "affirmation": None, "stated_set": None,
-               "note": note}
-    return core.log_append("events", "approval", payload)
 
 
 def waiting_line(core: Core, anchor: str) -> str | None:

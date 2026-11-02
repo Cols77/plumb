@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
-from fakes import FakeVerify, agent_notes
+from fakes import FakeVerify
 
 from plumb import stale
 from plumb.api import open_core
@@ -128,8 +128,11 @@ def test_pre_existing_stale_listed_once_not_blocking(project: Path, hook_input) 
     out = run_stop(project, hook_input, verify=_verify())
     assert _block(out) is None
     # cards only (SR-012): the note for the agent is not in the owner's text; the status line
-    # counts the stale link
+    # counts the stale link once the background worker has refreshed the counts (SR-375)
     assert "already stale" not in _summary(out)
+    from plumb.understand.summary import after_stop
+
+    after_stop(open_core(project), "s1")
     status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert status["stale_links"] == 1
     start_turn(project, turn_id="turn-2")
@@ -171,11 +174,6 @@ def test_hold_ends_after_max_with_card(project: Path, hook_input) -> None:
     out = run_stop(project, hook_input, verify=_verify(), active=True)
     assert _block(out) is None
     assert len(_summary(out).splitlines()) <= 1      # SR-265: one plumb line at most
-    summary = agent_notes(project)
-    # the card the hold filed is complete (SR-116), so the agent gets it: its title, each option
-    assert "\nAdds numbers\n" in f"\n{summary}"
-    assert "  1. Keep the wording as it is (recommended) - Keeps" in (
-        summary)
     (card,) = stale.read_cards(project, "s1")
     assert card["link"] == "SR-001#0" and card["status"] == "open"
 
@@ -224,28 +222,6 @@ def test_no_baseline_no_hold(project: Path, hook_input) -> None:
     assert _block(run_stop(project, hook_input, verify=_verify())) is None
 
 
-def test_ex5_summary_names_requirement_change_and_resolutions_and_the_card_waits(
-        project: Path, hook_input) -> None:
-    start_turn(project)
-    edit(project, "src/calc.py", CHANGED)
-    stale.add_card(project, "s1", link="SR-001#0", record="SR-001", path="src/calc.py",
-                   topic="Adds numbers", issue="add now sums its arguments in the other order",
-                   options=["Keep the wording as it is", "Reword it to match the change",
-                            "Undo the change"], recommended=1, turn=1,
-                   consequences=["keeps both", "rewords it", "undoes it"], why="it is cosmetic")
-    out = run_stop(project, hook_input, verify=_verify())
-    assert _block(out) is None                         # the turn may end with the card waiting
-    assert _summary(out) == ""                         # SR-295 EX-3: the agent's to fix
-    lines = agent_notes(project).splitlines()
-    head = lines.index("add now sums its arguments in the other order") - 1
-    assert lines[head] == "Adds numbers"
-    options = [line for line in lines[head:] if line[:5] in ("  1. ", "  2. ", "  3. ")]
-    assert options == ["  1. Reword it to match the change (recommended) - rewords it",
-                       "  2. Keep the wording as it is - keeps both",
-                       "  3. Undo the change - undoes it"]
-    assert "it is cosmetic" in lines
-
-
 _BARE_ID = re.compile(r"(?<![\w-])(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})(?![\w-])")
 _INTERNAL = re.compile(r"\b(jobs?|dispatchers?|hash(?:es)?|workers?)\b", re.IGNORECASE)
 
@@ -258,10 +234,8 @@ def test_stale_card_text_passes_both_owner_text_scanners(project: Path) -> None:
                     ("a", "c"))
     card = stale.default_card(row, "Adds numbers")
     stale.add_card(project, "s1", turn=1, **card)
-    from plumb.understand import fullcard
-
     (entry,) = stale.read_cards(project, "s1")
-    text = "\n".join([fullcard.render(fullcard.stale_content(open_core(project), entry)),
+    text = "\n".join([entry["topic"], entry["issue"], *entry["options"],
                       owner_text.STALE_HOLD_ENDED.format(n=3, title="Adds numbers")])
     assert bare_cli_verbs(text) == []
     assert _BARE_ID.findall(text) == [] and _INTERNAL.findall(text) == []

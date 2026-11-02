@@ -26,6 +26,8 @@
 # escalation: {max_requirements: 3, max_features: 1, diff_lines: 400, diff_files: 10}
 # trace:
 #   exempt: []                 # source globs that need no requirement (untraced changes)
+# freeze: []                 # parts that count in no drift, brief or merge hold (SR-380); one
+#                            # naming codex or hermes wakes when that host is the agent
 
 # plumb's own repository: its pytest plugin is shared test infrastructure too (plan 4.1).
 verify:
@@ -43,3 +45,12 @@ auto_approve:
   backend: jev
   min_probability: 0.9
   min_confidence: high
+freeze:   # SR-380: asleep while Claude Code is the agent working on plumb
+  - src/plumb/hosts/codex
+  - src/plumb/hosts/hermes
+  - tests/hosts/test_codex.py
+  - tests/hosts/test_hermes.py
+  - tests/hosts/hermes_probe
+  - src/plumb/evaluate
+  - tests/evaluate
+  - .plumb/eval

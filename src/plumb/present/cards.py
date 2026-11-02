@@ -166,7 +166,10 @@ def awaiting_lines(core: Any, statuses: Mapping[str, Any]) -> list[str]:
         said = str(asked[0].get("question") or "").rsplit("\n\n", 1)[-1]
         lines.append(owner_text.AWAITS_QUESTIONS.format(
             n=len(asked), s="s" if len(asked) > 1 else "", said=said))
-    waiting = sum(s.confirmation != "confirmed" for s in statuses.values())
+    from plumb.query import retired_ids
+
+    retired = retired_ids(core.index())      # SR-380: a frozen record is not waiting on a judge
+    waiting = sum(s.confirmation != "confirmed" for i, s in statuses.items() if i not in retired)
     if waiting:
         lines.append(owner_text.AWAITS_JUDGE.format(n=waiting, s="s" if waiting > 1 else ""))
     return lines or [owner_text.AWAITS_NOTHING]

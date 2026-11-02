@@ -4,17 +4,16 @@
 
 from __future__ import annotations
 
+from plumb.normalize import sha256_text
+
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from plumb.api import open_core
 from plumb.capture import ownerconfig
 from plumb.capture.autoapprove import auto_approve_state
-from plumb.understand import clarify, files, gate, hooks, read, typed
-from understand.test_clarify_release import SESSION as GO_SESSION
-from understand.test_clarify_release import _ctx, _entries, _failed_check
+from plumb.understand import clarify, files, read, typed
 from understand.test_read_job import (
     SESSION,
     ctx_for,
@@ -131,7 +130,8 @@ def test_namespaced_auto_approve_switches_and_counts_as_the_owners(core,
     assert read.on_prompt(ctx_for(core), core, {"digest": digest, "text": text}) is None
     after = open_core(core.root)
     (entry,) = [e for e in after.events() if e.kind == "config"]
-    assert entry.payload["via"] == "typed" and ownerconfig.typed_proof(entry)
+    assert entry.payload["via"] == "typed" \
+        and ownerconfig.typed_proof(entry, {sha256_text(text): text})   # "on" needs the words
     assert ownerconfig.latest(list(after.events())) == entry
     assert auto_approve_state(after).configured
 
@@ -141,28 +141,6 @@ def test_ex3_namespaced_lookalike_switches_nothing(core, engine_standins) -> Non
     digest = log_prompt(core, text)
     read.on_prompt(ctx_for(core), core, {"digest": digest, "text": text})
     assert [e for e in open_core(core.root).events() if e.kind == "config"] == []
-
-
-def test_namespaced_go_releases_a_failed_check(repo: Path, engine_standins: Any) -> None:
-    from capture.capture_helpers import log_prompt as hook_prompt
-
-    _failed_check(repo, engine_standins)
-    text = "/plumb:plumb go"
-    go = hook_prompt(repo, text, session=GO_SESSION)
-    hooks.on_prompt(_ctx(), open_core(repo), {"digest": go, "text": text})
-    assert not gate.is_closed(repo, GO_SESSION)
-    assert [e["by"] for e in _entries(repo)] == ["release:typed"]
-
-
-def test_ex3_plumbing_go_releases_nothing(repo: Path, engine_standins: Any) -> None:
-    from capture.capture_helpers import log_prompt as hook_prompt
-
-    _failed_check(repo, engine_standins)
-    for text in ("/plumbing go", "/plumb:other go"):
-        go = hook_prompt(repo, text, session=GO_SESSION)
-        hooks.on_prompt(_ctx(), open_core(repo), {"digest": go, "text": text})
-    assert gate.is_closed(repo, GO_SESSION)
-    assert [e["by"] for e in _entries(repo)] == []
 
 
 def test_a_namespaced_undo_entry_counts_only_as_the_typed_undo(repo: Path) -> None:

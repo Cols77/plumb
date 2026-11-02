@@ -1,6 +1,6 @@
-"""SR-225: the prompt hook flags a request that may change a confirmed record and holds
-nothing itself (the clarify job holds once it finds a request: a question never holds); a
-request that touches nothing confirmed runs no model."""
+"""SR-225: the prompt hook flags a request that may change a confirmed record and, when no
+intent loop ran for it, holds edits (SR-378 EX-3; a question never holds); a request that
+touches nothing confirmed runs no model."""
 
 from __future__ import annotations
 
@@ -67,19 +67,14 @@ def test_ex1_the_hook_flags_the_record_and_holds_nothing_itself(records: Path,
 
     text = "make add subtract instead, SR-001"
     out = _run(records, hook_input, text)
-    assert "this may change SR-001" in out and "edits are held" not in out
-    assert gate.state(records, SESSION).state == "open"
+    assert "this may change SR-001" in out
+    assert gate.closed_reason(records, SESSION) == "intent change: SR-001 EX-1"
     rows = [json.loads(line) for line in
             (records / ".plumb" / "session" / "intent_flags.jsonl").read_text("utf-8").splitlines()]
     digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
     assert [(r["session"], r["prompt_digest"], r["subject"]) for r in rows] \
         == [(SESSION, digest, "SR-001")]
-    # the clarify job turns the flag into the hold once it finds a request (SR-225 EX-1)
     core = open_core(records)
-    from plumb.understand import clarify
-
-    assert clarify.intent_change_hold(core, SESSION, digest) == "intent change: SR-001 EX-1"
-    gate.close(records, SESSION, digest, "intent change: SR-001 EX-1")
     assert gate.release(core, SESSION, "typed")   # the typed /plumb go releases it
     assert gate.state(records, SESSION).state == "open"
 

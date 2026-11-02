@@ -125,17 +125,18 @@ def test_no_test_files_ship_in_the_plugin() -> None:
 @pytest.mark.sr("SR-279")
 def test_every_hook_has_a_timeout() -> None:
     """Each hook is bounded; plumb's own watchdog (90 s, the stop read-back 1 s more) sits
-    inside each bound (SR-310: 120 s for every hook)."""
+    inside each bound (SR-310: 120 s), except pre-tool and edit-check, 10 s (SR-379)."""
     from plumb.hosts.claude_code.hookio import HARD_LIMIT_S
     from plumb.hosts.claude_code.stop import STOP_GRACE_S
 
     hooks = json.loads(_build_plugin().hooks_json())["hooks"]
     timeouts = {h["command"].rsplit(" ", 1)[1]: h["timeout"]
                 for groups in hooks.values() for g in groups for h in g["hooks"]}
-    assert timeouts == {"session-start": 120, "prompt": 120, "pre-tool": 120, "edit-check": 120,
+    assert timeouts == {"session-start": 120, "prompt": 120, "pre-tool": 10, "edit-check": 10,
                         "post-edit": 120, "question-answer": 120, "stop": 120,
                         "subagent-stop": 120, "session-end": 120}
-    assert all(t > HARD_LIMIT_S + STOP_GRACE_S for t in timeouts.values())
+    assert all(t > HARD_LIMIT_S + STOP_GRACE_S for n, t in timeouts.items()
+               if n not in ("pre-tool", "edit-check"))
     post = hooks["PostToolUse"]
     assert [g["hooks"][0].get("async", False) for g in post] == [True, False, True]
 
@@ -204,3 +205,100 @@ def test_every_test_file_spelling_fails_the_check(isolated, name: str) -> None:
     mod.mkdir()
     (mod / name).write_text("//\n", encoding="utf-8")
     assert [p.name for p in isolated.test_only_files()] == [name]
+
+
+# SR-377: the version is the git commit count, written to the five places
+
+def _scratch_repo(tmp_path: Path, commits: int) -> Path:
+    import subprocess
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                       cwd=tmp_path, check=True, capture_output=True)
+
+    (tmp_path / "src" / "plumb").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.1.0"\n', encoding="utf-8")
+    (tmp_path / "src" / "plumb" / "__init__.py").write_text('__version__ = "0.1.0"\n',
+                                                            encoding="utf-8")
+    git("init", "-q")
+    for n in range(commits):
+        git("commit", "-q", "--allow-empty", "-m", f"c{n}")
+    return tmp_path
+
+
+@pytest.mark.sr("SR-377")
+def test_version_is_commit_count(tmp_path: Path) -> None:
+    """SR-377 EX-1: a repository with N commits builds 0.1.N."""
+    assert _build_plugin().derived_version(_scratch_repo(tmp_path, 3)) == "0.1.3"
+
+
+@pytest.mark.sr("SR-377")
+def test_new_commit_raises_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-377 EX-1: one more commit, and the five places read 0.1.N+1."""
+    import subprocess
+
+    module = _build_plugin()
+    repo = _scratch_repo(tmp_path, 2)
+    monkeypatch.setattr(module, "REPO", repo)
+    monkeypatch.setattr(module, "SRC", repo / "src" / "plumb")
+    module.set_version(module.derived_version())
+    assert module.version() == "0.1.2"
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                    "--allow-empty", "-m", "more"], cwd=repo, check=True, capture_output=True)
+    module.set_version(module.derived_version())
+    assert module.version() == "0.1.3"
+    assert '__version__ = "0.1.3"' in (repo / "src" / "plumb" / "__init__.py").read_text()
+    assert json.loads(module.plugin_json())["version"] == "0.1.3"
+    assert json.loads(module.marketplace_json())["plugins"][0]["version"] == "0.1.3"
+    assert module.wheel_name() == "plumb-0.1.3-py3-none-any.whl"   # the manifest names it
+
+
+@pytest.mark.sr("SR-377")
+def test_check_names_disagreeing_places(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                        capsys) -> None:
+    """SR-377 EX-3: a place that says another version fails --check, named."""
+    module = _build_plugin()
+    repo = _scratch_repo(tmp_path, 1)
+    (repo / "src" / "plumb" / "__init__.py").write_text('__version__ = "0.9.9"\n', encoding="utf-8")
+    monkeypatch.setattr(module, "REPO", repo)
+    monkeypatch.setattr(module, "SRC", repo / "src" / "plumb")
+    plugin = repo / "plugin"
+    (plugin / ".claude-plugin").mkdir(parents=True)
+    (plugin / ".claude-plugin" / "plugin.json").write_text('{"version": "0.5.5"}\n',
+                                                           encoding="utf-8")
+    monkeypatch.setattr(module, "PLUGIN", plugin)
+    monkeypatch.setattr(module, "VENDOR", plugin / "vendor")
+    monkeypatch.setattr(module, "text_files", lambda: {
+        plugin / ".claude-plugin" / "plugin.json": module.plugin_json()})
+    assert module.main(["--check"]) == 1
+    out = capsys.readouterr().out
+    assert "plugin.json: differs" in out and "__init__.py: version differs" in out
+
+
+@pytest.mark.sr("SR-380")
+@pytest.mark.parametrize("argv", [["view"], ["import", "pi-agent-factory", "x"], ["mcp", "serve"],
+                                  ["triage"], ["spec", "approve", "INT-001"]])
+def test_removed_verbs_are_unknown(argv: list[str], capsys) -> None:
+    """SR-380 EX-1: the removed commands do not exist."""
+    from plumb import cli
+
+    try:
+        code = cli.main(argv)
+    except SystemExit as exc:
+        code = exc.code
+    err = capsys.readouterr().err
+    assert code == 2 and ("unknown command" in err or "invalid choice" in err)
+
+
+@pytest.mark.sr("SR-380")
+def test_wheel_requires_pyyaml_only() -> None:
+    """SR-380 EX-4: installing plumb pulls PyYAML only; Manim is the extra plumb[video]."""
+    import zipfile
+
+    [wheel] = (PLUGIN / "vendor").glob("plumb-*.whl")
+    with zipfile.ZipFile(wheel) as z:
+        meta = z.read(next(n for n in z.namelist() if n.endswith("METADATA"))).decode("utf-8")
+    required = [line.split(": ", 1)[1] for line in meta.splitlines()
+                if line.startswith("Requires-Dist: ")]
+    assert [r for r in required if "extra ==" not in r] == ["pyyaml>=6"]
+    assert any(r.startswith("manim") and "extra == 'video'" in r for r in required)

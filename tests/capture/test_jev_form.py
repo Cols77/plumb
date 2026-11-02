@@ -57,21 +57,29 @@ def test_ex2_choice_form_asks_the_three_way_choice_and_reads_supported(
     stub.close()
 
 
-def test_ex3_a_yes_no_calibration_does_not_serve_the_choice_form(
+def old_form_calibration(repo: Path) -> None:
+    """The latest calibration measured the entailment question (before SR-372)."""
+    core = open_core(repo)
+    calibration = [e for e in core.events() if e.kind == "calibration"][-1]
+    core.log_append("events", "calibration", {**calibration.payload, "form": "yes_no"})
+
+
+def test_ex3_a_calibration_of_another_question_form_does_not_serve_approval(
         repo: Path, write_record, monkeypatch) -> None:
+    """SR-372: calibration measures the approval question; one of the entailment forms is
+    never served to auto-approval."""
     from plumb.capture.autoapprove import auto_approve_state
     from plumb.capture.jevcmd import jev_status, status_lines
 
     stub = calibrated(repo, write_record, monkeypatch)
     assert run(repo, "config", "auto-approve", "on") == 0      # the owner's terminal (test)
-    assert auto_approve_state(open_core(repo)).effective
     calibration = [e for e in open_core(repo).events() if e.kind == "calibration"][-1]
-    assert calibration.payload["form"] == "yes_no"
-    set_form(repo, stub, "choice")
+    assert calibration.payload["form"] == "contradiction"
+    old_form_calibration(repo)
     state = auto_approve_state(open_core(repo))
     assert state.effective             # DEC-143: the floor alone; the calibration is unused
     text = "\n".join(status_lines(jev_status(open_core(repo))))
-    assert "calibration for the choice form is needed" in text
+    assert "calibration for the contradiction form is needed" in text
     stub.close()
 
 
@@ -83,7 +91,8 @@ def test_the_verdict_cascade_does_not_use_a_calibration_of_the_other_form(
     from plumb.understand import verdict
 
     stub = calibrated(repo, write_record, monkeypatch)
-    set_form(repo, stub, "choice")
+    stub.noul = lambda state: 0.9                   # JEV now answers benign at 0.9
+    old_form_calibration(repo)
     core = open_core(repo)
     entry = {"id": "INT-100", "kind": "intent", "premise": {"messages": [
         {"digest": "sha256:" + "1" * 64, "text": "please build feature alphaa"}]}}

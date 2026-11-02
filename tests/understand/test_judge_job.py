@@ -367,6 +367,22 @@ def test_the_schema_is_a_checkable_answer_shape() -> None:
     assert FakeDispatcher().available() is None
 
 
+@pytest.mark.sr("SR-299")
+def test_ex2_the_format_given_to_the_model_is_lenient() -> None:
+    """DEC-208: the schema file itself (what the model is given) asks only a question's text;
+    the instructions and the retry enforce the records and two to four options."""
+    import json
+
+    from plumb.understand import judge
+
+    given = json.loads((judge.HERE / "schemas" / "judge.json").read_text(encoding="utf-8"))
+    item = given["properties"]["questions"]["items"]
+    assert item["required"] == ["question"]
+    assert "minItems" not in item["properties"]["options"]
+    assert "maxItems" not in item["properties"]["options"]
+    assert judge.schema == {"id": judge.SCHEMA_ID, **given}
+
+
 # ---- J3: one job per capture ----------------------------------------------------------------
 
 SIX = {"intent": {"quote": "add multiply next to add", "readback": "Add multiply beside add",
@@ -400,10 +416,8 @@ def test_ex9_capture_of_one_intent_and_six_requirements_queues_one_job_for_seven
     assert job.kind == "judge" and job.session == SESSION
     assert [r["id"] for r in job.inputs["records"]] == list(result.written)
     assert len(job.inputs["records"]) == 7
-    premises = [e for e in open_core(repo).events() if e.kind == "premise"]
-    assert [p.payload["text"] for p in premises] == [SAID]
-    assert premises[0].payload["digest"] == job.inputs["records"][0]["premise"]["messages"][0][
-        "digest"]
+    assert [e for e in open_core(repo).events() if e.kind == "premise"] == []   # DEC-116
+    assert [m["text"] for m in job.inputs["records"][0]["premise"]["messages"]] == [SAID]
 
 
 def test_the_same_capture_twice_queues_no_second_job(repo: Path, engine_standins) -> None:

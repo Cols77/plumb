@@ -1,5 +1,4 @@
-"""The band's press on a new study, or on a question waiting in the room (SR-333), opens the
-browser room on it (SR-294 EX-3, EX-4).
+"""The band's press on a new study opens the browser room on it (SR-294 EX-3, EX-4).
 
 Only ``plumb mod room`` calls this, after the panel's key check, so the room never opens
 without the owner's press (EX-2). The room's capability is derived from the panel's key, which
@@ -81,17 +80,3 @@ def open_study(root: Path, session: str, key: str, slug: str) -> dict[str, Any]:
     webbrowser.open(f"{origin}/?study={urllib.parse.quote(slug)}#token={token}")
     opened = study.mark(root, slug, "opened")
     return {"origin": origin, "slug": slug, "status": opened["status"]}
-
-
-def open_question(root: Path, session: str, key: str, card: str) -> dict[str, Any]:
-    """SR-333 EX-3, DEC-294: the band's 'a question waits in the room' pressed: the room opens
-    on that question's card, as on a study, and the band's line goes."""
-    from plumb.understand import cardstore, question
-
-    if not any(c.id == card for c in cardstore.load(root, session)):
-        raise LookupError("no such question waits in the room")
-    origin, token = _room(root, session, key)
-    webbrowser.open(f"{origin}/?session={urllib.parse.quote(session)}"
-                    f"&card={urllib.parse.quote(card)}#token={token}")
-    (files.session_dir(root, session) / question.ROOM_WAITS).unlink(missing_ok=True)
-    return {"origin": origin, "card": card}

@@ -7,9 +7,7 @@ All of them take ``--session <id>`` and read one JSON object on stdin; none take
   for the session (the first registration wins). Answer ``{active, since, session}``.
 - ``room``   ``--study <slug>``, stdin ``{"key": "<64 hex>"}``: the owner pressed the band's new
   study line: the browser room opens on it and the study is marked opened (SR-294). Answer
-  ``{origin, slug, status}``. ``--card <id>`` in place of ``--study``: the band's 'a question
-  waits in the room' line: the room opens on that question and the line goes (SR-333).
-  Answer ``{origin, card}``.
+  ``{origin, slug, status}``.
 - ``study``  ``--study <slug> --depth md|diagrams|none``, stdin ``{"key": "<64 hex>"}``: the
   owner's choice on a study idea in the band: accepted at that depth, or declined ('not now',
   ``none``) (SR-294 EX-7..EX-9, DEC-207). ``video`` is refused until video studies exist.
@@ -46,7 +44,6 @@ def run(command: str, argv: list[str]) -> int:
     add_common(parser)
     parser.add_argument("--session", required=True)
     parser.add_argument("--study", default=None)
-    parser.add_argument("--card", default=None)
     parser.add_argument("--depth", default=None)
     parser.add_argument("--refresh", choices=("yes", "no"), default=None)
     args = parser.parse_args(argv)
@@ -71,12 +68,11 @@ def run(command: str, argv: list[str]) -> int:
             from plumb.browser import launch
 
             session.check_key(root, args.session, payload, "room")
-            if not args.study and not args.card:
-                print("plumb mod room: --study or --card is required", file=sys.stderr)
+            if not args.study:
+                print("plumb mod room: --study is required", file=sys.stderr)
                 return EXIT_USAGE
             key = str(payload["key"]).lower()
-            _answer(launch.open_question(root, args.session, key, args.card) if args.card
-                    else launch.open_study(root, args.session, key, args.study), args.as_json)
+            _answer(launch.open_study(root, args.session, key, args.study), args.as_json)
             return EXIT_OK
         if args.action == "study":
             from plumb import study

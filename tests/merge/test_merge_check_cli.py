@@ -32,11 +32,14 @@ def _snapshot(root: Path) -> dict[str, str]:
 
 
 def test_report_caps_lists(repo: Path, capsys) -> None:
-    """SR-052 EX-2: 25 untraced paths show 10 and the rest in --json."""
+    """SR-052 EX-2: 25 untraced paths show 10 and the rest in --json; listed in the full
+    report (plumb context merge), never by the merge check itself (SR-374 EX-6)."""
     base = _head(repo)
     for n in range(25):
         write(repo, f"src/m{n:02d}.py", "x = 1\n")
     assert cli.main(["merge-check", base, "--no-run", "--root", str(repo)]) == 0
+    assert "untraced" not in capsys.readouterr().out
+    assert cli.main(["context", "merge", base, "--root", str(repo)]) == 0
     out = capsys.readouterr().out
     shown = [line for line in out.splitlines() if line.startswith("  untraced src/m")]
     assert len(shown) == 10
@@ -71,7 +74,7 @@ def test_default_base_and_green_exit(repo: Path, capsys) -> None:
     out = capsys.readouterr().out
     assert code == 0, out
     assert out.startswith("plumb merge-check: main..HEAD")
-    assert "full run:" in out and "merge evidence: recorded" in out
+    assert "nothing holds the merge" in out
 
 
 def test_usage_errors(repo: Path, capsys) -> None:

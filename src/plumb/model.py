@@ -22,7 +22,7 @@ _ID_FIELDS = ("id", "title", "links")
 # SR-127 (DEC-037): a requirement's proof plan and evidence are the agent's notes about showing
 # the work, not the owner's intent: like ``links`` they stay out of the record hash, so
 # recording them never unconfirms a record nor moves its links
-UNHASHED = frozenset({"links", "proof", "evidence"})
+UNHASHED = frozenset({"links", "proof", "evidence", "frozen"})   # frozen: SR-380
 
 
 class RecordError(ValueError):

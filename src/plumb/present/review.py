@@ -1,8 +1,7 @@
 """``plumb review`` (``/plumb review``): the deep review, in the owner's terms (sp5 6.2).
 
-1. what awaits the owner: CAPTURE's triage groups (the low-risk group first, then each
-   riskier record with its rating and reason), escalated sets awaiting approval, decisions
-   that matter;
+1. what awaits the owner: the records waiting on a judge, escalated sets awaiting approval,
+   decisions that matter;
 2. approvals the owner did not type (agent-relayed, judge-approved) since the last merge evidence,
    for a glance, each judge approval with its label;
 3. drift: stale and dangling links, unconfirmed edits, failing acceptance tests, and CAPTURE's
@@ -30,43 +29,13 @@ def _awaiting(core: Any, scope: set[str] | None) -> list[str]:
     lines = ["1. awaits you:"]
     index = core.index()
     statuses = core.status()
-    try:
-        from plumb.capture import api
-    except ImportError:
-        api = None
-    view = None
-    if api is not None:
-        try:
-            view = api.triage(core, sorted(scope) if scope else None)
-        except Exception:  # noqa: BLE001
-            view = None
-    if view is not None and getattr(view, "available", False):
-        for item in view.individual:
-            outcome = getattr(item, "outcome", "")
-            if outcome:  # in words, never a probability next to a risk
-                from plumb.capture.triage import outcome_words
+    pending = [i for i, s in sorted(statuses.items()) if s.confirmation != "confirmed"
+               and _in_scope(i, scope)]
+    if pending:
+        from plumb.present.owner_text import AWAITS_JUDGE
 
-                words = outcome_words(item)
-                held = str(getattr(item, "excluded", None) or "").startswith(words)
-                rating = item.rating if held else f"{item.rating}: {words}"
-            else:
-                rating = (item.rating if item.score is None
-                          else f"{item.rating} {item.score:.2f}")
-            why = f"; {item.excluded}" if getattr(item, "excluded", None) else ""
-            lines.append(f"  \"{item.title}\" ({rating}{why})")   # no id (SR-267)
-    else:
-        pending = [i for i, s in sorted(statuses.items()) if s.confirmation != "confirmed"
-                   and _in_scope(i, scope)]
-        cause = str(getattr(view, "unavailable", "") or "")
-        lines.append("  triage unavailable" if api is None else
-                     f"  judging unavailable: {cause}: every record is shown individually"
-                     if cause else
-                     "  no judgments available: every record is shown individually")
-        if pending:
-            from plumb.present.owner_text import AWAITS_JUDGE
-
-            n = len(pending)
-            lines.append("  " + AWAITS_JUDGE.format(n=n, s="" if n == 1 else "s"))
+        n = len(pending)
+        lines.append("  " + AWAITS_JUDGE.format(n=n, s="" if n == 1 else "s"))
     try:
         from plumb.capture import spec
 
@@ -114,7 +83,10 @@ def _glance(core: Any, scope: set[str] | None) -> list[str]:
                 how = str(judge_label(SimpleNamespace(approved_by=by,
                                                       auto=judge_auto(entry.payload))))
             else:
-                how = f"relayed from your words \"{entry.payload.get('quote') or ''}\""
+                from plumb import words
+
+                quote = words.joined(core, entry).get("quote") or ""   # DEC-116: local words
+                how = f"relayed from your words \"{quote}\""
                 if entry.payload.get("prompt_objects") is True:
                     how += " (the same message also objected or asked for a change)"
             lines.append(f"  \"{index[record_id].title}\" {how}, {entry.at}")

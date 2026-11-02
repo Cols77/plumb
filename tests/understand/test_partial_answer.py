@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from understand.test_answer_once import FORMAT, _reply
-from understand.test_clarify_job import _asked, _by_kind, _cards
+from understand.test_clarify_job import _asked, plant_card, _by_kind, _cards
 
 pytestmark = pytest.mark.sr("SR-214")
 WORDS = "2, and also make the pane resizable"
@@ -18,6 +18,7 @@ READS = "make the pane resizable"
 
 def _answering(repo: Path, world: Any, readback: dict[str, Any]) -> tuple[str, Any]:
     _asked("let users export their data", FORMAT, repo, world)
+    plant_card(repo)
     (card,) = _by_kind(repo, "choice")
     first = {c.id for c in _cards(repo)}
     _reply(repo, world, WORDS,

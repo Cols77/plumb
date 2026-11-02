@@ -168,7 +168,7 @@ def test_a_question_waiting_for_the_owner_holds_with_4(tmp_path: Path) -> None:
 
 def test_forty_records_waiting_on_a_judge_are_counted_and_do_not_hold(tmp_path: Path) -> None:
     """EX-31: the merge's only finding is 40 touched requirements waiting on a judge: they
-    are listed, counted, and the check exits 0."""
+    are in the report's data, never printed by the quick check (SR-374 EX-6), and it exits 0."""
     root = make_repo(tmp_path / "main")
     for n in range(101, 141):
         write_record(root, record(f"SR-{n}", f"rule {n}", statement=f"Rule {n} holds.",
@@ -182,9 +182,7 @@ def test_forty_records_waiting_on_a_judge_are_counted_and_do_not_hold(tmp_path: 
     report = check(open_core(feat))
     assert len(report.unconfirmed) == 40
     text = "\n".join(report.lines)
-    assert "40 requirements this merge touches wait on a judge (listed; this does not hold " \
-           "the merge):" in text
-    assert "+30 more" in text
+    assert "wait on a judge" not in text and "+30 more" not in text
     assert report.exit == 0, report.lines
 
 
