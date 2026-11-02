@@ -354,30 +354,6 @@ class EscalationSuggestion:
     line: str = ""                         # the one line a hook prints
 
 
-@dataclass(frozen=True)
-class TriageItem:
-    id: str
-    hash: Hash = ""
-    title: str = ""
-    kind: str = ""
-    score: float | None = None             # faithfulness, 0..1; None without a judgment
-    rating: Literal["faithful", "riskier", "unrated"] = "unrated"
-    # what the judgment says, in words: faithful | contradicts | beyond | unverified | unrated
-    outcome: str = ""
-    reason: str = ""
-    excluded: str | None = None            # why it is always shown individually
-    backend: str = ""
-
-
-@dataclass(frozen=True)
-class TriageView:
-    backend: str = "none"
-    available: bool = False                # False: "no judgments available"
-    low_risk: tuple[TriageItem, ...] = ()
-    individual: tuple[TriageItem, ...] = ()
-    unavailable: str = ""                  # why no judge rated them (INT-029), when none did
-
-
 # --------------------------------------------------------------------------- sp5 PRESENT
 # The output contract every host renders (sp5 9): cards and plain-language resolution.
 
@@ -471,7 +447,7 @@ class TurnEvent:
     kind: TurnKind
     root: Path
     session_id: str
-    host: str                         # "claude-code" | "codex" | "pi" | "hermes" | "cli"
+    host: str                         # "claude-code" | "codex" | "hermes" | "cli"
     text: str | None = None           # prompt text (prompt)
     path: str | None = None           # edited path (edit)
     source: str | None = None         # session start source: startup | resume | clear | compact

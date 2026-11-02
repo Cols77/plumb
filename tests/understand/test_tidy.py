@@ -3,7 +3,6 @@ withdraws the ones a confirmed record answers or that repeat another; the model 
 
 from __future__ import annotations
 
-import time
 import types
 from pathlib import Path
 from typing import Any
@@ -13,8 +12,6 @@ import pytest
 from plumb import stale
 from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyQuestion, DispatchError
-from plumb.hosts.claude_code.hookio import Deadline, HookContext
-from plumb.present import owner_text
 from plumb.understand import cardstore, summary, tidy, worker
 from understand.test_judge_job import SESSION, requirement_text
 
@@ -50,9 +47,10 @@ def _status(repo: Path) -> str:
     return cardstore.own_cards(repo, SESSION)[0].status
 
 
-def _turn_end(repo: Path) -> str:
-    ctx = HookContext("stop", {}, repo, SESSION, Deadline(300))
-    return "\n".join(summary.stop_parts(ctx, open_core(repo), {"turn_start": time.time() - 60}).cards)
+def _withdrawn(repo: Path) -> list[str]:
+    """The logged reasons of the withdrawals (SR-218: each one is logged)."""
+    return [str(e.payload.get("reason")) for e in open_core(repo).events()
+            if e.kind == "card-withdrawn"]
 
 
 def test_ex1_a_confirmed_record_that_answers_the_card_withdraws_it_quoting_it(
@@ -60,14 +58,14 @@ def test_ex1_a_confirmed_record_that_answers_the_card_withdraws_it_quoting_it(
     _answer(world, verdict="withdraw_answered", record="SR-001", quote="through the agent in chat")
     _run(repo)
     assert _status(repo) == "withdrawn"
-    assert ('Withdrawn: Answer a conflict in chat, you confirmed SR-001: "through the agent in '
-            'chat"') in _turn_end(repo)
+    (reason,) = _withdrawn(repo)                      # logged, quoting the record's words
+    assert "SR-001" in reason and "through the agent in chat" in reason
 
 
 def test_ex2_a_record_that_is_only_proposed_leaves_the_card(repo: Path, world) -> None:
     _answer(world, verdict="withdraw_answered", record="SR-001", quote="through the agent in chat")
     _run(repo, "proposed")
-    assert _status(repo) == "open"
+    assert _status(repo) == "open" and _withdrawn(repo) == []
 
 
 def test_words_the_record_does_not_hold_leave_the_card(repo: Path, world) -> None:
@@ -87,18 +85,17 @@ def test_ex3_two_stale_cards_asking_the_same_lose_one(repo: Path, write_record,
         {"card": "stale:SR-062#0", "verdict": "withdraw_duplicate", "other": "stale:SR-062#1"}]}}
     _run(repo)
     assert [c.id for c in cardstore.stale_cards(repo, SESSION)] == ["stale:SR-062#0"]
-    assert owner_text.TIDY_DUPLICATE.format(other="Calc SR-062#0") in _turn_end(repo)
+    (reason,) = _withdrawn(repo)                      # the log names the other question
+    assert "Calc SR-062#0" in reason
 
 
 def test_ex4_a_judge_that_cannot_be_reached_withdraws_nothing_and_says_so(
         repo: Path, world) -> None:
     _answer(world, verdict="withdraw_answered", record="SR-001", quote=SAYS)
     world.dispatcher.script = {"tidy": DispatchError("run", "the model could not be reached")}
-    _run(repo)
-    assert _status(repo) == "open"
-    line = _turn_end(repo)
-    assert owner_text.TIDY_COULD_NOT_RUN in line and "couldn't" not in line.lower()
-    assert owner_text.TIDY_COULD_NOT_RUN not in _turn_end(repo)
+    core = _run(repo)
+    assert _status(repo) == "open" and _withdrawn(repo) == []
+    assert summary.owner_line(core, SESSION) == ""   # SR-373: no owner line about it
 
 
 def test_unsure_keeps_the_card(repo: Path, world) -> None:

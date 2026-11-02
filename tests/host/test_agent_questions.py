@@ -157,7 +157,7 @@ def _judge_raises(repo: Path, text: str, principle: str, reading: str = "") -> N
     job = judging.build(core, SESSION, records=["SR-001"])
     if reading:
         job = dataclasses.replace(job, inputs={**job.inputs, "answered": [reading]})
-    judging.apply(core, job, judged(("SR-001", "supported"), questions=[
+    judging.apply(core, job, judged(("SR-001", "beyond"), questions=[
         asking("SR-001", question=text, principle=principle)]))
 
 

@@ -597,14 +597,12 @@ plumb never blocks the owner's work because of its own failure.
 
 ### 6.1 Session brief (session start)
 
-The session-start hook outputs a few lines and a pointer (D13): the record counts, what awaits
-the owner, decisions that matter, drift, open NCs, one line of test evidence, and where the
-rest is (`plumb show <ID>`, `plumb explain <anything>`, `plumb brief --all`). It never lists
-every proposed record; records reach the agent one line at a time as they become relevant
-(section 6.2). `hooks.session_brief: full` restores the longer brief (about 30 lines, hard cap
-40): the active features, confirmed intents in one line each, open decisions that matter,
-stale links, unconfirmed edits, records still proposed, failing or missing evidence, and open
-NCs.
+The session-start hook gives the session lines of the one table of insights (SR-374): the
+intent being worked on in one line, the questions waiting, the open known issues and the records
+changed since the agent last saw them, with no counts and no separate brief (INT-114). It never
+lists every proposed record; records reach the agent one line at a time as they become relevant
+(section 6.2). The rest is one command away (`plumb show <ID>`, `plumb explain <anything>`,
+`plumb context`).
 
 It is context, not procedure.
 

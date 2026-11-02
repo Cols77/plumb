@@ -430,13 +430,13 @@ def _kind_lines(core: Core, ids: Sequence[str]) -> list[str]:
 
 def _understand_after(core: Core, doc: Mapping[str, Any], result: CaptureResult,
                       prompt_digest: str | None) -> None:
-    """SP8: queue the judge job and commit the premise after the records are written; a
-    failing understanding layer never fails a capture."""
+    """SP8: queue the judge job after the records are written (the owner's message is not
+    copied into the tracked log, DEC-116); a failing understanding layer never fails a
+    capture."""
     try:
-        from plumb.understand import judge, premise
+        from plumb.understand import judge
 
         judge.queue_for_capture(core, result, prompt_digest=prompt_digest)
-        premise.commit(core, doc, result, prompt_digest=prompt_digest)
     except Exception:  # noqa: BLE001
         pass
 

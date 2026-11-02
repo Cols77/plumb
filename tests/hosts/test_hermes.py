@@ -383,12 +383,12 @@ def test_uninstall_removes_only_plumb(project: Path) -> None:
 
 
 def test_uninstall_keeps_block_another_host_reads(project: Path) -> None:
-    from plumb.hosts.pi import install as pi
+    from plumb.hosts.codex import install as codex
 
     hermes.install(project)
-    pi.install(project)
+    codex.install(project)
     report = hermes.uninstall(project)
-    assert any("still used by pi" in line for line in report.lines)
+    assert any("still used by codex" in line for line in report.lines)
     assert "plumb:begin" in (project / "AGENTS.md").read_text("utf-8")
 
 
@@ -464,17 +464,14 @@ def test_status_unknown_marker_for_missing_foreign_partial_install(project: Path
     assert baseline_prompt in text
 
 
-def test_pi_and_codex_keep_baseline_fallback_literals(project: Path) -> None:
+def test_codex_keeps_baseline_fallback_literals(project: Path) -> None:
     from plumb.hosts.codex import install as codex
-    from plumb.hosts.pi import install as pi
 
     baseline_marker = ("no session marker on this host: owner-only commands require an "
                        "interactive terminal")
     baseline_prompt = "prompts: CLI-only fallback (the agent runs plumb turn start)"
     assert baseline_marker in "\n".join(codex.status(project))
-    assert baseline_marker in "\n".join(pi.status(project))
     assert baseline_prompt in "\n".join(codex.status(project))
-    assert baseline_prompt in "\n".join(pi.status(project))
 
 
 FAKE_PLUMB = r'''

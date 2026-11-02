@@ -5,8 +5,7 @@ would confirm, reject or change a record, choose a conflict's side or settle a s
 the question as a choice card (its options from the reply) and names it to the agent in its
 next prompt. ``card`` is also how the request check raises the card of a question the owner
 answered before any turn end did (``clarify.apply``). A question that changes no record raises
-none. ``to_room`` and ``answered_in_room``: a judge question the owner chose to study in the
-room (SR-333)."""
+none."""
 
 from __future__ import annotations
 
@@ -24,7 +23,6 @@ kind = "question"
 SCHEMA_ID = "question.v1"
 HERE = Path(__file__).resolve().parent
 EFFECTS = ("accepted", "rejected", "change")
-ROOM_WAITS = "room_waits.json"     # the band's 'a question waits in the room' (DEC-294)
 
 
 def _load_schema() -> Mapping[str, Any]:
@@ -60,48 +58,6 @@ def card(core: Any, asked: Mapping[str, Any], branch: str = "") -> CardState | N
                        "\n".join(["Asked by the agent in its reply", *about]), choices,
                        [(question, record)])
     return dataclasses.replace(made, branch=branch)
-
-
-def to_room(core: Any, session: str, asked: Mapping[str, Any]) -> CardState | None:
-    """SR-333 EX-3, DEC-294: a judge question the owner chose to study in the room becomes
-    its card in the store (every option, a diagram to draw when it needs one), and the band's
-    mark ``ROOM_WAITS`` names it until the owner's press opens the room on it."""
-    from plumb.understand import clarify
-
-    root = Path(core.root)
-    made = card(core, {"question": asked.get("question"), "options": [
-        {"label": o.get("label"), "effect": "change", "consequence": o.get("description")}
-        for o in asked.get("options") or () if isinstance(o, Mapping)], "records": [
-        r.get("id") for r in asked.get("records") or () if isinstance(r, Mapping)]},
-        clarify.repository(root)["branch"])
-    if made is None:
-        return None
-    if asked.get("diagram"):
-        made = dataclasses.replace(made, diagram=f".plumb/session/{session}/diagrams/"
-                                                 f"{made.id.split(':')[-1]}.html")
-    cardstore.save(root, session, [*(c for c in cardstore.own_cards(root, session)
-                                     if c.id != made.id), made])
-    files.write_json_atomic(files.session_dir(root, session) / ROOM_WAITS, {"card": made.id})
-    return made
-
-
-def answered_in_room(core: Any, session: str, card_id: str, label: str) -> None:
-    """SR-333 EX-5: the owner's press in the room on a judge question's card is their answer
-    to that question: logged as a question-tool answer to it (the tool put it to them) and
-    judged again, as the question-answer hook does."""
-    from plumb.understand import judge
-
-    moved = next((e.payload["room"] for e in core.events() if e.kind == "question-answer"
-                  and e.payload.get("session") == session
-                  and isinstance(e.payload.get("room"), Mapping)
-                  and e.payload["room"].get("card") == card_id), None)
-    if moved is None:
-        return
-    logged = core.log_append("events", "question-answer", {
-        "session": session, "question": moved["question"], "options": moved["options"],
-        "answer": label, "via": "question-tool",
-        "asked": {k: moved.get(k) for k in ("job", "key", "records")}})
-    judge.rejudge(core, session, [logged])
 
 
 def _inputs(core: Any, reply: str) -> dict[str, Any] | None:
@@ -144,7 +100,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     branch = clarify.repository(Path(core.root))["branch"]
     own = {c.id for c in cardstore.own_cards(Path(core.root), job.session)}
     raised = [c for q in answer.get("questions") or () if isinstance(q, Mapping)
-              if (c := card(core, q, branch)) is not None and c.id not in own][:1]
+              if (c := card(core, q, branch)) is not None and c.id not in own]
     for c in raised:
         summary.tell_agent(core, job.session, c)    # the next prompt names it (SR-116 EX-4)
     return Applied(job=job.id, cards=tuple(raised))

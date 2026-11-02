@@ -106,7 +106,6 @@ def test_cold_best_of_four_inside_90_percent_of_budget(own_copy: Path) -> None:
 def test_cold_has_no_check_skipped_line(own_copy: Path) -> None:
     _, out = _cold_best(own_copy)
     assert "check skipped" not in out, out
-    assert out.splitlines()[0].startswith("plumb brief")
 
 
 @pytest.mark.load_bound
@@ -194,8 +193,7 @@ def test_cold_start_spawns_map_build_does_not_wait(repo: Path, hook_input, write
     monkeypatch.setattr(verify_api, "spawn_map_build", lambda root: started.append(root))
     lines = _start(repo, hook_input)
     assert len(started) == 1
-    assert "tests: not checked (checking in the background)" in lines
-    assert not any("no mapped tests yet" in line for line in lines)
+    assert not any("tests" in line for line in lines)   # SR-374 EX-9: only what blocks
     # the line is not cached as an answer: once the map exists the next start reports it
     assert not list((repo / ".plumb" / "cache").glob("**/brief_tests*"))
 
@@ -218,7 +216,6 @@ def test_no_network_call_cold(repo: Path, hook_input, write_record, roomy,
                         lambda *a, **k: calls.append("connect"))
     lines = _start(repo, hook_input, verify=FakeVerify())
     assert calls == []
-    assert lines[0].startswith("plumb brief")
     assert not any("rated faithful" in line for line in lines)
 
 
@@ -247,10 +244,11 @@ def test_brief_kept_when_cut(repo: Path, hook_input, write_record, monkeypatch) 
 
     write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
     monkeypatch.setattr(session_start, "hook_budget", lambda name: (lambda root: 0.001))
+    (repo / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
+    (repo / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
     lines = _start(repo, hook_input, verify=FakeVerify())
-    assert lines[0].startswith("plumb brief")
-    assert "waiting on a judge: 1 record" in lines
-    assert "tests: not checked (budget)" in lines
+    assert lines[0].startswith("plumb: changed since you last looked: SR-001")
+    assert lines[-1].startswith("plumb: check skipped (budget)")
 
 
 def test_cold_branch_scan_is_bounded_and_continues_next_start(repo: Path, monkeypatch) -> None:

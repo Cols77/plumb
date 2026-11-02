@@ -16,7 +16,7 @@ run, the tree and the environment (concept 7.5 evidence promotion).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 Runner = Callable[[Any], Any]
@@ -54,22 +54,41 @@ def latest_full_run(core: Any) -> Mapping[str, Any] | None:
     return latest
 
 
-def clean_pass(payload: Mapping[str, Any]) -> bool:
-    """A full run that collected cleanly, ran tests, and passed every one of them."""
+def live_failures(ids: Sequence[str], core: Any) -> list[str]:
+    """``ids`` without those of a frozen part (SR-380, DEC-404): a test there counts in no hold."""
+    from plumb.frozen import is_frozen
+
+    return [i for i in ids if not is_frozen(core.config, i)]
+
+
+def _live_nodes(payload: Mapping[str, Any], core: Any | None) -> list[Mapping[str, Any]]:
+    nodes = payload.get("nodes") or []
+    if core is None:
+        return list(nodes)
+    from plumb.frozen import is_frozen
+
+    return [n for n in nodes
+            if not is_frozen(core.config, str(n.get("id") or n.get("nodeid") or ""))]
+
+
+def clean_pass(payload: Mapping[str, Any], core: Any | None = None) -> bool:
+    """A full run that collected cleanly, ran tests, and passed every one of them (a test in a
+    frozen part counts for nothing: DEC-404)."""
     from plumb.verify.evidence import GOOD_OUTCOMES
 
-    nodes = payload.get("nodes") or []
+    nodes = _live_nodes(payload, core)
     return bool(nodes and payload.get("exit_status") in (0, 1)
                 and not payload.get("collection_errors") and not payload.get("aborted")
                 and not payload.get("timeout") and not payload.get("discarded")
                 and all(n.get("outcome") in GOOD_OUTCOMES for n in nodes))
 
 
-def completed_red(payload: Mapping[str, Any]) -> bool:
-    """A full run that collected cleanly and finished, with at least one failing test."""
+def completed_red(payload: Mapping[str, Any], core: Any | None = None) -> bool:
+    """A full run that collected cleanly and finished, with at least one failing test outside
+    the frozen parts (DEC-404)."""
     from plumb.verify.evidence import GOOD_OUTCOMES
 
-    nodes = payload.get("nodes") or []
+    nodes = _live_nodes(payload, core)
     return bool(nodes and not payload.get("collection_errors") and not payload.get("aborted")
                 and not payload.get("timeout") and not payload.get("discarded")
                 and any(n.get("outcome") not in GOOD_OUTCOMES for n in nodes))
@@ -90,7 +109,7 @@ def identical(payload: Mapping[str, Any], now: Mapping[str, Any]) -> bool:
             and env.get("identity") == now["env"]["identity"])
 
 
-def verdict_of(result: Any) -> str:
+def verdict_of(result: Any, core: Any | None = None) -> str:
     if result is None:
         return "not-run"
     if getattr(result, "discarded", None):
@@ -99,7 +118,8 @@ def verdict_of(result: Any) -> str:
         return "timed out"
     if getattr(result, "aborted", None) or getattr(result, "collection_errors", None):
         return "aborted"
-    return "failed" if getattr(result, "failed", None) else "passed"
+    failed = list(getattr(result, "failed", None) or ())
+    return "failed" if (live_failures(failed, core) if core is not None else failed) else "passed"
 
 
 def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unverified: bool,
@@ -112,17 +132,18 @@ def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unver
                            "verdict": "not-run", "reasons": list(reasons),
                            "waived": waived, "identity": now}
     latest = latest_full_run(core)
-    if latest is not None and clean_pass(latest) and identical(latest, now):
+    if latest is not None and clean_pass(latest, core) and identical(latest, now):
         out.update({"reused": True, "run_id": latest.get("run_id"), "verdict": "passed"})
         return out
-    if latest is not None and completed_red(latest) and identical(latest, now):
+    if latest is not None and completed_red(latest, core) and identical(latest, now):
         # the same tree and environment already failed: repeating it only delays the same
         # answer (a push must not rerun a multi-minute suite to fail again)
         from plumb.verify.evidence import GOOD_OUTCOMES as GOOD
 
         out.update({"reused": True, "run_id": latest.get("run_id"), "verdict": "failed",
                     "needed": bool((pending or unverified) and not waived),
-                    "failed": [n.get("id") or n.get("nodeid") or "" for n in latest.get("nodes") or []
+                    "failed": [n.get("id") or n.get("nodeid") or ""
+                               for n in _live_nodes(latest, core)
                                if n.get("outcome") not in GOOD][:50]})
         return out
     out["needed"] = bool((pending or unverified) and not waived)
@@ -136,8 +157,8 @@ def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unver
           "minutes)", file=sys.stderr, flush=True)
     result = (runner or default_runner)(core)  # the ONE run: never repeated below
     out.update({"ran": True, "run_id": getattr(result, "run_id", None),
-                "verdict": verdict_of(result),
-                "failed": list(getattr(result, "failed", None) or [])[:50]})
+                "verdict": verdict_of(result, core),
+                "failed": live_failures(list(getattr(result, "failed", None) or []), core)[:50]})
     return out
 
 

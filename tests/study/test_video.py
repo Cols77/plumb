@@ -492,3 +492,16 @@ def test_sr371_a_dict_field_written_as_a_python_repr_is_read_back_and_every_comm
     got = study.get(repo, SLUG)
     assert isinstance(got["clips"], dict) and "progress" not in got
     assert 'clips: {"' in file.read_text(encoding="utf-8")
+
+
+@pytest.mark.sr("SR-380")
+def test_sr380_ex4_a_render_without_manim_says_to_install_the_video_extra(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-380 EX-4: Manim is not installed with plumb; a render says to install plumb[video]."""
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None)
+    scene = tmp_path / "s.py"
+    scene.write_text(SCENE, encoding="utf-8")
+    with pytest.raises(RuntimeError, match=r"install plumb\[video\]"):
+        video.run_manim(scene, tmp_path / "media")

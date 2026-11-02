@@ -118,6 +118,9 @@ def glance_rows(core: Any, base_digests: Iterable[str]) -> list[dict[str, Any]]:
     prompt_events = {str(e.payload.get("digest")): e.payload for e in events
                      if e.kind == "prompt"}
     prompt_log: dict[str, Mapping[str, Any]] | None = None
+    from plumb import words
+
+    said = words.held(core)
     rows: list[dict[str, Any]] = []
     for entry in events:
         if entry.kind not in ("approval", "revocation") or entry.digest in known:
@@ -128,7 +131,8 @@ def glance_rows(core: Any, base_digests: Iterable[str]) -> list[dict[str, Any]]:
         row: dict[str, Any] = {
             "kind": entry.kind, "by": by, "at": entry.at, "records": ids,
             "exempt": [str(g) for g in payload.get("exempt") or []],
-            "quote": payload.get("quote"), "prompt_digest": payload.get("prompt_digest"),
+            "quote": words.joined(core, entry, said).get("quote"),   # DEC-116: local words
+            "prompt_digest": payload.get("prompt_digest"),
             "marker": entry.marker, "digest": entry.digest,
             "self_recorded": False,
         }

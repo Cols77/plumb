@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from capture.capture_helpers import log_prompt
+from understand.test_clarify_job import plant_card
 
 from plumb.api import open_core
 from plumb.contracts import CardState, ClarifyAnswer, ClarifyQuestion
@@ -34,6 +35,7 @@ def test_ex1_same_text_in_two_sessions_each_gate_is_its_own(repo: Path,
     engine_standins.dispatcher.script = {"clarify": CARD}
     _say(repo, "s1")
     worker.run_once(open_core(repo), "s1")
+    plant_card(repo, "s1")                                  # a card an agent's question raised
     assert gate.is_closed(repo, "s1")                       # s1's card holds its gate
     engine_standins.dispatcher.script = {"clarify": NO_GAP}
     _say(repo, "s2")
@@ -62,6 +64,7 @@ def test_ex3_answering_the_card_opens_the_gate_with_no_clarify_rerun(
     engine_standins.dispatcher.script = {"clarify": CARD}
     digest = _say(repo, "s1")
     worker.run_once(open_core(repo), "s1")
+    plant_card(repo, "s1")
     (card,) = [c for c in cardstore.own_cards(repo, "s1") if c.id == clarify.choice_id(digest)]
     answered = CardState(**{**card.__dict__, "answers": tuple(
         ClarifyAnswer(q.id, "accepted", digest) for q in card.questions)})

@@ -53,19 +53,44 @@ STREAM_OF_KIND: dict[str, LogStream] = {"test-run": "evidence", "merge-evidence"
 # but ignored by git (.gitignore lists exactly LOCAL_KINDS). A kind in neither set is a failing
 # test (tests/logs/test_kinds.py).
 SHARED_KINDS = frozenset({
-    "approval", "prompt", "config", "calibration", "pre-intent", "question-answer", "premise",
-    "judgment", "test-run", "mod-hello", "offer",
+    "approval", "config", "calibration",
+    "judgment", "test-run", "mod-hello",
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
     "conflict-resolution", "waiver",
+    "proof-confirmed",    # DEC-116: the owner's yes to a proof (the outcome, not their words)
     "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
     "question-pushback", "question-ruling",   # SR-362: past send-backs (the step is gone)
-    "answer-bound",       # SR-362: an answer given before its rewording, pointed at its keys
 })
+# DEC-116 (owner, 2026-11-01): nothing the owner writes goes into the tracked log. Their words
+# stay on the machine that heard them: the entries are LOCAL kinds, and a reader finds the ones
+# another checkout of the repository logged through git's common directory (``other_checkouts``).
+OWNER_WORDS_KINDS = frozenset({
+    "prompt",             # the owner's messages themselves (their digests the records quote)
+    "pre-intent",         # plumb's first reading of a message, kept verbatim
+    "question-answer",    # the owner's answer to a question of plumb's
+    "answer-bound",       # SR-362: an answer given before its rewording, pointed at its keys
+    "premise",            # the messages a record's judgment read (committed before DEC-116)
+    "owner-words",        # DEC-116: the text split out of a shared entry, joined by digest
+})
+# DEC-116, DEC-232: these kinds stay shared (another clone needs the outcome), but the text the
+# owner typed in them is not committed: the entry keeps ``<field>_digest`` and a local
+# ``owner-words`` entry holds the text; readers join them (``plumb.words.joined``).
+OWNER_TEXT_FIELDS: dict[str, tuple[str, ...]] = {
+    "approval": ("quote", "message", "evidence", "note", "reason"),
+    "revocation": ("quote", "message", "evidence", "note", "reason"),
+    "conflict-resolution": ("quote",),   # its ``prompt`` is a digest, not words
+    "waiver": ("reason",),
+    "escalation-declined": ("quote",),   # the relayed decline; the owner's own has none
+    "config": ("quote",),                # the typed /plumb auto-approve command
+}
+# SR-376: telemetry. The live entry files are ignored by git (.plumb/.gitignore); the landing
+# moves every one older than the landing into the kind's tracked segment, liveness not consulted.
+TELEMETRY_KINDS = frozenset({"judgment"})
 LOCAL_KINDS = frozenset({
     "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",
     "job-note", "triage", "merge-evidence", "repin", "relink", "unlink", "eval-run", "jev-setup",
     "intent-gate", "intent-done", "card-unsettled",
-})
+}) | OWNER_WORDS_KINDS
 
 _KIND_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _NAME_RE = re.compile(r"^(\d{8}T\d{6})\.(\d{6})Z-([0-9a-f]{8})\.json$")
@@ -464,6 +489,33 @@ def _worktree_roots(paths: PlumbPaths) -> list[Path]:
     return [t / rel for t in tops if os.path.normcase(str(t)) != own][:SIBLING_MAX]
 
 
+def other_checkouts(paths: PlumbPaths) -> list[LogEntry]:
+    """The owner's-words entries (``OWNER_WORDS_KINDS``) the repository's other checkouts
+    logged: read-only, from their entry files, found through git's own files (DEC-116). They
+    are local, so a worktree does not have the main checkout's; an entry a checkout has itself
+    is not repeated (by digest)."""
+    out: list[LogEntry] = []
+    seen: set[str] = set()
+    for other in _worktree_roots(paths):
+        for kind in sorted(OWNER_WORDS_KINDS):
+            try:
+                names = sorted(n for n in os.listdir(PlumbPaths(other).log_kind_dir(kind))
+                               if n.endswith(".json"))
+            except OSError:
+                continue
+            for name in names:
+                try:
+                    raw = _parse_entry(_read_file(str(PlumbPaths(other).log_kind_dir(kind) / name)))
+                except OSError:
+                    continue
+                digest = str(raw.get("digest", "")) if raw else ""
+                if raw is None or digest in seen or digest != entry_digest(raw):
+                    continue
+                seen.add(digest)
+                out.append(_to_entry("events", raw, -1, f"{kind}/{name}"))
+    return out
+
+
 def _read_from_siblings(paths: PlumbPaths, stream: LogStream,
                         misses: list[tuple[str, str, int]]) -> dict[str, dict[str, Any]]:
     """The misses another worktree's pack cache holds with the same size on disk."""
@@ -705,6 +757,35 @@ def _validate_append(paths: PlumbPaths, stream: LogStream, kind: str,
             raise LogError(problem)
 
 
+def words_digest(value: Any) -> str:
+    """The digest an entry keeps in place of a text the owner typed (``quote_digest`` for a
+    quote keeps its meaning: the digest of the normalized text)."""
+    from plumb.normalize import sha256_text
+
+    return sha256_text(value) if isinstance(value, str) else entry_digest(
+        {"words": value})
+
+
+def split_owner_words(kind: str, payload: Mapping[str, Any]
+                      ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """The payload without the owner's text (DEC-116) and the ``owner-words`` payloads that
+    hold it, one per distinct text."""
+    fields = OWNER_TEXT_FIELDS.get(kind)
+    if payload.get("by") in ("auto-jev", "auto-model"):   # the judge's own words stay
+        fields = None
+    kept = dict(payload)
+    held: dict[str, dict[str, Any]] = {}
+    for field in fields or ():
+        value = kept.get(field)
+        if value is None or value == "" or value == {}:
+            continue
+        digest = words_digest(value)
+        kept.pop(field)
+        kept[f"{field}_digest"] = digest
+        held.setdefault(digest, {"digest": digest, "field": field, "text": value})
+    return kept, list(held.values())
+
+
 def append_many(paths: PlumbPaths, stream: LogStream,
                 entries: Sequence[tuple[str, Mapping[str, Any]]]) -> list[LogEntry]:
     """Append separate entries, with one lock and head publication per bounded chunk.
@@ -715,7 +796,13 @@ def append_many(paths: PlumbPaths, stream: LogStream,
     """
     if stream not in STREAMS:
         raise ValueError(f"unknown log stream: {stream}")
-    pending = [(kind, dict(payload)) for kind, payload in entries]
+    pending: list[tuple[str, dict[str, Any]]] = []
+    asked: set[int] = set()   # positions in ``pending`` of the entries the caller asked for
+    for kind, payload in entries:
+        kept, held = split_owner_words(kind, payload)
+        pending.extend(("owner-words", words) for words in held)   # the words first
+        asked.add(len(pending))
+        pending.append((kind, kept))
     for kind, payload in pending:
         _validate_append(paths, stream, kind, payload)
         canonical_json(payload)  # serialization errors must also precede persistence
@@ -734,7 +821,8 @@ def append_many(paths: PlumbPaths, stream: LogStream,
                 prev = _head(paths, stream, data)
             # An inability to invalidate must abort before persisting any entry.
             paths.log_head.unlink(missing_ok=True)
-            for kind, payload in pending[offset:offset + APPEND_BATCH_SIZE]:
+            for position in range(offset, min(offset + APPEND_BATCH_SIZE, len(pending))):
+                kind, payload = pending[position]
                 now = time.time()
                 entry: dict[str, Any] = {
                     "v": SCHEMA, "kind": kind,
@@ -747,7 +835,8 @@ def append_many(paths: PlumbPaths, stream: LogStream,
                 name = f"{kind}/{file_name}"
                 prev = entry["digest"]
                 data[stream] = {"digest": prev, "name": name}
-                result.append(_to_entry(stream, entry, -1, name))
+                if position in asked:
+                    result.append(_to_entry(stream, entry, -1, name))
             _write_json_atomic(paths.log_head, data)
     return result
 
@@ -1056,18 +1145,33 @@ def committable(root: Path, paths: Iterable[str]) -> list[str]:
     paths = list(paths)
     local = [p for p in paths if p.startswith(prefix) and p.count("/") >= 3
              and p.split("/")[2] in LOCAL_KINDS]
-    if not local:
-        return paths
     known = {prefix + n for n in tracked_names(root)}
-    return [p for p in paths if p not in local or p in known]
+    return untracked_telemetry_out(root, [p for p in paths if p not in local or p in known])
+
+
+def untracked_telemetry_out(root: Path, paths: Iterable[str]) -> list[str]:
+    """``paths`` without the telemetry entry files git does not track (ignored: naming them
+    would fail ``git add`` and ``git commit``)."""
+    paths = list(paths)
+
+    def loose(p: str) -> bool:
+        parts = p.split("/")
+        return (len(parts) == 4 and p.startswith(".plumb/log/") and parts[2] in TELEMETRY_KINDS
+                and parts[3] != SEGMENT)
+
+    if not any(loose(p) for p in paths):
+        return paths
+    known = {".plumb/log/" + n for n in tracked_names(root)}
+    return [p for p in paths if p in known or not loose(p)]
 
 
 def stage(root: Path, changed: Iterable[str]) -> None:
     """``git add -A`` of the paths ``archive`` returned (segments written, files removed).
     Nothing else is staged."""
-    # a local kind's entry is never staged (SR-321, SR-287 EX-16)
+    # a local kind's entry is never staged (SR-321, SR-287 EX-16), nor an ignored telemetry file
     changed = [c for c in changed if not (c.startswith(".plumb/log/")
                                           and c.split("/")[2] in LOCAL_KINDS)]
+    changed = untracked_telemetry_out(root, changed)
     if not changed:
         return
     import subprocess

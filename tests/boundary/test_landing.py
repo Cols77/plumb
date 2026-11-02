@@ -224,10 +224,10 @@ def test_ex2_a_document_an_inflight_branch_changed_stays(repo: Path) -> None:
 @pytest.mark.sr("SR-301")
 def test_ex3_an_inflight_branch_merges_the_compacted_main_cleanly(repo: Path) -> None:
     write_record(repo, record("SR-001", "old rule", statement="s", examples=[ex(1)]))
-    first = put(repo, "judgment", {"subject": "SR-001"})
+    first = put(repo, "waiver", {"subject": "SR-001"})
     commit_all(repo, "records")
     run_git(repo, "checkout", "-q", "-b", "inflight")
-    put(repo, "judgment", {"subject": "SR-001", "n": 2}, at="2026-10-02T10:00:00Z",
+    put(repo, "waiver", {"subject": "SR-001", "n": 2}, at="2026-10-02T10:00:00Z",
         prev=first["digest"])
     commit_all(repo, "inflight work")
     run_git(repo, "checkout", "-q", "main")
@@ -274,8 +274,8 @@ def test_ex1_entries_about_an_inflight_branchs_record_stay_live(repo: Path,
                                                                  tmp_path: Path) -> None:
     """SR-301 EX-1: a card entry on main names SR-050, a record only an in-flight worktree
     has: the compaction does not take it for retired; one naming no record anywhere moves."""
-    put(repo, "card-settled", {"record": "SR-050", "reason": "asked"})
-    put(repo, "card-settled", {"record": "SR-060", "reason": "retired: replaced"})
+    put(repo, "escalation-declined", {"record": "SR-050", "reason": "asked"})
+    put(repo, "escalation-declined", {"record": "SR-060", "reason": "retired: replaced"})
     commit_all(repo, "cards")
     other = tmp_path / "other"
     run_git(repo, "worktree", "add", "-q", "-b", "other", str(other))
@@ -283,7 +283,7 @@ def test_ex1_entries_about_an_inflight_branchs_record_stay_live(repo: Path,
     sha, before = land_branch(repo, lambda root: docs(root, "docs/x.md"))
     landing.land(repo, sha, before)
     live = [json.loads(p.read_text(encoding="utf-8"))["payload"]["record"]
-            for p in (repo / ".plumb" / "log" / "card-settled").glob("*.json")]
+            for p in (repo / ".plumb" / "log" / "escalation-declined").glob("*.json")]
     assert live == ["SR-050"]
 
 
@@ -437,3 +437,16 @@ def test_ex3_the_landings_own_session_folder_stays(repo: Path) -> None:
     own.mkdir(parents=True)
     (own / "ended.json").write_text("{}", encoding="utf-8")
     assert landing.ended_sessions(repo, "s-own") == [] and own.is_dir()
+
+
+@pytest.mark.sr("SR-340")
+def test_ex3_an_ended_session_folder_holding_a_waiting_question_stays(repo: Path) -> None:
+    sessions = repo / ".plumb" / "session"
+    for name in ("asked", "done"):
+        (sessions / name).mkdir(parents=True)
+        (sessions / name / "ended.json").write_text("{}", encoding="utf-8")
+    (sessions / "asked" / "cards.json").write_text(json.dumps({"cards": [
+        {"id": "choice:abc", "kind": "choice", "topic": "t", "issue": "which?",
+         "status": "open"}]}), encoding="utf-8")
+    assert landing.ended_sessions(repo, "s-own") == ["done"]
+    assert (sessions / "asked" / "cards.json").exists() and not (sessions / "done").exists()

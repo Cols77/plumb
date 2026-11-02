@@ -19,9 +19,10 @@ COMMIT = "cef045011722"
 
 
 def test_ex1_manim_is_installed_and_the_render_uses_no_opengl(tmp_path, monkeypatch):
-    """SR-317 EX-1: Manim comes with the install; the render command asks for no OpenGL."""
-    assert re.search(r"^\s*\"manim>=", (SKILL.parents[6] / "pyproject.toml").read_text(
-        encoding="utf-8"), re.M)   # the install brings it; the env may not be synced yet
+    """SR-317 EX-1: Manim comes with plumb[video] (SR-380); the render command asks for no
+    OpenGL."""
+    assert re.search(r"^video = \[\"manim>=", (SKILL.parents[6] / "pyproject.toml").read_text(
+        encoding="utf-8"), re.M)   # the extra brings it; the env may not be synced yet
     seen: list[str] = []
 
     def fake(cmd, **kw):

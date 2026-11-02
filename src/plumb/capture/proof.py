@@ -226,9 +226,10 @@ def confirmation(core: Core, record_id: Any, question: str,
 
 
 def owner_confirmed(core: Core, record_id: str) -> bool:
-    """DEC-257: a question-answer entry, written by the question-answer hook, says the owner
-    saw ``record_id`` working at its current hash and evidence (``proof.record``,
-    ``proof.hash``, ``proof.evidence_at``, answer ``YES``). A yes given under the old id of a
+    """DEC-257, DEC-116: a ``proof-confirmed`` entry (committed: the outcome only) or a
+    question-answer entry (local: the owner's words), both written by the question-answer hook,
+    says the owner saw ``record_id`` working at its current hash and evidence (``record``,
+    ``hash``, ``evidence_at``, answer ``YES``). A yes given under the old id of a
     renumber (``ids.approval_aliases``) counts while the words are still the ones it saw."""
     from plumb.ids import approval_aliases
 
@@ -242,7 +243,10 @@ def owner_confirmed(core: Core, record_id: str) -> bool:
     if carried:
         seen.add(carried)
     for entry in core.events():
-        proof = entry.payload.get("proof") if entry.kind == "question-answer" else None
+        # DEC-116: the committed ``proof-confirmed`` outcome; a ``question-answer`` carrying the
+        # tag is the same yes on the machine that heard it
+        proof = entry.payload.get("proof") if entry.kind == "question-answer" else (
+            entry.payload if entry.kind == "proof-confirmed" else None)
         if isinstance(proof, Mapping) and (proof.get("record"), proof.get("hash")) in seen \
                 and proof.get("evidence_at") == at \
                 and entry.payload.get("answer") == YES:

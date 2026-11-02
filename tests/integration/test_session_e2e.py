@@ -141,10 +141,10 @@ def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.Monk
     print("\n" + json.dumps(timings, indent=2))  # visible with -s
     assert all(s.code == 0 for s in steps), [(s.name, s.code, s.stderr) for s in steps]
 
-    # SessionStart: the compact brief (R9), with the counts, the tests line and a pointer
+    # SessionStart: the compact brief (R9, SR-374 EX-9): what changed and what blocks, no
+    # counts; a first session start has seen nothing before and nothing blocks here
     brief = by_name["SessionStart"].stdout
-    assert brief.startswith("plumb brief: 1 feature(s), 2 SR (2 confirmed), 1 INT (1 confirmed)")
-    assert "tests:" in brief and "plumb show <ID>" in brief
+    assert "plumb brief:" not in brief and "tests:" not in brief
     assert len(brief.splitlines()) <= 6
 
     # no judge is configured here (INT-029): the hook says so in one line, flags nothing by
@@ -181,10 +181,9 @@ def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.Monk
     assert "tests/test_mod.py::test_add" in evidence
     assert "test-run" in evidence
 
-    # SR-265 EX-5: nothing to ask (confirmed records, covering tests passing, no question):
-    # one plumb line says what the turn touched and that its checks pass, nothing more
-    assert json.loads(by_name["Stop (stop_hook_active)"].stdout) == {
-        "systemMessage": "plumb: aligned, touched 'Arithmetic', 1 check passes"}
+    # SR-373: nothing needs the owner (confirmed records, covering tests passing, no
+    # question): no plumb line, only the status line moves
+    assert by_name["Stop (stop_hook_active)"].stdout.strip() == ""
 
     assert by_name["statusline"].stdout.startswith("plumb ")  # the status card (sp5 2)
 

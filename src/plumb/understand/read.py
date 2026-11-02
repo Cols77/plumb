@@ -471,13 +471,22 @@ def _picked(item: Mapping[str, Any], raw: Mapping[str, Any]) -> Choice | None:
     return None
 
 
+def _conflict_take(choice: Any) -> str | None:
+    """The side a choice on a merge conflict card keeps (``ours``, ``theirs``, or ``combined``
+    when one is proposed), None for any other."""
+    from plumb.understand import cards
+
+    return {cards.KEEP_THIS: "ours", cards.KEEP_OTHER: "theirs"}.get(
+        choice.label, "combined" if choice.label == cards.BOTH and choice.answer == "accepted"
+        else None)
+
+
 def _conflict_effect(*, core: Any, card: CardState, entry: Mapping[str, Any], source: Any,
                      digest: str, **_: Any) -> Applied | None:
     """SR-170: a merge conflict card answered in words. When they clearly keep one version,
-    the card button's own code applies it, citing their words; a change asked, a refusal or
+    the conflict code applies it, citing their words; a change asked, a refusal or
     an unsure reading leaves the conflict open (INT-029: nothing else reads the words)."""
     from plumb.mergedriver import conflicts
-    from plumb.mod.press import conflict_take
     from plumb.understand import answer
 
     if not (isinstance(source, answer.OwnerWords) and source.passes):
@@ -489,7 +498,7 @@ def _conflict_effect(*, core: Any, card: CardState, entry: Mapping[str, Any], so
 
     picked = [c for c in card.questions[0].choices if c.answer == entry["answer"]
               and (c.answer == "accepted" or same(c.change) or same(c.label))]
-    take = conflict_take(card, picked[0]) if len(picked) == 1 else None
+    take = _conflict_take(picked[0]) if len(picked) == 1 else None
     if take is None:
         return None
     try:

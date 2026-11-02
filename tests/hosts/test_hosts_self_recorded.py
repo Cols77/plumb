@@ -108,7 +108,7 @@ def test_merge_glance_labels_self_recorded_confirmation(project, monkeypatch,
     assert [a["self_recorded"] for a in data["glance"]] == [True]
 
 
-@pytest.mark.parametrize("host", ["codex", "pi", "hermes"])
+@pytest.mark.parametrize("host", ["codex", "hermes"])
 def test_hosts_status_counts_self_recorded_confirmations(project, monkeypatch, capsys,
                                                          host: str) -> None:
     repo, _ = project

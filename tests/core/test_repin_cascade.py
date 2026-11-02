@@ -315,7 +315,7 @@ def test_cli_prints_the_diagnosis(project: Path, capsys, monkeypatch) -> None:
     out = capsys.readouterr()
     assert f"{LINK} needs the owner (card filed): Adds numbers" in out.out
     assert "1. Keep it and reword SR-001" in out.out
-    assert "brought to the owner as a card" in out.err
+    assert "filed as a question for the owner" in out.err
     assert main(["repin", "--after-tests", LINK, "--dry-run", "--json",
                  "--root", str(project)]) == 1
     data = json.loads(capsys.readouterr().out)

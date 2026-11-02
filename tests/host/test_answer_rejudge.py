@@ -22,7 +22,8 @@ from understand.test_judge_job import (
 from plumb.api import open_core
 from plumb.contracts import Judgment
 from plumb.hosts.claude_code import question_answer
-from plumb.understand import cmd_clarify, files, jobs, judge, premise, queue, read, verdict
+from plumb.understand import (cmd_clarify, files, jobs, judge, premise, queue, read, verdict,
+                               worker)
 
 MESSAGE = "Pages should load faster."
 ASK = "Should every page load faster, or only the public ones?"
@@ -83,10 +84,10 @@ class RecordingJev:
     def __init__(self) -> None:
         self.premises: list[str] = []
 
-    def entailment(self, premise: str, hypothesis: str, *, subject: str,
-                   claim_kind: str) -> Judgment:
+    def approval(self, premise: str, hypothesis: str, *, subject: str,
+                 claim_kind: str) -> Judgment:
         self.premises.append(premise)
-        return Judgment(action="faithfulness", subject=subject, verdict="entailed",
+        return Judgment(action="faithfulness", subject=subject, verdict="benign",
                         confidence=0.9, tier="accept", backend="jev:jev-1", fingerprint="f",
                         reasons=(), probability=0.9, confidence_label="high")
 
@@ -229,6 +230,51 @@ def test_a_question_with_other_spacing_and_case_matches_by_key(world: Path, hook
 
 
 @pytest.mark.sr("SR-212")
+def test_an_answer_given_in_another_session_closes_the_question(
+        world: Path, hook_input) -> None:
+    """report-c4cdbf4b: the owner answers the exact question through the question tool in
+    another Claude session: the question is answered whichever session asked it."""
+    judge_asks(world, (ASK, ["SR-001"]))
+    shown = [{"label": "Every page", "description": ""}, {"label": "Public", "description": ""}]
+    payload = hook_input(
+        "PostToolUse", tool_name="AskUserQuestion", session_id="other-session",
+        tool_input={"questions": [{"question": ASK, "header": "Pages", "multiSelect": False,
+                                   "options": shown}]},
+        tool_response={"answers": {ASK: "Every page"}})
+    assert question_answer.main(stdin=io.StringIO(payload), stdout=io.StringIO(),
+                                root=world) == 0
+    assert judge.unanswered(open_core(world), SESSION) == []
+
+
+@pytest.mark.sr("SR-212")
+def test_a_cli_question_reworded_and_answered_in_a_live_session_is_settled(
+        world: Path, hook_input) -> None:
+    """report-c06d5563: the judge filed the question under "cli"; a live session asks it in
+    its own words, before or after registering the wording: the owner's answer settles it."""
+    judge_asks(world, (ASK, ["SR-001"]))
+    cli = files.session_dir(world, "cli")
+    cli.mkdir(parents=True, exist_ok=True)
+    judge.questions_path(world, SESSION).rename(judge.questions_path(world, "cli"))
+    worded = "Speed up every page or only the public ones?"
+    options = [{"label": "Every page", "description": ""}, {"label": "Public", "description": ""}]
+    answer(world, hook_input, worded, "Every page")      # asked before the wording is registered
+    assert [q["question"] for q in judge.unanswered(open_core(world), "cli")] == [ASK]
+    judge.reword(open_core(world), SESSION, [judge.question_key(ASK)], worded, "Pages", options)
+    assert judge.unanswered(open_core(world), "cli") == []
+    assert judge.unanswered_anywhere(open_core(world)) == []
+
+
+@pytest.mark.sr("SR-212")
+def test_a_cli_question_is_matched_by_a_live_sessions_answer(world: Path, hook_input) -> None:
+    judge_asks(world, (ASK, ["SR-001"]))
+    files.session_dir(world, "cli").mkdir(parents=True, exist_ok=True)
+    judge.questions_path(world, SESSION).rename(judge.questions_path(world, "cli"))
+    answer(world, hook_input, ASK, "Every page")
+    assert [r["id"] for r in logged(world)[0]["asked"]["records"]] == ["SR-001"]
+    assert judge.unanswered(open_core(world), "cli") == []
+
+
+@pytest.mark.sr("SR-212")
 def test_a_reworded_question_falls_back_to_the_one_open_question(
         world: Path, hook_input) -> None:
     """One open question; the agent reworded it: the answer still names its records."""
@@ -270,8 +316,9 @@ def test_an_unrelated_answer_is_not_taken_for_the_one_open_question(
 def test_wait_reads_a_typed_answer_before_asking_again(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Case eval-c48f4019: the owner answers the judge's open question in a typed message (no
-    question tool). ``clarify --wait`` runs the read job of that message before it hands over
-    the open questions: the question their words answered is not asked again."""
+    question tool). Once the background worker ran the read job of that message (SR-378:
+    ``clarify --wait`` runs no job itself), the question their words answered is not asked
+    again."""
     judge_asks(world, (ASK, ["SR-001"]))
     typed = "Every page, please: draw it, then clear the board."
     digest = log_prompt(world, typed, at="2026-10-06T10:05:00Z")
@@ -286,6 +333,7 @@ def test_wait_reads_a_typed_answer_before_asking_again(
                               "confidence": 0.99}]},
         "judge": {"verdicts": []}})
     monkeypatch.setattr("plumb.understand.dispatch.configured", lambda *a, **k: fake)
+    worker.run_once(open_core(world), SESSION, job.id)       # the background worker's turn
     outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=1, sleep=lambda _s: None)
     assert "read" in [j.kind for j in fake.jobs]
     assert outcome.state != "ask", outcome.questions

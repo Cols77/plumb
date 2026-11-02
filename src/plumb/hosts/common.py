@@ -1,4 +1,4 @@
-"""Shared install helpers of the Codex, Pi and Hermes adapters (sp4 4, 3.2).
+"""Shared install helpers of the Codex and Hermes adapters (sp4 4, 3.2).
 
 Every adapter is thin: it writes a few files from templates, idempotently, preserving every
 foreign entry, and leaves the CLI-only fallback (an instruction block plus ``plumb turn
@@ -23,7 +23,7 @@ IS_WINDOWS = os.name == "nt"
 MARKER_NAME = "PLUMB_AGENT_SESSION"
 BLOCK_BEGIN = "<!-- plumb:begin -->"
 BLOCK_END = "<!-- plumb:end -->"
-HOSTS = ("codex", "pi", "hermes")
+HOSTS = ("codex", "hermes")
 
 # sp4 3.2: said by `plumb hosts status` on a host whose adapter cannot set the marker
 NO_MARKER_LINE = ("no session marker on this host: owner-only commands require an "
@@ -271,7 +271,7 @@ def instruction_block(argv: Sequence[str], host: str, *, hooks: bool) -> str:
         "and",
         "  answer in the owner's terms, not code terms.",
         "- plumb's judge approves on the owner's behalf; no approval command exists",
-        "  (approve, revoke, relay, triage --approve and spec approve are refused); never run",
+        "  (approve, revoke, relay are refused); never run",
         f"  config auto-approve (adapter: {host}).",
     ])
 
@@ -320,7 +320,6 @@ def installed_hosts(root: Path, detectors: Iterable[tuple[str, Callable[[Path], 
 # What each adapter leaves in the repository, by path only (no adapter imports another).
 ADAPTER_FILES = {
     "codex": (".codex/hooks.json", ".codex/config.toml"),
-    "pi": (".pi/extensions/plumb/index.ts",),
     "hermes": (".hermes/plugins/plumb/plugin.yaml",),
 }
 

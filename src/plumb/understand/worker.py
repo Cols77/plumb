@@ -536,8 +536,16 @@ def run_loop(core: Any, session: str) -> None:
     if core is None:
         return None
     root = Path(core.root)
+    from plumb.understand.summary import AFTER_STOP, after_stop
+
     idle_looks = 0
     while True:
+        try:
+            # SR-375: what a turn end left for the background; looked at on every pass, since
+            # a stop that found this worker holding the lock started no worker of its own
+            after_stop(core, session)
+        except Exception:  # noqa: BLE001 - the jobs still run
+            pass
         token = acquire(root, session)
         if token is None:
             return None
@@ -547,7 +555,8 @@ def run_loop(core: Any, session: str) -> None:
             release(root, session, token)
         if ran:
             idle_looks = 0
-        elif not jobs.pending(root, session) or idle_looks >= 3:
+        elif idle_looks >= 3 or not (jobs.pending(root, session)
+                                     or (files.session_dir(root, session) / AFTER_STOP).exists()):
             return None
         else:
             idle_looks += 1

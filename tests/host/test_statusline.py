@@ -122,6 +122,6 @@ def test_awaiting_counts_open_questions_and_cards(repo: Path, write_record) -> N
                      encoding="utf-8")
     assert snapshot.build_snapshot(core).awaiting == 2
     snapshot.write_snapshot(repo, _snap())
-    snapshot.refresh_judge_count(open_core(repo))  # a turn with no edit brings it up to date
+    snapshot.refresh_counts(open_core(repo))  # the worker after a turn brings it up to date
     data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
     assert data["awaiting"] == 2

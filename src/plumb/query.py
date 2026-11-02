@@ -23,7 +23,8 @@ def superseded_ids(index: Mapping[str, Record]) -> set[str]:
 
 def retired_ids(index: Mapping[str, Record]) -> set[str]:
     """Superseded records whose links stop being tracked (SR-164): not those an older record
-    supersedes (SR-076 over SR-150), which the owner has yet to settle."""
+    supersedes (SR-076 over SR-150), which the owner has yet to settle. A record marked
+    ``frozen: true`` (SR-380) counts nowhere either."""
     def num(rid: str) -> tuple[str, int]:
         prefix, _, n = rid.partition("-")
         return prefix, int(n) if n.isdigit() else 0
@@ -31,7 +32,8 @@ def retired_ids(index: Mapping[str, Record]) -> set[str]:
     return {link.target.record for record in index.values() for link in record.links
             if link.kind == "supersedes" and link.target.record
             and not (num(link.target.record)[0] == num(record.id)[0]
-                     and num(link.target.record)[1] > num(record.id)[1])}
+                     and num(link.target.record)[1] > num(record.id)[1])
+            } | {record.id for record in index.values() if record.fields.get("frozen")}
 
 
 def record_text(record: Record) -> str:
@@ -161,38 +163,3 @@ def brief_lines(core: Core, max_lines: int = 30, *, show_all: bool = False) -> l
         intent_lines = kept
     lines = fixed_before + intent_lines + fixed_after
     return lines if show_all else lines[:cap]
-
-
-COMPACT_POINTER = ("plumb: records reach you once per session, when they become relevant; "
-                   "plumb show <ID> prints one in full, plumb explain <anything> says why "
-                   "code or a behaviour exists, plumb brief --all lists everything.")
-
-
-def compact_brief_lines(core: Core) -> list[str]:
-    """The session-start brief under R9 (context economy): a few lines of counts and what
-    awaits the owner, then a pointer; never the list of every record."""
-    full = brief_lines(core, 10**6, show_all=True)
-    index = core.index()
-    statuses = core.status()
-    superseded = superseded_ids(index)
-
-    def count(kind: str) -> tuple[int, int]:
-        live = [i for i, r in index.items() if r.kind == kind and i not in superseded]
-        return len(live), sum(statuses[i].confirmation == "confirmed" for i in live)
-
-    features = sum(r.kind == "feature" for r in index.values())
-    srs, srs_ok = count("requirement")
-    ints, ints_ok = count("intent")
-    header = (f"plumb brief: {features} feature(s), {srs} SR ({srs_ok} confirmed), "
-              f"{ints} INT ({ints_ok} confirmed)")
-    keep = ("awaits you:", "waiting on a judge:", "decisions that matter", "drift:")
-    lines = [header]
-    for line in full:
-        if line.startswith(keep):
-            lines.append(_clip(line, 160))
-        elif line.startswith("open NCs:"):
-            ncs = [r for r in index.values() if r.kind == "nc"
-                   and str(r.fields.get("status", "open")) == "open"]
-            lines.append(f"open NCs: {len(ncs)} (plumb brief --all)")
-    lines.append(COMPACT_POINTER)
-    return lines

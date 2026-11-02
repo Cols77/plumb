@@ -1,16 +1,18 @@
-"""The verdict cascade (SR-182, SR-242, INT-065): who answers "is this record supported by the
-owner's words?" for the judge job, like ``links.repin_after_tests`` (SR-114).
+"""The verdict cascade (SR-182, SR-242, INT-065, SR-372): who answers "does this record
+contradict the owner's words or add intent they did not give?" for the judge job, like
+``links.repin_after_tests`` (SR-114).
 
 JEV is asked first for every record with a premise and a claim kind, calibrated or not, and its
-score is logged with the verdict. It clears a record when every part is strictly above the
-floor: 0.9, raised to the threshold of a passing calibration of the same JEV version and
-question form (DEC-143: no calibration is needed); a cleared record that may take the fast track
-(``capture.autoapprove.fast_track``) is JEV's verdict, marked ``by: jev``, and the judge job
-approves it ``by: auto-jev``. Every other record goes to the judge model
-(``understand.judge_model``, haiku by default, sonnet allowed), marked ``by: model``: a model
-verdict never takes the fast track (``plumb.judgment.verdict.refusal``). With neither reachable
-the verdict waits and the step says so once (SR-174); nothing is decided by rule (INT-029).
-Which judge answered is in the log."""
+score is logged with the verdict. It clears a record when every part is ``benign`` (a
+restatement or a benign extension) strictly above the floor: 0.9, raised to the threshold of a
+passing calibration of the same JEV version and question form (DEC-143: no calibration is
+needed); a cleared record that may take the fast track (``capture.autoapprove.fast_track``) is
+JEV's verdict, marked ``by: jev``, and the judge job approves it ``by: auto-jev``. Every other
+record goes to the judge model (``understand.judge_model``, haiku by default, sonnet allowed),
+marked ``by: model``: a model verdict never takes the fast track
+(``plumb.judgment.verdict.refusal``); it asks only about a record that contradicts the owner or
+adds intent they did not give. With neither reachable the verdict waits and the step says so
+once (SR-174); nothing is decided by rule (INT-029). Which judge answered is in the log."""
 
 from __future__ import annotations
 
@@ -92,9 +94,11 @@ def _option_text(option: Any) -> str:
 def jev_verdict(core: Any, entry: Mapping[str, Any], backend: Any, calibration: Any
                 ) -> dict[str, Any] | None:
     """JEV's scores of one entry, or None when it has no claim kind or no premise, or JEV did
-    not answer as JEV: ``{score, clears, judge, model_version, confidence, confidence_label,
-    fingerprints, parts, calibration, threshold, claim_kind}``. ``clears`` when every part is
-    strictly above the floor, max(0.9, the threshold of a passing calibration of the same
+    not answer as JEV: ``{score, verdict, clears, judge, model_version, confidence,
+    confidence_label, fingerprints, parts, calibration, threshold, claim_kind}``. JEV is asked
+    the approval question (SR-372: contradicts, extends or benign, never entailment);
+    ``verdict`` is the worst label over the parts and ``score`` the lowest probability of
+    ``benign``. ``clears`` when every part is ``benign`` strictly above the floor, max(0.9, the threshold of a passing calibration of the same
     version and question form) (SR-242 EX-5, DEC-143); ``threshold`` is that floor. Raises
     ``JudgmentUnavailable`` when JEV cannot answer."""
     from plumb.capture.autoapprove import JEV_FLOOR, _kind_threshold
@@ -107,7 +111,7 @@ def jev_verdict(core: Any, entry: Mapping[str, Any], backend: Any, calibration: 
     if kind is None or record is None or not premise:
         return None
     _, parts = _hypotheses(core.index(), record)
-    judgments = [backend.entailment(premise, part, subject=record.id, claim_kind=kind)
+    judgments = [backend.approval(premise, part, subject=record.id, claim_kind=kind)
                  for part in parts]
     if not judgments or any(not j.backend.startswith("jev:") for j in judgments):
         return None
@@ -120,8 +124,10 @@ def jev_verdict(core: Any, entry: Mapping[str, Any], backend: Any, calibration: 
             threshold = None            # another version's calibration raises nothing
     floor = max(JEV_FLOOR, threshold or 0.0)   # DEC-143: the floor needs no calibration
     weakest = min(judgments, key=lambda j: j.probability or 0.0)
-    return {"score": round(weakest.probability or 0.0, 6),
-            "clears": all(j.verdict == "entailed" and (j.probability or 0.0) > floor
+    labels = {j.verdict for j in judgments}
+    worst = next((v for v in ("contradicts", "extends") if v in labels), "benign")
+    return {"score": round(weakest.probability or 0.0, 6), "verdict": worst,
+            "clears": all(j.verdict == "benign" and (j.probability or 0.0) > floor
                           for j in judgments),
             "judge": judgments[0].backend, "model_version": version,
             "confidence": weakest.confidence, "confidence_label": weakest.confidence_label,

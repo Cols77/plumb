@@ -91,7 +91,7 @@ def test_early_conflict_card_and_lines(tmp_path: Path) -> None:
     main, other = setup(tmp_path)
     change(main, "main's version")
     raised = change(other, "feat-x's version")
-    own = [line for line in raised.lines if "waits as a card" in line or line.startswith("  ")
+    own = [line for line in raised.lines if "comes back at the end of this turn" in line or line.startswith("  ")
            or "asked once" in line]
     assert own and bare_cli_verbs("\n".join(own)) == []
     known = change(main, "main again")

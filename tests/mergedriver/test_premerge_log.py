@@ -15,9 +15,9 @@ from plumb.paths import PlumbPaths
 
 
 def _setup(tmp_path: Path) -> tuple[Path, Path, str]:
-    """main holding one committed judgment entry, a feature worktree, main moved on."""
+    """main holding one committed log entry, a feature worktree, main moved on."""
     root = make_repo(tmp_path / "main")
-    entry = log.append(PlumbPaths(root), "events", "judgment", {"n": 1})
+    entry = log.append(PlumbPaths(root), "events", "waiver", {"n": 1})  # not telemetry (SR-376)
     commit_all(root, "an entry")
     other = tmp_path / "feat"
     run_git(root, "worktree", "add", "-q", "-b", "feat-x", str(other))

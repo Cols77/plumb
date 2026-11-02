@@ -213,40 +213,45 @@ def cmd_align(command: str, argv: list[str]) -> int:
     return 0
 
 
-def cmd_view(command: str, argv: list[str]) -> int:
-    parser = _parser(command, "Write the Obsidian vault and the Canvas intent map of the "
-                     "records (generated, never read back: editing a note approves nothing).")
-    parser.add_argument("--out", default=None, help="vault folder (default .plumb/view)")
-    parser.add_argument("--scope", nargs="*", default=None, help="plain words, IDs or paths")
-    parser.add_argument("--open", action="store_true", dest="open_vault",
-                        help="open the vault with Obsidian or the platform's opener")
+def cmd_context(command: str, argv: list[str]) -> int:
+    """SR-374 EX-8: the full picture of one condition of the insight table, unfiltered."""
+    from plumb.present import insights
+
+    parser = _parser(command, "The full picture plumb has for one condition: session, "
+                     "prompt <words>, edit <path>, test <node>, symptom <words>, "
+                     "merge [<base>].")
+    parser.add_argument("condition", choices=sorted(set(insights.TABLE) - {"cut"}))
+    parser.add_argument("arg", nargs="*", metavar="PATH_OR_ID")
     args = parser.parse_args(argv)
-    from pathlib import Path
-
-    from plumb.view import open_vault, write_vault
-
     core = _core(args)
-    scope: list[str] | None = None
-    if args.scope:
-        scope, _, answered = _resolve_or_ask(core, args.scope, args.as_json)
-        if answered:
-            return 0
-    out = Path(args.out) if args.out else Path(core.root) / ".plumb" / "view"
-    report = write_vault(core, out, scope=scope)
-    if args.open_vault:
-        open_vault(out)
-    emit(report if args.as_json else
-         [f"plumb view: {report['notes']} notes, {report['removed']} removed, in {out}",
-          f"open {out / 'index.md'} in Obsidian (intent map: intent-map.canvas)"],
+    arg = " ".join(args.arg)
+    ctx: dict[str, Any] = {"full": True, "text": arg, "path": arg, "node": arg}
+    if args.condition == "edit":
+        from plumb import stale
+
+        stale.ensure_linkmap(core)
+    if args.condition == "test":
+        from plumb.verify import open_verify
+
+        ctx["regression"] = bool(open_verify(core).evidence([arg])[arg].regression)
+    if args.condition == "merge":
+        from plumb.boundary import merge_report
+        from plumb.boundary.cli import merge_settings
+
+        ctx["report"] = merge_report(core, arg or str(merge_settings(core)["default_base"]),
+                                     run_full=False)
+    lines = [line.text for line in insights.lines(args.condition, core, ctx)]
+    emit({"lines": lines} if args.as_json else lines or ["plumb: nothing applies"],
          args.as_json)
     return 0
 
 
 HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
+    "context": cmd_context,
     "status": cmd_status, "brief": cmd_brief, "drift": _delegate, "show": cmd_show,
     "explain": cmd_explain, "why": cmd_explain, "impact": cmd_impact,
     "resolve": cmd_resolve, "review": cmd_review,
-    "align": cmd_align, "view": cmd_view,
+    "align": cmd_align,
 }
 
 

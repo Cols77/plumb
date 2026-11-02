@@ -11,9 +11,9 @@ Over ``<base>..HEAD`` plus uncommitted changes:
    an approval of it lists that end. A requirement whose ``verified_by`` end (an acceptance
    test of an example the owner confirmed) changed since the approval pinned its content
    is listed as "acceptance test changed", shown with the example and the test's diff. A
-   ``trace.exempt`` glob added in the range is not
-   honoured until an approval entry lists it (no route writes one since ``plumb approve``
-   went: SR-288), and a path that was
+   ``trace.exempt`` glob added in the range is
+   honoured and listed: the judge accepts it unless it contradicts the owner (SR-288,
+   SR-372), and a path that was
    source under the merge base's config stays source, so a config edit hides nothing;
 2. the approvals and revocations added in the range are listed, agent-relayed ones marked with
    the prompt digest they cite;
@@ -276,6 +276,11 @@ def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]
             problems.append(f"{path}: entry modified since merge-base {fork[:12]}")
             gone.add(name)
         elif status[:1] == "D":
+            if name.split("/", 1)[0] in log.OWNER_WORDS_KINDS:
+                # DEC-116, DEC-412, SR-323 EX-3: the owner asked to stop tracking their words;
+                # their removal from version control is intended, not a loss.
+                gone.add(name)
+                continue
             problems.append(f"{path}: entry deleted since merge-base {fork[:12]}")
             gone.add(name)
     listed = _git(core, "ls-tree", "-r", "--name-only", "-z", fork, "--", _LOG_PREFIX,
@@ -363,6 +368,24 @@ def changed_test_lines(core: Core, fork: str, record_id: str,
     return lines
 
 
+def live_verification(core: Core, found: Mapping[str, Any]) -> dict[str, Any]:
+    """``found`` (``failing``, ``unverified``, ``regressions``) without any test of a frozen
+    part (SR-380, DEC-404): such a test counts in no merge hold, whatever the verify lane hands
+    over."""
+    from plumb.frozen import is_frozen
+
+    def awake(ref: Any) -> bool:
+        return not is_frozen(core.config, str(ref))
+
+    def by_record(rows: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[str, Any]:
+        kept = {rid: [i for i in items if awake(i.get("test"))] for rid, items in rows.items()}
+        return {rid: items for rid, items in kept.items() if items}
+
+    return {"failing": by_record(found.get("failing") or {}),
+            "unverified": by_record(found.get("unverified") or {}),
+            "regressions": [t for t in found.get("regressions") or () if awake(t)]}
+
+
 def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
                   fork: str) -> dict[str, Any]:
     """The verification part of the boundary. Its guarantee: the merge is never green unless
@@ -397,9 +420,10 @@ def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
                     "full_pending_reasons": list(pending.reasons),
                     "full_waived": waiver,
                     "affected": affected,
-                    "failing": verify.requirement_failures(scope),
-                    "unverified": verify.unverified_acceptance(scope),
-                    "regressions": verify.unresolved_regressions()})
+                    **live_verification(core, {
+                        "failing": verify.requirement_failures(scope),
+                        "unverified": verify.unverified_acceptance(scope),
+                        "regressions": verify.unresolved_regressions()})})
     except Exception as exc:  # a lane failure degrades, never blocks the boundary
         out.update({"available": False, "error": str(exc)})
     return out

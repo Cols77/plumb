@@ -208,7 +208,7 @@ def test_two_worktrees_propose_change_and_merge(repo: Path, tmp_path: Path) -> N
     check = plumb(repo, "merge-check", "main", "--no-run")
     assert check.returncode == 4, check.stdout + check.stderr   # waits for the owner
     assert "intent conflicts wait for your choice (/plumb conflicts):" in check.stdout
-    assert "on SR-001" in check.stdout and "relay checks" in check.stdout, check.stdout
+    assert "IC-001 on \"relay checks\"" in check.stdout and "on SR-001" not in check.stdout, check.stdout
     assert A_STATEMENT in check.stdout and B_STATEMENT in check.stdout, check.stdout
     data = json.loads(plumb(repo, "merge-check", "main", "--no-run", "--json").stdout)
     data = data.get("merge", data)
@@ -219,7 +219,7 @@ def test_two_worktrees_propose_change_and_merge(repo: Path, tmp_path: Path) -> N
     assert all(bare_cli_verbs(line) == [] for line in conflict_lines), conflict_lines
 
     conflicts = ok(repo, "conflicts")
-    assert "SR-001" in conflicts and "awaits your choice" in conflicts, conflicts
+    assert "awaits the owner's choice" in conflicts, conflicts
     assert bare_cli_verbs(conflicts) == [], conflicts
     status = open_core(repo).status(["SR-001"])["SR-001"]
     assert status.confirmation != "confirmed"                # no side is chosen for the owner

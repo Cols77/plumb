@@ -44,6 +44,29 @@ def marker(root: Path, head: str) -> Path:
 # --------------------------------------------------------------------------- post-merge proofs
 
 
+def restore_owner_words(root: Path, before: str, head: str) -> list[str]:
+    """DEC-116: the owner's-words entries (``log.OWNER_WORDS_KINDS``) that main tracked at
+    ``before`` and the merged branch stopped tracking: git removed their files from main's
+    working tree with the merge. They are the owner's own words and live nowhere else, so each
+    is written back from ``before`` as the untracked file it now is. Returns their paths."""
+    from plumb.log import OWNER_WORDS_KINDS
+
+    folders = [f".plumb/log/{kind}/" for kind in sorted(OWNER_WORDS_KINDS)]
+    gone = _git(root, "diff", "--name-only", "--diff-filter=D", "-z", before, head,
+                "--", *folders).split("\0")
+    restored: list[str] = []
+    for name in (n for n in gone if n.endswith(".json")):
+        target = Path(root) / name
+        if target.exists():
+            continue
+        text = subprocess.run(["git", "show", f"{before}:{name}"], cwd=root,
+                              capture_output=True, check=True).stdout
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(text)
+        restored.append(name)
+    return restored
+
+
 def post_merge_proofs(core: Any, before: str, head: str) -> list[str]:
     """SR-341: the requirements the commits of ``before..head`` deliver (their SR trailers)
     whose proof was agreed as post-merge."""
@@ -255,6 +278,8 @@ def compaction(core: Any, since_at: str, tracked: set[str],
     of a ``BY_AGE`` kind naming no record, older than ``since_at``. An entry a staying entry
     cites (its digest, or its payload's ``digest``) stays, and so on down the chain. A record
     of ``pending`` (an in-flight branch's, SR-301) is not retired for being absent here."""
+    from plumb import log
+
     index = core.index()
     statuses = core.status()
 
@@ -269,10 +294,13 @@ def compaction(core: Any, since_at: str, tracked: set[str],
     live = [e for e in [*core.events(), *evidence] if ":" not in e.name]
     moving: dict[str, Any] = {}
     for entry in live:
-        if entry.name not in tracked or entry.kind in NEVER:
+        telemetry = entry.kind in log.TELEMETRY_KINDS   # local files: tracked or not
+        if (entry.name not in tracked and not telemetry) or entry.kind in NEVER:
             continue
         named = named_records(entry.payload)
-        if entry.kind == "test-run":
+        if telemetry:
+            move = entry.at < since_at
+        elif entry.kind == "test-run":
             move = entry.digest not in kept_runs
         elif named:
             move = all(gone(i) for i in named)
@@ -447,14 +475,15 @@ def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], l
 def ended_sessions(root: Path, session: str) -> list[str]:
     """Remove each ``.plumb/session/<id>/`` the SessionEnd hook marked (``ended.json``), never
     ``session``'s own and never an unmarked one (owner, 2026-10-20: no age-based deletion).
-    A folder that will not go (a file still open) stays for the next landing."""
-    from plumb.understand import files
+    A folder that will not go (a file still open) stays for the next landing, and so does one
+    still holding a waiting question (SR-340: its questions are kept)."""
+    from plumb.understand import cardstore, files
 
     own = files.session_dir(root, session).name
     gone: list[str] = []
     for folder in sorted((Path(root) / ".plumb" / "session").glob("*/ended.json")):
         folder = folder.parent
-        if folder.name == own:
+        if folder.name == own or cardstore.load(Path(root), folder.name):
             continue
         shutil.rmtree(folder, ignore_errors=True)
         if not folder.exists():
@@ -483,6 +512,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     kept: list[str] = []
     ended: list[str] = []
     proofs: list[str] = []
+    words_back: list[str] = []
 
     def step(name: str, run: Any) -> None:
         try:
@@ -508,6 +538,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     def do_commit() -> None:
         from plumb import log
 
+        # SR-329: main's uncommitted shared entries ride the tidy commit; judgment entries are
+        # not among them (ignored by git), the compaction archives them instead (SR-376)
         shared = log.shared_uncommitted(root)
         if removed or archived or shared:
             _commit(root, removed, [*archived, *shared], head)
@@ -517,6 +549,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         gone.extend(found[0])
         kept.extend(found[1])
 
+    step("owner-words", lambda: words_back.extend(restore_owner_words(root, before, head)))
     step("proofs", lambda: proofs.extend(post_merge_proofs(open_core(root), before, head)))
     step("fixes", lambda: debug.landed(root, head))  # before the worktrees step drops branches
     step("tidy", do_tidy)
@@ -539,7 +572,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     line = f"plumb: landing {head[:12]}: " + "; ".join(p for p in parts if p)
     result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
               "queued": queued, "worktrees": gone, "kept": kept, "sessions": ended, "cases": len(cases),
-              "post_merge": proofs}
+              "post_merge": proofs, "owner_words": len(words_back)}
     summary.write_cases(open_core(root), head,
                         [{**c, "state": "open"} for c in debug.from_landing(root, cases)])
     files.write_json_atomic(done, result)

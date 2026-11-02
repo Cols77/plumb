@@ -39,9 +39,10 @@ def _deny(reason: str) -> dict[str, Any]:
 def decide(root: Path | str, session: str, tool: str,
            tool_input: dict[str, Any] | None = None,
            data: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The hook answer for ``tool`` in ``session``: a ``deny`` when the guard refuses the call,
-    while judge questions wait unasked (the ask gate, SR-361 EX-6, ``data`` the hook's input)
-    or, for an edit tool, while the gate is closed; else an empty mapping (allow)."""
+    """The hook answer for ``tool`` in ``session``: a ``deny`` when the guard refuses the call
+    or, for an edit tool, while the gate is closed; else an empty mapping (allow). The judge's
+    open questions never refuse a call (SR-378): ``data``, the hook's input, only notes them
+    asked when the question tool ran."""
     if tool_input is not None:
         from plumb.guard import denied
 
@@ -51,9 +52,7 @@ def decide(root: Path | str, session: str, tool: str,
     if data is not None:
         from plumb.hosts.claude_code import ask_gate
 
-        reason = ask_gate.decide(root, session, tool, tool_input or {}, data)
-        if reason:
-            return _deny(reason)
+        ask_gate.decide(root, session, tool, tool_input or {}, data)
     if tool not in EDIT_TOOLS or not session:
         return {}
     path = str((tool_input or {}).get("file_path") or "").replace("\\", "/")

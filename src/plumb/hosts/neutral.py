@@ -1,6 +1,6 @@
 """The host-neutral turn API (sp4 3.1, sp5 9): one ``handle_event`` for every host.
 
-Every adapter (Claude Code, Codex, Pi, Hermes, the CLI-only fallback) turns its host's event
+Every adapter (Claude Code, Codex, Hermes, the CLI-only fallback) turns its host's event
 into a ``TurnEvent``, calls ``handle_event`` and renders the ``TurnOutput`` the way its host
 can show it. This module delegates to the Claude Code handlers (the phase-0 delegation), so
 every host gets the same records, deltas, cards and questions; only the rendering differs.
@@ -32,7 +32,7 @@ from plumb.hosts.claude_code.hookio import (
 )
 from plumb.hosts.claude_code.providers import LAZY
 
-HOSTS = ("claude-code", "codex", "pi", "hermes", "cli")
+HOSTS = ("claude-code", "codex", "hermes", "cli")
 SELF_RECORDING_HOSTS = ("cli",)  # the fallback: the agent records the owner's message itself
 HOOK_NAMES = {"session-start": "session-start", "prompt": "prompt", "edit": "post-edit",
               "stop": "stop"}

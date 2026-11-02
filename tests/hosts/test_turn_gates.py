@@ -27,7 +27,7 @@ from plumb.cli import main
 
 pytestmark = pytest.mark.sr("SR-282")
 
-ENTRY_POINTS = ("claude-code", "cli", "codex", "pi", "hermes")
+ENTRY_POINTS = ("claude-code", "cli", "codex", "hermes")
 
 INT1 = """---
 id: INT-001
@@ -182,10 +182,10 @@ def test_without_a_test_map_a_turn_samples_sets_pending_and_checks_regressions(
     edit(project, "src/calc.py", "def sub(a, b):\n    return int(a) - int(b)\n")
     record_regression(project, "tests/test_calc.py::test_sub")
     first = stop(project, entry, monkeypatch, capsys)
-    # the bounded sample asks the agent for the turn's covering tests
-    assert "plumb tests run --paths src/calc.py" in first
-    # trigger 3 ran without the map: the regression of this turn's run is asked
+    # trigger 3 ran without the map: the regression of this turn's run is asked, and as
+    # SR-373's one next action it comes before the covering tests' instruction
     assert "regression: tests/test_calc.py::test_sub" in first
+    assert "plumb tests run --paths src/calc.py" not in first
     second = stop(project, entry, monkeypatch, capsys, active=True)
     # the status card is the status line's: the pending state is in the snapshot it reads
     status = project / ".plumb" / "session" / "status.json"

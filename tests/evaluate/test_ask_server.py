@@ -10,7 +10,6 @@ import pytest
 
 from plumb.evaluate import ask_server
 from plumb.hosts.claude_code import ask_gate
-from plumb.mcp import server as mcp
 
 QUESTIONS = [{"question": "Cache the pages or not?", "header": "Cache",
               "options": [{"label": "yes", "description": "faster"}, {"label": "no"}],
@@ -33,8 +32,7 @@ class Owner:
 def rpc(owner, *messages):
     out = io.StringIO()
     stdin = io.StringIO("".join(json.dumps(m) + "\n" for m in messages))
-    assert mcp.serve(ask_server.Path("."), stdin, out,
-                     server=ask_server.AskServer(CONFIG, owner)) == 0
+    assert ask_server.serve(ask_server.AskServer(CONFIG, owner), stdin, out) == 0
     return [json.loads(line) for line in out.getvalue().splitlines()]
 
 
@@ -79,4 +77,4 @@ def test_an_owner_with_nothing_to_say_still_answers():
 @pytest.mark.sr("SR-345")
 def test_a_call_without_questions_is_refused():
     (got,) = rpc(Owner(), call("not a list"))
-    assert got["error"]["code"] == mcp.INVALID_PARAMS
+    assert got["error"]["code"] == ask_server.INVALID_PARAMS

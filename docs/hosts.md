@@ -1,6 +1,8 @@
 # plumb on other hosts: capability tables
 
-Sub-project 4 (`docs/specs/sp4-hosts-mcp.md`, SR-053 to SR-057). Each table records the event
+Sub-project 4 (`docs/specs/sp4-hosts-mcp.md`, SR-053 to SR-057; SR-380: the Pi adapter and the MCP
+server are removed, and the Codex and Hermes adapters are frozen while Claude Code is the agent
+working on plumb: `freeze:` in `.plumb/config.yaml`, awake when the host's session marker is set). Each table records the event
 surface of the host version installed on this machine on 2026-10-06, read without running
 the host's agent: its documentation or `--help`, and, for Codex, the JSON schemas embedded
 in its binary. A row whose host has no mechanism uses the CLI-only fallback: the
@@ -42,25 +44,7 @@ a trusted hash per hook, so the owner trusts plumb's hooks once in Codex before 
 | edit | none needed: the stop event's one `git status` catches every edit | n/a | same |
 | stop | `Stop` hook: `plumb hook stop --host codex --format claude` (block at most once, never while `stop_hook_active`) | yes | `plumb turn end` |
 | stop (owner summary) | `notify` in `.codex/config.toml`: `plumb hook stop --host codex --format text --notify`, Codex appends the turn's JSON; it refreshes the status, never blocks and never rewrites the stated set (`notify` output is not shown to the owner) | yes, unless the project or user configuration already sets `notify` (kept) | `plumb status` |
-| tools | the read-only MCP server, `[mcp_servers.plumb]` in `.codex/config.toml` (`plumb mcp install codex`) | on request | CLI |
 | guard | owner-terminal guard (always); marker `PLUMB_AGENT_SESSION=codex` through `shell_environment_policy.set` in `.codex/config.toml` | yes, unless a foreign `shell_environment_policy` table exists (kept; status says the marker is missing) | `plumb hosts status codex` names the missing marker |
-
-## Pi (pi-coding-agent 0.84.3) — `plumb hosts install pi` (SR-055)
-
-Pi extensions are TypeScript modules (`.pi/extensions/<name>/index.ts`, loaded once the
-project is trusted) whose default export receives `ExtensionAPI` (docs/extensions.md of the
-installed package). They subscribe with `pi.on(event, handler)`, register commands with
-`pi.registerCommand`, set the footer with `ctx.ui.setStatus`, show notices with
-`ctx.ui.notify` and inject messages with `pi.sendMessage`.
-
-| plumb event | Pi mechanism | Installed | Fallback |
-|---|---|---|---|
-| session-start | `session_start`: runs `plumb hook session-start --host pi --format json`; the brief is added to the next turn's injected message | yes | `AGENTS.md` block |
-| prompt | `before_agent_start` (`event.prompt`): runs `plumb hook prompt`, returns `agent_context` as a hidden custom message (logged `via: hook`) | yes | `plumb turn start` |
-| edit | `tool_result` of the `edit` and `write` tools: `plumb hook post-edit --host pi` in the background | yes | stop's `git status` |
-| stop | `agent_end`: `owner_lines` as a notice, `status_line` in the footer; a `block` is sent once as a follow-up custom message (`deliverAs: followUp`, never as a user message, so it is never logged as the owner's words) | yes | `plumb turn end` |
-| owner commands | `/plumb <words>` (`pi.registerCommand`): passes the owner's words to the agent | yes | the agent runs the CLI |
-| guard | owner-terminal guard (always); the extension sets `PLUMB_AGENT_SESSION=pi` in its process environment, which the bash tool's commands inherit | yes, once the extension is loaded | `plumb hosts status pi` names the missing marker |
 
 ## Hermes (Hermes Agent 0.21.0) — `plumb hosts install hermes` (SR-056)
 
@@ -83,7 +67,6 @@ interpreter, so the plugin calls the plumb CLI (`--format json`) rather than imp
 | stop (owner summary) | `transform_llm_output` appends `owner_lines` to the reply the owner reads; `post_llm_call` checks the reply carries them, else (interrupted turn, empty reply, another plugin's transform won, an older Hermes) reruns the stop event `--unseen`, so no stated record stays marked shown | yes | `plumb status` |
 | child agents | sessions with `parent_session_id` are skipped (including startup deferred until after filtering); this does not certify provenance for parentless synthetic or scheduled turns | yes | n/a |
 | owner commands | `/plumb <words>` (`ctx.register_command`): the words are passed to the agent with `ctx.inject_message` | yes | CLI |
-| tools | the read-only MCP server in Hermes' `mcp_servers` (`plumb mcp install hermes`, user configuration) | on request | CLI |
 | guard | owner-terminal guard (always); `register(ctx)` sets `PLUMB_AGENT_SESSION=hermes` in Hermes' environment, which its local terminal tool inherits (not remote terminal backends) | yes | `plumb hosts status hermes` labels the CLI fallback and marker status as runtime-unverified |
 
 Release A support boundary
@@ -108,8 +91,7 @@ bar or streaming transport receipt. Native `plumb`/`plumb-clarify` skills are in
 plugin-owned files under `.hermes/plugins/plumb/skills/`. The plugin registers
 the bare names `plumb` and `plumb-clarify`; Hermes resolves them explicitly as
 `plumb:plumb` and `plumb:plumb-clarify`. They are not copied to `.hermes/skills`
-and are not entries in the flat available-skills index. MCP registration remains
-separate and is not performed by this adapter.
+and are not entries in the flat available-skills index.
 
 Owner-run installation
 
@@ -129,15 +111,6 @@ discovery is the separate `HERMES_ENABLE_PROJECT_PLUGINS=1` prerequisite. The st
 intentionally reports runtime activation as unverified.
 The CLI fallback remains in the selected context file and covers `turn start`/`turn end`,
 owner words, proposed intent, and unseen-summary limitations.
-
-## The read-only MCP server (SR-057)
-
-`plumb mcp serve` speaks JSON-RPC 2.0 over stdio (newline-delimited, standard library only)
-and lists six read-only tools: `plumb_brief`, `plumb_relevant`, `plumb_show`,
-`plumb_explain`, `plumb_impact`, `plumb_drift`, each annotated `readOnlyHint: true`. There is
-no write tool: no capture, link, approval, revocation, test run or waiver.
-`plumb mcp install claude-code|codex|hermes` registers it (`.mcp.json`, `.codex/config.toml`,
-Hermes' `config.yaml`), preserving foreign entries.
 
 ## The understanding layer's dispatchers and the gate (SR-104, SR-103)
 

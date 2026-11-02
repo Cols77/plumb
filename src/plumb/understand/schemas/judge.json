@@ -26,11 +26,11 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["question", "header", "options", "request", "records"],
+        "required": ["question"],
         "properties": {
           "question": {"type": "string"},
           "header": {"type": "string"},
-          "options": {"type": "array", "minItems": 2, "maxItems": 4, "items": {"type": "object", "properties": {
+          "options": {"type": "array", "items": {"type": "object", "properties": {
             "label": {"type": "string"}, "consequence": {"type": "string"}}}},
           "recommended_reason": {"type": "string"},
           "request": {"type": "object", "properties": {

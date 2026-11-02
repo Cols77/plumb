@@ -26,5 +26,5 @@ links:
   to: INT-076
   pin:
     from: sha256:f7f0f4a787403fc1b1f7bd1bed62b26bd7d53f68bc2cfe54bf546757325be6ab
-    to: sha256:179fe2baec43ee4eafd8f639d77a41ae0ea853cdc36f0ec8f408080412276cc8
+    to: sha256:d1d3d42e3a2a6d9a258c2ffaaeceea5ba058f091c2f29dceff957126a9549028
 ---

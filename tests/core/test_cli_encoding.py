@@ -61,7 +61,6 @@ def _run_legacy(repo: Path, *argv: str) -> subprocess.CompletedProcess[bytes]:
     ("resolve", "the add function"),
     ("impact", "the add function"),
     ("align",),
-    ("triage",),
 ], ids=lambda argv: argv[0] + ("-card" if "--card" in argv else ""))
 def test_owner_view_prints_through_a_cp1252_pipe(project: Path, argv: tuple[str, ...]) -> None:
     result = _run_legacy(project, *argv)

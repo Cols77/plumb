@@ -4,7 +4,6 @@ stubbed."""
 
 from __future__ import annotations
 
-import time
 import types
 from pathlib import Path
 from typing import Any
@@ -13,8 +12,7 @@ import pytest
 
 from plumb import stale
 from plumb.api import open_core
-from plumb.hosts.claude_code.hookio import Deadline, HookContext
-from plumb.understand import cardstore, summary, tidy, worker
+from plumb.understand import cardstore, tidy, worker
 from understand.test_judge_job import SESSION, log_prompt, requirement_text
 
 pytestmark = pytest.mark.sr("SR-219")
@@ -54,11 +52,6 @@ PRINCIPLE = {"question": "What counts as your answer?", "options": ["Your words"
              "cards": ["stale:SR-002#0", "stale:SR-002#1"]}
 
 
-def _turn_end(repo: Path) -> str:
-    ctx = HookContext("stop", {}, repo, SESSION, Deadline(300))
-    return "\n".join(summary.stop_parts(ctx, open_core(repo), {"turn_start": time.time() - 60}).cards)
-
-
 def test_ex1_cards_hinging_on_one_principle_are_asked_once_and_not_drawn(
         repo: Path, world) -> None:
     world.dispatcher.script = {"tidy": {"verdicts": [], "principles": [PRINCIPLE]}}
@@ -66,8 +59,6 @@ def test_ex1_cards_hinging_on_one_principle_are_asked_once_and_not_drawn(
     (card,) = [c for c in cardstore.own_cards(repo, SESSION) if c.kind == "principle"]
     assert card.topic == "What counts as your answer?" and "Adds 1; Adds 2" in card.issue
     assert set(cardstore.grouped(repo, SESSION)) == set(PRINCIPLE["cards"])
-    shown = _turn_end(repo)
-    assert "What counts as your answer?" in shown and "the code changed" not in shown
 
 
 def test_a_lone_card_is_no_principle(repo: Path, world) -> None:
@@ -95,7 +86,6 @@ def test_ex2_a_confirmed_decision_settles_each_card_and_the_line_counts_them(
     assert cardstore.load(repo, SESSION) == []
     assert [e.payload["action"] for e in core.log_read("events", ["card-settled"])] == [
         "withdraw", "repin"]
-    assert "Settled from your decision: 1 withdrawn, 1 repinned" in _turn_end(repo)
 
 
 @pytest.mark.sr("SR-335")
@@ -126,7 +116,6 @@ def test_ex3_a_card_the_model_cannot_settle_stays_with_one_line(repo: Path, worl
     _run(repo)
     _run(repo)      # a second reading says it once only
     assert [c.id for c in cardstore.load(repo, SESSION)] == ["stale:SR-002#1"]
-    assert "1 withdrawn, 1 could not be settled and stay open" in _turn_end(repo)
 
 
 def test_ex4_undo_puts_the_card_and_the_reworded_statement_back(repo: Path, world) -> None:

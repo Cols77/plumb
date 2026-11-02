@@ -1,5 +1,6 @@
 """Smoke tests: the package imports and the CLI entry point answers."""
 
+import re
 import subprocess
 import sys
 
@@ -8,12 +9,13 @@ from plumb.cli import main
 
 
 def test_package_exposes_version() -> None:
-    assert plumb.__version__ == "0.1.0"
+    # SR-377: 0.1.<git commit count>
+    assert re.fullmatch(r"0\.1\.\d+", plumb.__version__)
 
 
 def test_cli_version_flag(capsys) -> None:
     assert main(["--version"]) == 0
-    assert capsys.readouterr().out.strip() == "plumb 0.1.0"
+    assert capsys.readouterr().out.strip() == f"plumb {plumb.__version__}"
 
 
 def test_cli_without_arguments_prints_help(capsys) -> None:
@@ -29,4 +31,4 @@ def test_module_is_runnable() -> None:
         check=False,
     )
     assert result.returncode == 0
-    assert result.stdout.strip() == "plumb 0.1.0"
+    assert result.stdout.strip() == f"plumb {plumb.__version__}"
