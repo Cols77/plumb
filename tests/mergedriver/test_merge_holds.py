@@ -92,6 +92,43 @@ def test_unconfirmed_proof_holds_a_merge_into_main_until_the_owner_says_yes(
     assert report.exit == 0, report.lines
 
 
+def _proof_confirmed_in(root: Path) -> list[str]:
+    return [e.payload["record"] for e in open_core(root).events()
+            if e.kind == "proof-confirmed"]
+
+
+def test_proof_asked_in_a_worktree_is_confirmed_by_the_hook_run_in_main(
+        delivered, hook_input) -> None:
+    """report-89c846ed: ``plumb proof --ask`` in a worktree files the question there, in that
+    worktree's own session folder; the owner's yes, heard by the hook run against main, tags
+    the answer and leaves the committed outcome on the branch that delivers the record."""
+    root, feat = delivered
+    asked = proof.ask(open_core(feat), "SR-001", "worktree-session")
+    _answer(root, hook_input, asked, proof.YES)
+    assert proof.owner_confirmed(open_core(feat), "SR-001")
+    assert proof.pending(feat, "worktree-session") == []
+    assert _proof_confirmed_in(feat) == ["SR-001"]
+    tagged = [e for e in open_core(root).events() if e.kind == "question-answer"]
+    assert [e.payload["proof"]["record"] for e in tagged] == ["SR-001"]
+    # recorded once: the outcome lands in the checkout that filed the question, not in main too
+    assert len(list((feat / ".plumb" / "log" / "proof-confirmed").glob("*.json"))) == 1
+    assert not list((root / ".plumb" / "log" / "proof-confirmed").glob("*.json"))
+    assert len(list((root / ".plumb" / "log" / "question-answer").glob("*.json"))) == 1
+
+
+def test_a_proof_asked_past_the_log_readers_cap_still_finds_its_worktree(
+        delivered, hook_input, monkeypatch) -> None:
+    """report-89c846ed: every checkout of this machine, not only the ones a log read consults."""
+    from plumb import log
+
+    root, feat = delivered
+    asked = proof.ask(open_core(feat), "SR-001", "worktree-session")
+    monkeypatch.setattr(log, "SIBLING_MAX", 0)
+    _answer(root, hook_input, asked, proof.YES)
+    assert proof.pending(feat, "worktree-session") == []
+    assert _proof_confirmed_in(feat) == ["SR-001"]
+
+
 def test_ex28_in_the_report_form(delivered, hook_input) -> None:
     """EX-28, EX-10: the report-only form holds the same proof with 5, then passes after
     the owner's yes."""

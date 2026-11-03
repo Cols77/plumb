@@ -446,8 +446,8 @@ def _read_uncached(paths: PlumbPaths, stream: LogStream,
     return out
 
 
-def _worktree_roots(paths: PlumbPaths) -> list[Path]:
-    """The plumb roots of the repository's other worktrees, read from git's own files (the
+def sibling_roots(paths: PlumbPaths) -> list[Path]:
+    """The plumb roots of all the repository's other worktrees, read from git's own files (the
     ``.git`` file or directory, ``commondir``, ``worktrees/*/gitdir``); no process."""
     try:
         root = paths.root.resolve()
@@ -486,7 +486,12 @@ def _worktree_roots(paths: PlumbPaths) -> list[Path]:
         pass
     rel = root.relative_to(top)
     own = os.path.normcase(str(top))
-    return [t / rel for t in tops if os.path.normcase(str(t)) != own][:SIBLING_MAX]
+    return [t / rel for t in tops if os.path.normcase(str(t)) != own]
+
+
+def _worktree_roots(paths: PlumbPaths) -> list[Path]:
+    """``sibling_roots`` up to ``SIBLING_MAX``: what a read of the log may consult."""
+    return sibling_roots(paths)[:SIBLING_MAX]
 
 
 def other_checkouts(paths: PlumbPaths) -> list[LogEntry]:

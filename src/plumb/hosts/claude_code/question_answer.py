@@ -9,7 +9,8 @@ answer is one of its option labels) names the records asked about at their versi
 and one bare judge job is queued for them: the worker rebuilds the premise with the answer and
 judges again (SR-212). An answer to the agent's own wording (``plumb question reword``,
 ``judge.reworded``) answers every judge question it covers, ``asked.keys`` naming each
-(SR-362). An answer to a pending proof question (``proof_questions.json``, filed by ``plumb proof SR-### --ask``, matched by its key) carries ``proof: {record, hash,
+(SR-362). An answer to a pending proof question (``proof_questions.json``, filed by ``plumb proof SR-### --ask``
+in any checkout of this machine, matched by its key) carries ``proof: {record, hash,
 evidence_at}`` and the pending question is removed: the owner's yes is the only confirmation
 of a proof (DEC-257, ``proof.owner_confirmed``). The proof is tagged only when the question
 shown is the one that record's current passing evidence asks, with YES among its options
@@ -26,7 +27,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from plumb.hosts.claude_code.hookio import HookContext, HookOutput, hook_budget, run_hook
 
@@ -124,9 +125,9 @@ def handle(ctx: HookContext) -> HookOutput | None:
                                                if isinstance(r, dict)}.values())}
             if covers:
                 entry["asked"]["keys"] = [q.get("key") for q in merged]
-    _tag_proofs(core, ctx.session_id, entries, key_of)
+    elsewhere = _tag_proofs(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
-    _share_proofs(core, entries)
+    _share_proofs(core, entries, elsewhere)
     from plumb.mergedriver.conflicts import stage_choice
 
     stage_choice(core)
@@ -157,39 +158,80 @@ def _note_asked(ctx: HookContext) -> None:
         pass
 
 
-def _share_proofs(core, entries: list[dict]) -> None:
+def _share_proofs(core, entries: list[dict], elsewhere: list[tuple[Any, dict]]) -> None:
     """DEC-116, DEC-257: the owner's yes to a proof is an outcome, committed so it follows the
-    record through a merge and a renumber; the answer entry itself (their words) stays local."""
+    record through a merge and a renumber; the answer entry itself (their words) stays local.
+    A yes to a question filed in another checkout also goes in that checkout's log, where the
+    branch delivering the record carries it."""
     from plumb.capture import proof
+    from plumb.mergedriver.conflicts import stage_choice
 
-    for entry in entries:
+    def share(where, entry: dict) -> None:
         tag = entry.get("proof")
         if isinstance(tag, dict) and entry.get("answer") == proof.YES:
-            core.log_append("events", "proof-confirmed", {
+            where.log_append("events", "proof-confirmed", {
                 "record": tag.get("record"), "hash": tag.get("hash"),
                 "evidence_at": tag.get("evidence_at"), "answer": proof.YES})
 
+    other = {id(entry) for _, entry in elsewhere}
+    for entry in entries:
+        if id(entry) not in other:       # recorded once, in the checkout that filed the question
+            share(core, entry)
+    for where, entry in elsewhere:
+        try:
+            share(where, entry)
+            stage_choice(where)
+        except Exception:  # noqa: BLE001 - the answer is logged; another checkout never fails it
+            pass
 
-def _tag_proofs(core, session: str, entries: list[dict], key_of) -> None:
+
+def _proof_files(core, session: str) -> list[tuple[Path, Path]]:
+    """``(root, file)`` of every pending proof question file: the session's own first, then the
+    other session folders of this checkout (the CLI's), then those of every other checkout of
+    the repository on this machine, where ``plumb proof --ask`` in a worktree files them."""
+    from plumb import log
+    from plumb.capture import proof
+
+    own = proof.questions_path(core.root, session)
+    found = [(Path(core.root), own)] if own.exists() else []
+    for root in (Path(core.root), *log.sibling_roots(core.paths)):
+        found += [(root, path) for path in sorted((root / ".plumb" / "session").glob(
+            f"*/{proof.QUESTIONS_FILE}")) if path != own]
+    return found
+
+
+def _tag_proofs(core, session: str, entries: list[dict], key_of) -> list[tuple[Any, dict]]:
     """DEC-257: each entry answering a pending proof question gets ``proof`` (when
-    ``proof.confirmation`` rebuilds that very question from the record) and that question
-    leaves the session's ``proof_questions.json``."""
+    ``proof.confirmation`` rebuilds that very question from the record, in the checkout that
+    filed it) and that question leaves its ``proof_questions.json``. Returns ``(core, entry)``
+    for the entries tagged from another checkout."""
+    from plumb.api import open_core
     from plumb.capture import proof
     from plumb.understand import files
 
-    asked = proof.pending(core.root, session)
-    if not asked:
-        return
-    for entry in entries:
-        key = key_of(entry["question"])
-        found = next((q for q in asked if q.get("key") == key), None)
-        if found is not None:
+    elsewhere: list[tuple[Any, dict]] = []
+    for root, path in _proof_files(core, session):
+        asked = proof.pending(root, path.parent.name)
+        hits = [(e, q) for e in entries if "proof" not in e for q in asked
+                if q.get("key") == key_of(e["question"])]
+        if not hits:
+            continue
+        try:
+            where = core if root == Path(core.root) else open_core(root)
+        except Exception:  # noqa: BLE001 - a broken checkout never loses the owner's answer
+            continue
+        for entry, found in hits:
+            if "proof" in entry:
+                continue
             asked.remove(found)
-            tag = proof.confirmation(core, found.get("record"), entry["question"],
+            tag = proof.confirmation(where, found.get("record"), entry["question"],
                                      [o["label"] for o in entry["options"]])
             if tag is not None:
                 entry["proof"] = tag
-    files.write_json_atomic(proof.questions_path(core.root, session), asked)
+                if where is not core:
+                    elsewhere.append((where, entry))
+        files.write_json_atomic(path, asked)
+    return elsewhere
 
 
 def main(*, stdin: TextIO | None = None, stdout: TextIO | None = None,
