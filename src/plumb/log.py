@@ -446,8 +446,8 @@ def _read_uncached(paths: PlumbPaths, stream: LogStream,
     return out
 
 
-def _worktree_roots(paths: PlumbPaths) -> list[Path]:
-    """The plumb roots of the repository's other worktrees, read from git's own files (the
+def sibling_roots(paths: PlumbPaths) -> list[Path]:
+    """The plumb roots of all the repository's other worktrees, read from git's own files (the
     ``.git`` file or directory, ``commondir``, ``worktrees/*/gitdir``); no process."""
     try:
         root = paths.root.resolve()
@@ -486,7 +486,12 @@ def _worktree_roots(paths: PlumbPaths) -> list[Path]:
         pass
     rel = root.relative_to(top)
     own = os.path.normcase(str(top))
-    return [t / rel for t in tops if os.path.normcase(str(t)) != own][:SIBLING_MAX]
+    return [t / rel for t in tops if os.path.normcase(str(t)) != own]
+
+
+def _worktree_roots(paths: PlumbPaths) -> list[Path]:
+    """``sibling_roots`` up to ``SIBLING_MAX``: what a read of the log may consult."""
+    return sibling_roots(paths)[:SIBLING_MAX]
 
 
 def other_checkouts(paths: PlumbPaths) -> list[LogEntry]:
@@ -1138,15 +1143,19 @@ def shared_uncommitted(root: Path) -> list[str]:
 
 
 def committable(root: Path, paths: Iterable[str]) -> list[str]:
-    """``paths`` without a local kind's new entry or segment: git ignores those, so naming one
-    fails the whole commit (SR-287 EX-16). A tracked local file (its removal) and every path
-    outside the log are kept. Only the log code knows where the log lives (DEC-195, EX-15)."""
+    """``paths`` without a local kind's content: never an entry or a segment of a kind in
+    ``LOCAL_KINDS`` is committed, whatever git ignores or already tracks at the time, so naming
+    one cannot fail the commit (SR-287 EX-16) or carry the owner's words in (SR-321). The one
+    local path kept is a tracked file that is gone from disk (its removal adds no content).
+    Every path outside the log and every shared kind's path, the judgment segment included, is
+    kept. Only the log code knows where the log lives (DEC-195, EX-15)."""
     prefix = ".plumb/log/"
     paths = list(paths)
-    local = [p for p in paths if p.startswith(prefix) and p.count("/") >= 3
-             and p.split("/")[2] in LOCAL_KINDS]
+    local = {p for p in paths if p.startswith(prefix) and p.count("/") >= 3
+             and p.split("/")[2] in LOCAL_KINDS}
     known = {prefix + n for n in tracked_names(root)}
-    return untracked_telemetry_out(root, [p for p in paths if p not in local or p in known])
+    return untracked_telemetry_out(root, [
+        p for p in paths if p not in local or (p in known and not (Path(root) / p).exists())])
 
 
 def untracked_telemetry_out(root: Path, paths: Iterable[str]) -> list[str]:

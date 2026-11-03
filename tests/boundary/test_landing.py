@@ -100,6 +100,7 @@ def test_ex15_the_landing_commit_names_no_log_path_the_log_code_picks(repo: Path
     run_git(repo, "add", "-f", ".plumb/log/job-note")
     commit_all(repo, "a tracked job-note")
     tracked = ".plumb/log/" + sorted(log.tracked_names(repo))[0]
+    (repo / tracked).unlink()   # a tracked local entry is committed only as a removal
     assert log.committable(repo, ["docs/a.md", tracked, ".plumb/log/job-note/archive.jsonl",
                                   ".plumb/log/judgment/archive.jsonl"]) == [
         "docs/a.md", tracked, ".plumb/log/judgment/archive.jsonl"]
