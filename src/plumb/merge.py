@@ -396,7 +396,8 @@ def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
     confirmed requirement whose acceptance tests cover a changed path (``affected``): a
     change to one requirement's code that breaks another's acceptance test is held too.
     ``full_pending`` holds the merge until a full run satisfies it or an owner waiver pins
-    this exact change (``plumb tests waive --merge <base>``, concept 7.4)."""
+    this exact change (``plumb tests waive --merge <base>``, concept 7.4). A green full run of
+    the merged tree recorded in any checkout of this machine satisfies it."""
     statuses = core.status(touched)
     not_covered = [i for i, s in statuses.items() if s.confirmation == "confirmed"
                    and not s.covered]
@@ -413,11 +414,19 @@ def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
         affected = [i for i in verify.affected_requirements(paths) if i not in touched]
         scope = sorted({*touched, *affected})
         waiver = None
-        if pending.pending:
+        is_pending, reasons = pending.pending, list(pending.reasons)
+        if is_pending:
+            from plumb.boundary.fullrun import run_of_merged_tree
+
+            counted = run_of_merged_tree(core, verify)
+            if counted is not None:
+                is_pending, reasons = False, []
+                out["full_run_counted"] = counted.get("run_id")
+        if is_pending:
             digest = range_digest(core.root, fork)
             waiver = digest if waived(core, digest) else None
-        out.update({"available": True, "full_pending": pending.pending,
-                    "full_pending_reasons": list(pending.reasons),
+        out.update({"available": True, "full_pending": is_pending,
+                    "full_pending_reasons": reasons,
                     "full_waived": waiver,
                     "affected": affected,
                     **live_verification(core, {
