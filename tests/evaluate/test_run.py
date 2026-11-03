@@ -239,3 +239,27 @@ def test_the_scratch_repository_hears_the_stand_in_tool(tmp_path):
     groups = json.loads((scratch / ".claude" / "settings.json").read_text())["hooks"]["PostToolUse"]
     (heard,) = [g for g in groups if g["matcher"] == ask_gate.STAND_IN_TOOL]
     assert heard["hooks"][0]["command"].endswith("hook question-answer")
+
+
+@pytest.mark.sr("SR-344")
+def test_the_scratch_repository_has_a_judge_by_default(tmp_path):
+    """eval-8ba65c4a: with no judge named, the agent's capture is never checked, and the agent
+    may not change the config to fix that."""
+    from plumb.config import load_config
+
+    scratch = run.scratch_repo(tmp_path)
+    assert load_config(scratch).judgment.backend == "jev"
+
+
+@pytest.mark.sr("SR-344")
+def test_the_run_judges_with_the_judge_of_the_repository_it_runs_from(tmp_path):
+    """The credential's provider is the host's: the preset default would look for another key."""
+    from plumb.config import load_config
+
+    root = tmp_path / "root"
+    (root / ".plumb").mkdir(parents=True)
+    (root / ".plumb" / "config.yaml").write_text(
+        "judgment:\n  backend: jev\n  jev:\n    provider: openrouter\n", encoding="utf-8")
+    judgment = load_config(go(tmp_path, Claude()).scratch).judgment
+    assert judgment.backend == "jev"
+    assert judgment.jev["credential_env"] == "OPENROUTER_API_KEY"

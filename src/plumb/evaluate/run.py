@@ -48,9 +48,25 @@ def _git(cwd: Path, *args: str) -> None:
                    encoding="utf-8")
 
 
-def scratch_repo(parent: Path) -> Path:
+def _name_the_judge(scratch: Path, host: Path | None) -> None:
+    """eval-8ba65c4a: the agent may not change the scratch config, so the run names the judge:
+    the host repository's when it has one (its provider decides which credential is read), else
+    jev. Without a key the agent still sees "judging unavailable", naming the key."""
+    from plumb.capture.configfile import update_section
+    from plumb.config import load_config
+
+    judgment = load_config(host).judgment if host else None
+    if judgment is None or not judgment.backend:
+        update_section(scratch, "judgment", {"backend": "jev"})
+        return
+    update_section(scratch, "judgment", {"backend": judgment.backend,
+                                         "hook_timeout_ms": judgment.hook_timeout_ms,
+                                         "jev": dict(judgment.jev)})
+
+
+def scratch_repo(parent: Path, host: Path | None = None) -> Path:
     """A git repository with a first commit (so hooks work), adopted by plumb with the Claude
-    Code hooks installed (the owner's choice, DEC-306)."""
+    Code hooks installed (the owner's choice, DEC-306) and a judge named from ``host``."""
     from plumb.commands import init_repo
     from plumb.hosts.claude_code import install
 
@@ -61,6 +77,7 @@ def scratch_repo(parent: Path) -> Path:
     _git(root, "config", "user.name", "Eval")
     _git(root, "commit", "-q", "--allow-empty", "-m", "initial")
     init_repo(root)
+    _name_the_judge(root, host)
     install.install(root)
     _hear_stand_in(root)
     return root
@@ -175,7 +192,7 @@ def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | 
     root = Path(root)
     run_dir = _new_run_dir(runs_dir or root / ".plumb" / "eval" / "runs",
                            f"{time.strftime('%Y%m%dT%H%M%S')}-{task.name}-{model}")
-    scratch = scratch_repo(Path(tempfile.mkdtemp(prefix="plumb-eval-")))
+    scratch = scratch_repo(Path(tempfile.mkdtemp(prefix="plumb-eval-")), host=root)
     transcript: list[Turn] = []
     state: dict[str, Any] = {"session": None, "start": now(), "out_of_time": False}
 
