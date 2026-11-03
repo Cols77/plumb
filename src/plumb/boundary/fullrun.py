@@ -16,7 +16,7 @@ run, the tree and the environment (concept 7.5 evidence promotion).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 Runner = Callable[[Any], Any]
@@ -149,40 +149,6 @@ def _without_records(root: Any, tree: Any) -> str | None:
                      if line.split("\t", 1)[-1] != ".plumb")
 
 
-def _full_runs_of_every_checkout(paths: Any) -> Iterator[Any]:
-    """The full runs in the test-run logs of this checkout and the repository's others, newest
-    first by entry name, read-only. An entry's bytes are tried before it is parsed, as these
-    logs run to hundreds of megabytes; an entry two checkouts share is read once, and one whose
-    digest does not hold is left out."""
-    import os
-    import re
-    from pathlib import Path
-
-    from plumb.log import _parse_entry, _read_file, _to_entry, _worktree_roots, entry_digest
-    from plumb.paths import PlumbPaths
-
-    is_full = re.compile(rb'"full"\s*:\s*true')
-    names: dict[str, Path] = {}
-    for root in (paths.root, *_worktree_roots(paths)):
-        folder = PlumbPaths(root).log_kind_dir("test-run")
-        try:
-            found = [name for name in os.listdir(folder) if name.endswith(".json")]
-        except OSError:
-            continue
-        for name in found:
-            names.setdefault(name, folder)
-    for name in sorted(names, reverse=True):
-        try:
-            data = _read_file(str(names[name] / name))
-        except OSError:
-            continue
-        if not is_full.search(data):
-            continue
-        raw = _parse_entry(data)
-        if raw is not None and raw.get("digest") == entry_digest(raw):
-            yield _to_entry("evidence", raw, -1, f"test-run/{name}")
-
-
 def run_of_merged_tree(core: Any, verify: Any) -> Mapping[str, Any] | None:
     """The green full run of the tree being merged that any checkout of this machine recorded,
     or None (SR-254, report-d188e19d). Each checkout logs its own runs, so main cannot otherwise
@@ -203,7 +169,9 @@ def run_of_merged_tree(core: Any, verify: Any) -> Mapping[str, Any] | None:
         return None
     clean = sha256_bytes(canonical_json([]))  # tree_identity's ``dirty`` with nothing changed
     env_now = None
-    for entry in _full_runs_of_every_checkout(core.paths):
+    from plumb.log import full_runs_of_every_checkout
+
+    for entry in full_runs_of_every_checkout(core.paths):
         payload = entry.payload
         tree = payload.get("tree") or {}
         if (not payload.get("full") or tree.get("dirty") != clean
