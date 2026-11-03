@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import git
 
 from plumb import links, stale
 from plumb.api import open_core
@@ -265,6 +266,7 @@ def test_flow_3_capture_asks_through_the_question_tool_and_draws_no_trial(repo: 
     question tool (``clarify --wait`` answers ``ask``); the turn end draws no trial or read-back
     card and nothing is approved without a question round."""
     (repo / ".plumb" / "config.yaml").write_text(ROOMY, encoding="utf-8")
+    git(repo, "checkout", "-q", "-b", "calculator")   # SR-361: the work is on its own branch
     s = Session(repo)
     s.start()
     model(s, clarify=CLEAR)

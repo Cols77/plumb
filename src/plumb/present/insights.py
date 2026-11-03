@@ -66,12 +66,16 @@ def intent_line(core: Any, ctx: Mapping[str, Any]) -> Line | None:
 
 
 def _questions_line(core: Any) -> Line | None:
+    """A question waiting on a record this checkout's branch changes (SR-374, SR-361)."""
+    from plumb.understand import judge
+
     sessions = Path(core.root) / ".plumb" / "session"
+    ours = None
     for path in sorted(sessions.glob("*/judge_questions.json")):
         try:
-            from plumb.understand import judge
-
-            asked = judge.open_questions(core, path.parent.name)
+            ours = judge.work_ids(core) if ours is None else ours
+            asked = [q for q in judge.open_questions(core, path.parent.name)
+                     if judge._ids_of(q) & ours]
         except Exception:  # noqa: BLE001 - a brief never fails on the judge's file
             continue
         if asked:

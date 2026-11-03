@@ -528,11 +528,37 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
 
 def to_ask(core: Any, session: str) -> list[Mapping[str, Any]]:
     """The open questions the agent is to ask now: those a study the owner reads first holds
-    back wait (SR-336 EX-2). One list for clarify, the stop hook and the ask gate (SR-361)."""
+    back wait (SR-336 EX-2), and only those on records this checkout's branch changes (SR-361:
+    the rest wait in /plumb status). One list for clarify, the stop hook and the ask gate."""
     from plumb import study
 
     later = study.first_keys(Path(core.root), session)
-    return [q for q in open_questions(core, session) if q.get("key") not in later]
+    ours = work_ids(core)
+    return [q for q in open_questions(core, session)
+            if q.get("key") not in later and _ids_of(q) & ours]
+
+
+def work_ids(core: Any) -> set[str]:
+    """SR-361, INT-119: the records this checkout's branch changes compared with the default
+    branch, as the merge check counts them (``merge.changed_paths``); none in the default
+    branch's own checkout, where no work happens (DEC-421)."""
+    import subprocess
+
+    from plumb import merge
+    from plumb.boundary.cli import merge_settings
+
+    base = str(merge_settings(core)["default_base"])
+    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=core.root,
+                            capture_output=True, text=True).stdout.strip()
+    if not branch or branch == base:
+        return set()
+    try:
+        paths, messages = merge.changed_paths(core, base)
+    except Exception:  # noqa: BLE001 - no base to compare with: nothing is this branch's
+        return set()
+    changed = set(paths)
+    ids = {r.id for r in core.index().values() if r.path in changed}
+    return ids | set(merge.touched_requirements(core, paths, messages))
 
 
 ASKED_FILE = "asked_keys.json"     # SR-361 EX-6: the open question keys at the last question tool
