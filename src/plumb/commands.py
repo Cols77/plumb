@@ -245,9 +245,9 @@ def cmd_repin(command: str, argv: list[str]) -> int:
                         help="rerun the linked tests and repin only when they pass and a model "
                              "judges the meaning unchanged; refuses otherwise")
     parser.add_argument("--dry-run", action="store_true",
-                        help="with --after-tests: ask the models only (JEV, Sonnet and the "
-                             "Opus diagnosis; no tests, no repin, no card) and list what it "
-                             "would repin")
+                        help="change nothing (no record file, no log entry) and list what it "
+                             "would repin; with --after-tests it asks the models only (JEV, "
+                             "Sonnet and the Opus diagnosis; no tests, no card)")
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
     if not args.selector and not args.all_stale:
@@ -264,7 +264,11 @@ def cmd_repin(command: str, argv: list[str]) -> int:
             changes, refused, would = outcome.changes, outcome.refused, outcome.would
             diagnoses = outcome.diagnoses
         else:
-            changes = repin(core, args.selector, all_stale=args.all_stale, note=args.note)
+            changes = repin(core, args.selector, all_stale=args.all_stale, note=args.note,
+                            dry_run=args.dry_run)
+            if args.dry_run:   # nothing was written: what it would do is the answer
+                would = [(c["link"], "its pin would be refreshed") for c in changes]
+                changes = []
     except LinkError as exc:
         print(f"plumb: {exc}", file=sys.stderr)
         return 1

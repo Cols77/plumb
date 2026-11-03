@@ -322,6 +322,45 @@ def test_cli_prints_the_diagnosis(project: Path, capsys, monkeypatch) -> None:
     assert data["diagnoses"][0]["outcome"] == "owner"
 
 
+def _snapshot(repo: Path) -> dict[str, bytes]:
+    """Every file in the project (records, logs, the pin blob store); not git's object store
+    and not the derived read cache."""
+    files = {}
+    for path in repo.rglob("*"):
+        rel = path.relative_to(repo).as_posix()
+        kept = not rel.startswith(".git/") or rel.startswith(".git/plumb")
+        if path.is_file() and kept and not rel.startswith(".plumb/cache/"):
+            files[rel] = path.read_bytes()
+    return files
+
+
+@pytest.mark.sr("SR-198")
+@pytest.mark.parametrize("after_tests", [False, True], ids=["pins-only", "after-tests"])
+@pytest.mark.parametrize("selector", [LINK, "SR-001", "--all-stale"],
+                         ids=["link", "record", "all-stale"])
+def test_dry_run_changes_nothing(project: Path, capsys, monkeypatch, selector: str,
+                                 after_tests: bool) -> None:
+    """A dry run prints what it would repin and writes no file and no log entry."""
+    if after_tests and selector == "--all-stale":
+        pytest.skip("--after-tests takes one link id or record ID")
+    _edit(project, REFORMATTED)
+    monkeypatch.setattr(links, "default_runner", lambda core: _runner)
+    monkeypatch.setattr(repin, "open_judge", lambda core: Judge(True))
+    monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
+    before = _snapshot(project)
+    argv = ["repin", selector, "--dry-run", "--root", str(project)]
+    if after_tests:
+        argv.insert(1, "--after-tests")
+    assert main(argv) == 0
+    out = capsys.readouterr().out
+    assert "would repin" in out and (LINK in out)
+    assert _snapshot(project) == before and _state(project) == "stale"
+    assert main(argv + ["--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["repinned"] == [] and [w["link"] for w in data["would_repin"]] == [LINK]
+    assert _snapshot(project) == before
+
+
 def test_config_reads_the_cascade_settings() -> None:
     settings = config_from_mapping({"understand": {"repin_jev_threshold": 0.83}}).understand
     assert settings.repin_jev_threshold == 0.83 and settings.diagnose_model == "opus"

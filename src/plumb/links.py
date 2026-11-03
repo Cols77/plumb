@@ -241,8 +241,10 @@ def _describe(target: Target) -> str:
 
 
 def repin(core: Core, selector: str | None = None, *, all_stale: bool = False,
-          note: str = "") -> list[dict[str, Any]]:
-    """Refresh pins of stale or unpinned links (or of one named link); logs one ``repin``."""
+          note: str = "", dry_run: bool = False) -> list[dict[str, Any]]:
+    """Refresh pins of stale or unpinned links (or of one named link); logs one ``repin``.
+    ``dry_run`` returns the changes it would make and writes nothing: no record file, no
+    pinned-version blob, no log entry, no withdrawn card."""
     index = core.index()
     wanted: dict[str, set[int] | None] = {}
     if selector is not None:
@@ -284,11 +286,12 @@ def repin(core: Core, selector: str | None = None, *, all_stale: bool = False,
                                          target=link.target, example=link.example,
                                          pin=state.current)
             changes.append({"link": link.id, "old": old, "new": new})
-            _keep_pinned_version(core, link.target, state.current.target)
+            if not dry_run:
+                _keep_pinned_version(core, link.target, state.current.target)
             touched = True
-        if touched:
+        if touched and not dry_run:
             core.store.set_links(record_id, [link_to_dict(link) for link in new_links])
-    if changes:
+    if changes and not dry_run:
         core.log_append("events", "repin", {"links": changes, "note": note})
         _withdraw_settled_cards(core)
     return changes
