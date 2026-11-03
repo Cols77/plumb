@@ -45,12 +45,7 @@ auto_approve:
   backend: jev
   min_probability: 0.9
   min_confidence: high
-freeze:   # SR-380: asleep while Claude Code is the agent working on plumb
-  - src/plumb/hosts/codex
-  - src/plumb/hosts/hermes
-  - tests/hosts/test_codex.py
-  - tests/hosts/test_hermes.py
-  - tests/hosts/hermes_probe
+freeze:   # SR-380: asleep (Codex and Hermes are not frozen: owner, 2026-11-03)
   - src/plumb/evaluate
   - tests/evaluate
   - .plumb/eval
