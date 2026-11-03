@@ -462,8 +462,7 @@ def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], l
                                      ).splitlines() if not log.untracked_own(tree, x)]
             reason = "uncommitted changes" if dirty else _loop_reason(root, tree, branch)
             if not reason:
-                _git(root, "worktree", "remove", "--force", str(tree))
-                _git(root, "branch", "-d", branch)
+                _git(root, "worktree", "remove", "--force", str(tree))   # the branch stays
                 removed.append(tree.name)
                 continue
         except (OSError, subprocess.CalledProcessError) as exc:
