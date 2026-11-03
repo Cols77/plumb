@@ -2,7 +2,9 @@
 is its bookkeeping for the pacing rule (SR-334): the question tool's call, or one the session's
 transcript shows, marks the open questions asked (``judge.note_asked``). Only where the question
 tool is there: never for a subagent's call (``agent_id``) or a session nobody attends
-(``CLAUDE_CODE_SESSION_ATTENDED`` not ``1``: headless)."""
+(``CLAUDE_CODE_SESSION_ATTENDED`` not ``1``: headless). The benchmark's headless agent has a
+stand-in (DEC-407): ``STAND_IN_TOOL``, answered by the scripted owner and flagged by
+``STAND_IN_ENV``; every hook treats a call to it as a call of ``AskUserQuestion``."""
 
 from __future__ import annotations
 
@@ -12,13 +14,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+# DEC-407: the question tool of a headless benchmark run (``plumb.evaluate.ask_server``)
+STAND_IN_SERVER = "plumb_ask"
+STAND_IN_NAME = "ask_owner"
+STAND_IN_TOOL = f"mcp__{STAND_IN_SERVER}__{STAND_IN_NAME}"
+STAND_IN_ENV = "PLUMB_STAND_IN_ASK"
+QUESTION_TOOLS = ("AskUserQuestion", STAND_IN_TOOL)
 WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 TRANSCRIPT_TAIL = 4 << 20      # bytes of the transcript read back for the last question tool
 
 
 def applies(data: dict[str, Any]) -> bool:
-    """The question tool is there: the main agent of a session someone attends."""
-    return not data.get("agent_id") and os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "1"
+    """The question tool is there: the main agent of a session someone attends, or of a
+    headless run given the stand-in (DEC-407)."""
+    return not data.get("agent_id") and (os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "1"
+                                         or os.environ.get(STAND_IN_ENV) == "1")
 
 
 def _asked_in_transcript(data: dict[str, Any], store: Path) -> bool:
@@ -33,7 +43,7 @@ def _asked_in_transcript(data: dict[str, Any], store: Path) -> bool:
         f.seek(max(0, os.fstat(f.fileno()).st_size - TRANSCRIPT_TAIL))
         lines = f.read().splitlines()
     for line in reversed(lines):
-        if b'"AskUserQuestion"' not in line or b'"tool_use"' not in line:
+        if b'"tool_use"' not in line or not any(f'"{t}"'.encode() in line for t in QUESTION_TOOLS):
             continue
         try:
             at = str(json.loads(line).get("timestamp") or "")
@@ -48,7 +58,7 @@ def decide(root: Path | str, session: str, tool: str, tool_input: dict[str, Any]
     """Note the judge's questions asked when the question tool ran; always "" (allow). Never
     raises."""
     del tool_input
-    if not session or not applies(data) or tool not in (*WRITE_TOOLS, "Bash", "AskUserQuestion"):
+    if not session or not applies(data) or tool not in (*WRITE_TOOLS, "Bash", *QUESTION_TOOLS):
         return ""
     from plumb.understand import judge
 
@@ -58,7 +68,7 @@ def decide(root: Path | str, session: str, tool: str, tool_input: dict[str, Any]
     try:
         from plumb.api import open_core
 
-        if tool == "AskUserQuestion" or _asked_in_transcript(data, store):
+        if tool in QUESTION_TOOLS or _asked_in_transcript(data, store):
             judge.note_asked(open_core(Path(root)), session)
     except Exception:  # noqa: BLE001 - bookkeeping never blocks a call
         pass

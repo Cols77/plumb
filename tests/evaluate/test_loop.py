@@ -61,6 +61,18 @@ def test_fixed_and_merged_runs_again_and_merge_gets_the_branch(tmp_path, capsys)
 
 
 @pytest.mark.sr("SR-348")
+def test_an_already_landed_case_is_said_and_not_merged_again(tmp_path, capsys):
+    run, calls = _runs([ISSUE], [])
+    merged = []
+    assert loop.run_loop(tmp_path, None, model="m", rounds=2, run=run,
+                         fix=_fix("landed", detail="already landed: debug/eval-1"),
+                         merge=lambda r, b: merged.append(b) or "") == 0
+    out = capsys.readouterr().out
+    assert "eval-1: landed: already landed: debug/eval-1" in out
+    assert merged == [] and len(calls) == 2
+
+
+@pytest.mark.sr("SR-348")
 def test_held_merge_stops_with_the_reason(tmp_path, capsys):
     run, calls = _runs([ISSUE], [ISSUE])
     assert loop.run_loop(tmp_path, None, model="m", rounds=2, run=run, fix=_fix("fixed"),

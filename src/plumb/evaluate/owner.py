@@ -19,6 +19,7 @@ SILENT = {"asks": False, "answer": ""}
 class ScriptedOwner:
     def __init__(self, model: str = "haiku", dispatcher: Any = None,
                  timeout_s: float = 120) -> None:
+        self.model = model
         self.dispatcher = dispatcher or ClaudeCodeDispatcher(model=model, timeout_s=timeout_s)
         self.notes: list[str] = []  # dispatch failures, for the transcript
 

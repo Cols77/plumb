@@ -302,3 +302,44 @@ def test_wheel_requires_pyyaml_only() -> None:
                 if line.startswith("Requires-Dist: ")]
     assert [r for r in required if "extra ==" not in r] == ["pyyaml>=6"]
     assert any(r.startswith("manim") and "extra == 'video'" in r for r in required)
+
+
+def _commit_versions(repo: Path, pyproject: str | None = None, manifest: str | None = None) -> None:
+    """Commit ``pyproject.toml`` and ``plugin/vendor/MANIFEST.json`` saying the given versions."""
+    import subprocess
+
+    if pyproject:
+        (repo / "pyproject.toml").write_text(f'[project]\nversion = "{pyproject}"\n',
+                                             encoding="utf-8")
+    if manifest:
+        (repo / "plugin" / "vendor").mkdir(parents=True, exist_ok=True)
+        (repo / "plugin" / "vendor" / "MANIFEST.json").write_text(
+            json.dumps({"version": manifest}), encoding="utf-8")
+    for args in (["add", "-A"], ["commit", "-q", "-m", "versions"]):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=repo,
+                       check=True, capture_output=True)
+
+
+@pytest.mark.sr("SR-377")
+def test_version_never_below_the_head_version(tmp_path: Path) -> None:
+    """SR-377: a checkout with fewer commits than its base builds the base's version, not lower."""
+    repo = _scratch_repo(tmp_path, 2)
+    _commit_versions(repo, pyproject="0.1.50", manifest="0.1.60")   # count is 3
+    assert _build_plugin().derived_version(repo) == "0.1.60"
+    _commit_versions(repo, pyproject="0.1.2", manifest="0.1.2")
+    assert _build_plugin().derived_version(repo) == "0.1.4"          # count 4 wins over the floor
+
+
+@pytest.mark.sr("SR-377")
+def test_version_never_below_the_main_branch(tmp_path: Path) -> None:
+    """SR-377: with a main ref, the version is at least what main committed."""
+    import subprocess
+
+    repo = _scratch_repo(tmp_path, 1)
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "checkout", "-q", "-b", "main"], cwd=repo, check=True,
+                   capture_output=True)
+    _commit_versions(repo, pyproject="0.1.90", manifest="0.1.90")
+    subprocess.run([*git, "checkout", "-q", "-b", "work", "HEAD~1"], cwd=repo, check=True,
+                   capture_output=True)
+    assert _build_plugin().derived_version(repo) == "0.1.90"

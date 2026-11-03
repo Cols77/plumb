@@ -492,6 +492,9 @@ def _answered_keys(core: Any) -> set[str]:
                 answered.update(map(str, e.payload["asked"].get("keys") or ()))
         elif e.kind == "answer-bound" and isinstance(e.payload.get("asked"), Mapping):
             answered.update(map(str, e.payload["asked"].get("keys") or ()))
+        elif e.kind == "pre-intent" and isinstance(e.payload.get("asked"), Mapping) \
+                and e.payload["asked"].get("key"):
+            answered.add(str(e.payload["asked"]["key"]))   # SR-214: answered in a typed message
     return answered
 
 
@@ -637,8 +640,12 @@ def _answered_before(core: Any, index: Mapping[str, Any], made: Mapping[str, Any
                 continue
             labels = {_MARKER.sub("", str(o.get("label") or "")).strip()
                       for o in p.get("options") or () if isinstance(o, Mapping)}
-            if _MARKER.sub("", _flat(p.get("answer"))).strip() in labels or e.digest in reading:
-                return f'"{_flat(p.get("answer"))}"'
+            # a typed answer (``pre-intent``, SR-214): its words in ``text``, the option the
+            # reader found in ``option``; the round reading it names its message (``source``)
+            said = _flat(p.get("answer") or p.get("text"))
+            picked = _MARKER.sub("", _flat(p.get("answer") or p.get("option"))).strip()
+            if picked in labels or e.digest in reading or str(p.get("source")) in reading:
+                return f'"{said}"'
     return ""
 
 

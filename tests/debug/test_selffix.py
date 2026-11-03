@@ -264,3 +264,81 @@ def test_the_background_job_runs_the_fix_under_the_lock(plumb_repo: Path, monkey
     job = kind.build(open_core(plumb_repo), "s", case=CASE)
     kind.cascade(open_core(plumb_repo), job)
     assert got == {"locked": True}
+
+
+def _commit_file(root: Path, name: str) -> None:
+    (root / name).write_text(name, "utf-8")
+    _git(root, "add", name)
+    _git(root, "commit", "-q", "-m", name)
+
+
+def _boom(**kw):
+    raise AssertionError("a landed case runs no fixer")
+
+
+def test_ex7_a_branch_with_its_own_commit_in_head_is_landed_and_the_case_resolved(
+        plumb_repo: Path) -> None:
+    _git(plumb_repo, "checkout", "-q", "-b", BRANCH)
+    _commit_file(plumb_repo, "fix.txt")
+    _git(plumb_repo, "checkout", "-q", "main")
+    _git(plumb_repo, "merge", "-q", "--ff-only", BRANCH)
+    core = open_core(plumb_repo)
+    case = next(c for c in debug.open_cases(plumb_repo) if c["id"] == CASE)
+    out = selfdebug.fix(core, case, fixer=_boom, runner=_boom, judge=_boom)
+    assert out.state == "landed" and out.branch == BRANCH
+    assert out.detail == f"already landed: {BRANCH}"
+    assert _state(plumb_repo) == "resolved"
+    assert not (plumb_repo / ".plumb" / "wt" / "debug-hook-stop-1").exists()
+    assert _git(plumb_repo, "rev-parse", "--verify", BRANCH)       # merged branches are kept
+
+
+def test_ex7_a_branch_without_its_own_commit_or_not_in_head_is_not_landed(
+        plumb_repo: Path) -> None:
+    assert not selfdebug.landed(plumb_repo, BRANCH)                 # no such branch
+    _git(plumb_repo, "branch", BRANCH)                              # created, never fixed
+    _commit_file(plumb_repo, "later.txt")                           # main moves on
+    assert not selfdebug.landed(plumb_repo, BRANCH)
+    _git(plumb_repo, "checkout", "-q", BRANCH)
+    _commit_file(plumb_repo, "fix.txt")                             # its own commit, unmerged
+    _git(plumb_repo, "checkout", "-q", "main")
+    assert not selfdebug.landed(plumb_repo, BRANCH)
+    _git(plumb_repo, "merge", "-q", "--no-edit", BRANCH)
+    assert selfdebug.landed(plumb_repo, BRANCH)
+
+
+def test_ex7_a_branch_without_a_reflog_is_not_landed(plumb_repo: Path) -> None:
+    _git(plumb_repo, "checkout", "-q", "-b", BRANCH)
+    _commit_file(plumb_repo, "fix.txt")
+    _git(plumb_repo, "checkout", "-q", "main")
+    _git(plumb_repo, "merge", "-q", "--ff-only", BRANCH)
+    assert selfdebug.landed(plumb_repo, BRANCH)
+    (plumb_repo / ".git" / "logs" / "refs" / "heads" / "debug" / "hook-stop-1").unlink()
+    assert not selfdebug.landed(plumb_repo, BRANCH)
+
+
+def test_ex8_a_branch_checked_out_elsewhere_is_reused_and_brought_to_head_when_unfixed(
+        plumb_repo: Path, tmp_path: Path) -> None:
+    other = tmp_path / "elsewhere"
+    _git(plumb_repo, "worktree", "add", "-q", "-b", BRANCH, str(other))
+    _commit_file(plumb_repo, "later.txt")                           # main moves on
+    wt, branch = selfdebug._worktree(plumb_repo, CASE)
+    assert wt == other and branch == BRANCH
+    assert _git(other, "rev-parse", "HEAD") == _git(plumb_repo, "rev-parse", "HEAD")
+    assert not selfdebug.landed(plumb_repo, BRANCH)                 # moving forward is no fix
+    assert not (plumb_repo / ".plumb" / "wt" / "debug-hook-stop-1").exists()
+
+
+def test_ex8_a_branch_with_its_own_commit_or_a_dirty_worktree_is_used_as_it_is(
+        plumb_repo: Path, tmp_path: Path) -> None:
+    dirty, fixed = tmp_path / "dirty", tmp_path / "fixed"
+    _git(plumb_repo, "worktree", "add", "-q", "-b", BRANCH, str(dirty))
+    (dirty / "README.md").write_text("edited\n", "utf-8")
+    _commit_file(plumb_repo, "later.txt")
+    before = _git(dirty, "rev-parse", "HEAD")
+    assert selfdebug._worktree(plumb_repo, CASE)[0] == dirty
+    assert _git(dirty, "rev-parse", "HEAD") == before
+    _git(plumb_repo, "worktree", "add", "-q", "-b", "debug/other-1", str(fixed))
+    _commit_file(fixed, "fix.txt")
+    tip = _git(fixed, "rev-parse", "HEAD")
+    assert selfdebug._worktree(plumb_repo, "other-1")[0] == fixed
+    assert _git(fixed, "rev-parse", "HEAD") == tip

@@ -86,6 +86,25 @@ def test_a_tracked_local_kind_entry_compacts_into_a_committed_deletion(repo: Pat
     assert run_git(repo, "log", "-1", "--format=%B").stdout.rstrip().endswith("SR: SR-296")
 
 
+@pytest.mark.sr("SR-287")
+def test_ex15_the_landing_commit_names_no_log_path_the_log_code_picks(repo: Path) -> None:
+    """SR-287 EX-15 / DEC-195: the landing job never names the log folder or its local kinds;
+    the log code drops a local kind's untracked segment and keeps a tracked one's removal."""
+    import inspect
+
+    from plumb import log
+
+    source = inspect.getsource(landing._commit)
+    assert ".plumb/log" not in source and "LOCAL_KINDS" not in source
+    put(repo, "job-note", {"kind": "k", "job": "j", "detail": "d"})
+    run_git(repo, "add", "-f", ".plumb/log/job-note")
+    commit_all(repo, "a tracked job-note")
+    tracked = ".plumb/log/" + sorted(log.tracked_names(repo))[0]
+    assert log.committable(repo, ["docs/a.md", tracked, ".plumb/log/job-note/archive.jsonl",
+                                  ".plumb/log/judgment/archive.jsonl"]) == [
+        "docs/a.md", tracked, ".plumb/log/judgment/archive.jsonl"]
+
+
 @pytest.mark.sr("SR-296")
 def test_ex2_every_waiting_record_is_queued_by_the_landing(repo: Path, write_record,
                                                             engine_standins) -> None:

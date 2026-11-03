@@ -19,7 +19,7 @@ class Claude:
         self.calls, self.capped_at = [], capped_at
 
     def __call__(self, binary, scratch, message, *, model, session_id, system, timeout_s, env,
-                 max_turns=None):
+                 max_turns=None, ask=None):
         self.calls.append((model, session_id, message))
         self.limits = (timeout_s, max_turns)
         return {"text": "ok", "session_id": "s1", "error": "",
@@ -122,6 +122,43 @@ def test_claude_turn_lets_the_agent_run_python_and_plumb(tmp_path, monkeypatch):
     assert seen["env"]["PATH"].startswith(str(Path(sys.executable).parent))
 
 
+@pytest.mark.sr("SR-344")
+def test_claude_turn_is_never_an_attended_session(tmp_path, monkeypatch):
+    """eval-52810e26: ``claude -p`` has no question tool, so the headless agent's hooks must not
+    take it for the attended session that launched the benchmark: that session's
+    CLAUDE_CODE_SESSION_ATTENDED=1 would make the stop and ask gate send the agent after a
+    question tool it cannot find, turn after turn."""
+    import subprocess
+
+    seen = {}
+
+    def fake_run(argv, **kw):
+        seen.update(env=kw["env"])
+        return subprocess.CompletedProcess(argv, 0, json.dumps(
+            {"result": "ok", "session_id": "s9", "num_turns": 1}), "")
+
+    monkeypatch.setattr(run.subprocess, "run", fake_run)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", "1")
+    run.claude_turn("claude", tmp_path, "hi", model="haiku", session_id=None, system="brief",
+                    timeout_s=5)
+    assert seen["env"].get("CLAUDE_CODE_SESSION_ATTENDED") != "1"
+    run.claude_turn("claude", tmp_path, "hi", model="haiku", session_id=None, system="brief",
+                    timeout_s=5, env={"PATH": "", "CLAUDE_CODE_SESSION_ATTENDED": "1"})
+    assert seen["env"].get("CLAUDE_CODE_SESSION_ATTENDED") != "1"
+
+
+@pytest.mark.sr("SR-344")
+def test_two_runs_in_one_second_get_their_own_run_folders(tmp_path, monkeypatch):
+    """Two runs of one task and model started in the same second never collide on the folder
+    (the run folder name is stamped to the second)."""
+    real = run.time.strftime
+    monkeypatch.setattr(run.time, "strftime", lambda fmt, *a: "20261031T120000"
+                        if fmt == "%Y%m%dT%H%M%S" else real(fmt, *a))
+    first, second = go(tmp_path, Claude()), go(tmp_path, Claude())
+    assert first.run_dir != second.run_dir
+    assert (first.run_dir / "score.json").is_file() and (second.run_dir / "score.json").is_file()
+
+
 @pytest.mark.sr("SR-345")
 def test_without_limits_the_owner_answers_until_the_agent_stops_asking(tmp_path):
     """DEC-308: no limit by default; a named limit applies, and no turn or time cap is passed."""
@@ -136,3 +173,93 @@ def test_without_limits_the_owner_answers_until_the_agent_stops_asking(tmp_path)
     named = Claude()
     go(tmp_path, named, Owner(False), limits={"turns": 7, "minutes": 2})
     assert named.limits[1] == 7 and 0 < named.limits[0] <= 120
+
+
+@pytest.mark.sr("SR-344")
+def test_claude_turn_gives_the_agent_the_stand_in_question_tool(tmp_path, monkeypatch):
+    """DEC-407: with ``ask`` the headless call registers the stand-in MCP server, allows its
+    tool, tells the agent to use it, and flags the hooks that a question tool is present; the
+    owner's brief sits in a file outside the scratch repository."""
+    import subprocess
+
+    from plumb.hosts.claude_code import ask_gate
+
+    seen = {}
+
+    def fake_run(argv, **kw):
+        config = json.loads(Path(argv[argv.index("--mcp-config") + 1]).read_text())
+        seen.update(argv=argv, env=kw["env"], config=config, cwd=kw["cwd"])
+        server = config["mcpServers"][ask_gate.STAND_IN_SERVER]
+        seen["ask"] = json.loads(Path(server["env"]["PLUMB_ASK_CONFIG"]).read_text())
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"result": "ok"}), "")
+
+    monkeypatch.setattr(run.subprocess, "run", fake_run)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", "1")
+    ask = {"brief": "hidden", "request": "one", "owner_model": "haiku"}
+    run.claude_turn("claude", tmp_path, "hi", model="haiku", session_id=None, system="brief",
+                    timeout_s=5, ask=ask)
+    argv = seen["argv"]
+    assert ask_gate.STAND_IN_TOOL in argv[argv.index("--allowedTools"):]
+    assert argv[argv.index("--append-system-prompt") + 1].startswith("brief")
+    assert ask_gate.STAND_IN_TOOL in argv[argv.index("--append-system-prompt") + 1]
+    server = seen["config"]["mcpServers"][ask_gate.STAND_IN_SERVER]
+    assert server["args"] == ["-m", "plumb.evaluate.ask_server"]
+    assert seen["ask"] == ask and not str(tmp_path) in server["env"]["PLUMB_ASK_CONFIG"]
+    assert seen["env"][ask_gate.STAND_IN_ENV] == "1"
+    assert seen["env"].get("CLAUDE_CODE_SESSION_ATTENDED") != "1"
+
+
+@pytest.mark.sr("SR-344")
+def test_claude_turn_without_ask_adds_no_question_tool(tmp_path, monkeypatch):
+    """Without ``ask`` there is no stand-in: no MCP config, no allowed tool, no hook flag."""
+    import subprocess
+
+    from plumb.hosts.claude_code import ask_gate
+
+    seen = {}
+
+    def fake_run(argv, **kw):
+        seen.update(argv=argv, env=kw["env"])
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"result": "ok"}), "")
+
+    monkeypatch.setattr(run.subprocess, "run", fake_run)
+    monkeypatch.delenv(ask_gate.STAND_IN_ENV, raising=False)
+    run.claude_turn("claude", tmp_path, "hi", model="haiku", session_id=None, system="brief",
+                    timeout_s=5)
+    assert "--mcp-config" not in seen["argv"] and ask_gate.STAND_IN_TOOL not in seen["argv"]
+    assert ask_gate.STAND_IN_ENV not in seen["env"]
+
+
+@pytest.mark.sr("SR-344")
+def test_the_scratch_repository_hears_the_stand_in_tool(tmp_path):
+    """DEC-407: the scratch settings log the stand-in's answers with the question-answer hook."""
+    from plumb.hosts.claude_code import ask_gate
+
+    scratch = run.scratch_repo(tmp_path)
+    groups = json.loads((scratch / ".claude" / "settings.json").read_text())["hooks"]["PostToolUse"]
+    (heard,) = [g for g in groups if g["matcher"] == ask_gate.STAND_IN_TOOL]
+    assert heard["hooks"][0]["command"].endswith("hook question-answer")
+
+
+@pytest.mark.sr("SR-344")
+def test_the_scratch_repository_has_a_judge_by_default(tmp_path):
+    """eval-8ba65c4a: with no judge named, the agent's capture is never checked, and the agent
+    may not change the config to fix that."""
+    from plumb.config import load_config
+
+    scratch = run.scratch_repo(tmp_path)
+    assert load_config(scratch).judgment.backend == "jev"
+
+
+@pytest.mark.sr("SR-344")
+def test_the_run_judges_with_the_judge_of_the_repository_it_runs_from(tmp_path):
+    """The credential's provider is the host's: the preset default would look for another key."""
+    from plumb.config import load_config
+
+    root = tmp_path / "root"
+    (root / ".plumb").mkdir(parents=True)
+    (root / ".plumb" / "config.yaml").write_text(
+        "judgment:\n  backend: jev\n  jev:\n    provider: openrouter\n", encoding="utf-8")
+    judgment = load_config(go(tmp_path, Claude()).scratch).judgment
+    assert judgment.backend == "jev"
+    assert judgment.jev["credential_env"] == "OPENROUTER_API_KEY"

@@ -387,10 +387,7 @@ def _commit(root: Path, removed: list[str], archived: list[str], head: str) -> N
     spec = root / ".plumb" / "cache" / f"landing-{head[:12]}.paths"
     spec.parent.mkdir(parents=True, exist_ok=True)
     message = f"plumb: tidy after the landing of {head[:12]}" + chr(10) * 2 + "SR: SR-296"
-    # a local kind's new segment is ignored by git: naming it would fail the whole commit
-    known = {".plumb/log/" + n for n in log.tracked_names(root)}
-    paths = log.untracked_telemetry_out(root, [p for p in [*removed, *archived] if p in known or not (
-        p.startswith(".plumb/log/") and p.split("/")[2] in log.LOCAL_KINDS)])
+    paths = log.committable(root, [*removed, *archived])  # the log code picks its own paths
     try:
         for attempt in range(5):  # a git process just after the merge may still hold index.lock
             try:

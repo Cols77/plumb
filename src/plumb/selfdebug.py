@@ -33,7 +33,7 @@ FIX_SCHEMA = {"type": "object", "required": ["test"], "additionalProperties": Tr
 
 @dataclass
 class Outcome:
-    state: str                  # fixed | owner | held | reported
+    state: str                  # fixed | landed | owner | held | reported
     branch: str = ""
     detail: str = ""
     line: str = ""              # a line to say once (the judge could not be reached)
@@ -64,9 +64,48 @@ def _git(cwd: Path, *args: str, check: bool = True) -> str:
     return done.stdout
 
 
+def _slug(case_id: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", case_id.lower()).strip("-")[:40]
+
+
+def _checked_out(root: Path, branch: str) -> Path | None:
+    """The worktree that has ``branch`` checked out, if any."""
+    path = None
+    for line in _git(root, "worktree", "list", "--porcelain", check=False).splitlines():
+        if line.startswith("worktree "):
+            path = Path(line[9:])
+        elif line == f"branch refs/heads/{branch}" and path is not None:
+            return path
+    return None
+
+
+def _own_commits(root: Path, branch: str) -> bool:
+    """The branch moved by something other than its creation or a fast-forward, read from
+    its reflog; with no reflog, False."""
+    log = _git(root, "reflog", "show", "--format=%gs", f"refs/heads/{branch}", check=False)
+    return any(not s.startswith("branch: Created") and not s.endswith("Fast-forward")
+               for s in log.splitlines())
+
+
+def landed(root: Path, branch: str) -> bool:
+    """The branch has a commit of its own and its tip is in the root's HEAD (a fix already
+    merged); a branch only created, or moved forward to HEAD, is not."""
+    if not _own_commits(root, branch):
+        return False
+    return subprocess.run(["git", "merge-base", "--is-ancestor", f"refs/heads/{branch}",
+                           "HEAD"], cwd=root, capture_output=True).returncode == 0
+
+
 def _worktree(root: Path, case_id: str) -> tuple[Path, str]:
-    slug = re.sub(r"[^a-z0-9]+", "-", case_id.lower()).strip("-")[:40]
+    slug = _slug(case_id)
     path, branch = root / ".plumb" / "wt" / f"debug-{slug}", f"debug/{slug}"
+    there = _checked_out(root, branch)
+    if there is not None and there.resolve() != root.resolve():   # checked out once: reuse
+        if not _own_commits(root, branch) and not _git(
+                there, "status", "--porcelain", "--untracked-files=no", check=False).strip():
+            _git(there, "merge", "--ff-only", _git(root, "rev-parse", "HEAD").strip(),
+                 check=False)                   # current code for the fix
+        return there, branch
     if not path.exists():
         known = subprocess.run(["git", "rev-parse", "--verify", "-q", branch], cwd=root,
                                capture_output=True).returncode == 0
@@ -250,6 +289,10 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     root = Path(core.root)
     if not _own(root):
         return handle(core, case, rounds=rounds, fixer=fixer, runner=runner, judge=judge)
+    branch = f"debug/{_slug(case['id'])}"
+    if landed(root, branch):        # an earlier fix is in HEAD: nothing to run, nothing to merge
+        debug.resolve(root, [case["id"]])
+        return Outcome("landed", branch, f"already landed: {branch}")
     wt, branch = _worktree(root, case["id"])
     wt_core = open_core(wt)
     session = stale.current_session(root)

@@ -1137,6 +1137,18 @@ def shared_uncommitted(root: Path) -> list[str]:
                   and p.split("/")[2] in SHARED_KINDS)
 
 
+def committable(root: Path, paths: Iterable[str]) -> list[str]:
+    """``paths`` without a local kind's new entry or segment: git ignores those, so naming one
+    fails the whole commit (SR-287 EX-16). A tracked local file (its removal) and every path
+    outside the log are kept. Only the log code knows where the log lives (DEC-195, EX-15)."""
+    prefix = ".plumb/log/"
+    paths = list(paths)
+    local = [p for p in paths if p.startswith(prefix) and p.count("/") >= 3
+             and p.split("/")[2] in LOCAL_KINDS]
+    known = {prefix + n for n in tracked_names(root)}
+    return untracked_telemetry_out(root, [p for p in paths if p not in local or p in known])
+
+
 def untracked_telemetry_out(root: Path, paths: Iterable[str]) -> list[str]:
     """``paths`` without the telemetry entry files git does not track (ignored: naming them
     would fail ``git add`` and ``git commit``)."""

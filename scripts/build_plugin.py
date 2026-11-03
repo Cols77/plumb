@@ -47,6 +47,10 @@ SRC = REPO / "src" / "plumb"
 TEMPLATES = SRC / "hosts" / "claude_code" / "templates"
 HOST_TEMPLATES = TEMPLATES   # the command and gate.sh (the tests move TEMPLATES, not these)
 VENDOR = PLUGIN / "vendor"
+sys.path.insert(0, str(REPO / "src"))
+from plumb.hosts.claude_code.ask_gate import QUESTION_TOOLS  # noqa: E402
+
+QUESTION_MATCHER = "|".join(QUESTION_TOOLS)   # AskUserQuestion and the benchmark's stand-in
 DESCRIPTION = ("Keep a coding agent's work aligned with what you asked for: your intent, the "
                "requirements and examples it becomes, and the checks that hold the code to them.")
 AUTHOR = {"name": "Colin AUBE"}
@@ -66,11 +70,11 @@ DIAGRAM_MARKETPLACE = "diagram-mod"   # where the diagram mod plumb's cards draw
 HOOKS: tuple[tuple[str, str | None, str, bool, int], ...] = (
     ("SessionStart", "startup|resume|clear|compact", "session-start", False, 120),
     ("UserPromptSubmit", None, "prompt", False, 120),
-    ("PreToolUse", "Bash|Edit|Write|MultiEdit|NotebookEdit|AskUserQuestion", "pre-tool", False,
-     10),
+    ("PreToolUse", f"Bash|Edit|Write|MultiEdit|NotebookEdit|{QUESTION_MATCHER}", "pre-tool",
+     False, 10),
     ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "post-edit", True, 120),
     ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", "edit-check", False, 10),
-    ("PostToolUse", "AskUserQuestion", "question-answer", True, 120),
+    ("PostToolUse", QUESTION_MATCHER, "question-answer", True, 120),
     ("Stop", None, "stop", False, 120),
     ("SubagentStop", None, "subagent-stop", False, 120),
     ("SessionEnd", None, "session-end", False, 120),
@@ -91,11 +95,28 @@ def version() -> str:
     return match.group(1)
 
 
+def _committed_floor(repo: Path) -> int:
+    """The highest patch number ``pyproject.toml`` and ``plugin/vendor/MANIFEST.json`` carry at
+    HEAD and on ``main`` (a ref that does not exist counts for nothing)."""
+    floor = 0
+    for ref in ("HEAD", "main"):
+        for path in ("pyproject.toml", "plugin/vendor/MANIFEST.json"):
+            shown = subprocess.run(["git", "show", f"{ref}:{path}"], cwd=repo,
+                                   capture_output=True, text=True)
+            found = re.search(r'version"?\s*[=:]\s*"0\.1\.(\d+)"', shown.stdout)
+            if shown.returncode == 0 and found:
+                floor = max(floor, int(found.group(1)))
+    return floor
+
+
 def derived_version(repo: Path | None = None) -> str:
-    """``0.1.<commit count>``: every commit makes the next build a new plugin version (SR-377)."""
-    count = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=repo or REPO, check=True,
+    """``0.1.<commit count>``: every commit makes the next build a new plugin version (SR-377);
+    never below the version already committed at HEAD or on main, so a checkout with fewer
+    commits than its base does not lower it."""
+    repo = repo or REPO
+    count = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=repo, check=True,
                            capture_output=True, text=True).stdout.strip()
-    return f"0.1.{count}"
+    return f"0.1.{max(int(count), _committed_floor(repo))}"
 
 
 def set_version(new: str) -> None:

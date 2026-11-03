@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from understand.fakes import FakeDispatcher
 from understand.test_judge_job import (
     SESSION,
     intent_text,
@@ -21,7 +22,8 @@ from understand.test_judge_job import (
 from plumb.api import open_core
 from plumb.contracts import Judgment
 from plumb.hosts.claude_code import question_answer
-from plumb.understand import cmd_clarify, files, jobs, judge, premise, verdict
+from plumb.understand import (cmd_clarify, files, jobs, judge, premise, queue, read, verdict,
+                               worker)
 
 MESSAGE = "Pages should load faster."
 ASK = "Should every page load faster, or only the public ones?"
@@ -308,6 +310,34 @@ def test_an_unrelated_answer_is_not_taken_for_the_one_open_question(
     outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=1)
     assert (outcome.state, outcome.lines) == ("ask", [cmd_clarify.UNMATCHED])
     assert len(outcome.questions) == 1
+
+
+@pytest.mark.sr("SR-214")
+def test_wait_reads_a_typed_answer_before_asking_again(
+        world: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Case eval-c48f4019: the owner answers the judge's open question in a typed message (no
+    question tool). Once the background worker ran the read job of that message (SR-378:
+    ``clarify --wait`` runs no job itself), the question their words answered is not asked
+    again."""
+    judge_asks(world, (ASK, ["SR-001"]))
+    typed = "Every page, please: draw it, then clear the board."
+    digest = log_prompt(world, typed, at="2026-10-06T10:05:00Z")
+    core = open_core(world)
+    job = read.build(core, SESSION, message={"digest": digest, "text": typed})
+    assert job is not None
+    (item,) = [c for c in job.inputs["cards"] if c["kind"] == "judge"]
+    queue.enqueue(core, job)        # the prompt hook queued it; no worker has run it yet
+    fake = FakeDispatcher({
+        "read": {"entries": [{"id": item["id"], "hash": "", "answer": "change",
+                              "option": "Every page", "evidence": "Every page",
+                              "confidence": 0.99}]},
+        "judge": {"verdicts": []}})
+    monkeypatch.setattr("plumb.understand.dispatch.configured", lambda *a, **k: fake)
+    worker.run_once(open_core(world), SESSION, job.id)       # the background worker's turn
+    outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=1, sleep=lambda _s: None)
+    assert "read" in [j.kind for j in fake.jobs]
+    assert outcome.state != "ask", outcome.questions
+    assert judge.open_questions(open_core(world), SESSION) == []
 
 
 @pytest.mark.sr("SR-212")

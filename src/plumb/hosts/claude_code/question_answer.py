@@ -1,4 +1,5 @@
-"""PostToolUse on AskUserQuestion: the owner's answers to the agent's questions (SR-156).
+"""PostToolUse on AskUserQuestion (or the headless run's stand-in, ``ask_gate.STAND_IN_TOOL``,
+DEC-407): the owner's answers to the agent's questions (SR-156).
 
 Logs one ``question-answer`` entry per answered question (session, question, the options shown
 with their descriptions, the answer, ``via: question-tool``) as the owner's words, read from the
@@ -23,16 +24,42 @@ question), the band's study line names that study and the question waits until i
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TextIO
 
 from plumb.hosts.claude_code.hookio import HookContext, HookOutput, hook_budget, run_hook
 
 
+def _answered(response: object) -> dict | None:
+    """The ``{questions, answers}`` result of a question tool call. AskUserQuestion's response
+    is that object; the stand-in is an MCP tool, so the host hands over its result: the same
+    object as ``structuredContent``, or as JSON in a text block of ``content`` (DEC-407)."""
+    if isinstance(response, str):
+        try:
+            response = json.loads(response)
+        except ValueError:
+            return None
+    if isinstance(response, list):
+        response = {"content": response}
+    if not isinstance(response, dict):
+        return None
+    if isinstance(response.get("answers"), dict):
+        return response
+    if isinstance(response.get("structuredContent"), dict):
+        return _answered(response["structuredContent"])
+    for block in response.get("content") or ():
+        if isinstance(block, dict) and isinstance(block.get("text"), str):
+            found = _answered(block["text"]) if block["text"].lstrip().startswith("{") else None
+            if found is not None:
+                return found
+    return None
+
+
 def handle(ctx: HookContext) -> HookOutput | None:
     asked = ctx.data.get("tool_input")
-    response = ctx.data.get("tool_response")
-    if not isinstance(asked, dict) or not isinstance(response, dict):
+    response = _answered(ctx.data.get("tool_response"))
+    if not isinstance(asked, dict) or response is None:
         return None
     answers = response.get("answers")
     questions = asked.get("questions")

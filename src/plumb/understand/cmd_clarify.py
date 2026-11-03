@@ -133,6 +133,15 @@ def _judge_jobs_since(root: Path, session: str, at: str) -> list[Job]:
             and j.created >= at]
 
 
+def _read_jobs_of(root: Path, session: str, digest: str) -> list[Job]:
+    """The read jobs of the owner's message ``digest`` (queued by the prompt hook)."""
+    from plumb.understand import jobs
+
+    return [j for j in jobs.queued(root, session) if j.kind == "read"
+            and isinstance(j.inputs.get("message"), Mapping)
+            and j.inputs["message"].get("digest") == digest]
+
+
 def _approved(core: Any, at: str) -> list[str]:
     """One line per record the judge approved on the owner's behalf since ``at``, by title."""
     index = core.index()
