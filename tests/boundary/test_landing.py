@@ -309,11 +309,11 @@ def land_worktree(repo: Path, tmp_path: Path, *, dirty: str = "", loop: bool = F
 
 
 @pytest.mark.sr("SR-320")
-def test_ex7_a_merged_clean_worktree_is_removed_with_its_branch(repo: Path,
-                                                                tmp_path: Path) -> None:
+def test_ex7_a_merged_clean_worktree_is_removed_and_its_branch_kept(repo: Path,
+                                                                    tmp_path: Path) -> None:
     tree, result = land_worktree(repo, tmp_path, dirty=".plumb/log/x/y.json")
     assert not tree.exists() and result["worktrees"] == ["wt-feat"] and result["kept"] == []
-    assert run_git(repo, "branch", "--list", "feat").stdout.strip() == ""
+    assert run_git(repo, "branch", "--list", "feat").stdout.strip() != ""
     assert "removed finished worktrees wt-feat" in landing.lines(repo)[0][1]
 
 
