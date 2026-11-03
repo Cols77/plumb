@@ -95,11 +95,28 @@ def version() -> str:
     return match.group(1)
 
 
+def _committed_floor(repo: Path) -> int:
+    """The highest patch number ``pyproject.toml`` and ``plugin/vendor/MANIFEST.json`` carry at
+    HEAD and on ``main`` (a ref that does not exist counts for nothing)."""
+    floor = 0
+    for ref in ("HEAD", "main"):
+        for path in ("pyproject.toml", "plugin/vendor/MANIFEST.json"):
+            shown = subprocess.run(["git", "show", f"{ref}:{path}"], cwd=repo,
+                                   capture_output=True, text=True)
+            found = re.search(r'version"?\s*[=:]\s*"0\.1\.(\d+)"', shown.stdout)
+            if shown.returncode == 0 and found:
+                floor = max(floor, int(found.group(1)))
+    return floor
+
+
 def derived_version(repo: Path | None = None) -> str:
-    """``0.1.<commit count>``: every commit makes the next build a new plugin version (SR-377)."""
-    count = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=repo or REPO, check=True,
+    """``0.1.<commit count>``: every commit makes the next build a new plugin version (SR-377);
+    never below the version already committed at HEAD or on main, so a checkout with fewer
+    commits than its base does not lower it."""
+    repo = repo or REPO
+    count = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=repo, check=True,
                            capture_output=True, text=True).stdout.strip()
-    return f"0.1.{count}"
+    return f"0.1.{max(int(count), _committed_floor(repo))}"
 
 
 def set_version(new: str) -> None:
