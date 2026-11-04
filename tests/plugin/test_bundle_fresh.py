@@ -343,3 +343,20 @@ def test_version_never_below_the_main_branch(tmp_path: Path) -> None:
     subprocess.run([*git, "checkout", "-q", "-b", "work", "HEAD~1"], cwd=repo, check=True,
                    capture_output=True)
     assert _build_plugin().derived_version(repo) == "0.1.90"
+
+
+def test_setting_the_version_drops_the_compiled_package(tmp_path: Path, monkeypatch) -> None:
+    """report-84f1f53a: bytecode compiled in the same second as the version write would keep
+    the old version, and test_versions_agree would read it."""
+    build = _build_plugin()
+    src = tmp_path / "src"
+    (src / "__pycache__").mkdir(parents=True)
+    (src / "__init__.py").write_text('__version__ = "0.1.1"\n', encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('version = "0.1.1"\n', encoding="utf-8")
+    stale = src / "__pycache__" / "__init__.cpython-312.pyc"
+    stale.write_bytes(b"old")
+    monkeypatch.setattr(build, "REPO", tmp_path)
+    monkeypatch.setattr(build, "SRC", src)
+    build.set_version("0.1.2")
+    assert '"0.1.2"' in (src / "__init__.py").read_text(encoding="utf-8")
+    assert not stale.exists()

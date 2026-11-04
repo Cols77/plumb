@@ -36,11 +36,20 @@ can show or answer since the card surface was removed.
 6. **No check that a retired feature is gone.** The owner asked on 2026-10-26 that ponytail audits
    catch this; an audit is a habit, not a gate, and none caught it.
 
+7. **The job that should have closed answered questions read only cards.** SR-218 says the judge
+   reads each open question against what the owner decided and withdraws what is settled. That
+   job is `understand/tidy.py`; it read the card store only, so when questions moved from cards
+   to the question tool it stopped seeing any, and it had no test on a judge question. The owner
+   asked why they were re-asked things they had answered; this was the reason.
+
 ## What changed
 
 - The band counts judge questions only, the same as `/plumb status`; a test asserts that both
   give the same count with a card present in a store.
 - The leftover card files of old sessions are deleted (archive kept outside the repository).
+- The job reads the judge's waiting questions against the owner's logged answers and confirmed
+  records. A question closes only when the quoted words are really in that answer or record, is
+  logged as `answer-bound`, tells the agent one line, and `plumb question reopen` undoes it.
 
 ## What is still open
 

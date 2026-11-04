@@ -57,6 +57,19 @@ def _options(raw: str) -> list[dict[str, Any]] | None:
             for o in data]
 
 
+def _reopen(core: Any, session: str, words: str) -> int:
+    """SR-218: the owner's word undoes a closure the tidy job made: the question waits again."""
+    closed = [str(k) for e in core.events() if e.kind == "answer-bound"
+              and e.payload.get("by") == "tidy" for k in e.payload["asked"].get("keys") or ()]
+    key = _resolve(closed, words)
+    if key is None:
+        print(NO_MATCH.format(key=words), file=sys.stderr)
+        return 1
+    core.log_append_many("events", [("answer-unbound", {"session": session, "key": key})])
+    print("plumb: that question waits for the owner again.")
+    return 0
+
+
 def run(command: str, argv: list[str]) -> int:
     from plumb.api import open_core
     from plumb.cliutil import add_common, resolve_root
@@ -72,10 +85,14 @@ def run(command: str, argv: list[str]) -> int:
     reword.add_argument("--question", required=True)
     reword.add_argument("--header", required=True)
     reword.add_argument("--options", required=True, help="JSON: [{label, description}, ...]")
+    reopen = sub.add_parser("reopen", help="take back a closure of a waiting question")
+    reopen.add_argument("words", help="the question's words, or the start of them")
     args = parser.parse_args(argv)
     root = resolve_root(args.root)
     core = open_core(root)
     session = args.session or current_session(root)
+    if args.verb == "reopen":
+        return _reopen(core, session, args.words)
     # any session's question: one filed by the CLI or an ended session is answerable here
     keys = [str(q.get("key")) for q in judge.open_questions(core, session)]
     keys += [k for k in (str(q.get("key")) for q in judge.unanswered_anywhere(core))

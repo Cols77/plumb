@@ -34,4 +34,17 @@ Principles and settlements:
   of that record, and `quote`, its words copied exactly. When you cannot settle a grouped card
   from a confirmed record, give `stays`. Only confirmed records count; never a proposed one.
 
+Waiting questions:
+- `questions`: the questions waiting for the person now, each with its `id`, `question` and
+  `options`. `answers`: what the person answered earlier, each with its `id`, the `question` it
+  answered and their `answer`.
+- In the top-level `questions` of your answer, name a waiting question only when an answer of
+  theirs, or a record in `confirmed`, already decides exactly what it asks: give `question`
+  (its id), `answer` or `record` (the id of what settles it) and `quote`, the words of that
+  answer or record that settle it, copied exactly and contiguous.
+- The same subject is not enough: it must give the choice this question asks for. An answer that
+  asks something back, or says only that it was answered elsewhere, settles nothing. When two of
+  their answers disagree, the later one counts; when you are not sure, leave the question out. A
+  question wrongly closed loses a decision the person needed to make.
+
 Answer with the JSON object the schema describes and nothing else.

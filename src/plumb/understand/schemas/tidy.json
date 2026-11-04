@@ -135,6 +135,42 @@
           }
         }
       }
+    },
+    "questions": {
+      "type": "array",
+      "description": "One entry for each waiting question an answer or a confirmed record already settles; nothing for the others.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question",
+          "quote"
+        ],
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question id as given."
+          },
+          "answer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the owner's answer that settles it."
+          },
+          "record": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Or the id of the confirmed record that settles it."
+          },
+          "quote": {
+            "type": "string",
+            "description": "The words of that answer or record that settle it, copied exactly and contiguous."
+          }
+        }
+      }
     }
   }
 }
