@@ -122,6 +122,73 @@ def verdict_of(result: Any, core: Any | None = None) -> str:
     return "failed" if (live_failures(failed, core) if core is not None else failed) else "passed"
 
 
+def _differs_from_index(root: Any) -> bool:
+    """Whether a working file outside ``.plumb/`` differs from the index (unknown: yes): the
+    index is then not what this checkout holds."""
+    from plumb.verify.evidence import _CACHE_PARTS, _git
+
+    listed = [_git(root, "diff", "--name-only", "-z"),
+              _git(root, "ls-files", "--others", "--exclude-standard", "-z")]
+    if None in listed:
+        return True
+    return any(path and not path.startswith(".plumb/") and not _CACHE_PARTS & set(path.split("/"))
+               for out in listed for path in str(out).split("\0"))
+
+
+def _without_records(root: Any, tree: Any) -> str | None:
+    """The top of ``tree`` without ``.plumb``, as ``tree_identity``'s ``dirty`` leaves it out:
+    records repinned after the tests passed are the same code."""
+    from plumb.verify.evidence import _git
+
+    if not tree:
+        return None
+    listing = _git(root, "ls-tree", str(tree))
+    if listing is None:
+        return None
+    return "\n".join(line for line in listing.splitlines()
+                     if line.split("\t", 1)[-1] != ".plumb")
+
+
+def run_of_merged_tree(core: Any, verify: Any) -> Mapping[str, Any] | None:
+    """The green full run of the tree being merged that any checkout of this machine recorded,
+    or None (SR-254, report-d188e19d). Each checkout logs its own runs, so main cannot otherwise
+    see the one a branch's worktree recorded before it lands.
+
+    The merged tree is the index: the staged result during a merge, the commit after a
+    fast-forward. The run counts on an exact match outside ``.plumb/``: a clean checkout and
+    the same environment. The newest finished run of that tree decides: a later red one
+    withdraws an earlier green one."""
+    from plumb.normalize import canonical_json, sha256_bytes
+    from plumb.verify.evidence import _git
+
+    root = core.root
+    if _differs_from_index(root):
+        return None
+    merged = _without_records(root, (_git(root, "write-tree") or "").strip())
+    if merged is None:
+        return None
+    clean = sha256_bytes(canonical_json([]))  # tree_identity's ``dirty`` with nothing changed
+    env_now = None
+    from plumb.log import full_runs_of_every_checkout
+
+    for entry in full_runs_of_every_checkout(core.paths):
+        payload = entry.payload
+        tree = payload.get("tree") or {}
+        if (not payload.get("full") or tree.get("dirty") != clean
+                or _without_records(root, tree.get("head_tree")) != merged):
+            continue
+        if env_now is None:
+            env_now = {"env_key": verify.env_key(), "identity": verify.identity(compute=True)}
+        env = payload.get("env") or {}
+        if any(env.get(key) != value for key, value in env_now.items()):
+            continue
+        if clean_pass(payload, core):
+            return payload
+        if completed_red(payload, core):
+            return None
+    return None
+
+
 def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unverified: bool,
              waived: bool, run_full: bool, runner: Runner | None) -> dict[str, Any]:
     """Decide, reuse or run once. Returns ``{needed, ran, reused, run_id, verdict, reasons,
