@@ -5,6 +5,7 @@ view/
 eval/runs/
 log/judgment/*.json
 log/answer-bound/
+log/answer-unbound/
 log/card-press/
 log/card-settled/
 log/card-unsettled/

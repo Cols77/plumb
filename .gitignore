@@ -14,6 +14,7 @@ plugin/.claude-plugin/types/
 # (log/judgment/*.json, written by plumb init); each landing archives them
 # SR-321: log kinds only the machine that wrote them needs
 .plumb/log/answer-bound/
+.plumb/log/answer-unbound/
 .plumb/log/card-press/
 .plumb/log/card-settled/
 .plumb/log/card-unsettled/

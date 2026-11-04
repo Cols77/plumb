@@ -481,6 +481,15 @@ def unanswered_anywhere(core: Any) -> list[Mapping[str, Any]]:
     return list(out.values())
 
 
+def open_anywhere(core: Any) -> list[Mapping[str, Any]]:
+    """The open questions of every session folder, once per key: what awaits the owner."""
+    out: dict[Any, Mapping[str, Any]] = {}
+    for path in sorted((Path(core.root) / ".plumb" / "session").glob(f"*/{QUESTIONS_FILE}")):
+        for q in open_questions(core, path.parent.name):
+            out.setdefault(q.get("key"), q)
+    return list(out.values())
+
+
 def _answered_keys(core: Any) -> set[str]:
     answered: set[str] = set()
     for e in core.events():
@@ -492,6 +501,8 @@ def _answered_keys(core: Any) -> set[str]:
                 answered.update(map(str, e.payload["asked"].get("keys") or ()))
         elif e.kind == "answer-bound" and isinstance(e.payload.get("asked"), Mapping):
             answered.update(map(str, e.payload["asked"].get("keys") or ()))
+        elif e.kind == "answer-unbound":     # SR-218: the owner took a closure back
+            answered.discard(str(e.payload.get("key")))
         elif e.kind == "pre-intent" and isinstance(e.payload.get("asked"), Mapping) \
                 and e.payload["asked"].get("key"):
             answered.add(str(e.payload["asked"]["key"]))   # SR-214: answered in a typed message

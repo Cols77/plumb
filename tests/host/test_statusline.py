@@ -104,9 +104,10 @@ def test_snapshot_tests_states() -> None:
 
 
 @pytest.mark.sr("SR-337")
-def test_awaiting_counts_open_questions_and_cards(repo: Path, write_record) -> None:
+def test_awaiting_counts_questions_and_no_card(repo: Path, write_record) -> None:
     """SR-337: ``awaiting`` in status.json, the band's "N await you": a judge question not
-    answered on an unconfirmed record and an open card of the store, in any session."""
+    answered on an unconfirmed record, in any session. A card left in a store counts for
+    nothing (report-ec092f5e: the band said 73 while /plumb status said 29)."""
     from plumb.understand import files, judge
 
     write_record(repo, SR1)
@@ -120,8 +121,10 @@ def test_awaiting_counts_open_questions_and_cards(repo: Path, write_record) -> N
     cards.write_text(json.dumps({"cards": [{"id": "clarify:SR-001", "status": "open"},
                                            {"id": "clarify:SR-002", "status": "closed"}]}),
                      encoding="utf-8")
-    assert snapshot.build_snapshot(core).awaiting == 2
+    assert snapshot.build_snapshot(core).awaiting == 1
+    from plumb.present.cards import awaiting_lines
+    assert "1 question" in awaiting_lines(core, core.status())[0]    # the same as /plumb status
     snapshot.write_snapshot(repo, _snap())
     snapshot.refresh_counts(open_core(repo))  # the worker after a turn brings it up to date
     data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
-    assert data["awaiting"] == 2
+    assert data["awaiting"] == 1

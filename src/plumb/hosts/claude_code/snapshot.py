@@ -153,15 +153,14 @@ def snapshot_dict(snapshot: StatusSnapshot) -> dict[str, Any]:
 
 def awaiting_count(core: Any) -> int:
     """SR-337: the questions waiting for the owner, the band's "N await you": every session's
-    judge questions not answered yet and the store's open cards, each once."""
-    from plumb.understand import cardstore, judge
+    judge questions not answered yet, each once, the same count /plumb status gives."""
+    from plumb.understand import judge
 
     waiting: set[str] = set()
     sessions = Path(core.root) / ".plumb" / "session"
     for path in sorted(p for p in sessions.glob("*") if p.is_dir()):
         try:
-            waiting |= {f"q:{q.get('key')}" for q in judge.open_questions(core, path.name)}
-            waiting |= {f"c:{c.id}" for c in cardstore.load(core.root, path.name)}
+            waiting |= {str(q.get("key")) for q in judge.open_questions(core, path.name)}
         except Exception:  # noqa: BLE001 - a count never fails the snapshot
             continue
     return len(waiting)
