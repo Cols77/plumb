@@ -417,7 +417,7 @@ def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
         from plumb.boundary.fullrun import run_of_merged_tree
 
         is_pending, reasons = pending.pending, list(pending.reasons)
-        # a green full run of exactly the merged tree passed every test on this code
+        # a green full run of exactly the merged tree, recorded in any checkout
         counted = run_of_merged_tree(core, verify)
         if counted is not None:
             is_pending, reasons = False, []
@@ -429,9 +429,12 @@ def _verification(core: Core, touched: Sequence[str], paths: Sequence[str],
                     "full_pending_reasons": reasons,
                     "full_waived": waiver,
                     "affected": affected,
-                    **live_verification(core, {} if counted is not None else {
+                    **live_verification(core, {
                         "failing": verify.requirement_failures(scope),
-                        "unverified": verify.unverified_acceptance(scope),
+                        # a counted run gave each test a passing run on this code; failures and
+                        # regressions still stand (a rewritten test can go green: SR-207)
+                        "unverified": {} if counted is not None
+                        else verify.unverified_acceptance(scope),
                         "regressions": verify.unresolved_regressions()})})
     except Exception as exc:  # a lane failure degrades, never blocks the boundary
         out.update({"available": False, "error": str(exc)})
