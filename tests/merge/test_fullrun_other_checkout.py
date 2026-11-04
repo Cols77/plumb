@@ -57,6 +57,18 @@ def test_green_run_in_the_worktree_counts_after_a_fast_forward(landing) -> None:
         report.verify_lines
 
 
+def test_a_worktree_past_the_sibling_cap_still_counts(landing, monkeypatch) -> None:
+    """More worktrees than the owner-words reads consult (SIBLING_MAX): the landing's own
+    worktree is still read for its full run."""
+    from plumb import log
+
+    repo, wt, before = landing
+    open_verify(open_core(wt)).run(full=True)
+    monkeypatch.setattr(log, "SIBLING_MAX", 0)
+    git(repo, "merge", "-q", "--ff-only", "fix")
+    assert not _pending(repo, before)["full_pending"]
+
+
 def test_green_run_counts_when_only_records_moved_after_it(landing) -> None:
     """A repin after the tests passed changes the tree only under .plumb/."""
     repo, wt, before = landing
