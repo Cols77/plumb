@@ -1,6 +1,6 @@
 {
   "name": "plumb",
-  "version": "0.1.1281",
+  "version": "0.1.1285",
   "description": "Keep a coding agent's work aligned with what you asked for: your intent, the requirements and examples it becomes, and the checks that hold the code to them.",
   "author": {
     "name": "Colin AUBE"

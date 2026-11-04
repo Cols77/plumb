@@ -100,6 +100,19 @@ def jev_user_files(request: pytest.FixtureRequest, tmp_path_factory: pytest.Temp
     monkeypatch.setattr(jev, "user_config_path", lambda: home / "jev.json")
 
 
+@pytest.fixture(autouse=True)
+def every_record_is_the_sessions_work(request: pytest.FixtureRequest,
+                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-361: a session is asked only about records its branch changes; most tests' scratch
+    repository sits on its default branch, so every record counts as its work there. Only
+    ``work_scope`` tests run the real branch rule."""
+    if request.node.get_closest_marker("work_scope"):
+        return
+    from plumb.understand import judge
+
+    monkeypatch.setattr(judge, "work_ids", lambda core: set(core.index()))
+
+
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A temporary git repository adopted by plumb (``.plumb/`` dirs) with one commit."""
