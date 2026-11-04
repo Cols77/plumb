@@ -409,8 +409,6 @@ WITHDRAWN_LINK_GONE = "its link no longer exists"
 STEP_TIDYING = "checking your open questions"
 STEP_PUSHBACK = "checking a question the agent sent back"   # SR-362
 STEP_QUESTIONS = "reading the agent's questions to you"   # SR-167
-TIDY_QUESTION_CLOSED = ("plumb: closed a waiting question you already answered: \"{question}\" "
-                        "(your words: \"{quote}\"); plumb question reopen <its words> undoes it")
 TIDY_ANSWERED = 'you confirmed {record}: "{quote}"'
 TIDY_DUPLICATE = 'it asks what "{other}" asks'
 TIDY_SETTLED = 'you decided {record}: "{quote}"'

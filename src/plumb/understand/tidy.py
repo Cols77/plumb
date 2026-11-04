@@ -67,6 +67,8 @@ def _inputs(core: Any, session: str) -> dict[str, Any] | None:
             "confirmed": [{"id": i, "text": t} for i, t in _confirmed(core).items()]}
 
 
+QUESTION_CLOSED = ("plumb: closed a waiting question the owner already answered: \"{question}\" "
+                   "(their words: \"{quote}\"); plumb question reopen <its words> undoes it")
 ANSWERS_MAX = 300    # shortcut: the owner's latest answers only; widen if an older one is missed
 
 
@@ -135,7 +137,7 @@ def _close_questions(core: Any, session: str, verdicts: Any,
             "asked": {"job": asked.get("job"), "key": key, "keys": [key],
                       "records": list(asked.get("records") or ())}})])
         del waiting[key]
-        worker.say(core.root, session, owner_text.TIDY_QUESTION_CLOSED.format(
+        worker.say(core.root, session, QUESTION_CLOSED.format(
             question=str(asked.get("question") or "").split("\n")[0][:120], quote=quote[:160]))
 
 
