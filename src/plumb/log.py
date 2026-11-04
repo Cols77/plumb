@@ -1199,3 +1199,31 @@ def untracked_own(tree: Path, status_line: str) -> bool:
     own = PlumbPaths(tree)
     skip = tuple(p.relative_to(tree).as_posix() + "/" for p in (own.log_dir, own.cache))
     return status_line.startswith("?? ") and status_line[3:].startswith(skip)
+
+
+def full_runs_of_every_checkout(paths: Any) -> Iterator[LogEntry]:
+    """The full runs in the test-run logs of this checkout and the repository's others, newest
+    first by entry name, read-only (report-d188e19d: the merge check counts a branch worktree's
+    run of the tree it merges). An entry's bytes are tried before it is parsed, as these
+    logs run to hundreds of megabytes; an entry two checkouts share is read once, and one whose
+    digest does not hold is left out."""
+    is_full = re.compile(rb'"full"\s*:\s*true')
+    names: dict[str, Path] = {}
+    for root in (paths.root, *_worktree_roots(paths)):
+        folder = PlumbPaths(root).log_kind_dir("test-run")
+        try:
+            found = [name for name in os.listdir(folder) if name.endswith(".json")]
+        except OSError:
+            continue
+        for name in found:
+            names.setdefault(name, folder)
+    for name in sorted(names, reverse=True):
+        try:
+            data = _read_file(str(names[name] / name))
+        except OSError:
+            continue
+        if not is_full.search(data):
+            continue
+        raw = _parse_entry(data)
+        if raw is not None and raw.get("digest") == entry_digest(raw):
+            yield _to_entry("evidence", raw, -1, f"test-run/{name}")
