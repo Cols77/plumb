@@ -69,6 +69,19 @@ def test_a_worktree_past_the_sibling_cap_still_counts(landing, monkeypatch) -> N
     assert not _pending(repo, before)["full_pending"]
 
 
+def test_a_counted_full_run_also_passes_each_affected_test(landing) -> None:
+    """The branch changed covered code and its worktree ran the full suite green: main's own
+    log has no passing run of the affected test on this code, but that run counts for it."""
+    repo, wt, before = landing
+    write(wt, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")
+    commit(wt, "same behaviour, other code")
+    open_verify(open_core(wt)).run(full=True)
+    git(repo, "merge", "-q", "--ff-only", "fix")
+    found = _verification(open_core(repo), ["SR-001"], ["src/pkg/mod.py", "pyproject.toml"],
+                          before)
+    assert found["full_run_counted"] and not found["unverified"] and not found["failing"]
+
+
 def test_green_run_counts_when_only_records_moved_after_it(landing) -> None:
     """A repin after the tests passed changes the tree only under .plumb/."""
     repo, wt, before = landing
