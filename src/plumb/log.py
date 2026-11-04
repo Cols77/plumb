@@ -1209,7 +1209,7 @@ def full_runs_of_every_checkout(paths: Any) -> Iterator[LogEntry]:
     digest does not hold is left out."""
     is_full = re.compile(rb'"full"\s*:\s*true')
     names: dict[str, Path] = {}
-    for root in (paths.root, *_worktree_roots(paths)):
+    for root in (paths.root, *sibling_roots(paths)):   # every one: not capped at SIBLING_MAX
         folder = PlumbPaths(root).log_kind_dir("test-run")
         try:
             found = [name for name in os.listdir(folder) if name.endswith(".json")]
