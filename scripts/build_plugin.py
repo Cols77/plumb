@@ -126,6 +126,9 @@ def set_version(new: str) -> None:
         text = path.read_text(encoding="utf-8")
         path.write_text(re.sub(pattern, rf"\g<1>{new}\g<2>", text, count=1, flags=re.MULTILINE),
                         encoding="utf-8", newline="\n")
+    # bytecode compiled in the same second as this write would keep the old version
+    for stale in (SRC / "__pycache__").glob("__init__.*.pyc"):
+        stale.unlink(missing_ok=True)
 
 
 def _lf(data: bytes) -> bytes:
