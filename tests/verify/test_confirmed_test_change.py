@@ -112,6 +112,22 @@ def test_a_pass_after_the_test_body_changed_does_not_resolve_a_regression() -> N
 # -- SR-030 entry point: validate --merge ------------------------------------------------------
 
 
+def test_a_counted_full_run_does_not_clear_a_hidden_regression(confirmed, capsys,
+                                                              monkeypatch) -> None:
+    """SR-207, SR-254 EX-21: a green full run of the merged tree from another checkout counts,
+    but the test was rewritten to pass: the hidden regression still holds the merge."""
+    from plumb.boundary import fullrun
+
+    root, base = confirmed
+    _rewrite_test_to_pass(root)
+    monkeypatch.setattr(fullrun, "run_of_merged_tree", lambda core, verify: {"run_id": "r9"})
+    code = _check(root, base, as_json=False)
+    out = capsys.readouterr().out
+    assert code == 5, out
+    assert ("failing acceptance tests: SR-001 EX-1 tests/test_mod.py (regression, hidden: the "
+            "test was changed to pass and you have not confirmed the change)") in out
+
+
 def test_merge_holds_a_regression_hidden_by_rewriting_the_test(confirmed, capsys) -> None:
     root, base = confirmed
     _rewrite_test_to_pass(root)
