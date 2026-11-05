@@ -11,7 +11,7 @@ from capture.capture_helpers import log_prompt
 from understand.test_clarify_job import SESSION
 
 from plumb.api import open_core
-from plumb.understand import clarify, gate, queue, read, worker
+from plumb.understand import clarify, gate, judge, queue, read, worker
 
 pytestmark = pytest.mark.sr("SR-212")
 
@@ -44,6 +44,7 @@ def test_ex2_an_answer_to_a_question_in_the_last_reply_is_logged_with_it(
                   {"intent": "yes", "answers": {"question": question,
                                                 "evidence": "after the review"},
                    "readback": {"proposal": "Your request: after the review"}})
+    assert judge.open_questions(core, SESSION) == []     # no further question for the reply
     (logged,) = [e for e in core.events() if e.kind == "question-answer"]
     assert logged.payload["question"] == question
     assert logged.payload["answer"] == "after the review"

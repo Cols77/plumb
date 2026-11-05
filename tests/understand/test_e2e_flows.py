@@ -295,6 +295,7 @@ def test_flow_3_capture_asks_through_the_question_tool_and_draws_no_trial(repo: 
     at_owner_level(question["question"], *(o["description"] for o in question["options"]))
 
     s.stop()
+    assert not (repo / ".plumb" / "session" / s.session_id / "cards.json").exists()  # no trial card
     assert not events(repo, "approval")                  # no approval without a question round
 
 
