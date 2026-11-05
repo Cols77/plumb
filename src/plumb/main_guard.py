@@ -47,7 +47,8 @@ def main_checkout(directory: Path | str, root: Path | str) -> Path | None:
     top = Path(lines[0]).resolve()
     if (directory / lines[1]).resolve() != (directory / lines[2]).resolve():
         return None                                  # a linked worktree
-    if not Path(root).resolve().is_relative_to(top):
+    common = (_git(Path(root), "rev-parse", "--git-common-dir") or "").strip()
+    if not common or (Path(root) / common).resolve() != (directory / lines[2]).resolve():
         return None                                  # not the adopted repository
     base = merge_settings(SimpleNamespace(config=config, root=top))["default_base"]
     return top if lines[3] == (base or detected_base(top)) else None
@@ -176,8 +177,11 @@ def refusal(root: Path | str, tool: str, tool_input: dict[str, Any],
         if tool == "Bash":
             return REASON if _bash(root, str(tool_input.get("command") or ""), cwd) else ""
         if tool in EDIT_TOOLS:
-            top = main_checkout(cwd, root)
             raw = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
+            near = (cwd / Path(raw).expanduser()).resolve().parent   # the file's checkout decides,
+            while not near.exists() and near != near.parent:        # not where the session sits
+                near = near.parent
+            top = main_checkout(near, root)
             return REASON if top is not None and _counts(top, cwd, raw) else ""
     except Exception:  # noqa: BLE001 - a hook never blocks on its own failure
         pass

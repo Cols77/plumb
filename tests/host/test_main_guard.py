@@ -167,3 +167,18 @@ def test_ex8_the_stop_hook_does_not_hold_for_a_stale_link_in_mains_checkout(
     start_turn(project, turn_id="turn-2")
     edit(project, "src/calc.py", "def add(a, b):\n    return a + b + 0\n")
     assert _block(run_stop(project, hook_input)) is not None
+
+
+def test_a_session_in_a_worktree_cannot_write_into_mains_checkout(repo: Path, tmp_path: Path) -> None:
+    """The file's checkout decides, not where the session sits."""
+    from conftest import git
+    from plumb import main_guard
+
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-q", "-b", "work", str(wt))
+    (wt / ".plumb").mkdir(exist_ok=True)
+    data = {"cwd": str(wt)}
+    assert main_guard.refusal(wt, "Write", {"file_path": str(repo / "app.py")}, data)
+    assert not main_guard.refusal(wt, "Write", {"file_path": str(wt / "app.py")}, data)
+    assert not main_guard.refusal(repo, "Write", {"file_path": str(wt / "app.py")},
+                                  {"cwd": str(repo)})
