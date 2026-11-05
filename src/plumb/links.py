@@ -302,7 +302,7 @@ def _withdraw_settled_questions(core: Core) -> None:
     folder (SR-300 EX-3)."""
     from plumb.understand import judge
 
-    judge.drop_settled_questions(core.root, {s.link.id for s in core.link_states()
+    judge.drop_settled_questions(core, {s.link.id for s in core.link_states()
                                              if s.state == "stale"})
 
 

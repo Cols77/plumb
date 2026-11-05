@@ -1,11 +1,15 @@
-"""The tidy job kind (SR-218): one model reading per change of the judge's waiting questions
-against the owner's confirmed records and logged answers, so a question the owner already
-answered is closed without waiting for them.
+"""The tidy job kind (SR-216, SR-217, SR-218): one model reading per change of the judge's
+waiting questions against the owner's confirmed records, logged answers and later requests, so a
+question that no longer needs the owner is closed without waiting for them.
 
-``build`` and ``recompute`` take the questions, the answers and the confirmed records from the
-logs; ``apply`` closes a question only after exact checks: the quoted words are really in the
-owner's answer or in the confirmed record. A closing is logged as ``answer-bound`` and undone by
-``plumb question reopen``. Unsure leaves the question open."""
+``build`` and ``recompute`` take the questions, the answers, the requests and the confirmed
+records from the logs; ``apply`` closes a question only after exact checks: the quoted words are
+really in the owner's answer, in the confirmed record or in a request newer than the question,
+or the other question is really still waiting. A closing by an answer or a record is logged as
+``answer-bound``, the others as ``question-withdrawn`` with their reason; none approves
+anything, and ``plumb question reopen`` undoes each. SR-217: a recorded decision may also settle
+a stale-link question by refreshing the link or rewording the requirement, logged with what
+reopen needs to put back. Unsure leaves the question open."""
 
 from __future__ import annotations
 
@@ -37,10 +41,10 @@ schema: Mapping[str, Any] = _load_schema()
 def _confirmed(core: Any) -> dict[str, str]:
     """``{id: text}`` of the records the owner confirmed and nothing replaced, and (SR-335)
     the decisions quoting the owner's own logged words, approved or not."""
-    from plumb.understand import premise
+    from plumb.understand import judge, premise
 
     index, said = core.index(), premise.owner_words(core)
-    return {i: read.record_text(index[i]) for i, s in core.status(list(index)).items()
+    return {i: judge.record_text(index[i]) for i, s in core.status(list(index)).items()
             if s.superseded_by is None and i in index and (
                 s.confirmation == "confirmed" or premise.owner_quoted(index[i], said))}
 
@@ -51,12 +55,21 @@ def _inputs(core: Any, session: str) -> dict[str, Any] | None:
     # upgrade to the records `core.relevant` picks per question when that costs too much
     if not questions:
         return None
-    return {"questions": questions, "answers": _answers(core),
+    return {"questions": questions, "answers": _answers(core), "requests": _requests(core),
             "confirmed": [{"id": i, "text": t} for i, t in _confirmed(core).items()]}
 
 
 QUESTION_CLOSED = ("plumb: closed a waiting question the owner already answered: \"{question}\" "
                    "(their words: \"{quote}\"); plumb question reopen <its words> undoes it")
+QUESTION_DUPLICATE = ("plumb: withdrew a waiting question that repeats another: \"{question}\" "
+                      "(the other: \"{other_question}\"); plumb question reopen <its words> undoes it")
+QUESTION_REPLACED = ("plumb: withdrew a waiting question your newer request replaces: "
+                     "\"{question}\" (your words: \"{quote}\"); plumb question reopen <its words> "
+                     "undoes it")
+QUESTION_SETTLED = "settled from {record}: \"{quote}\""
+QUESTION_SETTLED_SAY = ("plumb: settled a waiting question from a decision of yours "
+                        "({action}): \"{question}\" ({decision}: \"{quote}\"); plumb question "
+                        "reopen <its words> undoes it")
 ANSWERS_MAX = 300    # shortcut: the owner's latest answers only; widen if an older one is missed
 
 
@@ -65,8 +78,19 @@ def _questions(core: Any) -> list[dict[str, Any]]:
     from plumb.understand import judge
 
     return [{"id": str(q.get("key")), "question": str(q.get("question") or ""),
+             "link": str(q["job"]).partition(":")[2] if str(q.get("job")).startswith("stale:") else "",
+             "asked_at": str(q.get("at") or ""),
              "options": [str(o.get("label") or "") for o in q.get("options") or ()]}
             for q in judge.open_anywhere(core)]
+
+
+REQUESTS_MAX = 20    # shortcut: the owner's latest requests only
+
+
+def _requests(core: Any) -> list[dict[str, str]]:
+    """SR-216 EX-5: the owner's typed requests, newest last, each with when it was made."""
+    return [{"id": str(p.get("at") or ""), "text": str(p.get("text") or "")[:1200]}
+            for p in read._prompt_entries(core)[-REQUESTS_MAX:]]
 
 
 def _answer_entries(core: Any) -> list[Any]:
@@ -103,30 +127,120 @@ def enqueue(core: Any, session: str) -> None:
         queue.enqueue(core, job)
 
 
+def _withdraw(core: Any, session: str, asked: Mapping[str, Any], reason: str, say: str,
+              **detail: Any) -> None:
+    from plumb.understand import judge, worker
+
+    judge.withdraw(core, session, str(asked.get("key")), reason, by="tidy", **detail)
+    worker.say(core.root, session, say.format(
+        question=str(asked.get("question") or "").split("\n")[0][:120], **detail))
+
+
 def _close_questions(core: Any, session: str, verdicts: Any,
                      confirmed: Mapping[str, str]) -> None:
-    """SR-218, SR-335: a waiting question the owner's logged answer or a confirmed record settles
-    closes, only when the quoted words really are in it; logged as ``answer-bound``, which every
-    session reads, and undone by ``plumb question reopen``. Never a model's word alone."""
-    from plumb.understand import judge, worker
+    """SR-216, SR-218, SR-335: a waiting question closes when the owner's logged answer or a
+    confirmed record settles it, a request newer than it replaces it (``replaced``), or it repeats
+    another waiting question (``duplicate``), only when the quoted words are really there and the
+    other question really waits. Never a model's word alone; unsure verdicts name nothing."""
+    from plumb.understand import judge
 
     waiting = {str(q.get("key")): q for q in judge.open_anywhere(core)}
     said = {e.digest: str(e.payload.get("answer") or "") for e in _answer_entries(core)}
+    requests = [(str(p.get("at") or ""), str(p.get("text") or ""))
+                for p in read._prompt_entries(core)]
     for verdict in verdicts:
         key, quote = str(verdict.get("question")), str(verdict.get("quote") or "")
         answer, record = str(verdict.get("answer") or ""), str(verdict.get("record") or "")
-        source = said.get(answer) if answer else confirmed.get(record)
+        other = str(verdict.get("other") or "")
         asked = waiting.get(key)
-        if asked is None or source is None or not read.evidence_in(quote, source):
+        if asked is None:
             continue
-        core.log_append_many("events", [("answer-bound", {
-            "session": session, "by": "tidy", "quote": quote,
-            **({"answer": answer} if answer else {"record": record}),
-            "asked": {"job": asked.get("job"), "key": key, "keys": [key],
-                      "records": list(asked.get("records") or ())}})])
+        if other:
+            if other == key or other not in waiting:
+                continue
+            _withdraw(core, session, asked, "duplicate", QUESTION_DUPLICATE, other=other,
+                      other_question=str(waiting[other].get("question") or "").split("\n")[0][:120])
+        elif verdict.get("replaced"):
+            since = str(asked.get("at") or "")
+            if not since or not quote or not any(at > since and read.evidence_in(quote, text)
+                                    for at, text in requests):
+                continue        # no later request holds those words: it is still asked
+            _withdraw(core, session, asked, "replaced", QUESTION_REPLACED, quote=quote)
+        else:
+            source = said.get(answer) if answer else confirmed.get(record)
+            if source is None or not quote or not read.evidence_in(quote, source):
+                continue
+            core.log_append_many("events", [("answer-bound", {
+                "session": session, "by": "tidy", "quote": quote,
+                **({"answer": answer} if answer else {"record": record}),
+                "asked": {"job": asked.get("job"), "key": key, "keys": [key],
+                          "records": list(asked.get("records") or ())}})])
+            from plumb.understand import worker
+
+            worker.say(core.root, session, QUESTION_CLOSED.format(
+                question=str(asked.get("question") or "").split("\n")[0][:120], quote=quote[:160]))
         del waiting[key]
-        worker.say(core.root, session, QUESTION_CLOSED.format(
-            question=str(asked.get("question") or "").split("\n")[0][:120], quote=quote[:160]))
+
+
+def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, str]) -> None:
+    """SR-217, DEC-434: a recorded decision (confirmed, or the owner's own quoted words) settles a
+    waiting stale-link question by refreshing its link (``repin``) or rewording its requirement
+    (``reword``, an unconfirmed edit the judge then validates like any capture). The decision's
+    words must really hold the quote; a proposed record the agent alone wrote settles nothing.
+    Logged as ``question-withdrawn`` (reason ``settled``) with what ``plumb question reopen``
+    puts back."""
+    from plumb import links
+    from plumb.understand import judge
+
+    waiting = {str(q.get("key")): q for q in judge.open_anywhere(core)}
+    for item in settlements:
+        key, decision = str(item.get("question")), str(item.get("decision"))
+        quote, action = str(item.get("quote") or ""), str(item.get("action"))
+        asked = waiting.get(key)
+        if asked is None or action not in ("repin", "reword") or decision not in confirmed \
+                or not read.evidence_in(quote, confirmed[decision]) \
+                or not str(asked.get("job") or "").startswith("stale:"):
+            continue
+        link_id = str(asked["job"])[6:]
+        record = core.index().get(link_id.partition("#")[0])
+        link = next((x for x in (record.links if record else ()) if x.id == link_id), None)
+        if link is None:
+            continue
+        why = QUESTION_SETTLED.format(record=decision, quote=quote)
+        before = str(record.fields.get("statement") or "")
+        if action == "reword":
+            changes = links.reword_and_repin(core, record, link, str(item.get("wording") or ""), why)
+        else:
+            changes = links.repin(core, link_id, note=why)
+        if changes is None:
+            continue        # nothing to refresh or reword: the question stays
+        _withdraw(core, session, asked, "settled", QUESTION_SETTLED_SAY, decision=decision,
+                  quote=quote, action=action, changes=changes, kept=dict(asked),
+                  **({"before": before} if action == "reword" else {}))
+        waiting.pop(key, None)
+
+
+def undo_settlement(core: Any, key: str) -> bool:
+    """``plumb question reopen``: put back what the latest settlement of ``key`` changed, a
+    reworded statement and the repinned links. False when it settled nothing."""
+    from plumb import links
+    from plumb.understand import judge
+
+    mine = [e for e in core.events() if e.kind in ("question-withdrawn", "answer-unbound")
+            and e.payload.get("key") == key]
+    if not mine or mine[-1].kind != "question-withdrawn" or mine[-1].payload.get("reason") != "settled":
+        return False
+    event = mine[-1].payload
+    changes = event.get("changes") or []
+    if "before" in event and changes:
+        from plumb.capture.records import rewrite
+
+        rewrite(core, core.index()[str(changes[0]["link"]).partition("#")[0]],
+                {"statement": event["before"]})
+    links.restore_pins(core, changes)
+    if event.get("kept"):       # the refreshed link left the file; the question waits again
+        judge.add_question(core, str(event.get("session")), event["kept"])
+    return True
 
 
 def _read_typed(core: Any, job: Job) -> None:
@@ -149,6 +263,7 @@ def _read_typed(core: Any, job: Job) -> None:
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     confirmed = _confirmed(core)
     _close_questions(core, job.session, answer.get("questions") or (), confirmed)
+    _settle(core, job.session, answer.get("settlements") or (), confirmed)
     _read_typed(core, job)
     return Applied(job=job.id)
 

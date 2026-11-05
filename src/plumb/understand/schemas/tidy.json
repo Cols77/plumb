@@ -9,13 +9,12 @@
   "properties": {
     "questions": {
       "type": "array",
-      "description": "One entry for each waiting question an answer or a confirmed record already settles; nothing for the others.",
+      "description": "One entry for each waiting question that an answer, a confirmed record or a later request settles, or that repeats another; nothing for the others.",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "question",
-          "quote"
+          "question"
         ],
         "properties": {
           "question": {
@@ -38,7 +37,63 @@
           },
           "quote": {
             "type": "string",
-            "description": "The words of that answer or record that settle it, copied exactly and contiguous."
+            "description": "The words of that answer, record or later request that settle it, copied exactly and contiguous."
+          },
+          "other": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Or the id of another waiting question that asks exactly the same."
+          },
+          "replaced": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Or true when a later request of the person (quote its words) replaces this question."
+          }
+        }
+      }
+    },
+    "settlements": {
+      "type": "array",
+      "description": "One entry for each waiting stale-link question a confirmed decision settles by refreshing its link or rewording its requirement.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question",
+          "action",
+          "decision",
+          "quote"
+        ],
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question id as given."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "repin",
+              "reword"
+            ]
+          },
+          "decision": {
+            "type": "string",
+            "description": "The id of the confirmed record that settles it."
+          },
+          "quote": {
+            "type": "string",
+            "description": "The words of that record that settle it, copied exactly."
+          },
+          "wording": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "reword: the statement the requirement should now read."
           }
         }
       }

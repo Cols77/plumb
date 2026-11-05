@@ -11,6 +11,14 @@ You are given:
   theirs, or a record in `confirmed`, already decides exactly what it asks: give `question`
   (its id), `answer` or `record` (the id of what settles it) and `quote`, the words of that
   answer or record that settle it, copied exactly and contiguous.
+- `requests`: what the person typed lately, each with its `id` and `text`. A question has
+  `asked_at`. Name a question with `replaced: true` and a `quote` copied exactly from a request
+  made after it only when that request already says what the question asks about.
+- Name a question with `other` (the id of another waiting question) when the two ask exactly the
+  same.
+- In `settlements`, for a question with a `link`, name it only when a record in `confirmed`
+  decides what to do: `action` `repin` (the code change is fine) or `reword` (give the new
+  `wording` of the requirement), with `decision` (the record's id) and `quote` copied exactly.
 - The same subject is not enough: it must give the choice this question asks for. An answer that
   asks something back, or says only that it was answered elsewhere, settles nothing. When two of
   their answers disagree, the later one counts; when you are not sure, leave the question out. A
