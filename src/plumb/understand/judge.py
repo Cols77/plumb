@@ -545,10 +545,25 @@ def to_ask(core: Any, session: str) -> list[Mapping[str, Any]]:
     the rest wait in /plumb status). One list for clarify, the stop hook and the ask gate."""
     from plumb import study
 
-    later = study.first_keys(Path(core.root), session)
+    later = study.first_keys(Path(core.root), session) | _typed_unread(core)
     ours = work_ids(core)
     return [q for q in open_questions(core, session)
             if q.get("key") not in later and _ids_of(q) & ours]
+
+
+def _typed_unread(core: Any) -> set[str]:
+    """SR-212: the questions the owner replied to in their own words that the tidy job has not
+    read yet: open, but never put to them again meanwhile. Once it read the reply and did not
+    close the question (``answer-read``), the question comes back."""
+    waiting: set[str] = set()
+    for e in core.events():
+        if e.kind == "question-answer" and e.payload.get("free_text") \
+                and isinstance(e.payload.get("asked"), Mapping):
+            waiting.add(str(e.payload["asked"].get("key")))
+            waiting.update(map(str, e.payload["asked"].get("keys") or ()))
+        elif e.kind == "answer-read":
+            waiting.difference_update(map(str, e.payload.get("keys") or ()))
+    return waiting
 
 
 def work_ids(core: Any) -> set[str]:
