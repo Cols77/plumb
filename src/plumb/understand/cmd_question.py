@@ -58,7 +58,8 @@ def _options(raw: str) -> list[dict[str, Any]] | None:
 
 
 def _reopen(core: Any, session: str, words: str) -> int:
-    """SR-218, SR-217: the owner's word undoes a closure or settlement the tidy job made: the question waits again."""
+    """SR-218, SR-217: the owner's word undoes a closure or settlement the tidy job made: the
+    question waits again."""
     from plumb.understand import tidy
 
     closed = [str(k) for e in core.events() if e.kind == "answer-bound"

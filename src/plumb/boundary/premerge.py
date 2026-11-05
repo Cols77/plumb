@@ -64,6 +64,7 @@ plumb.mergeHold=false commit`` (or ``... rebase --continue``) bypasses that one.
 from __future__ import annotations
 
 import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -974,13 +975,13 @@ def fast_forward_of(root: Path) -> tuple[str, str, str] | None:
 def _withdraw_merged(root: Path) -> None:
     """SR-216 EX-10, EX-11: the questions of the branches just merged into the default branch (a
     merge or a pull moved it to include their tips) are withdrawn; syncing main into a feature
-    branch withdraws nothing. A squash merge leaves no tip behind and is not seen."""
+    branch withdraws nothing. A squash merge leaves no tip behind and is not seen here: its branch, once deleted, is gone
+    for the question list (``judge._gone_branches``)."""
     from plumb.api import open_core
     from plumb.understand import judge
 
-    subject = (_git(root, "reflog", "-1", "--format=%gs") or "").split(":", 1)[0].split()
     here = (_git(root, "symbolic-ref", "--short", "-q", "HEAD") or "").strip()
-    if not subject or subject[0] not in ("merge", "pull") or here != default_branch_of(root):
+    if here != default_branch_of(root):
         return
     merged = set((_git(root, "for-each-ref", "--merged=HEAD", "--no-merged=ORIG_HEAD",
                        "--format=%(refname:short)", "refs/heads") or "").split()) - {here}
@@ -999,8 +1000,8 @@ def run_post_merge(root: Path) -> int:
     root = Path(root)
     try:  # advisory: never fails the hook
         _withdraw_merged(root)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001 - advisory, but said, not hidden
+        print(f"plumb: post-merge question withdrawal skipped: {exc}", file=sys.stderr)
     if (_git(root, "config", "--bool", HOLD_KEY) or "").strip() == "false":
         return _start_landing(root)
     found = fast_forward_of(root)

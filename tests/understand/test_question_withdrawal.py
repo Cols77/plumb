@@ -314,3 +314,34 @@ def test_ex5_reopen_puts_back_what_a_settlement_changed(
                                          "reopen", key[:20]]) == 0
     assert str(open_core(project).index()["SR-001"].fields["statement"]) == before
     assert _link_state(project) == "stale" and len(_left(project)) == 1
+
+
+@pytest.mark.sr("SR-216")
+def test_ex6_a_squash_merged_branch_is_gone_once_deleted_not_before(tmp_path: Path) -> None:
+    root, run_git = _merge_world(tmp_path)
+    judge.add_question(open_core(root), SESSION, {"key": "k", "job": "j", "records": [],
+                                                  "question": "q", "branch": "feat-x",
+                                                  "options": []})
+    run_git(root, "checkout", "-q", "main")
+    run_git(root, "merge", "-q", "--squash", "--no-verify", "feat-x")
+    run_git(root, "commit", "-q", "--no-verify", "-m", "squash")
+    assert [q["key"] for q in judge.unanswered(open_core(root), SESSION)] == ["k"]
+    run_git(root, "branch", "-q", "-D", "feat-x")
+    assert judge.unanswered(open_core(root), SESSION) == []
+
+
+@pytest.mark.sr("SR-216")
+def test_ex6_one_git_call_checks_every_branch_and_none_when_no_question_has_one(
+        repo: Path, world, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+    real = judge._git
+    monkeypatch.setattr(judge, "_git", lambda root, *a: calls.append(a) or real(root, *a))
+    _ask(repo)
+    _ask(repo, OTHER, branch="main")
+    calls.clear()
+    judge.unanswered(open_core(repo), SESSION)
+    assert [c[0] for c in calls] == ["for-each-ref"]
+    calls.clear()
+    judge.add_question(open_core(repo), SESSION, {"key": "x", "job": "x", "records": [],
+                                                  "question": "x", "options": []})
+    assert [c[0] for c in calls].count("symbolic-ref") == 1

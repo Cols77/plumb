@@ -451,55 +451,42 @@ def questions_path(root: Any, session: str) -> Path:
 
 def _logged_questions(root: Any, session: str) -> list[Mapping[str, Any]]:
     raw = files.read_json(questions_path(root, session))
-    return [q for q in raw if isinstance(q, Mapping)
-            and not (q.get("branch") and branch_gone(Path(root), str(q["branch"])))
-            ] if isinstance(raw, list) else []
+    if not isinstance(raw, list):
+        return []
+    asked = [q for q in raw if isinstance(q, Mapping)]
+    gone = _gone_branches(Path(root), {str(q["branch"]) for q in asked if q.get("branch")})
+    return [q for q in asked if str(q.get("branch")) not in gone]
 
 
-def _head_is(git: Path, branch: str) -> bool:
-    try:
-        return (git / "HEAD").read_text(encoding="utf-8").strip() == "ref: refs/heads/" + branch
-    except OSError:
-        return False
+def _git(root: Path, *args: str) -> str | None:
+    from plumb.boundary.premerge import _git as run
+
+    return run(root, *args)
 
 
-def branch_gone(root: Path, branch: str) -> bool:
-    """SR-216 EX-6: whether ``branch`` has neither a ref file nor a packed-refs line (files
-    only, no git process; a worktree's ``.git`` file leads to its git dir, whose ``commondir``
-    holds the refs). The branch HEAD points at is never gone; reftable is not looked into."""
-    git = Path(root) / ".git"
-    try:
-        if git.is_file():
-            git = (Path(root) / git.read_text(encoding="utf-8").split(":", 1)[1].strip()).resolve()
-            if _head_is(git, branch):
-                return False
-            common = git / "commondir"
-            if common.is_file():
-                git = (git / common.read_text(encoding="utf-8").strip()).resolve()
-        if not git.is_dir() or _head_is(git, branch) or (git / "reftable").is_dir():
-            return False
-        if (git / "refs" / "heads" / branch).is_file():
-            return False
-        packed = git / "packed-refs"
-        return not (packed.is_file() and any(
-            line.rstrip().endswith(" refs/heads/" + branch)
-            for line in packed.read_text(encoding="utf-8").splitlines()))
-    except (OSError, IndexError):
-        return False
+def _gone_branches(root: Path, branches: set[str]) -> set[str]:
+    """SR-216 EX-6: those of ``branches`` that no local ref names any more (merged and deleted,
+    a squash merge included), by one ``git for-each-ref``, none when no question has a branch;
+    when git cannot answer nothing is gone."""
+    if not branches:
+        return set()
+    out = _git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    return branches - set(out.split()) if out is not None else set()
 
 
-def _stamp(root: Any, question: dict[str, Any]) -> dict[str, Any]:
+def _stamp(question: dict[str, Any], branch: str) -> dict[str, Any]:
     """A new question carries when and on which branch it was asked (SR-216: a newer request
-    replaces it; its merged or deleted branch withdraws it)."""
-    import subprocess
+    replaces it; its merged or deleted branch withdraws it). ``branch`` is read once per write."""
     from datetime import datetime, timezone
 
-    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root,
-                            capture_output=True, text=True).stdout.strip()
     question.setdefault("at", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
-    if branch and branch != "HEAD":
+    if branch:
         question.setdefault("branch", branch)
     return question
+
+
+def _branch_of(root: Any) -> str:
+    return (_git(Path(root), "symbolic-ref", "--short", "-q", "HEAD") or "").strip()
 
 
 # SR-216, SR-218: the reasons a ``question-withdrawn`` entry closes a question, which only
@@ -872,7 +859,8 @@ def _questions(core: Any, job: Job, answer: Mapping[str, Any], judged: Mapping[s
 def _write_questions(core: Any, job: Job, judged: set[str], new: list[dict[str, Any]]) -> None:
     """The open questions file with this job's questions: the same question asked again
     gathers the records of both; a question whose every record this job judged again goes."""
-    by_key = {q["key"]: _stamp(core.root, q) for q in new}
+    branch = _branch_of(core.root) if new else ""
+    by_key = {q["key"]: _stamp(q, branch) for q in new}
     old = _logged_questions(core.root, job.session)
     for q in old:
         same = by_key.get(str(q.get("key")))
@@ -891,7 +879,7 @@ def add_question(core: Any, session: str, question: Mapping[str, Any]) -> None:
     kept = [q for q in _logged_questions(core.root, session)
             if q.get("job") != question.get("job")]
     files.write_json_atomic(questions_path(core.root, session),
-                            [*kept, _stamp(core.root, dict(question))])
+                            [*kept, _stamp(dict(question), _branch_of(core.root))])
 
 
 def reworded(root: Any, session: str) -> list[Mapping[str, Any]]:
@@ -958,10 +946,7 @@ def drop_settled_questions(core: Any, still_stale: Collection[str]) -> None:
 def drop_merged_branch_questions(core: Any, merged: Collection[str]) -> None:
     """SR-216 EX-10: the questions asked on a branch just merged into main, in every worktree's
     sessions, are withdrawn and logged."""
-    import subprocess
-
-    out = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=core.root,
-                         capture_output=True, text=True).stdout
+    out = _git(Path(core.root), "worktree", "list", "--porcelain") or ""
     for tree in (Path(x[9:]) for x in out.splitlines() if x.startswith("worktree ")):
         for path in (tree / ".plumb" / "session").glob(f"*/{QUESTIONS_FILE}"):
             raw = files.read_json(path)

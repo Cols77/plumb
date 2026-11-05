@@ -62,7 +62,8 @@ def _inputs(core: Any, session: str) -> dict[str, Any] | None:
 QUESTION_CLOSED = ("plumb: closed a waiting question the owner already answered: \"{question}\" "
                    "(their words: \"{quote}\"); plumb question reopen <its words> undoes it")
 QUESTION_DUPLICATE = ("plumb: withdrew a waiting question that repeats another: \"{question}\" "
-                      "(the other: \"{other_question}\"); plumb question reopen <its words> undoes it")
+                      "(the other: \"{other_question}\"); plumb question reopen <its words> "
+                      "undoes it")
 QUESTION_REPLACED = ("plumb: withdrew a waiting question your newer request replaces: "
                      "\"{question}\" (your words: \"{quote}\"); plumb question reopen <its words> "
                      "undoes it")
@@ -78,7 +79,8 @@ def _questions(core: Any) -> list[dict[str, Any]]:
     from plumb.understand import judge
 
     return [{"id": str(q.get("key")), "question": str(q.get("question") or ""),
-             "link": str(q["job"]).partition(":")[2] if str(q.get("job")).startswith("stale:") else "",
+             "link": (str(q["job"]).partition(":")[2]
+                      if str(q.get("job")).startswith("stale:") else ""),
              "asked_at": str(q.get("at") or ""),
              "options": [str(o.get("label") or "") for o in q.get("options") or ()]}
             for q in judge.open_anywhere(core)]
@@ -142,7 +144,7 @@ def _close_questions(core: Any, session: str, verdicts: Any,
     confirmed record settles it, a request newer than it replaces it (``replaced``), or it repeats
     another waiting question (``duplicate``), only when the quoted words are really there and the
     other question really waits. Never a model's word alone; unsure verdicts name nothing."""
-    from plumb.understand import judge
+    from plumb.understand import judge, worker
 
     waiting = {str(q.get("key")): q for q in judge.open_anywhere(core)}
     said = {e.digest: str(e.payload.get("answer") or "") for e in _answer_entries(core)}
@@ -175,8 +177,6 @@ def _close_questions(core: Any, session: str, verdicts: Any,
                 **({"answer": answer} if answer else {"record": record}),
                 "asked": {"job": asked.get("job"), "key": key, "keys": [key],
                           "records": list(asked.get("records") or ())}})])
-            from plumb.understand import worker
-
             worker.say(core.root, session, QUESTION_CLOSED.format(
                 question=str(asked.get("question") or "").split("\n")[0][:120], quote=quote[:160]))
         del waiting[key]
@@ -190,7 +190,7 @@ def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, s
     Logged as ``question-withdrawn`` (reason ``settled``) with what ``plumb question reopen``
     puts back."""
     from plumb import links
-    from plumb.understand import judge
+    from plumb.understand import judge, worker
 
     waiting = {str(q.get("key")): q for q in judge.open_anywhere(core)}
     for item in settlements:
@@ -209,7 +209,8 @@ def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, s
         why = QUESTION_SETTLED.format(record=decision, quote=quote)
         before = str(record.fields.get("statement") or "")
         if action == "reword":
-            changes = links.reword_and_repin(core, record, link, str(item.get("wording") or ""), why)
+            changes = links.reword_and_repin(core, record, link,
+                                             str(item.get("wording") or ""), why)
         else:
             changes = links.repin(core, link_id, note=why)
         if changes is None:
@@ -228,7 +229,8 @@ def undo_settlement(core: Any, key: str) -> bool:
 
     mine = [e for e in core.events() if e.kind in ("question-withdrawn", "answer-unbound")
             and e.payload.get("key") == key]
-    if not mine or mine[-1].kind != "question-withdrawn" or mine[-1].payload.get("reason") != "settled":
+    if (not mine or mine[-1].kind != "question-withdrawn"
+            or mine[-1].payload.get("reason") != "settled"):
         return False
     event = mine[-1].payload
     changes = event.get("changes") or []
