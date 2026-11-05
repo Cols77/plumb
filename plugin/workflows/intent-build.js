@@ -1,7 +1,7 @@
 export const meta = {
   name: 'intent-build',
   description: "Build an intent that passed its clarify gate: write the plan's acceptance tests and pass the plan gate, build each plan item, then prove it and close the intent",
-  whenToUse: "Run after stage A of /plumb intent passed and the owner opted in to a workflow. args: {intent, plan: [{id, sr, summary}], worktree, session, models}. models (optional) sets the model of a level: {haiku, sonnet, opus, fable}. It asks the owner nothing: a changed meaning comes back as a question.",
+  whenToUse: "Run after stage A of /plumb intent passed and the owner opted in to a workflow. args: {intent, plan: [{id, sr, summary}], worktree, session, notes, models}. notes (optional) is what every agent should know from the main session. models (optional) sets the model of a level: {haiku, sonnet, opus, fable}. It asks the owner nothing: a changed meaning comes back as a question.",
   phases: [
     { title: 'Plan', detail: 'failing acceptance tests, then the plan gate' },
     { title: 'Build', detail: 'implement each plan item, then test and review it' },
@@ -16,6 +16,7 @@ const intent = input.intent || ''
 const plan = input.plan || []
 const worktree = input.worktree || ''
 const session = input.session || ''
+const notes = input.notes || ''
 if (!intent || !plan.length || !worktree) {
   return { built: [], failed: [], questions: [], done: false, error: 'args need intent, plan and worktree' }
 }
@@ -39,6 +40,7 @@ const QUESTION = [
 const STATE = [
   'You are one agent of the plumb workflow intent-build, building the intent: ' + intent + '.',
   'Stage A (clarifying the intent with the owner) is finished; the records are written. Session: ' + session + '.',
+  notes ? 'From the main session: ' + notes : '',
 ].join('\n')
 const SESSION = session ? ' --session ' + session : ''
 const itemText = (it) => 'Plan item ' + it.id + (it.sr ? ' (requirement ' + it.sr + ')' : '') + ': ' + it.summary
@@ -76,7 +78,9 @@ if (!tests || !tests.ok) {
 }
 const gate = await agent([
   STATE, '', WORKTREE, '',
-  'Write your findings for the plan gate (open conflicts, unanswered questions, plan items with no failing test) to a file, then run:',
+  'The plan:', planText, '',
+  'Write your findings for the plan gate (open conflicts, unanswered questions, plan items with no failing test) to a file,',
+  'a JSON list of {"level": "high" | "medium" | "low", "what": "..."} (an empty list when there is none), then run:',
   'plumb intent gate plan --intent ' + intent + ' --findings <file>' + SESSION,
   'Then report it to the owner band: plumb intent progress --task "plan gate passed" (or "plan gate failed") --done 1 --total 3' + SESSION,
   'Return exitCode (the gate command exit code) and finding (what the gate printed, plainly).',
