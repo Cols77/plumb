@@ -364,3 +364,18 @@ def test_a_set_with_one_record_unclear_approves_nothing_then_whole(escalated: Pa
     assert {state(escalated, i) for i in ids} == {("confirmed", "auto-model")}
     assert set_state(open_core(escalated), "INT-001") == "approved"
     assert problems(escalated) == []
+
+
+def test_an_answer_to_the_agents_own_question_reaches_the_judge_of_the_same_session(
+        world: Path) -> None:
+    """Case report-4c7b844d: the owner answered the agent's own question (no judge question,
+    so no ``asked``) in the session that spoke the record's message; the judge of the record,
+    wherever it runs, is shown that answer instead of asking it again."""
+    from plumb.understand import premise
+
+    digest = open_core(world).log_append("events", "question-answer", {
+        "session": SESSION, "question": "Build it now or only review it?",
+        "options": OPTIONS, "answer": "Build it now", "via": "question-tool"}).digest
+    core = open_core(world)
+    record = core.index()["SR-001"]
+    assert [e.digest for e in premise.answer_entries(core, record)] == [digest]
