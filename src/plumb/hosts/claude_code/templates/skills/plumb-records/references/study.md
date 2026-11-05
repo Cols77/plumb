@@ -14,7 +14,8 @@ studies: these are the steps, in order.
 3. `{plumb} study gather <slug> --json`: the records it is written from; none
    means no record covers it, which you say instead of writing.
 4. Write it in plain words from those records only, a mermaid diagram only at
-   depth `diagrams`, then
+   depth `diagrams` (at most 12 boxes per flowchart, or the room shrinks it
+   unreadable: split a bigger one into several), then
    `{plumb} study add <slug> --records <their IDs> --file <body.md>`.
    The band announces it; the owner reads it in the room when they choose.
    Never open the room.

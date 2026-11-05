@@ -297,6 +297,43 @@ def accepted_lines(root: Path) -> list[str]:
 
 NO_RECORD = "No record in plumb covers this topic."
 
+# report-604e5ebf: the room's text column is about 580 px wide; a flowchart past this many
+# boxes is drawn far wider or taller and shrinks to unreadable text. Split it instead.
+DIAGRAM_NODES = 12
+_MERMAID = re.compile(r"```mermaid[^\n]*\n(.*?)```", re.S)
+_SHAPE = re.compile(r"[\[\(\{][^\[\]\(\)\{\}]*[\]\)\}]")
+_ARROW = re.compile(r"<?(?:-{2,}|={2,}|-\.+-?|~{3,})(?:>|[ox](?=[\s\[(]|$))?")
+# shortcut: an edge text written '-- text -->' counts its words as boxes (overcounts);
+# '-->|text|' is read right
+_KEYWORDS = {"subgraph", "end", "direction", "classDef", "class", "style", "linkStyle",
+             "click", "flowchart", "graph", "%%"}
+
+
+def diagram_nodes(code: str) -> int:
+    """The boxes of a mermaid flowchart (0 for other kinds), read from its node ids."""
+    lines = code.strip().splitlines()
+    if not lines or lines[0].split()[0] not in ("flowchart", "graph"):
+        return 0
+    ids: set[str] = set()
+    for line in lines[1:]:
+        text = re.sub(r'"[^"]*"', "", line.split("%%")[0]).strip()
+        if not text or text.split()[0] in _KEYWORDS:
+            continue
+        while (shorter := _SHAPE.sub("", text)) != text:
+            text = shorter
+        text = re.sub(r"\|[^|]*\|", " ", text)
+        text = re.sub(r":::[\w-]+", "", _ARROW.sub(" & ", text))
+        ids.update(t for t in re.split(r"[\s&;]+", text) if re.fullmatch(r"[\w$][\w$-]*", t))
+    return len(ids)
+
+
+def _check_diagrams(body: str) -> None:
+    for n, block in enumerate(_MERMAID.findall(body), 1):
+        if (count := diagram_nodes(block)) > DIAGRAM_NODES:
+            raise ValueError(
+                f"diagram {n} has {count} boxes: the room shrinks a flowchart past "
+                f"{DIAGRAM_NODES} boxes to unreadable text; split it into smaller diagrams")
+
 
 def add(root: Path, slug: str, body: str, records: list[dict[str, str]] | None = None) -> str:
     """Write the study of an idea the owner accepted, at the depth they chose (SR-293 EX-7,
@@ -315,6 +352,7 @@ def add(root: Path, slug: str, body: str, records: list[dict[str, str]] | None =
     # SR-370: the depth is a ceiling on the mix the agent composes (DEC-362)
     if found.get("depth") == "md" and "```mermaid" in body:
         raise ValueError("the owner chose Markdown only: the study has no diagram")
+    _check_diagrams(body)
     clips = video.clips_in(body)
     if clips and found.get("depth") != "video":
         raise ValueError(f"the owner chose {found.get('depth')}: the study has no video block "
