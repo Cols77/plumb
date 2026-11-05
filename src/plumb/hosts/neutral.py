@@ -180,7 +180,8 @@ def handle_event(event: TurnEvent, *, deadline: Deadline | None = None,
 
             # DEC-317, DEC-318: a self-fix ready to land; the defect this session hit is fixed
             shown = emit(ctx, [Line(t, subject=f"landing:{k}", must=True) for k, t in
-                               [*lines(root), *debug.lines(root, ctx.session_id)]], "prompt")
+                               [*lines(root, "plumb:debug-cases" if event.host == "claude-code" else ""),
+                                *debug.lines(root, ctx.session_id)]], "prompt")
             output = replace(output, agent_context=(*output.agent_context, *shown))
         except Exception:  # noqa: BLE001 - advisory
             pass

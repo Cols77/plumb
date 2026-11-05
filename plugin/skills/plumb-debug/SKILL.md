@@ -8,6 +8,9 @@ plumb opens a debug case the moment one of its own steps fails (a hook error, a 
 repin, a job that failed three times). This skill and `plumb debug` are the whole workflow;
 nothing else is needed.
 
+0. Cases given as text (a "plumb:" line listing open debug cases) run through plumb's shipped
+   workflow `plumb:debug-cases` on Sonnet, with args {cases: [{id, kind, target, detail}],
+   worktree}; its result lists resolved, open and questions. You write no workflow script.
 1. Run `plumb debug`. It reruns each case once and says which are resolved, open, or landed,
    not proven (the fix is in main, not yet seen working where it failed). A case that came
    back is reopened with its history; a known issue is matched by its symptom.
