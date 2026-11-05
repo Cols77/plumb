@@ -145,8 +145,8 @@ PREMERGE_PROOF_NOT_CONFIRMED = ("  \"{title}\": you have not said you saw it wor
                                 "asks you with the question tool")
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "
                        "to link it to the requirement it serves")
-PREMERGE_STALE_HEADER = ("links this merge leaves stale (repin each once its tests pass, or "
-                         "ask the owner):")
+PREMERGE_STALE_HEADER = ("links this merge leaves stale (repin each once its tests pass; a repin "
+                         "that is refused goes to the owner as the judge's question):")
 PREMERGE_VALIDATE_HEADER = ("validate errors in the records (fix each record, or relink a link "
                             "that is broken, then commit):")
 PREMERGE_UNTESTED_HEADER = "links this merge adds to files no test covers:"
