@@ -191,6 +191,23 @@ def test_gate_in_shell_without_python(tmp_path: Path) -> None:
     assert not sentinel.exists()
 
 
+@needs_sh
+def test_the_main_guard_starts_python_only_for_a_command_that_could_write(tmp_path: Path) -> None:
+    """SR-384, SR-279: on a primary checkout with the guard on, `ls` still starts no Python."""
+    sentinel = tmp_path / "sentinel.txt"
+    root = adopted_repo(tmp_path / "repo")
+    config = root / ".plumb" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace("guard_main: false",
+                                                                 "guard_main: true"), "utf-8")
+    poison = sentinel_bin(tmp_path / "poison", sentinel)
+    home = ready_home(tmp_path / "home", poison / "python")
+    env = env_with([poison], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    run_hook("pre-tool", root, hook_data("pre-tool", tool_input={"command": "ls"}), env)
+    assert not sentinel.exists()
+    run_hook("pre-tool", root, hook_data("pre-tool", tool_input={"command": "echo x > a"}), env)
+    assert sentinel.exists()
+
+
 def test_install_rules_from_same_table() -> None:
     from plumb.hosts.claude_code.install import (
         STANDARD_PREFIXES,

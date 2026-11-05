@@ -226,6 +226,7 @@ class MergeConfig:
 
     default_base: str | None = None   # unset: the detected default branch
     prepush_run_full: bool = True
+    guard_main: bool = True           # SR-384: the pre-tool hook refuses writes in main's checkout
 
 
 @dataclass(frozen=True)

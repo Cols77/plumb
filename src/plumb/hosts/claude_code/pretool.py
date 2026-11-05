@@ -49,6 +49,12 @@ def decide(root: Path | str, session: str, tool: str,
         reason = denied(tool, tool_input)
         if reason:
             return _deny(reason)
+    if tool_input is not None and (tool == "Bash" or tool in EDIT_TOOLS):
+        from plumb import main_guard
+
+        reason = main_guard.refusal(root, tool, tool_input, data)  # SR-384
+        if reason:
+            return _deny(reason)
     if data is not None:
         from plumb.hosts.claude_code import ask_gate
 
