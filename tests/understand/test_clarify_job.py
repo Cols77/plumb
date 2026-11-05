@@ -49,10 +49,6 @@ def _cards(repo: Path) -> list[str]:
     return sorted(p.name for p in files.session_dir(repo, SESSION).glob("*cards*.json"))
 
 
-def _by_kind(repo: Path, kind: str) -> list[str]:
-    return _cards(repo)
-
-
 def _gate_entries(core: Any) -> list[dict[str, Any]]:
     return [dict(e.payload) for e in core.events() if e.kind == "gate"]
 
@@ -69,8 +65,6 @@ def test_sr131_ex2_one_blocking_choice_the_rest_assumptions(
                             blocking=True, diagram=False),
                        _gap("scope", "Which of their data goes in the export?")]}
     core, digest = _asked("let users export their data", answer, repo, engine_standins)
-    assert _by_kind(repo, "clarify") == []          # SR-252 EX-6: no read-back card
-    assert _by_kind(repo, "choice") == []            # SR-223 EX-15: never on a card
     (asked,) = clarify.gap_questions(core, SESSION)
     assert asked["question"].startswith("Which file")
     assert [o["label"] for o in asked["options"]][0] == "the second way"   # recommended first
@@ -110,7 +104,6 @@ def test_sr131_ex3_three_gaps_with_recommendations_are_assumptions_and_no_card(
     answer = {"intent": "yes", "topic": "export", "gaps": [
         _gap("a", "First?"), _gap("b", "Second?"), _gap("c", "Third?")]}
     core, digest = _asked("export things", answer, repo, engine_standins)
-    assert _cards(repo) == []                       # assumed; no read-back card (SR-252 EX-6)
     assert not gate.is_closed(repo, SESSION)
     assert [e["digest"] for e in _gate_entries(core)] == [digest]
 
@@ -181,7 +174,7 @@ def test_sr131_ex1_a_resolved_reference_is_an_assumption_and_the_work_starts(
         "proposal": "Fix every finding listed above.",
         "assumptions": ["the findings are the ones I listed above"]}}
     _asked("resolve all the findings using a workflow", answer, repo, engine_standins)
-    assert _by_kind(repo, "choice") == [] and not gate.is_closed(repo, SESSION)
+    assert not gate.is_closed(repo, SESSION)
 
 
 def test_ex2_request_that_maps_to_confirmed_requirement_no_choice(
@@ -190,7 +183,6 @@ def test_ex2_request_that_maps_to_confirmed_requirement_no_choice(
     approvals.approve(open_core(repo), ["SR-001"])
     answer = {"intent": "yes", "topic": "export as CSV", "gaps": []}
     core, digest = _asked("export the user list as CSV", answer, repo, engine_standins)
-    assert _cards(repo) == []                       # no read-back card (SR-252 EX-6)
     sent = engine_standins.dispatcher.jobs[0].inputs
     assert [t["id"] for t in sent["touched"]] == ["SR-001"]
     assert sent["touched"][0]["status"] == "confirmed"
@@ -204,7 +196,6 @@ def test_sr131_many_gaps_with_a_recommendation_are_assumed_not_asked(
     gaps = [_gap(f"g{n}", f"Question number {n}?") for n in range(1, 6)]
     answer = {"intent": "yes", "topic": "a big feature", "gaps": gaps}
     _asked("rebuild the billing system", answer, repo, engine_standins)
-    assert _cards(repo) == []                       # assumed, no read-back card (SR-252 EX-6)
     assert not gate.is_closed(repo, SESSION)
 
 
@@ -212,7 +203,6 @@ def test_ex4_a_question_carries_no_intent_no_card(repo: Path, engine_standins: A
     core, digest = _asked("what does plumb status show?",
                           {"intent": "no", "gaps": [_gap("x", "Ignored?")]}, repo,
                           engine_standins)
-    assert _cards(repo) == []
     assert not gate.is_closed(repo, SESSION)
     assert [e["digest"] for e in _gate_entries(core)] == [digest]
 

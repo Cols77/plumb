@@ -133,11 +133,6 @@ def agent_of(s: Session) -> str:
     return agent_notes(s.repo, s.session_id)
 
 
-def own_cards(s: Session) -> list[dict[str, Any]]:
-    path = s.repo / ".plumb" / "session" / s.session_id / "cards.json"
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
-
-
 def deny(s: Session, rel: str = "src/feature.py") -> bool:
     """Whether the edit guard refuses an edit of ``rel`` right now."""
     out = s.hook("pre-tool", hook_event_name="PreToolUse", tool_name="Edit",
@@ -183,7 +178,6 @@ def test_flow_1_request_with_gaps_is_asked_through_the_question_tool(repo: Path)
     assert [q["question"] for q in asked["questions"]] == ["Which format?"]
     at_owner_level(asked["questions"][0]["question"])
     assert not deny(s)                                            # no question denies an edit
-    assert [c for c in own_cards(s) if c["kind"] == "choice"] == []
     assert len(calls(s, "clarify")) == 1                          # only the command runs a check
 
 
@@ -239,7 +233,6 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
     status = open_core(repo).status()
     assert status["INT-008"].confirmation == "confirmed"
     assert status["SR-088"].confirmation != "confirmed"           # sent back to be reworded
-    assert not [c for c in own_cards(s) if c["id"].startswith("change:")]
     assert len(calls(s, "read")) == 1                             # one read job for the message
     said = text_of(s.stop())
     assert owner_text.JUDGE_APPROVED not in said                  # SR-265 EX-7: the agent's
@@ -302,7 +295,6 @@ def test_flow_3_capture_asks_through_the_question_tool_and_draws_no_trial(repo: 
     at_owner_level(question["question"], *(o["description"] for o in question["options"]))
 
     s.stop()
-    assert not [c for c in own_cards(s) if c["kind"] in ("trial", "clarify")]
     assert not events(repo, "approval")                  # no approval without a question round
 
 

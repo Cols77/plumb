@@ -110,7 +110,6 @@ def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
     assert len([e for e in core.events() if e.kind == "verdict"]) == sum(map(len, ids.values()))
     assert progress(repo).state == "done"
     assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=12, questions=1)
-    assert open_cards(repo) == []                       # questions, no trial card (SR-252 EX-6)
     (asked,) = judge.open_questions(open_core(repo), SESSION)    # one question asked once
     assert len(asked["records"]) == 12
     assert worker.run_once(core, SESSION) == []
@@ -120,13 +119,6 @@ def progress(repo: Path):
     from plumb.understand import files
 
     return files.progress_from_json(files.read_json(files.progress_path(repo, SESSION)))
-
-
-def open_cards(repo: Path):
-    """Any card file in the session folder: none is ever written (SR-382)."""
-    from plumb.understand import files
-
-    return sorted(p.name for p in files.session_dir(repo, SESSION).glob("*cards*.json"))
 
 
 def test_sr107_ex1_150_records_one_pass_no_per_turn_limit_done_jobs_not_rerun(
@@ -169,7 +161,6 @@ def test_sr107_ex2_fragment_premise_takes_the_question_route(
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.99)}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []
     (asked,) = judge.open_questions(open_core(repo), SESSION)
     assert [r["id"] for r in asked["records"]] == ["INT-001"]
     seen = engine_standins.dispatcher.jobs[0].inputs["records"][0]["premise"]["messages"][0]
@@ -184,7 +175,6 @@ def test_sr107_ex3_18_supported_take_one_question_and_no_trial_card(
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.95)}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []
     (asked,) = judge.open_questions(open_core(repo), SESSION)
     assert len(asked["records"]) == 18
     assert not [e for e in open_core(repo).events() if e.kind == "approval"]
@@ -199,7 +189,6 @@ def test_sr107_ex5_three_flagged_are_not_trial_cards_and_raise_no_card(
     flagged = {ids[2]: "beyond", ids[3]: "beyond", ids[4]: "contradicts"}
     engine_standins.dispatcher.script = {"judge": answering(0.95, flagged)}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []                       # flagged or not: no card
     assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=8, questions=1)
 
 
@@ -232,7 +221,6 @@ def test_backlog_end_line_counts_judged_and_questions_awaiting(
     assert shown.state == "done"
     assert shown.step == owner_text.BACKLOG_DONE.format(judged=160, questions=1)
     assert owner_level(shown.step) == []
-    assert open_cards(repo) == []
 
 
 def test_sr107_ex7_model_unreachable_midway_resumes_without_rejudging(
@@ -289,7 +277,6 @@ def test_a_decision_in_the_backlog_takes_the_question_route(repo: Path, write_re
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.99)}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []
     asked = {r["id"] for q in judge.open_questions(open_core(repo), SESSION)
              for r in q["records"]}
     assert "DEC-001" in asked
@@ -311,7 +298,6 @@ def test_a_record_below_the_threshold_is_asked_like_the_others(repo: Path, write
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": graded}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []
     (asked,) = judge.open_questions(open_core(repo), SESSION)
     assert ids[3] in {r["id"] for r in asked["records"]}
     assert FakeDispatcher().available() is None

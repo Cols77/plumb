@@ -65,7 +65,7 @@ def _resolve_or_ask(core: Any, words: list[str], as_json: bool,
 def cmd_status(command: str, argv: list[str]) -> int:
     if "--card" not in argv:
         return _delegate(command, argv)
-    parser = _parser(command, "The status card, what awaits you and drift, in a few lines.")
+    parser = _parser(command, "The status line, what awaits you and drift, in a few lines.")
     parser.add_argument("--card", action="store_true")
     args = parser.parse_args(argv)
     from plumb.present.report import status_card_lines

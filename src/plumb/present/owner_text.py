@@ -96,10 +96,10 @@ CHOOSE_REFUSED = ("plumb: only the owner chooses a side; say which version to ke
 CHOSEN = "plumb: {record} \"{title}\" now holds {side} version"
 CHOSEN_RECONFIRMED = " (your earlier ok of that version holds again)"
 CHOSEN_PROPOSED = " (it waits for your ok, like any new wording)"
-PROPOSED = ("plumb: a combined version of {record} \"{title}\" is shown in its conflict card; "
+PROPOSED = ("plumb: a combined version of {record} \"{title}\" is put in the conflict's question; "
             "nothing changes until you choose")
 
-SUGGESTED = ("plumb: your suggestion on {record} \"{title}\" is shown in its conflict card; "
+SUGGESTED = ("plumb: your suggestion on {record} \"{title}\" is put in the conflict's question; "
              "nothing changes until the owner chooses")
 
 # -- the merge-time check and its hook (10, R17)
@@ -146,7 +146,7 @@ PREMERGE_PROOF_NOT_CONFIRMED = ("  \"{title}\": you have not said you saw it wor
 PREMERGE_UNDECLARED = ("  {path} changed without a requirement that declares it; ask the agent "
                        "to link it to the requirement it serves")
 PREMERGE_STALE_HEADER = ("links this merge leaves stale (repin each once its tests pass, or "
-                         "card it):")
+                         "ask the owner):")
 PREMERGE_VALIDATE_HEADER = ("validate errors in the records (fix each record, or relink a link "
                             "that is broken, then commit):")
 PREMERGE_UNTESTED_HEADER = "links this merge adds to files no test covers:"
@@ -358,7 +358,7 @@ STALE_CONSEQUENCE_REWORD = ("Rewrites the requirement to say what the code now d
 STALE_CONSEQUENCE_UNDO = ("Puts the code back as it was when you confirmed the requirement; "
                           "keeps the wording and drops whatever the change was for")
 STALE_WHY_KEEP = ("I could not tell whether the change matters to what you asked; keeping both "
-                  "as they are changes nothing while you read the change shown with this card")
+                  "as they are changes nothing while you read the change shown with this question")
 # to the agent (SR-198 EX-11): the link's question waits in the internal store (DEC-384)
 STALE_HOLD_ENDED = ('plumb held the turn open {n} times for "{title}" and then let it go; its '
                     "question is filed: ask the owner with the question tool.")
@@ -442,7 +442,7 @@ PRESS_MODEL_CHANGE = ('The owner pressed Ask for a change on "{topic}"; their ne
                       "says what to change.")
 PRESS_MODEL_ANSWERED = 'The owner pressed {label} on "{topic}".'
 PRESS_MODEL_CHANGED = ("The owner pressed {label}, but {records} changed since it was shown; "
-                       "nothing was confirmed and the new version is shown as a fresh card.")
+                       "nothing was confirmed and the new version is asked again as a fresh question.")
 
 # --------------------------------------------------------------------------- SP7 MOD
 # What plumb's panel adds (SP7 5.1, 5.8; sp7-realign-sp8 C6, C7).
