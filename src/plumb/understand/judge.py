@@ -494,6 +494,8 @@ def _answered_keys(core: Any) -> set[str]:
     answered: set[str] = set()
     for e in core.events():
         # whichever session asked or answered: the owner's answer closes the question
+        if e.kind == "question-answer" and e.payload.get("free_text"):
+            continue    # SR-212: free text is logged and reread; the tidy job closes it
         if e.kind == "question-answer" and not e.payload.get("study"):
             answered.add(question_key(str(e.payload.get("question") or "")))
             if isinstance(e.payload.get("asked"), Mapping):
