@@ -125,6 +125,8 @@ def handle(ctx: HookContext) -> HookOutput | None:
                                                if isinstance(r, dict)}.values())}
             if covers:
                 entry["asked"]["keys"] = [q.get("key") for q in merged]
+            if _free_text(entry):
+                entry["free_text"] = True   # SR-212: logged and reread, the question stays open
     elsewhere = _tag_proofs(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
     _share_proofs(core, entries, elsewhere)
@@ -141,6 +143,18 @@ def handle(ctx: HookContext) -> HookOutput | None:
                   "the owner answered the question it raised")
     judge.rejudge(core, ctx.session_id, logged)
     return None
+
+
+def _free_text(entry: dict[str, Any]) -> bool:
+    """Options were shown and the answer is none of their labels (a multi-select answer joins
+    labels): the owner's own words, which do not by themselves close the question."""
+    labels = [str(o.get("label")) for o in entry.get("options") or () if o.get("label")]
+    if not labels:
+        return False
+    rest = str(entry["answer"])
+    for label in sorted(labels, key=len, reverse=True):
+        rest = rest.replace(label, "")
+    return rest.strip(" ,;\n") != ""
 
 
 def _note_asked(ctx: HookContext) -> None:

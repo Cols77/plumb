@@ -97,3 +97,21 @@ def test_the_owner_can_reopen_a_closed_question(repo: Path, world, capsys) -> No
 def test_the_job_reads_waiting_questions(repo: Path, world) -> None:
     _waiting(repo)
     assert tidy.build(open_core(repo), SESSION) is not None
+
+
+def test_a_typed_reply_is_not_asked_again_until_the_job_read_it(repo: Path, world) -> None:
+    """SR-212: a reply in the owner's own words leaves the question open; no session is told to
+    ask it until the job has read the reply; a reply that settled nothing brings it back."""
+    from plumb.understand import judge
+
+    _waiting(repo)
+    key = judge.question_key(ASKED)
+    open_core(repo).log_append_many("events", [("question-answer", {
+        "session": "cli", "question": ASKED, "answer": "I need more explanations",
+        "via": "question-tool", "free_text": True, "options": [],
+        "asked": {"key": key, "records": []}})])
+    assert [q["key"] for q in judge.open_questions(open_core(repo), "cli")] == [key]
+    assert judge.to_ask(open_core(repo), "cli") == []
+    world.dispatcher.script = {"tidy": {"verdicts": [], "questions": []}}
+    _tidy(repo)
+    assert [q["key"] for q in judge.to_ask(open_core(repo), "cli")] == [key]

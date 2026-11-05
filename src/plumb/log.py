@@ -89,7 +89,7 @@ TELEMETRY_KINDS = frozenset({"judgment"})
 LOCAL_KINDS = frozenset({
     "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",
     "job-note", "triage", "merge-evidence", "repin", "relink", "unlink", "eval-run", "jev-setup",
-    "intent-gate", "intent-done", "card-unsettled", "answer-unbound",
+    "intent-gate", "intent-done", "card-unsettled", "answer-unbound", "answer-read",
 }) | OWNER_WORDS_KINDS
 
 _KIND_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
