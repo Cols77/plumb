@@ -19,10 +19,22 @@ from pathlib import Path
 from typing import Any
 
 
+def guard_off(root: Path) -> None:
+    """SR-384: these tests drive the real hooks on a repository that sits on its default branch;
+    the main-checkout guard has its own tests (tests/host/test_main_guard.py)."""
+    config = Path(root) / ".plumb" / "config.yaml"
+    text = config.read_text(encoding="utf-8") if config.exists() else ""
+    if "guard_main" not in text:
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text(text + ("" if text.endswith("\n") or not text else "\n")
+                          + "merge:\n  guard_main: false\n", encoding="utf-8")
+
+
 class Session:
     def __init__(self, repo: Path, *, session_id: str = "harness",
                  script: Mapping[str, Any] | None = None) -> None:
         self.repo = Path(repo)
+        guard_off(self.repo)
         self.session_id = session_id
         self.script_path = self.repo / ".plumb" / "cache" / "fake_dispatch.json"
         self.script_path.parent.mkdir(parents=True, exist_ok=True)

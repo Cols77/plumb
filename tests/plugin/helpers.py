@@ -117,11 +117,23 @@ def git_repo(root: Path) -> Path:
     return root
 
 
+def guard_off(root: Path) -> None:
+    """SR-384: these tests drive the real hooks on a repository that sits on its default branch;
+    the main-checkout guard has its own tests (tests/host/test_main_guard.py)."""
+    config = Path(root) / ".plumb" / "config.yaml"
+    text = config.read_text(encoding="utf-8") if config.exists() else ""
+    if "guard_main" not in text:
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text(text + ("" if text.endswith("\n") or not text else "\n")
+                          + "merge:\n  guard_main: false\n", encoding="utf-8")
+
+
 def adopted_repo(root: Path) -> Path:
     from plumb.commands import init_repo
 
     git_repo(root)
     init_repo(root)
+    guard_off(root)
     return root
 
 

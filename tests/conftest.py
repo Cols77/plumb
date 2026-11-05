@@ -113,6 +113,18 @@ def every_record_is_the_sessions_work(request: pytest.FixtureRequest,
     monkeypatch.setattr(judge, "work_ids", lambda core: set(core.index()))
 
 
+@pytest.fixture(autouse=True)
+def main_checkout_is_not_guarded(request: pytest.FixtureRequest,
+                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-384: most tests' scratch repository sits on its default branch and calls the hooks;
+    only ``main_guard`` tests run the real guard of main's checkout."""
+    if request.node.get_closest_marker("main_guard"):
+        return
+    from plumb import main_guard
+
+    monkeypatch.setattr(main_guard, "main_checkout", lambda directory, root: None)
+
+
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A temporary git repository adopted by plumb (``.plumb/`` dirs) with one commit."""

@@ -216,7 +216,22 @@ if [ "$event" = pre-tool ]; then
   done
   case $ti in
     *plumb*|*PLUMB_*) ;;
-    *) exit 0 ;;
+    *)
+      # SR-384: the main-checkout guard (Python) looks at an edit, or a shell command that could
+      # write, of a primary checkout; `ls` starts no Python (SR-279). A linked worktree (its .git
+      # is a file) or merge.guard_main: false skips it. A false match only costs the Python start.
+      [ -d "$root/.git" ] || exit 0
+      case $ti in
+        *'"command"'*)
+          case $ti in
+            *'>'*|*tee*|*sed*|*rm*|*mv*|*cp*|*touch*|*mkdir*|*chmod*|*ln*|*git*) ;;
+            *) exit 0 ;;
+          esac ;;
+      esac
+      read_file "$root/.plumb/config.yaml"
+      case $f in
+        *guard_main:*false*) exit 0 ;;
+      esac ;;
   esac
 fi
 
