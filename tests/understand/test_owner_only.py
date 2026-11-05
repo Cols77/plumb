@@ -20,7 +20,7 @@ pytestmark = pytest.mark.sr("SR-214")
 
 @pytest.fixture
 def core(repo: Path, write_record):
-    return make_core(repo, write_record, [record_text(2), record_text(3)])
+    return make_core(repo, write_record, [record_text(1), record_text(2), record_text(3)])
 
 
 def test_ex8_prose_undo_takes_nothing_back(core) -> None:

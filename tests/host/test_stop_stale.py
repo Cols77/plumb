@@ -196,8 +196,10 @@ def test_an_owner_question_counts_as_resolved_for_the_hold(project: Path, hook_i
                     options=["Keep it", "Reword it"],
                     consequences=["keeps both as they are", "rewords the requirement"],
                     why="the sum is the same either way")
-    out = run_stop(project, hook_input, verify=_verify())
-    assert _block(out) is None
+    reason = _block(run_stop(project, hook_input, verify=_verify()))
+    # the link is held by the question; the turn stops on asking it, not on the stale hold
+    assert reason is not None and "judge question" in reason
+    assert "stale and unresolved" not in reason
 
 
 def test_no_baseline_no_hold(project: Path, hook_input) -> None:

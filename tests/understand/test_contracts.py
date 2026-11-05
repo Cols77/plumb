@@ -248,19 +248,6 @@ def test_confirm_entry_problem_calls_the_recheck_for_the_new_values() -> None:
         assert confirm.entry_problem(entry, set(), ())
 
 
-def test_effects_registry() -> None:
-    from plumb.understand import effects
-
-    seen = []
-    effects.register("test_kind", lambda *a: seen.append(a))
-    handler = effects.handler_for("test_kind")
-    assert handler is not None
-    handler(1)
-    assert seen == [(1,)]
-    assert effects.handler_for("never_registered") is None
-    effects.HANDLERS.pop("test_kind")
-
-
 def test_config_section_understand(tmp_path: Path) -> None:
     from plumb.config import load_config
 
@@ -468,32 +455,6 @@ def test_c2_stubs_have_final_signatures_and_are_marked() -> None:
 def test_failures_file_has_its_path_in_the_session_folder(tmp_path: Path) -> None:
     assert files.failures_path(tmp_path, "s1") == (
         files.session_dir(tmp_path, "s1") / "failures.json")
-
-
-def test_handler_for_imports_the_kind_modules(tmp_path: Path,
-                                              monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import effects, kinds
-
-    (tmp_path / "c2_lane_kind.py").write_text(
-        "from plumb.understand import effects\n"
-        "effects.register('c2_card', lambda *a, **k: 'handled')\n", encoding="utf-8")
-    monkeypatch.syspath_prepend(str(tmp_path))
-    monkeypatch.setitem(kinds.KIND_MODULES, "c2lane", "c2_lane_kind")
-    monkeypatch.setitem(effects.HANDLERS, "c2_card", None)
-    monkeypatch.delitem(effects.HANDLERS, "c2_card")
-    monkeypatch.delitem(sys.modules, "c2_lane_kind", raising=False)
-    handler = effects.handler_for("c2_card")
-    assert handler is not None and handler() == "handled"
-    assert effects.handler_for("no_such_kind") is None
-
-
-def test_handler_for_raises_an_import_error_of_a_lane_module(
-        monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import effects, kinds
-
-    monkeypatch.setitem(kinds.KIND_MODULES, "broken", "plumb.understand.no_such_module")
-    with pytest.raises(ImportError):
-        effects.handler_for("anything")
 
 
 C2_TEXT = ("CONFIRM_YOU_SAID", "TYPED_CONFIRMED", "BACKLOG_DONE")

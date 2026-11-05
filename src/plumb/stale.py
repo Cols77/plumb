@@ -6,7 +6,7 @@ name the links an edit made stale from the hash cache alone: no YAML and no reco
 record index digest changed. A missing or unreadable map says nothing; the stop hook is the
 backstop.
 
-The turn baseline, the hold-open and the stale cards (HA4, HA5) live below the link map.
+The turn baseline, the hold-open and the stale questions (HA4, HA5) live below the link map.
 """
 
 from __future__ import annotations

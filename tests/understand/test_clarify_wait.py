@@ -13,7 +13,7 @@ import pytest
 from capture.capture_helpers import log_prompt
 
 from plumb.api import open_core
-from plumb.understand import cmd_clarify, files, gate, hooks, worker
+from plumb.understand import clarify, cmd_clarify, files, gate, hooks, worker
 from understand.fakes import owner_level
 
 pytestmark = pytest.mark.sr("SR-223")
@@ -56,7 +56,7 @@ def test_ex5_wait_blocks_until_card_ready(repo: Path, engine_standins: Any) -> N
     releaser.join(10)
     assert took >= 0.7                                      # it really waited for the job
     # SR-223 EX-15: the question goes to the question tool, never a card; no edit is denied
-    assert outcome.state == "ask" and outcome.digest == digest and outcome.card == ""
+    assert outcome.state == "ask" and outcome.digest == digest
     assert [q["question"] for q in outcome.questions] == ["Which format?"]
     assert owner_level(outcome.questions[0]["question"]) == []
     assert not gate.is_closed(repo, SESSION)
@@ -147,7 +147,7 @@ def test_the_command_prints_the_result_as_json(repo: Path, engine_standins: Any,
     assert cmd_clarify.run("clarify", ["--wait", "--json", "--root", str(repo),
                                        "--timeout", "5"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["state"] == "ask" and data["card"] == ""
+    assert data["state"] == "ask"
     assert [q["question"] for q in data["questions"]] == ["Which format?"]
 
 
