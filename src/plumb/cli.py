@@ -17,7 +17,7 @@ ROUTES: dict[str, str] = {
     # CORE
     "init": "plumb.commands",
     "link": "plumb.commands", "unlink": "plumb.commands", "relink": "plumb.commands",
-    "repin": "plumb.commands", "stale": "plumb.commands",
+    "repin": "plumb.commands",
     "validate": "plumb.commands",
     "debug": "plumb.debug",   # SR-220, SR-300: the debug workflow, standalone
     "check": "plumb.commands",

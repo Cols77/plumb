@@ -124,8 +124,8 @@ def test_ex7_linked_tested_and_consistent_is_not_approved_and_says_nothing_settl
         ("SR-001", "supported"), questions=[asking("SR-001")],
         **{"SR-001": {"clear": True, "confidence": 0.99}}))
     assert [e["kind"] for e in applied.entries
-            if e["kind"] != "pre-intent"] == ["verdict"] and applied.cards == ()
-    assert summary._upkeep(open_core(world), SESSION, recalibrate=False) == []
+            if e["kind"] != "pre-intent"] == ["verdict"]
+    assert summary._upkeep(open_core(world), SESSION, recalibrate=False) is None
     status = open_core(world).status(["SR-001"])["SR-001"]
     assert status.confirmation == "proposed"
     assert not any("settled" in line.lower() for line in [*applied.notes, *notes(world)])
@@ -139,7 +139,7 @@ def test_ex6_supported_records_without_calibration_raise_no_trial_or_read_back_c
         world: Path, write_record) -> None:  # noqa: F811
     """SR-252 EX-6: no passing calibration, three supported records: no trial or read-back card
     from the judge, the turn's end or the request's check; they take the question route."""
-    from plumb.understand import cardstore, clarify
+    from plumb.understand import clarify
 
     write_record(world, requirement_text(
         2, "Pages load in one second", "Home loads within one second", intent=1,
@@ -147,8 +147,7 @@ def test_ex6_supported_records_without_calibration_raise_no_trial_or_read_back_c
     ids = ["INT-001", "SR-001", "SR-002"]
     applied = applied_on(world, ids, answer(*((i, "beyond") for i in ids),
                                             questions=[asking(*ids)]))
-    assert applied.cards == ()
-    assert summary._upkeep(open_core(world), SESSION, recalibrate=False) == []
+    assert summary._upkeep(open_core(world), SESSION, recalibrate=False) is None
     digest = log_prompt(world, "/plumb clarify make the pages faster")
     gate.close(world, SESSION, digest, clarify.GATE_REASON_CHECKING)
     job = clarify.build(open_core(world), SESSION, message={
@@ -156,7 +155,8 @@ def test_ex6_supported_records_without_calibration_raise_no_trial_or_read_back_c
     assert job is not None
     checked = clarify.apply(open_core(world), job, {"intent": "yes", "gaps": [], "readback": {
         "proposal": "Make pages faster"}})
-    assert checked.cards == () and cardstore.own_cards(world, SESSION) == []
+    assert checked.entries == () and not list(
+        files.session_dir(world, SESSION).glob("*cards*.json"))
     assert not gate.is_closed(world, SESSION)
     (question,) = written(world)
     assert {r["id"] for r in question["records"]} == set(ids)
@@ -168,7 +168,7 @@ def test_ex5_the_session_start_brief_offers_no_ok_and_no_read_back(
     """SR-209 EX-5: low-risk records judged and asked about: the brief asks for no "ok" and
     shows no read-back card."""
     from plumb.hosts.claude_code import session_start
-    from plumb.understand import cardstore, clarify
+    from plumb.understand import clarify
 
     applied_on(world, ["INT-001", "SR-001"], answer(
         ("INT-001", "beyond"), ("SR-001", "beyond"),
@@ -176,8 +176,7 @@ def test_ex5_the_session_start_brief_offers_no_ok_and_no_read_back(
     lines = session_start.brief(open_core(world), "tests: none")
     text = "\n".join(getattr(line, "text", line) for line in lines)
     assert not re.search(r"\b(?:say|type|reply) ok\b|\bok to\b", text, re.IGNORECASE)
-    assert clarify.READBACK_QUESTION not in text
-    assert cardstore.own_cards(world, SESSION) == []
+    assert "Is this what you want?" not in text
 
 
 # ---- SR-267 ---------------------------------------------------------------------------------
@@ -219,7 +218,7 @@ def test_ex9_a_doubt_about_the_agents_own_records_puts_nothing_to_the_owner(
     (logged,) = [e["payload"] for e in applied.entries if e["kind"] == "verdict"]
     assert logged["verdict"] == "waiting"
     assert logged["reason"] == "the two timing rules may not converge"
-    assert written(world) == [] and applied.cards == ()
+    assert written(world) == []
     (line,) = notes(world)
     assert "the two timing rules may not converge" in line
 
@@ -351,11 +350,10 @@ def test_wait_after_an_answer_collects_the_judge_job_queued_since(
 
 
 @pytest.mark.sr("SR-248")
-def test_open_questions_leave_the_gate_open_a_choice_card_closes_it_and_its_answer_opens(
+def test_open_questions_and_blocking_gaps_leave_the_gate_open(
         world: Path, engine_standins: Any) -> None:  # noqa: F811
     """P6: neither a judge question nor a blocking gap closes the gate (SR-223 EX-15)."""
-    from plumb.contracts import ClarifyAnswer
-    from plumb.understand import cardstore, clarify, worker
+    from plumb.understand import clarify, worker
 
     engine_standins.dispatcher.script = {"judge": answer(
         ("SR-001", "beyond"), questions=[asking("SR-001")])}
@@ -373,7 +371,6 @@ def test_open_questions_leave_the_gate_open_a_choice_card_closes_it_and_its_answ
     assert clarify.build(open_core(world), SESSION, message={"digest": digest, "text": text})
     worker.run_once(open_core(world), SESSION)
     assert not gate.is_closed(world, SESSION)    # SR-223 EX-15: no question holds the gate
-    assert [c for c in cardstore.own_cards(world, SESSION) if c.kind == "choice"] == []
     assert [q["question"] for q in clarify.gap_questions(open_core(world), SESSION)] == [
         "Which admin pages?"]
 

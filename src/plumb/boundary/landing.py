@@ -476,13 +476,15 @@ def ended_sessions(root: Path, session: str) -> list[str]:
     ``session``'s own and never an unmarked one (owner, 2026-10-20: no age-based deletion).
     A folder that will not go (a file still open) stays for the next landing, and so does one
     still holding a waiting question (SR-340: its questions are kept)."""
-    from plumb.understand import cardstore, files
+    from plumb.api import open_core
+    from plumb.understand import files, judge
 
+    core = open_core(root)
     own = files.session_dir(root, session).name
     gone: list[str] = []
     for folder in sorted((Path(root) / ".plumb" / "session").glob("*/ended.json")):
         folder = folder.parent
-        if folder.name == own or cardstore.load(Path(root), folder.name):
+        if folder.name == own or judge.unanswered(core, folder.name):
             continue
         shutil.rmtree(folder, ignore_errors=True)
         if not folder.exists():

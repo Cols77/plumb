@@ -123,9 +123,10 @@ def progress(repo: Path):
 
 
 def open_cards(repo: Path):
-    from plumb.understand import cardstore
+    """Any card file in the session folder: none is ever written (SR-382)."""
+    from plumb.understand import files
 
-    return cardstore.load(repo, SESSION)
+    return sorted(p.name for p in files.session_dir(repo, SESSION).glob("*cards*.json"))
 
 
 def test_sr107_ex1_150_records_one_pass_no_per_turn_limit_done_jobs_not_rerun(

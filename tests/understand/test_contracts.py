@@ -14,8 +14,6 @@ import pytest
 from plumb import contracts
 from plumb.contracts import (
     Applied,
-    CardPress,
-    CardState,
     Choice,
     ClarifyAnswer,
     ClarifyQuestion,
@@ -30,7 +28,6 @@ from plumb.contracts import (
     NoModel,
     Progress,
     ReaderEntry,
-    ReadCard,
     ReadItem,
     StopParts,
 )
@@ -38,9 +35,9 @@ from plumb.understand import files
 
 pytestmark = pytest.mark.sr("SR-223", "SR-273", "SR-267")
 
-DATA_CLASSES = (Job, JobError, JobResult, ReadItem, ReadCard, ReaderEntry, JudgeVerdict,
-                ClarifyQuestion, ClarifyAnswer, CardState, Applied, GateState,
-                Progress, StopParts, Choice, CardPress)
+DATA_CLASSES = (Job, JobError, JobResult, ReadItem, ReaderEntry, JudgeVerdict,
+                ClarifyQuestion, ClarifyAnswer, Applied, GateState,
+                Progress, StopParts, Choice)
 
 
 @pytest.mark.parametrize("cls", DATA_CLASSES, ids=lambda c: c.__name__)
@@ -50,18 +47,14 @@ def test_frozen_with_defaults_on_every_field(cls) -> None:
         setattr(item, dataclasses.fields(cls)[0].name, "changed")
 
 
-def test_job_needs_defaults_to_none_and_card_kinds_are_complete() -> None:
+def test_job_needs_defaults_to_none_and_no_card_types_remain() -> None:
     assert Job().needs is None
-    assert set(contracts.CARD_KINDS) == {
-        "clarify", "choice", "trial", "couldnt_check", "beyond", "contradicts", "stale_link",
-        "drift", "regression", "test_changed", "conflict", "early_conflict"}
-    assert set(contracts.CardKind.__args__) == set(contracts.CARD_KINDS)
+    assert not hasattr(contracts, "CardState") and not hasattr(contracts, "CARD_KINDS")
     assert "settled" not in contracts.ApprovalBy.__args__
     assert "owner-words" in contracts.ApprovalBy.__args__
     assert not hasattr(contracts.RecordStatus(id="SR-1", confirmation="proposed",
                                               approved_by=None, covered=False,
                                               uncovered_examples=(), links=()), "settled")
-    assert "withdrawn" in contracts.CARD_STATUSES
 
 
 def test_job_id_is_content_addressed_and_needs_changes_it() -> None:
@@ -108,40 +101,9 @@ def test_committed_log_kinds_are_accepted(repo: Path) -> None:
                      "false_gap_rate": 0.0},
         "gate": {"digest": "d", "state": "closed", "by": "clarify", "reason": "r"},
         "job-note": {"kind": "ledger", "job": "j", "detail": "no ledger entry"},
-        contracts.CARD_PRESS: {"session": "s", "offer": "o", "card": "c", "question": "q",
-                               "choice": 1, "answer": "open"},
     }
     for kind, payload in payloads.items():
         assert core.log_append("events", kind, payload).kind == kind
-
-
-@pytest.mark.sr("SR-209")
-def test_card_store_round_trips_choices_and_the_button_statuses(tmp_path: Path) -> None:
-    from plumb.understand import cardstore
-
-    question = ClarifyQuestion(
-        id="c1#1", text="Keep the CSV export?", resolutions=("keep it", "drop it", "reword"),
-        record="SR-001", hash="sha256:h",
-        choices=(Choice("Confirm", "accepted"), Choice("drop it", "rejected"),
-                 Choice("the second version", "change", "Export as JSON")))
-    cards = [CardState(id=f"c{n}", kind="beyond", topic="export", questions=(question,),
-                       status=status)
-             for n, status in enumerate(contracts.CARD_STATUSES)]
-    cardstore.save(tmp_path, "s1", cards)
-    assert cardstore.own_cards(tmp_path, "s1") == cards
-    assert set(contracts.CardStatus.__args__) == set(contracts.CARD_STATUSES) \
-        >= {"left_open", "change_requested"}
-    # older cards carry no choices; a choice with an unknown answer reads as "open" (it
-    # confirms nothing), and an unknown status as "open"
-    path = files.cards_path(tmp_path, "s1")
-    path.write_text(json.dumps([{"id": "old", "status": "snoozed", "questions": [
-        {"id": "q", "text": "t"},
-        {"id": "r", "choices": [{"label": "maybe", "answer": "perhaps"}]}]}]),
-        encoding="utf-8")
-    (old,) = cardstore.own_cards(tmp_path, "s1")
-    assert old.status == "open" and old.questions[0].choices == ()
-    assert old.questions[1].choices == (Choice("maybe", "open", None),)
-    assert ClarifyQuestion("q", "t", ("a",)).choices == ()   # positional use is unchanged
 
 
 @pytest.mark.sr("SR-209")
@@ -534,7 +496,7 @@ def test_handler_for_raises_an_import_error_of_a_lane_module(
         effects.handler_for("anything")
 
 
-C2_TEXT = ("CONFIRM_YOU_SAID", "READBACK_CHANGE", "TYPED_CONFIRMED", "BACKLOG_DONE")
+C2_TEXT = ("CONFIRM_YOU_SAID", "TYPED_CONFIRMED", "BACKLOG_DONE")
 
 
 @pytest.mark.parametrize("name", C2_TEXT)

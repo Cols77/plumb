@@ -11,9 +11,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import CardState
 from plumb.present import owner_text
-from plumb.understand import cardstore, files
+from plumb.understand import files
 
 UNDER_BUDGET_S = 0.35        # the upkeep (the log's cards, the offers) needs this much left
 CALIBRATE_S = 0.9            # rerunning the calibration needs this much left
@@ -173,7 +172,7 @@ def _labels_since_calibration(entries: Sequence[Any]) -> bool:
                for e in entries[last + 1:])
 
 
-def _upkeep(core: Any, session: str, recalibrate: bool) -> list[CardState]:
+def _upkeep(core: Any, session: str, recalibrate: bool) -> None:
     """The turn's upkeep, from the logs alone (no model): rerun the calibration from the logged
     scores after an owner label. No trial card is drawn (SR-252 EX-6)."""
     entries = core.events()
@@ -185,7 +184,6 @@ def _upkeep(core: Any, session: str, recalibrate: bool) -> list[CardState]:
             calibrate.calibrate(core)
         except Exception:  # noqa: BLE001 - upkeep never fails the turn
             pass
-    return []
 
 
 def _turn_upkeep(core: Any, session: str, turn: Mapping[str, Any], transcript: Any, *,
@@ -204,7 +202,7 @@ def _turn_upkeep(core: Any, session: str, turn: Mapping[str, Any], transcript: A
             from plumb.understand import backlog, question, tidy
 
             backlog.resume(core, session)    # a pass a failure interrupted goes on (spec 8)
-            tidy.enqueue(core, session)      # SR-162: the model reads the cards after this turn
+            tidy.enqueue(core, session)      # SR-162: the model reads the open questions after this turn
             question.enqueue(core, session, transcript)   # SR-167: a question to raise
         except Exception:  # noqa: BLE001 - queueing never costs the owner their summary
             pass
@@ -258,38 +256,8 @@ def after_stop(core: Any, session: str) -> None:
         claimed.unlink(missing_ok=True)
 
 
-# --------------------------------------------------------------------------- the cards
-
-WAITING = "cards_waiting.json"   # what the next prompt tells the agent (SR-116 EX-4)
 ASK_OWNER = ("plumb: only the owner can settle this; ask the owner now with the question tool, "
              "in plain words with options and no id; choose nothing yourself:")
-
-
-def tell_agent(core: Any, session: str, card: CardState) -> None:
-    """A card raised between turn ends (SR-167) joins the cards the next prompt names."""
-    path = files.session_dir(core.root, session) / WAITING
-    raw = files.read_json(path)
-    raw = raw if isinstance(raw, Mapping) else {}
-    topics, ids = [*raw.get("topics", ()), card.topic], [*raw.get("ids", ()), card.id]
-    files.write_json_atomic(path, {"n": len(topics), "topics": topics, "ids": ids})
-
-
-def waiting_line(root: Any, session: str, core: Any = None) -> str | None:
-    """The agent's one line about the cards waiting for the owner (SR-116 EX-4), or None.
-    A card the owner has answered since (SR-160) is no longer named."""
-    raw = files.read_json(files.session_dir(root, session) / WAITING)
-    if not isinstance(raw, Mapping) or not raw.get("n"):
-        return None
-    topics = [str(t) for t in raw.get("topics") or ()]
-    ids = [str(i) for i in raw.get("ids") or ()]
-    if core is not None and len(ids) == len(topics):
-        held = cardstore.states(core, session)
-        topics = [t for t, i in zip(topics, ids) if held.get(i, ("waiting",))[0] == "waiting"]
-        if not topics:
-            return None
-    named = "; ".join(f'"{t}"' for t in topics[:5]) + (
-        f" and {len(topics) - 5} more" if len(topics) > 5 else "")
-    return owner_text.CARDS_WAITING_AGENT.format(n=len(topics), topics=named)
 
 
 def owner_line(core: Any, session: str, *, regression: str = "") -> str:

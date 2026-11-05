@@ -200,17 +200,10 @@ def _noted(core: Any, job: str, detail_part: str) -> bool:
 
 
 def _write_applied(core: Any, session: str, applied: Applied) -> None:
-    """What applying changed, written by the worker: cards, then log entries, then notes."""
+    """What applying changed, written by the worker: log entries, then notes."""
     from itertools import groupby
 
     from plumb import log
-    from plumb.understand import cardstore
-
-    if applied.cards or applied.closed:
-        replaced = {c.id for c in applied.cards}
-        kept = [dataclasses.replace(c, status="closed") if c.id in applied.closed else c
-                for c in cardstore.own_cards(core.root, session) if c.id not in replaced]
-        cardstore.save(core.root, session, [*kept, *applied.cards])
     for stream, group in groupby(applied.entries, key=lambda e: log.stream_of(str(e["kind"]))):
         core.log_append_many(stream, [(str(e["kind"]), dict(e["payload"])) for e in group])
     for text in applied.notes:

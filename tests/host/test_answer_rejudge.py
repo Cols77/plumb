@@ -325,7 +325,7 @@ def test_wait_reads_a_typed_answer_before_asking_again(
     core = open_core(world)
     job = read.build(core, SESSION, message={"digest": digest, "text": typed})
     assert job is not None
-    (item,) = [c for c in job.inputs["cards"] if c["kind"] == "judge"]
+    (item,) = [c for c in job.inputs["questions"] if c["kind"] == "judge"]
     queue.enqueue(core, job)        # the prompt hook queued it; no worker has run it yet
     fake = FakeDispatcher({
         "read": {"entries": [{"id": item["id"], "hash": "", "answer": "change",

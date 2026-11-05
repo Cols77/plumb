@@ -191,7 +191,7 @@ def test_schema_failure_is_an_error_not_a_reading(repo: Path, fake: FakeDispatch
     worker.run_once(core, "s1")
     result = jobs.result(repo, "s1", job.id)
     assert result.status == "error" and result.error.step == "schema" and result.answer is None
-    assert applied == [] and not files.cards_path(repo, "s1").exists()
+    assert applied == [] and not (files.session_dir(repo, "s1") / "cards.json").exists()
     assert queue.consecutive_failures(repo, "s1") == 1
     fake.script = {"a": {"other": 1}}                       # a missing key fails too
     queue.retry_failed(core, "s1")

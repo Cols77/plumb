@@ -9,8 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from plumb.api import open_core
-from plumb.contracts import CardState, ClarifyQuestion
-from plumb.understand import cardstore, files
+from plumb.understand import files, judge
 
 pytestmark = pytest.mark.sr("SR-214")
 
@@ -53,15 +52,13 @@ def state(core, ids: list[str], *, shown: bool = True, at: str = "2026-10-10T09:
     core.paths.stated.write_text(json.dumps(data), encoding="utf-8")
 
 
-def open_card(core, card: CardState) -> None:
-    cardstore.save(core.root, SESSION, [*cardstore.own_cards(core.root, SESSION), card])
-
-
-def clarify_card(card_id: str = "card-1") -> CardState:
-    return CardState(
-        id=card_id, kind="clarify", topic="Export", issue="which format?",
-        questions=(ClarifyQuestion(id="q1", text="Which format?",
-                                   resolutions=("CSV", "JSON")),))
+def open_question(core, key: str = "Which format?", options=("CSV", "JSON")) -> None:
+    """One open judge question about SR-001 (a typed answer can answer it)."""
+    judge.add_question(core, SESSION, {
+        "key": judge.question_key(key), "job": "judge-q", "principle": "", "blocking": False,
+        "diagram": False, "reword": False, "question": key, "header": "Export",
+        "records": [{"id": "SR-001", "hash": core.index()["SR-001"].hash}],
+        "options": [{"label": o, "description": f"use {o}"} for o in options]})
 
 
 def ctx_for(core) -> SimpleNamespace:
@@ -73,13 +70,13 @@ def five(repo: Path, write_record):
     return make_core(repo, write_record, [record_text(n) for n in range(1, 6)])
 
 
-def test_ex12_five_records_and_a_card_one_job_one_entry_each(
+def test_ex12_five_records_and_a_question_one_job_one_entry_each(
         five, engine_standins, monkeypatch) -> None:
     from plumb.understand import read
 
     ids = [f"SR-{n:03d}" for n in range(1, 6)]
     state(five, ids)
-    open_card(five, clarify_card())
+    open_question(five)
     message = "SR-001 ok, SR-002 ok, 3 ok, 4 no, 5 ok, and CSV for the export"
     digest = log_prompt(five, message)
     job = read.build(five, SESSION, message={"digest": digest, "text": message})
@@ -88,11 +85,11 @@ def test_ex12_five_records_and_a_card_one_job_one_entry_each(
     assert all(item["hash"] == five.index()[item["id"]].hash and item["text"]
                for item in job.inputs["shown"])
     assert job.inputs["message"] == {"digest": digest, "text": message}
-    (card_item,) = job.inputs["cards"]
-    assert card_item["card"] == "card-1" and card_item["resolutions"] == ["CSV", "JSON"]
+    (question_item,) = job.inputs["questions"]
+    assert question_item["kind"] == "judge" and question_item["resolutions"] == ["CSV", "JSON"]
     entries = [{"id": i, "hash": five.index()[i].hash, "answer": "accepted",
                 "evidence": "ok", "confidence": 0.95} for i in ids]
-    entries.append({"id": card_item["id"], "hash": "", "answer": "accepted",
+    entries.append({"id": question_item["id"], "hash": "", "answer": "accepted",
                     "evidence": "CSV", "confidence": 0.9})
     engine_standins.dispatcher.script = {"read": {"entries": entries}}
     from plumb.understand import queue, worker
@@ -107,12 +104,12 @@ def test_ex12_five_records_and_a_card_one_job_one_entry_each(
 
 
 def test_one_job_per_turn_six_items(five, engine_standins) -> None:
-    """SR-104 EX-8: one read job covers the five records and the card; a retried hook
+    """SR-104 EX-8: one read job covers the five records and the question; a retried hook
     queues nothing twice."""
     from plumb.understand import read
 
     state(five, [f"SR-{n:03d}" for n in range(1, 6)])
-    open_card(five, clarify_card())
+    open_question(five)
     message = "yes to all of it, CSV"
     log_prompt(five, message)
     entry = {"digest": __import__("plumb.approvals", fromlist=["x"]).prompt_digest(message),
@@ -123,7 +120,7 @@ def test_one_job_per_turn_six_items(five, engine_standins) -> None:
     queued = list(files.jobs_dir(five.root, SESSION).glob("*.json"))
     assert [p.stem for p in queued] == [first]
     job = files.job_from_json(files.read_json(queued[0]))
-    assert len(job.inputs["shown"]) == 5 and len(job.inputs["cards"]) == 1
+    assert len(job.inputs["shown"]) == 5 and len(job.inputs["questions"]) == 1
 
 
 def test_no_job_when_nothing_stated(five, engine_standins) -> None:
@@ -173,7 +170,7 @@ def test_evalset_reader_cases_load_and_run_on_the_fake() -> None:
     for each in cases:
         inputs, entries = each["inputs"], each["expect"]["entries"]
         shown = {i["id"] for i in inputs["shown"]}
-        card_ids = {i["id"] for i in inputs["cards"]}
+        card_ids = {i["id"] for i in inputs["questions"]}
         text = inputs["message"]["text"]
         for answer in entries:
             assert answer["id"] in shown | card_ids, each["name"]

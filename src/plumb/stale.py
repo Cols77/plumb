@@ -419,37 +419,24 @@ def turn_state(core: Core, session: str, turn_id: str | None) -> TurnState:
 
 
 def unresolved(core: Core, session: str, state: TurnState) -> list[Row]:
-    """This turn's stale links no card holds: a link the agent brought to the owner counts
-    as resolved for the hold."""
-    carded = carded_links(core.root, session)
-    return [r for r in state.new if r.link not in carded]
+    """This turn's stale links no open owner question holds: a link brought to the owner
+    counts as resolved for the hold."""
+    asked = asked_links(core, session)
+    return [r for r in state.new if r.link not in asked]
 
 
 HOLD_LINE = "plumb: {record}'s link to {what} is stale and unresolved ({link})"
 HOLD_HOW = ("plumb: resolve each before ending the turn: rerun its tests and repin it "
             "(plumb repin --after-tests <link>), reword the record so it agrees and repin "
-            "it, or ask the owner with the question tool (plumb stale card <link> --topic "
-            "\"<requirement title>\" --issue \"<what changed, in words>\" --options \"a|b|c\" "
-            "--consequences \"<what a does and leaves undone>|<b's>|<c's>\" --why \"<why the "
-            "recommended one>\"). Held {n} of {max}.")
-INCOMPLETE_LINE = ("plumb: the card for {link} is not offered to the owner until it is "
-                   "complete (SR-116); it lacks: {missing}. Complete it with plumb stale card "
-                   "{link} --consequences \"...\" --why \"...\" (its topic, issue and options "
-                   "are kept)")
+            "it, or ask the owner with the question tool. Held {n} of {max}.")
 BEFORE_LINE = ("plumb: {n} links were already stale before this turn and are not held: "
                "{links}")
 
 
-def hold_lines(rows: Sequence[Row], held: int, limit: int,
-               missing: Mapping[str, Sequence[str]] | None = None) -> list[str]:
-    """The hold's reasons; ``missing`` (``incomplete_cards``) adds, for a link whose card is
-    incomplete, what that card still lacks (SR-116 EX-3)."""
-    lines = []
-    for r in rows[:MAX_NOTICES]:
-        lines.append(HOLD_LINE.format(record=r.record, what=r.what, link=r.link))
-        lacks = (missing or {}).get(r.link)
-        if lacks:
-            lines.append(INCOMPLETE_LINE.format(link=r.link, missing="; ".join(lacks)))
+def hold_lines(rows: Sequence[Row], held: int, limit: int) -> list[str]:
+    """The hold's reasons."""
+    lines = [HOLD_LINE.format(record=r.record, what=r.what, link=r.link)
+             for r in rows[:MAX_NOTICES]]
     if len(rows) > MAX_NOTICES:
         lines.append(f"plumb: +{len(rows) - MAX_NOTICES} more")
     lines.append(HOLD_HOW.format(n=held, max=limit))
@@ -525,130 +512,62 @@ def set_hold_count(root: Path | str, session: str, turn_id: str | None, holds: i
         pass
 
 
-# --------------------------------------------------------------------------- stale cards
-# ``.plumb/session/<id>/stale_cards.json``: a JSON list, written here alone (atomically).
-# ``cardstore`` reads the open entries as ``stale_link`` cards; ``plumb stale cards`` lists them.
+# --------------------------------------------------------------------------- owner questions
+# An owner question about a stale link is a judge question (``judge.add_question``) whose job
+# is ``stale:<link id>``; ``links._withdraw_settled_cards`` drops it once the link is current.
 
 
-def cards_path(root: Path | str, session: str) -> Path:
-    return session_path(root, session) / "stale_cards.json"
+def _job(link: str) -> str:
+    return f"stale:{link}"
 
 
-def read_cards(root: Path | str, session: str) -> list[dict[str, Any]]:
-    data = _read_json(cards_path(root, session))
-    return [dict(c) for c in data if isinstance(c, dict)] if isinstance(data, list) else []
+def asked_links(core: Core, session: str) -> set[str]:
+    """The links an open owner question of ``session`` holds."""
+    from plumb.understand import judge
+
+    return {str(q["job"])[6:] for q in judge.open_questions(core, session)
+            if str(q.get("job") or "").startswith("stale:")}
 
 
-def _write_cards(root: Path | str, session: str, cards: list[dict[str, Any]]) -> None:
-    _write_atomic(cards_path(root, session), json.dumps(cards, ensure_ascii=False, indent=1))
+def ask_owner(core: Core, session: str, *, link: str, record: str, topic: str, issue: str,
+              options: Sequence[str], consequences: Sequence[str] = (), why: str = "",
+              by: str = "", **_: Any) -> bool:
+    """File the question about a stale link for the owner, to be asked with the question tool:
+    the options in order, the first recommended with its reason. A question lacking its topic,
+    its issue or two options is not filed (False): the link stays unresolved for the hold."""
+    from plumb.understand import judge
+
+    if not (topic.strip() and issue.strip()) or len(options) < 2:
+        return False
+    found = core.index().get(record)
+    text = f"{topic}: {issue}"
+    described = [*consequences, *[""] * len(options)][:len(options)]
+    judge.add_question(core, session, {
+        "key": judge.question_key(text), "job": _job(link),
+        "records": [{"id": found.id, "hash": found.hash}] if found is not None else [],
+        "principle": "", "blocking": False, "diagram": False, "reword": False,
+        "question": text, "header": "Decision",
+        "stale": {"link": link, "record": record, "topic": topic, "issue": issue,
+                  "options": [str(o) for o in options], "by": by},
+        "options": [{"label": f"{o} (Recommended)" if n == 0 else str(o),
+                     "description": (f"{described[n]} Recommended: {why}" if why else described[n])
+                     if n == 0 else described[n]} for n, o in enumerate(options)]})
+    return True
 
 
-def card_basis(core: Core, entry: Mapping[str, Any]) -> str:
-    """Meaning and link versions a decision concerns, excluding evaluation bookkeeping."""
-    from dataclasses import asdict
+def default_question(row: Row, record_title: str, other_title: str = "") -> dict[str, Any]:
+    """The question the hold-open files when it lets a turn go with ``row`` unresolved."""
+    from plumb.present import owner_text as words
 
-    from plumb.understand import files
-
-    meaning = {k: v for k, v in entry.items() if k not in ("turn", "status", "decision")}
-    versions = [asdict(s.current) if s.current is not None else None
-                for s in core.link_states([str(entry.get("record") or "")])
-                if s.link.id == entry.get("link")]
-    return files.digest_of([meaning, versions])
-
-
-def save_decision(core: Core, session: str, card: Any) -> None:
-    """Persist the owner's answer separately from whether the stale link is resolved."""
-    from plumb.understand import files
-
-    entries = read_cards(core.root, session)
-    for entry in entries:
-        if entry.get("link") == card.id.removeprefix("stale:") \
-                and entry.get("status", "open") == "open":
-            entry["decision"] = {"status": card.status,
-                                 "answers": [files.answer_to_json(a) for a in card.answers],
-                                 "basis": card_basis(core, entry)}
-            _write_cards(core.root, session, entries)
-            return
-
-
-def add_card(root: Path | str, session: str, *, link: str, record: str, path: str,
-             topic: str, issue: str, options: Sequence[str], recommended: int = 0,
-             turn: int = 0, consequences: Sequence[str] | None = None, why: str = "",
-             by: str = "") -> dict[str, Any]:
-    """Record a stale card for an owner-intent question (one open card per link).
-
-    SR-116: ``consequences`` (one per option: what it does and leaves undone) and ``why``
-    (the reason for the recommended option) are written when given; a card without them is
-    kept but incomplete (``card_missing``). ``by`` names who filed it (``diagnosis`` for
-    Opus). The record's wording, the diff and the owner's words are derived when the card is
-    shown (``plumb stale cards``), never stored here."""
-    entry: dict[str, Any] = {"link": link, "record": record, "path": path, "topic": topic,
-                             "issue": issue, "options": [str(o) for o in options],
-                             "recommended": int(recommended), "turn": int(turn),
-                             "status": "open"}
-    if consequences:
-        entry["consequences"] = [str(c) for c in consequences]
-    if why:
-        entry["why"] = str(why)
-    if by:
-        entry["by"] = str(by)
-    previous = open_card(root, session, link)
-    if previous and isinstance(previous.get("decision"), Mapping):
-        from plumb.api import open_core
-
-        decision = previous["decision"]
-        if decision.get("basis") == card_basis(open_core(root), entry):
-            entry["decision"] = dict(decision)
-    cards = [c for c in read_cards(root, session)
-             if not (c.get("link") == link and c.get("status") == "open")]
-    cards.append(entry)
-    _write_cards(root, session, cards)
-    return entry
-
-
-def card_missing(card: Mapping[str, Any]) -> list[str]:
-    """SR-116 EX-3: what a stale card still lacks before it may be offered to the owner, in
-    words the agent can act on (empty when complete). A card written before SR-116 has no
-    consequences and no reason: it is kept open and reported here, never dropped."""
-    options = [str(o) for o in card.get("options") or ()]
-    raw = card.get("consequences")
-    consequences = [str(c) for c in raw] if isinstance(raw, (list, tuple)) else []
-    missing: list[str] = []
-    if not str(card.get("topic") or "").strip():
-        missing.append("the topic")
-    if not str(card.get("issue") or "").strip():
-        missing.append("the issue")
-    if len(options) < 2:
-        missing.append("at least two options")
-    for n, option in enumerate(options):
-        if n >= len(consequences) or not consequences[n].strip():
-            missing.append(f'what option {n + 1} ("{option}") does and leaves undone')
-    if not str(card.get("why") or "").strip():
-        missing.append("why the recommended option is recommended")
-    return missing
-
-
-def card_complete(card: Mapping[str, Any]) -> bool:
-    return not card_missing(card)
-
-
-def open_card(root: Path | str, session: str, link: str) -> dict[str, Any] | None:
-    """The open card of ``link`` in ``session``, or None."""
-    for card in read_cards(root, session):
-        if card.get("link") == link and card.get("status", "open") == "open":
-            return card
-    return None
-
-
-def incomplete_cards(root: Path | str, session: str) -> dict[str, list[str]]:
-    """``{link: what it lacks}`` for the open cards of ``session`` that are not complete."""
-    out: dict[str, list[str]] = {}
-    for card in read_cards(root, session):
-        if card.get("status", "open") == "open":
-            missing = card_missing(card)
-            if missing:
-                out[str(card.get("link"))] = missing
-    return out
+    if row.what.startswith(("INT-", "SR-", "DEC-", "FEAT-", "NC-")):
+        issue = words.STALE_ISSUE_RECORD.format(title=record_title, other=other_title or "it")
+    else:
+        issue = words.STALE_ISSUE_CODE.format(path=row.what, title=record_title)
+    return {"link": row.link, "record": row.record, "topic": record_title, "issue": issue,
+            "options": [words.STALE_OPTION_KEEP, words.STALE_OPTION_REWORD,
+                        words.STALE_OPTION_UNDO],
+            "consequences": [words.STALE_CONSEQUENCE_KEEP, words.STALE_CONSEQUENCE_REWORD,
+                             words.STALE_CONSEQUENCE_UNDO], "why": words.STALE_WHY_KEEP}
 
 
 def sessions(root: Path | str) -> list[str]:
@@ -658,87 +577,6 @@ def sessions(root: Path | str) -> list[str]:
                       if e.is_dir())
     except OSError:
         return []
-
-
-def close_card(root: Path | str, session: str, link: str) -> bool:
-    """Mark the open card of ``link`` resolved; False when there is none."""
-    cards = read_cards(root, session)
-    found = False
-    for card in cards:
-        if card.get("link") == link and card.get("status") == "open":
-            card["status"] = "resolved"
-            found = True
-    if found:
-        _write_cards(root, session, cards)
-    return found
-
-
-def withdraw_card(core: Core, session: str, link: str, why: str) -> bool:
-    """SR-161, SR-162: withdraw the open card of ``link`` in ``session``, logged with its
-    reason. A withdrawal answers and confirms nothing; False when there is no open card."""
-    cards = read_cards(core.root, session)
-    found = False
-    for card in cards:
-        if card.get("link") == link and card.get("status", "open") == "open":
-            card["status"] = "withdrawn"
-            found = True
-    if found:
-        _write_cards(core.root, session, cards)
-        core.log_append("events", "card-withdrawn",
-                        {"card": f"stale:{link}", "session": session, "topic": link,
-                         "reason": why})
-    return found
-
-
-def reopen_card(root: Path | str, session: str, link: str) -> None:
-    """Put the latest withdrawn card of ``link`` back open (the undo of a settlement)."""
-    cards = read_cards(root, session)
-    for card in reversed(cards):
-        if card.get("link") == link and card.get("status") == "withdrawn":
-            card["status"] = "open"
-            _write_cards(root, session, cards)
-            return
-
-
-def withdraw_settled(core: Core, only: Sequence[str] | None = None) -> None:
-    """SR-161: withdraw the open stale cards whose link is current again or no longer exists,
-    in the ``only`` sessions (default every session folder)."""
-    from plumb.present import owner_text as words
-
-    held = {s: [str(c.get("link")) for c in read_cards(core.root, s)
-                if c.get("status", "open") == "open"]
-            for s in (sessions(core.root) if only is None else only)}
-    wanted = sorted({link.partition("#")[0] for links in held.values() for link in links})
-    states = {s.link.id: s.state for s in core.link_states(wanted)} if wanted else {}
-    for session, links in held.items():
-        for link in links:
-            state = states.get(link, "gone")
-            if state in ("current", "gone"):
-                withdraw_card(core, session, link, words.WITHDRAWN_LINK_GONE if state == "gone"
-                              else words.WITHDRAWN_LINK_CURRENT)
-
-
-def carded_links(root: Path | str, session: str) -> set[str]:
-    """The links an open, complete card holds (SR-116: an incomplete card does not count as
-    bringing the link to the owner; the hold names what it lacks)."""
-    return {str(c.get("link")) for c in read_cards(root, session)
-            if c.get("status", "open") == "open" and card_complete(c)}
-
-
-def default_card(row: Row, record_title: str, other_title: str = "") -> dict[str, Any]:
-    """The card the hold-open files when it lets a turn go with ``row`` unresolved."""
-    from plumb.present import owner_text as words
-
-    if row.what.startswith(("INT-", "SR-", "DEC-", "FEAT-", "NC-")):
-        issue = words.STALE_ISSUE_RECORD.format(title=record_title, other=other_title or "it")
-    else:
-        issue = words.STALE_ISSUE_CODE.format(path=row.what, title=record_title)
-    return {"link": row.link, "record": row.record, "path": row.what, "topic": record_title,
-            "issue": issue, "options": [words.STALE_OPTION_KEEP, words.STALE_OPTION_REWORD,
-                                        words.STALE_OPTION_UNDO], "recommended": 0,
-            "consequences": [words.STALE_CONSEQUENCE_KEEP, words.STALE_CONSEQUENCE_REWORD,
-                             words.STALE_CONSEQUENCE_UNDO],
-            "why": words.STALE_WHY_KEEP}
 
 
 # Where a shell command learns its session: plumb's own variable, then the id Claude Code
@@ -826,10 +664,11 @@ def settle_drift(core: Core, session: str, rows: Sequence[Row],
     return said
 
 
-def card_lost_tests(core: Core, session: str) -> None:
+def ask_lost_tests(core: Core, session: str) -> None:
     """SR-175 EX-2: a confirmed example whose every verified_by test is gone has lost its
     proof, so the owner is asked once whether the requirement should change."""
     from plumb.present import owner_text as words
+    from plumb.understand import judge
 
     states = core.link_states()
     status = core.status(sorted({s.link.source for s in states}))
@@ -838,17 +677,18 @@ def card_lost_tests(core: Core, session: str) -> None:
         if s.link.kind == "verified_by" and s.link.example:
             proof.setdefault((s.link.source, s.link.example), []).append(s)
     index = core.index()
-    asked = {str(c.get("link")) for c in read_cards(core.root, session)}
+    asked = {str(q.get("job")) for q in judge._logged_questions(core.root, session)} | {
+        str(e.payload["asked"].get("job")) for e in core.events()
+        if e.kind == "question-answer" and isinstance(e.payload.get("asked"), Mapping)}
     for (source, example), found in sorted(proof.items()):
         link = found[0].link.id
-        if (any(s.state != "dangling" for s in found) or link in asked
+        if (any(s.state != "dangling" for s in found) or _job(link) in asked
                 or status[source].confirmation != "confirmed"):
             continue
         title = index[source].title
-        add_card(core.root, session, link=link, record=source, path="", by="drift",
-                 turn=turn_number(core.root, session), topic=title,
-                 issue=words.STALE_ISSUE_LOST_TEST.format(title=title, example=example),
-                 options=[words.STALE_OPTION_KEEP, words.STALE_OPTION_REWORD,
-                          words.STALE_OPTION_UNDO],
-                 consequences=[words.STALE_CONSEQUENCE_KEEP, words.STALE_CONSEQUENCE_REWORD,
-                               words.STALE_CONSEQUENCE_UNDO], why=words.STALE_WHY_KEEP)
+        ask_owner(core, session, link=link, record=source, topic=title,
+                  issue=words.STALE_ISSUE_LOST_TEST.format(title=title, example=example),
+                  options=[words.STALE_OPTION_KEEP, words.STALE_OPTION_REWORD,
+                           words.STALE_OPTION_UNDO],
+                  consequences=[words.STALE_CONSEQUENCE_KEEP, words.STALE_CONSEQUENCE_REWORD,
+                                words.STALE_CONSEQUENCE_UNDO], why=words.STALE_WHY_KEEP)

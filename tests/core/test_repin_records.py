@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from core.stale_asked import asked
 from plumb import stale
 from plumb.api import open_core
 from plumb.cli import main
@@ -104,7 +105,7 @@ def test_ex3_a_changed_meaning_is_one_owner_question_not_a_card(
     assert result.changes == [] and _state(project) == "stale"
     ((link, why),) = result.refused
     assert link == LINK and "question tool" in why and "the sum is now rounded" in why
-    assert stale.read_cards(project, "s1") == []
+    assert asked(project, "s1") == []
     (question,) = judge.open_questions(open_core(project), "s1")
     assert {r["id"] for r in question["records"]} == {"SR-001", "DEC-001"}
     assert "Adds numbers" in question["question"] and "exact sum" in question["question"]

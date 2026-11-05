@@ -188,19 +188,15 @@ def test_ex6_a_failing_step_is_a_case_and_the_rest_still_run(
 
 
 @pytest.mark.sr("SR-301")
-def test_ex1_another_worktrees_loop_gate_and_cards_are_unchanged(repo: Path,
+def test_ex1_another_worktrees_loop_gate_and_leftover_cards_are_unchanged(repo: Path,
                                                                   tmp_path: Path) -> None:
-    from plumb.contracts import CardState
-    from plumb.understand import cardstore
-
     other = tmp_path / "other"
     run_git(repo, "worktree", "add", "-q", "-b", "other", str(other))
     session = other / ".plumb" / "session" / "s2"
     session.mkdir(parents=True)
     (session / "gate.json").write_text('{"state": "closed"}', encoding="utf-8")
     (session / "intent.json").write_text('{"stage": "build"}', encoding="utf-8")
-    cardstore.save(other, "s2", [CardState(id="c1", branch="other"),
-                                 CardState(id="c2", branch="other")])
+    (session / "cards.json").write_text('[{"id": "c1"}, {"id": "c2"}]', encoding="utf-8")
     seen = {p: p.read_bytes() for p in session.rglob("*") if p.is_file()}
     docs(repo, "docs/a.md")
     commit_all(repo, "doc")

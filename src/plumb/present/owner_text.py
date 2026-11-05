@@ -299,10 +299,6 @@ AWAITS_QUESTIONS = ("awaits you: {n} question{s} about what you asked ({said}); 
                     "them with the question tool")
 AWAITS_JUDGE = "waiting on a judge: {n} record{s}"
 AWAITS_NOTHING = "awaits you: nothing"
-READBACK_CHANGE = ('To be sure I have it: "{title}" should change so that {change}. Say yes, '
-                   'or tell me what to fix.')
-CARD_CHANGED_SINCE = ('Nothing was confirmed: "{title}" changed after I showed it to you. I am '
-                      'showing you what it says now.')
 TYPED_CONFIRMED = "Confirmed: {titles}"
 TYPED_SETTLE_GONE = "That switch no longer exists; nothing changed. Records are confirmed by you, or by the judge reading your words when automatic confirmation is on."
 AUTO_APPROVE_SWITCHED = "Automatic confirmation is now {state}."
@@ -317,8 +313,6 @@ BACKLOG_STARTED = ("Judging the backlog: {records} records are queued in {jobs} 
                    "line shows how far it is.")
 BACKLOG_NOTHING = "Nothing in the backlog is left to judge."
 EXAMPLE_N = "example {n}"
-READBACK_YES = "Yes, that is it"
-READBACK_NOT_QUITE = "Not quite"
 
 
 _PLUMB_VERB = re.compile(r"(?<![\w/.:-])plumb[ \t]+([a-z][a-z-]*)(?![\w-]*:)")
@@ -409,11 +403,6 @@ WITHDRAWN_LINK_GONE = "its link no longer exists"
 STEP_TIDYING = "checking your open questions"
 STEP_PUSHBACK = "checking a question the agent sent back"   # SR-362
 STEP_QUESTIONS = "reading the agent's questions to you"   # SR-167
-TIDY_ANSWERED = 'you confirmed {record}: "{quote}"'
-TIDY_DUPLICATE = 'it asks what "{other}" asks'
-TIDY_SETTLED = 'you decided {record}: "{quote}"'
-PRINCIPLE_CONSEQUENCE = "Settles {n} open questions that hinge on it, each told with your words cited"
-PRINCIPLE_ISSUE = "{n} open questions hinge on this: {topics}"
 CARDS_SETTLED = "Settled from your decision: {items}"
 
 
@@ -425,11 +414,6 @@ def settled_counts(counts: Mapping[str, int]) -> str:
     if counts.get("stays"):
         said.append(f"{counts['stays']} could not be settled and stay open")
     return ", ".join(said)
-# SR-116 EX-4, SR-267: what the agent is told at the next prompt when questions wait
-CARDS_WAITING_AGENT = ("plumb: {n} questions await the owner's answer ({topics}). Ask the "
-                       "ones only the owner can settle with the question tool, if not asked "
-                       "yet; do not restate them in prose.")
-
 # --------------------------------------------------------------------------- SP7 PRESS
 # What a button press on a card answers (sp7-realign-sp8 C3, C6; DEC-032, DEC-034). Titles,
 # never record IDs; no commands.

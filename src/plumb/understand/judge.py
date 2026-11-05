@@ -23,8 +23,7 @@ A record the owner's latest words contradict is sent back for the agent to rewor
 EX-2). When the judge says an answer corrects its reading, one ``capture-error`` rejection
 pins the record at the asked hash with the premise, the parts and JEV's score, a real 'no'
 for calibration (SR-252 EX-4). It returns the log entries: the worker writes them.
-The kind registers the handlers of the trial, beyond and contradicts cards (``effects``; old
-cards of those kinds are still answered)."""
+"""
 
 from __future__ import annotations
 
@@ -39,7 +38,8 @@ from plumb.approvals import approval_items
 from plumb.contracts import Applied, Job
 from plumb.judgment.verdict import BY
 from plumb.present import owner_text
-from plumb.understand import backlog, cards, files, premise, trial
+from plumb.understand import backlog, files, premise
+from plumb.understand import words as wording
 from plumb.understand import verdict as verdict_cascade
 
 kind = "judge"
@@ -530,11 +530,14 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
         return bool((labels or q.get("key")) and _answered_by(
             core, index, ids, labels, str(q.get("key") or "")))
 
-    return [q for q in asked if not settled(q) and any(
-        str(r.get("id")) in index and index[str(r.get("id"))].hash == r.get("hash")
-        and str(r.get("id")) not in closed
-        and statuses[str(r.get("id"))].confirmation != "confirmed"
-        for r in q.get("records") or () if isinstance(r, Mapping))]
+    # a stale link's question (job ``stale:<link>``) lives as long as the link is stale
+    # (``drop_settled_questions``), whether or not its record is confirmed
+    return [q for q in asked if not settled(q) and (
+        str(q.get("job") or "").startswith("stale:") or any(
+            str(r.get("id")) in index and index[str(r.get("id"))].hash == r.get("hash")
+            and str(r.get("id")) not in closed
+            and statuses[str(r.get("id"))].confirmation != "confirmed"
+            for r in q.get("records") or () if isinstance(r, Mapping)))]
 
 
 def to_ask(core: Any, session: str) -> list[Mapping[str, Any]]:
@@ -734,7 +737,7 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
     options = [o for o in raw.get("options") or () if isinstance(o, Mapping)]
     request = raw.get("request") if isinstance(raw.get("request"), Mapping) else {}
     words, date = _flat(request.get("words")), _flat(request.get("date"))
-    shown = [cards.plain(_flat(v), index) for v in (
+    shown = [wording.plain(_flat(v), index) for v in (
         raw.get("question"), raw.get("header"), raw.get("recommended_reason"),
         *(o.get(k) for o in options for k in ("label", "consequence")))]
     if not ids or not 2 <= len(options) <= 4 or not all(shown):
@@ -857,15 +860,15 @@ def _bind_earlier_answer(core: Any, session: str, worded: Mapping[str, Any]) -> 
 
 
 def drop_settled_questions(root: Any, still_stale: Collection[str]) -> None:
-    """Withdraw, in every session folder, the debug workflow's questions (``job`` is
-    ``debug:<link id>``) about links no longer stale: their link was repinned, relinked or
+    """Withdraw, in every session folder, the questions about links (``job`` is
+    ``debug:<link id>`` or ``stale:<link id>``) that are no longer stale: their link was repinned, relinked or
     removed, so the question no longer stands (INT-079)."""
     for path in (Path(root) / ".plumb" / "session").glob(f"*/{QUESTIONS_FILE}"):
         raw = files.read_json(path)
         if not isinstance(raw, list):
             continue
         kept = [q for q in raw if not (isinstance(q, Mapping) and str(q.get("job") or "")
-                                       .startswith("debug:")
+                                       .startswith(("debug:", "stale:"))
                                        and str(q["job"])[6:] not in still_stale)]
         if len(kept) != len(raw):
             files.write_json_atomic(path, kept)
@@ -1080,34 +1083,3 @@ def evaluate_case(dispatcher: Any, case: Mapping[str, Any]) -> tuple[bool, Mappi
     answer = dict(dispatcher.run(job, system=system_prompt(), user=json.dumps(inputs),
                                  schema=schema, on_step=lambda step: None))
     return matches(answer, case.get("expect") or {}), answer
-
-
-# --------------------------------------------------------------------------- the cards' effects
-
-
-def _beyond_effect(*, entry: Mapping[str, Any], accepted: bool = False, confirm: Any = None,
-                   **_: Any) -> Applied | None:
-    """A "goes beyond your words" card answered: keeping it confirms the record the owner
-    has now seen with the addition; dropping or rewording confirms nothing (the reader's
-    ``rejected`` and ``change`` answers do the rest)."""
-    if accepted and entry.get("record") and entry.get("hash") and confirm is not None:
-        confirm(str(entry["record"]), str(entry["hash"]), str(entry.get("evidence") or ""),
-                float(entry.get("confidence") or 0))
-    return None
-
-
-def _contradicts_effect(**_: Any) -> Applied | None:
-    """A contradicts card answered: the reader maps the owner's pick to a change of the
-    record; nothing is confirmed by a bare yes."""
-    return None
-
-
-def _register() -> None:
-    from plumb.understand import effects
-
-    effects.register("trial", trial.effect)
-    effects.register("beyond", _beyond_effect)
-    effects.register("contradicts", _contradicts_effect)
-
-
-_register()

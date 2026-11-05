@@ -1,23 +1,20 @@
 """The question job kind (SR-167): the agent's last reply asks the owner something whose answer
 would confirm, reject or change a record, choose a conflict's side or settle a stale link.
 
-``build`` and ``recompute`` take that reply and the records it seems to touch; ``apply`` raises
-the question as a choice card (its options from the reply) and names it to the agent in its
-next prompt. ``card`` is also how the request check raises the card of a question the owner
-answered before any turn end did (``clarify.apply``). A question that changes no record raises
-none."""
+``build`` and ``recompute`` take that reply and the records it seems to touch; ``apply`` files
+the question as an open judge question (its options from the reply), so the owner's typed answer
+is read as the answer to a judge question. A question that names no record files none."""
 
 from __future__ import annotations
 
-import dataclasses
 import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import Applied, CardState, Choice, Job
+from plumb.contracts import Applied, Job
 from plumb.present import owner_text
-from plumb.understand import cards, cardstore, files, read
+from plumb.understand import files, judge, read
 
 kind = "question"
 SCHEMA_ID = "question.v1"
@@ -36,28 +33,24 @@ def _load_schema() -> Mapping[str, Any]:
 schema: Mapping[str, Any] = _load_schema()
 
 
-def card(core: Any, asked: Mapping[str, Any], branch: str = "") -> CardState | None:
-    """The choice card of a question ``{question, options: [{label, effect, consequence}],
-    records}`` the model read from a reply; None without a question or two options. The first
-    named record that exists is the one the question changes; the same question is always the
-    same card."""
+def asked_question(core: Any, asked: Mapping[str, Any], job: Job) -> dict[str, Any] | None:
+    """A question ``{question, options: [{label, effect, consequence}], records}`` the model read
+    from a reply, as an open judge question; None without a question, two options or a named
+    record that exists (the question is about no record then). The same question is always the
+    same one."""
     question = str(asked.get("question") or "").strip()
     options = [o for o in asked.get("options") or () if isinstance(o, Mapping)
                and str(o.get("label") or "").strip() and o.get("effect") in EFFECTS]
-    if not question or len(options) < 2:
-        return None
     index = core.index()
     named = [str(r) for r in asked.get("records") or () if str(r) in index]
-    record = index[named[0]] if named else None
-    choices = [Choice(str(o["label"]).strip(), o["effect"],
-                      str(o["label"]).strip() if o["effect"] == "change" else None,
-                      str(o.get("consequence") or "")) for o in options]
-    topic = record.title if record is not None else cards.clip(question, 60)
-    about = [f"About: {', '.join(named)}"] if named else []
-    made = cards._card("choice", cards.card_id("choice", "question", question), topic, question,
-                       "\n".join(["Asked by the agent in its reply", *about]), choices,
-                       [(question, record)])
-    return dataclasses.replace(made, branch=branch)
+    if not question or len(options) < 2 or not named:
+        return None
+    key = judge.question_key(question)
+    return {"key": key, "job": f"reply:{key}", "records": [
+        {"id": i, "hash": index[i].hash} for i in named], "principle": "", "blocking": False,
+        "diagram": False, "reword": False, "question": question, "header": "Question",
+        "options": [{"label": str(o["label"]).strip(),
+                     "description": str(o.get("consequence") or "")} for o in options]}
 
 
 def _inputs(core: Any, reply: str) -> dict[str, Any] | None:
@@ -95,12 +88,7 @@ def enqueue(core: Any, session: str, transcript: Any) -> None:
 
 
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
-    from plumb.understand import clarify, summary
-
-    branch = clarify.repository(Path(core.root))["branch"]
-    own = {c.id for c in cardstore.own_cards(Path(core.root), job.session)}
-    raised = [c for q in answer.get("questions") or () if isinstance(q, Mapping)
-              if (c := card(core, q, branch)) is not None and c.id not in own]
-    for c in raised:
-        summary.tell_agent(core, job.session, c)    # the next prompt names it (SR-116 EX-4)
-    return Applied(job=job.id, cards=tuple(raised))
+    for q in answer.get("questions") or ():
+        if isinstance(q, Mapping) and (made := asked_question(core, q, job)) is not None:
+            judge.add_question(core, job.session, made)   # the next turn's ask names it
+    return Applied(job=job.id)

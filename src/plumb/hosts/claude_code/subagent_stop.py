@@ -37,18 +37,18 @@ def handle(ctx: HookContext) -> HookOutput | None:
         active = bool(ctx.data.get("stop_hook_active"))
         reasons: list[str] = []
         for root, ids in recorded.items():
-            wanted = set(ids) - stale.carded_links(root, ctx.session_id)
-            if not wanted:
-                continue
             from plumb.api import open_core
-            from plumb.hosts.claude_code.stop import card_released
+            from plumb.hosts.claude_code.stop import question_released
 
             core = open_core(root)
+            wanted = set(ids) - stale.asked_links(core, ctx.session_id)
+            if not wanted:
+                continue
             rows = stale.stale_rows(core, {i.split("#")[0] for i in wanted}, wanted)
             if not rows:
                 continue
             if active:
-                card_released(root, ctx.session_id, rows, core.index(), 0, 1)
+                question_released(core, ctx.session_id, rows, core.index(), 1)
             else:
                 reasons += [*stale.hold_lines(rows, 1, 1)]
         return HookOutput(block_reason="\n".join(reasons)) if reasons else None

@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 from conftest import git
 
+from core.stale_asked import asked
 from plumb import links, stale
 from plumb.api import open_core
 from plumb.present import owner_text
@@ -178,7 +179,7 @@ def test_flow_1_request_with_gaps_is_asked_through_the_question_tool(repo: Path)
 
     done = plumb(s, "clarify", "--wait", "--json", "--root", str(repo), "--timeout", "30")
     asked = json.loads(done.stdout)
-    assert asked["state"] == "ask" and asked["card"] == ""
+    assert asked["state"] == "ask" and "card" not in asked
     assert [q["question"] for q in asked["questions"]] == ["Which format?"]
     at_owner_level(asked["questions"][0]["question"])
     assert not deny(s)                                            # no question denies an edit
@@ -520,7 +521,7 @@ def test_flow_7_stale_edit_names_the_link_hold_card_and_reformat(
     assert [c["link"] for c in done.changes] == [link] and done.refused == []
     assert all(st.state == "current" for st in open_core(repo).link_states())
     assert '"decision": "block"' not in s.stop()
-    assert stale.read_cards(repo, SID) == []                        # the owner was not asked
+    assert asked(repo, SID) == []                        # the owner was not asked
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-q", "-m", "reformat"], cwd=repo, check=True,
                    capture_output=True)                             # the pin is in history now
@@ -538,12 +539,12 @@ def test_flow_7_stale_edit_names_the_link_hold_card_and_reformat(
                                       judge=material)
     assert refused.changes == [] and "meaning changed" in refused.refused[0][1]
     assert any(st.state == "stale" for st in open_core(repo).link_states())
-    carded = plumb(s, "stale", "card", link, "--topic", "Adds numbers", "--issue",
-                   "add now multiplies", "--options", "keep the multiplying|go back",
-                   "--consequences", "add multiplies from now on; adding is gone|add adds "
-                   "again; the multiplying is undone", "--why", "it is what you asked last",
-                   "--recommended", "1", "--session", SID)      # complete, as SR-116 asks
-    assert carded.returncode == 0, carded.stderr + carded.stdout
+    assert stale.ask_owner(
+        open_core(repo), SID, link=link, record="SR-001", topic="Adds numbers",
+        issue="add now multiplies", options=["keep the multiplying", "go back"],
+        consequences=["add multiplies from now on; adding is gone",
+                      "add adds again; the multiplying is undone"],
+        why="it is what you asked last")
     ended = s.stop()
     assert '"decision": "block"' not in ended
     assert len(text_of(ended).splitlines()) <= 1                    # SR-265: one line

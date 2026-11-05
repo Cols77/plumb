@@ -153,8 +153,7 @@ def test_sr194_ex2_a_passed_clarify_gate_lets_the_plan_stage_run_and_records_it(
 
 
 @pytest.mark.sr("SR-225")
-@pytest.mark.parametrize("reason", [clarify.GATE_REASON_CARD, clarify.GATE_REASON_COULDNT,
-                                    clarify.GATE_REASON_CHECKING])
+@pytest.mark.parametrize("reason", [clarify.GATE_REASON_COULDNT, clarify.GATE_REASON_CHECKING])
 def test_a_passed_clarify_gate_leaves_a_hold_only_the_owner_or_the_check_opens(
         intent: Path, tmp_path: Path, reason: str) -> None:
     gate.close(intent, SESSION, DIGEST, reason)

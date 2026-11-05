@@ -13,7 +13,7 @@ import pytest
 from capture.capture_helpers import log_prompt
 
 from plumb.api import open_core
-from plumb.understand import cardstore, clarify, cmd_clarify, files, gate, hooks, worker
+from plumb.understand import cmd_clarify, files, gate, hooks, worker
 from understand.fakes import owner_level
 
 pytestmark = pytest.mark.sr("SR-223")
@@ -88,7 +88,6 @@ def test_ex6_late_result_collected_by_next_wait_no_build_started(
     runner.join(10)
     second = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
     assert second.state == "ask" and second.digest == digest   # the late result is asked
-    assert cardstore.own_cards(repo, SESSION) == []              # on no card
     assert len(engine_standins.dispatcher.ran("clarify")) == 1
 
 
@@ -128,7 +127,6 @@ def test_the_same_words_sent_again_get_their_own_check(repo: Path, engine_standi
     worker.run_once(open_core(repo), SESSION)
     assert cmd_clarify.wait(open_core(repo), SESSION, timeout=5).state == "ask"
     assert len(list(files.jobs_dir(repo, SESSION).glob("clarify-*.json"))) == 2
-    assert cardstore.own_cards(repo, SESSION) == []
 
 
 def test_a_result_with_no_ledger_entry_counts_for_nothing(repo: Path,
@@ -201,43 +199,6 @@ def test_a_request_with_no_blocking_choice_is_ready_and_draws_no_read_back(
     outcome = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
     assert outcome.state == "ready" and not gate.is_closed(repo, SESSION)
     assert outcome.lines == [cmd_clarify.READY]
-    assert cardstore.own_cards(repo, SESSION) == []      # SR-252 EX-6: no read-back card
-
-
-def test_sr131_ex4_an_earlier_blocking_card_is_the_answer_not_a_failed_check(
-        repo: Path) -> None:
-    """A later message while an earlier choice card holds the gate: --wait names that card
-    instead of raising a 'couldn't check' card."""
-    from plumb.contracts import CardState
-
-    core = open_core(repo)
-    older = CardState(id="choice:aaaaaaaaaaaa", kind="choice", topic="t", issue="Which one?",
-                      resolutions=("A", "B"), status="left_open")
-    cardstore.save(repo, SESSION, [older])
-    digest = log_prompt(repo, "/plumb clarify whatever works", session=SESSION)
-    gate.close(repo, SESSION, digest, "a question waits on a card")
-    outcome = cmd_clarify._outcome_from_state(core, SESSION, digest)
-    assert (outcome.state, outcome.card) == ("card", older.id)
-
-
-def test_sr131_ex4_answering_the_held_card_opens_the_later_messages_gate(repo: Path) -> None:
-    """The choice card of an earlier message held the gate for a later vague message; once
-    its question is answered, the gate opens for that later message."""
-    from plumb.contracts import CardState, ClarifyAnswer, ClarifyQuestion
-
-    core = open_core(repo)
-    first = log_prompt(repo, "/plumb clarify sort the rows, ask me about ties", session=SESSION)
-    later = log_prompt(repo, "/plumb clarify whatever works", session=SESSION)
-    gate.close(repo, SESSION, later, "a question waits on a card")
-    card = CardState(id="choice:" + first.removeprefix("sha256:")[:12], kind="choice",
-                     topic="t", issue="Ties?", resolutions=("Keep order", "By id"),
-                     questions=(ClarifyQuestion(id="ties", text="Ties?"),),
-                     answers=(ClarifyAnswer(question="ties", answer="accepted"),),
-                     status="answered")
-    cardstore.save(repo, SESSION, [card])
-    clarify._choice_effect(core=core, card=card, job=SimpleNamespace(session=SESSION),
-                           digest=first)
-    assert not gate.is_closed(repo, SESSION)
 
 
 def test_a_commanded_check_with_no_gap_still_hands_over_the_open_judge_questions(

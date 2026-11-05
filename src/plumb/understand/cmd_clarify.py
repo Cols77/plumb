@@ -3,8 +3,7 @@
 It returns the clarify result for the owner's latest message: it waits up to the timeout
 (``understand.clarify_wait_s``, 45 s) for the check the prompt hook queued, or runs the check
 itself when none was queued (same inputs, same id, so it never runs twice). A late result
-after a timeout is collected by the next ``--wait``; a timeout or a failed check puts the
-"couldn't check" card in the card store and keeps the gate closed. Nothing here opens the
+after a timeout is collected by the next ``--wait``. Nothing here opens the
 gate: only the check's own result, the owner's answers, or the owner's release do.
 
 An ordinary message is not checked and waits for nothing (SR-378): ``--wait`` hands the judge
@@ -29,7 +28,7 @@ from typing import Any
 
 from plumb.contracts import Job, JobResult
 from plumb.present import owner_text
-from plumb.understand import cardstore, clarify, files, gate
+from plumb.understand import clarify, files, gate
 
 POLL_S = 0.05
 WHY_BY_STEP = {
@@ -40,13 +39,9 @@ WHY_BY_STEP = {
     "run": "the model could not be reached",
 }
 WHY_DEFAULT = "the check failed"
-# the check finished, yet the gate stays closed with no card: nothing will change by waiting
+# the check finished, yet the gate stays closed with no question: nothing will change by waiting
 WHY_UNSETTLED = "the check finished without a question or a go-ahead"
 READY = "Nothing in your request needs asking. You can start building."
-ASK = ("The owner has this one question on a card. Say in one line that it waits there; do "
-       "not restate it or its options; build nothing until they answer; plumb reads their "
-       "answer from their next message.")
-BUILD_ON = "Build on this; tell the owner in one line what you assumed:"
 SHOW_COULDNT = ("The check of the request could not be made ({why}). Say so once in one line and "
                 "work on; nothing is held.")
 SHOW_STILL_CHECKING = ("The check of the request is still running. Build nothing yet and run "
@@ -67,15 +62,14 @@ HELD = ("plumb: edits are held ({reason}): this request changes a confirmed reco
 
 @dataclasses.dataclass
 class Outcome:
-    state: str           # ready | ask | card | couldnt_check | waiting | held
+    state: str           # ready | ask | couldnt_check | waiting | held
     digest: str = ""
     lines: list[str] = dataclasses.field(default_factory=list)
-    card: str = ""
     questions: list[dict[str, Any]] = dataclasses.field(default_factory=list)
 
     def as_json(self) -> dict[str, Any]:
         shown = {"questions": self.questions} if self.state == "ask" else {}
-        return {"state": self.state, "message_digest": self.digest, "card": self.card,
+        return {"state": self.state, "message_digest": self.digest,
                 "lines": self.lines, **shown}
 
 
@@ -177,7 +171,7 @@ def _by_principle(questions: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]
 
 def _open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
     """SR-223 EX-15: the clarifier's blocking gaps, every one, then the judge's questions
-    (one per principle, SR-361): all asked at once with the question tool, never on a card."""
+    (one per principle, SR-361): all asked at once with the question tool, never as prose."""
     from plumb.understand import judge
 
     gaps = clarify.gap_questions(core, session)
@@ -274,21 +268,12 @@ def why_failed(result: JobResult) -> str:
 
 def _outcome_from_state(core: Any, session: str, digest: str) -> Outcome:
     root = Path(core.root)
-    cards = {c.id: c for c in cardstore.own_cards(root, session) if c.status == "open"}
     if gate.state(root, session).state == "open":
-        readback = cards.get(clarify.card_id(digest))
-        assumed = readback.evidence.splitlines() if readback else []
-        return Outcome("ready", digest, [READY, BUILD_ON, *assumed] if assumed else [READY])
+        return Outcome("ready", digest, [READY])
     reason = gate.state(root, session).reason
     if reason.startswith(gate.INTENT_CHANGE):   # SR-225: the check found a request that changes
         return Outcome("held", digest, [HELD.format(reason=reason)])   # a confirmed record
-    choice = cards.get(clarify.choice_id(digest))
-    if choice is None:   # SR-131 EX-4: an earlier blocking card still holds the gate
-        choice = next((c for c in cardstore.own_cards(root, session) if c.kind == "choice"
-                       and c.status in clarify.HOLDING), None)
-    if choice is None:
-        return Outcome("waiting", digest, [WAITING])
-    return Outcome("card", digest, [ASK], choice.id)
+    return Outcome("waiting", digest, [WAITING])
 
 
 def _couldnt(core: Any, session: str, digest: str, why: str) -> Outcome:

@@ -1,6 +1,6 @@
 """SR-216: a question that no longer stands is withdrawn by plumb right after the link it holds
 is settled, and a judge question whose records are superseded or all approved is no longer
-asked; the withdrawals are logged, never told in an owner line (SR-373)."""
+asked; never told in an owner line (SR-373)."""
 
 from __future__ import annotations
 
@@ -20,37 +20,40 @@ from core.test_stale_resolve import (  # noqa: F401
 
 from plumb import links, stale
 from plumb.api import open_core
-from plumb.understand import cardstore, judge
+from plumb.understand import judge
 from understand.test_judge_job import SESSION, requirement_text
 
 pytestmark = pytest.mark.sr("SR-216")
 
 
-def _card_for_link(root: Path) -> None:
-    stale.add_card(root, SESSION, link=LINK, record="SR-001", path="src/calc.py",
-                   topic="Adds numbers", issue="the code changed", options=["keep", "undo"])
+def _question_for_link(root: Path) -> None:
+    stale.ask_owner(open_core(root), SESSION, link=LINK, record="SR-001",
+                    topic="Adds numbers", issue="the code changed", options=["keep", "undo"])
 
 
-def test_ex1_repin_withdraws_the_stale_card(project: Path) -> None:
+def _stale_questions(root: Path) -> list[str]:
+    return [str(q["job"]) for q in judge.open_questions(open_core(root), SESSION)]
+
+
+def test_ex1_repin_withdraws_the_stale_question(project: Path) -> None:
     _edit(project, REFORMATTED)
-    _card_for_link(project)
+    _question_for_link(project)
+    assert _stale_questions(project) == [f"stale:{LINK}"]
     links.repin_after_tests(open_core(project), LINK, runner=Runner(), judge=_backend("cosmetic"))
-    assert cardstore.stale_cards(project, SESSION) == []
-    (event,) = open_core(project).log_read("events", ["card-withdrawn"])
-    assert event.payload["card"] == f"stale:{LINK}"
+    assert _stale_questions(project) == []
 
 
-def test_unlink_withdraws_the_card_of_a_link_that_is_gone(project: Path) -> None:
+def test_unlink_withdraws_the_question_of_a_link_that_is_gone(project: Path) -> None:
     _edit(project, REFORMATTED)
-    _card_for_link(project)
+    _question_for_link(project)
     links.unlink(open_core(project), LINK, "the code moved")
-    assert cardstore.stale_cards(project, SESSION) == []
+    assert _stale_questions(project) == []
 
 
-def test_ex4_a_still_stale_card_stays(project: Path) -> None:  # noqa: F811
+def test_ex4_a_still_stale_question_stays(project: Path) -> None:  # noqa: F811
     _edit(project, REFORMATTED)
-    _card_for_link(project)
-    assert [c.id for c in cardstore.stale_cards(project, SESSION)] == [f"stale:{LINK}"]
+    _question_for_link(project)
+    assert _stale_questions(project) == [f"stale:{LINK}"]
 
 
 # ---- judge questions: no longer asked once their records stand settled (EX-2, EX-3, EX-8)

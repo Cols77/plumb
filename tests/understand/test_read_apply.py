@@ -4,8 +4,6 @@ a judge job reads them together (task 6 of the judge-approval plan, SR-209 EX-2)
 
 from __future__ import annotations
 
-import dataclasses
-import json
 import threading
 from pathlib import Path
 
@@ -14,7 +12,7 @@ import pytest
 from plumb.api import open_core
 from plumb.log import append, stream_of
 from plumb.present import owner_text
-from plumb.understand import cardstore, files, read
+from plumb.understand import read
 from understand.fakes import FakeDispatcher, as_worker, owner_level
 from understand.test_read_job import (
     SESSION,
@@ -22,7 +20,6 @@ from understand.test_read_job import (
     int_text,
     log_prompt,
     make_core,
-    open_card,
     record_text,
     state,
 )
@@ -31,13 +28,8 @@ pytestmark = pytest.mark.sr("SR-214")
 
 
 def write_applied(core, applied) -> None:
-    """What the worker does with an ``Applied``: cards, then log entries (as the worker)."""
+    """What the worker does with an ``Applied``: its log entries (as the worker)."""
     with as_worker(core.root, SESSION):
-        if applied.cards or applied.closed:
-            replaced = {c.id for c in applied.cards}
-            kept = [dataclasses.replace(c, status="closed") if c.id in applied.closed else c
-                    for c in cardstore.own_cards(core.root, SESSION) if c.id not in replaced]
-            cardstore.save(core.root, SESSION, [*kept, *applied.cards])
         for entry in applied.entries:
             kind = str(entry["kind"])
             append(core.paths, stream_of(kind), kind, dict(entry["payload"]))
@@ -106,7 +98,7 @@ def test_ex1_int008_ok_and_sr088_change_both_go_to_the_judge_with_the_words(core
         entry_of(core, "INT-008", "accepted", "INT-008 ok"),
         entry_of(core, "SR-088", "change", "some features might have to remain internal to plumb",
                  change="some features stay internal to plumb")])
-    assert approvals(after) == {} and cardstore.load(after.root, SESSION) == []
+    assert approvals(after) == {}
     index = core.index()
     assert covered(after) == {i: index[i].hash for i in ("INT-008", "SR-088")}
     (kept,) = entries_of(after, "pre-intent")
@@ -131,7 +123,6 @@ def test_ex3_unshown_record_is_noted_and_confirmed_by_nothing(core) -> None:
         entry_of(core, "SR-040", "accepted", "ok"),
         entry_of(core, "SR-041", "accepted", "confirm SR-041 too", hash="")])
     assert set(covered(after)) == {"SR-040"} and approvals(after) == {}
-    assert cardstore.load(after.root, SESSION) == [] and applied.cards == ()
     assert any("SR-041" in note for note in applied.notes)
 
 
@@ -150,7 +141,6 @@ def test_ex5_edited_record_confirms_nothing_and_is_noted(core, repo, write_recor
         entry_of(core, "SR-040", "accepted", "ok"),
         entry_of(core, "SR-041", "accepted", "ok")], edit=edit)
     assert set(covered(after)) == {"SR-041"} and approvals(after) == {}
-    assert cardstore.load(after.root, SESSION) == []
     assert any("SR-040" in note for note in applied.notes)
 
 
@@ -168,7 +158,7 @@ def test_message_not_in_log_confirms_nothing(core) -> None:
     core.paths.prompts.write_text("", encoding="utf-8")   # the log no longer holds it
     with as_worker(core.root, SESSION):
         applied = read.apply(core, job, {"entries": [entry_of(core, "SR-040", "accepted", "ok")]})
-    assert applied.entries == () and applied.cards == ()
+    assert applied.entries == ()
     assert applied.notes
 
 
@@ -231,11 +221,9 @@ def test_ex13_nothing_confirmed_while_the_job_runs_judged_when_it_returns(
     assert set(covered(after)) == {"SR-040"} and approvals(after) == {}
 
 
-def test_confirmation_and_readback_text_pass_the_owner_level_scan(core) -> None:
+def test_confirmation_text_passes_the_owner_level_scan(core) -> None:
     assert owner_level(owner_text.CONFIRM_YOU_SAID.format(evidence="ok")) == []
-    assert owner_level(owner_text.READBACK_CHANGE.format(
-        title="Plain words UX", change="some features stay internal")) == []
-    _ = json, files, FakeDispatcher, ctx_for, open_card
+    _ = FakeDispatcher, ctx_for
 
 
 def _forge(core, record_id: str, **changes) -> None:

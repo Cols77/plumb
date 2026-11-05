@@ -18,7 +18,7 @@
      "text": "Typed /plumb commands and plain-words matching confirm records"
     }
    ],
-   "cards": []
+   "questions": []
   },
   "expect": {
    "entries": [
@@ -62,7 +62,7 @@
      "text": "Owner-facing text never shows plumb internals"
     }
    ],
-   "cards": []
+   "questions": []
   },
   "expect": {
    "entries": [
@@ -146,7 +146,7 @@
      "text": "G10: then it is not true that the reminder is shown"
     }
    ],
-   "cards": []
+   "questions": []
   },
   "expect": {
    "entries": [
@@ -247,7 +247,7 @@
      "text": "Reminders are sent by text message"
     }
    ],
-   "cards": []
+   "questions": []
   },
   "expect": {
    "entries": [
@@ -292,7 +292,7 @@
      "text": "Reminders can be snoozed once"
     }
    ],
-   "cards": []
+   "questions": []
   },
   "expect": {
    "entries": [
@@ -330,7 +330,7 @@
      "text": "Reminders can be snoozed once"
     }
    ],
-   "cards": []
+   "questions": []
   },
   "expect": {
    "entries": [
@@ -364,7 +364,7 @@
      "text": "Reminders are sent on the day"
     }
    ],
-   "cards": []
+   "questions": []
   },
   "expect": {
    "entries": [
@@ -401,7 +401,7 @@
      "text": "Reminders are sent by text message"
     }
    ],
-   "cards": []
+   "questions": []
   },
   "expect": {
    "entries": [
@@ -422,7 +422,7 @@
     "text": "keep it"
    },
    "shown": [],
-   "cards": [
+   "questions": [
     {
      "id": "beyond-1/q",
      "card": "beyond-1",
@@ -458,7 +458,7 @@
     "text": "the second, plus the first's date"
    },
    "shown": [],
-   "cards": [
+   "questions": [
     {
      "id": "contradicts-1/q",
      "card": "contradicts-1",
@@ -494,7 +494,7 @@
     "text": "no, wait"
    },
    "shown": [],
-   "cards": [
+   "questions": [
     {
      "id": "check-1/q",
      "card": "check-1",

@@ -16,8 +16,8 @@ import types
 from pathlib import Path
 
 import pytest
-from mod.helpers import DIGEST, SESSION, mod_json, run_mod, sample_card
-from understand.test_read_job import make_core, open_card, record_text
+from mod.helpers import DIGEST, SESSION, mod_json, run_mod
+from understand.test_read_job import make_core, record_text
 
 from plumb.hosts.claude_code import session_start, stop
 from plumb.mod import handshake
@@ -32,7 +32,6 @@ def _iso(epoch: float) -> str:
 @pytest.fixture
 def core(repo: Path, write_record):
     core = make_core(repo, write_record, [record_text(n) for n in range(1, 3)])
-    open_card(core, sample_card(core, "SR-001"))
     return core
 
 
