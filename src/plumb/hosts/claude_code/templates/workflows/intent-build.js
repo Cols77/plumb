@@ -1,7 +1,7 @@
 export const meta = {
   name: 'intent-build',
   description: "Build an intent that passed its clarify gate: write the plan's acceptance tests and pass the plan gate, build each plan item, then prove it and close the intent",
-  whenToUse: "Run after stage A of /plumb intent passed and the owner opted in to a workflow. args: {intent, plan: [{id, sr, summary}], worktree, session}. It asks the owner nothing: a changed meaning comes back as a question.",
+  whenToUse: "Run after stage A of /plumb intent passed and the owner opted in to a workflow. args: {intent, plan: [{id, sr, summary}], worktree, session, models}. models (optional) sets the model of a level: {haiku, sonnet, opus, fable}. It asks the owner nothing: a changed meaning comes back as a question.",
   phases: [
     { title: 'Plan', detail: 'failing acceptance tests, then the plan gate' },
     { title: 'Build', detail: 'implement each plan item, then test and review it' },
@@ -10,6 +10,8 @@ export const meta = {
 }
 
 const input = typeof args === 'string' ? JSON.parse(args) : (args || {})
+// the four capability levels (owner, 2026-11-06); args.models sets the model of a level
+const LEVEL = Object.assign({ haiku: 'haiku', sonnet: 'sonnet', opus: 'opus', fable: 'fable' }, input.models || {})
 const intent = input.intent || ''
 const plan = input.plan || []
 const worktree = input.worktree || ''
@@ -68,7 +70,7 @@ const tests = await agent([
   'The plan:', planText, '',
   'Write the acceptance tests of these items, from the examples of each requirement ({plumb} show <SR>), each marked with its requirement. Run them: they must FAIL now for the right reason (the feature is missing), never for a typo.',
   'Write no implementation. Return ok and a finding naming the test files.',
-].join('\n'), { label: 'plan tests', phase: 'Plan', model: 'sonnet', schema: STEP })
+].join('\n'), { label: 'plan tests', phase: 'Plan', model: LEVEL.sonnet, schema: STEP })
 if (!tests || !tests.ok) {
   return { built: [], failed: [], questions: tests && tests.question ? [tests.question] : [], done: false, stopped: 'plan tests: ' + (tests ? tests.finding : 'no result') }
 }
@@ -78,7 +80,7 @@ const gate = await agent([
   '{plumb} intent gate plan --intent ' + intent + ' --findings <file>' + SESSION,
   'Then report it to the owner band: {plumb} intent progress --task "plan gate passed" (or "plan gate failed") --done 1 --total 3' + SESSION,
   'Return exitCode (the gate command exit code) and finding (what the gate printed, plainly).',
-].join('\n'), { label: 'plan gate', phase: 'Plan', model: 'sonnet', schema: GATE })
+].join('\n'), { label: 'plan gate', phase: 'Plan', model: LEVEL.sonnet, schema: GATE })
 if (!gate || gate.exitCode !== 0) {
   log('plan gate did not pass: stopping before Build')
   return { built: [], failed: [], questions: [], done: false, stopped: 'plan gate: ' + (gate ? gate.finding : 'no result') }
@@ -86,9 +88,9 @@ if (!gate || gate.exitCode !== 0) {
 
 // Build: one pipeline per item
 phase('Build')
-const FIRST = { model: 'sonnet' }
-// retry path: the first build of the item failed its tests or review, so it runs again on the stronger model
-const RETRY = { model: 'opus' }
+const FIRST = { model: LEVEL.sonnet }
+// retry path: the first build of the item failed its tests or review, so it runs again one level up
+const RETRY = { model: LEVEL.opus }
 
 const buildPrompt = (it, earlier) => [
   STATE, '', WORKTREE, '', QUESTION, '',
@@ -109,7 +111,7 @@ const round = async (it, earlier, tier) => {
   const built = await agent(buildPrompt(it, earlier), { label: 'build ' + it.id, phase: 'Build', ...tier, schema: STEP })
   if (!built) return { ok: false, finding: 'the builder returned nothing' }
   if (built.question) return built
-  const checked = await agent(checkPrompt(it, built), { label: 'check ' + it.id, phase: 'Build', model: 'sonnet', schema: STEP })
+  const checked = await agent(checkPrompt(it, built), { label: 'check ' + it.id, phase: 'Build', model: LEVEL.sonnet, schema: STEP })
   return checked || { ok: false, finding: 'the checker returned nothing' }
 }
 const outcomes = await pipeline(plan, async (it) => {
@@ -141,5 +143,5 @@ const proof = await agent([
   '4. Commit the work on this branch, never on main: the message through a file (git commit -F <file>) with one trailer line SR: <SR> per requirement; bypass no hook.',
   '5. Close the loop: {plumb} intent done' + SESSION + '. Report the gate to the band: {plumb} intent progress --task "prove gate passed" (or failed) --done 3 --total 3' + SESSION,
   'Return exitCode (of intent done) and finding (the gate output, plainly, and which proofs are still open).',
-].join('\n'), { label: 'prove', phase: 'Prove', model: 'sonnet', schema: GATE })
+].join('\n'), { label: 'prove', phase: 'Prove', model: LEVEL.sonnet, schema: GATE })
 return { built, failed, questions, done: !!proof && proof.exitCode === 0, finding: proof ? proof.finding : 'no result' }

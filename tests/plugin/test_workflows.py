@@ -29,10 +29,10 @@ def script(name: str) -> str:
 
 
 def models(text: str) -> list[tuple[str, str]]:
-    """Each ``model:`` value with the line that holds it and the line before."""
+    """Each ``model:`` level with the line that holds it and the line before."""
     lines = text.splitlines()
     return [(m.group(1), lines[i - 1] + "\n" + line) for i, line in enumerate(lines)
-            for m in [re.search(r"model:\s*['\"](\w+)['\"]", line)] if m]
+            for m in [re.search(r"model:\s*LEVEL\.(\w+)", line)] if m]
 
 
 def test_ex1_the_case_text_names_the_shipped_workflow() -> None:
@@ -62,8 +62,11 @@ def test_ex3_land_merges_main_under_the_lock_and_forces_nothing() -> None:
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_ex4_sonnet_everywhere_and_one_opus_on_a_retry(name: str) -> None:
-    found = models(script(name))
+def test_ex4_sonnet_level_everywhere_and_one_level_up_on_a_retry(name: str) -> None:
+    text = script(name)
+    assert "{ haiku: 'haiku', sonnet: 'sonnet', opus: 'opus', fable: 'fable' }, input.models" in text
+    assert text.count("model:") == len(models(text))  # a stage names a level, never a model
+    found = models(text)
     assert found and all(m in ("sonnet", "opus") for m, _ in found)
     opus = [ctx for m, ctx in found if m == "opus"]
     assert len(opus) == 1 and re.search(r"fail|not resolved|retry|again", opus[0], re.I)

@@ -1,7 +1,7 @@
 export const meta = {
   name: 'debug-cases',
-  description: "Fix plumb's open debug cases, one pipeline per case: fix, then verify, then one more round on a stronger model if the case is not resolved",
-  whenToUse: "Run when a 'plumb:' line lists open debug cases. args: {cases: [{id, kind, target, detail}], worktree}. Not for a case that needs an owner choice: those come back as questions.",
+  description: "Fix plumb's open debug cases, one pipeline per case: fix, then verify, then one more round one level up if the case is not resolved",
+  whenToUse: "Run when a 'plumb:' line lists open debug cases. args: {cases: [{id, kind, target, detail}], worktree, models}. models (optional) sets the model of a level: {haiku, sonnet, opus, fable}. Not for a case that needs an owner choice: those come back as questions.",
   phases: [
     { title: 'Fix', detail: 'one agent per case repins, relinks or reruns' },
     { title: 'Verify', detail: 'a second agent reruns the case check' },
@@ -9,6 +9,8 @@ export const meta = {
 }
 
 const input = typeof args === 'string' ? JSON.parse(args) : (args || {})
+// the four capability levels (owner, 2026-11-06); args.models sets the model of a level
+const LEVEL = Object.assign({ haiku: 'haiku', sonnet: 'sonnet', opus: 'opus', fable: 'fable' }, input.models || {})
 const cases = input.cases || []
 const worktree = input.worktree || ''
 if (!cases.length || !worktree) {
@@ -67,22 +69,22 @@ const verifyPrompt = (c, fix) => [
   'Return resolved and finding.',
 ].join('\n')
 
-const FIRST = { model: 'sonnet' }
-// retry path: the first round did not resolve the case, so the fix agent runs on the stronger model
-const RETRY = { model: 'opus' }
+const FIRST = { model: LEVEL.sonnet }
+// retry path: the first round did not resolve the case, so the fix agent runs one level up
+const RETRY = { model: LEVEL.opus }
 
 const round = async (c, earlier, tier) => {
   const fix = await agent(fixPrompt(c, earlier), { label: 'fix ' + c.id, phase: 'Fix', ...tier, schema: RESULT })
   if (!fix) return { resolved: false, finding: 'the fix agent returned nothing' }
   if (fix.question) return fix
-  const check = await agent(verifyPrompt(c, fix), { label: 'verify ' + c.id, phase: 'Verify', model: 'sonnet', schema: RESULT })
+  const check = await agent(verifyPrompt(c, fix), { label: 'verify ' + c.id, phase: 'Verify', model: LEVEL.sonnet, schema: RESULT })
   return check || { resolved: false, finding: 'the verify agent returned nothing' }
 }
 
 const results = await pipeline(cases, async (c) => {
   const first = await round(c, '', FIRST)
   if (first.resolved || first.question) return { c, out: first }
-  // the case is not resolved: one more round on the stronger model, told why the first failed
+  // the case is not resolved: one more round one level up, told why the first failed
   const again = await round(c, first.finding, RETRY)
   return { c, out: again }
 })

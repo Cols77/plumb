@@ -8,9 +8,9 @@ Make the owner's idea an intent that is coherent on its own and with what is con
 build it and show it working. Three stages, each closed by a gate the next refuses to skip.
 Stage A runs in this session: a blocking question is asked here, with the question tool,
 never from a workflow agent. Once stage A has passed and the owner opts in to a workflow,
-stages B and C run as the phases of plumb's shipped workflow `plumb:intent-build` (Plan,
-Build, Prove; args {intent, plan, worktree, session}), and the branch lands through the
-shipped workflow `plumb:land` (args {branch, worktree}); you write no workflow script.
+stages B and C run as its phases: the workflow is plumb's shipped `plumb:intent-build`
+(Plan, Build, Prove; args {intent, plan, worktree, session}), and the branch lands through
+the shipped `plumb:land` (args {branch, worktree}); you write no workflow script.
 Each phase ends on its gate command
 (`plumb intent gate plan`, `plumb intent done`) and the next starts only when it exits 0.
 A phase's gate agent ends by reporting its gate to the owner's band:

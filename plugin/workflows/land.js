@@ -1,7 +1,7 @@
 export const meta = {
   name: 'land',
   description: "Make a plumb branch ready to land: merge main into it, run the full run, repin the moved links and run the merge check; it never merges into main",
-  whenToUse: "Run when an intent branch is built and proven in its worktree. args: {branch, worktree}. It returns {ready, holds, questions}; the main session then lands the branch.",
+  whenToUse: "Run when an intent branch is built and proven in its worktree. args: {branch, worktree, models}. models (optional) sets the model of a level: {haiku, sonnet, opus, fable}. It returns {ready, holds, questions}; the main session then lands the branch.",
   phases: [
     { title: 'Merge main in', detail: 'git merge main inside the worktree' },
     { title: 'Full run', detail: 'merge-check --run main under the heavy lock' },
@@ -11,6 +11,8 @@ export const meta = {
 }
 
 const input = typeof args === 'string' ? JSON.parse(args) : (args || {})
+// the four capability levels (owner, 2026-11-06); args.models sets the model of a level
+const LEVEL = Object.assign({ haiku: 'haiku', sonnet: 'sonnet', opus: 'opus', fable: 'fable' }, input.models || {})
 const branch = input.branch || ''
 const worktree = input.worktree || ''
 if (!branch || !worktree) {
@@ -83,9 +85,9 @@ const steps = [
   },
 ]
 
-const FIRST = { model: 'sonnet' }
-// retry path: the step failed once, so it runs again on the stronger model, told why it failed
-const RETRY = { model: 'opus' }
+const FIRST = { model: LEVEL.sonnet }
+// retry path: the step failed once, so it runs again one level up, told why it failed
+const RETRY = { model: LEVEL.opus }
 
 const run = (step, tier, earlier) => agent([
   STATE, 'Your step: ' + step.title, '', WORKTREE, '', HEAVY, '', QUESTION, '', step.task.join('\n'),
