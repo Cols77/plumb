@@ -216,7 +216,14 @@ if [ "$event" = pre-tool ]; then
   done
   case $ti in
     *plumb*|*PLUMB_*) ;;
-    *) exit 0 ;;
+    *)
+      # SR-384: the main-checkout guard (Python) needs a look at every Bash or edit call of a
+      # primary checkout; a linked worktree (its .git is a file) or merge.guard_main: false skips it
+      [ -d "$root/.git" ] || exit 0
+      read_file "$root/.plumb/config.yaml"
+      case $f in
+        *guard_main:*false*) exit 0 ;;
+      esac ;;
   esac
 fi
 

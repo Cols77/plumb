@@ -609,8 +609,10 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
     else queued for the next prompt hook (``stale.take_before``). Without a baseline of this
     turn nothing is held. Never fails the stop."""
     try:
-        from plumb import stale
+        from plumb import main_guard, stale
 
+        if main_guard.main_checkout(Path(ctx.root) / str(ctx.data.get("cwd") or "."), ctx.root):
+            return [], []   # SR-384: in main's checkout a stale link is resolved on a branch
         turn_id = turn.get("turn_id")
         state = stale.turn_state(core, ctx.session_id, str(turn_id) if turn_id else None)
         if not state.valid:

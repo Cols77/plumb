@@ -41,7 +41,10 @@ def test_ex3_a_reversing_request_holds_edits_until_the_owner_types_go(
     assert gate.closed_reason(records, SESSION).startswith(gate.INTENT_CHANGE)
     assert _edit_denied(records)
     assert cmd_clarify.wait(open_core(records), SESSION, timeout=5).state == "held"
-    monkeypatch.undo()
+    monkeypatch.undo()   # undoes the autouse main-guard patch too: put it back (SR-384)
+    from plumb import main_guard
+
+    monkeypatch.setattr(main_guard, "main_checkout", lambda directory, root: None)
     _say(records, hook_input, "/plumb go")
     assert gate.state(records, SESSION).state == "open" and not _edit_denied(records)
 

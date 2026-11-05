@@ -27,7 +27,8 @@ addopts = "-q"
 markers = ["sr(id): links a test to a plumb requirement",
            "jev_live: calls the live JEV service; skipped unless its credential is set",
            "load_bound: asserts a time budget; waits for a free CPU, a miss is reported load-bound",
-           "work_scope: runs the real rule for which records are a session's work (SR-361)"]
+           "work_scope: runs the real rule for which records are a session's work (SR-361)",
+           "main_guard: runs the real main-checkout guard (SR-384); off for other tests"]
 
 [tool.ruff]
 line-length = 100
