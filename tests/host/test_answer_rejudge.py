@@ -132,7 +132,34 @@ def test_ex6_an_answer_is_kept_with_its_question_and_the_record_stays_proposed(
     assert rebuilt["premise"]["answers"] == [{"digest": digest, "question": ASK,
                                               "options": entry["options"],
                                               "answer": "yes, that is what I meant"}]
-    assert judge.open_questions(core, SESSION) == []
+    assert [q["key"] for q in judge.open_questions(core, SESSION)] == [judge.question_key(ASK)]
+
+
+@pytest.mark.sr("SR-212")
+def test_free_text_leaves_the_question_open_and_is_logged_verbatim(
+        world: Path, hook_input) -> None:
+    """SR-212: a reply that is none of the options shown, even one asking back, is logged
+    verbatim and the judge rereads, but the question stays open."""
+    judge_asks(world, (ASK, ["SR-001"]))
+    text = "I need more explanations, your question is unclear."
+    answer(world, hook_input, ASK, text)
+    (entry,) = logged(world)
+    assert entry["answer"] == text
+    assert len(judge_jobs(world)) == 1
+    assert [q["key"] for q in judge.open_questions(world_core(world), SESSION)] == [
+        judge.question_key(ASK)]
+
+
+@pytest.mark.sr("SR-212")
+def test_an_option_label_closes_the_question(world: Path, hook_input) -> None:
+    """SR-212: an answer matching an option shown (or a joined multi-select) closes it."""
+    judge_asks(world, (ASK, ["SR-001"]))
+    answer(world, hook_input, ASK, "Public pages (Recommended), Every page")
+    assert judge.open_questions(open_core(world), SESSION) == []
+
+
+def world_core(repo: Path) -> Any:
+    return open_core(repo)
 
 
 @pytest.mark.sr("SR-212")

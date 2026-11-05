@@ -141,6 +141,23 @@ def _close_questions(core: Any, session: str, verdicts: Any,
             question=str(asked.get("question") or "").split("\n")[0][:120], quote=quote[:160]))
 
 
+def _read_typed(core: Any, job: Job) -> None:
+    """SR-212: this job read the owner's typed replies it was given; a question they did not
+    settle comes back to the owner (``judge._typed_unread``)."""
+    from plumb.understand import judge
+
+    given = {str(a.get("id")) for a in job.inputs.get("answers") or ()}
+    keys: set[str] = set()
+    for e in _answer_entries(core):
+        asked = e.payload.get("asked")
+        if e.payload.get("free_text") and e.digest in given and isinstance(asked, Mapping):
+            keys.update(map(str, (asked.get("key"), *(asked.get("keys") or ()))))
+    keys &= judge._typed_unread(core)
+    if keys:
+        core.log_append_many("events", [("answer-read", {"session": job.session,
+                                                         "keys": sorted(keys)})])
+
+
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     confirmed = _confirmed(core)
     for verdict in answer.get("verdicts") or ():
@@ -159,6 +176,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
                 cardstore.withdraw_card(core, job.session, card, owner_text.TIDY_DUPLICATE.format(
                     other=other.topic))
     _close_questions(core, job.session, answer.get("questions") or (), confirmed)
+    _read_typed(core, job)
     _principles(core, job.session, answer.get("principles") or ())
     _settle(core, job.session, answer.get("settlements") or (), confirmed)
     return Applied(job=job.id)
