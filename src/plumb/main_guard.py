@@ -6,6 +6,7 @@ through the hook, so nothing here touches them. ``merge.guard_main`` (default tr
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -171,6 +172,8 @@ def _bash(root: Path, command: str, cwd: Path) -> bool:
 def refusal(root: Path | str, tool: str, tool_input: dict[str, Any],
             data: dict[str, Any] | None = None) -> str:
     """The refusal text for an agent's call in main's checkout, else "". Never raises."""
+    if os.environ.get("PLUMB_JOB"):      # plumb's own job session: hooks leave it alone
+        return ""
     try:
         root = Path(root).resolve()
         cwd = root / str((data or {}).get("cwd") or ".")
