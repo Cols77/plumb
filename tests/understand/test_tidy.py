@@ -112,6 +112,6 @@ def test_a_typed_reply_is_not_asked_again_until_the_job_read_it(repo: Path, worl
         "asked": {"key": key, "records": []}})])
     assert [q["key"] for q in judge.open_questions(open_core(repo), "cli")] == [key]
     assert judge.to_ask(open_core(repo), "cli") == []
-    world.dispatcher.script = {"tidy": {"verdicts": [], "questions": []}}
+    world.dispatcher.script = {"tidy": {"questions": []}}
     _tidy(repo)
     assert [q["key"] for q in judge.to_ask(open_core(repo), "cli")] == [key]
