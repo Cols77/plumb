@@ -19,6 +19,10 @@ You are given:
 - In `settlements`, for a question with a `link`, name it only when a record in `confirmed`
   decides what to do: `action` `repin` (the code change is fine) or `reword` (give the new
   `wording` of the requirement), with `decision` (the record's id) and `quote` copied exactly.
+- For a question without a link about two confirmed records that contradict, when `confirmed`
+  holds a decision saying which holds, name `action` `reword` with `decision`, `quote`, `record`
+  (the id of the other record the question is about, the one the decision contradicts) and the
+  `wording` that makes it agree.
 - The same subject is not enough: it must give the choice this question asks for. An answer that
   asks something back, or says only that it was answered elsewhere, settles nothing. When two of
   their answers disagree, the later one counts; when you are not sure, leave the question out. A

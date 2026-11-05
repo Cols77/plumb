@@ -156,3 +156,28 @@ def test_ex8_one_open_question_on_a_principle_is_asked_as_it_is(
     waiting(world, ("Only the public pages?", "public pages only", False, ("SR-001",)))
     outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
     assert asked(outcome) == ["Only the public pages?"]
+
+
+@pytest.mark.sr("SR-219")
+def test_ex7_three_records_of_one_principle_are_one_question_naming_them_by_title(
+        world: Path) -> None:  # noqa: F811
+    """SR-219 EX-7: the judge's principle field groups the questions about the three derived
+    records, so one is asked; the agent's wording (``question reword --covers``) names them by
+    title, never by id, and covers all three."""
+    import json
+
+    from plumb.understand import cmd_question
+
+    waiting(world, *[(f"Records {n}?", "public pages only", False, ("SR-001",))
+                     for n in range(3)])
+    outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
+    assert asked(outcome) == ["Records 0?"]
+    wording = "Should the page speed, the cache and the log all follow public pages only?"
+    options = [{"label": "Public pages only", "description": "The three follow it."},
+               {"label": "Every page", "description": "The three widen."}]
+    covers = [a for n in range(3) for a in ("--covers", f"Records {n}?")]
+    assert cmd_question.run("question", ["--root", str(world), "--session", SESSION, "reword",
+                                         *covers, "--question", wording, "--header", "Pages",
+                                         "--options", json.dumps(options)]) == 0
+    (worded,) = judge.reworded(world, SESSION)
+    assert len(worded["covers"]) == 3 and "SR-" not in worded["question"]

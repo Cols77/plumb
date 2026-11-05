@@ -345,3 +345,41 @@ def test_ex6_one_git_call_checks_every_branch_and_none_when_no_question_has_one(
     judge.add_question(open_core(repo), SESSION, {"key": "x", "job": "x", "records": [],
                                                   "question": "x", "options": []})
     assert [c[0] for c in calls].count("symbolic-ref") == 1
+
+
+@pytest.mark.sr("SR-217")
+def test_ex2_a_record_a_decision_contradicts_is_reworded_citing_it_and_reopen_undoes_it(
+        repo: Path, world, write_record) -> None:
+    """SR-217 EX-2: a question about a confirmed record the owner's decision contradicts is not
+    asked; the record is reworded (an unconfirmed edit the judge validates), logged with the
+    decision."""
+    key = _ask(repo)
+    _decide(repo, write_record, DECIDED)
+    before = str(open_core(repo).index()["SR-001"].fields["statement"])
+    wording = "A conflict is never answered through the agent in chat."
+    settle = {"question": key, "action": "reword", "decision": "DEC-900", "quote": DECIDED,
+              "record": "SR-001", "wording": wording}
+    _run(repo, world, {"questions": [], "settlements": [{**settle, "record": "DEC-900"}]})
+    assert _left(repo) == [ASKED]       # the decision itself is never the one reworded
+    log_prompt(repo, "carry on")        # new inputs: a new job
+    _run(repo, world, {"questions": [], "settlements": [settle]})
+    assert _left(repo) == []
+    assert str(open_core(repo).index()["SR-001"].fields["statement"]) == wording
+    (event,) = [e for e in _withdrawn(repo) if e["reason"] == "settled"]
+    assert event["decision"] == "DEC-900" and event["quote"] == DECIDED
+    assert cmd_question.run("question", ["--root", str(repo), "--session", SESSION,
+                                         "reopen", key[:20]]) == 0
+    assert str(open_core(repo).index()["SR-001"].fields["statement"]) == before
+    assert _left(repo) == [ASKED]
+
+
+@pytest.mark.sr("SR-217")
+def test_ex4_no_judge_reached_is_said_once_and_settles_nothing(repo: Path, world) -> None:
+    from plumb.understand import files
+
+    _ask(repo)
+    notes = files.session_dir(repo, SESSION) / "agent_notes.json"
+    for _ in range(2):
+        _run(repo, world, DispatchError("run", "the model could not be reached"))
+    assert files.read_json(notes).count(tidy.UNREACHABLE) == 1
+    assert _left(repo) == [ASKED] and _withdrawn(repo) == []

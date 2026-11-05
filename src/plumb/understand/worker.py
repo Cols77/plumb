@@ -403,6 +403,21 @@ class _Pass:
     def _say(self, line: str) -> None:
         say(self.root, self.session, line)
 
+    def _say_once(self, line: str) -> None:
+        """SR-217 EX-4: a line said once in the session window (``Told``)."""
+        from plumb.understand.summary import Told, _iso
+
+        told = Told(self.root, self.session, _iso(time.time()))
+        if line and line not in told.notices:
+            told.notices.add(line)
+            told.dirty = True
+            told.save()
+            self._say(line)
+
+    def _unreached(self, module: Any) -> None:
+        if getattr(module, "UNREACHABLE", ""):
+            self._say_once(module.UNREACHABLE)
+
     def _ask(self, module: Any, job: Job, reporter: Any, step: str, counts: tuple[int, int],
              started: str, t0: float
              ) -> tuple[dict[str, Any], str, tuple[Any, ...]] | None:
@@ -438,6 +453,7 @@ class _Pass:
             dispatch.budget_scale.reset(scale)
         reason = dispatcher.available()
         if reason:
+            self._unreached(module)
             self._error(job, "dispatch", reason, started, t0, dispatcher.name)
             return None
         interval = float(getattr(self.core.config.understand, "progress_interval_s", 1) or 1)
@@ -448,6 +464,7 @@ class _Pass:
                     user=json.dumps(job.inputs, ensure_ascii=False, sort_keys=True, indent=1),
                     schema=module.schema, on_step=lambda text: None)
         except DispatchError as exc:
+            self._unreached(module)
             self._error(job, exc.step, exc.message, started, t0, dispatcher.name)
             return None
         except Exception as exc:  # noqa: BLE001 - any failure of a dispatcher is the job's

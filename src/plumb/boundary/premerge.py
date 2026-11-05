@@ -975,8 +975,8 @@ def fast_forward_of(root: Path) -> tuple[str, str, str] | None:
 def _withdraw_merged(root: Path) -> None:
     """SR-216 EX-10, EX-11: the questions of the branches just merged into the default branch (a
     merge or a pull moved it to include their tips) are withdrawn; syncing main into a feature
-    branch withdraws nothing. A squash merge leaves no tip behind and is not seen here: its branch, once deleted, is gone
-    for the question list (``judge._gone_branches``)."""
+    branch withdraws nothing. A squash merge leaves no tip behind and is not seen here: its
+    branch, once deleted, is gone for the question list (``judge._gone_branches``)."""
     from plumb.api import open_core
     from plumb.understand import judge
 

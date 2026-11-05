@@ -71,6 +71,8 @@ QUESTION_SETTLED = "settled from {record}: \"{quote}\""
 QUESTION_SETTLED_SAY = ("plumb: settled a waiting question from a decision of yours "
                         "({action}): \"{question}\" ({decision}: \"{quote}\"); plumb question "
                         "reopen <its words> undoes it")
+UNREACHABLE = ("plumb: no judge could be reached to tidy the waiting questions; they stay "
+               "as they are and reach you with no recommendation")
 ANSWERS_MAX = 300    # shortcut: the owner's latest answers only; widen if an older one is missed
 
 
@@ -198,8 +200,12 @@ def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, s
         quote, action = str(item.get("quote") or ""), str(item.get("action"))
         asked = waiting.get(key)
         if asked is None or action not in ("repin", "reword") or decision not in confirmed \
-                or not read.evidence_in(quote, confirmed[decision]) \
-                or not str(asked.get("job") or "").startswith("stale:"):
+                or not read.evidence_in(quote, confirmed[decision]):
+            continue
+        if not str(asked.get("job") or "").startswith("stale:"):
+            if action == "reword" and _reword_contradicting(
+                    core, session, asked, item, decision, quote, confirmed):
+                waiting.pop(key, None)
             continue
         link_id = str(asked["job"])[6:]
         record = core.index().get(link_id.partition("#")[0])
@@ -221,6 +227,28 @@ def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, s
         waiting.pop(key, None)
 
 
+def _reword_contradicting(core: Any, session: str, asked: Mapping[str, Any],
+                          item: Mapping[str, Any], decision: str, quote: str,
+                          confirmed: Mapping[str, str]) -> bool:
+    """SR-217 EX-2: a confirmed record the decision contradicts, one of the records the waiting
+    question is about, is reworded to agree with it; an unconfirmed edit the judge validates,
+    citing the decision. The decision itself is never the one reworded."""
+    from plumb.capture.records import rewrite
+
+    target, wording = str(item.get("record") or ""), str(item.get("wording") or "")
+    named = {str(r.get("id")) for r in asked.get("records") or () if isinstance(r, Mapping)}
+    record = core.index().get(target)
+    if (not wording or target == decision or target not in named or record is None
+            or "statement" not in record.fields):
+        return False
+    before = str(record.fields.get("statement") or "")
+    rewrite(core, record, {"statement": wording})
+    _withdraw(core, session, asked, "settled", QUESTION_SETTLED_SAY, decision=decision,
+              quote=quote, action="reword", changes=[], record=target, kept=dict(asked),
+              before=before)
+    return True
+
+
 def undo_settlement(core: Any, key: str) -> bool:
     """``plumb question reopen``: put back what the latest settlement of ``key`` changed, a
     reworded statement and the repinned links. False when it settled nothing."""
@@ -234,11 +262,12 @@ def undo_settlement(core: Any, key: str) -> bool:
         return False
     event = mine[-1].payload
     changes = event.get("changes") or []
-    if "before" in event and changes:
+    reworded = str(event.get("record") or (str(changes[0]["link"]).partition("#")[0]
+                                           if changes else ""))
+    if "before" in event and reworded:
         from plumb.capture.records import rewrite
 
-        rewrite(core, core.index()[str(changes[0]["link"]).partition("#")[0]],
-                {"statement": event["before"]})
+        rewrite(core, core.index()[reworded], {"statement": event["before"]})
     links.restore_pins(core, changes)
     if event.get("kept"):       # the refreshed link left the file; the question waits again
         judge.add_question(core, str(event.get("session")), event["kept"])

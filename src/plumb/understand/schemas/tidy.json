@@ -88,6 +88,13 @@
             "type": "string",
             "description": "The words of that record that settle it, copied exactly."
           },
+          "record": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "reword, for a question without a link: the id of the confirmed record the decision contradicts, one the question is about."
+          },
           "wording": {
             "type": [
               "string",
