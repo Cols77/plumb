@@ -62,6 +62,14 @@ def hook_data(event: TurnEvent) -> dict[str, Any]:
     return data
 
 
+def cases_workflow(host: str) -> str:
+    """SR-385: the shipped workflow for debug cases, named only where the host can run it
+    (Claude Code with plumb as its plugin); elsewhere the case text stays as it was."""
+    from plumb.launcher import plugin_root
+
+    return "plumb:debug-cases" if host == "claude-code" and plugin_root() else ""
+
+
 def event_from_data(kind: str, data: Mapping[str, Any], root: Path, host: str,
                     fmt: str = "claude") -> TurnEvent:
     """A ``TurnEvent`` from a host's stdin JSON: Claude Code's shape (``claude``, which
@@ -180,7 +188,7 @@ def handle_event(event: TurnEvent, *, deadline: Deadline | None = None,
 
             # DEC-317, DEC-318: a self-fix ready to land; the defect this session hit is fixed
             shown = emit(ctx, [Line(t, subject=f"landing:{k}", must=True) for k, t in
-                               [*lines(root, "plumb:debug-cases" if event.host == "claude-code" else ""),
+                               [*lines(root, cases_workflow(event.host)),
                                 *debug.lines(root, ctx.session_id)]], "prompt")
             output = replace(output, agent_context=(*output.agent_context, *shown))
         except Exception:  # noqa: BLE001 - advisory

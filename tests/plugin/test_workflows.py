@@ -78,3 +78,13 @@ def test_each_script_starts_with_meta_and_the_plugin_copy_matches(name: str) -> 
     expected = text.replace("{plumb}", Launcher("path", "plumb", "plumb").agent_prefix)
     copy = Path(PLUGIN / "workflows" / f"{name}.js")
     assert copy.read_text(encoding="utf-8") == expected
+
+
+def test_ex1_only_claude_code_with_the_plugin_is_told_the_workflow(monkeypatch) -> None:
+    from plumb.hosts.neutral import cases_workflow
+
+    monkeypatch.setenv("PLUMB_PLUGIN_ROOT", "/p")
+    assert cases_workflow("claude-code") == "plumb:debug-cases"
+    assert cases_workflow("codex") == ""
+    monkeypatch.delenv("PLUMB_PLUGIN_ROOT")
+    assert cases_workflow("claude-code") == ""
