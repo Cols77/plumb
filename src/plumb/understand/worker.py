@@ -390,7 +390,7 @@ class _Pass:
         if got[-1]:
             self._say(got[-1])
         if got[0] == "err":
-            if got[3] and got[1] != "run":    # SR-217 EX-4: the dispatcher was not reached
+            if got[3]:    # SR-217 EX-4: a configured dispatcher failed: said once
                 self._unreached(module)
             self._error(job, got[1], got[2], started, t0, got[3])
             return
