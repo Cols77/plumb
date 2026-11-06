@@ -69,10 +69,14 @@ def heavy(cwd: Path, what: str) -> Iterator[None]:
             if _dead(pid):
                 print(f"plumb: taking over the heavy lock of process {pid}, no longer "
                       f"running: {job}", file=sys.stderr)
-                lock.unlink(missing_ok=True)   # shortcut: two takers racing may both unlink
+                if _holder(lock)[1] == pid:    # still the dead one: another taker may have won
+                    lock.unlink(missing_ok=True)
                 continue
             if not told:
-                print(f"plumb: waiting for {job or 'another heavy job'}", file=sys.stderr)
+                print(f"plumb: waiting for {job or 'another heavy job'}"
+                      + ("" if pid else " (a lock written by hand: if it is your own, run the "
+                         "command through `plumb heavy --` or set PLUMB_HEAVY_HELD=1)"),
+                      file=sys.stderr)
                 told = True
             time.sleep(HEAVY_WAIT_S)
     os.environ[HELD] = "1"

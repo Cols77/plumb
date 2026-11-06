@@ -18,10 +18,10 @@ if (!cases.length || !worktree) {
 }
 
 const HEAVY = [
-  'Heavy jobs (any pytest run, any repin --after-tests, any full run, {plumb} debug) take a machine-wide lock first,',
-  'in the same command chain as the job:',
-  'L=$(git rev-parse --git-common-dir)/plumb-heavy.lock; until ( set -o noclobber; echo "debug-cases" > "$L" ) 2>/dev/null; do sleep 20; done; <the job>; rm -f "$L"',
-  'When the lock stays held, run the chain in the background and wait for it to end; never remove a lock you did not create.',
+  'Heavy jobs go one at a time across every session, under the one-heavy-job lock (plumb-heavy.lock).',
+  'plumb takes it itself for {plumb} tests run, {plumb} merge-check --run, {plumb} repin --after-tests, {plumb} align and {plumb} debug fix: run those plainly, never inside a lock of your own.',
+  'Any other heavy command (a pytest run) goes through it as: {plumb} heavy -- <command>',
+  'A command that waits says what it waits for: let it wait, in the background when it is long. Never create or remove the lock file yourself.',
   'Never run pytest with more than -n 2, and never the whole suite unless the case is about it.',
 ].join('\n')
 const WORKTREE = [
