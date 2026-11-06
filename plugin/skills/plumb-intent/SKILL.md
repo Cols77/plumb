@@ -43,7 +43,10 @@ Stage A, clarify and integrate, until `plumb intent gate clarify` passes:
   live-session|hook|command|other`. A proof that can only be shown once the branch is in main
   (the plugin reloaded from main) is agreed with the owner as post-merge now: add
   `--post-merge`; the merge check does not hold on it and the turn after the landing asks
-  for it.
+  for it. The question's first option, marked as the suggestion, is "An independent
+  evaluator checks it for me": offer it in every loop, never take it as picked from an
+  earlier one. Picked: add `--evaluator` to each `plumb proof --plan` of the loop
+  (`"evaluator": true` in a capture document's proof). Declined: nothing changes.
 - Capture with `plumb capture --prompt <digest> --file <doc.json>` (`"mode": "escalated"`
   in the intent for a big one), naming in `supersedes` every record a new one replaces.
 - Last, the step's study: run `plumb study candidates --json` and propose at most
@@ -79,6 +82,16 @@ Stage C, build and prove: build the plan, show the proof the owner stated, recor
 which gate is open. When the edit hook reports a link stale, before the turn ends: repin it
 after its tests pass, relink it when the code moved, or ask it with the question tool when
 the meaning changed.
+
+Proofs the owner picked the evaluator for are not shown by you: run `plumb evaluate proof
+SR-### SR-### ...` (all of the loop's in one call; they run side by side) and do what its
+line says for each. Verified: tell the owner the verdict and where the evidence is in your
+final message, ask nothing. Not verified: fix what it names and run it again, asking
+nothing; still not verified after that retry: tell the owner in one plain line what was not
+shown, and leave the loop open. Could not check: show that proof yourself and ask with
+`plumb proof SR-### --ask`. The owner says they do not accept a verdict: `plumb proof
+SR-### --overrule`. Never record a verdict by hand. A post-merge proof with the evaluator
+picked is checked the same way the turn after the landing.
 
 Studies: write none before the owner accepts its idea. When plumb tells you an idea was
 accepted or a rewrite asked (the prompt's line, or `accepted` in the candidates), first run

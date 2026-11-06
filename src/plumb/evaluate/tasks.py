@@ -27,3 +27,14 @@ def load(name: str) -> Task:
     read = lambda f: (here / f).read_text(encoding="utf-8").strip()  # noqa: E731
     return Task(name, read("agent.md"), read("owner.md"),
                 json.loads(read("requests.json")), here / "checks")
+
+
+def load_case(folder: Path | str) -> Task:
+    """SR-397 EX-8: an evaluation case written by an evaluator, shaped like a benchmark task:
+    ``requests.json`` (required), ``agent.md`` and ``owner.md`` ("" when absent), ``checks/``."""
+    here = Path(folder)
+    read = lambda f: (here / f).read_text(encoding="utf-8").strip() if (here / f).is_file() else ""  # noqa: E731
+    requests = json.loads(read("requests.json") or "null")
+    if not isinstance(requests, list) or not all(isinstance(r, str) for r in requests):
+        raise ValueError(f"{here / 'requests.json'} must be a JSON list of strings")
+    return Task(here.name, read("agent.md"), read("owner.md"), requests, here / "checks")

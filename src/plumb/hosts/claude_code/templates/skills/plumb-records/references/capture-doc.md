@@ -33,7 +33,9 @@ sha256 of the owner's message: `message_digest` in `{plumb} clarify --wait --jso
   `live-session` (anything drawn on screen), `hook`, `command` or `other`. Record the evidence
   once shown: `{plumb} proof SR-### --evidence <path> --summary "..." --passed`. Add
   `"post_merge": true` to a proof the owner agreed can only be shown after the branch lands
- : the merge check does not hold on it; the turn after the landing asks for it.
+ : the merge check does not hold on it; the turn after the landing asks for it. Add
+  `"evaluator": true` to a proof the owner picked the independent evaluator for at the proof
+  question: `{plumb} evaluate proof SR-###` then checks it in your place.
 - `supersedes: ["SR-###"]` on a requirement retires existing requirements the new one replaces
   (a `supersedes` link; capture names the old one's still-tested examples, so move them with
   `updates` first). Capture also names live requirements the new ones contradict or may change.
