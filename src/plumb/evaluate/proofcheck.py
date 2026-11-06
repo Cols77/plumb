@@ -34,6 +34,15 @@ plumb set up, sends each request as a headless turn, lets the scripted owner ans
 questions, runs the checks and leaves transcript.jsonl, score.json and the scratch \
 repository's .plumb/ in the run folder. Otherwise run the proof's command yourself.
 
+Your case must reach what each example's "given" states before it can judge the "then": read \
+the tree's own documentation to learn how that state is reached (the commands its owner types, \
+the skills its agent follows) and set it up in the case. A case that never reached the "given" \
+shows nothing either way: that is "could not check", never "not verified".
+
+Your shell runs only plain commands that start with python, python3, plumb, git, pytest, ls, \
+cat or echo: no cd, no &&, no pipes, no variables in front. Name folders by absolute path and \
+with each tool's own option (git -C, plumb's --root, a path given to pytest).
+
 Be strict: verified only when you saw what the proof states. End by writing verdict.json in \
 your working folder: {"verdict": "verified" | "not verified" | "could not check", \
 "summary": "<what you saw, or what was not shown, or why you could not check>"}.
