@@ -143,9 +143,9 @@ const proof = await agent([
   'Every plan item is built:', planText, '',
   '1. Run the tests that cover these requirements under the lock.',
   '2. Repin the links the work moved, under the lock: plumb repin --after-tests',
-  '3. Record the proof the owner stated for each requirement: plumb proof <SR> --evidence <what you ran or saw>',
+  '3. Record the proof the owner stated for each requirement: plumb proof <SR> --evidence <file holding the output> --summary "<what it shows>" --passed (or --failed)',
   '4. Commit the work on this branch, never on main: the message through a file (git commit -F <file>) with one trailer line SR: <SR> per requirement; bypass no hook.',
-  '5. Close the loop: plumb intent done' + SESSION + '. Report the gate to the band: plumb intent progress --task "prove gate passed" (or failed) --done 3 --total 3' + SESSION,
+  '5. Close the loop: plumb intent done --intent ' + intent + SESSION + '. Report the gate to the band: plumb intent progress --task "prove gate passed" (or failed) --done 3 --total 3' + SESSION,
   'Return exitCode (of intent done) and finding (the gate output, plainly, and which proofs are still open).',
 ].join('\n'), { label: 'prove', phase: 'Prove', model: LEVEL.sonnet, schema: GATE })
 return { built, failed, questions, done: !!proof && proof.exitCode === 0, finding: proof ? proof.finding : 'no result' }
