@@ -290,6 +290,14 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
             dry_run: bool = False, backend: Any = None) -> CaptureResult:
     """Write the read-back ``doc`` as proposed records; see the module docstring."""
     plan = _Plan(core, doc)
+    index = core.index()
+    if any((item["fields"].get("proof") or {}).get("evaluator") for item in plan.requirements) \
+            or any((changes.get("proof") or {}).get("evaluator") and not (
+                index[rid].fields.get("proof") or {}).get("evaluator")
+                for rid, changes in plan.updates):
+        from plumb.capture.proof import require_pick
+
+        require_pick(core)   # SR-396 EX-3: the pick is the owner's, in this loop
     unchecked = _check_quotes(core, plan, prompt_digest)
     if prompt_digest:
         from plumb.approvals import find_prompt

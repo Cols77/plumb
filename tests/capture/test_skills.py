@@ -205,8 +205,9 @@ def test_sr396_ex1_the_proof_question_offers_the_evaluator_first(installed: Path
     in every loop; stage C then runs it instead of showing the proof."""
     text = _texts(installed)["plumb-intent"]
     stage_a = text[text.find("Stage A,"):text.find("Stage B,")]
-    assert ('first option, marked as the suggestion, is "An independent evaluator checks it '
-            'for me"') in stage_a
+    from plumb.capture.proof import EVALUATOR_OPTION   # the label plumb looks for
+
+    assert f'first option, marked as the suggestion, is "{EVALUATOR_OPTION}"' in stage_a
     assert "never take it as picked from an earlier one" in stage_a and "--evaluator" in stage_a
     stage_c = text[text.find("Stage C,"):text.find("Studies:")]
     for words in ("plumb evaluate proof", "ask nothing", "plumb proof SR-### --overrule",

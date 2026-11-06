@@ -53,6 +53,7 @@ NOT_VERIFIED = "proof-not-verified"
 OVERRULED = "proof-overruled"
 YES = "Yes, I saw it working"
 NO = "No, not yet"
+EVALUATOR_OPTION = "An independent evaluator checks it for me"   # the loop's proof question
 
 
 def _flat(value: Any) -> str:
@@ -81,6 +82,36 @@ def evaluator_picked(record: Record) -> bool:
     """SR-396: whether the owner picked the independent evaluator for ``record``'s proof."""
     proof = proof_of(record)
     return proof is not None and proof.get("evaluator") is True
+
+
+def require_pick(core: Core) -> None:
+    """SR-396 EX-3: a new evaluator pick is refused unless the owner, in this session and since
+    its open loop opened, answered a question offering the evaluator. A loop opened in main
+    keeps its answers in main's log, so that log is read too."""
+    from plumb.api import open_core
+    from plumb.stale import current_session
+    from plumb.understand import cmd_intent
+
+    root = Path(core.root)
+    session = current_session(root)
+    held = [d for _, d in cmd_intent.loops(root, session)
+            if not d.get("handed_to") and not cmd_intent._passed(d, "build")]
+    since = str(held[-1].get("opened_at") or "") if held else ""
+    for n, checkout in enumerate(cmd_intent._checkouts(root)):
+        for e in (core if n == 0 else open_core(checkout)).events():
+            if e.kind != "question-answer" or e.payload.get("session") != session \
+                    or e.payload.get("via") != "question-tool" or e.at < since:
+                continue
+            labels = [o.get("label") for o in e.payload.get("options") or []
+                      if isinstance(o, Mapping)]
+            # shortcut: a free-text answer counts as a pick unless it is another option's
+            # label; judge the answer if a free-text "no" is ever taken as a pick
+            if EVALUATOR_OPTION in labels and e.payload.get("answer") not in (
+                    set(labels) - {EVALUATOR_OPTION}):
+                return
+    raise CaptureError("the owner did not pick the evaluator in this loop: offer it at the "
+                       f'proof question (first option "{EVALUATOR_OPTION}") and set it only '
+                       "on their answer; a pick of an earlier loop does not carry over")
 
 
 def post_merge(record: Record) -> bool:
@@ -196,6 +227,10 @@ def ask(core: Core, sr_id: str, session: str) -> dict[str, Any]:
     from plumb.understand.judge import question_key
 
     record = _requirement(core, sr_id)
+    if evaluator_confirmed(core, sr_id):   # SR-397: the owner is told, not asked
+        raise CaptureError(f"{sr_id} is verified by the evaluator the owner picked: tell the "
+                           "owner the verdict and where the evidence is; ask nothing (they "
+                           f"overrule it by saying so: plumb proof {sr_id} --overrule)")
     question = question_of(record)
     if question is None:
         raise CaptureError(f"{sr_id} is not shown working: record passing evidence first "
@@ -482,11 +517,13 @@ def run(command: str, argv: list[str]) -> int:
         if args.evaluator is False and any(
                 e.kind in (VERIFIED, NOT_VERIFIED) and e.payload.get("record") == args.sr
                 for e in core.events()):
-            # shortcut: the pick itself is the agent's note, as post-merge is; tie it to the
-            # owner's logged answer if a pick is ever found set or cleared without them
+            # shortcut: clearing a pick is the agent's note, as post-merge is; tie it to the
+            # owner's logged answer if a pick is ever found cleared without them
             raise CaptureError(f"the evaluator already gave a verdict on {args.sr}: the pick "
                                f"stays; the owner's yes still confirms it (plumb proof "
                                f"{args.sr} --ask)")
+        if args.evaluator and not evaluator_picked(record):
+            require_pick(core)
         if args.plan is not None or args.kind is not None or args.post_merge is not None \
                 or args.evaluator is not None:
             record, dropped = set_plan(core, args.sr, args.plan, args.kind, args.post_merge,

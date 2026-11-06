@@ -16,6 +16,7 @@ from plumb.capture import proof
 from plumb.capture.records import CaptureError
 from plumb.contracts import Target
 from plumb.evaluate import loop, proofcheck, tasks
+from plumb.understand import cmd_intent
 
 INT = "---\nid: INT-001\ntitle: Grounded\nquote: q\nreadback: Ground the work.\n---\n"
 SR = """---
@@ -151,6 +152,40 @@ def test_sr396_ex2_no_pick_raises_before_any_run(core) -> None:
     with pytest.raises(ValueError, match="SR-003"):
         go(core, ["SR-001", "SR-003"], fake)
     assert fake.calls == []
+
+
+def _answer(core, answer: str) -> None:
+    core.log_append_many("events", [("question-answer", {
+        "session": "s", "via": "question-tool", "question": "How will you see it working?",
+        "options": [{"label": proof.EVALUATOR_OPTION}, {"label": "I check it myself"}],
+        "answer": answer})])
+
+
+def test_sr396_ex3_a_pick_needs_the_owners_answer_in_this_loop(core, monkeypatch, capsys) -> None:
+    from plumb.capture.capture import capture
+
+    monkeypatch.setenv("PLUMB_SESSION_ID", "s")
+    pick = ["proof", "SR-003", "--evaluator", "--root", str(core.root)]
+    loop_file = cmd_intent.loop_path(Path(core.root), "s", "d" * 64)
+    assert cli.main(pick) != 0 and "did not pick" in capsys.readouterr().err   # never offered
+    _answer(core, "I check it myself")
+    assert cli.main(pick) != 0                                                 # declined
+    _answer(core, proof.EVALUATOR_OPTION)
+    cmd_intent.save(loop_file, {"opened_at": "2999-01-01T00:00:00Z", "stages": {}})
+    assert cli.main(pick) != 0                                   # picked in an earlier loop
+    update = {"updates": [{"id": "SR-003", "proof": {"plan": "p", "kind": "command",
+                                                     "evaluator": True}}]}
+    with pytest.raises(CaptureError, match="did not pick"):
+        capture(open_core(core.root), update)
+    cmd_intent.save(loop_file, {"opened_at": "2000-01-01T00:00:00Z", "stages": {}})
+    assert cli.main(pick) == 0
+    assert proof.evaluator_picked(open_core(core.root).index()["SR-003"])
+
+
+def test_sr397_ex1_the_owner_is_not_asked_once_the_evaluator_verified(core) -> None:
+    go(core, ["SR-001"], Fake())
+    with pytest.raises(CaptureError, match="ask nothing"):
+        proof.ask(open_core(core.root), "SR-001", "s")
 
 
 def test_sr398_ex1_not_verified_names_what_was_missing_and_asks_nothing(core) -> None:
