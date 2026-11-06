@@ -686,7 +686,7 @@ def cmd_status(command: str, argv: list[str]) -> int:
     lines += _awareness_section(args)
     from plumb.landing import board_lines
 
-    lines += board_lines(Path(core.root))
+    lines += board_lines(Path(_core(args).root))
     emit(lines, False)
     return 0
 

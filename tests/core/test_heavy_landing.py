@@ -115,3 +115,12 @@ def test_a_branch_waiting_on_the_owner_does_not_hold_the_next(gitrepo: Path) -> 
     assert "an answer on SR-9" in board and "owner" in board
     assert run(gitrepo, "landing", "ready", "intent/a").returncode == 0
     assert "an answer on SR-9" not in run(gitrepo, "landing").stdout
+
+
+@pytest.mark.sr("SR-386")
+def test_status_prints_the_board_only_when_the_queue_is_not_empty(gitrepo: Path) -> None:
+    """Item 10: status ends with the board; an empty queue adds nothing."""
+    assert "intent/a" not in run(gitrepo, "status").stdout
+    run(gitrepo, "landing", "add", "intent/a", "--session", "s-a")
+    out = run(gitrepo, "status")
+    assert "intent/a" in out.stdout and "s-a" in out.stdout, out.stderr
