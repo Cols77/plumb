@@ -578,6 +578,13 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     return result
 
 
+def _level_models(root: Path) -> dict[str, str]:
+    """SR-389: the levels whose model is not their own name, to pass to the workflow."""
+    from plumb.config import load_config
+
+    return {k: v for k, v in load_config(root).understand.levels.items() if k != v}
+
+
 def lines(root: Path, workflow: str = "") -> list[tuple[str, str]]:
     """``(key, text)`` for the next turn: the latest landing's line, then the open debug cases
     (SR-300) with how many were resolved; ``workflow`` names the shipped workflow (SR-385)."""
@@ -596,7 +603,8 @@ def lines(root: Path, workflow: str = "") -> list[tuple[str, str]]:
     open_rows, resolved = summary.open_cases(root)
     if open_rows:
         out.append((f"cases:{len(open_rows)}:{resolved}",
-                    summary.cases_text(open_rows, resolved, workflow)))
+                    summary.cases_text(open_rows, resolved, workflow,
+                                       _level_models(root) if workflow else None)))
     return out
 
 

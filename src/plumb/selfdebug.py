@@ -301,12 +301,18 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     evidence, tried = _evidence(core, case), []
     old = os.environ.get("PLUMB_JOB")
     os.environ["PLUMB_JOB"] = "selfdebug"      # a hook in the fixer's run opens no case
-    models = [{"stage": "evidence", "model": core.config.understand.judge_model}]
+    from plumb.config import LEVELS, model_of
+
+    cfg = core.config
+    models = [{"stage": "evidence", "model": model_of(cfg, cfg.understand.judge_model)}]
+    first = cfg.understand.repin_model
+    base = LEVELS.index(first) if first in LEVELS else 1   # a model name counts as sonnet
     try:
         for n in range(1, rounds + 1):
-            model = getattr(core.config.understand, "repin_model" if n == 1
-                            else "diagnose_model")
-            models.append({"stage": f"round {n}", "model": model})
+            # SR-389: a failed round is retried one level up, never past the largest
+            level = first if n == 1 else LEVELS[min(base + n - 1, len(LEVELS) - 1)]
+            model = model_of(cfg, level)
+            models.append({"stage": f"round {n}", "level": level, "model": model})
             debug._update(root, [case["id"]], models=models)   # SR-328: the model per stage
             try:
                 got = fixer(round=n, case=case, evidence=evidence, worktree=wt, model=model,

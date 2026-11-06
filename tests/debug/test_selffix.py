@@ -193,7 +193,7 @@ def test_ex4_three_failed_rounds_end_as_a_defect_report_and_ask_nothing(
     fixer = Fixer(fixes_nothing)
     out, _, _ = _fix(plumb_repo, fixer, Meaning(True, "same"))
     assert out.state == "reported" and len(out.rounds) == 3
-    assert fixer.models == ["sonnet", "opus", "opus"] and len(fixer.previous) == 2
+    assert fixer.models == ["sonnet", "opus", "fable"] and len(fixer.previous) == 2
     (row,) = [c for c in debug.open_cases(plumb_repo) if c["id"] == CASE]
     assert "round 1" in row["report"] and "round 3" in row["report"]
     assert "Missing:" in row["report"] and "Nothing was committed" in row["report"]

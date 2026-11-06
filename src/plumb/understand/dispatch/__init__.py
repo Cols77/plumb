@@ -81,9 +81,11 @@ def configured(core: Any, *, model: str | None = None) -> Dispatcher:
     script = os.environ.get("PLUMB_FAKE_DISPATCH")
     if script:
         return ScriptedDispatcher(Path(script))
-    from plumb.config import UnderstandConfig
+    from plumb.config import Config, UnderstandConfig, model_of
 
     settings = core.config.understand if core is not None else UnderstandConfig()
+    # SR-389: the stage settings name levels; a name that is no level is a model
+    model = model_of(core.config if core is not None else Config(), model or settings.model)
     timeout_s = float(settings.timeout_s) * max(1, budget_scale.get())
     choice = str(settings.dispatch or "auto").strip().lower()
     if choice == "auto":
@@ -94,11 +96,11 @@ def configured(core: Any, *, model: str | None = None) -> Dispatcher:
     if choice == "claude-code":
         from plumb.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
-        return ClaudeCodeDispatcher(model=model or settings.model, timeout_s=timeout_s)
+        return ClaudeCodeDispatcher(model=model, timeout_s=timeout_s)
     if choice == "hermes":
         from plumb.understand.dispatch.hermes import HermesDispatcher
 
-        return HermesDispatcher(model=model or settings.model, timeout_s=timeout_s)
+        return HermesDispatcher(model=model, timeout_s=timeout_s)
     if choice == "openrouter":
         from plumb.understand.dispatch.openrouter import OpenRouterDispatcher
 

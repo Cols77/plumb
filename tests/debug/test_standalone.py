@@ -50,8 +50,39 @@ def test_ex2_the_smallest_model_gathers_evidence_the_middle_one_fixes_the_larges
     assert fixer.models == ["sonnet", "opus"]
     row = next(c for c in debug.all_cases(plumb_repo) if c["id"] == CASE)
     assert row["models"] == [{"stage": "evidence", "model": "haiku"},
-                             {"stage": "round 1", "model": "sonnet"},
-                             {"stage": "round 2", "model": "opus"}]
+                             {"stage": "round 1", "level": "sonnet", "model": "sonnet"},
+                             {"stage": "round 2", "level": "opus", "model": "opus"}]
+
+
+@pytest.mark.sr("SR-389")
+def test_ex3_the_sonnet_like_level_set_to_another_model_runs_the_first_round(
+        plumb_repo: Path,  # noqa: F811
+) -> None:
+    (plumb_repo / ".plumb" / "config.yaml").write_text(
+        "understand:\n  levels:\n    sonnet: other-model\n", encoding="utf-8")
+    fixer = Fixer(fixes_nothing, fixes_add)
+    out, _, _ = _fix(plumb_repo, fixer, Meaning(True, "wording only", 0.9))
+    assert out.state == "fixed", out.detail
+    assert fixer.models == ["other-model", "opus"]
+    row = next(c for c in debug.all_cases(plumb_repo) if c["id"] == CASE)
+    assert row["models"][1] == {"stage": "round 1", "level": "sonnet", "model": "other-model"}
+
+
+@pytest.mark.sr("SR-389")
+def test_a_failed_round_is_retried_one_level_up_never_past_fable(
+        plumb_repo: Path,  # noqa: F811
+) -> None:
+    fixer = Fixer(fixes_nothing, fixes_nothing, fixes_nothing, fixes_nothing)
+    _fix(plumb_repo, fixer, Meaning(True, "wording only", 0.9), rounds=4)
+    assert fixer.models == ["sonnet", "opus", "fable", "fable"]
+
+
+@pytest.mark.sr("SR-389")
+def test_ex4_an_unknown_level_is_refused_naming_the_four() -> None:
+    from plumb.config import config_from_mapping
+
+    with pytest.raises(ValueError, match="haiku, sonnet, opus, fable"):
+        config_from_mapping({"understand": {"levels": {"giant": "x"}}})
 
 
 def test_the_help_names_every_debug_subcommand_the_skill_tells_agents_to_run(
