@@ -59,6 +59,9 @@ def test_runs_queued_job_once(repo: Path, fake: FakeDispatcher,
 def test_an_answer_queued_during_the_backlog_runs_before_its_remaining_jobs(
         repo: Path, fake: FakeDispatcher, monkeypatch: pytest.MonkeyPatch) -> None:
     """The owner's answer arrives while the backlog pass runs: it goes next, not last."""
+    # one at a time (understand.parallel_calls: 1): what this test is about
+    with (repo / ".plumb" / "config.yaml").open("a", encoding="utf-8") as fh:
+        fh.write("\nunderstand:\n  parallel_calls: 1\n")
     core = Core(repo)
     first, second = (jobs.new_job("a", "s1", "a.v1", {"pass": "backlog", "n": n},
                                   created=f"2026-01-01T00:00:0{n}Z") for n in (1, 2))
