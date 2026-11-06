@@ -11,12 +11,14 @@ import contextlib
 import os
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
 
 HEAVY_WAIT_S = float(os.environ.get("PLUMB_HEAVY_WAIT_S") or 20.0)
 HELD = "PLUMB_HEAVY_HELD"
+_TURNS = threading.RLock()      # SR-388: threads of one process take turns too
 
 
 def common_dir(cwd: Path) -> Path:
@@ -52,6 +54,14 @@ def _dead(pid: int | None) -> bool:
 
 @contextlib.contextmanager
 def heavy(cwd: Path, what: str) -> Iterator[None]:
+    """The lock of ``_heavy``, one thread of the process at a time (the same thread may go in
+    again)."""
+    with _TURNS, _heavy(cwd, what):
+        yield
+
+
+@contextlib.contextmanager
+def _heavy(cwd: Path, what: str) -> Iterator[None]:
     """Hold the lock for the block: wait while another job holds it (saying once what for),
     take over a lock whose holder is gone. Does nothing under a holder (``PLUMB_HEAVY_HELD``)."""
     if os.environ.get(HELD):

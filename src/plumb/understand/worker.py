@@ -511,7 +511,9 @@ class _Pass:
             answers = [f.result() for f in futures]
         for (job, (module, sent, reporter, _step, _counts), started, t0), got in zip(
                 ready, answers, strict=True):
-            if got[0] == "ok":      # an earlier answer of the batch may have changed the logs
+            # an earlier answer of the batch may have changed the logs (a kind that settles
+            # its own job says stale_check = False)
+            if got[0] == "ok" and getattr(module, "stale_check", True):
                 try:
                     now = module.recompute(self.core, sent)
                 except Exception:  # noqa: BLE001 - execute reports it

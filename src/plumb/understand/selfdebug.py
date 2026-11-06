@@ -14,6 +14,7 @@ from plumb.understand.verdict import Cascaded, Waiting
 __all__ = ["Waiting", "apply", "build", "cascade", "describe", "kind", "recompute", "schema"]
 
 kind = "selfdebug"
+stale_check = False     # SR-388: the case settles itself; the worker must not run it again
 SCHEMA_ID = "selfdebug.v1"
 schema: dict[str, Any] = {"id": SCHEMA_ID, "type": "object", "required": ["state"],
                           "properties": {"state": {"type": "string"},
@@ -36,9 +37,9 @@ def describe(job: Job) -> str:
     return "fixing a defect in plumb"
 
 
-def cascade(core: Any, job: Job, **context: Any) -> Cascaded:
+def cascade(core: Any, job: Job, guard: Any = None, **context: Any) -> Cascaded:
     case = next(c for c in debug.open_cases(core.root) if c["id"] == job.inputs["case"])
-    out = selfdebug.fix(core, case)
+    out = selfdebug.fix(core, case, guard=guard)
     if out.state == "held":
         raise Waiting(out.detail, out.line)
     return Cascaded({"state": out.state, "branch": out.branch, "detail": out.detail[:500]},

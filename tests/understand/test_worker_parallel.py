@@ -69,10 +69,10 @@ def _enqueue(core: Core, count: int) -> list[Any]:
     return made
 
 
-def test_parallel_calls_default_is_one_and_below_one_is_refused() -> None:
+def test_parallel_calls_default_is_three_and_below_one_is_refused() -> None:
     from plumb.config import UnderstandConfig
 
-    assert UnderstandConfig().parallel_calls == 1
+    assert UnderstandConfig().parallel_calls == 3      # DEC-427: the owner, from the wall times
     for bad in (0, -2):
         with pytest.raises(ValueError):
             UnderstandConfig(parallel_calls=bad)

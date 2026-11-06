@@ -211,7 +211,8 @@ class UnderstandConfig:
     progress_min_s: float = 2
     progress_interval_s: float = 1
     max_consecutive_failures: int = 3
-    parallel_calls: int = 1      # SR-387: independent model calls of a queue sent together
+    # SR-387: independent model calls of a queue sent together (DEC-427: 3, the owner)
+    parallel_calls: int = 3
     # SR-389: the model each capability level runs; the stage settings above name a level
     levels: dict[str, str] = field(default_factory=lambda: {n: n for n in LEVELS})
 

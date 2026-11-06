@@ -49,9 +49,10 @@ def test_ex2_the_smallest_model_gathers_evidence_the_middle_one_fixes_the_larges
     assert out.state == "fixed", out.detail
     assert fixer.models == ["sonnet", "opus"]
     row = next(c for c in debug.all_cases(plumb_repo) if c["id"] == CASE)
-    assert row["models"] == [{"stage": "evidence", "model": "haiku"},
-                             {"stage": "round 1", "level": "sonnet", "model": "sonnet"},
-                             {"stage": "round 2", "level": "opus", "model": "opus"}]
+    # SR-388: each round is three stages, all at the round's level
+    assert row["models"] == [{"stage": "evidence", "model": "haiku"}] + [
+        {"stage": f"round {n} {s}", "level": m, "model": m}
+        for n, m in ((1, "sonnet"), (2, "opus")) for s in ("diagnosis", "fix", "review")]
 
 
 @pytest.mark.sr("SR-389")
@@ -65,7 +66,8 @@ def test_ex3_the_sonnet_like_level_set_to_another_model_runs_the_first_round(
     assert out.state == "fixed", out.detail
     assert fixer.models == ["other-model", "opus"]
     row = next(c for c in debug.all_cases(plumb_repo) if c["id"] == CASE)
-    assert row["models"][1] == {"stage": "round 1", "level": "sonnet", "model": "other-model"}
+    assert row["models"][1:4] == [{"stage": f"round 1 {s}", "level": "sonnet",
+                                   "model": "other-model"} for s in ("diagnosis", "fix", "review")]
 
 
 @pytest.mark.sr("SR-389")

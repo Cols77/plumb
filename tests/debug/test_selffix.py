@@ -84,7 +84,7 @@ class Fixer:
     def __init__(self, *steps) -> None:
         self.steps, self.models, self.wt = list(steps), [], None
 
-    def __call__(self, *, round, case, evidence, worktree, model, previous):
+    def __call__(self, *, round, case, evidence, worktree, model, previous, **_):
         self.models.append(model)
         self.wt = worktree
         self.evidence, self.previous = evidence, previous
@@ -130,7 +130,10 @@ def _fix(repo: Path, fixer: Fixer, answer: Meaning, rounds: int = 3):
     core = open_core(repo)
     case = next(c for c in debug.open_cases(repo) if c["id"] == CASE)
     runner, sonnet = Runner(fixer), Judge(answer)
-    out = selfdebug.fix(core, case, rounds=rounds, fixer=fixer, runner=runner, judge=sonnet)
+    from debug.staged import ok_stages  # SR-388: the diagnosis and the review, scripted
+
+    out = selfdebug.fix(core, case, rounds=rounds, fixer=fixer, runner=runner, judge=sonnet,
+                        **ok_stages())
     return out, runner, sonnet
 
 
@@ -264,7 +267,7 @@ def test_the_background_job_runs_the_fix(plumb_repo: Path, monkeypatch) -> None:
                         or selfdebug.Outcome("fixed", BRANCH, "ok"))
     job = kind.build(open_core(plumb_repo), "s", case=CASE)
     kind.cascade(open_core(plumb_repo), job)
-    assert got == {}
+    assert got == {"guard": None}     # SR-388: the worker's guard, none outside the worker
 
 
 def _commit_file(root: Path, name: str) -> None:

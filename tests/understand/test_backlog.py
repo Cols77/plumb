@@ -94,6 +94,9 @@ def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
         repo: Path, write_record, engine_standins) -> None:
     from plumb.understand import backlog, judge, worker
 
+    # one at a time (understand.parallel_calls: 1): what this test is about
+    with (repo / ".plumb" / "config.yaml").open("a", encoding="utf-8") as fh:
+        fh.write("\nunderstand:\n  parallel_calls: 1\n")
     ids = bulk(repo, write_record, {"alpha": 3, "beta": 3, "gamma": 3})
     backlog.start(open_core(repo), SESSION)
     core = open_core(repo)
