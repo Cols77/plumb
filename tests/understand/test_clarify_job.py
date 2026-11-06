@@ -321,3 +321,17 @@ def test_sr154_operating_the_tools_is_not_a_request() -> None:
     prompt = (Path(clarify.__file__).parent / "agents" / "clarify.md").read_text(
         encoding="utf-8")
     assert "this repository's own" in prompt and "Operating the tools or the machine is" in prompt
+
+
+def test_sr223_ex22_a_loop_asking_questions_holds_no_unrelated_edit(
+        repo: Path, engine_standins: Any) -> None:
+    """SR-223 EX-22: the intent loop's check leaves questions waiting, yet an edit no confirmed
+    record covers goes ahead (owner, 2026-11-06: only related edits wait)."""
+    from plumb.hosts.claude_code import pretool
+
+    gaps = [_gap("a", "First?", blocking=True), _gap("b", "Second?", blocking=True)]
+    core, _ = _asked("/plumb intent rebuild the billing system",
+                     {"intent": "yes", "topic": "billing", "gaps": gaps}, repo, engine_standins)
+    assert len(clarify.gap_questions(core, SESSION)) == 2
+    assert not gate.is_closed(repo, SESSION)
+    assert pretool.decide(repo, SESSION, "Edit", {"file_path": "src/a.py"}) == {}
