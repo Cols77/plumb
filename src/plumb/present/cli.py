@@ -208,7 +208,10 @@ def cmd_align(command: str, argv: list[str]) -> int:
         ids, _, answered = _resolve_or_ask(core, args.words, args.as_json)
         if answered:
             return 0
-    result = align(core, ids)
+    from plumb.heavy import heavy
+
+    with heavy(core.root, "plumb align"):
+        result = align(core, ids)
     emit(result.as_dict() if args.as_json else align_lines(result), args.as_json)
     return 0
 

@@ -38,7 +38,7 @@ def describe(job: Job) -> str:
 
 def cascade(core: Any, job: Job, **context: Any) -> Cascaded:
     case = next(c for c in debug.open_cases(core.root) if c["id"] == job.inputs["case"])
-    out = selfdebug.fix(core, case, locked=True)   # background: take the heavy lock
+    out = selfdebug.fix(core, case)
     if out.state == "held":
         raise Waiting(out.detail, out.line)
     return Cascaded({"state": out.state, "branch": out.branch, "detail": out.detail[:500]},

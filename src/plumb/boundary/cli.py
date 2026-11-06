@@ -60,13 +60,18 @@ def _configured(core: Any) -> dict[str, Any]:
 def _print_report(core: Any, base: str, *, run_full: bool, as_json: bool,
                   hook: bool = False) -> Any:
     """Compute, print and return one ``MergeReport`` (``hook``: inside the pre-push hook)."""
+    import contextlib
+
     from plumb import progress
     from plumb.boundary import as_dict, merge_report
+    from plumb.heavy import heavy
     from plumb.cliutil import emit
 
     with progress.scope(core.root, "merge-check") as reporter:
         reporter.update(STEP_CHECK)
-        report = merge_report(core, base, run_full=run_full, hook=hook)
+        with (heavy(core.root, "plumb merge-check --run") if run_full
+              else contextlib.nullcontext()):
+            report = merge_report(core, base, run_full=run_full, hook=hook)
         reporter.done(MERGE_END)
     if as_json:
         emit(as_dict(report), True)

@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from plumb import debug, selfdebug, stale
+from plumb import heavy as heavy_mod
 from plumb.api import open_core
 from plumb.config import Config
 from plumb.contracts import Target
@@ -239,14 +240,14 @@ def test_the_background_run_waits_for_the_heavy_lock(repo: Path, monkeypatch) ->
     takes it, and leaves none behind."""
     import threading
 
-    monkeypatch.setattr(selfdebug, "HEAVY_WAIT_S", 0.01)
+    monkeypatch.setattr(heavy_mod, "HEAVY_WAIT_S", 0.01)
     lock = repo / ".git" / "plumb-heavy.lock"
     lock.write_text("another session: pytest\n", encoding="utf-8")
     seen: list[str] = []
 
     def job() -> None:
         with selfdebug.heavy(repo, "selfdebug x: pytest"):
-            seen.append(lock.read_text(encoding="utf-8"))
+            seen.append(lock.read_text(encoding="utf-8").splitlines()[0])
 
     t = threading.Thread(target=job)
     t.start()
@@ -254,16 +255,16 @@ def test_the_background_run_waits_for_the_heavy_lock(repo: Path, monkeypatch) ->
     assert t.is_alive() and not seen          # still waiting on the other session
     lock.unlink()
     t.join(5)
-    assert seen == ["selfdebug x: pytest\n"] and not lock.exists()
+    assert seen == ["selfdebug x: pytest"] and not lock.exists()
 
 
-def test_the_background_job_runs_the_fix_under_the_lock(plumb_repo: Path, monkeypatch) -> None:
+def test_the_background_job_runs_the_fix(plumb_repo: Path, monkeypatch) -> None:
     got: dict = {}
     monkeypatch.setattr(selfdebug, "fix", lambda core, case, **kw: got.update(kw)
                         or selfdebug.Outcome("fixed", BRANCH, "ok"))
     job = kind.build(open_core(plumb_repo), "s", case=CASE)
     kind.cascade(open_core(plumb_repo), job)
-    assert got == {"locked": True}
+    assert got == {}
 
 
 def _commit_file(root: Path, name: str) -> None:
