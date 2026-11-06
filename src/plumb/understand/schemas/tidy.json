@@ -1,150 +1,20 @@
 {
   "id": "tidy.v1",
-  "title": "Which open cards the owner's confirmed records already settle, and which principles they hinge on",
+  "title": "Which waiting questions the owner's answers or confirmed records already settle",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "verdicts"
+    "questions"
   ],
   "properties": {
-    "verdicts": {
-      "type": "array",
-      "description": "One verdict for each card that should be withdrawn; nothing for the cards to keep.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "card",
-          "verdict"
-        ],
-        "properties": {
-          "card": {
-            "type": "string",
-            "description": "The card id as given."
-          },
-          "verdict": {
-            "type": "string",
-            "enum": [
-              "withdraw_answered",
-              "withdraw_duplicate",
-              "keep"
-            ]
-          },
-          "record": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "withdraw_answered: the id of the confirmed record that answers the card."
-          },
-          "quote": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "withdraw_answered: the words of that record that answer it, copied exactly."
-          },
-          "other": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "withdraw_duplicate: the id of the other open card that asks the same."
-          }
-        }
-      }
-    },
-    "principles": {
-      "type": "array",
-      "description": "One entry for a principle that several open cards hinge on; asked once as one card.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "question",
-          "options",
-          "cards"
-        ],
-        "properties": {
-          "question": {
-            "type": "string",
-            "description": "The principle as one question to the person."
-          },
-          "options": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 4,
-            "items": {
-              "type": "string"
-            }
-          },
-          "cards": {
-            "type": "array",
-            "minItems": 2,
-            "items": {
-              "type": "string"
-            },
-            "description": "The ids of the open cards the answer would settle."
-          }
-        }
-      }
-    },
-    "settlements": {
-      "type": "array",
-      "description": "One entry for each grouped card a confirmed decision settles, or that it cannot settle.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "card",
-          "action"
-        ],
-        "properties": {
-          "card": {
-            "type": "string"
-          },
-          "action": {
-            "type": "string",
-            "enum": [
-              "withdraw",
-              "repin",
-              "reword",
-              "stays"
-            ]
-          },
-          "decision": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The id of the confirmed record that settles it."
-          },
-          "quote": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The words of that record that settle it, copied exactly."
-          },
-          "wording": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "reword: the statement the requirement should now read."
-          }
-        }
-      }
-    },
     "questions": {
       "type": "array",
-      "description": "One entry for each waiting question an answer or a confirmed record already settles; nothing for the others.",
+      "description": "One entry for each waiting question that an answer, a confirmed record or a later request settles, or that repeats another; nothing for the others.",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "question",
-          "quote"
+          "question"
         ],
         "properties": {
           "question": {
@@ -167,7 +37,70 @@
           },
           "quote": {
             "type": "string",
-            "description": "The words of that answer or record that settle it, copied exactly and contiguous."
+            "description": "The words of that answer, record or later request that settle it, copied exactly and contiguous."
+          },
+          "other": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Or the id of another waiting question that asks exactly the same."
+          },
+          "replaced": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Or true when a later request of the person (quote its words) replaces this question."
+          }
+        }
+      }
+    },
+    "settlements": {
+      "type": "array",
+      "description": "One entry for each waiting stale-link question a confirmed decision settles by refreshing its link or rewording its requirement.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question",
+          "action",
+          "decision",
+          "quote"
+        ],
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question id as given."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "repin",
+              "reword"
+            ]
+          },
+          "decision": {
+            "type": "string",
+            "description": "The id of the confirmed record that settles it."
+          },
+          "quote": {
+            "type": "string",
+            "description": "The words of that record that settle it, copied exactly."
+          },
+          "record": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "reword, for a question without a link: the id of the confirmed record the decision contradicts, one the question is about."
+          },
+          "wording": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "reword: the statement the requirement should now read."
           }
         }
       }

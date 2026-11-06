@@ -43,7 +43,7 @@ def test_a_typed_answer_to_a_judge_question_closes_it_and_rejudges_its_record(co
     job = read.build(core, SESSION, message={"digest": digest, "text": SAID})
     assert job is not None, "the open judge question is read against the message"
     assert not job.inputs["shown"], "the question's record was not shown (EX-7)"
-    (item,) = [c for c in job.inputs["cards"] if c["kind"] == "judge"]
+    (item,) = [c for c in job.inputs["questions"] if c["kind"] == "judge"]
     assert item["text"] == ASKED and not item["record"]
 
     with as_worker(core.root, SESSION):
@@ -84,7 +84,7 @@ def test_the_round_reading_a_typed_answer_does_not_ask_the_point_right_back(core
                     {"label": "Print draw and start a new game", "description": "Play on."}]})
     digest = log_prompt(core, SAID)
     job = read.build(core, SESSION, message={"digest": digest, "text": SAID})
-    (item,) = [c for c in job.inputs["cards"] if c["kind"] == "judge"]
+    (item,) = [c for c in job.inputs["questions"] if c["kind"] == "judge"]
     with as_worker(core.root, SESSION):
         applied = read.apply(core, job, {"entries": [{
             "id": item["id"], "hash": "", "answer": "change", "option": None, "change": None,
@@ -112,7 +112,7 @@ def test_an_unclear_typed_answer_leaves_the_judge_question_open(core) -> None:
     digest = log_prompt(core, message)
     job = read.build(core, SESSION, message={"digest": digest, "text": message})
     assert job is not None
-    (item,) = [c for c in job.inputs["cards"] if c["kind"] == "judge"]
+    (item,) = [c for c in job.inputs["questions"] if c["kind"] == "judge"]
     with as_worker(core.root, SESSION):
         applied = read.apply(core, job, {"entries": [{
             "id": item["id"], "hash": "", "answer": "open", "option": None, "change": None,

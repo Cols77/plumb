@@ -33,7 +33,7 @@ def _conflicts(argv: list[str]) -> int:
 
     parser = argparse.ArgumentParser(
         prog="plumb conflicts",
-        description="The intent conflicts a merge left in record files, as cards: both "
+        description="The intent conflicts a merge left in record files, as questions: both "
                     "versions, what merged on its own, an advisory compatibility judgment. "
                     "Nothing is chosen.")
     parser.add_argument("words", nargs="*", help="a conflict, a record or plain words")
@@ -147,7 +147,7 @@ def _conflict(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="plumb conflict",
         description="propose: store a combined version (--file) and/or suggest a side (--take "
-                    "with --why); shown on the card, applies nothing. choose: the owner's "
+                    "with --why); shown in the question, applies nothing. choose: the owner's "
                     "terminal. relay, and choose with --prompt or --quote, are refused.")
     parser.add_argument("action", choices=["propose", "choose", "relay"])
     parser.add_argument("ref", nargs="+", help="an IC, a record or plain words")
@@ -162,7 +162,7 @@ def _conflict(argv: list[str]) -> int:
     add_common(parser)
     args = parser.parse_args(argv)
     if args.action == "relay" or args.prompt is not None or args.quote is not None:
-        print("plumb: nothing was chosen. The owner answers on the conflict's card or in chat, "
+        print("plumb: nothing was chosen. The owner answers the conflict's question or in chat, "
               "and plumb reads it; the agent does not relay it", file=sys.stderr)
         return 3
     core = open_core(resolve_root(args.root))

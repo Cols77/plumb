@@ -146,8 +146,6 @@ def test_every_route_names_a_module_path() -> None:
                 "proof",
                 # sub-project 8 (understanding layer, phase C stubs)
                 "understand",
-                # sp8 STALE: `plumb stale card`
-                "stale",
                 # INT-090: `plumb study add|list|candidates|mark`
                 "study",
                 # sub-project 7 PLUGIN: `plumb plugin ignore|unignore|migrate`

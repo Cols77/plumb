@@ -43,14 +43,6 @@ def ran_dir(root: Path, session: str) -> Path:
     return session_dir(root, session) / "ran"
 
 
-def cards_path(root: Path, session: str) -> Path:
-    return session_dir(root, session) / "cards.json"
-
-
-def stale_cards_path(root: Path, session: str) -> Path:
-    return session_dir(root, session) / "stale_cards.json"
-
-
 def gate_path(root: Path, session: str) -> Path:
     return session_dir(root, session) / "gate"
 

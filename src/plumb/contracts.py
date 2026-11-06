@@ -538,32 +538,16 @@ class IntentConflict:
 
 # --------------------------------------------------------------------------- SP8 UNDERSTAND
 # The model-backed understanding layer (docs/plans/sp8-plan.md 3.2): jobs a worker runs, the
-# cards the owner answers, the gate and the progress. Every field has a default.
+# questions the owner answers, the gate and the progress. Every field has a default.
 
 JobKindName = Literal["read", "judge", "clarify", "tidy", "question"]
-# slice 3 (sp7-realign-sp8 C1): the owner items the stop hook drew its own way become card
-# kinds: a regression, a decision that matters, a merge conflict, an early conflict, code that
-# drifted from an intent its requirement agrees with (SR-113 EX-2), and the records a turn
-# proposed, one card per feature (DEC-029); and the acceptance test of a confirmed requirement
-# that changed since the owner confirmed it (SR-030)
-CardKind = Literal["clarify", "choice", "trial", "couldnt_check", "beyond", "contradicts",
-                   "stale_link", "drift", "regression", "test_changed", "conflict",
-                   "early_conflict"]
-CARD_KINDS: tuple[str, ...] = ("clarify", "choice", "trial", "couldnt_check", "beyond",
-                               "contradicts", "stale_link", "drift", "regression",
-                               "test_changed", "conflict", "early_conflict")
 JOB_KINDS: tuple[str, ...] = ("read", "judge", "clarify")
 JOB_VERSION = 1
 GateStateName = Literal["closed", "open"]
 ProgressState = Literal["running", "failed", "done"]
-# SP7 re-aligned (docs/specs/sp7-realign-sp8.md C2, C6): what a card's choice answers, and a
-# card's status; ``left_open`` and ``change_requested`` come from a button and confirm nothing
+# What a question's choice answers.
 ChoiceAnswer = Literal["accepted", "rejected", "change", "open"]
 CHOICE_ANSWERS: tuple[str, ...] = ("accepted", "rejected", "change", "open")
-CardStatus = Literal["open", "answered", "closed", "left_open", "change_requested", "withdrawn"]
-CARD_STATUSES: tuple[str, ...] = ("open", "answered", "closed", "left_open", "change_requested",
-                                  "withdrawn")
-CARD_PRESS = "card-press"              # the log kind of every button the owner presses (C6)
 
 
 @dataclass(frozen=True)
@@ -612,14 +596,6 @@ class ReadItem:
     id: str = ""
     hash: str = ""
     answer: str = "none"                   # yes | no | change | none
-    confidence: float = 0.0
-    evidence: str = ""
-
-
-@dataclass(frozen=True)
-class ReadCard:
-    card: str = ""
-    answers: tuple[Mapping[str, Any], ...] = ()
     confidence: float = 0.0
     evidence: str = ""
 
@@ -679,43 +655,10 @@ class ClarifyAnswer:
 
 
 @dataclass(frozen=True)
-class CardState:
-    """One open card of ``.plumb/session/<id>/cards.json``."""
-
-    id: str = ""
-    kind: str = "clarify"
-    topic: str = ""
-    issue: str = ""
-    evidence: str = ""
-    resolutions: tuple[str, ...] = ()
-    questions: tuple[ClarifyQuestion, ...] = ()
-    status: CardStatus = "open"
-    answers: tuple[ClarifyAnswer, ...] = ()
-    turn: int = 0
-    branch: str = ""                   # the branch the card belongs to ('' = any)
-    diagram: str = ""                  # a block diagram drawn beside the question (INT-041)
-
-
-@dataclass(frozen=True)
-class CardPress:
-    """A ``card-press`` log entry (C6): one button the owner pressed on a drawn card. It
-    confirms nothing by itself; a Confirm press also writes its ``approval``."""
-
-    session: str = ""
-    offer: str = ""                        # digest(card id, question id, record hash)
-    card: str = ""
-    question: str = ""
-    choice: int = 0                        # the index into the question's ``choices``
-    answer: ChoiceAnswer = "accepted"
-
-
-@dataclass(frozen=True)
 class Applied:
     """What applying a job's answer changed, in memory (the caller writes it)."""
 
     job: str = ""
-    cards: tuple[CardState, ...] = ()
-    closed: tuple[str, ...] = ()           # card ids answered or retired
     entries: tuple[Mapping[str, Any], ...] = ()   # ({"kind", "payload"}) log entries to write
     notes: tuple[str, ...] = ()
 

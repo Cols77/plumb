@@ -431,7 +431,7 @@ def record_answer(core: Any, early: Early, key: str, *, by: str, quote: str | No
     payload: dict[str, Any] = {
         "records": approval_items(core, [early.dec]), "by": by,
         "prompt_digest": None, "quote": None, "quote_digest": None, "affirmation": None,
-        "stated_set": None, "note": note or "the owner's answer to the early conflict card",
+        "stated_set": None, "note": note or "the owner's answer to the early conflict question",
         "choice": {"take": key, "option": chosen, "names": list(names),
                    "here": _here(early, current),
                    "there": _there(early, _here(early, current))}}
@@ -686,7 +686,7 @@ def answer_from_conflict(core: Any, conflict: Any, take: str, *, by: str,
             prompt_entry = {"digest": prompt, "via": "turn" if self_recorded else "hook"}
         words = [label, *(_IC_OURS if take == "ours" else _IC_THEIRS)]
         record_answer(core, early, key, by=by, quote=quote, prompt=prompt_entry,
-                      names=words, note=f"the owner's answer to the merge conflict card "
+                      names=words, note=f"the owner's answer to the merge conflict question "
                                          f"{conflict.ic}")
         answered.append(early.dec)
     return answered

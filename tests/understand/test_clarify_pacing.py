@@ -128,3 +128,56 @@ def test_sr363_ex1_questions_raised_and_asked_in_the_turn_are_not_counted(
     assert "for you" not in summary.owner_line(open_core(world), SESSION)
     answered_this_turn(world, [{"question": f"Lone {n}?"} for n in range(2)])
     assert "for you" not in summary.owner_line(open_core(world), SESSION)
+
+
+@pytest.mark.sr("SR-219")
+def test_ex3_a_dependent_question_the_answer_does_not_settle_is_asked_on_its_own(
+        world: Path, hook_input: Any, engine_standins: Any) -> None:  # noqa: F811
+    """SR-219 EX-3: after the principle's answer the judge reads the second record again and
+    still asks about it: that question is asked as its own, specific one."""
+    waiting(world, ("Only the public pages?", "public pages only", False, ("INT-001",)),
+            ("Leave the admin pages?", "public pages only", False, ("SR-001",)))
+    engine_standins.dispatcher.script = {"judge": answer(
+        ("INT-001", "supported"), ("SR-001", "supported"), questions=[])}
+    (shown,) = cmd_clarify.wait(open_core(world), SESSION, timeout=10).questions
+    owner_answers(world, hook_input, shown["question"], "Public pages (Recommended)")
+    engine_standins.dispatcher.script = {"judge": answer(
+        ("INT-001", "supported"), ("SR-001", "beyond"), questions=[
+            asking("SR-001", question="Should admins see the public pages' old URLs?")])}
+    worker.run_once(open_core(world), SESSION)
+    again = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
+    (text,) = asked(again)
+    assert again.state == "ask" and text.startswith("Should admins see the public pages' old")
+
+
+@pytest.mark.sr("SR-219")
+def test_ex8_one_open_question_on_a_principle_is_asked_as_it_is(
+        world: Path) -> None:  # noqa: F811
+    waiting(world, ("Only the public pages?", "public pages only", False, ("SR-001",)))
+    outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
+    assert asked(outcome) == ["Only the public pages?"]
+
+
+@pytest.mark.sr("SR-219")
+def test_ex7_three_records_of_one_principle_are_one_question_naming_them_by_title(
+        world: Path) -> None:  # noqa: F811
+    """SR-219 EX-7: the judge's principle field groups the questions about the three derived
+    records, so one is asked; the agent's wording (``question reword --covers``) names them by
+    title, never by id, and covers all three."""
+    import json
+
+    from plumb.understand import cmd_question
+
+    waiting(world, *[(f"Records {n}?", "public pages only", False, ("SR-001",))
+                     for n in range(3)])
+    outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
+    assert asked(outcome) == ["Records 0?"]
+    wording = "Should the page speed, the cache and the log all follow public pages only?"
+    options = [{"label": "Public pages only", "description": "The three follow it."},
+               {"label": "Every page", "description": "The three widen."}]
+    covers = [a for n in range(3) for a in ("--covers", f"Records {n}?")]
+    assert cmd_question.run("question", ["--root", str(world), "--session", SESSION, "reword",
+                                         *covers, "--question", wording, "--header", "Pages",
+                                         "--options", json.dumps(options)]) == 0
+    (worded,) = judge.reworded(world, SESSION)
+    assert len(worded["covers"]) == 3 and "SR-" not in worded["question"]

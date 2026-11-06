@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from core.stale_asked import asked
 from plumb import links, stale
 from plumb.api import open_core
 from plumb.cli import main
@@ -97,7 +98,7 @@ def test_ex4_reformat_repinned_without_owner(project: Path) -> None:
     assert _state(project) == "current"
     (entry,) = [e for e in open_core(project).log_read("events", ["repin"])]
     assert entry.payload["note"].startswith("tests pass, meaning unchanged")
-    assert stale.read_cards(project, "s1") == []          # the owner was not involved
+    assert asked(project, "s1") == []          # the owner was not involved
 
 
 def test_meaning_changed_refused(project: Path) -> None:
@@ -188,78 +189,30 @@ def test_cli_after_tests_refuses_without_a_model(project: Path, capsys, monkeypa
     assert _state(project) == "stale"
 
 
-def test_ex5_owner_question_becomes_card_and_turn_may_end(project: Path, capsys) -> None:
+def test_ex5_owner_question_is_filed_and_turn_may_end(project: Path) -> None:
     core = open_core(project)
     turn_id = "t1"
     stale.write_baseline(core, "s1", turn_id)           # the turn starts with nothing stale
     _edit(project, CHANGED)
     state = stale.turn_state(open_core(project), "s1", turn_id)
     assert [r.link for r in stale.unresolved(core, "s1", state)] == [LINK]
-    code = main(["stale", "card", LINK, "--topic", "Adds numbers", "--issue",
-                 "add now multiplies instead of adding", "--options",
-                 "Keep it|Reword it|Undo the change", "--recommended", "3",
-                 "--consequences", "keeps the product|says product|sums again",
-                 "--why", "the owner asked for a sum",
-                 "--session", "s1", "--root", str(project)])
-    assert code == 0, capsys.readouterr().err
+    assert stale.ask_owner(
+        open_core(project), "s1", link=LINK, record="SR-001", topic="Adds numbers",
+        issue="add now multiplies instead of adding",
+        options=["Keep it", "Reword it", "Undo the change"],
+        consequences=["keeps the product", "says product", "sums again"],
+        why="the owner asked for a sum")
     state = stale.turn_state(open_core(project), "s1", turn_id)
     assert stale.unresolved(open_core(project), "s1", state) == []   # resolved for the hold
-    (card,) = stale.read_cards(project, "s1")
-    assert card["status"] == "open" and card["recommended"] == 2
+    (question,) = asked(project, "s1")
+    assert question["link"] == LINK and question["options"][0] == "Keep it"
+    assert question["descriptions"][0].endswith("Recommended: the owner asked for a sum")
 
 
-def test_recommended_flag_counts_options_from_one(project: Path, capsys) -> None:
-    code = main(["stale", "card", LINK, "--topic", "T", "--issue", "i", "--options",
-                 "Keep it|Undo it", "--recommended", "1", "--consequences", "a|b",
-                 "--why", "keep", "--session", "s1", "--root", str(project)])
-    assert code == 0, capsys.readouterr().err
-    (card,) = stale.read_cards(project, "s1")
-    assert card["recommended"] == 0          # option 1, "Keep it"
-
-
-def test_refiled_card_never_binds_recommended_to_an_unseen_order(project: Path,
-                                                                  capsys) -> None:
-    # eval-0cf3090d: the agent meant "--recommended 1" as keep the change; the kept card's
-    # options were in another order, so undo was recommended against its own reason
-    stale.add_card(project, "s1", link=LINK, record="SR-001", path="src/calc.py",
-                   topic="T", issue="i", options=["Undo the change", "Keep the change"])
-    code = main(["stale", "card", LINK, "--consequences", "keeps it|undoes it", "--why",
-                 "keep it, as asked", "--recommended", "1", "--session", "s1",
-                 "--root", str(project)])
-    err = capsys.readouterr().err
-    assert code != 0
-    assert "1. Undo the change; 2. Keep the change" in err and "--options" in err
-    (card,) = stale.read_cards(project, "s1")
-    assert "why" not in card and "consequences" not in card    # nothing misrecorded
-    code = main(["stale", "card", LINK, "--options", "Keep the change|Undo the change",
-                 "--consequences", "keeps it|undoes it", "--why", "keep it, as asked",
-                 "--recommended", "1", "--session", "s1", "--root", str(project)])
-    assert code == 0, capsys.readouterr().err
-    (card,) = stale.read_cards(project, "s1")
-    assert card["options"][card["recommended"]] == "Keep the change"
-    assert card["consequences"][card["recommended"]] == "keeps it"
-
-
-def test_stale_cards_file_format(project: Path) -> None:
-    stale.add_card(project, "s1", link=LINK, record="SR-001", path="src/calc.py",
-                   topic="Adds numbers", issue="the sum changed", options=["a", "b", "c"],
-                   recommended=1, turn=4)
-    raw = json.loads((project / ".plumb" / "session" / "s1" / "stale_cards.json")
-                     .read_text("utf-8"))
-    assert raw == [{"link": LINK, "record": "SR-001", "path": "src/calc.py",
-                    "topic": "Adds numbers", "issue": "the sum changed",
-                    "options": ["a", "b", "c"], "recommended": 1, "turn": 4,
-                    "status": "open"}]
-    assert stale.close_card(project, "s1", LINK) is True
-    assert json.loads((project / ".plumb" / "session" / "s1" / "stale_cards.json")
-                      .read_text("utf-8"))[0]["status"] == "resolved"
-    # the phase C adapter reads it back as a card
-    from plumb.understand import cardstore
-
-    stale.add_card(project, "s1", link=LINK, record="SR-001", path="src/calc.py",
-                   topic="Adds numbers", issue="the sum changed", options=["a", "b", "c"])
-    (card,) = cardstore.load(project, "s1")
-    assert card.kind == "stale_link" and card.topic == "Adds numbers"
+def test_a_question_lacking_two_options_is_not_filed(project: Path) -> None:
+    assert not stale.ask_owner(open_core(project), "s1", link=LINK, record="SR-001",
+                               topic="T", issue="i", options=["Keep it"])
+    assert asked(project, "s1") == []
 
 
 def test_the_judge_is_shown_the_requirement_and_the_link(project: Path) -> None:
@@ -328,12 +281,3 @@ def test_a_run_stopped_at_the_time_limit_says_so(project: Path, monkeypatch) -> 
     ok, detail = links.default_runner(open_core(project))(["src/a.py"])
     assert not ok and detail == "stopped at the time limit"
 
-
-def test_stale_cards_lists_the_recommended_option_first_with_what_it_does(project: Path,
-                                                                           capsys) -> None:
-    stale.add_card(project, "s1", link=LINK, record="SR-001", path="src/calc.py", topic="T",
-                   issue="i", options=["Undo it", "Keep it"], recommended=1,
-                   consequences=["goes back", "stays"], why="it was asked for")
-    assert main(["stale", "cards", "--session", "s1", "--root", str(project)]) == 0
-    out = capsys.readouterr().out
-    assert "1. Keep it (recommended) - stays" in out and "2. Undo it - goes back" in out

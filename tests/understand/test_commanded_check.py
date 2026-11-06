@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from capture.capture_helpers import log_prompt
-from understand.test_read_job import clarify_card, open_card
+from understand.test_read_job import open_question
 
 from plumb.api import open_core
 from plumb.understand import files, gate, hooks
@@ -29,7 +29,7 @@ def _jobs(repo: Path) -> list[str]:
     return sorted(p.stem for p in files.jobs_dir(repo, SESSION).glob("*.json"))
 
 
-def test_ex1_an_ordinary_message_with_no_card_runs_nothing(repo: Path, engine_standins: Any) -> None:
+def test_ex1_an_ordinary_message_with_no_question_runs_nothing(repo: Path, engine_standins: Any) -> None:
     _say(repo, WORDS)
     assert _jobs(repo) == [] and not gate.is_closed(repo, SESSION)
 
@@ -39,9 +39,11 @@ def test_ex2_the_command_checks_the_words_and_holds_edits(repo: Path, engine_sta
     assert [j for j in _jobs(repo) if j.startswith("clarify-")] and gate.is_closed(repo, SESSION)
 
 
-def test_ex3_a_waiting_card_has_the_message_read_and_no_check(repo: Path,
-                                                              engine_standins: Any) -> None:
-    open_card(open_core(repo), clarify_card())
+def test_ex3_a_waiting_question_has_the_message_read_and_no_check(
+        repo: Path, write_record: Any, engine_standins: Any) -> None:
+    from understand.test_read_job import make_core, record_text
+
+    open_question(make_core(repo, write_record, [record_text(1)]))
     _say(repo, "go with the first option")
     jobs = _jobs(repo)
     assert any(j.startswith("read-") for j in jobs)

@@ -117,8 +117,7 @@
       "required": ["evidence"],
       "description": "Set only when the message clearly answers a question just put to the person: one option picked, or a plain yes or no to one proposal shown whole.",
       "properties": {
-        "card": {"type": "string", "description": "The id of the open card the message answers."},
-        "question": {"type": "string", "description": "The question in the last reply the message answers, when there is no card."},
+        "question": {"type": "string", "description": "The question in the last reply the message answers."},
         "evidence": {"type": "string", "description": "The person's exact words that answer it, copied from the message."},
         "also": {"type": "string", "description": "The new request the message adds besides the answer, in the person's words; leave out when the whole message is the answer."},
         "options": {
@@ -133,13 +132,6 @@
         "picked": {"type": "string", "description": "With options: the label of the option the person chose, copied from options."},
         "records": {"type": "array", "items": {"type": "string"}, "description": "With options: ids of the records the question is about, as given in touched."}
       }
-    },
-    "replaces": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Ids of the open cards this request answers or makes moot."
     }
   }
 }

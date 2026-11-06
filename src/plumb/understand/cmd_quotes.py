@@ -11,8 +11,8 @@ import sys
 def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="plumb quotes",
-        description="Find older records' words in past session transcripts (shown on the "
-                    "record's card as found, not verified; nothing is confirmed)")
+        description="Find older records' words in past session transcripts (shown with the "
+                    "record as found, not verified; nothing is confirmed)")
     sub = parser.add_subparsers(dest="action", required=True)
     rec = sub.add_parser("recover", help="find the words of records whose quote is in no "
                                          "logged prompt (all such intents when no ID is given)")

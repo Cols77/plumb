@@ -581,10 +581,10 @@ def note_skipped(root: Path, skipped: Sequence[str]) -> None:
         pass
 
 
-def card_released(root: Path, session: str, rows: Sequence[Any], index: Mapping[str, Any],
-                  turn_start: float, held: int) -> list[str]:
-    """The hold gave up on ``rows``: a stale card per link (the owner decides), and the note
-    saying the hold ended, per link."""
+def question_released(core: Any, session: str, rows: Sequence[Any], index: Mapping[str, Any],
+                      held: int) -> list[str]:
+    """The hold gave up on ``rows``: an owner question per link (the owner decides), and the
+    note saying the hold ended, per link."""
     from plumb import stale
     from plumb.present.owner_text import STALE_HOLD_ENDED
 
@@ -592,8 +592,7 @@ def card_released(root: Path, session: str, rows: Sequence[Any], index: Mapping[
     for row in rows:
         title = index[row.record].title if row.record in index else row.record
         other = index[row.what].title if row.what in index else ""
-        stale.add_card(root, session, turn=int(turn_start),
-                       **stale.default_card(row, title, other))
+        stale.ask_owner(core, session, **stale.default_question(row, title, other))
         notes.append(STALE_HOLD_ENDED.format(n=held, title=title))
     return notes
 
@@ -602,9 +601,9 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
                turn: Mapping[str, Any], turn_start: float) -> tuple[list[str], list[str]]:
     """SR-111 EX-3: ``(block reasons, summary lines)`` for the links this turn made stale.
 
-    A stale link the turn caused (against the baseline the prompt hook wrote) that no card
-    holds keeps the turn open, naming it, up to ``hooks.stale_holds_max`` consecutive holds;
-    then the turn is let go with a stale card per link. The links stale before the turn are
+    A stale link the turn caused (against the baseline the prompt hook wrote) that no open
+    question holds keeps the turn open, naming it, up to ``hooks.stale_holds_max`` consecutive holds;
+    then the turn is let go with an owner question per link. The links stale before the turn are
     listed to the agent once per session and never block: in the block when there is one,
     else queued for the next prompt hook (``stale.take_before``). Without a baseline of this
     turn nothing is held. Never fails the stop."""
@@ -630,7 +629,7 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
             # SR-174, DEC-060: a check that waits for the judge does not hold the turn
             open_rows = [r for r in stale.unresolved(core, ctx.session_id, state)
                          if r.record not in no_judge]
-        stale.card_lost_tests(core, ctx.session_id)
+        stale.ask_lost_tests(core, ctx.session_id)
         held = stale.hold_count(ctx.root, ctx.session_id, str(turn_id))
         limit = int(core.config.hooks.stale_holds_max)
         if ctx.extra.get("host"):
@@ -646,11 +645,8 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
             return [], waiting
         if held < limit:
             stale.set_hold_count(ctx.root, ctx.session_id, str(turn_id), held + 1)
-            missing = stale.incomplete_cards(ctx.root, ctx.session_id)
-            return [*waiting, *stale.hold_lines(open_rows, held + 1, limit, missing),
-                    *before], []
-        return [], [*waiting, *card_released(ctx.root, ctx.session_id, open_rows, index,
-                                             turn_start, held)]
+            return [*waiting, *stale.hold_lines(open_rows, held + 1, limit), *before], []
+        return [], [*waiting, *question_released(core, ctx.session_id, open_rows, index, held)]
     except Exception:  # noqa: BLE001 - an advisory lane never fails the stop
         return [], []
 

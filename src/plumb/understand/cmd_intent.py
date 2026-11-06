@@ -306,10 +306,8 @@ def _pane(core: Any, data: Mapping[str, Any]) -> dict[str, Any]:
 def _clean_up(root: Path, path: Path, data: Mapping[str, Any]) -> None:
     """SR-308: remove the ended loop's own working files: the findings and plan files its gates
     were given, its state file and, when no other loop of its session is open, the session's
-    judge results and answered or withdrawn cards. Records and log entries stay."""
+    judge results. Records and log entries stay."""
     import shutil
-
-    from plumb.understand import cardstore
 
     session = path.parent.parent.name
     for name in data.get("files", ()):
@@ -318,10 +316,6 @@ def _clean_up(root: Path, path: Path, data: Mapping[str, Any]) -> None:
     if any(not _passed(d, "build") and not d.get("handed_to") for _, d in loops(root, session)):
         return      # another loop of this session still needs them
     shutil.rmtree(files.results_dir(root, session), ignore_errors=True)
-    cards = cardstore.own_cards(root, session)
-    if cards:
-        cardstore.save(root, session, [c for c in cards
-                                       if c.status not in ("answered", "withdrawn")])
 
 
 def cmd_status(core: Any, args: argparse.Namespace) -> int:

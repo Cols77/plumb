@@ -120,9 +120,10 @@ def handle(ctx: HookContext) -> HookOutput | None:
                                 and q.get("principle") == found.get("principle"))]
             entry["asked"] = {"job": found.get("job"), "key": found.get("key"),
                               "principle": found.get("principle") or "",
-                              "records": list({(r.get("id"), r.get("hash")): r for q in group
-                                               for r in q.get("records") or ()
-                                               if isinstance(r, dict)}.values())}
+                              "records": _carried(core, list({
+                                  (r.get("id"), r.get("hash")): r for q in group
+                                  for r in q.get("records") or () if isinstance(r, dict)
+                              }.values()))}
             if covers:
                 entry["asked"]["keys"] = [q.get("key") for q in merged]
             if _free_text(entry):
@@ -143,6 +144,25 @@ def handle(ctx: HookContext) -> HookOutput | None:
                   "the owner answered the question it raised")
     judge.rejudge(core, ctx.session_id, logged)
     return None
+
+
+def _carried(core: Any, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """SR-216 EX-9: a record superseded while its question was open takes the answer through
+    its replacement (at the replacement's current hash), so the old question is closed by it
+    and never asked again; any other record keeps the version asked."""
+    index = core.index()
+    out: dict[str, dict[str, Any]] = {}
+    for r in records:
+        rid, seen = str(r.get("id")), set()
+        item = r
+        while rid in index and rid not in seen:
+            seen.add(rid)
+            later = core.status([rid])[rid].superseded_by
+            if not later or later not in index:
+                break
+            rid, item = later, {**r, "id": later, "hash": index[later].hash}
+        out.setdefault(rid, item)
+    return list(out.values())
 
 
 def _free_text(entry: dict[str, Any]) -> bool:

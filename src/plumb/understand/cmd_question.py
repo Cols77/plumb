@@ -58,13 +58,19 @@ def _options(raw: str) -> list[dict[str, Any]] | None:
 
 
 def _reopen(core: Any, session: str, words: str) -> int:
-    """SR-218: the owner's word undoes a closure the tidy job made: the question waits again."""
+    """SR-218, SR-217: the owner's word undoes a closure or settlement the tidy job made: the
+    question waits again."""
+    from plumb.understand import tidy
+
     closed = [str(k) for e in core.events() if e.kind == "answer-bound"
               and e.payload.get("by") == "tidy" for k in e.payload["asked"].get("keys") or ()]
+    closed += [str(e.payload.get("key")) for e in core.events() if e.kind == "question-withdrawn"
+               and e.payload.get("by") == "tidy"]
     key = _resolve(closed, words)
     if key is None:
         print(NO_MATCH.format(key=words), file=sys.stderr)
         return 1
+    tidy.undo_settlement(core, key)
     core.log_append_many("events", [("answer-unbound", {"session": session, "key": key})])
     print("plumb: that question waits for the owner again.")
     return 0

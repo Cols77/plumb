@@ -36,6 +36,30 @@ def _deny(reason: str) -> dict[str, Any]:
                                    "permissionDecisionReason": reason}}
 
 
+REASON_WORDS = re.compile(r"\b(because|since|reason|why|so that|so it|so the)\b", re.I)
+
+
+def incomplete_question(tool_input: dict[str, Any]) -> str:
+    """SR-267 EX-5 (DEC-437): what a question-tool call lacks, or "" when it is complete. Each
+    option needs a description (its consequence); the "(Recommended)" one also needs its reason."""
+    missing: list[str] = []
+    for q in tool_input.get("questions") or []:
+        for o in (q.get("options") or []) if isinstance(q, dict) else []:
+            if not isinstance(o, dict):
+                continue
+            label, desc = str(o.get("label") or ""), str(o.get("description") or "").strip()
+            if not desc:
+                missing.append(f'the option "{label}" has no description of what it does')
+            elif "(recommended)" in label.lower() and not REASON_WORDS.search(desc):
+                missing.append(f'the recommended option "{label}" gives no reason for being '
+                               "recommended")
+    if not missing:
+        return ""
+    return ("plumb: this question is incomplete: " + "; ".join(missing) + ". Ask it again with "
+            "each option's consequence in its description and the reason for the recommended "
+            "one.")
+
+
 def decide(root: Path | str, session: str, tool: str,
            tool_input: dict[str, Any] | None = None,
            data: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -53,6 +77,10 @@ def decide(root: Path | str, session: str, tool: str,
         from plumb import main_guard
 
         reason = main_guard.refusal(root, tool, tool_input, data)  # SR-384
+        if reason:
+            return _deny(reason)
+    if tool == "AskUserQuestion" and tool_input:
+        reason = incomplete_question(tool_input)
         if reason:
             return _deny(reason)
     if data is not None:

@@ -18,12 +18,6 @@ owner's message and says which of these things happened:
   Ask no more than it gives. An option "Study it in the room" or "Study it first" is the
   owner's to take: they answer it by pressing the band's line that follows, and you open
   nothing.
-- a choice question (`card`: the one that blocks, because no answer is better supported; its
-  recommended option comes first): ask it with the question tool as `ask` does, with the
-  options as the card names them. When it names a diagram file, draw it first with the
-  diagram:architecture-diagram skill (a picture of the choice, for a question about structure
-  or flow). Build nothing until they answer; plumb reads their answer from the tool.
-  Never answer the question yourself.
 - couldn't check: when the check failed (no judge reachable), say so once in one line and
   work on; nothing is held and nothing is decided by rule. When it is still running, build
   nothing yet and treat it as waiting.
@@ -37,8 +31,8 @@ owner's message and says which of these things happened:
   words>` to open the loop for it, or stop and say in one line that edits are held until the
   owner types `/plumb go`.
 
-With `--json` the answer is `{state, message_digest, card, lines}` (and `questions` on
-`ask`); `state` is `ready`, `ask`, `card`, `couldnt_check`, `waiting` or
+With `--json` the answer is `{state, message_digest, lines}` (and `questions` on
+`ask`); `state` is `ready`, `ask`, `couldnt_check`, `waiting` or
 `held`. `message_digest` is the sha256 of the owner's message: the `<digest>` that `--prompt`
 takes (12 or more hex digits are enough).
 

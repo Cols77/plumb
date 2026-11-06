@@ -124,27 +124,6 @@ def test_read_kinds_streams_and_legacy_offset(paths: PlumbPaths) -> None:
                                              since_offset=legacy[1].offset)] == [1]
 
 
-@pytest.mark.sr("SR-209")
-def test_card_press_and_button_approval_kinds(paths: PlumbPaths) -> None:
-    """SP7 re-aligned C6: a button press is a ``card-press`` entry on the events stream, and
-    the writer accepts an ``approval`` with ``by: owner, via: button`` (its re-check is
-    ``confirm``'s, not the writer's)."""
-    from plumb.contracts import CARD_PRESS
-
-    assert CARD_PRESS == "card-press" and log.stream_of(CARD_PRESS) == "events"
-    press = log.append(paths, "events", CARD_PRESS, {"session": "s1", "offer": "o",
-                                                     "card": "c", "question": "q",
-                                                     "choice": 2, "answer": "open"})
-    approval = log.append(paths, "events", "approval", {
-        "by": "owner", "via": "button", "offer": "o",
-        "records": [{"id": "SR-001", "hash": "sha256:h"}]})
-    assert approval.prev == press.digest and approval.marker == "none"
-    assert [e.kind for e in log.read(paths, "events", kinds=[CARD_PRESS])] == [CARD_PRESS]
-    with pytest.raises(ValueError, match="events stream"):
-        log.append(paths, "evidence", CARD_PRESS, {})
-    assert log.verify_chain(paths, "events") == []
-
-
 def test_marker_recorded(paths: PlumbPaths, monkeypatch: pytest.MonkeyPatch) -> None:
     assert log.append(paths, "events", "repin", {}).marker == "none"
     monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")

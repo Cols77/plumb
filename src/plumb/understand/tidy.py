@@ -1,21 +1,18 @@
-"""The tidy job kind (SR-162): one model reading per change of the open cards against the
-owner's confirmed records, so a card the owner already answered, or one that repeats another,
-is withdrawn without waiting for them. SR-218: the judge's waiting questions are read the same
-way, against the owner's logged answers too (report-ec092f5e: the job read only retired cards).
+"""The tidy job kind (SR-216, SR-217, SR-218): one model reading per change of the judge's
+waiting questions against the owner's confirmed records, logged answers and later requests, so a
+question that no longer needs the owner is closed without waiting for them.
 
-``build`` and ``recompute`` take the cards and the confirmed records from the logs; ``apply``
-withdraws only after exact checks: the record is really confirmed and the quoted words are
-really in it, or the other card is really still open. A withdrawal answers and confirms
-nothing. Unsure is ``keep``.
-
-SR-172: when several open cards hinge on one principle the job raises it once as one card and
-groups them (``cardstore.group``); once a confirmed decision answers it, each grouped card is
-settled from the decision's words: withdrawn, its link repinned, or a rewording proposed as an
-unconfirmed edit. Each settlement is logged as ``card-settled`` with what ``undo`` needs."""
+``build`` and ``recompute`` take the questions, the answers, the requests and the confirmed
+records from the logs; ``apply`` closes a question only after exact checks: the quoted words are
+really in the owner's answer, in the confirmed record or in a request newer than the question,
+or the other question is really still waiting. A closing by an answer or a record is logged as
+``answer-bound``, the others as ``question-withdrawn`` with their reason; none approves
+anything, and ``plumb question reopen`` undoes each. SR-217: a recorded decision may also settle
+a stale-link question by refreshing the link or rewording the requirement, logged with what
+reopen needs to put back. Unsure leaves the question open."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -23,7 +20,7 @@ from typing import Any
 
 from plumb.contracts import Applied, Job
 from plumb.present import owner_text
-from plumb.understand import cardstore, files, read
+from plumb.understand import files, read
 
 kind = "tidy"
 SCHEMA_ID = "tidy.v1"
@@ -44,41 +41,60 @@ schema: Mapping[str, Any] = _load_schema()
 def _confirmed(core: Any) -> dict[str, str]:
     """``{id: text}`` of the records the owner confirmed and nothing replaced, and (SR-335)
     the decisions quoting the owner's own logged words, approved or not."""
-    from plumb.understand import premise
+    from plumb.understand import judge, premise
 
     index, said = core.index(), premise.owner_words(core)
-    return {i: read.record_text(index[i]) for i, s in core.status(list(index)).items()
+    return {i: judge.record_text(index[i]) for i, s in core.status(list(index)).items()
             if s.superseded_by is None and i in index and (
                 s.confirmation == "confirmed" or premise.owner_quoted(index[i], said))}
 
 
 def _inputs(core: Any, session: str) -> dict[str, Any] | None:
-    grouped = cardstore.grouped(core.root, session)
-    cards = [{"id": c.id, "kind": c.kind, "topic": c.topic, "issue": c.issue,
-              "questions": [q.text for q in c.questions], "grouped": c.id in grouped}
-             for c in cardstore.load(core.root, session)]
     questions = _questions(core)
     # shortcut: every confirmed record is sent, so a very large record set makes a big prompt;
-    # upgrade to the records `core.relevant` picks per card when that costs too much
-    if not cards and not questions:
+    # upgrade to the records `core.relevant` picks per question when that costs too much
+    if not questions:
         return None
-    return {"cards": cards, "questions": questions,
-            "answers": _answers(core) if questions else [],
+    return {"questions": questions, "answers": _answers(core), "requests": _requests(core),
             "confirmed": [{"id": i, "text": t} for i, t in _confirmed(core).items()]}
 
 
 QUESTION_CLOSED = ("plumb: closed a waiting question the owner already answered: \"{question}\" "
                    "(their words: \"{quote}\"); plumb question reopen <its words> undoes it")
+QUESTION_DUPLICATE = ("plumb: withdrew a waiting question that repeats another: \"{question}\" "
+                      "(the other: \"{other_question}\"); plumb question reopen <its words> "
+                      "undoes it")
+QUESTION_REPLACED = ("plumb: withdrew a waiting question your newer request replaces: "
+                     "\"{question}\" (your words: \"{quote}\"); plumb question reopen <its words> "
+                     "undoes it")
+QUESTION_SETTLED = "settled from {record}: \"{quote}\""
+QUESTION_SETTLED_SAY = ("plumb: settled a waiting question from a decision of yours "
+                        "({action}): \"{question}\" ({decision}: \"{quote}\"); plumb question "
+                        "reopen <its words> undoes it")
+UNREACHABLE = ("plumb: no judge could be reached to tidy the waiting questions; they stay "
+               "as they are and reach you with no recommendation")
 ANSWERS_MAX = 300    # shortcut: the owner's latest answers only; widen if an older one is missed
 
 
 def _questions(core: Any) -> list[dict[str, Any]]:
-    """SR-218: the judge's open questions of every session: a question lives on after the cards."""
+    """SR-218: the judge's open questions of every session."""
     from plumb.understand import judge
 
     return [{"id": str(q.get("key")), "question": str(q.get("question") or ""),
+             "link": (str(q["job"]).partition(":")[2]
+                      if str(q.get("job")).startswith("stale:") else ""),
+             "asked_at": str(q.get("at") or ""),
              "options": [str(o.get("label") or "") for o in q.get("options") or ()]}
             for q in judge.open_anywhere(core)]
+
+
+REQUESTS_MAX = 20    # shortcut: the owner's latest requests only
+
+
+def _requests(core: Any) -> list[dict[str, str]]:
+    """SR-216 EX-5: the owner's typed requests, newest last, each with when it was made."""
+    return [{"id": str(p.get("at") or ""), "text": str(p.get("text") or "")[:1200]}
+            for p in read._prompt_entries(core)[-REQUESTS_MAX:]]
 
 
 def _answer_entries(core: Any) -> list[Any]:
@@ -107,7 +123,7 @@ def describe(job: Job) -> str:
 
 
 def enqueue(core: Any, session: str) -> None:
-    """Queue the job for the cards open now; it never waits for the model."""
+    """Queue the job for the questions open now; it never waits for the model."""
     from plumb.understand import queue
 
     job = build(core, session)
@@ -115,30 +131,147 @@ def enqueue(core: Any, session: str) -> None:
         queue.enqueue(core, job)
 
 
+def _withdraw(core: Any, session: str, asked: Mapping[str, Any], reason: str, say: str,
+              **detail: Any) -> None:
+    from plumb.understand import judge, worker
+
+    judge.withdraw(core, session, str(asked.get("key")), reason, by="tidy", **detail)
+    worker.say(core.root, session, say.format(
+        question=str(asked.get("question") or "").split("\n")[0][:120], **detail))
+
+
 def _close_questions(core: Any, session: str, verdicts: Any,
                      confirmed: Mapping[str, str]) -> None:
-    """SR-218, SR-335: a waiting question the owner's logged answer or a confirmed record settles
-    closes, only when the quoted words really are in it; logged as ``answer-bound``, which every
-    session reads, and undone by ``plumb question reopen``. Never a model's word alone."""
+    """SR-216, SR-218, SR-335: a waiting question closes when the owner's logged answer or a
+    confirmed record settles it, a request newer than it replaces it (``replaced``), or it repeats
+    another waiting question (``duplicate``), only when the quoted words are really there and the
+    other question really waits. Never a model's word alone; unsure verdicts name nothing."""
     from plumb.understand import judge, worker
 
     waiting = {str(q.get("key")): q for q in judge.open_anywhere(core)}
     said = {e.digest: str(e.payload.get("answer") or "") for e in _answer_entries(core)}
+    requests = [(str(p.get("at") or ""), str(p.get("text") or ""))
+                for p in read._prompt_entries(core)]
     for verdict in verdicts:
         key, quote = str(verdict.get("question")), str(verdict.get("quote") or "")
         answer, record = str(verdict.get("answer") or ""), str(verdict.get("record") or "")
-        source = said.get(answer) if answer else confirmed.get(record)
+        other = str(verdict.get("other") or "")
         asked = waiting.get(key)
-        if asked is None or source is None or not read.evidence_in(quote, source):
+        if asked is None:
             continue
-        core.log_append_many("events", [("answer-bound", {
-            "session": session, "by": "tidy", "quote": quote,
-            **({"answer": answer} if answer else {"record": record}),
-            "asked": {"job": asked.get("job"), "key": key, "keys": [key],
-                      "records": list(asked.get("records") or ())}})])
+        if other:
+            if other == key or other not in waiting:
+                continue
+            _withdraw(core, session, asked, "duplicate", QUESTION_DUPLICATE, other=other,
+                      other_question=str(waiting[other].get("question") or "").split("\n")[0][:120])
+        elif verdict.get("replaced"):
+            since = str(asked.get("at") or "")
+            if not since or not quote or not any(at > since and read.evidence_in(quote, text)
+                                    for at, text in requests):
+                continue        # no later request holds those words: it is still asked
+            _withdraw(core, session, asked, "replaced", QUESTION_REPLACED, quote=quote)
+        else:
+            source = said.get(answer) if answer else confirmed.get(record)
+            if source is None or not quote or not read.evidence_in(quote, source):
+                continue
+            core.log_append_many("events", [("answer-bound", {
+                "session": session, "by": "tidy", "quote": quote,
+                **({"answer": answer} if answer else {"record": record}),
+                "asked": {"job": asked.get("job"), "key": key, "keys": [key],
+                          "records": list(asked.get("records") or ())}})])
+            worker.say(core.root, session, QUESTION_CLOSED.format(
+                question=str(asked.get("question") or "").split("\n")[0][:120], quote=quote[:160]))
         del waiting[key]
-        worker.say(core.root, session, QUESTION_CLOSED.format(
-            question=str(asked.get("question") or "").split("\n")[0][:120], quote=quote[:160]))
+
+
+def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, str]) -> None:
+    """SR-217, DEC-434: a recorded decision (confirmed, or the owner's own quoted words) settles a
+    waiting stale-link question by refreshing its link (``repin``) or rewording its requirement
+    (``reword``, an unconfirmed edit the judge then validates like any capture). The decision's
+    words must really hold the quote; a proposed record the agent alone wrote settles nothing.
+    Logged as ``question-withdrawn`` (reason ``settled``) with what ``plumb question reopen``
+    puts back."""
+    from plumb import links
+    from plumb.understand import judge, worker
+
+    waiting = {str(q.get("key")): q for q in judge.open_anywhere(core)}
+    for item in settlements:
+        key, decision = str(item.get("question")), str(item.get("decision"))
+        quote, action = str(item.get("quote") or ""), str(item.get("action"))
+        asked = waiting.get(key)
+        if asked is None or action not in ("repin", "reword") or decision not in confirmed \
+                or not read.evidence_in(quote, confirmed[decision]):
+            continue
+        if not str(asked.get("job") or "").startswith("stale:"):
+            if action == "reword" and _reword_contradicting(
+                    core, session, asked, item, decision, quote, confirmed):
+                waiting.pop(key, None)
+            continue
+        link_id = str(asked["job"])[6:]
+        record = core.index().get(link_id.partition("#")[0])
+        link = next((x for x in (record.links if record else ()) if x.id == link_id), None)
+        if link is None:
+            continue
+        why = QUESTION_SETTLED.format(record=decision, quote=quote)
+        before = str(record.fields.get("statement") or "")
+        if action == "reword":
+            changes = links.reword_and_repin(core, record, link,
+                                             str(item.get("wording") or ""), why)
+        else:
+            changes = links.repin(core, link_id, note=why)
+        if changes is None:
+            continue        # nothing to refresh or reword: the question stays
+        _withdraw(core, session, asked, "settled", QUESTION_SETTLED_SAY, decision=decision,
+                  quote=quote, action=action, changes=changes, kept=dict(asked),
+                  **({"before": before} if action == "reword" else {}))
+        waiting.pop(key, None)
+
+
+def _reword_contradicting(core: Any, session: str, asked: Mapping[str, Any],
+                          item: Mapping[str, Any], decision: str, quote: str,
+                          confirmed: Mapping[str, str]) -> bool:
+    """SR-217 EX-2: a confirmed record the decision contradicts, one of the records the waiting
+    question is about, is reworded to agree with it; an unconfirmed edit the judge validates,
+    citing the decision. The decision itself is never the one reworded."""
+    from plumb.capture.records import rewrite
+
+    target, wording = str(item.get("record") or ""), str(item.get("wording") or "")
+    named = {str(r.get("id")) for r in asked.get("records") or () if isinstance(r, Mapping)}
+    record = core.index().get(target)
+    if (not wording or target == decision or target not in named or record is None
+            or "statement" not in record.fields):
+        return False
+    before = str(record.fields.get("statement") or "")
+    rewrite(core, record, {"statement": wording})
+    _withdraw(core, session, asked, "settled", QUESTION_SETTLED_SAY, decision=decision,
+              quote=quote, action="reword", changes=[], record=target, kept=dict(asked),
+              before=before)
+    return True
+
+
+def undo_settlement(core: Any, key: str) -> bool:
+    """``plumb question reopen``: put back what the latest settlement of ``key`` changed, a
+    reworded statement and the repinned links. False when it settled nothing."""
+    from plumb import links
+    from plumb.understand import judge
+
+    mine = [e for e in core.events() if e.kind in ("question-withdrawn", "answer-unbound")
+            and e.payload.get("key") == key]
+    if (not mine or mine[-1].kind != "question-withdrawn"
+            or mine[-1].payload.get("reason") != "settled"):
+        return False
+    event = mine[-1].payload
+    changes = event.get("changes") or []
+    reworded = str(event.get("record") or (str(changes[0]["link"]).partition("#")[0]
+                                           if changes else ""))
+    if "before" in event and reworded:
+        from plumb.capture.records import rewrite
+
+        rewrite(core, core.index()[reworded], {"statement": event["before"]})
+    links.restore_pins(core, changes)
+    if event.get("kept"):       # the refreshed link left the file; the question waits again
+        judge.add_question(core, str(event.get("session")), event["kept"])
+    return True
 
 
 def _read_typed(core: Any, job: Job) -> None:
@@ -160,157 +293,25 @@ def _read_typed(core: Any, job: Job) -> None:
 
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     confirmed = _confirmed(core)
-    for verdict in answer.get("verdicts") or ():
-        open_cards = {c.id: c for c in cardstore.load(core.root, job.session)}
-        card = open_cards.get(str(verdict.get("card")))
-        if card is None:
-            continue
-        if verdict.get("verdict") == "withdraw_answered":
-            record, quote = str(verdict.get("record")), str(verdict.get("quote"))
-            if record in confirmed and read.evidence_in(quote, confirmed[record]):
-                cardstore.withdraw_card(core, job.session, card, owner_text.TIDY_ANSWERED.format(
-                    record=record, quote=quote))
-        elif verdict.get("verdict") == "withdraw_duplicate":
-            other = open_cards.get(str(verdict.get("other")))
-            if other is not None and other.id != card.id:
-                cardstore.withdraw_card(core, job.session, card, owner_text.TIDY_DUPLICATE.format(
-                    other=other.topic))
     _close_questions(core, job.session, answer.get("questions") or (), confirmed)
-    _read_typed(core, job)
-    _principles(core, job.session, answer.get("principles") or ())
     _settle(core, job.session, answer.get("settlements") or (), confirmed)
+    _read_typed(core, job)
     return Applied(job=job.id)
 
 
-def _principles(core: Any, session: str, found: Any) -> None:
-    """SR-172 EX-1: one card for a principle several open cards hinge on; those cards are
-    grouped under it, so the turn end does not draw them."""
-    from plumb.contracts import CardState, Choice, ClarifyQuestion
-
-    for item in found:
-        open_cards = {c.id: c for c in cardstore.load(core.root, session)
-                      if c.id not in cardstore.grouped(core.root, session)}
-        ids = [i for i in dict.fromkeys(map(str, item.get("cards") or ())) if i in open_cards]
-        options = [str(o) for o in item.get("options") or ()]
-        question = " ".join(str(item.get("question") or "").split())
-        if len(ids) < 2 or not 2 <= len(options) <= 4 or not question:
-            continue
-        cid = "principle:" + hashlib.sha256(question.encode("utf-8")).hexdigest()[:10]
-        if any(c.id == cid for c in cardstore.own_cards(core.root, session)):
-            continue
-        choices = tuple(Choice(o, "change", o, owner_text.PRINCIPLE_CONSEQUENCE.format(n=len(ids)))
-                        for o in options)
-        card = CardState(
-            id=cid, kind="principle", topic=question, resolutions=tuple(options),
-            issue=owner_text.PRINCIPLE_ISSUE.format(
-                n=len(ids), topics="; ".join(open_cards[i].topic for i in ids)),
-            questions=(ClarifyQuestion(id=f"{cid}#1", text=question, resolutions=tuple(options),
-                                       choices=choices),),
-            turn=max(c.turn for c in open_cards.values()))
-        cardstore.save(core.root, session, [*cardstore.own_cards(core.root, session), card])
-        cardstore.group(core.root, session, cid, ids)
-
-
-def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, str]) -> None:
-    """SR-172 EX-2, EX-3: settle each grouped card from a confirmed decision's exact words;
-    one the model cannot settle stays, and is told once."""
-    from plumb import links
-
-    last: dict[str, str] = {}
-    for e in core.log_read("events", ["card-settled", "card-unsettled"]):
-        last[str(e.payload.get("card"))] = e.kind
-    for item in settlements:
-        grouped = cardstore.grouped(core.root, session)
-        if last.get(str(item.get("card"))) == "card-unsettled":
-            continue        # the owner took this settlement back: it stays open
-        card = next((c for c in cardstore.load(core.root, session)
-                     if c.id == str(item.get("card")) and c.id in grouped), None)
-        if card is None:
-            continue
-        decision, quote = str(item.get("decision")), str(item.get("quote"))
-        action = str(item.get("action"))
-        if decision not in confirmed or not read.evidence_in(quote, confirmed[decision]):
-            action = "stays"      # an agent-only proposal, or words not in it, settle nothing
-        why = owner_text.TIDY_SETTLED.format(record=decision, quote=quote)
-        link_id = card.id.removeprefix("stale:") if card.kind == "stale_link" else ""
-        index = core.index()
-        record = index.get(link_id.partition("#")[0])
-        link = next((x for x in (record.links if record else ()) if x.id == link_id), None)
-        event: dict[str, Any] = {"card": card.id, "session": session, "topic": card.topic,
-                                 "action": action, "decision": decision, "reason": why}
-        if action == "withdraw":
-            cardstore.withdraw_card(core, session, card, why)
-        elif action in ("repin", "reword") and link is not None:
-            pin = None if link.pin is None else {"from": link.pin.source, "to": link.pin.target}
-            if action == "reword":
-                event["before"] = str(record.fields.get("statement") or "")
-                changes = links.reword_and_repin(core, record, link, str(item.get("wording")),
-                                                 why)
-            else:
-                changes = links.repin(core, link_id, note=why)
-            if changes is None:
-                action = event["action"] = "stays"
-            else:
-                for change in changes:
-                    if action == "reword" and change["link"] == link_id:
-                        change["old"] = pin     # the pin before the reword, for undo
-                event["changes"] = changes
-        else:
-            action = event["action"] = "stays"
-        if action == "stays" and any(
-                e.payload.get("card") == card.id for e in core.log_read("events", ["card-settled"])):
-            continue
-        core.log_append("events", "card-settled", event)
-
-
-def undo(core: Any, session: str, card_id: str) -> bool:
-    """SR-172 EX-4: take back the latest settlement of ``card_id``: the card is open again,
-    a reworded statement is put back and a repinned link is stale again. False when there is
-    none (``plumb undo`` covers confirmed records only, so this is its own entry point)."""
-    from plumb import links
-
-    mine = [e for e in core.log_read("events", ["card-settled", "card-unsettled"])
-            if e.payload.get("card") == card_id]
-    if not mine or mine[-1].kind != "card-settled" or mine[-1].payload.get("action") == "stays":
-        return False
-    event = mine[-1].payload
-    changes = event.get("changes") or []
-    if "before" in event and changes:
-        link = changes[0]["link"]
-        record = core.index()[link.partition("#")[0]]
-        from plumb.capture.records import rewrite
-
-        rewrite(core, record, {"statement": event["before"]})
-    links.restore_pins(core, changes)
-    cardstore.reopen(core.root, session, card_id)
-    cardstore.ungroup(core.root, session, card_id)
-    core.log_append("events", "card-unsettled", {"card": card_id, "session": session})
-    return True
-
-
 def run(command: str, argv: list[str]) -> int:
-    """``plumb understand undo <card id>``: take back a card plumb settled from a decision
-    (SR-172 EX-4); the one entry, as ``plumb undo`` covers confirmed records only."""
+    """``plumb understand undo <record id>``: take back a record a model confirmed (SR-191)."""
     import argparse
 
     from plumb.api import open_core
     from plumb.cliutil import add_common, resolve_root
-    from plumb.stale import current_session
+    from plumb.understand.typed import take_back
 
     parser = argparse.ArgumentParser(prog="plumb understand undo")
     add_common(parser)
-    parser.add_argument("card")
-    parser.add_argument("--session", default="")
+    parser.add_argument("record")
     args = parser.parse_args(argv)
-    root = resolve_root(args.root)
-    core = open_core(root)
-    if args.card.startswith(("SR-", "DEC-")):    # SR-191: a record a model confirmed
-        from plumb.understand.typed import take_back
-
-        result = take_back(core, args.card)
-        print(*result.lines, sep="\n")
-        return 0 if result.confirmed else 1
-    done = undo(core, args.session or current_session(root), args.card)
-    print(f"plumb: {args.card} is open again." if done
-          else f"plumb: {args.card} was not settled from a decision; nothing changed.")
-    return 0 if done else 1
+    core = open_core(resolve_root(args.root))
+    result = take_back(core, args.record)
+    print(*result.lines, sep="\n")
+    return 0 if result.confirmed else 1
