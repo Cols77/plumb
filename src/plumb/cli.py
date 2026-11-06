@@ -19,6 +19,7 @@ ROUTES: dict[str, str] = {
     "link": "plumb.commands", "unlink": "plumb.commands", "relink": "plumb.commands",
     "repin": "plumb.commands", "stale": "plumb.commands",
     "validate": "plumb.commands",
+    "loops": "plumb.understand.loops",   # SR-390: every loop of the project in one list
     "debug": "plumb.debug",   # SR-220, SR-300: the debug workflow, standalone
     "check": "plumb.commands",
     # approve, confirm, relay, revoke: refused as gone, listed in no help line (SR-210)
@@ -109,6 +110,8 @@ intent capture:
   example      append a given/when/then example to a requirement
   decide       a decision: "I assumed A; B also fits" (--supersede for a confirmed one)
   clarify      the clarification depth and the questions that matter for a request
+  loops        every loop of the project (intent, debug, evaluate), live first: its goal,
+               progress, what is left and what it waits for (changes nothing)
   question     reword: your wording of the judge's questions (merged by principle)
   escalate     escalation suggestions; decline (the owner said no)
   spec         an escalated spec: show (every member in full, the set hash), state

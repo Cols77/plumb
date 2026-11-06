@@ -50,6 +50,10 @@ def save(path: Path, data: dict[str, Any]) -> None:
     """Write the loop state with its ``step``: the first stage not passed, ``proven`` after all."""
     data["step"] = next((s for s in STAGES if not _passed(data, s)), "proven")
     files.write_json_atomic(path, data)
+    if len(path.parents) > 4:       # <root>/.plumb/session/<id>/intent/<file>
+        from plumb.understand import loops
+
+        loops.touch(path.parents[4])
 
 
 def _stop(path: Path, data: dict[str, Any], what: str) -> None:
@@ -382,6 +386,9 @@ def cmd_adopt(core: Any, args: argparse.Namespace) -> int:
                                                            "session": old_session}})
     files.write_json_atomic(path, {**data, "handed_to": {"root": root.as_posix(),
                                                          "session": session, "at": _now()}})
+    from plumb.understand.loops import touch
+
+    touch(root)
     held = gate.state(old_root, old_session)
     if held.state == "closed":
         gate.open(open_core(old_root), old_session, held.message_digest, "handover",
