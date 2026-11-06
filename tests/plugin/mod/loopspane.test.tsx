@@ -230,6 +230,58 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
+    test('SR-394: the reopen press runs plumb mod reopen with the key on stdin', async ($, on) => {
+      const w = loopsWorld(() => answer([{ ...IDLE, reopen: true }]))
+      const base = w.answer
+      w.answer = (action, argv) => action === 'reopen'
+        ? { exitCode: 0, data: { opened: true, command: ['claude'], line: 'opened a new session for an old loop' } }
+        : base(action, argv)
+      install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loops' })
+      const view = await $.ui.mount(pane(surface))
+      await view.press({ key: 'loops:reopen:cccccccccccc' })
+      const ran = w.runs.filter(r => r.argv[4] === 'reopen')
+      expect(ran.length).toBe(1)
+      expect(ran[0]?.argv.slice(3)).toEqual(['mod', 'reopen', '--session', SESSION, '--root', ROOT, '--json', '--loop', 'cccccccccccc'])
+      expect(JSON.parse(ran[0]?.stdin ?? '{}').key).toMatch(/^[0-9a-f]{64}$/)
+      expect(ran[0]?.argv.join(' ')).not.toContain(JSON.parse(ran[0]?.stdin ?? '{}').key) // never in argv
+      expect(w.toasts).toEqual(['opened a new session for an old loop'])
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-394: a live row draws no reopen', async ($, on) => {
+      const w = loopsWorld(() => answer([...LIVE.map(r => ({ ...r, reopen: false })), { ...IDLE, reopen: true }]))
+      install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loops' })
+      const view = await $.ui.mount(pane(surface))
+      expect((await view.findAll({ type: 'Text', text: 'reopen in a new session' })).length).toBe(1)
+      expect(await view.find({ key: 'loops:reopen:aaaaaaaaaaaa' })).toBeUndefined()
+      expect(await view.find({ key: 'loops:reopen:cccccccccccc' })).toBeDefined()
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-394: a failed open toasts the hand command', async ($, on) => {
+      const line = 'no terminal window could be opened here; open the session by hand:\nclaude --session-id x'
+      const w = loopsWorld(() => answer([{ ...IDLE, reopen: true }]))
+      const base = w.answer
+      w.answer = (action, argv) => action === 'reopen' ? { exitCode: 1, data: { opened: false, command: ['claude'], line } } : base(action, argv)
+      install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loops' })
+      const view = await $.ui.mount(pane(surface))
+      await view.press({ key: 'loops:reopen:cccccccccccc' })
+      expect(w.toasts).toEqual([line])
+      await view.unmount()
+      await band.unmount()
+    })
+
     test('the pane lists no agents or tokens', async ($, on) => {
       const w = loopsWorld(() => answer([...LIVE, IDLE]))
       install(on, w)

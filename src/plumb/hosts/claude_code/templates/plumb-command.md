@@ -1,7 +1,7 @@
 ---
-description: plumb in plain words - status, intent, explain, review, debug, impact, study, go, undo, conflicts, merges, the JEV judge
-argument-hint: "status | intent <words> | clarify <words> | debug | explain <anything> | review [<anything>] | impact <anything> | study <topic> | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
-allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} impact:*), Bash({plumb} debug:*), Bash({plumb} study propose:*), Bash({plumb} study gather:*), Bash({plumb} study add:*), Bash({plumb} study storyboard:*), Bash({plumb} study render:*), Bash({plumb} study frames:*), Bash({plumb} study check:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} init:*), Bash({plumb} plugin migrate:*), Bash({plumb} clarify --wait:*), Bash({plumb} question:*), Bash({plumb} intent:*), Bash({plumb} validate:*), Bash({plumb} conflicts:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*), Bash({plumb} inflight:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*), Bash({plumb} jev calibrate:*), Bash(git add .plumb:*), Bash(git reset --keep ORIG_HEAD), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
+description: plumb in plain words - status, intent, explain, review, debug, impact, study, loops, go, undo, conflicts, merges, the JEV judge
+argument-hint: "status | intent <words> | clarify <words> | debug | explain <anything> | review [<anything>] | impact <anything> | study <topic> | loops | init | go | undo <ID> | conflicts | merge-check | inflight | jev status | jev setup <provider> | jev calibrate"
+allowed-tools: Bash({plumb} status:*), Bash({plumb} brief:*), Bash({plumb} explain:*), Bash({plumb} why:*), Bash({plumb} review:*), Bash({plumb} impact:*), Bash({plumb} debug:*), Bash({plumb} study propose:*), Bash({plumb} study gather:*), Bash({plumb} study add:*), Bash({plumb} study storyboard:*), Bash({plumb} study render:*), Bash({plumb} study frames:*), Bash({plumb} study check:*), Bash({plumb} show:*), Bash({plumb} resolve:*), Bash({plumb} align:*), Bash({plumb} init:*), Bash({plumb} plugin migrate:*), Bash({plumb} clarify --wait:*), Bash({plumb} question:*), Bash({plumb} intent:*), Bash({plumb} validate:*), Bash({plumb} conflicts:*), Bash({plumb} conflict propose:*), Bash({plumb} merge-check:*), Bash({plumb} inflight:*), Bash({plumb} loops:*), Bash({plumb} jev status:*), Bash({plumb} jev setup:*), Bash({plumb} jev calibrate:*), Bash(git add .plumb:*), Bash(git reset --keep ORIG_HEAD), Bash(git rebase --continue), Bash(git cherry-pick --continue), Bash(git revert --continue)
 ---
 The owner asked: `/plumb $ARGUMENTS`.
 
@@ -73,6 +73,14 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
   writing: compose text, diagrams and clips, each where it teaches, and subtitle every beat
   of a clip so it explains, not just shows. Each clip goes through `{plumb} study storyboard`,
   `{plumb} study render`, `{plumb} study frames` and `{plumb} study check` with `--clip`.
+- `loops` (also "what loops are running?", "what is every session doing?"): run
+  `{plumb} loops` and give each loop's goal, how far it is, what is left and what it waits
+  for, the live ones first and the idle ones apart. "reopen the X loop": only on their own
+  words, run `{plumb} loops reopen <their words> --session <this session>` and say the window
+  opened, or give the command it printed. When it lists several loops, ask them with the
+  question tool which one (each option naming its goal and branch), then run
+  `{plumb} loops reopen --loop <that id> --session <this session>`. A refusal is said as it
+  is; open nothing yourself.
 - `inflight` ("what are the other branches working on?"): run `{plumb} inflight` and answer
   with the branches, their one-line intent and the records by title. "drop that work" (the
   owner abandoned a branch's intent): they name the branch; repeat it back ("drop the work

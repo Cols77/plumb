@@ -201,6 +201,12 @@ export function room(io: Io, link: PlumbLink, slug: string): Promise<Ran> {
   return plumbMod(io, link, 'room', { key: link.key }, ['--study', slug])
 }
 
+/** The owner pressed reopen on an idle loop (SR-394): plumb opens a new session on it in its own
+ * window, or answers the command that opens it by hand (`data.line` either way). */
+export function reopen(io: Io, link: PlumbLink, loop: string): Promise<Ran> {
+  return plumbMod(io, link, 'reopen', { key: link.key }, ['--loop', loop])
+}
+
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 
 /** The session's open loop as the pane shows it (SR-305), from `plumb intent status --json`;
@@ -319,7 +325,7 @@ export async function loops(io: Io, link: PlumbLink, stamp: string, seen: string
       kind: String(r?.kind ?? ''), id: String(r?.id ?? ''), goal: String(r?.goal ?? ''),
       goal_full: String(r?.goal_full ?? r?.goal ?? ''), progress: String(r?.progress ?? ''),
       done: strings(r?.done), left: strings(r?.left), waits: String(r?.waits ?? ''), live: r?.live === true,
-      idle_since: String(r?.idle_since ?? ''), branch: String(r?.branch ?? ''),
+      idle_since: String(r?.idle_since ?? ''), branch: String(r?.branch ?? ''), reopen: r?.reopen === true,
       message: r?.message && typeof r.message === 'object'
         ? { state: String(r.message.state ?? ''), at: String(r.message.at ?? '') } : null,
     })),

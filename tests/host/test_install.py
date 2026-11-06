@@ -286,7 +286,7 @@ def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> N
                           "jev", "debug",   # SR-328, DEC-254: the owner asks for debug
                           "init", "go", "undo", "conflicts",   # approve: gone (SR-208)
                           "merge-check", "inflight",
-                          "study"}   # SR-355: the owner asks for a study
+                          "study", "loops"}   # SR-355: a study; SR-390, SR-394: the loops
     for name in (advertised - {"go", "undo"}) | {"why", "show"}:       # go, undo: typed only
         assert name in cli.ROUTES, name
     assert "not available in this build" not in cli._HELP

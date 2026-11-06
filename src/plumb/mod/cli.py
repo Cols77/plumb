@@ -1,4 +1,4 @@
-"""``plumb mod hello|room|study|known|loops``: the commands only plumb's panel (the Claude Code mod)
+"""``plumb mod hello|room|study|known|loops|reopen``: the commands only plumb's panel (the Claude Code mod)
 runs.
 
 All of them take ``--session <id>`` and read one JSON object on stdin; none takes a key in argv.
@@ -18,6 +18,9 @@ All of them take ``--session <id>`` and read one JSON object on stdin; none take
   only. Answer ``{open, issues: [{id, title, symptom, cause, fix, fixed, state, history}]}``.
 - ``loops``  stdin ``{}``: the loops of the project the band counts and its pane lists (SR-393),
   read only: what ``plumb loops --json`` answers, with the one change stamp's path.
+- ``reopen`` ``--loop <id>``, stdin ``{"key": "<64 hex>"}``: the owner pressed reopen on an idle
+  loop's row: a new session opens on it in its own window (SR-394). Answer ``{opened, command,
+  line}``; exit 1 when no window opened (the line gives the command by hand).
 
 Exit codes: 0 done, 1 no such study or it did not start, 2 usage, 3 refused (the agent
 session marker, no panel registered, no key, another key): nothing written."""
@@ -42,10 +45,11 @@ def _answer(data: Any, as_json: bool) -> None:
 
 def run(command: str, argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="plumb mod")
-    parser.add_argument("action", choices=("hello", "room", "study", "known", "loops"))
+    parser.add_argument("action", choices=("hello", "room", "study", "known", "loops", "reopen"))
     add_common(parser)
     parser.add_argument("--session", required=True)
     parser.add_argument("--study", default=None)
+    parser.add_argument("--loop", default="")
     parser.add_argument("--depth", default=None)
     parser.add_argument("--refresh", choices=("yes", "no"), default=None)
     args = parser.parse_args(argv)
@@ -71,6 +75,16 @@ def run(command: str, argv: list[str]) -> int:
 
             _answer(loops.listing(root), args.as_json)
             return EXIT_OK
+        if args.action == "reopen":
+            from plumb.understand import loops
+
+            session.check_key(root, args.session, payload, "reopen")
+            if not args.loop:
+                print("plumb mod reopen: --loop is required", file=sys.stderr)
+                return EXIT_USAGE
+            done = loops.reopen(root, loop=args.loop)
+            _answer(done, args.as_json)
+            return EXIT_OK if done["opened"] else 1
         if args.action == "room":
             from plumb.browser import launch
 
@@ -107,6 +121,6 @@ def run(command: str, argv: list[str]) -> int:
     except session.Refused as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_REFUSED
-    except (LookupError, OSError) as exc:      # room: no such study, or it did not start
+    except (LookupError, ValueError, OSError) as exc:   # no such study or loop, or it did not start
         print(f"plumb mod {args.action}: {exc}", file=sys.stderr)
         return 1

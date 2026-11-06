@@ -107,6 +107,7 @@ export type PlumbLoopRow = {
   live: boolean
   idle_since: string
   branch: string
+  reopen: boolean
   message: { state: string; at: string } | null
 }
 

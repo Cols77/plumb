@@ -59,7 +59,7 @@ def _gitignore_lines() -> tuple[str, ...]:
     """SR-376, SR-321: the local kinds (DEC-116's owner words among them), then telemetry."""
     from plumb.log import LOCAL_KINDS
 
-    return ("cache/", "session/", "test_map.txt", "view/",
+    return ("cache/", "session/", "wt/", "test_map.txt", "view/",
             *(f"log/{kind}/" for kind in sorted(LOCAL_KINDS)), "log/judgment/*.json")
 
 

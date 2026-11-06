@@ -12,14 +12,18 @@ import argparse
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
+import sys
 import time
+import uuid
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from plumb.cliutil import add_common, emit, resolve_root
+from plumb.cliutil import EXIT_FINDINGS, EXIT_USAGE, add_common, emit, resolve_root
 
 LIVE_S = 600          # without `claude agents`: a session folder written within this is live
 GOAL_CHARS = 100
@@ -272,7 +276,228 @@ def text(data: Mapping[str, Any]) -> list[str]:
     return out
 
 
+def owner_answers(root: Path, session: str) -> list[tuple[str, str]]:
+    """``(at, answer)`` of the owner's question-tool answers in ``session``, oldest first, from
+    the log of every checkout (the agent's question is never read)."""
+    from plumb.api import open_core
+
+    return sorted((e.at, str(e.payload.get("answer") or "")) for e in open_core(root).events()
+                  if e.kind == "question-answer" and e.payload.get("session") == session
+                  and e.payload.get("via") == "question-tool")
+
+
+def names(rows: list[dict[str, Any]], text: str, words: str = "") -> list[dict[str, Any]]:
+    """The rows ``text`` (the owner's words) names: by id prefix (6+ hex), INT-### or branch,
+    or, when ``words`` (the agent's own) are quoted in the text, those the words find."""
+    from plumb.approvals import quote_in_prompt
+    from plumb.normalize import normalize_text
+
+    low = normalize_text(text).lower()
+    ids = re.findall(r"\b[0-9a-f]{6,12}\b", low)
+    said = bool(words.strip()) and quote_in_prompt(normalize_text(words).lower(), low)
+    return [r for r in rows if any(r["id"].startswith(i) for i in ids)
+            or (r.get("intent") and re.search(rf"\b{re.escape(r['intent'].lower())}\b", low))
+            or (r["branch"] not in ("", "main") and r["branch"].lower() in low)
+            or (said and all(w in f"{r['goal_full']} {r['branch']}".lower()
+                             for w in words.lower().split()))]
+
+
+def _asked(root: Path, rows: list[dict[str, Any]], row: Mapping[str, Any], session: str,
+           words: str) -> bool:
+    """Whether the owner's latest message in ``session``, or their latest question-tool answer
+    after it, names ``row`` and no other row (SR-394: no session opens unless they ask now)."""
+    entries = owner_entries([w.path for w in checkouts(root)], session)
+    if not entries:
+        return False
+    last = entries[-1]
+    texts = [str(last.get("text") or "")]
+    later = [a for at, a in owner_answers(root, session) if at > str(last.get("at") or "")]
+    if later:
+        texts.append(later[-1])
+    return any([r["id"] for r in names(rows, t, words)] == [row["id"]] for t in texts)
+
+
+def brief(row: Mapping[str, Any], data: Mapping[str, Any], new_session: str) -> str:
+    """The first prompt of the new session: it takes the loop over, then carries on from where
+    the loop is, under plumb's own words, never the owner's."""
+    from plumb.api import open_core
+    from plumb.understand import cmd_intent
+
+    root = Path(str(row["root"]))
+    records = cmd_intent._pane(open_core(root), data)["records"]
+    kept = [f for f in data.get("files") or () if Path(f).exists()]
+    adopt = ["plumb", "intent", "adopt", "--from-session", str(row["session"]), "--digest",
+             str(row["id"]), "--session", new_session]
+    return "\n".join([
+        "<plumb-loop-brief>",
+        "plumb reopened an intent loop in this new session; the session that held it is gone.",
+        "First take the loop over: " + shlex.join(adopt),
+        "Then carry on from this step, following the plumb-intent skill.",
+        f"Goal: {row['goal_full']}", f"Step: {row['progress']}",
+        f"Done: {', '.join(row['done']) or 'nothing yet'}",
+        f"Left: {', '.join(row['left']) or 'nothing'}",
+        "Records: " + ("; ".join(f"{r['id']} {r['title']}" for r in records) or "none yet"),
+        *([f"Working files: {', '.join(kept)}"] if kept else []),
+        f"Branch: {row['branch'] or 'none'}"])
+
+
+# A terminal window per platform, first one found wins: program and its arguments for a command.
+_LINUX = (("ptyxis", lambda cwd, cmd: ["--new-window", "-d", cwd, "--", *cmd]),
+          ("gnome-terminal", lambda cwd, cmd: [f"--working-directory={cwd}", "--", *cmd]),
+          ("konsole", lambda cwd, cmd: ["--workdir", cwd, "-e", *cmd]),
+          ("kitty", lambda cwd, cmd: ["-d", cwd, *cmd]),
+          ("alacritty", lambda cwd, cmd: ["--working-directory", cwd, "-e", *cmd]),
+          ("wezterm", lambda cwd, cmd: ["start", "--cwd", cwd, "--", *cmd]),
+          ("xfce4-terminal", lambda cwd, cmd: ["--working-directory", cwd, "-x", *cmd]),
+          ("xterm", lambda cwd, cmd: ["-e", *cmd]))
+
+
+def launch(argv: list[str], cwd: Path, *, prepare: Any = None, which: Any = shutil.which,
+           spawn: Any = subprocess.Popen, env: Mapping[str, str] | None = None,
+           platform: str = sys.platform) -> bool:
+    """Open ``argv`` in a new terminal window in ``cwd``, detached, with no session identity of
+    the caller's. ``prepare`` (makes the worktree) runs once a window program is found and
+    returns an undo for a spawn that fails. False when no window could be opened."""
+    from plumb.hosts.common import MARKER_NAME
+
+    cwd_s = str(cwd)
+    have = env if env is not None else os.environ
+    clean = {k: v for k, v in have.items() if not k.startswith("CLAUDE") and k != MARKER_NAME}
+    if platform == "darwin":
+        script = f"cd {shlex.quote(cwd_s)} && {shlex.join(argv)}".replace("\\", "\\\\").replace(
+            '"', '\\"')
+        full = ["osascript", "-e", f'tell application "Terminal" to do script "{script}"']
+    elif platform == "win32":
+        full = ["wt", "-d", cwd_s, *argv]
+    else:
+        found = next(((p, f) for p, f in _LINUX if which(p)), None)
+        if found is None or not (have.get("DISPLAY") or have.get("WAYLAND_DISPLAY")):
+            return False
+        full = [found[0], *found[1](cwd_s, argv)]
+    undo = prepare() if prepare else None
+    try:
+        spawn(full, cwd=cwd_s, env=clean, start_new_session=True, stdin=subprocess.DEVNULL,
+              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        if undo:
+            undo()
+        return False
+    return True
+
+
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True,
+                          encoding="utf-8", check=True).stdout
+
+
+def _checkout_for(root: Path, row: Mapping[str, Any]) -> tuple[Path, list[list[str]], list[list[str]]]:
+    """Where the reopened loop works: ``(directory, git steps that make it, steps that undo)``.
+    A linked worktree is the loop's own; a loop of the main checkout (which refuses edits)
+    goes to the branch already carrying its intent, else to a new branch, each in a worktree
+    under ``.plumb/wt``."""
+    from plumb.api import open_core
+    from plumb.awareness import inflight
+    from plumb.awareness.publish import default_branch
+
+    found = checkouts(root)
+    here = next(w for w in found if w.path.as_posix() == row["root"])
+    if not here.main:
+        return here.path, [], []
+    intent = str(row["intent"])
+    slug = intent.lower() if intent else f"loop-{row['id'][:8]}"
+    core = open_core(here.path)
+    default = default_branch(core)
+    _oid, data = inflight.read(here.path, allow_git=True)
+    claims = [c for c in inflight.active(here.path, data, default=default, allow_git=True)
+              if intent and c.get("branch") != default
+              and (c.get("intent") == intent or intent in (c.get("records") or {}))]
+    branch = str(max(claims, key=lambda c: str(c.get("at")))["branch"]) if claims \
+        else f"intent/{slug}"
+    held = next((w.path for w in found if w.branch == branch), None)
+    if held is not None:
+        return held, [], []
+    path = here.path / ".plumb" / "wt" / f"intent-{slug}"
+    known = subprocess.run(["git", "rev-parse", "--verify", "-q", branch], cwd=here.path,
+                           capture_output=True).returncode == 0
+    make = ["worktree", "add", *([str(path), branch] if known else ["-b", branch, str(path)])]
+    return path, [make], [["worktree", "remove", "--force", str(path)],
+                          *([] if known else [["branch", "-D", branch]])]
+
+
+def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = None,
+           agents: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Open the idle intent loop ``words`` (or id ``loop``) name in a new window and session
+    (SR-394). ``asker``: the session of an agent, whose owner must have asked for exactly this
+    loop just now (PermissionError otherwise); None for the owner's own press. LookupError: no
+    such loop or several; ValueError: not reopenable. Answers ``{opened, command, line}``."""
+    from plumb.understand import cmd_intent
+
+    root = Path(root)
+    rows = listing(root, agents=agents)["rows"]
+    row = find(rows, loop or words)
+    if row["kind"] != "intent":
+        raise ValueError("plumb fixes problems and runs evaluations itself; only an intent loop "
+                         "is reopened")
+    if row["live"]:
+        raise ValueError("a session works on this loop already")
+    if asker is not None and not _asked(root, rows, row, asker, "" if loop else words):
+        raise PermissionError("the owner did not ask for this loop to be reopened in this session")
+    data = next(d for p, d in cmd_intent.loops(Path(row["root"]))
+                if p.parent.parent.name == row["session"]
+                and str(d["digest"]).removeprefix("sha256:").startswith(row["id"]))
+    new = str(uuid.uuid4())
+    cwd, make, undo = _checkout_for(root, row)
+    command = ["claude", "--session-id", new, "-n", f"plumb: {row['goal'][:40]}",
+               brief(row, data, new)]
+    main = next(w.path for w in checkouts(root) if w.main) if make else root
+
+    def prepare() -> Any:
+        for step in make:
+            _git(main, *step)
+        return lambda: [subprocess.run(["git", *s], cwd=main, capture_output=True) for s in undo]
+
+    try:
+        opened = launch(command, cwd, prepare=prepare if make else None)    # call-time lookup
+    except subprocess.CalledProcessError:
+        opened = False
+    if opened:
+        return {"opened": True, "command": command, "line": f"opened a new session for {row['goal']}"}
+    by_hand = [shlex.join(["git", *s]) for s in make] + [shlex.join(["cd", str(cwd)]),
+                                                          shlex.join(command)]
+    return {"opened": False, "command": command,
+            "line": "no terminal window could be opened here; open the session by hand:\n"
+                    + "\n".join(by_hand)}
+
+
+def run_reopen(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="plumb loops reopen",
+        description="Open an idle intent loop in a new window and session that takes it over. "
+                    "An agent runs it only for what the owner asked in their latest message.")
+    add_common(parser)
+    parser.add_argument("words", nargs="*", help="words naming the loop (its goal or branch)")
+    parser.add_argument("--loop", default="", help="the loop's id, from the candidates printed")
+    parser.add_argument("--session", default=None, help="the asking agent's session")
+    args = parser.parse_args(argv)
+    if not args.session:
+        print("plumb: name the asking session with --session; nothing opened", file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        done = reopen(resolve_root(args.root), words=" ".join(args.words), loop=args.loop,
+                      asker=args.session)
+    except PermissionError as exc:
+        print(f"plumb: {exc}; nothing opened", file=sys.stderr)
+        return EXIT_USAGE
+    except (LookupError, ValueError) as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return EXIT_FINDINGS
+    emit(done if args.as_json else [done["line"]], args.as_json)
+    return 0 if done["opened"] else EXIT_FINDINGS
+
+
 def run(command: str, argv: list[str]) -> int:
+    if argv[:1] == ["reopen"]:
+        return run_reopen(argv[1:])
     parser = argparse.ArgumentParser(
         prog="plumb loops",
         description="Every loop of the project, from any session or worktree: what it is meant "

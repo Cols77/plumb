@@ -230,6 +230,11 @@ function loopsPane(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, color: stri
         <Button key={`loops:row:${key}`} plain onPress={() => {}}>
           <Text key={`loops:text:${key}`}>{`${r.goal} · ${r.progress}${r.live ? '' : ` · ${T.loopsIdleSince(r.idle_since)}`}`}</Text>
         </Button>
+        {r.reopen ? (
+          <Button key={`loops:reopen:${r.id}`} plain onPress={() => {}}>
+            <Text key={`loops:reopen:text:${r.id}`} color={color}>{T.loopsReopen}</Text>
+          </Button>
+        ) : null}
         {state.open.includes(key) ? [
           <Text key={`${key}:goal`} dimColor>{T.loopGoal(r.goal_full)}</Text>,
           <Text key={`${key}:done`} dimColor>{T.loopDone(r.done)}</Text>,
@@ -764,6 +769,10 @@ export const register: Register = on => {
       if (!slug) return pressed
       const ran = await plumb.room(io, link, slug)
       line = ran.ok ? '' : T.roomFailed
+    } else if (key.startsWith('loops:reopen:')) {
+      // SR-394: the press opens a new session on the idle loop; plumb's line says it or gives the command
+      const ran = await plumb.reopen(io, link, key.slice('loops:reopen:'.length))
+      line = String(ran.data?.line ?? '') || T.reopenFailed
     } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:video' || key === 'idea:none') {
       // SR-294 EX-8, EX-9: the owner's choice on the idea is recorded; the room stays closed
       const idea = frontIdea(view.status?.ideas ?? [], await read($, bandAtom))

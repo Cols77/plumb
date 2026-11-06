@@ -66,6 +66,8 @@ export const T = {
   loopsType: (shown: boolean, type: string, live: number, idle: number) =>
     `${shown ? '●' : '○'} ${type} ${live}${idle ? ` +${idle} idle` : ''}`,
   loopsIdle: 'idle',
+  loopsReopen: 'reopen in a new session',
+  reopenFailed: 'plumb could not open a new session for that loop',
   loopsIdleSince: (date: string) => `idle since ${date}`,
   loopsNone: { intent: 'no intent loop is open', debug: 'no problem is being fixed', evaluate: 'no evaluate run is going' } as Record<string, string>,
   loopGoal: (s: string) => `  goal: ${s}`,
