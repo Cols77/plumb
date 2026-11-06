@@ -48,6 +48,9 @@ if TYPE_CHECKING:
 KINDS = ("live-session", "hook", "command", "other")
 NOT_SHOWN = "not shown working yet"
 QUESTIONS_FILE = "proof_questions.json"
+VERIFIED = "proof-verified"
+NOT_VERIFIED = "proof-not-verified"
+OVERRULED = "proof-overruled"
 YES = "Yes, I saw it working"
 NO = "No, not yet"
 
@@ -69,7 +72,15 @@ def proof_entry(raw: Any, name: str = "proof") -> dict[str, str]:
     entry: dict[str, Any] = {"plan": plan, "kind": kind}
     if raw.get("post_merge") is True:  # SR-341: shown only once the branch has landed
         entry["post_merge"] = True
+    if raw.get("evaluator") is True:    # DEC-469: the owner's pick lives on this proof
+        entry["evaluator"] = True
     return entry
+
+
+def evaluator_picked(record: Record) -> bool:
+    """SR-396: whether the owner picked the independent evaluator for ``record``'s proof."""
+    proof = proof_of(record)
+    return proof is not None and proof.get("evaluator") is True
 
 
 def post_merge(record: Record) -> bool:
@@ -130,7 +141,8 @@ def proof_lines(record: Record) -> list[str]:
     rid = record.id
     proof = proof_of(record)
     lines = [f"{rid} proof ({_flat(proof.get('kind')) or 'other'}"
-             f"{', post-merge' if proof.get('post_merge') is True else ''}): "
+             f"{', post-merge' if proof.get('post_merge') is True else ''}"
+             f"{', evaluator' if proof.get('evaluator') is True else ''}): "
              f"{_flat(proof.get('plan'))}"
              if proof else f"{rid} proof: none planned"]
     evidence = evidence_of(record)
@@ -254,6 +266,91 @@ def owner_confirmed(core: Core, record_id: str) -> bool:
     return False
 
 
+def unverified(core: Core, ids: Sequence[str]) -> list[dict[str, Any]]:
+    """SR-397 EX-5: the requirements of ``ids`` whose proof has the evaluator picked, is shown
+    working and is not post-merge, yet no evaluator run confirmed it (nor the owner)."""
+    index = core.index()
+    rows: list[dict[str, Any]] = []
+    for record_id in ids:
+        record = index.get(record_id)
+        if record is None or record.kind != "requirement" or not evaluator_picked(record) \
+                or post_merge(record) or not shown_working(record) or confirmed(core, record_id):
+            continue
+        rows.append({"id": record_id, "title": record.title,
+                     "why": "not verified by the evaluator the owner picked"})
+    return rows
+
+
+def evaluator_confirmed(core: Core, record_id: str) -> bool:
+    """SR-397: the last ``proof-verified`` / ``proof-overruled`` entry for ``record_id`` at its
+    current hash (or the one a renumber carries) and current evidence is ``proof-verified``.
+    Hand-recorded evidence changes ``at`` and a reword the hash: both end it."""
+    from plumb.ids import approval_aliases
+
+    record = core.index().get(record_id)
+    evidence = evidence_of(record) if record is not None else None
+    if record is None or evidence is None:
+        return False
+    at = _flat(evidence.get("at"))
+    seen = {(record_id, record.hash)}
+    carried = approval_aliases(core).get((record_id, record.hash))
+    if carried:
+        seen.add(carried)
+    last = None
+    for entry in core.events():
+        p = entry.payload
+        if entry.kind in (VERIFIED, OVERRULED) and (p.get("record"), p.get("hash")) in seen \
+                and p.get("evidence_at") == at:
+            last = entry.kind
+    return last == VERIFIED
+
+
+def confirmed(core: Core, record_id: str) -> bool:
+    """Confirmed by the owner's yes or by the evaluator's verdict (SR-397)."""
+    return owner_confirmed(core, record_id) or evaluator_confirmed(core, record_id)
+
+
+def record_verdict(core: Core, sr_id: str, verdict: str, summary: str,
+                   where: str) -> dict[str, Any]:
+    """SR-397, SR-398: the only writer of an evaluator's verdict (the evaluator run calls it).
+    ``verified`` records passing evidence and logs ``proof-verified``; ``not verified`` records
+    failing evidence and logs ``proof-not-verified`` (``retry_left`` only on the first);
+    ``could not check`` writes nothing."""
+    if verdict == "could not check":
+        return {"verdict": verdict}
+    if verdict not in ("verified", "not verified"):
+        raise CaptureError(f"unknown verdict {verdict!r}")
+    ok = verdict == "verified"
+    first = not ok and not _failures_since_verified(core, sr_id)
+    record = set_evidence(core, sr_id, where, summary, passed=ok)
+    payload = {"record": record.id, "hash": record.hash,
+               "evidence_at": _flat(evidence_of(record).get("at"))}
+    core.log_append("events", VERIFIED if ok else NOT_VERIFIED,
+                    {**payload, "where": where} if ok else payload)
+    return {"verdict": verdict} if ok else {"verdict": verdict, "retry_left": first}
+
+
+def _failures_since_verified(core: Core, sr_id: str) -> int:
+    count = 0
+    for entry in core.events():
+        if entry.payload.get("record") == sr_id:
+            if entry.kind == VERIFIED:
+                count = 0
+            elif entry.kind == NOT_VERIFIED:
+                count += 1
+    return count
+
+
+def overrule(core: Core, sr_id: str) -> None:
+    """SR-397 EX-4: the owner does not accept the evaluator's verdict; the proof is open again."""
+    if not evaluator_confirmed(core, sr_id):
+        raise CaptureError(f"{sr_id} has no evaluator verdict to overrule")
+    record = core.index()[sr_id]
+    core.log_append("events", OVERRULED, {
+        "record": sr_id, "hash": record.hash,
+        "evidence_at": _flat(evidence_of(record).get("at"))})
+
+
 def unconfirmed_proofs(core: Core, ids: Sequence[str]) -> list[dict[str, Any]]:
     """SR-260 (d), DEC-256: the requirements of ``ids`` (those a merge into the default
     branch delivers) whose proof is not shown working or not confirmed by the owner:
@@ -267,7 +364,7 @@ def unconfirmed_proofs(core: Core, ids: Sequence[str]) -> list[dict[str, Any]]:
             continue
         if not shown_working(record):
             rows.append({"id": record_id, "title": record.title, "why": "not shown working"})
-        elif not owner_confirmed(core, record_id):
+        elif not confirmed(core, record_id):
             rows.append({"id": record_id, "title": record.title,
                          "why": "not confirmed by you"})
     return rows
@@ -298,7 +395,8 @@ def _requirement(core: Core, sr_id: str) -> Record:
 
 
 def set_plan(core: Core, sr_id: str, plan: str | None, kind: str | None,
-             post: bool | None = None) -> tuple[Record, bool]:
+             post: bool | None = None, evaluator: bool | None = None
+             ) -> tuple[Record, bool]:
     """Record the proof plan; returns the record and whether earlier evidence was dropped
     (evidence of another plan does not show this one)."""
     from plumb.capture.records import record_fields
@@ -307,7 +405,8 @@ def set_plan(core: Core, sr_id: str, plan: str | None, kind: str | None,
     old = dict(proof_of(record) or {})
     entry = proof_entry({"plan": plan if plan is not None else old.get("plan"),
                          "kind": kind or old.get("kind"),
-                         "post_merge": old.get("post_merge") if post is None else post})
+                         "post_merge": old.get("post_merge") if post is None else post,
+                         "evaluator": old.get("evaluator") if evaluator is None else evaluator})
     fields = record_fields(record)
     fields["proof"] = entry
     dropped = bool(old) and old.get("plan") != entry["plan"] and "evidence" in fields
@@ -356,6 +455,12 @@ def run(command: str, argv: list[str]) -> int:
                         help="SR-341: the proof can only be shown once the branch has landed "
                              "(agreed when the proof is chosen); the merge check does not "
                              "hold on it and the next turn after the landing asks for it")
+    parser.add_argument("--evaluator", action=argparse.BooleanOptionalAction, default=None,
+                        help="the owner picked the independent evaluator for this proof at "
+                             "the proof question")
+    parser.add_argument("--overrule", action="store_true",
+                        help="the owner said they do not accept the evaluator's verdict; the "
+                             "proof is open again")
     parser.add_argument("--evidence", default=None, metavar="PATH_OR_LINK",
                         help="where the captured output is")
     parser.add_argument("--summary", default=None, help="what the evidence shows")
@@ -374,8 +479,18 @@ def run(command: str, argv: list[str]) -> int:
     lines: list[str] = []
     try:
         record = _requirement(core, args.sr)
-        if args.plan is not None or args.kind is not None or args.post_merge is not None:
-            record, dropped = set_plan(core, args.sr, args.plan, args.kind, args.post_merge)
+        if args.evaluator is False and any(
+                e.kind in (VERIFIED, NOT_VERIFIED) and e.payload.get("record") == args.sr
+                for e in core.events()):
+            # shortcut: the pick itself is the agent's note, as post-merge is; tie it to the
+            # owner's logged answer if a pick is ever found set or cleared without them
+            raise CaptureError(f"the evaluator already gave a verdict on {args.sr}: the pick "
+                               f"stays; the owner's yes still confirms it (plumb proof "
+                               f"{args.sr} --ask)")
+        if args.plan is not None or args.kind is not None or args.post_merge is not None \
+                or args.evaluator is not None:
+            record, dropped = set_plan(core, args.sr, args.plan, args.kind, args.post_merge,
+                                       args.evaluator)
             lines.append(f"plumb: {record.id} proof recorded")
             hint = kind_hint(record)
             if hint:
@@ -395,6 +510,9 @@ def run(command: str, argv: list[str]) -> int:
                              "--plan ... --kind ...")
         elif args.summary is not None or args.passed is not None:
             raise CaptureError("--summary, --passed and --failed go with --evidence")
+        if args.overrule:
+            overrule(core, args.sr)
+            lines.append(f"plumb: {args.sr} verdict overruled: the proof is open again")
         if args.ask:
             from plumb.stale import current_session
 

@@ -199,6 +199,29 @@ def test_stage_a_runs_in_the_main_session(installed: Path) -> None:
     assert "stages B and C run as its phases" in text
 
 
+@pytest.mark.sr("SR-396")
+def test_sr396_ex1_the_proof_question_offers_the_evaluator_first(installed: Path) -> None:
+    """EX-1: the loop's proof question suggests the independent evaluator as its first option,
+    in every loop; stage C then runs it instead of showing the proof."""
+    text = _texts(installed)["plumb-intent"]
+    stage_a = text[text.find("Stage A,"):text.find("Stage B,")]
+    assert ('first option, marked as the suggestion, is "An independent evaluator checks it '
+            'for me"') in stage_a
+    assert "never take it as picked from an earlier one" in stage_a and "--evaluator" in stage_a
+    stage_c = text[text.find("Stage C,"):text.find("Studies:")]
+    for words in ("plumb evaluate proof", "ask nothing", "plumb proof SR-### --overrule",
+                  "Never record a verdict by hand"):
+        assert words in stage_c, words
+
+
+@pytest.mark.sr("SR-396")
+def test_sr396_ex5_a_fix_run_offers_the_evaluator_once_at_launch(installed: Path) -> None:
+    """EX-5: plumb's own fix runs offer the evaluator once, at launch, and ask nothing after."""
+    text = _texts(installed)["plumb-debug"]
+    assert "offer the independent proof evaluator once with the question tool" in text
+    assert "--proof-evaluator" in text and "Ask nothing during the run" in text
+
+
 @pytest.mark.sr("SR-293")
 def test_each_intent_stage_picks_its_study_before_its_gate(installed: Path) -> None:
     """SR-293 EX-6: each stage of the loop proposes its step's study idea (or none) as its

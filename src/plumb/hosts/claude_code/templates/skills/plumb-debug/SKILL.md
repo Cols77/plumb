@@ -26,5 +26,9 @@ nothing else is needed.
    retried what failed and it worked. You confirm no record. A "reload plugins" line, or
    `done` refused with exit 1, means this session runs another build than main's: tell
    the owner in one line the fix that line names; the case stays landed, not proven.
+6. When the owner launches plumb's own fixes from a session they attend (`plumb debug fix`,
+   `plumb evaluate` with fix rounds), offer the independent proof evaluator once with the
+   question tool, with the run's other choices. Yes: pass `--proof-evaluator`; a fix it does
+   not verify is not merged and ends as a report. Ask nothing during the run.
 
 Questions to the owner: follow plumb-records.
