@@ -56,6 +56,9 @@ def run(command: str, argv: list[str]) -> int:
     if not argv:
         print("\n".join(board_lines(cwd) or ["landing queue: empty"]))
         return 0
+    if argv[0] in ("-h", "--help"):
+        print(USAGE)
+        return 0
     verb, rest = argv[0], argv[1:]
     session, waits = "", ""
     for flag in ("--session", "--on"):
