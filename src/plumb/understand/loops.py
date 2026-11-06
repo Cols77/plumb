@@ -211,7 +211,17 @@ def listing(root: Path, *, agents: Mapping[str, Any] | None = None,
     if agents is None:
         agents = claude_sessions()      # looked up at call time: tests replace it
     now = now or datetime.now(timezone.utc)
+    from plumb import debug
+    from plumb.evaluate import loop as evaluate
+
     rows = intent_rows(Path(root), agents, now)
+    others: dict[tuple[str, str], dict[str, Any]] = {}
+    for tree in checkouts(Path(root)):
+        for row in [*debug.loop_rows(tree.path), *evaluate.rows(tree.path)]:
+            key = (row["kind"], row["id"])      # one run or case seen from two checkouts
+            if key not in others or others[key]["last"] < row["last"]:
+                others[key] = {**row, "branch": row["branch"] or tree.branch or ""}
+    rows += others.values()
     rows.sort(key=lambda r: (not r["live"], [-ord(c) for c in r["last"]]))
     counts = {k: {"live": sum(r["live"] for r in rows if r["kind"] == k),
                   "idle": sum(not r["live"] for r in rows if r["kind"] == k)} for k in KINDS}

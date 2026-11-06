@@ -51,5 +51,9 @@ def run(command: str, argv: list[str]) -> int:
     task = tasks.load(args.task)
     if args.rounds > 0:   # DEC-309: the loop runs by itself; each fix round ends in a rerun
         return loop.run_loop(root, task, rounds=args.rounds + 1, **kw)
-    runmod.run_task(root, task, **kw)
+    name = loop.start(root, task, args.model, 0)
+    try:
+        runmod.run_task(root, task, **kw)
+    finally:
+        loop.note(root, name, ended=True)
     return 0

@@ -302,8 +302,10 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     old = os.environ.get("PLUMB_JOB")
     os.environ["PLUMB_JOB"] = "selfdebug"      # a hook in the fixer's run opens no case
     models = [{"stage": "evidence", "model": core.config.understand.judge_model}]
+    end = ""      # what the case's stage reads once this fix ends: nothing, or why it waits
     try:
         for n in range(1, rounds + 1):
+            debug._update(root, [case["id"]], stage="fix", round=n, pid=os.getpid())
             model = getattr(core.config.understand, "repin_model" if n == 1
                             else "diagnose_model")
             models.append({"stage": f"round {n}", "model": model})
@@ -314,13 +316,16 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
                 test = str(got.get("test") or "")
                 state, why = ("", "") if test else ("fail", "the fixer named no test")
                 if not state:
+                    debug._update(root, [case["id"]], stage="tests")
                     state, why = _verify(core, wt_core, wt, test, runner, judge, baseline,
                                          session, case)
             except Exception as exc:  # noqa: BLE001 - a round that crashes is a failed round
                 state, why = "fail", f"{type(exc).__name__}: {exc}"
             if state == "owner":
+                end = "owner"
                 return Outcome("owner", branch, why, rounds=tried)
             if state == "held":
+                end = "held"
                 line = waiting_line(root, "self-debug", why) or ""
                 return Outcome("held", branch, why, line, tried)
             if not state:
@@ -330,6 +335,7 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
                 return Outcome("fixed", branch, f"fixed on {branch}", rounds=tried)
             tried.append(f"round {n}: {why}")
     finally:
+        debug._update(root, [case["id"]], stage=end, round=0, pid=0)
         if old is None:
             os.environ.pop("PLUMB_JOB", None)
         else:
