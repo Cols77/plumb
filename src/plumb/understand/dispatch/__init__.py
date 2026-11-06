@@ -74,20 +74,24 @@ def host_dispatcher() -> str | None:
 # SR-325 EX-5, DEC-260: a job retried after a failure gets a larger budget each time; the
 # worker sets the scale from the failures in a row before asking
 class Unlocked:
-    """SR-387: a dispatcher whose ``run`` lets go of ``guard`` while the model call is out."""
+    """SR-387: ``inner`` whose ``method`` (a dispatcher's ``run``, the JEV client's ``judge``)
+    lets go of ``guard`` while the model call is out."""
 
-    def __init__(self, inner: Any, guard: Any) -> None:
-        self.inner, self.guard = inner, guard
+    def __init__(self, inner: Any, guard: Any, method: str = "run") -> None:
+        self.inner, self.guard, self.method = inner, guard, method
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self.inner, name)
+        attr = getattr(self.inner, name)
+        if name != self.method:
+            return attr
 
-    def run(self, *args: Any, **kwargs: Any) -> Any:
-        self.guard.release()
-        try:
-            return self.inner.run(*args, **kwargs)
-        finally:
-            self.guard.acquire()
+        def out(*args: Any, **kwargs: Any) -> Any:
+            self.guard.release()
+            try:
+                return attr(*args, **kwargs)
+            finally:
+                self.guard.acquire()
+        return out
 
 
 budget_scale: ContextVar[int] = ContextVar("plumb_budget_scale", default=1)

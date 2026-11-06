@@ -145,3 +145,20 @@ def test_a_stale_answer_is_dropped_and_its_job_run_alone(
     starts = [i for e, i in dispatcher.log if e == "start"]
     assert starts.count(made[0].id) == 1
     assert starts.count(made[1].id) == 2 and starts.count(made[2].id) == 2  # sent again alone
+
+
+
+def test_unlocked_lets_go_of_the_guard_only_while_its_method_is_out() -> None:
+    guard = threading.Lock()
+
+    class Client:
+        last_error = "none"
+
+        def judge(self, request: str) -> tuple[str, bool]:
+            return request, guard.locked()
+
+    client = dispatch.Unlocked(Client(), guard, "judge")
+    with guard:
+        assert client.judge("q") == ("q", False)     # out: the guard is free
+        assert guard.locked()                        # back: held again
+    assert client.last_error == "none"               # everything else passes through

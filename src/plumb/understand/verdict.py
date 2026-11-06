@@ -253,6 +253,8 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
 
     entries = [r for r in job.inputs.get("records") or () if isinstance(r, Mapping)]
     backend = open_jev(core) if jev is _UNSET else jev
+    if guard is not None and getattr(backend, "client", None) is not None:
+        backend.client = dispatch.Unlocked(backend.client, guard, "judge")   # SR-387
     scored, jev_cause = _ask_jev(core, entries, backend)
     fast = _fast(core, entries, scored)
     held = _held_line(core, jev_cause) if jev_cause else ""
