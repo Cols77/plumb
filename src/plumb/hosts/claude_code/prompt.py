@@ -412,6 +412,17 @@ def write_build(ctx: HookContext) -> None:
 
 
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
+    """The turn's context, led by the owner's messages sent through the loop list (SR-395)."""
+    out = _handle(ctx, verify=verify, backend=backend)
+    from plumb.understand import loops
+
+    got = loops.take_inbox(ctx.root, ctx.session_id)
+    if got:
+        out.text = "\n".join(filter(None, [loops.message_label(got), out.text]))
+    return out
+
+
+def _handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
     """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
     Every line goes through the one emitter (``plumb.present.delta``): the

@@ -205,7 +205,8 @@ def intent_rows(root: Path, agents: Mapping[str, Any] | None, now: datetime) -> 
                 if live else "idle",
                 "last": last, "idle_since": "" if live else last[:10],
                 "branch": tree.branch or "", "root": tree.path.as_posix(), "session": session,
-                "reopen": not live, "send": live, "message": None}
+                "reopen": not live, "send": live,
+                "message": message_state(sroot, session, digest.removeprefix("sha256:")[:12])}
     return list(rows.values())
 
 
@@ -495,9 +496,145 @@ def run_reopen(argv: list[str]) -> int:
     return 0 if done["opened"] else EXIT_FINDINGS
 
 
+INBOX, DELIVERED = "inbox.jsonl", "inbox-read.jsonl"
+
+
+def _lines(path: Path) -> list[dict[str, Any]]:
+    try:
+        raw = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    out = []
+    for line in raw:
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(item, dict):
+            out.append(item)
+    return out
+
+
+def append_inbox(root: Path, session: str, entry: Mapping[str, Any]) -> None:
+    """Queue a message for ``session`` at its own root: one append, never read back by the
+    panel (SR-395); owner words stay out of git (``session/`` is ignored)."""
+    folder = Path(root) / ".plumb" / "session" / session
+    folder.mkdir(parents=True, exist_ok=True)
+    fd = os.open(folder / INBOX, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        os.write(fd, (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8"))
+    finally:
+        os.close(fd)
+    touch(root)
+
+
+def take_inbox(root: Path, session: str) -> list[dict[str, Any]]:
+    """The messages waiting for ``session``, each handed out once: the file is renamed first, so
+    one appended meanwhile lands in a new file and waits for the next take."""
+    folder = Path(root) / ".plumb" / "session" / session
+    taking = folder / f"inbox.taking-{os.getpid()}"
+    try:
+        os.replace(folder / INBOX, taking)
+    except OSError:
+        return []
+    got = _lines(taking)
+    at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with (folder / DELIVERED).open("a", encoding="utf-8") as handle:
+        for item in got:
+            handle.write(json.dumps({**item, "delivered_at": at}, ensure_ascii=False) + "\n")
+    taking.unlink(missing_ok=True)
+    touch(root)
+    return got
+
+
+def message_label(got: list[Mapping[str, Any]]) -> str:
+    """What the target reads: the owner's words, labelled as sent through the loop list."""
+    return ("plumb: the owner sent you a message through plumb's loop list: "
+            + " ".join(f"\u00ab{m['text']}\u00bb" for m in got))
+
+
+def message_state(root: Path | None, session: str, loop: str) -> dict[str, str] | None:
+    """The newest message to ``loop`` of ``session``: sent (not read yet) or delivered."""
+    folder = (root or Path()) / ".plumb" / "session" / session
+    read = {str(m.get("id")) for m in _lines(folder / DELIVERED)}
+    mine = [m for m in (*_lines(folder / DELIVERED), *_lines(folder / INBOX))
+            if m.get("loop") == loop]
+    if not mine:
+        return None
+    last = max(mine, key=lambda m: str(m.get("sent_at") or ""))
+    return {"state": "delivered" if str(last.get("id")) in read else "sent",
+            "at": str(last.get("sent_at") or "")}
+
+
+def owner_said(roots: list[Path], session: str, words: str) -> bool:
+    """Whether ``words`` are found, as typed, in an owner message of ``session`` (as a quoted
+    intent is checked)."""
+    from plumb.approvals import quote_in_prompt
+    from plumb.normalize import normalize_text
+
+    quote = normalize_text(words)
+    return any(quote_in_prompt(quote, normalize_text(str(e.get("text") or "")))
+               for e in owner_entries(roots, session))
+
+
+def send(root: Path, *, words: str, text: str, sender: str | None = None,
+         agents: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Queue ``text`` for the session working on the loop ``words`` name (SR-395). ``sender``:
+    the session of an agent, whose owner must have typed ``text`` (PermissionError otherwise);
+    None for the owner's own press in the pane. LookupError: no such loop or several;
+    ValueError: no session works on it."""
+    root = Path(root)
+    if not text.strip():
+        raise ValueError("there is nothing to send")
+    if agents is None:
+        agents = claude_sessions()      # looked up at call time: tests replace it
+    row = find(listing(root, agents=agents)["rows"], words)
+    if sender is not None and not owner_said([w.path for w in checkouts(root)], sender, text):
+        raise PermissionError("the owner did not type these words in this session")
+    if row["kind"] != "intent" or not row["live"]:
+        raise ValueError("no session works on this loop" + (
+            f"; it can be reopened (plumb loops reopen {row['id']})" if row["kind"] == "intent"
+            else "; plumb runs it itself"))
+    target = session_root([w.path for w in checkouts(root)], row["session"], agents,
+                          Path(row["root"])) or root
+    append_inbox(target, row["session"], {
+        "id": uuid.uuid4().hex, "loop": row["id"], "text": text,
+        "sent_at": datetime.now(timezone.utc).isoformat(timespec="microseconds"),
+        "via": "agent" if sender else "pane", "from": sender or "pane"})
+    return {"sent": True, "line": f"sent to the session working on {row['goal']}"}
+
+
+def run_send(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="plumb loops send",
+        description="Send the owner's own words to the session working on a loop. An agent "
+                    "passes them unchanged; words the owner did not type are refused.")
+    add_common(parser)
+    parser.add_argument("loop", nargs="+", help="words naming the loop (its id, goal or branch)")
+    parser.add_argument("--text", required=True, help="the owner's words, unchanged")
+    parser.add_argument("--session", default=None, help="the sending agent's session")
+    args = parser.parse_args(argv)
+    if not args.session:
+        print("plumb: name the sending session with --session; nothing sent", file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        done = send(resolve_root(args.root), words=" ".join(args.loop), text=args.text,
+                    sender=args.session)
+    except PermissionError as exc:
+        print(f"plumb: {exc}; nothing sent", file=sys.stderr)
+        return EXIT_USAGE
+    except (LookupError, ValueError) as exc:
+        print(f"plumb: {exc}", file=sys.stderr)
+        return EXIT_FINDINGS
+    emit(done if args.as_json else [done["line"]], args.as_json)
+    return 0
+
+
 def run(command: str, argv: list[str]) -> int:
     if argv[:1] == ["reopen"]:
         return run_reopen(argv[1:])
+    if argv[:1] == ["send"]:
+        return run_send(argv[1:])
     parser = argparse.ArgumentParser(
         prog="plumb loops",
         description="Every loop of the project, from any session or worktree: what it is meant "

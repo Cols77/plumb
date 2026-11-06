@@ -1,4 +1,5 @@
-"""PreToolUse on Bash, Edit, Write, MultiEdit and NotebookEdit: the guard, then the gate.
+"""PreToolUse on Bash, the edit tools and the question tool (and Read, Grep, Glob, Agent and Task
+for a waiting message): the guard, then the gate.
 
 The guard (SP7 4.3, ``plumb.guard.denied``) refuses what only the owner does: the owner-only
 commands in every launcher spelling, the plumb panel's own steps, anything naming the session
@@ -55,6 +56,13 @@ def decide(root: Path | str, session: str, tool: str,
         reason = main_guard.refusal(root, tool, tool_input, data)  # SR-384
         if reason:
             return _deny(reason)
+    if session and not (data or {}).get("agent_id"):   # SR-395: the main agent only
+        from plumb.understand import loops
+
+        got = loops.take_inbox(Path(root), session)
+        if got:
+            return _deny(loops.message_label(got) + " This step was held once so you read it "
+                         "first; run it again if it still stands.")
     if data is not None:
         from plumb.hosts.claude_code import ask_gate
 

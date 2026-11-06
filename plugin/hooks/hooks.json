@@ -29,7 +29,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|AskUserQuestion|mcp__plumb_ask__ask_owner",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|Agent|Task|AskUserQuestion|mcp__plumb_ask__ask_owner",
         "hooks": [
           {
             "type": "command",

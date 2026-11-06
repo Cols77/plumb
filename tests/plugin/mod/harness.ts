@@ -46,6 +46,10 @@ export type World = {
   opened: string[]
   opens: { id: string; columns?: number; closeOnEscape?: boolean }[]
   closed: string[]
+  /** What the panel submitted as a prompt (SR-395's wake). */
+  submits: { text: string; asUser?: unknown }[]
+  /** The surface draws no `Input` (SR-395 EX-6). */
+  noInput?: boolean
   /** What `plumb mod <action>` answers: its exit code and JSON, by action and argv. */
   answer: (action: string, argv: string[]) => { exitCode: number; data: unknown }
   /** Every process call and file write is refused: a hook of the panel fails. */
@@ -73,6 +77,7 @@ export function world(over: Partial<World> = {}): World {
     opened: [],
     opens: [],
     closed: [],
+    submits: [],
     answer: (action, argv) => {
       if (action === 'hello') return { exitCode: 0, data: { active: true, since: '2026-10-11T12:00:00Z', session: SESSION } }
       return { exitCode: 2, data: null }
@@ -153,6 +158,11 @@ export function install(on: On, w: World): MockClock {
     w.opens.push({ id: e.id, columns: e.columns, ...(e.closeOnEscape ? { closeOnEscape: true } : {}) })
     return { value: { isPlaced: true } as any }
   })
+  on('prompt.submit', (_$, e) => {
+    w.submits.push({ text: e.text, asUser: (e as { asUser?: unknown }).asUser })
+    return { text: e.text }
+  })
+  if (w.noInput) on('ui.resolve', async (_$, e, next) => { const { Input: _gone, ...rest } = (await next(e)) as any; return rest })
   on('ui.close', (_$, e) => {
     w.closed.push(e.id)
     return { value: undefined }

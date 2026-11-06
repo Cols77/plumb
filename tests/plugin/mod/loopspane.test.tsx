@@ -8,7 +8,7 @@
 import { describe, expect } from 'claude-code/testing'
 
 import { ROOT, SESSION } from './fixtures'
-import { BAND, install, START, SURFACES, test, world } from './harness'
+import { BAND, install, START, SURFACES, TURN_DONE, test, world } from './harness'
 
 const STAMP = `${ROOT}/.git/plumb-loops.stamp`
 const LOOP = `${ROOT}/.plumb/session/${SESSION}/intent/aaaaaaaaaaaa.json`
@@ -278,6 +278,102 @@ for (const surface of SURFACES) {
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'loops:reopen:cccccccccccc' })
       expect(w.toasts).toEqual([line])
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-395 EX-6: with no Input the row says to tell the agent', async ($, on) => {
+      const w = loopsWorld(() => answer([row('intent', 'bbbbbbbbbbbb', 'a loop list', 'build', { send: true })]))
+      w.noInput = true
+      install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loops' })
+      const view = await $.ui.mount(pane(surface))
+      await view.press({ key: 'loops:row:intent:bbbbbbbbbbbb' })
+      expect(await view.find({ type: 'Text', text: 'tell the agent of this session what to send' })).toBeDefined()
+      expect(await view.find({ key: 'loops:say:bbbbbbbbbbbb' })).toBeUndefined()
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-395 EX-7: a waiting session\'s band starts its turn once when a message to its loop waits, from the pane or an agent, and the row then reads delivered', async ($, on) => {
+      let message: { state: string; at: string } = { state: 'sent', at: 't1' }
+      const w = loopsWorld(() => answer([row('intent', 'aaaaaaaaaaaa', 'my own loop', 'build', { send: true, session: SESSION, message })]))
+      const clock = install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      expect(w.submits.length).toBe(1) // an agent's message: the band starts the turn at once
+      expect(w.submits[0]?.text.startsWith('<plumb-loop-message>')).toBe(true)
+      expect(w.submits[0]?.asUser).toBeUndefined() // framed, never the owner's own words
+      w.files[STAMP] = 'two'
+      await clock.advance(10_000) // the same message again: nothing more
+      expect(w.submits.length).toBe(1)
+      message = { state: 'sent', at: 't2' } // typed on the pane
+      w.files[STAMP] = 'three'
+      await clock.advance(10_000)
+      expect(w.submits.length).toBe(2)
+      await $.turn.start({ text: 'go on', turnId: 't-3' }) // the turn the wake started
+      message = { state: 'sent', at: 't3' }
+      w.files[STAMP] = 'four'
+      await clock.advance(10_000)
+      expect(w.submits.length).toBe(2) // a turn runs: the pre-step route delivers
+      await $.turn.complete(TURN_DONE)
+      expect(w.submits.length).toBe(3) // still not read at the turn's end: woken
+      message = { state: 'delivered', at: 't3' }
+      w.files[STAMP] = 'five'
+      await clock.advance(10_000)
+      expect(w.submits.length).toBe(3)
+      await band.press({ key: 'loops' })
+      const view = await $.ui.mount(pane(surface))
+      await view.press({ key: 'loops:row:intent:aaaaaaaaaaaa' })
+      expect(await view.find({ type: 'Text', text: '  last message: delivered' })).toBeDefined()
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-395: typing on a working row runs plumb mod send with the words on stdin, the row then reads delivered once the list says so', async ($, on) => {
+      let message: { state: string; at: string } | null = null
+      const w = loopsWorld(() => answer([row('intent', 'bbbbbbbbbbbb', 'a loop list', 'build', { send: true, message })]))
+      const base = w.answer
+      w.answer = (action, argv) => {
+        if (action !== 'send') return base(action, argv)
+        message = { state: 'sent', at: 't1' }
+        return { exitCode: 0, data: { sent: true, line: 'sent' } }
+      }
+      const clock = install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loops' })
+      const view = await $.ui.mount(pane(surface))
+      await view.input({ key: 'loops:say:bbbbbbbbbbbb', text: 'skip the colours slice' })
+      const ran = w.runs.filter(r => r.argv[4] === 'send')
+      expect(ran.length).toBe(1)
+      expect(ran[0]?.argv.slice(3)).toEqual(['mod', 'send', '--session', SESSION, '--root', ROOT, '--json', '--loop', 'bbbbbbbbbbbb'])
+      const stdin = JSON.parse(ran[0]?.stdin ?? '{}')
+      expect(stdin.text).toBe('skip the colours slice')
+      expect(ran[0]?.argv.join(' ')).not.toContain(stdin.key) // the key is never in argv
+      await view.press({ key: 'loops:row:intent:bbbbbbbbbbbb' })
+      expect(await view.find({ type: 'Text', text: '  last message: sent, not read yet' })).toBeDefined()
+      message = { state: 'delivered', at: 't1' }
+      w.files[STAMP] = 'two'
+      await clock.advance(10_000)
+      expect(await view.find({ type: 'Text', text: '  last message: delivered' })).toBeDefined()
+      expect(w.submits.length).toBe(0) // another session's loop: this band wakes nobody
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-395: the row reads sent, not read yet', async ($, on) => {
+      const w = loopsWorld(() => answer([row('intent', 'bbbbbbbbbbbb', 'a loop list', 'build',
+        { send: true, message: { state: 'sent', at: 't1' } })]))
+      install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loops' })
+      const view = await $.ui.mount(pane(surface))
+      await view.press({ key: 'loops:row:intent:bbbbbbbbbbbb' })
+      expect(await view.find({ type: 'Text', text: '  last message: sent, not read yet' })).toBeDefined()
       await view.unmount()
       await band.unmount()
     })

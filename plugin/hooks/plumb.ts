@@ -207,6 +207,12 @@ export function reopen(io: Io, link: PlumbLink, loop: string): Promise<Ran> {
   return plumbMod(io, link, 'reopen', { key: link.key }, ['--loop', loop])
 }
 
+/** The owner typed a message on a working loop's row (SR-395): plumb queues it for the session
+ * working on the loop, which reads it before its next step or at its next turn. */
+export function send(io: Io, link: PlumbLink, loop: string, text: string): Promise<Ran> {
+  return plumbMod(io, link, 'send', { key: link.key, text }, ['--loop', loop])
+}
+
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 
 /** The session's open loop as the pane shows it (SR-305), from `plumb intent status --json`;
@@ -326,6 +332,7 @@ export async function loops(io: Io, link: PlumbLink, stamp: string, seen: string
       goal_full: String(r?.goal_full ?? r?.goal ?? ''), progress: String(r?.progress ?? ''),
       done: strings(r?.done), left: strings(r?.left), waits: String(r?.waits ?? ''), live: r?.live === true,
       idle_since: String(r?.idle_since ?? ''), branch: String(r?.branch ?? ''), reopen: r?.reopen === true,
+      send: r?.send === true, session: String(r?.session ?? ''),
       message: r?.message && typeof r.message === 'object'
         ? { state: String(r.message.state ?? ''), at: String(r.message.at ?? '') } : null,
     })),

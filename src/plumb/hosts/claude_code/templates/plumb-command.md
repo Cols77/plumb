@@ -79,8 +79,11 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
   words, run `{plumb} loops reopen <their words> --session <this session>` and say the window
   opened, or give the command it printed. When it lists several loops, ask them with the
   question tool which one (each option naming its goal and branch), then run
-  `{plumb} loops reopen --loop <that id> --session <this session>`. A refusal is said as it
-  is; open nothing yourself.
+  `{plumb} loops reopen --loop <that id> --session <this session>`. "tell the X loop to ...":
+  pass their words, exactly as they typed them and never reworded, with
+  `{plumb} loops send <X> --text "<their words>" --session <this session>`; the session
+  working on it reads them before its next step. A refusal is said as it is; open and send
+  nothing yourself.
 - `inflight` ("what are the other branches working on?"): run `{plumb} inflight` and answer
   with the branches, their one-line intent and the records by title. "drop that work" (the
   owner abandoned a branch's intent): they name the branch; repeat it back ("drop the work

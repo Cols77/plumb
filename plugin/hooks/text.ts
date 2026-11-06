@@ -68,6 +68,13 @@ export const T = {
   loopsIdle: 'idle',
   loopsReopen: 'reopen in a new session',
   reopenFailed: 'plumb could not open a new session for that loop',
+  // SR-395: a message to a working loop's session, typed on its row or told to the agent
+  loopSay: 'a message to the session working on this loop',
+  loopSend: 'send',
+  loopTell: 'tell the agent of this session what to send',
+  sendFailed: 'plumb could not send that message',
+  // the panel's own prompt that wakes a waiting session; the marker names it plumb's (not the owner's)
+  loopWake: "<plumb-loop-message> plumb: the owner sent this session a message through plumb's loop list.",
   loopsIdleSince: (date: string) => `idle since ${date}`,
   loopsNone: { intent: 'no intent loop is open', debug: 'no problem is being fixed', evaluate: 'no evaluate run is going' } as Record<string, string>,
   loopGoal: (s: string) => `  goal: ${s}`,

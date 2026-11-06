@@ -23,7 +23,7 @@ import type { Hello, Io, Unlinked } from './plumb'
 import { brassColor, GLYPHS, plumbColor, RED, T } from './text'
 
 /** The surface's element table, as `$.ui.resolve(e)` answers it. */
-type Ui = { Box: any; Text: any; Button: any }
+type Ui = { Box: any; Text: any; Button: any; Input: any }
 
 const uiOf = ($: any, e: any): Ui => $.ui.resolve(e)
 
@@ -42,6 +42,9 @@ const bandAtom = atom({ plugin: 'plumb', key: 'band' } as const, BAND)
 const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const,
   { loop: null as PlumbLoopPane | null, known: false as boolean | undefined, loops: null as PlumbLoopsPane | null | undefined })
 const loopsAtom = atom({ plugin: 'plumb', key: 'loops' } as const, plumb.NO_LOOPS)
+// SR-395: a main-agent turn is running; the message the session was last woken for
+const workingAtom = atom({ plugin: 'plumb', key: 'working' } as const, false)
+const wokeAtom = atom({ plugin: 'plumb', key: 'woke' } as const, '')
 const knownAtom = atom({ plugin: 'plumb', key: 'known' } as const, plumb.NO_KNOWN)
 
 // the width the pane asks for when it docks beside the conversation
@@ -98,6 +101,23 @@ async function refreshLoops($: any, io: Io, link: PlumbLink, force = false) {
   if (!force && seen === have.seen) return
   const loops = seen ? await plumb.loops(io, link, stamp, seen) : { ...plumb.NO_LOOPS, stamp }
   if (loops !== null) await update($, loopsAtom, () => loops)
+  await wake($, link)
+}
+
+/** SR-395: a message waits for this very session and no turn is running: the band starts the
+ * turn, once per message, framed as plumb's (never the owner's words); the prompt hook delivers.
+ * Read from the list just fetched, no file of its own. */
+async function wake($: any, link: PlumbLink) {
+  if (await read($, workingAtom)) return
+  const sent = (await read($, loopsAtom)).rows.find(r => r.session === link.session && r.message?.state === 'sent')
+  if (!sent?.message || sent.message.at === await read($, wokeAtom)) return
+  const at = sent.message.at
+  await update($, wokeAtom, () => at)
+  try {
+    await $.prompt.submit({ text: T.loopWake })
+  } catch {
+    // the turn did not start: the message waits for the next one
+  }
 }
 
 // SR-291 EX-7: a workflow's agents raise no event in the owner's session, so the band reads
@@ -221,7 +241,7 @@ function knownPane(ui: Ui, known: PlumbKnown, color: string) {
 /** The loops pane (SR-393): a switch between the three types, then the shown type's rows, live
  * first and idle apart; a row's press folds its detail in or out. Never an agent or tokens. */
 function loopsPane(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, color: string) {
-  const { Box, Button, Text } = ui
+  const { Box, Button, Input, Text } = ui
   const rows = loops.rows.filter(r => r.kind === state.type)
   const one = (r: PlumbLoopRow) => {
     const key = `${r.kind}:${r.id}`
@@ -235,6 +255,8 @@ function loopsPane(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, color: stri
             <Text key={`loops:reopen:text:${r.id}`} color={color}>{T.loopsReopen}</Text>
           </Button>
         ) : null}
+        {r.send ? <Input key={`loops:say:${r.id}`} placeholder={T.loopSay} submitLabel={T.loopSend} onSubmit={() => {}} /> : null}
+        {r.send && state.open.includes(key) ? <Text key={`loops:tell:${r.id}`} dimColor>{T.loopTell}</Text> : null}
         {state.open.includes(key) ? [
           <Text key={`${key}:goal`} dimColor>{T.loopGoal(r.goal_full)}</Text>,
           <Text key={`${key}:done`} dimColor>{T.loopDone(r.done)}</Text>,
@@ -532,6 +554,7 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
+    if ((e as { agentId?: unknown }).agentId === undefined) await update($, workingAtom, () => true)
     const io: Io = {
       exists: p => $.fs.exists(p),
       read: async p => String(await $.fs.read(p)),
@@ -609,6 +632,7 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (e.agentId !== undefined) return result // a subagent's turn: the owner's band waits
+    await update($, workingAtom, () => false)
     const io: Io = {
       exists: p => $.fs.exists(p),
       read: async p => String(await $.fs.read(p)),
@@ -804,6 +828,34 @@ export const register: Register = on => {
     }
     return pressed
   })
+
+  // SR-395: the owner typed a message on a working loop's row: plumb queues it for that session
+  on('ui.input', async ($, e, next) => {
+    const result = await next(e)
+    if (e.plugin !== 'plumb' || e.kind !== 'submit' || !e.element.startsWith('loops:say:')) return result
+    const link = await read($, linkAtom)
+    if (link === null || (await read($, degradedAtom)) || !e.value.trim()) return result
+    const io: Io = {
+      exists: p => $.fs.exists(p),
+      read: async p => String(await $.fs.read(p)),
+      list: async p => (await $.fs.list(p)).map(f => f.name),
+      write: (p, t) => $.fs.write(p, t),
+      run: (argv, init) => $.process.run(argv, init),
+      root: () => $.session.root(),
+      id: () => $.session.id(),
+      now: () => $.clock.now(),
+      env: async () => ({
+        PLUMB_HOME: await $.env.get('PLUMB_HOME'),
+        CLAUDE_PLUGIN_DATA: await $.env.get('CLAUDE_PLUGIN_DATA'),
+        HOME: await $.env.get('HOME'),
+        USERPROFILE: await $.env.get('USERPROFILE'),
+      }),
+    }
+    const ran = await plumb.send(io, link, e.element.slice('loops:say:'.length), e.value)
+    if (!ran.ok) $.ui.toast(T.sendFailed)
+    await refreshLoops($, io, link, true) // the row now reads sent, not read yet
+    return result
+  }).catch(($, e, next) => next(e))
 
   // SR-369: Tab onto the band's idea count brings the next idea to the front, wrapping from the
   // last to the first; the ring stays on the idea, so each Tab moves one idea on
