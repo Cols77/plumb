@@ -16,6 +16,7 @@ plugin/.claude-plugin/types/
 .plumb/log/answer-bound/
 .plumb/log/answer-unbound/
 .plumb/log/answer-read/
+.plumb/log/question-withdrawn/
 .plumb/log/card-press/
 .plumb/log/card-settled/
 .plumb/log/card-unsettled/
