@@ -51,7 +51,7 @@ export type World = {
   /** The surface draws no `Input` (SR-395 EX-6). */
   noInput?: boolean
   /** What `plumb mod <action>` answers: its exit code and JSON, by action and argv. */
-  answer: (action: string, argv: string[]) => { exitCode: number; data: unknown }
+  answer: (action: string, argv: string[]) => { exitCode: number; data: unknown; stderr?: string }
   /** Every process call and file write is refused: a hook of the panel fails. */
   broken?: boolean
 }
@@ -130,12 +130,12 @@ export function install(on: On, w: World): MockClock {
     const argv = [...e.argv]
     if (w.broken) return { deny: 'the process could not start' }
     w.runs.push({ argv, stdin: e.init?.stdin ?? '', env: { ...(e.init?.env ?? {}) } })
-    const { exitCode, data } = w.answer(argv[4] ?? '', argv)
+    const { exitCode, data, stderr } = w.answer(argv[4] ?? '', argv)
     return {
       value: {
         exitCode,
         stdout: data === null ? '' : JSON.stringify(data),
-        stderr: exitCode === 0 ? '' : 'refused',
+        stderr: stderr ?? (exitCode === 0 ? '' : 'refused'),
         isStdoutTruncated: false,
         isStderrTruncated: false,
       },

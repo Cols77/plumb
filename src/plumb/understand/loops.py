@@ -30,6 +30,7 @@ GOAL_CHARS = 100
 STAMP = "plumb-loops.stamp"
 KINDS = ("intent", "debug", "evaluate")
 _HEX = re.compile(r"[0-9a-f]{6,}")
+_REOPEN = re.compile(r"\bre-?open|\bopen\b.*\bagain\b|\bresume\b", re.I)
 
 
 def claude_sessions() -> dict[str, dict[str, Any]] | None:
@@ -156,6 +157,19 @@ def _recent(root: Path | None, session: str, now: datetime) -> bool:
     return now.timestamp() - newest <= LIVE_S
 
 
+PENDING = "reopen-pending.json"
+PENDING_S = 300       # a reopened loop waits this long for the new session's adopt
+
+
+def _opening(root: Path, session: str, now: datetime) -> bool:
+    """A window was opened lately for the loop of ``session`` and has not taken it over yet."""
+    try:
+        at = json.loads((root / ".plumb" / "session" / session / PENDING).read_text("utf-8"))["at"]
+        return 0 <= now.timestamp() - datetime.fromisoformat(at).timestamp() <= PENDING_S
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def intent_rows(root: Path, agents: Mapping[str, Any] | None, now: datetime) -> list[dict[str, Any]]:
     from plumb.api import open_core
     from plumb.capture import proof
@@ -163,50 +177,55 @@ def intent_rows(root: Path, agents: Mapping[str, Any] | None, now: datetime) -> 
 
     found = checkouts(root)
     roots = [w.path for w in found]
-    rows: dict[str, dict[str, Any]] = {}
+    kept: dict[str, tuple[Any, str, Mapping[str, Any], str, str]] = {}
     for tree in found:
         for path, data in cmd_intent.loops(tree.path):
             step = next((s for s in cmd_intent.STAGES if not cmd_intent._passed(data, s)),
                         "proven")
-            session, digest = path.parent.parent.name, str(data["digest"])
-            last = _last(data)
+            digest, last = str(data["digest"]), _last(data)
             if data.get("handed_to") or step == "proven" \
-                    or digest in rows and rows[digest]["last"] >= last:
+                    or digest in kept and kept[digest][4] >= last:
                 continue
-            intent = str(data.get("intent") or "")
-            tasks = data.get("tasks") if isinstance(data.get("tasks"), Mapping) else {}
-            left = [str(x) for x in tasks.get("left") or ()]
-            if step == "build" and intent:
-                core = open_core(tree.path)
-                left += ["proof: " + r["title"] for r in proof.not_shown(
-                    core, cmd_intent.requirements_of(core, intent))]
-            steps = (*cmd_intent.STAGES, "proven")
-            left += steps[steps.index(step) + 1:]
-            goal = _readback(tree.path, intent) if intent else ""
-            if not goal:
-                words = next((clarify.commanded_words(str(e.get("text") or ""))
-                              for e in owner_entries(roots, session)
-                              if e.get("digest") == digest), None)
-                goal = words or f"intent loop {digest.removeprefix('sha256:')[:12]}"
-            sroot = session_root(roots, session, agents, tree.path)
-            waits = ("the " + str(data["stopped"]) if data.get("stopped")
-                     else "the owner's answer" if gate.state(sroot, session).state == "closed"
-                     else "")
-            running = agents.get(session) if agents is not None else None
-            live = bool(running) if agents is not None else _recent(sroot, session, now)
-            total = tasks.get("total")
-            rows[digest] = {
-                "kind": "intent", "id": digest.removeprefix("sha256:")[:12], "intent": intent,
-                "goal": _one_line(goal), "goal_full": goal,
-                "progress": step + (f" · {tasks.get('done') or 0}/{total}" if total else ""),
-                "done": [s for s in cmd_intent.STAGES if cmd_intent._passed(data, s)],
-                "left": left, "waits": waits, "live": live,
-                "state": ("waiting" if (running or {}).get("status") == "idle" else "working")
-                if live else "idle",
-                "last": last, "idle_since": "" if live else last[:10],
-                "branch": tree.branch or "", "root": tree.path.as_posix(), "session": session,
-                "reopen": not live, "send": live,
-                "message": message_state(sroot, session, digest.removeprefix("sha256:")[:12])}
+            kept[digest] = (tree, path.parent.parent.name, data, step, last)
+    cores: dict[Path, Any] = {}      # the records of a checkout, read once and only if needed
+    rows: dict[str, dict[str, Any]] = {}
+    for digest, (tree, session, data, step, last) in kept.items():
+        intent = str(data.get("intent") or "")
+        tasks = data.get("tasks") if isinstance(data.get("tasks"), Mapping) else {}
+        left = [str(x) for x in tasks.get("left") or ()]
+        if step == "build" and intent:
+            core = cores[tree.path] = cores.get(tree.path) or open_core(tree.path)
+            left += ["proof: " + r["title"] for r in proof.not_shown(
+                core, cmd_intent.requirements_of(core, intent))]
+        steps = (*cmd_intent.STAGES, "proven")
+        left += steps[steps.index(step) + 1:]
+        goal = _readback(tree.path, intent) if intent else ""
+        if not goal:
+            words = next((clarify.commanded_words(str(e.get("text") or ""))
+                          for e in owner_entries(roots, session)
+                          if e.get("digest") == digest), None)
+            goal = words or f"intent loop {digest.removeprefix('sha256:')[:12]}"
+        sroot = session_root(roots, session, agents, tree.path)
+        running = agents.get(session) if agents is not None else None
+        live = bool(running) if agents is not None else _recent(sroot, session, now)
+        opening = not live and _opening(tree.path, session, now)
+        waits = ("a new session to start on it" if opening
+                 else "the " + str(data["stopped"]) if data.get("stopped")
+                 else "the owner's answer" if gate.state(sroot, session).state == "closed"
+                 else "")
+        total = tasks.get("total")
+        rows[digest] = {
+            "kind": "intent", "id": digest.removeprefix("sha256:")[:12], "intent": intent,
+            "goal": _one_line(goal), "goal_full": goal,
+            "progress": step + (f" · {tasks.get('done') or 0}/{total}" if total else ""),
+            "done": [s for s in cmd_intent.STAGES if cmd_intent._passed(data, s)],
+            "left": left, "waits": waits, "live": live,
+            "state": ("waiting" if (running or {}).get("status") == "idle" else "working")
+            if live else "idle",
+            "last": last, "idle_since": "" if live else last[:10],
+            "branch": tree.branch or "", "root": tree.path.as_posix(), "session": session,
+            "reopen": not live and not opening, "send": live,
+            "message": message_state(sroot, session, digest.removeprefix("sha256:")[:12])}
     return list(rows.values())
 
 
@@ -282,9 +301,10 @@ def owner_answers(root: Path, session: str) -> list[tuple[str, str]]:
     the log of every checkout (the agent's question is never read)."""
     from plumb.api import open_core
 
-    return sorted((e.at, str(e.payload.get("answer") or "")) for e in open_core(root).events()
-                  if e.kind == "question-answer" and e.payload.get("session") == session
-                  and e.payload.get("via") == "question-tool")
+    return sorted({(e.at, str(e.payload.get("answer") or "")) for w in checkouts(root)
+                   for e in open_core(w.path).events()
+                   if e.kind == "question-answer" and e.payload.get("session") == session
+                   and e.payload.get("via") == "question-tool"})
 
 
 def names(rows: list[dict[str, Any]], text: str, words: str = "") -> list[dict[str, Any]]:
@@ -299,17 +319,19 @@ def names(rows: list[dict[str, Any]], text: str, words: str = "") -> list[dict[s
     return [r for r in rows if any(r["id"].startswith(i) for i in ids)
             or (r.get("intent") and re.search(rf"\b{re.escape(r['intent'].lower())}\b", low))
             or (r["branch"] not in ("", "main") and r["branch"].lower() in low)
+            or (r["goal"] and normalize_text(r["goal"]).lower() in low)
             or (said and all(w in f"{r['goal_full']} {r['branch']}".lower()
                              for w in words.lower().split()))]
 
 
 def _asked(root: Path, rows: list[dict[str, Any]], row: Mapping[str, Any], session: str,
            words: str) -> bool:
-    """Whether the owner's latest message in ``session``, or their latest question-tool answer
-    after it, names ``row`` and no other row (SR-394: no session opens unless they ask now)."""
+    """Whether the owner's latest message in ``session`` asks to reopen a loop (it says so), and
+    that message or their latest question-tool answer after it names ``row`` and no other row
+    (SR-394: no session opens unless they ask now)."""
     entries = owner_entries([w.path for w in checkouts(root)], session)
-    if not entries:
-        return False
+    if not entries or not _REOPEN.search(str(entries[-1].get("text") or "")):
+        return False       # a mention ("how is INT-120 going?") is not a request
     last = entries[-1]
     texts = [str(last.get("text") or "")]
     later = [a for at, a in owner_answers(root, session) if at > str(last.get("at") or "")]
@@ -369,7 +391,7 @@ def launch(argv: list[str], cwd: Path, *, prepare: Any = None, which: Any = shut
             '"', '\\"')
         full = ["osascript", "-e", f'tell application "Terminal" to do script "{script}"']
     elif platform == "win32":
-        full = ["wt", "-d", cwd_s, *argv]
+        full = ["wt", "-d", cwd_s, *(a.replace(";", "\\;") for a in argv)]   # ';' splits tabs
     else:
         found = next(((p, f) for p, f in _LINUX if which(p)), None)
         if found is None or not (have.get("DISPLAY") or have.get("WAYLAND_DISPLAY")):
@@ -384,6 +406,11 @@ def launch(argv: list[str], cwd: Path, *, prepare: Any = None, which: Any = shut
             undo()
         return False
     return True
+
+
+def _quote(argv: list[str], platform: str = sys.platform) -> str:
+    """One command line for a shell of ``platform`` (cmd and PowerShell do not read POSIX quotes)."""
+    return subprocess.list2cmdline(argv) if platform == "win32" else shlex.join(argv)
 
 
 def _git(root: Path, *args: str) -> str:
@@ -425,6 +452,18 @@ def _checkout_for(root: Path, row: Mapping[str, Any]) -> tuple[Path, list[list[s
                           *([] if known else [["branch", "-D", branch]])]
 
 
+def _exclude_worktrees(main: Path) -> None:
+    """A repository adopted before ``.plumb/wt/`` was ignored: keep the worktrees out of its
+    status (``.git/info/exclude``), so a later ``git add -A`` cannot stage one as a gitlink."""
+    probe = subprocess.run(["git", "check-ignore", "-q", ".plumb/wt/x"], cwd=main)
+    if probe.returncode == 1:
+        exclude = Path(_git(main, "rev-parse", "--git-path", "info/exclude").strip())
+        exclude = exclude if exclude.is_absolute() else main / exclude
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        with exclude.open("a", encoding="utf-8") as handle:
+            handle.write("/.plumb/wt/\n")
+
+
 def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = None,
            agents: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Open the idle intent loop ``words`` (or id ``loop``) name in a new window and session
@@ -443,6 +482,8 @@ def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = N
         raise ValueError("a session works on this loop already")
     if asker is not None and not _asked(root, rows, row, asker, "" if loop else words):
         raise PermissionError("the owner did not ask for this loop to be reopened in this session")
+    if not row["reopen"]:
+        raise ValueError("a new session is being opened for this loop already")
     data = next(d for p, d in cmd_intent.loops(Path(row["root"]))
                 if p.parent.parent.name == row["session"]
                 and str(d["digest"]).removeprefix("sha256:").startswith(row["id"]))
@@ -453,6 +494,7 @@ def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = N
     main = next(w.path for w in checkouts(root) if w.main) if make else root
 
     def prepare() -> Any:
+        _exclude_worktrees(main)
         for step in make:
             _git(main, *step)
         return lambda: [subprocess.run(["git", *s], cwd=main, capture_output=True) for s in undo]
@@ -462,9 +504,10 @@ def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = N
     except subprocess.CalledProcessError:
         opened = False
     if opened:
+        marker = Path(row["root"]) / ".plumb" / "session" / row["session"] / PENDING
+        marker.write_text(json.dumps({"at": datetime.now(timezone.utc).isoformat()}), "utf-8")
         return {"opened": True, "command": command, "line": f"opened a new session for {row['goal']}"}
-    by_hand = [shlex.join(["git", *s]) for s in make] + [shlex.join(["cd", str(cwd)]),
-                                                          shlex.join(command)]
+    by_hand = [_quote(["git", *s]) for s in make] + [_quote(["cd", str(cwd)]), _quote(command)]
     return {"opened": False, "command": command,
             "line": "no terminal window could be opened here; open the session by hand:\n"
                     + "\n".join(by_hand)}
@@ -593,7 +636,8 @@ def send(root: Path, *, words: str, text: str, sender: str | None = None,
         raise PermissionError("the owner did not type these words in this session")
     if row["kind"] != "intent" or not row["live"]:
         raise ValueError("no session works on this loop" + (
-            f"; it can be reopened (plumb loops reopen {row['id']})" if row["kind"] == "intent"
+            "; it can be reopened" + (f" (plumb loops reopen {row['id']})" if sender else "")
+            if row["kind"] == "intent"
             else "; plumb runs it itself"))
     target = session_root([w.path for w in checkouts(root)], row["session"], agents,
                           Path(row["root"])) or root

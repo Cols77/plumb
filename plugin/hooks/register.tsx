@@ -91,8 +91,8 @@ async function refreshKnown($: any, io: Io, link: PlumbLink) {
   if (known !== null) await update($, knownAtom, () => known)
 }
 
-/** SR-393: the project's loops read again at link, at each turn's end and when the pane
- * opens (`force`), and otherwise only when the one change stamp moved; plumb runs only then,
+/** SR-393: the project's loops read again at link and when the pane opens (`force`), and
+ * otherwise (the poll, each turn's end) only when the one change stamp moved; plumb runs only then,
  * and never while no stamp exists: no loop was ever written. */
 async function refreshLoops($: any, io: Io, link: PlumbLink, force = false) {
   const have = await read($, loopsAtom)
@@ -656,7 +656,8 @@ export const register: Register = on => {
     const view = await plumb.snapshot(io, link, await read($, viewAtom), true)
     await update($, viewAtom, () => view)
     await refreshKnown($, io, link)
-    await refreshLoops($, io, link, true)
+    await refreshLoops($, io, link) // only when the stamp moved: a listing costs seconds
+    await wake($, link) // a message that came while the turn ran: the list is already read
     return result // the answer is never rewritten; no summary line is added (realign a)
   }).catch(async ($, e, next) => {
     const result = await next(e)
@@ -796,7 +797,7 @@ export const register: Register = on => {
     } else if (key.startsWith('loops:reopen:')) {
       // SR-394: the press opens a new session on the idle loop; plumb's line says it or gives the command
       const ran = await plumb.reopen(io, link, key.slice('loops:reopen:'.length))
-      line = String(ran.data?.line ?? '') || T.reopenFailed
+      line = String(ran.data?.line ?? '') || plumb.refusal(ran) || T.reopenFailed
     } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:video' || key === 'idea:none') {
       // SR-294 EX-8, EX-9: the owner's choice on the idea is recorded; the room stays closed
       const idea = frontIdea(view.status?.ideas ?? [], await read($, bandAtom))
@@ -852,7 +853,7 @@ export const register: Register = on => {
       }),
     }
     const ran = await plumb.send(io, link, e.element.slice('loops:say:'.length), e.value)
-    if (!ran.ok) $.ui.toast(T.sendFailed)
+    if (!ran.ok) $.ui.toast(plumb.refusal(ran) || T.sendFailed)
     await refreshLoops($, io, link, true) // the row now reads sent, not read yet
     return result
   }).catch(($, e, next) => next(e))

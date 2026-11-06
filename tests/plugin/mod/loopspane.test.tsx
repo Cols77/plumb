@@ -282,6 +282,24 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
+    test('SR-394, SR-395: a refused press toasts what plumb said, not a generic failure', async ($, on) => {
+      const w = loopsWorld(() => answer([{ ...IDLE, reopen: true }, row('intent', 'bbbbbbbbbbbb', 'a loop list', 'build', { send: true })]))
+      const base = w.answer
+      const said = (action: string) => `plumb mod ${action}: ${action === 'send' ? 'no session works on this loop; it can be reopened' : 'a session works on this loop already'}`
+      w.answer = (action, argv) => action === 'reopen' || action === 'send'
+        ? { exitCode: 1, data: null, stderr: said(action) } : base(action, argv)
+      install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      await band.press({ key: 'loops' })
+      const view = await $.ui.mount(pane(surface))
+      await view.press({ key: 'loops:reopen:cccccccccccc' })
+      await view.input({ key: 'loops:say:bbbbbbbbbbbb', text: 'rebase please' })
+      expect(w.toasts).toEqual(['a session works on this loop already', 'no session works on this loop; it can be reopened'])
+      await view.unmount()
+      await band.unmount()
+    })
+
     test('SR-395 EX-6: with no Input the row says to tell the agent', async ($, on) => {
       const w = loopsWorld(() => answer([row('intent', 'bbbbbbbbbbbb', 'a loop list', 'build', { send: true })]))
       w.noInput = true

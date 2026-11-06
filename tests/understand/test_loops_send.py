@@ -113,6 +113,13 @@ def test_ex5_a_loop_nobody_works_on_is_refused_and_named_reopenable(
     assert not _inbox(repo, "gone").exists()
 
 
+def test_the_pane_is_told_a_dead_loop_can_be_reopened_in_plain_words(repo: Path) -> None:
+    _building(repo, "gone")
+    with pytest.raises(ValueError) as said:
+        loops.send(repo, words=ID, text="rebase")
+    assert "no session works on this loop; it can be reopened" == str(said.value)
+
+
 def test_a_loop_held_in_a_worktree_reaches_the_session_whose_hooks_run_in_main(
         repo: Path, tmp_path: Path) -> None:
     wt = _worktree(repo, tmp_path)

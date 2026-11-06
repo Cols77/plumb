@@ -201,6 +201,12 @@ export function room(io: Io, link: PlumbLink, slug: string): Promise<Ran> {
   return plumbMod(io, link, 'room', { key: link.key }, ['--study', slug])
 }
 
+/** What plumb said when it refused a pane press (`plumb mod <action>: <reason>` on stderr), '' when
+ * it said nothing. */
+export function refusal(ran: Ran): string {
+  return lastLine(ran.stderr).replace(/^plumb mod \w+:\s*/, '')
+}
+
 /** The owner pressed reopen on an idle loop (SR-394): plumb opens a new session on it in its own
  * window, or answers the command that opens it by hand (`data.line` either way). */
 export function reopen(io: Io, link: PlumbLink, loop: string): Promise<Ran> {

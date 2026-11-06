@@ -161,6 +161,7 @@ def test_ex6_the_agents_command_opens_the_same_session_as_the_pane(
     _idle_build(wt)
     _ask(repo, "reopen the card-store loop")           # logged in main; the agent runs in wt
     assert _reopen(wt, "card-store") == 0
+    (wt / ".plumb" / "session" / "gone" / loops.PENDING).unlink()      # the first window's adopt
     assert run_mod(monkeypatch, capsys, repo, "hello", stdin={"key_digest": DIGEST})[0] == 0
     code, answer, _ = run_mod(monkeypatch, capsys, repo, "reopen", "--loop", ID,
                               stdin={"key": KEY})
@@ -298,6 +299,7 @@ def test_a_main_loop_whose_intent_another_branch_carries_reopens_on_that_branch(
     loops.reopen(repo, loop=ID)
     assert window.calls[-1][1]["cwd"] == str(other)
     git(repo, "worktree", "remove", "--force", str(other))          # the branch stays, no checkout
+    (repo / ".plumb" / "session" / "gone" / loops.PENDING).unlink()
     loops.reopen(repo, loop=ID)
     path = repo / ".plumb" / "wt" / "intent-int-001"
     assert window.calls[-1][1]["cwd"] == str(path)
@@ -368,3 +370,82 @@ def test_mod_reopen_refuses_without_the_key(repo: Path, window: Windows,
     code, _, err = run_mod(monkeypatch, capsys, repo, "reopen", "--loop", ID,
                            stdin={"key": "b2" * 32})
     assert code == 3 and window.calls == []
+
+
+def test_a_mention_of_a_loop_is_not_a_request_to_reopen_it(
+        repo: Path, write_record: Any, window: Windows) -> None:
+    _commit_records(repo, write_record)
+    _idle_build(repo)
+    for said in ("how is INT-001 going?", f"what is {ID} waiting for?"):
+        _ask(repo, said)
+        assert _reopen(repo, "INT-001") == 2 and _reopen(repo, "--loop", ID) == 2
+    assert window.calls == []
+    _ask(repo, "please re-open INT-001", at="2026-10-06T11:00:00Z")
+    assert _reopen(repo, "INT-001") == 0 and len(window.calls) == 1
+
+
+def test_the_owners_pick_between_loops_of_main_is_honoured_from_any_checkout(
+        repo: Path, tmp_path: Path, window: Windows) -> None:
+    ids = {}
+    for name, digest in (("a", DIGEST_A), ("b", DIGEST_B)):
+        said = log_prompt(repo, f"/plumb intent retire the card store {name}", session=f"g{name}",
+                          at="2026-10-01T10:00:00Z")
+        _loop(repo, f"g{name}", said)
+        ids[name] = said.removeprefix("sha256:")[:12]
+    _ask(repo, "reopen the card store loop")
+    assert _reopen(repo, "card store") == 1                      # two: the agent asks
+    open_core(repo).log_append("events", "question-answer", {
+        "session": ASKER, "question": "which loop?", "options": [], "via": "question-tool",
+        "answer": "retire the card store b (main)"})
+    wt = _worktree(repo, tmp_path, "elsewhere")                # the answer is in main's log
+    assert _reopen(wt, "--loop", ids["a"]) == 2
+    assert _reopen(wt, "--loop", ids["b"]) == 0 and len(window.calls) == 1
+
+
+def test_the_listing_loads_the_records_once_per_checkout_and_only_for_kept_rows(
+        repo: Path, write_record: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    import plumb.api
+
+    _commit_records(repo, write_record)
+    for session in ("s1", "s2", "s3"):          # one loop seen from three sessions
+        _loop(repo, session, DIGEST_A, intent="INT-001", stages=_passed("clarify", "plan"))
+    calls: list[Path] = []
+    real = plumb.api.open_core
+    monkeypatch.setattr(plumb.api, "open_core", lambda r, *a, **k: calls.append(r) or real(r, *a, **k))
+    assert len(loops.listing(repo, agents={})["rows"]) == 1
+    assert len(calls) <= 1
+
+
+def test_a_second_press_opens_no_second_session(
+        repo: Path, write_record: Any, window: Windows) -> None:
+    _commit_records(repo, write_record)
+    _idle_build(repo)
+    loops.reopen(repo, loop=ID)
+    (row,) = loops.listing(repo, agents={})["rows"]
+    assert row["reopen"] is False and row["send"] is False and row["waits"]
+    with pytest.raises(ValueError, match="being opened"):
+        loops.reopen(repo, loop=ID)
+    assert len(window.calls) == 1
+
+
+def test_a_main_loop_worktree_is_ignored_in_a_repository_adopted_before_the_ignore_line(
+        repo: Path, write_record: Any, window: Windows) -> None:
+    _commit_records(repo, write_record)
+    _idle_build(repo)
+    ignore = repo / ".plumb" / ".gitignore"
+    ignore.write_text("\n".join(x for x in ignore.read_text("utf-8").split() if x != "wt/") + "\n",
+                      encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "an older plumb's ignore file")
+    loops.reopen(repo, loop=ID)
+    assert (repo / ".plumb" / "wt" / "intent-int-001").is_dir()
+    assert ".plumb/wt" not in git(repo, "status", "--porcelain")
+
+
+def test_windows_terminal_keeps_a_semicolon_of_the_brief_and_the_hand_command_is_quoted_for_it() -> None:
+    seen: list[list[str]] = []
+    assert REAL_LAUNCH(["claude", "INT-001 x; SR-001 y"], Path("/w"), env={}, platform="win32",
+                       spawn=lambda argv, **kw: seen.append(argv))
+    assert seen[0] == ["wt", "-d", "/w", "claude", "INT-001 x\\; SR-001 y"]
+    assert loops._quote(["claude", 'a "b" c'], "win32") == 'claude "a \\"b\\" c"'
+    assert loops._quote(["claude", "a b"], "linux") == "claude 'a b'"
