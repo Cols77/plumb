@@ -211,10 +211,13 @@ class UnderstandConfig:
     progress_min_s: float = 2
     progress_interval_s: float = 1
     max_consecutive_failures: int = 3
+    parallel_calls: int = 1      # SR-387: independent model calls of a queue sent together
     # SR-389: the model each capability level runs; the stage settings above name a level
     levels: dict[str, str] = field(default_factory=lambda: {n: n for n in LEVELS})
 
     def __post_init__(self) -> None:
+        if self.parallel_calls < 1:
+            raise ValueError(f"understand.parallel_calls is at least 1; got {self.parallel_calls}")
         if set(self.levels) != set(LEVELS):
             raise ValueError("understand.levels names exactly the four levels "
                              + ", ".join(LEVELS) + f"; got {', '.join(map(str, self.levels))}")

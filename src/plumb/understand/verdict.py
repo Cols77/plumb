@@ -244,7 +244,7 @@ def _ask(core: Any, dispatcher: Any, sub: Job, part: list[Mapping[str, Any]], sy
 
 def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             on_step: Callable[[str], None] = lambda text: None, jev: Any = _UNSET,
-            dispatcher: Any = None) -> Cascaded:
+            dispatcher: Any = None, guard: Any = None) -> Cascaded:
     """The judge job's answer: JEV's verdicts where it clears and the fast track takes the
     record, the judge model's for the rest (with JEV's scores when JEV gave some). Raises
     ``Waiting`` when no record has a verdict and the model cannot judge them; otherwise the
@@ -271,6 +271,8 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             gap = dispatcher.available() or ""
         except NoModel as exc:
             gap = str(exc)
+        if guard is not None and dispatcher is not None:    # SR-387: parallel passes
+            dispatcher = dispatch.Unlocked(dispatcher, guard)
         label = f"{getattr(dispatcher, 'name', 'model')}:{model}"
         questions: list[Any] = []
         unreachable = bool(gap)         # SR-359: a record too large is not the judge's fault
