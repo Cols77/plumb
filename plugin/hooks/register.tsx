@@ -42,9 +42,6 @@ const bandAtom = atom({ plugin: 'plumb', key: 'band' } as const, BAND)
 const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const,
   { loop: null as PlumbLoopPane | null, known: false as boolean | undefined, loops: null as PlumbLoopsPane | null | undefined })
 const loopsAtom = atom({ plugin: 'plumb', key: 'loops' } as const, plumb.NO_LOOPS)
-// SR-395: a main-agent turn is running; the message the session was last woken for
-const workingAtom = atom({ plugin: 'plumb', key: 'working' } as const, false)
-const wokeAtom = atom({ plugin: 'plumb', key: 'woke' } as const, '')
 const knownAtom = atom({ plugin: 'plumb', key: 'known' } as const, plumb.NO_KNOWN)
 
 // the width the pane asks for when it docks beside the conversation
@@ -101,23 +98,6 @@ async function refreshLoops($: any, io: Io, link: PlumbLink, force = false) {
   if (!force && seen === have.seen) return
   const loops = seen ? await plumb.loops(io, link, stamp, seen) : { ...plumb.NO_LOOPS, stamp }
   if (loops !== null) await update($, loopsAtom, () => loops)
-  await wake($, link)
-}
-
-/** SR-395: a message waits for this very session and no turn is running: the band starts the
- * turn, once per message, framed as plumb's (never the owner's words); the prompt hook delivers.
- * Read from the list just fetched, no file of its own. */
-async function wake($: any, link: PlumbLink) {
-  if (await read($, workingAtom)) return
-  const sent = (await read($, loopsAtom)).rows.find(r => r.session === link.session && r.message?.state === 'sent')
-  if (!sent?.message || sent.message.at === await read($, wokeAtom)) return
-  const at = sent.message.at
-  await update($, wokeAtom, () => at)
-  try {
-    await $.prompt.submit({ text: T.loopWake })
-  } catch {
-    // the turn did not start: the message waits for the next one
-  }
 }
 
 // SR-291 EX-7: a workflow's agents raise no event in the owner's session, so the band reads
@@ -554,7 +534,6 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
-    if ((e as { agentId?: unknown }).agentId === undefined) await update($, workingAtom, () => true)
     const io: Io = {
       exists: p => $.fs.exists(p),
       read: async p => String(await $.fs.read(p)),
@@ -632,7 +611,6 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (e.agentId !== undefined) return result // a subagent's turn: the owner's band waits
-    await update($, workingAtom, () => false)
     const io: Io = {
       exists: p => $.fs.exists(p),
       read: async p => String(await $.fs.read(p)),
@@ -657,7 +635,6 @@ export const register: Register = on => {
     await update($, viewAtom, () => view)
     await refreshKnown($, io, link)
     await refreshLoops($, io, link) // only when the stamp moved: a listing costs seconds
-    await wake($, link) // a message that came while the turn ran: the list is already read
     return result // the answer is never rewritten; no summary line is added (realign a)
   }).catch(async ($, e, next) => {
     const result = await next(e)

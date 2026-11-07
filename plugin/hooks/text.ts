@@ -74,7 +74,6 @@ export const T = {
   loopTell: 'tell the agent of this session what to send',
   sendFailed: 'plumb could not send that message',
   // the panel's own prompt that wakes a waiting session; the marker names it plumb's (not the owner's)
-  loopWake: "<plumb-loop-message> plumb: the owner sent this session a message through plumb's loop list.",
   loopsIdleSince: (date: string) => `idle since ${date}`,
   loopsNone: { intent: 'no intent loop is open', debug: 'no problem is being fixed', evaluate: 'no evaluate run is going' } as Record<string, string>,
   loopGoal: (s: string) => `  goal: ${s}`,

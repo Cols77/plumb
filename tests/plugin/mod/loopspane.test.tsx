@@ -315,36 +315,23 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
-    test('SR-395 EX-7: a waiting session\'s band starts its turn once when a message to its loop waits, from the pane or an agent, and the row then reads delivered', async ($, on) => {
+    test('SR-395 EX-7: a waiting session is never woken by its band: the message waits for its next turn and the row reads sent, not read yet', async ($, on) => {
       let message: { state: string; at: string } = { state: 'sent', at: 't1' }
       const w = loopsWorld(() => answer([row('intent', 'aaaaaaaaaaaa', 'my own loop', 'build', { send: true, session: SESSION, message })]))
       const clock = install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(w.submits.length).toBe(1) // an agent's message: the band starts the turn at once
-      expect(w.submits[0]?.text.startsWith('<plumb-loop-message>')).toBe(true)
-      expect(w.submits[0]?.asUser).toBeUndefined() // framed, never the owner's own words
       w.files[STAMP] = 'two'
-      await clock.advance(10_000) // the same message again: nothing more
-      expect(w.submits.length).toBe(1)
-      message = { state: 'sent', at: 't2' } // typed on the pane
-      w.files[STAMP] = 'three'
       await clock.advance(10_000)
-      expect(w.submits.length).toBe(2)
-      await $.turn.start({ text: 'go on', turnId: 't-3' }) // the turn the wake started
-      message = { state: 'sent', at: 't3' }
-      w.files[STAMP] = 'four'
-      await clock.advance(10_000)
-      expect(w.submits.length).toBe(2) // a turn runs: the pre-step route delivers
       await $.turn.complete(TURN_DONE)
-      expect(w.submits.length).toBe(3) // still not read at the turn's end: woken
-      message = { state: 'delivered', at: 't3' }
-      w.files[STAMP] = 'five'
-      await clock.advance(10_000)
-      expect(w.submits.length).toBe(3)
+      expect(w.submits.length).toBe(0) // the owner chose (2026-11-07): plumb starts no turn
       await band.press({ key: 'loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'loops:row:intent:aaaaaaaaaaaa' })
+      expect(await view.find({ type: 'Text', text: '  last message: sent, not read yet' })).toBeDefined()
+      message = { state: 'delivered', at: 't1' } // its next turn read it
+      w.files[STAMP] = 'three'
+      await clock.advance(10_000)
       expect(await view.find({ type: 'Text', text: '  last message: delivered' })).toBeDefined()
       await view.unmount()
       await band.unmount()
