@@ -159,6 +159,10 @@ declare module 'claude-code' {
       pane: { loop: PlumbLoopPane | null; known?: boolean; loops?: PlumbLoopsPane | null }
       known: PlumbKnown
       loops: PlumbLoops
+      /** SR-395: a main-agent turn is running */
+      working: boolean
+      /** SR-395: the `at` of the loop message this session was last woken for */
+      woke: string
     }
   }
 }

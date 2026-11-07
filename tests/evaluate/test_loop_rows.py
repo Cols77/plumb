@@ -71,7 +71,7 @@ def test_ex3_an_ended_run_is_not_listed(tmp_path: Path) -> None:
 def test_rounds_zero_run_is_listed_while_it_runs(tmp_path: Path) -> None:
     name = loop.start(tmp_path, TASK, "haiku", 0)
     (row,) = loop.rows(tmp_path)
-    assert row["progress"] == "simple · haiku · first run" and row["left"] == []
+    assert row["progress"] == "simple · haiku · first run" and row["left"] == ["the run's score"]
     loop.note(tmp_path, name, ended=True)
     assert loop.rows(tmp_path) == []
 

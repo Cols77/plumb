@@ -104,7 +104,7 @@ def _words(n: int, rounds: int, stage: str) -> tuple[str, list[str]]:
     if stage == "run":
         return (("first run" if n == 1 else f"rerun after round {n - 1} of {rounds}"),
                 ["the fix round", "the rerun", *after] if n <= rounds
-                else ["the fixes of the last run"] * bool(rounds))
+                else ["the fixes of the last run"] if rounds else ["the run's score"])
     if n > rounds:
         return "fixing what the last run found", ["the fixes of the last run"]
     if stage == "fix":
