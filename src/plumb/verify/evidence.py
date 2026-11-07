@@ -22,9 +22,10 @@ from typing import Any
 from plumb.contracts import NodeEvidence
 from plumb.normalize import canonical_json, file_digest, sha256_bytes
 
-INDEX_VERSION = 6  # 3: a full run must collect cleanly to count; 4: its failures are kept;
+INDEX_VERSION = 7  # 3: a full run must collect cleanly to count; 4: its failures are kept;
 # 5: a regression is kept until a pass on the test body that passed before it ("regressed");
-# 6: the cursor is the entry names applied (one file per entry, SP6 6.3), not a byte offset
+# 6: the cursor is the entry names applied (one file per entry, SP6 6.3), not a byte offset;
+# 7: a run's commit ("head") is kept, so a hidden regression names the body that passed
 PASS_OUTCOMES = frozenset({"passed", "flaky"})
 GOOD_OUTCOMES = frozenset({"passed", "flaky", "skipped", "xfailed"})
 _CACHE_PARTS = frozenset({"__pycache__", ".pytest_cache"})
@@ -146,6 +147,8 @@ def _track_regression(entry: dict[str, Any], rec: Mapping[str, Any]) -> None:
             entry["regressed"] = {"failed_in": rec.get("run_id"),
                                   "passed_in": last_pass.get("run_id"),
                                   "test_hash": last_pass.get("test_hash")}
+            if last_pass.get("head"):  # the commit the passing run started from: the judge
+                entry["regressed"]["head"] = last_pass["head"]  # reads the change against it
         elif regressed:
             regressed.pop("masked_by", None)
         return
@@ -175,6 +178,9 @@ def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "")
                "env_key": env.get("env_key"), "duration_s": node.get("duration_s"), "at": at}
         if "identity" in env:
             rec["identity"] = env.get("identity")
+        head = (payload.get("tree") or {}).get("head")
+        if head:
+            rec["head"] = head
         entry = nodes.setdefault(node_id, {"last": None, "last_pass": None})
         _track_regression(entry, rec)
         entry["last"] = rec

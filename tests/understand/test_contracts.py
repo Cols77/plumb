@@ -160,7 +160,7 @@ def test_kinds_maps_the_kinds() -> None:
     from plumb.understand.kinds import KINDS
 
     assert sorted(KINDS) == ["clarify", "judge", "question", "read", "selfdebug",
-                             "tidy"]
+                             "testchange", "tidy"]
 
 
 def _params(func) -> list[str]:

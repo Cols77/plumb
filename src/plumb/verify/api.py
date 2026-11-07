@@ -688,9 +688,11 @@ class Verify:
         marks it ``masked_by`` that run; a deleted node counts too) and its file is a
         ``verified_by`` end of a requirement the owner has approved (confirmed or an
         unconfirmed edit) whose current content no standing approval pinned
-        (``confirm.approved_test_pins``). Rerunning the original test, or the owner confirming
-        the requirement with the changed test (``plumb approve``), resolves it. ``files``
-        limits it to those test files."""
+        (``confirm.approved_test_pins``), and a judge did not read the change as real and
+        needed (``_judge_test_change``: a change made just to pass, or no verdict yet,
+        keeps it; each item carries the ``judge`` answer). Rerunning the original test, or
+        the owner confirming the requirement with the changed test (``plumb approve``), also
+        resolves it. ``files`` limits it to those test files."""
         from plumb.confirm import approved_test_pins, verified_end
         from plumb.verify.markers import strip_param
 
@@ -731,11 +733,35 @@ class Verify:
             deleted = info is None or strip_param(node_id) not in info.get("nodes", {})
             if not regressed.get("masked_by") and not deleted:
                 continue  # still failing: an ordinary regression (unresolved_regressions)
-            out.append({"node": node_id, "passed_in": regressed.get("passed_in"),
-                        "failed_in": regressed.get("failed_in"),
-                        "masked_by": regressed.get("masked_by"),
-                        "requirements": changed[test_file]})
+            item = {"node": node_id, "passed_in": regressed.get("passed_in"),
+                    "failed_in": regressed.get("failed_in"),
+                    "masked_by": regressed.get("masked_by"),
+                    "requirements": changed[test_file]}
+            item["judge"] = self._judge_test_change(item, regressed.get("head"), deleted)
+            if item["judge"].get("real"):
+                continue  # a judge read the change: real and needed, not made just to pass
+            out.append(item)
         return out
+
+    def _judge_test_change(self, item: Mapping[str, Any], head: str | None,
+                           deleted: bool) -> dict[str, Any]:
+        """The background judge's verdict on the test change that hid a regression
+        (report-fba0ba92, SR-207): ``{real, verdict, probability, reason}``, ``real`` only on
+        a confident "real, needed". Until a ``testchange`` job answers, the flag stays
+        (``{real: False, pending: True}``) and the job is queued; no hook calls a model
+        (SR-273)."""
+        from plumb.understand import testchange
+
+        key = testchange.key_of(self.core, str(item["node"]), item.get("failed_in"), head,
+                                deleted)
+        found = testchange.verdict(self.core, key)
+        if found is not None:
+            return found
+        try:
+            testchange.enqueue(self.core, item, head, deleted)
+        except Exception:  # noqa: BLE001 - a queue failure keeps the flag, never breaks a check
+            pass
+        return {"real": False, "pending": True}
 
     def affected_requirements(self, paths: Iterable[str]) -> list[str]:
         """Confirmed requirements (confirmed or an unconfirmed edit) whose acceptance tests

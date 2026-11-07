@@ -109,6 +109,82 @@ def test_a_pass_after_the_test_body_changed_does_not_resolve_a_regression() -> N
     assert "regressed" not in entry
 
 
+# -- report-fba0ba92: a background judge reads the test change before the flag drops ------------
+
+
+def _judge_answers(tmp_path: Path, monkeypatch, answer: dict) -> Path:
+    script = tmp_path / "answers.json"
+    script.write_text(json.dumps({"testchange": answer}), encoding="utf-8")
+    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+    return script
+
+
+def test_a_hidden_regression_queues_a_background_judge_and_the_flag_stays_until_it_answers(
+        confirmed, monkeypatch, tmp_path) -> None:
+    """SR-207 EX-6, SR-273: finding the hidden regression queues a job (no model is called in
+    the check); until it answers, and when it says the edit was made to pass or is unsure,
+    the flag stays; a confident "real, needed" drops it."""
+    import plumb.judgment as judgment
+    from plumb.understand import jobs, worker
+
+    root, base = confirmed
+    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    monkeypatch.setattr(judgment, "get_backend", lambda *a, **k: pytest.fail("a hook asked"))
+    _rewrite_test_to_pass(root)
+
+    [item] = open_verify(open_core(root)).masked_regressions()
+    assert item["node"] == "tests/test_mod.py::test_add" and item["judge"]["pending"]
+    [job] = jobs.pending(root, "s1")  # queued once, whatever the number of checks
+    assert job.kind == "testchange"
+    open_verify(open_core(root)).masked_regressions()
+    assert len(jobs.queued(root, "s1")) == 1
+    # it read the change itself, from the body that passed to the current one ...
+    context = job.inputs["context"]
+    assert "-    assert add(1, 2) == 3" in context and "+    assert add(1, 2) == -1" in context
+    assert f"commit {base}" in context
+    # ... against the requirement and its example
+    assert "Requirement SR-001: Modules add numbers The module adds numbers." in context
+    assert ("EX-1 (verified by this test): given two numbers, when added, then the sum is "
+            "returned") in context
+
+    # the judge says it was made just to pass, or is unsure: the flag stays
+    for answer in ({"verdict": "to_pass", "probability": 0.95},
+                   {"verdict": "real", "probability": 0.5}):
+        _judge_answers(tmp_path, monkeypatch, answer)
+        open_verify(open_core(root)).masked_regressions()  # queues it again
+        assert worker.run_once(open_core(root), "s1") == [job.id]
+        [item] = open_verify(open_core(root)).masked_regressions()
+        assert not item["judge"]["real"] and not item["judge"].get("pending")
+        for path in (jobs.job_path(root, "s1", job.id), jobs.result_path(root, "s1", job.id)):
+            path.unlink()
+        from plumb.understand import ledger
+
+        ledger.forget(root, "s1", job.id)
+        for entry in list(root.glob(".plumb/log/test-change-verdict/*.json")):
+            entry.unlink()
+
+    _judge_answers(tmp_path, monkeypatch, {"verdict": "real", "probability": 0.9,
+                                           "reason": "subtraction is what SR-001 wants"})
+    open_verify(open_core(root)).masked_regressions()
+    assert worker.run_once(open_core(root), "s1") == [job.id]
+    assert open_verify(open_core(root)).masked_regressions() == []
+    _check(root, base, as_json=False)  # SR-002's own regression may still hold it
+
+
+def test_a_failed_judge_job_keeps_the_flag(confirmed, monkeypatch, tmp_path) -> None:
+    from plumb.understand import jobs, worker
+
+    root, _ = confirmed
+    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    _rewrite_test_to_pass(root)
+    open_verify(open_core(root)).masked_regressions()
+    _judge_answers(tmp_path, monkeypatch, {"error": "the model could not be reached"})
+    [ran] = worker.run_once(open_core(root), "s1")
+    assert jobs.result(root, "s1", ran).status == "error"
+    [item] = open_verify(open_core(root)).masked_regressions()
+    assert item["judge"]["pending"] and not item["judge"]["real"]
+
+
 # -- SR-030 entry point: validate --merge ------------------------------------------------------
 
 
