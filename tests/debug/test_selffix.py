@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from plumb import debug, selfdebug, stale
+from plumb import heavy as heavy_mod
 from plumb.api import open_core
 from plumb.config import Config
 from plumb.contracts import Target
@@ -83,7 +84,7 @@ class Fixer:
     def __init__(self, *steps) -> None:
         self.steps, self.models, self.wt = list(steps), [], None
 
-    def __call__(self, *, round, case, evidence, worktree, model, previous):
+    def __call__(self, *, round, case, evidence, worktree, model, previous, **_):
         self.models.append(model)
         self.wt = worktree
         self.evidence, self.previous = evidence, previous
@@ -129,7 +130,10 @@ def _fix(repo: Path, fixer: Fixer, answer: Meaning, rounds: int = 3):
     core = open_core(repo)
     case = next(c for c in debug.open_cases(repo) if c["id"] == CASE)
     runner, sonnet = Runner(fixer), Judge(answer)
-    out = selfdebug.fix(core, case, rounds=rounds, fixer=fixer, runner=runner, judge=sonnet)
+    from debug.staged import ok_stages  # SR-388: the diagnosis and the review, scripted
+
+    out = selfdebug.fix(core, case, rounds=rounds, fixer=fixer, runner=runner, judge=sonnet,
+                        **ok_stages())
     return out, runner, sonnet
 
 
@@ -193,7 +197,7 @@ def test_ex4_three_failed_rounds_end_as_a_defect_report_and_ask_nothing(
     fixer = Fixer(fixes_nothing)
     out, _, _ = _fix(plumb_repo, fixer, Meaning(True, "same"))
     assert out.state == "reported" and len(out.rounds) == 3
-    assert fixer.models == ["sonnet", "opus", "opus"] and len(fixer.previous) == 2
+    assert fixer.models == ["sonnet", "opus", "fable"] and len(fixer.previous) == 2
     (row,) = [c for c in debug.open_cases(plumb_repo) if c["id"] == CASE]
     assert "round 1" in row["report"] and "round 3" in row["report"]
     assert "Missing:" in row["report"] and "Nothing was committed" in row["report"]
@@ -239,14 +243,14 @@ def test_the_background_run_waits_for_the_heavy_lock(repo: Path, monkeypatch) ->
     takes it, and leaves none behind."""
     import threading
 
-    monkeypatch.setattr(selfdebug, "HEAVY_WAIT_S", 0.01)
+    monkeypatch.setattr(heavy_mod, "HEAVY_WAIT_S", 0.01)
     lock = repo / ".git" / "plumb-heavy.lock"
     lock.write_text("another session: pytest\n", encoding="utf-8")
     seen: list[str] = []
 
     def job() -> None:
         with selfdebug.heavy(repo, "selfdebug x: pytest"):
-            seen.append(lock.read_text(encoding="utf-8"))
+            seen.append(lock.read_text(encoding="utf-8").splitlines()[0])
 
     t = threading.Thread(target=job)
     t.start()
@@ -254,16 +258,16 @@ def test_the_background_run_waits_for_the_heavy_lock(repo: Path, monkeypatch) ->
     assert t.is_alive() and not seen          # still waiting on the other session
     lock.unlink()
     t.join(5)
-    assert seen == ["selfdebug x: pytest\n"] and not lock.exists()
+    assert seen == ["selfdebug x: pytest"] and not lock.exists()
 
 
-def test_the_background_job_runs_the_fix_under_the_lock(plumb_repo: Path, monkeypatch) -> None:
+def test_the_background_job_runs_the_fix(plumb_repo: Path, monkeypatch) -> None:
     got: dict = {}
     monkeypatch.setattr(selfdebug, "fix", lambda core, case, **kw: got.update(kw)
                         or selfdebug.Outcome("fixed", BRANCH, "ok"))
     job = kind.build(open_core(plumb_repo), "s", case=CASE)
     kind.cascade(open_core(plumb_repo), job)
-    assert got == {"locked": True}
+    assert got == {"guard": None}     # SR-388: the worker's guard, none outside the worker
 
 
 def _commit_file(root: Path, name: str) -> None:

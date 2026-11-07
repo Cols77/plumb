@@ -90,16 +90,22 @@ def proof_lines(root: Path, ids: Iterable[str]) -> list[tuple[str, str]]:
     """SR-341 EX-2: for each landed post-merge proof the owner has not yet confirmed, the
     agent's line: show it now and ask the owner."""
     from plumb.api import open_core
-    from plumb.capture.proof import owner_confirmed, proof_of
+    from plumb.capture.proof import confirmed, evaluator_picked, proof_of
 
     core = open_core(root)
     index = core.index()
     out: list[tuple[str, str]] = []
     for i in ids:
         record = index.get(i)
-        if record is None or owner_confirmed(core, i):
+        if record is None or confirmed(core, i):
             continue
         plan = " ".join(str((proof_of(record) or {}).get("plan") or "").split())
+        if evaluator_picked(record):    # SR-396 EX-4
+            out.append((f"post-merge-proof:{i}",
+                        f"plumb: {i} has landed and its proof was agreed as post-merge; the "
+                        f"owner picked the independent evaluator: run plumb evaluate proof "
+                        f"{i}; ask the owner only if it could not check"))
+            continue
         out.append((f"post-merge-proof:{i}",
                     f"plumb: {i} has landed and its proof was agreed as post-merge: show it "
                     f"now ({plan}), record it (plumb proof {i} --evidence ... --summary ... "
@@ -580,9 +586,16 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     return result
 
 
-def lines(root: Path) -> list[tuple[str, str]]:
+def _level_models(root: Path) -> dict[str, str]:
+    """SR-389: the levels whose model is not their own name, to pass to the workflow."""
+    from plumb.config import load_config
+
+    return {k: v for k, v in load_config(root).understand.levels.items() if k != v}
+
+
+def lines(root: Path, workflow: str = "") -> list[tuple[str, str]]:
     """``(key, text)`` for the next turn: the latest landing's line, then the open debug cases
-    (SR-300) with how many were resolved."""
+    (SR-300) with how many were resolved; ``workflow`` names the shipped workflow (SR-385)."""
     from plumb.understand import summary
 
     folder = Path(root) / ".plumb" / "cache" / "landed"
@@ -598,7 +611,8 @@ def lines(root: Path) -> list[tuple[str, str]]:
     open_rows, resolved = summary.open_cases(root)
     if open_rows:
         out.append((f"cases:{len(open_rows)}:{resolved}",
-                    summary.cases_text(open_rows, resolved)))
+                    summary.cases_text(open_rows, resolved, workflow,
+                                       _level_models(root) if workflow else None)))
     return out
 
 

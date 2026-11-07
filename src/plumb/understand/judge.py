@@ -986,7 +986,10 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     asked = {str(r.get("id")): r for r in job.inputs.get("records") or ()
              if isinstance(r, Mapping)}
     index = core.index()
-    model = str(answer.get("model") or core.config.understand.judge_model)
+    from plumb.config import model_of
+
+    model = str(answer.get("model")
+                or model_of(core.config, core.config.understand.judge_model))  # SR-389
     entries: list[Mapping[str, Any]] = []
     notes: list[str] = []
     confirmed: list[Mapping[str, Any]] = []

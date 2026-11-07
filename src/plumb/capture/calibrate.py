@@ -371,7 +371,11 @@ def fingerprint(core: Core) -> dict[str, Any]:
         digest = prompt_digest()
     except Exception:  # noqa: BLE001 - the fingerprint is advisory for the suspension check
         digest = ""
-    return {"model": core.config.understand.judge_model, "prompt_digest": digest}
+    from plumb.config import model_of
+
+    # SR-389: the model the judge level runs, so a changed level is a changed judge
+    return {"model": model_of(core.config, core.config.understand.judge_model),
+            "prompt_digest": digest}
 
 
 def calibration_form(calibration: Any) -> str:

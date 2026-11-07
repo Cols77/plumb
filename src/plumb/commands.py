@@ -260,7 +260,10 @@ def cmd_repin(command: str, argv: list[str]) -> int:
     diagnoses: list[dict[str, Any]] = []
     try:
         if args.after_tests:
-            outcome = repin_after_tests(core, args.selector, dry_run=args.dry_run)
+            from plumb.heavy import heavy
+
+            with heavy(core.root, "plumb repin --after-tests"):
+                outcome = repin_after_tests(core, args.selector, dry_run=args.dry_run)
             changes, refused, would = outcome.changes, outcome.refused, outcome.would
             diagnoses = outcome.diagnoses
         else:
@@ -528,6 +531,9 @@ def cmd_status(command: str, argv: list[str]) -> int:
     if data["auto_approve"]:
         lines.append(data["auto_approve"])
     lines += _awareness_section(args)
+    from plumb.landing import board_lines
+
+    lines += board_lines(Path(_core(args).root))
     emit(lines, False)
     return 0
 
