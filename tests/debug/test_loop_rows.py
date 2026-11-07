@@ -12,6 +12,7 @@ from plumb import debug, selfdebug
 from plumb.api import open_core
 from plumb.understand import loops
 from plumb.understand.repin import Meaning
+from debug.staged import ok_stages  # SR-388: the diagnosis and the review, scripted
 
 from debug.test_selffix import (CASE, TEST, Fixer, Judge, Runner, fixes_add,  # noqa: F401
                                 fixes_nothing, no_real_models, plumb_repo)
@@ -115,14 +116,14 @@ def test_selfdebug_stamps_tests_stage_before_verify(plumb_repo: Path) -> None:
 
     case = next(c for c in debug.open_cases(plumb_repo) if c["id"] == CASE)
     selfdebug.fix(open_core(plumb_repo), case, fixer=fixer, runner=spy,
-                  judge=Judge(Meaning(True, "same")))
+                  judge=Judge(Meaning(True, "same")), **ok_stages())
     assert seen[0]["stage"] == "tests" and seen[0]["round"] == 1 and seen[0]["pid"] == os.getpid()
 
 
 def _after(plumb_repo: Path, fixer: Fixer, answer: Meaning) -> dict[str, Any]:
     case = next(c for c in debug.open_cases(plumb_repo) if c["id"] == CASE)
     selfdebug.fix(open_core(plumb_repo), case, fixer=fixer, runner=Runner(fixer),
-                  judge=Judge(answer))
+                  judge=Judge(answer), **ok_stages())
     return next(c for c in debug.all_cases(plumb_repo) if c["id"] == CASE)
 
 
