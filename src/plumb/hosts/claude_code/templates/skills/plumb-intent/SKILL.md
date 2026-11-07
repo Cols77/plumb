@@ -24,7 +24,10 @@ The owner's band shows the loop's step and the current task: as you go, run
 (`clarifying` with the questions answered of those to ask, `writing the plan` with the plan
 items written of the plan's, `building` with the plan items built; leave `--total` out when
 it is not known); while building, add `--left "<item>"` for each plan item not built yet, which
-the owner's loop pane names. A refused gate shows on the band by itself.
+the owner's loop pane names. A refused gate shows on the band by itself, and so does the
+build's real state: once evidence is recorded for one of the intent's requirements, or
+`{plumb} intent done` refuses, the band's task reads the proofs shown over those required and
+the pane names the requirements not shown, whatever words were set last.
 
 Stage A, clarify and integrate, until `{plumb} intent gate clarify` passes:
 

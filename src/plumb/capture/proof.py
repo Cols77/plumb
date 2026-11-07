@@ -330,6 +330,14 @@ def set_evidence(core: Core, sr_id: str, where: str, summary: str, passed: bool,
         "at": at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "summary": summary, "where": _where(core, where), "passed": bool(passed)}
     core.write_record("requirement", fields, record.body, record_id=record.id)
+    # report-d7f2612b: an open intent loop building this requirement redraws its band task
+    # from the proofs now shown; the evidence stands even when no loop file could be written
+    from contextlib import suppress
+
+    from plumb.understand import cmd_intent
+
+    with suppress(OSError):
+        cmd_intent.on_evidence(core, record.id)
     return core.index()[record.id]
 
 

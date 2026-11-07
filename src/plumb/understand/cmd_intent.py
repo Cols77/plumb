@@ -12,6 +12,10 @@ status`` lists the open loops.
 
 State lives in ``.plumb/session/<id>/intent/<digest12>.json``, with ``step`` (clarify, plan,
 build, proven) derived from its stages and ``tasks`` ``{label, done, total|null, started_at}``.
+The words ``intent progress`` sets do not outlive the loop's real state: a passing gate clears
+them, and in the build step evidence recorded for one of the intent's requirements (``plumb
+proof --evidence``, ``on_evidence``) or a refused ``intent done`` redraws the task as the proofs
+shown over the proofs required, naming those not shown (report-d7f2612b).
 It carries no authority: it confirms nothing, and the records stay proposed until the owner
 confirms them.
 """
@@ -35,6 +39,7 @@ STAGES = ("clarify", "plan", "build")
 LEVELS = ("high", "medium", "low")
 BLOCKING = ("high", "medium")
 GATE_OPEN_REASON = "the intent loop reached a clear intent"
+PROOFS_TASK = "proofs shown"     # the build step's task as the loop's real state draws it
 
 
 def _now() -> str:
@@ -136,6 +141,37 @@ def requirements_of(core: Any, intent: str) -> list[str]:
     return sorted(r.id for r in core.index().values() if r.kind == "requirement" and any(
         link.kind in ("derives_from", "decides") and link.target.record == intent
         for link in r.links))
+
+
+def _draw_proofs(core: Any, data: dict[str, Any]) -> bool:
+    """report-d7f2612b: the build step's task from the loop's real state, not the words last
+    set with ``intent progress``: the proofs shown over the proofs the intent requires, the
+    requirements not shown left (the pane names them). Nothing outside the build step: the
+    clarify and plan steps' tasks are their own words. Returns whether it drew."""
+    from plumb.capture import proof
+
+    if data.get("step") != "build" or not data.get("intent"):
+        return False
+    held = data.get("tasks") if isinstance(data.get("tasks"), Mapping) else {}
+    required = requirements_of(core, data["intent"])
+    missing = proof.not_shown(core, required)
+    data["tasks"] = {
+        "label": PROOFS_TASK, "done": len(required) - len(missing), "total": len(required) or None,
+        "started_at": held.get("started_at") if held.get("label") == PROOFS_TASK else _now(),
+        "left": [f"{row['id']} ({row['title']}): proof {row['why']}" for row in missing]}
+    return True
+
+
+def on_evidence(core: Any, sr_id: str) -> None:
+    """Evidence recorded for the requirement ``sr_id`` moves every open loop (any session of
+    this checkout) whose intent it serves: the band's task line follows the loop's real state
+    (report-d7f2612b)."""
+    root = Path(core.root)
+    for path, data in loops(root):
+        if data.get("handed_to") or _passed(data, "build") or not data.get("intent"):
+            continue
+        if sr_id in requirements_of(core, data["intent"]) and _draw_proofs(core, data):
+            save(path, data)
 
 
 def findings_from(path: str) -> list[dict[str, str]]:
@@ -240,6 +276,7 @@ def cmd_done(core: Any, args: argparse.Namespace) -> int:
     missing += [f"{row['id']} ({row['title']}): proof {row['why']}"
                 for row in proof.not_shown(core, required)]
     if missing:
+        _draw_proofs(core, data)    # the task the band keeps is the real state, not stale words
         _stop(path, data, "proof shown" if _passed(data, "plan") else "the plan gate")
         print(f"plumb: {args.intent} is not done; the intent stays open:", file=sys.stderr)
         for line in missing:
