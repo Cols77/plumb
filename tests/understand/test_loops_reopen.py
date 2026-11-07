@@ -95,7 +95,7 @@ def test_ex1_reopen_starts_a_named_session_on_the_branch_with_the_brief(
     (argv, kwargs), = window.calls
     command = window.command()
     assert kwargs["cwd"] == str(wt) and kwargs["start_new_session"] is True
-    assert command[:2] == ["claude", "--session-id"] and command[3] == "-n"
+    assert Path(command[0]).name == "claude" and command[1] == "--session-id" and command[3] == "-n"
     assert command[4] == "plumb: Builds the card-store."
     brief = command[-1]
     assert brief.startswith("<plumb-loop-brief>")

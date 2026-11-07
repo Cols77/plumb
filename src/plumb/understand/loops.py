@@ -264,7 +264,7 @@ def find(rows: list[dict[str, Any]], words: str) -> dict[str, Any]:
         hits = [r for r in rows if r["intent"].lower() == text]
     else:
         hits = [r for r in rows if all(w in f"{r['goal_full']} {r['branch']}".lower()
-                                       for w in text.split())]
+                                       for w in text.split())] or names(rows, words)
     if len(hits) == 1:
         return hits[0]
     raise LookupError(
@@ -299,12 +299,18 @@ def text(data: Mapping[str, Any]) -> list[str]:
 def owner_answers(root: Path, session: str) -> list[tuple[str, str]]:
     """``(at, answer)`` of the owner's question-tool answers in ``session``, oldest first, from
     the log of every checkout (the agent's question is never read)."""
-    from plumb.api import open_core
-
-    return sorted({(e.at, str(e.payload.get("answer") or "")) for w in checkouts(root)
-                   for e in open_core(w.path).events()
-                   if e.kind == "question-answer" and e.payload.get("session") == session
-                   and e.payload.get("via") == "question-tool"})
+    out = set()
+    for w in checkouts(root):   # only the answer files: the whole log of each checkout takes minutes
+        for path in (w.path / ".plumb" / "log" / "question-answer").glob("*.json"):
+            try:
+                e = json.loads(path.read_text("utf-8"))
+                p = e["payload"]
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            if isinstance(p, Mapping) and p.get("session") == session \
+                    and p.get("via") == "question-tool":
+                out.add((str(e.get("at") or ""), str(p.get("answer") or "")))
+    return sorted(out)
 
 
 def names(rows: list[dict[str, Any]], text: str, words: str = "") -> list[dict[str, Any]]:
@@ -489,7 +495,9 @@ def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = N
                 and str(d["digest"]).removeprefix("sha256:").startswith(row["id"]))
     new = str(uuid.uuid4())
     cwd, make, undo = _checkout_for(root, row)
-    command = ["claude", "--session-id", new, "-n", f"plumb: {row['goal'][:40]}",
+    # the full path: a single-instance terminal (Ptyxis, GNOME Terminal) gives a new window the
+    # desktop's PATH, not this shell's, so a bare "claude" is often not found there
+    command = [shutil.which("claude") or "claude", "--session-id", new, "-n", f"plumb: {row['goal'][:40]}",
                brief(row, data, new)]
     main = next(w.path for w in checkouts(root) if w.main) if make else root
 

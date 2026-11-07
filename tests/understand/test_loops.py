@@ -187,6 +187,8 @@ def test_find_ambiguous_words_list_candidates_and_change_nothing(repo: Path) -> 
         loops.find(data["rows"], "intent loop")
     assert str(raised.value).count("\n") == 2 and "aaaaaaaaaaaa" in str(raised.value)
     assert loops.find(data["rows"], "bbbbbb")["session"] == "sb"
+    # the owner's whole sentence, as the /plumb text passes it, finds the loop it names
+    assert loops.find(data["rows"], "reopen the bbbbbbbbbbbb loop")["session"] == "sb"
     assert [json.dumps(r, sort_keys=True) for r in data["rows"]] == before
 
 
