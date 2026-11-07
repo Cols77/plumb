@@ -39,7 +39,7 @@ def _reply(repo: Path, words: str, said: str, change: str | None,
     digest = log_prompt(repo, words)
     job = read.build(core, SESSION, message={"digest": digest, "text": words})
     assert job is not None
-    (item,) = [i for i in job.inputs["cards"] if i["kind"] == "conflict"]
+    (item,) = [i for i in job.inputs["questions"] if i["kind"] == "conflict"]
     entry = {"id": item["id"], "hash": "", "answer": said, "change": change,
              "evidence": words, "confidence": 0.95, "option": option}
     with as_worker(repo, SESSION):
@@ -121,7 +121,7 @@ def test_sr187_ex1_a_side_in_plain_words_picks_the_option_the_model_names(repo: 
     core = open_core(repo)
     words = "keep what main has"
     job = read.build(core, SESSION, message={"digest": log_prompt(repo, words), "text": words})
-    (item,) = [i for i in job.inputs["cards"] if i["kind"] == "conflict"]
+    (item,) = [i for i in job.inputs["questions"] if i["kind"] == "conflict"]
     entry = {"id": item["id"], "hash": "", "answer": "change", "option": "Keep this one",
              "evidence": words, "confidence": 0.95}
     with as_worker(repo, SESSION):

@@ -223,7 +223,7 @@ class EngineStandins:
 
 def _standin_functions(box: EngineStandins) -> dict[tuple[str, str], Callable[..., Any]]:
     from plumb.log import append, stream_of
-    from plumb.understand import cardstore, files
+    from plumb.understand import files
     from plumb.understand.kinds import KINDS
 
     def enqueue(core: Any, job: Job) -> None:
@@ -261,11 +261,6 @@ def _standin_functions(box: EngineStandins) -> dict[tuple[str, str], Callable[..
                          dispatcher=box.dispatcher.name, started=started, finished=_now())
 
     def write_applied(core: Any, session: str, applied: Applied) -> None:
-        if applied.cards or applied.closed:
-            replaced = {c.id for c in applied.cards}
-            kept = [dataclasses.replace(c, status="closed") if c.id in applied.closed else c
-                    for c in cardstore.own_cards(core.root, session) if c.id not in replaced]
-            cardstore.save(core.root, session, [*kept, *applied.cards])
         for entry in applied.entries:
             kind = str(entry["kind"])
             append(core.paths, stream_of(kind), kind, dict(entry["payload"]))

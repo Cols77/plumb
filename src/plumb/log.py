@@ -58,6 +58,7 @@ SHARED_KINDS = frozenset({
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
     "conflict-resolution", "waiver",
     "proof-confirmed",    # DEC-116: the owner's yes to a proof (the outcome, not their words)
+    "proof-verified", "proof-not-verified", "proof-overruled",  # SR-397: outcomes only
     "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
     "question-pushback", "question-ruling",   # SR-362: past send-backs (the step is gone)
 })
@@ -89,7 +90,8 @@ TELEMETRY_KINDS = frozenset({"judgment"})
 LOCAL_KINDS = frozenset({
     "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",
     "job-note", "triage", "merge-evidence", "repin", "relink", "unlink", "eval-run", "jev-setup",
-    "intent-gate", "intent-done", "card-unsettled", "answer-unbound", "answer-read",
+    "intent-gate", "intent-done", "card-unsettled", "answer-unbound",
+    "question-withdrawn", "answer-read",
 }) | OWNER_WORDS_KINDS
 
 _KIND_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")

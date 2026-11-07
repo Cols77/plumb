@@ -188,19 +188,14 @@ def test_ex6_a_failing_step_is_a_case_and_the_rest_still_run(
 
 
 @pytest.mark.sr("SR-301")
-def test_ex1_another_worktrees_loop_gate_and_cards_are_unchanged(repo: Path,
+def test_ex1_another_worktrees_loop_gate_and_leftover_cards_are_unchanged(repo: Path,
                                                                   tmp_path: Path) -> None:
-    from plumb.contracts import CardState
-    from plumb.understand import cardstore
-
     other = tmp_path / "other"
     run_git(repo, "worktree", "add", "-q", "-b", "other", str(other))
     session = other / ".plumb" / "session" / "s2"
     session.mkdir(parents=True)
     (session / "gate.json").write_text('{"state": "closed"}', encoding="utf-8")
     (session / "intent.json").write_text('{"stage": "build"}', encoding="utf-8")
-    cardstore.save(other, "s2", [CardState(id="c1", branch="other"),
-                                 CardState(id="c2", branch="other")])
     seen = {p: p.read_bytes() for p in session.rglob("*") if p.is_file()}
     docs(repo, "docs/a.md")
     commit_all(repo, "doc")
@@ -446,8 +441,7 @@ def test_ex3_an_ended_session_folder_holding_a_waiting_question_stays(repo: Path
     for name in ("asked", "done"):
         (sessions / name).mkdir(parents=True)
         (sessions / name / "ended.json").write_text("{}", encoding="utf-8")
-    (sessions / "asked" / "cards.json").write_text(json.dumps({"cards": [
-        {"id": "choice:abc", "kind": "choice", "topic": "t", "issue": "which?",
-         "status": "open"}]}), encoding="utf-8")
+    (sessions / "asked" / "judge_questions.json").write_text(json.dumps([
+        {"key": "which", "question": "which?", "options": []}]), encoding="utf-8")
     assert landing.ended_sessions(repo, "s-own") == ["done"]
-    assert (sessions / "asked" / "cards.json").exists() and not (sessions / "done").exists()
+    assert (sessions / "asked" / "judge_questions.json").exists() and not (sessions / "done").exists()

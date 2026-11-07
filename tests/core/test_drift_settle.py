@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.stale_asked import asked
 from plumb import links, stale
 from plumb.api import open_core
 from plumb.contracts import Target
@@ -73,7 +74,7 @@ def test_ex1_a_refactor_that_keeps_the_meaning_is_repinned_with_no_card(
     (project / "src" / "calc.py").write_text(REFACTORED, "utf-8")
     _models(monkeypatch, True)
     _settle(project)
-    assert _state(project) == "current" and stale.read_cards(project, "s1") == []
+    assert _state(project) == "current" and asked(project, "s1") == []
     (entry,) = open_core(project).log_read("events", ["repin"])
     assert "meaning unchanged (sonnet)" in entry.payload["note"]
 
@@ -93,7 +94,7 @@ def test_ex2_a_change_to_what_the_requirement_says_files_a_card(
                                      topic="Adds numbers", options=("keep", "change"),
                                      consequences=("a", "b"), why="x"))
     _settle(project)
-    (card,) = stale.read_cards(project, "s1")
+    (card,) = asked(project, "s1")
     assert card["link"] == LINK and card["by"] == "diagnosis" and _state(project) == "stale"
 
 
@@ -106,9 +107,9 @@ def test_ex2_a_confirmed_example_with_no_test_left_files_a_card_once(
     core.add_link("SR-001", "verified_by", Target(test="tests/test_a.py::test_a"), example="EX-1")
     test.unlink()
     core.status = lambda ids: {i: SimpleNamespace(confirmation="confirmed") for i in ids}
-    stale.card_lost_tests(core, "s1")
-    stale.card_lost_tests(core, "s1")
-    (card,) = stale.read_cards(project, "s1")
+    stale.ask_lost_tests(core, "s1")
+    stale.ask_lost_tests(core, "s1")
+    (card,) = asked(project, "s1")
     assert card["record"] == "SR-001" and "EX-1" in card["issue"]
 
 
@@ -121,7 +122,7 @@ def test_ex4_a_wording_only_change_is_an_unconfirmed_edit_and_the_link_repinned(
     _settle(project)
     core = open_core(project)
     assert core.index()["SR-001"].fields["statement"] == "add returns the total."
-    assert _state(project) == "current" and stale.read_cards(project, "s1") == []
+    assert _state(project) == "current" and asked(project, "s1") == []
 
 
 SR2 = SR1.replace("SR-001", "SR-002").replace("Adds numbers", "Never reorders").replace(
@@ -144,7 +145,7 @@ def test_ex3_two_confirmed_records_that_contradict_raise_one_card_which_wins(
         i: SimpleNamespace(confirmation="confirmed") for i in ids})
     _settle(project)
     _settle(project)
-    (card,) = stale.read_cards(project, "s1")
+    (card,) = asked(project, "s1")
     assert card["by"] == "contradiction" and card["options"] == ["Adding wins",
                                                                 "Never reordering wins"]
     assert _state(project) == "stale"      # nothing is repinned while the owner decides
@@ -156,7 +157,7 @@ def test_ex3_a_contradiction_with_an_unconfirmed_record_files_no_card(
     (project / "src" / "calc.py").write_text(REFACTORED, "utf-8")
     _contradiction(monkeypatch, "SR-002")
     _settle(project)
-    assert stale.read_cards(project, "s1") == [] and _state(project) == "stale"
+    assert asked(project, "s1") == [] and _state(project) == "stale"
 
 
 @pytest.mark.sr("SR-245")

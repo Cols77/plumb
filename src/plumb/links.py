@@ -293,18 +293,16 @@ def repin(core: Core, selector: str | None = None, *, all_stale: bool = False,
             core.store.set_links(record_id, [link_to_dict(link) for link in new_links])
     if changes and not dry_run:
         core.log_append("events", "repin", {"links": changes, "note": note})
-        _withdraw_settled_cards(core)
+        _withdraw_settled_questions(core)
     return changes
 
 
-def _withdraw_settled_cards(core: Core) -> None:
-    """SR-161: a stale card of a link just settled is withdrawn in every session folder, and so
-    is the debug workflow's question about it (SR-300 EX-3)."""
-    from plumb import stale
+def _withdraw_settled_questions(core: Core) -> None:
+    """SR-161: the owner question about a link just settled is withdrawn in every session
+    folder (SR-300 EX-3)."""
     from plumb.understand import judge
 
-    stale.withdraw_settled(core)
-    judge.drop_settled_questions(core.root, {s.link.id for s in core.link_states()
+    judge.drop_settled_questions(core, {s.link.id for s in core.link_states()
                                              if s.state == "stale"})
 
 
@@ -347,7 +345,7 @@ def unlink(core: Core, link_id: str, note: str) -> dict[str, Any]:
               "example": link.example, "pin": _pin_dict(link.pin), "note": note,
               "renumbered": renumbered}
     core.log_append("events", "unlink", result)
-    _withdraw_settled_cards(core)
+    _withdraw_settled_questions(core)
     return {**result, "untested": link.example if lone else None}
 
 
@@ -379,7 +377,7 @@ def relink(core: Core, link_id: str, target: Target, note: str) -> dict[str, Any
               "old": {"target": _describe(link.target), "pin": _pin_dict(link.pin)},
               "new": {"target": _describe(target), "pin": _pin_dict(moved.pin)}}
     core.log_append("events", "relink", result)
-    _withdraw_settled_cards(core)
+    _withdraw_settled_questions(core)
     return result
 
 
@@ -858,7 +856,7 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
     item = {"link": link.id, "record": record_id, "path": path, "outcome": found.outcome,
             "topic": topic, "explanation": found.explanation,
             "proposed_wording": found.proposed_wording, "options": list(found.options),
-            "broken_example": found.broken_example, "turn": turn, "card": False,
+            "broken_example": found.broken_example, "turn": turn, "asked": False,
             "consequences": list(found.consequences), "why": found.why, "other": found.other}
     asks = found.outcome == "owner"
     if found.outcome == "contradicts":   # SR-175 EX-3: only two confirmed records contradict
@@ -868,23 +866,19 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
     if asks:
         from plumb import stale
 
-        filed = dict(link=link.id, record=record_id, path=path, topic=topic,
-                     issue=found.explanation, options=found.options,
-                     consequences=found.consequences, why=found.why)
-        missing = stale.card_missing(filed)
         if not dry_run:
             where = session or stale.current_session(core.root)
-            stale.add_card(core.root, where,
-                           by="contradiction" if found.outcome == "contradicts" else "diagnosis",
-                           turn=stale.turn_number(core.root, where), **filed)
-            item["card"], item["session"] = True, where
-        item["card_missing"] = missing
+            item["asked"] = stale.ask_owner(
+                core, where, link=link.id, record=record_id, topic=topic,
+                issue=found.explanation, options=found.options,
+                consequences=found.consequences, why=found.why,
+                by="contradiction" if found.outcome == "contradicts" else "diagnosis")
+            item["session"] = where
         action = ("filed as a question for the owner, to ask with the question tool: "
                   f"{found.explanation}")
-        if missing:   # SR-116: kept open, but not offered until the agent completes it
-            action += ("; the card is not offered until it is complete, it lacks: "
-                       + "; ".join(missing) + f" (plumb stale card {link.id} --consequences "
-                       "\"...\" --why \"...\")")
+        if not dry_run and not item["asked"]:
+            action = (f"needs the owner but lacks a topic, an issue or two options to ask: "
+                      f"{found.explanation}")
     elif found.outcome == "reword" and auto and not dry_run and (changes := reword_and_repin(
             core, record, link, found.proposed_wording,
             f"{REPIN_NOTE} (reworded, unconfirmed edit): {found.explanation}")) is not None:
@@ -895,7 +889,7 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
                   f"through plumb capture to: {found.proposed_wording}")
     elif found.outcome == "contradicts":   # not two confirmed records: nothing to ask which wins
         action = (f"{record_id} may disagree with {found.other}, but both are not confirmed, so "
-                  f"no card asks which wins: {found.explanation}")
+                  f"no question asks which wins: {found.explanation}")
     else:
         asked = f"the turn \"{_clip(turn['text'])}\" ({turn['at']})" if turn else \
             "an unknown turn"

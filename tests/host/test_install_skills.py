@@ -102,7 +102,7 @@ def test_clarify_skill_covers_every_answer_of_clarify_wait(repo: Path) -> None:
     command can answer is named."""
     states = re.search(r"state: str\s+# (.+)", Path(cmd_clarify.__file__).read_text(
         encoding="utf-8")).group(1).split(" | ")
-    assert set(states) == {"ready", "ask", "card", "couldnt_check", "waiting",
+    assert set(states) == {"ready", "ask", "couldnt_check", "waiting",
                            "held"}
     folder = _installed(repo) / "skills" / "plumb-clarify"
     # SR-379: the state table lives in the skill's references; the skill points to it

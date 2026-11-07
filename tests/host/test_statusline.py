@@ -108,7 +108,7 @@ def test_awaiting_counts_questions_and_no_card(repo: Path, write_record) -> None
     """SR-337: ``awaiting`` in status.json, the band's "N await you": a judge question not
     answered on an unconfirmed record, in any session. A card left in a store counts for
     nothing (report-ec092f5e: the band said 73 while /plumb status said 29)."""
-    from plumb.understand import files, judge
+    from plumb.understand import judge
 
     write_record(repo, SR1)
     core = open_core(repo)
@@ -116,7 +116,7 @@ def test_awaiting_counts_questions_and_no_card(repo: Path, write_record) -> None
     asked.parent.mkdir(parents=True)
     asked.write_text(json.dumps([{"key": "k1", "question": "Which one?", "records": [
         {"id": "SR-001", "hash": core.index()["SR-001"].hash}]}]), encoding="utf-8")
-    cards = files.cards_path(repo, "s2")
+    cards = repo / ".plumb" / "session" / "s2" / "cards.json"
     cards.parent.mkdir(parents=True)
     cards.write_text(json.dumps({"cards": [{"id": "clarify:SR-001", "status": "open"},
                                            {"id": "clarify:SR-002", "status": "closed"}]}),

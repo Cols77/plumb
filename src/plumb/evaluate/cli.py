@@ -7,12 +7,76 @@ import shutil
 from pathlib import Path
 
 
+def _proof(command: str, argv: list[str]) -> int:
+    """SR-397: ``plumb evaluate proof SR-### [SR-### ...]``, one evaluator per proof."""
+    import argparse
+
+    from plumb.api import open_core
+    from plumb.capture.records import CaptureError
+    from plumb.cliutil import resolve_root
+    from plumb.evaluate import proofcheck
+
+    parser = argparse.ArgumentParser(
+        prog=f"plumb {command} proof",
+        description="Run the independent evaluator on the proofs the owner picked it for.")
+    parser.add_argument("ids", nargs="+", metavar="SR-###")
+    parser.add_argument("--model", default="sonnet")
+    parser.add_argument("--max-minutes", type=int, default=30, metavar="N")
+    parser.add_argument("--root", default=None)
+    args = parser.parse_args(argv)
+    try:
+        rows = proofcheck.evaluate_proofs(open_core(resolve_root(args.root)), args.ids,
+                                          model=args.model, minutes=args.max_minutes)
+    except (ValueError, CaptureError) as exc:
+        print(f"plumb: evaluate proof: {exc}")
+        return 2
+    print("\n".join(proofcheck.lines(rows)))
+    return 0 if all(r["verdict"] == "verified" for r in rows) else 1
+
+
+def _case(command: str, argv: list[str]) -> int:
+    """SR-397 EX-8: ``plumb evaluate case <folder>``: an evaluator's case, no fix rounds."""
+    import argparse
+
+    from plumb.cliutil import resolve_root
+    from plumb.evaluate import owner, tasks
+    from plumb.evaluate import run as runmod
+
+    parser = argparse.ArgumentParser(prog=f"plumb {command} case",
+                                     description="Run an evaluation case folder.")
+    parser.add_argument("folder")
+    parser.add_argument("--model", default="haiku")
+    parser.add_argument("--owner-model", default="haiku")
+    parser.add_argument("--max-minutes", type=int, default=20, metavar="N")
+    parser.add_argument("--max-turns", type=int, metavar="N")
+    parser.add_argument("--max-exchanges", type=int, metavar="N")
+    parser.add_argument("--runs-dir", default=None)
+    parser.add_argument("--root", default=None)
+    args = parser.parse_args(argv)
+    try:
+        task = tasks.load_case(args.folder)
+    except (OSError, ValueError) as exc:
+        print(f"plumb: evaluate case: {exc}")
+        return 2
+    runmod.run_task(resolve_root(args.root), task, model=args.model,
+                    owner=owner.ScriptedOwner(args.owner_model),
+                    runs_dir=Path(args.runs_dir) if args.runs_dir else None,
+                    limits={"exchanges": args.max_exchanges, "turns": args.max_turns,
+                            "minutes": args.max_minutes})
+    return 0
+
+
 def run(command: str, argv: list[str]) -> int:
     import argparse
 
     from plumb.cliutil import resolve_root
-    from plumb.evaluate import loop, owner, tasks
+    from plumb.evaluate import loop, owner, proofcheck, tasks
     from plumb.evaluate import run as runmod
+
+    if argv[:1] == ["proof"]:
+        return _proof(command, argv[1:])
+    if argv[:1] == ["case"]:
+        return _case(command, argv[1:])
 
     parser = argparse.ArgumentParser(
         prog=f"plumb {command}",
@@ -30,6 +94,9 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("--max-minutes", type=int, metavar="N", help="minutes per run")
     parser.add_argument("--no-limits", action="store_true", help="run without any limit")
     parser.add_argument("--runs-dir", default=None)
+    parser.add_argument("--proof-evaluator", action="store_true",
+                        help="the owner picked the independent evaluator for this run's fixes "
+                             "at launch")
     parser.add_argument("--root", default=None)
     args = parser.parse_args(argv)
     named = {"exchanges": args.max_exchanges, "turns": args.max_turns,
@@ -50,6 +117,7 @@ def run(command: str, argv: list[str]) -> int:
           "runs_dir": Path(args.runs_dir) if args.runs_dir else None, "limits": named}
     task = tasks.load(args.task)
     if args.rounds > 0:   # DEC-309: the loop runs by itself; each fix round ends in a rerun
-        return loop.run_loop(root, task, rounds=args.rounds + 1, **kw)
+        check = proofcheck.check_fix if args.proof_evaluator else None
+        return loop.run_loop(root, task, rounds=args.rounds + 1, check=check, **kw)
     runmod.run_task(root, task, **kw)
     return 0

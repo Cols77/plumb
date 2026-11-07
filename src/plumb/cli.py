@@ -17,7 +17,7 @@ ROUTES: dict[str, str] = {
     # CORE
     "init": "plumb.commands",
     "link": "plumb.commands", "unlink": "plumb.commands", "relink": "plumb.commands",
-    "repin": "plumb.commands", "stale": "plumb.commands",
+    "repin": "plumb.commands",
     "validate": "plumb.commands",
     "debug": "plumb.debug",   # SR-220, SR-300: the debug workflow, standalone
     "check": "plumb.commands",
@@ -72,6 +72,7 @@ ROUTES: dict[str, str] = {
     # INT-090: studies the owner reads in the room, and the understanding picture
     "study": "plumb.study.cli",
     "evaluate": "plumb.evaluate.cli",   # INT-105: the benchmark
+    "heavy": "plumb.heavy", "landing": "plumb.landing",   # SR-386: sessions
 }
 
 _HELP = """usage: plumb <command> [options]
@@ -88,11 +89,11 @@ records and integrity:
   relink       point a link at a new target (--note why), keeping its number and example
   repin        refresh link pins (never confirms); --after-tests: only when the linked tests
                pass and a model judges the meaning unchanged
-  stale        card: bring a stale link to the owner as a card; cards: list them in full
-               (--incomplete: those lacking something)
   debug        the debug workflow: rerun each stale link once through tests and the
                meaning cascade, say what it did and what is missing (--dry-run)
   validate     check records, links and logs (--merge BASE: the merge boundary); alias check
+  heavy        run a command under the one-heavy-job lock: plumb heavy -- <command...>
+  landing      the landing queue and board: add|wait|ready|next|done <branch>
   status       counts, drift, what awaits you, judge approvals (--card: the card)
   brief        the short intent brief
   explain      why a behaviour, file or record exists, in plain terms (plain words, a path

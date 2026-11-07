@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.stale_asked import asked
 from plumb import links, stale
 from plumb.api import open_core
 from plumb.cli import main
@@ -183,11 +184,11 @@ def test_ex3_requirement_disagreeing_with_intent_is_reworded(project: Path) -> N
     assert inputs["sonnet_reason"] == "add now multiplies"
     assert "-    return a + b" in inputs["diff"]
     (item,) = result.diagnoses
-    assert item["outcome"] == "reword" and item["card"] is False
+    assert item["outcome"] == "reword" and item["asked"] is False
     ((link, why),) = result.refused
     assert link == LINK and "add returns the product." in why and "plumb capture" in why
     assert "development" not in why
-    assert stale.read_cards(project, "s1") == [] and _state(project) == "stale"
+    assert asked(project, "s1") == [] and _state(project) == "stale"
 
 
 BACK = {"outcome": "back-to-development", "topic": "Adds numbers",
@@ -206,7 +207,7 @@ def test_ex4_change_away_from_agreeing_intent_goes_back_to_development(project: 
     assert "SR-001/EX-1" in why and "src/calc.py: +1/-1 lines" in why
     (item,) = result.diagnoses
     assert item["outcome"] == "back-to-development" and item["turn"]["text"] == TURN
-    assert stale.read_cards(project, "s1") == []               # the owner is not asked
+    assert asked(project, "s1") == []               # the owner is not asked
 
 
 OWNER = {"outcome": "owner", "topic": "Adds numbers",
@@ -215,30 +216,29 @@ OWNER = {"outcome": "owner", "topic": "Adds numbers",
          "options": ["Keep it and reword SR-001", "Undo the change"]}
 
 
-def test_ex5_unclear_change_becomes_an_owner_card(project: Path) -> None:
+def test_ex5_unclear_change_becomes_an_owner_question(project: Path) -> None:
     _edit(project, CHANGED, turn=TURN)
     result, _ = _resolve(project, judge=Judge(False, "add now multiplies"), answer=OWNER)
-    (card,) = stale.read_cards(project, "s1")
+    (card,) = asked(project, "s1")
     assert card["link"] == LINK and card["topic"] == "Adds numbers"
     assert card["issue"] == OWNER["explanation"] and card["options"] == OWNER["options"]
     (item,) = result.diagnoses
-    assert item["outcome"] == "owner" and item["card"] is True
-    assert "card" in result.refused[0][1] and result.changes == []
-    # SR-116: without what each option does and why the first, the card is kept but does not
-    # hold the link for the end-of-turn hold until it is complete
-    assert item["card_missing"] and LINK not in stale.carded_links(project, "s1")
+    assert item["outcome"] == "owner" and item["asked"] is True
+    assert "question" in result.refused[0][1] and result.changes == []
+    assert LINK in stale.asked_links(open_core(project), "s1")   # the hold counts it as asked
 
 
-def test_ex5_owner_card_with_consequences_holds_the_link(project: Path) -> None:
+def test_ex5_owner_question_with_consequences_holds_the_link(project: Path) -> None:
     _edit(project, CHANGED, turn=TURN)
     answer = {**OWNER, "consequences": ["add multiplies; the sum is gone",
                                         "add sums again; the product is gone"],
               "why": "the owner's words ask for a sum"}
     result, _ = _resolve(project, judge=Judge(False, "add now multiplies"), answer=answer)
-    (card,) = stale.read_cards(project, "s1")
-    assert card["consequences"] == answer["consequences"] and card["why"] == answer["why"]
-    assert card["by"] == "diagnosis" and result.diagnoses[0]["card_missing"] == []
-    assert LINK in stale.carded_links(project, "s1")
+    (card,) = asked(project, "s1")
+    first = card["descriptions"][0]
+    assert answer["consequences"][0] in first and answer["why"] in first
+    assert card["by"] == "diagnosis" and result.diagnoses[0]["asked"] is True
+    assert LINK in stale.asked_links(open_core(project), "s1")
 
 
 def test_ex5_dry_run_diagnoses_but_files_no_card(project: Path) -> None:
@@ -247,8 +247,8 @@ def test_ex5_dry_run_diagnoses_but_files_no_card(project: Path) -> None:
                                  answer=OWNER, dry_run=True)
     assert len(diagnoser.dispatcher.seen) == 1
     (item,) = result.diagnoses
-    assert item["outcome"] == "owner" and item["card"] is False
-    assert stale.read_cards(project, "s1") == [] and _state(project) == "stale"
+    assert item["outcome"] == "owner" and item["asked"] is False
+    assert asked(project, "s1") == [] and _state(project) == "stale"
 
 
 def test_dry_run_runs_jev_and_repins_nothing(project: Path) -> None:
@@ -293,7 +293,7 @@ def test_opus_unreachable_or_unusable_is_a_plain_refusal(project: Path, answer) 
     ((link, why),) = result.refused
     assert why.startswith("the model says the meaning changed: add now multiplies")
     assert "no diagnosis" in why
-    assert result.diagnoses == [] and stale.read_cards(project, "s1") == []
+    assert result.diagnoses == [] and asked(project, "s1") == []
     assert _state(project) == "stale"
 
 
@@ -313,7 +313,7 @@ def test_cli_prints_the_diagnosis(project: Path, capsys, monkeypatch) -> None:
     monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
     assert main(["repin", "--after-tests", LINK, "--root", str(project)]) == 1
     out = capsys.readouterr()
-    assert f"{LINK} needs the owner (card filed): Adds numbers" in out.out
+    assert f"{LINK} needs the owner (question filed): Adds numbers" in out.out
     assert "1. Keep it and reword SR-001" in out.out
     assert "filed as a question for the owner" in out.err
     assert main(["repin", "--after-tests", LINK, "--dry-run", "--json",

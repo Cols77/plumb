@@ -14,12 +14,43 @@ STEP_CHECK = "checking the merge"       # SR-108
 MERGE_END = "merge check finished"
 
 
+def _head_is(git: Path, branch: str) -> bool:
+    try:
+        return (git / "HEAD").read_text(encoding="utf-8").strip() == "ref: refs/heads/" + branch
+    except OSError:
+        return False
+
+
+def branch_gone(root: Path, branch: str) -> bool:
+    """Whether ``branch`` has neither a ref file nor a packed-refs line (files only, no git
+    process). A worktree's ``.git`` file leads to its git dir, whose ``commondir`` holds refs.
+    The branch HEAD points at is never gone (an unborn branch has no ref yet), and a
+    repository using reftable keeps no ref files to look in."""
+    git = root / ".git"
+    try:
+        if git.is_file():
+            git = (root / git.read_text(encoding="utf-8").split(":", 1)[1].strip()).resolve()
+            if _head_is(git, branch):
+                return False
+            common = git / "commondir"
+            if common.is_file():
+                git = (git / common.read_text(encoding="utf-8").strip()).resolve()
+        if not git.is_dir() or _head_is(git, branch) or (git / "reftable").is_dir():
+            return False
+        if (git / "refs" / "heads" / branch).is_file():
+            return False
+        packed = git / "packed-refs"
+        return not (packed.is_file() and any(
+            line.rstrip().endswith(" refs/heads/" + branch)
+            for line in packed.read_text(encoding="utf-8").splitlines()))
+    except (OSError, IndexError):
+        return False
+
+
 def detected_base(root: Path) -> str:
     """The repository's default branch when the config does not name it: where
     ``origin/HEAD`` points, else ``main`` if it exists, else ``master`` (files only, no git
     process: the post-edit hook asks on every edit)."""
-    from plumb.understand.cardstore import branch_gone
-
     git = Path(root) / ".git"
     try:
         if git.is_file():                        # a worktree: its refs live in the main git dir
@@ -60,13 +91,18 @@ def _configured(core: Any) -> dict[str, Any]:
 def _print_report(core: Any, base: str, *, run_full: bool, as_json: bool,
                   hook: bool = False) -> Any:
     """Compute, print and return one ``MergeReport`` (``hook``: inside the pre-push hook)."""
+    import contextlib
+
     from plumb import progress
     from plumb.boundary import as_dict, merge_report
+    from plumb.heavy import heavy
     from plumb.cliutil import emit
 
     with progress.scope(core.root, "merge-check") as reporter:
         reporter.update(STEP_CHECK)
-        report = merge_report(core, base, run_full=run_full, hook=hook)
+        with (heavy(core.root, "plumb merge-check --run") if run_full
+              else contextlib.nullcontext()):
+            report = merge_report(core, base, run_full=run_full, hook=hook)
         reporter.done(MERGE_END)
     if as_json:
         emit(as_dict(report), True)

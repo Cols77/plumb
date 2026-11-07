@@ -65,7 +65,7 @@ def _resolve_or_ask(core: Any, words: list[str], as_json: bool,
 def cmd_status(command: str, argv: list[str]) -> int:
     if "--card" not in argv:
         return _delegate(command, argv)
-    parser = _parser(command, "The status card, what awaits you and drift, in a few lines.")
+    parser = _parser(command, "The status line, what awaits you and drift, in a few lines.")
     parser.add_argument("--card", action="store_true")
     args = parser.parse_args(argv)
     from plumb.present.report import status_card_lines
@@ -208,7 +208,10 @@ def cmd_align(command: str, argv: list[str]) -> int:
         ids, _, answered = _resolve_or_ask(core, args.words, args.as_json)
         if answered:
             return 0
-    result = align(core, ids)
+    from plumb.heavy import heavy
+
+    with heavy(core.root, "plumb align"):
+        result = align(core, ids)
     emit(result.as_dict() if args.as_json else align_lines(result), args.as_json)
     return 0
 

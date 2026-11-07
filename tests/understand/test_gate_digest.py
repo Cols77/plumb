@@ -8,11 +8,9 @@ from typing import Any
 
 import pytest
 from capture.capture_helpers import log_prompt
-from understand.test_clarify_job import plant_card
 
 from plumb.api import open_core
-from plumb.contracts import CardState, ClarifyAnswer, ClarifyQuestion
-from plumb.understand import cardstore, clarify, cmd_clarify, effects, gate, hooks, worker
+from plumb.understand import cmd_clarify, gate, hooks, worker
 
 pytestmark = pytest.mark.sr("SR-225")
 
@@ -33,10 +31,10 @@ def _say(repo: Path, session: str, text: str = TEXT) -> str:
 def test_ex1_same_text_in_two_sessions_each_gate_is_its_own(repo: Path,
                                                              engine_standins: Any) -> None:
     engine_standins.dispatcher.script = {"clarify": CARD}
-    _say(repo, "s1")
+    digest = _say(repo, "s1")
     worker.run_once(open_core(repo), "s1")
-    plant_card(repo, "s1")                                  # a card an agent's question raised
-    assert gate.is_closed(repo, "s1")                       # s1's card holds its gate
+    gate.close(repo, "s1", digest, "your request is being checked")   # s1's gate only
+    assert gate.is_closed(repo, "s1")
     engine_standins.dispatcher.script = {"clarify": NO_GAP}
     _say(repo, "s2")
     worker.run_once(open_core(repo), "s2")
@@ -57,19 +55,4 @@ def test_ex2_the_check_reports_and_opens_under_the_hooks_digest(
     assert outcome.state == "ready" and outcome.digest == first
     (opened,) = [e.payload for e in open_core(repo).events() if e.kind == "gate"]
     assert opened["digest"] == first and not gate.is_closed(repo, "s1")
-
-
-def test_ex3_answering_the_card_opens_the_gate_with_no_clarify_rerun(
-        repo: Path, engine_standins: Any) -> None:
-    engine_standins.dispatcher.script = {"clarify": CARD}
-    digest = _say(repo, "s1")
-    worker.run_once(open_core(repo), "s1")
-    plant_card(repo, "s1")
-    (card,) = [c for c in cardstore.own_cards(repo, "s1") if c.id == clarify.choice_id(digest)]
-    answered = CardState(**{**card.__dict__, "answers": tuple(
-        ClarifyAnswer(q.id, "accepted", digest) for q in card.questions)})
-    effects.handler_for("choice")(core=open_core(repo), job=SimpleNamespace(session="s1"),
-                                  card=answered, digest=digest)
-    assert not gate.is_closed(repo, "s1")
-    assert len(engine_standins.dispatcher.ran("clarify")) == 1
 

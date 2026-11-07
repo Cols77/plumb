@@ -254,19 +254,6 @@ def test_verdict_logged_with_score(world: Path) -> None:
     assert one["model"]
 
 
-def _open_readback(repo: Path, text: str = MESSAGE) -> str:
-    """An open read-back card for the request ``text`` (what the clarify job draws)."""
-    from plumb.contracts import CardState
-    from plumb.understand import cardstore, clarify
-
-    digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-    card = CardState(id=clarify.card_id(digest), kind="clarify", topic="your request",
-                     issue="Make pages load faster", evidence="Assumed: public pages",
-                     resolutions=("Yes", "No"), status="open")
-    cardstore.save(repo, SESSION, [card])
-    return card.id
-
-
 def test_ex4_contradicts_names_both_examples(world: Path, write_record) -> None:
     write_record(world, requirement_text(
         2, "Pages load in five seconds", "Public pages load within five seconds",
@@ -283,18 +270,9 @@ def test_ex4_contradicts_names_both_examples(world: Path, write_record) -> None:
                                                contradicts={"SR-002": said}))
     verdict = next(e["payload"] for e in applied.entries if e["kind"] == "verdict")
     assert verdict["verdict"] == "contradicts" and verdict["contradicts"] == said
-    assert not [c for c in applied.cards if c.kind == "contradicts"]
 
 
-@pytest.mark.sr("SR-239")
-def test_sr152_ex3_no_finding_leaves_the_read_back_unchanged(world: Path) -> None:
-    core = open_core(world)
-    _open_readback(world)
-    applied = _apply(core, build_job(core, ["SR-001"]), verdict_answer(("SR-001", "supported", 0.9)))
-    assert not [c for c in applied.cards if c.kind == "clarify"]
-
-
-def test_ex5_option_picked_decision_supported_is_not_settled_and_raises_no_card(
+def test_ex5_option_picked_decision_supported_is_not_settled_and_raises_no_question_card(
         repo: Path, write_record) -> None:
     question = "Cache or no cache? A: add a cache. B: no cache."
     digest = log_prompt(repo, "A")
@@ -306,10 +284,9 @@ def test_ex5_option_picked_decision_supported_is_not_settled_and_raises_no_card(
     assert entry_of(job, "DEC-001")["premise"]["question"] == question
     applied = _apply(core, job, verdict_answer(("DEC-001", "supported", 0.99)))
     assert not [e for e in applied.entries if e["kind"] == "approval"]
-    assert applied.cards == ()                  # no trial card: the question route (SR-252 EX-6)
 
 
-def test_a_changed_record_is_not_carded_or_settled(world: Path) -> None:
+def test_a_changed_record_is_not_settled(world: Path) -> None:
     core = open_core(world)
     job = build_job(core, ["SR-001"])
     path = world / ".plumb" / "requirements" / "SR-001.md"
@@ -318,14 +295,6 @@ def test_a_changed_record_is_not_carded_or_settled(world: Path) -> None:
     applied = _apply(open_core(world), job, verdict_answer(("SR-001", "beyond", 0.9),
                                                            beyond={"SR-001": ["x"]}))
     assert [e["kind"] for e in applied.entries] == ["verdict"]    # logged for the version judged
-    assert applied.cards == ()
-
-
-def test_judge_registers_trial_beyond_contradicts() -> None:
-    from plumb.understand import effects
-
-    for kind in ("trial", "beyond", "contradicts"):
-        assert callable(effects.handler_for(kind)), kind
 
 
 def test_recompute_rebuilds_from_the_logs(world: Path) -> None:
@@ -441,8 +410,8 @@ def test_an_updated_record_joins_the_job(repo: Path, engine_standins) -> None:
     assert sorted(len(j.inputs["records"]) for j in jobs) == [1, 7]
 
 
-def test_the_worker_applies_the_verdicts_and_raises_no_card(repo: Path, engine_standins) -> None:
-    from plumb.understand import cardstore, worker
+def test_the_worker_applies_the_verdicts_and_raises_no_question_card(repo: Path, engine_standins) -> None:
+    from plumb.understand import worker
 
     result = _capture_six(repo)
     ids = list(result.written)
@@ -456,7 +425,6 @@ def test_the_worker_applies_the_verdicts_and_raises_no_card(repo: Path, engine_s
     logged = [e.payload for e in open_core(repo).events() if e.kind == "verdict"]
     assert {v["id"]: (v["verdict"], v["score"]) for v in logged} == {
         ids[0]: ("supported", 0.95), ids[1]: ("supported", 0.9), ids[2]: ("beyond", 0)}
-    assert cardstore.load(repo, SESSION) == []          # no trial or beyond card (SR-252 EX-6)
     status = open_core(repo).status(ids[:2])           # no approval without a question round
     assert [status[i].confirmation for i in ids[:2]] == ["proposed", "proposed"]
 

@@ -63,7 +63,8 @@ def merge_branch(root: Path, branch: str, *, repin: Any = None) -> str:
 
 
 def run_loop(root: Path, task: Any, *, model: str, rounds: int, run: Any = None,
-             fix: Any = None, merge: Any = merge_branch, **run_kw: Any) -> int:
+             fix: Any = None, merge: Any = merge_branch, check: Any = None,
+             **run_kw: Any) -> int:
     from plumb import debug, selfdebug
     from plumb.api import open_core
     from plumb.evaluate import issues
@@ -101,6 +102,17 @@ def run_loop(root: Path, task: Any, *, model: str, rounds: int, run: Any = None,
             if out.state in ("owner", "held"):
                 print(f"stopped: {case_id} waits for the owner ({out.detail})")
                 return 1
+            if out.state == "fixed" and check is not None:   # SR-396 EX-5: no owner asked
+                try:
+                    why = check(root, cases.get(case_id, {"id": case_id}), out.branch)
+                except Exception as exc:  # noqa: BLE001 - a check's crash is not a verdict
+                    why = f"the evaluator's run failed: {type(exc).__name__}: {exc}"
+                if why:
+                    text = f"not merged: the proof evaluator did not verify the fix: {why}"
+                    print(f"  {case_id}: {text}")
+                    debug._update(root, [case_id], branch="")   # not ready to land (DEC-470)
+                    debug.report(root, case_id, text)
+                    continue
             if out.state == "fixed":
                 held = merge(root, out.branch)
                 if held:

@@ -456,3 +456,20 @@ def test_merge_check_cli_report_names_untested_links_and_contradictions(
     assert "requirements that contradict each other:" in out
     assert "SR-006 contradicts SR-005" in out
     assert code == 1   # the untested link holds, as at the pre-merge hook
+
+
+@pytest.mark.sr("SR-306")
+def test_dec436_the_stale_header_says_repin_and_a_refused_repin_goes_to_the_owner() -> None:
+    """DEC-436: the agent repins each stale link once its tests pass; a refused repin reaches
+    the owner as the judge's question (tests/core/test_repin_records.py, EX-3, asserts the
+    question itself)."""
+    from types import SimpleNamespace
+
+    from plumb.boundary.premerge import drift_lines
+
+    report = SimpleNamespace(contradictions=(), contradiction_notes=(), judge_note="",
+                             validate_errors=(), stale_links=("SR-005#1",), untested_links=())
+    header = drift_lines(report)[0]
+    assert "repin each once its tests pass" in header
+    assert "refused goes to the owner as the judge's question" in header
+    assert "ask the owner" not in header

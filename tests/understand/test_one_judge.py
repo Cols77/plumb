@@ -19,7 +19,7 @@ from jev_fixtures import calibrated  # noqa: E402
 
 from plumb.api import open_core  # noqa: E402
 from plumb.present import owner_text  # noqa: E402
-from plumb.understand import cardstore, files, hooks, judge, trial  # noqa: E402
+from plumb.understand import files, hooks, judge  # noqa: E402
 from understand.fakes import as_worker  # noqa: E402
 from understand.test_judge_job import (  # noqa: E402
     SESSION,
@@ -62,8 +62,6 @@ def test_ex1_a_supported_verdict_alone_confirms_nothing(repo: Path, write_record
     ids = make_world(repo, write_record, 1)
     applied = judged(repo, ids, [0.99])
     assert [e for e in applied.entries if e["kind"] == "approval"] == []
-    assert applied.cards == ()                           # SR-252 EX-6: no trial card either
-    assert "settle" not in json.dumps([dataclasses.asdict(c) for c in applied.cards]).lower()
     write_applied(repo, applied)
     assert open_core(repo).status(ids)["SR-001"].confirmation == "proposed"
 
@@ -127,11 +125,6 @@ def test_ex2_a_typed_settle_says_the_switch_is_gone_and_changes_nothing(
     assert not list(files.jobs_dir(repo, SESSION).glob("*.json"))     # no request was checked
 
 
-def test_a_record_the_judge_confirmed_gets_no_trial_card(
-        repo: Path, judge_confirmed: list[str]) -> None:
-    assert judged(repo, judge_confirmed, [0.99, 0.99]).cards == ()
-
-
 # ---- SR-135 ------------------------------------------------------------------------------
 
 
@@ -165,60 +158,5 @@ def test_ex3_a_typed_undo_of_a_record_nobody_judged_changes_nothing(
 # ---- SR-133 ------------------------------------------------------------------------------
 
 
-@pytest.mark.sr("SR-252")
-def test_ex1_a_card_is_one_record_with_its_words_and_date(repo: Path, write_record) -> None:
-    said = "keep the plain checkout, the shop is small"
-    digest = log_prompt(repo, said, at="2026-10-04T10:00:00Z")
-    write_record(repo, intent_text(1, said, "A plain checkout", prompt=digest))
-    write_record(repo, decision_text(1, "Which checkout?", "plain checkout", intent=1,
-                                     alternatives=("a wizard",)))
-    assert judged(repo, ["DEC-001"], [0.9]).cards == ()   # SR-252 EX-6: the judge draws none
-    core = open_core(repo)                                 # a trial card opened before
-    (item,) = judge.entries_for(core, ["DEC-001"])
-    card = trial.card(core, trial.Candidate(core.index()["DEC-001"], 0.9, item["premise"]))
-    assert card.kind == "trial" and len(card.questions) == 1
-    assert card.id.startswith("trial:DEC-001@") and card.topic == "Which checkout?"
-    assert said in card.evidence and "4 Oct" in card.evidence
-    assert card.issue == "You chose plain checkout over a wizard"
-    choices = card.questions[0].choices
-    assert [(c.label, c.answer) for c in choices] == [
-        ("Yes", "accepted"), ("No", "rejected"), ("Fix it", "change")]
-    assert all(c.consequence for c in choices)
-
-
-@pytest.mark.sr("SR-252")
-def test_ex2_words_not_found_say_so_and_show_the_proposal_alone(
-        repo: Path, write_record) -> None:
-    log_prompt(repo, "something else entirely")
-    write_record(repo, requirement_text(1, "Totals", "Totals are shown on the invoice"))
-    record = open_core(repo).index()["SR-001"]
-    card = trial.card(open_core(repo), trial.Candidate(record, 0.9, {}))
-    assert card.evidence == "Your words for this were not found."
-    assert card.issue == "Totals are shown on the invoice"
-
-
 # ---- SR-132 ------------------------------------------------------------------------------
 
-
-@pytest.mark.sr("SR-216")
-def test_ex3_a_card_of_a_branch_that_is_gone_is_not_in_the_backlog(repo: Path) -> None:
-    from plumb.contracts import CardState
-
-    cards = [CardState(id="clarify:a", branch="main"), CardState(id="clarify:b", branch="gone"),
-             CardState(id="clarify:c")]
-    cardstore.save(repo, SESSION, cards)
-    assert [c.id for c in cardstore.load(repo, SESSION)] == ["clarify:a", "clarify:c"]
-
-
-@pytest.mark.sr("SR-216")
-def test_ex4_a_withdrawn_card_confirms_nothing_and_its_record_stays_proposed(
-        repo: Path, write_record) -> None:
-    ids = make_world(repo, write_record, 1)
-    write_applied(repo, judged(repo, ids, [0.9]))
-    drawn = [trial.card(open_core(repo), trial.Candidate(open_core(repo).index()["SR-001"], 0.9,
-                                                         {}))]    # a trial card opened before
-    cardstore.save(repo, SESSION, drawn)
-    cardstore.withdraw(repo, SESSION, [drawn[0].id])
-    assert cardstore.load(repo, SESSION) == []
-    assert [c.status for c in cardstore.own_cards(repo, SESSION)] == ["withdrawn"]
-    assert open_core(repo).status(ids)["SR-001"].confirmation == "proposed"

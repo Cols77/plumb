@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.stale_asked import asked
 from plumb import links, stale
 from plumb.api import open_core
 from plumb.capture import autoapprove
@@ -83,7 +84,7 @@ def test_ex1_and_3_stale_check_waits_then_completes_when_the_judge_is_back(
     rows = stale.stale_rows(core)
     first = stale.settle_drift(core, "s1", rows)
     assert len(first) == 1 and "the stale check is waiting" in first[0] and "no key" in first[0]
-    assert _state(project) != "current" and stale.read_cards(project, "s1") == []
+    assert _state(project) != "current" and asked(project, "s1") == []
     assert stale.settle_drift(core, "s1", rows) == []   # said once
     judge = SimpleNamespace(same_meaning=lambda **shown: repin.Meaning(True, "kept", 1.0))
     monkeypatch.setattr(repin, "open_judge", lambda core: judge)

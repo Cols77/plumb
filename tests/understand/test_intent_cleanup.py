@@ -9,8 +9,7 @@ import pytest
 
 from plumb.api import open_core
 from plumb.capture import proof
-from plumb.contracts import CardState
-from plumb.understand import cardstore, cmd_intent, files
+from plumb.understand import cmd_intent, files
 from understand.test_intent_loop import DIGEST, SESSION, _findings, _run, intent  # noqa: F401, F811
 
 pytestmark = pytest.mark.sr("SR-308")
@@ -37,13 +36,9 @@ def test_ex1_done_removes_the_loops_own_files_and_keeps_the_records(
     result = files.results_dir(intent, SESSION) / "j1.json"
     result.parent.mkdir(parents=True)
     result.write_text("{}", encoding="utf-8")
-    cardstore.save(intent, SESSION, [CardState(id="a", status="answered"),
-                                     CardState(id="w", status="withdrawn"),
-                                     CardState(id="o", status="open")])
     assert _run(intent, "done", "--intent", "INT-001") == 0
     assert not any(p.exists() for p in (clarify, plan, result,
                                         cmd_intent.loop_path(intent, SESSION, DIGEST)))
-    assert [c.id for c in cardstore.own_cards(intent, SESSION)] == ["o"]
     assert (intent / ".plumb" / "requirements" / "SR-040.md").exists()
 
 

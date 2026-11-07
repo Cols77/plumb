@@ -11,7 +11,7 @@ import pytest
 from capture.capture_helpers import log_prompt
 
 from plumb.api import open_core
-from plumb.understand import cardstore, cmd_clarify, gate, hooks, worker
+from plumb.understand import cmd_clarify, gate, hooks, worker
 
 pytestmark = pytest.mark.sr("SR-225")
 
@@ -34,6 +34,5 @@ def test_ex9_a_failed_check_opens_the_gate_and_files_no_card(
     outcome = cmd_clarify.wait(open_core(repo), SESSION, timeout=5)
     assert outcome.state == "couldnt_check" and "work on" in outcome.lines[0]
     assert not gate.is_closed(repo, SESSION)                 # the agent works on
-    assert not [c for c in cardstore.own_cards(repo, SESSION) if c.kind == "couldnt_check"]
     assert [e.payload["by"] for e in open_core(repo).events() if e.kind == "gate"] == [
         "couldnt-check"]

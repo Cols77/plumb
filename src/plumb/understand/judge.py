@@ -23,8 +23,7 @@ A record the owner's latest words contradict is sent back for the agent to rewor
 EX-2). When the judge says an answer corrects its reading, one ``capture-error`` rejection
 pins the record at the asked hash with the premise, the parts and JEV's score, a real 'no'
 for calibration (SR-252 EX-4). It returns the log entries: the worker writes them.
-The kind registers the handlers of the trial, beyond and contradicts cards (``effects``; old
-cards of those kinds are still answered)."""
+"""
 
 from __future__ import annotations
 
@@ -39,7 +38,8 @@ from plumb.approvals import approval_items
 from plumb.contracts import Applied, Job
 from plumb.judgment.verdict import BY
 from plumb.present import owner_text
-from plumb.understand import backlog, cards, files, premise, trial
+from plumb.understand import backlog, files, premise
+from plumb.understand import words as wording
 from plumb.understand import verdict as verdict_cascade
 
 kind = "judge"
@@ -451,7 +451,53 @@ def questions_path(root: Any, session: str) -> Path:
 
 def _logged_questions(root: Any, session: str) -> list[Mapping[str, Any]]:
     raw = files.read_json(questions_path(root, session))
-    return [q for q in raw if isinstance(q, Mapping)] if isinstance(raw, list) else []
+    if not isinstance(raw, list):
+        return []
+    asked = [q for q in raw if isinstance(q, Mapping)]
+    gone = _gone_branches(Path(root), {str(q["branch"]) for q in asked if q.get("branch")})
+    return [q for q in asked if str(q.get("branch")) not in gone]
+
+
+def _git(root: Path, *args: str) -> str | None:
+    from plumb.boundary.premerge import _git as run
+
+    return run(root, *args)
+
+
+def _gone_branches(root: Path, branches: set[str]) -> set[str]:
+    """SR-216 EX-6: those of ``branches`` that no local ref names any more (merged and deleted,
+    a squash merge included), by one ``git for-each-ref``, none when no question has a branch;
+    when git cannot answer nothing is gone."""
+    if not branches:
+        return set()
+    out = _git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    return branches - set(out.split()) if out is not None else set()
+
+
+def _stamp(question: dict[str, Any], branch: str) -> dict[str, Any]:
+    """A new question carries when and on which branch it was asked (SR-216: a newer request
+    replaces it; its merged or deleted branch withdraws it). ``branch`` is read once per write."""
+    from datetime import datetime, timezone
+
+    question.setdefault("at", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    if branch:
+        question.setdefault("branch", branch)
+    return question
+
+
+def _branch_of(root: Any) -> str:
+    return (_git(Path(root), "symbolic-ref", "--short", "-q", "HEAD") or "").strip()
+
+
+# SR-216, SR-218: the reasons a ``question-withdrawn`` entry closes a question, which only
+# ``plumb question reopen`` takes back; "link" and "branch" only log what removed it from its file.
+WITHDRAWN_CLOSES = ("replaced", "answered", "duplicate", "settled")
+
+
+def withdraw(core: Any, session: str, key: str, reason: str, **detail: Any) -> None:
+    """Log one withdrawal. It approves nothing and changes no record."""
+    core.log_append_many("events", [("question-withdrawn", {
+        "session": session, "key": key, "reason": reason, **detail})])
 
 
 def _ids_of(question: Mapping[str, Any]) -> set[str]:
@@ -503,6 +549,8 @@ def _answered_keys(core: Any) -> set[str]:
                 answered.update(map(str, e.payload["asked"].get("keys") or ()))
         elif e.kind == "answer-bound" and isinstance(e.payload.get("asked"), Mapping):
             answered.update(map(str, e.payload["asked"].get("keys") or ()))
+        elif e.kind == "question-withdrawn" and e.payload.get("reason") in WITHDRAWN_CLOSES:
+            answered.add(str(e.payload.get("key")))
         elif e.kind == "answer-unbound":     # SR-218: the owner took a closure back
             answered.discard(str(e.payload.get("key")))
         elif e.kind == "pre-intent" and isinstance(e.payload.get("asked"), Mapping) \
@@ -532,11 +580,14 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
         return bool((labels or q.get("key")) and _answered_by(
             core, index, ids, labels, str(q.get("key") or "")))
 
-    return [q for q in asked if not settled(q) and any(
-        str(r.get("id")) in index and index[str(r.get("id"))].hash == r.get("hash")
-        and str(r.get("id")) not in closed
-        and statuses[str(r.get("id"))].confirmation != "confirmed"
-        for r in q.get("records") or () if isinstance(r, Mapping))]
+    # a stale link's question (job ``stale:<link>``) lives as long as the link is stale
+    # (``drop_settled_questions``), whether or not its record is confirmed
+    return [q for q in asked if not settled(q) and (
+        str(q.get("job") or "").startswith("stale:") or any(
+            str(r.get("id")) in index and index[str(r.get("id"))].hash == r.get("hash")
+            and str(r.get("id")) not in closed
+            and statuses[str(r.get("id"))].confirmation != "confirmed"
+            for r in q.get("records") or () if isinstance(r, Mapping)))]
 
 
 def to_ask(core: Any, session: str) -> list[Mapping[str, Any]]:
@@ -751,7 +802,7 @@ def _shaped(core: Any, raw: Any, job: Job, judged: Mapping[str, str], index: Map
     options = [o for o in raw.get("options") or () if isinstance(o, Mapping)]
     request = raw.get("request") if isinstance(raw.get("request"), Mapping) else {}
     words, date = _flat(request.get("words")), _flat(request.get("date"))
-    shown = [cards.plain(_flat(v), index) for v in (
+    shown = [wording.plain(_flat(v), index) for v in (
         raw.get("question"), raw.get("header"), raw.get("recommended_reason"),
         *(o.get(k) for o in options for k in ("label", "consequence")))]
     if not ids or not 2 <= len(options) <= 4 or not all(shown):
@@ -808,7 +859,8 @@ def _questions(core: Any, job: Job, answer: Mapping[str, Any], judged: Mapping[s
 def _write_questions(core: Any, job: Job, judged: set[str], new: list[dict[str, Any]]) -> None:
     """The open questions file with this job's questions: the same question asked again
     gathers the records of both; a question whose every record this job judged again goes."""
-    by_key = {q["key"]: q for q in new}
+    branch = _branch_of(core.root) if new else ""
+    by_key = {q["key"]: _stamp(q, branch) for q in new}
     old = _logged_questions(core.root, job.session)
     for q in old:
         same = by_key.get(str(q.get("key")))
@@ -826,7 +878,8 @@ def add_question(core: Any, session: str, question: Mapping[str, Any]) -> None:
     question replaces the earlier one about the same link instead of piling up beside it."""
     kept = [q for q in _logged_questions(core.root, session)
             if q.get("job") != question.get("job")]
-    files.write_json_atomic(questions_path(core.root, session), [*kept, dict(question)])
+    files.write_json_atomic(questions_path(core.root, session),
+                            [*kept, _stamp(dict(question), _branch_of(core.root))])
 
 
 def reworded(root: Any, session: str) -> list[Mapping[str, Any]]:
@@ -873,19 +926,37 @@ def _bind_earlier_answer(core: Any, session: str, worded: Mapping[str, Any]) -> 
         "answered": [said.digest]}))
 
 
-def drop_settled_questions(root: Any, still_stale: Collection[str]) -> None:
-    """Withdraw, in every session folder, the debug workflow's questions (``job`` is
-    ``debug:<link id>``) about links no longer stale: their link was repinned, relinked or
-    removed, so the question no longer stands (INT-079)."""
-    for path in (Path(root) / ".plumb" / "session").glob(f"*/{QUESTIONS_FILE}"):
+def drop_settled_questions(core: Any, still_stale: Collection[str]) -> None:
+    """Withdraw, in every session folder, the questions about links (``job`` is
+    ``debug:<link id>`` or ``stale:<link id>``) that are no longer stale: their link was repinned,
+    relinked or removed, so the question no longer stands (INT-079). Each is logged (SR-216)."""
+    for path in (Path(core.root) / ".plumb" / "session").glob(f"*/{QUESTIONS_FILE}"):
         raw = files.read_json(path)
         if not isinstance(raw, list):
             continue
-        kept = [q for q in raw if not (isinstance(q, Mapping) and str(q.get("job") or "")
-                                       .startswith("debug:")
-                                       and str(q["job"])[6:] not in still_stale)]
-        if len(kept) != len(raw):
-            files.write_json_atomic(path, kept)
+        gone = [q for q in raw if isinstance(q, Mapping)
+                and str(q.get("job") or "").startswith(("debug:", "stale:"))
+                and str(q["job"])[6:] not in still_stale]
+        if gone:
+            files.write_json_atomic(path, [q for q in raw if q not in gone])
+            for q in gone:
+                withdraw(core, path.parent.name, str(q.get("key")), "link", link=str(q["job"])[6:])
+
+
+def drop_merged_branch_questions(core: Any, merged: Collection[str]) -> None:
+    """SR-216 EX-10: the questions asked on a branch just merged into main, in every worktree's
+    sessions, are withdrawn and logged."""
+    out = _git(Path(core.root), "worktree", "list", "--porcelain") or ""
+    for tree in (Path(x[9:]) for x in out.splitlines() if x.startswith("worktree ")):
+        for path in (tree / ".plumb" / "session").glob(f"*/{QUESTIONS_FILE}"):
+            raw = files.read_json(path)
+            gone = [q for q in raw if isinstance(q, Mapping) and q.get("branch") in merged] \
+                if isinstance(raw, list) else []
+            if gone:
+                files.write_json_atomic(path, [q for q in raw if q not in gone])
+                for q in gone:
+                    withdraw(core, path.parent.name, str(q.get("key")), "branch",
+                             branch=str(q["branch"]))
 
 
 def _say_waiting(core: Any, session: str, waits: Mapping[str, str]) -> str:
@@ -915,7 +986,10 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     asked = {str(r.get("id")): r for r in job.inputs.get("records") or ()
              if isinstance(r, Mapping)}
     index = core.index()
-    model = str(answer.get("model") or core.config.understand.judge_model)
+    from plumb.config import model_of
+
+    model = str(answer.get("model")
+                or model_of(core.config, core.config.understand.judge_model))  # SR-389
     entries: list[Mapping[str, Any]] = []
     notes: list[str] = []
     confirmed: list[Mapping[str, Any]] = []
@@ -1097,34 +1171,3 @@ def evaluate_case(dispatcher: Any, case: Mapping[str, Any]) -> tuple[bool, Mappi
     answer = dict(dispatcher.run(job, system=system_prompt(), user=json.dumps(inputs),
                                  schema=schema, on_step=lambda step: None))
     return matches(answer, case.get("expect") or {}), answer
-
-
-# --------------------------------------------------------------------------- the cards' effects
-
-
-def _beyond_effect(*, entry: Mapping[str, Any], accepted: bool = False, confirm: Any = None,
-                   **_: Any) -> Applied | None:
-    """A "goes beyond your words" card answered: keeping it confirms the record the owner
-    has now seen with the addition; dropping or rewording confirms nothing (the reader's
-    ``rejected`` and ``change`` answers do the rest)."""
-    if accepted and entry.get("record") and entry.get("hash") and confirm is not None:
-        confirm(str(entry["record"]), str(entry["hash"]), str(entry.get("evidence") or ""),
-                float(entry.get("confidence") or 0))
-    return None
-
-
-def _contradicts_effect(**_: Any) -> Applied | None:
-    """A contradicts card answered: the reader maps the owner's pick to a change of the
-    record; nothing is confirmed by a bare yes."""
-    return None
-
-
-def _register() -> None:
-    from plumb.understand import effects
-
-    effects.register("trial", trial.effect)
-    effects.register("beyond", _beyond_effect)
-    effects.register("contradicts", _contradicts_effect)
-
-
-_register()

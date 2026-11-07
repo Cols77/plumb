@@ -233,8 +233,8 @@ code { overflow-wrap:anywhere; }
 .study-body th,.study-body td { border:1px solid var(--line2); padding:5px 10px; text-align:left; }
 .study-body th { background:var(--elev); color:var(--plumb); }
 .study-body blockquote { margin:12px 0; padding:2px 14px; border-left:3px solid var(--plumb); color:var(--muted); }
-.study-diagram { border:1px solid var(--line2); border-left:3px solid var(--brass); border-radius:5px; padding:12px; margin:16px 0; overflow-x:auto; }
-.study-diagram svg { max-width:100%; height:auto; }
+.study-diagram { border:1px solid var(--line2); border-left:3px solid var(--brass); border-radius:5px; padding:12px; margin:16px 0; overflow:auto; max-height:640px; }
+.study-diagram svg { max-width:none; height:auto; }
 .study-diagram-note { color:var(--brass); font-size:12px; margin:16px 0 4px; }
 .studies textarea { margin:12px 0; font:13px var(--mono); }
 .section-tabs { display:flex; gap:4px; }.section-tabs button[aria-pressed='true'] { color:var(--plumb); border-color:var(--plumb); }

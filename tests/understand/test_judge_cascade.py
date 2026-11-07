@@ -133,7 +133,6 @@ def test_ex2_jev_below_the_threshold_sends_the_record_to_the_model(world: Path) 
     assert logged["by"] == "model" and logged["verdict"] == "supported"
     assert logged["jev_score"] == 0.3                       # JEV's score is logged
     assert [e for e in applied.entries if e["kind"] == "approval"] == []   # a question first
-    assert applied.cards == ()                                            # and no card
     # and auto-approval refuses it in code, however sure the model was
     from plumb.capture.autoapprove import verdict_refusal
 
