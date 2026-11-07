@@ -32,6 +32,15 @@ function mermaid() {
   return loaded;
 }
 
+/** A diagram keeps its natural size (from its viewBox) so the figure scrolls instead of shrinking it unreadably. */
+function keepNaturalSize(svg: SVGElement | null): void {
+  const box = svg?.getAttribute('viewBox')?.trim().split(/[\s,]+/).map(Number);
+  if (!svg || !box || box.length !== 4 || !(box[2] > 0)) return;
+  svg.setAttribute('width', String(Math.round(box[2])));
+  svg.style.maxWidth = 'none';
+  svg.style.width = `${Math.round(box[2])}px`;
+}
+
 let seq = 0;
 /** Draw each mermaid block under `root` in place; a failure keeps the source and adds the note. */
 export async function drawDiagrams(root: HTMLElement): Promise<void> {
@@ -49,6 +58,7 @@ export async function drawDiagrams(root: HTMLElement): Promise<void> {
       figure.setAttribute('role', 'img');
       figure.setAttribute('aria-label', 'Diagram');
       figure.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['style'] });
+      keepNaturalSize(figure.querySelector('svg'));
       pre.replaceWith(figure);
     } catch {
       document.getElementById(`dstudy-diagram-${seq}`)?.remove(); // mermaid's leftover error box

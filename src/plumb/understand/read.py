@@ -1,5 +1,5 @@
 """The read job kind (SR-101): one model reading per turn of the owner's free-prose message
-against the records the previous reply showed and the open cards.
+against the records the previous reply showed and the open judge questions.
 
 ``build`` (queue side) assembles the job from the logs; ``recompute`` (worker side) rebuilds
 the inputs from the logs alone, so a job file the agent wrote is never trusted; ``apply``
@@ -16,9 +16,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import Applied, CardState, Choice, ClarifyQuestion, Job
+from plumb.contracts import Applied, Choice, Job
 from plumb.present import owner_text
-from plumb.understand import files
+from plumb.understand import conflict_items, files
 
 kind = "read"
 SCHEMA_ID = "read.v1"
@@ -115,45 +115,6 @@ def record_text(record: Any) -> str:
     return " | ".join(" ".join(p.split()) for p in parts if p)
 
 
-def card_item_id(card: Any, question: Any | None) -> str:
-    return card.id if question is None else f"{card.id}/{question.id}"
-
-
-def conflict_cards(core: Any, prompt_at: str = "") -> list[CardState]:
-    """The merge conflict cards a chat reply can answer (DEC-057): the stop hook draws them
-    each turn and never stores them, so they are rebuilt from the open conflicts the reply
-    before ``prompt_at`` showed at their present versions (``conflicts.shown_open``)."""
-    from plumb.mergedriver import conflicts
-    from plumb.understand import cards
-
-    return [cards.conflict_card(core.index(), c) for c in conflicts.shown_open(core, prompt_at)]
-
-
-def card_items(core: Any, session: str, prompt_at: str = "") -> list[dict[str, Any]]:
-    """The open cards as read inputs: one item per card question (one for a card with none).
-    An item's ``hash`` is the version of its record the card showed (stored with the question
-    when the card was made), never the record's version today. ``choices`` are the question's
-    own, else its kind's for its resolutions (a card with no question: a stale link)."""
-    from plumb.understand import cardstore
-
-    items: list[dict[str, Any]] = []
-    for card in [*cardstore.load(core.root, session), *conflict_cards(core, prompt_at)]:
-        questions = list(card.questions) or [None]
-        for question in questions:
-            record = getattr(question, "record", None)
-            resolutions = tuple(getattr(question, "resolutions", ()) or card.resolutions)
-            choices = getattr(question, "choices", ()) or tuple(
-                Choice(label, "change", label) for label in resolutions)
-            items.append({
-                "id": card_item_id(card, question), "card": card.id,
-                "question": getattr(question, "id", ""), "kind": card.kind,
-                "text": getattr(question, "text", "") or card.issue or card.topic,
-                "resolutions": list(resolutions),
-                "choices": [files.choice_to_json(c) for c in choices],
-                "record": record, "hash": getattr(question, "hash", "") or ""})
-    return [*items, *judge_items(core, session)]
-
-
 JUDGE_ITEM = "judge-question:"
 
 
@@ -164,7 +125,7 @@ def judge_items(core: Any, session: str) -> list[dict[str, Any]]:
     from plumb.normalize import sha256_text
     from plumb.understand import judge
 
-    return [{"id": JUDGE_ITEM + sha256_text(str(q.get("key")))[-12:], "card": "",
+    return [{"id": JUDGE_ITEM + sha256_text(str(q.get("key")))[-12:],
              "question": str(q.get("key")), "kind": "judge",
              "text": str(q.get("question") or ""),
              "resolutions": [_label(o) for o in q.get("options") or () if isinstance(o, Mapping)],
@@ -191,7 +152,7 @@ def shown_items(core: Any, prompt_at: str = "") -> list[dict[str, Any]]:
 
 def build(core: Any, session: str, **context: Any) -> Job | None:
     """The one read job of this turn, or None when the previous reply stated nothing and no
-    card is open (``message``: ``{"digest", "text"}``, else the session's latest prompt)."""
+    question is open (``message``: ``{"digest", "text"}``, else the session's latest prompt)."""
     if core is None:
         return None
     message = context.get("message")
@@ -204,17 +165,18 @@ def build(core: Any, session: str, **context: Any) -> Job | None:
     if logged is None or not str(logged.get("text") or "").strip():
         return None
     shown = shown_items(core, str(logged.get("at") or ""))
-    cards = card_items(core, session, str(logged.get("at") or ""))
-    if not shown and not cards:
+    questions = [*conflict_items.items(core, str(logged.get("at") or "")),
+                 *judge_items(core, session)]
+    if not shown and not questions:
         return None
     inputs = {"message": {"digest": logged["digest"], "text": logged["text"]},
-              "shown": shown, "cards": cards}
+              "shown": shown, "questions": questions}
     return files.make_job("read", session, SCHEMA_ID, inputs, created=_utc_now())
 
 
 def recompute(core: Any, job: Job) -> Mapping[str, Any] | None:
     """The inputs rebuilt from the logs: the message text from the prompt log (not the job
-    file), the cards from the card store, the shown records from the stated set of the reply
+    file), the open judge questions, the shown records from the stated set of the reply
     before the message. A stated set written after the message is no longer that reply: the
     queued job's own shown records stand, kept only where the record still has that hash."""
     if core is None:
@@ -223,7 +185,7 @@ def recompute(core: Any, job: Job) -> Mapping[str, Any] | None:
     digest = str(claimed.get("digest") or "") if isinstance(claimed, Mapping) else ""
     logged = logged_prompt(core, digest)
     if logged is None:
-        return {"message": {"digest": digest, "text": ""}, "shown": [], "cards": []}
+        return {"message": {"digest": digest, "text": ""}, "shown": [], "questions": []}
     shown = shown_items(core, str(logged.get("at") or ""))
     if not shown:
         index = core.index()
@@ -234,7 +196,8 @@ def recompute(core: Any, job: Job) -> Mapping[str, Any] | None:
                  and index[str(i.get("id"))].hash == i.get("hash")]
     return {"message": {"digest": logged["digest"], "text": logged["text"]},
             "shown": shown,
-            "cards": card_items(core, job.session, str(logged.get("at") or ""))}
+            "questions": [*conflict_items.items(core, str(logged.get("at") or "")),
+                          *judge_items(core, job.session)]}
 
 
 def describe(job: Job) -> str:
@@ -292,6 +255,15 @@ def evidence_in(evidence: str, message: str) -> bool:
     return bool(found) and found in _collapse(message)
 
 
+def _picked(item: Mapping[str, Any], raw: Mapping[str, Any]) -> Choice | None:
+    """SR-187: the item's own choice the model named in ``option`` (a side picked in plain
+    words); None when it named none, so the answer reads as it was said."""
+    for c in item.get("choices") or ():
+        if c.get("label") and c["label"] == raw.get("option"):
+            return Choice(answer=str(c["answer"]), change=c.get("change") or c["label"])
+    return None
+
+
 def _confidence(raw: Any) -> float:
     try:
         return max(0.0, min(1.0, float(raw)))
@@ -299,23 +271,10 @@ def _confidence(raw: Any) -> float:
         return 0.0
 
 
-def change_card(record: Any, change: str, evidence: str, digest: str) -> CardState:
-    """A change the owner asked for in words, read back at the next turn."""
-    issue = owner_text.READBACK_CHANGE.format(title=record.title, change=change)
-    options = (owner_text.READBACK_YES, owner_text.READBACK_NOT_QUITE)
-    question = ClarifyQuestion(id="change", text=issue, resolutions=options, record=record.id,
-                               hash=record.hash,
-                               choices=(Choice(owner_text.READBACK_YES, "accepted"),
-                                        Choice(owner_text.READBACK_NOT_QUITE, "change")))
-    return CardState(id=f"change:{record.id}:{digest.removeprefix('sha256:')[:12]}",
-                     kind="clarify", topic=record.title, issue=issue, evidence=evidence,
-                     resolutions=question.resolutions, questions=(question,), status="open")
-
-
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     """Apply the reader's entries after exact checks only (nothing here reads the words):
     the message is in the prompt log; the record was shown at that version and is still that
-    version; the evidence occurs in the message. A card's answer goes to its card; a shown
+    version; the evidence occurs in the message. An open judge question's answer goes to the judge; a shown
     record read as ``accepted`` or ``change`` is covered by the message's pre-intent and judged
     (``_to_judge``), ``rejected`` is logged as a rejection. Every entry is logged as a
     ``read-entry``."""
@@ -339,7 +298,7 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     threshold = reader_threshold(core)
     shown = {str(i["id"]): str(i.get("hash") or "") for i in inputs.get("shown") or ()
              if isinstance(i, Mapping)}
-    items = [i for i in inputs.get("cards") or () if isinstance(i, Mapping)]
+    items = [i for i in inputs.get("questions") or () if isinstance(i, Mapping)]
     by_id = {str(i["id"]): i for i in items}
     by_record = {str(i["record"]): i for i in items if i.get("record")}
     covered: dict[str, str] = {}            # record id -> the version the reading covers
@@ -364,18 +323,15 @@ def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
             continue
         passes = confidence >= threshold
         item = by_id.get(raw_id) or by_id.get(name) or by_record.get(name)
-        if item is not None and item.get("kind") == "judge":
+        if item is not None and item.get("kind") == "conflict":
+            if passes:      # SR-170: a clear pick keeps one version of the conflict
+                conflict_items.apply_choice(
+                    work.core, item, _picked(item, raw) or Choice(
+                        answer=said, change=raw.get("change")), evidence, digest)
+            continue
+        if item is not None:
             if passes:      # an answer to the judge's question, never to its records
                 _answer_judge_question(work, job, item, raw)
-            continue
-        if item is not None:      # a record on a card is confirmed only by the card's answer
-            answer_mod.apply_answer(
-                work, card=str(item.get("card")), question=str(item.get("question") or ""),
-                record=str(item.get("record") or ""), hash=str(item.get("hash") or ""),
-                choice=_picked(item, raw) or Choice(answer=said, change=raw.get("change")),
-                source=answer_mod.OwnerWords(job=job, digest=digest, evidence=evidence,
-                                             confidence=confidence, passes=passes,
-                                             rejection=raw.get("rejection")))
             continue
         record = work.index.get(name)
         if record is None:
@@ -446,78 +402,6 @@ def _answer_judge_question(work: Any, job: Job, item: Mapping[str, Any],
             {"records": list(dict.fromkeys(r["id"] for r in records)),
              # the round reads this message's answer: it does not ask the point right back
              "answered": [work.digest]}, needs=job.id))
-
-
-# --------------------------------------------------------------------------- card kinds
-# An effect handler is called with keywords: core, job, card, question (the question id),
-# entry ({answer, change, confidence, evidence, record, hash}), message, digest, accepted
-# (accepted at or above the threshold) and confirm (confirm(record, hash, evidence,
-# confidence, label=None), the one way an owner-words approval is queued). It returns an
-# ``Applied`` or None, and takes ``**_`` for what a later version adds.
-
-
-def _acknowledge_effect(**_: Any) -> Applied | None:
-    """A stale-link card answered: the answer is recorded on the card and the agent
-    resolves it; nothing is confirmed or changed here."""
-    return None
-
-
-def _picked(item: Mapping[str, Any], raw: Mapping[str, Any]) -> Choice | None:
-    """SR-187: the card's own choice the model named in ``option`` (a side picked in plain
-    words); None when it named none, so the answer reads as it was said."""
-    for c in item.get("choices") or ():
-        if c.get("label") and c["label"] == raw.get("option"):
-            return Choice(answer=str(c["answer"]), change=c.get("change") or c["label"])
-    return None
-
-
-def _conflict_take(choice: Any) -> str | None:
-    """The side a choice on a merge conflict card keeps (``ours``, ``theirs``, or ``combined``
-    when one is proposed), None for any other."""
-    from plumb.understand import cards
-
-    return {cards.KEEP_THIS: "ours", cards.KEEP_OTHER: "theirs"}.get(
-        choice.label, "combined" if choice.label == cards.BOTH and choice.answer == "accepted"
-        else None)
-
-
-def _conflict_effect(*, core: Any, card: CardState, entry: Mapping[str, Any], source: Any,
-                     digest: str, **_: Any) -> Applied | None:
-    """SR-170: a merge conflict card answered in words. When they clearly keep one version,
-    the conflict code applies it, citing their words; a change asked, a refusal or
-    an unsure reading leaves the conflict open (INT-029: nothing else reads the words)."""
-    from plumb.mergedriver import conflicts
-    from plumb.understand import answer
-
-    if not (isinstance(source, answer.OwnerWords) and source.passes):
-        return None
-
-    def same(text: Any) -> bool:
-        return _collapse(str(text or "")).casefold() == _collapse(
-            str(entry.get("change") or "")).casefold()
-
-    picked = [c for c in card.questions[0].choices if c.answer == entry["answer"]
-              and (c.answer == "accepted" or same(c.change) or same(c.label))]
-    take = _conflict_take(picked[0]) if len(picked) == 1 else None
-    if take is None:
-        return None
-    try:
-        found = conflicts.find(core, card.id.removeprefix("conflict:"))
-        conflicts.apply_choice(core, found, take, by="owner-words",
-                               quote=str(entry["evidence"]), prompt=digest)
-    except conflicts.ConflictError:
-        return None
-    return None
-
-
-def _register() -> None:
-    from plumb.understand import effects
-
-    effects.register("stale_link", _acknowledge_effect)
-    effects.register("conflict", _conflict_effect)
-
-
-_register()
 
 
 def _switch_lines(core: Any, payload: Mapping[str, Any]) -> list[str]:

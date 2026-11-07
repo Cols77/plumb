@@ -9,26 +9,26 @@ from pathlib import Path
 import pytest
 from understand.fakes import as_worker
 from understand.test_read_apply import entries_of, write_applied
-from understand.test_read_job import SESSION, log_prompt, make_core, open_card, record_text
+from understand.test_read_job import SESSION, log_prompt, make_core, open_question, record_text
 
 from plumb.api import open_core
 from plumb.present import owner_text
-from plumb.understand import read, trial
+from plumb.understand import read
 
 pytestmark = pytest.mark.sr("SR-214")
 
 
 @pytest.fixture
 def core(repo: Path, write_record):
-    return make_core(repo, write_record, [record_text(2), record_text(3)])
+    return make_core(repo, write_record, [record_text(1), record_text(2), record_text(3)])
 
 
 def test_ex8_prose_undo_takes_nothing_back(core) -> None:
-    card = trial.card(core, trial.Candidate(core.index()["SR-002"], 0.9, {}))
-    open_card(core, card)
+    open_question(core)
     digest = log_prompt(core, "undo that")
     job = read.build(core, SESSION, message={"digest": digest, "text": "undo that"})
-    entry = {"id": f"{card.id}/{card.questions[0].id}", "hash": "", "answer": "open",
+    (item,) = job.inputs["questions"]
+    entry = {"id": item["id"], "hash": "", "answer": "open",
              "evidence": "undo that", "confidence": 0.99}
     with as_worker(core.root, SESSION):
         applied = read.apply(core, job, {"entries": [entry]})

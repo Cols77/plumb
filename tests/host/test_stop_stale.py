@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from fakes import FakeVerify
 
+from core.stale_asked import asked
 from plumb import stale
 from plumb.api import open_core
 from plumb.contracts import NodeEvidence, Target
@@ -165,7 +166,7 @@ def test_pre_existing_stale_line_reaches_the_agent_once(project: Path, hook_inpu
     assert "already stale" not in _prompt(project, hook_input)
 
 
-def test_hold_ends_after_max_with_card(project: Path, hook_input) -> None:
+def test_hold_ends_after_max_with_a_question(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "src/calc.py", CHANGED)
     for n in (1, 2, 3):                               # hooks.stale_holds_max defaults to 3
@@ -174,8 +175,8 @@ def test_hold_ends_after_max_with_card(project: Path, hook_input) -> None:
     out = run_stop(project, hook_input, verify=_verify(), active=True)
     assert _block(out) is None
     assert len(_summary(out).splitlines()) <= 1      # SR-265: one plumb line at most
-    (card,) = stale.read_cards(project, "s1")
-    assert card["link"] == "SR-001#0" and card["status"] == "open"
+    (card,) = asked(project, "s1")
+    assert card["link"] == "SR-001#0"
 
 
 def test_active_flag_still_holds_for_stale_only(project: Path, hook_input) -> None:
@@ -187,32 +188,18 @@ def test_active_flag_still_holds_for_stale_only(project: Path, hook_input) -> No
     assert "plumb tests run" not in reason            # the once-only reasons stay once-only
 
 
-def test_card_counts_as_resolved_for_the_hold(project: Path, hook_input) -> None:
+def test_an_owner_question_counts_as_resolved_for_the_hold(project: Path, hook_input) -> None:
     start_turn(project)
     edit(project, "src/calc.py", CHANGED)
-    stale.add_card(project, "s1", link="SR-001#0", record="SR-001", path="src/calc.py",
-                   topic="Adds numbers", issue="the order of the sum changed",
-                   options=["Keep it", "Reword it"], turn=1,
-                   consequences=["keeps both as they are", "rewords the requirement"],
-                   why="the sum is the same either way")
-    out = run_stop(project, hook_input, verify=_verify())
-    assert _block(out) is None
-
-
-@pytest.mark.sr("SR-267")
-def test_an_incomplete_card_is_held_and_the_agent_told_what_it_lacks(
-        project: Path, hook_input) -> None:
-    start_turn(project)
-    edit(project, "src/calc.py", CHANGED)
-    stale.add_card(project, "s1", link="SR-001#0", record="SR-001", path="src/calc.py",
-                   topic="Adds numbers", issue="the order of the sum changed",
-                   options=["Keep it", "Reword it"], turn=1)
+    stale.ask_owner(open_core(project), "s1", link="SR-001#0", record="SR-001",
+                    topic="Adds numbers", issue="the order of the sum changed",
+                    options=["Keep it", "Reword it"],
+                    consequences=["keeps both as they are", "rewords the requirement"],
+                    why="the sum is the same either way")
     reason = _block(run_stop(project, hook_input, verify=_verify()))
-    assert reason is not None and "stale and unresolved (SR-001#0)" in reason
-    assert "not offered to the owner until it is complete" in reason
-    assert 'what option 1 ("Keep it") does and leaves undone' in reason
-    assert "why the recommended option is recommended" in reason
-    assert stale.read_cards(project, "s1")[0]["status"] == "open"   # kept, not dropped
+    # the link is held by the question; the turn stops on asking it, not on the stale hold
+    assert reason is not None and "judge question" in reason
+    assert "stale and unresolved" not in reason
 
 
 def test_no_baseline_no_hold(project: Path, hook_input) -> None:
@@ -226,15 +213,14 @@ _BARE_ID = re.compile(r"(?<![\w-])(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})(?![\w
 _INTERNAL = re.compile(r"\b(jobs?|dispatchers?|hash(?:es)?|workers?)\b", re.IGNORECASE)
 
 
-def test_stale_card_text_passes_both_owner_text_scanners(project: Path) -> None:
+def test_stale_question_text_passes_both_owner_text_scanners(project: Path) -> None:
     from plumb.present import owner_text
     from plumb.present.owner_text import bare_cli_verbs
 
     row = stale.Row("SR-001#0", "SR-001", "src/calc.py", "implemented_by", ("a", "b"),
                     ("a", "c"))
-    card = stale.default_card(row, "Adds numbers")
-    stale.add_card(project, "s1", turn=1, **card)
-    (entry,) = stale.read_cards(project, "s1")
+    stale.ask_owner(open_core(project), "s1", **stale.default_question(row, "Adds numbers"))
+    (entry,) = asked(project, "s1")
     text = "\n".join([entry["topic"], entry["issue"], *entry["options"],
                       owner_text.STALE_HOLD_ENDED.format(n=3, title="Adds numbers")])
     assert bare_cli_verbs(text) == []

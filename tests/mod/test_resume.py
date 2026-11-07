@@ -12,9 +12,9 @@ import json
 from pathlib import Path
 
 import pytest
-from understand.test_read_job import make_core, open_card, record_text
+from understand.test_read_job import make_core, record_text
 
-from mod.helpers import DIGEST, OTHER_KEY, SESSION, kinds, mod_json, run_mod, sample_card
+from mod.helpers import DIGEST, OTHER_KEY, SESSION, kinds, mod_json, run_mod
 from plumb.hosts.claude_code import hookio, session_start
 from plumb.mod import handshake
 from plumb.mod import session as mod_session
@@ -28,8 +28,6 @@ CONFIRM = 0
 @pytest.fixture
 def core(repo: Path, write_record):
     core = make_core(repo, write_record, [record_text(n) for n in range(1, 4)])
-    open_card(core, sample_card(core, "SR-001"))
-    open_card(core, sample_card(core, "SR-002"))
     return core
 
 

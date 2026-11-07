@@ -21,7 +21,7 @@ yourself, and tell them to type it again in lower case.
 `{plumb} clarify --wait --json` (12 or more hex digits are enough; on an ordinary message it
 checks nothing of the request and answers `ask` with plumb's judge's questions, or `ready`).
 
-- No argument, or `status`: run `{plumb} status --card` and give the card, what awaits
+- No argument, or `status`: run `{plumb} status --card` and give the status line, what awaits
   them and drift in one or two lines; when it lists records also being changed on another
   branch or worktree, name them by title and branch ("is anyone else changing X?" is the
   same request).
@@ -34,7 +34,7 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
   the failed check, took that record back, switched
   automatic confirmation) and logged it as the owner's own. Run nothing to approve, release
   or switch: run `{plumb} status --card`
-  and report the card, and for auto-approve whether it is on and, when not in effect yet,
+  and report the status, and for auto-approve whether it is on and, when not in effect yet,
   what is missing. The same words inside a sentence ("turn auto-approve on") change
   nothing: tell them to type the command as the whole message.
 - `settle ...`: that switch no longer exists; the prompt hook said so. Change and run nothing.
@@ -91,7 +91,7 @@ checks nothing of the request and answers `ask` with plumb's judge's questions, 
 - `conflicts` (or "what conflicts?"): run `{plumb} conflicts [<their words>]`, say in their
   terms what each side wants, and follow
   ${CLAUDE_PLUGIN_ROOT}/skills/plumb-records/references/conflicts.md:
-  the card takes their answer, or plumb reads their chat reply; you choose nothing.
+  their answer to the question is taken, or plumb reads their chat reply; you choose nothing.
 - `merge-check`, or "finish the merge", "merge <branch>", "continue the rebase", "undo the
   merge", "keep mine" on a record file, installing plumb's git hooks: follow
   ${CLAUDE_PLUGIN_ROOT}/skills/plumb-records/references/merge.md.

@@ -24,7 +24,7 @@ Run plumb as `{plumb}`. The owner's intent lives in files; read it before acting
 - Never run `{plumb} approve` or `revoke` (both gone), `tests waive`, `ui`,
   `config auto-approve`, `config show`,
   `conflict choose`, `turn start`, `hook prompt`, `owner` or `mod`; `undo` and `go` are typed
-  by the owner and done by the hook. Merges, conflict cards: references/merge.md,
+  by the owner and done by the hook. Merges, conflicts: references/merge.md,
   references/conflicts.md. Commits carry an `SR: SR-###` trailer naming what they serve.
 - Asked: hook limit `hooks.hard_limit_s` (<=119 s); a study, any words: references/study.md.
 Questions to the owner (the only place these rules are written; every other skill and the
@@ -44,7 +44,7 @@ exists, and you never decide on your own that the owner approved.
    answer, and do not rerun `ask` in a loop.
 4. Any other question to the owner also goes through the question tool, with options and
    their consequences.
-5. The stop hook's cards reach you as text, not the owner. One tagged "only the owner can
+5. What the stop hook hands you is for you, not the owner. One tagged "only the owner can
    settle this" (an open conflict, a regression on a confirmed requirement, a drift whose
    meaning changed): ask it at once with the question tool, plain words, options, no ids
    (or offer a study of both sides). Stale links, untraced files and warnings are yours to fix.

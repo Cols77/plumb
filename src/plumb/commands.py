@@ -247,7 +247,7 @@ def cmd_repin(command: str, argv: list[str]) -> int:
     parser.add_argument("--dry-run", action="store_true",
                         help="change nothing (no record file, no log entry) and list what it "
                              "would repin; with --after-tests it asks the models only (JEV, "
-                             "Sonnet and the Opus diagnosis; no tests, no card)")
+                             "Sonnet and the Opus diagnosis; no tests, no question)")
     parser.add_argument("--note", default="")
     args = parser.parse_args(argv)
     if not args.selector and not args.all_stale:
@@ -260,7 +260,10 @@ def cmd_repin(command: str, argv: list[str]) -> int:
     diagnoses: list[dict[str, Any]] = []
     try:
         if args.after_tests:
-            outcome = repin_after_tests(core, args.selector, dry_run=args.dry_run)
+            from plumb.heavy import heavy
+
+            with heavy(core.root, "plumb repin --after-tests"):
+                outcome = repin_after_tests(core, args.selector, dry_run=args.dry_run)
             changes, refused, would = outcome.changes, outcome.refused, outcome.would
             diagnoses = outcome.diagnoses
         else:
@@ -307,164 +310,11 @@ DIAGNOSIS_LINES = {
 
 
 def _diagnosis_line(item: dict[str, Any], dry_run: bool) -> str:
-    card = " (card filed)" if item.get("card") else (" (dry run: no card filed)" if dry_run
-                                                     else "")
+    card = " (question filed)" if item.get("asked") else (
+        " (dry run: no question filed)" if dry_run else "")
     return DIAGNOSIS_LINES[item["outcome"]].format(
         link=item["link"], card=card, topic=item["topic"], explanation=item["explanation"],
         record=item["record"], wording=item["proposed_wording"], other=item.get("other", ""))
-
-
-STALE_USAGE = (
-    "usage: plumb stale card <link> --topic TITLE --issue WORDS --options a|b|c "
-    "--consequences a|b|c --why REASON [--recommended N] [--session ID]\n"
-    "       plumb stale cards [--incomplete] [--session ID] [--json]\n"
-    "card: files a stale link's owner-intent question in plumb's internal store (the agent "
-    "asks it with the question tool; nothing is shown to the owner as a card): the link then "
-    "counts as resolved for the end-of-turn hold. Each option needs what it does and leaves "
-    "undone (--consequences, one per option, "
-    "in the same order) and the recommended one needs its reason (--why); a card lacking any "
-    "is refused (SR-116). Re-filing a link's open card keeps its topic, issue and options "
-    "unless given again; --recommended (numbered from 1) and --consequences need --options "
-    "given with them. The record's wording, the change and the owner's words are added by "
-    "plumb.\n"
-    "cards: lists the open stale cards with all they show the owner; --incomplete lists only "
-    "those still lacking something, and what.\n")
-
-
-def _split(raw: str | None) -> list[str]:
-    return [o.strip() for o in (raw or "").split("|") if o.strip()]
-
-
-def cmd_stale(command: str, argv: list[str]) -> int:
-    """``plumb stale card <link>``: bring a stale link to the owner as a card;
-    ``plumb stale cards``: list the open ones with everything they show (SR-116)."""
-    if not argv or argv[0] in ("-h", "--help"):
-        sys.stdout.write(STALE_USAGE)
-        return 0 if argv else EXIT_USAGE
-    if argv[0] == "cards":
-        return _stale_cards(argv[1:])
-    if argv[0] != "card":
-        print(f"plumb: unknown stale command '{argv[0]}' (card, cards)", file=sys.stderr)
-        return EXIT_USAGE
-    return _stale_card(argv[1:])
-
-
-def _stale_card(argv: list[str]) -> int:
-    from plumb import stale
-
-    parser = _parser("stale card", "Bring a stale link to the owner as a card.")
-    parser.add_argument("link", help="the stale link id (SR-003#2)")
-    parser.add_argument("--topic", default=None, help="the requirement's title")
-    parser.add_argument("--issue", default=None, help="what changed, in the owner's words")
-    parser.add_argument("--options", default=None,
-                        help="the suggested resolutions, separated by |")
-    parser.add_argument("--consequences", default=None,
-                        help="for each option, in order and separated by |, what it does and "
-                             "what it leaves undone")
-    parser.add_argument("--why", default=None, help="why the recommended option is recommended")
-    parser.add_argument("--recommended", type=int, default=None,
-                        help="which option (numbered from 1, in the order of --options) to "
-                             "recommend")
-    parser.add_argument("--session", default=None)
-    args = parser.parse_args(argv)
-    core = _core(args)
-    record_id, _, position = args.link.partition("#")
-    record = core.index().get(record_id)
-    if record is None or not position.isdigit() or int(position) >= len(record.links):
-        print(f"plumb: no link {args.link}", file=sys.stderr)
-        return 1
-    session = args.session or stale.current_session(core.root)
-    kept = stale.open_card(core.root, session, args.link) or {}
-    options = _split(args.options) if args.options is not None else \
-        [str(o) for o in kept.get("options") or ()]
-    if args.options is None and options and (args.recommended is not None
-                                             or args.consequences is not None):
-        # --recommended and --consequences follow the order of --options: bound to the kept
-        # card's order, which the agent does not see, they could recommend the option the
-        # reason argues against (eval-0cf3090d). Refuse and say the order to give them in.
-        kept_order = "; ".join(f"{n}. {o}" for n, o in enumerate(options, start=1))
-        print(f"plumb: --recommended and --consequences follow the order of --options; the "
-              f"open card for {args.link} has the options {kept_order}. Give --options again "
-              "with them, in the order --recommended and --consequences mean", file=sys.stderr)
-        return EXIT_USAGE
-    # --recommended counts from 1, as the card numbers its options; stored from 0
-    recommended = args.recommended - 1 if args.recommended is not None else \
-        int(kept.get("recommended") or 0) if args.options is None else 0
-    if len(options) < 2 or not 0 <= recommended < len(options):
-        print("plumb: give at least two --options separated by |, and a --recommended that "
-              "is one of them", file=sys.stderr)
-        return EXIT_USAGE
-    consequences = _split(args.consequences) if args.consequences is not None else \
-        [str(c) for c in kept.get("consequences") or ()] if args.options is None else []
-    from plumb.hashing import target_path
-
-    target = record.links[int(position)].target
-    entry = {"link": args.link, "record": record_id,
-             "path": target.record or target_path(target) or "",
-             "topic": args.topic if args.topic is not None else str(kept.get("topic") or ""),
-             "issue": args.issue if args.issue is not None else str(kept.get("issue") or ""),
-             "options": options, "recommended": recommended, "consequences": consequences,
-             "why": (args.why if args.why is not None else str(kept.get("why") or "")).strip()}
-    missing = stale.card_missing(entry)
-    if consequences and len(consequences) != len(options):
-        missing.insert(0, f"--consequences gives {len(consequences)} for {len(options)} "
-                          "options: give one per option, in the same order")
-    if missing:
-        print(f"plumb: card for {args.link} refused as incomplete (SR-116): it lacks "
-              + "; ".join(missing), file=sys.stderr)
-        return EXIT_USAGE
-    turn = int(kept.get("turn") or 0) or stale.turn_number(core.root, session)
-    card = stale.add_card(core.root, session, turn=turn, by=str(kept.get("by") or ""),
-                          **entry)
-    # say the filed order and the recommended one back
-    filed = "; ".join(f"{n}. {o}" for n, o in enumerate(options, start=1))
-    emit({"card": card, "session": session} if args.as_json else
-         f"plumb: question filed for {args.link} in session {session}; ask the owner with the "
-         f"question tool. Options in the order filed: {filed}. Recommended: "
-         f"{recommended + 1} ({options[recommended]})", args.as_json)
-    return 0
-
-
-def _stale_cards(argv: list[str]) -> int:
-    from plumb import stale
-
-    parser = _parser("stale cards", "List the open stale cards with all they show the owner.")
-    parser.add_argument("--incomplete", action="store_true",
-                        help="only the cards still lacking something (SR-116), and what")
-    parser.add_argument("--session", default=None, help="one session (default: every one)")
-    args = parser.parse_args(argv)
-    core = _core(args)
-    found = [(session, entry)
-             for session in ([args.session] if args.session else stale.sessions(core.root))
-             for entry in stale.read_cards(core.root, session)
-             if entry.get("status", "open") == "open"
-             and not (args.incomplete and stale.card_complete(entry))]
-    if args.as_json:
-        emit({"cards": [{**entry, "session": session, "missing": stale.card_missing(entry)}
-                        for session, entry in found]}, True)
-        return 0
-    if not found:
-        print("plumb: no open stale cards" + (" lacking anything" if args.incomplete else ""))
-        return 0
-    for session, entry in found:
-        head = f"plumb: {entry.get('link')} (session {session})"
-        if missing := stale.card_missing(entry):
-            head += " lacks: " + "; ".join(missing)
-        print(head)
-        if args.incomplete:
-            print(f"  complete it: plumb stale card {entry.get('link')} --session "
-                  f"{session} --consequences \"...\" --why \"...\"")
-            continue
-        print(entry.get("topic") or "")
-        if entry.get("why"):
-            print(entry["why"])
-        first = int(entry.get("recommended") or 0)
-        said = list(entry.get("consequences") or ())
-        for n, i in enumerate(sorted(range(len(entry.get("options") or ())),
-                                     key=lambda i: i != first), start=1):
-            print(f"  {n}. {entry['options'][i]}" + (" (recommended)" if i == first else "")
-                  + (f" - {said[i]}" if i < len(said) and said[i] else ""))
-    return 0
 
 
 def _guarded(action: Callable[[], object]) -> int:
@@ -681,6 +531,9 @@ def cmd_status(command: str, argv: list[str]) -> int:
     if data["auto_approve"]:
         lines.append(data["auto_approve"])
     lines += _awareness_section(args)
+    from plumb.landing import board_lines
+
+    lines += board_lines(Path(_core(args).root))
     emit(lines, False)
     return 0
 
@@ -862,7 +715,6 @@ HANDLERS: dict[str, Callable[[str, list[str]], int]] = {
     "unlink": cmd_unlink,
     "relink": cmd_relink,
     "repin": cmd_repin,
-    "stale": cmd_stale,
     "approve": cmd_gone,
     "confirm": cmd_gone,
     "relay": cmd_gone,

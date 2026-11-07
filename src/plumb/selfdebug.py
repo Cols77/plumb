@@ -15,13 +15,14 @@ import re
 import subprocess
 import sys
 import tempfile
-import time
+import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from plumb import debug
+from plumb.heavy import heavy
 
 ISSUES_REPO = "Cols77/plumb"
 Runner = Callable[[list[str]], tuple[bool, str]]
@@ -29,6 +30,12 @@ ID = re.compile(r"\b(?:SR|DEC|INT)-\d+\b")
 FIX_SCHEMA = {"type": "object", "required": ["test"], "additionalProperties": True,
               "properties": {"test": {"type": "string"},
                              "files": {"type": "array", "items": {"type": "string"}}}}
+DIAGNOSIS_SCHEMA = {"type": "object", "required": ["cause", "path"], "additionalProperties": True,
+                    "properties": {"cause": {"type": "string"}, "path": {"type": "string"}}}
+REVIEW_SCHEMA = {"type": "object", "required": ["ok", "findings"], "additionalProperties": True,
+                 "properties": {"ok": {"type": "boolean"},
+                                "findings": {"type": "array", "items": {"type": "string"}}}}
+READ_ONLY = "Read,Grep,Glob"       # SR-388: the diagnosis and the review get no editing tool
 
 
 @dataclass
@@ -125,25 +132,31 @@ def _evidence(core: Any, case: dict[str, Any]) -> dict[str, Any]:
 
 
 class FixerDispatcher:
-    """``claude -p`` in the worktree with its default tools, loading nothing of the owner's
-    setup (``--setting-sources ""``); the model is the round's (DEC-243)."""
+    """``claude -p`` in the worktree, loading nothing of the owner's setup
+    (``--setting-sources ""``); the model is the round's (DEC-243). SR-388: the one stage
+    runner: ``agent`` names the prompt, ``schema`` the answer, ``mode`` the permission mode,
+    ``tools`` (when set) the only tools the run has."""
 
-    def __init__(self, timeout_s: float = 1800) -> None:
-        self.timeout_s = timeout_s
+    def __init__(self, timeout_s: float = 1800, agent: str = "fixer",
+                 schema: dict[str, Any] = FIX_SCHEMA, mode: str = "acceptEdits",
+                 tools: str | None = None) -> None:
+        self.timeout_s, self.agent, self.schema, self.mode, self.tools = (
+            timeout_s, agent, schema, mode, tools)
 
     def command(self, binary: str, model: str) -> list[str]:
         from plumb.understand import agents
         from plumb.understand.dispatch.claude_code import cli_schema
 
-        return [binary, "-p", "--agent", agents.name("fixer"),
-                "--agents", json.dumps(agents.definition("fixer"), ensure_ascii=False),
-                "--model", model, "--permission-mode", "acceptEdits",
-                "--json-schema", json.dumps(cli_schema(FIX_SCHEMA)), "--output-format", "json",
+        return [binary, "-p", "--agent", agents.name(self.agent),
+                "--agents", json.dumps(agents.definition(self.agent), ensure_ascii=False),
+                "--model", model, "--permission-mode", self.mode,
+                *(["--tools", self.tools] if self.tools else []),
+                "--json-schema", json.dumps(cli_schema(self.schema)), "--output-format", "json",
                 "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config",
                 "--disable-slash-commands"]
 
-    def __call__(self, *, round: int, case: dict[str, Any], evidence: dict[str, Any],
-                 worktree: Path, model: str, previous: list[str]) -> dict[str, Any]:
+    def __call__(self, *, round: int, worktree: Path, model: str, previous: list[str],
+                 **given: Any) -> dict[str, Any]:
         import shutil
 
         from plumb.understand.dispatch.claude_code import ClaudeCodeDispatcher
@@ -151,51 +164,64 @@ class FixerDispatcher:
         binary = shutil.which("claude")
         if binary is None:
             raise RuntimeError("the claude command was not found on this machine")
-        user = json.dumps({"round": round, "evidence": evidence, "earlier_rounds": previous},
+        user = json.dumps({"round": round, **given, "earlier_rounds": previous},
                           ensure_ascii=False, indent=1)
         done = subprocess.run(self.command(binary, model), input=user, capture_output=True,
                               text=True, encoding="utf-8", cwd=worktree,
                               timeout=self.timeout_s)
         return dict(ClaudeCodeDispatcher.answer_of(done.stdout, done.returncode, done.stderr,
-                                                   FIX_SCHEMA))
-
-
-HEAVY_WAIT_S = 20.0
+                                                   self.schema))
 
 
 @contextlib.contextmanager
-def heavy(cwd: Path, what: str) -> Iterator[None]:
-    """The owner's one-heavy-job-at-a-time lock, shared by every session and worktree:
-    ``<git common dir>/plumb-heavy.lock``, created exclusively, waited for every 20 s.
-    shortcut: a lock left by a crashed run is waited on forever; add an age limit if that bites."""
-    common = _git(cwd, "rev-parse", "--git-common-dir").strip()
-    lock = Path(cwd, common) / "plumb-heavy.lock"
-    while True:
-        try:
-            with open(lock, "x", encoding="utf-8") as fh:
-                fh.write(what + "\n")
-            break
-        except (FileExistsError, PermissionError):
-            time.sleep(HEAVY_WAIT_S)
+def _out(guard: Any) -> Iterator[None]:
+    """SR-388: let go of the worker's ``guard`` (when there is one) while an agent run or a
+    test run is out."""
+    if guard is None:
+        yield
+        return
+    guard.release()
     try:
         yield
     finally:
-        lock.unlink(missing_ok=True)
+        guard.acquire()
 
 
-def _runner(wt_core: Any, locked: bool = False) -> Runner:
+_JOB = {"n": 0, "old": None}
+_JOB_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def _job_env() -> Iterator[None]:
+    """``PLUMB_JOB=selfdebug`` (a hook in an agent's run opens no case) until the last of the
+    fixes running at once ends; then what was there before."""
+    with _JOB_LOCK:
+        if not _JOB["n"]:
+            _JOB["old"] = os.environ.get("PLUMB_JOB")
+        _JOB["n"] += 1
+        os.environ["PLUMB_JOB"] = "selfdebug"
+    try:
+        yield
+    finally:
+        with _JOB_LOCK:
+            _JOB["n"] -= 1
+            if not _JOB["n"]:
+                if _JOB["old"] is None:
+                    os.environ.pop("PLUMB_JOB", None)
+                else:
+                    os.environ["PLUMB_JOB"] = str(_JOB["old"])
+
+
+def _runner(wt_core: Any) -> Runner:
     """Test ids run through pytest on the worktree's source; source paths through the verify
-    lane's covering tests. ``locked`` (the background job) takes the heavy lock per run; on
-    demand the agent holds it around ``plumb debug`` itself."""
+    lane's covering tests. Every run takes the heavy lock (a no-op under its holder)."""
     from plumb.links import default_runner
 
     covering, wt = default_runner(wt_core), Path(wt_core.root)
 
     def run(paths: list[str]) -> tuple[bool, str]:
-        if locked:
-            with heavy(wt, f"selfdebug {wt.name}: pytest"):
-                return _run(paths)
-        return _run(paths)
+        with heavy(wt, f"selfdebug {wt.name}: pytest"):
+            return _run(paths)
 
     def _run(paths: list[str]) -> tuple[bool, str]:
         if not all(Path(p.split("::")[0]).name.startswith("test_") for p in paths):
@@ -212,6 +238,26 @@ def _runner(wt_core: Any, locked: bool = False) -> Runner:
 def _changed(wt: Path) -> list[str]:
     _git(wt, "add", "-A")
     return _git(wt, "diff", "--cached", "--name-only", "HEAD").split()
+
+
+def _staged(wt: Path) -> str:
+    """The change in the worktree against HEAD, staged."""
+    _changed(wt)
+    return _git(wt, "diff", "--cached", "HEAD")
+
+
+def _undo(wt: Path) -> None:
+    _git(wt, "reset", "-q", "--hard", "HEAD")
+    _git(wt, "clean", "-fdq")
+
+
+def _touched(wt_core: Any, wt: Path) -> dict[str, str]:
+    """The text of the records that link to a file the change touches."""
+    from plumb.understand.judge import record_text
+
+    changed = set(_changed(wt))
+    return {r.id: record_text(r) for r in wt_core.index().values()
+            if any((link.target.path or "") in changed for link in getattr(r, "links", ()))}
 
 
 def _fails_without_fix(wt: Path, test: str, runner: Runner) -> bool:
@@ -281,14 +327,16 @@ def _commit(wt: Path, wt_core: Any, case: dict[str, Any]) -> None:
 
 
 def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
-        runner: Runner | None = None, judge: Any = None, locked: bool = False) -> Outcome:
+        runner: Runner | None = None, judge: Any = None, diagnoser: Any = None,
+        reviewer: Any = None, guard: Any = None) -> Outcome:
     from plumb import stale
     from plumb.api import open_core
     from plumb.judgment import waiting_line
 
     root = Path(core.root)
     if not _own(root):
-        return handle(core, case, rounds=rounds, fixer=fixer, runner=runner, judge=judge)
+        return handle(core, case, rounds=rounds, fixer=fixer, runner=runner, judge=judge,
+                      diagnoser=diagnoser, reviewer=reviewer, guard=guard)
     branch = f"debug/{_slug(case['id'])}"
     if landed(root, branch):        # an earlier fix is in HEAD: nothing to run, nothing to merge
         debug.resolve(root, [case["id"]])
@@ -297,49 +345,82 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     wt_core = open_core(wt)
     session = stale.current_session(root)
     baseline = {s.link.id for s in core.link_states() if s.state in ("stale", "dangling")}
-    runner, fixer = runner or _runner(wt_core, locked), fixer or FixerDispatcher()
+    own = runner or _runner(wt_core)
+
+    def runner(paths: list[str]) -> tuple[bool, str]:     # type: ignore[misc] # SR-388
+        with _out(guard):       # never wait for the heavy lock holding the guard
+            return own(paths)
+
+    # SR-388: three stages, three agent runs; the diagnosis and the review are read-only
+    fixer = fixer or FixerDispatcher()
+    diagnoser = diagnoser or FixerDispatcher(
+        agent="diagnoser", schema=DIAGNOSIS_SCHEMA, mode="default", tools=READ_ONLY)
+    reviewer = reviewer or FixerDispatcher(
+        agent="reviewer", schema=REVIEW_SCHEMA, mode="default", tools=READ_ONLY)
     evidence, tried = _evidence(core, case), []
-    old = os.environ.get("PLUMB_JOB")
-    os.environ["PLUMB_JOB"] = "selfdebug"      # a hook in the fixer's run opens no case
-    models = [{"stage": "evidence", "model": core.config.understand.judge_model}]
+    from plumb.config import LEVELS, model_of
+
+    cfg = core.config
+    models = [{"stage": "evidence", "model": model_of(cfg, cfg.understand.judge_model)}]
     end = ""      # what the case's stage reads once this fix ends: nothing, or why it waits
-    try:
-        for n in range(1, rounds + 1):
-            debug._update(root, [case["id"]], stage="fix", round=n, pid=os.getpid())
-            model = getattr(core.config.understand, "repin_model" if n == 1
-                            else "diagnose_model")
-            models.append({"stage": f"round {n}", "model": model})
-            debug._update(root, [case["id"]], models=models)   # SR-328: the model per stage
-            try:
-                got = fixer(round=n, case=case, evidence=evidence, worktree=wt, model=model,
-                            previous=list(tried))
-                test = str(got.get("test") or "")
-                state, why = ("", "") if test else ("fail", "the fixer named no test")
+    first = cfg.understand.repin_model
+    base = LEVELS.index(first) if first in LEVELS else 1   # a model name counts as sonnet
+
+    def stage(call: Any, name: str, n: int, level: str, model: str, **given: Any) -> Any:
+        models.append({"stage": f"round {n} {name}", "level": level, "model": model})
+        debug._update(root, [case["id"]], models=models)   # SR-328: the model per stage
+        with _out(guard):
+            return call(round=n, case=case, worktree=wt, model=model, previous=list(tried),
+                        **given)
+
+    with _job_env():
+        try:
+            for n in range(1, rounds + 1):
+                debug._update(root, [case["id"]], stage="fix", round=n, pid=os.getpid())
+                # SR-389: a failed round is retried one level up, never past the largest
+                level = first if n == 1 else LEVELS[min(base + n - 1, len(LEVELS) - 1)]
+                model = model_of(cfg, level)
+                try:
+                    before = _staged(wt)
+                    said = stage(diagnoser, "diagnosis", n, level, model, evidence=evidence)
+                    if _staged(wt) != before:
+                        _undo(wt)
+                        raise RuntimeError("the diagnosis changed a file")
+                    cause = {"cause": str(said.get("cause") or ""),
+                             "path": str(said.get("path") or "")}
+                    got = stage(fixer, "fix", n, level, model, evidence=evidence,
+                                diagnosis=cause)
+                    test = str(got.get("test") or "")
+                    state, why = ("", "") if test else ("fail", "the fixer named no test")
+                    if not state:
+                        seen = stage(reviewer, "review", n, level, model, cause=cause,
+                                     change=_staged(wt), records=_touched(wt_core, wt))
+                        if not seen.get("ok"):
+                            state, why = "fail", "the review found: " + "; ".join(
+                                map(str, seen.get("findings") or ["it is not ok"]))
+                    if not state:
+                        debug._update(root, [case["id"]], stage="tests")
+                        state, why = _verify(core, wt_core, wt, test, runner, judge, baseline,
+                                             session, case)
+                except Exception as exc:  # noqa: BLE001 - a round that crashes is a failed round
+                    state, why = "fail", f"{type(exc).__name__}: {exc}"
+                if state == "owner":
+                    end = "owner"
+                    return Outcome("owner", branch, why, rounds=tried)
+                if state == "held":
+                    end = "held"
+                    line = waiting_line(root, "self-debug", why) or ""
+                    return Outcome("held", branch, why, line, tried)
                 if not state:
-                    debug._update(root, [case["id"]], stage="tests")
-                    state, why = _verify(core, wt_core, wt, test, runner, judge, baseline,
-                                         session, case)
-            except Exception as exc:  # noqa: BLE001 - a round that crashes is a failed round
-                state, why = "fail", f"{type(exc).__name__}: {exc}"
-            if state == "owner":
-                end = "owner"
-                return Outcome("owner", branch, why, rounds=tried)
-            if state == "held":
-                end = "held"
-                line = waiting_line(root, "self-debug", why) or ""
-                return Outcome("held", branch, why, line, tried)
-            if not state:
-                _commit(wt, wt_core, case)
-                debug._update(root, [case["id"]], branch=branch)   # DEC-317: ready to land
-                debug.resolve(root, [case["id"]])
-                return Outcome("fixed", branch, f"fixed on {branch}", rounds=tried)
-            tried.append(f"round {n}: {why}")
-    finally:
-        debug._update(root, [case["id"]], stage=end, round=0, pid=0)
-        if old is None:
-            os.environ.pop("PLUMB_JOB", None)
-        else:
-            os.environ["PLUMB_JOB"] = old
+                    _commit(wt, wt_core, case)
+                    debug._update(root, [case["id"]], branch=branch)   # DEC-317: ready to land
+                    debug.resolve(root, [case["id"]])
+                    return Outcome("fixed", branch, f"fixed on {branch}", rounds=tried)
+                tried.append(f"round {n}: {why}")
+                if n < rounds:      # the next round starts from HEAD; the last try stays
+                    _undo(wt)
+        finally:
+            debug._update(root, [case["id"]], stage=end, round=0, pid=0)
     text = "; ".join(tried) + f". Missing: {why}. Nothing was committed (branch {branch})."
     debug.report(root, case["id"], text)
     return Outcome("reported", branch, text, rounds=tried)

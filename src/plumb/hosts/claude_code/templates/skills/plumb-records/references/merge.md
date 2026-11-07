@@ -20,7 +20,7 @@ words; say in their terms what holds the merge, never paste the hook's output as
   command's permissions allow `git add .plumb`, not a file named on its own). One changed on
   one side and removed on the other: "keep the changed one" is `git add .plumb`, "keep it
   removed" is `git rm <file>`. Then `{plumb} validate`.
-- Two versions of the same intent (a `▸ Conflict` card): see conflicts.md.
+- Two versions of the same intent (a `▸ Conflict` question): see conflicts.md.
 
 Installing the hooks (only when the owner asks):
 

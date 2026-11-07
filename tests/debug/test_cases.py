@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.stale_asked import asked
 from plumb import debug, stale
 from plumb.api import open_core
 from plumb.contracts import Job, JobError, JobResult, Target
@@ -83,7 +84,7 @@ def test_ex2_a_refused_link_is_one_case_naming_it_and_asks_nothing(
     (row,) = debug.open_cases(stale_link)
     assert row["kind"] == "stale-refused" and row["target"] == LINK
     assert "rounded" in row["detail"] and said == []  # no model: held, no case (SR-220 EX-5)
-    assert stale.read_cards(stale_link, "s1") == []
+    assert asked(stale_link, "s1") == []
 
 
 def test_ex3_each_case_is_rerun_once_and_listed_with_the_counts(

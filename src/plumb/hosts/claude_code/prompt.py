@@ -341,22 +341,6 @@ def stale_turn_start(ctx: HookContext, core: Any) -> None:
         pass
 
 
-def cards_waiting_line(ctx: HookContext) -> Any:
-    """SR-116 EX-4: the questions waiting for the owner are named to the agent in one line, to
-    ask through the question tool without restating them in prose (once per session per
-    set). None when none waits."""
-    from plumb.present.delta import Line
-
-    try:
-        from plumb.api import open_core
-        from plumb.understand.summary import waiting_line
-
-        text = waiting_line(ctx.root, ctx.session_id, open_core(ctx.root))
-    except Exception:  # noqa: BLE001 - an advisory line never fails the prompt hook
-        return None
-    return Line(text, subject="questions-waiting", state=text) if text else None
-
-
 def stale_before_line(ctx: HookContext) -> Any:
     """SR-111: the links already stale before the last turn, which a stop that held nothing
     could not tell the agent, listed once per session (marked as it is handed over). None
@@ -465,7 +449,7 @@ def _handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hoo
     emitter = open_emitter(ctx, "prompt", config=core.config,
                            cap_lines=int(hooks.prompt_lines))
     trace = untraced_line(emitter, untraced_queued(ctx, core), core)
-    tail = [line for line in (trace, cards_waiting_line(ctx), stale_before_line(ctx)) if line]
+    tail = [line for line in (trace, stale_before_line(ctx)) if line]
     tail += agent_notes(ctx)
     # oneshot: escalation_lines advanced the queue offset past them already
     queued = [Line(line, oneshot=True) for line in escalations]

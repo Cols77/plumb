@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from core.stale_asked import asked
 from plumb import stale
 from plumb.api import open_core
 from plumb.contracts import Target
@@ -65,11 +66,11 @@ def test_ex1_first_stop_blocks_naming_the_link(project: Path, hook_input) -> Non
     assert "Held 1 of 1" in out["reason"]
 
 
-def test_ex1_second_stop_lets_go_with_a_card(project: Path, hook_input) -> None:
+def test_ex1_second_stop_lets_go_with_a_question(project: Path, hook_input) -> None:
     out = _stop(project, hook_input, active=True)
     assert out.get("decision") != "block"
-    (card,) = stale.read_cards(project, "s1")
-    assert card["link"] == "SR-001#0" and card["status"] == "open"
+    (card,) = asked(project, "s1")
+    assert card["link"] == "SR-001#0"
     assert _stop(project, hook_input).get("decision") != "block"  # the card now holds it
 
 
@@ -83,9 +84,9 @@ def test_an_agent_that_edited_nothing_is_not_held(project: Path, hook_input) -> 
     """a1 recorded the repository; a2 recorded nothing, so it inherits none of a1's work."""
     assert _stop(project, hook_input, agent="a1")["decision"] == "block"
     assert _stop(project, hook_input, agent="a2") == {}
-    assert stale.read_cards(project, "s1") == []
+    assert asked(project, "s1") == []
     assert _stop(project, hook_input, active=True, agent="a2") == {}
-    assert stale.read_cards(project, "s1") == []
+    assert asked(project, "s1") == []
 
 
 def test_a_recorded_link_fixed_before_the_stop_is_not_held(project: Path, hook_input) -> None:

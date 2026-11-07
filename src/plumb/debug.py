@@ -453,7 +453,7 @@ def _done(root: Path | str, ids: list[str]) -> int:
     return 1 if held else 0
 
 
-def _fix(core: Any, ids: list[str]) -> int:
+def _fix(core: Any, ids: list[str], proof_evaluator: bool = False) -> int:
     """``plumb debug fix [id]``: the self-debug workflow on demand (SR-326)."""
     from plumb import selfdebug
 
@@ -462,9 +462,24 @@ def _fix(core: Any, ids: list[str]) -> int:
         return 1
     todo = [c for c in open_cases(core.root) if not ids or c["id"] in ids]
     outcomes = [(c["id"], selfdebug.fix(core, c)) for c in todo]
-    for case_id, out in outcomes:
+    unverified = 0
+    for (case_id, out), case in zip(outcomes, todo):
         print(out.line or f"  {case_id}: {out.state}: {out.detail}")
-    return 0 if outcomes and all(o.state == "fixed" for _, o in outcomes) else 1
+        if proof_evaluator and out.state == "fixed":   # SR-396 EX-5: chosen at launch
+            from plumb.evaluate import proofcheck
+
+            try:
+                why = proofcheck.check_fix(core.root, case, out.branch)
+            except Exception as exc:  # noqa: BLE001 - a check's crash is not a verdict
+                why = f"the evaluator's run failed: {type(exc).__name__}: {exc}"
+            if why:
+                text = f"not merged: the proof evaluator did not verify the fix: {why}"
+                print(f"  {case_id}: {text}")
+                _update(core.root, [case_id], branch="")   # not ready to land (DEC-470)
+                report(core.root, case_id, text)
+                unverified += 1
+    return 0 if outcomes and not unverified and all(
+        o.state == "fixed" for _, o in outcomes) else 1
 
 
 def on_branch(core: Any, work: Any, *, dry_run: bool = False) -> tuple[Any, str]:
@@ -554,12 +569,15 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("selector", nargs="*", help="record IDs or link ids; default: all")
     parser.add_argument("--dry-run", action="store_true",
                         help="ask the models only: no tests, no repin, no owner question")
+    parser.add_argument("--proof-evaluator", action="store_true",
+                        help="plumb debug fix: the owner picked the independent evaluator for "
+                             "this run's fixes at launch")
     args = parser.parse_args(argv)
     core = open_core(resolve_root(args.root))
     if args.selector[:1] == ["done"]:
         return _done(core.root, args.selector[1:])
     if args.selector[:1] == ["fix"]:
-        return _fix(core, args.selector[1:])
+        return _fix(core, args.selector[1:], args.proof_evaluator)
     if args.selector[:1] == ["report"]:
         words = " ".join(args.selector[1:]).strip()
         if not words:

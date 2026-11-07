@@ -61,6 +61,16 @@ describe('a study page (SR-293 EX-1)', () => {
     expect(vars.lineColor).toBe('#c9a227');
   });
 
+  it('keeps a large diagram at its natural width so the figure scrolls', async () => {
+    render.mockResolvedValue({ svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1796 1864" style="max-width: 1796px;" width="100%"><g><text>x</text></g></svg>' });
+    const el = mount(BODY);
+    await drawDiagrams(el);
+    const svg = el.querySelector('figure.study-diagram svg') as SVGElement;
+    expect(svg.getAttribute('width')).toBe('1796');
+    expect(svg.style.width).toBe('1796px');
+    expect(svg.style.maxWidth).toBe('none');
+  });
+
   it('shows a broken diagram as its source with a short note, never a blank', async () => {
     render.mockRejectedValue(new Error('Parse error on line 2'));
     const el = mount(BODY);

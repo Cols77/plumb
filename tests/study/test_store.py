@@ -232,6 +232,44 @@ def test_sr293_ex8_markdown_only_has_no_diagram(intent: Path, tmp_path: Path) ->
     assert "```mermaid" not in study.get(intent, slug)["body"]
 
 
+BIG = """Seventeen steps.
+
+```mermaid
+flowchart TD
+  subgraph intake [Intake]
+    A[Speech transcript] --> B(Split into claims)
+    B --> C{Checkable?}
+    C -->|yes| D[Find sources]
+    C -->|no| E[Drop]
+  end
+  subgraph check [Check]
+    D --> F[Rank sources] --> G[Compare] & H[Quote]
+    G --> I[Score] --> J[Verdict]
+    H --> J
+    J --> K[(Store)]
+  end
+  K --> L[Publish] --> M[Notify] --> N[Archive]
+  N -.-> O[Audit] ==> P[Report] --> Q[Done]
+  class A,B intake
+```
+"""
+
+
+@pytest.mark.sr("SR-293")
+def test_report_604e5ebf_a_diagram_too_big_to_read_is_refused(intent: Path,
+                                                               tmp_path: Path) -> None:
+    """report-604e5ebf: a 17-box flowchart shrinks to unreadable text in the room, so
+    ``study add`` refuses it with the size; the same study split small is written."""
+    assert study.diagram_nodes(BIG.split("```mermaid\n")[1].split("```")[0]) == 17
+    assert _propose(intent, "How claims are checked") == 0
+    slug = _idea(intent)
+    study.choose(intent, slug, "diagrams")
+    with pytest.raises(ValueError, match="17 boxes"):
+        study.add(intent, slug, BIG)
+    assert study.get(intent, slug)["status"] == "accepted"
+    assert _study(intent, "add", slug, "--file", str(_body(tmp_path))) == 0
+
+
 @pytest.mark.sr("SR-293")
 def test_sr293_ex9_a_declined_idea_is_never_proposed_again(intent: Path, tmp_path: Path,
                                                           capsys: pytest.CaptureFixture) -> None:

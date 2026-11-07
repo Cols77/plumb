@@ -183,3 +183,57 @@ def test_capture_supersedes_adds_the_link_and_names_nothing_for_it(calc: Path) -
     assert not any("contradicts" in line for line in second.lines)
     with pytest.raises(CaptureError):
         run(open_core(calc), _relay_doc("another", supersedes=["INT-999"]))
+
+
+def _cover_doc(statement: str) -> dict:
+    return {"intent": {"quote": "q", "readback": "r"},
+            "requirements": [{"title": statement, "statement": statement}]}
+
+
+def _live(core, kind: str) -> list[str]:
+    from plumb.query import superseded_ids
+
+    gone = superseded_ids(core.index())
+    return [r.id for r in core.index().values() if r.kind == kind and r.id not in gone]
+
+
+@pytest.mark.sr("SR-383")
+def test_restated_requirement_supersedes_and_adds_no_near_duplicate(calc: Path) -> None:
+    """SR-383 EX-1."""
+    from plumb.capture.capture import capture as run
+
+    plan = "The agent shows the owner the plan"
+    old = run(open_core(calc), _cover_doc(f"{plan} each turn")).written[1]
+    new = run(open_core(calc), _cover_doc(f"{plan} every turn")).written[1]
+    core = open_core(calc)
+    assert _live(core, "requirement") == [new]
+    assert [(k.kind, k.target.record) for k in core.index()[new].links
+            if k.kind == "supersedes"] == [("supersedes", old)]
+
+
+@pytest.mark.sr("SR-383")
+def test_restated_decision_is_edited_not_duplicated(calc: Path) -> None:
+    """SR-383 EX-1 (decision)."""
+    from plumb.capture.capture import capture as run
+
+    def doc(chosen: str) -> dict:
+        return {"intent": {"quote": "q", "readback": "r"},
+                "decisions": [{"question": "Which store keeps the owner answers?",
+                               "chosen": chosen, "alternatives": ["none"]}]}
+
+    first = run(open_core(calc), doc("the log"))
+    dec = first.written[1]
+    run(open_core(calc), doc("the question tool"))
+    core = open_core(calc)
+    assert _live(core, "decision") == [dec]
+    assert core.index()[dec].fields["chosen"] == "the question tool"
+
+
+@pytest.mark.sr("SR-383")
+def test_uncovered_topic_still_creates_a_record(calc: Path) -> None:
+    """SR-383 EX-2."""
+    from plumb.capture.capture import capture as run
+
+    run(open_core(calc), _cover_doc("The agent shows the owner the plan each turn"))
+    run(open_core(calc), _cover_doc("Backups of the log run nightly"))
+    assert len(_live(open_core(calc), "requirement")) == 2

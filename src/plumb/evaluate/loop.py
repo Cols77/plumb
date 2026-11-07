@@ -130,7 +130,8 @@ def rows(root: Path) -> list[dict[str, Any]]:
         filed = int(d.get("filed") or 0)
         live = not stopped and _alive(d.get("pid"))
         last = str(d.get("updated_at") or "")
-        goal = f"how {d.get('model')} does the {d.get('task')} task with plumb, and what plumb gets wrong"
+        goal = (f"how {d.get('model')} does the {d.get('task')} task with plumb, "
+                "and what plumb gets wrong")
         out.append({
             "kind": "evaluate", "id": path.stem, "intent": "", "goal": goal, "goal_full": goal,
             "progress": f"{d.get('task')} · {d.get('model')} · {'stopped' if stopped else words}"
@@ -143,7 +144,8 @@ def rows(root: Path) -> list[dict[str, Any]]:
 
 
 def run_loop(root: Path, task: Any, *, model: str, rounds: int, run: Any = None,
-             fix: Any = None, merge: Any = merge_branch, **run_kw: Any) -> int:
+             fix: Any = None, merge: Any = merge_branch, check: Any = None,
+             **run_kw: Any) -> int:
     from plumb import debug, selfdebug
     from plumb.api import open_core
     from plumb.evaluate import issues
@@ -188,6 +190,17 @@ def run_loop(root: Path, task: Any, *, model: str, rounds: int, run: Any = None,
             if out.state in ("owner", "held"):
                 print(f"stopped: {case_id} waits for the owner ({out.detail})")
                 return stop(f"{case_id} waits for the owner ({out.detail})", 1)
+            if out.state == "fixed" and check is not None:   # SR-396 EX-5: no owner asked
+                try:
+                    why = check(root, cases.get(case_id, {"id": case_id}), out.branch)
+                except Exception as exc:  # noqa: BLE001 - a check's crash is not a verdict
+                    why = f"the evaluator's run failed: {type(exc).__name__}: {exc}"
+                if why:
+                    text = f"not merged: the proof evaluator did not verify the fix: {why}"
+                    print(f"  {case_id}: {text}")
+                    debug._update(root, [case_id], branch="")   # not ready to land (DEC-470)
+                    debug.report(root, case_id, text)
+                    continue
             if out.state == "fixed":
                 note(root, name, stage="merge")
                 held = merge(root, out.branch)

@@ -190,6 +190,8 @@ class _Plan:
                 fields["recommended"] = recommended
             self.decisions.append({"fields": fields, "decides": decides})
         self.updates: list[tuple[str, dict[str, Any]]] = []
+        self.merged: list[str] = []
+        self._cover(index)
         for n, item in enumerate(_as_list(doc.get("updates"), "updates")):
             if not isinstance(item, Mapping) or not isinstance(item.get("id"), str):
                 raise CaptureError(f"updates[{n}] needs an id")
@@ -203,6 +205,50 @@ class _Plan:
                 raise CaptureError(f"updates[{n}]: {record.id} ({record.kind}) takes "
                                    + ", ".join(allowed))
             self.updates.append((record.id, self._changes(record, changes)))
+
+    def _cover(self, index: Mapping[str, Any]) -> None:
+        """SR-383: a requirement or decision an existing live record already covers supersedes
+        it, or edits it, instead of standing beside it as a near-duplicate."""
+        from plumb.query import superseded_ids
+        from plumb.text import terms
+
+        gone = superseded_ids(index)
+
+        def closest(kind: str, text: str, taken: set[str]) -> str | None:
+            mine, best, found = terms(text), COVER_MIN, None
+            for rid, rec in index.items():
+                if rec.kind != kind or rid in gone or rid in taken:
+                    continue
+                body = rec.fields.get("statement") or rec.fields.get("question") or ""
+                other = terms(f"{rec.title} {body}")
+                if (mine ^ other) & NEGATORS:  # opposites stay apart (contradiction check)
+                    continue
+                score = len(mine & other) / len(mine | other) if mine | other else 0.0
+                if score >= best:
+                    best, found = score, rid
+            return found
+
+        taken: set[str] = {o for r in self.requirements for o in r["supersedes"]}
+        for item in self.requirements:
+            if not item["supersedes"]:
+                f = item["fields"]
+                old = closest("requirement", f"{f['title']} {f['statement']}", taken)
+                if old:
+                    item["supersedes"].append(old)
+                    taken.add(old)
+                    self.merged.append(f"{old} covers it: superseded, not duplicated")
+        kept = []
+        for item in self.decisions:
+            f = item["fields"]
+            old = closest("decision", f"{f['title']} {f['question']}", taken)
+            if old:
+                taken.add(old)
+                keys = ("title", "chosen", "alternatives", "rationale")
+                self.updates.append((old, {k: f[k] for k in keys if k in f}))
+                self.merged.append(f"{old} covers it: edited, not duplicated")
+            else:
+                kept.append(item)
+        self.decisions = kept
 
     @staticmethod
     def _changes(record: Any, changes: Mapping[str, Any]) -> dict[str, Any]:
@@ -229,6 +275,9 @@ class _Plan:
                 out[key] = " ".join(str(value).split())
         return out
 
+
+NEGATORS = frozenset({"never", "not", "without", "cannot", "neither", "nor"})
+COVER_MIN = 0.8  # shortcut: word overlap, not meaning; upgrade to the judge's verdict
 
 UNCHECKED_NOTE = ("quote not checked (no --prompt): it is kept as the agent's quote, not as "
                   "the owner's words, and triage never rates it faithful; give --prompt "
@@ -290,6 +339,14 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
             dry_run: bool = False, backend: Any = None) -> CaptureResult:
     """Write the read-back ``doc`` as proposed records; see the module docstring."""
     plan = _Plan(core, doc)
+    index = core.index()
+    if any((item["fields"].get("proof") or {}).get("evaluator") for item in plan.requirements) \
+            or any((changes.get("proof") or {}).get("evaluator") and not (
+                index[rid].fields.get("proof") or {}).get("evaluator")
+                for rid, changes in plan.updates):
+        from plumb.capture.proof import require_pick
+
+        require_pick(core)   # SR-396 EX-3: the pick is the owner's, in this loop
     unchecked = _check_quotes(core, plan, prompt_digest)
     if prompt_digest:
         from plumb.approvals import find_prompt
@@ -303,6 +360,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
                   for r in plan.requirements]
         lines += [f"DEC (new) would be proposed: {d['fields']['title']}" for d in plan.decisions]
         lines += [f"{rid} would be updated" for rid, _ in plan.updates]
+        lines += [f"plumb: {m}" for m in plan.merged]
         if _lacks_question(core, plan):
             lines.append(ANSWER_NEEDS_QUESTION)
         lines += _inflight_preview(core, plan, backend)
@@ -367,6 +425,7 @@ def capture(core: Core, doc: Mapping[str, Any], *, prompt_digest: str | None = N
     # one cascade (SR-242): the judge job queued below asks JEV and takes the fast track
     statuses = core.status(written + updated)
     lines = [f"{rid} {statuses[rid].confirmation}" for rid in written + updated]
+    lines += [f"plumb: {m}" for m in plan.merged]
     lines += [f"{rid} was confirmed; this edit needs the owner again" for rid in again]
     if updated:  # SR-111 EX-2: the records that derive from a reworded one may disagree now
         from plumb.stale import derived_lines

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
-
 import json
 from pathlib import Path
 from typing import Any
@@ -14,8 +12,7 @@ from understand.fakes import FakeDispatcher, owner_level
 
 from plumb import approvals
 from plumb.api import open_core
-from plumb.contracts import CardState, ClarifyAnswer
-from plumb.understand import cardstore, clarify, effects, files, gate, worker
+from plumb.understand import clarify, files, gate, worker
 
 pytestmark = pytest.mark.sr("SR-223")
 
@@ -47,40 +44,13 @@ def _asked(text: str, answer: dict[str, Any], repo: Path, engine_standins: Any, 
     return open_core(repo), digest
 
 
-def plant_card(repo: Path, session: str = SESSION) -> None:
-    """A choice card standing for one an agent's question raised (the question job): the
-    card-answering tests need an open card, and the clarifier draws none (SR-223 EX-15)."""
-    from plumb.contracts import Choice, ClarifyQuestion
-
-    (gap, *_) = json.loads((files.session_dir(repo, session) / clarify.GAP_FILE).read_text(
-        encoding="utf-8"))
-    question = ClarifyQuestion(
-        id="format", text=gap["question"], resolutions=tuple(o["label"] for o in gap["options"]),
-        choices=tuple(Choice(o["label"], "change", o["label"], o["description"])
-                      for o in gap["options"]))
-    digest = gap["digest"]
-    cardstore.save(repo, session, [*cardstore.own_cards(repo, session), CardState(
-        id=clarify.choice_id(digest), kind="choice", topic="t", issue=question.text,
-        resolutions=question.resolutions, questions=(question,), status="open", turn=0,
-        branch=clarify.repository(repo)["branch"])])
-    gate.close(repo, session, digest, clarify.GATE_REASON_CARD)
-
-
-def _cards(repo: Path) -> list[CardState]:
-    return cardstore.own_cards(repo, SESSION)
-
-
-def _by_kind(repo: Path, kind: str) -> list[CardState]:
-    return [c for c in _cards(repo) if c.kind == kind and c.status == "open"]
+def _cards(repo: Path) -> list[str]:
+    """Any card file in the session folder: none is ever written (SR-382)."""
+    return sorted(p.name for p in files.session_dir(repo, SESSION).glob("*cards*.json"))
 
 
 def _gate_entries(core: Any) -> list[dict[str, Any]]:
     return [dict(e.payload) for e in core.events() if e.kind == "gate"]
-
-
-def _text(card: CardState) -> str:
-    return "\n".join([card.topic, card.issue, card.evidence,
-                      *(q.text for q in card.questions), *card.resolutions])
 
 
 def test_sr131_ex2_one_blocking_choice_the_rest_assumptions(
@@ -95,8 +65,6 @@ def test_sr131_ex2_one_blocking_choice_the_rest_assumptions(
                             blocking=True, diagram=False),
                        _gap("scope", "Which of their data goes in the export?")]}
     core, digest = _asked("let users export their data", answer, repo, engine_standins)
-    assert _by_kind(repo, "clarify") == []          # SR-252 EX-6: no read-back card
-    assert _by_kind(repo, "choice") == []            # SR-223 EX-15: never on a card
     (asked,) = clarify.gap_questions(core, SESSION)
     assert asked["question"].startswith("Which file")
     assert [o["label"] for o in asked["options"]][0] == "the second way"   # recommended first
@@ -136,7 +104,6 @@ def test_sr131_ex3_three_gaps_with_recommendations_are_assumptions_and_no_card(
     answer = {"intent": "yes", "topic": "export", "gaps": [
         _gap("a", "First?"), _gap("b", "Second?"), _gap("c", "Third?")]}
     core, digest = _asked("export things", answer, repo, engine_standins)
-    assert _cards(repo) == []                       # assumed; no read-back card (SR-252 EX-6)
     assert not gate.is_closed(repo, SESSION)
     assert [e["digest"] for e in _gate_entries(core)] == [digest]
 
@@ -207,26 +174,7 @@ def test_sr131_ex1_a_resolved_reference_is_an_assumption_and_the_work_starts(
         "proposal": "Fix every finding listed above.",
         "assumptions": ["the findings are the ones I listed above"]}}
     _asked("resolve all the findings using a workflow", answer, repo, engine_standins)
-    assert _by_kind(repo, "choice") == [] and not gate.is_closed(repo, SESSION)
-
-
-def test_sr132_ex1_a_newer_read_back_withdraws_the_card_it_replaces(
-        repo: Path, engine_standins: Any) -> None:
-    gaps = [_gap("which", "Which findings should I resolve?", blocking=True)]
-    _, old = _asked("resolve the findings", {"intent": "yes", "topic": "findings",
-                                             "gaps": gaps}, repo, engine_standins)
-    plant_card(repo)
-    older = clarify.choice_id(old)
-    assert [c.id for c in _by_kind(repo, "choice")] == [older]
-    _, new = _asked("resolve findings 1 and 2", {"intent": "yes", "topic": "findings",
-                                                 "replaces": [older, "nonesuch"]},
-                    repo, engine_standins)
-    by_id = {c.id: c for c in _cards(repo)}
-    assert by_id[older].status == "withdrawn"
-    assert [c.id for c in _by_kind(repo, "choice")] == []
-    assert clarify.card_id(new) not in by_id                 # no read-back card (SR-252 EX-6)
-    sent = engine_standins.dispatcher.jobs[-1].inputs
-    assert [c["id"] for c in sent["open_cards"]] == [older]
+    assert not gate.is_closed(repo, SESSION)
 
 
 def test_ex2_request_that_maps_to_confirmed_requirement_no_choice(
@@ -235,7 +183,6 @@ def test_ex2_request_that_maps_to_confirmed_requirement_no_choice(
     approvals.approve(open_core(repo), ["SR-001"])
     answer = {"intent": "yes", "topic": "export as CSV", "gaps": []}
     core, digest = _asked("export the user list as CSV", answer, repo, engine_standins)
-    assert _cards(repo) == []                       # no read-back card (SR-252 EX-6)
     sent = engine_standins.dispatcher.jobs[0].inputs
     assert [t["id"] for t in sent["touched"]] == ["SR-001"]
     assert sent["touched"][0]["status"] == "confirmed"
@@ -249,7 +196,6 @@ def test_sr131_many_gaps_with_a_recommendation_are_assumed_not_asked(
     gaps = [_gap(f"g{n}", f"Question number {n}?") for n in range(1, 6)]
     answer = {"intent": "yes", "topic": "a big feature", "gaps": gaps}
     _asked("rebuild the billing system", answer, repo, engine_standins)
-    assert _cards(repo) == []                       # assumed, no read-back card (SR-252 EX-6)
     assert not gate.is_closed(repo, SESSION)
 
 
@@ -257,7 +203,6 @@ def test_ex4_a_question_carries_no_intent_no_card(repo: Path, engine_standins: A
     core, digest = _asked("what does plumb status show?",
                           {"intent": "no", "gaps": [_gap("x", "Ignored?")]}, repo,
                           engine_standins)
-    assert _cards(repo) == []
     assert not gate.is_closed(repo, SESSION)
     assert [e["digest"] for e in _gate_entries(core)] == [digest]
 
@@ -277,105 +222,6 @@ def _request(repo: Path, write_record: Any, digest: str) -> None:
         "links:", "- kind: decides", "  to: SR-001", "---", ""]))
 
 
-def test_sr130_ex1_an_ok_on_the_read_back_confirms_the_whole_request(
-        repo: Path, write_record: Any, engine_standins: Any) -> None:
-    """A read-back card already open before the judge's questions replaced it."""
-    core, digest = _asked("let users export", {"intent": "yes", "topic": "export"}, repo,
-                          engine_standins)
-    _request(repo, write_record, digest)
-    core = open_core(repo)
-    card = clarify._readback_card(repo, digest, "let users export", {"proposal": "Export"}, [])
-    answered = CardState(**{**card.__dict__, "status": "answered", "answers": (
-        ClarifyAnswer(clarify.READBACK_ID, "accepted", digest),)})
-    confirmed: list[str] = []
-    handler = effects.handler_for("clarify")
-    assert handler is not None
-    assert handler(core=core, card=answered, digest=digest, accepted=False,
-                   confirm=lambda *a, **k: confirmed.append(a[0])) is None
-    assert confirmed == []                                   # not quite confirms nothing
-    handler(core=core, card=answered, digest=digest, accepted=True,
-            confirm=lambda *a, **k: confirmed.append(a[0]))
-    assert confirmed == ["DEC-001", "INT-001", "SR-001", "SR-002"]
-
-
-@pytest.mark.sr("SR-212")
-def test_sr130_ex2_a_yes_confirms_only_the_records_as_shown(
-        repo: Path, write_record: Any, engine_standins: Any) -> None:
-    """SR-212 EX-4, SR-214: a record changed after the reply showed it is asked again, not
-    confirmed by the yes."""
-    from plumb.contracts import Job
-    from plumb.understand.answer import OwnerWords
-
-    core, digest = _asked("let users export", {"intent": "yes", "topic": "export"}, repo,
-                          engine_standins)
-    _request(repo, write_record, digest)
-    index = open_core(repo).index()
-    shown = [{"id": i, "hash": index[i].hash} for i in ("DEC-001", "INT-001", "SR-001", "SR-002")]
-    path = repo / ".plumb" / "requirements" / "SR-002.md"
-    path.write_text(path.read_text(encoding="utf-8").replace("export 2", "export two"),
-                    encoding="utf-8")                           # changed since it was shown
-    core = open_core(repo)
-    card = clarify._readback_card(repo, digest, "let users export", {"proposal": "Export"}, [])
-    answered = CardState(**{**card.__dict__, "status": "answered", "answers": (
-        ClarifyAnswer(clarify.READBACK_ID, "accepted", digest),)})
-    confirmed: list[str] = []
-    source = OwnerWords(job=Job(id="read-1", inputs={"shown": shown}), digest=digest)
-    result = effects.handler_for("clarify")(
-        core=core, card=answered, digest=digest, accepted=True, source=source,
-        confirm=lambda *a, **k: confirmed.append(a[0]))
-    assert confirmed == ["DEC-001", "INT-001", "SR-001"]
-    assert [c.questions[0].record for c in result.cards] == ["SR-002"]
-
-
-def test_ex8_a_choice_answer_confirms_nothing_and_opens_the_gate(
-        repo: Path, engine_standins: Any) -> None:
-    answer = {"intent": "yes", "topic": "export", "gaps": [
-        _gap("format", "Which format?", blocking=True)]}
-    core, digest = _asked("let users export their data", answer, repo, engine_standins)
-    plant_card(repo)
-    (card,) = _by_kind(repo, "choice")
-    answered = card.__class__(**{**card.__dict__, "status": "answered", "answers": (
-        ClarifyAnswer("format", "change: the first way", "sha256:m2"),)})
-    handler = effects.handler_for("choice")
-    assert handler is not None
-    result = handler(core=core, job=engine_standins.dispatcher.jobs[0], card=answered,
-                     digest="sha256:m2", accepted=True, entry={})
-    assert result is None or not result.entries           # nothing is confirmed on its behalf
-    assert set(clarify.confirmed_answers(answered)) == {"format"}
-    assert not [e for e in core.events() if e.kind == "approval"]
-
-
-def test_ex9_clarify_job_needs_the_read_job_and_its_inputs_hold_the_answered_card(
-        repo: Path, engine_standins: Any) -> None:
-    core = open_core(repo)
-    first = log_prompt(repo, "let users export their data", session=SESSION)
-    asked = {"intent": "yes", "topic": "export",
-             "gaps": [_gap("format", "Which format?", blocking=True)]}
-    _asked("let users export their data", asked, repo, engine_standins)
-    plant_card(repo)
-    (card,) = _by_kind(repo, "choice")
-    assert card.id == clarify.choice_id(first)
-    # the owner answers it in a message; the reader (applied first) mapped it
-    reply = log_prompt(repo, "csv", session=SESSION)
-    mapped = CardState(**{**card.__dict__, "status": "answered", "answers": (
-        ClarifyAnswer("format", "change: csv", reply),)})
-    cardstore.save(repo, SESSION, [mapped])
-    gate.close(repo, SESSION, reply, "your request is being checked")
-    job = clarify.build(core, SESSION, message={"digest": reply, "text": "csv"},
-                        after="read-0123456789abcdef")
-    assert job is not None and job.needs == "read-0123456789abcdef"
-    inputs = clarify.recompute(core, job)
-    assert inputs is not None
-    assert {a["question"] for a in inputs["answered"]} == {"format"}
-    # the model repeats a question the owner just answered
-    engine_standins.dispatcher.script = {"clarify": {"intent": "yes", "gap": True, "gaps": [
-        _gap("format", "Which format?", blocking=True)]}}
-    worker.run_once(core, SESSION, job.id)
-    assert _by_kind(repo, "choice") == []                               # no second question
-    assert not gate.is_closed(repo, SESSION)
-    assert _gate_entries(open_core(repo))[-1]["digest"] == reply
-
-
 def test_a_late_result_for_an_older_message_never_opens_a_newer_gate(
         repo: Path, engine_standins: Any) -> None:
     old = log_prompt(repo, "add a thing", session=SESSION)
@@ -387,11 +233,6 @@ def test_a_late_result_for_an_older_message_never_opens_a_newer_gate(
     engine_standins.dispatcher.script = {"clarify": {"intent": "no"}}
     worker.run_once(core, SESSION, job.id)
     assert gate.is_closed(repo, SESSION)
-
-
-def test_clarify_registers_clarify_and_no_couldnt_check_card() -> None:
-    assert effects.handler_for("clarify") is not None
-    assert effects.handler_for("couldnt_check") is None
 
 
 def test_same_message_same_job_id(repo: Path, engine_standins: Any) -> None:
@@ -475,84 +316,22 @@ def test_the_schema_and_the_agent_ask_for_the_gap_flag_and_the_list() -> None:
 
 
 @pytest.mark.sr("SR-223")
-def test_sr131_ex4_a_vague_answer_keeps_the_choice_card_and_opens_no_read_back(
-        repo: Path, engine_standins: Any) -> None:
-    gaps = {"intent": "yes", "topic": "export", "gaps": [
-        _gap("format", "Which format?", blocking=True)]}
-    core, _ = _asked("let users export their data", gaps, repo, engine_standins)
-    plant_card(repo)
-    (card,) = _by_kind(repo, "choice")
-    before = [(c.id, c.status) for c in _cards(repo)]
-    digest = log_prompt(repo, "whatever works", session=SESSION)
-    gate.close(repo, SESSION, digest, "your request is being checked")
-    core.log_append("events", "read-entry", {   # the reader found it answers the card, no pick
-        "job": "r1", "id": f"{card.id}/format", "hash": "", "answer": "open",
-        "confidence": 0.9, "evidence": "whatever works", "message_digest": digest})
-    # as live: the read job applies first and leaves the card left_open
-    cardstore.save(repo, SESSION, [dataclasses.replace(c, status="left_open") if c.id == card.id
-                                   else c for c in cardstore.own_cards(repo, SESSION)])
-    before = [(c.id, c.status) for c in _cards(repo)]
-    engine_standins.dispatcher.script = {"clarify": {
-        "gap": False, "gaps": [], "intent": "yes", "topic": "export", "replaces": [card.id],
-        "readback": {"proposal": "Export in any format.", "will": [], "wont": [],
-                     "assumptions": [], "examples": []}}}
-    assert clarify.build(open_core(repo), SESSION, message={"digest": digest,
-                                                            "text": "whatever works"})
-    worker.run_once(open_core(repo), SESSION)
-    assert [(c.id, c.status) for c in _cards(repo)] == before    # nothing withdrawn, nothing new
-    assert gate.is_closed(repo, SESSION)
-
-
-def test_sr131_ex4_no_new_request_before_the_reader_keeps_the_hold(
-        repo: Path, engine_standins: Any) -> None:
-    """As live: the request check applies before the reader logs anything and finds no new
-    request; the blocking card is unanswered, so the hold stays closed."""
-    gaps = {"intent": "yes", "topic": "export", "gaps": [
-        _gap("format", "Which format?", blocking=True)]}
-    core, _ = _asked("let users export their data", gaps, repo, engine_standins)
-    plant_card(repo)
-    _by_kind(repo, "choice")
-    digest = log_prompt(repo, "whatever works", session=SESSION)
-    gate.close(repo, SESSION, digest, "your request is being checked")
-    before = [(c.id, c.status) for c in _cards(repo)]
-    engine_standins.dispatcher.script = {"clarify": {"gap": False, "gaps": [], "intent": "no"}}
-    assert clarify.build(open_core(repo), SESSION, message={"digest": digest,
-                                                            "text": "whatever works"})
-    worker.run_once(open_core(repo), SESSION)
-    assert [(c.id, c.status) for c in _cards(repo)] == before
-    assert gate.is_closed(repo, SESSION)
-
-
-def test_sr131_ex4_ok_go_on_while_the_card_waits_starts_no_new_request(
-        repo: Path, engine_standins: Any) -> None:
-    """As live: 'ok go on' is read as a yes to the read-back while the blocking choice is
-    unanswered; the check's new read-back for it is dropped and the hold stays closed."""
-    gaps = {"intent": "yes", "topic": "export", "gaps": [
-        _gap("format", "Which format?", blocking=True)]}
-    core, first = _asked("let users export their data", gaps, repo, engine_standins)
-    plant_card(repo)
-    readback = clarify._readback_card(repo, first, "let users export their data",
-                                      {"proposal": "Export"}, [])    # one opened before
-    cardstore.save(repo, SESSION, [*_cards(repo), readback])
-    digest = log_prompt(repo, "ok go on", session=SESSION)
-    gate.close(repo, SESSION, digest, "your request is being checked")
-    core.log_append("events", "read-entry", {
-        "job": "r1", "id": f"{readback.id}/ok", "hash": "", "answer": "accepted",
-        "confidence": 0.8, "evidence": "ok go on", "message_digest": digest})
-    before = [(c.id, c.status) for c in _cards(repo)]
-    engine_standins.dispatcher.script = {"clarify": {
-        "gap": False, "gaps": [], "intent": "yes", "topic": "export",
-        "readback": {"proposal": "Go on with the export.", "will": [], "wont": [],
-                     "assumptions": [], "examples": []}}}
-    assert clarify.build(open_core(repo), SESSION, message={"digest": digest, "text": "ok go on"})
-    worker.run_once(open_core(repo), SESSION)
-    assert [(c.id, c.status) for c in _cards(repo)] == before
-    assert gate.is_closed(repo, SESSION)
-
-
-@pytest.mark.sr("SR-223")
 def test_sr154_operating_the_tools_is_not_a_request() -> None:
     """Only a change to the repository's own system raises a card (the model is told so)."""
     prompt = (Path(clarify.__file__).parent / "agents" / "clarify.md").read_text(
         encoding="utf-8")
     assert "this repository's own" in prompt and "Operating the tools or the machine is" in prompt
+
+
+def test_sr223_ex22_a_loop_asking_questions_holds_no_unrelated_edit(
+        repo: Path, engine_standins: Any) -> None:
+    """SR-223 EX-22: the intent loop's check leaves questions waiting, yet an edit no confirmed
+    record covers goes ahead (owner, 2026-11-06: only related edits wait)."""
+    from plumb.hosts.claude_code import pretool
+
+    gaps = [_gap("a", "First?", blocking=True), _gap("b", "Second?", blocking=True)]
+    core, _ = _asked("/plumb intent rebuild the billing system",
+                     {"intent": "yes", "topic": "billing", "gaps": gaps}, repo, engine_standins)
+    assert len(clarify.gap_questions(core, SESSION)) == 2
+    assert not gate.is_closed(repo, SESSION)
+    assert pretool.decide(repo, SESSION, "Edit", {"file_path": "src/a.py"}) == {}

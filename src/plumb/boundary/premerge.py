@@ -64,6 +64,7 @@ plumb.mergeHold=false commit`` (or ``... rebase --continue``) bypasses that one.
 from __future__ import annotations
 
 import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -971,46 +972,21 @@ def fast_forward_of(root: Path) -> tuple[str, str, str] | None:
     return before, after, name
 
 
-def _withdraw_merged(root: Path) -> str | None:
-    """Withdraw the open cards of the branches just merged (a merge or a pull moved the default
-    branch to include their tips), in every worktree's session (nothing is confirmed; their
-    records stay proposed); the line names those records once (SR-132 EX-2, EX-4). A squash
-    merge leaves no tip behind and is not seen (the post-merge hook skips it)."""
+def _withdraw_merged(root: Path) -> None:
+    """SR-216 EX-10, EX-11: the questions of the branches just merged into the default branch (a
+    merge or a pull moved it to include their tips) are withdrawn; syncing main into a feature
+    branch withdraws nothing. A squash merge leaves no tip behind and is not seen here: its
+    branch, once deleted, is gone for the question list (``judge._gone_branches``)."""
     from plumb.api import open_core
-    from plumb.understand import cardstore, trial
+    from plumb.understand import judge
 
-    subject = (_git(root, "reflog", "-1", "--format=%gs") or "").split(":", 1)[0].split()
-    if not subject or subject[0] not in ("merge", "pull"):
-        return None
     here = (_git(root, "symbolic-ref", "--short", "-q", "HEAD") or "").strip()
     if here != default_branch_of(root):
-        return None                  # syncing main into a feature branch withdraws nothing
+        return
     merged = set((_git(root, "for-each-ref", "--merged=HEAD", "--no-merged=ORIG_HEAD",
                        "--format=%(refname:short)", "refs/heads") or "").split()) - {here}
-    if not merged:
-        return None
-    core = open_core(root)
-    index = core.index()
-    asked: list[str] = []
-    for line in (_git(root, "worktree", "list", "--porcelain") or "").splitlines():
-        if not line.startswith("worktree "):
-            continue
-        tree = Path(line[9:])
-        for cards in sorted((tree / ".plumb" / "session").glob("*/cards.json")):
-            session = cards.parent.name
-            gone = [c for c in cardstore.load(tree, session, open_only=False)
-                    if c.branch in merged and c.status in trial.HELD]
-            cardstore.withdraw(tree, session, [c.id for c in gone])
-            for card in gone:
-                ids = [q.record for q in card.questions if q.record]
-                if card.id.startswith("clarify:"):
-                    from plumb.understand.clarify import request_records
-                    ids += [r.id for r in request_records(core, card.id[8:])]
-                asked += [i for i in ids if i in index and i not in asked
-                          and core.status([i])[i].confirmation == "proposed"]
-    if not asked:
-        return None
-    return "went in unconfirmed: " + "; ".join(index[i].title for i in asked)
+    if merged:
+        judge.drop_merged_branch_questions(open_core(root), merged)
 
 
 def run_post_merge(root: Path) -> int:
@@ -1023,11 +999,9 @@ def run_post_merge(root: Path) -> int:
 
     root = Path(root)
     try:  # advisory: never fails the hook
-        line = _withdraw_merged(root)
-        if line:
-            print(line)
-    except Exception:  # noqa: BLE001
-        pass
+        _withdraw_merged(root)
+    except Exception as exc:  # noqa: BLE001 - advisory, but said, not hidden
+        print(f"plumb: post-merge question withdrawal skipped: {exc}", file=sys.stderr)
     if (_git(root, "config", "--bool", HOLD_KEY) or "").strip() == "false":
         return _start_landing(root)
     found = fast_forward_of(root)

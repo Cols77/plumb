@@ -94,6 +94,9 @@ def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
         repo: Path, write_record, engine_standins) -> None:
     from plumb.understand import backlog, judge, worker
 
+    # one at a time (understand.parallel_calls: 1): what this test is about
+    with (repo / ".plumb" / "config.yaml").open("a", encoding="utf-8") as fh:
+        fh.write("\nunderstand:\n  parallel_calls: 1\n")
     ids = bulk(repo, write_record, {"alpha": 3, "beta": 3, "gamma": 3})
     backlog.start(open_core(repo), SESSION)
     core = open_core(repo)
@@ -110,22 +113,20 @@ def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
     assert len([e for e in core.events() if e.kind == "verdict"]) == sum(map(len, ids.values()))
     assert progress(repo).state == "done"
     assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=12, questions=1)
-    assert open_cards(repo) == []                       # questions, no trial card (SR-252 EX-6)
     (asked,) = judge.open_questions(open_core(repo), SESSION)    # one question asked once
     assert len(asked["records"]) == 12
     assert worker.run_once(core, SESSION) == []
+
+
+def no_cards(repo: Path) -> bool:
+    """No card file is written in the session folder: nothing to read and press."""
+    return not (repo / ".plumb" / "session" / SESSION / "cards.json").exists()
 
 
 def progress(repo: Path):
     from plumb.understand import files
 
     return files.progress_from_json(files.read_json(files.progress_path(repo, SESSION)))
-
-
-def open_cards(repo: Path):
-    from plumb.understand import cardstore
-
-    return cardstore.load(repo, SESSION)
 
 
 def test_sr107_ex1_150_records_one_pass_no_per_turn_limit_done_jobs_not_rerun(
@@ -168,7 +169,7 @@ def test_sr107_ex2_fragment_premise_takes_the_question_route(
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.99)}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []
+    assert no_cards(repo)                               # questions, no trial card (SR-252 EX-6)
     (asked,) = judge.open_questions(open_core(repo), SESSION)
     assert [r["id"] for r in asked["records"]] == ["INT-001"]
     seen = engine_standins.dispatcher.jobs[0].inputs["records"][0]["premise"]["messages"][0]
@@ -183,7 +184,7 @@ def test_sr107_ex3_18_supported_take_one_question_and_no_trial_card(
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.95)}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []
+    assert no_cards(repo)                               # questions, no trial card (SR-252 EX-6)
     (asked,) = judge.open_questions(open_core(repo), SESSION)
     assert len(asked["records"]) == 18
     assert not [e for e in open_core(repo).events() if e.kind == "approval"]
@@ -198,7 +199,7 @@ def test_sr107_ex5_three_flagged_are_not_trial_cards_and_raise_no_card(
     flagged = {ids[2]: "beyond", ids[3]: "beyond", ids[4]: "contradicts"}
     engine_standins.dispatcher.script = {"judge": answering(0.95, flagged)}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []                       # flagged or not: no card
+    assert no_cards(repo)                               # questions, no trial card (SR-252 EX-6)
     assert progress(repo).step == owner_text.BACKLOG_DONE.format(judged=8, questions=1)
 
 
@@ -227,11 +228,11 @@ def test_backlog_end_line_counts_judged_and_questions_awaiting(
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.95)}
     run_pass(repo, engine_standins)
+    assert no_cards(repo)                               # questions, no trial card (SR-252 EX-6)
     shown = progress(repo)
     assert shown.state == "done"
     assert shown.step == owner_text.BACKLOG_DONE.format(judged=160, questions=1)
     assert owner_level(shown.step) == []
-    assert open_cards(repo) == []
 
 
 def test_sr107_ex7_model_unreachable_midway_resumes_without_rejudging(
@@ -250,6 +251,7 @@ def test_sr107_ex7_model_unreachable_midway_resumes_without_rejudging(
 
     engine_standins.dispatcher.script = {"judge": flaky}
     run_pass(repo, engine_standins)
+    assert no_cards(repo)                               # questions, no trial card (SR-252 EX-6)
     first = {r["id"] for job in engine_standins.dispatcher.jobs[:3] for r in job.inputs["records"]}
     assert len(served) == 3 and len(first) == 15
     # the next turn: the failed jobs are queued again (queue.retry_failed), the pass resumes
@@ -262,6 +264,7 @@ def test_sr107_ex7_model_unreachable_midway_resumes_without_rejudging(
     assert len(resumed.jobs) == 3 and resumed.total == 30
     before = len(engine_standins.dispatcher.jobs)
     run_pass(repo, engine_standins)
+    assert no_cards(repo)                               # questions, no trial card (SR-252 EX-6)
     redone = {r["id"] for job in engine_standins.dispatcher.jobs[before:]
               for r in job.inputs["records"]}
     assert redone.isdisjoint(first) and len(redone) == 15
@@ -288,7 +291,7 @@ def test_a_decision_in_the_backlog_takes_the_question_route(repo: Path, write_re
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": answering(0.99)}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []
+    assert no_cards(repo)                               # questions, no trial card (SR-252 EX-6)
     asked = {r["id"] for q in judge.open_questions(open_core(repo), SESSION)
              for r in q["records"]}
     assert "DEC-001" in asked
@@ -310,7 +313,7 @@ def test_a_record_below_the_threshold_is_asked_like_the_others(repo: Path, write
     backlog.start(open_core(repo), SESSION)
     engine_standins.dispatcher.script = {"judge": graded}
     run_pass(repo, engine_standins)
-    assert open_cards(repo) == []
+    assert no_cards(repo)                               # questions, no trial card (SR-252 EX-6)
     (asked,) = judge.open_questions(open_core(repo), SESSION)
     assert ids[3] in {r["id"] for r in asked["records"]}
     assert FakeDispatcher().available() is None
