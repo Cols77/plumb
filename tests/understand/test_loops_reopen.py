@@ -135,10 +135,11 @@ def test_ex4_a_live_loop_is_not_offered_and_reopen_is_refused(
     _loop(repo, "busy", DIGEST_A)
     live = {"busy": {"status": "busy", "cwd": ""}}
     monkeypatch.setattr(loops, "claude_sessions", lambda: live)
+    monkeypatch.setattr(loops, "raise_window", lambda title: False)   # SR-414: no way to raise it here
     assert loops.listing(repo)["rows"][0]["reopen"] is False
     _ask(repo, f"reopen loop {ID}")
     assert _reopen(repo, "--loop", ID) == 1
-    assert "a session works on this loop" in capsys.readouterr().err
+    assert "cannot bring that window forward" in capsys.readouterr().out
     assert window.calls == []
 
 

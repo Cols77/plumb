@@ -51,6 +51,8 @@ export type PlumbStatus = {
   studySlug?: string
   /** every study still new, oldest first: the band's 'new study' menu once no loop is open (SR-294 EX-6) */
   studies?: { title: string; slug: string }[]
+  /** studies the owner has opened, kept folded and dim in the pane's read section (SR-411) */
+  read?: { title: string; slug: string }[]
   /** study ideas the agent proposed, waiting for the owner's choice, oldest first: the band's
    * brass idea line, whose press shows the why and the depths (SR-294 EX-7, DEC-207) */
   ideas?: { title: string; slug: string; why: string; recommend: string }[]
@@ -64,6 +66,11 @@ export type PlumbStatus = {
   /** red lines: each misalignment of the running plumb, its local main and its repository (SR-358), a judge that cannot settle and why
    * (SR-359); each until it is fixed */
   red?: string[]
+  /** the build lines and the judge lines of `red`, apart, for the band's two chips (SR-409) */
+  buildLines?: string[]
+  judgeLines?: string[]
+  /** the name of each judge in judgeLines, in the same order: its row's key in the pane (SR-413) */
+  judgeNames?: string[]
   /** SR-358: plumb's repository could not be read, so the build is not checked (never red) */
   unchecked?: string
   /** the judge's questions plumb set aside, and why: shown apart, never as unreachable (SR-359 EX-2) */
@@ -111,6 +118,10 @@ export type PlumbLoopRow = {
   send: boolean
   session: string
   message: { state: string; at: string } | null
+  /** an intent loop's steps with mark (done, current, todo), gate (passed, open, refused, to come)
+   * and the low findings its gate left (SR-305); none for debug and evaluate rows */
+  steps?: { name: string; mark: string; gate: string; findings: number; left: string[] }[]
+  tasks?: { done: number; total: number | null; left: string[] } | null
 }
 
 /** The loops of the project (SR-393): the band's count and the pane's rows. `stamp`: the one
@@ -123,10 +134,16 @@ export type PlumbLoops = {
   idle: number
   counts: Record<string, { live: number; idle: number }>
   rows: PlumbLoopRow[]
+  /** SR-375: plumb is reading the loops again; the band says so and keeps the last list */
+  updating?: boolean
 }
 
-/** The loops pane's own state: the type shown and the rows whose detail is open. */
-export type PlumbLoopsPane = { type: string; open: string[] }
+/** The loops pane's own state: the type shown, the rows whose detail is open and the loops a
+ * reopen press is opening (SR-394: a second press on one does nothing). */
+export type PlumbLoopsPane = { type: string; open: string[]; opening?: string[] }
+
+/** The one pane's state (SR-410): the class shown, the one expanded row, the loops type, the known flag. */
+export type PlumbPane = { loop: PlumbLoopPane | null; known?: boolean; loops?: PlumbLoopsPane | null; cls?: string; row?: string; step?: string }
 
 /** What the panel draws, as plumb last answered it. */
 export type PlumbView = {
@@ -139,12 +156,8 @@ export type PlumbView = {
 /** How the owner left the band: hidden until the owner presses Show, whatever arrives (SR-337). */
 export type PlumbBand = {
   isHidden: boolean
-  /** the band's 'new study' menu is open (SR-294 EX-6) */
-  studies?: boolean
-  /** the front study idea's choices are shown (SR-294 EX-7) */
-  idea?: boolean
-  /** the slug of the study idea Tab brought to the front; absent, the newest (SR-369) */
-  front?: string
+  /** the loop section folded to its title (SR-305) */
+  loopFolded?: boolean
 }
 
 declare module 'claude-code' {
@@ -156,7 +169,7 @@ declare module 'claude-code' {
       view: PlumbView
       band: PlumbBand
       /** the loop the pane shows (SR-305); `known`: the known problems pane was opened (SR-367); `loops`: the loops pane's state (SR-393) */
-      pane: { loop: PlumbLoopPane | null; known?: boolean; loops?: PlumbLoopsPane | null }
+      pane: PlumbPane
       known: PlumbKnown
       loops: PlumbLoops
     }

@@ -8,7 +8,7 @@
 import type { ProcessRunInit, ProcessRunResult } from 'claude-code'
 
 import { T } from './text'
-import type { PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbLoopRow, PlumbLoops, PlumbPresent, PlumbStatus, PlumbView } from '../types'
+import type { PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopRow, PlumbLoops, PlumbPresent, PlumbStatus, PlumbView } from '../types'
 
 export type Io = {
   exists: (path: string) => Promise<boolean>
@@ -221,40 +221,6 @@ export function send(io: Io, link: PlumbLink, loop: string, text: string): Promi
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 
-/** The session's open loop as the pane shows it (SR-305), from `plumb intent status --json`;
- * null when none is open or plumb did not answer. */
-export async function loopPane(io: Io, link: PlumbLink): Promise<PlumbLoopPane | null> {
-  const ran = await io.run([link.python, '-m', 'plumb', 'intent', 'status', '--session', link.session,
-    '--root', link.root, '--json'], {
-    cwd: link.root,
-    env: { PLUMB_AGENT_SESSION: '', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
-    timeoutMs: 60000,
-  })
-  let loops: any[] = []
-  try {
-    loops = ran.exitCode === 0 ? JSON.parse(ran.stdout) : []
-  } catch {
-    return null
-  }
-  const loop = Array.isArray(loops) ? loops.at(-1) : null
-  if (!loop || typeof loop !== 'object') return null
-  const stages: PlumbLoopPane['stages'] = {}
-  for (const [name, stage] of Object.entries(loop.stages ?? {}) as [string, any][]) {
-    stages[name] = { state: String(stage?.state ?? 'open'), left: strings(stage?.left) }
-  }
-  const t = loop.tasks
-  return {
-    step: String(loop.step ?? ''),
-    stopped: String(loop.stopped ?? ''),
-    stages,
-    task: t && typeof t === 'object' && t.label
-      ? { label: String(t.label), done: Number(t.done ?? 0), total: t.total ? Number(t.total) : null, left: strings(t.left) }
-      : null,
-    records: (Array.isArray(loop.records) ? loop.records : []).map((r: any) => String(r?.title ?? '')).filter(Boolean),
-    proofs: (Array.isArray(loop.proofs) ? loop.proofs : []).map((p: any) => ({ title: String(p?.title ?? ''), shown: p?.shown === true })),
-  }
-}
-
 export const NO_KNOWN: PlumbKnown = { seen: '', open: 0, issues: [] }
 
 /** The known problems register and its issues' case files as they are now (files only, no
@@ -339,6 +305,10 @@ export async function loops(io: Io, link: PlumbLink, stamp: string, seen: string
       done: strings(r?.done), left: strings(r?.left), waits: String(r?.waits ?? ''), live: r?.live === true,
       idle_since: String(r?.idle_since ?? ''), branch: String(r?.branch ?? ''), reopen: r?.reopen === true,
       send: r?.send === true, session: String(r?.session ?? ''),
+      steps: Array.isArray(r?.steps) ? r.steps.map((x: any) => ({ name: String(x?.name ?? ''), mark: String(x?.mark ?? ''),
+        gate: String(x?.gate ?? ''), findings: Number(x?.findings ?? 0), left: strings(x?.left) })) : [],
+      tasks: r?.tasks && typeof r.tasks === 'object'
+        ? { done: Number(r.tasks.done ?? 0), total: r.tasks.total ? Number(r.tasks.total) : null, left: strings(r.tasks.left) } : null,
       message: r?.message && typeof r.message === 'object'
         ? { state: String(r.message.state ?? ''), at: String(r.message.at ?? '') } : null,
     })),
@@ -478,9 +448,11 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
   // SR-358: this session's plugin against plumb's local and repository main; SR-359: the judges that cannot settle
   const build = await readJson(io, join(sessionDir(link.root, link.session), 'build.json'))
   const judges = await readJson(io, join(link.root, '.plumb', 'session', 'judges.json'))
-  const down = judges?.down && typeof judges.down === 'object' ? Object.values(judges.down) as any[] : []
-  const red = [...(Array.isArray(build?.lines) ? build.lines.map(String) : []),
-    ...down.map(d => String(d?.line ?? '')).filter(Boolean)]
+  const down = (judges?.down && typeof judges.down === 'object' ? Object.entries(judges.down) as [string, any][] : [])
+    .filter(([, d]) => d?.line)
+  const buildLines: string[] = Array.isArray(build?.lines) ? build.lines.map(String) : []
+  const judgeLines = down.map(([, d]) => String(d.line))
+  const red = [...buildLines, ...judgeLines]
   const setAside = (Array.isArray(judges?.set_aside) ? judges.set_aside : [])
     .map((q: any) => T.setAside(String(q?.question ?? ''), String(q?.why ?? '')))
   const files = await studyFiles(io, link)
@@ -507,12 +479,16 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     studySlug: study.slug,
     studies,
     ideas,
+    read: files.filter(s => ['opened', 'known', 'deeper'].includes(s.status)).map(({ title, slug }) => ({ title, slug })),
     // an accepted idea the agent is writing now: the band's progress line
     writing: files.filter(s => s.status === 'accepted' || s.progress).map(({ title, progress }) => ({ title, ...(progress ?? {}) })).at(-1),
     // SR-360 EX-2: out of date, the owner not asked yet
     outdated: files.filter(s => s.changed && !s.refresh).map(({ title, slug, changed }) => ({ title, slug, changed })),
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
     red,
+    buildLines,
+    judgeLines,
+    judgeNames: down.map(([name]) => name),
     ...(build?.unchecked === true ? { unchecked: T.unchecked } : {}),
     setAside,
   }

@@ -60,7 +60,7 @@ def test_sr294_ex2_an_announced_study_waits_in_the_closed_room(room):
 
 def test_sr294_ex3_reading_the_study_opens_it(room):
     """SR-294 EX-3: the owner reads the study in the room: it is opened, no longer new (the
-    band's study line goes; tests/plugin/mod/study.test.tsx draws that side)."""
+    band's study line goes; tests/plugin/mod/categories.test.tsx draws that side)."""
     server, _ = room
     slug = study.studies(server.service.root)[0]["slug"]
     read = _json(server, "POST", f"/api/studies/{slug}/open", {})

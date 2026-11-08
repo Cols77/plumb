@@ -170,6 +170,18 @@ def _opening(root: Path, session: str, now: datetime) -> bool:
         return False
 
 
+def _step(data: Mapping[str, Any], name: str, current: str, i: int) -> dict[str, Any]:
+    """SR-305: one step of a loop with its mark, its gate (passed, open, refused, to come) and the
+    low findings its gate left."""
+    at = ("clarify", "plan", "build", "proven").index(current)
+    stage = data["stages"].get(name)
+    stage = stage if isinstance(stage, Mapping) else {}
+    mark = "done" if i < at else ("stopped" if data.get("stopped") else "current") if i == at else "todo"
+    gate = ("passed" if i < at else "refused" if data.get("stopped") else "open") if i <= at else "to come"
+    return {"name": name, "mark": mark, "gate": gate, "findings": int(stage.get("findings") or 0),
+            "left": [str(x) for x in stage.get("left") or ()]}
+
+
 def intent_rows(root: Path, agents: Mapping[str, Any] | None, now: datetime) -> list[dict[str, Any]]:
     from plumb.api import open_core
     from plumb.capture import proof
@@ -193,6 +205,7 @@ def intent_rows(root: Path, agents: Mapping[str, Any] | None, now: datetime) -> 
         intent = str(data.get("intent") or "")
         tasks = data.get("tasks") if isinstance(data.get("tasks"), Mapping) else {}
         left = [str(x) for x in tasks.get("left") or ()]
+        left_tasks = list(left)         # the current step's own tasks, before the proofs and steps
         if step == "build" and intent:
             core = cores[tree.path] = cores.get(tree.path) or open_core(tree.path)
             left += ["proof: " + r["title"] for r in proof.not_shown(
@@ -214,6 +227,7 @@ def intent_rows(root: Path, agents: Mapping[str, Any] | None, now: datetime) -> 
                  else "the owner's answer" if gate.state(sroot, session).state == "closed"
                  else "")
         total = tasks.get("total")
+        steps = [_step(data, name, step, i) for i, name in enumerate((*cmd_intent.STAGES, "proven"))]
         rows[digest] = {
             "kind": "intent", "id": digest.removeprefix("sha256:")[:12], "intent": intent,
             "goal": _one_line(goal), "goal_full": goal,
@@ -225,6 +239,8 @@ def intent_rows(root: Path, agents: Mapping[str, Any] | None, now: datetime) -> 
             "last": last, "idle_since": "" if live else last[:10],
             "branch": tree.branch or "", "root": tree.path.as_posix(), "session": session,
             "reopen": not live and not opening, "send": live,
+            "steps": steps, "tasks": {"done": int(tasks.get("done") or 0), "total": total,
+                                      "left": left_tasks},
             "message": message_state(sroot, session, digest.removeprefix("sha256:")[:12])}
     return list(rows.values())
 
@@ -470,6 +486,45 @@ def _exclude_worktrees(main: Path) -> None:
             handle.write("/.plumb/wt/\n")
 
 
+def raise_window(title: str, *, which: Any = shutil.which, run: Any = subprocess.run,
+                 platform: str = sys.platform, env: Mapping[str, str] | None = None) -> bool:
+    """Bring the window named ``title`` (the ``-n`` name SR-394 gave it) to the front (SR-414);
+    opens nothing. False when this platform has no program for it, or no window has that name."""
+    have = os.environ if env is None else env
+    if platform == "darwin":
+        if not which("osascript"):
+            return False
+        name = title.replace('"', "")
+        script = ('tell application "System Events"\n'
+                  ' repeat with p in (every process whose visible is true)\n'
+                  '  repeat with w in (every window of p)\n'
+                  f'   if name of w contains "{name}" then\n'
+                  '    set frontmost of p to true\n    perform action "AXRaise" of w\n    return\n'
+                  '   end if\n  end repeat\n end repeat\nend tell\nerror "no window"')
+        argv = ["osascript", "-e", script]
+    elif platform == "win32":
+        if not which("powershell"):
+            return False
+        name = title.replace("'", "")
+        argv = ["powershell", "-NoProfile", "-Command",
+                f"if (-not (New-Object -ComObject WScript.Shell).AppActivate('{name}')) "
+                "{ exit 1 }"]
+    elif not have.get("DISPLAY") and not have.get("WAYLAND_DISPLAY"):
+        return False
+    elif which("xdotool"):
+        # --name is a regex: escape its specials, keep spaces as they are
+        argv = ["xdotool", "search", "--name", re.sub(r"([.^$*+?()\[\]{}|\\])", r"\\\1", title),
+                "windowactivate"]
+    elif which("wmctrl"):
+        argv = ["wmctrl", "-a", title]
+    else:
+        return False
+    try:
+        return run(argv, capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
 def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = None,
            agents: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Open the idle intent loop ``words`` (or id ``loop``) name in a new window and session
@@ -484,10 +539,16 @@ def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = N
     if row["kind"] != "intent":
         raise ValueError("plumb fixes problems and runs evaluations itself; only an intent loop "
                          "is reopened")
-    if row["live"]:
-        raise ValueError("a session works on this loop already")
     if asker is not None and not _asked(root, rows, row, asker, "" if loop else words):
         raise PermissionError("the owner did not ask for this loop to be reopened in this session")
+    if row["live"]:
+        # SR-414: a live loop's window comes forward, nothing new opens
+        if raise_window(f"plumb: {row['goal'][:40]}"):      # call-time lookup
+            return {"opened": False, "shown": True,
+                    "line": f"brought the window of {row['goal']} to the front"}
+        return {"opened": False, "shown": False,
+                "line": f"plumb cannot bring that window forward here; it is session "
+                        f"{row['session']} in {row['root']}"}
     if not row["reopen"]:
         raise ValueError("a new session is being opened for this loop already")
     data = next(d for p, d in cmd_intent.loops(Path(row["root"]))
@@ -544,7 +605,7 @@ def run_reopen(argv: list[str]) -> int:
         print(f"plumb: {exc}", file=sys.stderr)
         return EXIT_FINDINGS
     emit(done if args.as_json else [done["line"]], args.as_json)
-    return 0 if done["opened"] else EXIT_FINDINGS
+    return 0 if done["opened"] or done.get("shown") else EXIT_FINDINGS
 
 
 INBOX, DELIVERED = "inbox.jsonl", "inbox-read.jsonl"
