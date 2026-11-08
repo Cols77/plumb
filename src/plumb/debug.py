@@ -401,6 +401,18 @@ def _done(root: Path | str, ids: list[str]) -> int:
     return 1 if held else 0
 
 
+def _prune(root: Path | str) -> int:
+    """SR-401: ``plumb debug prune`` removes every idle debug work copy now; branches stay."""
+    from plumb.boundary import landing
+
+    removed, kept = landing.remove_idle(Path(root))
+    for line in kept:
+        print(f"plumb: debug: {line}")
+    print(f"plumb: debug: removed {len(removed)} idle work copies ({sum(m for _, m in removed)} MB "
+          f"freed)" + (": " + ", ".join(n for n, _ in removed) if removed else ""))
+    return 0
+
+
 def _fix(core: Any, ids: list[str], proof_evaluator: bool = False) -> int:
     """``plumb debug fix [id]``: the self-debug workflow on demand (SR-326)."""
     from plumb import selfdebug
@@ -511,7 +523,7 @@ def run(command: str, argv: list[str]) -> int:
         description="Run the debug cases once (stale links through tests and the meaning "
                     "cascade) and say what each did and what it still needs. Never confirms.",
         epilog="also: plumb debug fix [<case id>...] runs the self-debug workflow on open "
-               "cases; plumb debug done <case id>... closes cases settled by hand; plumb debug "
+               "cases; plumb debug prune removes the idle work copies; plumb debug done <case id>... closes cases settled by hand; plumb debug "
                "report <words> opens a case from a description")
     add_common(parser)
     parser.add_argument("selector", nargs="*", help="record IDs or link ids; default: all")
@@ -524,6 +536,8 @@ def run(command: str, argv: list[str]) -> int:
     core = open_core(resolve_root(args.root))
     if args.selector[:1] == ["done"]:
         return _done(core.root, args.selector[1:])
+    if args.selector[:1] == ["prune"]:
+        return _prune(core.root)
     if args.selector[:1] == ["fix"]:
         return _fix(core, args.selector[1:], args.proof_evaluator)
     if args.selector[:1] == ["report"]:

@@ -135,6 +135,7 @@ def _run(node: str, run_id: str, outcome: str = "passed") -> dict[str, Any]:
 
 
 def test_ex5_evidence_that_keeps_a_test_fresh_stays_live(repo: Path) -> None:
+    _file(repo, "tests/test_a.py")
     from plumb.verify.evidence import load_index
 
     put(repo, "test-run", _run("tests/test_a.py::test_a", "r1"))
@@ -191,6 +192,7 @@ def test_ex8_compacting_again_changes_nothing(repo: Path, write_record) -> None:
 
 
 def test_ex9_replaced_test_run_evidence_moves(repo: Path) -> None:
+    _file(repo, "tests/test_a.py")
     older = put(repo, "test-run", _run("tests/test_a.py::test_a", "r1"))
     newer = put(repo, "test-run", _run("tests/test_a.py::test_a", "r2"),
                 at="2026-10-02T10:00:00Z")
@@ -259,3 +261,48 @@ def test_ex13_calibration_counts_the_same_labelled_set_before_and_after(
     compact(repo)
     assert len(segment(repo, "rejection")) == 2
     assert counted() == first
+
+
+def _file(root: Path, name: str) -> None:
+    (root / name).parent.mkdir(parents=True, exist_ok=True)
+    (root / name).write_text("def test_x():\n    pass\n", encoding="utf-8")
+
+
+@pytest.mark.sr("SR-403")
+def test_sr403_ex1_ex5_loose_offer_entries_go_to_the_segment_once(repo: Path) -> None:
+    held = put(repo, "offer", {"n": 1})
+    log.archive(open_core(repo).paths, [f"offer/{live(repo, 'offer')[0]}"])
+    put(repo, "offer", {"n": 1})                  # a loose copy of an entry the segment holds
+    new = put(repo, "offer", {"n": 2})
+    compact(repo)
+    assert live(repo, "offer") == []
+    assert sorted(e["digest"] for e in segment(repo, "offer")) == sorted([held["digest"],
+                                                                         new["digest"]])
+    assert errors(repo) == []
+
+
+@pytest.mark.sr("SR-403")
+def test_sr403_ex2_a_run_that_only_serves_deleted_tests_moves(repo: Path) -> None:
+    dead = put(repo, "test-run", _run("tests/test_gone.py::test_g", "r1"))
+    _file(repo, "tests/test_a.py")
+    put(repo, "test-run", _run("tests/test_a.py::test_a", "r2"))
+    compact(repo)
+    assert [e["digest"] for e in segment(repo, "test-run")] == [dead["digest"]]
+    assert len(live(repo, "test-run")) == 1
+
+
+@pytest.mark.sr("SR-403")
+def test_sr403_ex3_a_run_a_newer_run_replaces_moves(repo: Path) -> None:
+    _file(repo, "tests/test_a.py")
+    older = put(repo, "test-run", _run("tests/test_a.py::test_a", "r1"))
+    put(repo, "test-run", _run("tests/test_a.py::test_a", "r2"), at="2026-10-02T10:00:00Z")
+    compact(repo)
+    assert [e["digest"] for e in segment(repo, "test-run")] == [older["digest"]]
+
+
+@pytest.mark.sr("SR-403")
+def test_sr403_ex4_the_latest_run_of_a_test_that_exists_stays(repo: Path) -> None:
+    _file(repo, "tests/test_a.py")
+    put(repo, "test-run", _run("tests/test_a.py::test_a", "r1"))
+    compact(repo)
+    assert len(live(repo, "test-run")) == 1 and segment(repo, "test-run") == []
