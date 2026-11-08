@@ -1,10 +1,10 @@
-// The loops count and pane (SR-393): the band's first line says how many loops are worked on in
-// the project, whether or not this session has one, and never grows a line for them; its press
-// opens plumb's docked pane on the project's loops, one type at a time (intent, debug, evaluate)
-// behind a switch always in view; Enter on a row shows its detail; the pane follows the answer
-// of `plumb mod loops`, which plumb is asked again only when the one change stamp moved. The
-// known problems line and the loop pane stay as they are. Each case runs on the terminal and
-// the desktop.
+// The loops count and the loops class (SR-393 as DEC-506 decides it): the band's first line says
+// how many loops are worked on in the project, whether or not this session has one, and never grows
+// a line for them; its chip opens plumb's one docked pane (SR-410) on the loops class, one type at a
+// time (intent, debug, evaluate) behind a switch always in view; a folded row is glyph, goal and
+// progress; Enter on a row shows its detail and its actions (reopen, the message field); the pane
+// follows the answer of `plumb mod loops`, which plumb is asked again only when the one change
+// stamp moved. Each case runs on the terminal and the desktop.
 import { describe, expect } from 'claude-code/testing'
 
 import { ROOT, SESSION } from './fixtures'
@@ -48,14 +48,14 @@ function loopsWorld(data: () => unknown, stamp = 'one') {
 }
 
 const pane = (surface: 'terminal' | 'desktop') => ({
-  plugin: 'plumb', surface, component: 'Pane' as const, requestId: 'plumb-loops',
+  plugin: 'plumb', surface, component: 'Pane' as const, requestId: 'plumb-pane',
   props: { title: 'plumb', bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 } },
 }) as any
 
 const loopsRuns = (w: { runs: { argv: string[] }[] }) => w.runs.filter(r => r.argv[4] === 'loops')
 
 for (const surface of SURFACES) {
-  describe(`the loops pane on the ${surface}`, () => {
+  describe(`the loops class on the ${surface}`, () => {
     test('SR-393 EX-1: four loops worked on: \'loops 4\' in the first line, no line per loop', async ($, on) => {
       const w = loopsWorld(() => answer(LIVE))
       install(on, w)
@@ -75,17 +75,17 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: 'loops 4 · 1 idle' })).toBeDefined()
-      await band.press({ key: 'loops' })
-      expect(w.opens).toEqual([{ id: 'plumb-loops', columns: 80, closeOnEscape: true }])
+      await band.press({ key: 'chip:loops' })
+      expect(w.opens).toEqual([{ id: 'plumb-pane', columns: 80, closeOnEscape: true }])
       const view = await $.ui.mount(pane(surface))
       expect(await view.find({ type: 'Text', text: '● intent 2 +1 idle' })).toBeDefined()
       expect(await view.find({ type: 'Text', text: '○ debug 1' })).toBeDefined()
       expect(await view.find({ type: 'Text', text: '○ evaluate 1' })).toBeDefined()
       const rows = await view.findAll({ type: 'Text', text: / · / })
       expect(rows.map(t => t.text)).toEqual([
-        'invoices that charge late fees · plan · 3/7', 'a loop list · clarify',
-        'an old loop nobody works on · build · idle since 2026-10-01'])
-      expect(await view.find({ type: 'Text', text: 'idle' })).toBeDefined()
+        '● invoices that charge late fees · plan · 3/7', '● a loop list · clarify',
+        '○ an old loop nobody works on · build · idle since 2026-10-01'])
+      expect((await view.find({ type: 'Text', text: /old loop/ }))?.props.dimColor).toBe(true)
       expect(await view.find({ type: 'Text', text: /stop hook/ })).toBeUndefined()
       await view.unmount()
       await band.unmount()
@@ -96,16 +96,16 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      expect(await view.find({ type: 'Text', text: /in full/ })).toBeUndefined()
-      await view.press({ key: 'loops:row:intent:aaaaaaaaaaaa' })
-      expect(await view.find({ type: 'Text', text: '  goal: invoices that charge late fees, in full' })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /done:/ })).toBeUndefined()
+      await view.press({ key: 'row:loops:aaaaaaaaaaaa' })
+      expect((await view.find({ type: 'Text', text: 'invoices that charge late fees' }))?.props.bold).toBe(true)
       expect(await view.find({ type: 'Text', text: '  done: clarify' })).toBeDefined()
       expect(await view.find({ type: 'Text', text: '  left: the plan tasks, build' })).toBeDefined()
       expect(await view.find({ type: 'Text', text: "  waits for: the owner's answer" })).toBeDefined()
-      await view.press({ key: 'loops:row:intent:aaaaaaaaaaaa' }) // a second Enter folds it
-      expect(await view.find({ type: 'Text', text: /in full/ })).toBeUndefined()
+      await view.press({ key: 'row:loops:aaaaaaaaaaaa' }) // a second Enter folds it
+      expect(await view.find({ type: 'Text', text: /done:/ })).toBeUndefined()
       await view.unmount()
       await band.unmount()
     })
@@ -117,10 +117,10 @@ for (const surface of SURFACES) {
       expect(w.files[LOOP]).toBeUndefined()
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: 'loops 1' })).toBeDefined()
-      expect(await band.find({ key: 'loop' })).toBeUndefined() // no strip: no loop of its own
-      await band.press({ key: 'loops' })
+      expect(await band.find({ key: 'loop:fold' })).toBeUndefined() // no strip: no loop of its own
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      expect(await view.find({ type: 'Text', text: 'a loop of another session · plan' })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: '● a loop of another session · plan' })).toBeDefined()
       await view.unmount()
       await band.unmount()
     })
@@ -132,7 +132,7 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await band.find({ key: 'loop' })).toBeDefined()
+      expect(await band.find({ key: 'loop:fold' })).toBeDefined()
       expect(await band.find({ type: 'Text', text: 'writing the plan · 3/7' })).toBeDefined()
       const texts = (await band.findAll({ type: 'Text' })).map(t => t.text)
       expect(texts.indexOf('loops 4')).toBeGreaterThan(-1)
@@ -145,7 +145,7 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await band.find({ key: 'loops' })).toBeUndefined()
+      expect(await band.find({ key: 'chip:loops' })).toBeUndefined()
       expect(await band.find({ type: 'Text', text: /loops|idle/ })).toBeUndefined()
       await band.unmount()
     })
@@ -156,15 +156,15 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: '3 idle loops' })).toBeDefined()
-      await band.press({ key: 'loops' })
-      expect(w.opened).toEqual(['plumb-loops'])
+      await band.press({ key: 'chip:loops' })
+      expect(w.opened).toEqual(['plumb-pane'])
       const view = await $.ui.mount(pane(surface))
-      expect(await view.find({ type: 'Text', text: 'an old loop nobody works on · build · idle since 2026-10-01' })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: '○ an old loop nobody works on · build · idle since 2026-10-01' })).toBeDefined()
       await view.unmount()
       await band.unmount()
     })
 
-    test('SR-393 EX-8: the known problems line opens its own pane, not the loops pane', async ($, on) => {
+    test('SR-393 EX-8: the problems chip opens the one pane on problems, not a pane of its own', async ($, on) => {
       const w = loopsWorld(() => answer(LIVE))
       const base = w.answer
       w.answer = (action, argv) => action === 'known'
@@ -174,8 +174,11 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'known' })
-      expect(w.opens.map(o => o.id)).toEqual(['plumb-known'])
+      await band.press({ key: 'chip:problems' })
+      expect(w.opens.map(o => o.id)).toEqual(['plumb-pane'])
+      const view = await $.ui.mount(pane(surface))
+      expect((await view.find({ type: 'Text', text: /^problems / }))?.props.bold).toBe(true)
+      await view.unmount()
       await band.unmount()
     })
 
@@ -185,13 +188,13 @@ for (const surface of SURFACES) {
       const clock = install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      expect(await view.find({ type: 'Text', text: 'a loop of another session · plan' })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: '● a loop of another session · plan' })).toBeDefined()
       step = 'build'
       w.files[STAMP] = 'two' // the loop passed a gate: its writer moved the stamp
       await clock.advance(10_000)
-      expect(await view.find({ type: 'Text', text: 'a loop of another session · build' })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: '● a loop of another session · build' })).toBeDefined()
       await view.unmount()
       await band.unmount()
     })
@@ -201,16 +204,16 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'loops:type:debug' })
       expect(await view.find({ type: 'Text', text: '● debug 1' })).toBeDefined()
       expect(await view.find({ type: 'Text', text: '○ intent 2' })).toBeDefined()
-      expect(await view.find({ type: 'Text', text: 'the stop hook is slow · fix being written (round 1)' })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: '● the stop hook is slow · fix being written (round 1)' })).toBeDefined()
       expect(await view.find({ type: 'Text', text: /late fees/ })).toBeUndefined()
       await view.press({ key: 'loops:type:evaluate' })
       expect(await view.find({ type: 'Text', text: '● evaluate 1' })).toBeDefined()
-      expect(await view.find({ type: 'Text', text: 'how a model does the simple task · simple · fable · first run' })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: '● how a model does the simple task · simple · fable · first run' })).toBeDefined()
       expect(await view.find({ type: 'Text', text: /stop hook/ })).toBeUndefined()
       await view.unmount()
       await band.unmount()
@@ -221,7 +224,7 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'loops:type:evaluate' })
       expect(await view.find({ type: 'Text', text: '● evaluate 0' })).toBeDefined()
@@ -239,9 +242,10 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      await view.press({ key: 'loops:reopen:cccccccccccc' })
+      await view.press({ key: 'row:loops:cccccccccccc' })
+      await view.press({ key: 'act:reopen' })
       const ran = w.runs.filter(r => r.argv[4] === 'reopen')
       expect(ran.length).toBe(1)
       expect(ran[0]?.argv.slice(3)).toEqual(['mod', 'reopen', '--session', SESSION, '--root', ROOT, '--json', '--loop', 'cccccccccccc'])
@@ -256,16 +260,19 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
-    test('SR-394: a live row draws no reopen', async ($, on) => {
+    test('SR-394, SR-414: a live row expands to "show its window"; the idle one to reopen', async ($, on) => {
       const w = loopsWorld(() => answer([...LIVE.map(r => ({ ...r, reopen: false })), { ...IDLE, reopen: true }]))
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
+      expect(await view.find({ key: 'act:reopen' })).toBeUndefined() // folded rows draw no action
+      await view.press({ key: 'row:loops:aaaaaaaaaaaa' })
+      expect((await view.findAll({ type: 'Text', text: 'show its window' })).length).toBe(1)
+      expect(await view.find({ type: 'Text', text: 'reopen in a new session' })).toBeUndefined()
+      await view.press({ key: 'row:loops:cccccccccccc' })
       expect((await view.findAll({ type: 'Text', text: 'reopen in a new session' })).length).toBe(1)
-      expect(await view.find({ key: 'loops:reopen:aaaaaaaaaaaa' })).toBeUndefined()
-      expect(await view.find({ key: 'loops:reopen:cccccccccccc' })).toBeDefined()
       await view.unmount()
       await band.unmount()
     })
@@ -278,9 +285,10 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      await view.press({ key: 'loops:reopen:cccccccccccc' })
+      await view.press({ key: 'row:loops:cccccccccccc' })
+      await view.press({ key: 'act:reopen' })
       expect(w.toasts).toEqual(['plumb is opening a new session on that loop; its window can take a few seconds', line])
       // a failed open can be pressed again
       expect(await view.find({ type: 'Text', text: 'reopen in a new session' })).toBeDefined()
@@ -297,9 +305,11 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      await view.press({ key: 'loops:reopen:cccccccccccc' })
+      await view.press({ key: 'row:loops:cccccccccccc' })
+      await view.press({ key: 'act:reopen' })
+      await view.press({ key: 'row:loops:bbbbbbbbbbbb' }) // the message field is on the expanded row only
       await view.input({ key: 'loops:say:bbbbbbbbbbbb', text: 'rebase please' })
       expect(w.toasts).toEqual(['plumb is opening a new session on that loop; its window can take a few seconds', 'a session works on this loop already', 'no session works on this loop; it can be reopened'])
       await view.unmount()
@@ -312,9 +322,9 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      await view.press({ key: 'loops:row:intent:bbbbbbbbbbbb' })
+      await view.press({ key: 'row:loops:bbbbbbbbbbbb' })
       expect(await view.find({ type: 'Text', text: 'tell the agent of this session what to send' })).toBeDefined()
       expect(await view.find({ key: 'loops:say:bbbbbbbbbbbb' })).toBeUndefined()
       await view.unmount()
@@ -331,9 +341,9 @@ for (const surface of SURFACES) {
       await clock.advance(10_000)
       await $.turn.complete(TURN_DONE)
       expect(w.submits.length).toBe(0) // the owner chose (2026-11-07): plumb starts no turn
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      await view.press({ key: 'loops:row:intent:aaaaaaaaaaaa' })
+      await view.press({ key: 'row:loops:aaaaaaaaaaaa' })
       expect(await view.find({ type: 'Text', text: '  last message: sent, not read yet' })).toBeDefined()
       message = { state: 'delivered', at: 't1' } // its next turn read it
       w.files[STAMP] = 'three'
@@ -355,8 +365,9 @@ for (const surface of SURFACES) {
       const clock = install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
+      await view.press({ key: 'row:loops:bbbbbbbbbbbb' }) // the message field is on the expanded row only
       await view.input({ key: 'loops:say:bbbbbbbbbbbb', text: 'skip the colours slice' })
       const ran = w.runs.filter(r => r.argv[4] === 'send')
       expect(ran.length).toBe(1)
@@ -364,7 +375,6 @@ for (const surface of SURFACES) {
       const stdin = JSON.parse(ran[0]?.stdin ?? '{}')
       expect(stdin.text).toBe('skip the colours slice')
       expect(ran[0]?.argv.join(' ')).not.toContain(stdin.key) // the key is never in argv
-      await view.press({ key: 'loops:row:intent:bbbbbbbbbbbb' })
       expect(await view.find({ type: 'Text', text: '  last message: sent, not read yet' })).toBeDefined()
       message = { state: 'delivered', at: 't1' }
       w.files[STAMP] = 'two'
@@ -381,9 +391,9 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      await view.press({ key: 'loops:row:intent:bbbbbbbbbbbb' })
+      await view.press({ key: 'row:loops:bbbbbbbbbbbb' })
       expect(await view.find({ type: 'Text', text: '  last message: sent, not read yet' })).toBeDefined()
       await view.unmount()
       await band.unmount()
@@ -394,9 +404,9 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loops' })
+      await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
-      await view.press({ key: 'loops:row:intent:aaaaaaaaaaaa' })
+      await view.press({ key: 'row:loops:aaaaaaaaaaaa' })
       expect(await view.find({ type: 'Text', text: /agent|token/i })).toBeUndefined()
       await view.unmount()
       await band.unmount()

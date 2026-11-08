@@ -20,7 +20,7 @@ All of them take ``--session <id>`` and read one JSON object on stdin; none take
   read only: what ``plumb loops --json`` answers, with the one change stamp's path.
 - ``reopen`` ``--loop <id>``, stdin ``{"key": "<64 hex>"}``: the owner pressed reopen on an idle
   loop's row: a new session opens on it in its own window (SR-394). Answer ``{opened, command,
-  line}``; exit 1 when no window opened (the line gives the command by hand).
+  line}``; on a live loop its window is brought forward instead (SR-414, answer ``{opened: false, shown, line}``); exit 1 when nothing opened or shown (the line gives the command by hand).
 - ``send``   ``--loop <id>``, stdin ``{"key": "<64 hex>", "text": "<words>"}``: the owner typed
   a message on a working loop's row: it is queued for that session (SR-395). Answer ``{sent,
   line}``; exit 1 when no session works on the loop.
@@ -87,7 +87,7 @@ def run(command: str, argv: list[str]) -> int:
                 return EXIT_USAGE
             done = loops.reopen(root, loop=args.loop)
             _answer(done, args.as_json)
-            return EXIT_OK if done["opened"] else 1
+            return EXIT_OK if done["opened"] or done.get("shown") else 1
         if args.action == "send":
             from plumb.understand import loops
 
