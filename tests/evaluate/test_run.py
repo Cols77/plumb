@@ -66,7 +66,6 @@ def test_the_run_leaves_a_run_folder_and_no_scratch_repository(tmp_path):
     for name in ("transcript.jsonl", "score.json", "issues.jsonl", "plumb"):
         assert (result.run_dir / name).exists()
     assert json.loads((result.run_dir / "score.json").read_text())["checks_total"] == 0
-    shutil.rmtree(result.scratch.parent, ignore_errors=True)
 
 
 @pytest.mark.sr("SR-344")
