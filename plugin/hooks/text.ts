@@ -68,6 +68,7 @@ export const T = {
   loopsIdle: 'idle',
   loopsReopen: 'reopen in a new session',
   loopsOpening: 'opening a new session…',
+  loopsUpdating: 'updating…',
   reopenStarted: 'plumb is opening a new session on that loop; its window can take a few seconds',
   reopenFailed: 'plumb could not open a new session for that loop',
   // SR-395: a message to a working loop's session, typed on its row or told to the agent

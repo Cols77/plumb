@@ -96,8 +96,10 @@ async function refreshLoops($: any, io: Io, link: PlumbLink, force = false) {
   const stamp = have.stamp || await plumb.loopsStamp(io, link.root)
   const seen = await plumb.loopsSeen(io, stamp)
   if (!force && seen === have.seen) return
+  // SR-375: a listing costs seconds; the band says it is updating and keeps the last list meanwhile
+  if (seen) await update($, loopsAtom, l => ({ ...l, updating: true }))
   const loops = seen ? await plumb.loops(io, link, stamp, seen) : { ...plumb.NO_LOOPS, stamp }
-  if (loops !== null) await update($, loopsAtom, () => loops)
+  await update($, loopsAtom, l => loops ?? { ...l, updating: false })
 }
 
 // SR-291 EX-7: a workflow's agents raise no event in the owner's session, so the band reads
@@ -107,6 +109,8 @@ let polling: { cancel: () => void } | null = null
 // SR-393: the loops' stamp is looked at every LOOPS_EVERY-th period (10 s)
 const LOOPS_EVERY = 5
 let polls = 0
+// SR-375: a turn's end asks the next period to read the loops, so the owner never waits on it
+let loopsDue = false
 
 // the session-start hook writes host.json within its first second: about ten seconds of tries
 const RETRY_MS = 500
@@ -252,6 +256,7 @@ function loopsPane(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, color: stri
   const idle = rows.filter(r => !r.live)
   return (
     <Box flexDirection="column">
+      {loops.updating ? <Text key="loops:updating" dimColor>{T.loopsUpdating}</Text> : null}
       <Box key="loops:switch" flexDirection="row" gap={1}>
         {LOOP_TYPES.map(t => (
           <Button key={`loops:type:${t}`} plain onPress={() => {}}>
@@ -349,7 +354,7 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, loops
         {loops.live + loops.idle > 0 ? (
           // SR-393 EX-1, EX-6: the loops of the project as a count in this line, never a line each
           <Button key="loops" plain onPress={() => {}}>
-            <Text key="head:loops" color={color}>{T.loopsLive(loops.live, loops.idle)}</Text>
+            <Text key="head:loops" color={color}>{T.loopsLive(loops.live, loops.idle) + (loops.updating ? ` · ${T.loopsUpdating}` : '')}</Text>
           </Button>
         ) : null}
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
@@ -452,7 +457,10 @@ export const register: Register = on => {
         // for the rest of the session; drop the flag on close if the host ever says so
         if ((await read($, paneAtom)).known) await refreshKnown($, io, link)
         polls += 1
-        if (polls % LOOPS_EVERY === 0) await refreshLoops($, io, link)
+        if (loopsDue || polls % LOOPS_EVERY === 0) {
+          loopsDue = false
+          await refreshLoops($, io, link)
+        }
         const moved = await reread(io, link, await read($, viewAtom))
         if (moved === null) return
         const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
@@ -634,7 +642,7 @@ export const register: Register = on => {
     const view = await plumb.snapshot(io, link, await read($, viewAtom), true)
     await update($, viewAtom, () => view)
     await refreshKnown($, io, link)
-    await refreshLoops($, io, link) // only when the stamp moved: a listing costs seconds
+    loopsDue = true // SR-375: the next period (2 s) reads the loops if the stamp moved; never inline
     return result // the answer is never rewritten; no summary line is added (realign a)
   }).catch(async ($, e, next) => {
     const result = await next(e)

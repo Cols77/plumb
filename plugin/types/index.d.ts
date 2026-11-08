@@ -123,6 +123,8 @@ export type PlumbLoops = {
   idle: number
   counts: Record<string, { live: number; idle: number }>
   rows: PlumbLoopRow[]
+  /** SR-375: plumb is reading the loops again; the band says so and keeps the last list */
+  updating?: boolean
 }
 
 /** The loops pane's own state: the type shown, the rows whose detail is open and the loops a

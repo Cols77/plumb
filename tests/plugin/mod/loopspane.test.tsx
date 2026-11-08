@@ -402,6 +402,21 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
+    test('SR-375: a turn\'s end never waits on the listing: the next period runs it, the count says updating meanwhile', async ($, on) => {
+      const w = loopsWorld(() => answer(LIVE))
+      const clock = install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      expect(loopsRuns(w).length).toBe(1)
+      w.files[STAMP] = 'two'
+      await $.turn.complete(TURN_DONE)
+      expect(loopsRuns(w).length).toBe(1) // the turn ended without the listing
+      await clock.advance(2_000) // the next period, not the 10 s one
+      expect(loopsRuns(w).length).toBe(2)
+      expect(await band.find({ type: 'Text', text: /updating/ })).toBeUndefined() // done: the count is plain again
+      await band.unmount()
+    })
+
     test('the poll reads only the stamp and runs plumb only when it moved', async ($, on) => {
       const w = loopsWorld(() => answer(LIVE))
       const touched: string[] = []
