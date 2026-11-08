@@ -105,6 +105,65 @@ def test_sr291_ex7_ex8_a_workflow_phase_gate_reports_through_plumb(intent: Path,
         "label": f"colours gate {gate}", "done": 2, "total": 4}
 
 
+def _build_with_a_phase_gate_line(intent: Path, tmp_path: Path) -> None:
+    """Both gates passed; a workflow phase then reported 'plan gate passed' 1/4 (DEC-157)."""
+    for stage in ("clarify", "plan"):
+        assert _run(intent, "gate", stage, "--intent", "INT-001",
+                    "--findings", _findings(tmp_path)) == 0
+    assert _run(intent, "progress", "--task", "plan gate passed",
+                "--done", "1", "--total", "4") == 0
+    assert _loop(intent)["tasks"]["label"] == "plan gate passed"
+
+
+def test_report_d7f2612b_evidence_recorded_redraws_the_stale_phase_gate_line(
+        intent: Path, tmp_path: Path) -> None:
+    """report-d7f2612b: the band kept 'plan gate passed 1/4' long after the build was proven.
+    Evidence recorded for the intent's requirement redraws the build task from the loop's real
+    state: the proofs shown over those required, none left."""
+    from plumb.api import open_core
+    from plumb.capture import proof
+
+    _build_with_a_phase_gate_line(intent, tmp_path)
+    core = open_core(intent)
+    proof.set_plan(core, "SR-040", "the tests of SR-040 pass", "other")
+    proof.set_evidence(core, "SR-040", "https://example.test/run/1", "tests passed", True)
+    loop = _loop(intent)
+    assert loop["step"] == "build"
+    assert {k: loop["tasks"][k] for k in ("label", "done", "total", "left")} == {
+        "label": cmd_intent.PROOFS_TASK, "done": 1, "total": 1, "left": []}
+    assert loop["tasks"]["started_at"]
+
+
+def test_report_d7f2612b_a_refused_intent_done_redraws_the_task_from_the_proofs(
+        intent: Path, tmp_path: Path) -> None:
+    """report-d7f2612b: a refused `intent done` used to keep the stale words beside the stop;
+    the task is the real state: 0 of 1 proofs shown, the requirement not shown named."""
+    _build_with_a_phase_gate_line(intent, tmp_path)
+    assert _run(intent, "done", "--intent", "INT-001") != 0
+    loop = _loop(intent)
+    assert loop["stopped"] == "proof shown"
+    assert {k: loop["tasks"][k] for k in ("label", "done", "total", "left")} == {
+        "label": cmd_intent.PROOFS_TASK, "done": 0, "total": 1,
+        "left": ["SR-040 (Requirement 40): proof no proof"]}
+
+
+def test_report_d7f2612b_evidence_outside_the_build_step_leaves_the_task_alone(
+        intent: Path, tmp_path: Path) -> None:
+    """The plan step's task stays its own words: proofs are the build's state."""
+    from plumb.api import open_core
+    from plumb.capture import proof
+
+    assert _run(intent, "gate", "clarify", "--intent", "INT-001",
+                "--findings", _findings(tmp_path)) == 0
+    assert _run(intent, "progress", "--task", "writing the plan",
+                "--done", "3", "--total", "7") == 0
+    core = open_core(intent)
+    proof.set_plan(core, "SR-040", "the tests of SR-040 pass", "other")
+    proof.set_evidence(core, "SR-040", "https://example.test/run/1", "tests passed", True)
+    loop = _loop(intent)
+    assert loop["step"] == "plan" and loop["tasks"]["label"] == "writing the plan"
+
+
 def test_progress_refuses_a_bad_count(intent: Path) -> None:
     assert _run(intent, "progress", "--task", "x", "--total", "0") != 0
     assert _loop(intent)["tasks"] is None
