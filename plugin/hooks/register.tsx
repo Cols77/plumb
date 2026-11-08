@@ -96,8 +96,10 @@ async function refreshLoops($: any, io: Io, link: PlumbLink, force = false) {
   const stamp = have.stamp || await plumb.loopsStamp(io, link.root)
   const seen = await plumb.loopsSeen(io, stamp)
   if (!force && seen === have.seen) return
+  // SR-375: a listing costs seconds; the band says it is updating and keeps the last list meanwhile
+  if (seen) await update($, loopsAtom, l => ({ ...l, updating: true }))
   const loops = seen ? await plumb.loops(io, link, stamp, seen) : { ...plumb.NO_LOOPS, stamp }
-  if (loops !== null) await update($, loopsAtom, () => loops)
+  await update($, loopsAtom, l => loops ?? { ...l, updating: false })
 }
 
 // SR-291 EX-7: a workflow's agents raise no event in the owner's session, so the band reads
@@ -107,6 +109,8 @@ let polling: { cancel: () => void } | null = null
 // SR-393: the loops' stamp is looked at every LOOPS_EVERY-th period (10 s)
 const LOOPS_EVERY = 5
 let polls = 0
+// SR-375: a turn's end asks the next period to read the loops, so the owner never waits on it
+let loopsDue = false
 
 // the session-start hook writes host.json within its first second: about ten seconds of tries
 const RETRY_MS = 500
@@ -232,7 +236,7 @@ function loopsPane(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, color: stri
         </Button>
         {r.reopen ? (
           <Button key={`loops:reopen:${r.id}`} plain onPress={() => {}}>
-            <Text key={`loops:reopen:text:${r.id}`} color={color}>{T.loopsReopen}</Text>
+            <Text key={`loops:reopen:text:${r.id}`} color={color}>{state.opening?.includes(r.id) ? T.loopsOpening : T.loopsReopen}</Text>
           </Button>
         ) : null}
         {r.send ? <Input key={`loops:say:${r.id}`} placeholder={T.loopSay} submitLabel={T.loopSend} onSubmit={() => {}} /> : null}
@@ -252,6 +256,7 @@ function loopsPane(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, color: stri
   const idle = rows.filter(r => !r.live)
   return (
     <Box flexDirection="column">
+      {loops.updating ? <Text key="loops:updating" dimColor>{T.loopsUpdating}</Text> : null}
       <Box key="loops:switch" flexDirection="row" gap={1}>
         {LOOP_TYPES.map(t => (
           <Button key={`loops:type:${t}`} plain onPress={() => {}}>
@@ -349,7 +354,7 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, loops
         {loops.live + loops.idle > 0 ? (
           // SR-393 EX-1, EX-6: the loops of the project as a count in this line, never a line each
           <Button key="loops" plain onPress={() => {}}>
-            <Text key="head:loops" color={color}>{T.loopsLive(loops.live, loops.idle)}</Text>
+            <Text key="head:loops" color={color}>{T.loopsLive(loops.live, loops.idle) + (loops.updating ? ` · ${T.loopsUpdating}` : '')}</Text>
           </Button>
         ) : null}
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
@@ -452,7 +457,10 @@ export const register: Register = on => {
         // for the rest of the session; drop the flag on close if the host ever says so
         if ((await read($, paneAtom)).known) await refreshKnown($, io, link)
         polls += 1
-        if (polls % LOOPS_EVERY === 0) await refreshLoops($, io, link)
+        if (loopsDue || polls % LOOPS_EVERY === 0) {
+          loopsDue = false
+          await refreshLoops($, io, link)
+        }
         const moved = await reread(io, link, await read($, viewAtom))
         if (moved === null) return
         const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
@@ -634,7 +642,7 @@ export const register: Register = on => {
     const view = await plumb.snapshot(io, link, await read($, viewAtom), true)
     await update($, viewAtom, () => view)
     await refreshKnown($, io, link)
-    await refreshLoops($, io, link) // only when the stamp moved: a listing costs seconds
+    loopsDue = true // SR-375: the next period (2 s) reads the loops if the stamp moved; never inline
     return result // the answer is never rewritten; no summary line is added (realign a)
   }).catch(async ($, e, next) => {
     const result = await next(e)
@@ -710,7 +718,7 @@ export const register: Register = on => {
       return pressed
     }
     if (key.startsWith('loops:type:')) {
-      await update($, paneAtom, p => ({ ...p, loops: { type: key.slice('loops:type:'.length), open: [] } }))
+      await update($, paneAtom, p => ({ ...p, loops: { type: key.slice('loops:type:'.length), open: [], opening: p.loops?.opening } }))
       return pressed
     }
     if (key.startsWith('loops:row:')) {
@@ -773,8 +781,17 @@ export const register: Register = on => {
       line = ran.ok ? '' : T.roomFailed
     } else if (key.startsWith('loops:reopen:')) {
       // SR-394: the press opens a new session on the idle loop; plumb's line says it or gives the command
-      const ran = await plumb.reopen(io, link, key.slice('loops:reopen:'.length))
+      const loop = key.slice('loops:reopen:'.length)
+      const opening = <P extends { loops?: PlumbLoopsPane | null }>(p: P, add: boolean) => ({ ...p, loops: {
+        type: p.loops?.type ?? LOOP_TYPES[0]!, open: p.loops?.open ?? [],
+        opening: [...(p.loops?.opening ?? []).filter(o => o !== loop), ...(add ? [loop] : [])] } })
+      if ((await read($, paneAtom)).loops?.opening?.includes(loop)) return pressed // already opening
+      $.ui.toast(T.reopenStarted) // at once: the window takes seconds and a second press would open two
+      await update($, paneAtom, p => opening(p, true))
+      const ran = await plumb.reopen(io, link, loop)
       line = String(ran.data?.line ?? '') || plumb.refusal(ran) || T.reopenFailed
+      // shortcut: an opened loop stays 'opening' until it turns live or the pane is opened again
+      if (!ran.ok || ran.data?.opened !== true) await update($, paneAtom, p => opening(p, false))
     } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:video' || key === 'idea:none') {
       // SR-294 EX-8, EX-9: the owner's choice on the idea is recorded; the room stays closed
       const idea = frontIdea(view.status?.ideas ?? [], await read($, bandAtom))
