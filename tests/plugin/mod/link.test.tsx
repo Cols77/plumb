@@ -66,7 +66,7 @@ for (const surface of SURFACES) {
       w.files[HOST] = JSON.stringify({ python: VENV_PYTHON })
       w.files[VENV_PYTHON] = ''
       delete w.files[PYTHON]
-      install(on, w)
+      const clock = install(on, w)
       await $.session.start(START)
       expect(hellos(w).map(a => a[0])).toEqual([VENV_PYTHON])
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
@@ -77,7 +77,7 @@ for (const surface of SURFACES) {
     test('SR-125: no host.json at all but the repository has its own .venv: the panel tries it', async ($, on) => {
       const w = unnamed()
       w.files[VENV_PYTHON] = ''
-      install(on, w)
+      const clock = install(on, w)
       await $.session.start(START)
       expect(hellos(w).map(a => a[0])).toEqual([VENV_PYTHON])
     })
@@ -204,7 +204,7 @@ for (const surface of SURFACES) {
     test('SR-160: linked with an older interpreter, then host.json names the plugin environment: the panel runs plumb with the new one', async ($, on) => {
       const w = unnamed()
       w.files[VENV_PYTHON] = ''
-      install(on, w)
+      const clock = install(on, w)
       await $.session.start(START)
       expect(hellos(w).map(a => a[0])).toEqual([VENV_PYTHON])
       w.files[HOST] = JSON.stringify({ python: PYTHON })
@@ -212,8 +212,9 @@ for (const surface of SURFACES) {
       await $.turn.start(TURN)
       await $.turn.complete(TURN_DONE)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await ui.press({ key: 'loop' }) // the loop pane asks `plumb intent status`
-      expect(w.runs.at(-1)?.argv.slice(0, 5)).toEqual([PYTHON, '-m', 'plumb', 'intent', 'status'])
+      w.files[`${ROOT}/.git/plumb-loops.stamp`] = 'moved' // the loops poll runs plumb when the stamp moves
+      await clock.advance(10_000)
+      expect(w.runs.at(-1)?.argv.slice(0, 5)).toEqual([PYTHON, '-m', 'plumb', 'mod', 'loops'])
       await ui.unmount()
     })
 

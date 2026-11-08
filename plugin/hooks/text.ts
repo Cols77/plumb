@@ -42,6 +42,12 @@ export const T = {
   // DEC-207: the depths the owner chooses from; video since INT-093 (SR-316)
   depths: { md: 'Markdown only', diagrams: 'with diagrams', video: 'video' } as Record<string, string>,
   notNow: 'not now',
+  studySection: { ideas: 'ideas', new: 'new', writing: 'writing', outdated: 'out of date', read: 'read' } as Record<string, string>,
+  studyIdeaState: 'idea',
+  studyNewState: 'new',
+  studyReadState: 'read',
+  studyOutdatedState: (changed: string) => `out of date (${changed})`,
+  openInRoom: 'Open in the room',
   // SR-360 EX-2: a study whose records changed, and the offer to rewrite it at the same depth
   outOfDate: (title: string, changed: string) => `study out of date: ${title} (${changed} changed)`,
   rewrite: 'Rewrite it',
@@ -54,6 +60,11 @@ export const T = {
   loopTitle: 'plumb: the intent loop',
   // SR-367: the known problems, one band line and a pane
   knownOpen: (n: number) => (n === 1 ? '1 known problem open' : `${n} known problems open`),
+  studiesChip: (n: number) => `studies ${n}`,
+  studiesWriting: 'studies · writing',
+  problemsChip: (n: number) => `problems ${n}`,
+  judgeChip: (n: number) => `judge ${n}`,
+  buildChip: (n: number) => `build ${n}`,
   knownTitle: 'plumb: known problems',
   knownState: (state: string, fixed: string) => (state === 'open' ? 'open' : `fixed${fixed ? ` ${fixed}` : ''}`),
   knownSymptom: (s: string) => `  symptom: ${s}`,
@@ -63,6 +74,7 @@ export const T = {
   // SR-393: the project's loops, one band count and a pane with a switch between the types
   loopsLive: (n: number, idle: number) => (n ? `loops ${n}${idle ? ` · ${idle} idle` : ''}` : `${idle} idle loop${idle === 1 ? '' : 's'}`),
   loopsTitle: 'plumb: loops',
+  paneTitle: 'plumb',
   loopsType: (shown: boolean, type: string, live: number, idle: number) =>
     `${shown ? '●' : '○'} ${type} ${live}${idle ? ` +${idle} idle` : ''}`,
   loopsIdle: 'idle',

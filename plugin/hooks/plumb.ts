@@ -478,9 +478,11 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
   // SR-358: this session's plugin against plumb's local and repository main; SR-359: the judges that cannot settle
   const build = await readJson(io, join(sessionDir(link.root, link.session), 'build.json'))
   const judges = await readJson(io, join(link.root, '.plumb', 'session', 'judges.json'))
-  const down = judges?.down && typeof judges.down === 'object' ? Object.values(judges.down) as any[] : []
-  const red = [...(Array.isArray(build?.lines) ? build.lines.map(String) : []),
-    ...down.map(d => String(d?.line ?? '')).filter(Boolean)]
+  const down = (judges?.down && typeof judges.down === 'object' ? Object.entries(judges.down) as [string, any][] : [])
+    .filter(([, d]) => d?.line)
+  const buildLines: string[] = Array.isArray(build?.lines) ? build.lines.map(String) : []
+  const judgeLines = down.map(([, d]) => String(d.line))
+  const red = [...buildLines, ...judgeLines]
   const setAside = (Array.isArray(judges?.set_aside) ? judges.set_aside : [])
     .map((q: any) => T.setAside(String(q?.question ?? ''), String(q?.why ?? '')))
   const files = await studyFiles(io, link)
@@ -507,12 +509,16 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
     studySlug: study.slug,
     studies,
     ideas,
+    read: files.filter(s => ['opened', 'known', 'deeper'].includes(s.status)).map(({ title, slug }) => ({ title, slug })),
     // an accepted idea the agent is writing now: the band's progress line
     writing: files.filter(s => s.status === 'accepted' || s.progress).map(({ title, progress }) => ({ title, ...(progress ?? {}) })).at(-1),
     // SR-360 EX-2: out of date, the owner not asked yet
     outdated: files.filter(s => s.changed && !s.refresh).map(({ title, slug, changed }) => ({ title, slug, changed })),
     judged: Number(status?.judge_approved ?? Number(by['auto-jev'] ?? 0) + Number(by['auto-model'] ?? 0)),
     red,
+    buildLines,
+    judgeLines,
+    judgeNames: down.map(([name]) => name),
     ...(build?.unchecked === true ? { unchecked: T.unchecked } : {}),
     setAside,
   }
