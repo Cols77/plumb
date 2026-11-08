@@ -8,7 +8,7 @@
 import type { ProcessRunInit, ProcessRunResult } from 'claude-code'
 
 import { T } from './text'
-import type { PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbLoopRow, PlumbLoops, PlumbPresent, PlumbStatus, PlumbView } from '../types'
+import type { PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopRow, PlumbLoops, PlumbPresent, PlumbStatus, PlumbView } from '../types'
 
 export type Io = {
   exists: (path: string) => Promise<boolean>
@@ -220,40 +220,6 @@ export function send(io: Io, link: PlumbLink, loop: string, text: string): Promi
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
-
-/** The session's open loop as the pane shows it (SR-305), from `plumb intent status --json`;
- * null when none is open or plumb did not answer. */
-export async function loopPane(io: Io, link: PlumbLink): Promise<PlumbLoopPane | null> {
-  const ran = await io.run([link.python, '-m', 'plumb', 'intent', 'status', '--session', link.session,
-    '--root', link.root, '--json'], {
-    cwd: link.root,
-    env: { PLUMB_AGENT_SESSION: '', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
-    timeoutMs: 60000,
-  })
-  let loops: any[] = []
-  try {
-    loops = ran.exitCode === 0 ? JSON.parse(ran.stdout) : []
-  } catch {
-    return null
-  }
-  const loop = Array.isArray(loops) ? loops.at(-1) : null
-  if (!loop || typeof loop !== 'object') return null
-  const stages: PlumbLoopPane['stages'] = {}
-  for (const [name, stage] of Object.entries(loop.stages ?? {}) as [string, any][]) {
-    stages[name] = { state: String(stage?.state ?? 'open'), left: strings(stage?.left) }
-  }
-  const t = loop.tasks
-  return {
-    step: String(loop.step ?? ''),
-    stopped: String(loop.stopped ?? ''),
-    stages,
-    task: t && typeof t === 'object' && t.label
-      ? { label: String(t.label), done: Number(t.done ?? 0), total: t.total ? Number(t.total) : null, left: strings(t.left) }
-      : null,
-    records: (Array.isArray(loop.records) ? loop.records : []).map((r: any) => String(r?.title ?? '')).filter(Boolean),
-    proofs: (Array.isArray(loop.proofs) ? loop.proofs : []).map((p: any) => ({ title: String(p?.title ?? ''), shown: p?.shown === true })),
-  }
-}
 
 export const NO_KNOWN: PlumbKnown = { seen: '', open: 0, issues: [] }
 
