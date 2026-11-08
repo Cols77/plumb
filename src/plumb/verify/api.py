@@ -759,9 +759,10 @@ class Verify:
             return found
         try:
             testchange.enqueue(self.core, item, head, deleted)
+            failed = testchange.failure(self.core, key, item, head, deleted)
         except Exception:  # noqa: BLE001 - a queue failure keeps the flag, never breaks a check
-            pass
-        return {"real": False, "pending": True}
+            failed = None
+        return {"real": False, "pending": True, **({"failed": failed} if failed else {})}
 
     def affected_requirements(self, paths: Iterable[str]) -> list[str]:
         """Confirmed requirements (confirmed or an unconfirmed edit) whose acceptance tests

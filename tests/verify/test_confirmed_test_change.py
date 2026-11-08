@@ -296,6 +296,34 @@ def test_stop_asks_when_a_test_was_rewritten_to_hide_a_regression(confirmed,
     assert "systemMessage" not in _stop(root, hook_input, active=True)
 
 
+@pytest.mark.sr("SR-245", "SR-207")
+def test_stop_line_says_a_judge_is_reading_while_the_job_is_queued(confirmed, hook_input,
+                                                                   monkeypatch) -> None:
+    root, _ = confirmed
+    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    _start_turn(root)
+    _rewrite_test_to_pass(root)
+    reason = _stop(root, hook_input, active=False)["reason"]
+    assert "A judge is reading the change; the flag stays until it answers." in reason
+
+
+@pytest.mark.sr("SR-245", "SR-207")
+def test_stop_line_names_the_judge_and_the_reason_when_the_job_failed(
+        confirmed, hook_input, monkeypatch, tmp_path) -> None:
+    from plumb.understand import worker
+
+    root, _ = confirmed
+    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    _start_turn(root)
+    _rewrite_test_to_pass(root)
+    open_verify(open_core(root)).masked_regressions()
+    _judge_answers(tmp_path, monkeypatch, {"error": "the model could not be reached"})
+    worker.run_once(open_core(root), "s1")
+    reason = _stop(root, hook_input, active=False)["reason"]
+    assert "No judge could read the change (" in reason
+    assert "the model could not be reached" in reason and "A judge is reading" not in reason
+
+
 # -- SR-031: the merge boundary's verification guarantee ---------------------------------------
 
 

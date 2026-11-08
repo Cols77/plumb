@@ -187,7 +187,10 @@ def _masked_line(index: Mapping[str, Any], item: Mapping[str, Any]) -> str:
                     + "\"")
         parts.append(f"{record_id} " + ("; ".join(texts) if texts else "(no example named)"))
     judge = item.get("judge") or {}
-    if judge.get("pending"):
+    if judge.get("failed"):  # SR-245: name the judge and the reason when none could answer
+        judged = (f" No judge could read the change ({judge['failed']['judge']}): "
+                  f"{judge['failed']['reason']}; the flag stays.")
+    elif judge.get("pending"):
         judged = " A judge is reading the change; the flag stays until it answers."
     elif judge.get("verdict"):
         judged = " A judge read the change as made just so the test passes."

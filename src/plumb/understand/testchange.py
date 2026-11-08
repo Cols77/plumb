@@ -102,6 +102,22 @@ def verdict(core: Any, key: list[str]) -> dict[str, Any] | None:
             "reason": str(found.get("reason") or "")}
 
 
+def failure(core: Any, key: list[str], item: Mapping[str, Any], head: str | None,
+            deleted: bool) -> dict[str, str] | None:
+    """``{judge, reason}`` when the queued job for ``key`` ended in an error (no judge could
+    be reached, or it failed); None while it is queued or running."""
+    from plumb.stale import current_session
+    from plumb.understand import jobs
+
+    session = current_session(core.root)
+    job = build(core, session, item=item, head=head, deleted=deleted)
+    outcome = jobs.result(Path(core.root), session, job.id) if job is not None else None
+    if outcome is None or outcome.status != "error":
+        return None
+    return {"judge": outcome.dispatcher or "the judge",
+            "reason": outcome.error.message if outcome.error else "it failed"}
+
+
 def build(core: Any, session: str, **context: Any) -> Job | None:
     item = context.get("item")
     if core is None or not item:
