@@ -60,6 +60,7 @@ SHARED_KINDS = frozenset({
     "proof-confirmed",    # DEC-116: the owner's yes to a proof (the outcome, not their words)
     "proof-verified", "proof-not-verified", "proof-overruled",  # SR-397: outcomes only
     "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
+    "test-change-verdict",   # SR-207: a judge's reading of a test edit that hid a regression
     "question-pushback", "question-ruling",   # SR-362: past send-backs (the step is gone)
 })
 # DEC-116 (owner, 2026-11-01): nothing the owner writes goes into the tracked log. Their words

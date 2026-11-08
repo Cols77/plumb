@@ -1,0 +1,13 @@
+{
+  "id": "testchange.v1",
+  "title": "Whether a change to an acceptance test was real and needed, or made only to pass",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "probability"],
+  "properties": {
+    "verdict": {"type": "string", "enum": ["real", "to_pass"],
+                "description": "real: a needed change that makes sense for the requirement; to_pass: made only so the test passes."},
+    "probability": {"type": "number", "description": "How sure you are of the verdict, 0 to 1."},
+    "reason": {"type": "string", "description": "One sentence: what in the diff and the requirement decides it."}
+  }
+}
