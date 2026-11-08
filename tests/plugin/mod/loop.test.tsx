@@ -9,9 +9,18 @@ import { ROOT, SESSION } from './fixtures'
 import { BAND, install, START, SURFACES, TURN_DONE, test, world } from './harness'
 
 // the strip, the task's words and the brass fill, as the band draws them
-const STRIP = /^clarify /
 const TASK = /^(writing|clarifying|building)/
 const FILL = /^[█░]+$/
+const NAMES = ['clarify', 'plan', 'build', 'proven']
+
+/** The strip as the owner reads it: each step's own Button text (a Text inside a Button keeps no key of its own), then the stop, if any (SR-305). */
+async function strip(ui: any): Promise<string | undefined> {
+  const parts = []
+  for (const s of NAMES) parts.push((await ui.find({ key: `step:${s}` }))?.text)
+  if (parts[0] === undefined) return undefined
+  const stopped = await ui.find({ type: 'Text', text: /^stopped, waits for/ })
+  return parts.join('  ') + (stopped ? ` · ${stopped.text}` : '')
+}
 
 const LOOP = `${ROOT}/.plumb/session/${SESSION}/intent/aaaaaaaaaaaa.json`
 
@@ -33,9 +42,8 @@ for (const surface of SURFACES) {
     test('SR-291 EX-1: plan step, 3 of 7 written: the strip in plum and a brass bar', async ($, on) => {
       const { ui } = await bandWith($, on, surface,
         loop('plan', { label: 'writing the plan', done: 3, total: 7, started_at: '2026-10-11T11:59:00Z' }))
-      const strip = await ui.find({ type: 'Text', text: STRIP })
-      expect(strip?.text).toBe('clarify ✓  plan ●  build ○  proven ○')
-      expect(strip?.props.color).toBe(PLUM.dark)
+      expect(await strip(ui)).toBe('clarify ✓  plan ●  build ○  proven ○')
+      expect((await ui.find({ type: 'Text', text: 'plan ●' }))?.props.color).toBe(PLUM.dark)
       expect((await ui.find({ type: 'Text', text: TASK }))?.text).toBe('writing the plan · 3/7')
       const fill = await ui.find({ type: 'Text', text: FILL })
       expect(fill?.props.color).toBe(BRASS)
@@ -46,7 +54,7 @@ for (const surface of SURFACES) {
     test('SR-291 EX-2: clarify with 2 of 4 answered reads clarifying · 2/4', async ($, on) => {
       const { ui } = await bandWith($, on, surface,
         loop('clarify', { label: 'clarifying', done: 2, total: 4, started_at: '2026-10-11T11:59:00Z' }))
-      expect((await ui.find({ type: 'Text', text: STRIP }))?.text).toBe('clarify ●  plan ○  build ○  proven ○')
+      expect(await strip(ui)).toBe('clarify ●  plan ○  build ○  proven ○')
       expect((await ui.find({ type: 'Text', text: TASK }))?.text).toBe('clarifying · 2/4')
       await ui.unmount()
     })
@@ -54,7 +62,7 @@ for (const surface of SURFACES) {
     test('SR-291 EX-3: build with an unknown total: the step and the elapsed time, no fill', async ($, on) => {
       const { ui } = await bandWith($, on, surface,
         loop('build', { label: 'building', done: 0, total: null, started_at: '2026-10-11T11:48:05Z' }))
-      expect((await ui.find({ type: 'Text', text: STRIP }))?.text).toBe('clarify ✓  plan ✓  build ●  proven ○')
+      expect(await strip(ui)).toBe('clarify ✓  plan ✓  build ●  proven ○')
       expect((await ui.find({ type: 'Text', text: TASK }))?.text).toBe('building · 12m')
       expect(await ui.find({ type: 'Text', text: FILL })).toBeUndefined()
       await ui.unmount()
@@ -63,10 +71,10 @@ for (const surface of SURFACES) {
     test('SR-291 EX-4: after intent done the band is back to its one line', async ($, on) => {
       const { w, ui } = await bandWith($, on, surface,
         loop('build', { label: 'building', done: 0, total: null, started_at: '2026-10-11T11:48:05Z' }))
-      expect(await ui.find({ type: 'Text', text: STRIP })).toBeDefined()
+      expect(await ui.find({ key: 'step:clarify' })).toBeDefined()
       w.files[LOOP] = loop('proven')
       await $.turn.complete(TURN_DONE)
-      expect(await ui.find({ type: 'Text', text: STRIP })).toBeUndefined()
+      expect(await ui.find({ key: 'step:clarify' })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: TASK })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: /^plumb / })).toBeDefined()
       await ui.unmount()
@@ -79,14 +87,14 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await ui.find({ type: 'Text', text: 'plumb ● 2 await you · judging the backlog · 10/160' })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: STRIP })).toBeUndefined()
+      expect(await ui.find({ key: 'step:clarify' })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: TASK })).toBeUndefined()
       await ui.unmount()
     })
 
     test('SR-291 EX-6: a refused gate marks the step stopped, in one line naming what it waits for', async ($, on) => {
       const { ui } = await bandWith($, on, surface, loop('clarify', null, 'the clarify gate: 2 finding(s) to fix'))
-      expect((await ui.find({ type: 'Text', text: STRIP }))?.text).toBe(
+      expect(await strip(ui)).toBe(
         'clarify ✗  plan ○  build ○  proven ○ · stopped, waits for the clarify gate: 2 finding(s) to fix')
       expect(await ui.find({ type: 'Text', text: TASK })).toBeUndefined()
       await ui.unmount()
@@ -141,3 +149,87 @@ test("SR-291 EX-7: a workflow's agent moves the bar with no tool event in the ow
   expect((await ui.find({ type: 'Text', text: /^build · / }))?.text).toBe('build · slice 2/4 · colours gate passed')
   await ui.unmount()
 })
+
+// SR-305 / DEC-513: the band's loop section is foldable to its title, and each step of the strip
+// is its own Button that opens the one pane on the loops class at that step's details.
+const STAGES = {
+  clarify: { state: 'passed', findings: 2, left: ['the study names no owner', 'one word is jargon'] },
+  plan: { state: 'passed', findings: 2, left: ['task 3 is broad', 'no rollback named'] },
+  build: { state: 'open' },
+}
+const BUILDING = JSON.stringify({ digest: 'sha256:' + 'a'.repeat(64), intent: 'INT-001', opened_at: '2026-10-11T11:00:00Z', step: 'build',
+  tasks: { label: 'building', done: 3, total: 4, started_at: '2026-10-11T11:00:00Z', left: ['the colours slice'] }, stopped: null, stages: STAGES })
+
+for (const surface of SURFACES) {
+  describe(`SR-305: the foldable loop section on the ${surface}`, () => {
+    test('SR-305 EX-6: folding leaves the title alone on line two, no strip, no bar; unfolding brings them back', async ($, on) => {
+      const { ui } = await bandWith($, on, surface, BUILDING)
+      expect(await ui.find({ key: 'loop:fold' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: TASK })).toBeDefined()
+      await ui.press({ key: 'loop:fold' })
+      expect(await ui.find({ key: 'loop:fold' })).toBeDefined()
+      expect(await ui.find({ key: 'step:build' })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: TASK })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: FILL })).toBeUndefined()
+      await ui.press({ key: 'loop:fold' })
+      expect(await ui.find({ key: 'step:build' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: TASK })).toBeDefined()
+      await ui.unmount()
+    })
+
+    test('SR-305: every step of the strip is its own Button, in order, with its mark', async ($, on) => {
+      const { ui } = await bandWith($, on, surface, BUILDING)
+      const marks = []
+      for (const s of ['clarify', 'plan', 'build', 'proven']) marks.push((await ui.find({ key: `step:${s}` }))?.type)
+      expect(marks).toEqual(['Button', 'Button', 'Button', 'Button'])
+      expect(await ui.find({ type: 'Text', text: 'build ●' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: 'clarify ✓' })).toBeDefined()
+      await ui.unmount()
+    })
+
+    test('SR-305 EX-1: pressing build opens the one pane on loops, this loop expanded at build', async ($, on) => {
+      const { w, ui } = await bandWith($, on, surface, BUILDING)
+      const base = w.answer
+      w.answer = (a, v) => a === 'loops'
+        ? { exitCode: 0, data: { rows: [{ kind: 'intent', id: 'aaaaaaaaaaaa', goal: 'this loop', goal_full: 'this loop', progress: 'build · 3/4', done: ['clarify', 'plan'],
+          left: ['the colours slice'], waits: '', live: true, state: 'working', last: '2026-10-11T11:59:00Z', idle_since: '', branch: 'intent/x', root: ROOT, session: SESSION,
+          message: null, reopen: false, send: true, tasks: { done: 3, total: 4, left: ['the colours slice'] },
+          steps: [{ name: 'clarify', mark: 'done', gate: 'passed', findings: 2, left: ['a', 'b'] }, { name: 'plan', mark: 'done', gate: 'passed', findings: 2, left: ['c', 'd'] },
+            { name: 'build', mark: 'current', gate: 'open', findings: 0, left: [] }, { name: 'proven', mark: 'todo', gate: 'to come', findings: 0, left: [] }] }],
+          live: 1, idle: 0, stamp: `${ROOT}/.git/plumb-loops.stamp`, counts: { intent: { live: 1, idle: 0 }, debug: { live: 0, idle: 0 }, evaluate: { live: 0, idle: 0 } } } }
+        : base(a, v)
+      await ui.press({ key: 'step:build' })
+      expect(w.opens.map(o => o.id)).toEqual(['plumb-pane'])
+      const view = await $.ui.mount({ plugin: 'plumb', surface, component: 'Pane' as const, requestId: 'plumb-pane',
+        props: { title: 'plumb', bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 } } } as any)
+      expect((await view.find({ type: 'Text', text: /this loop/ }))?.props.bold).toBe(true) // expanded
+      expect(await view.find({ type: 'Text', text: /gate.*open/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /3 of 4/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /the colours slice/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /clarify.*passed.*2 low/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /plan.*passed.*2 low/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /proven.*to come/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /\btokens?\b|agents? (names?|counts?)|\d+ agents?/i })).toBeUndefined() // EX-3, DEC-511
+      await view.unmount()
+      await ui.unmount()
+    })
+
+    test('SR-305 EX-5: no loop open in this session: no loop section; the loops chip still opens the pane', async ($, on) => {
+      const { ui } = await bandWith($, on, surface, null)
+      expect(await ui.find({ key: 'loop:fold' })).toBeUndefined()
+      expect(await ui.find({ key: 'step:build' })).toBeUndefined()
+      await ui.unmount()
+    })
+
+    test('SR-305 EX-7: the loop ends with the pane open: the pane stays, the band section is gone', async ($, on) => {
+      const { w, ui } = await bandWith($, on, surface, BUILDING)
+      await ui.press({ key: 'step:build' })
+      w.files[LOOP] = loop('proven')
+      await $.turn.complete(TURN_DONE)
+      expect(w.closed).toEqual([])
+      expect(await ui.find({ key: 'loop:fold' })).toBeUndefined()
+      expect(await ui.find({ key: 'step:build' })).toBeUndefined()
+      await ui.unmount()
+    })
+  })
+}

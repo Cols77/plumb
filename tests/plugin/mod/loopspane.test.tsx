@@ -117,7 +117,7 @@ for (const surface of SURFACES) {
       expect(w.files[LOOP]).toBeUndefined()
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: 'loops 1' })).toBeDefined()
-      expect(await band.find({ key: 'loop' })).toBeUndefined() // no strip: no loop of its own
+      expect(await band.find({ key: 'loop:fold' })).toBeUndefined() // no strip: no loop of its own
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       expect(await view.find({ type: 'Text', text: '● a loop of another session · plan' })).toBeDefined()
@@ -132,7 +132,7 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await band.find({ key: 'loop' })).toBeDefined()
+      expect(await band.find({ key: 'loop:fold' })).toBeDefined()
       expect(await band.find({ type: 'Text', text: 'writing the plan · 3/7' })).toBeDefined()
       const texts = (await band.findAll({ type: 'Text' })).map(t => t.text)
       expect(texts.indexOf('loops 4')).toBeGreaterThan(-1)
@@ -256,7 +256,7 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
-    test('SR-394: a live row draws no reopen; the idle one draws it once expanded', async ($, on) => {
+    test('SR-394, SR-414: a live row expands to "show its window"; the idle one to reopen', async ($, on) => {
       const w = loopsWorld(() => answer([...LIVE.map(r => ({ ...r, reopen: false })), { ...IDLE, reopen: true }]))
       install(on, w)
       await $.session.start(START)
@@ -265,7 +265,8 @@ for (const surface of SURFACES) {
       const view = await $.ui.mount(pane(surface))
       expect(await view.find({ key: 'act:reopen' })).toBeUndefined() // folded rows draw no action
       await view.press({ key: 'row:loops:aaaaaaaaaaaa' })
-      expect(await view.find({ key: 'act:reopen' })).toBeUndefined()
+      expect((await view.findAll({ type: 'Text', text: 'show its window' })).length).toBe(1)
+      expect(await view.find({ type: 'Text', text: 'reopen in a new session' })).toBeUndefined()
       await view.press({ key: 'row:loops:cccccccccccc' })
       expect((await view.findAll({ type: 'Text', text: 'reopen in a new session' })).length).toBe(1)
       await view.unmount()

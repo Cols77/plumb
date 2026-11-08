@@ -305,6 +305,10 @@ export async function loops(io: Io, link: PlumbLink, stamp: string, seen: string
       done: strings(r?.done), left: strings(r?.left), waits: String(r?.waits ?? ''), live: r?.live === true,
       idle_since: String(r?.idle_since ?? ''), branch: String(r?.branch ?? ''), reopen: r?.reopen === true,
       send: r?.send === true, session: String(r?.session ?? ''),
+      steps: Array.isArray(r?.steps) ? r.steps.map((x: any) => ({ name: String(x?.name ?? ''), mark: String(x?.mark ?? ''),
+        gate: String(x?.gate ?? ''), findings: Number(x?.findings ?? 0), left: strings(x?.left) })) : [],
+      tasks: r?.tasks && typeof r.tasks === 'object'
+        ? { done: Number(r.tasks.done ?? 0), total: r.tasks.total ? Number(r.tasks.total) : null, left: strings(r.tasks.left) } : null,
       message: r?.message && typeof r.message === 'object'
         ? { state: String(r.message.state ?? ''), at: String(r.message.at ?? '') } : null,
     })),

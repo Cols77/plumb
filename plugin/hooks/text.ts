@@ -79,6 +79,7 @@ export const T = {
     `${shown ? '●' : '○'} ${type} ${live}${idle ? ` +${idle} idle` : ''}`,
   loopsIdle: 'idle',
   loopsReopen: 'reopen in a new session',
+  loopsShow: 'show its window',
   reopenFailed: 'plumb could not open a new session for that loop',
   // SR-395: a message to a working loop's session, typed on its row or told to the agent
   loopSay: 'a message to the session working on this loop',

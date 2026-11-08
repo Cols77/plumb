@@ -17,7 +17,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { PlumbBand, PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbLoops, PlumbLoopsPane, PlumbPane, PlumbStatus, PlumbTold, PlumbView } from '../types'
+import type { PlumbBand, PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbLoopRow, PlumbLoops, PlumbLoopsPane, PlumbPane, PlumbStatus, PlumbTold, PlumbView } from '../types'
 import * as plumb from './plumb'
 import type { Hello, Io, Unlinked } from './plumb'
 import { brassColor, GLYPHS, plumbColor, RED, T } from './text'
@@ -39,7 +39,7 @@ const viewAtom = atom({ plugin: 'plumb', key: 'view' } as const, EMPTY_VIEW)
 const bandAtom = atom({ plugin: 'plumb', key: 'band' } as const, BAND)
 const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const,
   { loop: null as PlumbLoopPane | null, known: false as boolean | undefined, loops: null as PlumbLoopsPane | null | undefined,
-    cls: undefined as string | undefined, row: undefined as string | undefined })
+    cls: undefined as string | undefined, row: undefined as string | undefined, step: undefined as string | undefined })
 const loopsAtom = atom({ plugin: 'plumb', key: 'loops' } as const, plumb.NO_LOOPS)
 const knownAtom = atom({ plugin: 'plumb', key: 'known' } as const, plumb.NO_KNOWN)
 
@@ -124,23 +124,31 @@ function stepMark(loop: { step: string; stopped: string }, i: number): string {
   return i < at ? '✓' : i > at ? '○' : loop.stopped ? '✗' : '●'
 }
 
-/** An intent loop's lines under the status (SR-291): the strip of its steps in plum (done,
+/** An intent loop's section under the status (SR-291, SR-305): its title (a Button that folds the
+ * section to the title alone) with the strip of its steps in plum, each its own Button (done,
  * current, to come; a refused gate marks the current one stopped and names what it waits for),
  * then the current step's task, a brass fill of done over total, or the elapsed time with no
- * fill when the total is unknown. The strip is a Button: its press opens the loop's pane (SR-305). */
-function loopLines(ui: Ui, loop: PlumbLoop, color: string, brass: string) {
+ * fill when the total is unknown. A step's press opens the pane on this loop at that step. */
+function loopLines(ui: Ui, loop: PlumbLoop, title: string, folded: boolean, color: string, brass: string) {
   const { Box, Button, Text } = ui
-  const strip = LOOP_STEPS.map((s, i) => `${s} ${stepMark(loop, i)}`).join('  ')
-  const task = loop.task
+  const task = folded ? null : loop.task
   const filled = task?.total ? Math.round(BAR_CELLS * Math.min(task.done, task.total) / task.total) : 0
   // a workflow phase's gate reports itself (DEC-157): the step, the phase of the script's, the gate
   const words = task?.total && / gate (passed|failed)$/.test(task.label)
     ? `${loop.step} · slice ${task.done}/${task.total} · ${task.label}`
     : [task?.label, task?.total ? `${task?.done}/${task.total}` : task?.elapsed].filter(Boolean).join(' · ')
   return [
-    <Button key="loop" plain onPress={() => {}}>
-      <Text key="loop:strip" color={color}>{loop.stopped ? `${strip} · ${T.stopped(loop.stopped)}` : strip}</Text>
-    </Button>,
+    <Box key="loop:head" flexDirection="row" gap={2}>
+      <Button key="loop:fold" plain onPress={() => {}}>
+        <Text key="loop:title" bold color={color}>{`${folded ? '▸' : '▾'} ${title}`}</Text>
+      </Button>
+      {folded ? null : LOOP_STEPS.map((s, i) => (
+        <Button key={`step:${s}`} plain onPress={() => {}}>
+          <Text key={`step:${s}:text`} color={color}>{`${s} ${stepMark(loop, i)}`}</Text>
+        </Button>
+      ))}
+      {folded || !loop.stopped ? null : <Text key="loop:stopped" color={color}>{T.stopped(loop.stopped)}</Text>}
+    </Box>,
     task ? (
       <Box key="loop:bar" flexDirection="row" gap={1}>
         {task.total ? <Text key="loop:fill" color={brass}>{'█'.repeat(filled) + '░'.repeat(BAR_CELLS - filled)}</Text> : null}
@@ -150,9 +158,27 @@ function loopLines(ui: Ui, loop: PlumbLoop, color: string, brass: string) {
   ]
 }
 
+/** A loop row's steps with their marks, each pressable, and the shown step's details (SR-305,
+ * DEC-512): its gate, the low findings left and, for the current step, the tasks done and left. */
+function stepsOf(ui: Ui, r: PlumbLoopRow, shown: string | undefined, color: string): any[] {
+  const { Button, Text } = ui
+  const mark = (m: string) => (m === 'done' ? '✓' : m === 'current' ? '●' : '○')
+  return (r.steps ?? []).flatMap(st => {
+    const low = st.findings ? ` · ${T.lowLeft(st.findings)}` : ''
+    const line = <Button key={`step:${st.name}`} plain onPress={() => {}}>
+      <Text key={`step:${st.name}:text`} bold={st.name === shown} color={color}>{cutTo(`${mark(st.mark)} ${st.name} · ${st.gate}${low}`)}</Text>
+    </Button>
+    if (st.name !== shown) return [line]
+    const tasks = st.mark === 'current' && r.tasks?.total ? [`${r.tasks.done} of ${r.tasks.total} tasks done`,
+      ...(r.tasks.left.length ? [T.tasksLeft(r.tasks.left)] : [])] : []
+    return [line, ...[`gate ${st.gate}`, ...st.left.map(l => `low finding: ${l}`), ...tasks]
+      .map((d, n) => <Text key={`step:${st.name}:d${n}`} dimColor>{cutTo(`    ${d}`)}</Text>)]
+  })
+}
+
 /** One row of the pane's class (SR-410): folded it is one line, glyph, title, short state;
  * expanded, the title in bold plum, 2-4 dim detail lines and the actions row. */
-type Row = { id: string; glyph: string; title: string; state: string; live: boolean; details: string[]; actions: any[]; color?: string }
+type Row = { id: string; glyph: string; title: string; state: string; live: boolean; details: string[]; actions: any[]; color?: string; extra?: any[] }
 
 const CLASSES = ['loops', 'studies', 'problems', 'judge', 'build']
 
@@ -195,19 +221,21 @@ function judgeRows(st: PlumbStatus | undefined, plum: string): Row[] {
 }
 
 /** The loops class's rows (SR-410): the type shown, this session's loop first, live before idle. */
-function loopRows(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, session: string, color: string): Row[] {
+function loopRows(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, session: string, color: string, step?: string): Row[] {
   const { Button, Input, Text } = ui
   return loops.rows.filter(r => r.kind === state.type)
     .sort((a, b) => Number(b.live) - Number(a.live) || Number(b.session === session) - Number(a.session === session))
     .map(r => ({
       id: r.id, glyph: r.live ? '●' : '○', title: r.goal, live: r.live,
       state: r.live ? r.progress : `${r.progress} · ${T.loopsIdleSince(r.idle_since)}`,
-      details: [T.loopDone(r.done), T.loopLeft(r.left), r.waits ? T.loopWaits(r.waits) : '', T.loopBranch(r.branch),
-        r.message ? T.loopMessage(r.message.state) : ''].filter(Boolean).slice(0, 4).map(d => d.trim()),
+      // the message state outranks the branch when the four lines run out (SR-395, DEC-515)
+      details: [T.loopDone(r.done), T.loopLeft(r.left), r.waits ? T.loopWaits(r.waits) : '',
+        r.message ? T.loopMessage(r.message.state) : '', T.loopBranch(r.branch)].filter(Boolean).slice(0, 4).map(d => d.trim()),
+      extra: stepsOf(ui, r, step, color),
       actions: [
-        r.reopen ?? !r.live ? (
+        r.live || (r.reopen ?? true) ? (
           <Button key="act:reopen" plain onPress={() => {}}>
-            <Text key="act:reopen:text" color={color}>{T.loopsReopen}</Text>
+            <Text key="act:reopen:text" color={color}>{r.live ? T.loopsShow : T.loopsReopen}</Text>
           </Button>
         ) : null,
         // SR-395 EX-6: a surface that draws no Input says to tell the agent instead
@@ -227,7 +255,7 @@ function classPane(ui: Ui, view: PlumbView, loops: PlumbLoops, known: PlumbKnown
   const cls = pane.cls ?? CLASSES[0]!
   const counts = classCounts(view, loops, known)
   const state = pane.loops ?? { type: LOOP_TYPES[0]!, open: [] }
-  const rows = cls === 'loops' ? loopRows(ui, loops, state, session, color) : cls === 'problems' ? problemRows(known)
+  const rows = cls === 'loops' ? loopRows(ui, loops, state, session, color, pane.step) : cls === 'problems' ? problemRows(known)
     : cls === 'judge' ? judgeRows(view.status ?? undefined, color) : cls === 'build' ? buildRows(view.status ?? undefined) : []
   // expanded, the title stays the row's Button: Enter on it folds the row again
   const fold = (r: Row) => {
@@ -238,6 +266,7 @@ function classPane(ui: Ui, view: PlumbView, loops: PlumbLoops, known: PlumbKnown
           <Text key={`row:${cls}:${r.id}:title`} bold color={'color' in r ? r.color : color}>{cutTo(r.title)}</Text>
         </Button>
         {r.details.map((d, n) => <Text key={`row:${cls}:${r.id}:d${n}`} dimColor>{cutTo(`  ${d}`)}</Text>)}
+        {r.extra}
         <Box key={`row:${cls}:${r.id}:actions`} flexDirection="row" gap={1}>{r.actions}</Box>
       </Box>
     ) : (
@@ -309,7 +338,7 @@ function writingBar(done: number, total: number): string {
 /** The band: one line of status, then the loop's and the studies' lines; no card (SR-337). The
  * known problems are one line when any is open, never one per problem (SR-367). */
 function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, loops: PlumbLoops, columns: number, color: string,
-                  brass: string) {
+                  brass: string, session: string) {
   const { Box, Button, Text } = ui
   const head = statusLine(view)
   if (band.isHidden) {
@@ -345,7 +374,8 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, loops
         ) : null)}
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
       </Box>
-      {loop ? loopLines(ui, loop, color, brass) : null}
+      {loop ? loopLines(ui, loop, loops.rows.find(r => r.kind === 'intent' && r.session === session)?.goal || T.loopTitle,
+        band.loopFolded === true, color, brass) : null}
       {view.line ? <Text key="line" dimColor>{view.line}</Text> : null}
       {(view.present?.confirmations ?? []).map(c => <Text key={`confirmed:${c}`}>{c}</Text>)}
     </Box>
@@ -630,6 +660,14 @@ export const register: Register = on => {
       await update($, bandAtom, b => ({ ...b, isHidden: false }))
       return pressed
     }
+    if (key === 'loop:fold') {
+      await update($, bandAtom, b => ({ ...b, loopFolded: !b.loopFolded }))
+      return pressed
+    }
+    if (key.startsWith('step:') && e.component === 'Pane') {
+      await update($, paneAtom, p => ({ ...p, step: p.step === key.slice('step:'.length) ? undefined : key.slice('step:'.length) }))
+      return pressed
+    }
     if (key.startsWith('loops:type:')) {
       await update($, paneAtom, p => ({ ...p, row: undefined, loops: { type: key.slice('loops:type:'.length), open: [] } }))
       return pressed
@@ -642,7 +680,7 @@ export const register: Register = on => {
     if (key.startsWith('row:')) {
       // SR-410: Enter expands one row, or folds it again
       const row = key.split(':').slice(2).join(':')
-      await update($, paneAtom, p => ({ ...p, row: p.row === row ? undefined : row }))
+      await update($, paneAtom, p => ({ ...p, step: undefined, row: p.row === row ? undefined : row }))
       return pressed
     }
     const link = await read($, linkAtom)
@@ -664,7 +702,19 @@ export const register: Register = on => {
       }),
     }
     // the chips, the loop's strip and the old known/loops buttons all open the one pane on their class
-    const opens = key.startsWith('chip:') ? key.slice('chip:'.length) : key === 'loop' ? 'loops' : key === 'known' ? 'problems' : key
+    if (key.startsWith('step:')) {
+      // SR-305: the band's step opens the pane on this session's loop at that step; plumb lists
+      // the loops now, stamp or none, for the row to expand
+      const stamp = (await read($, loopsAtom)).stamp || await plumb.loopsStamp(io, link.root)
+      const listed = await plumb.loops(io, link, stamp, await plumb.loopsSeen(io, stamp))
+      if (listed !== null) await update($, loopsAtom, () => listed)
+      const mine = (listed ?? await read($, loopsAtom)).rows.find(r => r.kind === 'intent' && r.session === link.session)
+      await refreshKnown($, io, link)
+      await update($, paneAtom, p => ({ ...p, known: true, cls: 'loops', row: mine?.id, step: key.slice('step:'.length), loops: { type: 'intent', open: [] } }))
+      await $.ui.open({ id: PANE, title: T.paneTitle, columns: PANE_COLUMNS, closeOnEscape: true })
+      return pressed
+    }
+    const opens = key.startsWith('chip:') ? key.slice('chip:'.length) : key === 'known' ? 'problems' : key
     if (CLASSES.includes(opens)) {
       await refreshLoops($, io, link, true)
       await refreshKnown($, io, link)
@@ -747,7 +797,7 @@ export const register: Register = on => {
       // a surface without the settings rows: the dark shade
     }
     return drawBand(ui, view, await read($, bandAtom), (await read($, knownAtom)).open, await read($, loopsAtom), e.props.bodyColumns,
-      plumbColor(theme), brassColor(theme))
+      plumbColor(theme), brassColor(theme), (await read($, linkAtom))?.session ?? '')
   }).catch(($, e, next) => next(e))
 
   // SR-410 EX-4: the arrows move the ring across the switch; landing on a class shows it

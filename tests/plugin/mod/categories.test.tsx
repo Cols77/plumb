@@ -95,7 +95,7 @@ for (const surface of SURFACES) {
     test('SR-409 EX-3: this session has a loop at build: chips, then the step strip, then the task bar', async ($, on) => {
       const { band } = await open($, on, surface, { loop: true, studies: [...IDEAS, NEW] })
       expect(await band.find({ type: 'Text', text: 'studies 3' })).toBeDefined()
-      expect(await band.find({ key: 'loop' })).toBeDefined() // the strip
+      expect(await band.find({ key: 'step:build' })).toBeDefined() // the strip
       expect(await band.find({ type: 'Text', text: /study idea|new study/ })).toBeUndefined()
       await band.unmount()
     })
@@ -340,6 +340,91 @@ for (const surface of SURFACES) {
       expect(await view.find({ type: 'Text', text: /a question names plumb's own words/ })).toBeDefined()
       expect(await view.find({ type: 'Text', text: /no judge can be reached/ })).toBeUndefined()
       expect((await band.find({ type: 'Text', text: /^judge/ }))?.props.color).not.toBe(RED)
+      await view.unmount()
+      await band.unmount()
+    })
+  })
+}
+
+// SR-414 and SR-305 (DEC-512, DEC-513): a loop's row shows its main details and its steps; the
+// action on a live row brings the loop's own window to the front; each step shows its details.
+const steps = (current: 'clarify' | 'plan' | 'build') => [
+  { name: 'clarify', mark: current === 'clarify' ? 'current' : 'done', gate: current === 'clarify' ? 'open' : 'passed', findings: 2, left: ['jargon', 'no owner'] },
+  { name: 'plan', mark: current === 'plan' ? 'current' : current === 'clarify' ? 'todo' : 'done', gate: current === 'plan' ? 'open' : current === 'clarify' ? 'to come' : 'passed', findings: current === 'clarify' ? 0 : 2, left: current === 'clarify' ? [] : ['broad task', 'no rollback'] },
+  { name: 'build', mark: current === 'build' ? 'current' : 'todo', gate: current === 'build' ? 'open' : 'to come', findings: 0, left: [] },
+  { name: 'proven', mark: 'todo', gate: 'to come', findings: 0, left: [] },
+]
+const stepped = (id: string, goal: string, current: 'clarify' | 'plan' | 'build', session = 'other') =>
+  ({ ...loopRow(id, goal, true), session, steps: steps(current), tasks: { done: 3, total: 4, left: ['the colours slice'] } })
+
+for (const surface of SURFACES) {
+  describe(`SR-414 and SR-305 in the pane on the ${surface}`, () => {
+    test('SR-414 EX-1: a live row offers show its window; pressing it asks plumb to reopen and says what plumb answers', async ($, on) => {
+      const { w, view, band } = await open($, on, surface, { loops: [stepped('bbbbbbbbbbbb', 'second window', 'plan')] }, 'loops')
+      const base = w.answer
+      w.answer = (a, v) => a === 'reopen' ? { exitCode: 0, data: { opened: false, shown: true, line: 'brought the window of second window to the front' } } : base(a, v)
+      await view.press({ key: 'row:loops:bbbbbbbbbbbb' })
+      expect((await view.find({ key: 'act:reopen' }))).toBeDefined()
+      expect(await view.find({ type: 'Text', text: 'show its window' })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: 'reopen in a new session' })).toBeUndefined()
+      await view.press({ key: 'act:reopen' })
+      const ran = w.runs.filter(r => r.argv[4] === 'reopen')
+      expect(ran).toHaveLength(1)
+      expect(ran[0]!.argv).toContain('bbbbbbbbbbbb')
+      expect(w.toasts).toEqual(['brought the window of second window to the front'])
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-414 EX-2: the platform cannot raise it: the owner is told the session and its folder', async ($, on) => {
+      const { w, view, band } = await open($, on, surface, { loops: [stepped('bbbbbbbbbbbb', 'second window', 'plan')] }, 'loops')
+      const base = w.answer
+      const line = `plumb cannot bring that window forward here; it is session other in ${ROOT}`
+      w.answer = (a, v) => a === 'reopen' ? { exitCode: 1, data: { opened: false, shown: false, line } } : base(a, v)
+      await view.press({ key: 'row:loops:bbbbbbbbbbbb' })
+      await view.press({ key: 'act:reopen' })
+      expect(w.toasts).toEqual([line])
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-414 EX-3: an idle row still reads reopen in a new session', async ($, on) => {
+      const { view, band } = await open($, on, surface, { loops: [loopRow('cccccccccccc', 'idle loop', false)] }, 'loops')
+      await view.press({ key: 'row:loops:cccccccccccc' })
+      expect(await view.find({ type: 'Text', text: 'reopen in a new session' })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: 'show its window' })).toBeUndefined()
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-305 EX-2: another session loop expanded: pressing its plan step shows the gate and findings left, no records or proofs', async ($, on) => {
+      const { view, band } = await open($, on, surface, { loops: [stepped('bbbbbbbbbbbb', 'second window', 'build')] }, 'loops')
+      await view.press({ key: 'row:loops:bbbbbbbbbbbb' })
+      for (const s of ['clarify', 'plan', 'build', 'proven']) expect(await view.find({ key: `step:${s}` })).toBeDefined()
+      await view.press({ key: 'step:plan' })
+      expect(await view.find({ type: 'Text', text: /gate.*passed/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /broad task/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /no rollback/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /records|proofs?:/i })).toBeUndefined()
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-305 EX-3: the pane draws no agent names, counts or tokens', async ($, on) => {
+      const { view, band } = await open($, on, surface, { loops: [stepped('bbbbbbbbbbbb', 'second window', 'build')] }, 'loops')
+      await view.press({ key: 'row:loops:bbbbbbbbbbbb' })
+      expect(await view.find({ type: 'Text', text: /\btokens?\b|agents? (names?|counts?)|\d+ agents?/i })).toBeUndefined()
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-305 EX-7: this session loop ends with the pane open: the pane stays open on loops', async ($, on) => {
+      const { w, view, band } = await open($, on, surface, { loop: true, loops: [stepped('aaaaaaaaaaaa', 'this loop', 'build', SESSION)] }, 'loops')
+      w.files[LOOP] = JSON.stringify({ digest: 'sha256:' + 'a'.repeat(64), intent: 'INT-001', opened_at: '2026-10-11T11:00:00Z', step: 'proven', tasks: null, stopped: null, stages: {} })
+      await $.turn.complete({ answer: 'Done.', durationMs: 1000, isAborted: false, turnId: 't-1', reason: 'answer' as const })
+      expect(w.closed).toEqual([])
+      expect(await view.find({ key: 'class:loops' })).toBeDefined()
+      expect(await band.find({ key: 'loop:fold' })).toBeUndefined()
       await view.unmount()
       await band.unmount()
     })

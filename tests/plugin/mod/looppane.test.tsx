@@ -45,7 +45,7 @@ async function pressed($: any, on: any, surface: 'terminal' | 'desktop') {
   install(on, w)
   await $.session.start(START)
   const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-  await band.press({ key: 'loop' })
+  await band.press({ key: 'step:build' })
   return { w, band, view: await $.ui.mount(pane(surface)) }
 }
 
@@ -63,7 +63,7 @@ for (const surface of SURFACES) {
       expect(w.opens).toEqual([{ id: 'plumb-pane', columns: 80, closeOnEscape: true }])
       expect((await view.find({ type: 'Text', text: /^loops / }))?.props.bold).toBe(true)
       await view.unmount() // Esc: the host closes a pane opened with closeOnEscape
-      expect(await band.find({ type: 'Text', text: /^clarify ✓  plan ✓  build ●/ })).toBeDefined()
+      expect(await band.find({ type: 'Text', text: 'build ●' })).toBeDefined()
       await band.unmount()
     })
 
@@ -72,7 +72,7 @@ for (const surface of SURFACES) {
       const clock = install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      await band.press({ key: 'loop' })
+      await band.press({ key: 'step:build' })
       expect(w.closed).toEqual([])
       w.files[LOOP] = JSON.stringify({ ...STATUS[0], step: 'proven' }) // intent done
       await clock.advance(2000) // the band's period (POLL_MS in register.tsx)
@@ -86,7 +86,7 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await band.find({ key: 'loop' })).toBeUndefined()
+      expect(await band.find({ key: 'loop:fold' })).toBeUndefined()
       expect(await band.find({ type: 'Text', text: /^clarify / })).toBeUndefined()
       await band.unmount()
       expect(w.opens).toEqual([])

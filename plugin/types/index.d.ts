@@ -118,6 +118,10 @@ export type PlumbLoopRow = {
   send: boolean
   session: string
   message: { state: string; at: string } | null
+  /** an intent loop's steps with mark (done, current, todo), gate (passed, open, refused, to come)
+   * and the low findings its gate left (SR-305); none for debug and evaluate rows */
+  steps?: { name: string; mark: string; gate: string; findings: number; left: string[] }[]
+  tasks?: { done: number; total: number | null; left: string[] } | null
 }
 
 /** The loops of the project (SR-393): the band's count and the pane's rows. `stamp`: the one
@@ -136,7 +140,7 @@ export type PlumbLoops = {
 export type PlumbLoopsPane = { type: string; open: string[] }
 
 /** The one pane's state (SR-410): the class shown, the one expanded row, the loops type, the known flag. */
-export type PlumbPane = { loop: PlumbLoopPane | null; known?: boolean; loops?: PlumbLoopsPane | null; cls?: string; row?: string }
+export type PlumbPane = { loop: PlumbLoopPane | null; known?: boolean; loops?: PlumbLoopsPane | null; cls?: string; row?: string; step?: string }
 
 /** What the panel draws, as plumb last answered it. */
 export type PlumbView = {
@@ -149,6 +153,8 @@ export type PlumbView = {
 /** How the owner left the band: hidden until the owner presses Show, whatever arrives (SR-337). */
 export type PlumbBand = {
   isHidden: boolean
+  /** the loop section folded to its title (SR-305) */
+  loopFolded?: boolean
 }
 
 declare module 'claude-code' {
