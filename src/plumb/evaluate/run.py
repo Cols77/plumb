@@ -187,12 +187,23 @@ def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | 
     binary = binary or shutil.which("claude")
     if binary is None:   # raised before any folder is made (SR-344 EX-3)
         raise RuntimeError("the claude command was not found on this machine")
+    home = Path(tempfile.mkdtemp(prefix="plumb-eval-"))
+    try:   # the run folder keeps what is needed; the scratch repository never outlives the run
+        return _run_task(root, task, home, model=model, owner=owner, runs_dir=runs_dir,
+                         claude=claude, now=now, binary=binary, limits=limits)
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+
+
+def _run_task(root: Path, task: Any, home: Path, *, model: str, owner: Any,
+              runs_dir: Path | None, claude, now, binary: str,
+              limits: dict[str, int | None] | None) -> RunResult:
     limits = {**NO_LIMITS, **(limits or {})}
     run_cap_s = limits["minutes"] * 60 if limits["minutes"] else None
     root = Path(root)
     run_dir = _new_run_dir(runs_dir or root / ".plumb" / "eval" / "runs",
                            f"{time.strftime('%Y%m%dT%H%M%S')}-{task.name}-{model}")
-    scratch = scratch_repo(Path(tempfile.mkdtemp(prefix="plumb-eval-")), host=root)
+    scratch = scratch_repo(home, host=root)
     transcript: list[Turn] = []
     state: dict[str, Any] = {"session": None, "start": now(), "out_of_time": False}
 
