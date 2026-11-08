@@ -753,13 +753,17 @@ export const register: Register = on => {
       const opening = <P extends { loops?: PlumbLoopsPane | null }>(p: P, add: boolean) => ({ ...p, loops: {
         type: p.loops?.type ?? LOOP_TYPES[0]!, open: p.loops?.open ?? [],
         opening: [...(p.loops?.opening ?? []).filter(o => o !== loop), ...(add ? [loop] : [])] } })
-      if (pane.loops?.opening?.includes(loop)) return pressed // already opening
-      $.ui.toast(T.reopenStarted) // at once: the window takes seconds and a second press would open two
-      await update($, paneAtom, p => opening(p, true))
+      // SR-414: on a live loop the same press only brings its window forward: nothing opens, so no 'opening' state
+      const live = (await read($, loopsAtom)).rows.some(r => r.id === loop && r.live)
+      if (!live) {
+        if (pane.loops?.opening?.includes(loop)) return pressed // already opening
+        $.ui.toast(T.reopenStarted) // at once: the window takes seconds and a second press would open two
+        await update($, paneAtom, p => opening(p, true))
+      }
       const ran = await plumb.reopen(io, link, loop)
       line = String(ran.data?.line ?? '') || plumb.refusal(ran) || T.reopenFailed
       // shortcut: an opened loop stays 'opening' until it turns live or the pane is opened again
-      if (!ran.ok || ran.data?.opened !== true) await update($, paneAtom, p => opening(p, false))
+      if (!live && (!ran.ok || ran.data?.opened !== true)) await update($, paneAtom, p => opening(p, false))
     } else {
       return pressed
     }

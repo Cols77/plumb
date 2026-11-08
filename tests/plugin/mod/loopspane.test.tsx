@@ -254,7 +254,7 @@ for (const surface of SURFACES) {
       expect(w.toasts).toEqual(['plumb is opening a new session on that loop; its window can take a few seconds', 'opened a new session for an old loop'])
       // SR-394: the row says it is opening, and a second press while it opens runs nothing
       expect(await view.find({ type: 'Text', text: 'opening a new session…' })).toBeDefined()
-      await view.press({ key: 'loops:reopen:cccccccccccc' })
+      await view.press({ key: 'act:reopen' }) // the same action, pressed again
       expect(w.runs.filter(r => r.argv[4] === 'reopen').length).toBe(1)
       await view.unmount()
       await band.unmount()
