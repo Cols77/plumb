@@ -22,6 +22,8 @@ from plumb.contracts import FidelityPacket, Judgment, LinkState, Record
 
 BACKENDS = ("jev", "disabled", "fake")
 NOTICE_WINDOW_S = 12 * 3600
+# SR-359: a judge's red line not looked at this long is rechecked (report-b3f947ec)
+JUDGE_RECHECK_S = 15 * 60
 
 # Canned answers for the ``fake`` backend: {(action, subject): (verdict, confidence)}.
 FAKE_ANSWERS: dict[tuple[str, str], tuple[str, float]] = {}
@@ -255,21 +257,24 @@ def _keep(path: Path, held: Mapping[str, Any]) -> None:
 
 
 def judge_down(root: Path, judge: str, cause: str, *, code: str = "", detail: str = "",
-               slot: str = "") -> None:
+               slot: str = "", now: float | None = None) -> None:
     """SR-359 EX-1: note in ``.plumb/session/judges.json`` that ``judge`` cannot settle a
     record and why, for the band's red line, until ``judge_up``. ``slot`` (the judge by
     default) is where it is kept: the model judge keeps one slot whatever its label, so a
-    changed model replaces its line."""
+    changed model replaces its line. ``checked`` is when the judge was last found down, for
+    ``recheck_judges``; an unchanged line is rewritten only once a window."""
     code = code or cause_code(cause)
     detail = detail or cause.removeprefix(f"{judge}: ")
     plain = next(words for c, _, words in CAUSES if c == code)
     slot = slot or judge
+    now = time.time() if now is None else now
     path, held = _judges(root)
     down = held.get("down") if isinstance(held.get("down"), dict) else {}
     line = f"{judge} judge, {plain} ({detail})"
-    if (down.get(slot) or {}).get("line") != line:
+    was = down.get(slot) if isinstance(down.get(slot), dict) else {}
+    if was.get("line") != line or _stale(was, now):
         _keep(path, {**held, "down": {**down, slot: {"code": code, "cause": cause,
-                                                     "line": line}}})
+                                                     "line": line, "checked": now}}})
 
 
 def judge_up(root: Path, slot: str) -> None:
@@ -278,6 +283,83 @@ def judge_up(root: Path, slot: str) -> None:
     down = held.get("down") if isinstance(held.get("down"), dict) else {}
     if slot in down:
         _keep(path, {**held, "down": {k: v for k, v in down.items() if k != slot}})
+
+
+def _stale(entry: Mapping[str, Any], now: float) -> bool:
+    """A down entry not looked at for a window (or from before stamps were kept)."""
+    checked = entry.get("checked")
+    return not isinstance(checked, (int, float)) or now - checked >= JUDGE_RECHECK_S
+
+
+def recheck_judges(core: Any, *, now: float | None = None, dispatcher: Any = None) -> None:
+    """SR-359 EX-3 for a checkout where nothing calls the judge (report-b3f947ec): a red line
+    was cleared only by the judge answering a judge job in this checkout, so a quota or a
+    missing claude binary long over kept showing. Run by the status refresh: a line not
+    looked at for ``JUDGE_RECHECK_S`` is rechecked, JEV by one cheap probe (its line then
+    goes, or names the cause as it stands now), the model judge by looking its command up
+    again when that was the cause (a timed-out or failing model keeps its line until a job
+    answers). Never raises: the band is the only thing at stake."""
+    now = time.time() if now is None else now
+    try:
+        root = Path(core.root)
+        path, held = _judges(root)
+        down = held.get("down") if isinstance(held.get("down"), dict) else {}
+        stale = [slot for slot, entry in down.items()
+                 if isinstance(entry, dict) and _stale(entry, now)]
+        if not stale:
+            return
+        if "JEV" in stale:
+            _probe_jev(core, now)
+        if "model" in stale and down["model"].get("code") == "not-configured":
+            _recheck_model(core, now, dispatcher)
+    except Exception:  # noqa: BLE001 - a recheck never breaks the hook or the worker
+        return
+
+
+PROBE_TIMEOUT_S = 2.0
+
+
+def _probe_jev(core: Any, now: float) -> None:
+    """One cheap JEV call with a 2 s limit (as ``plumb jev status --probe``): answered, JEV's
+    red line goes; not, the line names the cause as it stands now and is stamped checked."""
+    root = Path(core.root)
+    client = None
+    try:
+        backend = get_backend(core, hook=False)
+        if getattr(backend, "name", "") != "jev":
+            raise JudgmentUnavailable("JEV", "; ".join(getattr(backend, "notices", ()))
+                                      or "JEV is not set up", code="not-configured")
+        client = getattr(backend, "client", None)
+        if client is not None:
+            client.timeout_s = PROBE_TIMEOUT_S
+        judgment = backend.entailment("ok", "ok", subject="probe", claim_kind="probe")
+    except JudgmentUnavailable as exc:
+        judge_down(root, "JEV", str(exc), code=exc.code, detail=exc.detail, now=now)
+        return
+    if str(getattr(judgment, "backend", "")).startswith("jev:"):
+        judge_up(root, "JEV")
+    else:
+        judge_down(root, "JEV", str(getattr(client, "last_error", None) or "no answer"),
+                   now=now)
+
+
+def _recheck_model(core: Any, now: float, dispatcher: Any) -> None:
+    """The model judge's command looked up again (``dispatcher`` stands in for tests): found,
+    its line goes; still missing, the line names the cause as it stands now."""
+    from plumb.contracts import NoModel
+    from plumb.understand import dispatch
+
+    model = str(core.config.understand.judge_model)
+    try:
+        dispatcher = dispatcher or dispatch.configured(core, model=model)
+        gap = dispatcher.available() or ""
+    except NoModel as exc:
+        gap = str(exc)
+    if gap:
+        judge_down(Path(core.root), f"{getattr(dispatcher, 'name', 'model')}:{model}", gap,
+                   code="not-configured", slot="model", now=now)
+    else:
+        judge_up(Path(core.root), "model")
 
 
 def set_aside(root: Path, questions: Sequence[tuple[str, str]]) -> None:
