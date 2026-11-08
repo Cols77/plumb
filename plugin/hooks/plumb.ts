@@ -8,7 +8,7 @@
 import type { ProcessRunInit, ProcessRunResult } from 'claude-code'
 
 import { T } from './text'
-import type { PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbPresent, PlumbStatus, PlumbView } from '../types'
+import type { PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbLoopRow, PlumbLoops, PlumbPresent, PlumbStatus, PlumbView } from '../types'
 
 export type Io = {
   exists: (path: string) => Promise<boolean>
@@ -201,6 +201,24 @@ export function room(io: Io, link: PlumbLink, slug: string): Promise<Ran> {
   return plumbMod(io, link, 'room', { key: link.key }, ['--study', slug])
 }
 
+/** What plumb said when it refused a pane press (`plumb mod <action>: <reason>` on stderr), '' when
+ * it said nothing. */
+export function refusal(ran: Ran): string {
+  return lastLine(ran.stderr).replace(/^plumb mod \w+:\s*/, '')
+}
+
+/** The owner pressed reopen on an idle loop (SR-394): plumb opens a new session on it in its own
+ * window, or answers the command that opens it by hand (`data.line` either way). */
+export function reopen(io: Io, link: PlumbLink, loop: string): Promise<Ran> {
+  return plumbMod(io, link, 'reopen', { key: link.key }, ['--loop', loop])
+}
+
+/** The owner typed a message on a working loop's row (SR-395): plumb queues it for the session
+ * working on the loop, which reads it before its next step or at its next turn. */
+export function send(io: Io, link: PlumbLink, loop: string, text: string): Promise<Ran> {
+  return plumbMod(io, link, 'send', { key: link.key, text }, ['--loop', loop])
+}
+
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 
 /** The session's open loop as the pane shows it (SR-305), from `plumb intent status --json`;
@@ -272,6 +290,57 @@ export async function known(io: Io, link: PlumbLink, seen: string): Promise<Plum
       id: String(r?.id ?? ''), title: String(r?.title ?? ''), symptom: String(r?.symptom ?? ''),
       cause: String(r?.cause ?? ''), fix: String(r?.fix ?? ''), fixed: String(r?.fixed ?? ''),
       state: String(r?.state ?? ''), history: strings(r?.history),
+    })),
+  }
+}
+
+export const NO_LOOPS: PlumbLoops = { seen: '', stamp: '', live: 0, idle: 0, counts: {}, rows: [] }
+
+/** Where plumb keeps the one change stamp: in the repository's common git directory, which a
+ * linked worktree's `.git` file points into (files only). shortcut: git's standard layout
+ * (`<common>/worktrees/<name>`); a differently arranged one reads as no stamp, so no loops. */
+export async function loopsStamp(io: Io, root: string): Promise<string> {
+  const git = join(root, '.git')
+  let dir = git
+  try {
+    const pointer = /^gitdir:\s*(.+)$/m.exec(await io.read(git))
+    if (pointer) dir = pointer[1]!.trim().replace(/[\\/]worktrees[\\/][^\\/]+$/, '')
+  } catch {
+    // a directory: the main checkout
+  }
+  return join(dir, 'plumb-loops.stamp')
+}
+
+/** The one change stamp's text (SR-393): plumb moves it whenever a loop changes, so the poll
+ * reads this file alone, never a loop, case or note file. '' when it is not there. */
+export async function loopsSeen(io: Io, stamp: string): Promise<string> {
+  try {
+    return await io.read(stamp)
+  } catch {
+    return ''
+  }
+}
+
+/** The project's loops as plumb lists them (SR-393), from `plumb mod loops --json`; null when
+ * plumb did not answer. `seen`: the stamp's text read before the run, at `stamp`. */
+export async function loops(io: Io, link: PlumbLink, stamp: string, seen: string): Promise<PlumbLoops | null> {
+  const ran = await plumbMod(io, link, 'loops', {})
+  if (!ran.ok || !Array.isArray(ran.data?.rows)) return null
+  const count = (c: any) => ({ live: Number(c?.live ?? 0), idle: Number(c?.idle ?? 0) })
+  return {
+    seen,
+    stamp,
+    live: Number(ran.data.live ?? 0),
+    idle: Number(ran.data.idle ?? 0),
+    counts: Object.fromEntries(['intent', 'debug', 'evaluate'].map(k => [k, count(ran.data.counts?.[k])])),
+    rows: ran.data.rows.map((r: any): PlumbLoopRow => ({
+      kind: String(r?.kind ?? ''), id: String(r?.id ?? ''), goal: String(r?.goal ?? ''),
+      goal_full: String(r?.goal_full ?? r?.goal ?? ''), progress: String(r?.progress ?? ''),
+      done: strings(r?.done), left: strings(r?.left), waits: String(r?.waits ?? ''), live: r?.live === true,
+      idle_since: String(r?.idle_since ?? ''), branch: String(r?.branch ?? ''), reopen: r?.reopen === true,
+      send: r?.send === true, session: String(r?.session ?? ''),
+      message: r?.message && typeof r.message === 'object'
+        ? { state: String(r.message.state ?? ''), at: String(r.message.at ?? '') } : null,
     })),
   }
 }

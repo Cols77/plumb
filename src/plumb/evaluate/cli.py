@@ -119,5 +119,9 @@ def run(command: str, argv: list[str]) -> int:
     if args.rounds > 0:   # DEC-309: the loop runs by itself; each fix round ends in a rerun
         check = proofcheck.check_fix if args.proof_evaluator else None
         return loop.run_loop(root, task, rounds=args.rounds + 1, check=check, **kw)
-    runmod.run_task(root, task, **kw)
+    name = loop.start(root, task, args.model, 0)
+    try:
+        runmod.run_task(root, task, **kw)
+    finally:
+        loop.note(root, name, ended=True)
     return 0

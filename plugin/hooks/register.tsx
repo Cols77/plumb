@@ -17,18 +17,20 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { PlumbBand, PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbStatus, PlumbTold, PlumbView } from '../types'
+import type { PlumbBand, PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbLoopRow, PlumbLoops, PlumbLoopsPane, PlumbStatus, PlumbTold, PlumbView } from '../types'
 import * as plumb from './plumb'
 import type { Hello, Io, Unlinked } from './plumb'
 import { brassColor, GLYPHS, plumbColor, RED, T } from './text'
 
 /** The surface's element table, as `$.ui.resolve(e)` answers it. */
-type Ui = { Box: any; Text: any; Button: any }
+type Ui = { Box: any; Text: any; Button: any; Input: any }
 
 const uiOf = ($: any, e: any): Ui => $.ui.resolve(e)
 
 const PANE = 'plumb-loop'
 const KNOWN_PANE = 'plumb-known'
+const LOOPS_PANE = 'plumb-loops'
+const LOOP_TYPES = ['intent', 'debug', 'evaluate']
 const EMPTY_VIEW: PlumbView = { present: null, status: null, line: '' }
 const BAND: PlumbBand = { isHidden: false }
 
@@ -38,7 +40,8 @@ const toldAtom = atom({ plugin: 'plumb', key: 'told' } as const, null as PlumbTo
 const viewAtom = atom({ plugin: 'plumb', key: 'view' } as const, EMPTY_VIEW)
 const bandAtom = atom({ plugin: 'plumb', key: 'band' } as const, BAND)
 const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const,
-  { loop: null as PlumbLoopPane | null, known: false as boolean | undefined })
+  { loop: null as PlumbLoopPane | null, known: false as boolean | undefined, loops: null as PlumbLoopsPane | null | undefined })
+const loopsAtom = atom({ plugin: 'plumb', key: 'loops' } as const, plumb.NO_LOOPS)
 const knownAtom = atom({ plugin: 'plumb', key: 'known' } as const, plumb.NO_KNOWN)
 
 // the width the pane asks for when it docks beside the conversation
@@ -85,10 +88,25 @@ async function refreshKnown($: any, io: Io, link: PlumbLink) {
   if (known !== null) await update($, knownAtom, () => known)
 }
 
+/** SR-393: the project's loops read again at link and when the pane opens (`force`), and
+ * otherwise (the poll, each turn's end) only when the one change stamp moved; plumb runs only then,
+ * and never while no stamp exists: no loop was ever written. */
+async function refreshLoops($: any, io: Io, link: PlumbLink, force = false) {
+  const have = await read($, loopsAtom)
+  const stamp = have.stamp || await plumb.loopsStamp(io, link.root)
+  const seen = await plumb.loopsSeen(io, stamp)
+  if (!force && seen === have.seen) return
+  const loops = seen ? await plumb.loops(io, link, stamp, seen) : { ...plumb.NO_LOOPS, stamp }
+  if (loops !== null) await update($, loopsAtom, () => loops)
+}
+
 // SR-291 EX-7: a workflow's agents raise no event in the owner's session, so the band reads
 // its files again on this period (the mod API has no file watch)
 const POLL_MS = 2000
 let polling: { cancel: () => void } | null = null
+// SR-393: the loops' stamp is looked at every LOOPS_EVERY-th period (10 s)
+const LOOPS_EVERY = 5
+let polls = 0
 
 // the session-start hook writes host.json within its first second: about ten seconds of tries
 const RETRY_MS = 500
@@ -200,6 +218,57 @@ function knownPane(ui: Ui, known: PlumbKnown, color: string) {
   )
 }
 
+/** The loops pane (SR-393): a switch between the three types, then the shown type's rows, live
+ * first and idle apart; a row's press folds its detail in or out. Never an agent or tokens. */
+function loopsPane(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, color: string) {
+  const { Box, Button, Input, Text } = ui
+  const rows = loops.rows.filter(r => r.kind === state.type)
+  const one = (r: PlumbLoopRow) => {
+    const key = `${r.kind}:${r.id}`
+    return (
+      <Box key={`loops:${key}`} flexDirection="column">
+        <Button key={`loops:row:${key}`} plain onPress={() => {}}>
+          <Text key={`loops:text:${key}`}>{`${r.goal} · ${r.progress}${r.live ? '' : ` · ${T.loopsIdleSince(r.idle_since)}`}`}</Text>
+        </Button>
+        {r.reopen ? (
+          <Button key={`loops:reopen:${r.id}`} plain onPress={() => {}}>
+            <Text key={`loops:reopen:text:${r.id}`} color={color}>{T.loopsReopen}</Text>
+          </Button>
+        ) : null}
+        {r.send ? <Input key={`loops:say:${r.id}`} placeholder={T.loopSay} submitLabel={T.loopSend} onSubmit={() => {}} /> : null}
+        {r.send && state.open.includes(key) ? <Text key={`loops:tell:${r.id}`} dimColor>{T.loopTell}</Text> : null}
+        {state.open.includes(key) ? [
+          <Text key={`${key}:goal`} dimColor>{T.loopGoal(r.goal_full)}</Text>,
+          <Text key={`${key}:done`} dimColor>{T.loopDone(r.done)}</Text>,
+          <Text key={`${key}:left`} dimColor>{T.loopLeft(r.left)}</Text>,
+          <Text key={`${key}:waits`} dimColor>{T.loopWaits(r.waits)}</Text>,
+          <Text key={`${key}:branch`} dimColor>{T.loopBranch(r.branch)}</Text>,
+          r.message ? <Text key={`${key}:message`} dimColor>{T.loopMessage(r.message.state)}</Text> : null,
+        ] : null}
+      </Box>
+    )
+  }
+  const live = rows.filter(r => r.live)
+  const idle = rows.filter(r => !r.live)
+  return (
+    <Box flexDirection="column">
+      <Box key="loops:switch" flexDirection="row" gap={1}>
+        {LOOP_TYPES.map(t => (
+          <Button key={`loops:type:${t}`} plain onPress={() => {}}>
+            <Text key={`loops:label:${t}`} bold={t === state.type} color={color}>
+              {T.loopsType(t === state.type, t, loops.counts[t]?.live ?? 0, loops.counts[t]?.idle ?? 0)}
+            </Text>
+          </Button>
+        ))}
+      </Box>
+      {rows.length ? null : <Text key="loops:none" dimColor>{T.loopsNone[state.type]}</Text>}
+      {live.map(one)}
+      {idle.length ? <Text key="loops:idle" bold color={color}>{T.loopsIdle}</Text> : null}
+      {idle.map(one)}
+    </Box>
+  )
+}
+
 /** A study idea's why and the depths the owner chooses from (SR-294 EX-7, DEC-207): Markdown
  * only, with diagrams, video (SR-316), and 'not now';
  * the agent's recommended depth marked. */
@@ -243,7 +312,7 @@ function writingBar(done: number, total: number): string {
 
 /** The band: one line of status, then the loop's and the studies' lines; no card (SR-337). The
  * known problems are one line when any is open, never one per problem (SR-367). */
-function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, columns: number, color: string,
+function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, loops: PlumbLoops, columns: number, color: string,
                   brass: string) {
   const { Box, Button, Text } = ui
   const head = statusLine(view)
@@ -277,6 +346,12 @@ function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, colum
       <Box flexDirection="row" gap={1}>
         <Text bold color={color}>{head}</Text>
         {view.status?.summary ? <Text dimColor>{view.status.summary}</Text> : null}
+        {loops.live + loops.idle > 0 ? (
+          // SR-393 EX-1, EX-6: the loops of the project as a count in this line, never a line each
+          <Button key="loops" plain onPress={() => {}}>
+            <Text key="head:loops" color={color}>{T.loopsLive(loops.live, loops.idle)}</Text>
+          </Button>
+        ) : null}
         <Button key="hide" label={T.hide} plain onPress={() => {}} />
         {!loop && studies.length ? (
           // SR-294 EX-5 (DEC-183): no loop open, the study folds into the one line; a press opens its menu
@@ -365,6 +440,7 @@ export const register: Register = on => {
       // already gone
     }
     let reading = false
+    polls = 0
     polling = $.clock.every(POLL_MS, async () => {
       if (reading) return
       reading = true
@@ -375,6 +451,8 @@ export const register: Register = on => {
         // shortcut: no close event, so once opened this reads the register's files each period
         // for the rest of the session; drop the flag on close if the host ever says so
         if ((await read($, paneAtom)).known) await refreshKnown($, io, link)
+        polls += 1
+        if (polls % LOOPS_EVERY === 0) await refreshLoops($, io, link)
         const moved = await reread(io, link, await read($, viewAtom))
         if (moved === null) return
         const view = await update($, viewAtom, v => ({ ...v, status: moved.status }))
@@ -398,6 +476,7 @@ export const register: Register = on => {
       const view = await plumb.snapshot(io, link, await read($, viewAtom), false)
       await update($, viewAtom, () => view)
       await refreshKnown($, io, link)
+      await refreshLoops($, io, link, true)
     }
     if ((await read($, degradedAtom)) || (await read($, linkAtom)) !== null) return started
     const said = await helloOnce(io)
@@ -555,6 +634,7 @@ export const register: Register = on => {
     const view = await plumb.snapshot(io, link, await read($, viewAtom), true)
     await update($, viewAtom, () => view)
     await refreshKnown($, io, link)
+    await refreshLoops($, io, link) // only when the stamp moved: a listing costs seconds
     return result // the answer is never rewritten; no summary line is added (realign a)
   }).catch(async ($, e, next) => {
     const result = await next(e)
@@ -629,6 +709,19 @@ export const register: Register = on => {
       await update($, bandAtom, b => ({ ...b, front: nextIdea(ideas, b) }))
       return pressed
     }
+    if (key.startsWith('loops:type:')) {
+      await update($, paneAtom, p => ({ ...p, loops: { type: key.slice('loops:type:'.length), open: [] } }))
+      return pressed
+    }
+    if (key.startsWith('loops:row:')) {
+      // SR-393 EX-3: Enter on a row shows its detail, or folds it again
+      const row = key.slice('loops:row:'.length)
+      await update($, paneAtom, p => {
+        const open = p.loops?.open ?? []
+        return { ...p, loops: { type: p.loops?.type ?? 'intent', open: open.includes(row) ? open.filter(o => o !== row) : [...open, row] } }
+      })
+      return pressed
+    }
     const link = await read($, linkAtom)
     if (link === null || (await read($, degradedAtom))) return pressed
     const io: Io = {
@@ -655,6 +748,13 @@ export const register: Register = on => {
       await $.ui.open({ id: PANE, title: T.loopTitle, columns: PANE_COLUMNS, closeOnEscape: true })
       return pressed
     }
+    if (key === 'loops') {
+      // SR-393 EX-2: the project's loops in their own docked pane, on the intent type
+      await refreshLoops($, io, link, true)
+      await update($, paneAtom, p => ({ ...p, loops: { type: LOOP_TYPES[0]!, open: [] } }))
+      await $.ui.open({ id: LOOPS_PANE, title: T.loopsTitle, columns: PANE_COLUMNS, closeOnEscape: true })
+      return pressed
+    }
     if (key === 'known') {
       // SR-367 EX-2: the known problems in their own docked pane, opened as the loop's is
       await refreshKnown($, io, link)
@@ -671,6 +771,10 @@ export const register: Register = on => {
       if (!slug) return pressed
       const ran = await plumb.room(io, link, slug)
       line = ran.ok ? '' : T.roomFailed
+    } else if (key.startsWith('loops:reopen:')) {
+      // SR-394: the press opens a new session on the idle loop; plumb's line says it or gives the command
+      const ran = await plumb.reopen(io, link, key.slice('loops:reopen:'.length))
+      line = String(ran.data?.line ?? '') || plumb.refusal(ran) || T.reopenFailed
     } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:video' || key === 'idea:none') {
       // SR-294 EX-8, EX-9: the owner's choice on the idea is recorded; the room stays closed
       const idea = frontIdea(view.status?.ideas ?? [], await read($, bandAtom))
@@ -703,6 +807,34 @@ export const register: Register = on => {
     return pressed
   })
 
+  // SR-395: the owner typed a message on a working loop's row: plumb queues it for that session
+  on('ui.input', async ($, e, next) => {
+    const result = await next(e)
+    if (e.plugin !== 'plumb' || e.kind !== 'submit' || !e.element.startsWith('loops:say:')) return result
+    const link = await read($, linkAtom)
+    if (link === null || (await read($, degradedAtom)) || !e.value.trim()) return result
+    const io: Io = {
+      exists: p => $.fs.exists(p),
+      read: async p => String(await $.fs.read(p)),
+      list: async p => (await $.fs.list(p)).map(f => f.name),
+      write: (p, t) => $.fs.write(p, t),
+      run: (argv, init) => $.process.run(argv, init),
+      root: () => $.session.root(),
+      id: () => $.session.id(),
+      now: () => $.clock.now(),
+      env: async () => ({
+        PLUMB_HOME: await $.env.get('PLUMB_HOME'),
+        CLAUDE_PLUGIN_DATA: await $.env.get('CLAUDE_PLUGIN_DATA'),
+        HOME: await $.env.get('HOME'),
+        USERPROFILE: await $.env.get('USERPROFILE'),
+      }),
+    }
+    const ran = await plumb.send(io, link, e.element.slice('loops:say:'.length), e.value)
+    if (!ran.ok) $.ui.toast(plumb.refusal(ran) || T.sendFailed)
+    await refreshLoops($, io, link, true) // the row now reads sent, not read yet
+    return result
+  }).catch(($, e, next) => next(e))
+
   // SR-369: Tab onto the band's idea count brings the next idea to the front, wrapping from the
   // last to the first; the ring stays on the idea, so each Tab moves one idea on
   on('ui.focus', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -723,7 +855,7 @@ export const register: Register = on => {
     } catch {
       // a surface without the settings rows: the dark shade
     }
-    return drawBand(ui, view, await read($, bandAtom), (await read($, knownAtom)).open, e.props.bodyColumns,
+    return drawBand(ui, view, await read($, bandAtom), (await read($, knownAtom)).open, await read($, loopsAtom), e.props.bodyColumns,
       plumbColor(theme), brassColor(theme))
   }).catch(($, e, next) => next(e))
 
@@ -750,5 +882,17 @@ export const register: Register = on => {
       // a surface without the settings rows: the dark shade
     }
     return knownPane(ui, await read($, knownAtom), plumbColor(theme))
+  })
+
+  on('ui.render', { component: 'Pane', requestId: LOOPS_PANE }, async ($, e) => {
+    const ui = uiOf($, e)
+    let theme: unknown
+    try {
+      theme = (await $.config.list()).find(row => row.key === 'theme')?.value
+    } catch {
+      // a surface without the settings rows: the dark shade
+    }
+    const state = (await read($, paneAtom)).loops ?? { type: LOOP_TYPES[0]!, open: [] }
+    return loopsPane(ui, await read($, loopsAtom), state, plumbColor(theme))
   })
 }

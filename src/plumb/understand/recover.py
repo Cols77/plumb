@@ -57,7 +57,8 @@ EXAMINE_KIND, EXAMINE_SCHEMA_ID = "recover_examine", "recover_examine.v1"
 _HARNESS_STARTS = ("<command-", "<local-command", "<system-reminder>", "<task-notification>",
                    "<cross-session-message", "Another Claude session sent a message",
                    "This session is being continued from a previous conversation",
-                   "[SYSTEM NOTIFICATION", "[Request interrupted", "Caveat: The messages below")
+                   "[SYSTEM NOTIFICATION", "[Request interrupted", "Caveat: The messages below",
+                   "<plumb-loop-brief>", "<plumb-loop-message>")
 # entry flags of messages the harness wrote, never the owner: a compaction summary, a line
 # shown in the transcript only, a skill or meta injection, a tool result, a subagent's turn
 _SYNTHETIC_FLAGS = ("isCompactSummary", "isVisibleInTranscriptOnly", "isMeta", "isSidechain",

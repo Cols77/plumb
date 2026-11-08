@@ -194,7 +194,17 @@ export CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$root}"
 # 3. the edit gate first (shell only), then the guard only when the call names plumb
 if [ "$event" = pre-tool ]; then
   field "$input" tool_name
-  case $v in
+  tool=$v
+  # SR-395: a message waits for this session's main agent (a subagent's call carries agent_id
+  # and leaves it): the call goes to Python, which holds it once so the agent reads the message
+  pending=
+  case $input in
+    *'"agent_id"'*) ;;
+    *)
+      field "$input" session_id
+      [ -z "$v" ] || { read_file "$root/.plumb/session/$v/inbox.jsonl"; [ -z "$f" ] || pending=1; } ;;
+  esac
+  case $tool in
     Edit|Write|MultiEdit|NotebookEdit)
       # gate.sh reads PLUMB_ROOT/.plumb/session/<id>/gate: the folder the walk found, so a
       # session started in a subfolder is still gated (SR-121 EX-2)
@@ -203,6 +213,9 @@ if [ "$event" = pre-tool ]; then
         printf '%s\n' "$answer"
         exit 0
       fi ;;
+  esac
+  case $tool in  # the tools only a message is read for (the matcher names them)
+    Read|Grep|Glob|Agent|Task) [ -n "$pending" ] || exit 0 ;;
   esac
   # only the tool's input: the cwd and transcript path name the repository, which may well
   # be called plumb, and must not start Python on every call (SR-123 EX-2)
@@ -214,7 +227,7 @@ if [ "$event" = pre-tool ]; then
   for k in transcript_path cwd tool_use_id permission_mode hook_event_name session_id; do
     ti=${ti%%\"$k\"*}
   done
-  case $ti in
+  [ -z "$pending" ] && case $ti in
     *plumb*|*PLUMB_*) ;;
     *)
       # SR-384: the main-checkout guard (Python) looks at an edit, or a shell command that could

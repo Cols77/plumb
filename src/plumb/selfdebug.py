@@ -362,6 +362,7 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
 
     cfg = core.config
     models = [{"stage": "evidence", "model": model_of(cfg, cfg.understand.judge_model)}]
+    end = ""      # what the case's stage reads once this fix ends: nothing, or why it waits
     first = cfg.understand.repin_model
     base = LEVELS.index(first) if first in LEVELS else 1   # a model name counts as sonnet
 
@@ -373,44 +374,53 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
                         **given)
 
     with _job_env():
-        for n in range(1, rounds + 1):
-            # SR-389: a failed round is retried one level up, never past the largest
-            level = first if n == 1 else LEVELS[min(base + n - 1, len(LEVELS) - 1)]
-            model = model_of(cfg, level)
-            try:
-                before = _staged(wt)
-                said = stage(diagnoser, "diagnosis", n, level, model, evidence=evidence)
-                if _staged(wt) != before:
+        try:
+            for n in range(1, rounds + 1):
+                debug._update(root, [case["id"]], stage="fix", round=n, pid=os.getpid())
+                # SR-389: a failed round is retried one level up, never past the largest
+                level = first if n == 1 else LEVELS[min(base + n - 1, len(LEVELS) - 1)]
+                model = model_of(cfg, level)
+                try:
+                    before = _staged(wt)
+                    said = stage(diagnoser, "diagnosis", n, level, model, evidence=evidence)
+                    if _staged(wt) != before:
+                        _undo(wt)
+                        raise RuntimeError("the diagnosis changed a file")
+                    cause = {"cause": str(said.get("cause") or ""),
+                             "path": str(said.get("path") or "")}
+                    got = stage(fixer, "fix", n, level, model, evidence=evidence,
+                                diagnosis=cause)
+                    test = str(got.get("test") or "")
+                    state, why = ("", "") if test else ("fail", "the fixer named no test")
+                    if not state:
+                        seen = stage(reviewer, "review", n, level, model, cause=cause,
+                                     change=_staged(wt), records=_touched(wt_core, wt))
+                        if not seen.get("ok"):
+                            state, why = "fail", "the review found: " + "; ".join(
+                                map(str, seen.get("findings") or ["it is not ok"]))
+                    if not state:
+                        debug._update(root, [case["id"]], stage="tests")
+                        state, why = _verify(core, wt_core, wt, test, runner, judge, baseline,
+                                             session, case)
+                except Exception as exc:  # noqa: BLE001 - a round that crashes is a failed round
+                    state, why = "fail", f"{type(exc).__name__}: {exc}"
+                if state == "owner":
+                    end = "owner"
+                    return Outcome("owner", branch, why, rounds=tried)
+                if state == "held":
+                    end = "held"
+                    line = waiting_line(root, "self-debug", why) or ""
+                    return Outcome("held", branch, why, line, tried)
+                if not state:
+                    _commit(wt, wt_core, case)
+                    debug._update(root, [case["id"]], branch=branch)   # DEC-317: ready to land
+                    debug.resolve(root, [case["id"]])
+                    return Outcome("fixed", branch, f"fixed on {branch}", rounds=tried)
+                tried.append(f"round {n}: {why}")
+                if n < rounds:      # the next round starts from HEAD; the last try stays
                     _undo(wt)
-                    raise RuntimeError("the diagnosis changed a file")
-                cause = {"cause": str(said.get("cause") or ""), "path": str(said.get("path") or "")}
-                got = stage(fixer, "fix", n, level, model, evidence=evidence, diagnosis=cause)
-                test = str(got.get("test") or "")
-                state, why = ("", "") if test else ("fail", "the fixer named no test")
-                if not state:
-                    seen = stage(reviewer, "review", n, level, model, cause=cause,
-                                 change=_staged(wt), records=_touched(wt_core, wt))
-                    if not seen.get("ok"):
-                        state, why = "fail", "the review found: " + "; ".join(
-                            map(str, seen.get("findings") or ["it is not ok"]))
-                if not state:
-                    state, why = _verify(core, wt_core, wt, test, runner, judge, baseline,
-                                         session, case)
-            except Exception as exc:  # noqa: BLE001 - a round that crashes is a failed round
-                state, why = "fail", f"{type(exc).__name__}: {exc}"
-            if state == "owner":
-                return Outcome("owner", branch, why, rounds=tried)
-            if state == "held":
-                line = waiting_line(root, "self-debug", why) or ""
-                return Outcome("held", branch, why, line, tried)
-            if not state:
-                _commit(wt, wt_core, case)
-                debug._update(root, [case["id"]], branch=branch)   # DEC-317: ready to land
-                debug.resolve(root, [case["id"]])
-                return Outcome("fixed", branch, f"fixed on {branch}", rounds=tried)
-            tried.append(f"round {n}: {why}")
-            if n < rounds:      # the next round starts from HEAD; the last try stays
-                _undo(wt)
+        finally:
+            debug._update(root, [case["id"]], stage=end, round=0, pid=0)
     text = "; ".join(tried) + f". Missing: {why}. Nothing was committed (branch {branch})."
     debug.report(root, case["id"], text)
     return Outcome("reported", branch, text, rounds=tried)

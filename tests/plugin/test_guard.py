@@ -208,6 +208,40 @@ def test_the_main_guard_starts_python_only_for_a_command_that_could_write(tmp_pa
     assert sentinel.exists()
 
 
+@needs_sh
+@pytest.mark.sr("SR-395")
+def test_pretool_shell_route_goes_to_python_on_a_pending_inbox(tmp_path: Path) -> None:
+    """A Read, which starts no Python otherwise, reaches it while a message waits."""
+    sentinel = tmp_path / "sentinel.txt"
+    root = adopted_repo(tmp_path / "repo")
+    inbox = root / ".plumb" / "session" / "s1" / "inbox.jsonl"
+    inbox.parent.mkdir(parents=True)
+    inbox.write_text('{"id": "1", "loop": "x", "text": "hi"}\n', encoding="utf-8")
+    poison = sentinel_bin(tmp_path / "poison", sentinel)
+    home = ready_home(tmp_path / "home", poison / "python")
+    env = env_with([poison], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    run_hook("pre-tool", root, hook_data("pre-tool", tool_name="Read",
+                                         tool_input={"file_path": "a.py"}), env)
+    assert sentinel.exists()
+
+
+@needs_sh
+@pytest.mark.sr("SR-395")
+def test_pretool_shell_route_skips_python_for_a_subagent_or_no_inbox(tmp_path: Path) -> None:
+    sentinel = tmp_path / "sentinel.txt"
+    root = adopted_repo(tmp_path / "repo")
+    poison = sentinel_bin(tmp_path / "poison", sentinel)
+    home = ready_home(tmp_path / "home", poison / "python")
+    env = env_with([poison], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    read = {"tool_name": "Read", "tool_input": {"file_path": "a.py"}}
+    run_hook("pre-tool", root, hook_data("pre-tool", **read), env)
+    inbox = root / ".plumb" / "session" / "s1" / "inbox.jsonl"
+    inbox.parent.mkdir(parents=True)
+    inbox.write_text('{"id": "1", "loop": "x", "text": "hi"}\n', encoding="utf-8")
+    run_hook("pre-tool", root, hook_data("pre-tool", agent_id="a1", **read), env)
+    assert not sentinel.exists()
+
+
 def test_install_rules_from_same_table() -> None:
     from plumb.hosts.claude_code.install import (
         STANDARD_PREFIXES,

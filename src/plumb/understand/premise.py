@@ -175,9 +175,18 @@ def answer_entries(core: Any, record: Any) -> list[Any]:
                  if isinstance(r, Mapping) and r.get("id") == record.id}
     bound = {str(e.payload.get("answer")): e.payload.get("asked") for e in events
              if e.kind == "answer-bound"}   # SR-362: an answer asked before its rewording
+    spoken = _message_sessions(core, record)
     for entry in events:
         p = entry.payload
         asked = p.get("asked") or bound.get(entry.digest)
+        if entry.kind == "question-answer" and p.get("via") == "question-tool" \
+                and not asked and not p.get("study") and not p.get("free_text") \
+                and p.get("session") in spoken:
+            # the owner's answer to the agent's own question, in the session the record's
+            # message was spoken in: it follows the loop into the worktree that captured the
+            # record, so nothing already answered is asked again
+            out.append(entry)
+            continue
         if entry.kind not in ANSWER_VIA or ANSWER_VIA[entry.kind] != p.get("via") \
                 or not isinstance(asked, Mapping):
             continue
@@ -185,6 +194,27 @@ def answer_entries(core: Any, record: Any) -> list[Any]:
                and carries(str(r.get("hash")), record.hash, confirmed)
                for r in asked.get("records") or ()):
             out.append(entry)
+    return out
+
+
+def _message_sessions(core: Any, record: Any) -> set[str]:
+    """The sessions the owner spoke the messages ``record`` cites in."""
+    from plumb.approvals import Refused, find_prompt
+
+    index = core.index()
+    sources = [record] if record.kind == "intent" else [*_parents(index, record), record]
+    out: set[str] = set()
+    for source in sources:
+        for prefix in _prompt_prefixes(source):
+            wanted = _prefix(prefix)
+            if len(wanted) < PREFIX_MIN:
+                continue
+            try:
+                session = find_prompt(core, wanted).get("session")
+            except Refused:
+                continue
+            if session:
+                out.add(str(session))
     return out
 
 

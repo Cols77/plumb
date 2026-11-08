@@ -50,19 +50,22 @@ _PEER_WRAPPER = re.compile(r"\s*<cross-session-message\b([^>]*)>")
 # the caveat or command tags of a slash command the owner typed (a command, not a request).
 _NOTICE = re.compile(r"\s*(?:\[Cross-session (?:delivery|idle) notice\]|<agent-message\b)")
 _COMMAND = re.compile(r"\s*<(?:local-command-caveat|command-name)>")
+# plumb's own prompts (a reopened loop's brief, a message sent through the loop list): found
+# within the first 200 characters, as the host may frame a plugin's prompt (SR-394).
+_PLUMB = re.compile(r"<plumb-loop-(?:brief|message)>")
 _FROM_NAME = re.compile(r'from-name=(?:"([^"]*)"|(\S+))')
 
 
 def prompt_origin(text: str) -> tuple[str, str]:
     """``(origin, from-name)`` of a prompt: ``peer`` when the host wrapped it as another
-    session's message, ``notification`` or ``command`` for host-marked notices, else ``owner`` (SR-168)."""
+    session's message, ``notification`` or ``command`` for host-marked notices, ``plumb`` for plumb's own prompt, else ``owner`` (SR-168)."""
     wrapped = _PEER_WRAPPER.match(text)
     if _NOTICE.match(text):
         return "notification", ""
     if _COMMAND.match(text):
         return "command", ""
     if wrapped is None:
-        return "owner", ""
+        return ("plumb", "") if _PLUMB.search(text[:200]) else ("owner", "")
     name = _FROM_NAME.search(wrapped.group(1))
     return "peer", (name.group(1) or name.group(2)) if name else ""
 

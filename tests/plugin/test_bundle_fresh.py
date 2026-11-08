@@ -61,6 +61,7 @@ def test_hooks_cover_every_event() -> None:
         assert f'sh "${{CLAUDE_PLUGIN_ROOT}}/bin/plumb-hook" {event}' in commands
     pre_tool = hooks["hooks"]["PreToolUse"][0]["matcher"].split("|")
     assert {"Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"} <= set(pre_tool)
+    assert {"Read", "Grep", "Glob", "Agent", "Task"} <= set(pre_tool)   # SR-395
 
 
 @pytest.mark.parametrize("line", ["NOT_ADOPTED", "GETTING_READY", "NEEDS_PYTHON"])

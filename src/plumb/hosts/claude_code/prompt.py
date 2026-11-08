@@ -99,7 +99,7 @@ def log_prompt(ctx: HookContext, text: str, origin: str = "") -> str:
                    # that host's prompt hook runs (approvals.host_logs_prompts)
                    "host": str(ctx.extra.get("host") or "claude-code"), "origin": origin,
                    **({"from_name": from_name} if from_name else {})})
-    if origin != "owner":   # a peer's message starts no turn
+    if origin not in ("owner", "plumb"):   # a peer's message starts no turn
         return digest
     turn_path = ctx.session_dir / ctx.session_id / "turn.json"
     try:  # a new turn: the touched list holds this turn's edits only
@@ -386,7 +386,27 @@ def queued_for_agent(ctx: HookContext) -> list[str]:
     return out
 
 
+def write_build(ctx: HookContext) -> None:
+    """SR-358: each misalignment red, every prompt; unchecked is not."""
+    from plumb.build import check
+
+    found = check(ctx.root)
+    write_json_atomic(ctx.session_dir / ctx.session_id / "build.json",
+                      {"lines": found["lines"], "unchecked": found["unchecked"]})
+
+
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
+    """The turn's context, led by the owner's messages sent through the loop list (SR-395)."""
+    out = _handle(ctx, verify=verify, backend=backend)
+    from plumb.understand import loops
+
+    got = loops.take_inbox(ctx.root, ctx.session_id)
+    if got:
+        out.text = "\n".join(filter(None, [loops.message_label(got), out.text]))
+    return out
+
+
+def _handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
     """Intent translation only, as a deduplicated delta (spec 10, R9, sp5 3).
 
     Every line goes through the one emitter (``plumb.present.delta``): the
@@ -408,10 +428,13 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
             return HookOutput(text="")
         text = owned
     digest = log_prompt(ctx, text)
-    if prompt_origin(text)[0] != "owner":   # SR-168: logged with its origin, nothing else
+    origin = prompt_origin(text)[0]
+    if origin == "plumb":   # SR-394: a turn of plumb's own words: the build check, no intent
+        write_build(ctx)
+        return HookOutput(text="")
+    if origin != "owner":   # SR-168: logged with its origin, nothing else
         return HookOutput(text="")
     from plumb.api import open_core
-    from plumb.build import check
 
     escalations: list[str] = []
     try:
@@ -419,9 +442,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> Hook
     except OSError:
         pass
     core = open_core(ctx.root)
-    found = check(ctx.root)    # SR-358: each misalignment red, every prompt; unchecked is not
-    write_json_atomic(ctx.session_dir / ctx.session_id / "build.json",
-                      {"lines": found["lines"], "unchecked": found["unchecked"]})
+    write_build(ctx)
     hooks = core.config.hooks
     stale_turn_start(ctx, core)
     understood = understand_lines(ctx, core, digest, text)

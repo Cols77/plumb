@@ -1,5 +1,6 @@
 cache/
 session/
+wt/
 test_map.txt
 view/
 eval/runs/

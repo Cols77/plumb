@@ -89,10 +89,11 @@ def open_case(root: Path | str, *, id: str, kind: str, target: str, detail: str,
             return _write_case(root, {**row, "state": "resolved", "landed": str(landed),
                                       "session": where})
         prior = old or {"state": "fixed"}   # a known issue fixed before any case of it here
-        was = {**{k: prior.get(k) for k in ("state", "proven", "session", "detail")},
+        was = {**{k: prior.get(k) for k in ("state", "proven", "session", "detail", "report")},
                "landed": landed}
         was = {k: str(v) for k, v in was.items() if v}
-        kept = {k: v for k, v in row.items() if k not in ("branch", "landed", "proven")}
+        kept = {k: v for k, v in row.items() if k not in (
+            "branch", "landed", "proven", "report", "stage", "round", "pid")}
         return _write_case(root, {**kept, "state": "open", "session": where, "detail": detail,
                                   "came_back": where,
                                   "history": [*prior.get("history", []), was]},
@@ -105,6 +106,7 @@ def _write_case(root: Path | str, row: dict[str, Any], queue: bool = False) -> s
     path = _case_path(root, row["id"])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(row, ensure_ascii=False, indent=1), encoding="utf-8")
+    _touch(root)
     if queue:
         _queue_fix(root, row["id"])
     return str(row["id"])
@@ -231,7 +233,57 @@ def _update(root: Path | str, ids: list[str], **fields: Any) -> int:
             path.write_text(json.dumps({**row, **fields}, ensure_ascii=False, indent=1),
                             encoding="utf-8")
             changed += 1
+    if changed:
+        _touch(root)
     return changed
+
+
+def _touch(root: Path | str) -> None:
+    from plumb.understand import loops
+
+    loops.touch(Path(root))
+
+
+def loop_rows(root: Path | str) -> list[dict[str, Any]]:
+    """SR-391: one loop-list row per case plumb is fixing and not done with (a resolved,
+    proven one is not listed); read only."""
+    from plumb.progress import _alive
+
+    titles = {r["id"]: str(r.get("title") or "") for r in known_issues(root)}
+    out = []
+    for row in all_cases(root):
+        stage, live = str(row.get("stage") or ""), False
+        left = ["the fix", "tests", "landing", "the live check"]
+        waits, words = "", "open, fix not started"
+        if row.get("state") == "open" and (row.get("report") or stage == "owner"):
+            words, left, waits = "waits for the owner", ["the owner's answer"], "the owner"
+        elif row.get("state") == "open" and stage == "held":
+            words, left, waits = "held: no judge model", left, "a judge model"
+        elif row.get("branch") and not row.get("landed"):
+            words, left = "fix committed, waits to land", ["landing", "the live check"]
+        elif state(row) == LANDED:
+            words, left = "landed, not checked live", ["the live check"]
+        elif state(row) == "resolved":
+            continue
+        elif stage in ("fix", "tests") and _alive(row.get("pid")):
+            live = True
+            words, left = (f"fix being written (round {row.get('round')})", left[1:]) \
+                if stage == "fix" else ("fix written, tests running", left[2:])
+        goal = titles.get(str(row.get("issue"))) or (str(row.get("detail") or "").splitlines()
+                                                     or [""])[0]
+        try:
+            mtime = _case_path(root, row["id"]).stat().st_mtime
+        except OSError:
+            mtime = 0
+        last = datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        out.append({
+            "kind": "debug", "id": str(row["id"]), "intent": "", "goal": goal[:100],
+            "goal_full": goal, "progress": words, "done": [], "left": left, "waits": waits,
+            "live": live, "state": "running" if live else "idle", "last": last,
+            "idle_since": "" if live else last[:10], "branch": str(row.get("branch") or ""),
+            "root": str(root), "session": "", "reopen": False, "send": False, "message": None})
+    return out
 
 
 def resolve(root: Path | str, ids: list[str]) -> int:

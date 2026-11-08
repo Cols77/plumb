@@ -93,6 +93,41 @@ export type PlumbKnown = {
     state: string; history: string[] }[]
 }
 
+/** One loop of the project as `plumb mod loops --json` gives it (SR-393): an intent loop, a
+ * problem being fixed or an evaluate run, live or idle. */
+export type PlumbLoopRow = {
+  kind: string
+  id: string
+  goal: string
+  goal_full: string
+  progress: string
+  done: string[]
+  left: string[]
+  waits: string
+  live: boolean
+  idle_since: string
+  branch: string
+  reopen: boolean
+  send: boolean
+  session: string
+  message: { state: string; at: string } | null
+}
+
+/** The loops of the project (SR-393): the band's count and the pane's rows. `stamp`: the one
+ * file plumb moves whenever a loop changes; `seen`: its text when the list was read, so plumb
+ * runs again only when it moved. */
+export type PlumbLoops = {
+  seen: string
+  stamp: string
+  live: number
+  idle: number
+  counts: Record<string, { live: number; idle: number }>
+  rows: PlumbLoopRow[]
+}
+
+/** The loops pane's own state: the type shown and the rows whose detail is open. */
+export type PlumbLoopsPane = { type: string; open: string[] }
+
 /** What the panel draws, as plumb last answered it. */
 export type PlumbView = {
   present: PlumbPresent | null
@@ -120,9 +155,10 @@ declare module 'claude-code' {
       told: PlumbTold | null
       view: PlumbView
       band: PlumbBand
-      /** the loop the pane shows (SR-305); `known`: the known problems pane was opened (SR-367) */
-      pane: { loop: PlumbLoopPane | null; known?: boolean }
+      /** the loop the pane shows (SR-305); `known`: the known problems pane was opened (SR-367); `loops`: the loops pane's state (SR-393) */
+      pane: { loop: PlumbLoopPane | null; known?: boolean; loops?: PlumbLoopsPane | null }
       known: PlumbKnown
+      loops: PlumbLoops
     }
   }
 }
