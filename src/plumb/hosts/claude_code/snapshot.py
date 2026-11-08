@@ -194,8 +194,10 @@ def refresh_counts(core: Any) -> None:
     record-wide counts of ``status.json`` (records, links, the judge's approvals, the
     questions waiting, overlaps) brought up to date, this turn's fields kept."""
     from plumb.hosts.claude_code.hookio import read_json
+    from plumb.judgment import recheck_judges
     from plumb.present.render import card_state
 
+    recheck_judges(core)    # SR-359 EX-3: a judge that recovered stops showing red
     path = Path(core.root) / ".plumb" / "session" / "status.json"
     data = read_json(path)
     data = data if isinstance(data, dict) else {}

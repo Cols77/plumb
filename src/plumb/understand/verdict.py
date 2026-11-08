@@ -307,7 +307,8 @@ def cascade(core: Any, job: Job, *, system: str, schema: Mapping[str, Any],
             names.append(str(getattr(dispatcher, "name", "model")))
             judge_up(core.root, "model")
         if unreachable:     # SR-359: the band's red line names this judge and the cause
-            judge_down(core.root, label, why.removeprefix(f"{jev_cause}; "), slot="model")
+            judge_down(core.root, label, why.removeprefix(f"{jev_cause}; "), slot="model",
+                       code="not-configured" if gap else "")   # recheck_judges looks it up
     line = held
     if left:
         from plumb.judgment import waiting_line
