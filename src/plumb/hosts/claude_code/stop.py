@@ -186,11 +186,21 @@ def _masked_line(index: Mapping[str, Any], item: Mapping[str, Any]) -> str:
                     f"given {example.given}, when {example.when}, then {example.then}"))
                     + "\"")
         parts.append(f"{record_id} " + ("; ".join(texts) if texts else "(no example named)"))
+    judge = item.get("judge") or {}
+    if judge.get("failed"):  # SR-245: name the judge and the reason when none could answer
+        judged = (f" No judge could read the change ({judge['failed']['judge']}): "
+                  f"{judge['failed']['reason']}; the flag stays.")
+    elif judge.get("pending"):
+        judged = " A judge is reading the change; the flag stays until it answers."
+    elif judge.get("verdict"):
+        judged = " A judge read the change as made just so the test passes."
+    else:
+        judged = ""
     return _clip(f"plumb: regression hidden: {item['node']} passed in run "
                  f"{item.get('passed_in') or '?'}, then failed, and passes now only because "
                  f"the test itself was changed. It verifies {'; '.join(parts)}, which the "
-                 "owner confirmed. Tell the owner, with a read-back of the code and test "
-                 "change, and ask how to proceed; a test is not rewritten to pass.", 600)
+                 f"owner confirmed.{judged} Tell the owner, with a read-back of the code and "
+                 "test change, and ask how to proceed; a test is not rewritten to pass.", 600)
 
 
 def _regression_line(node: str, evidence: Any) -> str:

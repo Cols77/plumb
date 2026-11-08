@@ -125,6 +125,15 @@ def main_checkout_is_not_guarded(request: pytest.FixtureRequest,
     monkeypatch.setattr(main_guard, "main_checkout", lambda directory, root: None)
 
 
+@pytest.fixture(autouse=True)
+def the_disk_floor_is_not_the_test_machines(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SR-402: the scratch repositories sit in a temporary folder that may be short of space;
+    only the work copy tests run the floor."""
+    from plumb import selfdebug
+
+    monkeypatch.setattr(selfdebug, "FLOOR_GB", 0)
+
+
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A temporary git repository adopted by plumb (``.plumb/`` dirs) with one commit."""
