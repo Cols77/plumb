@@ -27,6 +27,7 @@ HIGH = SimpleNamespace(total=100 * 10**9, used=50 * 10**9, free=50 * 10**9)
 def room(monkeypatch: pytest.MonkeyPatch) -> None:
     """The disk the tests run on may itself be short; a test that wants it short says so."""
     monkeypatch.setattr(shutil, "disk_usage", lambda p: HIGH)
+    monkeypatch.setattr(selfdebug, "FLOOR_GB", 5)
 
 
 @pytest.fixture
