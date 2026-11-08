@@ -247,7 +247,11 @@ for (const surface of SURFACES) {
       expect(ran[0]?.argv.slice(3)).toEqual(['mod', 'reopen', '--session', SESSION, '--root', ROOT, '--json', '--loop', 'cccccccccccc'])
       expect(JSON.parse(ran[0]?.stdin ?? '{}').key).toMatch(/^[0-9a-f]{64}$/)
       expect(ran[0]?.argv.join(' ')).not.toContain(JSON.parse(ran[0]?.stdin ?? '{}').key) // never in argv
-      expect(w.toasts).toEqual(['opened a new session for an old loop'])
+      expect(w.toasts).toEqual(['plumb is opening a new session on that loop; its window can take a few seconds', 'opened a new session for an old loop'])
+      // SR-394: the row says it is opening, and a second press while it opens runs nothing
+      expect(await view.find({ type: 'Text', text: 'opening a new session…' })).toBeDefined()
+      await view.press({ key: 'loops:reopen:cccccccccccc' })
+      expect(w.runs.filter(r => r.argv[4] === 'reopen').length).toBe(1)
       await view.unmount()
       await band.unmount()
     })
@@ -277,7 +281,9 @@ for (const surface of SURFACES) {
       await band.press({ key: 'loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'loops:reopen:cccccccccccc' })
-      expect(w.toasts).toEqual([line])
+      expect(w.toasts).toEqual(['plumb is opening a new session on that loop; its window can take a few seconds', line])
+      // a failed open can be pressed again
+      expect(await view.find({ type: 'Text', text: 'reopen in a new session' })).toBeDefined()
       await view.unmount()
       await band.unmount()
     })
@@ -295,7 +301,7 @@ for (const surface of SURFACES) {
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'loops:reopen:cccccccccccc' })
       await view.input({ key: 'loops:say:bbbbbbbbbbbb', text: 'rebase please' })
-      expect(w.toasts).toEqual(['a session works on this loop already', 'no session works on this loop; it can be reopened'])
+      expect(w.toasts).toEqual(['plumb is opening a new session on that loop; its window can take a few seconds', 'a session works on this loop already', 'no session works on this loop; it can be reopened'])
       await view.unmount()
       await band.unmount()
     })

@@ -232,7 +232,7 @@ function loopsPane(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, color: stri
         </Button>
         {r.reopen ? (
           <Button key={`loops:reopen:${r.id}`} plain onPress={() => {}}>
-            <Text key={`loops:reopen:text:${r.id}`} color={color}>{T.loopsReopen}</Text>
+            <Text key={`loops:reopen:text:${r.id}`} color={color}>{state.opening?.includes(r.id) ? T.loopsOpening : T.loopsReopen}</Text>
           </Button>
         ) : null}
         {r.send ? <Input key={`loops:say:${r.id}`} placeholder={T.loopSay} submitLabel={T.loopSend} onSubmit={() => {}} /> : null}
@@ -710,7 +710,7 @@ export const register: Register = on => {
       return pressed
     }
     if (key.startsWith('loops:type:')) {
-      await update($, paneAtom, p => ({ ...p, loops: { type: key.slice('loops:type:'.length), open: [] } }))
+      await update($, paneAtom, p => ({ ...p, loops: { type: key.slice('loops:type:'.length), open: [], opening: p.loops?.opening } }))
       return pressed
     }
     if (key.startsWith('loops:row:')) {
@@ -773,8 +773,17 @@ export const register: Register = on => {
       line = ran.ok ? '' : T.roomFailed
     } else if (key.startsWith('loops:reopen:')) {
       // SR-394: the press opens a new session on the idle loop; plumb's line says it or gives the command
-      const ran = await plumb.reopen(io, link, key.slice('loops:reopen:'.length))
+      const loop = key.slice('loops:reopen:'.length)
+      const opening = <P extends { loops?: PlumbLoopsPane | null }>(p: P, add: boolean) => ({ ...p, loops: {
+        type: p.loops?.type ?? LOOP_TYPES[0]!, open: p.loops?.open ?? [],
+        opening: [...(p.loops?.opening ?? []).filter(o => o !== loop), ...(add ? [loop] : [])] } })
+      if ((await read($, paneAtom)).loops?.opening?.includes(loop)) return pressed // already opening
+      $.ui.toast(T.reopenStarted) // at once: the window takes seconds and a second press would open two
+      await update($, paneAtom, p => opening(p, true))
+      const ran = await plumb.reopen(io, link, loop)
       line = String(ran.data?.line ?? '') || plumb.refusal(ran) || T.reopenFailed
+      // shortcut: an opened loop stays 'opening' until it turns live or the pane is opened again
+      if (!ran.ok || ran.data?.opened !== true) await update($, paneAtom, p => opening(p, false))
     } else if (key === 'idea:md' || key === 'idea:diagrams' || key === 'idea:video' || key === 'idea:none') {
       // SR-294 EX-8, EX-9: the owner's choice on the idea is recorded; the room stays closed
       const idea = frontIdea(view.status?.ideas ?? [], await read($, bandAtom))

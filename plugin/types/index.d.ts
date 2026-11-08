@@ -125,8 +125,9 @@ export type PlumbLoops = {
   rows: PlumbLoopRow[]
 }
 
-/** The loops pane's own state: the type shown and the rows whose detail is open. */
-export type PlumbLoopsPane = { type: string; open: string[] }
+/** The loops pane's own state: the type shown, the rows whose detail is open and the loops a
+ * reopen press is opening (SR-394: a second press on one does nothing). */
+export type PlumbLoopsPane = { type: string; open: string[]; opening?: string[] }
 
 /** What the panel draws, as plumb last answered it. */
 export type PlumbView = {
