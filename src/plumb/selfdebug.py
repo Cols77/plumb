@@ -40,7 +40,7 @@ READ_ONLY = "Read,Grep,Glob"       # SR-388: the diagnosis and the review get no
 
 @dataclass
 class Outcome:
-    state: str                  # fixed | landed | owner | held | reported
+    state: str                  # fixed | landed | owner | held | reported | refused
     branch: str = ""
     detail: str = ""
     line: str = ""              # a line to say once (the judge could not be reached)
@@ -103,6 +103,40 @@ def landed(root: Path, branch: str) -> bool:
                            "HEAD"], cwd=root, capture_output=True).returncode == 0
 
 
+FLOOR_GB = 5   # SR-402: refuse a new work copy below this free space (fixed; a setting if asked)
+
+
+class DiskShort(RuntimeError):
+    """SR-402: too little free disk for a new work copy; the message says what could go."""
+
+
+def _refuse_if_short(root: Path, case_id: str) -> None:
+    import shutil
+
+    from plumb.boundary import landing
+
+    free = shutil.disk_usage(root).free / 1e9
+    if free >= FLOOR_GB:
+        return
+    idle = landing.idle_debug_copies(root)[0]
+    names = ", ".join(f"{t.name} ({mb} MB)" for t, _b, mb in idle)
+    raise DiskShort(
+        f"only {free:.1f} GB free (the floor is {FLOOR_GB} GB): no work copy made for {case_id}, "
+        "the case stays open; " + (f"these idle copies could go: {names}; remove them with "
+                                    "plumb debug prune" if idle else
+                                    "no idle copy could be removed automatically"))
+
+
+def _add_copy(root: Path, path: Path, branch: str, known: bool) -> None:
+    """SR-400: the copy holds the code and records but none of the tracked log entry files
+    (a sparse checkout: git still counts them present, so nothing shows as deleted)."""
+    _git(root, "worktree", "add", "--no-checkout", *([str(path), branch] if known
+                                                      else ["-b", branch, str(path)]))
+    subprocess.run(["git", "sparse-checkout", "set", "--no-cone", "--stdin"], cwd=path,
+                   input="/*\n!/.plumb/" + "log/\n", text=True, check=True, capture_output=True)
+    _git(path, "checkout", "-q")
+
+
 def _worktree(root: Path, case_id: str) -> tuple[Path, str]:
     slug = _slug(case_id)
     path, branch = root / ".plumb" / "wt" / f"debug-{slug}", f"debug/{slug}"
@@ -114,10 +148,10 @@ def _worktree(root: Path, case_id: str) -> tuple[Path, str]:
                  check=False)                   # current code for the fix
         return there, branch
     if not path.exists():
+        _refuse_if_short(root, case_id)
         known = subprocess.run(["git", "rev-parse", "--verify", "-q", branch], cwd=root,
                                capture_output=True).returncode == 0
-        _git(root, "worktree", "add", *([str(path), branch] if known
-                                        else ["-b", branch, str(path)]))
+        _add_copy(root, path, branch, known)
     return path, branch
 
 
@@ -341,7 +375,10 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     if landed(root, branch):        # an earlier fix is in HEAD: nothing to run, nothing to merge
         debug.resolve(root, [case["id"]])
         return Outcome("landed", branch, f"already landed: {branch}")
-    wt, branch = _worktree(root, case["id"])
+    try:
+        wt, branch = _worktree(root, case["id"])
+    except DiskShort as exc:
+        return Outcome("refused", branch, str(exc), line=f"plumb: debug: {exc}")
     wt_core = open_core(wt)
     session = stale.current_session(root)
     baseline = {s.link.id for s in core.link_states() if s.state in ("stale", "dangling")}

@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +29,7 @@ NEVER = frozenset({"config", "jev-setup", "calibration", "gate", "intent-gate"})
 # shortcut: only these record-less kinds are compacted by age (no hook reads them by age);
 # widen once every hook reader of another kind is known not to need its old entries
 BY_AGE = frozenset({"merge-evidence", "prompt", "job-note", "mod-hello"})
+RETIRED = frozenset({"offer"})   # SR-403: no reader; its loose files go to the segment
 
 
 def _git(root: Path, *args: str) -> str:
@@ -256,9 +257,10 @@ def _refs(value: Any) -> Iterable[str]:
             yield from _refs(item)
 
 
-def _evidence_kept(entries: list[Any]) -> set[str]:
+def _evidence_kept(entries: list[Any], alive: Callable[[str], bool] = lambda n: True) -> set[str]:
     """The test-run entries verify still uses: per node its last run and last pass, every run
-    of a node with an open regression, and the last full run."""
+    of a node with an open regression, and the last full run. A node ``alive`` rejects (its
+    test file is gone: SR-403) needs none of them."""
     from plumb.verify.evidence import _empty_index, apply_entry
 
     index = _empty_index()
@@ -267,6 +269,8 @@ def _evidence_kept(entries: list[Any]) -> set[str]:
     keep_runs = {str((index.get("full") or {}).get("run_id"))}
     regressed = set()
     for node_id, node in index["nodes"].items():
+        if not alive(node_id):
+            continue
         for key in ("last", "last_pass"):
             if node.get(key):
                 keep_runs.add(str(node[key].get("run_id")))
@@ -296,7 +300,7 @@ def compaction(core: Any, since_at: str, tracked: set[str],
 
     evidence = [e for e in core.log_read("evidence") if "/" in e.name]
     runs = [e for e in evidence if e.kind == "test-run"]
-    kept_runs = _evidence_kept(runs)
+    kept_runs = _evidence_kept(runs, lambda n: (Path(core.root) / n.split("::")[0]).exists())
     live = [e for e in [*core.events(), *evidence] if ":" not in e.name]
     moving: dict[str, Any] = {}
     for entry in live:
@@ -306,6 +310,8 @@ def compaction(core: Any, since_at: str, tracked: set[str],
         named = named_records(entry.payload)
         if telemetry:
             move = entry.at < since_at
+        elif entry.kind in RETIRED:
+            move = True
         elif entry.kind == "test-run":
             move = entry.digest not in kept_runs
         elif named:
@@ -477,6 +483,66 @@ def finished_worktrees(root: Path, before: str, head: str) -> tuple[list[str], l
     return removed, kept
 
 
+def _size_mb(tree: Path) -> int:
+    total = 0
+    for base, _dirs, names in os.walk(tree):
+        for name in names:
+            try:
+                total += os.lstat(os.path.join(base, name)).st_size
+            except OSError:
+                pass
+    return total // 1_000_000
+
+
+def idle_debug_copies(root: Path) -> tuple[list[tuple[Path, str, int]], list[str]]:
+    """SR-401: ``(idle, kept)``: the debug work copies under ``root``'s ``.plumb/wt`` whose branch
+    has no commit of its own and sits in HEAD, with no uncommitted work and no open problem
+    naming them, as ``(tree, branch, MB)``, largest first; ``kept`` names those that would be
+    idle but for uncommitted work. Any other worktree is never listed."""
+    from plumb import debug, log, selfdebug
+
+    root = Path(root).resolve()
+    wt_dir = root / ".plumb" / "wt"
+    open_slugs = {selfdebug._slug(c["id"]) for c in debug.open_cases(root)}
+    idle: list[tuple[Path, str, int]] = []
+    kept: list[str] = []
+    for block in _git(root, "worktree", "list", "--porcelain").split(chr(10) * 2):
+        fields = dict(line.partition(" ")[::2] for line in block.splitlines())
+        tree = Path(fields.get("worktree", "")).resolve()
+        branch = fields.get("branch", "").removeprefix("refs/heads/")
+        if tree.parent != wt_dir or not tree.name.startswith("debug-") or not branch \
+                or tree.name.removeprefix("debug-") in open_slugs:
+            continue
+        own = any(x.startswith("commit") for x in _git(
+            root, "reflog", "show", "--format=%gs", f"refs/heads/{branch}").splitlines())
+        in_head = subprocess.run(["git", "merge-base", "--is-ancestor", f"refs/heads/{branch}",
+                                  "HEAD"], cwd=root, capture_output=True).returncode == 0
+        if own or not in_head or _loop_reason(root, tree, branch):
+            continue
+        dirty = [x for x in _git(tree, "status", "--porcelain", "--untracked-files=all"
+                                 ).splitlines() if not log.untracked_own(tree, x)]
+        if dirty:
+            kept.append(f"debug work copy {tree.name} is idle but kept: uncommitted changes")
+        else:
+            idle.append((tree, branch, _size_mb(tree)))
+    return sorted(idle, key=lambda i: -i[2]), kept
+
+
+def remove_idle(root: Path) -> tuple[list[tuple[str, int]], list[str]]:
+    """SR-401: remove every idle debug work copy (its branch stays): ``([(name, MB)], kept
+    lines)``."""
+    idle, kept = idle_debug_copies(root)
+    removed: list[tuple[str, int]] = []
+    for tree, _branch, mb in idle:
+        try:
+            _git(root, "worktree", "remove", "--force", str(tree))
+            removed.append((tree.name, mb))
+        except subprocess.CalledProcessError as exc:
+            kept.append(f"debug work copy {tree.name} is idle but kept: "
+                        f"{(exc.stderr or str(exc)).strip().splitlines()[-1][:120]}")
+    return removed, kept
+
+
 def ended_sessions(root: Path, session: str) -> list[str]:
     """Remove each ``.plumb/session/<id>/`` the SessionEnd hook marked (``ended.json``), never
     ``session``'s own and never an unmarked one (owner, 2026-10-20: no age-based deletion).
@@ -551,10 +617,15 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         if removed or archived or shared:
             _commit(root, removed, [*archived, *shared], head)
 
+    idle: list[tuple[str, int]] = []
+
     def do_worktrees() -> None:
         found = finished_worktrees(root, before, head)
         gone.extend(found[0])
         kept.extend(found[1])
+        removed_idle, kept_idle = remove_idle(root)   # SR-401
+        idle.extend(removed_idle)
+        kept.extend(kept_idle)
 
     step("owner-words", lambda: words_back.extend(restore_owner_words(root, before, head)))
     step("proofs", lambda: proofs.extend(post_merge_proofs(open_core(root), before, head)))
@@ -571,6 +642,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
              else "nothing to tidy",
              f"compacted {moved} log entries" if moved else "",
              f"removed finished worktrees {', '.join(gone)}" if gone else "",
+             f"removed idle debug work copies {', '.join(n for n, _ in idle)} "
+             f"({sum(m for _, m in idle)} MB freed)" if idle else "",
              *kept,
              f"removed {len(ended)} ended session folders" if ended else "",
              f"post-merge proofs to show: {', '.join(proofs)}" if proofs else "",
