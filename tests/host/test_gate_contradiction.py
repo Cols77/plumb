@@ -36,15 +36,15 @@ def _edit_denied(repo: Path) -> bool:
 
 def test_ex3_a_reversing_request_holds_edits_until_the_owner_types_go(
         records: Path, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    understand = prompt.understand_lines
     monkeypatch.setattr(prompt, "understand_lines", lambda ctx, core, digest, text: [])
     _say(records, hook_input, REVERSE)
     assert gate.closed_reason(records, SESSION).startswith(gate.INTENT_CHANGE)
     assert _edit_denied(records)
     assert cmd_clarify.wait(open_core(records), SESSION, timeout=5).state == "held"
-    monkeypatch.undo()   # undoes the autouse main-guard patch too: put it back (SR-384)
-    from plumb import main_guard
-
-    monkeypatch.setattr(main_guard, "main_checkout", lambda directory, root: None)
+    # only this patch goes: monkeypatch.undo() would also bring back the machine's PLUMB_JOB
+    # (conftest strips it), and inside a plumb job every hook then does nothing
+    monkeypatch.setattr(prompt, "understand_lines", understand)
     _say(records, hook_input, "/plumb go")
     assert gate.state(records, SESSION).state == "open" and not _edit_denied(records)
 

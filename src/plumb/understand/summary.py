@@ -6,6 +6,7 @@ confirms anything."""
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -31,11 +32,17 @@ def write_cases(core: Any, sha: str, cases: Sequence[Mapping[str, Any]]) -> None
                                 rows)
 
 
-def cases_text(cases: Sequence[Mapping[str, Any]], resolved: int = 0) -> str:
-    """The text block that tells the agent its open cases (SR-300 EX-1)."""
+def cases_text(cases: Sequence[Mapping[str, Any]], resolved: int = 0,
+               workflow: str = "", models: Mapping[str, str] | None = None) -> str:
+    """The text block that tells the agent its open cases (SR-300 EX-1); with ``workflow`` it
+    names plumb's shipped workflow to run them with (SR-385)."""
     lines = [f"- {c['id']} ({c['kind']}) {c['target']}: {c['detail']}" for c in cases]
+    run = (f"Run them with plumb's workflow {workflow} on Sonnet (a Workflow on Sonnet), "
+           f"passing these case ids: {', '.join(str(c['id']) for c in cases)}"
+           + (f" and models {json.dumps(dict(models))}" if models else "") + ": " if workflow
+           else "Run them as a Workflow on Sonnet: ")
     return (f"plumb: {len(lines)} debug cases open, {resolved} resolved:\n" + "\n".join(lines)
-            + "\nRun them as a Workflow on Sonnet: repin after tests, relink, rerun; a changed "
+            + "\n" + run + "repin after tests, relink, rerun; a changed "
             "meaning is one question to the owner through the question tool; "
             "`plumb understand debug done <case id>` marks one resolved.")
 

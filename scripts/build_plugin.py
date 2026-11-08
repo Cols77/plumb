@@ -12,6 +12,7 @@ GENERATED from the one source of each (so the legacy installer and the plugin ne
   ``bin`` on the agent's PATH), any other file as it is; a file or skill folder under
   ``plugin/skills`` with no template (a skill renamed, a reference dropped) is stale, and the
   build removes it;
+- ``plugin/workflows/<name>.js``: the templates under ``templates/workflows``, ``{plumb}`` rendered as for skills (SR-385);
 - ``plugin/bin/gate.sh``: SP8's edit gate, the template as it is;
 - ``plugin/hooks/guard.gen.ts``: the guard table of ``plumb.guard`` for the mod (SP7 5.9);
 - ``plugin/hooks/hooks.json``: the command hooks and the mod module;
@@ -256,6 +257,8 @@ def text_files() -> dict[Path, str]:
     for name in skill_names():
         for rel, content in skill_files(name).items():
             out[PLUGIN / "skills" / name / rel] = content
+    for path in sorted((TEMPLATES / "workflows").glob("*.js")):  # SR-385: shipped workflows
+        out[PLUGIN / "workflows" / path.name] = _render_text(path.read_text(encoding="utf-8"))
     return out
 
 

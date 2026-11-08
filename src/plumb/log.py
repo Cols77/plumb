@@ -58,6 +58,7 @@ SHARED_KINDS = frozenset({
     "revocation", "browser-hello", "escalation-declined", "renumber", "import", "claims-ingest",
     "conflict-resolution", "waiver",
     "proof-confirmed",    # DEC-116: the owner's yes to a proof (the outcome, not their words)
+    "proof-verified", "proof-not-verified", "proof-overruled",  # SR-397: outcomes only
     "selfdebug-review",   # SR-326: the judge review of a self-fix, evidence of the landing
     "test-change-verdict",   # SR-207: a judge's reading of a test edit that hid a regression
     "question-pushback", "question-ruling",   # SR-362: past send-backs (the step is gone)

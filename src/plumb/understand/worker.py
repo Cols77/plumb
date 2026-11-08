@@ -12,6 +12,7 @@ The worker makes the token of ``worker.lock`` and holds it in its own environmen
 from __future__ import annotations
 
 import calendar
+import concurrent.futures
 import contextlib
 import dataclasses
 import json
@@ -255,6 +256,7 @@ class _Pass:
         self.seen: set[str] = set()
         self.ran: list[str] = []
         self.queued: dict[str, Job] = {}
+        self.guard = threading.Lock()      # SR-387: one thread writes at a time
 
     # -- bookkeeping the owner never sees
     def report_unledgered(self) -> None:
@@ -336,13 +338,24 @@ class _Pass:
 
     # -- one job
     def execute(self, job: Job, started: str, t0: float) -> None:
+        prep = self._prepare(job, started, t0)
+        if prep is None:
+            return
+        module, job, reporter, step, counts = prep
+        interval = float(getattr(self.core.config.understand, "progress_interval_s", 1) or 1)
+        with _Ticker(self, reporter, step, interval, counts):
+            got = self._call(module, job)
+        self._conclude(module, job, reporter, got, started, t0)
+
+    def _prepare(self, job: Job, started: str, t0: float) -> tuple[Any, Job, Any, str, tuple[int, int]] | None:
+        """What execute does before the model call; None when the job ended here."""
         from plumb.understand.kinds import KINDS
 
         try:
             module = KINDS[job.kind]
         except (KeyError, ImportError) as exc:
             self._error(job, "kind", f"no job kind {job.kind!r} ({exc})", started, t0)
-            return
+            return None
         reporter = self._progress(job)
         step = self._step_text(job)
         counts = self._carried(reporter)
@@ -352,14 +365,14 @@ class _Pass:
             recomputed = module.recompute(self.core, job)
         except Exception as exc:  # noqa: BLE001 - a kind that fails is an error result
             self._error(job, "inputs", f"{type(exc).__name__}: {exc}", started, t0)
-            return
+            return None
         if recomputed is None:
             self._clear(reporter)
             _note(self.core, job.kind, job.id, "nothing left to check; no model was asked")
             self._finish(job, JobResult(job=job.id, status="ok", started=started,
                                         finished=jobs.now(),
                                         run_s=round(time.perf_counter() - t0, 3)))
-            return
+            return None
         if files.canonical(recomputed) != files.canonical(job.inputs):
             _note(self.core, job.kind, job.id,
                   "the inputs in the job file differ from the ones recomputed from the logs; "
@@ -369,10 +382,19 @@ class _Pass:
         step = self._step_text(job)
         with contextlib.suppress(Exception):
             reporter.update(step, *counts)
-        got = self._ask(module, job, reporter, step, counts, started, t0)
-        if got is None:
+        return module, job, reporter, step, counts
+
+    def _conclude(self, module: Any, job: Job, reporter: Any, got: tuple[Any, ...],
+                  started: str, t0: float) -> None:
+        """What execute does after the call: the line, the schema check, apply, the result."""
+        if got[-1]:
+            self._say(got[-1])
+        if got[0] == "err":
+            if got[3]:    # SR-217 EX-4: a configured dispatcher failed: said once
+                self._unreached(module)
+            self._error(job, got[1], got[2], started, t0, got[3])
             return
-        answer, dname, left = got
+        _, answer, dname, left, _line = got
         found = schema_check.problems(answer, module.schema)
         if found:
             self._error(job, "schema", "; ".join(found[:3]), started, t0, dname)
@@ -418,60 +440,99 @@ class _Pass:
         if getattr(module, "UNREACHABLE", ""):
             self._say_once(module.UNREACHABLE)
 
-    def _ask(self, module: Any, job: Job, reporter: Any, step: str, counts: tuple[int, int],
-             started: str, t0: float
-             ) -> tuple[dict[str, Any], str, tuple[Any, ...]] | None:
-        """The kind's answer, who gave it and the records it left, or None after the job's error was written."""
+    def _call(self, module: Any, job: Job, guard: Any = None) -> tuple[Any, ...]:
+        """SR-387: the one way to ask. No side effect on results, the ledger, failures.json, the
+        progress file or the session's lines, so it may run in a thread: ``("ok", answer,
+        dispatcher, left, line)`` or ``("err", step, message, dispatcher, line)``. With a
+        ``guard`` (a Lock the calling thread holds) it is let go only while the model is out."""
         cascade = getattr(module, "cascade", None)
         if cascade is not None:             # SR-182: the kind chooses who answers
             try:
-                with _Ticker(self, reporter, step, float(getattr(
-                        self.core.config.understand, "progress_interval_s", 1) or 1), counts):
-                    done = cascade(self.core, job, system=agents.load(job.kind),
-                                   schema=module.schema)
+                done = cascade(self.core, job, system=agents.load(job.kind),
+                               schema=module.schema, **({"guard": guard} if guard else {}))
             except module.Waiting as wait:
-                if wait.line:
-                    self._say(wait.line)
-                self._error(job, "dispatch", str(wait.cause), started, t0)
-                return None
+                return "err", "dispatch", str(wait.cause), "", wait.line or ""
             except DispatchError as exc:
-                self._error(job, exc.step, exc.message, started, t0)
-                return None
+                return "err", exc.step, exc.message, "", ""
             except Exception as exc:  # noqa: BLE001 - any failure of a judge is the job's
-                self._error(job, "run", f"{type(exc).__name__}: {exc}", started, t0)
-                return None
-            if done.line:
-                self._say(done.line)
-            return done.answer, done.dispatcher, done.left
+                return "err", "run", f"{type(exc).__name__}: {exc}", "", ""
+            return "ok", done.answer, done.dispatcher, done.left, done.line or ""
         scale = dispatch.budget_scale.set(budget_scale_for(self.root, self.session))
         try:
             dispatcher = dispatch.configured(self.core)
         except NoModel as exc:
-            self._error(job, "dispatch", str(exc), started, t0)
-            return None
+            return "err", "dispatch", str(exc), "", ""
         finally:
             dispatch.budget_scale.reset(scale)
         reason = dispatcher.available()
         if reason:
-            self._unreached(module)
-            self._error(job, "dispatch", reason, started, t0, dispatcher.name)
-            return None
-        interval = float(getattr(self.core.config.understand, "progress_interval_s", 1) or 1)
+            return "err", "dispatch", reason, dispatcher.name, ""
+        if guard:
+            dispatcher = dispatch.Unlocked(dispatcher, guard)
         try:
-            with _Ticker(self, reporter, step, interval, counts):
-                answer = dispatcher.run(
-                    job, system=agents.load(job.kind),
-                    user=json.dumps(job.inputs, ensure_ascii=False, sort_keys=True, indent=1),
-                    schema=module.schema, on_step=lambda text: None)
+            answer = dispatcher.run(
+                job, system=agents.load(job.kind),
+                user=json.dumps(job.inputs, ensure_ascii=False, sort_keys=True, indent=1),
+                schema=module.schema, on_step=lambda text: None)
         except DispatchError as exc:
-            self._unreached(module)
-            self._error(job, exc.step, exc.message, started, t0, dispatcher.name)
-            return None
+            return "err", exc.step, exc.message, dispatcher.name, ""
         except Exception as exc:  # noqa: BLE001 - any failure of a dispatcher is the job's
-            self._error(job, "run", f"{type(exc).__name__}: {exc}", started, t0,
-                        dispatcher.name)
-            return None
-        return dict(answer), dispatcher.name, ()
+            return "err", "run", f"{type(exc).__name__}: {exc}", dispatcher.name, ""
+        return "ok", dict(answer), dispatcher.name, (), ""
+
+    def _threaded(self, module: Any, job: Job) -> tuple[Any, ...]:
+        """_call in a pool thread. Everything the kinds and dispatchers write while asking (the
+        log, records, caches, judge state) happens under ``self.guard``, which only the model
+        call itself lets go of, so two threads never write at once."""
+        with self.guard:
+            return self._call(module, job, self.guard)
+
+    def _batch(self, queue: list[Job], limit: int) -> list[Job]:
+        """SR-387: up to ``limit`` jobs, in queue order, that wait for nothing still to run."""
+        out: list[Job] = []
+        for job in queue:
+            if jobs.result(self.root, self.session, job.id) is not None:
+                continue
+            if job.needs:
+                need = jobs.result(self.root, self.session, job.needs)
+                if need is None or need.status != "ok":
+                    continue
+            out.append(job)
+            if len(out) == limit:
+                break
+        return out
+
+    def _run_batch(self, batch: list[Job], limit: int) -> None:
+        ready = []
+        for job in batch:
+            self.queued[job.id] = job
+            self.seen.add(job.id)
+            started, t0 = jobs.now(), time.perf_counter()
+            prep = self._prepare(job, started, t0)
+            if prep is not None:
+                ready.append((job, prep, started, t0))
+        if not ready:
+            return
+        _, (module, sent, reporter, step, counts), _, _ = ready[0]
+        interval = float(getattr(self.core.config.understand, "progress_interval_s", 1) or 1)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=limit) as pool, \
+                _Ticker(self, reporter, f"{step} ({len(ready)} checks out)", interval, counts):
+            futures = [pool.submit(self._threaded, p[0], p[1]) for _, p, _, _ in ready]
+            answers = [f.result() for f in futures]
+        for (job, (module, sent, reporter, _step, _counts), started, t0), got in zip(
+                ready, answers, strict=True):
+            # an earlier answer of the batch may have changed the logs (a kind that settles
+            # its own job says stale_check = False)
+            if got[0] == "ok" and getattr(module, "stale_check", True):
+                try:
+                    now = module.recompute(self.core, sent)
+                except Exception:  # noqa: BLE001 - execute reports it
+                    now = None
+                if now is None or files.canonical(now) != files.canonical(sent.inputs):
+                    self.execute(job, jobs.now(), time.perf_counter())
+                    continue
+            self._conclude(module, sent, reporter, got, started, t0)
+        self._clear(ready[0][1][2])
 
     def _carried(self, reporter: Any) -> tuple[int, int]:
         """The count a pass of many jobs (the backlog) left on the line a moment ago, so the
@@ -513,8 +574,16 @@ class _Pass:
         # the queue is read again before each job: an answer queued meanwhile goes before the
         # backlog pass's remaining jobs (jobs.queued sorts those last)
         seen: set[str] = set()
-        while (job := next((j for j in jobs.queued(self.root, self.session)
-                            if j.id not in seen), None)) is not None:
+        limit = int(self.core.config.understand.parallel_calls)
+        while True:
+            waiting = [j for j in jobs.queued(self.root, self.session) if j.id not in seen]
+            if not waiting:
+                break
+            if limit > 1 and len(batch := self._batch(waiting, limit)) > 1:
+                seen.update(j.id for j in batch)
+                self._run_batch(batch, limit)
+                continue
+            job = waiting[0]
             seen.add(job.id)
             self.queued[job.id] = job
             self.process(job)

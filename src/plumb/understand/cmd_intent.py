@@ -239,6 +239,8 @@ def cmd_done(core: Any, args: argparse.Namespace) -> int:
         missing.append(f"no requirement derives from {args.intent}: no proof to show")
     missing += [f"{row['id']} ({row['title']}): proof {row['why']}"
                 for row in proof.not_shown(core, required)]
+    missing += [f"{row['id']} ({row['title']}): proof {row['why']} "
+                f"(plumb evaluate proof {row['id']})" for row in proof.unverified(core, required)]
     if missing:
         _stop(path, data, "proof shown" if _passed(data, "plan") else "the plan gate")
         print(f"plumb: {args.intent} is not done; the intent stays open:", file=sys.stderr)

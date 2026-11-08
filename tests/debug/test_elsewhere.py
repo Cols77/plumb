@@ -126,7 +126,9 @@ def test_ex2_self_debug_on_with_a_source_lands_the_fix_on_a_branch_of_the_source
 
     core = open_core(case_repo)
     assert selfdebug.applies(core) is None
-    out = selfdebug.handle(core, _case(case_repo), fixer=fixer, runner=runner)
+    from debug.staged import ok_stages  # SR-388: the diagnosis and the review, scripted
+
+    out = selfdebug.handle(core, _case(case_repo), fixer=fixer, runner=runner, **ok_stages())
     assert out.state == "fixed", out.detail
     assert "return a + b" in _git(source, "show", f"debug/{CASE}:src/plumb/calc.py")
     assert _git(source, "show", f"debug/{CASE}:tests/test_calc.py")

@@ -202,8 +202,11 @@ def cmd_run(prog: str, argv: list[str]) -> int:
     parser.add_argument("--budget", type=float, default=None, help="turn budget in seconds")
     args = parser.parse_args(argv)
     verify = _verify(args)
-    report = verify.run(changed=args.paths, nodes=args.nodes, full=args.full,
-                        budget_s=args.budget)
+    from plumb.heavy import heavy
+
+    with heavy(verify.core.root, "plumb tests run"):
+        report = verify.run(changed=args.paths, nodes=args.nodes, full=args.full,
+                            budget_s=args.budget)
     if args.as_json:
         emit(report.as_dict(), True)
     else:
