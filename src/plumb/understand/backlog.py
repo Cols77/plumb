@@ -127,10 +127,9 @@ def spawn(core: Any, session: str) -> bool:
             return False
         from plumb.background import popen_options
 
-        env = {k: v for k, v in os.environ.items() if k not in ("PLUMB_WORKER", "PLUMB_JOB")}
         subprocess.Popen([sys.executable, "-m", "plumb", "understand", "backlog", "--session",
-                          session, "--root", str(core.root), "--queue-only"], env=env,
-                         **popen_options(core.root))
+                          session, "--root", str(core.root), "--queue-only"],
+                         **popen_options(core.root, drop=("PLUMB_WORKER", "PLUMB_JOB")))
     except Exception:  # noqa: BLE001 - a hook calls this
         return False
     return True

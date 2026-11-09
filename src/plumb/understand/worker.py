@@ -169,10 +169,9 @@ def start_detached(root: Path, session: str) -> None:
             return None
         from plumb.background import popen_options
 
-        options = popen_options(root)   # no console window for it or what it runs
-        env ={k: v for k, v in os.environ.items() if k not in ("PLUMB_WORKER", "PLUMB_JOB")}
+        options = popen_options(root, drop=("PLUMB_WORKER", "PLUMB_JOB"))  # no console window
         subprocess.Popen([sys.executable, "-m", "plumb", "understand", "worker", "--session",
-                          session, "--root", str(root)], env=env, **options)
+                          session, "--root", str(root)], **options)
     except OSError:
         return None
     return None

@@ -44,8 +44,11 @@ class RunResult:
 
 
 def _git(cwd: Path, *args: str) -> None:
+    # a hook's GIT_DIR would point git init at the host repository instead
+    from plumb.background import child_env
+
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True,
-                   encoding="utf-8")
+                   encoding="utf-8", env=child_env())
 
 
 def _name_the_judge(scratch: Path, host: Path | None) -> None:
@@ -139,9 +142,13 @@ def _claude_call(binary: str, scratch: Path, message: str, *, model: str, sessio
             *(["--resume", session_id] if session_id else []),
             "--allowedTools", *ALLOWED_TOOLS, *tools]
     # eval-52810e26: ``claude -p`` has no question tool; the launching session's
-    # CLAUDE_CODE_SESSION_ATTENDED would make plumb's hooks send the agent after it
+    # CLAUDE_CODE_SESSION_ATTENDED would make plumb's hooks send the agent after it. Nor the git
+    # hook variables: the agent's git in the scratch folder stays there (report-2680054f).
+    from plumb.background import GIT_HOOK_VARS
+
     env = {k: v for k, v in (os.environ if env is None else env).items()
-           if k not in ("PLUMB_JOB", "PLUMB_WORKER", "CLAUDE_CODE_SESSION_ATTENDED")}
+           if k not in ("PLUMB_JOB", "PLUMB_WORKER", "CLAUDE_CODE_SESSION_ATTENDED")
+           and k not in GIT_HOOK_VARS}
     # the agent's shell finds the plumb command of the interpreter running the benchmark
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     if tools:   # plumb's hooks: a question tool is present although nobody attends (DEC-407)
