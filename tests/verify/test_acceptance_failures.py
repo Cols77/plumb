@@ -163,3 +163,21 @@ def test_full_run_with_a_failing_test_keeps_full_verification_pending(confirmed)
                                "since (tests/test_helper.py::test_twice)",)
     assert open_verify(open_core(root)).run(nodes=["tests/test_helper.py"]).ok
     assert not open_verify(open_core(root)).full_pending().pending
+
+
+def test_a_counted_full_run_lists_no_unverified_test_but_failures_still_hold(
+        confirmed, capsys, monkeypatch) -> None:
+    """SR-254 EX-21: a green full run of the exact merged tree recorded by the branch's
+    worktree counts, so no affected acceptance test is unverified; a failing test or a
+    regression is still listed and holds (a hidden one: test_confirmed_test_change)."""
+    from plumb.boundary import fullrun
+
+    root, base = confirmed
+    monkeypatch.setattr(fullrun, "run_of_merged_tree", lambda core, verify: {"run_id": "r9"})
+    write(root, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")  # not rerun here
+    code, out = _merge(root, base, capsys)
+    assert code == 0 and "unverified" not in out, out
+    _regress(root)
+    code, out = _merge(root, base, capsys)
+    assert code == 5, out
+    assert "failing acceptance tests: SR-001 EX-1 tests/test_mod.py (regression)" in out
