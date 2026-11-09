@@ -167,6 +167,9 @@ def convert(root: Path) -> list[str]:
             changed = _follow(rewrite_text(text), hashes)
         if changed != text:
             p.write_text(changed, encoding="utf-8", newline="\n")
+    for p in sorted(new.rglob("*"), key=lambda q: len(q.parts), reverse=True):
+        if OLD in p.name and not _SKIP & set(p.relative_to(new).parts):   # file names follow the text
+            p.rename(p.with_name(rewrite_text(p.name)))
     for p in _outside(root):
         text = p.read_text(encoding="utf-8", errors="replace")
         if rewrite_text(text) != text:

@@ -145,3 +145,16 @@ def test_conversion_leaves_the_shared_git_directory_untouched(tmp_path: Path) ->
     before = [p.read_bytes() for p in watched]
     assert _run("iaso", ["status"], work).returncode == 0
     assert [p.read_bytes() for p in watched] == before
+
+
+@pytest.mark.sr("SR-432")
+def test_conversion_renames_files_that_name_the_old_name(tmp_path: Path) -> None:
+    repo = _old_project(tmp_path)
+    study = repo / OLD_DIR / "studies" / f"what-{OLD}-does.md"
+    study.parent.mkdir(exist_ok=True)
+    study.write_text("a study\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "study")
+    assert _run("iaso", ["status"], repo).returncode == 0
+    assert (repo / ".iaso" / "studies" / "what-iaso-does.md").is_file()
+    assert not list((repo / ".iaso" / "studies").glob(f"*{OLD}*"))
