@@ -126,7 +126,7 @@ PREMERGE_UNDECLARED_HEADER = ("files changed without a requirement that declares
 PREMERGE_QUESTIONS_HEADER = "questions wait for you{held}:"
 PREMERGE_HELD = "they hold the merge"   # DEC-271: only a merge into the default branch
 PREMERGE_QUESTION = ("  a question waits for you on \"{title}\"; the agent asks it with the "
-                     "question tool (plumb merge-check --json carries it)")
+                     "question tool (the merge check's JSON report carries it)")
 PREMERGE_FAILING_HEADER = ("acceptance tests this merge can affect have no passing run on the "
                            "current code ({held}the agent runs them):")
 PREMERGE_VERIFY_UNAVAILABLE = ("  the test evidence could not be read ({error}); it holds the "
