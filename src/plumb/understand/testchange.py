@@ -7,7 +7,7 @@ job or a doubtful one keeps the hidden-regression flag. It approves nothing."""
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +15,10 @@ from plumb.contracts import Applied, Job, Target
 from plumb.understand import files
 
 kind = "testchange"
+# report-683650f8 (owner 2026-11-08: old items reach them once through the question tool): a
+# flag the judge left standing is put to the owner by the session that lands; "needed" ends it
+NEEDED = "The change was needed"
+RESTORE = "Not sure: restore the original check"
 SCHEMA_ID = "testchange.v1"
 VERDICT_KIND = "test-change-verdict"
 CONFIDENT = 0.8
@@ -116,6 +120,57 @@ def failure(core: Any, key: list[str], item: Mapping[str, Any], head: str | None
         return None
     return {"judge": outcome.dispatcher or "the judge",
             "reason": outcome.error.message if outcome.error else "it failed"}
+
+
+def flag_question(node: str, requirements: Sequence[str]) -> str:
+    """The owner's question about one hidden-regression flag, worded from the node and its
+    requirements alone, so it has the same key when asked and when the answer is read."""
+    return (f"After {node} failed, its test was changed and it passes again (it covers "
+            f"{', '.join(sorted(requirements))}). Was the change needed, or made just to pass?")
+
+
+def flag_questions(core: Any, verification: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """One question row per hidden-regression flag a judge left standing (read as made just to
+    pass, or real but unsure), in the merge check's ``questions`` shape with the question's
+    text and options, for the landing session to ask through the question tool."""
+    from plumb.understand.judge import question_key
+
+    index = core.index()
+    flags: dict[str, dict[str, Any]] = {}
+    for record_id, items in (verification.get("failing") or {}).items():
+        for item in items:
+            for hidden in item.get("hidden_nodes") or ():
+                judge = hidden.get("judge") if isinstance(hidden, Mapping) else None
+                if not isinstance(judge, Mapping) or judge.get("pending") or judge.get("real"):
+                    continue
+                row = flags.setdefault(str(hidden["node"]), {"records": [], "judge": judge})
+                if record_id not in row["records"]:
+                    row["records"].append(record_id)
+    out = []
+    for node, row in sorted(flags.items()):
+        srs, judge = sorted(row["records"]), row["judge"]
+        to_pass = judge.get("verdict") == "to_pass"
+        text = flag_question(node, srs)
+        read = "made just to pass" if to_pass else "real, but was not sure"
+        reason = str(judge.get("reason") or "")
+        out.append({"key": question_key(text), "question": text, "records": srs,
+                    "titles": [index[i].title for i in srs if i in index],
+                    "header": f"the judge read the change as {read}" + (f": {reason}" if reason
+                                                                        else ""),
+                    "options": [{"label": NEEDED if to_pass else f"{NEEDED} (Recommended)",
+                                 "description": "the flag goes and never holds a merge again"},
+                                {"label": f"{RESTORE} (Recommended)" if to_pass else RESTORE,
+                                 "description": "the flag stays until the original check "
+                                                "passes again"}]})
+    return out
+
+
+def owner_needed(answers: Mapping[str, str], node: str, requirements: Sequence[str]) -> bool:
+    """The owner answered the flag's question with "needed" (``judge.answers_by_key``)."""
+    from plumb.understand.judge import question_key
+
+    answer = answers.get(question_key(flag_question(node, requirements)), "")
+    return question_key(answer).startswith(question_key(NEEDED))
 
 
 def build(core: Any, session: str, **context: Any) -> Job | None:
