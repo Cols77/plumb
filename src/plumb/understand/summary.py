@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -32,30 +33,46 @@ def write_cases(core: Any, sha: str, cases: Sequence[Mapping[str, Any]]) -> None
                                 rows)
 
 
+TOLD_CASES = 20             # a prompt names this many cases; `debug list` prints the rest
+
+
 def cases_text(cases: Sequence[Mapping[str, Any]], resolved: int = 0,
                workflow: str = "", models: Mapping[str, str] | None = None) -> str:
     """The text block that tells the agent its open cases (SR-300 EX-1); with ``workflow`` it
-    names plumb's shipped workflow to run them with (SR-385)."""
-    lines = [f"- {c['id']} ({c['kind']}) {c['target']}: {c['detail']}" for c in cases]
+    names plumb's shipped workflow to run them with (SR-385). Past ``TOLD_CASES`` it names
+    the first ones, counts the rest by kind and says how to list them: the whole list reached
+    a Codex session as 230,000 tokens."""
+    shown = list(cases[:TOLD_CASES])
+    more = len(cases) - len(shown)
+    lines = [f"- {c['id']} ({c['kind']}) {c['target']}: {c['detail']}" for c in shown]
+    if more:
+        kinds = Counter(str(c.get("kind")) for c in cases[TOLD_CASES:])
+        lines.append(f"- and {more} more ({', '.join(f'{n} {k}' for k, n in kinds.most_common())}"
+                     "): `plumb understand debug list` prints them all")
     run = (f"Run them with plumb's workflow {workflow} on Sonnet (a Workflow on Sonnet), "
-           f"passing these case ids: {', '.join(str(c['id']) for c in cases)}"
+           f"passing these case ids: {', '.join(str(c['id']) for c in shown)}"
            + (f" and models {json.dumps(dict(models))}" if models else "") + ": " if workflow
            else "Run them as a Workflow on Sonnet: ")
-    return (f"plumb: {len(lines)} debug cases open, {resolved} resolved:\n" + "\n".join(lines)
+    return (f"plumb: {len(cases)} debug cases open, {resolved} resolved:\n" + "\n".join(lines)
             + "\n" + run + "repin after tests, relink, rerun; a changed "
             "meaning is one question to the owner through the question tool; "
             "`plumb understand debug done <case id>` marks one resolved.")
 
 
 def open_cases(root: Path) -> tuple[list[dict[str, Any]], int]:
-    """``(open cases, resolved count)`` of the debug files that still hold an open case."""
-    rows: list[dict[str, Any]] = []
+    """``(open cases, resolved count)`` of the debug files that still hold an open case, each
+    case id once: every landing writes its own file and repeats the cases still open."""
+    rows: dict[str, dict[str, Any]] = {}
     for path in sorted((Path(root) / ".plumb" / "cache" / "debug").glob("*.json")):
         found = files.read_json(path)
         if isinstance(found, list) and any(r.get("state") == "open" for r in found):
-            rows += [r for r in found if isinstance(r, dict)]
-    return [r for r in rows if r.get("state") == "open"], sum(
-        1 for r in rows if r.get("state") == "resolved")
+            for r in found:
+                if isinstance(r, dict):
+                    key = str(r.get("id"))
+                    if rows.get(key, {}).get("state") != "open":  # open in any file stays open
+                        rows[key] = r
+    return [r for r in rows.values() if r.get("state") == "open"], sum(
+        1 for r in rows.values() if r.get("state") == "resolved")
 
 
 def resolve_cases(root: Path, ids: Sequence[str]) -> int:
@@ -76,13 +93,19 @@ def resolve_cases(root: Path, ids: Sequence[str]) -> int:
 
 
 def run_debug(argv: Sequence[str]) -> int:
-    """``plumb understand debug done <case id>...``."""
+    """``plumb understand debug list`` and ``plumb understand debug done <case id>...``."""
     import sys
 
     from plumb.cliutil import resolve_root
 
+    if argv[:1] == ["list"]:
+        rows, resolved = open_cases(resolve_root(None))
+        for c in rows:
+            print(f"- {c['id']} ({c['kind']}) {c['target']}: {c['detail']}")
+        print(f"plumb: {len(rows)} open, {resolved} resolved")
+        return 0
     if len(argv) < 2 or argv[0] != "done":
-        print("usage: plumb understand debug done <case id>...", file=sys.stderr)
+        print("usage: plumb understand debug list | done <case id>...", file=sys.stderr)
         return 2
     root = resolve_root(None)
     changed = resolve_cases(root, list(argv[1:]))

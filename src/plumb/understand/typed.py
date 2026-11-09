@@ -27,8 +27,9 @@ _ID = re.compile(r"^(?:(?:INT|SR|DEC|FEAT)-\d+|NC-\d+)$")
 PREFIX = r"/plumb(?::plumb)?"
 _PREFIX_HEAD = re.compile(r"^" + PREFIX + r"(?=[ \t])")
 _HEAD = re.compile(r"^" + PREFIX + r"[ \t]+([a-z][a-z-]*)(?:[ \t]+(.*))?$", re.DOTALL)
-# the plugin's skills answer to /plumb:plumb-intent and /plumb:plumb-clarify: the same commands
-_SKILL_SPELLING = re.compile(r"^/plumb:plumb-(intent|clarify)(?=[ \t])")
+# the plugin's skills answer to /plumb:plumb-intent and /plumb:plumb-clarify, and Codex
+# invokes the same skills as $plumb-intent and $plumb-clarify: the same commands
+_SKILL_SPELLING = re.compile(r"^(?:/plumb:|\$)plumb-(intent|clarify)(?=[ \t])")
 # SR-304: a pasted command arrives wrapped as <pasted_content ...>body</pasted_content ...>
 _PASTE = re.compile(r"^<pasted_content\b[^>]*>(.*?)</pasted_content\b[^>]*>(.*)$", re.DOTALL)
 
