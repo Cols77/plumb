@@ -351,8 +351,18 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         here = _git(core, "symbolic-ref", "--short", "-q", "HEAD").strip()
     except (GitError, OSError):
         here = ""
-    into_default = here == default_branch_of(core.root)
-    proofs = delivered_proofs(core, merged_messages(core.root, base)) if into_default else []
+    default = default_branch_of(core.root)
+    into_default = here == default
+    # report-683650f8: a branch checked against the default branch previews the proofs its
+    # landing will owe (listed, never held here: DEC-271), so none appears first at landing
+    preview = not into_default and base.removeprefix("origin/") == default
+    proofs = delivered_proofs(core, merged_messages(core.root, base, own_too=preview),
+                              base=fork, paths=paths) if into_default or preview else []
+    questions = open_questions_on(core, required)
+    if into_default or preview:   # report-683650f8: flags the judge left standing, as questions
+        from iaso.understand.testchange import flag_questions
+
+        questions += flag_questions(core, verification)
 
     report = MergeReport(
         base=base, fork=fork, head=head, changed=tuple(paths), touched=tuple(touched),
@@ -367,7 +377,7 @@ def merge_report(core: Any, base: str, *, run_full: bool = True,
         verification=verification, run_full=run_full,
         legacy_log_lines=_legacy_log_lines(core),
         not_shown=tuple(_not_shown(core, touched)),
-        questions=tuple(open_questions_on(core, required)), proofs=tuple(proofs),
+        questions=tuple(questions), proofs=tuple(proofs),
         into_default=into_default)
     unmerged, conflicts = _merge_state(core, hook)
     report = _replace(report, unmerged=tuple(unmerged), intent_conflicts=tuple(conflicts))

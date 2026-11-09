@@ -114,7 +114,9 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
     workspace = Path(tempfile.mkdtemp(prefix="iaso-proof-"))
     try:
         before = _fingerprint(root)
-        env = dict(os.environ)
+        from iaso.background import child_env
+
+        env = child_env()   # no hook GIT_DIR: the evaluator's git stays in its workspace
         if (root / "src" / "iaso").is_dir():   # the case and the scratch hooks run the tree
             env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(root / "src"),
                                                               env.get("PYTHONPATH", "")]))

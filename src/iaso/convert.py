@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from iaso.background import child_env
+
 OLD = "plu" + "mb"          # the old name, never written whole in a source file
 OLD_DIR = "." + OLD
 NEW = "iaso"
@@ -44,7 +46,8 @@ def find_old(start: Path) -> Path | None:
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
+                          env=child_env())   # a hook's git variables must not redirect root
 
 
 def _texts(folder: Path):

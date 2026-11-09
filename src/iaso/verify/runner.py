@@ -313,7 +313,12 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
     fd, report_path = tempfile.mkstemp(prefix="iaso-report-", suffix=".json")
     os.close(fd)
     os.remove(report_path)
-    env = dict(os.environ)
+    # Without the git hook variables: the pre-push hook runs the suite inside the hook process,
+    # and an inherited GIT_DIR would point every fixture's `git init` at the host repository
+    # and rewrite its shared config (report-2680054f).
+    from iaso.background import child_env
+
+    env = child_env()
     env["IASO_REPORT"] = report_path
     env.setdefault("PYTHONIOENCODING", "utf-8")
     result = RunResult()

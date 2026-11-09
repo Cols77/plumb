@@ -126,7 +126,7 @@ PREMERGE_UNDECLARED_HEADER = ("files changed without a requirement that declares
 PREMERGE_QUESTIONS_HEADER = "questions wait for you{held}:"
 PREMERGE_HELD = "they hold the merge"   # DEC-271: only a merge into the default branch
 PREMERGE_QUESTION = ("  a question waits for you on \"{title}\"; the agent asks it with the "
-                     "question tool")
+                     "question tool (the merge check's JSON report carries it)")
 PREMERGE_FAILING_HEADER = ("acceptance tests this merge can affect have no passing run on the "
                            "current code ({held}the agent runs them):")
 PREMERGE_VERIFY_UNAVAILABLE = ("  the test evidence could not be read ({error}); it holds the "
@@ -139,6 +139,8 @@ PREMERGE_CLAIMS_UNREADABLE_HEADER = ("the claims check could not read everything
 PREMERGE_FAILING = "  \"{title}\": {test} ({state})"
 PREMERGE_PROOFS_HEADER = ("what this merge delivers into {into} is not proven yet (it holds the "
                           "merge):")
+PREMERGE_PROOFS_PREVIEW_HEADER = ("what this branch will deliver into {into} is not proven yet "
+                                  "(it will hold the landing, not this check):")
 PREMERGE_PROOF_NOT_SHOWN = ("  \"{title}\": its proof is not shown working yet; the agent shows "
                             "it, then asks you whether you saw it working")
 PREMERGE_PROOF_NOT_CONFIRMED = ("  \"{title}\": you have not said you saw it working; the agent "

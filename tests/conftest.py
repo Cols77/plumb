@@ -22,6 +22,14 @@ for _name in [n for n in sys.modules if n == "iaso" or n.startswith("iaso.")]:
 
 pytest_plugins = ["loadbound"]
 
+# A run started from a git hook (a landing, a debug job) inherits GIT_DIR and kin: every fixture's
+# `git init` would then rewrite the host repository's shared config (report-2680054f). Dropped
+# here, before any fixture or helper runs git.
+from iaso.background import GIT_HOOK_VARS  # noqa: E402
+
+for _name in GIT_HOOK_VARS:
+    os.environ.pop(_name, None)
+
 _KIND_DIRS = {"INT": "intents", "SR": "requirements", "DEC": "decisions", "FEAT": "features",
               "NC": "ncs"}
 _ID_LINE = re.compile(r"^id:\s*['\"]?((?:INT|SR|DEC|FEAT|NC)-\d+)", re.MULTILINE)

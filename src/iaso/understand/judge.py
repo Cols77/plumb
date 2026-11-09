@@ -538,6 +538,26 @@ def open_anywhere(core: Any) -> list[Mapping[str, Any]]:
     return list(out.values())
 
 
+def answers_by_key(core: Any) -> dict[str, str]:
+    """The owner's latest answer by question key: the question's own key and the keys the
+    answer was bound to (``asked.key``, ``asked.keys``); free text and "Study it first" are
+    no answer, and a closure the owner took back (``answer-unbound``) is gone."""
+    out: dict[str, str] = {}
+    for e in core.events():
+        if e.kind == "answer-unbound":
+            out.pop(str(e.payload.get("key")), None)
+        elif e.kind == "question-answer" and not e.payload.get("free_text") \
+                and not e.payload.get("study"):
+            answer = str(e.payload.get("answer") or "")
+            out[question_key(str(e.payload.get("question") or ""))] = answer
+            asked = e.payload.get("asked")
+            if isinstance(asked, Mapping):
+                for key in (asked.get("key"), *(asked.get("keys") or ())):
+                    if key:
+                        out[str(key)] = answer
+    return out
+
+
 def _answered_keys(core: Any) -> set[str]:
     answered: set[str] = set()
     for e in core.events():

@@ -127,10 +127,9 @@ def spawn(core: Any, session: str) -> bool:
             return False
         from iaso.background import popen_options
 
-        env = {k: v for k, v in os.environ.items() if k not in ("IASO_WORKER", "IASO_JOB")}
         subprocess.Popen([sys.executable, "-m", "iaso", "understand", "backlog", "--session",
-                          session, "--root", str(core.root), "--queue-only"], env=env,
-                         **popen_options(core.root))
+                          session, "--root", str(core.root), "--queue-only"],
+                         **popen_options(core.root, drop=("IASO_WORKER", "IASO_JOB")))
     except Exception:  # noqa: BLE001 - a hook calls this
         return False
     return True

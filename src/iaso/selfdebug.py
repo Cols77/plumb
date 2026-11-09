@@ -263,10 +263,13 @@ def _runner(wt_core: Any) -> Runner:
     def _run(paths: list[str]) -> tuple[bool, str]:
         if not all(Path(p.split("::")[0]).name.startswith("test_") for p in paths):
             return covering(paths)
+        # no hook GIT_DIR for the fixtures' git init
+        from iaso.background import child_env
+
         done = subprocess.run(
             [sys.executable, "-m", "pytest", *paths, "-q", "-p", "no:cacheprovider"], cwd=wt,
             capture_output=True, text=True, encoding="utf-8",
-            env={**os.environ, "PYTHONPATH": str(wt / "src")})
+            env={**child_env(), "PYTHONPATH": str(wt / "src")})
         return done.returncode == 0, (done.stdout or done.stderr).strip()[-300:]
 
     return run

@@ -87,3 +87,31 @@ def test_ex5_an_owner_file_no_landing_named_is_untouched(repo: Path) -> None:
     assert (repo / "docs" / "mine.md").read_text(encoding="utf-8") == "docs/mine.md\n"
     assert json.loads(landing.marker(repo, sha).read_text(encoding="utf-8"))["removed"] == \
         ["docs/a.md"]
+
+
+def test_the_tidy_sweeps_evaluator_scratch_folders_older_than_a_day(
+        repo: Path, tmp_path, monkeypatch):
+    """report-0ab44aff, SR-301: a day-old iaso-eval-* folder goes; a fresh one, one named
+    otherwise, one holding a worktree and one a process works in stay."""
+    import os
+    import subprocess
+    import time
+
+    monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+    names = ("old", "new", "wt", "busy")
+    old, fresh, held, busy = (tmp_path / f"iaso-eval-{n}" for n in names)
+    other = tmp_path / "pytest-x"
+    for d in (old, fresh, held, busy, other):
+        (d / "sub").mkdir(parents=True)
+        (d / "sub" / "f").write_text("x")
+    run_git(repo, "worktree", "add", "-q", str(held / "work"), "-b", "side")
+    two_days = time.time() - 2 * 86400
+    for d in (old, held, busy, other):
+        os.utime(d, (two_days, two_days))
+    proc = subprocess.Popen(["sleep", "30"], cwd=busy / "sub")
+    try:
+        assert landing.sweep_eval_scratch(repo) == [str(old)]
+    finally:
+        proc.kill()
+    assert not old.exists()
+    assert all(d.exists() for d in (fresh, held, busy, other))

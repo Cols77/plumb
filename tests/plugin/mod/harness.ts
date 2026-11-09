@@ -93,8 +93,8 @@ export function norm(path: string): string {
 }
 
 /** The test's hooks beneath the panel: the host as `w` says it is. */
-export function install(on: On, w: World): MockClock {
-  mock.env(on, {})
+export function install(on: On, w: World, env: Record<string, string> = {}): MockClock {
+  mock.env(on, env)
   const clock = mock.clock(on, { now: NOW })
   // what the engine draws where the panel passes: an empty box
   on('ui.render', ($, e) => {

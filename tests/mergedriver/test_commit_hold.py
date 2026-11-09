@@ -95,7 +95,11 @@ def _relay_theirs(root: Path) -> None:
 def test_template_steps_commit_the_choice(tmp_path: Path) -> None:
     """SR-077 EX-6, following the /iaso template exactly: the held merge, the relayed
     choice, then "finish the merge" (stage .iaso, the check, git commit). The merge commit
-    carries the chosen record and its resolution entry; nothing is left behind."""
+    carries the chosen record and its resolution entry; nothing is left behind. Settling a
+    conflict owes no proof by itself (SR-260, DEC-518): the merge commit's own SR list
+    delivers nothing and no plain commit names SR-005, so even the branch's changed words
+    owe none here; a plain commit naming a requirement whose words differ from the base does
+    (test_merge_finished_by_hand_holds_unconfirmed)."""
     root = _diverged(tmp_path)
     held = _git(root, "merge", "--no-edit", "feat-x")
     assert held.returncode != 0 and "IC-001" in held.stdout + held.stderr
