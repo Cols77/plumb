@@ -44,8 +44,11 @@ class RunResult:
 
 
 def _git(cwd: Path, *args: str) -> None:
+    # a hook's GIT_DIR would point git init at the host repository instead
+    from plumb.background import child_env
+
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True,
-                   encoding="utf-8")
+                   encoding="utf-8", env=child_env())
 
 
 def _name_the_judge(scratch: Path, host: Path | None) -> None:
