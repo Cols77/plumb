@@ -181,6 +181,44 @@ def _landed_decisions(core: Any, before: str, head: str) -> list[Any]:
             if r.kind == "decision" and r.path in changed and r.fields.get("tidy")]
 
 
+def _in_use(path: Path) -> bool:
+    """A running process works inside ``path`` (an evaluator's agent or its checks)."""
+    for proc in Path("/proc").glob("[0-9]*/cwd"):   # shortcut: Linux only; elsewhere none seen
+        try:
+            here = proc.resolve()
+        except OSError:
+            continue
+        if here == path or path in here.parents:
+            return True
+    return False
+
+
+def sweep_eval_scratch(root: Path, older_than_s: float = 86400, *,
+                       now: float | None = None) -> list[str]:
+    """Report report-0ab44aff, SR-301: the evaluator's leftover ``plumb-eval-*`` folders in the
+    temp folder, untouched for a day, are removed unless one holds a worktree of this repository
+    or a running process works in it; the paths removed."""
+    import tempfile
+
+    cutoff = (time.time() if now is None else now) - older_than_s
+    held = worktrees(root)
+    gone: list[str] = []
+    for path in sorted(Path(tempfile.gettempdir()).glob("plumb-eval-*")):
+        try:
+            if not path.is_dir() or path.is_symlink() or path.stat().st_mtime >= cutoff:
+                continue
+            path = path.resolve()
+            if any(w == path or path in w.parents or w in path.parents for w in held):
+                continue
+            if _in_use(path):
+                continue
+            shutil.rmtree(path)
+            gone.append(str(path))
+        except OSError:
+            continue   # not ours to remove: left alone
+    return gone
+
+
 def tidy(core: Any, before: str, head: str) -> tuple[list[str], list[str], list[dict]]:
     """``(repository paths removed, folders outside removed, cases)``: the paths the landed
     decision records list under ``tidy:``. A path a current record cites stays and becomes
@@ -618,6 +656,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
             _commit(root, removed, [*archived, *shared], head)
 
     idle: list[tuple[str, int]] = []
+    swept: list[str] = []
 
     def do_worktrees() -> None:
         found = finished_worktrees(root, before, head)
@@ -631,6 +670,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     step("proofs", lambda: proofs.extend(post_merge_proofs(open_core(root), before, head)))
     step("fixes", lambda: debug.landed(root, head))  # before the worktrees step drops branches
     step("tidy", do_tidy)
+    step("eval-scratch", lambda: swept.extend(sweep_eval_scratch(root)))
     step("compaction", do_compact)
     step("commit", do_commit)
     step("worktrees", do_worktrees)
@@ -646,6 +686,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
              f"({sum(m for _, m in idle)} MB freed)" if idle else "",
              *kept,
              f"removed {len(ended)} ended session folders" if ended else "",
+             f"removed {len(swept)} old evaluator scratch folders" if swept else "",
              f"post-merge proofs to show: {', '.join(proofs)}" if proofs else "",
              f"queued {queued} records for the judge",
              f"{len(cases)} cases went to debugging"]

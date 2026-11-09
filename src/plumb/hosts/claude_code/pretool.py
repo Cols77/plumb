@@ -37,7 +37,8 @@ def _deny(reason: str) -> dict[str, Any]:
                                    "permissionDecisionReason": reason}}
 
 
-REASON_WORDS = re.compile(r"\b(because|since|reason|why|so that|so it|so the)\b", re.I)
+REASON_WORDS = re.compile(r"\b(because|since|reason|why|so that|so it|so the)\b"
+                          r"|\brecommended\s*:\s*\S", re.I)   # the judge's "Recommended: <reason>"
 
 
 def incomplete_question(tool_input: dict[str, Any]) -> str:

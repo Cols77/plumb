@@ -52,7 +52,7 @@ function statusLine(view: PlumbView): string {
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
   const word = waiting ? T.awaiting(waiting) : state || T.nothingAwaits
   const judged = view.status?.judged ? T.judged(view.status.judged) : '' // SR-251
-  return [`${T.name} ${glyph} ${word}`, judged, view.status?.progress].filter(Boolean).join(' · ')
+  return [`${view.status?.name || T.name} ${glyph} ${word}`, judged, view.status?.progress].filter(Boolean).join(' · ')
 }
 
 /** The band's status read again (files only, no process): null when nothing moved (SR-291).

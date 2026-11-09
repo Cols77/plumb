@@ -40,6 +40,8 @@ export type PlumbLoop = {
  * of questions waiting for the owner (SR-337); `loop` while an intent loop is open; `study` the
  * title of a study the owner has not opened yet (SR-294). */
 export type PlumbStatus = {
+  /** SR-415: the session's name, which the band's line begins with; '' when none */
+  name?: string
   state: string
   summary: string
   progress: string

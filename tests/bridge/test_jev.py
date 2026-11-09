@@ -495,11 +495,11 @@ def test_backend_through_the_env_file_never_writes_the_key(repo: Path, stub, tmp
 
 
 def _live_provider(repo: Path) -> str | None:
-    """The provider whose credential resolves (environment, env file or legacy store)."""
+    """The provider whose credential resolves (environment, env file or user store), in plumb's order."""
     for provider, name in (("openrouter", "OPENROUTER_API_KEY"),
                            ("typesafe", "TYPESAFE_API_KEY")):
         source = jev_mod.key_source(repo, name=name)
-        if source in ("env", "env-file") or (source and provider == "typesafe"):
+        if source in ("env", "env-file", "user-store") or (source and provider == "typesafe"):
             return provider
     return None
 
